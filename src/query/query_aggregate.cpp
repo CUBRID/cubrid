@@ -870,7 +870,7 @@ qdata_agg_operand_prog_compile (cubthread::entry * thread_p, cubxasl::aggregate_
       return;
     }
 
-  idx = (int *) db_private_alloc (thread_p, sizeof (int) * n);
+  idx = (int *) malloc (sizeof (int) * n);
   if (idx == NULL)
     {
       return;
@@ -880,10 +880,10 @@ qdata_agg_operand_prog_compile (cubthread::entry * thread_p, cubxasl::aggregate_
    * TYPE_CONSTANT cell (buildlist aggregates -- the expressions were moved into the
    * scan), the accumulate kernels below still skip the per-row operand vector, its
    * deep copy and the accumulate dispatch */
-  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, true, idx);
+  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, true, false, idx);
   if (prog == NULL)
     {
-      db_private_free_and_init (thread_p, idx);
+      free_and_init (idx);
       return;
     }
 
@@ -898,7 +898,7 @@ qdata_agg_operand_prog_compile (cubthread::entry * thread_p, cubxasl::aggregate_
   if (k == n)
     {
       expr_prog_free (prog);
-      db_private_free_and_init (thread_p, idx);
+      free_and_init (idx);
       return;
     }
 
@@ -922,7 +922,7 @@ qdata_agg_operand_prog_compile (cubthread::entry * thread_p, cubxasl::aggregate_
   if (!any_kernel && prog->n_steps == 0)
     {
       expr_prog_free (prog);
-      db_private_free_and_init (thread_p, idx);
+      free_and_init (idx);
       agg_list_p->operand_prog = NULL;
       agg_list_p->operand_prog_idx = NULL;
       agg_list_p->operand_prog_state = 2;
@@ -959,7 +959,7 @@ qdata_evaluate_aggregate_list (cubthread::entry * thread_p, cubxasl::aggregate_l
 	    {
 	      /* different bind types than the program was specialized for: recompile */
 	      expr_prog_free (operand_prog);
-	      db_private_free_and_init (thread_p, agg_list_p->operand_prog_idx);
+	      free_and_init (agg_list_p->operand_prog_idx);
 	      agg_list_p->operand_prog = NULL;
 	      agg_list_p->operand_prog_state = 0;
 	      qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);

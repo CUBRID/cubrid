@@ -329,13 +329,21 @@ expr_k_mul_double (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   EXPR_ARITH_EPILOGUE ();
 }
 
-/* ---- NUMERIC ---- */
+/* ---- NUMERIC ----
+ *
+ * The interpreted helpers pick DIFFERENT numeric implementations by operand mix:
+ * a pure NUMERIC x NUMERIC pair goes through the float_numeric_db_value_* family,
+ * while a pair with a coerced SHORT/INTEGER/BIGINT side goes through the plain
+ * numeric_db_value_* family (multiplication is float for BOTH mixes and takes the
+ * raw integer side without any pre-coercion).  step->aux == 1 selects the pure
+ * (float) call so the kernels stay exact mirrors -- the two families produce
+ * different result scales (visible in division). */
 
 static int
 expr_k_add_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
-  if (numeric_db_value_add (a, b, step->out) != NO_ERROR)
+  if ((step->aux ? float_numeric_db_value_add (a, b, step->out) : numeric_db_value_add (a, b, step->out)) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -347,7 +355,7 @@ static int
 expr_k_sub_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
-  if (numeric_db_value_sub (a, b, step->out) != NO_ERROR)
+  if ((step->aux ? float_numeric_db_value_sub (a, b, step->out) : numeric_db_value_sub (a, b, step->out)) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_QPROC_OVERFLOW_SUBTRACTION;
@@ -359,7 +367,9 @@ static int
 expr_k_mul_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
-  if (numeric_db_value_mul (a, b, step->out) != NO_ERROR)
+  /* multiplication is the float call for every operand mix (qdata_multiply_numeric_
+   * to_dbval () falls through SHORT/INTEGER/BIGINT/NUMERIC into one case) */
+  if (float_numeric_db_value_mul (a, b, step->out) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_QPROC_OVERFLOW_MULTIPLICATION;
@@ -376,7 +386,7 @@ expr_k_div_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_ZERO_DIVIDE, 0);
       return ER_FAILED;
     }
-  if (numeric_db_value_div (a, b, step->out) != NO_ERROR)
+  if ((step->aux ? float_numeric_db_value_div (a, b, step->out) : numeric_db_value_div (a, b, step->out)) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
       return ER_QPROC_OVERFLOW_DIVISION;
@@ -578,7 +588,7 @@ expr_pred_free (EXPR_PRED * pred)
     }
   expr_pred_free (pred->lhs);
   expr_pred_free (pred->rhs);
-  db_private_free_and_init (NULL, pred);
+  free_and_init (pred);
 }
 
 /* run one deferred branch region for the current row */
@@ -935,7 +945,7 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 	  expr_pred_free (lhs);
 	  return NULL;
 	}
-      pred = (EXPR_PRED *) db_private_alloc (bctx->thread_p, sizeof (EXPR_PRED));
+      pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
       if (pred == NULL)
 	{
 	  expr_pred_free (lhs);
@@ -954,7 +964,7 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 	{
 	  return NULL;
 	}
-      pred = (EXPR_PRED *) db_private_alloc (bctx->thread_p, sizeof (EXPR_PRED));
+      pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
       if (pred == NULL)
 	{
 	  expr_pred_free (lhs);
@@ -990,7 +1000,7 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 	      {
 		return NULL;
 	      }
-	    pred = (EXPR_PRED *) db_private_alloc (bctx->thread_p, sizeof (EXPR_PRED));
+	    pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
 	    if (pred == NULL)
 	      {
 		return NULL;
@@ -1042,7 +1052,7 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 	  {
 	    return NULL;
 	  }
-	pred = (EXPR_PRED *) db_private_alloc (bctx->thread_p, sizeof (EXPR_PRED));
+	pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
 	if (pred == NULL)
 	  {
 	    return NULL;
@@ -1397,27 +1407,27 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 
 	/* operands whose compile-time type differs from the kernel type get a
 	 * per-row coercion step (mirror of the qdata tmp coercion) -- NUMERIC only;
-	 * other mixes are left to the interpreted path */
+	 * other mixes are left to the interpreted path.  Only a SHORT/INTEGER/BIGINT
+	 * side may mix with NUMERIC (float/double operands take the double path in the
+	 * interpreted helpers).  Multiplication takes the raw integer side WITHOUT a
+	 * coercion step -- qdata_multiply_numeric_to_dbval () feeds it straight into
+	 * the float multiplication. */
+	bool numeric_pure = false;
+
 	if (rtype == DB_TYPE_NUMERIC)
 	  {
-	    DB_TYPE t1 = expr_leaf_type (bctx, arith->leftptr);
-	    DB_TYPE t2 = expr_leaf_type (bctx, arith->rightptr);
+	    DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
+	    DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
 
-	    if (arith->leftptr->type == TYPE_INARITH || arith->leftptr->type == TYPE_OUTARITH)
+	    if ((t1 != DB_TYPE_NUMERIC && t1 != DB_TYPE_SHORT && t1 != DB_TYPE_INTEGER && t1 != DB_TYPE_BIGINT)
+		|| (t2 != DB_TYPE_NUMERIC && t2 != DB_TYPE_SHORT && t2 != DB_TYPE_INTEGER && t2 != DB_TYPE_BIGINT))
 	      {
-		t1 = (arith->leftptr->domain != NULL) ? TP_DOMAIN_TYPE (arith->leftptr->domain) : DB_TYPE_UNKNOWN;
+		return -1;
 	      }
-	    if (arith->rightptr->type == TYPE_INARITH || arith->rightptr->type == TYPE_OUTARITH)
-	      {
-		t2 = (arith->rightptr->domain != NULL) ? TP_DOMAIN_TYPE (arith->rightptr->domain) : DB_TYPE_UNKNOWN;
-	      }
+	    numeric_pure = (t1 == DB_TYPE_NUMERIC && t2 == DB_TYPE_NUMERIC);
 
-	    if (t1 != DB_TYPE_NUMERIC)
+	    if (t1 != DB_TYPE_NUMERIC && arith->opcode != T_MUL)
 	      {
-		if (!TP_IS_NUMERIC_TYPE (t1))
-		  {
-		    return -1;
-		  }
 		step = expr_new_step (bctx, expr_k_coerce_numeric, -1);
 		cell = expr_new_cell (bctx, NULL);
 		if (step == NULL || cell < 0)
@@ -1430,15 +1440,11 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		bctx->n_slots++;
 		/* an inline literal never changes: coerce it once, not per row (a
 		 * TYPE_CONSTANT dbvalptr CAN change between rows -- not hoistable) */
-		bctx->step_prologue[step - bctx->steps] = (arith->leftptr->type == TYPE_DBVAL);
+		bctx->step_prologue[step - bctx->steps] = (arith->leftptr->type == TYPE_DBVAL && bctx->in_branch == 0);
 		c1 = cell;
 	      }
-	    if (t2 != DB_TYPE_NUMERIC)
+	    if (t2 != DB_TYPE_NUMERIC && arith->opcode != T_MUL)
 	      {
-		if (!TP_IS_NUMERIC_TYPE (t2))
-		  {
-		    return -1;
-		  }
 		step = expr_new_step (bctx, expr_k_coerce_numeric, -1);
 		cell = expr_new_cell (bctx, NULL);
 		if (step == NULL || cell < 0)
@@ -1449,7 +1455,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		step->out_cell = (DB_VALUE **) (intptr_t) cell;
 		step->out = (DB_VALUE *) 1;
 		bctx->n_slots++;
-		bctx->step_prologue[step - bctx->steps] = (arith->rightptr->type == TYPE_DBVAL);
+		bctx->step_prologue[step - bctx->steps] = (arith->rightptr->type == TYPE_DBVAL && bctx->in_branch == 0);
 		c2 = cell;
 	      }
 	  }
@@ -1488,6 +1494,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	step->arg1p = EXPR_ARG_ENCODE (c1);
 	step->arg2p = EXPR_ARG_ENCODE (c2);
 	step->out_cell = (DB_VALUE **) (intptr_t) cell;
+	step->aux = numeric_pure ? 1 : 0;	/* float vs plain numeric family */
 	/* the trailing coercion is a verified no-op for a non-parameterized result domain
 	 * whose type the kernel already produces (tp_value_cast_internal returns straight
 	 * away when desired_type == original_type, !is_parameterized and src == dest), so
@@ -1572,12 +1579,12 @@ expr_prog_compile (cubthread::entry * thread_p, regu_variable_list_node * list, 
 	}
       roots[n++] = &node->value;
     }
-  return expr_prog_compile_roots (thread_p, roots, n, vd, true, false, NULL);
+  return expr_prog_compile_roots (thread_p, roots, n, vd, true, false, false, NULL);
 }
 
 EXPR_PROG *
 expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots, val_descr * vd,
-			 bool allow_fallback_roots, bool allow_wired_only, int *root_idx_out)
+			 bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots, int *root_idx_out)
 {
   EXPR_BUILD_CTX bctx;
   EXPR_PROG *prog = NULL;
@@ -1596,7 +1603,40 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 
   for (i = 0; i < in_roots; i++)
     {
+      int snap_steps = bctx.n_steps, snap_cells = bctx.n_cells, snap_cse = bctx.n_cse, snap_slots = bctx.n_slots;
       int cell = expr_compile_node (&bctx, roots[i], &compiled_something);
+
+      if (cell >= 0 && only_compute_roots)
+	{
+	  bool has_compute = false;
+	  int j;
+
+	  for (j = snap_steps; j < bctx.n_steps; j++)
+	    {
+	      if (bctx.steps[j].kernel != expr_k_leaf_fetch && bctx.steps[j].kernel != expr_k_hostvar)
+		{
+		  has_compute = true;
+		  break;
+		}
+	    }
+	  if (!has_compute)
+	    {
+	      /* nothing computed: discard this root's steps and keep the consumer's
+	       * interpreted per-root path (its CSE entries go too, so a later root
+	       * cannot reference a cell no step publishes) */
+	      for (j = snap_steps; j < bctx.n_steps; j++)
+		{
+		  expr_pred_free ((EXPR_PRED *) bctx.steps[j].pred);
+		  bctx.steps[j].pred = NULL;
+		  bctx.step_prologue[j] = false;
+		}
+	      bctx.n_steps = snap_steps;
+	      bctx.n_cells = snap_cells;
+	      bctx.n_cse = snap_cse;
+	      bctx.n_slots = snap_slots;
+	      cell = -1;
+	    }
+	}
 
       if (cell < 0 && allow_fallback_roots)
 	{
@@ -1629,7 +1669,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
       return NULL;
     }
 
-  prog = (EXPR_PROG *) db_private_alloc (thread_p, sizeof (EXPR_PROG));
+  prog = (EXPR_PROG *) malloc (sizeof (EXPR_PROG));
   if (prog == NULL)
     {
       expr_build_free_preds (&bctx);
@@ -1642,10 +1682,10 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
   prog->n_slots = bctx.n_slots;
   prog->n_roots = n_roots;
 
-  prog->steps = (EXPR_STEP *) db_private_alloc (thread_p, sizeof (EXPR_STEP) * MAX (1, prog->n_steps));
-  prog->cells = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * MAX (1, prog->n_cells));
-  prog->slots = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * MAX (1, prog->n_slots));
-  prog->root_cells = (int *) db_private_alloc (thread_p, sizeof (int) * MAX (1, prog->n_roots));
+  prog->steps = (EXPR_STEP *) malloc (sizeof (EXPR_STEP) * MAX (1, prog->n_steps));
+  prog->cells = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * MAX (1, prog->n_cells));
+  prog->slots = (DB_VALUE *) malloc (sizeof (DB_VALUE) * MAX (1, prog->n_slots));
+  prog->root_cells = (int *) malloc (sizeof (int) * MAX (1, prog->n_roots));
   if (prog->steps == NULL || prog->cells == NULL || prog->slots == NULL || prog->root_cells == NULL)
     {
       /* prog->steps holds no valid pred pointers yet (uninitialized memory) */
@@ -1692,6 +1732,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
       }
 
     /* branch regions stay contiguous (no step inside a branch is ever a prologue) */
+    prog->n_compute = 0;
     for (i = 0; i < prog->n_steps; i++)
       {
 	EXPR_STEP *step = &prog->steps[i];
@@ -1703,6 +1744,10 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 	if (step->f_n > 0)
 	  {
 	    step->f_start = remap[step->f_start];
+	  }
+	if (step->kernel != expr_k_leaf_fetch && step->kernel != expr_k_hostvar && step->kernel != expr_k_fallback)
+	  {
+	    prog->n_compute++;
 	  }
       }
   }
@@ -1742,7 +1787,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
   if (vd != NULL && vd->dbval_cnt > 0)
     {
       prog->n_hv = vd->dbval_cnt;
-      prog->hv_types = (DB_TYPE *) db_private_alloc (thread_p, sizeof (DB_TYPE) * prog->n_hv);
+      prog->hv_types = (DB_TYPE *) malloc (sizeof (DB_TYPE) * prog->n_hv);
       if (prog->hv_types == NULL)
 	{
 	  expr_prog_free (prog);
@@ -1839,7 +1884,7 @@ expr_prog_free (EXPR_PROG * prog)
 	{
 	  pr_clear_value (&prog->slots[i]);
 	}
-      db_private_free_and_init (NULL, prog->slots);
+      free_and_init (prog->slots);
     }
   if (prog->steps != NULL)
     {
@@ -1847,19 +1892,19 @@ expr_prog_free (EXPR_PROG * prog)
 	{
 	  expr_pred_free ((EXPR_PRED *) prog->steps[i].pred);
 	}
-      db_private_free_and_init (NULL, prog->steps);
+      free_and_init (prog->steps);
     }
   if (prog->cells != NULL)
     {
-      db_private_free_and_init (NULL, prog->cells);
+      free_and_init (prog->cells);
     }
   if (prog->root_cells != NULL)
     {
-      db_private_free_and_init (NULL, prog->root_cells);
+      free_and_init (prog->root_cells);
     }
   if (prog->hv_types != NULL)
     {
-      db_private_free_and_init (NULL, prog->hv_types);
+      free_and_init (prog->hv_types);
     }
-  db_private_free_and_init (NULL, prog);
+  free_and_init (prog);
 }
