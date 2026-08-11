@@ -67,6 +67,7 @@ struct expr_eval_ctx
   val_descr *vd;
   OID *obj_oid;
   QFILE_TUPLE tpl;
+  EXPR_PROG *prog;		/* for kernels that run deferred step regions (CASE branches) */
 };
 
 /* a kernel returns NO_ERROR or an error code; it reads *step->arg1p (etc.) and
@@ -89,6 +90,15 @@ struct expr_step
   TP_DOMAIN *domain;		/* result / cast target domain, fixed at compile time */
   REGU_VARIABLE *regu;		/* the subtree this step covers; used by leaf and fallback kernels */
   int aux;			/* kernel-specific small parameter (host variable index, side flags) */
+
+  /* CASE family: compiled predicate tree and the DEFERRED step regions holding the two
+   * branches.  Branch steps are skipped by the main loop and executed by the CASE kernel
+   * only for the branch the predicate selects, so a never-taken branch cannot raise an
+   * error the interpreted path would not raise (e.g. "WHEN b <> 0 THEN a / b"). */
+  void *pred;			/* EXPR_PRED *, owned by the program */
+  int t_start, t_n;		/* THEN branch step range */
+  int f_start, f_n;		/* ELSE branch step range */
+  bool deferred;		/* this step belongs to a branch region */
 };
 
 struct expr_prog
