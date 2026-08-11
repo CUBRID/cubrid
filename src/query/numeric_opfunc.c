@@ -5303,7 +5303,6 @@ static uint64_t
 float_numeric_div_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uint64_t divisor)
 {
   uint64_t rem10 = 0;
-  uint64_t quotient = 0;
   int i = 0;
 
   uint128_t temp = 0;
@@ -5312,9 +5311,8 @@ float_numeric_div_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
   for (i = 0; i < calc_words; i++)
     {
       temp = ((uint128_t) rem10 << 64) | word_ptr[i];
-      quotient = (uint64_t) (temp / divisor);
-      rem10 = (uint64_t) (temp - (uint128_t) quotient * divisor);
-      word_ptr[i] = quotient;
+      word_ptr[i] = (uint64_t) (temp / divisor);
+      rem10 = (uint64_t) (temp - (uint128_t) word_ptr[i] * divisor);
     }
 
   return rem10;
