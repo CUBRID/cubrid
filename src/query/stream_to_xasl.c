@@ -4180,6 +4180,10 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
+  outptr_list->eval_prog = NULL;
+  outptr_list->eval_prog_idx = NULL;
+  outptr_list->eval_prog_state = 0;
+
   ptr = or_unpack_int (ptr, &outptr_list->valptr_cnt);
 
   ptr = or_unpack_int (ptr, &offset);

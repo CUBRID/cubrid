@@ -34,6 +34,7 @@
 
 #include "system_parameter.h"
 #include "error_manager.h"
+#include "expr_compile.h"
 #include "fetch.h"
 #include "list_file.h"
 #include "object_domain.h"
@@ -408,6 +409,195 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 }
 
 /*
+ * qdata_valptr_prog_compile () - lazily compile a value pointer list's expressions into
+ *				  one program (expr_compile.h)
+ *
+ * Hidden columns are excluded: the consumers below never evaluate them.  Columns whose
+ * fetch semantics depend on runtime regu flags (strict casts of INSERT/UPDATE value
+ * lists, analytic windows) are excluded the same way and keep their per-column
+ * interpreted fetch, as does every column the expression compiler cannot cover purely.
+ * A program that would only repeat leaf fetches (no computing step) is dropped.
+ */
+static void
+qdata_valptr_prog_compile (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p)
+{
+  REGU_VARIABLE *roots[128];
+  REGU_VARIABLE_LIST reg_var_p;
+  int *idx = NULL;
+  int n = 0, k;
+  EXPR_PROG *prog;
+
+  valptr_list_p->eval_prog_state = 2;	/* disabled unless everything below succeeds */
+
+  if (valptr_list_p->valptr_cnt <= 0 || valptr_list_p->valptr_cnt > (int) DIM (roots))
+    {
+      return;
+    }
+
+  for (reg_var_p = valptr_list_p->valptrp; reg_var_p != NULL; reg_var_p = reg_var_p->next)
+    {
+      bool excluded = (reg_var_p->value.flags
+		       & (REGU_VARIABLE_HIDDEN_COLUMN | REGU_VARIABLE_UPD_INS_LIST
+			  | REGU_VARIABLE_ANALYTIC_WINDOW)) != 0;
+
+      roots[n++] = excluded ? NULL : &reg_var_p->value;
+    }
+
+  idx = (int *) malloc (sizeof (int) * n);
+  if (idx == NULL)
+    {
+      return;
+    }
+
+  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, false, true, idx);
+  if (prog == NULL)
+    {
+      free_and_init (idx);
+      return;
+    }
+  if (prog->n_compute == 0)
+    {
+      /* only leaf fetches: the per-column interpreted path does the same work without
+       * the program indirection */
+      expr_prog_free (prog);
+      free_and_init (idx);
+      return;
+    }
+
+  /* keep only fully-covered columns on the program path; a column whose root fell out
+   * keeps the interpreted per-column fetch */
+  for (k = 0; k < n; k++)
+    {
+      if (idx[k] >= 0)
+	{
+	  break;
+	}
+    }
+  if (k == n)
+    {
+      expr_prog_free (prog);
+      free_and_init (idx);
+      return;
+    }
+
+  valptr_list_p->eval_prog = prog;
+  valptr_list_p->eval_prog_idx = idx;
+  valptr_list_p->eval_prog_state = 1;
+}
+
+/*
+ * qdata_valptr_prog_ensure () - the list's active program with this row already
+ *				 evaluated, or NULL to use the interpreted path
+ */
+static EXPR_PROG *
+qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p,
+			  int *error_p)
+{
+  EXPR_PROG *prog = NULL;
+
+  *error_p = NO_ERROR;
+
+  if (valptr_list_p->eval_prog_state == 0)
+    {
+      qdata_valptr_prog_compile (thread_p, valptr_list_p, val_desc_p);
+    }
+  if (valptr_list_p->eval_prog_state == 1)
+    {
+      prog = (EXPR_PROG *) valptr_list_p->eval_prog;
+      if (!expr_prog_signature_matches (prog, val_desc_p))
+	{
+	  /* different bind types than the program was specialized for: recompile */
+	  qdata_free_valptr_list_prog (thread_p, valptr_list_p);
+	  valptr_list_p->eval_prog_state = 0;
+	  qdata_valptr_prog_compile (thread_p, valptr_list_p, val_desc_p);
+	  prog = (valptr_list_p->eval_prog_state == 1) ? (EXPR_PROG *) valptr_list_p->eval_prog : NULL;
+	}
+    }
+
+  if (prog != NULL && expr_prog_eval (prog, thread_p, val_desc_p, NULL, NULL) != NO_ERROR)
+    {
+      *error_p = ER_FAILED;
+      return NULL;
+    }
+  return prog;
+}
+
+/*
+ * qdata_free_valptr_list_prog () - release a value pointer list's compiled program
+ */
+void
+qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p)
+{
+  if (valptr_list_p == NULL || valptr_list_p->eval_prog == NULL)
+    {
+      return;
+    }
+  expr_prog_free ((EXPR_PROG *) valptr_list_p->eval_prog);
+  valptr_list_p->eval_prog = NULL;
+  free_and_init (valptr_list_p->eval_prog_idx);
+  valptr_list_p->eval_prog_state = 2;
+}
+
+/*
+ * qdata_get_dbval_from_prog () - a column's value from the evaluated program, run
+ *				  through the same trailing domain enforcement as
+ *				  qdata_get_dbval_from_constant_regu_variable ()
+ */
+static DB_VALUE *
+qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, EXPR_PROG * prog, int root_idx)
+{
+  DB_VALUE *peek_value_p = expr_prog_value (prog, root_idx);
+  DB_TYPE dom_type, val_type;
+  TP_DOMAIN_STATUS dom_status;
+  HL_HEAPID save_heapid = 0;
+
+  assert (regu_var_p != NULL);
+  assert (regu_var_p->domain != NULL);
+  /* flag-dependent fetch semantics were excluded at compile time */
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_UPD_INS_LIST));
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW));
+
+  if (!DB_IS_NULL (peek_value_p))
+    {
+      val_type = DB_VALUE_TYPE (peek_value_p);
+      dom_type = TP_DOMAIN_TYPE (regu_var_p->domain);
+
+      if (dom_type != DB_TYPE_NULL)
+	{
+	  if (val_type == DB_TYPE_OID)
+	    {
+	      assert ((dom_type == DB_TYPE_OID) || (dom_type == DB_TYPE_VOBJ));
+	    }
+	  else if (val_type != dom_type
+		   || (val_type == DB_TYPE_NUMERIC
+		       && (peek_value_p->domain.numeric_info.precision != regu_var_p->domain->precision
+			   || peek_value_p->domain.numeric_info.scale != regu_var_p->domain->scale)))
+	    {
+	      if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		{
+		  save_heapid = db_change_private_heap (thread_p, 0);
+		}
+
+	      dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, regu_var_p->domain);
+	      if (save_heapid != 0)
+		{
+		  (void) db_change_private_heap (thread_p, save_heapid);
+		}
+	      if (dom_status != DOMAIN_COMPATIBLE)
+		{
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, regu_var_p->domain);
+		  return NULL;
+		}
+	      assert (dom_type == DB_VALUE_TYPE (peek_value_p)
+		      || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) && DB_IS_NULL (peek_value_p)));
+	    }
+	}
+    }
+
+  return peek_value_p;
+}
+
+/*
  * qdata_copy_valptr_list_to_tuple () -
  *   return: NO_ERROR, or ER_code
  *   valptr_list(in)    : Value pointer list
@@ -428,6 +618,14 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
   int k, tval_size, tlen, tpl_size;
   int n_size, toffset;
   int flags;
+  EXPR_PROG *eval_prog;
+  int prog_error;
+
+  eval_prog = qdata_valptr_prog_ensure (thread_p, valptr_list_p, val_desc_p, &prog_error);
+  if (prog_error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   tpl_size = 0;
   tlen = QFILE_TUPLE_LENGTH_SIZE;
@@ -447,7 +645,14 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 	{
 	  continue;
 	}
-      dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+      if (eval_prog != NULL && valptr_list_p->eval_prog_idx[k] >= 0)
+	{
+	  dbval_p = qdata_get_dbval_from_prog (thread_p, regu_var_p, eval_prog, valptr_list_p->eval_prog_idx[k]);
+	}
+      else
+	{
+	  dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+	}
       if (dbval_p == NULL)
 	{
 	  return ER_FAILED;
@@ -632,6 +837,14 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
   int flags;
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
   DB_TYPE dbval_type;
+  EXPR_PROG *eval_prog;
+  int prog_error;
+
+  eval_prog = qdata_valptr_prog_ensure (thread_p, valptr_list_p, val_desc_p, &prog_error);
+  if (prog_error != NO_ERROR)
+    {
+      return QPROC_TPLDESCR_FAILURE;
+    }
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
   tuple_desc_p->f_cnt = 0;
@@ -646,8 +859,16 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
 	{
 	  continue;
 	}
-      tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
-	qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+      if (eval_prog != NULL && valptr_list_p->eval_prog_idx[i] >= 0)
+	{
+	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
+	    qdata_get_dbval_from_prog (thread_p, regu_var_p, eval_prog, valptr_list_p->eval_prog_idx[i]);
+	}
+      else
+	{
+	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
+	    qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+	}
 
       if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
 	{

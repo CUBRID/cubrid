@@ -121,6 +121,14 @@ struct valptr_list_node
   REGU_VARIABLE_LIST valptrp;	/* value pointer list */
   int valptr_cnt;		/* value count */
 
+  /* compiled evaluation program covering the list's expressions (expr_compile.h).
+   * Server-side runtime state, never serialized; built lazily on the first evaluated
+   * row and owned by the XASL clone.  Columns the compiler cannot cover keep their
+   * per-column interpreted fetch (their eval_prog_idx entry is -1). */
+  void *eval_prog;		/* EXPR_PROG * */
+  int *eval_prog_idx;		/* program root index per column, or -1 */
+  int eval_prog_state;		/* 0 = untried, 1 = active, 2 = disabled */
+
   valptr_list_node () = default;
 };
 

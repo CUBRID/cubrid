@@ -121,6 +121,11 @@ struct expr_prog
   int *root_cells;		/* cell index of each compiled list element, in list order */
   int n_roots;
 
+  /* number of computing steps (arithmetic, coercion, cast, NVL, CASE, predicate) --
+   * a consumer whose per-root fast path needs none may drop a program that only
+   * repeats leaf fetches through extra indirection */
+  int n_compute;
+
   /* host variable domain signature recorded at compile time; a later execution whose
    * bound types differ must not reuse this program */
   DB_TYPE *hv_types;
@@ -142,10 +147,14 @@ extern EXPR_PROG *expr_prog_compile (cubthread::entry * thread_p, regu_variable_
  * wired constant cell, e.g. the TYPE_CONSTANT operands of a buildlist aggregate); such
  * a program is pure cell publication, useful when the CONSUMER attaches per-root fast
  * paths (aggregate accumulate kernels).  Without it a step-less program is considered
- * pointless indirection and NULL is returned. */
+ * pointless indirection and NULL is returned.
+ *
+ * only_compute_roots additionally excludes every root that compiles without a single
+ * computing step (a plain column, a wired constant): such a root gains nothing from
+ * the program and keeps the consumer's interpreted per-root path. */
 extern EXPR_PROG *expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int n_roots,
 					   val_descr * vd, bool allow_fallback_roots, bool allow_wired_only,
-					   int *root_idx_out);
+					   bool only_compute_roots, int *root_idx_out);
 
 /* true when the program's recorded host-variable type signature matches vd */
 extern bool expr_prog_signature_matches (const EXPR_PROG * prog, const val_descr * vd);
