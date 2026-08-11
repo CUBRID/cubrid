@@ -81,6 +81,11 @@
 /* Per-OID heap-access CPU penalty for NON-covering index scans (covering scans: 0).
  * Lowered 20 -> 5 to favor index scan when low/stale leading-column NDV inflates sel via 1/pkeys[0]. TODO: per-index clustering factor. */
 #define ISCAN_OID_ACCESS_OVERHEAD 5
+/* Per-extra-row iscan heap-fetch cost: charges (heap_rows - 1) * ratio, so a single-row
+ * (fanout=1 / unique / pk) probe adds ZERO and keeps exactly the original cost (blast-radius
+ * safe). Added to object_IO on top of the existing page-based cost, so a high-fanout inner
+ * index scan of a nested loop is no longer priced like a single-row probe. */
+#define FETCH_HEAP_COST 0.25	/* per-extra heap-row fetch (non-covering only) */
 #define MJ_CPU_OVERHEAD_FACTOR 20
 #define HJ_BUILD_CPU_OVERHEAD_FACTOR 40
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
@@ -2122,7 +2127,8 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
-  double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access;
+  double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access, heap_rows;
+  double heap_fanout = 0.0, iss_leaves = 0.0, first_leaf = 0.0;
   double object_IO, index_IO;
   double sel_excl_derived_range;
   QO_TERM *termp;
@@ -2290,13 +2296,20 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   /* number of leaf pages to be accessed */
   leaves = ceil (sel * (double) cum_statsp->leafs);
+  /* the landing leaves the descent lands on (fixed, cached across probes): one per class the
+   * index spans -- (ni_entryp)->n classes, matching the n * height descent below. cum_stats.leafs
+   * is summed over those classes, so `leaves` already includes these n landing pages; the rest is
+   * per-probe. */
+  first_leaf = MIN (leaves, (double) (ni_entryp)->n);
   /* total number of pages occupied by objects */
   opages = (double) QO_NODE_TCARD (nodep);
-  /* I/O cost to access B+tree index */
-  index_IO = ((ni_entryp)->n * height) + leaves;
+  /* I/O cost to access B+tree index: only the descent (n * height) is fixed; the `leaves`
+   * pages are charged per probe on the variable side below. */
+  index_IO = (ni_entryp)->n * height;
 
-  /* Index Skip Scan adds to the index IO cost the K extra BTREE searches it does to fetch the next value for the
-   * following BTRangeScan
+  /* Index Skip Scan does K extra BTREE searches to fetch the next value for the following
+   * BTRangeScan. These are K additional leaf reads that recur on every probe (like `leaves`),
+   * so they belong on the variable (per-outer-row) side, not the fixed descent cost.
    */
   if (qo_is_index_iss_scan (planp))
     {
@@ -2305,8 +2318,7 @@ qo_iscan_cost (QO_PLAN * planp)
 	  assert (cum_statsp->pkeys != NULL);
 	  assert (cum_statsp->pkeys_size != 0);
 
-	  /* K leaves are additionally read */
-	  index_IO += cum_statsp->pkeys[0];
+	  iss_leaves = cum_statsp->pkeys[0];
 	}
     }
 
@@ -2318,15 +2330,32 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   else
     {
+      /* Row count reaching the heap: uses sel_excl_derived_range (not sel) so a LIKE-derived
+       * range is not double counted against the residual LIKE it came from - same basis as
+       * scan_rows below. */
+      heap_rows = (double) QO_NODE_NCARD (nodep) * sel_excl_derived_range * filter_sel;
       object_IO = opages * sel_excl_derived_range * filter_sel;
-      heap_access =
-	(double) QO_NODE_NCARD (nodep) * sel_excl_derived_range * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
+      /* Cap the per-row heap-fetch surcharge at the table's page count: fetching more rows
+       * than there are heap pages cannot touch more distinct pages (the rows share pages),
+       * so an unbounded per-row charge would overprice a wide scan whose non-indexed filter
+       * (sargs) is applied only after the fetch. */
+      heap_fanout = (heap_rows > 1.0) ? MAX (0.0, MIN (heap_rows, opages) - 1.0) * FETCH_HEAP_COST : 0.0;
+      heap_access = heap_rows * (double) ISCAN_OID_ACCESS_OVERHEAD;
     }
-  object_IO = MAX (1.0, object_IO);
+  /* Split the leaf-page IO across the fixed/variable sides. The first leaf page (the one the
+   * b+tree descent lands on) is read once and stays buffer-resident across probes, so it is
+   * fixed; only the extra `leaves - 1` pages a wider range scans recur on every probe and go
+   * to the variable (per-outer-row) side, together with `iss_leaves` (ISS skip reads) and the
+   * per-fanout heap-fetch surcharge. A single-leaf probe (leaves == 1, e.g. unique/pk or a
+   * small index) therefore adds nothing to the variable side, keeping exactly the original
+   * cost and not eroding the small-input NL preference (HJ_MEM_ALLOC_CONSTANT). */
+  object_IO = MAX (1.0, object_IO) + (leaves - first_leaf) + iss_leaves + heap_fanout;
 
   /* index scan requires more CPU cost than sequential scan */
   planp->fixed_cpu_cost = 0.0;
-  planp->fixed_io_cost = index_IO;
+  /* Fixed: the b+tree descent (n * height, upper levels shared across probes and assumed
+   * buffer-resident) plus the single leaf page the descent lands on. */
+  planp->fixed_io_cost = index_IO + first_leaf;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
   planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel_excl_derived_range * filter_sel);
