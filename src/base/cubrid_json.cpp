@@ -65,7 +65,9 @@ namespace
   struct json_arena
   {
     pool_type pool;
-    std::vector < node_impl * >nodes;
+    // *INDENT-OFF*
+    std::vector<node_impl *> nodes;
+    // *INDENT-ON*
     long roots = 0;
   };
 
@@ -123,23 +125,25 @@ namespace
       }
   }
 
+  // *INDENT-OFF*
   inline node_impl *
   N (json_t *p)
   {
-    return reinterpret_cast < node_impl * > (p);
+    return reinterpret_cast<node_impl *> (p);
   }
 
   inline const node_impl *
   N (const json_t *p)
   {
-    return reinterpret_cast < const node_impl * > (p);
+    return reinterpret_cast<const node_impl *> (p);
   }
 
   inline json_t *
   H (node_impl *n)
   {
-    return reinterpret_cast < json_t * > (n);
+    return reinterpret_cast<json_t *> (n);
   }
+  // *INDENT-ON*
 }				// namespace
 
 json_t *
@@ -306,7 +310,9 @@ json_dumps (const json_t *node, size_t flags)
     }
 
   rapidjson::StringBuffer sb;
-  rapidjson::PrettyWriter < rapidjson::StringBuffer > writer (sb);
+  // *INDENT-OFF*
+  rapidjson::PrettyWriter<rapidjson::StringBuffer> writer (sb);
+  // *INDENT-ON*
   writer.SetIndent (' ', 2);
   N (node)->held->Accept (writer);
 
