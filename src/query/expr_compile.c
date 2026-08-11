@@ -46,6 +46,7 @@
 #include "object_representation.h"
 #include "query_executor.h"
 #include "system_parameter.h"
+#include "xasl_predicate.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -55,6 +56,26 @@
 /* argument cells are carried 1-BASED through the build phase (0 must stay
  * distinguishable from "argument unused" == NULL); decoded in materialization */
 #define EXPR_ARG_ENCODE(cell_idx) ((DB_VALUE **) (intptr_t) ((cell_idx) + 1))
+
+/* compiled predicate tree for the CASE family; the evaluator MIRRORS eval_pred ():
+ * B_AND/B_OR right-linear loops reduce to three-valued Kleene logic with immediate exit
+ * on V_ERROR, comparison terms yield V_UNKNOWN when either side is NULL */
+enum expr_pred_kind
+{ EXPR_PRED_COMP, EXPR_PRED_AND, EXPR_PRED_OR, EXPR_PRED_NOT, EXPR_PRED_ISNULL };
+
+typedef struct expr_pred EXPR_PRED;
+struct expr_pred
+{
+  enum expr_pred_kind kind;
+
+  EXPR_PRED *lhs;		/* and/or/not */
+  EXPR_PRED *rhs;		/* and/or */
+
+  DB_VALUE **arg1p;		/* comp/isnull operand cells (1-based indexes until materialized) */
+  DB_VALUE **arg2p;
+  REL_OP rel_op;
+  DB_TYPE fast_type;		/* direct-compare type, or DB_TYPE_UNKNOWN -> tp_value_compare */
+};
 
 /* growable build-time buffers, sized once and converted to tight arrays at the end */
 typedef struct expr_build_ctx EXPR_BUILD_CTX;
@@ -71,6 +92,9 @@ struct expr_build_ctx
 
   /* step reads only compile-time literals; hoisted to run once per program lifetime */
   bool step_prologue[EXPR_MAX_STEPS];
+
+  int in_branch;		/* > 0 while compiling a CASE branch: emitted steps are deferred,
+				 * prologue hoisting is off, and nested CASE nodes are rejected */
 
   int n_slots;			/* slots are materialized after counting */
 
@@ -407,6 +431,255 @@ expr_k_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* ---- CASE family: compiled predicates, branch regions ---- */
+
+/* mirror of the eval_value_rel_cmp () rel_op mapping for ordinal comparisons */
+static DB_LOGICAL
+expr_pred_map_cmp (int result, REL_OP rel_op)
+{
+  if (result == DB_UNK)
+    {
+      return V_UNKNOWN;
+    }
+  switch (rel_op)
+    {
+    case R_EQ:
+      return (result == DB_EQ) ? V_TRUE : V_FALSE;
+    case R_NE:
+      return (result != DB_EQ) ? V_TRUE : V_FALSE;
+    case R_LT:
+      return (result == DB_LT) ? V_TRUE : V_FALSE;
+    case R_LE:
+      return (result == DB_LT || result == DB_EQ) ? V_TRUE : V_FALSE;
+    case R_GT:
+      return (result == DB_GT) ? V_TRUE : V_FALSE;
+    case R_GE:
+      return (result == DB_GT || result == DB_EQ) ? V_TRUE : V_FALSE;
+    default:
+      return V_ERROR;
+    }
+}
+
+static DB_LOGICAL
+expr_pred_eval (const EXPR_PRED * pred)
+{
+  DB_LOGICAL r1, r2;
+
+  switch (pred->kind)
+    {
+    case EXPR_PRED_COMP:
+      {
+	DB_VALUE *v1 = *pred->arg1p;
+	DB_VALUE *v2;
+	int result;
+	bool comparable = true;
+
+	/* mirror of eval_pred () T_COMP_EVAL_TERM: a NULL side is V_UNKNOWN before any
+	 * comparison (rel_ops needing different NULL handling are rejected at compile) */
+	if (DB_IS_NULL (v1))
+	  {
+	    return V_UNKNOWN;
+	  }
+	v2 = *pred->arg2p;
+	if (DB_IS_NULL (v2))
+	  {
+	    return V_UNKNOWN;
+	  }
+
+	switch (pred->fast_type)
+	  {
+	  case DB_TYPE_INTEGER:
+	    {
+	      int i1 = db_get_int (v1), i2 = db_get_int (v2);
+	      result = (i1 < i2) ? DB_LT : (i1 > i2) ? DB_GT : DB_EQ;
+	      break;
+	    }
+	  case DB_TYPE_BIGINT:
+	    {
+	      DB_BIGINT b1 = db_get_bigint (v1), b2 = db_get_bigint (v2);
+	      result = (b1 < b2) ? DB_LT : (b1 > b2) ? DB_GT : DB_EQ;
+	      break;
+	    }
+	  case DB_TYPE_DOUBLE:
+	    {
+	      double d1 = db_get_double (v1), d2 = db_get_double (v2);
+	      result = (d1 < d2) ? DB_LT : (d1 > d2) ? DB_GT : DB_EQ;
+	      break;
+	    }
+	  default:
+	    /* same call the interpreted path makes; the constant-side pre-coercion in
+	     * eval_value_rel_cmp () only fires when the value types differ, which the
+	     * compiler already excluded */
+	    result = tp_value_compare_with_error (v1, v2, 1, 0, &comparable);
+	    if (!comparable)
+	      {
+		return V_ERROR;
+	      }
+	    break;
+	  }
+	return expr_pred_map_cmp (result, pred->rel_op);
+      }
+
+    case EXPR_PRED_ISNULL:
+      /* mirror of eval_pred_comp1 () for non-OID operands */
+      return DB_IS_NULL (*pred->arg1p) ? V_TRUE : V_FALSE;
+
+    case EXPR_PRED_AND:
+      /* Kleene AND with immediate exit on V_FALSE/V_ERROR == the eval_pred () loop */
+      r1 = expr_pred_eval (pred->lhs);
+      if (r1 == V_FALSE || r1 == V_ERROR)
+	{
+	  return r1;
+	}
+      r2 = expr_pred_eval (pred->rhs);
+      if (r2 == V_FALSE || r2 == V_ERROR)
+	{
+	  return r2;
+	}
+      return (r1 == V_UNKNOWN || r2 == V_UNKNOWN) ? V_UNKNOWN : V_TRUE;
+
+    case EXPR_PRED_OR:
+      r1 = expr_pred_eval (pred->lhs);
+      if (r1 == V_TRUE || r1 == V_ERROR)
+	{
+	  return r1;
+	}
+      r2 = expr_pred_eval (pred->rhs);
+      if (r2 == V_TRUE || r2 == V_ERROR)
+	{
+	  return r2;
+	}
+      return (r1 == V_UNKNOWN || r2 == V_UNKNOWN) ? V_UNKNOWN : V_FALSE;
+
+    case EXPR_PRED_NOT:
+      /* mirror of eval_negative () */
+      r1 = expr_pred_eval (pred->lhs);
+      if (r1 == V_TRUE)
+	{
+	  return V_FALSE;
+	}
+      if (r1 == V_FALSE)
+	{
+	  return V_TRUE;
+	}
+      return r1;
+
+    default:
+      return V_ERROR;
+    }
+}
+
+static void
+expr_pred_free (EXPR_PRED * pred)
+{
+  if (pred == NULL)
+    {
+      return;
+    }
+  expr_pred_free (pred->lhs);
+  expr_pred_free (pred->rhs);
+  db_private_free_and_init (NULL, pred);
+}
+
+/* run one deferred branch region for the current row */
+static int
+expr_run_region (EXPR_PROG * prog, int start, int n, EXPR_EVAL_CTX * ctx)
+{
+  int i, error;
+
+  for (i = start; i < start + n; i++)
+    {
+      error = prog->steps[i].kernel (&prog->steps[i], ctx);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  return NO_ERROR;
+}
+
+/* T_CASE / T_IF: evaluate the predicate, execute ONLY the selected branch's deferred
+ * steps, publish the branch value.  With a fixed matching result type this is a pure
+ * pointer select; otherwise the interpreted trailing tp_value_auto_cast () is kept. */
+static int
+expr_k_case (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_LOGICAL pred = expr_pred_eval ((const EXPR_PRED *) step->pred);
+  DB_VALUE *sel;
+  int error;
+
+  if (pred == V_ERROR)
+    {
+      return ER_FAILED;
+    }
+  if (pred == V_TRUE)
+    {
+      error = expr_run_region (ctx->prog, step->t_start, step->t_n, ctx);
+      sel = (error == NO_ERROR) ? *step->arg1p : NULL;
+    }
+  else
+    {
+      /* V_FALSE and V_UNKNOWN both select the ELSE side, as in fetch_peek_arith () */
+      error = expr_run_region (ctx->prog, step->f_start, step->f_n, ctx);
+      sel = (error == NO_ERROR) ? *step->arg2p : NULL;
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (step->domain == NULL)
+    {
+      *step->out_cell = sel;
+      return NO_ERROR;
+    }
+
+  pr_clear_value (step->out);
+  *step->out_cell = step->out;
+  {
+    TP_DOMAIN_STATUS dom_status = tp_value_auto_cast (sel, step->out, step->domain);
+    if (dom_status != DOMAIN_COMPATIBLE)
+      {
+	return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, sel, step->domain);
+      }
+  }
+  return NO_ERROR;
+}
+
+/* T_PREDICATE: the predicate result as a value -- 1, 0 or NULL */
+static int
+expr_k_predicate (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_LOGICAL pred = expr_pred_eval ((const EXPR_PRED *) step->pred);
+
+  if (pred == V_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  pr_clear_value (step->out);
+  *step->out_cell = step->out;
+
+  if (pred == V_UNKNOWN)
+    {
+      db_make_null (step->out);
+    }
+  else
+    {
+      db_make_int (step->out, (pred == V_TRUE) ? 1 : 0);
+    }
+
+  if (step->domain != NULL)
+    {
+      TP_DOMAIN_STATUS dom_status = tp_value_auto_cast (step->out, step->out, step->domain);
+      if (dom_status != DOMAIN_COMPATIBLE)
+	{
+	  return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, step->out, step->domain);
+	}
+    }
+  return NO_ERROR;
+}
+
 /* ---- leaves and fallback ---- */
 
 /* publish a leaf's value through the regular fetch path (TODO in expr_compile.h:
@@ -478,6 +751,7 @@ expr_new_step (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int out_cell)
   memset (step, 0, sizeof (*step));
   step->kernel = kernel;
   step->aux = out_cell;		/* out_cell is carried in aux until pointers are materialized */
+  step->deferred = (bctx->in_branch > 0);
   return step;
 }
 
@@ -595,6 +869,198 @@ expr_leaf_type (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
   return DB_TYPE_UNKNOWN;
 }
 
+/* the compile-time type of any supported node (leaves by value/binding, arithmetic by
+ * its fixed result domain) */
+static DB_TYPE
+expr_node_type (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
+{
+  if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
+    {
+      return (regu->domain != NULL) ? TP_DOMAIN_TYPE (regu->domain) : DB_TYPE_UNKNOWN;
+    }
+  return expr_leaf_type (bctx, regu);
+}
+
+/* generic tp_value_compare () is only used for same-type pairs the interpreted path
+ * compares without any pre-coercion */
+static bool
+expr_pred_generic_cmp_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_FLOAT:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/* compile a PRED_EXPR into an EXPR_PRED tree; NULL when any construct is unsupported.
+ * Operand sub-expressions compile through expr_compile_node (), so their steps run
+ * unconditionally -- exactly when eval_pred () would fetch them. */
+static EXPR_PRED *
+expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_something)
+{
+  EXPR_PRED *pred = NULL, *lhs = NULL, *rhs = NULL;
+  int c1, c2;
+
+  if (pr == NULL)
+    {
+      return NULL;
+    }
+
+  switch (pr->type)
+    {
+    case T_PRED:
+      if (pr->pe.m_pred.bool_op != B_AND && pr->pe.m_pred.bool_op != B_OR)
+	{
+	  return NULL;
+	}
+      lhs = expr_compile_pred (bctx, pr->pe.m_pred.lhs, compiled_something);
+      if (lhs == NULL)
+	{
+	  return NULL;
+	}
+      rhs = expr_compile_pred (bctx, pr->pe.m_pred.rhs, compiled_something);
+      if (rhs == NULL)
+	{
+	  expr_pred_free (lhs);
+	  return NULL;
+	}
+      pred = (EXPR_PRED *) db_private_alloc (bctx->thread_p, sizeof (EXPR_PRED));
+      if (pred == NULL)
+	{
+	  expr_pred_free (lhs);
+	  expr_pred_free (rhs);
+	  return NULL;
+	}
+      memset (pred, 0, sizeof (*pred));
+      pred->kind = (pr->pe.m_pred.bool_op == B_AND) ? EXPR_PRED_AND : EXPR_PRED_OR;
+      pred->lhs = lhs;
+      pred->rhs = rhs;
+      return pred;
+
+    case T_NOT_TERM:
+      lhs = expr_compile_pred (bctx, pr->pe.m_not_term, compiled_something);
+      if (lhs == NULL)
+	{
+	  return NULL;
+	}
+      pred = (EXPR_PRED *) db_private_alloc (bctx->thread_p, sizeof (EXPR_PRED));
+      if (pred == NULL)
+	{
+	  expr_pred_free (lhs);
+	  return NULL;
+	}
+      memset (pred, 0, sizeof (*pred));
+      pred->kind = EXPR_PRED_NOT;
+      pred->lhs = lhs;
+      return pred;
+
+    case T_EVAL_TERM:
+      {
+	const COMP_EVAL_TERM *et;
+	DB_TYPE t1, t2, fast_type;
+
+	if (pr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
+	  {
+	    return NULL;
+	  }
+	et = &pr->pe.m_eval_term.et.et_comp;
+
+	if (et->rel_op == R_NULL)
+	  {
+	    /* IS NULL: the OID special case in eval_pred_comp1 () cannot arise for the
+	     * node types the compiler accepts */
+	    t1 = expr_node_type (bctx, et->lhs);
+	    if (t1 == DB_TYPE_UNKNOWN || t1 == DB_TYPE_OID || t1 == DB_TYPE_OBJECT)
+	      {
+		return NULL;
+	      }
+	    c1 = expr_compile_node (bctx, et->lhs, compiled_something);
+	    if (c1 < 0)
+	      {
+		return NULL;
+	      }
+	    pred = (EXPR_PRED *) db_private_alloc (bctx->thread_p, sizeof (EXPR_PRED));
+	    if (pred == NULL)
+	      {
+		return NULL;
+	      }
+	    memset (pred, 0, sizeof (*pred));
+	    pred->kind = EXPR_PRED_ISNULL;
+	    pred->arg1p = EXPR_ARG_ENCODE (c1);
+	    return pred;
+	  }
+
+	switch (et->rel_op)
+	  {
+	  case R_EQ:
+	  case R_NE:
+	  case R_LT:
+	  case R_LE:
+	  case R_GT:
+	  case R_GE:
+	    break;
+	  default:
+	    /* TORDER/NULLSAFE/set/list relations keep their interpreted evaluation */
+	    return NULL;
+	  }
+
+	t1 = expr_node_type (bctx, et->lhs);
+	t2 = expr_node_type (bctx, et->rhs);
+	if (t1 != t2 || t1 == DB_TYPE_UNKNOWN)
+	  {
+	    /* differing sides would hit the constant-side coercion in
+	     * eval_value_rel_cmp (); left interpreted */
+	    return NULL;
+	  }
+	if (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE)
+	  {
+	    fast_type = t1;
+	  }
+	else if (expr_pred_generic_cmp_type (t1))
+	  {
+	    fast_type = DB_TYPE_UNKNOWN;	/* tp_value_compare_with_error */
+	  }
+	else
+	  {
+	    return NULL;
+	  }
+
+	c1 = expr_compile_node (bctx, et->lhs, compiled_something);
+	c2 = (c1 >= 0) ? expr_compile_node (bctx, et->rhs, compiled_something) : -1;
+	if (c1 < 0 || c2 < 0)
+	  {
+	    return NULL;
+	  }
+	pred = (EXPR_PRED *) db_private_alloc (bctx->thread_p, sizeof (EXPR_PRED));
+	if (pred == NULL)
+	  {
+	    return NULL;
+	  }
+	memset (pred, 0, sizeof (*pred));
+	pred->kind = EXPR_PRED_COMP;
+	pred->arg1p = EXPR_ARG_ENCODE (c1);
+	pred->arg2p = EXPR_ARG_ENCODE (c2);
+	pred->rel_op = et->rel_op;
+	pred->fast_type = fast_type;
+	return pred;
+      }
+
+    default:
+      return NULL;
+    }
+}
+
 /* compile one node; returns the cell index its value is readable from, or -1 to make
  * the CALLER wrap this subtree in a fallback step (never an error) */
 static int
@@ -708,15 +1174,137 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	DB_TYPE rtype;
 	int c1, c2;
 
-	if (arith == NULL || arith->pred != NULL || regu->domain == NULL)
+	if (arith == NULL || regu->domain == NULL)
+	  {
+	    return -1;
+	  }
+	if (arith->pred != NULL && arith->opcode != T_CASE && arith->opcode != T_IF && arith->opcode != T_PREDICATE)
 	  {
 	    return -1;
 	  }
 
 	rtype = TP_DOMAIN_TYPE (regu->domain);
 
-	if (arith->opcode == T_NVL)
+	if (arith->opcode == T_CASE || arith->opcode == T_IF || arith->opcode == T_PREDICATE)
 	  {
+	    EXPR_PRED *cpred;
+
+	    if (arith->pred == NULL)
+	      {
+		return -1;
+	      }
+	    cell = expr_cse_find (bctx, regu, -2, -1, -1, -1);
+	    if (cell >= 0)
+	      {
+		return cell;
+	      }
+
+	    if (arith->opcode == T_PREDICATE)
+	      {
+		cpred = expr_compile_pred (bctx, arith->pred, compiled_something);
+		if (cpred == NULL)
+		  {
+		    return -1;
+		  }
+		cell = expr_new_cell (bctx, NULL);
+		step = expr_new_step (bctx, expr_k_predicate, cell);
+		if (cell < 0 || step == NULL)
+		  {
+		    expr_pred_free (cpred);
+		    return -1;
+		  }
+		step->pred = cpred;
+		step->out_cell = (DB_VALUE **) (intptr_t) cell;
+		step->out = (DB_VALUE *) 1;
+		bctx->n_slots++;
+		/* an INTEGER result needs no trailing auto-cast (verified no-op) */
+		step->domain = (rtype == DB_TYPE_INTEGER) ? NULL : regu->domain;
+		step->regu = regu;
+		expr_cse_add (bctx, regu, -2, -1, -1, -1, cell);
+		*compiled_something = true;
+		return cell;
+	      }
+
+	    /* T_CASE / T_IF: branches compile into DEFERRED regions the kernel runs
+	     * only when selected; v1 rejects a nested CASE inside a branch (regions
+	     * must not nest).  The predicate compiles FIRST, outside the regions --
+	     * eval_pred () also evaluates it unconditionally. */
+	    {
+	      DB_TYPE t1, t2;
+	      int t_start, t_n, f_start, f_n, c1b, c2b, cse_mark;
+
+	      if (bctx->in_branch > 0)
+		{
+		  return -1;
+		}
+
+	      cpred = expr_compile_pred (bctx, arith->pred, compiled_something);
+	      if (cpred == NULL)
+		{
+		  return -1;
+		}
+
+	      /* a failed branch below orphans its already-emitted deferred steps; they
+	       * are unreferenced and never run, only wasted room in the program */
+	      bctx->in_branch++;
+	      cse_mark = bctx->n_cse;
+	      t_start = bctx->n_steps;
+	      c1b = expr_compile_node (bctx, arith->leftptr, compiled_something);
+	      t_n = bctx->n_steps - t_start;
+	      bctx->n_cse = cse_mark;
+	      f_start = bctx->n_steps;
+	      c2b = expr_compile_node (bctx, arith->rightptr, compiled_something);
+	      f_n = bctx->n_steps - f_start;
+	      bctx->n_cse = cse_mark;
+	      bctx->in_branch--;
+
+	      if (c1b < 0 || c2b < 0)
+		{
+		  expr_pred_free (cpred);
+		  return -1;
+		}
+
+	      t1 = expr_node_type (bctx, arith->leftptr);
+	      t2 = expr_node_type (bctx, arith->rightptr);
+
+	      cell = expr_new_cell (bctx, NULL);
+	      step = expr_new_step (bctx, expr_k_case, cell);
+	      if (cell < 0 || step == NULL)
+		{
+		  expr_pred_free (cpred);
+		  return -1;
+		}
+	      step->pred = cpred;
+	      step->arg1p = EXPR_ARG_ENCODE (c1b);
+	      step->arg2p = EXPR_ARG_ENCODE (c2b);
+	      step->out_cell = (DB_VALUE **) (intptr_t) cell;
+	      step->t_start = t_start;
+	      step->t_n = t_n;
+	      step->f_start = f_start;
+	      step->f_n = f_n;
+	      step->regu = regu;
+	      if (t1 == rtype && t2 == rtype
+		  && (rtype == DB_TYPE_INTEGER || rtype == DB_TYPE_BIGINT || rtype == DB_TYPE_DOUBLE))
+		{
+		  /* pure pointer select; the interpreted tp_value_auto_cast () is a
+		   * verified no-op for a same-type non-parameterized domain */
+		  step->domain = NULL;
+		}
+	      else
+		{
+		  step->domain = regu->domain;
+		  step->out = (DB_VALUE *) 1;
+		  bctx->n_slots++;
+		}
+	      expr_cse_add (bctx, regu, -2, -1, -1, -1, cell);
+	      *compiled_something = true;
+	      return cell;
+	    }
+	  }
+
+	if (arith->opcode == T_NVL || arith->opcode == T_IFNULL || arith->opcode == T_COALESCE)
+	  {
+	    /* T_NVL / T_IFNULL / T_COALESCE share one interpreted block */
 	    DB_TYPE t1, t2;
 
 	    c1 = expr_compile_node (bctx, arith->leftptr, compiled_something);
@@ -726,10 +1314,13 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		return -1;
 	      }
 	    /* the pointer-select is only transparent when both branches already carry
-	     * the result domain's type; otherwise the interpreted path would coerce */
-	    t1 = (arith->leftptr->domain != NULL) ? TP_DOMAIN_TYPE (arith->leftptr->domain) : DB_TYPE_UNKNOWN;
-	    t2 = (arith->rightptr->domain != NULL) ? TP_DOMAIN_TYPE (arith->rightptr->domain) : DB_TYPE_UNKNOWN;
-	    if (t1 != rtype || t2 != rtype)
+	     * the result domain's type AND that type is non-parameterized (the
+	     * interpreted tp_value_cast () is then a verified no-op); a parameterized
+	     * type (NUMERIC precision, CHAR length) could still be transformed */
+	    t1 = expr_node_type (bctx, arith->leftptr);
+	    t2 = expr_node_type (bctx, arith->rightptr);
+	    if (t1 != rtype || t2 != rtype
+		|| (rtype != DB_TYPE_INTEGER && rtype != DB_TYPE_BIGINT && rtype != DB_TYPE_DOUBLE))
 	      {
 		return -1;
 	      }
@@ -915,6 +1506,40 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
     }
 }
 
+/* free predicate trees still owned by the build context (compilation abandoned before
+ * the steps were handed over to a program) */
+static void
+expr_build_free_preds (EXPR_BUILD_CTX * bctx)
+{
+  int i;
+
+  for (i = 0; i < bctx->n_steps; i++)
+    {
+      expr_pred_free ((EXPR_PRED *) bctx->steps[i].pred);
+      bctx->steps[i].pred = NULL;
+    }
+}
+
+/* decode the 1-based argument-cell indexes recorded during predicate compilation */
+static void
+expr_pred_materialize (EXPR_PRED * pred, EXPR_PROG * prog)
+{
+  if (pred == NULL)
+    {
+      return;
+    }
+  expr_pred_materialize (pred->lhs, prog);
+  expr_pred_materialize (pred->rhs, prog);
+  if (pred->arg1p != NULL)
+    {
+      pred->arg1p = &prog->cells[(intptr_t) pred->arg1p - 1];
+    }
+  if (pred->arg2p != NULL)
+    {
+      pred->arg2p = &prog->cells[(intptr_t) pred->arg2p - 1];
+    }
+}
+
 /* wrap an uncompilable root in a fallback step so the list program stays complete */
 static int
 expr_emit_fallback (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
@@ -978,6 +1603,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 	  cell = expr_emit_fallback (&bctx, roots[i]);
 	  if (cell < 0)
 	    {
+	      expr_build_free_preds (&bctx);
 	      return NULL;	/* out of room; keep the interpreted path */
 	    }
 	}
@@ -999,12 +1625,14 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
   if (n_roots == 0 || (!compiled_something && !allow_wired_only))
     {
       /* everything fell back or was excluded: the program would only add indirection */
+      expr_build_free_preds (&bctx);
       return NULL;
     }
 
   prog = (EXPR_PROG *) db_private_alloc (thread_p, sizeof (EXPR_PROG));
   if (prog == NULL)
     {
+      expr_build_free_preds (&bctx);
       return NULL;
     }
   memset (prog, 0, sizeof (*prog));
@@ -1020,7 +1648,10 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
   prog->root_cells = (int *) db_private_alloc (thread_p, sizeof (int) * MAX (1, prog->n_roots));
   if (prog->steps == NULL || prog->cells == NULL || prog->slots == NULL || prog->root_cells == NULL)
     {
+      /* prog->steps holds no valid pred pointers yet (uninitialized memory) */
+      prog->n_steps = 0;
       expr_prog_free (prog);
+      expr_build_free_preds (&bctx);
       return NULL;
     }
 
@@ -1035,24 +1666,46 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
   memcpy (prog->root_cells, root_cells, sizeof (int) * prog->n_roots);
 
   /* prologue steps first (literal-only inputs -- hoisting cannot reorder a dependency),
-   * per-row steps after, both keeping their relative order */
-  prog->n_prologue = 0;
-  prog->prologue_done = false;
-  for (i = 0; i < bctx.n_steps; i++)
-    {
-      if (bctx.step_prologue[i])
-	{
-	  prog->steps[prog->n_prologue++] = bctx.steps[i];
-	}
-    }
-  slot_next = prog->n_prologue;
-  for (i = 0; i < bctx.n_steps; i++)
-    {
-      if (!bctx.step_prologue[i])
-	{
-	  prog->steps[slot_next++] = bctx.steps[i];
-	}
-    }
+   * per-row steps after, both keeping their relative order; remap records where every
+   * build-time index landed so branch regions can be fixed up below */
+  {
+    int remap[EXPR_MAX_STEPS];
+
+    prog->n_prologue = 0;
+    prog->prologue_done = false;
+    for (i = 0; i < bctx.n_steps; i++)
+      {
+	if (bctx.step_prologue[i])
+	  {
+	    remap[i] = prog->n_prologue;
+	    prog->steps[prog->n_prologue++] = bctx.steps[i];
+	  }
+      }
+    slot_next = prog->n_prologue;
+    for (i = 0; i < bctx.n_steps; i++)
+      {
+	if (!bctx.step_prologue[i])
+	  {
+	    remap[i] = slot_next;
+	    prog->steps[slot_next++] = bctx.steps[i];
+	  }
+      }
+
+    /* branch regions stay contiguous (no step inside a branch is ever a prologue) */
+    for (i = 0; i < prog->n_steps; i++)
+      {
+	EXPR_STEP *step = &prog->steps[i];
+
+	if (step->t_n > 0)
+	  {
+	    step->t_start = remap[step->t_start];
+	  }
+	if (step->f_n > 0)
+	  {
+	    step->f_start = remap[step->f_start];
+	  }
+      }
+  }
   slot_next = 0;
 
   /* materialize: cell indexes -> cell addresses, owned-slot markers -> slot addresses */
@@ -1078,6 +1731,10 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 	{
 	  assert (slot_next < prog->n_slots);
 	  step->out = &prog->slots[slot_next++];
+	}
+      if (step->pred != NULL)
+	{
+	  expr_pred_materialize ((EXPR_PRED *) step->pred, prog);
 	}
     }
 
@@ -1133,6 +1790,7 @@ expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, O
   ctx.vd = vd;
   ctx.obj_oid = obj_oid;
   ctx.tpl = tpl;
+  ctx.prog = prog;
 
   i = 0;
   if (prog->prologue_done)
@@ -1145,6 +1803,11 @@ expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, O
     }
   for (; i < prog->n_steps; i++)
     {
+      if (prog->steps[i].deferred)
+	{
+	  /* CASE branch region: executed by its CASE kernel only when selected */
+	  continue;
+	}
       error = prog->steps[i].kernel (&prog->steps[i], &ctx);
       if (error != NO_ERROR)
 	{
@@ -1180,6 +1843,10 @@ expr_prog_free (EXPR_PROG * prog)
     }
   if (prog->steps != NULL)
     {
+      for (i = 0; i < prog->n_steps; i++)
+	{
+	  expr_pred_free ((EXPR_PRED *) prog->steps[i].pred);
+	}
       db_private_free_and_init (NULL, prog->steps);
     }
   if (prog->cells != NULL)
