@@ -395,6 +395,7 @@ namespace cubconn::connection
     m_exhausted.reserve (128);
 
     /* notifier */
+    m_eventfd_contexts.reserve (2);
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (m_eventfd < 0 || m_timerfd < 0)
@@ -452,6 +453,20 @@ namespace cubconn::connection
       {
 	m_thread.join ();
       }
+
+    /* release the dummy contexts registered for m_eventfd and m_timerfd.
+     * they are not tracked in m_context, so nothing else releases them.
+     */
+    for (context *ctx : m_eventfd_contexts)
+      {
+	(void) m_events.remove_descriptor (ctx->m_conn->fd);
+	/* m_conn is not a real connection entry. see eventfd_register (). */
+	delete reinterpret_cast<int *> (ctx->m_conn);
+	ctx->m_conn = nullptr;
+	delete ctx;
+      }
+    m_eventfd_contexts.clear ();
+
     ::close (m_eventfd);
     ::close (m_timerfd);
 
@@ -996,10 +1011,20 @@ retry:
     css_conn_entry *conn;
 
     ctx = new context ();
-    conn = reinterpret_cast<css_conn_entry *> (new int { fd });
-    if (!ctx || !conn)
+    if (!ctx)
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_register: failed to allocate memory\n");
+	return false;
+      }
+
+    /* the eventfd has no connection entry. keep the descriptor itself in m_conn so that
+     * ctx->m_conn->fd reads back the eventfd (fd is the first member of css_conn_entry).
+     */
+    conn = reinterpret_cast<css_conn_entry *> (new int { fd });
+    if (!conn)
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_register: failed to allocate memory\n");
+	delete ctx;
 	return false;
       }
     ctx->m_conn = conn;
@@ -1012,6 +1037,9 @@ retry:
 	delete conn;
 	return false;
       }
+
+    /* epoll holds ctx as its user data. release it in the destructor. */
+    m_eventfd_contexts.push_back (ctx);
 
     return true;
   }
