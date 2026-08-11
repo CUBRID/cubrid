@@ -135,6 +135,7 @@ static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid);
 static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_dtrm_type (PT_MISC_TYPE pt_dtrm_type, SP_DIRECTIVE_ENUM directive);
 
 static char *jsp_check_stored_procedure_name (const char *str);
+static char *jsp_check_package_name (const char *str);
 static int jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, int num_args);
 static int jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode);
 static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
@@ -186,7 +187,7 @@ jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
 }
 
 /*
- * jsp_is_exist_stored_procedure
+ * jsp_is_existing_stored_procedure
  *   return: name is exist then return true
  *                         else return false
  *   name(in): find java stored procedure name
@@ -195,7 +196,7 @@ jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
  */
 
 int
-jsp_is_exist_stored_procedure (const char *name)
+jsp_is_existing_stored_procedure (const char *name)
 {
   MOP mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
   er_clear ();
@@ -203,7 +204,7 @@ jsp_is_exist_stored_procedure (const char *name)
 }
 
 int
-jsp_is_exist_package (const char *name)
+jsp_is_existing_package (const char *name)
 {
   MOP mop = jsp_find_package (name, DB_AUTH_NONE);
   er_clear ();
@@ -287,7 +288,7 @@ jsp_find_package (const char *name, DB_AUTH purpose)
       return NULL;
     }
 
-  char *checked_name = jsp_check_stored_procedure_name (name);
+  char *checked_name = jsp_check_package_name (name);
   MOP mop = jsp_find_pkg (checked_name, purpose);
   free_and_init (checked_name);
 
@@ -3643,7 +3644,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   sp_info.updated_time = *db_get_datetime (&current_datetime);
 
   /* check already exists */
-  if (jsp_is_exist_stored_procedure (sp_info.unique_name.data ()))
+  if (jsp_is_existing_stored_procedure (sp_info.unique_name.data ()))
     {
       if (statement->info.sp.or_replace)
 	{
@@ -3999,6 +4000,15 @@ jsp_check_stored_procedure_name (const char *str)
   name = strdup (buffer);
 
   return name;
+}
+
+static char *
+jsp_check_package_name (const char *str)
+{
+  char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
+
+  sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
+  return strdup (buffer);
 }
 
 /*

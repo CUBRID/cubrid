@@ -10146,8 +10146,8 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  // [TODO] Resovle user schema name, built-in package name
 	  const char *obj_name = procs->info.name.original;
-	  bool exists = is_package ? (jsp_is_exist_package (obj_name) != 0)
-	    : (jsp_is_exist_stored_procedure (obj_name) != 0);
+	  bool exists = is_package ? (jsp_is_existing_package (obj_name) != 0)
+	    : (jsp_is_existing_stored_procedure (obj_name) != 0);
 	  if (!exists)
 	    {
 	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC,
@@ -10203,7 +10203,7 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
   target = node->info.method_call.on_call_target;
   if (target == NULL)
     {
-      if (jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
+      if (jsp_is_existing_stored_procedure (node->info.method_call.method_name->info.name.original))
 	{
 	  return;
 	}
