@@ -68,6 +68,82 @@
 #include "misctype_def.h"
 #endif /* !defined (SERVER_MODE) */
 
+
+/* return codes of the qstr_like_match_lockstep_* () instances (like_match_lockstep.i) */
+#define QSTR_LIKE_LOCKSTEP_TRUE	      1
+#define QSTR_LIKE_LOCKSTEP_FALSE      0
+#define QSTR_LIKE_LOCKSTEP_ABORT      (-1)
+#define QSTR_LIKE_LOCKSTEP_FALLBACK   (-2)
+
+/* max recursion depth (one level per '%' group); deeper patterns fall back to the generic loop */
+#define QSTR_LIKE_LOCKSTEP_MAX_DEPTH  256
+
+/* UTF8 instance : literal equivalence with the pre-template matcher — {0x00, 0x20} space class,
+ * intl_Len_utf8_char stepping, memchr scan safe unless firstpat is a continuation byte */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_utf8
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      int nc_len_ = intl_Len_utf8_char[*(p)]; \
+      if (nc_len_ > (remain)) \
+	{ \
+	  /* truncated character : stop at buffer end to avoid an out-of-bounds pointer */ \
+	  (p) += (remain); \
+	  (remain) = -1; \
+	} \
+      else \
+	{ \
+	  (p) += nc_len_; \
+	  (remain) -= nc_len_; \
+	} \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) \
+  ((b1) == (b2) || (((b2) == 0x00 || (b2) == 0x20) && ((b1) == 0x00 || (b1) == 0x20)))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), LOCKSTEP_BYTE_EQ (*(t), (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) ((firstpat) < 0x80 || (firstpat) >= 0xC0)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
+
+/* SB instance (iso88591 identity-weight collations) : one byte per character; keeps the
+ * {0x00, 0x20} space class of lang_strmatch_byte () */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_sb
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      (p)++; \
+      (remain)--; \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) \
+  ((b1) == (b2) || (((b2) == 0x00 || (b2) == 0x20) && ((b1) == 0x00 || (b1) == 0x20)))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), LOCKSTEP_BYTE_EQ (*(t), (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) (1)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
+
+/* BINARY instance : pure byte equality mirroring lang_strmatch_binary (); the trailing 0x20
+ * pad rule comes from the generic driver */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_binary
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      (p)++; \
+      (remain)--; \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) ((b1) == (b2))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), (*(t) == (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) (1)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -5926,6 +6002,56 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 
   current_collation = lang_get_collation (coll_id);
   intl_pad_char (codeset, pad_char, &pad_char_size);
+
+  /* byte-lockstep fast path dispatch; the kind<->codeset cross-guard keeps a mis-tagged
+   * collation on the generic loop. Multi-byte escapes and escapes colliding with a
+   * wildcard change wildcard interpretation, so those fall through as well */
+  if (escape == NULL
+      || ((unsigned char) *escape < 0x80 && *escape != LIKE_WILDCARD_MATCH_MANY && *escape != LIKE_WILDCARD_MATCH_ONE))
+    {
+      int match = QSTR_LIKE_LOCKSTEP_FALLBACK;
+      int escape_byte = (escape != NULL) ? (int) (unsigned char) *escape : -1;
+
+      switch (current_collation->byte_lockstep_kind)
+	{
+	case LANG_LOCKSTEP_UTF8:
+	  if (codeset == INTL_CODESET_UTF8)
+	    {
+	      match = qstr_like_match_lockstep_utf8 (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						     REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						     escape_byte, 0);
+	    }
+	  break;
+	case LANG_LOCKSTEP_SB:
+	  /* escape 0x00/0x20 stays on the generic loop : lang_strmatch_byte () folds
+	   * SPACE to weight zero before its escape comparison, so such an escape
+	   * never matches there */
+	  if (codeset == INTL_CODESET_ISO88591 && escape_byte != 0x00 && escape_byte != 0x20)
+	    {
+	      match = qstr_like_match_lockstep_sb (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						   REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						   escape_byte, 0);
+	    }
+	  break;
+	case LANG_LOCKSTEP_BINARY:
+	  if (codeset == INTL_CODESET_BINARY)
+	    {
+	      match = qstr_like_match_lockstep_binary (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						       REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						       escape_byte, 0);
+	    }
+	  break;
+	default:
+	  break;
+	}
+
+      if (match != QSTR_LIKE_LOCKSTEP_FALLBACK)
+	{
+	  return (match == QSTR_LIKE_LOCKSTEP_TRUE) ? V_TRUE : V_FALSE;
+	}
+      /* ineligible kind, kind/codeset mismatch or pathologically deep pattern :
+       * fall through to the generic loop */
+    }
 
   tar_ptr = REINTERPRET_CAST (const unsigned char *, tar);
   expr_ptr = REINTERPRET_CAST (const unsigned char *, expr);
