@@ -624,7 +624,7 @@ namespace cubschema
       {"table_catalog", format_varchar (255)},
       {"table_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"table_name", format_varchar (255)},
-      {"is_unique", "integer"},
+      {"non_unique", "integer"},
       {"index_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"index_name", format_varchar (255)},
       {"seq_in_index", "integer"},

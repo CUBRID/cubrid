@@ -774,7 +774,7 @@ const char *sm_define_view_statistics_spec (void)
       "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
       "[cls].[owner].[name] AS [table_schema], "
       "[cls].[class_name] AS [table_name], "
-      "[idx].[is_unique] AS [is_unique], "
+      "(1 - [idx].[is_unique]) AS [non_unique], "
       "[cls].[owner].[name] AS [index_schema], "
       "[idx].[index_name] AS [index_name], "
       "([idx_key].[key_order] + 1) AS [seq_in_index], "
