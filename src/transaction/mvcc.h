@@ -37,7 +37,7 @@
 typedef struct mvcc_rec_header MVCC_REC_HEADER;
 struct mvcc_rec_header
 {
-  INT32 mvcc_flag:8;		/* MVCC flags */
+  INT32 mvcc_flag:8;		/* record flags; field name retained for compatibility */
   INT32 repid:24;		/* representation id */
   int chn;			/* cache coherency number */
   MVCCID mvcc_ins_id;		/* MVCC insert id */
@@ -75,11 +75,14 @@ struct mvcc_rec_header
 #define MVCC_GET_FLAG(header) \
   ((header)->mvcc_flag)
 
+#define RECORD_HEADER_HAS_OOS(header) \
+  (((header)->mvcc_flag & OR_RECORD_FLAG_HAS_OOS) != 0)
+
 #define MVCC_SET_FLAG(header, flag) \
   ((header)->mvcc_flag = (flag))
 
 #define MVCC_IS_ANY_FLAG_SET(rec_header_p) \
-  (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_MASK))
+  (MVCC_IS_FLAG_SET (rec_header_p, OR_RECORD_MVCC_FLAG_MASK))
 
 #define MVCC_IS_FLAG_SET(rec_header_p, flags) \
   ((rec_header_p)->mvcc_flag & (flags))
@@ -100,7 +103,7 @@ struct mvcc_rec_header
   ((rec_header_p)->mvcc_flag |= (flag))
 
 #define MVCC_CLEAR_ALL_FLAG_BITS(rec_header_p) \
-  (MVCC_CLEAR_FLAG_BITS (rec_header_p, OR_MVCC_FLAG_MASK))
+  (MVCC_CLEAR_FLAG_BITS (rec_header_p, OR_RECORD_MVCC_FLAG_MASK))
 
 #define MVCC_CLEAR_FLAG_BITS(rec_header_p, flag) \
   ((rec_header_p)->mvcc_flag &= ~(flag))

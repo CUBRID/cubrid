@@ -123,7 +123,7 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
 
   if (state->n_var <= 0)
     {
-      /* OR_MVCC_FLAG_HAS_OOS was set but the record has no variable attributes. Corrupt record. */
+      /* OR_RECORD_FLAG_HAS_OOS was set but the record has no variable attributes. Corrupt record. */
       assert_release (false && "OOS flag set without variable attributes");
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
@@ -279,7 +279,7 @@ heap_oos_build_record (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context, const 
   /* Header: copy verbatim, then clear the OOS flag and reset the offset-size bits. */
   std::memcpy (dst, state->src, state->src_header_size);
   unsigned int repid_bits = (unsigned int) OR_GET_INT (dst + OR_REP_OFFSET);
-  repid_bits &= ~ ((unsigned int) OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
+  repid_bits &= ~ ((unsigned int) OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS);
   repid_bits &= ~ (unsigned int) OR_OFFSET_SIZE_FLAG;
   repid_bits |= OR_OFFSET_SIZE_4BYTE;
   OR_PUT_INT (dst + OR_REP_OFFSET, (int) repid_bits);

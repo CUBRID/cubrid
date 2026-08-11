@@ -106,7 +106,7 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
   char *base = rec_out.data;
 
   /* 1. rep_and_flags: OOS flag + 4-byte offset size */
-  int rep_and_flags = (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_4BYTE;
+  int rep_and_flags = (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_4BYTE;
   OR_PUT_INT (base + OR_REP_OFFSET, rep_and_flags);
 
   /* 2. CHN = 0 (already zeroed) */

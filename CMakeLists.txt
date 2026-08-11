@@ -359,9 +359,9 @@ add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
 
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
-  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++17 -D_GCOV"
+  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++17 -D_GCOV -fPIE"
     CACHE STRING "Flags used by the c++ compiler during coverage build." FORCE)
-  set(CMAKE_C_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -D_GCOV"
+  set(CMAKE_C_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -D_GCOV -fPIE"
     CACHE STRING "Flags used by the c compiler during coverage build." FORCE)
   set(CMAKE_EXE_LINKER_FLAGS_COVERAGE "-static-libstdc++"
     CACHE STRING "Flags used for linking binaries during coverage build." FORCE)
@@ -376,9 +376,9 @@ if(CMAKE_BUILD_TYPE MATCHES "Coverage")
 endif(CMAKE_BUILD_TYPE MATCHES "Coverage")
 
 if(CMAKE_BUILD_TYPE MATCHES "Profile")
-  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg -std=c++17"
+  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg -std=c++17 -fPIE"
     CACHE STRING "Flags used by the c++ compiler during profile build." FORCE)
-  set(CMAKE_C_FLAGS_PROFILE "-g -pg"
+  set(CMAKE_C_FLAGS_PROFILE "-g -pg -fPIE"
     CACHE STRING "Flags used by the c compiler during profile build." FORCE)
 
   mark_as_advanced(CMAKE_CXX_FLAGS_PROFILE CMAKE_C_FLAGS_PROFILE)

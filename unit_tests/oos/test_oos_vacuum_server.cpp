@@ -40,7 +40,7 @@ int bridge_oos_get_max_chunk_size_within_page ();
 //
 // Heap record binary layout with OOS columns:
 //
-//   [0..3]         rep_and_flags: (OR_MVCC_FLAG_HAS_OOS << 24) | OR_OFFSET_SIZE_4BYTE
+//   [0..3]         rep_and_flags: (OR_RECORD_FLAG_HAS_OOS << 24) | OR_OFFSET_SIZE_4BYTE
 //   [4..7]         CHN: 0  (cache coherence number)
 //   --- header ends (8 bytes) ---
 //   [8..8+4N-1]    VOT: N int32 entries, each = (offset_from_vot_start | flags)
@@ -80,7 +80,7 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
   char *base = rec_out.data;
 
   /* 1. rep_and_flags: OOS flag + 4-byte offset size */
-  int rep_and_flags = (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_4BYTE;
+  int rep_and_flags = (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_4BYTE;
   OR_PUT_INT (base + OR_REP_OFFSET, rep_and_flags);
 
   /* 2. CHN = 0 (already zeroed) */

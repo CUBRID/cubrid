@@ -356,14 +356,14 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
    * OOS cleanup for this record (a small, logged leak). See commit 1bf7dda05. */
   {
     int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
-    int mvcc_flags = OR_GET_MVCC_FLAG (record->data);
+    int record_flags = OR_GET_RECORD_FLAGS (record->data);
     int offset_size = OR_GET_OFFSET_SIZE (record->data);
     vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			 "OOS flag set but no OOS VFID for hfid %d|%d slotid=%d rectype=%d rec_len=%d "
-			 "repid_and_flags=0x%08x mvcc_flags=0x%02x offset_size=%d - skipping OOS cleanup "
+			 "repid_and_flags=0x%08x record_flags=0x%02x offset_size=%d - skipping OOS cleanup "
 			 "(bounded leak)",
 			 VFID_AS_ARGS (&hfid->vfid), (int) slotid, (int) record_type,
-			 record->length, repid_and_flags, mvcc_flags, offset_size);
+			 record->length, repid_and_flags, record_flags, offset_size);
   }
   /* TODO(do not review, remove before develop merge): force a hard crash in CI. CI runs the release
    * build (NDEBUG), where assert_release below only logs a notification - which the er_clear() then

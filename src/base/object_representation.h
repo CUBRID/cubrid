@@ -436,7 +436,11 @@ OR_PUT_DOUBLE (char *ptr, double val)
  */
 
 
-/* flag for variable length */
+/*
+ * Per-variable-column flags stored in each variable offset table entry.
+ * OR_VAR_BIT_OOS identifies one OOS inline stub; OR_RECORD_FLAG_HAS_OOS is
+ * the separate record-level summary flag in the first representation word.
+ */
 
 #define OR_VAR_BIT_OOS 0x1
 #define OR_VAR_BIT_LAST_ELEMENT 0x2
@@ -570,11 +574,17 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 #define OR_GET_MVCC_CHN(ptr) (OR_GET_INT ((char *) (ptr) + OR_CHN_OFFSET))
 
-#define OR_GET_MVCC_FLAG(ptr) \
+#define OR_GET_RECORD_FLAGS(ptr) \
   (((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET)) \
-    >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK)
+    >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_FLAG_MASK)
 
-#define OR_GET_MVCC_REPID_AND_FLAG(ptr) \
+#define OR_GET_MVCC_FLAGS(ptr) \
+  (OR_GET_RECORD_FLAGS (ptr) & OR_RECORD_MVCC_FLAG_MASK)
+
+#define OR_RECORD_HAS_OOS(ptr) \
+  ((OR_GET_RECORD_FLAGS (ptr) & OR_RECORD_FLAG_HAS_OOS) != 0)
+
+#define OR_GET_RECORD_REPID_AND_FLAGS(ptr) \
   (OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET))
 
 /* VARIABLE OFFSET TABLE ACCESSORS */
@@ -1087,9 +1097,9 @@ extern int or_rep_id (RECDES * record);
 extern int or_set_rep_id (RECDES * record, int repid);
 extern int or_chn (RECDES * record);
 extern int or_replace_chn (RECDES * record, int chn);
-extern int or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error);
-extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit,
-					int variable_offset_size);
+extern int or_get_record_repid_and_flags (OR_BUF * buf, int *error);
+extern int or_set_record_repid_and_flags (OR_BUF * buf, int record_flags, int repid, int bound_bit,
+					  int variable_offset_size);
 extern char *or_class_name (RECDES * record);
 
 /* Pointer based decoding functions */
