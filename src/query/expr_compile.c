@@ -46,6 +46,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "query_executor.h"
+#include "string_opfunc.h"
 #include "system_parameter.h"
 #include "xasl_predicate.hpp"
 
@@ -62,7 +63,7 @@
  * B_AND/B_OR right-linear loops reduce to three-valued Kleene logic with immediate exit
  * on V_ERROR, comparison terms yield V_UNKNOWN when either side is NULL */
 enum expr_pred_kind
-{ EXPR_PRED_COMP, EXPR_PRED_AND, EXPR_PRED_OR, EXPR_PRED_NOT, EXPR_PRED_ISNULL };
+{ EXPR_PRED_COMP, EXPR_PRED_AND, EXPR_PRED_OR, EXPR_PRED_NOT, EXPR_PRED_ISNULL, EXPR_PRED_LIKE };
 
 typedef struct expr_pred EXPR_PRED;
 struct expr_pred
@@ -72,8 +73,9 @@ struct expr_pred
   EXPR_PRED *lhs;		/* and/or/not */
   EXPR_PRED *rhs;		/* and/or */
 
-  DB_VALUE **arg1p;		/* comp/isnull operand cells (1-based indexes until materialized) */
+  DB_VALUE **arg1p;		/* comp/isnull/like operand cells (1-based indexes until materialized) */
   DB_VALUE **arg2p;
+  DB_VALUE **arg3p;		/* LIKE escape, when present */
   REL_OP rel_op;
   DB_TYPE fast_type;		/* direct-compare type, or DB_TYPE_UNKNOWN -> tp_value_compare */
 };
@@ -560,6 +562,27 @@ expr_pred_eval (const EXPR_PRED * pred)
       /* mirror of eval_pred_comp1 () for non-OID operands */
       return DB_IS_NULL (*pred->arg1p) ? V_TRUE : V_FALSE;
 
+    case EXPR_PRED_LIKE:
+      {
+	/* mirror of the eval_pred () T_LIKE_EVAL_TERM case */
+	DB_VALUE *src = *pred->arg1p;
+	DB_VALUE *pattern;
+	int like_res;
+
+	if (DB_IS_NULL (src))
+	  {
+	    return V_UNKNOWN;
+	  }
+	pattern = *pred->arg2p;
+	if (DB_IS_NULL (pattern))
+	  {
+	    return V_UNKNOWN;
+	  }
+	/* the interpreted path ignores the db_string_like () return code as well */
+	db_string_like (src, pattern, (pred->arg3p != NULL) ? *pred->arg3p : NULL, &like_res);
+	return (DB_LOGICAL) like_res;
+      }
+
     case EXPR_PRED_AND:
       /* Kleene AND with immediate exit on V_FALSE/V_ERROR == the eval_pred () loop */
       r1 = expr_pred_eval (pred->lhs);
@@ -1005,6 +1028,47 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
       {
 	const COMP_EVAL_TERM *et;
 	DB_TYPE t1, t2, fast_type;
+
+	if (pr->pe.m_eval_term.et_type == T_LIKE_EVAL_TERM)
+	  {
+	    const LIKE_EVAL_TERM *et_like = &pr->pe.m_eval_term.et.et_like;
+	    DB_TYPE ts = expr_node_type (bctx, et_like->src);
+	    int c2, c3 = -1;
+
+	    /* string operands only, mirroring the interpreted path's support */
+	    if (ts != DB_TYPE_CHAR && ts != DB_TYPE_VARCHAR)
+	      {
+		return NULL;
+	      }
+	    c1 = expr_compile_node (bctx, et_like->src, compiled_something);
+	    c2 = (c1 >= 0) ? expr_compile_node (bctx, et_like->pattern, compiled_something) : -1;
+	    if (c1 < 0 || c2 < 0)
+	      {
+		return NULL;
+	      }
+	    if (et_like->esc_char != NULL)
+	      {
+		c3 = expr_compile_node (bctx, et_like->esc_char, compiled_something);
+		if (c3 < 0)
+		  {
+		    return NULL;
+		  }
+	      }
+	    pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
+	    if (pred == NULL)
+	      {
+		return NULL;
+	      }
+	    memset (pred, 0, sizeof (*pred));
+	    pred->kind = EXPR_PRED_LIKE;
+	    pred->arg1p = EXPR_ARG_ENCODE (c1);
+	    pred->arg2p = EXPR_ARG_ENCODE (c2);
+	    if (c3 >= 0)
+	      {
+		pred->arg3p = EXPR_ARG_ENCODE (c3);
+	      }
+	    return pred;
+	  }
 
 	if (pr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
 	  {
@@ -1614,6 +1678,10 @@ expr_pred_materialize (EXPR_PRED * pred, EXPR_PROG * prog)
     {
       pred->arg2p = &prog->cells[(intptr_t) pred->arg2p - 1];
     }
+  if (pred->arg3p != NULL)
+    {
+      pred->arg3p = &prog->cells[(intptr_t) pred->arg3p - 1];
+    }
 }
 
 /* wrap an uncompilable root in a fallback step so the list program stays complete */
@@ -2027,6 +2095,9 @@ expr_pred_dump (FILE * fp, const EXPR_PRED * pred, const EXPR_PROG * prog)
       break;
     case EXPR_PRED_ISNULL:
       fprintf (fp, "(c%d ISNULL)", (int) (pred->arg1p - prog->cells));
+      break;
+    case EXPR_PRED_LIKE:
+      fprintf (fp, "(c%d LIKE c%d)", (int) (pred->arg1p - prog->cells), (int) (pred->arg2p - prog->cells));
       break;
     case EXPR_PRED_AND:
     case EXPR_PRED_OR:
