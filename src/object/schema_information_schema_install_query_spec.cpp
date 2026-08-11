@@ -605,6 +605,8 @@ const char *sm_define_view_routines_spec (void)
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
     "SELECT "
+      "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
+      "[sp].[owner].[name] AS [specific_schema], "
       "IF ([sp].[pkg_name] IS NOT NULL, CONCAT ([sp].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [routine_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [routine_schema], "

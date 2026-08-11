@@ -494,6 +494,8 @@ namespace cubschema
 		   INFO_SCHEMA_ROUTINES_NAME,
 		   // columns
     {
+      {"specific_catalog", format_varchar (255)},
+      {"specific_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"specific_name", format_varchar (255)},
       {"routine_catalog", format_varchar (255)},
       {"routine_schema", format_varchar (DB_MAX_USER_LENGTH)},
