@@ -1087,6 +1087,12 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
   switch (regu->type)
     {
     case TYPE_CONSTANT:
+      if (regu->xasl != NULL)
+	{
+	  /* a linked scalar subquery: the interpreted fetch EXECUTES the XASL before
+	   * reading dbvalptr, so this is not a stable cell -- keep it interpreted */
+	  return -1;
+	}
       /* stable pointer; zero per-row cost */
       cell = expr_cse_find (bctx, regu->value.dbvalptr, -1, -1, -1, -1);
       if (cell < 0)
