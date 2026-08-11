@@ -797,6 +797,7 @@ const char *sm_define_view_statistics_spec (void)
       "[idx].[comment] AS [index_comment], "
       "IF ([idx].[status] = 1, 'YES', 'NO') AS [is_visible], "
       "[idx_key].[func] AS [expression], "
+      "[idx].[filter_expression] AS [filter_condition], "
       "[idx].[options] & %d AS [deduplicate_level], "
       "[idx].[created_time] AS [create_time], "
       "[idx].[updated_time] AS [update_time], "
