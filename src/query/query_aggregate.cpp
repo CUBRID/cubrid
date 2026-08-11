@@ -746,6 +746,31 @@ qdata_acc_kernel_sum_numeric (cubthread::entry * thread_p, cubxasl::aggregate_li
 }
 
 /*
+ * qdata_acc_kernel_name () - display name of an accumulate kernel for SQL trace
+ */
+const char *
+qdata_acc_kernel_name (const void *kernel)
+{
+  if (kernel == (const void *) qdata_acc_kernel_generic)
+    {
+      return "generic";
+    }
+  if (kernel == (const void *) qdata_acc_kernel_sum_bigint)
+    {
+      return "sum_bigint";
+    }
+  if (kernel == (const void *) qdata_acc_kernel_sum_double)
+    {
+      return "sum_double";
+    }
+  if (kernel == (const void *) qdata_acc_kernel_sum_numeric)
+    {
+      return "sum_numeric";
+    }
+  return "?";
+}
+
+/*
  * qdata_acc_kernel_resolve () - the accumulate kernel for one aggregate the program
  *				 covers, or NULL to keep the interpreted tail
  *

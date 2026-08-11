@@ -169,6 +169,10 @@ extern DB_VALUE *expr_prog_value (const EXPR_PROG * prog, int root_idx);
 
 extern void expr_prog_free (EXPR_PROG * prog);
 
+/* human-readable program listing (SQL trace, debugging): one line per step with the
+ * kernel name, argument/output cells and domains, prologue/deferred markers */
+extern void expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent);
+
 /* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c); exported for
  * consumers that replicate an interpreted tail coercion (e.g. aggregate accumulation) */
 extern int expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p);

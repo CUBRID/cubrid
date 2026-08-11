@@ -43,6 +43,7 @@
 #include "memory_alloc.h"
 #include "numeric_opfunc.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "object_representation.h"
 #include "query_executor.h"
 #include "system_parameter.h"
@@ -1867,6 +1868,142 @@ expr_prog_value (const EXPR_PROG * prog, int root_idx)
 {
   assert (root_idx >= 0 && root_idx < prog->n_roots);
   return prog->cells[prog->root_cells[root_idx]];
+}
+
+/* the kernel's display name for program listings */
+static const char *
+expr_kernel_name (EXPR_KERNEL_FN kernel)
+{
+  static const struct
+  {
+    EXPR_KERNEL_FN fn;
+    const char *name;
+  } names[] = {
+    {expr_k_add_int, "add_int"}, {expr_k_sub_int, "sub_int"}, {expr_k_mul_int, "mul_int"},
+    {expr_k_div_int, "div_int"}, {expr_k_add_bigint, "add_bigint"}, {expr_k_sub_bigint, "sub_bigint"},
+    {expr_k_mul_bigint, "mul_bigint"}, {expr_k_div_bigint, "div_bigint"}, {expr_k_add_double, "add_double"},
+    {expr_k_sub_double, "sub_double"}, {expr_k_mul_double, "mul_double"}, {expr_k_add_numeric, "add_numeric"},
+    {expr_k_sub_numeric, "sub_numeric"}, {expr_k_mul_numeric, "mul_numeric"}, {expr_k_div_numeric, "div_numeric"},
+    {expr_k_coerce_numeric, "coerce_numeric"}, {expr_k_nvl, "nvl_select"}, {expr_k_cast, "cast"},
+    {expr_k_case, "case"}, {expr_k_predicate, "predicate"}, {expr_k_leaf_fetch, "leaf_fetch"},
+    {expr_k_hostvar, "hostvar"}, {expr_k_fallback, "fallback"},
+  };
+  size_t i;
+
+  for (i = 0; i < sizeof (names) / sizeof (names[0]); i++)
+    {
+      if (names[i].fn == kernel)
+	{
+	  return names[i].name;
+	}
+    }
+  return "?";
+}
+
+/* compact one-line predicate summary, e.g. "(c0 GT c3 AND NOT (c1 ISNULL))" */
+static void
+expr_pred_dump (FILE * fp, const EXPR_PRED * pred, const EXPR_PROG * prog)
+{
+  if (pred == NULL)
+    {
+      return;
+    }
+  switch (pred->kind)
+    {
+    case EXPR_PRED_COMP:
+      /* the '*' marks a typed direct compare (no tp_value_compare dispatch) */
+      fprintf (fp, "(c%d %s%s c%d)", (int) (pred->arg1p - prog->cells),
+	       (pred->rel_op == R_EQ) ? "EQ" : (pred->rel_op == R_NE) ? "NE" : (pred->rel_op == R_LT) ? "LT"
+	       : (pred->rel_op == R_LE) ? "LE" : (pred->rel_op == R_GT) ? "GT" : (pred->rel_op == R_GE) ? "GE" : "?",
+	       (pred->fast_type != DB_TYPE_UNKNOWN) ? "*" : "", (int) (pred->arg2p - prog->cells));
+      break;
+    case EXPR_PRED_ISNULL:
+      fprintf (fp, "(c%d ISNULL)", (int) (pred->arg1p - prog->cells));
+      break;
+    case EXPR_PRED_AND:
+    case EXPR_PRED_OR:
+      fprintf (fp, "(");
+      expr_pred_dump (fp, pred->lhs, prog);
+      fprintf (fp, " %s ", (pred->kind == EXPR_PRED_AND) ? "AND" : "OR");
+      expr_pred_dump (fp, pred->rhs, prog);
+      fprintf (fp, ")");
+      break;
+    case EXPR_PRED_NOT:
+      fprintf (fp, "NOT ");
+      expr_pred_dump (fp, pred->lhs, prog);
+      break;
+    default:
+      break;
+    }
+}
+
+void
+expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
+{
+  int i;
+
+  if (prog == NULL)
+    {
+      return;
+    }
+
+  fprintf (fp, "%*csteps: %d (prologue: %d, compute: %d), cells: %d, slots: %d, roots: %d, hostvar types: %d\n",
+	   indent, ' ', prog->n_steps, prog->n_prologue, prog->n_compute, prog->n_cells, prog->n_slots,
+	   prog->n_roots, prog->n_hv);
+
+  for (i = 0; i < prog->n_steps; i++)
+    {
+      const EXPR_STEP *step = &prog->steps[i];
+
+      fprintf (fp, "%*c[%c%2d] %-14s", indent, ' ', (i < prog->n_prologue) ? 'P' : step->deferred ? 'D' : ' ', i,
+	       expr_kernel_name (step->kernel));
+      if (step->arg1p != NULL)
+	{
+	  fprintf (fp, " c%d", (int) (step->arg1p - prog->cells));
+	}
+      if (step->arg2p != NULL)
+	{
+	  fprintf (fp, ", c%d", (int) (step->arg2p - prog->cells));
+	}
+      if (step->kernel == expr_k_hostvar)
+	{
+	  fprintf (fp, " vd[%d]", step->aux);
+	}
+      fprintf (fp, " -> c%d", (int) (step->out_cell - prog->cells));
+      if (step->out != NULL)
+	{
+	  fprintf (fp, " (slot)");
+	}
+      if (step->domain != NULL)
+	{
+	  fprintf (fp, " dom=%s", pr_type_name (TP_DOMAIN_TYPE (step->domain)));
+	}
+      if (step->kernel == expr_k_case)
+	{
+	  fprintf (fp, " then=[%d..%d) else=[%d..%d) pred=", step->t_start, step->t_start + step->t_n,
+		   step->f_start, step->f_start + step->f_n);
+	  expr_pred_dump (fp, (const EXPR_PRED *) step->pred, prog);
+	}
+      else if (step->kernel == expr_k_predicate)
+	{
+	  fprintf (fp, " pred=");
+	  expr_pred_dump (fp, (const EXPR_PRED *) step->pred, prog);
+	}
+      else if (step->aux == 1
+	       && (step->kernel == expr_k_add_numeric || step->kernel == expr_k_sub_numeric
+		   || step->kernel == expr_k_div_numeric))
+	{
+	  fprintf (fp, " pure");
+	}
+      fprintf (fp, "\n");
+    }
+
+  fprintf (fp, "%*croots:", indent, ' ');
+  for (i = 0; i < prog->n_roots; i++)
+    {
+      fprintf (fp, " [%d]=c%d", i, prog->root_cells[i]);
+    }
+  fprintf (fp, "\n");
 }
 
 void
