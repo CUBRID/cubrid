@@ -5765,11 +5765,11 @@ mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
       else
 	{
 	  /* don't have a usable name for attribute; generate a new, guaranteed-unique name */
-	  const char *generated_name;
+	  char generated_name[DB_MAX_IDENTIFIER_LENGTH];
 
 	  do
 	    {
-	      generated_name = mq_generate_name (parser, "a", &i);
+	      snprintf (generated_name, sizeof (generated_name), "%s_%d", "a", ++i);
 	    }
 	  while (mq_is_name_in_col_list (spec->info.spec.as_attr_list, generated_name));
 
