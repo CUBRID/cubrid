@@ -911,8 +911,9 @@ set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
 # library at -O0.
 set(3RDPARTY_COMMON_FLAGS "-fPIC -w")
 
-# restates the level from autoconf's "-g -O2", which supplying CFLAGS suppresses
-set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic "CFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}" "CXXFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}")
+# restates the level from autoconf's "-g -O2", which supplying CFLAGS suppresses.
+# No CXXFLAGS: none of these compile C++ in the target this build runs.
+set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic "CFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}")
 
 # WITH_LIBEXPAT can have multiple values with different meanings
 # on Linux:
@@ -1215,8 +1216,9 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
       GIT_TAG 5723bb8             # https://github.com/google/re2/releases/tag/2022-06-01
       CONFIGURE_COMMAND ""        # no configure
       BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
-      # no append hook, so restate the level from the Makefile's "CXXFLAGS ?= -O3 -g"
-      BUILD_COMMAND make "CFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}" "CXXFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}"
+      # no append hook, so restate the level from the Makefile's "CXXFLAGS ?= -O3 -g".
+      # No CFLAGS: re2 has no C sources and its Makefile never reads CFLAGS.
+      BUILD_COMMAND make "CXXFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}"
       INSTALL_COMMAND make install prefix="${CMAKE_BINARY_DIR}/external/"
     )
   else(UNIX)
