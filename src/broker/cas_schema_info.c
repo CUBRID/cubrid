@@ -55,7 +55,9 @@ schema_query_spec_meta (T_NET_BUF * net_buf)
 void
 schema_attr_meta (T_NET_BUF * net_buf)
 {
-  net_buf_cp_int (net_buf, 14, NULL);
+  bool with_invisible = DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13);
+
+  net_buf_cp_int (net_buf, with_invisible ? 17 : 14, NULL);
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "ATTR_NAME");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "DOMAIN");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "SCALE");
@@ -70,6 +72,18 @@ schema_attr_meta (T_NET_BUF * net_buf)
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "SOURCE_CLASS");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "IS_KEY");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_REMARKS_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "REMARKS");
+  if (with_invisible)
+    {
+      net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "IS_INVISIBLE");
+      
+      /* PROTOCOL_V13: Adds two type metadata missing in DOMAIN column.
+       * - EXT_DOMAIN: Extended type including collection bits (SET/MULTISET/SEQUENCE).
+       *   Sent as a full byte to match describe's ext_type format for unified reading.
+       *   (Has duplicated information with DOMAIN)
+       * - CODESET: Physical codeset of the column (never carried by DOMAIN). */
+      net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "EXT_DOMAIN");
+      net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "CODESET");
+    }
 }
 
 void
