@@ -81,6 +81,11 @@
 /* Per-OID heap-access CPU penalty for NON-covering index scans (covering scans: 0).
  * Lowered 20 -> 5 to favor index scan when low/stale leading-column NDV inflates sel via 1/pkeys[0]. TODO: per-index clustering factor. */
 #define ISCAN_OID_ACCESS_OVERHEAD 5
+/* Per-extra-row iscan heap-fetch cost: charges (heap_rows - 1) * ratio, so a single-row
+ * (fanout=1 / unique / pk) probe adds ZERO and keeps exactly the original cost (blast-radius
+ * safe). Added to object_IO on top of the existing page-based cost, so a high-fanout inner
+ * index scan of a nested loop is no longer priced like a single-row probe. */
+#define FETCH_HEAP_COST 0.25	/* per-extra heap-row fetch (non-covering only) */
 #define MJ_CPU_OVERHEAD_FACTOR 20
 #define HJ_BUILD_CPU_OVERHEAD_FACTOR 40
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
@@ -184,6 +189,7 @@ static void qo_plan_compute_cost (QO_PLAN *);
 static void qo_plan_compute_subquery_cost (PT_NODE *, double *, double *);
 static void qo_sscan_cost (QO_PLAN *);
 static void qo_iscan_cost (QO_PLAN *);
+static bool qo_index_forbids_key_filter (QO_INDEX_ENTRY *);
 static void qo_sort_cost (QO_PLAN *);
 static void qo_mjoin_cost (QO_PLAN *);
 static void qo_nljoin_cost (QO_PLAN *);
@@ -460,6 +466,7 @@ static double qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 static double qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
 static double qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr);
+static double qo_rlike_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
 static int qo_index_cardinality (QO_ENV * env, PT_NODE * attr);
 static int qo_index_cardinality_with_dedup (QO_ENV * env, PT_NODE * attr, BITSET * seg_bitset);
@@ -1792,6 +1799,24 @@ qo_index_has_bit_attr (QO_INDEX_ENTRY * index_entryp)
 }
 
 /*
+ * qo_index_forbids_key_filter () - true when the index cannot host key-filter
+ *   terms, so a residual LIKE stays a data filter and its derived range must
+ *   remain the row-count upper bound.
+ *   return: true if key-filters are disabled for this index
+ *   index_entryp(in):
+ *
+ * note: A non-covering function index is the only such case. This predicate is
+ *   shared by qo_index_scan_new() (which then skips kf_terms population) and
+ *   qo_iscan_cost() (which then keeps a LIKE-derived range in the row-count) so
+ *   the two sites never drift apart.
+ */
+static bool
+qo_index_forbids_key_filter (QO_INDEX_ENTRY * index_entryp)
+{
+  return index_entryp->constraints->func_index_info != NULL && index_entryp->cover_segments == false;
+}
+
+/*
  * qo_index_scan_new () -
  *   return:
  *   info(in):
@@ -1892,7 +1917,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
       plan->plan_un.scan.index_equi = false;
     }
 
-  if (index_entryp->constraints->func_index_info && index_entryp->cover_segments == false)
+  if (qo_index_forbids_key_filter (index_entryp))
     {
       /* do not permit key-filter */
       assert (bitset_is_empty (&(plan->plan_un.scan.kf_terms)));
@@ -2102,8 +2127,10 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
-  double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access;
+  double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access, heap_rows;
+  double heap_fanout = 0.0, iss_leaves = 0.0, first_leaf = 0.0;
   double object_IO, index_IO;
+  double sel_excl_derived_range;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
   int i, t, n, pkeys_num, index;
@@ -2150,6 +2177,10 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* selectivity of the index terms */
   sel = 1.0;
+  /* like sel, but excludes LIKE-derived range terms: used for output-row
+   * estimates only, not index access cost, to avoid double counting the
+   * retained LIKE. */
+  sel_excl_derived_range = 1.0;
 
   pkeys_num = MIN (n, cum_statsp->pkeys_size);
   assert (pkeys_num <= BTREE_STATS_PKEYS_NUM);
@@ -2164,6 +2195,25 @@ qo_iscan_cost (QO_PLAN * planp)
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
       sel *= QO_TERM_SELECTIVITY (termp);
 
+      /* Invariant: a LIKE-derived range that reached the key-range terms cannot
+       * carry a non-indexable collation. NON_IDX_SARG_COLL is column-driven, so
+       * it would flag the retained LIKE and its derived range alike and keep the
+       * derived range out of the key-range terms. Hence whenever a derived range
+       * is here, the residual LIKE is index-usable and becomes a key-filter -
+       * which is what the exclusion below relies on. */
+      assert (!QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE)
+	      || !QO_TERM_IS_FLAGED (termp, QO_TERM_NON_IDX_SARG_COLL));
+
+      /* Exclude a LIKE-derived range from row-count only when the residual LIKE
+       * can be a key-filter (its selectivity then lives in filter_sel). A
+       * non-covering function index disables key-filters, so the residual LIKE
+       * falls through to a data filter - there keep the range as the row-count
+       * upper bound. */
+      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE) || qo_index_forbids_key_filter (index_entryp))
+	{
+	  sel_excl_derived_range *= QO_TERM_SELECTIVITY (termp);
+	}
+
       /* each term can have multi index column. e.g.) (a,b) in .. */
       for (int j = 0; j < index_entryp->col_num; j++)
 	{
@@ -2176,6 +2226,7 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* check upper bound */
   sel = MIN (sel, 1.0);
+  sel_excl_derived_range = MIN (sel_excl_derived_range, 1.0);
 
   sel_limit = 0.0;		/* init */
 
@@ -2215,12 +2266,23 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* check lower bound */
   sel = MAX (sel, sel_limit);
+  sel_excl_derived_range = MAX (sel_excl_derived_range, sel_limit);
 
   /* selectivity of the index key filter terms */
   filter_sel = 1.0;
   for (t = bitset_iterate (&(planp->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
     {
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+
+      /* A LIKE-derived range that landed in the key-filter is redundant with
+       * the residual LIKE it came from; skip it here just as the key-range loop
+       * skips it from sel_excl_derived_range, so the node-level and iscan-level
+       * estimates stay in agreement. */
+      if (QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE))
+	{
+	  continue;
+	}
+
       filter_sel *= QO_TERM_SELECTIVITY (termp);
     }
 
@@ -2234,13 +2296,20 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   /* number of leaf pages to be accessed */
   leaves = ceil (sel * (double) cum_statsp->leafs);
+  /* the landing leaves the descent lands on (fixed, cached across probes): one per class the
+   * index spans -- (ni_entryp)->n classes, matching the n * height descent below. cum_stats.leafs
+   * is summed over those classes, so `leaves` already includes these n landing pages; the rest is
+   * per-probe. */
+  first_leaf = MIN (leaves, (double) (ni_entryp)->n);
   /* total number of pages occupied by objects */
   opages = (double) QO_NODE_TCARD (nodep);
-  /* I/O cost to access B+tree index */
-  index_IO = ((ni_entryp)->n * height) + leaves;
+  /* I/O cost to access B+tree index: only the descent (n * height) is fixed; the `leaves`
+   * pages are charged per probe on the variable side below. */
+  index_IO = (ni_entryp)->n * height;
 
-  /* Index Skip Scan adds to the index IO cost the K extra BTREE searches it does to fetch the next value for the
-   * following BTRangeScan
+  /* Index Skip Scan does K extra BTREE searches to fetch the next value for the following
+   * BTRangeScan. These are K additional leaf reads that recur on every probe (like `leaves`),
+   * so they belong on the variable (per-outer-row) side, not the fixed descent cost.
    */
   if (qo_is_index_iss_scan (planp))
     {
@@ -2249,8 +2318,7 @@ qo_iscan_cost (QO_PLAN * planp)
 	  assert (cum_statsp->pkeys != NULL);
 	  assert (cum_statsp->pkeys_size != 0);
 
-	  /* K leaves are additionally read */
-	  index_IO += cum_statsp->pkeys[0];
+	  iss_leaves = cum_statsp->pkeys[0];
 	}
     }
 
@@ -2262,17 +2330,35 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   else
     {
-      object_IO = opages * sel * filter_sel;
-      heap_access = (double) QO_NODE_NCARD (nodep) * sel * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
+      /* Row count reaching the heap: uses sel_excl_derived_range (not sel) so a LIKE-derived
+       * range is not double counted against the residual LIKE it came from - same basis as
+       * scan_rows below. */
+      heap_rows = (double) QO_NODE_NCARD (nodep) * sel_excl_derived_range * filter_sel;
+      object_IO = opages * sel_excl_derived_range * filter_sel;
+      /* Cap the per-row heap-fetch surcharge at the table's page count: fetching more rows
+       * than there are heap pages cannot touch more distinct pages (the rows share pages),
+       * so an unbounded per-row charge would overprice a wide scan whose non-indexed filter
+       * (sargs) is applied only after the fetch. */
+      heap_fanout = (heap_rows > 1.0) ? MAX (0.0, MIN (heap_rows, opages) - 1.0) * FETCH_HEAP_COST : 0.0;
+      heap_access = heap_rows * (double) ISCAN_OID_ACCESS_OVERHEAD;
     }
-  object_IO = MAX (1.0, object_IO);
+  /* Split the leaf-page IO across the fixed/variable sides. The first leaf page (the one the
+   * b+tree descent lands on) is read once and stays buffer-resident across probes, so it is
+   * fixed; only the extra `leaves - 1` pages a wider range scans recur on every probe and go
+   * to the variable (per-outer-row) side, together with `iss_leaves` (ISS skip reads) and the
+   * per-fanout heap-fetch surcharge. A single-leaf probe (leaves == 1, e.g. unique/pk or a
+   * small index) therefore adds nothing to the variable side, keeping exactly the original
+   * cost and not eroding the small-input NL preference (HJ_MEM_ALLOC_CONSTANT). */
+  object_IO = MAX (1.0, object_IO) + (leaves - first_leaf) + iss_leaves + heap_fanout;
 
   /* index scan requires more CPU cost than sequential scan */
   planp->fixed_cpu_cost = 0.0;
-  planp->fixed_io_cost = index_IO;
+  /* Fixed: the b+tree descent (n * height, upper levels shared across probes and assumed
+   * buffer-resident) plus the single leaf page the descent lands on. */
+  planp->fixed_io_cost = index_IO + first_leaf;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
-  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel * filter_sel);
+  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel_excl_derived_range * filter_sel);
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
@@ -7933,13 +8019,20 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		}
 	      else
 		{
-		  selectivity *= QO_TERM_SELECTIVITY (term);
-		  selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+		  /* Skip a LIKE-derived range in both the row-count selectivity and the
+		   * join hit probability: it is subset-correlated with the retained LIKE,
+		   * so counting it in either would double count the same constraint. */
+		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE))
+		    {
+		      double head_factor, tail_factor;
 
-		  double head_factor, tail_factor;
-		  qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
-		  head_hit_prob *= head_factor;
-		  tail_hit_prob *= tail_factor;
+		      selectivity *= QO_TERM_SELECTIVITY (term);
+		      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+
+		      qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
+		      head_hit_prob *= head_factor;
+		      tail_hit_prob *= tail_factor;
+		    }
 		}
 	    }
 	  cardinality *= selectivity;
@@ -9885,6 +9978,12 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       /* per-node: an IS [NOT] NULL node must not suppress the null-correction of its siblings */
       not_null_calculated = false;
 
+      /* per-disjunct reset: an operator with no case below must contribute the default guess;
+       * without this it reuses the previous disjunct's selectivity (or the 0.0 initializer when
+       * it is the first disjunct), which turns the whole term into a zero-row estimate. The
+       * guess is not histogram-derived; the default case below marks the fallback. */
+      selectivity = DEFAULT_SELECTIVITY;
+
       switch (node->info.expr.op)
 	{
 	case PT_OR:
@@ -9951,6 +10050,17 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	    selectivity = 1 - qo_like_selectivity (env, node);
 	    break;
 	  }
+	case PT_RLIKE:
+	case PT_RLIKE_BINARY:
+	  selectivity = qo_rlike_selectivity (env, node);
+	  break;
+
+	case PT_NOT_RLIKE:
+	case PT_NOT_RLIKE_BINARY:
+	  lhs_selectivity = qo_rlike_selectivity (env, node);
+	  selectivity = qo_not_selectivity (env, lhs_selectivity);
+	  break;
+
 	case PT_SETNEQ:
 	case PT_SETEQ:
 	case PT_SUPERSETEQ:
@@ -10023,6 +10133,9 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	default:
+	  /* fall-through operator: selectivity stays at the per-disjunct DEFAULT_SELECTIVITY
+	   * reset above -- a guess, so keep the term from being tagged histogram-derived */
+	  env->sel_hist_fallback = true;
 	  break;
 	}
 
@@ -10138,6 +10251,75 @@ qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr)
     {
       env->sel_hist_fallback = true;
     }
+
+  return selectivity;
+}
+
+/*
+ * qo_rlike_selectivity () - Estimate the selectivity of a regex (RLIKE) predicate by matching
+ *                           the pattern against histogram MCVs and bucket boundary values
+ *   return: double
+ *   env(in):
+ *   pt_expr(in): RLIKE expression (PT_RLIKE / PT_RLIKE_BINARY / PT_NOT_RLIKE / PT_NOT_RLIKE_BINARY;
+ *                the NOT variants are negated by the caller)
+ */
+static double
+qo_rlike_selectivity (QO_ENV * env, PT_NODE * pt_expr)
+{
+  PT_NODE *lhs, *rhs;
+  DB_VALUE *host_var = NULL;
+  PRED_CLASS pc_lhs, pc_rhs;
+  double fallback, selectivity;
+  bool case_sensitive, success = false;
+
+  fallback = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
+  selectivity = fallback;
+
+  lhs = pt_expr->info.expr.arg1;
+  rhs = pt_expr->info.expr.arg2;
+
+  if (lhs == NULL || rhs == NULL)
+    {
+      return selectivity;
+    }
+
+  pc_lhs = qo_classify (lhs);
+  pc_rhs = qo_classify (rhs);
+
+  if (pc_lhs == PC_ATTR)
+    {
+      if (pc_rhs == PC_CONST)
+	{
+	  host_var = &rhs->info.value.db_value;
+	}
+      else if (pc_rhs == PC_HOST_VAR)
+	{
+	  host_var = &env->parser->host_variables[rhs->info.host_var.index];
+	}
+
+      /* the parser derives the runtime case flag (arg3) from the operator, so the operator is
+       * an equally authoritative source and needs no constant-folding assumptions */
+      case_sensitive = (pt_expr->info.expr.op == PT_RLIKE_BINARY || pt_expr->info.expr.op == PT_NOT_RLIKE_BINARY);
+
+      histogram_get_rlike_selectivity (lhs, host_var, case_sensitive, fallback, &selectivity, &success);
+
+      if (!success)
+	{
+	  selectivity = fallback;
+	}
+    }
+
+  if (success)
+    {
+      env->sel_hist_used = true;
+    }
+  else
+    {
+      env->sel_hist_fallback = true;
+    }
+
+  selectivity = MAX (selectivity, 0.0);
+  selectivity = MIN (selectivity, 1.0);
 
   return selectivity;
 }
