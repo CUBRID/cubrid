@@ -935,8 +935,11 @@ qdata_acc_kernel_resolve (cubxasl::aggregate_list_node *agg_p)
  * Roots the expression compiler cannot cover purely are excluded the same way (the
  * compiler is called without fallback roots), so every compiled step is side-effect
  * free and evaluating it for a row whose aggregate later stops (is_ended) is harmless.
+ *
+ * Exported (not static) for the parallel BUILDVALUE_OPT accumulation loop, which
+ * compiles each worker's clone the same way.
  */
-static void
+void
 qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
 				val_descr *val_desc_p)
 {
