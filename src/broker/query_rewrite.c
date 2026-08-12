@@ -1843,7 +1843,7 @@ qr_admin_dbuser_present (char *base, const char *up_db, const char *up_user)
   T_QR_SHM_HEADER *hdr = (T_QR_SHM_HEADER *) base;
   int *dbuser_bucket = (int *) (base + hdr->dbuser_bucket_off);
   T_QR_DBUSER *dbuser = (T_QR_DBUSER *) (base + hdr->dbuser_off);
-  int b;
+  int b, hops;
 
   if (hdr->dbuser_hash_size == 0)
     {
@@ -1851,9 +1851,16 @@ qr_admin_dbuser_present (char *base, const char *up_db, const char *up_user)
     }
 
   b = (int) ((qr_hash_str (up_db) ^ qr_hash_str (up_user)) % (unsigned int) hdr->dbuser_hash_size);
-  for (b = dbuser_bucket[b]; b != -1; b = dbuser[b].next_idx)
+  /* bounded like the CAS-side walks: this one runs under the admin lock, so a corrupt
+   * next_idx cycle would hang every later `qr` command, not just this one. */
+  for (b = dbuser_bucket[b], hops = 0; b != -1 && hops <= hdr->dbuser_count; b = dbuser[b].next_idx, hops++)
     {
-      if (strcmp (dbuser[b].db_name, up_db) == 0 && strcmp (dbuser[b].user_name, up_user) == 0)
+      if (b < 0 || b >= hdr->max_rules)
+	{
+	  break;
+	}
+      if (strncmp (dbuser[b].db_name, up_db, QR_NAME_LEN) == 0
+	  && strncmp (dbuser[b].user_name, up_user, QR_NAME_LEN) == 0)
 	{
 	  return 1;
 	}
