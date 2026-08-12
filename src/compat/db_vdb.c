@@ -2158,8 +2158,15 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 
 	  if (kept != NULL)
 	    {
-	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result, false	/* no forced replan; reuse the fixed plan */
-		);
+	      /* do_recompile carries the compile-stage verdicts that made the cached XASL
+	       * unusable as-is: the LIKE / MRO / SORT-LIMIT checks and the UNPEEKED flag
+	       * null the XASL id when this execution's values require a fresh plan. The
+	       * kept tree exists precisely to serve that replan without re-parsing, so the
+	       * verdict must ride along -- otherwise a LIMIT value crossing the MRO
+	       * threshold would silently keep the previous plan (review report: with the
+	       * kept tree alive, limit 50 -> 500 stayed on the MRO plan instead of
+	       * recompiling to SORT). */
+	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result, do_recompile);
 	      if (err >= 0)
 		{
 		  return err;
