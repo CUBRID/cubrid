@@ -476,15 +476,6 @@ jobs:
     steps:
       - build-cubrid:
           ccache-prefix: ccache-global-v2
-      # The release build is packaged only on develop, where it is preserved in
-      # GlusterFS for downstream consumers. PR pipelines test the debug build,
-      # so packaging release there would upload an artifact nobody reads.
-      - when:
-          condition:
-            equal: [ develop, << pipeline.git.branch >> ]
-          steps:
-            - package-build:
-                mode: release
 
   build_debug:
     executor: cubrid-build
@@ -493,14 +484,14 @@ jobs:
           ccache-prefix: ccache-debug-v2
           mode: optdebug
           build-args: "-m optdebug"
-      # Package when a test job will consume it, or on develop for preservation.
-      # Not for shell: it builds on its own node now (CUBRIDQA-1506).
+      # Package only when a test job will consume it. Not for shell (it builds
+      # on its own node) and not for develop preservation (the transport is
+      # suspended until the GitHub Actions migration) -- CUBRIDQA-1506.
       - when:
           condition:
             or:
               - << pipeline.parameters.run_sql_test >>
               - << pipeline.parameters.run_medium_test >>
-              - equal: [ develop, << pipeline.git.branch >> ]
           steps:
             - package-build:
                 mode: debug
@@ -699,13 +690,6 @@ workflows:
       - test_shell:
           requires: [download-build]
           filters: pipeline.parameters.run_shell_test
-      # develop merge: transport only. Both builds are preserved in GlusterFS for
-      # downstream consumers (AI agent service); no test job runs on this path.
-      # Requires both builds so a release-only regression still blocks the upload.
-      - download-build:
-          name: store-build-develop
-          for-shell-tests: false
-          requires: [build, build_debug]
-          filters:
-            branches:
-              only: develop
+      # The develop transport (store-build-develop, CUBRIDQA-1476) is suspended:
+      # moving 2 x 290MB over the shared 30Mbps line took ~24 minutes per merge.
+      # Its consumers get the same behaviour back on GitHub Actions -- CUBRIDQA-1506.
