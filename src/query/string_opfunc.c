@@ -2150,6 +2150,13 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 	  pr_clear_value (&dummy);
 	  return error_status;
 	}
+      /* qstr_grow_string may return DB_NULL if size too big */
+      if (DB_IS_NULL (result))
+	{
+	  pr_clear_value (&dummy);
+	  return NO_ERROR;
+	}
+
       pr_clear_value (&dummy);
 
       res_ptr = CONST_CAST (char *, db_get_string (result));
@@ -8642,7 +8649,8 @@ varbit_compare (const unsigned char *string1, int size1, const unsigned char *st
  *
  * Arguments:
  *            src: (IN)  String variable.
- *         result: (IN/OUT) value with new size.
+ *         result: (IN/OUT) value with new size, or DB_NULL if requested size
+ *		    exceeds PRM_STRING_MAX_SIZE_BYTES system parameter
  *       new_size: (IN)  New size to be reserved for the string (in bytes).
  *
  * Returns:
@@ -8650,12 +8658,12 @@ varbit_compare (const unsigned char *string1, int size1, const unsigned char *st
  * Errors:
  *	ER_QSTR_INVALID_DATA_TYPE:
  *		  <src_string> is not CHAR, VARCHAR
- *	ER_QPROC_STRING_SIZE_TOO_BIG:
- *		  requested size exceeds PRM_STRING_MAX_SIZE_BYTES system parameter
  *
  * Note : src buffer is not freed, caller should be aware of this;
  *	  Result DB_VALUE must already be created.
  *	  It doesn't operate on BIT strings;
+ *	  if requested size is larger than PRM_STRING_MAX_SIZE_BYTES,
+ *	  DB_VALUE_NULL is returned
  */
 
 static int
@@ -8693,10 +8701,11 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
 
   if (result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) result_size,
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) result_size,
 	      (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 
-      return ER_QPROC_STRING_SIZE_TOO_BIG;
+      db_make_null (result);
+      return NO_ERROR;
     }
   /* Allocate storage for the result string */
   r = (char *) db_private_alloc (NULL, (size_t) result_size + 1);
