@@ -37,6 +37,7 @@
 namespace cubxasl
 {
   struct aggregate_accumulator;
+  struct aggregate_list_node;
 }
 struct function_node;
 class regu_variable_node;
@@ -72,6 +73,8 @@ extern void qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_no
 extern const char *qdata_acc_kernel_name (const void *kernel);
 extern int qdata_numeric_sum_flush (cubxasl::aggregate_accumulator * acc);
 extern void qdata_numeric_sum_discard (cubxasl::aggregate_accumulator * acc);
+extern void qdata_agg_operand_prog_compile (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list_p,
+					    val_descr * val_desc_p);
 
 extern int qdata_add_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
 extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res,

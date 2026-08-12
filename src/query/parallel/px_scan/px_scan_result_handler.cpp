@@ -34,6 +34,7 @@
 #include "fetch.h"
 #include "arithmetic.h"
 #include "db_json.hpp"
+#include "expr_compile.h"
 #include "query_aggregate.hpp"
 #include "xasl_aggregate.hpp"
 #include "object_domain.h"
@@ -1956,6 +1957,39 @@ namespace parallel_scan
 	    return false;
 	  }
       }
+
+    /* compiled operand-evaluation program (expr_compile.h), the same lazy per-clone hook
+     * the serial qdata_evaluate_aggregate_list () uses.  Each worker owns its XASL clone
+     * (tl_xasl_p is thread_local), so the program state on the list head is worker-private;
+     * qexec_clear_xasl () on the clone frees it through qexec_clear_agg_list (). */
+    AGGREGATE_TYPE *agg_list = tl_xasl_p->proc.buildvalue.agg_list;
+    EXPR_PROG *operand_prog = NULL;
+    if (agg_list != NULL)
+      {
+	if (agg_list->operand_prog_state == 0)
+	  {
+	    qdata_agg_operand_prog_compile (thread_p, agg_list, tl_vd);
+	  }
+	if (agg_list->operand_prog_state == 1)
+	  {
+	    operand_prog = (EXPR_PROG *) agg_list->operand_prog;
+	    if (!expr_prog_signature_matches (operand_prog, tl_vd))
+	      {
+		/* different bind types than the program was specialized for: recompile */
+		expr_prog_free (operand_prog);
+		free_and_init (agg_list->operand_prog_idx);
+		agg_list->operand_prog = NULL;
+		agg_list->operand_prog_state = 0;
+		qdata_agg_operand_prog_compile (thread_p, agg_list, tl_vd);
+		operand_prog = (agg_list->operand_prog_state == 1) ? (EXPR_PROG *) agg_list->operand_prog : NULL;
+	      }
+	  }
+	if (operand_prog != NULL && expr_prog_eval (operand_prog, thread_p, tl_vd, NULL, tl_tpl_buf.tpl) != NO_ERROR)
+	  {
+	    return false;
+	  }
+      }
+
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
       {
 	AGGREGATE_ACCUMULATOR *acc = &agg_node->accumulator;
@@ -1983,7 +2017,14 @@ namespace parallel_scan
 	  }
 
 	DB_VALUE *db_value_p;
-	if (agg_node->operands->value.type == TYPE_CONSTANT)
+	int prog_root = (operand_prog != NULL && agg_node->operand_prog_base >= 0)
+			? agg_list->operand_prog_idx[agg_node->operand_prog_base] : -1;
+	if (prog_root >= 0)
+	  {
+	    /* the compiled program evaluated this operand for the row already */
+	    db_value_p = expr_prog_value (operand_prog, prog_root);
+	  }
+	else if (agg_node->operands->value.type == TYPE_CONSTANT)
 	  {
 	    db_value_p = agg_node->operands->value.value.dbvalptr;
 	  }
