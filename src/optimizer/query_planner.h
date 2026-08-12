@@ -249,6 +249,10 @@ struct qo_plan
   double limit_nljoin_guessed_card;
   double iscan_index_rows;	/* index-condition-only rows per probe (before non-index filters); set by
 				   qo_iscan_cost, consumed by qo_nljoin_cost for the repeated-probe N */
+  double iscan_heap_io;		/* heap-page share of variable_io_cost per probe (0 for covering scans);
+				   set by qo_iscan_cost. qo_nljoin_cost saturates only this share with the
+				   repeated-probe (Mackert-Lohman) correction -- the correction models heap
+				   re-fetches, so the per-probe leaf/ISS charges must survive it */
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))

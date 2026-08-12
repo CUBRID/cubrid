@@ -542,6 +542,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->need_final_sort = false;
   plan->limit_nljoin_guessed_card = 0.0;
   plan->iscan_index_rows = 0.0;
+  plan->iscan_heap_io = 0.0;
 
   return plan;
 }
@@ -2419,6 +2420,13 @@ qo_iscan_cost (QO_PLAN * planp)
        * sequential, yet both cost 1.0 per page; the ratio below (optimizer_random_page_cost_ratio,
        * default 1.0 = no change) prices that difference and is the tuning knob for the gap. */
       object_IO *= (double) prm_get_float_value (PRM_ID_OPTIMIZER_RANDOM_PAGE_COST_RATIO);
+
+      /* heap-page share of the per-probe IO: the MAX (1.0, ...) base charged below plus the
+       * fanout surcharge. qo_nljoin_cost () applies the repeated-probe (Mackert-Lohman)
+       * saturation to this share only; the leaf/ISS terms added below model index pages the
+       * correction does not cover and must keep accruing per probe. Covering scans fetch no
+       * heap pages and leave this at 0 (no saturation applies). */
+      planp->iscan_heap_io = MAX (1.0, object_IO) + heap_fanout;
     }
   /* Split the leaf-page IO across the fixed/variable sides. The first leaf page (the one the
    * b+tree descent lands on) is read once and stays buffer-resident across probes, so it is
@@ -3584,6 +3592,7 @@ qo_nljoin_cost (QO_PLAN * planp)
        * probes over a hot table are all cache hits) and thereby made hash join + full scan or
        * a bad leading order beat an actually-cheap NL re-probe. */
       double T, N, b, lim, pages_fetched, naive_io;
+      double heap_io, leaf_io;
 
       T = MAX (1.0, (double) QO_NODE_TCARD (inner->plan_un.scan.node));
       /* probes x rows matching the index conditions per probe (BEFORE non-index filters --
@@ -3616,12 +3625,20 @@ qo_nljoin_cost (QO_PLAN * planp)
 	    }
 	}
 
-      naive_io = guessed_result_cardinality * inner->variable_io_cost;
+      /* The saturation models heap re-fetches only, so apply it to the heap-page share of the
+       * inner's per-probe IO (iscan_heap_io, recorded by qo_iscan_cost) and let the rest --
+       * the per-probe leaf/ISS page charges and any later additions such as subquery IO --
+       * keep accruing per probe. Before this split the MIN () also erased those charges as
+       * soon as the heap side saturated, silently undoing their per-probe pricing. */
+      heap_io = MIN (inner->iscan_heap_io, inner->variable_io_cost);
+      leaf_io = inner->variable_io_cost - heap_io;
+
+      naive_io = guessed_result_cardinality * heap_io;
       /* pages_fetched is a raw page count while naive_io already carries the
-       * optimizer_random_page_cost_ratio through the inner's variable_io_cost; scale it by the
+       * optimizer_random_page_cost_ratio through the inner's iscan_heap_io; scale it by the
        * same ratio so the MIN () compares like units (both sides are random heap-page reads). */
       pages_fetched *= (double) prm_get_float_value (PRM_ID_OPTIMIZER_RANDOM_PAGE_COST_RATIO);
-      inner_io_cost = MIN (naive_io, pages_fetched);
+      inner_io_cost = MIN (naive_io, pages_fetched) + guessed_result_cardinality * leaf_io;
     }
   else
     {
