@@ -21,6 +21,7 @@
  */
 
 #include "px_scan_checker.hpp"
+#include "px_scan_instnum.hpp"
 
 #include "dbtype_def.h"
 #include "error_manager.h"
@@ -93,137 +94,6 @@ namespace parallel_scan
     return (flags & flag) != 0;
   }
 
-  /* returns true if any TYPE_CONSTANT regu var in this subtree points at iv (the inst_num() value). */
-  static bool regu_subtree_refs_instnum (REGU_VARIABLE *r, DB_VALUE *iv);
-
-  static bool
-  regu_var_list_refs_instnum (struct regu_variable_list_node *list, DB_VALUE *iv)
-  {
-    for (struct regu_variable_list_node *n = list; n != nullptr; n = n->next)
-      {
-	if (regu_subtree_refs_instnum (&n->value, iv))
-	  {
-	    return true;
-	  }
-      }
-    return false;
-  }
-
-  static bool
-  regu_subtree_refs_instnum (REGU_VARIABLE *r, DB_VALUE *iv)
-  {
-    if (r == nullptr)
-      {
-	return false;
-      }
-    switch (r->type)
-      {
-      case TYPE_CONSTANT:
-	return r->value.dbvalptr == iv;
-      case TYPE_INARITH:
-      case TYPE_OUTARITH:
-      {
-	ARITH_TYPE *a = r->value.arithptr;
-	if (a == nullptr)
-	  {
-	    return false;
-	  }
-	return regu_subtree_refs_instnum (a->leftptr, iv) || regu_subtree_refs_instnum (a->rightptr, iv)
-	       || regu_subtree_refs_instnum (a->thirdptr, iv);
-      }
-      case TYPE_FUNC:
-	return regu_var_list_refs_instnum (r->value.funcp->operand, iv);
-      case TYPE_SP:
-	return regu_var_list_refs_instnum (r->value.sp_ptr->args, iv);
-      case TYPE_REGU_VAR_LIST:
-	return regu_var_list_refs_instnum (r->value.regu_var_list, iv);
-      case TYPE_ATTR_ID:
-      case TYPE_SHARED_ATTR_ID:
-      case TYPE_CLASS_ATTR_ID:
-      case TYPE_OID:
-      case TYPE_DBVAL:
-      case TYPE_POSITION:
-      case TYPE_POS_VALUE:
-      case TYPE_LIST_ID:
-      case TYPE_ORDERBY_NUM:
-      case TYPE_CLASSOID:
-      case TYPE_REGUVAL_LIST:
-	return false;
-      default:
-	/* unknown container: conservatively assume it may reference instnum -> block. */
-	return true;
-      }
-  }
-
-  /* shared precondition for both instnum fast-path modes: instnum_val appears in the output only as a
-   * top-level pass-through column. Sets *passthrough_cnt_out (may be 0). */
-  static bool
-  is_plain_instnum_buildlist (XASL_NODE *x, int *passthrough_cnt_out)
-  {
-    if (x == nullptr || x->instnum_val == nullptr || x->save_instnum_val != nullptr)
-      {
-	return false;
-      }
-    if (x->ordbynum_pred != nullptr || x->ordbynum_val != nullptr)
-      {
-	return false;		/* ORDER BY + LIMIT/topn: parallel topn destroys scan-order ROWNUM. */
-      }
-    if (x->type != BUILDLIST_PROC)
-      {
-	return false;
-      }
-    if (x->proc.buildlist.groupby_list != nullptr || x->proc.buildlist.g_agg_list != nullptr
-	|| x->proc.buildlist.a_eval_list != nullptr)
-      {
-	return false;		/* GROUP BY / aggregate / analytic: out of scope. */
-      }
-    if (x->outptr_list == nullptr)
-      {
-	return false;
-      }
-    int passthrough = 0;
-    for (struct regu_variable_list_node *v = x->outptr_list->valptrp; v != nullptr; v = v->next)
-      {
-	REGU_VARIABLE *r = &v->value;
-	if (r->type == TYPE_CONSTANT && r->value.dbvalptr == x->instnum_val)
-	  {
-	    passthrough++;
-	    continue;
-	  }
-	if (regu_subtree_refs_instnum (r, x->instnum_val))
-	  {
-	    return false;	/* nested use, e.g. ROWNUM + 1. */
-	  }
-      }
-    if (passthrough_cnt_out != nullptr)
-      {
-	*passthrough_cnt_out = passthrough;
-      }
-    return true;
-  }
-
-  /* inst_num() is a plain pass-through output column that main can renumber at merge. */
-  static bool
-  is_renumberable_instnum (XASL_NODE *x)
-  {
-    int passthrough = 0;
-    if (x == nullptr || x->instnum_pred != nullptr)
-      {
-	return false;
-      }
-    return is_plain_instnum_buildlist (x, &passthrough) && passthrough >= 1;
-  }
-
-  /* single-term "inst_num() <= ?": workers can draw numbers from a shared counter and stop early. */
-  static bool
-  is_atomic_instnum_eligible (XASL_NODE *x)
-  {
-    if (get_instnum_upper_limit_rhs (x, nullptr) == nullptr)
-      {
-	return false;
-      }
-    return is_plain_instnum_buildlist (x, nullptr);
-  }
 
   using rv_list_node = struct regu_variable_list_node;
 

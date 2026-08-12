@@ -28,6 +28,7 @@
 #include "thread_entry.hpp"
 #include "px_interrupt.hpp"
 #include "xasl.h"
+#include "px_scan_instnum.hpp"
 #include "px_scan_result_type.hpp"
 #include <atomic>
 #include <condition_variable>
@@ -97,16 +98,9 @@ namespace parallel_scan
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
       trace_handler *trace_handler_p;
-      /* pass-through ROWNUM (instnum_val) support: main renumbers these tuple columns to 1..N at merge. */
-      bool renumber_instnum = false;
-      std::vector<int> rownum_col_indices;
-      /* atomic-draw mode: workers draw from instnum_counter and raise INST_NUM_SATISFIED at the quota. */
-      bool atomic_instnum_mode = false;
-      bool instnum_limit_is_lt = false;
-      bool instnum_limit_resolved = false;
-      INT64 instnum_limit = 0;
-      REGU_VARIABLE *instnum_limit_rhs = nullptr;
-      std::atomic<INT64> instnum_counter {0};
+      parallel_scan::instnum_mode instnum_mode = parallel_scan::instnum_mode::NONE;
+      std::vector<int> rownum_col_indices;	/* RENUMBER: ROWNUM positions in the valptr list */
+      parallel_scan::atomic_instnum instnum_draw;	/* ATOMIC_DRAW */
   };
 
   class xasl_snapshot_variables
