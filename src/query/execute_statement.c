@@ -14053,6 +14053,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   COMPILE_CONTEXT *contextp;
   XASL_STREAM stream;
+  XASL_NODE_HEADER xasl_header = { 0 };
 
   contextp = &parser->context;
 
@@ -14113,7 +14114,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   contextp->recompile_xasl = statement->recompile;
   if (statement->recompile == 0)
     {
-      XASL_NODE_HEADER xasl_header;
       stream.xasl_header = &xasl_header;
 
       err = prepare_query (contextp, &stream);
