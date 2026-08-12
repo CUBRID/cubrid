@@ -96,12 +96,13 @@ public class Unit extends AstNode {
             String kindStr = routine.isProcedure() ? "Proc" : "Func";
             className =
                     String.format(
-                            "%s_%s_%s_%s_%d",
+                            "%s_%d_%s_%s_%s_%d",
                             kindStr,
+                            owner.length(),
                             owner,
                             routine.name,
                             compileSeqNo,
-                            new java.util.Date().getTime());
+                            System.currentTimeMillis());
         }
 
         return className;
