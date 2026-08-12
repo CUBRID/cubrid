@@ -170,7 +170,7 @@ class authenticate_cache
 
   private:
 
-    // procedure&pacakge cache
+    // procedure & pacakge cache
     using proc_or_pkg_cache_t = std::unordered_map<MOP, std::vector<unsigned int>*>; // <procedure&pacakge, cache bits>
 
     proc_or_pkg_cache_t proc_or_pkg_cache;

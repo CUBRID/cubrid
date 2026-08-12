@@ -2301,3 +2301,4 @@ $set 17 MSGCAT_SET_GLOSSARY
 4 server
 5 synonym
 6 procedure
+7 package

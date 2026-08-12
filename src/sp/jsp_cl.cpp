@@ -4845,6 +4845,10 @@ jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
     {
       return (au_check_package_authorization (pkg_mop) == NO_ERROR) ? NO_ERROR : ER_FAILED;
     }
+  else if (er_errid() != NO_ERROR)
+    {
+      return er_errid();
+    }
 
   // check execute authorization (Au_user is granted by owner)
   if (au_check_procedure_authorization (sp_obj) == NO_ERROR)
