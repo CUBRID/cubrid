@@ -378,8 +378,11 @@ expr_k_mul_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
   /* multiplication is the float call for every operand mix (qdata_multiply_numeric_
-   * to_dbval () falls through SHORT/INTEGER/BIGINT/NUMERIC into one case) */
-  if (float_numeric_db_value_mul (a, b, step->out) != NO_ERROR)
+   * to_dbval () falls through SHORT/INTEGER/BIGINT/NUMERIC into one case); the
+   * fixed64 entry handles the single-word common case bit-identically and declines
+   * everything else back to the reference */
+  if (!float_numeric_db_value_mul_fixed64 (a, b, step->out)
+      && float_numeric_db_value_mul (a, b, step->out) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_QPROC_OVERFLOW_MULTIPLICATION;

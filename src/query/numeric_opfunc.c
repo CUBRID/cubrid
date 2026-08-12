@@ -3216,6 +3216,81 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
 }
 
 /*
+ * float_numeric_db_value_mul_fixed64 () - single-word specialization of
+ *   float_numeric_db_value_mul () for the compiled expression path
+ *   return: 1 when answer was produced (bit-identical to the reference fast path),
+ *           0 when the caller must use float_numeric_db_value_mul ()
+ *
+ * Note:
+ *   - Handles exactly the reference "fast path" population (both magnitudes fit one
+ *     64-bit word and the result stays within 3 calculation words) plus the zero
+ *     shortcut, replaying the same helpers in the same order; every other input --
+ *     NULLs, wide magnitudes, wide result precision -- is declined so the reference
+ *     keeps full ownership of edge-case behavior.
+ *   - What it saves per row against the reference: two full bytes-to-words expansions,
+ *     three working-buffer memsets and two 17-byte zero scans.
+ */
+int
+float_numeric_db_value_mul_fixed64 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
+{
+  int scale1, scale2, result_scale;
+  int prec1, prec2, result_prec;
+  uint8_t result_buf[DB_NUMERIC_BUF_SIZE];
+  uint64_t dbv1_word[NUMERIC_AS_WORDS] = { 0, 0, 0 };
+  uint64_t dbv2_word[NUMERIC_AS_WORDS] = { 0, 0, 0 };
+  uint64_t result_word[NUMERIC_AS_WORDS] = { 0, 0, 0 };
+  bool result_sign;
+  const uint8_t *buf1, *buf2;
+
+  if (answer == NULL || dbv1 == NULL || dbv2 == NULL || DB_VALUE_TYPE (dbv1) != DB_TYPE_NUMERIC
+      || DB_VALUE_TYPE (dbv2) != DB_TYPE_NUMERIC || DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
+    {
+      return 0;
+    }
+
+  /* single-word magnitudes only: the MSB byte and the middle word must be zero
+   * (the same "upper words all zero" condition the reference fast path tests) */
+  buf1 = (const uint8_t *) db_locate_numeric (dbv1);
+  buf2 = (const uint8_t *) db_locate_numeric (dbv2);
+  if (buf1[0] != 0 || buf2[0] != 0 || numeric_get_uint64_from_be (buf1 + 1) != 0
+      || numeric_get_uint64_from_be (buf2 + 1) != 0)
+    {
+      return 0;
+    }
+  dbv1_word[2] = numeric_get_uint64_from_be (buf1 + 1 + 8);
+  dbv2_word[2] = numeric_get_uint64_from_be (buf2 + 1 + 8);
+
+  /* the reference zero shortcut (0 * v == 0, prec 1 scale 0, never negative) */
+  if (dbv1_word[2] == 0 || dbv2_word[2] == 0)
+    {
+      memset (result_buf, 0, DB_NUMERIC_BUF_SIZE);
+      db_make_numeric (answer, result_buf, 1, 0, DB_NUMERIC_BUF_SIZE, false, true);
+      return 1;
+    }
+
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, NULL);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, NULL);
+  result_scale = scale1 + scale2;
+  result_prec = prec1 + prec2;
+  result_sign = numeric_is_negative (dbv1) ^ numeric_is_negative (dbv2);
+
+  /* decline when the reference would size the calculation wider than 3 words */
+  if (MAX (_gv_numeric_precision_to_bytes_lookup[result_prec], DB_NUMERIC_BUF_SIZE) + 1 > NUMERIC_AS_WORD_BYTES)
+    {
+      return 0;
+    }
+
+  result_prec = float_numeric_mul_fast (dbv1_word, dbv2_word, result_word, NUMERIC_AS_WORDS, result_buf, &result_scale);
+  if (result_sign && result_prec == 1 && result_word[NUMERIC_AS_WORDS - 1] == 0)
+    {
+      /* Prevent -0; zero is always treated as positive. */
+      result_sign = false;
+    }
+  db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
+  return 1;
+}
+
+/*
  * numeric_db_value_div () -
  *   return: NO_ERROR, or ER_code
  *     Errors:
