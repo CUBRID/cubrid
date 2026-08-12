@@ -107,8 +107,9 @@ set_property(DIRECTORY PROPERTY EP_BASE "${3RDPARTY_LIBS_DIR}")
 # library at -O0.
 set(3RDPARTY_COMMON_FLAGS "-fPIC -w")
 
-# restates the level from autoconf's "-g -O2", which supplying CFLAGS suppresses
-set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_BINARY_DIR}/3rdparty --enable-static --disable-shared --with-pic "CFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}" "CXXFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}")
+# restates the level from autoconf's "-g -O2", which supplying CFLAGS suppresses.
+# No CXXFLAGS: none of these compile C++ in the target this build runs.
+set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_BINARY_DIR}/3rdparty --enable-static --disable-shared --with-pic "CFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}")
 
 # For Windows
 if(WIN32)
@@ -486,8 +487,9 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND ""        # no configure
       BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
-      # no append hook, so restate the level from the Makefile's "CXXFLAGS ?= -O3 -g"
-      BUILD_COMMAND make "CFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}" "CXXFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}"
+      # no append hook, so restate the level from the Makefile's "CXXFLAGS ?= -O3 -g".
+      # No CFLAGS: re2 has no C sources and its Makefile never reads CFLAGS.
+      BUILD_COMMAND make "CXXFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}"
       INSTALL_COMMAND ""
       "${RE2_BYPRODUCTS}"
     )
