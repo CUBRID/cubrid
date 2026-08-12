@@ -542,8 +542,10 @@ enum param_id
 
   PRM_ID_AUTO_INCREMENT_CACHE_SIZE,
 
+  PRM_ID_ENABLE_LAZY_PREDICATE_READ,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_AUTO_INCREMENT_CACHE_SIZE
+  PRM_LAST_ID = PRM_ID_ENABLE_LAZY_PREDICATE_READ
 };
 typedef enum param_id PARAM_ID;
 

@@ -808,6 +808,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_BESTSPACE_DISTRIBUTED_INSERT "bestspace_distributed_insert"
 #define PRM_NAME_BESTSPACE_CACHE_COUNT "bestspace_cache_count"
 
+#define PRM_NAME_ENABLE_LAZY_PREDICATE_READ "enable_lazy_predicate_read"
+
 // #endregion 
 
 /*
@@ -5436,6 +5438,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 20}},
    NULL_SYSPRM_PARAM_VALUE,
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_LAZY_PREDICATE_READ,
+   PRM_NAME_ENABLE_LAZY_PREDICATE_READ,
+   (PRM_FOR_SERVER | PRM_HIDDEN | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
