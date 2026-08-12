@@ -37,6 +37,7 @@
 
 #include "expr_compile.h"
 
+#include "db_date.h"
 #include "dbtype.h"
 #include "error_manager.h"
 #include "fetch.h"
@@ -63,7 +64,9 @@
  * B_AND/B_OR right-linear loops reduce to three-valued Kleene logic with immediate exit
  * on V_ERROR, comparison terms yield V_UNKNOWN when either side is NULL */
 enum expr_pred_kind
-{ EXPR_PRED_COMP, EXPR_PRED_AND, EXPR_PRED_OR, EXPR_PRED_NOT, EXPR_PRED_ISNULL, EXPR_PRED_LIKE };
+{ EXPR_PRED_COMP, EXPR_PRED_COMP_TORDER, EXPR_PRED_AND, EXPR_PRED_OR, EXPR_PRED_NOT, EXPR_PRED_ISNULL,
+  EXPR_PRED_LIKE
+};
 
 typedef struct expr_pred EXPR_PRED;
 struct expr_pred
@@ -469,6 +472,118 @@ expr_k_extract_date (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* mirror of the db_string_extract_dbval () DB_TYPE_TIME case */
+static int
+expr_k_extract_time (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_VALUE *src = *step->arg1p;
+  DB_TIME time;
+  int extvar[NUM_MISC_OPERANDS];
+
+  pr_clear_value (step->out);
+  *step->out_cell = step->out;
+  if (DB_IS_NULL (src))
+    {
+      return NO_ERROR;
+    }
+
+  time = *db_get_time (src);
+  db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
+  db_make_int (step->out, extvar[step->aux]);
+  return NO_ERROR;
+}
+
+/* mirror of the db_string_extract_dbval () DB_TYPE_DATETIME case */
+static int
+expr_k_extract_datetime (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_VALUE *src = *step->arg1p;
+  DB_DATETIME *datetime_p;
+  int extvar[NUM_MISC_OPERANDS];
+
+  pr_clear_value (step->out);
+  *step->out_cell = step->out;
+  if (DB_IS_NULL (src))
+    {
+      return NO_ERROR;
+    }
+
+  datetime_p = db_get_datetime (src);
+  db_datetime_decode (datetime_p, &extvar[MONTH], &extvar[DAY], &extvar[YEAR], &extvar[HOUR], &extvar[MINUTE],
+		      &extvar[SECOND], &extvar[MILLISECOND]);
+  db_make_int (step->out, extvar[step->aux]);
+  return NO_ERROR;
+}
+
+/* mirror of the db_string_extract_dbval () DB_TYPE_TIMESTAMP case (session timezone
+ * decode, identical to the interpreted path) */
+static int
+expr_k_extract_timestamp (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_VALUE *src = *step->arg1p;
+  DB_UTIME *utime;
+  DB_DATE date;
+  DB_TIME time;
+  int extvar[NUM_MISC_OPERANDS];
+
+  pr_clear_value (step->out);
+  *step->out_cell = step->out;
+  if (DB_IS_NULL (src))
+    {
+      return NO_ERROR;
+    }
+
+  utime = db_get_timestamp (src);
+  (void) db_timestamp_decode_ses (utime, &date, &time);
+  if (step->aux == (int) YEAR || step->aux == (int) MONTH || step->aux == (int) DAY)
+    {
+      db_date_decode (&date, &extvar[MONTH], &extvar[DAY], &extvar[YEAR]);
+    }
+  else
+    {
+      db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
+    }
+  db_make_int (step->out, extvar[step->aux]);
+  return NO_ERROR;
+}
+
+/* T_NULLIF: NULL when the two sides compare equal, else the left value cast to the
+ * regu domain -- mirror of the fetch_peek_arith () T_NULLIF case.  The compiler only
+ * accepts a fixed regu->domain, so the interpreted domain-infer arm cannot arise. */
+static int
+expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_VALUE *v1 = *step->arg1p;
+  DB_VALUE *v2;
+  bool can_compare = false;
+  int cmp_res;
+  TP_DOMAIN_STATUS dom_status;
+
+  pr_clear_value (step->out);
+  *step->out_cell = step->out;
+  if (DB_IS_NULL (v1))
+    {
+      return NO_ERROR;
+    }
+  v2 = *step->arg2p;
+
+  cmp_res = tp_value_compare_with_error (v1, v2, 1, 0, &can_compare);
+  if (cmp_res == DB_EQ)
+    {
+      return NO_ERROR;		/* the cleared slot IS the NULL result */
+    }
+  if (cmp_res == DB_UNK && can_compare == false)
+    {
+      return ER_FAILED;		/* er_set done by the comparison */
+    }
+  dom_status = tp_value_cast (v1, step->out, step->domain, false);
+  if (dom_status != DOMAIN_COMPATIBLE)
+    {
+      return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, v1, step->domain);
+    }
+  return NO_ERROR;
+}
+
 /* ---- CASE family: compiled predicates, branch regions ---- */
 
 /* mirror of the eval_value_rel_cmp () rel_op mapping for ordinal comparisons */
@@ -556,6 +671,47 @@ expr_pred_eval (const EXPR_PRED * pred)
 	    break;
 	  }
 	return expr_pred_map_cmp (result, pred->rel_op);
+      }
+
+    case EXPR_PRED_COMP_TORDER:
+      {
+	/* mirror of eval_value_rel_cmp () with R_EQ_TORDER (DECODE equality): total
+	 * order comparison, so NULLs compare instead of short-circuiting to UNKNOWN
+	 * -- NULL == NULL is TRUE, NULL vs value is FALSE */
+	DB_VALUE *v1 = *pred->arg1p;
+	DB_VALUE *v2 = *pred->arg2p;
+	int result;
+	bool comparable = true;
+
+	if (DB_IS_NULL (v1) || DB_IS_NULL (v2))
+	  {
+	    return (DB_IS_NULL (v1) && DB_IS_NULL (v2)) ? V_TRUE : V_FALSE;
+	  }
+
+	switch (pred->fast_type)
+	  {
+	  case DB_TYPE_INTEGER:
+	    result = (db_get_int (v1) == db_get_int (v2)) ? DB_EQ : DB_NE;
+	    break;
+	  case DB_TYPE_BIGINT:
+	    result = (db_get_bigint (v1) == db_get_bigint (v2)) ? DB_EQ : DB_NE;
+	    break;
+	  case DB_TYPE_DOUBLE:
+	    result = (db_get_double (v1) == db_get_double (v2)) ? DB_EQ : DB_NE;
+	    break;
+	  default:
+	    result = tp_value_compare_with_error (v1, v2, 1, 1, &comparable);
+	    if (!comparable)
+	      {
+		return V_ERROR;
+	      }
+	    break;
+	  }
+	if (result == DB_UNK)
+	  {
+	    return V_UNKNOWN;
+	  }
+	return (result == DB_EQ) ? V_TRUE : V_FALSE;
       }
 
     case EXPR_PRED_ISNULL:
@@ -1109,9 +1265,10 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 	  case R_LE:
 	  case R_GT:
 	  case R_GE:
+	  case R_EQ_TORDER:
 	    break;
 	  default:
-	    /* TORDER/NULLSAFE/set/list relations keep their interpreted evaluation */
+	    /* NULLSAFE/set/list relations keep their interpreted evaluation */
 	    return NULL;
 	  }
 
@@ -1148,7 +1305,7 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 	    return NULL;
 	  }
 	memset (pred, 0, sizeof (*pred));
-	pred->kind = EXPR_PRED_COMP;
+	pred->kind = (et->rel_op == R_EQ_TORDER) ? EXPR_PRED_COMP_TORDER : EXPR_PRED_COMP;
 	pred->arg1p = EXPR_ARG_ENCODE (c1);
 	pred->arg2p = EXPR_ARG_ENCODE (c2);
 	pred->rel_op = et->rel_op;
@@ -1284,14 +1441,16 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	  {
 	    return -1;
 	  }
-	if (arith->pred != NULL && arith->opcode != T_CASE && arith->opcode != T_IF && arith->opcode != T_PREDICATE)
+	if (arith->pred != NULL && arith->opcode != T_CASE && arith->opcode != T_IF && arith->opcode != T_DECODE
+	    && arith->opcode != T_PREDICATE)
 	  {
 	    return -1;
 	  }
 
 	rtype = TP_DOMAIN_TYPE (regu->domain);
 
-	if (arith->opcode == T_CASE || arith->opcode == T_IF || arith->opcode == T_PREDICATE)
+	if (arith->opcode == T_CASE || arith->opcode == T_IF || arith->opcode == T_DECODE
+	    || arith->opcode == T_PREDICATE)
 	  {
 	    EXPR_PRED *cpred;
 
@@ -1331,7 +1490,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		return cell;
 	      }
 
-	    /* T_CASE / T_IF: branches compile into DEFERRED regions the kernel runs
+	    /* T_CASE / T_IF / T_DECODE: branches compile into DEFERRED regions the kernel runs
 	     * only when selected; v1 rejects a nested CASE inside a branch (regions
 	     * must not nest).  The predicate compiles FIRST, outside the regions --
 	     * eval_pred () also evaluates it unconditionally. */
@@ -1453,11 +1612,38 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 
 	if (arith->opcode == T_EXTRACT)
 	  {
-	    /* DATE operand with a date-part field and an INTEGER result only (other
-	     * input types and time fields keep the interpreted path) */
-	    if (rtype != DB_TYPE_INTEGER
-		|| (arith->misc_operand != YEAR && arith->misc_operand != MONTH && arith->misc_operand != DAY)
-		|| arith->rightptr == NULL || expr_node_type (bctx, arith->rightptr) != DB_TYPE_DATE)
+	    /* fixed-type operand with a compile-time field and an INTEGER result;
+	     * kernel is picked by the operand type.  TZ/LTZ variants and string
+	     * operands keep the interpreted path (tz conversion + parse errors). */
+	    EXPR_KERNEL_FN extract_kernel = NULL;
+	    DB_TYPE opnd_type;
+	    MISC_OPERAND f = arith->misc_operand;
+	    bool date_field = (f == YEAR || f == MONTH || f == DAY);
+	    bool time_field = (f == HOUR || f == MINUTE || f == SECOND);
+
+	    if (rtype != DB_TYPE_INTEGER || arith->rightptr == NULL)
+	      {
+		return -1;
+	      }
+	    opnd_type = expr_node_type (bctx, arith->rightptr);
+	    switch (opnd_type)
+	      {
+	      case DB_TYPE_DATE:
+		extract_kernel = date_field ? expr_k_extract_date : NULL;
+		break;
+	      case DB_TYPE_TIME:
+		extract_kernel = time_field ? expr_k_extract_time : NULL;
+		break;
+	      case DB_TYPE_DATETIME:
+		extract_kernel = (date_field || time_field || f == MILLISECOND) ? expr_k_extract_datetime : NULL;
+		break;
+	      case DB_TYPE_TIMESTAMP:
+		extract_kernel = (date_field || time_field) ? expr_k_extract_timestamp : NULL;
+		break;
+	      default:
+		break;
+	      }
+	    if (extract_kernel == NULL)
 	      {
 		return -1;
 	      }
@@ -1472,7 +1658,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		return cell;
 	      }
 	    cell = expr_new_cell (bctx, NULL);
-	    step = expr_new_step (bctx, expr_k_extract_date, cell);
+	    step = expr_new_step (bctx, extract_kernel, cell);
 	    if (cell < 0 || step == NULL)
 	      {
 		return -1;
@@ -1484,6 +1670,48 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	    step->aux = (int) arith->misc_operand;
 	    step->regu = regu;
 	    expr_cse_add (bctx, NULL, T_EXTRACT, c1, (int) arith->misc_operand, -1, cell);
+	    *compiled_something = true;
+	    return cell;
+	  }
+
+	if (arith->opcode == T_NULLIF)
+	  {
+	    /* same-type comparable operands and a fixed result domain only; the
+	     * interpreted domain-infer arm and cross-type coercion stay interpreted */
+	    DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
+	    DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
+
+	    if (regu->domain == NULL || t1 != t2 || t1 == DB_TYPE_UNKNOWN
+		|| !(t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
+		     || expr_pred_generic_cmp_type (t1)))
+	      {
+		return -1;
+	      }
+	    c1 = expr_compile_node (bctx, arith->leftptr, compiled_something);
+	    c2 = (c1 >= 0) ? expr_compile_node (bctx, arith->rightptr, compiled_something) : -1;
+	    if (c1 < 0 || c2 < 0)
+	      {
+		return -1;
+	      }
+	    cell = expr_cse_find (bctx, regu->domain, T_NULLIF, c1, c2, -1);
+	    if (cell >= 0)
+	      {
+		return cell;
+	      }
+	    cell = expr_new_cell (bctx, NULL);
+	    step = expr_new_step (bctx, expr_k_nullif, cell);
+	    if (cell < 0 || step == NULL)
+	      {
+		return -1;
+	      }
+	    step->arg1p = EXPR_ARG_ENCODE (c1);
+	    step->arg2p = EXPR_ARG_ENCODE (c2);
+	    step->out_cell = (DB_VALUE **) (intptr_t) cell;
+	    step->out = (DB_VALUE *) 1;
+	    bctx->n_slots++;
+	    step->domain = regu->domain;
+	    step->regu = regu;
+	    expr_cse_add (bctx, regu->domain, T_NULLIF, c1, c2, -1, cell);
 	    *compiled_something = true;
 	    return cell;
 	  }
@@ -2051,6 +2279,8 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_nvl, "nvl_select"},
     {
+    expr_k_nullif, "nullif"},
+    {
     expr_k_cast, "cast"},
     {
     expr_k_case, "case"},
@@ -2060,6 +2290,12 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     expr_k_leaf_fetch, "leaf_fetch"},
     {
     expr_k_extract_date, "extract_date"},
+    {
+    expr_k_extract_time, "extract_time"},
+    {
+    expr_k_extract_datetime, "extract_datetime"},
+    {
+    expr_k_extract_timestamp, "extract_timestamp"},
     {
     expr_k_hostvar, "hostvar"},
     {
@@ -2091,6 +2327,11 @@ expr_pred_dump (FILE * fp, const EXPR_PRED * pred, const EXPR_PROG * prog)
       fprintf (fp, "(c%d %s%s c%d)", (int) (pred->arg1p - prog->cells),
 	       (pred->rel_op == R_EQ) ? "EQ" : (pred->rel_op == R_NE) ? "NE" : (pred->rel_op == R_LT) ? "LT"
 	       : (pred->rel_op == R_LE) ? "LE" : (pred->rel_op == R_GT) ? "GT" : (pred->rel_op == R_GE) ? "GE" : "?",
+	       (pred->fast_type != DB_TYPE_UNKNOWN) ? "*" : "", (int) (pred->arg2p - prog->cells));
+      break;
+    case EXPR_PRED_COMP_TORDER:
+      /* DECODE total-order equality: NULLs compare (NULL EQT NULL is TRUE) */
+      fprintf (fp, "(c%d EQT%s c%d)", (int) (pred->arg1p - prog->cells),
 	       (pred->fast_type != DB_TYPE_UNKNOWN) ? "*" : "", (int) (pred->arg2p - prog->cells));
       break;
     case EXPR_PRED_ISNULL:
