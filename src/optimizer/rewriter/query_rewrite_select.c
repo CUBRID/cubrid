@@ -44,6 +44,10 @@ static bool qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, 
 						       QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
+static bool qo_is_constraint_attribute (SM_CLASS_CONSTRAINT * cons, const char *name);
+static bool qo_is_groupby_reducing_constraint (SM_CLASS_CONSTRAINT * cons);
+static bool qo_groupby_has_spec_attribute (PT_NODE * group_by, UINTPTR spec_id, const char *name);
+static void qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query);
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_rewrite_oid_equality (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * pred, int *seqno);
 static PT_NODE *qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -99,6 +103,11 @@ qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE **
 	{
 	  return false;		/* give up */
 	}
+
+      /* must run after qo_reduce_order_by (), which drops an ORDER BY that the GROUP BY already
+       * covers. Shortening the GROUP BY first would break that prefix match and leave a sort
+       * behind. */
+      qo_reduce_group_by (parser, (*nodep));
 
       PT_NODE *point_list = NULL;
       PT_NODE *point, *tmp_spec;
@@ -1248,6 +1257,282 @@ exit_on_error:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
     }
   goto exit_on_end;
+}
+
+/*
+ * qo_is_constraint_attribute () - check whether a name is one of the constraint columns
+ *   return: true, if the name is a column of the constraint
+ *   cons(in): class constraint
+ *   name(in): attribute name
+ */
+static bool
+qo_is_constraint_attribute (SM_CLASS_CONSTRAINT * cons, const char *name)
+{
+  int i;
+
+  for (i = 0; cons->attributes[i] != NULL; i++)
+    {
+      if (intl_identifier_casecmp (name, cons->attributes[i]->header.name) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_is_groupby_reducing_constraint () - check whether a constraint determines every other
+ *					 column of its table
+ *   return: true, if the constraint may be used to drop redundant GROUP BY columns
+ *   cons(in): class constraint
+ *
+ * Note:
+ *   A UNIQUE constraint accepts NULL more than once while GROUP BY treats NULLs as equal, so
+ *   two rows could share such a key and still differ in the other columns. Every column of a
+ *   unique key must therefore be NOT NULL as well. A primary key is NOT NULL by definition.
+ *
+ *   A filtered index is unique only among the rows that pass its filter, and a function index
+ *   is unique on the result of its expression rather than on the columns it is built from.
+ *   Neither one determines the other columns of the table.
+ *
+ *   Only SM_NORMAL_INDEX is trusted: an invisible index or one that is still being built
+ *   online does not guarantee uniqueness yet.
+ */
+static bool
+qo_is_groupby_reducing_constraint (SM_CLASS_CONSTRAINT * cons)
+{
+  int i;
+
+  if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (cons->type))
+    {
+      return false;
+    }
+
+  if (cons->attributes == NULL || cons->attributes[0] == NULL)
+    {
+      return false;
+    }
+
+  if (cons->filter_predicate != NULL || cons->func_index_info != NULL)
+    {
+      return false;
+    }
+
+  if (cons->index_status != SM_NORMAL_INDEX)
+    {
+      return false;
+    }
+
+  if (cons->type == SM_CONSTRAINT_PRIMARY_KEY)
+    {
+      return true;
+    }
+
+  for (i = 0; cons->attributes[i] != NULL; i++)
+    {
+      if (!(cons->attributes[i]->flags & SM_ATTFLAG_NON_NULL))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * qo_groupby_has_spec_attribute () - check whether the GROUP BY clause groups on a given
+ *                                   column of a given spec
+ *   return: true, if the column was found in the GROUP BY clause
+ *   group_by(in): GROUP BY clause, a list of PT_SORT_SPEC
+ *   spec_id(in): id of the spec that owns the column
+ *   name(in): attribute name to look for
+ */
+static bool
+qo_groupby_has_spec_attribute (PT_NODE * group_by, UINTPTR spec_id, const char *name)
+{
+  PT_NODE *group, *col;
+
+  for (group = group_by; group != NULL; group = group->next)
+    {
+      if (group->node_type != PT_SORT_SPEC)
+	{
+	  continue;
+	}
+
+      col = group->info.sort_spec.expr;
+      CAST_POINTER_TO_NODE (col);
+
+      if (col == NULL || col->node_type != PT_NAME || col->info.name.spec_id != spec_id)
+	{
+	  continue;
+	}
+
+      if (intl_identifier_casecmp (col->info.name.original, name) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_reduce_group_by () - remove the GROUP BY columns that are functionally determined
+ *			   by a key of the same table
+ *   return: void
+ *   parser(in): parser global context info for reentrancy
+ *   query(in/out): query node has GROUP BY
+ *
+ * Note:
+ *   When every column of a table's primary key, or of one of its NOT NULL unique keys, is
+ *   listed in the GROUP BY clause, the other GROUP BY columns of that same table cannot vary
+ *   inside a group, so they never split a group. Removing them shrinks the grouping key that
+ *   pt_to_buildlist_proc () builds later on, which makes both the sort key and the hash key
+ *   narrower. Their values are still produced for the output, because pt_to_aggregate ()
+ *   appends every select list name that is missing from the intermediate output list.
+ *
+ *   e.g. create table t (pk int primary key, name varchar (100), amount int);
+ *
+ *        select pk, name, sum (amount) from t group by pk, name;
+ *          -> select pk, name, sum (amount) from t group by pk;
+ *
+ *        select pk, name, sum (amount) from t group by name, pk;
+ *          -> do not change.
+ *
+ *   Only the columns written after the whole key are removed. One written before it is just as
+ *   determined, but the groups leave a sorted GROUP BY in the order of its key, so removing
+ *   such a column would reorder the result. Keeping it also keeps the ordering that an index
+ *   scan may already provide, which is what lets the GROUP BY sort be skipped altogether.
+ *
+ *   When more than one key of the table is covered, the one with the fewest columns wins,
+ *   because everything outside the chosen key is removed.
+ */
+static void
+qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  PT_NODE *group_by, *group, *prev, *next, *spec, *col;
+  DB_OBJECT *classop;
+  SM_CLASS_CONSTRAINT *cons, *best_cons;
+  int i, best_size, seen;
+
+  if (query->node_type != PT_SELECT)
+    {
+      return;
+    }
+
+  group_by = query->info.query.q.select.group_by;
+  if (group_by == NULL || group_by->flag.with_rollup)
+    {
+      /* ROLLUP builds a partial group for every prefix of the grouping key, so none of its
+       * columns may be dropped */
+      return;
+    }
+
+  for (spec = query->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      classop = NULL;
+      PT_SPEC_GET_DB_OBJECT (spec, classop);
+      if (classop == NULL)
+	{
+	  /* derived tables and CTEs carry no constraint to rely on */
+	  continue;
+	}
+
+      /* an earlier spec may have shortened the clause */
+      group_by = query->info.query.q.select.group_by;
+
+      best_cons = NULL;
+      best_size = 0;
+
+      for (cons = sm_class_constraints (classop); cons != NULL; cons = cons->next)
+	{
+	  if (!qo_is_groupby_reducing_constraint (cons))
+	    {
+	      continue;
+	    }
+
+	  /* every column of the key must be listed in the GROUP BY clause */
+	  for (i = 0; cons->attributes[i] != NULL; i++)
+	    {
+	      if (!qo_groupby_has_spec_attribute (group_by, spec->info.spec.id, cons->attributes[i]->header.name))
+		{
+		  break;
+		}
+	    }
+
+	  if (cons->attributes[i] != NULL)
+	    {
+	      /* the key is not fully covered */
+	      continue;
+	    }
+
+	  if (best_cons == NULL || i < best_size)
+	    {
+	      best_cons = cons;
+	      best_size = i;
+	    }
+	}
+
+      if (best_cons == NULL)
+	{
+	  continue;
+	}
+
+      /* The columns that follow the whole key are determined by it. A column that comes before
+       * the key is completed may not be dropped even though it is determined as well: the
+       * groups come out of a sorted GROUP BY in the order of its key, so dropping a column that
+       * still takes part in that order would reorder the result. */
+      seen = 0;
+      prev = NULL;
+
+      for (group = group_by; group != NULL; group = next)
+	{
+	  next = group->next;
+
+	  if (group->node_type != PT_SORT_SPEC)
+	    {
+	      prev = group;
+	      continue;
+	    }
+
+	  col = group->info.sort_spec.expr;
+	  CAST_POINTER_TO_NODE (col);
+
+	  if (col == NULL || col->node_type != PT_NAME || col->info.name.spec_id != spec->info.spec.id)
+	    {
+	      prev = group;
+	      continue;
+	    }
+
+	  if (qo_is_constraint_attribute (best_cons, col->info.name.original))
+	    {
+	      seen++;
+	      prev = group;
+	      continue;
+	    }
+
+	  if (seen < best_size)
+	    {
+	      /* the key is not complete yet, so this column still orders the GROUP BY output */
+	      prev = group;
+	      continue;
+	    }
+
+	  /* unlink the column from the GROUP BY clause */
+	  if (prev == NULL)
+	    {
+	      query->info.query.q.select.group_by = next;
+	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+
+	  group->next = NULL;
+	  parser_free_tree (parser, group);
+	}
+    }
 }
 
 /*
