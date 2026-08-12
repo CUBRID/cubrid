@@ -2241,7 +2241,15 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	{
 	  UINT64 bind_fp = 0;
 
-	  if (histogram_bind_fingerprint (parser, statement, &bind_fp) && *bind_fp_p != bind_fp)
+	  if (!histogram_bind_fingerprint (parser, statement, &bind_fp))
+	    {
+	      /* nothing in this statement is priced by a histogram (e.g. its tables have no
+	       * collected statistics), and that cannot change while this plan lives -- the plan
+	       * is invalidated with the statistics. Clear the unpeeked flag so later executions
+	       * stop re-walking the tree for an answer that cannot change. */
+	      statement->flag.hv_pred_plan_unpeeked = 0;
+	    }
+	  else if (*bind_fp_p != bind_fp)
 	    {
 	      /* The bound values land in different histogram territory (a different MCV/bucket,
 	       * hence a different selectivity) than the values the cached plan was chosen under --
@@ -3592,10 +3600,19 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
     PT_NODE *stmt0 = kept->statements[0];
     UINT64 fp = 0;
     UINT64 *fp_p = db_stmt_bind_fp_ptr (stmt0);
-    bool have_fp = fp_p != NULL && histogram_bind_fingerprint (kept->parser, stmt0, &fp);
     bool replan = force_replan;
+    bool have_fp = false;
 
-    if (!replan && have_fp && db_is_bind_sensitive (stmt0) && *fp_p != fp)
+    if (fp_p != NULL && (replan || db_is_bind_sensitive (stmt0)))
+      {
+	/* walk for the fingerprint only when something consumes it: the bucket comparison
+	 * below (parameter / hint on) or the baseline recorded after a forced replan. With
+	 * the parameter off and no replan signal the value would go unread, so the kept
+	 * re-execution skips the tree walk entirely. */
+	have_fp = histogram_bind_fingerprint (kept->parser, stmt0, &fp);
+      }
+
+    if (!replan && have_fp && *fp_p != fp)
       {
 	/* plan_cache_bind_sensitivity: this execution's values land in different histogram
 	 * territory (a different MCV / bucket, hence a different selectivity) than the values
