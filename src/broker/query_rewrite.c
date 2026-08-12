@@ -383,6 +383,20 @@ qr_slot_offsets (const T_QR_SHM_HEADER * h, int idx, int *orig_off, int *rewrite
   *name_off = base + 2 * (h->cfg_max_query_len + 1);
 }
 
+/* readers compute the slot addresses instead of dereferencing the stored offsets: the
+ * values are always the functions above, so a corrupt entry cannot steer a pointer. */
+static char *
+qr_slot_orig (char *pool, const T_QR_SHM_HEADER * h, int idx)
+{
+  return pool + idx * h->pool_slot;
+}
+
+static char *
+qr_slot_name (char *pool, const T_QR_SHM_HEADER * h, int idx)
+{
+  return pool + idx * h->pool_slot + 2 * (h->cfg_max_query_len + 1);
+}
+
 #endif
 
 /* ================================================================== *
@@ -984,7 +998,7 @@ qr_admin_dump_info (FILE * fp, const T_BROKER_INFO * br_info_p)
 	  if (!done[j] && strcmp (rule[j].db_name, rule[i].db_name) == 0
 	      && strcmp (rule[j].user_name, rule[i].user_name) == 0)
 	    {
-	      fprintf (fp, "    %-30s %-9s %s\n", pool + rule[j].name_off, rule[j].disabled ? "DISABLED" : "ON",
+	      fprintf (fp, "    %-30s %-9s %s\n", qr_slot_name (pool, hdr, j), rule[j].disabled ? "DISABLED" : "ON",
 		       (rule[j].origin == QR_ORIGIN_ADDED) ? "ADDED" : "STARTUP");
 	      done[j] = 1;
 	    }
@@ -1859,7 +1873,7 @@ qr_admin_find_active (char *base, const char *rulepath)
 
   for (i = 0; i < hdr->rule_count; i++)
     {
-      if (!rule[i].disabled && strcmp (pool + rule[i].name_off, rulepath) == 0)
+      if (!rule[i].disabled && strcmp (qr_slot_name (pool, hdr, i), rulepath) == 0)
 	{
 	  return i;
 	}
@@ -1890,12 +1904,13 @@ qr_admin_find_active_orig (char *base, const T_QR_PARSED * p, const char *skip_p
 	{
 	  continue;
 	}
-      if (skip_path != NULL && strcmp (pool + rule[i].name_off, skip_path) == 0)
+      if (skip_path != NULL && strcmp (qr_slot_name (pool, hdr, i), skip_path) == 0)
 	{
 	  continue;
 	}
-      if (strcmp (rule[i].db_name, p->db_name) == 0 && strcmp (rule[i].user_name, p->user_name) == 0
-	  && strcmp (pool + rule[i].orig_off, p->orig_norm) == 0)
+      if (strncmp (rule[i].db_name, p->db_name, QR_NAME_LEN) == 0
+	  && strncmp (rule[i].user_name, p->user_name, QR_NAME_LEN) == 0
+	  && strcmp (qr_slot_orig (pool, hdr, i), p->orig_norm) == 0)
 	{
 	  return i;
 	}
@@ -1909,9 +1924,8 @@ static const char *
 qr_admin_rule_name (char *base, int idx)
 {
   T_QR_SHM_HEADER *hdr = (T_QR_SHM_HEADER *) base;
-  T_QR_RULE *rule = (T_QR_RULE *) (base + hdr->rule_off);
 
-  return base + hdr->pool_off + rule[idx].name_off;
+  return qr_slot_name (base + hdr->pool_off, hdr, idx);
 }
 
 /*
@@ -2174,7 +2188,7 @@ qr_admin_reload (const T_BROKER_INFO * br_info_p, const char *rulepath, char *ms
 
       for (i = 0; i < hdr->rule_count; i++)
 	{
-	  if (i != newidx && !rule[i].disabled && strcmp (pool + rule[i].name_off, rulepath) == 0)
+	  if (i != newidx && !rule[i].disabled && strcmp (qr_slot_name (pool, hdr, i), rulepath) == 0)
 	    {
 	      rule[i].disabled = 1;
 	    }
@@ -2217,7 +2231,7 @@ qr_admin_disable (const T_BROKER_INFO * br_info_p, const char *rulepath, char *m
 
   for (i = 0; i < hdr->rule_count; i++)
     {
-      if (!rule[i].disabled && strcmp (pool + rule[i].name_off, rulepath) == 0)
+      if (!rule[i].disabled && strcmp (qr_slot_name (pool, hdr, i), rulepath) == 0)
 	{
 	  rule[i].disabled = 1;
 	  n++;
@@ -2273,7 +2287,7 @@ qr_admin_enable (const T_BROKER_INFO * br_info_p, const char *rulepath, char *ms
       /* re-activate the most recently added disabled entry of this rulepath */
       for (i = hdr->rule_count - 1; i >= 0; i--)
 	{
-	  if (rule[i].disabled && strcmp (pool + rule[i].name_off, rulepath) == 0)
+	  if (rule[i].disabled && strcmp (qr_slot_name (pool, hdr, i), rulepath) == 0)
 	    {
 	      target = i;
 	      break;
@@ -2695,12 +2709,21 @@ qr_record_exec_result (int rule_idx, bool succeeded, QR_ERR_TIER tier, bool all_
     }
 }
 
+/* slot base of a rule the caller has already range-checked.  the stored offsets are not
+ * read: their value is always this function of the index, so a corrupt entry cannot
+ * point outside the pool. */
+static const char *
+qr_cas_slot (int rule_idx)
+{
+  return qr_pool + rule_idx * qr_shm->pool_slot;
+}
+
 const char *
 qr_get_rewrite_query (int rule_idx)
 {
   assert (qr_shm != NULL && rule_idx >= 0 && rule_idx < qr_local_cap);
 
-  return qr_pool + qr_rule[rule_idx].rewrite_off;
+  return qr_cas_slot (rule_idx) + (qr_shm->cfg_max_query_len + 1);
 }
 
 const char *
@@ -2708,7 +2731,7 @@ qr_get_orig_query (int rule_idx)
 {
   assert (qr_shm != NULL && rule_idx >= 0 && rule_idx < qr_local_cap);
 
-  return qr_pool + qr_rule[rule_idx].orig_off;
+  return qr_cas_slot (rule_idx);
 }
 
 const char *
@@ -2716,7 +2739,7 @@ qr_get_rulepath (int rule_idx)
 {
   assert (qr_shm != NULL && rule_idx >= 0 && rule_idx < qr_local_cap);
 
-  return qr_pool + qr_rule[rule_idx].name_off;
+  return qr_cas_slot (rule_idx) + 2 * (qr_shm->cfg_max_query_len + 1);
 }
 
 int
@@ -2811,7 +2834,7 @@ qr_set_valid_k_orig (int rule_idx, int k_orig, int k_rewrite)
 void
 qr_load_dbuser_has_rules (const char *db_name, const char *user_name)
 {
-  int b;
+  int b, hops;
 
   if (qr_shm == NULL || qr_shm->dbuser_count == 0 || qr_shm->dbuser_hash_size == 0)
     {
@@ -2824,9 +2847,16 @@ qr_load_dbuser_has_rules (const char *db_name, const char *user_name)
 
   qr_conn_has_rules = 0;
   b = (int) (qr_hash_db_user % (unsigned int) qr_shm->dbuser_hash_size);
-  for (b = qr_dbuser_bucket[b]; b != -1; b = qr_dbuser[b].next_idx)
+  /* bounded like the rule chain in qr_lookup: head-prepend means a legitimate chain never
+   * exceeds dbuser_count, and the cap also stops a corrupt next_idx cycle. */
+  for (b = qr_dbuser_bucket[b], hops = 0; b != -1 && hops <= qr_shm->dbuser_count; b = qr_dbuser[b].next_idx, hops++)
     {
-      if (strcmp (qr_dbuser[b].db_name, qr_conn_db) == 0 && strcmp (qr_dbuser[b].user_name, qr_conn_user) == 0)
+      if (b < 0 || b >= qr_local_cap)
+	{
+	  break;
+	}
+      if (strncmp (qr_dbuser[b].db_name, qr_conn_db, QR_NAME_LEN) == 0
+	  && strncmp (qr_dbuser[b].user_name, qr_conn_user, QR_NAME_LEN) == 0)
 	{
 	  qr_conn_has_rules = 1;
 	}
@@ -2896,8 +2926,9 @@ qr_lookup (const char *sql_stmt, int sql_len)
 	  continue;		/* reload leaves a disabled old version with the same key */
 	}
 
-      if (strcmp (qr_rule[b].db_name, qr_conn_db) == 0 && strcmp (qr_rule[b].user_name, qr_conn_user) == 0
-	  && memcmp (qr_pool + qr_rule[b].orig_off, qr_norm_buf, norm_len) == 0)
+      if (strncmp (qr_rule[b].db_name, qr_conn_db, QR_NAME_LEN) == 0
+	  && strncmp (qr_rule[b].user_name, qr_conn_user, QR_NAME_LEN) == 0
+	  && memcmp (qr_cas_slot (b), qr_norm_buf, norm_len) == 0)
 	{
 	  idx = b;
 	  break;
