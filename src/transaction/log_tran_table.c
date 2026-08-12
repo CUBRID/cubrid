@@ -340,6 +340,20 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
       goto error;
     }
 
+  /* This has to stay ahead of logtb_set_number_of_total_tran_indices() below. Growing
+   * the lock manager after the transaction table has been published would leave the
+   * transaction table handing out indices the lock manager cannot index, which is the
+   * defect this notification fixes. Failing here leaves it at its old size. */
+  error_code = lock_expand_tran_lock_table (total_indices);
+  if (error_code != NO_ERROR)
+    {
+      /* *INDENT-OFF* */
+      delete [] area->tdesarea;
+      /* *INDENT-ON* */
+      free_and_init (area);
+      goto error;
+    }
+
   log_Gl.trantable.area = area;
   log_Gl.trantable.hint_free_index = NUM_TOTAL_TRAN_INDICES;
   logtb_set_number_of_total_tran_indices (total_indices);
