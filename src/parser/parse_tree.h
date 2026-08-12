@@ -2352,6 +2352,9 @@ struct pt_expr_info
 						 * (get_local_subqueries), and a subquery left with none is reset to
 						 * uncorrelated and pre-executed only once - but the term is excluded
 						 * from the local access_pred and hidden from the plan dump. */
+#define PT_EXPR_INFO_LIKE_DERIVED_RANGE 4194304	/* 0x400000, range derived from a prefix LIKE; excluded from row-count selectivity */
+#define PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE 8388608	/* 0x800000, the prefix LIKE a range was derived from; the pair
+							 * of PT_EXPR_INFO_LIKE_DERIVED_RANGE */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)

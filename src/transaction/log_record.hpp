@@ -390,8 +390,8 @@ struct log_rec_2pc_prepcommit
   char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
   int gtrid;			/* Identifier of the global transaction */
   int gtrinfo_length;		/* length of the global transaction info */
-  unsigned int num_object_locks;	/* Total number of update-type locks acquired by this transaction on the
-                                         * objects. */
+  unsigned int num_locks;	/* Total number of update-type locks acquired by this transaction. Covers every lock
+                                 * resource type, including the inserter-MVCCID self-lock. */
   unsigned int num_page_locks;	/* Total number of update-type locks acquired by this transaction on the pages. */
 };
 

@@ -9693,6 +9693,11 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
   OID_SET_NULL (&attr_info->inst_oid);
   attr_info->inst_chn = NULL_CHN;
   attr_info->values = NULL;
+  attr_info->lazy_recdes = NULL;	/* not in lazy mode by default */
+  attr_info->lazy_rows = 0;	/* lazy calibration counters start fresh with the cache */
+  attr_info->lazy_deferred = 0;
+  attr_info->lazy_decoded = 0;
+  attr_info->lazy_disabled = false;
   attr_info->num_values = -1;	/* initialize attr_info */
 
   /*
@@ -9781,6 +9786,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
       value->do_increment = 0;
       value->last_attrepr = NULL;
       value->read_attrepr = NULL;
+      value->lazy_always_eager = false;
     }
 
   /*
@@ -10172,6 +10178,7 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
       db_private_free_and_init (thread_p, attr_info->values);
     }
   OID_SET_NULL (&attr_info->class_oid);
+  attr_info->lazy_recdes = NULL;	/* borrowed from a caller's frame - leave no dangling record armed */
 
   /*
    * Bash this so that we ensure that heap_attrinfo_end is idempotent.
@@ -10227,6 +10234,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
     }
   OID_SET_NULL (&attr_info->inst_oid);
   attr_info->inst_chn = NULL_CHN;
+  attr_info->lazy_recdes = NULL;	/* borrowed record the cleared values were read from - reset with them */
 
   return ret;
 }
@@ -10579,6 +10587,129 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+#define HEAP_LAZY_CALIBRATE_ROWS 10000	/* rows measured before judging whether the lazy read pays off */
+#define HEAP_LAZY_ROWS_PER_SAVED_COL 2	/* keep lazy only when it saves at least one column read per this
+					 * many rows (i.e. half a column per row) */
+
+/*
+ * heap_attrinfo_read_dbvalues_lazy () - Defer reading of predicate columns
+ *   return: NO_ERROR
+ *   inst_oid(in): The instance oid (may be NULL)
+ *   recdes(in): The instance Record descriptor
+ *   attr_info(in/out): The attribute information structure
+ *
+ * Note: Same purpose as heap_attrinfo_read_dbvalues (), but instead of reading every attribute value now,
+ *   it stashes the record descriptor and marks the deferred values HEAP_LAZY_ATTRVALUE so heap_attrvalue_peek_lazy ()
+ *   reads each on first access. Used by eval_data_filter () so the dbvalues of predicate columns skipped by
+ *   short-circuit evaluation are never read. Slots flagged lazy_always_eager (the first-evaluated predicate
+ *   term's column(s); see eval_mark_first_term_attrs ()) are read now instead of deferred, since they are
+ *   touched on nearly every row.
+ *
+ *   When recdes is NULL (class attribute / index info scans that read shared, class attributes and default
+ *   values) there is no record to defer the reads from, so everything is read now, exactly as before.
+ *
+ *   Deferring only pays off while short-circuit evaluation keeps skipping the deferred reads, so the first
+ *   HEAP_LAZY_CALIBRATE_ROWS rows are measured: saving less than half a column read per row makes this scan
+ *   give up on lazy (attr_info->lazy_disabled) for its remaining rows.
+ */
+int
+heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
+				  HEAP_CACHE_ATTRINFO * attr_info)
+{
+  int i, deferred = 0;
+  REPR_ID reprid;		/* The disk representation of the object */
+  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
+  int ret = NO_ERROR;
+
+  /* check to make sure the attr_info has been used */
+  if (unlikely (attr_info->num_values == -1))
+    {
+      return NO_ERROR;
+    }
+
+  if (attr_info->lazy_disabled)
+    {
+      /* nothing worth deferring: read everything now, leaving no record armed for a deferred read */
+      attr_info->lazy_recdes = NULL;
+      return heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, attr_info);
+    }
+
+  if (recdes == NULL || recdes->data == NULL)
+    {
+      /* no record to defer the reads from - read everything now, exactly as before */
+      attr_info->lazy_recdes = NULL;	/* defensive: leave no stale record armed */
+      return heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, attr_info);
+    }
+
+  /* out of lazy mode until the values are prepared below, so an error midway cannot leave a stale
+   * lazy_recdes from the previous row; it is re-armed after the loop */
+  attr_info->lazy_recdes = NULL;
+
+  /* Make sure that we have the needed cached representation. */
+  reprid = or_rep_id (recdes);
+  if (unlikely (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid))
+    {
+      ret = heap_attrinfo_recache (thread_p, reprid, attr_info);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  /* Read now the slots flagged lazy_always_eager (first-evaluated predicate term's column(s), touched on
+   * nearly every row) so their per-row first reference stays on the inline fast path; mark every other value
+   * HEAP_LAZY_ATTRVALUE (clearing any previously read value first to avoid leaks) so heap_attrvalue_peek_lazy ()
+   * reads it on demand using lazy_recdes. */
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      value = &attr_info->values[i];
+
+      if (value->lazy_always_eager)
+	{
+	  /* first-term-eager: read now (column of the first-evaluated predicate term) rather than defer */
+	  ret = heap_attrvalue_read (recdes, value, attr_info);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  continue;
+	}
+
+      if (value->state != HEAP_UNINIT_ATTRVALUE)
+	{
+	  (void) pr_clear_value (&value->dbvalue);
+	}
+      value->state = HEAP_LAZY_ATTRVALUE;
+      deferred++;
+    }
+
+  /* arm lazy mode: heap_attrvalue_peek_lazy () will read from this record */
+  attr_info->lazy_recdes = recdes;
+
+  /* account this row, then judge once the sample is in: saving less than half a column read per row means
+   * the marking above does not earn its cost */
+  attr_info->lazy_rows++;
+  attr_info->lazy_deferred += deferred;
+  if (attr_info->lazy_rows == HEAP_LAZY_CALIBRATE_ROWS
+      && (attr_info->lazy_deferred - attr_info->lazy_decoded) * HEAP_LAZY_ROWS_PER_SAVED_COL < attr_info->lazy_rows)
+    {
+      attr_info->lazy_disabled = true;
+    }
+
+  /* Cache the information of the instance */
+  if (inst_oid != NULL)
+    {
+      attr_info->inst_chn = or_chn (recdes);
+      attr_info->inst_oid = *inst_oid;
+    }
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
 int
 heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 {
@@ -10830,6 +10961,30 @@ heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info)
     }
 
   return NULL;
+}
+
+/*
+ * heap_attrvalue_peek_lazy () - peek a deferred predicate column, reading it on demand
+ *   return: pointer to the slot's DB_VALUE, or NULL on read error
+ *   slot(in/out): the value slot the caller already holds (located by heap_attrvalue_locate () in
+ *                 fetch.c's slow path, or the cached cache_slot in the inline fetch_peek_dbval ())
+ *   attr_info(in): the attribute cache holding the stashed record (lazy_recdes)
+ *
+ * Note: the caller passes the slot, so no heap_attrvalue_locate () search happens here. A slot still flagged
+ *   HEAP_LAZY_ATTRVALUE is read now and flipped to HEAP_READ_ATTRVALUE, so later references reuse the value.
+ */
+DB_VALUE *
+heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  if (slot->state == HEAP_LAZY_ATTRVALUE)
+    {
+      attr_info->lazy_decoded++;	/* measured: a deferred read that was not skipped */
+      if (heap_attrvalue_read (attr_info->lazy_recdes, slot, attr_info) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+  return &slot->dbvalue;
 }
 
 /*
@@ -12501,6 +12656,11 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
       attr_info->read_classrepr = NULL;
       OID_SET_NULL (&attr_info->inst_oid);
       attr_info->inst_chn = NULL_CHN;
+      attr_info->lazy_recdes = NULL;	/* index-key cache never uses lazy mode; keep the fields defined */
+      attr_info->lazy_rows = 0;
+      attr_info->lazy_deferred = 0;
+      attr_info->lazy_decoded = 0;
+      attr_info->lazy_disabled = false;
       attr_info->num_values = num_found_attrs;
 
       if (num_found_attrs <= 0)
@@ -12532,6 +12692,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	  value->state = HEAP_UNINIT_ATTRVALUE;
 	  value->last_attrepr = NULL;
 	  value->read_attrepr = NULL;
+	  value->lazy_always_eager = false;
 	}
 
       /*
@@ -16089,6 +16250,7 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   MVCC_REC_HEADER mvcc_rec_header;
   INT16 record_type;
   bool vacuum_status_change = false;
+  char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
 
   assert (rcv->pgptr != NULL);
   assert (MVCCID_IS_NORMAL (rcv->mvcc_id));
@@ -16110,7 +16272,6 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   else
     {
-      char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
       int repid_and_flags, offset, mvcc_flag, offset_size;
 
       offset = sizeof (record_type);
@@ -20613,16 +20774,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
        * after locking. Non-MVCC classes take no self-lock and still need the per-row X-lock below. */
       if (!mvcc_is_mvcc_disabled_class (&context->class_oid))
 	{
-#if defined (SERVER_MODE)
-	  /* CBRD-27079 fallback: track the row for 2PC prepare's per-row lock materialization; on failure take
-	   * the per-row lock below instead. */
-	  if (logtb_track_lockless_insert (thread_p, &context->res_oid, &context->class_oid) == NO_ERROR)
-	    {
-	      return NO_ERROR;
-	    }
-#else /* !SERVER_MODE */
 	  return NO_ERROR;
-#endif /* !SERVER_MODE */
 	}
 
       /* lock the object to be inserted conditionally */
