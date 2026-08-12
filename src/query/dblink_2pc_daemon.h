@@ -58,23 +58,23 @@
 #define DBLINK_2PC_DECISION_WAIT_MSEC 1000
 
 /*
- * Completion waiter: one per coordinator transaction, shared by that transaction's queue entries.
+ * Decision completion: one per coordinator transaction, shared by that transaction's queue entries.
  *
  * The commit path creates it with remaining = number of participants, enqueues one entry per
  * participant carrying a pointer to it, then waits for remaining to reach 0.  The daemon calls
- * dblink_2pc_waiter_done() once per participant, right after the decision is actually delivered.
+ * dblink_2pc_completion_done() once per participant, right after the decision is actually delivered.
  *
  * Lifetime is refcounted because neither side reliably outlives the other: the commit path may give
  * up on the bound while entries are still queued, and an entry may be retried long after.  refcount
  * starts at 1 for the commit path; each queue entry adds one.  The last release frees it.
  */
-typedef struct dblink_2pc_waiter DBLINK_2PC_WAITER;
-struct dblink_2pc_waiter
+typedef struct dblink_2pc_completion DBLINK_2PC_COMPLETION;
+struct dblink_2pc_completion
 {
   pthread_mutex_t mutex;
   pthread_cond_t cond;
   int remaining;		/* participants whose decision is not delivered yet */
-  int refcount;			/* commit path (1) + entries still referencing this waiter */
+  int refcount;			/* commit path (1) + entries still referencing this completion */
 };
 
 typedef struct global_tran_queue_entry GLOBAL_TRAN_QUEUE_ENTRY;
@@ -83,11 +83,11 @@ struct global_tran_queue_entry
   int gtrid;
   char state;			/* DBLINK_2PC_STATE_PREPARE / ABORT / COMMIT */
   DBLINK_CONN_INFO participant;	/* single participant (embedded) */
-  DBLINK_2PC_WAITER *waiter;	/* commit path waiting on this decision, NULL if nobody waits */
+  DBLINK_2PC_COMPLETION *completion;	/* commit path waiting on this decision, NULL if nobody waits */
 };
 
 /*
- * Ownership rule for the two counters.  Attaching the waiter to a queue entry takes a reference
+ * Ownership rule for the two counters.  Attaching the completion to a queue entry takes a reference
  * with _ref(); that entry is then settled with exactly one _done(), which drops both remaining and
  * the reference.  Concretely there are three cases, and only the first two settle an entry:
  *
@@ -97,25 +97,25 @@ struct global_tran_queue_entry
  *   never enqueued          the caller that took the reference calls _done() itself, so a queue
  *                           that refused the entry does not leave the commit path waiting for it
  *
- * Every function tolerates a NULL waiter, so callers do not need to branch on allocation failure.
+ * Every function tolerates a NULL completion, so callers do not need to branch on allocation failure.
  *
- * Create a waiter for num_participants decisions.  Returns NULL on allocation failure; that is not
+ * Create a completion for num_participants decisions.  Returns NULL on allocation failure; that is not
  * an error condition - the caller simply does not wait, and the daemon still delivers the decision.
  */
-extern DBLINK_2PC_WAITER *dblink_2pc_waiter_create (int num_participants);
+extern DBLINK_2PC_COMPLETION *dblink_2pc_completion_create (int num_participants);
 
-/* Take a reference before attaching the waiter to a queue entry. */
-extern void dblink_2pc_waiter_ref (DBLINK_2PC_WAITER * waiter);
+/* Take a reference before attaching the completion to a queue entry. */
+extern void dblink_2pc_completion_ref (DBLINK_2PC_COMPLETION * completion);
 
-/* Drop one reference; frees the waiter when the last one goes away. */
-extern void dblink_2pc_waiter_unref (DBLINK_2PC_WAITER * waiter);
+/* Drop one reference; frees the completion when the last one goes away. */
+extern void dblink_2pc_completion_unref (DBLINK_2PC_COMPLETION * completion);
 
 /*
- * Settle one entry - see the three cases above.  Wakes the waiter when none are left, then consumes
- * that entry's reference, so the caller must not touch the waiter afterwards.  Not called on a
+ * Settle one entry - see the three cases above.  Signals the completion when none are left, then consumes
+ * that entry's reference, so the caller must not touch the completion afterwards.  Not called on a
  * failed delivery: that entry is retried and stays counted.
  */
-extern void dblink_2pc_waiter_done (DBLINK_2PC_WAITER * waiter);
+extern void dblink_2pc_completion_done (DBLINK_2PC_COMPLETION * completion);
 
 /*
  * Wait until every participant's decision has been settled or timeout_msec elapses.
@@ -126,7 +126,7 @@ extern void dblink_2pc_waiter_done (DBLINK_2PC_WAITER * waiter);
  * A timeout_msec of 0 or less polls - it reports whether everything is already settled without
  * blocking.
  */
-extern bool dblink_2pc_waiter_wait (DBLINK_2PC_WAITER * waiter, int timeout_msec);
+extern bool dblink_2pc_completion_wait (DBLINK_2PC_COMPLETION * completion, int timeout_msec);
 
 /*
  * Enqueue one participant for daemon to persist to _db_global_tran and/or send decision.
@@ -135,13 +135,13 @@ extern bool dblink_2pc_waiter_wait (DBLINK_2PC_WAITER * waiter, int timeout_msec
  * - After prepare (decision phase): state = DBLINK_2PC_STATE_ABORT or DBLINK_2PC_STATE_COMMIT
  *   -> daemon sends abort/commit decision to this participant.
  * participant is copied by the function; caller can free after return.
- * waiter may be NULL.  When it is not, the caller must already hold a reference for this entry
- * (dblink_2pc_waiter_ref); on failure the entry is not queued, so the caller settles that reference
- * itself with dblink_2pc_waiter_done.
+ * completion may be NULL.  When it is not, the caller must already hold a reference for this entry
+ * (dblink_2pc_completion_ref); on failure the entry is not queued, so the caller settles that reference
+ * itself with dblink_2pc_completion_done.
  * Returns NO_ERROR on success, ER_* on failure (e.g. queue full).
  */
 extern int dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant,
-				      DBLINK_2PC_WAITER * waiter);
+				      DBLINK_2PC_COMPLETION * completion);
 extern int dblink_2pc_daemon_dequeue (GLOBAL_TRAN_QUEUE_ENTRY * e);
 
 /* Start the send_2pc_decision daemon thread. Called during server boot.

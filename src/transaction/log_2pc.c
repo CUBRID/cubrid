@@ -463,7 +463,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
   LOG_RECTYPE complete_type;
   char new_state;
 #ifdef SERVER_MODE
-  DBLINK_2PC_WAITER *waiter = NULL;
+  DBLINK_2PC_COMPLETION *completion = NULL;
 #endif
 #endif
 
@@ -575,19 +575,19 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 #ifdef SERVER_MODE
       /* Wait, further down, until the daemon has delivered these decisions, so that the remote
        * changes are already visible when this statement's response reaches the client.  A NULL
-       * waiter simply means we do not wait - the daemon still delivers, as it does today. */
-      waiter = dblink_2pc_waiter_create (tdes->coord->num_particps);
+       * completion simply means we do not wait - the daemon still delivers, as it does today. */
+      completion = dblink_2pc_completion_create (tdes->coord->num_particps);
 #endif
       /* Enqueue one entry per participant for daemon (only failed participants are retried) */
       for (i = 0; i < tdes->coord->num_particps; i++)
 	{
 #ifdef SERVER_MODE
-	  dblink_2pc_waiter_ref (waiter);
-	  if (dblink_2pc_daemon_enqueue (tdes->gtrid, new_state, &participants[i], waiter) != NO_ERROR)
+	  dblink_2pc_completion_ref (completion);
+	  if (dblink_2pc_daemon_enqueue (tdes->gtrid, new_state, &participants[i], completion) != NO_ERROR)
 	    {
 	      /* Not queued, so nothing will ever settle this entry: release it here instead of
 	       * letting the wait below sit out its whole bound on a decision that is not coming. */
-	      dblink_2pc_waiter_done (waiter);
+	      dblink_2pc_completion_done (completion);
 	    }
 #else
 	  /* SA mode: no daemon/queue; run send decision and _db_global_tran delete in a system transaction */
@@ -622,9 +622,9 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
        * checked in logtb_clear_tdes() intact (see log_complete() just below).  Giving up on the
        * bound is not an error: the decisions stay queued and the daemon keeps delivering them,
        * which is the pre-existing asynchronous behaviour. */
-      (void) dblink_2pc_waiter_wait (waiter, DBLINK_2PC_DECISION_WAIT_MSEC);
-      dblink_2pc_waiter_unref (waiter);
-      waiter = NULL;
+      (void) dblink_2pc_completion_wait (completion, DBLINK_2PC_DECISION_WAIT_MSEC);
+      dblink_2pc_completion_unref (completion);
+      completion = NULL;
 #endif
 
       *state =
