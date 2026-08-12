@@ -180,6 +180,7 @@ typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page, void
 typedef int (*FILE_MAP_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args);
 
 extern int file_manager_init (void);
+extern int file_manager_expand_tran_entries (int total_indices);
 extern void file_manager_final (void);
 
 extern int file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tablespace,
