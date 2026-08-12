@@ -160,7 +160,7 @@ class authenticate_cache
     int get_user_cache_index (AU_USER_CACHE *cache, int *index);
 
     void reset_cache_for_user_and_class (SM_CLASS *sm_class);
-    void reset_cache_for_user_and_procedure (MOP obj);
+    void reset_cache_for_user_and_proc_or_pkg (MOP obj);
     void reset_authorization_caches (void);
 
     void remove_user_cache (MOP user);
@@ -170,8 +170,8 @@ class authenticate_cache
 
   private:
 
-    // procedure cache
-    using proc_or_pkg_cache_t = std::unordered_map<MOP, std::vector<unsigned int>*>; // <procedure, cache bits>
+    // procedure&pacakge cache
+    using proc_or_pkg_cache_t = std::unordered_map<MOP, std::vector<unsigned int>*>; // <procedure&pacakge, cache bits>
 
     proc_or_pkg_cache_t proc_or_pkg_cache;
 

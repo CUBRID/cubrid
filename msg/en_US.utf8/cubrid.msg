@@ -2004,7 +2004,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 336 Numeric scale specifier is out of range -84 to 127
 337 The partition name is too long.
 
-338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+337 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 
 339 Package "%1$s" does not exist.
 

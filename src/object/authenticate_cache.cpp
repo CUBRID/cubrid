@@ -711,7 +711,7 @@ authenticate_cache::reset_cache_for_user_and_class (SM_CLASS *sm_class)
 }
 
 void
-authenticate_cache::reset_cache_for_user_and_procedure (MOP obj)
+authenticate_cache::reset_cache_for_user_and_proc_or_pkg (MOP obj)
 {
   AU_USER_CACHE *u;
   AU_CLASS_CACHE *c;

@@ -423,7 +423,7 @@ au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH ty
 		}
 
 	      current |= (int) type;
-	      /* TODO: no grant option for procedure */
+	      /* TODO: no grant option for procedure/package */
 	      /*
 	      if (grant_option)
 	        {
@@ -448,10 +448,10 @@ au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH ty
 		}
 
 	      /*
-	       * clear the cache for this user/procedure pair to make sure we
+	       * clear the cache for this user and procedure/package pair to make sure we
 	       * recalculate it the next time it is referenced
 	       */
-	      Au_cache.reset_cache_for_user_and_procedure (obj_mop);
+	      Au_cache.reset_cache_for_user_and_proc_or_pkg (obj_mop);
 
 	      /*
 	       * Make sure any cached parse trees are rebuild.  This proabably
@@ -760,7 +760,7 @@ au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH t
 	  goto fail_end;
 	}
 
-      /* GRANT OPTION is not supported yet for stored procedure
+      /* GRANT OPTION is not supported yet for stored procedures and packages
          error = check_grant_option (class_mop, obj_mop, type);
          if (error != NO_ERROR)
          {
@@ -768,7 +768,7 @@ au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH t
          }
        */
       /*
-       * The WITH GRANT OPTION is not yet supported for stored procedures.
+       * The WITH GRANT OPTION is not yet supported for stored procedures and packages.
        * Therefore, if the user is not the dba group or owner, the same error as grant/revoke_class is output.
        * example:
        *   call login(class db_user,'public','');
@@ -874,7 +874,7 @@ au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH t
 		       * it is referenced
 		       */
 		      // TODO: CBRD-24912
-		      // reset_cache_for_user_and_procedure (obj_mop);
+		      // reset_cache_for_user_and_proc_or_pkg (obj_mop);
 
 #if defined(SA_MODE)
 		      if (catcls_Enable == true)
@@ -1992,7 +1992,8 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 	   * 1. gsize == 0: Indicates no prior authorization
 	   *    When the grants column in the _db_authorization catalog is empty.
 	   * 2. db_get_object(&element) != obj_mop: Indicates that permissions exist for other objects but not for the current one
-	   *    When the grants column in the _db_authorization catalog contains permissions for other objects (such as classes or procedures), but lacks permissions for the obj_mop object.
+	   *    When the grants column in the _db_authorization catalog contains permissions for other objects
+	   *    (such as classes,  procedures, and pacakges), but lacks permissions for the obj_mop object.
 	   */
 	  if (error == NO_ERROR && *grantor == NULL)
 	    {
