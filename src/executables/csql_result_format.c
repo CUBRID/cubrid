@@ -1137,11 +1137,7 @@ duplicate_string (const char *string)
       return NULL;
     }
 
-  new_string = (char *) malloc (strlen (string) + 1);
-  if (new_string)
-    {
-      strcpy (new_string, string);
-    }
+  new_string = strdup (string);
 
   return (new_string);
 

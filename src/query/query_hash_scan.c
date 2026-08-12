@@ -53,7 +53,6 @@
 #include "memory_wrapper.hpp"
 
 
-static bool safe_memcpy (void *data, void *source, int size);
 static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY * ckey1, HASH_SCAN_KEY * ckey2, int *diff_pos);
 
 /****************************************************************************/
@@ -413,7 +412,6 @@ qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LI
 int
 qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list, void *args)
 {
-  HASH_SCAN_VALUE *data_p;
   HASH_METHOD hash_list_scan_type;
   QFILE_TUPLE_VALUE_TYPE_LIST *type_list_p;
   DB_VALUE dbval;
@@ -426,8 +424,6 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     {
       return false;
     }
-
-  data_p = (HASH_SCAN_VALUE *) data;
 
   hash_list_scan_type = *((HASH_METHOD *) args);
   if (hash_list_scan_type == HASH_METH_NOT_USE)
@@ -452,9 +448,9 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
 
   if (hash_list_scan_type == HASH_METH_IN_MEM)
     {
-      fprintf (fp, "data_size = [%d], data = { ", QFILE_GET_TUPLE_LENGTH (data_p->tuple));
+      fprintf (fp, "data_size = [%d], data = { ", QFILE_GET_TUPLE_LENGTH ((QFILE_TUPLE) data));
 
-      tuple_p = (char *) data_p->tuple + QFILE_TUPLE_LENGTH_SIZE;
+      tuple_p = (char *) data + QFILE_TUPLE_LENGTH_SIZE;
 
       for (i = 0; i < type_list_p->type_cnt; i++)
 	{
@@ -489,8 +485,9 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     }
   else if (hash_list_scan_type == HASH_METH_HYBRID)
     {
-      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]", data_p->pos->vpid.pageid,
-	       data_p->pos->vpid.volid, data_p->pos->offset);
+      QFILE_TUPLE_SIMPLE_POS *simple_pos = (QFILE_TUPLE_SIMPLE_POS *) data;
+      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]", simple_pos->vpid.pageid, simple_pos->vpid.volid,
+	       simple_pos->offset);
     }
   else if (hash_list_scan_type == HASH_METH_HASH_FILE)
     {
@@ -627,124 +624,58 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
 }
 
 /*
- * qdata_alloc_hscan_value () - allocate new hash value
- *   returns: pointer to new structure or NULL on error
+ * qdata_alloc_hscan_value () - allocate a new hash entry holding a copy of the tuple
+ *   returns: the entry to put into the table, or NULL on error
  *   thread_p(in): thread
  */
-HASH_SCAN_VALUE *
-qdata_alloc_hscan_value (cubthread::entry * thread_p, QFILE_TUPLE tpl)
+MHT_HLS_ENTRY *
+qdata_alloc_hscan_value (cubthread::entry * thread_p, HL_HEAPID heap_id, QFILE_TUPLE tpl)
 {
-  HASH_SCAN_VALUE *value;
+  QFILE_TUPLE tuple;
   int tuple_size = QFILE_GET_TUPLE_LENGTH (tpl);
+  MHT_HLS_ENTRY *entry;
+  size_t alloc_size = sizeof (MHT_HLS_ENTRY) + tuple_size;
 
-  /* alloc structure */
-  value = (HASH_SCAN_VALUE *) db_private_alloc (thread_p, sizeof (HASH_SCAN_VALUE));
-  if (value == NULL)
+  /* entry + tuple copy in one allocation from the table obstack; freed all at once on table destroy */
+  entry = (MHT_HLS_ENTRY *) db_ostk_alloc (heap_id, alloc_size);
+  if (entry == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HASH_SCAN_VALUE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
       return NULL;
     }
 
-  value->tuple = (QFILE_TUPLE) db_private_alloc (thread_p, tuple_size);
-  if (value->tuple == NULL)
-    {
-      qdata_free_hscan_value (thread_p, value);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, tuple_size);
-      return NULL;
-    }
-  /* save tuple */
-  if (!safe_memcpy (value->tuple, tpl, tuple_size))
-    {
-      qdata_free_hscan_value (thread_p, value);
-      return NULL;
-    }
-  return value;
+  tuple = (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry);
+  memcpy (tuple, tpl, tuple_size);
+  return entry;
 }
 
 /*
- * qdata_alloc_hscan_value_OID () - allocate new hash OID value
- *   returns: pointer to new structure or NULL on error
+ * qdata_alloc_hscan_value_OID () - allocate a new hash entry holding a tuple position
+ *   returns: the entry to put into the table, or NULL on error
  *   thread_p(in): thread
  */
-HASH_SCAN_VALUE *
-qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
+MHT_HLS_ENTRY *
+qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, HL_HEAPID heap_id, QFILE_LIST_SCAN_ID * scan_id_p)
 {
-  HASH_SCAN_VALUE *value;
+  QFILE_TUPLE_SIMPLE_POS *simple_pos;
+  MHT_HLS_ENTRY *entry;
+  size_t alloc_size = sizeof (MHT_HLS_ENTRY) + sizeof (QFILE_TUPLE_SIMPLE_POS);
 
-  /* alloc structure */
-  value = (HASH_SCAN_VALUE *) db_private_alloc (thread_p, sizeof (HASH_SCAN_VALUE));
-  if (value == NULL)
+  /* entry + tuple position in one allocation from the table obstack; freed all at once on table destroy */
+  entry = (MHT_HLS_ENTRY *) db_ostk_alloc (heap_id, alloc_size);
+  if (entry == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HASH_SCAN_VALUE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
       return NULL;
     }
 
-  value->pos = (QFILE_TUPLE_SIMPLE_POS *) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_SIMPLE_POS));
-  if (value->pos == NULL)
-    {
-      qdata_free_hscan_value (thread_p, value);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_TUPLE_SIMPLE_POS));
-      return NULL;
-    }
+  simple_pos = (QFILE_TUPLE_SIMPLE_POS *) MHT_HLS_ENTRY_PAYLOAD (entry);
 
   /* save position */
-  value->pos->offset = scan_id_p->curr_offset;
-  value->pos->vpid = scan_id_p->curr_vpid;
+  simple_pos->offset = scan_id_p->curr_offset;
+  simple_pos->vpid = scan_id_p->curr_vpid;
 
-  return value;
-}
-
-static bool
-safe_memcpy (void *data, void *source, int size)
-{
-  if (size < 0)
-    {
-      return false;
-    }
-  memcpy (data, source, (size_t) size);
-  return true;
-}
-
-/*
- * qdata_free_hscan_value () - free hash value
- *   thread_p(in): thread
- *   key(in): hash value
- */
-void
-qdata_free_hscan_value (cubthread::entry * thread_p, HASH_SCAN_VALUE * value)
-{
-  if (value == NULL)
-    {
-      return;
-    }
-
-  /* free values */
-  if (value->data != NULL)
-    {
-      db_private_free_and_init (thread_p, value->data);
-    }
-  /* free structure */
-  db_private_free_and_init (thread_p, value);
-}
-
-/*
- * qdata_free_agg_hentry () - free key-value pair of hash entry
- *   returns: error code or NO_ERROR
- *   key(in): key pointer
- *   data(in): value pointer
- *   args(in): args passed by mht_rem (should be null)
- */
-int
-qdata_free_hscan_entry (const void *key, void *data, void *args)
-{
-  /* free key */
-  qdata_free_hscan_key ((cubthread::entry *) args, (HASH_SCAN_KEY *) key, key ? ((HASH_SCAN_KEY *) key)->val_count : 0);
-
-  /* free tuple */
-  qdata_free_hscan_value ((cubthread::entry *) args, (HASH_SCAN_VALUE *) data);
-
-  /* all ok */
-  return NO_ERROR;
+  return entry;
 }
 
 /*

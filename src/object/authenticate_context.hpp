@@ -80,7 +80,7 @@ class EXPORT_IMPORT authenticate_context
     /*
      * Flag to disable authorization checking.  Only for well behaved
      * internal system functions.  Should not set this directly,
-     * use the AU_DISABLE, AU_ENABLE macros instead.
+     * use the AU_SAVE_AND_DISABLE, AU_RESTORE macros instead.
      * legacy name: Au_disable
      */
     bool disable_auth_check;

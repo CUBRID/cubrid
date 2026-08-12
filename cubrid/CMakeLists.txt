@@ -297,6 +297,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c  
+  ${QUERY_DIR}/vacuum_oos.cpp
   ${QUERY_DIR}/xasl_cache.c
   )
 set(QUERY_HEADERS
@@ -374,7 +375,7 @@ set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_list.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_index.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_result_handler.cpp
-  ${PARALLEL_SCAN_DIR}/px_scan_join_info.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_pre_execution_info.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_task.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_trace_handler.cpp
   ${PARALLEL_SCAN_DIR}/px_scan.cpp
@@ -394,7 +395,7 @@ set(PARALLEL_SCAN_HEADERS
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_list.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_index.hpp
-  ${PARALLEL_SCAN_DIR}/px_scan_join_info.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_pre_execution_info.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_task.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_trace_handler.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_type.hpp
@@ -502,6 +503,7 @@ set(TRANSACTION_HEADERS
   )
 
 set(STORAGE_SOURCES
+  ${STORAGE_DIR}/bestspace.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
@@ -522,16 +524,19 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/heap_oos.cpp
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/oos_file.cpp
+  ${STORAGE_DIR}/oos_util.cpp
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
   ${STORAGE_DIR}/record_descriptor.cpp
   ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/statistics_sr.c
+  ${STORAGE_DIR}/statistics_ndv.c
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
   )
 set(STORAGE_HEADERS
+  ${STORAGE_DIR}/bestspace.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/double_write_buffer.hpp
   ${STORAGE_DIR}/ftab_set.hpp
@@ -667,6 +672,12 @@ set (CUBRID_LIB_SOURCES
   ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
+  )
+
+list(APPEND CUBRID_LIB_SOURCES
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_sampler_sr.cpp
   )
 
 set (CUBRID_LIB_HEADERS

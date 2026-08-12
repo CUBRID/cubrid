@@ -1975,6 +1975,7 @@ int
 smt_check_histogram_exist (MOP classop, const char *attr_name)
 {
   int error = NO_ERROR;
+  int au_save;
   DB_OBJECT *histogram_class, *histogram_obj = NULL;
   DB_VALUE value[2];
   DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
@@ -1992,7 +1993,10 @@ smt_check_histogram_exist (MOP classop, const char *attr_name)
   db_make_object (&value[0], classop);
   db_make_string (&value[1], attr_name);
 
+  /* _db_histogram is an internal catalog; bypass user authorization. (CBRD-26667) */
+  AU_SAVE_AND_DISABLE (au_save);
   histogram_obj = db_find_multi_unique (histogram_class, 2, (char **) search_attrs, value_ptrs, DB_FETCH_READ);
+  AU_RESTORE (au_save);
   if (histogram_obj != NULL)
     {
       /* not error, just return ER_LC_CLASSNAME_EXIST */
@@ -2007,6 +2011,7 @@ int
 smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool no_error_if_not_found)
 {
   int error = NO_ERROR;
+  int au_save;
   DB_OBJECT *histogram_class, *histogram_obj = NULL;
   DB_VALUE value[2];
   DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
@@ -2024,7 +2029,10 @@ smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool n
   db_make_object (&value[0], classop);
   db_make_string (&value[1], attr_name);
 
+  /* _db_histogram is an internal catalog; bypass user authorization. (CBRD-26667) */
+  AU_SAVE_AND_DISABLE (au_save);
   histogram_obj = db_find_multi_unique (histogram_class, 2, (char **) search_attrs, value_ptrs, DB_FETCH_WRITE);
+  AU_RESTORE (au_save);
   if (histogram_obj == NULL)
     {
       if (!no_error_if_not_found)
@@ -2040,7 +2048,10 @@ smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool n
     }
   else
     {
+      /* Dropping the instance in the internal _db_histogram catalog also needs authorization bypass. (CBRD-26667) */
+      AU_SAVE_AND_DISABLE (au_save);
       error = db_drop (histogram_obj);
+      AU_RESTORE (au_save);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2061,7 +2072,7 @@ smt_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool wi
   db_make_null (&value);
 
   /* temporarily disable authorization to access db_serial class */
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
   if (histogram_class == NULL)
@@ -2136,7 +2147,7 @@ end:
     {
       dbt_abort_object (obj_tmpl);
     }
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   return error;
 }
 

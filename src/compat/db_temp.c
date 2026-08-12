@@ -686,11 +686,11 @@ dbt_drop_attribute (DB_CTMPL * def, const char *name)
       oidp = ws_identifier (auto_increment_obj);
       COPY_OID (&serial_obj_id, oidp);
 
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
 
       error = obj_delete (auto_increment_obj);
 
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
       if (error == NO_ERROR)
 	{
 	  (void) serial_decache (&serial_obj_id);

@@ -87,6 +87,7 @@ namespace cubconn::master
 
     state m_state { state::SendInHandshake };
     bool m_has_error;
+    int m_pending_client_type;
 
     context ();
     ~context ();
@@ -154,6 +155,7 @@ namespace cubconn::connection
     /* ignore guards (ERR/HUP) */
     ignore_level m_ignore;
     bool m_removed;
+    bool m_epoll_registered;
 
     /* --------------------------------------------------------------------------- */
     /* reception								   */
@@ -178,15 +180,22 @@ namespace cubconn::connection
     {
       transmitter m_transmitter;
 
-      /* if multiple task workers request blocking transmissions simultaneously, below */
-      /* member should be replaced with a vector (or a similar collection)	       */
+      /* shared by every sender blocked on this transmitter (bad case) all of them are woken */
+      /* together (notify_all) when the pending transmission drains or is discarded */
       std::shared_ptr<message_blocker> m_blocker;
     } m_send;
 
     /* --------------------------------------------------------------------------- */
     /* statistics								   */
     /* --------------------------------------------------------------------------- */
+    /* owned statistics */
     statistics::metrics<statistics::context> m_stats;
+
+    /* statistics updated by direct send, guarded by m_conn->cmutex */
+    struct
+    {
+      uint64_t bytes_out_total { 0 };
+    } m_guarded_stats;
 
     context (std::size_t capacity);
     context ();

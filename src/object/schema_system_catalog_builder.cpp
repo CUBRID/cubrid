@@ -21,8 +21,8 @@
 #include "db.h"
 #include "dbtype.h"
 #include "authenticate.h"
-#include "class_object.h" /* SM_TEMPLATE */
-#include "schema_template.h" /* smt_edit_class_mop() */
+#include "class_object.h"
+#include "schema_template.h"
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "schema_system_catalog_definition.hpp"
@@ -213,7 +213,13 @@ namespace cubschema
 	return ER_FAILED;
       }
 
-    // attributes
+    SM_TEMPLATE *tmpl = smt_edit_class_mop (class_mop, AU_ALTER);
+    if (tmpl == nullptr)
+      {
+	ASSERT_ERROR_AND_SET (error_code);
+	return error_code;
+      }
+
     const std::vector <attribute> &attributes = def.attributes;
     for (const auto &attr: attributes)
       {
@@ -223,10 +229,10 @@ namespace cubschema
 	switch (attr.kind)
 	  {
 	  case attribute_kind::COLUMN:
-	    error_code = db_add_attribute (class_mop, name, type, NULL);
+	    error_code = smt_add_attribute (tmpl, name, type, NULL);
 	    break;
 	  case attribute_kind::QUERY_SPEC:
-	    error_code = db_add_query_spec (class_mop, name);
+	    error_code = smt_add_query_spec (tmpl, name);
 	    break;
 	  case attribute_kind::CLASS_METHOD:
 	    /*
@@ -234,7 +240,7 @@ namespace cubschema
 	     * compatibility. To be removed when class/instance method support
 	     * is officially dropped.
 	     */
-	    error_code = db_add_class_method (class_mop, name, type);
+	    error_code = smt_add_class_method (tmpl, name, type);
 	    break;
 	  default:
 	    error_code = ER_FAILED;
@@ -244,8 +250,17 @@ namespace cubschema
 	if (error_code != NO_ERROR)
 	  {
 	    assert (false);
+	    smt_quit (tmpl);
 	    return error_code;
 	  }
+      }
+
+    error_code = sm_update_class (tmpl, NULL);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	smt_quit (tmpl);
+	return error_code;
       }
 
     const authorization &auth = def.auth;

@@ -5867,11 +5867,7 @@ xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid)
       return NULL;
     }
 
-  remarks = (char *) malloc ((int) strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1);
-  if (remarks != NULL)
-    {
-      strcpy (remarks, disk_vhdr_get_vol_remarks (vhdr));
-    }
+  remarks = strdup (disk_vhdr_get_vol_remarks (vhdr));
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 

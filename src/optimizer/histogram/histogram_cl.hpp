@@ -26,6 +26,8 @@
 #include <cstdio>
 #include <cstdint>
 #include <string>
+#include "dbtype_def.h"
+#include "statistics.h"
 #include "thread_compat.hpp"
 
 // Forward declaration for PT_NODE
@@ -34,222 +36,6 @@ typedef struct parser_node PT_NODE;
 typedef struct hist_stats HIST_STATS;
 typedef struct db_value DB_VALUE;
 
-/* null frequency query template */
-static const char *NULL_FREQUENCY_QUERY_TEMPLATE =
-	"SELECT SUM(CASE WHEN [%s] IS NULL THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0) AS null_frequency FROM [%s];";
-/* Use AVG instead of SUM/COUNT(*) because sampling scales only COUNT(*), not SUM.
- * AVG computes ratio over the same sampled set without mixing scaled/unscaled values. */
-static const char *NULL_FREQUENCY_WITH_SAMPLING_SCAN_QUERY_TEMPLATE =
-	"SELECT /*+ SAMPLING_SCAN */ AVG(CASE WHEN [%s] IS NULL THEN 1.0 ELSE 0.0 END) AS null_frequency FROM [%s];";
-
-/* mcv count query template */
-static const char *MCV_COUNT_QUERY_TEMPLATE =
-	"WITH s AS (SELECT /*+ SAMPLING_SCAN */ [%s] val FROM [%s] WHERE [%s] IS NOT NULL), "
-	"f AS (SELECT val, COUNT(*) cnt FROM s GROUP BY val), "
-	"t AS (SELECT COUNT(*) total_cnt FROM s) "
-	"SELECT COUNT(*) mcv_count FROM f, t WHERE cnt > total_cnt * (0.5 / %d);";
-
-/* histogram query template */
-static const char *HISTOGRAM_QUERY_TEMPLATE =
-	"WITH src AS ("
-	"SELECT [%s] AS val "
-	"FROM [%s] "
-	"WHERE [%s] IS NOT NULL"
-	"), "
-	"cnt AS ("
-	"SELECT "
-	"val, "
-	"COUNT(*) AS c "
-	"FROM src "
-	"GROUP BY val"
-	"), "
-	"mcv_ranked AS ("
-	"SELECT "
-	"val, "
-	"c, "
-	"ROW_NUMBER() OVER (ORDER BY c DESC, val) AS rn "
-	"FROM cnt "
-	"ORDER BY c DESC, val "
-	"LIMIT %d"
-	"), "
-	"ordered_vals AS ("
-	"SELECT "
-	"c.val, "
-	"c.c, "
-	"CASE WHEN m.rn IS NOT NULL THEN 1 ELSE 0 END AS is_mcv, "
-	"SUM(CASE WHEN m.rn IS NOT NULL THEN 1 ELSE 0 END) "
-	"OVER (ORDER BY c.val) AS seg_id "
-	"FROM cnt c "
-	"LEFT JOIN mcv_ranked m "
-	"ON c.val = m.val"
-	"), "
-	"non_mcv AS ("
-	"SELECT "
-	"val, "
-	"c, "
-	"seg_id "
-	"FROM ordered_vals "
-	"WHERE is_mcv = 0"
-	"), "
-	"param AS ("
-	"SELECT "
-	"CASE "
-	"WHEN SUM(c) > 0 THEN CEIL(SUM(c) * 1.0 / %d) "
-	"ELSE 1 "
-	"END AS cap "
-	"FROM non_mcv"
-	"), "
-	"hist_acc AS ("
-	"SELECT "
-	"val, "
-	"c, "
-	"seg_id, "
-	"SUM(c) OVER ("
-	"PARTITION BY seg_id "
-	"ORDER BY val"
-	") AS seg_cum "
-	"FROM non_mcv"
-	"), "
-	"hist_buckets AS ("
-	"SELECT "
-	"h.seg_id, "
-	"FLOOR((h.seg_cum - 1) / p.cap) AS local_bid, "
-	"h.val, "
-	"h.c, "
-	"FALSE AS is_mcv "
-	"FROM hist_acc h, param p"
-	"), "
-	"hist_grouped AS ("
-	"SELECT "
-	"MAX(val) AS endpoint, "
-	"SUM(c) AS rows_in_bucket, "
-	"COUNT(*) AS approx_ndv, "
-	"FALSE AS is_mcv "
-	"FROM hist_buckets "
-	"GROUP BY seg_id, local_bid"
-	"), "
-	"mcv_buckets AS ("
-	"SELECT "
-	"val AS endpoint, "
-	"c AS rows_in_bucket, "
-	"1 AS approx_ndv, "
-	"TRUE AS is_mcv "
-	"FROM mcv_ranked"
-	"), "
-	"all_buckets AS ("
-	"SELECT * FROM hist_grouped "
-	"UNION ALL "
-	"SELECT * FROM mcv_buckets"
-	") "
-	"SELECT "
-	"endpoint, "
-	"rows_in_bucket, "
-	"SUM(rows_in_bucket) OVER (ORDER BY endpoint) AS cumulative, "
-	"approx_ndv, "
-	"is_mcv "
-	"FROM all_buckets "
-	"ORDER BY endpoint;";
-
-/* histogram with sampling scan query template */
-static const char *HISTOGRAM_WITH_SAMPLING_SCAN_QUERY_TEMPLATE =
-	"WITH src AS ("
-	"SELECT /*+ SAMPLING_SCAN */ [%s] AS val "
-	"FROM [%s] "
-	"WHERE [%s] IS NOT NULL"
-	"), "
-	"cnt AS ("
-	"SELECT "
-	"val, "
-	"COUNT(*) AS c "
-	"FROM src "
-	"GROUP BY val"
-	"), "
-	"mcv_ranked AS ("
-	"SELECT "
-	"val, "
-	"c, "
-	"ROW_NUMBER() OVER (ORDER BY c DESC, val) AS rn "
-	"FROM cnt "
-	"ORDER BY c DESC, val "
-	"LIMIT %d"
-	"), "
-	"ordered_vals AS ("
-	"SELECT "
-	"c.val, "
-	"c.c, "
-	"CASE WHEN m.rn IS NOT NULL THEN 1 ELSE 0 END AS is_mcv, "
-	"SUM(CASE WHEN m.rn IS NOT NULL THEN 1 ELSE 0 END) "
-	"OVER (ORDER BY c.val) AS seg_id "
-	"FROM cnt c "
-	"LEFT JOIN mcv_ranked m "
-	"ON c.val = m.val"
-	"), "
-	"non_mcv AS ("
-	"SELECT "
-	"val, "
-	"c, "
-	"seg_id "
-	"FROM ordered_vals "
-	"WHERE is_mcv = 0"
-	"), "
-	"param AS ("
-	"SELECT "
-	"CASE "
-	"WHEN SUM(c) > 0 THEN CEIL(SUM(c) * 1.0 / %d) "
-	"ELSE 1 "
-	"END AS cap "
-	"FROM non_mcv"
-	"), "
-	"hist_acc AS ("
-	"SELECT "
-	"val, "
-	"c, "
-	"seg_id, "
-	"SUM(c) OVER ("
-	"PARTITION BY seg_id "
-	"ORDER BY val"
-	") AS seg_cum "
-	"FROM non_mcv"
-	"), "
-	"hist_buckets AS ("
-	"SELECT "
-	"h.seg_id, "
-	"FLOOR((h.seg_cum - 1) / p.cap) AS local_bid, "
-	"h.val, "
-	"h.c, "
-	"FALSE AS is_mcv "
-	"FROM hist_acc h, param p"
-	"), "
-	"hist_grouped AS ("
-	"SELECT "
-	"MAX(val) AS endpoint, "
-	"SUM(c) AS rows_in_bucket, "
-	"COUNT(*) AS approx_ndv, "
-	"FALSE AS is_mcv "
-	"FROM hist_buckets "
-	"GROUP BY seg_id, local_bid"
-	"), "
-	"mcv_buckets AS ("
-	"SELECT "
-	"val AS endpoint, "
-	"c AS rows_in_bucket, "
-	"1 AS approx_ndv, "
-	"TRUE AS is_mcv "
-	"FROM mcv_ranked"
-	"), "
-	"all_buckets AS ("
-	"SELECT * FROM hist_grouped "
-	"UNION ALL "
-	"SELECT * FROM mcv_buckets"
-	") "
-	"SELECT "
-	"endpoint, "
-	"rows_in_bucket, "
-	"SUM(rows_in_bucket) OVER (ORDER BY endpoint) AS cumulative, "
-	"approx_ndv, "
-	"is_mcv "
-	"FROM all_buckets "
-	"ORDER BY endpoint;";
 
 /* histogram key kind */
 namespace hist
@@ -275,15 +61,40 @@ namespace hist
 
 } // namespace hist
 
+/* Collected-but-not-yet-stored per-column histogram blobs. Lets the caller defer the _db_histogram
+ * catalog write until after UPDATE STATISTICS succeeds, so a failed statistics update never leaves
+ * new histograms beside stale class statistics. Ownership is the caller's; free with
+ * histogram_collect_clear (). */
+typedef struct histogram_collect
+{
+  int count;
+  char **names;			/* attribute names */
+  char **blobs;			/* histogram blobs (NULL entry = no blob for that column) */
+  int *lens;			/* blob lengths (same unit passed to store_one_histogram) */
+  double *null_freqs;		/* exact null frequency per column */
+} HISTOGRAM_COLLECT;
+#define HISTOGRAM_COLLECT_INITIALIZER { 0, NULL, NULL, NULL, NULL }
+
 /* histogram analysis functions */
 int analyze_classes (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name, int max_number_of_buckets,
 		     bool with_fullscan, MOP classop);
-int get_null_frequency (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name, bool with_fullscan,
-			MOP classop);
-int get_histogram (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name, int max_number_of_buckets,
-		   bool with_fullscan, char **histogram_blob, int *histogram_total_length);
-int set_histogram (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name, char *histogram_blob,
-		   int histogram_total_length, MOP classop);
+/* server-side full-scan + reservoir sampling histogram collection (replaces the query-based path) */
+int analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name,
+				  int max_number_of_buckets, MOP classop);
+/* single-scan variant: build histograms for all histogrammable columns of the class in one heap scan.
+ * Also surfaces the per-column NDV + exact row count derived from the same scan (out_ndv_info /
+ * out_total_rows, may be NULL) so the caller can feed them to UPDATE STATISTICS and skip its NDV scan.
+ * If out_collect is non-NULL the per-column blobs are NOT written to the catalog; they are handed to
+ * the caller (transfer of ownership) so it can store them only after UPDATE STATISTICS succeeds --
+ * store with store_collected_histograms () and release with histogram_collect_clear (). When
+ * out_collect is NULL the blobs are stored immediately (legacy behavior). */
+int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, int max_number_of_buckets,
+					MOP classop, CLASS_ATTR_NDV *out_ndv_info, INT64 *out_total_rows,
+					HISTOGRAM_COLLECT *out_collect);
+/* store all collected per-column histograms into the catalog; returns the first error, if any. */
+int store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc);
+/* free everything owned by a HISTOGRAM_COLLECT and reset it. */
+void histogram_collect_clear (HISTOGRAM_COLLECT *hc);
 
 /* histogram selectivity evaluation functions */
 void histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity,
@@ -291,13 +102,13 @@ void histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, doub
 void histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge, bool include_equal,
 				     double *selectivity,
 				     bool *success);
+void histogram_get_join_selectivity (PT_NODE *lhs, PT_NODE *rhs, double *selectivity, bool *success);
 void histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success);
 /* histogram utility functions */
 int db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
 bool is_histogrammable_type (DB_TYPE type);
 int stats_get_histogram (MOP classop, HIST_STATS **histogram);
 int stats_free_histogram_and_init (HIST_STATS *histogram);
-int dump_histogram (MOP classop, const char *attr_name, DB_TYPE attr_type, bool with_fullscan, bool detailed, int error,
-		    FILE *f);
+int dump_histogram (MOP classop, const char *attr_name, DB_TYPE attr_type, bool detailed, int error, FILE *f);
 
 #endif // _HISTOGRAM_CL_HPP_

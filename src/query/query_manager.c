@@ -47,6 +47,7 @@
 #include "thread_entry.hpp"
 #include "xasl_cache.h"
 #include "xasl_unpack_info.hpp"
+#include "dblink_scan.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -112,6 +113,8 @@ struct qmgr_tran_entry
 
   OID_BLOCK_LIST *modified_classes_p;	/* array of class OIDs */
   pthread_mutex_t mutex;
+
+  bool is_dblink_autocommit;	/* for dblink autocommit check */
 };
 
 typedef struct qmgr_temp_file_list QMGR_TEMP_FILE_LIST;
@@ -666,6 +669,7 @@ qmgr_initialize_tran_entry (QMGR_TRAN_ENTRY * tran_entry_p)
   tran_entry_p->free_query_entry_list_p = NULL;
   tran_entry_p->dblink_entry = NULL;
   tran_entry_p->modified_classes_p = NULL;
+  tran_entry_p->is_dblink_autocommit = true;
   pthread_mutex_init (&tran_entry_p->mutex, NULL);
 }
 
@@ -2222,23 +2226,34 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-  int rc = dblink_end_tran (tran_entry_p->dblink_entry, is_abort);
-
   QMGR_TRAN_STATUS status = QMGR_TRAN_TERMINATED;
 
-  if (rc == ER_DBLINK_TRAN)
+  /*
+   * End DBLink connections when:
+   *   (a) is_abort=true  - rollback ALL entries unconditionally; XA-prepare will not occur.
+   *   (b) is_abort=false, is_dblink_autocommit=true - commit SELECT-only entries (no 2PC participants).
+   * Skip when is_abort=false and is_dblink_autocommit=false: DML participants are committed
+   * through the 2PC path (dblink_2pc_send_prepare -> dblink_2pc_end_tran).
+   */
+  if (tran_entry_p->dblink_entry != NULL && (is_abort || tran_entry_p->is_dblink_autocommit))
     {
-      /* remote transactions will be rollbacked */
-      status = QMGR_TRAN_DBLINK_ABORTED;
-      er_log_debug (ARG_FILE_LINE, "dblink transaction is not completed !\n");
-    }
-  else if (rc != NO_ERROR)
-    {
-      /* error occurred while remote transaction is committed or rollbacked */
-      er_log_debug (ARG_FILE_LINE, "dblink transaction is completed with some errors !\n");
-    }
+      int rc = dblink_end_tran (tran_entry_p->dblink_entry, is_abort);
 
-  tran_entry_p->dblink_entry = NULL;
+      if (rc == ER_DBLINK_TRAN)
+	{
+	  /* remote transactions will be rollbacked */
+	  status = QMGR_TRAN_DBLINK_ABORTED;
+	  er_log_debug (ARG_FILE_LINE, "dblink transaction is not completed !\n");
+	}
+      else if (rc != NO_ERROR)
+	{
+	  /* error occurred while remote transaction is committed or rollbacked */
+	  er_log_debug (ARG_FILE_LINE, "dblink transaction is completed with some errors !\n");
+	}
+
+      tran_entry_p->dblink_entry = NULL;
+      tran_entry_p->is_dblink_autocommit = true;
+    }
 
   return status;
 }
@@ -3897,6 +3912,7 @@ qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *use
 	  if (set_participant)
 	    {
 	      dblink->is_2pc_participant = set_participant;
+	      tran_entry_p->is_dblink_autocommit = false;
 	    }
 	  conn_handle = dblink->conn_info.conn_handle;
 	  break;
@@ -3914,6 +3930,13 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  if (tran_entry_p->is_dblink_autocommit == true)
+    {
+      if (set_participant)
+	{
+	  tran_entry_p->is_dblink_autocommit = false;
+	}
+    }
 
   DBLINK_CONN_ENTRY *dblink_conn_entry;
 
@@ -3927,9 +3950,9 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
   dblink_conn_entry->conn_info.conn_handle = conn_handle;
   dblink_conn_entry->is_2pc_participant = set_participant;
 
-  strcpy (dblink_conn_entry->conn_info.conn_url, conn_url);
-  strcpy (dblink_conn_entry->conn_info.user_name, user_name);
-  strcpy (dblink_conn_entry->conn_info.password, password);
+  snprintf (dblink_conn_entry->conn_info.conn_url, sizeof (dblink_conn_entry->conn_info.conn_url), "%s", conn_url);
+  snprintf (dblink_conn_entry->conn_info.user_name, sizeof (dblink_conn_entry->conn_info.user_name), "%s", user_name);
+  snprintf (dblink_conn_entry->conn_info.password, sizeof (dblink_conn_entry->conn_info.password), "%s", password);
 
   dblink_conn_entry->next = tran_entry_p->dblink_entry;
 
@@ -3939,22 +3962,72 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
 }
 
 DBLINK_CONN_ENTRY *
-qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p)
+qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p, bool * is_autocommit)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  *is_autocommit = tran_entry_p->is_dblink_autocommit;
 
   return tran_entry_p->dblink_entry;
 }
 
-void
-qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p)
+int
+qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p, bool is_commit)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  int rc = NO_ERROR;
 
-  qmgr_deallocate_dblink_entries (tran_entry_p->dblink_entry);
-  tran_entry_p->dblink_entry = NULL;
+  tran_entry_p->is_dblink_autocommit = true;
 
-  return;
+  if (tran_entry_p->dblink_entry != NULL)
+    {
+      /* End and disconnect remaining entries (typically non-participant SELECT-only
+       * connections left after dblink_2pc_send_prepare removed participant entries). */
+      rc = dblink_end_tran (tran_entry_p->dblink_entry, !is_commit);
+      tran_entry_p->dblink_entry = NULL;
+    }
+
+  return rc;
+}
+
+/*
+ * qmgr_dblink_remove_conn_entry () - unlink and free the dblink entry whose conn_handle matches
+ *   return: NO_ERROR if removed, ER_FAILED if not found
+ *   thread_p(in):
+ *   conn_handle(in): connection handle of the entry to remove
+ *
+ * Note: Used by 2PC send-prepare: once a participant has been XA-prepared, the decision is owned by
+ *       the 2PC daemon (which holds the same conn_handle via the participant block copy), so the
+ *       entry must be dropped from the per-transaction list. The CCI connection is NOT touched here.
+ */
+int
+qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
+  DBLINK_CONN_ENTRY *prev = NULL;
+
+  while (dblink)
+    {
+      if (dblink->conn_info.conn_handle == conn_handle)
+	{
+	  if (prev == NULL)
+	    {
+	      tran_entry_p->dblink_entry = dblink->next;
+	    }
+	  else
+	    {
+	      prev->next = dblink->next;
+	    }
+	  free_and_init (dblink);
+	  return NO_ERROR;
+	}
+      prev = dblink;
+      dblink = dblink->next;
+    }
+
+  return ER_FAILED;
 }

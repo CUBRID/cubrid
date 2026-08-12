@@ -842,6 +842,24 @@ struct rvfun RV_fun[] = {
    heap_rv_lob_remove_dir,
    NULL,
    NULL},
+  {RVHF_UPDATE_BESTSPACE_ENTRIES,
+   "RVHF_UPDATE_BESTSPACE_ENTRIES",
+   NULL,
+   heap_rv_redo_update,
+   NULL,
+   log_rv_dump_hexa},
+  {RVHF_MARK_PAGES_IN_HEAP,
+   "RVHF_MARK_PAGES_IN_HEAP",
+   NULL,
+   heap_rv_postpone_mark_pages_in_heap,
+   NULL,
+   heap_rv_dump_append_pages_to_heap},
+  {RVHF_UPDATE_PAGE_IN_HEAP_FLAG,
+   "RVHF_UPDATE_PAGE_IN_HEAP_FLAG",
+   heap_rv_undo_mark_page_in_heap,
+   heap_rv_redo_mark_page_in_heap,
+   NULL,
+   NULL},
   {RVOOS_INSERT,
    "RVOOS_INSERT",
    oos_rv_redo_delete,
@@ -866,6 +884,8 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    repl_data_insert_log_dump},
+  /* TODO: slot reserved for RVOOS_NOTIFY_VACUUM; kept as a no-op stub so the positionally
+   * indexed RV_fun[] stays contiguous. See recovery.h for the matching enum-side TODO. */
   {RVOOS_NOTIFY_VACUUM,
    "RVOOS_NOTIFY_VACUUM",
    vacuum_rv_es_nop,
@@ -876,7 +896,16 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    NULL,
-   repl_data_insert_log_dump}
+   repl_data_insert_log_dump},
+  /* Crash recovery replays the forward REC_NEWHOME delete identically to RVHF_DELETE; the OOS
+   * reclaim is an additional vacuum-time action driven off the undo image, not part of redo/undo.
+   * Handlers MUST mirror RVHF_DELETE's (heap_rv_undo_delete / heap_rv_redo_delete). */
+  {RVHF_DELETE_NEWHOME_NOTIFY_VACUUM,
+   "RVHF_DELETE_NEWHOME_NOTIFY_VACUUM",
+   heap_rv_undo_delete,
+   heap_rv_redo_delete,
+   log_rv_dump_hexa,
+   log_rv_dump_hexa}
 };
 
 /*

@@ -36,33 +36,55 @@
 namespace hist
 {
 
-// ---- Flat binary layout (LE) ----
-// [Header] [Index table] [Buckets area] [String blob....]
+// ---- Flat binary layout v2 (LE) ----
+// [Header(48B)] [MCV area] [Buckets area] [String blob....]
 //
-// Header (fixed):
-//   magic     : 'HST2' (4B)
-//   version   : u32 (1)
-//   nbuckets  : u32
-//   str_size  : u32
+// format: MCVs (most common values) live in their own section, separate from the
+// equi-depth histogram buckets which now hold ONLY the non-MCV non-null distribution.
 //
+// Header (fixed, 48B; fields read/written little-endian via OR_*):
+//   magic          : 'HST2' (4B) @0
+//   version        : u32    (2) @4
+//   nmcv           : u32       @8    number of MCV entries
+//   nbuckets       : u32       @12   number of histogram buckets (non-MCV)
+//   str_size       : u32       @16
+//   type           : u32       @20   DB_TYPE
+//   total_size     : u32       @24   total blob byte size
+//   reserved       : u32       @28   (0, alignment)
+//   total_rows     : int64     @32   population rows incl nulls
+//   null_frequency : double    @40   nulls / total_rows
 //
-// Buckets area (variable):
+// MCV area (nmcv * MCV_RECORD_SIZE):
+//   For each i in [0, nmcv):  (sorted by value ascending)
+//     value : 8B      (same slot encoding as bucket data_hi)
+//     freq  : f64     population fraction over ALL rows
+//
+// Buckets area (nbuckets * BUCKET_RECORD_SIZE):
 //   For each i in [0, nbuckets):
-//     data_hi    : 8B   (ptr or Value)
-//     cumulative: f64
-//     approx_ndv: f64  (present only if has_ndv==1)
+//     data_hi    : 8B   (value)
+//     cumulative : i64  (population non-MCV non-null running rows)
+//     approx_ndv : i64  (population distinct values in bucket)
 //
 // String blob (trailing):
-//   str_size bytes; bucket string data points to (len, off) inside this blob.
+//   str_size bytes; MCV/bucket string values point to (len, off) inside this blob. MCV
+//   strings are serialized before bucket strings (offsets follow that order).
+  constexpr std::uint32_t MCV_RECORD_SIZE    = 8 + 8;     // value + freq
   constexpr std::uint32_t BUCKET_RECORD_SIZE = 8 + 8 + 8; // data + cumulative + approx_ndv
-  struct HeaderV1
+
+  /* Header v2 field byte offsets. */
+  enum HeaderV2Offset : std::uint32_t
   {
-    char           magic[4];   // "HST1"
-    std::uint32_t  version;
-    std::uint32_t  nbuckets;
-    std::uint32_t  str_size;
-    std::uint32_t  type;       // DB_TYPE
-    std::uint32_t  total_size; // total size of the histogram
+    HV2_MAGIC      = 0,
+    HV2_VERSION    = 4,
+    HV2_NMCV       = 8,
+    HV2_NBUCKETS   = 12,
+    HV2_STR_SIZE   = 16,
+    HV2_TYPE       = 20,
+    HV2_TOTAL_SIZE = 24,
+    HV2_RESERVED   = 28,
+    HV2_TOTAL_ROWS = 32,
+    HV2_NULL_FREQ  = 40,
+    HEADER_V2_SIZE = 48
   };
 
   class HistogramReader
@@ -75,14 +97,44 @@ namespace hist
 	return error;
       }
       int reset (std::string_view blob);
+      /* column DB type the blob's value slots were encoded with (HST2 header 'type') */
+      DB_TYPE value_type () const
+      {
+	return static_cast<DB_TYPE> (type_);
+      }
 
       std::uint64_t bucket_count() const noexcept
       {
 	return nb_;
       }
-      std::uint64_t total_rows()   const
+      std::uint64_t mcv_count() const noexcept
+      {
+	return nmcv_;
+      }
+      /* population rows incl nulls (from header) */
+      std::int64_t total_rows()   const noexcept
+      {
+	return total_rows_hdr_;
+      }
+      /* nulls / total_rows (from header) */
+      double null_frequency() const noexcept
+      {
+	return null_freq_;
+      }
+      /* population non-MCV non-null rows == cumulative of the last bucket */
+      std::int64_t nonmcv_total_rows() const
       {
 	return nb_ ? bucket_cumulative (nb_ - 1) : 0;
+      }
+      /* sum of bucket approx_ndv == population distinct non-MCV values == ndistinct - nmcv */
+      std::int64_t nonmcv_distinct() const noexcept
+      {
+	return nonmcv_distinct_;
+      }
+      /* sum of MCV population frequencies (fraction of all rows) */
+      double mcv_total_frequency() const noexcept
+      {
+	return mcv_total_freq_;
       }
 
       std::int64_t bucket_cumulative (std::int32_t i) const;
@@ -93,7 +145,39 @@ namespace hist
       template<typename T>
       std::string bucket_hi_dump (std::uint32_t i) const;
       std::string bucket_hi_dump_with_type (std::uint32_t i, DB_TYPE attr_type) const;
+      std::string mcv_hi_dump_with_type (std::uint32_t i, DB_TYPE attr_type) const;
       std::int64_t bucket_rows (std::uint32_t i) const;
+
+      /* ---- MCV access ---- */
+      double mcv_freq (std::uint32_t i) const;
+      template<typename T>
+      T mcv_hi (std::uint32_t i) const;
+      /* binary search MCV (sorted ascending) for value; -1 if not present */
+      template <typename T>
+      int find_mcv (const T &value) const
+      {
+	int lo = 0;
+	int hi = static_cast<int> (nmcv_) - 1;
+	while (lo <= hi)
+	  {
+	    int mid = lo + (hi - lo) / 2;
+	    T mid_val = mcv_hi<T> (static_cast<std::uint32_t> (mid));
+	    if (mid_val == value)
+	      {
+		return mid;
+	      }
+	    if (mid_val < value)
+	      {
+		lo = mid + 1;
+	      }
+	    else
+	      {
+		hi = mid - 1;
+	      }
+	  }
+	return -1;
+      }
+
       template <typename T>
       int find_bucket (const T &value) const
       {
@@ -129,69 +213,36 @@ namespace hist
 	return lo;
 
       }
-      template<typename T>
-      bool check_value_included (std::uint32_t i, const T &value) const
-      {
-	/* not mcv */
-	if (bucket_approx_ndv (i) != 1)
-	  {
-	    return true;
-	  }
-	/* mcv */
-	T mcv_val = bucket_hi<T> (i);
-	if (value == mcv_val)
-	  {
-	    return true;
-	  }
-	return false;
-      }
-      template <typename T>
-      bool
-      find_bucket_and_check (const T &value, int &bucket_index)
-      {
-
-	if (nb_ == 1)
-	  {
-	    bucket_index = 0;
-	    return this->check_value_included (bucket_index, value);
-	  }
-
-	bucket_index = this->find_bucket<T> (value);
-	if (bucket_index == -1)
-	  {
-	    return false;
-	  }
-
-	while (!this->check_value_included (bucket_index, value))
-	  {
-	    if (bucket_index == static_cast<int> (nb_ - 1))
-	      {
-		return false;
-	      }
-	    bucket_index += 1;
-	  }
-
-	return true;
-      }
-
     private:
       template<typename T>
       T get_value (const void *ptr) const;
 
+      /* decode a value slot (numeric or string [len,off]) at an arbitrary record pointer */
+      template<typename T>
+      T value_from_ptr (const char *p) const;
+
       const char *bucket_rec (std::uint32_t i) const;
       const char *bucket_hi_value_ptr (std::uint32_t i) const;
+      const char *mcv_rec (std::uint32_t i) const;
 
     private:
       std::string_view blob_{};
       std::string_view str_blob_{};
+      const char *mcv_area_begin_    = nullptr;
       const char *bucket_area_begin_ = nullptr;
       const char *buckets_end_       = nullptr;
 
+      std::uint32_t nmcv_ = 0;
       std::uint32_t nb_ = 0;
       std::uint32_t str_size_ = 0;
       std::uint32_t total_size_ = 0;
 
       std::uint32_t type_ = DB_TYPE_UNKNOWN;
+
+      std::int64_t total_rows_hdr_   = 0;
+      double       null_freq_        = 0.0;
+      std::int64_t nonmcv_distinct_  = 0;   /* cached Σ bucket approx_ndv */
+      double       mcv_total_freq_   = 0.0; /* cached Σ mcv freq */
 
   };
 

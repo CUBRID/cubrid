@@ -27,6 +27,7 @@
 #include <assert.h>
 
 #include "authenticate.h"
+#include "db.h"
 #include "dbi.h"
 #include "parser.h"
 #include "semantic_check.h"
@@ -1508,10 +1509,9 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT
       server_info_bits |= SI_LOCAL_TRANSACTION_ID;
     }
 
-  /* request to the server */
   if (server_info_bits)
     {
-      error = qp_get_server_info (parser, server_info_bits);
+      error = db_ensure_server_info (parser, server_info_bits);
       if (error != NO_ERROR)
 	{
 	  return error;

@@ -3253,7 +3253,7 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
 
   OR_SET_VAR_OFFSET_SIZE (repr_id_bits, BIG_VAR_OFFSET_SIZE);	/* 4byte */
 
-  repr_id_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+  repr_id_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_RECORD_FLAG_SHIFT_BITS);
   or_put_int (buf_p, repr_id_bits);
   or_put_int (buf_p, chn);	/* CHN */
   or_put_bigint (buf_p, MVCCID_NULL);	/* MVCC insert id */
@@ -3376,10 +3376,10 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   /* header */
   assert (offset_size == BIG_VAR_OFFSET_SIZE || offset_size == SHORT_VAR_OFFSET_SIZE);
 
-  repr_id_bits = or_mvcc_get_repid_and_flags (buf_p, &rc);
+  repr_id_bits = or_get_record_repid_and_flags (buf_p, &rc);
   /* get bound_bits_flag and skip other MVCC header fields */
   bound_bits_flag = repr_id_bits & OR_BOUND_BIT_FLAG;
-  mvcc_flags = (char) ((repr_id_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  mvcc_flags = (char) ((repr_id_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_MVCC_FLAG_MASK);
   repr_id_bits = repr_id_bits & OR_MVCC_REPID_MASK;
 
   or_advance (buf_p, OR_INT_SIZE);	/* skip  CHN */
@@ -4010,7 +4010,8 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
   is_lock_inited = true;
 #endif /* SERVER_MODE */
 
-  if (heap_get_visible_version_expand_oos (thread_p, oid_p, class_oid_p, &record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &record, scan_p, COPY, NULL_CHN,
+				HEAP_RECDES_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4175,8 +4176,8 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   int i, j, k;
   int error = NO_ERROR;
 
-  if (heap_get_visible_version_expand_oos (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN) !=
-      S_SUCCESS)
+  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN,
+				HEAP_RECDES_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4499,8 +4500,8 @@ catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsi
 
   is_scan_inited = true;
 
-  if (heap_get_visible_version_expand_oos (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN) !=
-      S_SUCCESS)
+  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN,
+				HEAP_RECDES_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       ASSERT_ERROR_AND_SET (error);
       goto error;
@@ -5011,7 +5012,8 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
     }
   scan_cache_inited = true;
 
-  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
+  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK, HEAP_RECDES_DONT_CONSUME_RAW_BYTES) ==
+	 S_SUCCESS)
     {
       HEAP_ATTRVALUE *heap_value = NULL;
 
@@ -5463,7 +5465,8 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
     }
 
   *coll_cnt = 0;
-  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
+  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK, HEAP_RECDES_DONT_CONSUME_RAW_BYTES) ==
+	 S_SUCCESS)
     {
       HEAP_ATTRVALUE *heap_value = NULL;
       LANG_COLL_COMPAT *curr_coll;
@@ -5674,7 +5677,8 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
     }
   scan_cache_inited = true;
 
-  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
+  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK, HEAP_RECDES_DONT_CONSUME_RAW_BYTES) ==
+	 S_SUCCESS)
     {
       HEAP_ATTRVALUE *heap_value = NULL;
 

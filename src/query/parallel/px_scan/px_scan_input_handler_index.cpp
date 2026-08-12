@@ -38,7 +38,7 @@ namespace parallel_scan
 	return err;
       }
     m_leaf.init (&m_ranges);
-    m_ovf.init (parallelism, &m_ranges);
+    m_ovf.init (parallelism);
     return NO_ERROR;
   }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,7 +34,14 @@
 #include "dbi.h"
 #include "dbtype_function.h"
 #include "error_manager.h"
+
+#if defined(SA_MODE)
 #include "thread_manager.hpp"
+#include "file_manager.h"
+#include "heap_file.h"
+#include "oos_file.hpp"
+#include "vacuum.h"
+#endif /* SA_MODE */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -50,8 +57,13 @@ class SqlServerEnv : public ::testing::Environment
     {
       printf ("##### Starting Server For OOS SQL Testing #####\n");
       er_init ("./test_oos_sql_log", ER_NEVER_EXIT);
+#if defined(SA_MODE)
       db_set_client_type (DB_CLIENT_TYPE_MAX);
       auto err = db_restart ("unit_test", TRUE, "unittestdb");
+#else
+      db_set_client_type (DB_CLIENT_TYPE_DEFAULT);
+      auto err = db_restart ("unit_test", FALSE, "unittestdb");
+#endif
       printf ("will be written at %s\n", er_get_msglog_filename ());
       if (err != NO_ERROR)
 	{
@@ -158,5 +170,84 @@ fetch_single_int (const char *sql, int *out_val)
   return NO_ERROR;
 }
 
+// Execute DDL/DML and commit. Asserts success.
+static void
+exec_sql_commit (const char *sql)
+{
+  int rc = exec_sql (sql);
+  assert (rc >= 0);
+  db_commit_transaction ();
+}
+
+// ============================================================================
+// OOS file inspection helpers
+// ============================================================================
+
+#if defined(SA_MODE)
+// Get the OOS VFID for a given table name. Returns true on success.
+// SA_MODE only — requires server-side heap/file APIs.
+static bool
+get_oos_vfid_for_table (const char *table_name, VFID *oos_vfid_out)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+  DB_OBJECT *cls = db_find_class (table_name);
+  if (cls == NULL)
+    {
+      return false;
+    }
+
+  OID *class_oid = (OID *) db_identifier (cls);
+  if (class_oid == NULL)
+    {
+      return false;
+    }
+
+  HFID hfid;
+  FILE_TYPE ftype;
+  int err = heap_get_class_info (thread_p, class_oid, &hfid, &ftype, NULL);
+  if (err != NO_ERROR)
+    {
+      return false;
+    }
+
+  return heap_oos_find_vfid (thread_p, &hfid, oos_vfid_out, false);
+}
+
+// Get the number of user pages in the OOS file for a given table.
+// Returns -1 on failure. SA_MODE only.
+static int
+get_oos_page_count (const char *table_name)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+  VFID oos_vfid;
+  if (!get_oos_vfid_for_table (table_name, &oos_vfid))
+    {
+      return -1;
+    }
+
+  int num_pages = 0;
+  int err = file_get_num_user_pages (thread_p, &oos_vfid, &num_pages);
+  if (err != NO_ERROR)
+    {
+      return -1;
+    }
+
+  return num_pages;
+}
+#endif /* SA_MODE */
+
+// Trigger vacuum (SA_MODE only: calls xvacuum() directly, synchronous).
+static int
+run_vacuum ()
+{
+#if defined(SA_MODE)
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  return xvacuum (thread_p);
+#else
+  return NO_ERROR;
+#endif
+}
 
 #endif /* _TEST_OOS_SQL_COMMON_HPP_ */

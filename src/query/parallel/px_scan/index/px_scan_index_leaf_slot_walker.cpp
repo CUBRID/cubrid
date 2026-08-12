@@ -452,8 +452,8 @@ namespace parallel_index_scan
 	heap_recdes.data = nullptr;
       }
 
-    SCAN_CODE sp_scan = heap_get_visible_version (thread_p, oid, nullptr, &heap_recdes,
-			&isidp->scan_cache, m_scan_id->fixed, NULL_CHN);
+    SCAN_CODE sp_scan = heap_get_visible_version (thread_p, oid, nullptr, &heap_recdes, &isidp->scan_cache,
+			m_scan_id->fixed, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
     if (sp_scan == S_SNAPSHOT_NOT_SATISFIED || sp_scan == S_DOESNT_EXIST)
       {
 	return S_END;  /* skip this OID */

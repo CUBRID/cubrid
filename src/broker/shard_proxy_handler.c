@@ -298,7 +298,7 @@ void
 proxy_context_set_error_with_msg (T_PROXY_CONTEXT * ctx_p, int error_ind, int error_code, const char *error_msg)
 {
   proxy_context_set_error (ctx_p, error_ind, error_code);
-  snprintf (ctx_p->error_msg, sizeof (ctx_p->error_msg), error_msg);
+  snprintf (ctx_p->error_msg, sizeof (ctx_p->error_msg), "%s", error_msg);
 
   return;
 }

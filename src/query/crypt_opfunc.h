@@ -65,6 +65,19 @@ extern int crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, in
 				    long tm);
 extern int crypt_dblink_str_to_bin (const char *src, int src_len, char *dest, int *dest_len, unsigned char *key);
 
+/* dblink password cipher sizing (shared by DDL handling and _db_global_tran catalog) */
+#define DBLINK_PASSWORD_MAX_LENGTH      (128)
+#define DBLINK_PASSWORD_CONFUSED_LENGTH (6)	/* include 4(int) + 1(unsigned char) + 1(unsigned char) */
+/* Valid data size is the largest multiple of 3 less than or equal to DBLINK_PASSWORD_CIPHER_LENGTH. */
+#define DBLINK_PASSWORD_CIPHER_LENGTH   (DBLINK_PASSWORD_MAX_LENGTH + DBLINK_PASSWORD_CONFUSED_LENGTH)
+#define DBLINK_PASSWORD_PAD_LENGTH      (40)	/* include 2(length) + 2(mk) + 2(length) + 32(mk), Must be 4 or more */
+#define DBLINK_PASSWORD_MAX_BUFSIZE     ((int)(DBLINK_PASSWORD_CIPHER_LENGTH / 3 * 4) + DBLINK_PASSWORD_PAD_LENGTH)
+
+/* Encrypt a raw dblink password into a self-contained cipher string (bounded by cipher_buf_size).
+ * Returns NO_ERROR on success, ER_* on failure. cipher_buf must be > DBLINK_PASSWORD_MAX_BUFSIZE. */
+extern int crypt_dblink_password_encrypt (const char *passwd, char *cipher_buf, int cipher_buf_size);
+/* Decrypt a cipher string produced by crypt_dblink_password_encrypt back to the raw password (bounded). */
+extern int crypt_dblink_password_decrypt (const char *cipher, char *raw_buf, int raw_buf_size);
 
 #include "tde.h"
 #define  DBLINK_CRYPT_KEY_LENGTH   TDE_DATA_KEY_LENGTH

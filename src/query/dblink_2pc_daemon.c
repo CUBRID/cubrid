@@ -168,11 +168,34 @@ dblink_2pc_recovery_callback (const DBLINK_GLOBAL_TRAN_ROW * row_data)
 void
 dblink_2pc_daemon_recovery_with_thread (THREAD_ENTRY * thread_p)
 {
+  int tran_index, error;
+
   if (thread_p == NULL)
     {
       return;
     }
-  (void) dblink_global_tran_scan_for_recovery (thread_p, dblink_2pc_recovery_callback);
+
+  /* Run the recovery scan under its own transaction (rather than the caller's system/recovery
+   * tran index) so that the class lock taken by the heap scan is released via the normal
+   * commit/abort path. The system tran index is never committed/aborted or unlocked, so a scan
+   * performed directly on it would leak its class lock until server shutdown. */
+  tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL,
+					TRAN_LOCK_INFINITE_WAIT, TRAN_READ_COMMITTED);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      return;
+    }
+
+  error = dblink_global_tran_scan_for_recovery (thread_p, dblink_2pc_recovery_callback);
+  if (error == NO_ERROR)
+    {
+      xtran_server_commit (thread_p, false);
+    }
+  else
+    {
+      (void) xtran_server_abort (thread_p);
+    }
+  logtb_free_tran_index (thread_p, tran_index);
 }
 
 static void
@@ -315,6 +338,8 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * parti
 
   return NO_ERROR;
 }
+
+REGISTER_DAEMON (dblink_2pc_daemon);
 
 void
 dblink_2pc_daemon_init (void)

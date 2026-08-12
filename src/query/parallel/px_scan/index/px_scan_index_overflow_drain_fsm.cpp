@@ -138,15 +138,10 @@ namespace parallel_index_scan
 		m_drain_state = drain_state::IDLE;
 		return S_END;
 	      }
-	    /* leaf_slot_for_publish recovers producer's read slot: m_current_slot was inc/dec'd past it, so reverse by one. */
-	    VPID leaf_vpid_for_publish;
-	    pgbuf_get_vpid (walker->m_page, &leaf_vpid_for_publish);
-	    PGSLOTID leaf_slot_for_publish = (PGSLOTID) (walker->m_use_desc_index ? (walker->m_current_slot + 1) :
-					     (walker->m_current_slot - 1));
+	    /* m_slot_key valid here: walker.cpp sets it before begin_leaf_drain; key immutable (MVCC). */
 	    int published_idx = handler->try_publish_overflow (thread_p,
 				m_pending_ovf_vpid,
-				leaf_vpid_for_publish,
-				leaf_slot_for_publish,
+				&walker->m_slot_key,
 				walker->m_current_range_idx);
 	    /* cap == parallelism invariant: try_publish_overflow cannot legitimately return -1; if-branch defends release builds (try_publish already er_set). */
 	    assert (published_idx >= 0 && "try_publish must succeed under cap == parallelism invariant");

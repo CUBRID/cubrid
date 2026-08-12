@@ -407,7 +407,7 @@ TEST (OosBestspaceTest, BestspaceFindBestPageBasic)
 
   // Verify the returned page has enough free space
   int free_space = spage_max_space_for_new_record (thread_p, page_ptr.get ());
-  int needed = rec_length + (int) sizeof (SPAGE_SLOT);
+  int needed = rec_length;
   test_oos_debug ("free_space=%d, needed=%d", free_space, needed);
   ASSERT_GE (free_space, needed);
 

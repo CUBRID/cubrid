@@ -57,8 +57,7 @@ typedef enum
 extern void qdata_set_value_list_to_null (val_list_node * val_list);
 extern bool qdata_copy_db_value (DB_VALUE * dbval1, const DB_VALUE * dbval2);
 
-extern int qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval, bool clear_compressed_string, char *tvalp,
-					       int *tval_size);
+extern int qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval, char *tvalp, int *tval_size);
 extern int qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd,
 					    qfile_tuple_record * tplrec);
 extern QPROC_TPLDESCR_STATUS qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p,

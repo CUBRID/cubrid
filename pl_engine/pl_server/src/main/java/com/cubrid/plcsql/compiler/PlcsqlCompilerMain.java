@@ -32,6 +32,7 @@ package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CompileInfo;
+import com.cubrid.plcsql.compiler.antlrgen.PlcLexer;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
@@ -43,14 +44,30 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
 public class PlcsqlCompilerMain {
 
-    // temporary code - the owner and revision strings will come from the server
-    private static int revision = 1;
+    public static class CodeAndPosition {
+
+        public String code;
+        public int row;
+        public int col;
+
+        CodeAndPosition(String code, int row, int col) {
+            this.code = code;
+            this.row = row;
+            this.col = col;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("(%d, %d) '%s'", row, col, code);
+        }
+    }
 
     public static CompileInfo compilePLCSQL(String in, String owner, boolean verbose) {
         return compilePLCSQL(in, verbose, owner, Integer.toString(revision++));
@@ -80,9 +97,36 @@ public class PlcsqlCompilerMain {
         }
     }
 
+    public static List<CodeAndPosition> checkSyntaxAndGetStaticSqls(String code) {
+
+        CharStream input = CharStreams.fromString(code);
+        PlcLexer lexer = new PlcLexerEx(input);
+
+        SyntaxErrorIndicator lei = new SyntaxErrorIndicator(false);
+        lexer.removeErrorListeners(); // This removes unwanted console output
+        lexer.addErrorListener(lei);
+
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        PlcParser parser = new PlcParser(tokens);
+
+        SyntaxErrorIndicator sei = new SyntaxErrorIndicator(false);
+        parser.removeErrorListeners(); // This removes unwanted console output
+        parser.addErrorListener(sei);
+
+        ParseTree ptree = parser.sql_script();
+
+        StaticSqlCollector ssCollector = new StaticSqlCollector();
+        ParseTreeWalker.DEFAULT.walk(ssCollector, ptree);
+
+        return ssCollector.staticSqls;
+    }
+
     // ------------------------------------------------------------------
     // Private
     // ------------------------------------------------------------------
+
+    // temporary code - the owner and revision strings will come from the server
+    private static int revision = 1;
 
     private static final int OPT_VERBOSE = 1;
     private static final int OPT_PRINT_PARSE_TREE = 1 << 1;
@@ -279,11 +323,11 @@ public class PlcsqlCompilerMain {
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {
 
-        final boolean forParser;
+        final boolean cutVariablePart;
 
-        public SyntaxErrorIndicator(boolean forParser) {
+        public SyntaxErrorIndicator(boolean cutVariablePart) {
             super();
-            this.forParser = forParser;
+            this.cutVariablePart = cutVariablePart;
         }
 
         @Override
@@ -296,7 +340,7 @@ public class PlcsqlCompilerMain {
                 RecognitionException e) {
 
             // throw SyntaxError at the first syntax error
-            String errMsg = forParser ? cutExpectingClause(msg) : msg;
+            String errMsg = cutVariablePart ? cutExpectingClause(msg) : msg;
             throw new SyntaxError(line, charPositionInLine + 1, errMsg);
         }
     }
