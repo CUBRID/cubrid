@@ -45,6 +45,86 @@
  */
 
 /*
+ * qo_move_subquery_hints () - carry the unnested subquery's hints to the enclosing SELECT
+ *   return: none
+ *   node(in/out): the enclosing SELECT, which takes over the spec the hints name
+ *   subq(in/out): the subquery being discarded, left with no hints
+ *
+ * Note: mq_rewrite_aggregate_as_derived () does the same when it moves a FROM between SELECTs. Appended
+ *   rather than assigned -- that one fills a node it just made, while the enclosing SELECT may already
+ *   carry hints of its own. NO_MERGE / QUERY_CACHE / NO_SUBQUERY_CACHE describe the subquery itself and
+ *   mean nothing once it is gone.
+ */
+static void
+qo_move_subquery_hints (PT_NODE * node, PT_NODE * subq)
+{
+  node->info.query.q.select.using_index =
+    parser_append_node (subq->info.query.q.select.using_index, node->info.query.q.select.using_index);
+  subq->info.query.q.select.using_index = NULL;
+
+  node->info.query.q.select.leading =
+    parser_append_node (subq->info.query.q.select.leading, node->info.query.q.select.leading);
+  subq->info.query.q.select.leading = NULL;
+
+  node->info.query.q.select.use_nl =
+    parser_append_node (subq->info.query.q.select.use_nl, node->info.query.q.select.use_nl);
+  subq->info.query.q.select.use_nl = NULL;
+
+  node->info.query.q.select.use_idx =
+    parser_append_node (subq->info.query.q.select.use_idx, node->info.query.q.select.use_idx);
+  subq->info.query.q.select.use_idx = NULL;
+
+  node->info.query.q.select.index_ss =
+    parser_append_node (subq->info.query.q.select.index_ss, node->info.query.q.select.index_ss);
+  subq->info.query.q.select.index_ss = NULL;
+
+  node->info.query.q.select.index_ls =
+    parser_append_node (subq->info.query.q.select.index_ls, node->info.query.q.select.index_ls);
+  subq->info.query.q.select.index_ls = NULL;
+
+  node->info.query.q.select.use_merge =
+    parser_append_node (subq->info.query.q.select.use_merge, node->info.query.q.select.use_merge);
+  subq->info.query.q.select.use_merge = NULL;
+
+  node->info.query.q.select.use_hash =
+    parser_append_node (subq->info.query.q.select.use_hash, node->info.query.q.select.use_hash);
+  subq->info.query.q.select.use_hash = NULL;
+
+  node->info.query.q.select.no_use_hash =
+    parser_append_node (subq->info.query.q.select.no_use_hash, node->info.query.q.select.no_use_hash);
+  subq->info.query.q.select.no_use_hash = NULL;
+
+  node->info.query.q.select.hint |=
+    (subq->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE));
+}
+
+/*
+ * qo_index_hint_is_movable () - true iff the subquery's USING INDEX list means the same thing once the
+ *      unnest carries it to the enclosing SELECT
+ *   return: bool
+ *   using_index(in): the subquery's USING INDEX list, may be NULL
+ *
+ * Note: every other form names its table -- add_using_index () matches entries against QO_NODE_NAME -- so
+ *   it keeps applying to the same spec, which is the one moving up. USING INDEX NONE names none, and is
+ *   applied to every node in scope; lifted out of the subquery it would silence the outer tables too.
+ */
+static bool
+qo_index_hint_is_movable (PT_NODE * using_index)
+{
+  PT_NODE *hint;
+
+  for (hint = using_index; hint != NULL; hint = hint->next)
+    {
+      if (hint->info.name.original == NULL && hint->info.name.resolved == NULL)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
  * qo_is_unnestable_subquery () - eligibility gate shared by the [NOT] EXISTS and [NOT] IN paths
  *   return: true only if 'subq' is a plain SELECT over one base table, safe to flatten into a single
  *           semi/anti-joined spec
@@ -104,6 +184,13 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
   (void) parser_walk_tree (parser, subq->info.query.q.select.where, pt_check_subquery_pre, NULL,
 			   pt_check_subquery_post, &has_subquery);
   if (has_subquery)
+    {
+      return false;
+    }
+
+  /* the index hint hangs on the subquery node, which the unnest discards; it is carried over to the
+   * enclosing SELECT instead, so only the form that cannot survive the move is rejected here */
+  if (!qo_index_hint_is_movable (subq->info.query.q.select.using_index))
     {
       return false;
     }
@@ -297,8 +384,6 @@ qo_unnest_one_conjunct (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_n
       return false;
     }
 
-  /* ---- commit ---- */
-
   /* detach everything we keep, before the subquery shell is freed at the end */
   subq->info.query.q.select.from = NULL;
   subq->info.query.q.select.where = NULL;
@@ -308,9 +393,10 @@ qo_unnest_one_conjunct (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_n
       subq->info.query.q.select.list = NULL;
     }
 
+  qo_move_subquery_hints (node, subq);
+
   inner_spec->info.spec.join_type = (is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
   inner_spec->info.spec.on_cond = on_cond;
-  inner_spec->info.spec.natural = false;
 
   /* Append at the FROM tail. Count the position rather than read the last spec's location: a derived spec
    * appended earlier in this pass by qo_rewrite_subqueries () still carries the unset -1, and
