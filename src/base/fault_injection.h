@@ -57,13 +57,16 @@ typedef enum
   /* common */
   FI_TEST_HANG = 1,
 
-  /* IO & DISK MANAGER */
-  FI_TEST_FILE_IO_FORMAT = 100000,
+  /* IO & DISK MANAGER
+   * grouped by module. a code is given to the fault_injection_ids system parameter as a number, so an entry keeps
+   * the value it was assigned when it moves; the values below are not in ascending order on purpose.
+   */
   FI_TEST_DISK_MANAGER_VOLUME_ADD = 100001,
   FI_TEST_DISK_MANAGER_VOLUME_EXPAND = 100002,
+  FI_TEST_DISK_MANAGER_VOLHEADER_HOLD = 100005,	/* keep the volume header latched, to make contention observable */
+  FI_TEST_FILE_IO_FORMAT = 100000,
   FI_TEST_FILE_IO_WRITE_PARTS1 = 100003,
   FI_TEST_FILE_IO_WRITE_PARTS2 = 100004,
-  FI_TEST_DISK_MANAGER_VOLHEADER_HOLD = 100005,	/* keep the volume header latched, to make contention observable */
 
   /* FILE MANAGER */
   FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER = 200000,	/* unused */
