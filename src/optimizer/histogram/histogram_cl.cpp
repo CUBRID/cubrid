@@ -484,10 +484,54 @@ histogram_collect_clear (HISTOGRAM_COLLECT *hc)
  * up there. When the histogram is not loaded yet (a first EXECUTE fingerprints BEFORE this
  * process ever optimizes the class), fetch it once into the same cache slot the optimizer
  * uses -- later fingerprints and optimizations then hit the cache. */
-static DB_VALUE *
-histogram_blob_from_class_cache (PT_NODE *name)
+/* fingerprint-walk ambient context: lets the histogram probes reach the statement for
+ * spec resolution without changing their public signatures (QO calls them too, where the
+ * name-node annotation makes the statement unnecessary). Client-side single-threaded. */
+static PARSER_CONTEXT *bind_fp_active_parser = NULL;
+static PT_NODE *bind_fp_active_statement = NULL;
+
+struct spec_class_name_ctx
 {
-  const char *class_name = name->info.name.resolved;
+  UINTPTR spec_id;
+  const char *class_name;
+};
+
+static PT_NODE *
+spec_class_name_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  spec_class_name_ctx *ctx = (spec_class_name_ctx *) arg;
+
+  if (node != NULL && node->node_type == PT_SPEC && node->info.spec.id == ctx->spec_id
+      && node->info.spec.entity_name != NULL && node->info.spec.entity_name->node_type == PT_NAME)
+    {
+      ctx->class_name = node->info.spec.entity_name->info.name.original;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/* class name of the spec a resolved column belongs to. name.resolved is the EXPOSED spec
+ * name -- for an aliased spec that is the alias, which is not a class the catalog knows
+ * (review report: `t1 a` broke the fingerprint, so the first-execution peek silently
+ * stopped for aliased tables). Walk the statement for the spec instead. */
+static const char *
+histogram_spec_class_name (PARSER_CONTEXT *parser, PT_NODE *statement, PT_NODE *name)
+{
+  spec_class_name_ctx ctx;
+
+  ctx.spec_id = name->info.name.spec_id;
+  ctx.class_name = NULL;
+  if (statement != NULL && ctx.spec_id != 0)
+    {
+      (void) parser_walk_tree (parser, statement, spec_class_name_walk, &ctx, NULL, NULL);
+    }
+  return ctx.class_name;
+}
+
+static DB_VALUE *
+histogram_blob_from_class_cache (PARSER_CONTEXT *parser, PT_NODE *statement, PT_NODE *name)
+{
+  const char *class_name = histogram_spec_class_name (parser, statement, name);
   const char *attr_name = name->info.name.original;
 
   if (class_name == NULL || attr_name == NULL)
@@ -557,9 +601,9 @@ histogram_init_reader_from_lhs (PT_NODE *lhs, hist::HistogramReader &reader)
     }
 
   DB_VALUE *histogram_value = lhs->info.name.histogram;
-  if (histogram_value == NULL)
+  if (histogram_value == NULL && bind_fp_active_statement != NULL)
     {
-      histogram_value = histogram_blob_from_class_cache (lhs);
+      histogram_value = histogram_blob_from_class_cache (bind_fp_active_parser, bind_fp_active_statement, lhs);
     }
   if (histogram_value == NULL)
     {
@@ -2523,6 +2567,8 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
 struct bind_fp_walk_ctx
 {
   PARSER_CONTEXT *parser;
+  PT_NODE *statement;		/* for resolving a column's class through its spec (an aliased
+				 * spec exposes the alias in name.resolved, not the class name) */
   std::uint64_t fp;
   bool found;
 };
@@ -2755,10 +2801,17 @@ histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *
 
   bind_fp_walk_ctx ctx;
   ctx.parser = parser;
+  ctx.statement = statement;
   ctx.fp = 0;
   ctx.found = false;
 
+  bind_fp_active_parser = parser;
+  bind_fp_active_statement = statement;
+
   (void) parser_walk_tree (parser, statement, bind_fp_walk, &ctx, NULL, NULL);
+
+  bind_fp_active_parser = NULL;
+  bind_fp_active_statement = NULL;
 
   if (!ctx.found)
     {
