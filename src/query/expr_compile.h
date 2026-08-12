@@ -112,6 +112,14 @@ struct expr_prog
   int n_prologue;
   bool prologue_done;
 
+  /* the next n_exec_prologue steps only read host variables (publish or coerce them);
+   * bound values are fixed for a whole execution, so these run once per execution --
+   * skipped while the executing query id matches exec_stamp, re-run when it changes
+   * (auto-parameterized literals land here instead of the per-row loop) */
+  int n_exec_prologue;
+  unsigned long long exec_stamp;
+  bool exec_stamp_valid;
+
   DB_VALUE *slots;		/* step-owned result slots */
   int n_slots;
 
