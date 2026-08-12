@@ -49,6 +49,7 @@ extern "C"
 #define QR_DEFAULT_HASH_SIZE	1024
 #define QR_MAX_RULE_COUNT	200	/* hard ceiling for QUERY_REWRITE_MAX_RULES */
 #define QR_RELPATH_LEN		520	/* "user@dbname/file" pool slot for the source path */
+#define QR_SHMODE		0600	/* owner-only: the segment holds the rule files' SQL verbatim */
 #define QR_RULE_SUFFIX		".rule"	/* only files with this suffix are loaded as rules */
 
 #define QR_FAIL_STRIKE_MAX	2	/* consecutive AMBIGUOUS execute failures per rule -> demote (N-strike) */

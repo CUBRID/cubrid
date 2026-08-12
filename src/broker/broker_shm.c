@@ -402,7 +402,7 @@ uw_shm_destroy (int shm_key)
   /* remove the paired query rewrite segment before the early returns below, so it is
    * reclaimed even when the appl server segment is already gone.  qr_shm_destroy validates
    * magic/owner_shm_id, so another broker's segment is never touched. */
-  qr_shm_destroy (shm_key, SHMODE);
+  qr_shm_destroy (shm_key, QR_SHMODE);
 
   mid = shmget (shm_key, 0, SHMODE);
 

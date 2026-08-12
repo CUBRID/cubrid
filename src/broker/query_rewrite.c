@@ -1307,7 +1307,7 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
    * so the key-based qr status / qr disable never find an orphan (they locate the segment
    * by key, not by shm_as_p->query_rewrite_shm_key).  qr_shm_destroy validates
    * magic/owner_shm_id, so only this broker's segment is removed. */
-  qr_shm_destroy (br_info_p->appl_server_shm_id, 0644);
+  qr_shm_destroy (br_info_p->appl_server_shm_id, QR_SHMODE);
 
   if (dir == NULL || dir[0] == '\0')
     {
@@ -1540,7 +1540,7 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
   shm_key = qr_make_shm_key (br_info_p->appl_server_shm_id);
 
 
-  mid = shmget (shm_key, total_size, IPC_CREAT | IPC_EXCL | 0644);
+  mid = shmget (shm_key, total_size, IPC_CREAT | IPC_EXCL | QR_SHMODE);
   if (mid == -1)
     {
       for (i = 0; i < parsed_count; i++)
@@ -2420,11 +2420,9 @@ qr_init (T_SHM_APPL_SERVER * shm_as_p)
   if (qr_make_shm_key (qr_shm->owner_shm_id) != shm_as_p->query_rewrite_shm_key
       || qr_shm->max_rules <= 0 || qr_shm->max_rules > QR_MAX_RULE_COUNT
       || qr_shm->rule_count < 0 || qr_shm->rule_count > qr_shm->max_rules
-      || qr_shm->hash_size <= 0 || qr_shm->dbuser_hash_size <= 0
+      || qr_shm->hash_size != QR_DEFAULT_HASH_SIZE || qr_shm->dbuser_hash_size != QR_DEFAULT_HASH_SIZE
       || qr_shm->dbuser_count < 0 || qr_shm->dbuser_count > qr_shm->max_rules
-      || qr_shm->cfg_max_query_len <= 0 || qr_shm->cfg_max_query_len > QR_MAX_QUERY_LEN
-      || qr_shm->bucket_off <= 0 || qr_shm->rule_off <= 0 || qr_shm->pool_off <= 0
-      || qr_shm->dbuser_bucket_off <= 0 || qr_shm->dbuser_off <= 0 || qr_shm->pool_off >= qr_shm->total_size)
+      || qr_shm->cfg_max_query_len <= 0 || qr_shm->cfg_max_query_len > QR_MAX_QUERY_LEN)
     {
 #if !defined(NDEBUG)
       _er_log_debug (ARG_FILE_LINE, "qr_init: inconsistent header for key 0x%x\n", shm_as_p->query_rewrite_shm_key);
@@ -2434,6 +2432,38 @@ qr_init (T_SHM_APPL_SERVER * shm_as_p)
 
       goto error;
     }
+
+  /* the layout is a pure function of the capacity scalars checked above, so recompute it
+   * and require an exact match: a per-offset range check would still let a corrupted
+   * header overlap two arrays, and it never bounds the last array's end.  total_size is
+   * then checked against the size the kernel actually mapped. */
+  {
+    struct shmid_ds ds;
+    int exp_slot, exp_bucket, exp_rule, exp_dbucket, exp_dbuser, exp_pool, exp_total;
+
+    exp_slot = 2 * (qr_shm->cfg_max_query_len + 1) + QR_RELPATH_LEN;
+    exp_bucket = (int) sizeof (T_QR_SHM_HEADER);
+    exp_rule = exp_bucket + (int) sizeof (int) * qr_shm->hash_size;
+    exp_dbucket = exp_rule + (int) sizeof (T_QR_RULE) * qr_shm->max_rules;
+    exp_dbuser = exp_dbucket + (int) sizeof (int) * qr_shm->dbuser_hash_size;
+    exp_pool = exp_dbuser + (int) sizeof (T_QR_DBUSER) * qr_shm->max_rules;
+    exp_total = exp_pool + qr_shm->max_rules * exp_slot;
+
+    if (qr_shm->pool_slot != exp_slot
+	|| qr_shm->bucket_off != exp_bucket || qr_shm->rule_off != exp_rule
+	|| qr_shm->dbuser_bucket_off != exp_dbucket || qr_shm->dbuser_off != exp_dbuser
+	|| qr_shm->pool_off != exp_pool || qr_shm->total_size != exp_total
+	|| shmctl (mid, IPC_STAT, &ds) != 0 || (size_t) exp_total > ds.shm_segsz)
+      {
+#if !defined(NDEBUG)
+	_er_log_debug (ARG_FILE_LINE, "qr_init: bad layout for key 0x%x\n", shm_as_p->query_rewrite_shm_key);
+#endif
+	shmdt (base);
+	qr_shm = NULL;
+
+	goto error;
+      }
+  }
 
   qr_bucket = (int *) (base + qr_shm->bucket_off);
   qr_rule = (T_QR_RULE *) (base + qr_shm->rule_off);
