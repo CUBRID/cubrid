@@ -9170,7 +9170,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 
 size_error:
   error_status = ER_QPROC_STRING_SIZE_TOO_BIG;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, *result_size,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, (size_t) * result_size,
 	  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
   /*
@@ -9382,7 +9382,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 
 size_error:
   error_status = ER_QPROC_STRING_SIZE_TOO_BIG;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, *result_size,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, (size_t) * result_size,
 	  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
 
