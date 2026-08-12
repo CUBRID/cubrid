@@ -381,8 +381,7 @@ expr_k_mul_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
    * to_dbval () falls through SHORT/INTEGER/BIGINT/NUMERIC into one case); the
    * fixed64 entry handles the single-word common case bit-identically and declines
    * everything else back to the reference */
-  if (!float_numeric_db_value_mul_fixed64 (a, b, step->out)
-      && float_numeric_db_value_mul (a, b, step->out) != NO_ERROR)
+  if (!float_numeric_db_value_mul_fixed64 (a, b, step->out) && float_numeric_db_value_mul (a, b, step->out) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_QPROC_OVERFLOW_MULTIPLICATION;
@@ -1814,7 +1813,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		 * variable is fixed per execution: coerce it once per execution */
 		bctx->step_prologue[step - bctx->steps] = (arith->leftptr->type == TYPE_DBVAL && bctx->in_branch == 0);
 		bctx->step_exec_prologue[step - bctx->steps] =
-			(arith->leftptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
+		  (arith->leftptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
 		c1 = cell;
 	      }
 	    if (t2 != DB_TYPE_NUMERIC && arith->opcode != T_MUL)
@@ -1831,7 +1830,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		bctx->n_slots++;
 		bctx->step_prologue[step - bctx->steps] = (arith->rightptr->type == TYPE_DBVAL && bctx->in_branch == 0);
 		bctx->step_exec_prologue[step - bctx->steps] =
-			(arith->rightptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
+		  (arith->rightptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
 		c2 = cell;
 	      }
 	  }
@@ -2417,8 +2416,7 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
   fprintf (fp,
 	   "%*csteps: %d (prologue: %d, exec-prologue: %d, compute: %d), cells: %d, slots: %d, roots: %d, hostvar types: %d\n",
 	   indent, ' ', prog->n_steps, prog->n_prologue, prog->n_exec_prologue, prog->n_compute, prog->n_cells,
-	   prog->n_slots,
-	   prog->n_roots, prog->n_hv);
+	   prog->n_slots, prog->n_roots, prog->n_hv);
 
   for (i = 0; i < prog->n_steps; i++)
     {
