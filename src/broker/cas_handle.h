@@ -154,6 +154,9 @@ struct t_srv_handle
   void *cgw_hstmt;
   void *cgw_col_binding;
   void *cgw_col_binding_buff;
+  void *cgw_schema_info;	/* gateway schema_info rows (T_CGW_SCHEMA_ATTR array), malloc'd */
+  int cgw_schema_info_count;
+  char *cgw_schema_class_name;	/* the table those rows describe, malloc'd */
   int total_tuple_count;
   int stmt_type;
   bool is_cursor_open;

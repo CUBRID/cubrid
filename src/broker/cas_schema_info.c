@@ -75,7 +75,7 @@ schema_attr_meta (T_NET_BUF * net_buf)
   if (with_invisible)
     {
       net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "IS_INVISIBLE");
-      
+
       /* PROTOCOL_V13: Adds two type metadata missing in DOMAIN column.
        * - EXT_DOMAIN: Extended type including collection bits (SET/MULTISET/SEQUENCE).
        *   Sent as a full byte to match describe's ext_type format for unified reading.

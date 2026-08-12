@@ -372,6 +372,8 @@ static void
 srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 {
   FREE_MEM (srv_handle->sql_stmt);
+  FREE_MEM (srv_handle->cgw_schema_info);	/* gateway schema_info rows; always NULL outside the gateway */
+  FREE_MEM (srv_handle->cgw_schema_class_name);
   if (!is_cgw_mode)
     {
       hm_prepare_call_info_free (srv_handle->prepare_call_info);

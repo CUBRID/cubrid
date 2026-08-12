@@ -270,6 +270,8 @@ set(CAS_CGW_LIB_SOURCES
   ${BROKER_DIR}/cas_cgw_odbc.c
   ${BROKER_DIR}/cas_cgw_execute.c
   ${BROKER_DIR}/cas_cgw_function.c
+  ${BROKER_DIR}/cas_schema_info.c
+  ${BROKER_DIR}/cas_str_like.c
 )
 
 SET_SOURCE_FILES_PROPERTIES(
