@@ -373,6 +373,22 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   // make sure MVCC table resizes if necessary
   log_Gl.mvcc_table.alloc_transaction_lowest_active ();
 
+#if !defined (NDEBUG)
+  {
+    /* The modules notified above size tables by transaction index, so they must now
+     * reach the new count. One left behind reads past the end of its own table the
+     * moment one of the new indices is used, and when the memory beyond happens to be
+     * zero it does so silently. A capacity of zero means the check does not apply -
+     * see the getters. qmgr and the MVCC table resize themselves and report nothing
+     * yet; they can join the same way if it ever pays to check them too. */
+    const int lock_capacity = lock_get_tran_index_capacity ();
+    const int file_capacity = file_manager_get_tran_index_capacity ();
+
+    assert (lock_capacity == 0 || lock_capacity >= NUM_TOTAL_TRAN_INDICES);
+    assert (file_capacity == 0 || file_capacity >= NUM_TOTAL_TRAN_INDICES);
+  }
+#endif /* !defined (NDEBUG) */
+
   return error_code;
 
   /* **** */

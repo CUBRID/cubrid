@@ -868,6 +868,30 @@ file_manager_init (void)
 }
 
 /*
+ * file_manager_get_tran_index_capacity () - highest number of transaction indices
+ *                                           the file manager tables can hold
+ *
+ * return : number of indices, or 0 when there is nothing to check
+ *
+ * Note: Used to check that the file manager followed the transaction table after
+ *     logtb_expand_trantable() grew it. Zero means the check does not apply:
+ *     either the tables are not allocated yet, which is the state before
+ *     file_manager_init(), or this is a standalone build, where
+ *     file_get_tempcache_entry_index() always answers zero and the single entry
+ *     tran_files holds is all there is to hold - the transaction index does not
+ *     select it, so the transaction table growing past it means nothing.
+ */
+int
+file_manager_get_tran_index_capacity (void)
+{
+#if !defined (SERVER_MODE)
+  return 0;
+#else /* !defined (SERVER_MODE) */
+  return file_Tempcache.tran_files == NULL ? 0 : file_Tempcache.ntran_files;
+#endif /* !defined (SERVER_MODE) */
+}
+
+/*
  * file_manager_expand_tran_entries () - grow the file manager tables indexed by
  *                                       transaction index
  *

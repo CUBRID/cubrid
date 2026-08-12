@@ -6136,6 +6136,26 @@ lock_expand_tran_lock_table (int total_indices)
 #endif /* !defined(SERVER_MODE) */
 }
 
+/*
+ * lock_get_tran_index_capacity - Highest number of transaction indices the lock
+ *                                manager tables can hold
+ *
+ * return: number of indices, or 0 while the tables do not exist
+ *
+ * Note: Used to check that the lock manager followed the transaction table after
+ *     logtb_expand_trantable() grew it. Zero means the tables are not allocated
+ *     yet, which is the state before lock_initialize().
+ */
+int
+lock_get_tran_index_capacity (void)
+{
+#if !defined(SERVER_MODE)
+  return 0;
+#else /* !defined(SERVER_MODE) */
+  return lk_Gl.tran_lock_table == NULL ? 0 : lk_Gl.config.num_trans;
+#endif /* !defined(SERVER_MODE) */
+}
+
 #if defined(SERVER_MODE)
 /*
  * lock_finalize_tran_lock_table - Remove lock table resource
