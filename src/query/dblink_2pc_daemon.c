@@ -179,7 +179,7 @@ dblink_2pc_completion_unref (DBLINK_2PC_COMPLETION * completion)
 }
 
 /*
- * dblink_2pc_completion_done - Settle one entry and consume its reference.
+ * dblink_2pc_completion_settle - Settle one entry and consume its reference.
  *
  * Note: called when a decision was delivered, and when an entry that took a reference never made it
  *       into the queue - so remaining is never left counting an entry that no longer exists.  It is
@@ -188,7 +188,7 @@ dblink_2pc_completion_unref (DBLINK_2PC_COMPLETION * completion)
  *       because this call still owns a reference until it releases one at the end.
  */
 void
-dblink_2pc_completion_done (DBLINK_2PC_COMPLETION * completion)
+dblink_2pc_completion_settle (DBLINK_2PC_COMPLETION * completion)
 {
   if (completion == NULL)
     {
@@ -423,7 +423,7 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 
       /* Delivered: the remote changes are visible now, so release the commit path before doing the
        * catalog cleanup below.  That cleanup is recovery bookkeeping and nobody waits on it. */
-      dblink_2pc_completion_done (e.completion);
+      dblink_2pc_completion_settle (e.completion);
 
       thread_p = &thread_ref;
       /* P5: Crash after (6) send decision, before (7) DELETE - recovery: daemon resends decision then DELETE */
@@ -608,7 +608,7 @@ dblink_2pc_daemon_stop (void)
 	{
 	  int nth = (global_tran_queue_head + i) % global_tran_queue_size;
 
-	  dblink_2pc_completion_done (global_tran_queue[nth].completion);
+	  dblink_2pc_completion_settle (global_tran_queue[nth].completion);
 	  global_tran_queue[nth].completion = NULL;
 	}
       pthread_mutex_unlock (&global_tran_queue_mutex);

@@ -62,7 +62,7 @@
  *
  * The commit path creates it with remaining = number of participants, enqueues one entry per
  * participant carrying a pointer to it, then waits for remaining to reach 0.  The daemon calls
- * dblink_2pc_completion_done() once per participant, right after the decision is actually delivered.
+ * dblink_2pc_completion_settle() once per participant, right after the decision is actually delivered.
  *
  * Lifetime is refcounted because neither side reliably outlives the other: the commit path may give
  * up on the bound while entries are still queued, and an entry may be retried long after.  refcount
@@ -88,13 +88,13 @@ struct global_tran_queue_entry
 
 /*
  * Ownership rule for the two counters.  Attaching the completion to a queue entry takes a reference
- * with _ref(); that entry is then settled with exactly one _done(), which drops both remaining and
+ * with _ref(); that entry is then settled with exactly one _settle(), which drops both remaining and
  * the reference.  Concretely there are three cases, and only the first two settle an entry:
  *
- *   decision delivered      the daemon calls _done()
+ *   decision delivered      the daemon calls _settle()
  *   delivery failed         nothing is called - the entry keeps its reference and its slot in
  *                           remaining, and is re-enqueued for retry as it is today
- *   never enqueued          the caller that took the reference calls _done() itself, so a queue
+ *   never enqueued          the caller that took the reference calls _settle() itself, so a queue
  *                           that refused the entry does not leave the commit path waiting for it
  *
  * Every function tolerates a NULL completion, so callers do not need to branch on allocation failure.
@@ -115,7 +115,7 @@ extern void dblink_2pc_completion_unref (DBLINK_2PC_COMPLETION * completion);
  * that entry's reference, so the caller must not touch the completion afterwards.  Not called on a
  * failed delivery: that entry is retried and stays counted.
  */
-extern void dblink_2pc_completion_done (DBLINK_2PC_COMPLETION * completion);
+extern void dblink_2pc_completion_settle (DBLINK_2PC_COMPLETION * completion);
 
 /*
  * Wait until every participant's decision has been settled or timeout_msec elapses.
@@ -137,7 +137,7 @@ extern bool dblink_2pc_completion_wait (DBLINK_2PC_COMPLETION * completion, int 
  * participant is copied by the function; caller can free after return.
  * completion may be NULL.  When it is not, the caller must already hold a reference for this entry
  * (dblink_2pc_completion_ref); on failure the entry is not queued, so the caller settles that reference
- * itself with dblink_2pc_completion_done.
+ * itself with dblink_2pc_completion_settle.
  * Returns NO_ERROR on success, ER_* on failure (e.g. queue full).
  */
 extern int dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant,

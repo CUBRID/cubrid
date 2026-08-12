@@ -587,7 +587,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    {
 	      /* Not queued, so nothing will ever settle this entry: release it here instead of
 	       * letting the wait below sit out its whole bound on a decision that is not coming. */
-	      dblink_2pc_completion_done (completion);
+	      dblink_2pc_completion_settle (completion);
 	    }
 #else
 	  /* SA mode: no daemon/queue; run send decision and _db_global_tran delete in a system transaction */
