@@ -224,6 +224,7 @@ static PT_NODE *mq_class_meth_corr_subq_pre (PARSER_CONTEXT * parser, PT_NODE * 
 					     int *continue_walk);
 static bool mq_has_class_methods_corr_subqueries (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static bool pt_has_non_deterministic_expr (PARSER_CONTEXT * parser, PT_NODE * term);
 static bool pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query, int pos);
 static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
@@ -3610,6 +3611,32 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 }
 
 /*
+ * pt_has_non_deterministic_expr() - check if the term has an expression whose result can differ
+ *                                   between two evaluations, such as random () or a method call
+ *   return: true if such an expression is found
+ *   parser(in):
+ *   term(in):
+ */
+static bool
+pt_has_non_deterministic_expr (PARSER_CONTEXT * parser, PT_NODE * term)
+{
+  CHECK_PUSHABLE_INFO cpi;
+  PT_NODE *save_next;
+
+  cpi.check_query = false;	/* subqueries are not of interest here */
+  cpi.check_method = true;	/* methods and random (), uuid (), ... are reported as method_found */
+  cpi.query_found = false;
+  cpi.method_found = false;
+
+  save_next = term->next;
+  term->next = NULL;
+  (void) parser_walk_tree (parser, term, pt_check_pushable, (void *) &cpi, NULL, NULL);
+  term->next = save_next;
+
+  return cpi.method_found;
+}
+
+/*
  * pt_check_pushable_select_list() - check for pushable
  *   return:
  *   parser(in):
@@ -4506,6 +4533,13 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  continue;
 	}
 
+      /* The term of an outer joined spec is evaluated both in the derived table and in the main query
+       * (see below), so a term which can return a different result for each evaluation is not pushed. */
+      if (is_outer_joined && pt_has_non_deterministic_expr (parser, term))
+	{
+	  continue;
+	}
+
       if (pt_check_pushable_term (parser, term, infop))
 	{
 	  /* copy term */
@@ -4513,7 +4547,13 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  /* for term, mark as copy-pushed term */
 	  if (term->node_type == PT_EXPR)
 	    {
-	      PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
+	      /* Keep the term in the main query for an outer join which is not converted to an inner join.
+	       * e.g. when the pushed copy leaves no row in the derived table, the left join still generates
+	       * a NULL-extended row and only the term in the main query can filter it out. */
+	      if (!is_outer_joined)
+		{
+		  PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
+		}
 	      PT_EXPR_INFO_CLEAR_FLAG (new_term, PT_EXPR_INFO_COPYPUSH);
 	    }
 	  push_term_list = parser_append_node (new_term, push_term_list);
