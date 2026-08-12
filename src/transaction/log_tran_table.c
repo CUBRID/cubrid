@@ -235,7 +235,9 @@ logtb_allocate_tdes_area (int num_indices)
   for (i = 0, tran_index = NUM_TOTAL_TRAN_INDICES; i < num_indices; tran_index++, i++)
     {
       tdes = log_Gl.trantable.all_tdes[tran_index] = &area->tdesarea[i];
-      logtb_initialize_tdes (tdes, i);
+      /* the descriptor is named by its transaction index, not by its offset in this area.
+       * The two only coincide for the first area, which starts at index zero. */
+      logtb_initialize_tdes (tdes, tran_index);
     }
 
   return area;
