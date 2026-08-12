@@ -8642,8 +8642,7 @@ varbit_compare (const unsigned char *string1, int size1, const unsigned char *st
  *
  * Arguments:
  *            src: (IN)  String variable.
- *         result: (IN/OUT) value with new size, or DB_NULL if requested size
- *		    exceeds PRM_STRING_MAX_SIZE_BYTES system parameter
+ *         result: (IN/OUT) value with new size.
  *       new_size: (IN)  New size to be reserved for the string (in bytes).
  *
  * Returns:
@@ -8651,12 +8650,12 @@ varbit_compare (const unsigned char *string1, int size1, const unsigned char *st
  * Errors:
  *	ER_QSTR_INVALID_DATA_TYPE:
  *		  <src_string> is not CHAR, VARCHAR
+ *	ER_QPROC_STRING_SIZE_TOO_BIG:
+ *		  requested size exceeds PRM_STRING_MAX_SIZE_BYTES system parameter
  *
  * Note : src buffer is not freed, caller should be aware of this;
  *	  Result DB_VALUE must already be created.
  *	  It doesn't operate on BIT strings;
- *	  if requested size is larger than PRM_STRING_MAX_SIZE_BYTES,
- *	  DB_VALUE_NULL is returned
  */
 
 static int
