@@ -99,6 +99,10 @@ struct expr_build_ctx
   /* step reads only compile-time literals; hoisted to run once per program lifetime */
   bool step_prologue[EXPR_MAX_STEPS];
 
+  /* step reads only host variables (publish or coerce); hoisted to run once per
+   * execution (see expr_prog.n_exec_prologue) */
+  bool step_exec_prologue[EXPR_MAX_STEPS];
+
   int in_branch;		/* > 0 while compiling a CASE branch: emitted steps are deferred,
 				 * prologue hoisting is off, and nested CASE nodes are rejected */
 
@@ -1397,6 +1401,9 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	/* stash the cell index in a parallel array via cse */
 	expr_cse_add (bctx, NULL, TYPE_POS_VALUE, regu->value.val_pos, -1, -1, cell);
 	step->out_cell = (DB_VALUE **) (intptr_t) cell;	/* index; fixed up in materialize */
+	/* the bound value array is fixed for a whole execution: publish once per
+	 * execution, not per row */
+	bctx->step_exec_prologue[step - bctx->steps] = (bctx->in_branch == 0);
 	return cell;
       }
 
@@ -1800,8 +1807,11 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		step->out = (DB_VALUE *) 1;
 		bctx->n_slots++;
 		/* an inline literal never changes: coerce it once, not per row (a
-		 * TYPE_CONSTANT dbvalptr CAN change between rows -- not hoistable) */
+		 * TYPE_CONSTANT dbvalptr CAN change between rows -- not hoistable); a host
+		 * variable is fixed per execution: coerce it once per execution */
 		bctx->step_prologue[step - bctx->steps] = (arith->leftptr->type == TYPE_DBVAL && bctx->in_branch == 0);
+		bctx->step_exec_prologue[step - bctx->steps] =
+			(arith->leftptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
 		c1 = cell;
 	      }
 	    if (t2 != DB_TYPE_NUMERIC && arith->opcode != T_MUL)
@@ -1817,6 +1827,8 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		step->out = (DB_VALUE *) 1;
 		bctx->n_slots++;
 		bctx->step_prologue[step - bctx->steps] = (arith->rightptr->type == TYPE_DBVAL && bctx->in_branch == 0);
+		bctx->step_exec_prologue[step - bctx->steps] =
+			(arith->rightptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
 		c2 = cell;
 	      }
 	  }
@@ -1994,6 +2006,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 		  expr_pred_free ((EXPR_PRED *) bctx.steps[j].pred);
 		  bctx.steps[j].pred = NULL;
 		  bctx.step_prologue[j] = false;
+		  bctx.step_exec_prologue[j] = false;
 		}
 	      bctx.n_steps = snap_steps;
 	      bctx.n_cells = snap_cells;
@@ -2070,14 +2083,17 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
     }
   memcpy (prog->root_cells, root_cells, sizeof (int) * prog->n_roots);
 
-  /* prologue steps first (literal-only inputs -- hoisting cannot reorder a dependency),
-   * per-row steps after, both keeping their relative order; remap records where every
+  /* prologue steps first (literal-only inputs), then exec-prologue steps (host-variable
+   * inputs, once per execution), then per-row steps -- hoisting cannot reorder a
+   * dependency and every class keeps its relative order; remap records where every
    * build-time index landed so branch regions can be fixed up below */
   {
     int remap[EXPR_MAX_STEPS];
 
     prog->n_prologue = 0;
     prog->prologue_done = false;
+    prog->n_exec_prologue = 0;
+    prog->exec_stamp_valid = false;
     for (i = 0; i < bctx.n_steps; i++)
       {
 	if (bctx.step_prologue[i])
@@ -2089,7 +2105,16 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
     slot_next = prog->n_prologue;
     for (i = 0; i < bctx.n_steps; i++)
       {
-	if (!bctx.step_prologue[i])
+	if (!bctx.step_prologue[i] && bctx.step_exec_prologue[i])
+	  {
+	    remap[i] = slot_next;
+	    prog->steps[slot_next++] = bctx.steps[i];
+	    prog->n_exec_prologue++;
+	  }
+      }
+    for (i = 0; i < bctx.n_steps; i++)
+      {
+	if (!bctx.step_prologue[i] && !bctx.step_exec_prologue[i])
 	  {
 	    remap[i] = slot_next;
 	    prog->steps[slot_next++] = bctx.steps[i];
@@ -2206,10 +2231,29 @@ expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, O
   if (prog->prologue_done)
     {
       i = prog->n_prologue;
+      if (prog->n_exec_prologue > 0 && prog->exec_stamp_valid && vd != NULL && vd->xasl_state != NULL
+	  && prog->exec_stamp == (unsigned long long) vd->xasl_state->query_id)
+	{
+	  /* same execution as the last row: bound values unchanged, skip their steps */
+	  i += prog->n_exec_prologue;
+	}
     }
   else
     {
       prog->prologue_done = true;
+    }
+  if (i < prog->n_prologue + prog->n_exec_prologue && prog->n_exec_prologue > 0)
+    {
+      if (vd != NULL && vd->xasl_state != NULL)
+	{
+	  prog->exec_stamp = (unsigned long long) vd->xasl_state->query_id;
+	  prog->exec_stamp_valid = true;
+	}
+      else
+	{
+	  /* no execution identity available: keep re-running the exec-prologue */
+	  prog->exec_stamp_valid = false;
+	}
     }
   for (; i < prog->n_steps; i++)
     {
@@ -2367,16 +2411,19 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
       return;
     }
 
-  fprintf (fp, "%*csteps: %d (prologue: %d, compute: %d), cells: %d, slots: %d, roots: %d, hostvar types: %d\n",
-	   indent, ' ', prog->n_steps, prog->n_prologue, prog->n_compute, prog->n_cells, prog->n_slots,
+  fprintf (fp,
+	   "%*csteps: %d (prologue: %d, exec-prologue: %d, compute: %d), cells: %d, slots: %d, roots: %d, hostvar types: %d\n",
+	   indent, ' ', prog->n_steps, prog->n_prologue, prog->n_exec_prologue, prog->n_compute, prog->n_cells,
+	   prog->n_slots,
 	   prog->n_roots, prog->n_hv);
 
   for (i = 0; i < prog->n_steps; i++)
     {
       const EXPR_STEP *step = &prog->steps[i];
 
-      fprintf (fp, "%*c[%c%2d] %-14s", indent, ' ', (i < prog->n_prologue) ? 'P' : step->deferred ? 'D' : ' ', i,
-	       expr_kernel_name (step->kernel));
+      fprintf (fp, "%*c[%c%2d] %-14s", indent, ' ',
+	       (i < prog->n_prologue) ? 'P' : (i < prog->n_prologue + prog->n_exec_prologue) ? 'E'
+	       : step->deferred ? 'D' : ' ', i, expr_kernel_name (step->kernel));
       if (step->arg1p != NULL)
 	{
 	  fprintf (fp, " c%d", (int) (step->arg1p - prog->cells));
