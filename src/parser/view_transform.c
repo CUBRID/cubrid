@@ -336,7 +336,6 @@ static PT_NODE *mq_reset_specs_from_column (PARSER_CONTEXT * parser, PT_NODE * s
 static PT_NODE *mq_path_spec_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * root_spec,
 				     PT_NODE ** prev_ptr, PT_NODE * old_spec, PT_NODE * new_spec);
 static PT_NODE *mq_generate_unique (PARSER_CONTEXT * parser, PT_NODE * name_list);
-static bool mq_is_name_in_col_list (PT_NODE * col_list, const char *name);
 
 extern PT_NODE *mq_fetch_attributes (PARSER_CONTEXT * parser, PT_NODE * class_);
 
@@ -5659,30 +5658,6 @@ exit_on_error:
 }
 
 /*
- * mq_is_name_in_col_list () - check whether a name already appears as the
- *                              exposed (original) name of a column in the
- *                              given list
- *   return: true if name is found, false otherwise
- *   col_list(in): list of PT_NAME nodes to search
- *   name(in): identifier to look for (case-insensitive)
- */
-static bool
-mq_is_name_in_col_list (PT_NODE * col_list, const char *name)
-{
-  PT_NODE *col;
-
-  for (col = col_list; col != NULL; col = col->next)
-    {
-      if (col->info.name.original != NULL && intl_identifier_casecmp (col->info.name.original, name) == 0)
-	{
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
  * mq_rewrite_query_as_derived () -
  *   return: rewritten select statement with derived table subquery
  *   parser(in):
@@ -5751,30 +5726,13 @@ mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
 
   while (temp)
     {
-      /* generate as_attr_list; the exposed name must be unique among all columns of this derived
-       * spec. The "reuse the original name" and "synthesize a new name" branches below don't
-       * coordinate with each other, so an original name (e.g. from an inner, already-rewritten
-       * derived table) can otherwise collide with a name synthesized here for a different column
-       * (e.g. an analytic function result) -- check both cases against as_attr_list so far. */
-      if (temp->node_type == PT_NAME && temp->info.name.original != NULL
-	  && !mq_is_name_in_col_list (spec->info.spec.as_attr_list, temp->info.name.original))
-	{
-	  /* we have the original name, and it is not already used by this derived spec */
-	  node = pt_name (parser, temp->info.name.original);
-	}
-      else
-	{
-	  /* don't have a usable name for attribute; generate a new, guaranteed-unique name */
-	  char generated_name[DB_MAX_IDENTIFIER_LENGTH];
+      /* generate as_attr_list; each column gets a freshly synthesized name. The counter i is local
+       * to this call and only increases, so the generated names are unique among themselves without
+       * needing to check as_attr_list. */
+      char generated_name[DB_MAX_IDENTIFIER_LENGTH];
 
-	  do
-	    {
-	      snprintf (generated_name, sizeof (generated_name), "%s_%d", "a", ++i);
-	    }
-	  while (mq_is_name_in_col_list (spec->info.spec.as_attr_list, generated_name));
-
-	  node = pt_name (parser, generated_name);
-	}
+      snprintf (generated_name, sizeof (generated_name), "%s_%d", "a", ++i);
+      node = pt_name (parser, generated_name);
 
       if (node == NULL)
 	{
