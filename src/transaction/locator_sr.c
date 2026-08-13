@@ -12995,6 +12995,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK);
 
   /* Lock should be aquired now -> get recdes */
+get_record:
   if (context->recdes_p != NULL)
     {
       scan = heap_get_last_version (thread_p, context);
@@ -13029,6 +13030,49 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 	{
 	  goto error;
 	}
+
+#if defined (SERVER_MODE)
+      if (MVCC_IS_HEADER_DELID_VALID (&recdes_header)
+	  && logtb_is_active_other_mvccid (thread_p, MVCC_GET_DELID (&recdes_header)))
+	{
+	  /* The row is stamped delete-in-progress by an active other transaction that no longer holds its
+	   * per-row lock (transient row lock, CBRD-27034). Don't treat it as deleted -- the deleter may still
+	   * roll back. Wait on the deleter's transaction self-lock, then re-read and re-classify. The wait
+	   * happens with our row lock held, so no third writer can re-stamp the row in the meantime: at most
+	   * one wait is needed. Never hold a page latch while waiting on a lock. */
+	  MVCCID owner_mvccid = MVCC_GET_DELID (&recdes_header);
+
+	  heap_clean_get_context (thread_p, context);
+	  if (lock_transaction_mvccid (thread_p, owner_mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	    {
+	      if (er_errid () == NO_ERROR)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+		}
+	      scan = S_ERROR;
+	      goto error;
+	    }
+	  lock_unlock_transaction_mvccid (thread_p, owner_mvccid, S_LOCK);
+
+	  if (logtb_is_active_other_mvccid (thread_p, owner_mvccid))
+	    {
+	      /* Invariant breach (see the self-lock hardening under CBRD-26942): a grant while the owner is
+	       * still active means the wait was a no-op and re-classification would spin. Fail the statement,
+	       * as the b-tree wait does. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+	      assert (false);
+	      scan = S_ERROR;
+	      goto error;
+	    }
+
+	  scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
+	  if (scan != S_SUCCESS)
+	    {
+	      goto error;
+	    }
+	  goto get_record;
+	}
+#endif /* SERVER_MODE */
 
       /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
       if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
