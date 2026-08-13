@@ -11619,10 +11619,17 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 	      use_fast_path = true;
 	      break;
 	    case DB_TYPE_VARCHAR:
+	    case DB_TYPE_CHAR:
 	      /* Precision counts characters. Byte size settles it whenever it already fits,
 	       * which covers a single-byte codeset and anything with room to spare;
 	       * only a multi-byte value that fills the column needs the character count,
-	       * and that is a value the generic path would count as well. */
+	       * and that is a value the generic path would count as well.
+	       * CHAR carries trailing-space padding, but the padding is applied on the way out,
+	       * by mr_lengthval_char_internal, keyed off the precision the value carries --
+	       * which is why the stamp below is not optional for CHAR. Nothing between here and
+	       * heap_attrinfo_transform_to_disk reads the value: index keys are read back from
+	       * the built record, and REPLACE builds its own record first. So handing the value
+	       * over still unpadded is not observable. */
 	      if (attr_val->data.ch.info.is_max_string == false
 		  && db_get_string_codeset (attr_val) == TP_DOMAIN_CODESET (domain)
 		  && db_get_string_collation (attr_val) == TP_DOMAIN_COLLATION (domain)
@@ -11646,12 +11653,15 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
 	      value->dbvalue = *attr_val;
 	      value->dbvalue.need_clear = false;
-	      if (src_type == DB_TYPE_VARCHAR)
+	      if (src_type == DB_TYPE_VARCHAR || src_type == DB_TYPE_CHAR)
 		{
 		  value->dbvalue.data.ch.info.compressed_need_clear = false;
 		  /* The generic path coerces into the column domain, so the value it leaves
 		   * carries the column's precision. Carry it here too, or the same column
-		   * would hold values whose precision depends on which path set them. */
+		   * would hold values whose precision depends on which path set them.
+		   * For CHAR this is what makes the trailing-space padding happen at all:
+		   * mr_writeval_char_internal skips padding on a floating precision, which
+		   * is what a literal and a bound value both arrive with. */
 		  value->dbvalue.domain.char_info.length = domain->precision;
 		}
 
