@@ -413,7 +413,7 @@ static int pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO *
 					 S_REMOTE_TBL_COLS * rmt_cols);
 static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink,
 					    S_REMOTE_TBL_COLS * rmt_tbl_cols);
-static int pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name,
+static int pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name, const char *user,
 							   S_REMOTE_TBL_COLS * rmt_tbl_cols, bool * ambiguous);
 
 static PT_NODE *pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -5550,15 +5550,24 @@ error_exit:
  *   that does not send them falls back to the "SELECT *" prepare.
  */
 static int
-pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name, S_REMOTE_TBL_COLS * rmt_tbl_cols,
-						bool * ambiguous)
+pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name, const char *user,
+						S_REMOTE_TBL_COLS * rmt_tbl_cols, bool * ambiguous)
 {
   T_CCI_ERROR cci_error;
   T_CCI_CUBRID_STMT stmt_type;
   S_REMOTE_COL_ATTR *rmt_attr;
   char *attr_name, *class_name;
   char first_class[DB_MAX_IDENTIFIER_LENGTH + 1] = { '\0' };
-  int req, err, ind, domain, ext_domain, codeset, scale, precision, invisible, res_col_cnt = 0;
+  char own_class[DB_MAX_IDENTIFIER_LENGTH + 1];
+  bool filter_owner = false;
+  int req, err, ind, ext_domain, codeset, scale, precision, invisible, res_col_cnt = 0;
+
+  /* the remote resolves an unqualified name in the connected user's schema only, so a
+   * grant-visible class of another owner is one the statement can never reach */
+  if (user != NULL && strchr (table_name, '.') == NULL)
+    {
+      filter_owner = (snprintf (own_class, sizeof (own_class), "%s.%s", user, table_name) < (int) sizeof (own_class));
+    }
 
   /* exact class-name match; CCI_ATTR_NAME_PATTERN_MATCH with a NULL attribute name
    * skips the attribute filter (an exact match against NULL matches nothing) */
@@ -5599,18 +5608,35 @@ pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name, S_RE
 	  break;
 	}
 
-      /* SCH_ATTRIBUTE result: 1 ATTR_NAME, 2 DOMAIN, 3 SCALE, 4 PRECISION, ...,
-       * 15 IS_INVISIBLE, 16 EXT_DOMAIN, 17 CODESET (schema_attr_meta) */
+      /* SCH_ATTRIBUTE result: 1 ATTR_NAME, 3 SCALE, 4 PRECISION, 11 CLASS_NAME,
+       * 15 IS_INVISIBLE, 16 EXT_DOMAIN, 17 CODESET; a NULL leaves the output variable
+       * unwritten, so the indicator is part of each required check */
       if (cci_get_data (req, 1, CCI_A_TYPE_STR, &attr_name, &ind) < 0 || attr_name == NULL
-	  || cci_get_data (req, 2, CCI_A_TYPE_INT, &domain, &ind) < 0
-	  || cci_get_data (req, 3, CCI_A_TYPE_INT, &scale, &ind) < 0
-	  || cci_get_data (req, 4, CCI_A_TYPE_INT, &precision, &ind) < 0
-	  || cci_get_data (req, 16, CCI_A_TYPE_INT, &ext_domain, &ind) < 0
-	  || cci_get_data (req, 17, CCI_A_TYPE_INT, &codeset, &ind) < 0
+	  || cci_get_data (req, 3, CCI_A_TYPE_INT, &scale, &ind) < 0 || ind == -1
+	  || cci_get_data (req, 4, CCI_A_TYPE_INT, &precision, &ind) < 0 || ind == -1
+	  || cci_get_data (req, 16, CCI_A_TYPE_INT, &ext_domain, &ind) < 0 || ind == -1
 	  || cci_get_data (req, 11, CCI_A_TYPE_STR, &class_name, &ind) < 0 || class_name == NULL)
 	{
 	  err = ER_FAILED;
 	  break;
+	}
+
+      /* CODESET is legitimately absent for a type that has none: NULL reads as -1 */
+      if (cci_get_data (req, 17, CCI_A_TYPE_INT, &codeset, &ind) < 0)
+	{
+	  err = ER_FAILED;
+	  break;
+	}
+      if (ind == -1)
+	{
+	  codeset = -1;
+	}
+
+      /* a foreign owner's class: skip its rows (an owner-qualified class_name comes
+       * only from CUBRID-style remotes; a gateway echoes the requested name) */
+      if (filter_owner && strchr (class_name, '.') != NULL && intl_identifier_casecmp (own_class, class_name) != 0)
+	{
+	  continue;
 	}
 
       /* sch_attr_info () filters by owner only when the name it was given is qualified,
@@ -5799,7 +5825,8 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
        * prepare below sends it: whatever the remote makes of an unqualified name - the
        * connected user's schema on CUBRID and Oracle, the connected database on
        * MySQL/MariaDB - both requests then describe the same table. */
-      else if (pt_dblink_table_get_column_defs_by_schema_info (conn, table_name, rmt_tbl_cols, &ambiguous) == NO_ERROR)
+      else if (pt_dblink_table_get_column_defs_by_schema_info (conn, table_name, user, rmt_tbl_cols, &ambiguous) ==
+	       NO_ERROR)
 	{
 	  err = NO_ERROR;
 	  goto set_parser_error;
@@ -5811,7 +5838,8 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       else if (ambiguous && strchr (table_name, '.') == NULL
 	       && snprintf (qualified_name, sizeof (qualified_name), "%s.%s", user, table_name)
 	       < (int) sizeof (qualified_name)
-	       && pt_dblink_table_get_column_defs_by_schema_info (conn, qualified_name, rmt_tbl_cols, NULL) == NO_ERROR)
+	       && pt_dblink_table_get_column_defs_by_schema_info (conn, qualified_name, user, rmt_tbl_cols,
+								  NULL) == NO_ERROR)
 	{
 	  err = NO_ERROR;
 	  goto set_parser_error;
