@@ -2820,7 +2820,7 @@ pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
   PT_NODE *values_list = NULL;
   PARSER_VARCHAR *values_str = NULL;
   PT_PRINT_VALUE_FUNC saved_print_db_value;
-  unsigned int saved_dont_prt_long_string, saved_long_string_skipped;
+  unsigned int saved_dont_prt_long_string;
 
   if (parser->auto_param_count <= 0)
     {
@@ -2856,12 +2856,6 @@ pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
 
   saved_print_db_value = parser->print_db_value;
   saved_dont_prt_long_string = parser->flag.dont_prt_long_string;
-  /* long_string_skipped is the caller's: this print runs inside its clear -> print -> check window
-   * (see execute_statement.c), and the statement body printed before this point may already have set
-   * it. No writer can fire while dont_prt_long_string is 0 below - every one of them sits behind that
-   * guard - so restoring it is a no-op today. The pair is kept so that lowering the guard here can
-   * never flip the caller's cannot_prepare decision. */
-  saved_long_string_skipped = parser->flag.long_string_skipped;
 
   /* The guard that skips long strings must not apply here: a value left out of the hash input would
    * let two different values collide again. Hashing keeps the key short whatever the value size. */
@@ -2872,7 +2866,6 @@ pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
 
   parser->print_db_value = saved_print_db_value;
   parser->flag.dont_prt_long_string = saved_dont_prt_long_string;
-  parser->flag.long_string_skipped = saved_long_string_skipped;
 
   if (values_str == NULL || values_str->bytes == NULL || values_str->length <= 0)
     {
