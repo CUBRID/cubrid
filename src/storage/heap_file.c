@@ -11090,7 +11090,13 @@ heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
   if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
       heap_scancache_end (thread_p, &scan_cache);
-      assert (false);
+      /* The class record fetch can legitimately fail when this transaction is being
+       * interrupted (e.g. a killed server-side loaddb session): pgbuf_fix rejects any
+       * further page fix with ER_INTERRUPTED before touching the page. That is a normal
+       * shutdown path, not a corruption, so it must not abort the server. The transaction
+       * is rolled back anyway, so returning false (skip the replication log) cannot break
+       * replication consistency. Any other fetch failure is still unexpected. */
+      assert (er_errid () == ER_INTERRUPTED);
       return false;
     }
 
