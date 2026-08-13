@@ -714,10 +714,8 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  {
 	    assert (num_rewrite_binds <= QR_MAX_BINDS);
 
-	    /* the map lives in shared memory: prepare validated it against this rule's K_orig,
-	     * but nothing pins the slot between prepare and execute.  re-check every position
-	     * against the handle's own count (equal to orig_pairs above) before it indexes
-	     * exec_bind_argv. */
+	    /* prepare validated the map, but it lives in shared memory and nothing pins the
+	     * slot between prepare and execute -- re-check before it indexes exec_bind_argv */
 	    for (j = 0; j < num_rewrite_binds; j++)
 	      {
 		if (src_orig_pos[j] < 1 || src_orig_pos[j] > num_orig_binds)

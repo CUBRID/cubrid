@@ -1449,7 +1449,7 @@ admin_qr_cmd (int master_shm_id, QRCMD subcmd, const char *subcmd_str, const cha
 	}
       else
 	{
-	  /* on success msg carries a policy warning, if the rule raised one (already tagged) */
+	  /* on success msg carries a policy warning, already tagged */
 	  if (msg[0] != '\0')
 	    {
 	      fprintf (stdout, "%s\n", msg);
