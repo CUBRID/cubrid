@@ -965,7 +965,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
     {
     case DB_TYPE_STRING:
       val_str = db_get_string (value);
-      if (val_str != NULL && db_get_string_length (value) > precision)
+      /* char_count <= byte_count in every codeset, so byte_size <= precision guarantees
+       * no truncation -- the same bracket the CHAR branch below already uses. */
+      if (val_str != NULL && db_get_string_size (value) > precision && db_get_string_length (value) > precision)
 	{
 	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);

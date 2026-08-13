@@ -2844,6 +2844,10 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   val.data.ch.info.compressed_need_clear = false;
   val.data.ch.medium.compressed_buf = NULL;
   val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
+  /* val is a local, and only the fields above are assigned. The character-count slot
+   * has to be reset like the rest, or it carries whatever was on the stack -- the CHAR
+   * sibling of this function already does it. */
+  val.data.ch.medium.length = -1;
 
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
