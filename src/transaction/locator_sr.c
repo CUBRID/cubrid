@@ -13035,32 +13035,13 @@ get_record:
       if (MVCC_IS_HEADER_DELID_VALID (&recdes_header)
 	  && logtb_is_active_other_mvccid (thread_p, MVCC_GET_DELID (&recdes_header)))
 	{
-	  /* The row is stamped delete-in-progress by an active other transaction that no longer holds its
-	   * per-row lock (transient row lock, CBRD-27034). Don't treat it as deleted -- the deleter may still
-	   * roll back. Wait on the deleter's transaction self-lock, then re-read and re-classify. The wait
-	   * happens with our row lock held, so no third writer can re-stamp the row in the meantime: at most
-	   * one wait is needed. Never hold a page latch while waiting on a lock. */
+	  /* An active deleter may hold no per-row lock (CBRD-27034) and may still roll back: wait it out,
+	   * then re-classify. Our row lock is held, so no third writer can re-stamp -- at most one wait. */
 	  MVCCID owner_mvccid = MVCC_GET_DELID (&recdes_header);
 
 	  heap_clean_get_context (thread_p, context);
-	  if (lock_transaction_mvccid (thread_p, owner_mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	  if (logtb_wait_for_tran_end (thread_p, owner_mvccid) != NO_ERROR)
 	    {
-	      if (er_errid () == NO_ERROR)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
-		}
-	      scan = S_ERROR;
-	      goto error;
-	    }
-	  lock_unlock_transaction_mvccid (thread_p, owner_mvccid, S_LOCK);
-
-	  if (logtb_is_active_other_mvccid (thread_p, owner_mvccid))
-	    {
-	      /* Invariant breach (see the self-lock hardening under CBRD-26942): a grant while the owner is
-	       * still active means the wait was a no-op and re-classification would spin. Fail the statement,
-	       * as the b-tree wait does. */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
-	      assert (false);
 	      scan = S_ERROR;
 	      goto error;
 	    }
@@ -13248,11 +13229,8 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	  else if (mvcc_reev_data->type == REEV_DATA_UPDDEL && mvcc_reev_data->upddel_reev_data != NULL
 		   && mvcc_reev_data->upddel_reev_data->skip_unevaluated_version)
 	    {
-	      /* CBRD-27034 (transient row lock): the last version is not visible to the statement snapshot, so
-	       * the statement's predicate was never checked against it -- and DELETE carries no predicate to
-	       * re-check it with (reevaluation is disabled at plan generation). Skip the row rather than modify
-	       * an unevaluated version. The baseline never reached this state: its select-phase lock blocked
-	       * the concurrent writer before it could produce a new version. */
+	      /* no reevaluation data to re-check a version past the statement snapshot: skip the row rather
+	       * than modify it unevaluated (CBRD-27034) */
 	      mvcc_reev_data->filter_result = V_FALSE;
 	      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
 	      goto exit;
