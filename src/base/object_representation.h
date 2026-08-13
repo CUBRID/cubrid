@@ -68,7 +68,8 @@ struct setobj;
 #define OR_CHECK_UNS_SUB_UNDERFLOW(a, b, c) \
   (b) > (a)
 #define OR_CHECK_MULT_OVERFLOW(a, b, c) \
-  (((b) == 0) ? ((c) != 0) : ((c) / (b) != (a)))
+  (((b) == 0) ? ((c) != 0) \
+   : (((b) == -1) ? ((a) != 0 && (c) == (a)) : ((c) / (b) != (a))))
 #define OR_CHECK_SHORT_DIV_OVERFLOW(a, b) \
   ((a) == DB_INT16_MIN && (b) == -1)
 #define OR_CHECK_INT_DIV_OVERFLOW(a, b) \
