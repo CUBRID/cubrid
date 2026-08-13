@@ -7309,15 +7309,13 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		      /* Remote column's physical codeset, from the CCI column metadata.  This is
 		       * authoritative and unaffected by how the attr_def later declares the
 		       * column's codeset (e.g. redeclared with the local codeset for union/compat).
-		       * Fall back to the declared codeset, then to -1 (non-character / no type). */
+		       * An unknown codeset must block the push rather than fall back to the
+		       * declared one: Because remote character columns are uniformly declared with
+           * LANG_SYS_CODESET, the declared value always matches outer_cs. Relying on it
+           * would mistakenly disable the guard right when metadata is absent. */
 		      int remote_cs = pt_dblink_get_remote_col_charset (dinfo->remote_col_list, corr_col);
-		      if (remote_cs < 0)
-			{
-			  remote_cs =
-			    (remote_expr->data_type != NULL) ? remote_expr->data_type->info.data_type.units : -1;
-			}
 		      int outer_cs = (outer_expr->data_type != NULL) ? outer_expr->data_type->info.data_type.units : -1;
-		      cross_codeset = (remote_cs >= 0 && outer_cs >= 0 && remote_cs != outer_cs);
+		      cross_codeset = (remote_cs < 0 || outer_cs < 0 || remote_cs != outer_cs);
 		    }
 
 		  if (corr_col != NULL && !cross_codeset)
