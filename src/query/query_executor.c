@@ -11284,14 +11284,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       /* not locked in select phase, need locking at update phase */
       need_locking = true;
 
-      /* CBRD-27034 (transient row lock): a DELETE whose select phase did not lock the rows (single- and
-       * multi-class alike -- plan generation no longer forces the select-phase lock). The delete phase
-       * acquires the per-row lock itself and releases it as soon as the row's delete is published (early
-       * unlock below). A version that changed after the statement snapshot is re-checked against the
-       * predicate by the condition-only reevaluation (mvcc_reev_classes); when no reevaluation data was
-       * generated for this plan, fall back to skipping the unevaluated version instead of deleting it.
-       * When the select phase did lock (GROUP BY / derived-table plans keep
-       * PT_SELECT_INFO_MVCC_LOCK_NEEDED), the version cannot change and neither branch is reachable. */
+      /* without reevaluation data a version changed after the statement snapshot cannot be re-checked --
+       * skip it instead of deleting unevaluated (CBRD-27034) */
       mvcc_upddel_reev_data.skip_unevaluated_version = (mvcc_reev_class_cnt == 0);
     }
 
@@ -11551,13 +11545,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  if (need_locking && class_oid != NULL && !mvcc_is_mvcc_disabled_class (class_oid)
 		      && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
 		    {
-		      /* Transient row lock (CBRD-27034): the delete is published -- DELID is stamped on the
-		       * record header and its index entries -- so a later writer settles against our
-		       * transaction self-lock instead of this per-row lock. Release the row lock now; the
-		       * uncommitted write-lock footprint stays O(transactions) instead of O(rows). An in-doubt
-		       * 2PC transaction keeps serializing late arrivals because the prepare record persists the
-		       * MVCCID self-lock (CBRD-27079). If the self-lock cannot be ensured, keep the row lock
-		       * (baseline behavior). */
+		      /* the delete is published: late arrivals settle on our MVCCID self-lock (CBRD-27034;
+		       * kept across 2PC prepare by CBRD-27079), so the row lock is redundant from here */
 		      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, X_LOCK);
 		    }
 		}

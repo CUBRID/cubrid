@@ -21798,6 +21798,10 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  abort_reevaluation = true;
 	}
 
+      /* Whatever survives the tests above is re-checked at the delete phase instead of being locked
+       * at select: the row is locked there and, if its version moved, the predicate is evaluated
+       * again against the latest one. */
+
       if (abort_reevaluation)
 	{
 	  /* In order to abort reevaluation is enough to clear reevaluation flags from all specs (from both, delete and
