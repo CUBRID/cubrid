@@ -5729,10 +5729,7 @@ mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
       /* generate as_attr_list; each column gets a freshly synthesized name. The counter i is local
        * to this call and only increases, so the generated names are unique among themselves without
        * needing to check as_attr_list. */
-      char generated_name[DB_MAX_IDENTIFIER_LENGTH];
-
-      snprintf (generated_name, sizeof (generated_name), "%s_%d", "a", ++i);
-      node = pt_name (parser, generated_name);
+      node = pt_name (parser, mq_generate_name (parser, "a", &i));
 
       if (node == NULL)
 	{
