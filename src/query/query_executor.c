@@ -10210,8 +10210,8 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
       return ER_FAILED;
     }
 
-  /* Make sure reev data is initialized, or else it will crash later */
-  memset (reev_data, 0, sizeof (MVCC_UPDDEL_REEV_DATA));
+  /* start from the struct's empty state, so a field this function does not fill cannot carry over */
+  *reev_data = MVCC_UPDDEL_REEV_DATA ();
 
   if (num_reev_classes == 0)
     {
