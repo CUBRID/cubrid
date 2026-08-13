@@ -95,6 +95,10 @@ namespace cubquery
     lc_copy_area *copyarea;	/* used to build the tuple to be stored to disk after reevaluation */
     val_descr *vd;		/* values descriptor */
     recdes *new_recdes;		/* record descriptor after assignment reevaluation */
+    bool skip_unevaluated_version;	/* CBRD-27034 (transient row lock): when the statement's predicate cannot be
+					 * re-evaluated (DELETE disables reevaluation), a last version that is not
+					 * visible to the statement snapshot was never checked against the predicate
+					 * -- skip the row instead of modifying an unevaluated version. */
   };
 
   /* Structure used in condition reevaluation at SELECT */

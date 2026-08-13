@@ -21689,8 +21689,12 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      /* These two lines disable reevaluation on UPDATE. To activate it just remove them */
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      /* CBRD-27034 (transient row lock): the select phase no longer locks the target rows (the forced
+       * PT_SELECT_INFO_MVCC_LOCK_NEEDED is gone); the delete phase locks each row instead. Full predicate
+       * reevaluation stays disabled -- its machinery is unfinished (per-tuple inst_oid is never bound for
+       * DELETE, and the filters point into the select scan that is closed by force time). A version the
+       * predicate was never checked on is skipped at the delete phase instead (see
+       * mvcc_update_reev_data::skip_unevaluated_version). */
       abort_reevaluation = true;
 
       if (abort_reevaluation)

@@ -13245,6 +13245,18 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	       * which was already evaluated. */
 	      goto exit;
 	    }
+	  else if (mvcc_reev_data->type == REEV_DATA_UPDDEL && mvcc_reev_data->upddel_reev_data != NULL
+		   && mvcc_reev_data->upddel_reev_data->skip_unevaluated_version)
+	    {
+	      /* CBRD-27034 (transient row lock): the last version is not visible to the statement snapshot, so
+	       * the statement's predicate was never checked against it -- and DELETE carries no predicate to
+	       * re-check it with (reevaluation is disabled at plan generation). Skip the row rather than modify
+	       * an unevaluated version. The baseline never reached this state: its select-phase lock blocked
+	       * the concurrent writer before it could produce a new version. */
+	      mvcc_reev_data->filter_result = V_FALSE;
+	      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+	      goto exit;
+	    }
 	}
       ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
       if (ev_res != V_TRUE)
