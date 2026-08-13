@@ -48,13 +48,18 @@
 #define DBLINK_2PC_STATE_COMMIT   'C'
 #define DBLINK_2PC_STATE_EMPTY    ' '
 
-/* How long the commit path waits for the 2PC daemon to deliver its decisions before answering the
- * client.  The wait is what makes the remote changes visible to the next statement of the same
- * session; the bound is what keeps a slow participant from stalling the commit response.  On
- * timeout the decision stays queued and the daemon keeps delivering it, which is exactly the
- * pre-existing asynchronous behaviour.  Deliberately generous: this is a safety net for a
- * participant that stopped responding, not a knob for trimming a slow one.  Tightening it makes
- * healthy-but-busy transactions fall back, which brings the visibility gap back. */
+/* Fallback bound for how long the commit path waits for the 2PC daemon to deliver its decisions
+ * before answering the client.  The wait is what makes the remote changes visible to the next
+ * statement of the same session; the bound is what keeps an unresponsive participant from stalling
+ * the commit response.
+ *
+ * It governs a session that stated no deadline of its own - which includes everything that does not
+ * come through a CAS, since csql and the utilities connect to the server directly.  When the client
+ * did set a query timeout, log_2pc_commit_first_phase() uses what is left of it instead.
+ *
+ * Deliberately generous: a safety net for a participant that stopped responding, not a knob for
+ * trimming a slow one.  Tightening it makes healthy-but-busy transactions fall back, which brings
+ * the visibility gap back. */
 #define DBLINK_2PC_DECISION_WAIT_MSEC 1000
 
 /*

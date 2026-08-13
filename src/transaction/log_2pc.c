@@ -464,6 +464,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
   char new_state;
 #ifdef SERVER_MODE
   DBLINK_2PC_COMPLETION *completion = NULL;
+  int wait_msec;
 #endif
 #endif
 
@@ -613,16 +614,31 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	}
 
 #ifdef SERVER_MODE
-      /* Wait here rather than inside the loop above: the daemon delivers serially either way, so the
-       * total wait is the same, and letting every entry reach the queue first lets it work through
+      /* Wait once here rather than inside the loop above: the daemon delivers serially either way, so
+       * the total wait is the same, and letting every entry reach the queue first lets it work through
        * them back to back.
        *
-       * This spot is deliberate.  log_commit_local() has already released the local locks, and
-       * waiting touches no data, so no MVCCID is acquired - which is what keeps the invariant
-       * checked in logtb_clear_tdes() intact (see log_complete() just below).  Giving up on the
-       * bound is not an error: the decisions stay queued and the daemon keeps delivering them,
-       * which is the pre-existing asynchronous behaviour. */
-      (void) dblink_2pc_completion_wait (completion, DBLINK_2PC_DECISION_WAIT_MSEC);
+       * The spot is deliberate.  log_commit_local() has already released the local locks, and waiting
+       * touches no data, so no MVCCID is acquired - which is what keeps the invariant checked in
+       * logtb_clear_tdes() intact (see log_complete() just below).
+       *
+       * Bound the wait by what is left of the client's own deadline when it set one, so the response
+       * is never held past the point the caller was willing to wait.  A deadline that has already
+       * passed is treated as none: it is not this commit's budget - an explicit COMMIT carries no
+       * timeout of its own, so what is left here belongs to an earlier statement - and taking it
+       * literally would drop the wait to zero and bring the gap back. */
+      wait_msec = DBLINK_2PC_DECISION_WAIT_MSEC;
+      if (tdes->last_query_deadline > 0)
+	{
+	  INT64 remaining = tdes->last_query_deadline - log_get_clock_msec ();
+
+	  if (remaining > 0)
+	    {
+	      wait_msec = (remaining > INT_MAX) ? INT_MAX : (int) remaining;
+	    }
+	}
+
+      (void) dblink_2pc_completion_wait (completion, wait_msec);
       dblink_2pc_completion_unref (completion);
       completion = NULL;
 #endif

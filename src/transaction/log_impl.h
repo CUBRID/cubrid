@@ -533,6 +533,10 @@ struct log_tdes
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
 
   INT64 query_timeout;		/* a query should be executed before query_timeout time. */
+  INT64 last_query_deadline;	/* Deadline of the query that just ended, kept past the reset in
+				 * qmgr_reset_query_exec_info() so that the commit path, which runs after it,
+				 * can bound its own wait by what is left of the client's query timeout.
+				 * 0 means the client asked for no limit. */
 
   INT64 query_start_time;
   INT64 tran_start_time;
