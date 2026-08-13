@@ -2623,8 +2623,7 @@ qr_init (T_SHM_APPL_SERVER * shm_as_p)
   /* T_SHM_APPL_SERVER does not carry the owning appl_server_shm_id, so verify the recorded
    * owner still maps to the key we opened (a full owner match is only possible in the admin
    * paths, which know that id).  the structural half is shared with them. */
-  if (qr_make_shm_key (qr_shm->owner_shm_id) != shm_as_p->query_rewrite_shm_key
-      || !qr_shm_header_sane (qr_shm, mid))
+  if (qr_make_shm_key (qr_shm->owner_shm_id) != shm_as_p->query_rewrite_shm_key || !qr_shm_header_sane (qr_shm, mid))
     {
 #if !defined(NDEBUG)
       _er_log_debug (ARG_FILE_LINE, "qr_init: inconsistent header for key 0x%x\n", shm_as_p->query_rewrite_shm_key);
