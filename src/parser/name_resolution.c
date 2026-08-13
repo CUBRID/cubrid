@@ -5170,6 +5170,13 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
       attr_def_node->info.attr_def.size_constraint = dt->info.data_type.precision;
     }
 
+  /* on the name node, which pt_dblink_table_gather_attribs () reuses as the
+   * as_attr_list entry; a node flag never prints into the stored spec */
+  if (attr->is_invisible)
+    {
+      attr_def_node->info.attr_def.attr_name->flag.is_hidden_column = 1;
+    }
+
   return true;
 }
 
@@ -5267,16 +5274,9 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
   PT_NODE *new_sel_list = NULL;
   PT_NODE *sel_list = dblink_table->sel_list;
   PT_NODE *col;
-  bool has_star = false;
 
-  for (col = sel_list; col; col = col->next)
-    {
-      if (col->type_enum == PT_TYPE_STAR)
-	{
-	  has_star = true;
-	  break;
-	}
-    }
+  /* check_for_already_exists () keeps the star, if any, at the head of the list */
+  bool has_star = (sel_list->type_enum == PT_TYPE_STAR);
 
   while (sel_list)
     {
@@ -5499,7 +5499,6 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	      error = ER_DBLINK;
 	      goto error_exit;
 	    }
-	  tmp->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE;
 	  attr_def_node = attr_def_node ? parser_append_node (tmp, attr_def_node) : tmp;
 	}
     }
@@ -5889,10 +5888,8 @@ pt_dblink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * dblink_column
       PT_NODE *next_attr = dblink_column->info.attr_def.attr_name;
       next_attr->type_enum = dblink_column->type_enum;
 
-      /* Carry the remote column's visibility on the name node itself.  A hidden column is
-       * fetched from the remote and occupies a slot in the spec's tuple, but no star
-       * expands to it - the same contract the local hidden columns already have. */
-      next_attr->flag.is_hidden_column = (dblink_column->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE) ? 1 : 0;
+      /* is_hidden_column was set by pt_dblink_table_fill_attr_def () for a remote
+       * invisible column; a reparsed spec leaves it clear */
 
       if (dblink_column->data_type != NULL)
 	{
