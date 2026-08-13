@@ -26208,7 +26208,11 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 
   if (curr_spec == NULL)
     {
-      return ER_FAILED;
+      /* The caller fails the statement on this return, so it must carry an error: without one the
+       * statement surfaces the generic "Query execution failure" and the cause is unrecoverable from
+       * the message alone. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
     }
 
   mvcc_reev_class->init (curr_spec->s_id);
