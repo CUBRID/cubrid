@@ -313,6 +313,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
+  ${QUERY_DIR}/like_match_lockstep.i
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
   ${QUERY_DIR}/query_hash_join.h
@@ -505,6 +506,7 @@ set(TRANSACTION_HEADERS
   )
 
 set(STORAGE_SOURCES
+  ${STORAGE_DIR}/bestspace.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
@@ -521,6 +523,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/external_sort.c
   ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
+  ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
@@ -529,12 +532,15 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/statistics_cl.c
   ${STORAGE_DIR}/statistics_sr.c
+  ${STORAGE_DIR}/statistics_ndv.c
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
   )
 set(STORAGE_HEADERS
+  ${STORAGE_DIR}/bestspace.hpp
   ${STORAGE_DIR}/btree_unique.hpp
+  ${STORAGE_DIR}/ftab_set.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
 )
 
@@ -562,6 +568,22 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_stream.hpp
   ${XASL_DIR}/xasl_iteration.hpp
   )
+
+set(HISTOGRAM_SOURCES
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_sampler_sr.cpp
+)
+set(HISTOGRAM_HEADERS
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_bucketizer.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_sampler_sr.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/reservoir_sampler.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/hyperloglog.hpp
+)
 
 set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
@@ -665,6 +687,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PROBES_OBJECT}
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
+  ${HISTOGRAM_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -719,6 +742,8 @@ add_library(cubridsa SHARED
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   ${LOADDB_HEADERS}
+  ${HISTOGRAM_SOURCES}
+  ${HISTOGRAM_HEADERS}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -757,6 +782,12 @@ target_link_libraries(cubridsa
     rt
     cascci
   )
+
+if(UNIX)
+  target_include_directories(cubridsa PUBLIC ${TBB_INCLUDES})
+  target_link_libraries(cubridsa PRIVATE ${TBB_LIBS})
+  add_dependencies(cubridsa ${TBB_TARGETS})
+endif(UNIX)
 
 add_dependencies(cubridsa
   gen_csql_grammar

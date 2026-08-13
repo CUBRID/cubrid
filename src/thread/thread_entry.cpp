@@ -69,7 +69,10 @@ namespace cubthread
   const char *PGBUF_TRACK_NAME = "Page Buffer";
   const char *PGBUF_TRACK_RES_NAME = "pgptr";
   const std::size_t PGBUF_TRACK_MAX_ITEMS = 1024;
-  const unsigned PGBUF_TRACK_MAX_AMOUNT = 16;       // re-fix is possible... how many to accept is debatable
+  // this is only a debug check to find page fix leaks.
+  // one query can fix the same page many times. for example, nested subqueries with fixed scan fix the same page
+  // one time for each level. SQL nesting can go up to max_recursion_sql_depth (default 400), so we allow 400.
+  const unsigned PGBUF_TRACK_MAX_AMOUNT = 400;
 
   //////////////////////////////////////////////////////////////////////////
   // entry implementation
@@ -78,6 +81,8 @@ namespace cubthread
   entry::entry ()
   // public:
     : index (-1)
+    , pgbuf_fix_req_cnt (0)
+    , pgbuf_pg_unfix_cnt (0)
     , type (TT_NONE)
     , emulate_tid ()
     , client_id (-1)
@@ -141,6 +146,8 @@ namespace cubthread
     , m_uses_px_stats (false)
     , m_is_private_lru_enabled (false)
     , m_holder_anchor (NULL)
+    , uuidv7_last_ms (0)
+    , uuidv7_seq (0)
       // private:
     , m_id ()
     , m_error ()
@@ -199,6 +206,7 @@ namespace cubthread
     tran_entries[THREAD_TS_HFID_TABLE] = NULL;
     tran_entries[THREAD_TS_XCACHE] = NULL;
     tran_entries[THREAD_TS_FPCACHE] = NULL;
+    tran_entries[THREAD_TS_SERIAL_CACHE] = NULL;
 
     _unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
     _unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
@@ -232,6 +240,7 @@ namespace cubthread
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
     tran_entries[THREAD_TS_DWB_SLOTS] = lf_tran_request_entry (&dwb_slots_Ts);
+    tran_entries[THREAD_TS_SERIAL_CACHE] = lf_tran_request_entry (&serial_Cache_Ts);
   }
 
   void
@@ -851,6 +860,8 @@ thread_resume_status_to_string (thread_resume_suspend_status resume_status)
       return "DWB_BLOCK_QUEUE_SUSPENDED";
     case THREAD_DWB_QUEUE_RESUMED:
       return "DWB_BLOCK_QUEUE_RESUMED";
+    case THREAD_SLEEP_FUNC_SUSPENDED:
+      return "SLEEP_FUNC_SUSPENDED";
     }
   return "UNKNOWN";
 }

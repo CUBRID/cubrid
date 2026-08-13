@@ -581,6 +581,7 @@ struct sm_class_constraint
 #define GET_OPTION_DEDUPLICATE(opt) \
   (((opt) >> OPTION_DEDUPLICATE_SHIFT) & OPTION_DEDUPLICATE_MASK)
 
+
 /*
  *    Holds information about a method argument.  This will be used
  *    in a SM_METHOD_SIGNATURE signature structure.
@@ -783,6 +784,7 @@ struct sm_class
   SM_QUERY_SPEC *query_spec;	/* virtual class query_spec information */
   SM_TEMPLATE *new_;		/* temporary structure */
   CLASS_STATS *stats;		/* server statistics, loaded on demand */
+  HIST_STATS *histogram;	/* column histogram, loaded on demand */
 
   MOP owner;			/* authorization object */
   int collation_id;		/* class collation */
@@ -1152,4 +1154,5 @@ extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info
 
 extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons,
 					      SM_INDEX_STATUS index_status);
+extern int classobj_check_histogram_exist (SM_ATTRIBUTE * attributes, const char *attr_name);
 #endif /* _CLASS_OBJECT_H_ */

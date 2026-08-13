@@ -24,6 +24,7 @@
 #include "dbtype_function.h"
 #include "execute_statement.h"
 #include "network_interface_cl.h"
+#include "schema_system_catalog_constants.h"
 
 #include <algorithm>
 
@@ -528,7 +529,6 @@ namespace cubschema
 	STATEMENT_ID stmt_id;
 	DB_VALUE value;
 	char select_query[DB_MAX_IDENTIFIER_LENGTH + 256] = { 0 };
-	constexpr int CNT_CATCLS_OBJECTS = 7;
 	DB_BIGINT cnt_refers = CNT_CATCLS_OBJECTS + 1;
 	int au_save;
 
@@ -544,16 +544,16 @@ namespace cubschema
 	 * To do this, we use an walkaround in which we count the number of general object domains in existing system catalogs
 	 * and if the SELECT result is over this, we asuume that there are some general object domain in some user class.
 	 *
-	 * The number is now 7 and hard-coded, so we MUST consider it when add or remove a general object domain in a system class.
+	 * The number is hard-coded, so we MUST consider it when add or remove a general object domain in a system class.
 	 * If it is changed, we MUST also change the value of CNT_CATCLS_OBJECTS.
 	 *
-	 * We add a QA test case to confirm there are only 7 general object domains in system classes, which will help notice this constraint
+	 * We add a QA test case to confirm the number of general object domains in system classes, which will help notice this constraint
 	 * and this test case also has to be changed along if CNT_CATCLS_OBJECTS is changed.
 	 *
 	 * See CBRD-23983 and CBRD-25697 for the details.
 	 */
 
-	AU_DISABLE (au_save);
+	AU_SAVE_AND_DISABLE (au_save);
 
 	(void) snprintf (select_query, sizeof (select_query),
 			 "SELECT COUNT(*) FROM [_db_domain] WHERE [data_type]=%d AND ([class_of].[unique_name]='%s' OR [class_of] IS NULL) AND ROWNUM <= %d",
@@ -564,7 +564,7 @@ namespace cubschema
 	  {
 	    assert (er_errid () != NO_ERROR);
 	    error = er_errid ();
-	    AU_ENABLE (au_save);
+	    AU_RESTORE (au_save);
 	    return error;
 	  }
 
@@ -574,7 +574,7 @@ namespace cubschema
 	    assert (er_errid () != NO_ERROR);
 	    error = er_errid ();
 	    db_close_session (session);
-	    AU_ENABLE (au_save);
+	    AU_RESTORE (au_save);
 	    return error;
 	  }
 
@@ -582,7 +582,7 @@ namespace cubschema
 	if (error < 0)
 	  {
 	    db_close_session (session);
-	    AU_ENABLE (au_save);
+	    AU_RESTORE (au_save);
 	    return error;
 	  }
 
@@ -591,7 +591,7 @@ namespace cubschema
 	  {
 	    db_query_end (result);
 	    db_close_session (session);
-	    AU_ENABLE (au_save);
+	    AU_RESTORE (au_save);
 	    return error;
 	  }
 
@@ -600,7 +600,7 @@ namespace cubschema
 	  {
 	    db_query_end (result);
 	    db_close_session (session);
-	    AU_ENABLE (au_save);
+	    AU_RESTORE (au_save);
 	    return error;
 	  }
 
@@ -609,7 +609,7 @@ namespace cubschema
 	db_query_end (result);
 	db_close_session (session);
 
-	AU_ENABLE (au_save);
+	AU_RESTORE (au_save);
 
 	if (cnt_refers > CNT_CATCLS_OBJECTS)
 	  {
@@ -722,9 +722,9 @@ namespace cubschema
       {
 	if (att->auto_increment != NULL)
 	  {
-	    AU_DISABLE (au_save);
+	    AU_SAVE_AND_DISABLE (au_save);
 	    error = do_reset_auto_increment_serial (att->auto_increment);
-	    AU_ENABLE (au_save);
+	    AU_RESTORE (au_save);
 
 	    if (error != NO_ERROR)
 	      {

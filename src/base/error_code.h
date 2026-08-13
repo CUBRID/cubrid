@@ -1761,7 +1761,17 @@
 
 #define ER_METHOD_CALLBACK                          -1372
 
-#define ER_LAST_ERROR                               -1373
+#define ER_INVALID_SCALE                            -1373
+
+#define ER_PARTITION_TABLE_NAME_OVERFLOW            -1374
+
+#define ER_QSTR_INVALID_UUID_FORMAT                 -1375
+
+#define ER_IMPLICITLY_ABORT_FOR_LOGIN_METHOD        -1376
+
+#define ER_BT_LOAD_NOTIFY_VACUUM_LIMIT              -1377
+
+#define ER_LAST_ERROR                               -1378
 
 
 

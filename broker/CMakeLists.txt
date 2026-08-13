@@ -475,6 +475,7 @@ if(WITH_CCI)
     ${BROKER_DIR}/broker_filename.c
     ${BROKER_DIR}/shard_metadata.c
     ${BROKER_DIR}/shard_shm.c
+    ${BROKER_DIR}/log_top_string.c
     )
   if(WIN32)
     list(APPEND BROKER_TESTER_SOURCES ${BASE_DIR}/porting.c)
@@ -508,6 +509,13 @@ set(BROKER_LOG_TOP_SOURCES
   ${BROKER_DIR}/broker_log_util.c
   ${BROKER_DIR}/log_top_string.c
   ${BROKER_DIR}/broker_log_top_tran.c
+  ${BROKER_DIR}/broker_config.c
+  ${BROKER_DIR}/broker_shm.c
+  ${BROKER_DIR}/broker_error.c
+  ${BROKER_DIR}/broker_util.c
+  ${BROKER_DIR}/broker_filename.c
+  ${BROKER_DIR}/shard_metadata.c
+  ${BROKER_DIR}/shard_shm.c
   )
 SET_SOURCE_FILES_PROPERTIES(
   ${BROKER_LOG_TOP_SOURCES}

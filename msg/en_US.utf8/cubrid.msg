@@ -1112,7 +1112,7 @@ $ LOADDB
 1039 log writer: log writer started. mode: %1$d.
 1040 HA generic: %1$s. 
 1041 A string was truncated in context of "%1$s".
-1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
+1042 Trying to create a string requiring %1$zu bytes of memory, while the maximum allowed is %2$d bytes.
 1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
 1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
 1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
@@ -1471,7 +1471,18 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1372 Error occurred while handling a callback. code(%1$d), msg(%2$s)
 
-1373 Last Error
+1373 Given scale of %1$d is invalid; it should be greater than or equal to %2$d and no greater than %3$d.
+
+1374 Cannot create the partition table. The combined length of the table name and partition name must be less than %1$d.
+
+1375 Invalid UUID format. The argument must be a string of 32 hexadecimal characters, 36 UUID formatted characters, or a 128-bit value.
+
+1376 The current transaction is implicitly aborted by the system for the execution of the login method.
+
+1377 The no-logging index build exceeded its vacuum notification memory limit (%1$d bytes). Retry the loaddb while no concurrent transactions are active, or rebuild the index without the no-logging option.
+
+1378 Last Error
+
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1980,6 +1991,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 334 An attribute of virtual class cannot set column's visibility.
 335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
+336 Numeric scale specifier is out of range -84 to 127
+337 The partition name is too long.
+
+338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -2266,6 +2282,7 @@ including those from the current backup level and higher.\n
 29 COMMENT: Log archive %1$s, which contains log pages before %2$lld, is not needed any longer by any HA utilities.\n
 30 Number of active log archives has been exceeded the max desired number.
 
+31 This backup and log chain contains a no-logging index build (loaddb) and cannot be replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a time before it.
 $set 17 MSGCAT_SET_GLOSSARY
 1 class
 2 trigger

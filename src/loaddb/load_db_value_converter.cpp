@@ -335,9 +335,10 @@ namespace cubload
       {
 	DB_NUMERIC num;
 	DB_BIGINT tmp_bigint;
+	bool is_value_negative = false;
 
-	numeric_coerce_dec_str_to_num (str, num.d.buf);
-	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
+	numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BIGINT));
 	    return ER_IT_DATA_OVERFLOW;
@@ -472,10 +473,21 @@ namespace cubload
     int precision = (int) str_size - 1 - (str[0] == '+' || str[0] == '-');
     int scale = (int) str_size - (int) strcspn (str, ".") - 1;
 
+    if (precision > DB_MAX_NUMERIC_PRECISION)
+      {
+	scale = (scale == 0) ? (DB_MAX_NUMERIC_PRECISION - precision) : scale;
+	precision = DB_MAX_NUMERIC_PRECISION;
+      }
+
     int error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale);
     if (error_code != NO_ERROR)
       {
 	return error_code;
+      }
+
+    if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
+      {
+	FIXED_TO_FLOAT_NUMERIC (val);
       }
 
     return db_value_put (val, DB_TYPE_C_CHAR, (void *) str, (int) str_size);
@@ -919,11 +931,18 @@ namespace cubload
       {
 	DB_NUMERIC num;
 	DB_BIGINT tmp_bigint;
+	bool is_value_negative = false;
 
-	numeric_coerce_dec_str_to_num (str, num.d.buf);
-	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
+	numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	  {
-	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, (int) str_size, 0);
+	    int precision = (int) str_size - (str[0] == '+' || str[0] == '-');
+	    if (precision > DB_MAX_NUMERIC_PRECISION)
+	      {
+		precision = DB_MAX_NUMERIC_PRECISION;
+	      }
+
+	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, 0);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();

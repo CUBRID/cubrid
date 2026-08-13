@@ -6851,12 +6851,12 @@ file_get_num_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_se
 }
 
 /*
- * file_get_num_total_user_pages () - Output number of user pages in class
+ * file_get_num_total_user_pages () - Output number of heap pages that can store user records in class
  *
  * return                 : Error code
  * thread_p (in)          : Thread entry
  * OID (in)               : Class identifier
- * total_pages (out) : Output number of user pages of class
+ * total_pages (out) : Output number of data pages of class
  */
 int
 file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *total_pages)
@@ -6865,6 +6865,8 @@ file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *tota
   OID *partitions = NULL;
   CLS_INFO *cls_info_p = NULL;
   int error = NO_ERROR;
+
+  *total_pages = 0;
 
   if (partition_get_partition_oids (thread_p, cls_oid, &partitions, &count) != NO_ERROR)
     {
@@ -6883,7 +6885,7 @@ file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *tota
 	      error = ER_FAILED;
 	      goto end;
 	    }
-	  if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), &part_pages) != NO_ERROR)
+	  if (heap_get_num_data_pages (thread_p, &cls_info_p->ci_hfid, &part_pages) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto end;
@@ -6900,7 +6902,7 @@ file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *tota
 	  error = ER_FAILED;
 	  goto end;
 	}
-      if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), total_pages) != NO_ERROR)
+      if (heap_get_num_data_pages (thread_p, &cls_info_p->ci_hfid, total_pages) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto end;
@@ -6915,7 +6917,7 @@ end:
     }
   catalog_free_class_info_and_init (cls_info_p);
 
-  return NO_ERROR;
+  return error;
 }
 
 /*

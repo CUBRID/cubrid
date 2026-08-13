@@ -541,13 +541,12 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
     }
   else
     {
-      result = parser_new_node (parser, PT_EXPR);
+      result = pt_make_default_value_tree_from_default_expr (parser, &default_value->default_expr);
       if (!result)
 	{
 	  PT_INTERNAL_ERROR (parser, "allocate new node");
 	  return NULL;
 	}
-      result->info.expr.op = pt_op_type_from_default_expr_type (default_value->default_expr.default_expr_type);
     }
 
   data_type = parser_new_node (parser, PT_DATA_TYPE);
@@ -578,7 +577,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
   int size;
   DB_OBJECT *mop;
   DB_TYPE db_type;
-  char buf[100];
+  char buf[NUMERIC_MAX_STRING_SIZE];
   char *json_body = NULL;
 
   assert (parser != NULL && val != NULL);
@@ -2128,6 +2127,12 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
 	  domain = pt_data_type_to_db_domain (parser, dt, NULL);
 	  if (domain)
 	    {
+	      /* LEAVE is set only for an all-maybes string result, whose codeset/collation are already LANG_SYS.
+	       * Collection elements have no runtime resolution path, so finalize to NORMAL here. */
+	      if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)) && domain->collation_flag == TP_DOMAIN_COLL_LEAVE)
+		{
+		  domain->collation_flag = TP_DOMAIN_COLL_NORMAL;
+		}
 	      error = tp_domain_add (&setdomain, domain);
 	    }
 	  dt = dt->next;
@@ -2258,6 +2263,13 @@ pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node, const char *class
 		    }
 		  else
 		    {
+		      /* LEAVE is set only for an all-maybes string result, whose codeset/collation are already LANG_SYS.
+		       * Collection elements have no runtime resolution path, so finalize to NORMAL here. */
+		      if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain))
+			  && domain->collation_flag == TP_DOMAIN_COLL_LEAVE)
+			{
+			  domain->collation_flag = TP_DOMAIN_COLL_NORMAL;
+			}
 		      error = tp_domain_add (&setdomain, domain);
 		    }
 		}

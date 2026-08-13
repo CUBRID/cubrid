@@ -85,6 +85,8 @@ extern int smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE const
 			       int class_attribute, SM_FOREIGN_KEY_INFO * fk_info, SM_PREDICATE_INFO * filter_index,
 			       SM_FUNCTION_INFO * function_index, const char *comment, SM_INDEX_STATUS index_status);
 
+extern int smt_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool with_fullscan);
+
 extern int smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char *constraint_name,
 				int class_attribute, SM_ATTRIBUTE_FLAG constraint);
 
@@ -167,6 +169,8 @@ extern int smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_con
 				  DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 				  const char **att_names, const int *asc_desc, const SM_PREDICATE_INFO * filter_index,
 				  const SM_FUNCTION_INFO * function_index);
+extern int smt_check_histogram_exist (MOP classop, const char *attr_name);
+extern int smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool no_error_if_not_found);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void smt_downcase_all_class_info (void);

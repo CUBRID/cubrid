@@ -2074,6 +2074,13 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 		    if (dsize1 == 1)
 		      {
 			match = tp_domain_match (domain->setdomain, transient->setdomain, exact);
+
+			if (match && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient))
+			    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (transient->setdomain))
+			    && domain->setdomain->collation_flag != transient->setdomain->collation_flag)
+			  {
+			    match = 0;
+			  }
 		      }
 		    else
 		      {
@@ -2083,7 +2090,10 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 			for (d1 = domain->setdomain, d2 = transient->setdomain; d1 != NULL && d2 != NULL;
 			     d1 = d1->next, d2 = d2->next)
 			  {
-			    if (!tp_domain_match (d1, d2, exact))
+			    if (!tp_domain_match (d1, d2, exact)
+				|| (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient))
+				    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d2))
+				    && d1->collation_flag != d2->collation_flag))
 			      {
 				match = 0;
 				break;	/* immediately exit for loop */
@@ -2151,7 +2161,12 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 
 	    if (match)
 	      {
-		break;
+		if (!TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient)) || domain->is_desc == transient->is_desc)
+		  {
+		    break;
+		  }
+
+		match = 0;
 	      }
 
 	    *ins_pos = domain;
@@ -2411,7 +2426,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_NUMERIC:
       /*
        * The first domain is a default domain for numeric type,
-       * actually NUMERIC(15,0). We try to match it first.
+       * actually NUMERIC(43,0). We try to match it first.
        */
       if (transient->precision == domain->precision && transient->scale == domain->scale
 	  && transient->is_desc == domain->is_desc)
@@ -3332,12 +3347,12 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	   * the default "maximum" precision.
 	   * This may not be necessary any more.
 	   */
-	  if (domain->precision == -1)
+	  if (domain->precision == DB_DEFAULT_PRECISION)
 	    {
 	      domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
 	    }
 
-	  if (domain->scale == -1)
+	  if (domain->scale == DB_DEFAULT_SCALE)
 	    {
 	      domain->scale = DB_DEFAULT_NUMERIC_SCALE;
 	    }
@@ -4571,8 +4586,7 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
     {
     case DB_TYPE_CHAR:
       return (desired_precision == original_length
-	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR)
-	      && DB_GET_COMPRESSED_STRING (val) == NULL);
+	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
     case DB_TYPE_VARCHAR:
       return (desired_precision >= original_length
 	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
@@ -11133,7 +11147,14 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  fprintf (fp, "%s(%d,%d)", d->type->name, d->precision, d->scale);
+	  if (d->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      fprintf (fp, "%s", d->type->name);
+	    }
+	  else
+	    {
+	      fprintf (fp, "%s(%d,%d)", d->type->name, d->precision, d->scale);
+	    }
 	  break;
 
 	default:
@@ -11524,13 +11545,8 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
 	}
       else if (common_type == DB_TYPE_NUMERIC)
 	{
-	  int integral_digits1, integral_digits2;
-
-	  integral_digits1 = arg1_prec - arg1_scale;
-	  integral_digits2 = arg2_prec - arg2_scale;
-	  target_domain->scale = MAX (arg1_scale, arg2_scale);
-	  target_domain->precision = (target_domain->scale + MAX (integral_digits1, integral_digits2));
-	  target_domain->precision = MIN (target_domain->precision, DB_MAX_NUMERIC_PRECISION);
+	  target_domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  target_domain->scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
       else
 	{

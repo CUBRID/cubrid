@@ -25,7 +25,6 @@
 
 #include "btree.h"
 #include "dbtype.h"
-#include "px_scan_index_key_range_list.hpp"
 #include "scan_manager.h"
 #include "storage_common.h"
 
@@ -40,12 +39,13 @@ namespace parallel_index_scan
   struct overflow_slot
   {
     VPID     cur_vpid;          /* chain cursor; VPID_ISNULL after chain_walked. */
-    VPID     leaf_vpid;         /* producer's leaf page locator (P2 leaf re-read source). */
-    PGSLOTID leaf_slot_id;      /* producer's leaf-slot id; record locator inside leaf_vpid. */
     int      range_idx;         /* owning range. */
     int      helpers;           /* drainers; producer counts itself. helpers==0 + chain_walked => releasable. */
     bool     chain_walked;      /* cur_vpid hit VPID_ISNULL. */
     bool     active;            /* slot in use; gates round-robin pick + termination predicate. */
+    bool     claim_in_flight;   /* one in-flight claim at a time; predicate-loop in claim_next. */
+    DB_VALUE key;               /* deep-copied from producer's m_slot_key at publish; slot-owned. */
+    bool     clear_key;         /* slot.key owns var-length storage; init() frees pre-existing slots on reinit. */
   };
 
   /* (A) Multi-chain shared overflow pool (v2): cap = parallelism slots, helper supply matches chain demand. */
@@ -56,40 +56,47 @@ namespace parallel_index_scan
 	: m_overflow_slots (),
 	  m_next_chain_to_help (0),
 	  m_active_workers (0),
-	  m_no_more_leaves (false),
-	  m_ranges (nullptr)
+	  m_no_more_leaves (false)
       {
       }
 
-      /* main-thread: rebind backing range view + reset slot vector to cap. */
-      void init (int parallelism, key_range_list *ranges)
+      /* main-thread: reset slot vector to cap. */
+      void init (int parallelism)
       {
-	m_ranges = ranges;
+	/* Clear variable-length key storage before overwriting slots (reinit / abort-cleanup safety). */
+	for (auto &slot : m_overflow_slots)
+	  {
+	    if (slot.clear_key)
+	      {
+		clear_key_common_heap (&slot.key);
+	      }
+	  }
 	m_overflow_slots.assign (parallelism, overflow_slot {});
 	for (auto &slot : m_overflow_slots)
 	  {
 	    VPID_SET_NULL (&slot.cur_vpid);
-	    VPID_SET_NULL (&slot.leaf_vpid);
-	    slot.leaf_slot_id = NULL_SLOTID;
 	    slot.range_idx = -1;
 	    slot.helpers = 0;
 	    slot.chain_walked = false;
 	    slot.active = false;
+	    slot.claim_in_flight = false;
+	    db_make_null (&slot.key);
+	    slot.clear_key = false;
 	  }
 	m_next_chain_to_help.store (0, std::memory_order_relaxed);
 	m_active_workers = 0;
 	m_no_more_leaves = false;
       }
 
-      /* returns slot_idx >= 0; -1 only on broken cap==parallelism invariant (er_set+assert inside); leaf_vpid/slot_id stored for helper re-read. */
+      /* returns slot_idx>=0; -1 only on broken cap==parallelism invariant; key deep-copied from producer. */
       int try_publish (THREAD_ENTRY *thread_p, VPID first_ovf_vpid,
-		       VPID leaf_vpid, PGSLOTID leaf_slot_id, int range_idx);
+		       const DB_VALUE *key, int range_idx);
       /* slot_idx mandatory: identifies which chain to advance. */
       SCAN_CODE claim_next (THREAD_ENTRY *thread_p, int slot_idx, PAGE_PTR &out_page, int &out_range_idx);
       void release_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
       /* slot_idx mandatory: decrements helpers on the specific slot. */
       void exit_help (THREAD_ENTRY *thread_p, int slot_idx);
-      /* wait_or_help: round-robin pick; out_local_key owned by caller on S_SUCCESS (pr_clear_value if out_local_clear_key); cleared on S_END/S_ERROR. */
+      /* caller owns out_local_key on S_SUCCESS (per out_local_clear_key); cleared on S_END/S_ERROR. */
       SCAN_CODE wait_or_help (THREAD_ENTRY *thread_p, PAGE_PTR &out_page,
 			      DB_VALUE *out_local_key, bool *out_local_clear_key,
 			      int &out_range_idx, int &out_slot_idx);
@@ -98,6 +105,16 @@ namespace parallel_index_scan
       void signal_no_more_leaves ();
 
     private:
+      /* m_overflow_mutex held; clears key, resets slot fields, notifies waiters. */
+      void close_slot_locked (overflow_slot &slot);
+
+      /* m_overflow_mutex held; marks chain dead, slot stays occupied (ABA guard) — last-out exit_help closes it. */
+      void mark_chain_dead_locked (overflow_slot &slot);
+
+      /* slot.key cloned by producer, freed by another (last-out) thread; use common heap (id 0). */
+      static int clone_key_common_heap (DB_VALUE *dest, const DB_VALUE *src);
+      static void clear_key_common_heap (DB_VALUE *val);
+
       std::mutex                  m_overflow_mutex;
       std::condition_variable     m_overflow_cv;
       std::vector<overflow_slot>  m_overflow_slots;       /* size == parallelism; cap = helper supply. */
@@ -105,8 +122,6 @@ namespace parallel_index_scan
       /* Late-joiner termination tracking (under m_overflow_mutex) */
       int                       m_active_workers;         /* workers currently inside loop body */
       bool                      m_no_more_leaves;         /* set when last get_next_page_with_fix returned S_END */
-
-      key_range_list *m_ranges;   /* borrowed; needed for BTID_INT inside wait_or_help leaf re-read. */
   };
 }
 

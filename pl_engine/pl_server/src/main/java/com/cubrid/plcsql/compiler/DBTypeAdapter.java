@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.value.NumericValue;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
 import com.cubrid.plcsql.compiler.type.TypeNumeric;
@@ -53,6 +54,7 @@ public class DBTypeAdapter {
             case DBType.DB_TIME:
             case DBType.DB_DATETIME:
             case DBType.DB_TIMESTAMP:
+            case DBType.DB_RESULTSET:
                 return true;
         }
 
@@ -174,8 +176,11 @@ public class DBTypeAdapter {
                 return Type.BIGINT;
             case DBType.DB_NUMERIC:
                 if (includePrecision) {
-                    assert prec >= 1 && prec <= 38 : ("invalid precision " + prec);
-                    assert scale >= 0 && scale <= prec
+                    assert prec >= NumericValue.DB_MIN_NUMERIC_PRECISION
+                                    && prec <= NumericValue.DB_MAX_NUMERIC_PRECISION
+                            : ("invalid precision " + prec);
+                    assert scale >= NumericValue.DB_MIN_NUMERIC_SCALE
+                                    && scale <= NumericValue.DB_MAX_NUMERIC_SCALE
                             : ("invalid scale " + scale + " (with precision " + prec + ")");
                     return TypeNumeric.getInstance(iStore, prec, scale);
                 } else {
@@ -193,6 +198,8 @@ public class DBTypeAdapter {
                 return Type.DATETIME;
             case DBType.DB_TIMESTAMP:
                 return Type.TIMESTAMP;
+            case DBType.DB_RESULTSET:
+                return Type.SYS_REFCURSOR;
             default:
                 assert false : "unreachable";
                 throw new RuntimeException("unreachable");

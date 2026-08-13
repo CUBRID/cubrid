@@ -76,8 +76,7 @@ seq_of_declare_specs
     ;
 
 declare_spec
-    : pragma_declaration
-    | constant_declaration
+    : constant_declaration
     | exception_declaration
     | variable_declaration
     | cursor_definition
@@ -107,10 +106,6 @@ cursor_parameter
 
 exception_declaration
     : identifier EXCEPTION SEMICOLON
-    ;
-
-pragma_declaration
-    : PRAGMA AUTONOMOUS_TRANSACTION SEMICOLON
     ;
 
 seq_of_statements
@@ -286,6 +281,7 @@ fetch_statement
 
 open_for_statement
     : OPEN identifier FOR static_sql
+    | OPEN identifier FOR dyn_sql restricted_using_clause?
     ;
 
 transaction_control_statement
@@ -496,6 +492,10 @@ case_expression
     | simple_case_expression
     ;
 
+signed_integer
+    : MINUS_SIGN? UNSIGNED_INTEGER
+    ;
+
 simple_case_expression
     : CASE expression simple_case_expression_when_part+ case_expression_else_part? END
     ;
@@ -628,7 +628,7 @@ percent_rowtype
     ;
 
 numeric_type
-    : (NUMERIC | DECIMAL | DEC) (LPAREN precision=UNSIGNED_INTEGER (',' scale=UNSIGNED_INTEGER)? RPAREN)?
+    : (NUMERIC | DECIMAL | DEC) (LPAREN precision=UNSIGNED_INTEGER (',' scale=signed_integer)? RPAREN)?
     ;
 
 char_type
