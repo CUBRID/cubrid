@@ -397,6 +397,48 @@ qr_slot_name (char *pool, const T_QR_SHM_HEADER * h, int idx)
   return pool + idx * h->pool_slot + 2 * (h->cfg_max_query_len + 1);
 }
 
+/* structural check every attach must pass before dereferencing anything: readers and admin
+ * mutators alike derive all their pointers and bounds from this header, and a process of
+ * the same uid could have corrupted it.  the layout is a pure function of the capacity
+ * scalars, so it is recomputed and required to match exactly -- per-field range checks
+ * would still let two arrays overlap and never bound the last array's end.  the owner
+ * check stays with the caller: admin knows the owning id, CAS only knows the key. */
+static bool
+qr_shm_header_sane (const T_QR_SHM_HEADER * h, int mid)
+{
+  struct shmid_ds ds;
+  int exp_slot, exp_bucket, exp_rule, exp_dbucket, exp_dbuser, exp_pool, exp_total;
+
+  if (h->magic != QR_SHM_MAGIC
+      || h->max_rules <= 0 || h->max_rules > QR_MAX_RULE_COUNT
+      || h->rule_count < 0 || h->rule_count > h->max_rules
+      || h->hash_size != QR_DEFAULT_HASH_SIZE || h->dbuser_hash_size != QR_DEFAULT_HASH_SIZE
+      || h->dbuser_count < 0 || h->dbuser_count > h->max_rules
+      || h->cfg_max_query_len <= 0 || h->cfg_max_query_len > QR_MAX_QUERY_LEN
+      || h->min_query_len < 0 || h->max_query_len < 0 || h->max_query_len > h->cfg_max_query_len)
+    {
+      return false;
+    }
+
+  exp_slot = 2 * (h->cfg_max_query_len + 1) + QR_RELPATH_LEN;
+  exp_bucket = (int) sizeof (T_QR_SHM_HEADER);
+  exp_rule = exp_bucket + (int) sizeof (int) * h->hash_size;
+  exp_dbucket = exp_rule + (int) sizeof (T_QR_RULE) * h->max_rules;
+  exp_dbuser = exp_dbucket + (int) sizeof (int) * h->dbuser_hash_size;
+  exp_pool = exp_dbuser + (int) sizeof (T_QR_DBUSER) * h->max_rules;
+  exp_total = exp_pool + h->max_rules * exp_slot;
+
+  if (h->pool_slot != exp_slot || h->bucket_off != exp_bucket || h->rule_off != exp_rule
+      || h->dbuser_bucket_off != exp_dbucket || h->dbuser_off != exp_dbuser
+      || h->pool_off != exp_pool || h->total_size != exp_total)
+    {
+      return false;
+    }
+
+  /* the header is self-consistent; make sure the kernel actually mapped that much */
+  return (shmctl (mid, IPC_STAT, &ds) == 0 && (size_t) exp_total <= ds.shm_segsz);
+}
+
 #endif
 
 /* ================================================================== *
@@ -414,16 +456,24 @@ struct t_qr_parsed
   unsigned int orig_hash;	/* hash value of normalized original query */
   char *rewrite_query;		/* replacement query (block lines joined with '\n') */
   char rulepath[QR_RELPATH_LEN];	/* source file relative path "user@dbname/file" */
-  int num_map_entries;		/* number of BIND_MAP entries, -1 = omitted (identity) */
+  int num_map_entries;		/* number of BIND_MAP entries, 0 = NONE, -1 = identity */
+  int bind_map_given;		/* 1 = the rule file has a BIND_MAP line, 0 = omitted.  identity is
+				 * stored the same either way, but only an omitted line is restricted
+				 * to a markerless ORIG (qr_check_rewrite_policy) */
   short src_orig_pos[QR_MAX_BINDS];
 };
 
 /*
- * parse "BIND_MAP = new:orig, ..." into the parsed rule and validate it.
+ * parse the BIND_MAP value into the parsed rule and validate its form.  accepted (keywords
+ * are case-insensitive):
+ *   MATCH        the replacement takes the original's markers in order -> -1 entries
+ *   NONE         the replacement takes none of them                    ->  0 entries
+ *   new:orig,... explicit mapping                                      ->  n entries
  * returns 0 on success, -1 on error.  NULL and "" are NOT the same: NULL means the rule has
- * no BIND_MAP line (identity mapping), "" means the line is there without a value
- * ("BIND_MAP ="), which is rejected -- mapping identity there would silently run a rule the
- * author did not describe.
+ * no BIND_MAP line, "" means the line is there without a value ("BIND_MAP ="), which is
+ * rejected -- guessing a mapping there would silently run a rule the author did not describe.
+ * the counts are only checked against the real K_orig / K_rewrite in
+ * qr_check_rewrite_policy, which is where the queries are parsed.
  */
 static int
 qr_parse_bind_map (T_QR_PARSED * p, const char *map_text)
@@ -437,6 +487,10 @@ qr_parse_bind_map (T_QR_PARSED * p, const char *map_text)
       covered[i] = 0;
     }
 
+  /* the whole array is copied into the segment either way, so leave no uninitialized stack
+   * bytes in the positions this map does not name */
+  memset (p->src_orig_pos, 0, sizeof (p->src_orig_pos));
+
   if (map_text == NULL)
     {
       /* BIND_MAP omitted: identity mapping, resolved at CAS prepare time when the
@@ -448,6 +502,18 @@ qr_parse_bind_map (T_QR_PARSED * p, const char *map_text)
   if (map_text[0] == '\0')
     {
       return -1;		/* "BIND_MAP =" with no value */
+    }
+
+  if (strcasecmp (map_text, "MATCH") == 0)
+    {
+      p->num_map_entries = -1;	/* same as an omitted line, but written down */
+      return 0;
+    }
+
+  if (strcasecmp (map_text, "NONE") == 0)
+    {
+      p->num_map_entries = 0;
+      return 0;
     }
 
   s = map_text;
@@ -748,13 +814,15 @@ qr_parse_file (const char *path, const char *up_db, const char *up_user, T_QR_PA
 
   /* record the BIND_MAP entries; the counts are validated at load time by
    * qr_check_rewrite_policy and resolved at CAS prepare time (get_num_markers). */
+  p->bind_map_given = has_bind_map;
   if (qr_parse_bind_map (p, has_bind_map ? bind_map : NULL) < 0)
     {
       if (errmsg != NULL)
 	{
 	  /* the map text can be as long as a whole query line while errmsg is a small
 	   * diagnostic buffer, so bound the echo rather than let snprintf truncate it. */
-	  snprintf (errmsg, errsz, "invalid BIND_MAP (%.128s)", (bind_map[0] != '\0') ? bind_map : "empty");
+	  snprintf (errmsg, errsz, "invalid BIND_MAP (%.128s)",
+		    (bind_map[0] != '\0') ? bind_map : "empty; use MATCH, NONE or an explicit map");
 	}
       free_and_init (p->orig_norm);
       free_and_init (p->rewrite_query);
@@ -918,6 +986,15 @@ qr_admin_dump_info (FILE * fp, const T_BROKER_INFO * br_info_p)
       return;
     }
 
+  /* the listing walks rule[] and the pool through the header offsets: same check as the
+   * CAS attach, reported apart from OFF because it is not a normal state. */
+  if (!qr_shm_header_sane (hdr, mid))
+    {
+      fprintf (fp, "  QUERY_REWRITE = OFF (segment corrupted, restart the broker)\n");
+      shmdt (base);
+      return;
+    }
+
   rule = (T_QR_RULE *) (base + hdr->rule_off);
   pool = base + hdr->pool_off;
 
@@ -947,23 +1024,40 @@ qr_admin_dump_info (FILE * fp, const T_BROKER_INFO * br_info_p)
 
     if (qr_rule_log_path (br_info_p, errlog, sizeof (errlog)) != NULL && (efp = fopen (errlog, "r")) != NULL)
       {
-	int entries = 0, c, prev = '\n';
+	char lbuf[1024];
+	int entries = 0, warns = 0;
+	bool split = false;	/* the previous read stopped mid-line, not at its end */
 
-	while ((c = fgetc (efp)) != EOF)
+	/* a rule that loaded with a warning writes here too, so the two are counted apart:
+	 * "entries" must keep meaning "rules this build skipped". */
+	while (fgets (lbuf, sizeof (lbuf), efp) != NULL)
 	  {
-	    if (c == '\n')
+	    size_t n = strlen (lbuf);
+
+	    if (!split)
 	      {
-		entries++;
+		if (strstr (lbuf, ": warning: ") != NULL)
+		  {
+		    warns++;
+		  }
+		else
+		  {
+		    entries++;
+		  }
 	      }
-	    prev = c;
-	  }
-	if (prev != '\n')
-	  {
-	    entries++;		/* last line without a trailing newline */
+	    split = (n > 0 && lbuf[n - 1] != '\n');
 	  }
 	fclose (efp);
 
-	fprintf (fp, "  RULE ERRORS   : %s (%d %s)\n", errlog, entries, (entries == 1) ? "entry" : "entries");
+	if (warns > 0)
+	  {
+	    fprintf (fp, "  RULE ERRORS   : %s (%d %s, %d warning%s)\n", errlog, entries,
+		     (entries == 1) ? "entry" : "entries", warns, (warns == 1) ? "" : "s");
+	  }
+	else
+	  {
+	    fprintf (fp, "  RULE ERRORS   : %s (%d %s)\n", errlog, entries, (entries == 1) ? "entry" : "entries");
+	  }
       }
   }
 
@@ -1093,21 +1187,28 @@ static bool qr_parser_lang_ready = false;
  *   single statement, no DDL/DCL/CALL, SELECT (or DML when allowed), ORIG/REWRITE kind
  *   preservation, and marker/BIND_MAP consistency.
  *   return: 0 if the rule passes, -1 otherwise (reason filled)
- *   orig(in), rewrite(in): the rule's ORIG / REWRITE query strings
+ *   p(in): the parsed rule; the queries are read from it along with the BIND_MAP form
  *   allow_non_select(in): QUERY_REWRITE_ALLOW_NON_SELECT (0 = SELECT-only)
- *   num_map_entries(in), src_orig_pos(in): the rule's parsed BIND_MAP
  *   reason(out), reasonsz(in): rejection reason for the rule error log
+ *   warn(out), warnsz(in): set when the rule passes but deserves a note; "" otherwise
  */
 static int
-qr_check_rewrite_policy (const char *orig, const char *rewrite, int allow_non_select, int num_map_entries,
-			 const short *src_orig_pos, char *reason, int reasonsz)
+qr_check_rewrite_policy (const T_QR_PARSED * p, int allow_non_select, char *reason, int reasonsz, char *warn,
+			 int warnsz)
 {
+  const char *orig = p->orig_norm;
+  const char *rewrite = p->rewrite_query;
   PARSER_CONTEXT *parser = NULL;
   PT_NODE **tree;
   PT_NODE *node;
   QR_STMT_KIND rw_kind, or_kind;
   int k_orig = 0, k_rewrite = 0;
   int rc = -1;
+
+  if (warn != NULL)
+    {
+      warn[0] = '\0';
+    }
 
   /* the SQL parser needs the locale/charset subsystem; no DB connection is required.
    * lang_init alone is not enough: it leaves the charset uninitialized, and the first
@@ -1201,8 +1302,10 @@ qr_check_rewrite_policy (const char *orig, const char *rewrite, int allow_non_se
       goto done;
     }
 
-  /* marker / BIND_MAP consistency, mirroring the CAS-side qr_validate_markers at load time
-   * so a misconfigured rule never reaches a CAS. */
+  /* marker / BIND_MAP consistency, checked at load time so a misconfigured rule never reaches
+   * a CAS.  stricter than the CAS-side qr_validate_markers, which sees only the stored entry
+   * count and so cannot tell an omitted BIND_MAP from MATCH; that one stays as the second
+   * safety net for a rule that somehow reaches prepare. */
 
   /* qr_validate_markers rejects anything above QR_MAX_BINDS.  without the same bound here
    * the rule loads, and then every prepare of it fails validation in the CAS and falls back
@@ -1213,35 +1316,55 @@ qr_check_rewrite_policy (const char *orig, const char *rewrite, int allow_non_se
       goto done;
     }
 
-  /* k_rewrite == 0 (the rule pins the original's marker to a constant) is allowed and,
-   * as in qr_validate_markers, tested first. */
-  if (k_rewrite == 0)
+  if (!p->bind_map_given)
     {
-      if (num_map_entries > 0)
+      /* an omitted line may only mean "this rule has no binds at all".  with markers in ORIG
+       * it is indistinguishable from a forgotten map, and either guess (identity or drop)
+       * silently misplaces the caller's values; MATCH / NONE say which one was meant. */
+      if (k_orig > 0)
 	{
-	  snprintf (reason, reasonsz, "BIND_MAP given but REWRITE has no marker");
+	  snprintf (reason, reasonsz, "ORIG has %d marker(s); BIND_MAP is required (MATCH, NONE or an explicit map)",
+		    k_orig);
+	  goto done;
+	}
+      if (k_rewrite > 0)
+	{
+	  snprintf (reason, reasonsz, "REWRITE has %d marker(s) but ORIG has none", k_rewrite);
 	  goto done;
 	}
     }
-  else if (num_map_entries <= 0)
+  else if (p->num_map_entries < 0)	/* MATCH */
     {
       if (k_rewrite != k_orig)
 	{
-	  snprintf (reason, reasonsz, "marker count differs (ORIG %d, REWRITE %d); add BIND_MAP to map them",
-		    k_orig, k_rewrite);
+	  snprintf (reason, reasonsz, "BIND_MAP = MATCH requires equal marker counts (ORIG %d, REWRITE %d)", k_orig,
+		    k_rewrite);
+	  goto done;
+	}
+    }
+  else if (p->num_map_entries == 0)	/* NONE */
+    {
+      if (k_rewrite > 0)
+	{
+	  snprintf (reason, reasonsz, "BIND_MAP = NONE but REWRITE has %d marker(s)", k_rewrite);
 	  goto done;
 	}
     }
   else
     {
-      int j;
+      const short *src_orig_pos = p->src_orig_pos;
+      bool used[QR_MAX_BINDS];
+      char list[128];		/* leading positions only; n_unused carries the full count */
+      int j, n_unused = 0, w = 0;
 
-      if (num_map_entries != k_rewrite)
+      if (p->num_map_entries != k_rewrite)
 	{
-	  snprintf (reason, reasonsz, "BIND_MAP has %d entries but REWRITE has %d marker(s)", num_map_entries,
+	  snprintf (reason, reasonsz, "BIND_MAP has %d entries but REWRITE has %d marker(s)", p->num_map_entries,
 		    k_rewrite);
 	  goto done;
 	}
+
+      memset (used, 0, sizeof (used));
       for (j = 0; j < k_rewrite; j++)
 	{
 	  if (src_orig_pos[j] < 1 || src_orig_pos[j] > k_orig)
@@ -1251,6 +1374,33 @@ qr_check_rewrite_policy (const char *orig, const char *rewrite, int allow_non_se
 			(int) src_orig_pos[j], k_orig);
 	      goto done;
 	    }
+	  used[src_orig_pos[j] - 1] = true;
+	}
+
+      /* an ORIG position the map never names is a value the driver keeps sending and the
+       * replacement never uses.  the author may well have meant it, so warn instead of
+       * rejecting -- but it is also exactly what a mistyped map looks like. */
+      list[0] = '\0';
+      for (j = 0; j < k_orig; j++)
+	{
+	  if (used[j])
+	    {
+	      continue;
+	    }
+	  n_unused++;
+	  if (w < (int) sizeof (list) - 1)
+	    {
+	      /* a truncating snprintf still leaves list terminated; w only guards this loop */
+	      w += snprintf (list + w, sizeof (list) - w, "%s%d", (w == 0) ? "" : ",", j + 1);
+	    }
+	}
+      if (n_unused > 0 && warn != NULL)
+	{
+	  /* the "warning: " tag is part of the text: it lands in the per-broker rule log, which
+	   * is otherwise a list of skipped rules, and qr status counts the two apart. */
+	  snprintf (warn, warnsz,
+		    "warning: BIND_MAP does not use %d ORIG marker(s) (%.100s); those bind values are ignored",
+		    n_unused, list);
 	}
     }
 
@@ -1418,6 +1568,7 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 	  T_QR_PARSED tmp;
 	  char rulepath[QR_RELPATH_LEN];
 	  char errbuf[256];
+	  char warnbuf[256];
 
 	  if (sub_ent->d_name[0] == '.')
 	    {
@@ -1463,14 +1614,18 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 	    }
 	  /* build-time statement-type policy: parse ORIG/REWRITE and
 	   * reject DDL/CALL/non-SELECT/kind-mismatch/multi-statement replacements. */
-	  if (qr_check_rewrite_policy (tmp.orig_norm, tmp.rewrite_query,
-				       br_info_p->query_rewrite_allow_non_select, tmp.num_map_entries,
-				       tmp.src_orig_pos, errbuf, sizeof (errbuf)) < 0)
+	  if (qr_check_rewrite_policy (&tmp, br_info_p->query_rewrite_allow_non_select, errbuf, sizeof (errbuf),
+				       warnbuf, sizeof (warnbuf)) < 0)
 	    {
 	      QR_RULE_LOG_WRITE (rulepath, errbuf);
 	      free_and_init (tmp.orig_norm);
 	      free_and_init (tmp.rewrite_query);
 	      continue;
+	    }
+	  if (warnbuf[0] != '\0')
+	    {
+	      /* the rule did load; the rule log is the only per-broker channel at startup */
+	      QR_RULE_LOG_WRITE (rulepath, warnbuf);
 	    }
 	  /* skip a duplicate (db, user, normalized orig): keep the first one so that
 	   * lookup stays deterministic regardless of directory read order. */
@@ -1557,6 +1712,16 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
   mid = shmget (shm_key, total_size, IPC_CREAT | IPC_EXCL | QR_SHMODE);
   if (mid == -1)
     {
+      /* the caller ignores the return value, so without this the feature would go off with
+       * no diagnostic.  the expected cause is a live segment on the same key: qr_make_shm_key
+       * keeps only 24 bits of appl_server_shm_id, and the stale-segment removal at entry
+       * drops only segments this broker owns. */
+      char why[256];
+
+      snprintf (why, sizeof (why), "cannot create rewrite segment for key 0x%x (%s); "
+		"check APPL_SERVER_SHM_ID collisions", shm_key, strerror (errno));
+      QR_RULE_LOG_WRITE ("(segment)", why);
+
       for (i = 0; i < parsed_count; i++)
 	{
 	  free_and_init (parsed[i].orig_norm);
@@ -1797,6 +1962,16 @@ qr_admin_attach (const T_BROKER_INFO * br, char *msg, int msgsz)
       return NULL;
     }
 
+  /* the admin paths derive every pointer and loop bound from the header exactly like the
+   * CAS side does, and they do it on a read-write mapping.  distinct from the transient
+   * failure above: a corrupt segment does not heal by retrying. */
+  if (!qr_shm_header_sane ((T_QR_SHM_HEADER *) base, mid))
+    {
+      snprintf (msg, msgsz, "rewrite segment is corrupted; restart the broker to rebuild it");
+      shmdt (base);
+      return NULL;
+    }
+
   return base;
 }
 
@@ -2000,11 +2175,19 @@ qr_admin_append (char *base, T_QR_PARSED * src, char *msg, int msgsz)
       hdr->max_query_len = orig_len;
     }
 
-  QR_BARRIER ();
-  bucket[b] = idx;		/* single visibility commit */
-
+  /* publish to the admin scans first, to the readers second.  the reverse order lets a
+   * crash in between leave a slot qr_lookup already matches while rule_count still points
+   * at it: the next `qr add` would overwrite a live rule (self-linking the chain when the
+   * hash lands on the same bucket), and a prepared handle holding that index would remap
+   * its binds through another rule's BIND_MAP.  this way an interrupted add leaves an
+   * unreachable slot instead, which `qr status` shows and `qr disable` / `qr reload` clean
+   * up.  raising rule_count early is safe: no reader indexes rule[] by it, qr_lookup only
+   * walks the buckets and uses it as the hop cap. */
   QR_BARRIER ();
   hdr->rule_count = idx + 1;
+
+  QR_BARRIER ();
+  bucket[b] = idx;		/* single visibility commit */
 
   return idx;
 }
@@ -2078,6 +2261,7 @@ qr_admin_add (const T_BROKER_INFO * br_info_p, const char *rulepath, char *msg, 
 #else
   T_QR_PARSED p;
   char up_db[QR_NAME_LEN], up_user[QR_NAME_LEN];
+  char warn[256];
   char *base;
   int lock_fd, rc = -1, dupidx;
 
@@ -2089,8 +2273,7 @@ qr_admin_add (const T_BROKER_INFO * br_info_p, const char *rulepath, char *msg, 
 
   /* build-time statement-type policy: reject DDL/CALL/
    * non-SELECT/kind-mismatch/multi-statement replacements before touching shm. */
-  if (qr_check_rewrite_policy (p.orig_norm, p.rewrite_query, br_info_p->query_rewrite_allow_non_select,
-			       p.num_map_entries, p.src_orig_pos, msg, msgsz) < 0)
+  if (qr_check_rewrite_policy (&p, br_info_p->query_rewrite_allow_non_select, msg, msgsz, warn, sizeof (warn)) < 0)
     {
       qr_rule_log_write (br_info_p, false, rulepath, msg);
       free_and_init (p.orig_norm);
@@ -2122,6 +2305,8 @@ qr_admin_add (const T_BROKER_INFO * br_info_p, const char *rulepath, char *msg, 
   else if (qr_admin_append (base, &p, msg, msgsz) >= 0)
     {
       ((T_QR_SHM_HEADER *) base)->generation++;
+      /* the rule is in; msg is free to carry the policy warning back to the caller */
+      snprintf (msg, msgsz, "%s", warn);
       rc = 0;
     }
 
@@ -2142,6 +2327,7 @@ qr_admin_reload (const T_BROKER_INFO * br_info_p, const char *rulepath, char *ms
 #else
   T_QR_PARSED p;
   char up_db[QR_NAME_LEN], up_user[QR_NAME_LEN];
+  char warn[256];
   char *base;
   int lock_fd, rc = -1, newidx;
 
@@ -2153,8 +2339,7 @@ qr_admin_reload (const T_BROKER_INFO * br_info_p, const char *rulepath, char *ms
 
   /* build-time statement-type policy: reject DDL/CALL/
    * non-SELECT/kind-mismatch/multi-statement replacements before touching shm. */
-  if (qr_check_rewrite_policy (p.orig_norm, p.rewrite_query, br_info_p->query_rewrite_allow_non_select,
-			       p.num_map_entries, p.src_orig_pos, msg, msgsz) < 0)
+  if (qr_check_rewrite_policy (&p, br_info_p->query_rewrite_allow_non_select, msg, msgsz, warn, sizeof (warn)) < 0)
     {
       qr_rule_log_write (br_info_p, false, rulepath, msg);
       free_and_init (p.orig_norm);
@@ -2201,6 +2386,8 @@ qr_admin_reload (const T_BROKER_INFO * br_info_p, const char *rulepath, char *ms
 	    }
 	}
       hdr->generation++;
+      /* the rule is in; msg is free to carry the policy warning back to the caller */
+      snprintf (msg, msgsz, "%s", warn);
       rc = 0;
     }
 
@@ -2433,17 +2620,11 @@ qr_init (T_SHM_APPL_SERVER * shm_as_p)
       goto error;
     }
 
-  /* the header drives every pointer and bound below, so sanity-check it once here rather
-   * than trusting a segment another process in the same uid could have corrupted (asserts
-   * are compiled out in release builds).  T_SHM_APPL_SERVER does not carry the owning
-   * appl_server_shm_id, so verify the recorded owner still maps to the key we opened
-   * (a full owner match is only possible in the admin paths, which know that id). */
+  /* T_SHM_APPL_SERVER does not carry the owning appl_server_shm_id, so verify the recorded
+   * owner still maps to the key we opened (a full owner match is only possible in the admin
+   * paths, which know that id).  the structural half is shared with them. */
   if (qr_make_shm_key (qr_shm->owner_shm_id) != shm_as_p->query_rewrite_shm_key
-      || qr_shm->max_rules <= 0 || qr_shm->max_rules > QR_MAX_RULE_COUNT
-      || qr_shm->rule_count < 0 || qr_shm->rule_count > qr_shm->max_rules
-      || qr_shm->hash_size != QR_DEFAULT_HASH_SIZE || qr_shm->dbuser_hash_size != QR_DEFAULT_HASH_SIZE
-      || qr_shm->dbuser_count < 0 || qr_shm->dbuser_count > qr_shm->max_rules
-      || qr_shm->cfg_max_query_len <= 0 || qr_shm->cfg_max_query_len > QR_MAX_QUERY_LEN)
+      || !qr_shm_header_sane (qr_shm, mid))
     {
 #if !defined(NDEBUG)
       _er_log_debug (ARG_FILE_LINE, "qr_init: inconsistent header for key 0x%x\n", shm_as_p->query_rewrite_shm_key);
@@ -2453,38 +2634,6 @@ qr_init (T_SHM_APPL_SERVER * shm_as_p)
 
       goto error;
     }
-
-  /* the layout is a pure function of the capacity scalars checked above, so recompute it
-   * and require an exact match: a per-offset range check would still let a corrupted
-   * header overlap two arrays, and it never bounds the last array's end.  total_size is
-   * then checked against the size the kernel actually mapped. */
-  {
-    struct shmid_ds ds;
-    int exp_slot, exp_bucket, exp_rule, exp_dbucket, exp_dbuser, exp_pool, exp_total;
-
-    exp_slot = 2 * (qr_shm->cfg_max_query_len + 1) + QR_RELPATH_LEN;
-    exp_bucket = (int) sizeof (T_QR_SHM_HEADER);
-    exp_rule = exp_bucket + (int) sizeof (int) * qr_shm->hash_size;
-    exp_dbucket = exp_rule + (int) sizeof (T_QR_RULE) * qr_shm->max_rules;
-    exp_dbuser = exp_dbucket + (int) sizeof (int) * qr_shm->dbuser_hash_size;
-    exp_pool = exp_dbuser + (int) sizeof (T_QR_DBUSER) * qr_shm->max_rules;
-    exp_total = exp_pool + qr_shm->max_rules * exp_slot;
-
-    if (qr_shm->pool_slot != exp_slot
-	|| qr_shm->bucket_off != exp_bucket || qr_shm->rule_off != exp_rule
-	|| qr_shm->dbuser_bucket_off != exp_dbucket || qr_shm->dbuser_off != exp_dbuser
-	|| qr_shm->pool_off != exp_pool || qr_shm->total_size != exp_total
-	|| shmctl (mid, IPC_STAT, &ds) != 0 || (size_t) exp_total > ds.shm_segsz)
-      {
-#if !defined(NDEBUG)
-	_er_log_debug (ARG_FILE_LINE, "qr_init: bad layout for key 0x%x\n", shm_as_p->query_rewrite_shm_key);
-#endif
-	shmdt (base);
-	qr_shm = NULL;
-
-	goto error;
-      }
-  }
 
   qr_bucket = (int *) (base + qr_shm->bucket_off);
   qr_rule = (T_QR_RULE *) (base + qr_shm->rule_off);

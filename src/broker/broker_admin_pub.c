@@ -1449,6 +1449,12 @@ admin_qr_cmd (int master_shm_id, QRCMD subcmd, const char *subcmd_str, const cha
 	}
       else
 	{
+	  /* on success msg carries a policy warning, if the rule raised one (already tagged) */
+	  if (msg[0] != '\0')
+	    {
+	      fprintf (stdout, "%s\n", msg);
+	      qr_rule_log_write (&shm_br->br_info[i], false, rulepath, msg);
+	    }
 	  fprintf (stdout, "Command completed successfully. Run 'qr status' to verify.\n");
 	}
     }

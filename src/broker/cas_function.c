@@ -714,13 +714,34 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  {
 	    assert (num_rewrite_binds <= QR_MAX_BINDS);
 
+	    /* the map lives in shared memory: prepare validated it against this rule's K_orig,
+	     * but nothing pins the slot between prepare and execute.  re-check every position
+	     * against the handle's own count (equal to orig_pairs above) before it indexes
+	     * exec_bind_argv. */
 	    for (j = 0; j < num_rewrite_binds; j++)
 	      {
-		remap_argv[2 * j] = exec_bind_argv[2 * (src_orig_pos[j] - 1)];	/* type  */
-		remap_argv[2 * j + 1] = exec_bind_argv[2 * (src_orig_pos[j] - 1) + 1];	/* value */
+		if (src_orig_pos[j] < 1 || src_orig_pos[j] > num_orig_binds)
+		  {
+		    break;
+		  }
 	      }
-	    exec_bind_argc = 2 * num_rewrite_binds;
-	    exec_bind_argv = remap_argv;
+
+	    if (j < num_rewrite_binds)
+	      {
+		ret_code = CAS_ER_NUM_BIND;
+		ERROR_INFO_SET (CAS_ER_NUM_BIND, CAS_ERROR_INDICATOR);
+		NET_BUF_ERR_SET (net_buf);
+	      }
+	    else
+	      {
+		for (j = 0; j < num_rewrite_binds; j++)
+		  {
+		    remap_argv[2 * j] = exec_bind_argv[2 * (src_orig_pos[j] - 1)];	/* type  */
+		    remap_argv[2 * j + 1] = exec_bind_argv[2 * (src_orig_pos[j] - 1) + 1];	/* value */
+		  }
+		exec_bind_argc = 2 * num_rewrite_binds;
+		exec_bind_argv = remap_argv;
+	      }
 	  }
 	else if (num_rewrite_binds == 0)
 	  {
