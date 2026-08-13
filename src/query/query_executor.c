@@ -691,7 +691,7 @@ static void qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_
 static int qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * class_,
 					     UPDDEL_CLASS_INFO_INTERNAL * class_info, int op_type, OID * current_oid);
 static int qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
-					  UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class, OID * class_oid);
+					  UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class, OID * class_oid, bool * has_spec);
 static int qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
 					     AGGREGATE_TYPE * aggregate_list, HIERARCHY_AGGREGATE_HELPER ** helpers,
 					     int *helpers_countp);
@@ -10609,7 +10609,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		  /* temporary disable set filters when needs prunning */
 		  if (mvcc_reev_class != NULL)
 		    {
-		      error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid);
+		      bool has_spec = false;
+
+		      error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid, &has_spec);
 		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -10778,7 +10780,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      /* class has changed to a new subclass */
 	      if (class_oid && !OID_EQ (&mvcc_reev_class->cls_oid, class_oid))
 		{
-		  error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid);
+		  bool has_spec = false;
+
+		  error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid, &has_spec);
 		  if (error != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
@@ -11426,10 +11430,23 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  /* class has changed to a new subclass */
 		  if (class_oid && !OID_EQ (&mvcc_reev_class->cls_oid, class_oid))
 		    {
-		      error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid);
+		      bool has_spec = false;
+
+		      error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid, &has_spec);
 		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
+			}
+		      if (!has_spec)
+			{
+			  /* The plan gives this class no filters to re-evaluate with, so the delete phase
+			   * cannot re-check the predicate: skip a version the statement never evaluated
+			   * rather than delete it, exactly as a plan carrying no reevaluation data does. */
+			  mvcc_reev_class_cnt = 0;
+			  mvcc_reev_class = NULL;
+			  mvcc_upddel_reev_data.curr_upddel = NULL;
+			  mvcc_upddel_reev_data.mvcc_cond_reev_list = NULL;
+			  mvcc_upddel_reev_data.skip_unevaluated_version = true;
 			}
 		    }
 		}
@@ -26192,9 +26209,11 @@ qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNA
  */
 static int
 qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
-			       UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class, OID * class_oid)
+			       UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class, OID * class_oid, bool * has_spec)
 {
   ACCESS_SPEC_TYPE *curr_spec = NULL;
+
+  *has_spec = false;
 
   while (aptr_list != NULL && curr_spec == NULL)
     {
@@ -26208,15 +26227,15 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 
   if (curr_spec == NULL)
     {
-      /* The caller fails the statement on this return, so it must carry an error: without one the
-       * statement surfaces the generic "Query execution failure" and the cause is unrecoverable from
-       * the message alone. */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      return ER_QPROC_INVALID_XASLNODE;
+      /* The plan does not scan this class -- a path expression in the predicate makes the statement read
+       * an inner query's list instead -- so it carries no filters to re-evaluate with. Not an error;
+       * the caller decides what to do without reevaluation. */
+      return NO_ERROR;
     }
 
   mvcc_reev_class->init (curr_spec->s_id);
   mvcc_reev_class->cls_oid = *class_oid;
+  *has_spec = true;
 
   return NO_ERROR;
 }
