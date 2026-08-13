@@ -14079,6 +14079,22 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 			db_make_short (result, (INT16) (bi[0] / bi[1]));
 		      }
 		  }
+		else if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi[0], bi[1]))
+		  {
+		    /* MIN % -1 is 0; computing it would trap on the machine divide instruction */
+		    if (typ1 == DB_TYPE_INTEGER)
+		      {
+			db_make_int (result, 0);
+		      }
+		    else if (typ1 == DB_TYPE_BIGINT)
+		      {
+			db_make_bigint (result, 0);
+		      }
+		    else
+		      {
+			db_make_short (result, 0);
+		      }
+		  }
 		else
 		  {
 		    if (typ1 == DB_TYPE_INTEGER)
@@ -16236,6 +16252,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_SHORT:
 	      if (db_get_short (arg2) != 0)
 		{
+		  if (OR_CHECK_SHORT_DIV_OVERFLOW (db_get_short (arg1), db_get_short (arg2)))
+		    {
+		      goto overflow;
+		    }
 		  db_make_short (result, db_get_short (arg1) / db_get_short (arg2));
 		  return 1;
 		}
@@ -16244,6 +16264,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_INTEGER:
 	      if (db_get_int (arg2) != 0)
 		{
+		  if (OR_CHECK_INT_DIV_OVERFLOW (db_get_int (arg1), db_get_int (arg2)))
+		    {
+		      goto overflow;
+		    }
 		  db_make_int (result, (db_get_int (arg1) / db_get_int (arg2)));
 		  return 1;
 		}
@@ -16251,6 +16275,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_BIGINT:
 	      if (db_get_bigint (arg2) != 0)
 		{
+		  if (OR_CHECK_BIGINT_DIV_OVERFLOW (db_get_bigint (arg1), db_get_bigint (arg2)))
+		    {
+		      goto overflow;
+		    }
 		  db_make_bigint (result, (db_get_bigint (arg1) / db_get_bigint (arg2)));
 		  return 1;
 		}
