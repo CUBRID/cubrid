@@ -10364,7 +10364,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   (void) logtb_get_mvcc_snapshot (thread_p);
 
   mvcc_upddel_reev_data.copyarea = NULL;
-  mvcc_upddel_reev_data.skip_unevaluated_version = false;
   mvcc_reev_data.set_update_reevaluation (mvcc_upddel_reev_data);
   class_oid_cnt = update->num_classes;
   mvcc_reev_class_cnt = update->num_reev_classes;
@@ -11231,19 +11230,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   mvcc_reev_class_cnt = delete_->num_reev_classes;
   mvcc_reev_data.set_update_reevaluation (mvcc_upddel_reev_data);
 
-  /* condition-only reevaluation: DELETE has no assignments, so every assignment-side field must read as
-   * empty -- the UPDATE path fills them in prepare_mvcc_reev_data (), which DELETE does not go through */
-  mvcc_upddel_reev_data.mvcc_cond_reev_list = NULL;
-  mvcc_upddel_reev_data.curr_upddel = NULL;
-  mvcc_upddel_reev_data.curr_extra_assign_cnt = 0;
-  mvcc_upddel_reev_data.curr_extra_assign_reev = NULL;
-  mvcc_upddel_reev_data.curr_assigns = NULL;
-  mvcc_upddel_reev_data.curr_attrinfo = NULL;
-  mvcc_upddel_reev_data.cons_pred = NULL;
-  mvcc_upddel_reev_data.copyarea = NULL;
+  /* the struct defaults are the condition-only state; only the value descriptor is bound here */
   mvcc_upddel_reev_data.vd = &xasl_state->vd;
-  mvcc_upddel_reev_data.new_recdes = NULL;
-  mvcc_upddel_reev_data.skip_unevaluated_version = false;
 
   /* Allocate memory for oids, hfids and attributes cache info of all classes used in update */
   error = qexec_create_internal_classes (thread_p, delete_->classes, class_oid_cnt, &internal_classes);
