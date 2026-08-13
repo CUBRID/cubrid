@@ -12002,6 +12002,13 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  sub_sel->info.query.q.select.from = spec;
 	  list->info.spec.derived_table = sub_sel;
 	  list->info.spec.derived_table_type = PT_IS_SUBQUERY;
+
+	  /* The statement did not ask for this derived table - it is generated so that the
+	   * DML rewrite can treat the remote source as a subquery.  Mark both halves so the
+	   * name resolution can tell it apart from a subquery the statement wrote, and keep
+	   * it transparent to the remote invisible columns the statement references. */
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_DBLINK_DML_SRC);
+	  list->info.spec.flag = (PT_SPEC_FLAG) (list->info.spec.flag | PT_SPEC_FLAG_DBLINK_DML_SRC);
 	}
 
       if (sub_sel && sub_sel->node_type == PT_SELECT)
@@ -12490,6 +12497,15 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_UPDATE:
     case PT_MERGE:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_dml, &snl);
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
+
+      /* The rewrite above wrapped every remote source spec in a derived table the
+       * statement did not write, so the columns it references on those tables were left
+       * behind in the enclosing block.  Collect them now that the specs exist. */
+      pt_gather_dblink_cols_in_dml (parser, stmt);
       if (pt_has_error (parser))
 	{
 	  return;
