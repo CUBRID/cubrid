@@ -888,7 +888,11 @@ endif(USE_CUBRID_ENV)
 # For external library options
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
-set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=-w CXXFLAGS=-w)
+# -w silences third-party warnings and -O2 restates the level autoconf would have
+# applied on its own, which supplying CFLAGS suppresses. Passing only -w leaves every
+# library configured through this variable at -O0.
+# No CXXFLAGS: none of these compile C++ in the target this build runs.
+set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic "CFLAGS=-O2 -w")
 
 # WITH_LIBREGEX can have multiple values with different meanings
 # on Linux:
