@@ -23576,6 +23576,19 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     {
       is_mvcc_op = true;
     }
+
+  /* An MVCC delete's row may be seen DELETE_IN_PROGRESS by concurrent writers and unique/FK checkers after the
+   * per-row lock is released early (transient row lock, CBRD-27034); they settle against the deleter's MVCCID
+   * self-lock, so it must be held before the DELID stamp becomes observable. Same pattern as the insert and
+   * update paths. */
+  if (is_mvcc_op)
+    {
+      rc = logtb_ensure_mvccid_self_lock (thread_p);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
 #else /* SERVER_MODE */
   is_mvcc_op = false;
 #endif /* SERVER_MODE */
