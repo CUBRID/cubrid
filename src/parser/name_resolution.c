@@ -4159,6 +4159,10 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
       ok = (col != NULL);
       if (col && !name->info.name.spec_id)
 	{
+	  /* copy the type, not the flags: flag.is_hidden_column must NOT travel to the
+	   * reference - an explicitly referenced invisible column is a visible output
+	   * column (query_result.c stripping and pt_to_update_xasl ()'s num_orderby_keys
+	   * both count hidden marks in select lists) */
 	  name->type_enum = col->type_enum;
 	  if (col->data_type)
 	    {
@@ -5325,6 +5329,21 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
   dblink_table->sel_list = new_sel_list;
 }
 
+/*
+ * pt_remake_dblink_select_list () - build the remote query text and the column
+ *   definitions (dblink_table->cols) from the collected select list
+ *   return: NO_ERROR or ER_DBLINK
+ *   parser(in): parser context
+ *   class_spec(in/out): the dblink spec; its derived table's qstr/rewritten and cols
+ *          are (re)built here
+ *   rmt_cols(in): the remote column list
+ *
+ * Note: the i-th entry of dblink_table->cols (and so of the spec's as_attr_list built
+ *   from it) must correspond to the i-th column of the remote query text built here -
+ *   dblink_scan fetches by position and enforces val_cnt == remote col_cnt.  Hidden
+ *   entries keep their slot: flag.is_hidden_column never reaches XASL
+ *   (REGU_VARIABLE_HIDDEN_COLUMN is a different, unrelated field).
+ */
 static int
 pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec, S_REMOTE_TBL_COLS * rmt_cols)
 {
@@ -7815,6 +7834,14 @@ pt_remove_hidden_attrs (PARSER_CONTEXT * parser, PT_NODE * attr_list)
  *   a scope the statement wrote, so it has to pass the referenced remote invisible columns
  *   through to the block that does reference them.  The wrapper itself is marked too, but
  *   a star over the wrapper is the statement's own and must still hide them.
+ *
+ *   This transparency is safe only while that generated inner query stays a bare
+ *   "SELECT *" with no other clause: a hidden column in a SELECT LIST is what the later
+ *   phases read as an ORDER BY artifact (the tail assert in pt_check_order_by (), the
+ *   truncation in qo_rewrite_hidden_col_as_derived (), num_orderby_keys in
+ *   pt_to_update_xasl ()), and only an ORDER BY / GROUP BY / DISTINCT on that query
+ *   would put them within reach.  Widening this predicate to other spec types re-opens
+ *   every one of those readers.
  */
 static bool
 pt_spec_star_passes_hidden (const PT_NODE * spec)

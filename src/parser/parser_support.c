@@ -12006,7 +12006,12 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  /* The statement did not ask for this derived table - it is generated so that the
 	   * DML rewrite can treat the remote source as a subquery.  Mark both halves so the
 	   * name resolution can tell it apart from a subquery the statement wrote, and keep
-	   * it transparent to the remote invisible columns the statement references. */
+	   * it transparent to the remote invisible columns the statement references.
+	   *
+	   * Keep this generated query a bare "SELECT *": its star expansion carries
+	   * hidden-marked names into the select list (pt_spec_star_passes_hidden ()), which
+	   * is harmless only while the query has no ORDER BY / GROUP BY / DISTINCT for the
+	   * later hidden-column readers to act on. */
 	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_DBLINK_DML_SRC);
 	  list->info.spec.flag = (PT_SPEC_FLAG) (list->info.spec.flag | PT_SPEC_FLAG_DBLINK_DML_SRC);
 	}
