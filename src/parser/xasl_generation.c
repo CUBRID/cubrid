@@ -21689,13 +21689,10 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      /* CBRD-27034 (transient row lock): the select phase no longer locks the target rows (the forced
-       * PT_SELECT_INFO_MVCC_LOCK_NEEDED is gone); the delete phase locks each row instead. Full predicate
-       * reevaluation stays disabled -- its machinery is unfinished (per-tuple inst_oid is never bound for
-       * DELETE, and the filters point into the select scan that is closed by force time). A version the
-       * predicate was never checked on is skipped at the delete phase instead (see
-       * mvcc_update_reev_data::skip_unevaluated_version). */
-      abort_reevaluation = true;
+      /* CBRD-27034 (transient row lock): reevaluation on DELETE is active. The select phase does not lock
+       * the target rows; the delete phase locks each row and, when the version changed after the statement
+       * snapshot, re-checks the predicate against the latest version (condition-only reevaluation -- DELETE
+       * has no assignments). The executor binds inst_oid per tuple, mirroring the UPDATE side. */
 
       if (abort_reevaluation)
 	{

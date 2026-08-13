@@ -11232,6 +11232,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   mvcc_reev_data.set_update_reevaluation (mvcc_upddel_reev_data);
 
   mvcc_upddel_reev_data.copyarea = NULL;
+  mvcc_upddel_reev_data.new_recdes = NULL;	/* condition-only reevaluation: DELETE has no assignments */
   mvcc_upddel_reev_data.skip_unevaluated_version = false;
 
   /* Allocate memory for oids, hfids and attributes cache info of all classes used in update */
@@ -11286,10 +11287,12 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       /* CBRD-27034 (transient row lock): a DELETE whose select phase did not lock the rows (single- and
        * multi-class alike -- plan generation no longer forces the select-phase lock). The delete phase
        * acquires the per-row lock itself and releases it as soon as the row's delete is published (early
-       * unlock below). A last version the predicate was never checked on is skipped -- DELETE has no
-       * reevaluation to re-check it. When the select phase did lock (GROUP BY / derived-table plans keep
-       * PT_SELECT_INFO_MVCC_LOCK_NEEDED), the version cannot change and the skip is unreachable. */
-      mvcc_upddel_reev_data.skip_unevaluated_version = true;
+       * unlock below). A version that changed after the statement snapshot is re-checked against the
+       * predicate by the condition-only reevaluation (mvcc_reev_classes); when no reevaluation data was
+       * generated for this plan, fall back to skipping the unevaluated version instead of deleting it.
+       * When the select phase did lock (GROUP BY / derived-table plans keep
+       * PT_SELECT_INFO_MVCC_LOCK_NEEDED), the version cannot change and neither branch is reachable. */
+      mvcc_upddel_reev_data.skip_unevaluated_version = (mvcc_reev_class_cnt == 0);
     }
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
@@ -11465,6 +11468,12 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  mvcc_reev_class = NULL;
 		}
 	      mvcc_upddel_reev_data.curr_upddel = mvcc_reev_class;
+	      if (mvcc_reev_class != NULL)
+		{
+		  /* bind the tuple's instance for condition reevaluation (mirrors the UPDATE side, which was
+		   * the only caller ever binding it -- CBRD-27034) */
+		  mvcc_reev_class->inst_oid = oid;
+		}
 
 	      if (oid == NULL)
 		{
