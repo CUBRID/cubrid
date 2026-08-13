@@ -598,6 +598,11 @@ namespace cubstorage
 
     // first, check the recorded free space
     expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
+    old_vpid = expected.get_vpid ();
+    if (VPID_ISNULL (&old_vpid))
+      {
+	return status::NOT_FOUND;
+      }
     if (!force_check && expected.get_freespace () < needed_size)
       {
 	// there is no enough space
@@ -605,8 +610,6 @@ namespace cubstorage
       }
 
     // now, fix a page to check the actual free space
-    old_vpid = expected.get_vpid ();
-
     error = L1_fix (l2_index, l1_index, expected, old_vpid, page_watcher);
     if (error != status::SUCCESS)
       {

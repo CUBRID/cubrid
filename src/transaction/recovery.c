@@ -859,6 +859,18 @@ struct rvfun RV_fun[] = {
    heap_rv_redo_mark_page_in_heap,
    NULL,
    NULL},
+  {RVBT_NO_LOGGING_INDEX_DURABLE,
+   "RVBT_NO_LOGGING_INDEX_DURABLE",
+   NULL,
+   log_rv_no_logging_index_durable_redo,
+   NULL,
+   NULL},
+  {RVBT_NO_LOGGING_INDEX_COMMITTED,
+   "RVBT_NO_LOGGING_INDEX_COMMITTED",
+   NULL,
+   log_rv_no_logging_index_committed_redo,
+   NULL,
+   NULL},
 };
 
 /*
