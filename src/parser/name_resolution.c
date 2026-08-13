@@ -9013,6 +9013,13 @@ generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list, NATURA
 	  continue;
 	}
 
+      /* hidden columns (e.g. remote invisible columns in a DML wrapper spec's list)
+       * never join, matching the skip in generate_natural_join_attrs_from_db_attrs () */
+      if (pt_cur->flag.is_hidden_column)
+	{
+	  continue;
+	}
+
       attr_cur = (NATURAL_JOIN_ATTR_INFO *) malloc (sizeof (NATURAL_JOIN_ATTR_INFO));
       if (attr_cur == NULL)
 	{
@@ -9182,12 +9189,9 @@ get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
+	  /* the hidden entries are skipped in generate_natural_join_attrs_from_subquery (),
+	   * so the list no longer has to be copied to be filtered */
 	  subquery_attrs_list = node->info.spec.as_attr_list;
-
-	  /* a hidden column never becomes a NATURAL JOIN column, matching the native path's
-	   * invisible-attribute skip in generate_natural_join_attrs_from_db_attrs () */
-	  subquery_attrs_list = parser_copy_tree_list (parser, subquery_attrs_list);
-	  subquery_attrs_list = pt_remove_hidden_attrs (parser, subquery_attrs_list);
 	}
 
       if (subquery_attrs_list == NULL)
