@@ -3723,7 +3723,16 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
     }
   else
     {
+      /* compile exactly like PREPARE does: the host variables are still unbound, so the
+       * in-compile expected-domain cast (db_compile_statement's subsession block) must not
+       * run -- besides having nothing to cast, it flips set_host_var on, and XASL
+       * generation would then derive the select-list host variables' domains from the
+       * unbound (NULL) values, baking a NULL-domain coercion into the plan: whatever the
+       * user binds afterwards would be fetched as NULL. The values are bound and cast to
+       * their expected domains right below, like the db_compile/db_push_values flow. */
+      new_session->is_subsession_for_prepared = false;
       idx = db_compile_statement (new_session);
+      new_session->is_subsession_for_prepared = true;
       if (idx < 0)
 	{
 	  assert (er_errid () != NO_ERROR);
