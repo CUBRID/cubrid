@@ -11649,6 +11649,7 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
   int error = NO_ERROR;
   int upd_cls_cnt = 0;
   int remote = 0, local = 0;
+  bool has_remote_spec = false;
 
   PT_ASSIGNMENTS_HELPER ea;
   PT_NODE *node = NULL, *assignments, *spec;
@@ -11659,6 +11660,10 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
   while (spec)
     {
       upd_cls_cnt++;
+      if (spec->info.spec.remote_server_name)
+	{
+	  has_remote_spec = true;
+	}
       spec = spec->next;
     }
 
@@ -11674,6 +11679,7 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
       bool found = false;
 
       lhs_name = (char *) ea.lhs->info.name.original;
+      spec = statement->info.update.spec;
       while (spec && !found)
 	{
 	  if (spec->info.spec.entity_name)
@@ -11699,6 +11705,33 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
 		}
 	    }
 	  spec = spec->next;
+	}
+
+      if (!found && has_remote_spec)
+	{
+	  /* unqualified column, before name binding (no spec_id to ask): a name some
+	   * local class owns is a local update; only a name no local spec knows is
+	   * assumed to target the remote table, whose columns are not fetched yet.
+	   * This only routes the rewrite - a name both sides own still fails at name
+	   * binding as ambiguous, like the native path. */
+	  er_stack_push ();
+	  for (spec = statement->info.update.spec; spec && !found; spec = spec->next)
+	    {
+	      if (spec->info.spec.remote_server_name == NULL && spec->info.spec.entity_name != NULL
+		  && spec->info.spec.entity_name->node_type == PT_NAME
+		  && db_get_attribute_by_name (spec->info.spec.entity_name->info.name.original, lhs_name) != NULL)
+		{
+		  found = true;
+		  local++;
+		}
+	    }
+	  er_stack_pop ();
+
+	  if (!found)
+	    {
+	      found = true;
+	      remote++;
+	    }
 	}
 
       if (!found && remote > 0 && local > 0)

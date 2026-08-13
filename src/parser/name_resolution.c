@@ -12418,8 +12418,13 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   switch (node->node_type)
     {
     case PT_DOT_:
-      check_for_already_exists (parser, plkcol, node->info.dot.arg1->info.name.original,
-				node->info.dot.arg2->info.name.original);
+      /* only a plain (qualifier, column) pair: in a nested path (a.b.c) arg1 is
+       * itself a PT_DOT_ and info.name.original would read the wrong union member */
+      if (node->info.dot.arg1->node_type == PT_NAME && node->info.dot.arg2->node_type == PT_NAME)
+	{
+	  check_for_already_exists (parser, plkcol, node->info.dot.arg1->info.name.original,
+				    node->info.dot.arg2->info.name.original);
+	}
       break;
 
     case PT_NAME:
@@ -12557,25 +12562,93 @@ pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 }
 
 /*
- * pt_dml_column_name_pre () - pt_get_column_name_pre () restricted to the clauses of a
- *   statement: a spec subtree holds table and server names, which are not columns
+ * pt_dml_column_name_pre () - pt_get_column_name_pre () restricted to the positions
+ *   that can reference a source table: spec subtrees (table and server names), the
+ *   assignment left-hand sides and the INSERT attribute lists (DML target columns)
+ *   are excluded here, so nested constructs are covered too
  */
 static PT_NODE *
 pt_dml_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  /* continue_walk is shared across the whole walk and pt_walk_private () restores it to
-   * whatever this pre-function left: without resetting it, the PT_LIST_WALK set on the
-   * first spec (a DML statement's target spec is visited first) leaks to every later node
-   * and stops the walk from descending - the source query would never be reached. */
+  /* continue_walk is shared across the walk: reset it so the PT_LIST_WALK set on one
+   * node does not leak to its siblings */
   *continue_walk = PT_CONTINUE_WALK;
 
   if (node->node_type == PT_SPEC)
     {
+      /* no column names in a spec subtree - except its ON condition, which may
+       * reference any table of the statement */
+      if (node->info.spec.on_cond)
+	{
+	  (void) parser_walk_tree (parser, node->info.spec.on_cond, pt_dml_column_name_pre, arg, NULL, NULL);
+	}
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (PT_IS_ASSIGN_NODE (node))
+    {
+      /* only the rhs: the lhs names a column of the DML target, and collecting it
+       * would add a phantom column to the remote select list */
+      (void) parser_walk_tree (parser, node->info.expr.arg2, pt_dml_column_name_pre, arg, NULL, NULL);
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_INSERT)
+    {
+      /* the attribute list names target columns; the sources are the values and
+       * the ON DUPLICATE KEY assignments */
+      (void) parser_walk_tree (parser, node->info.insert.value_clauses, pt_dml_column_name_pre, arg, NULL, NULL);
+      (void) parser_walk_tree (parser, node->info.insert.odku_assignments, pt_dml_column_name_pre, arg, NULL, NULL);
       *continue_walk = PT_LIST_WALK;
       return node;
     }
 
   return pt_get_column_name_pre (parser, node, arg, continue_walk);
+}
+
+/*
+ * pt_dml_gather_source_refs () - walk the clauses of a DML statement that can
+ *   reference a source table; hints, index names and cursor names are not among them
+ */
+static void
+pt_dml_gather_source_refs (PARSER_CONTEXT * parser, PT_NODE * stmt, S_LINK_COLUMNS * lkcol)
+{
+  switch (stmt->node_type)
+    {
+    case PT_UPDATE:
+      (void) parser_walk_tree (parser, stmt->info.update.assignment, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.update.spec, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.update.class_specs, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.update.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.update.order_by, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.update.orderby_for, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      break;
+
+    case PT_DELETE:
+      (void) parser_walk_tree (parser, stmt->info.delete_.spec, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.delete_.class_specs, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.delete_.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      break;
+
+    case PT_MERGE:
+      (void) parser_walk_tree (parser, stmt->info.merge.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.merge.update.assignment, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.merge.update.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.merge.update.del_search_cond, pt_dml_column_name_pre, lkcol, NULL,
+			       NULL);
+      (void) parser_walk_tree (parser, stmt->info.merge.insert.value_clauses, pt_dml_column_name_pre, lkcol, NULL,
+			       NULL);
+      (void) parser_walk_tree (parser, stmt->info.merge.insert.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      break;
+
+    default:
+      /* PT_INSERT and anything unexpected: pt_dml_column_name_pre () itself excludes
+       * the target positions */
+      (void) parser_walk_tree (parser, stmt, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      break;
+    }
 }
 
 /*
@@ -12609,7 +12682,7 @@ pt_gather_dblink_cols_in_dml_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
   lkcol.col_list = table->info.dblink_table.sel_list;
   lkcol.tbl_name_node = node->info.spec.range_var;
 
-  (void) parser_walk_tree (parser, stmt, pt_dml_column_name_pre, &lkcol, NULL, NULL);
+  pt_dml_gather_source_refs (parser, stmt, &lkcol);
 
   table->info.dblink_table.sel_list = lkcol.col_list;
   lkcol.col_list = NULL;
