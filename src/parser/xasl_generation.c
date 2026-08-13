@@ -21689,26 +21689,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      /* CBRD-27034: DELETE relies on condition-only reevaluation instead of the select-phase row lock.
-       * The delete phase resolves each reevaluation class to its access spec by exact class OID
-       * (qexec_upddel_mvcc_set_filters), which only holds for a spec this statement deletes from and that
-       * scans one class: a class the condition merely references is fetched, not scanned, and a hierarchy
-       * scan reports subclass OIDs no spec carries. Neither can be re-checked, so those keep the
-       * select-phase lock. */
-      for (cl_name_node = from; cl_name_node != NULL && !abort_reevaluation; cl_name_node = cl_name_node->next)
-	{
-	  if (!(cl_name_node->info.spec.flag & PT_SPEC_FLAG_MVCC_COND_REEV))
-	    {
-	      continue;
-	    }
-	  if (!(cl_name_node->info.spec.flag & PT_SPEC_FLAG_DELETE)
-	      || (cl_name_node->info.spec.flat_entity_list != NULL
-		  && cl_name_node->info.spec.flat_entity_list->next != NULL))
-	    {
-	      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	      abort_reevaluation = true;
-	    }
-	}
+      /* CBRD-27034: DELETE relies on condition-only reevaluation instead of the select-phase row lock;
+       * do not force PT_SELECT_INFO_MVCC_LOCK_NEEDED here. */
 
       if (abort_reevaluation)
 	{
