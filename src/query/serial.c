@@ -238,8 +238,10 @@ xserial_get_cached_num (THREAD_ENTRY * thread_p, int *cached_num, const OID * se
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
-  /* get record into record desc */
-  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  /* get record into record desc; consumed only through the attribute layer (CBRD-26847) */
+  scan =
+    heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN,
+			      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
