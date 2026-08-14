@@ -1109,7 +1109,7 @@ $ LOADDB
 1039 log writer: log writer iniziato. Modo: %1$d.
 1040 HA generico: %1$s. 
 1041 Una stringa è stata troncata in un contesto di "%1$s".
-1042 Cercando di creare una stringa che richiede %1$d byte di memoria, mentre il massimo permesso è di %2$d byte.
+1042 Cercando di creare una stringa che richiede %1$zu byte di memoria, mentre il massimo permesso è di %2$d byte.
 1043 Impossibile modificare attributo "%1$s". CUBRID non può modificare le proprietà dell'attributo richiesto, se la classe ha sottoclassi.
 1044 Impossibile modificare attributo "%1$s". CUBRID non può modificare gli attributi che sono chiavi di partizionamento.
 1045 Impossibile modificare attributo "%1$s". CUBRID non può modificare gli attributi utilizzati nelle chiavi esterne (sia riferimento o di riferimento).

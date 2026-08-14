@@ -1109,7 +1109,7 @@ $ LOADDB
 1039 Escritor de registro: escritor de registro inicializado. modo: %1$d. 
 1040 HA generico: %1$s. 
 1041 Un string ha sido truncado en contexto de "%1$s".
-1042 Tratando de crear un string requierendo %1$d bytes de memoria, mientras el maximo permitido es %2$d bytes.
+1042 Tratando de crear un string requierendo %1$zu bytes de memoria, mientras el maximo permitido es %2$d bytes.
 1043 No se puede cambiar atributo "%1$s". CUBRID no puede cambiar las propiedades solicitadas del atributo si la clase tiene subclases.
 1044 No se puede cambiar atributo "%1$s". CUBRID no puede cambiar atributos que son claves de particionamiento.
 1045 No se puede cambiar atributo "%1$s". CUBRID no puede cambiar atributos utilizados en claves externas (sean referenciados o referenciando).
