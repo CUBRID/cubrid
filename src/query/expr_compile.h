@@ -121,6 +121,10 @@ struct expr_prog
   unsigned long long exec_stamp;
   bool exec_stamp_valid;
 
+  /* first step a row executes once both prologues are settled; recomputed only when the
+   * executing query changes (expr_prog_enter_execution ()) */
+  int row_start;
+
   DB_VALUE *slots;		/* step-owned result slots */
   int n_slots;
 

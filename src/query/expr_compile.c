@@ -56,6 +56,8 @@
 
 #define EXPR_MAX_STEPS 128	/* a list needing more is left to the interpreted path */
 
+#define EXPR_CACHE_LINE 64
+
 /* argument cells are carried 1-BASED through the build phase (0 must stay
  * distinguishable from "argument unused" == NULL); decoded in materialization */
 #define EXPR_ARG_ENCODE(cell_idx) ((DB_VALUE **) (intptr_t) ((cell_idx) + 1))
@@ -143,7 +145,7 @@ expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p)
   if (domain_p != NULL)
     {
       dom_status = tp_value_coerce (result_p, result_p, domain_p);
-      if (dom_status != DOMAIN_COMPATIBLE)
+      if (unlikely (dom_status != DOMAIN_COMPATIBLE))
 	{
 	  int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
 	  assert_release (error != NO_ERROR);
@@ -193,7 +195,7 @@ expr_k_add_int (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   EXPR_ARITH_PROLOGUE (a, b);
   int i1 = db_get_int (a), i2 = db_get_int (b);
   int result = i1 + i2;
-  if (OR_CHECK_ADD_OVERFLOW (i1, i2, result))
+  if (unlikely (OR_CHECK_ADD_OVERFLOW (i1, i2, result)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -208,7 +210,7 @@ expr_k_sub_int (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   EXPR_ARITH_PROLOGUE (a, b);
   int i1 = db_get_int (a), i2 = db_get_int (b);
   int itmp = i1 - i2;
-  if (OR_CHECK_SUB_UNDERFLOW (i1, i2, itmp))
+  if (unlikely (OR_CHECK_SUB_UNDERFLOW (i1, i2, itmp)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;
@@ -225,7 +227,7 @@ expr_k_mul_int (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
    * qdata_multiply_int) */
   volatile int i1 = db_get_int (a), i2 = db_get_int (b);
   volatile int itmp = i1 * i2;
-  if (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp))
+  if (unlikely (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -256,7 +258,7 @@ expr_k_add_bigint (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   EXPR_ARITH_PROLOGUE (a, b);
   DB_BIGINT bi1 = db_get_bigint (a), bi2 = db_get_bigint (b);
   DB_BIGINT result = bi1 + bi2;
-  if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result))
+  if (unlikely (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -271,7 +273,7 @@ expr_k_sub_bigint (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   EXPR_ARITH_PROLOGUE (a, b);
   DB_BIGINT bi1 = db_get_bigint (a), bi2 = db_get_bigint (b);
   DB_BIGINT bitmp = bi1 - bi2;
-  if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, bitmp))
+  if (unlikely (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, bitmp)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;
@@ -286,7 +288,7 @@ expr_k_mul_bigint (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   EXPR_ARITH_PROLOGUE (a, b);
   volatile DB_BIGINT bi1 = db_get_bigint (a), bi2 = db_get_bigint (b);
   volatile DB_BIGINT bitmp = bi1 * bi2;
-  if (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp))
+  if (unlikely (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -316,7 +318,7 @@ expr_k_add_double (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
   double result = db_get_double (a) + db_get_double (b);
-  if (OR_CHECK_DOUBLE_OVERFLOW (result))
+  if (unlikely (OR_CHECK_DOUBLE_OVERFLOW (result)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -330,7 +332,7 @@ expr_k_sub_double (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
   double dtmp = db_get_double (a) - db_get_double (b);
-  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
+  if (unlikely (OR_CHECK_DOUBLE_OVERFLOW (dtmp)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;
@@ -344,7 +346,7 @@ expr_k_mul_double (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
   double dtmp = db_get_double (a) * db_get_double (b);
-  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
+  if (unlikely (OR_CHECK_DOUBLE_OVERFLOW (dtmp)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -456,7 +458,7 @@ expr_k_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   pr_clear_value (step->out);
 
   dom_status = tp_value_cast (src, step->out, step->domain, false);
-  if (dom_status != DOMAIN_COMPATIBLE)
+  if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, step->domain);
     }
@@ -589,7 +591,7 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
       return ER_FAILED;		/* er_set done by the comparison */
     }
   dom_status = tp_value_cast (v1, step->out, step->domain, false);
-  if (dom_status != DOMAIN_COMPATIBLE)
+  if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, v1, step->domain);
     }
@@ -871,7 +873,7 @@ expr_run_region (EXPR_PROG * prog, int start, int n, EXPR_EVAL_CTX * ctx)
   for (i = start; i < start + n; i++)
     {
       error = prog->steps[i].kernel (&prog->steps[i], ctx);
-      if (error != NO_ERROR)
+      if (unlikely (error != NO_ERROR))
 	{
 	  return error;
 	}
@@ -903,7 +905,7 @@ expr_run_region (EXPR_PROG * prog, int start, int n, EXPR_EVAL_CTX * ctx)
       error = expr_run_region (ctx->prog, step->f_start, step->f_n, ctx); \
       sel = (error == NO_ERROR) ? *step->arg2p : NULL; \
     } \
-  if (error != NO_ERROR) \
+  if (unlikely (error != NO_ERROR)) \
     { \
       return error; \
     }
@@ -927,7 +929,7 @@ expr_k_case_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   /* the result domain can be a string type, so the slot may own heap memory */
   pr_clear_value (step->out);
   dom_status = tp_value_auto_cast (sel, step->out, step->domain);
-  if (dom_status != DOMAIN_COMPATIBLE)
+  if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, sel, step->domain);
     }
@@ -968,7 +970,7 @@ expr_k_predicate_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   EXPR_PREDICATE_VALUE ();
 
   dom_status = tp_value_auto_cast (step->out, step->out, step->domain);
-  if (dom_status != DOMAIN_COMPATIBLE)
+  if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, step->out, step->domain);
     }
@@ -2149,8 +2151,19 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 
   prog->steps = (EXPR_STEP *) malloc (sizeof (EXPR_STEP) * MAX (1, prog->n_steps));
   prog->cells = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * MAX (1, prog->n_cells));
-  prog->slots = (DB_VALUE *) malloc (sizeof (DB_VALUE) * MAX (1, prog->n_slots));
   prog->root_cells = (int *) malloc (sizeof (int) * MAX (1, prog->n_roots));
+
+  /* A slot is exactly one cache line wide and every row writes both its head (the domain
+   * word) and its tail (the need_clear byte), so a slot that straddles a line boundary
+   * costs two lines per write.  malloc only guarantees 16-byte alignment, which leaves
+   * three of every four placements straddling; align the array so each slot occupies one
+   * line.  This also keeps a small slot array from sharing a line with another worker's
+   * (each px worker compiles its own program).  free () accepts the result, so the
+   * teardown path is unchanged. */
+  if (posix_memalign ((void **) &prog->slots, EXPR_CACHE_LINE, sizeof (DB_VALUE) * MAX (1, prog->n_slots)) != 0)
+    {
+      prog->slots = NULL;
+    }
   if (prog->steps == NULL || prog->cells == NULL || prog->slots == NULL || prog->root_cells == NULL)
     {
       /* neither array is initialized yet: the steps hold no valid pred pointers and the
@@ -2309,6 +2322,35 @@ expr_prog_signature_matches (const EXPR_PROG * prog, const val_descr * vd)
   return true;
 }
 
+/* Cold half of expr_prog_eval (): decide which prologue steps this row must still run and
+ * record the answer for the rest of the execution.  Runs on the first row of a program and
+ * on the first row after the executing query changes. */
+static int
+expr_prog_enter_execution (EXPR_PROG * prog, val_descr * vd)
+{
+  unsigned long long stamp = (vd != NULL && vd->xasl_state != NULL) ? (unsigned long long) vd->xasl_state->query_id : 0;
+  int start;
+
+  if (!prog->prologue_done)
+    {
+      /* literal prologue has never run: start from step 0 and never again */
+      prog->prologue_done = true;
+      start = 0;
+    }
+  else
+    {
+      /* a new execution rebinds the host variables, so their steps run once more */
+      start = prog->n_prologue;
+    }
+
+  /* after this row the exec-prologue is settled for the whole execution -- unless the
+   * value descriptor carries no execution identity, in which case stay pessimistic */
+  prog->row_start = prog->n_prologue + prog->n_exec_prologue;
+  prog->exec_stamp = stamp;
+  prog->exec_stamp_valid = (stamp != 0);
+  return start;
+}
+
 int
 expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl)
 {
@@ -2321,33 +2363,19 @@ expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, O
   ctx.tpl = tpl;
   ctx.prog = prog;
 
-  i = 0;
-  if (prog->prologue_done)
+  /* Which step the row starts at is settled once per execution: the literal prologue after
+   * the first row ever, the host-variable prologue after the first row of each execution.
+   * Keep the answer in row_start and re-derive it only when the executing query changes,
+   * so a row costs one comparison instead of the whole chain. */
+  if (likely (prog->exec_stamp_valid
+	      && prog->exec_stamp == (unsigned long long) (vd != NULL
+							   && vd->xasl_state != NULL ? vd->xasl_state->query_id : 0)))
     {
-      i = prog->n_prologue;
-      if (prog->n_exec_prologue > 0 && prog->exec_stamp_valid && vd != NULL && vd->xasl_state != NULL
-	  && prog->exec_stamp == (unsigned long long) vd->xasl_state->query_id)
-	{
-	  /* same execution as the last row: bound values unchanged, skip their steps */
-	  i += prog->n_exec_prologue;
-	}
+      i = prog->row_start;
     }
   else
     {
-      prog->prologue_done = true;
-    }
-  if (i < prog->n_prologue + prog->n_exec_prologue && prog->n_exec_prologue > 0)
-    {
-      if (vd != NULL && vd->xasl_state != NULL)
-	{
-	  prog->exec_stamp = (unsigned long long) vd->xasl_state->query_id;
-	  prog->exec_stamp_valid = true;
-	}
-      else
-	{
-	  /* no execution identity available: keep re-running the exec-prologue */
-	  prog->exec_stamp_valid = false;
-	}
+      i = expr_prog_enter_execution (prog, vd);
     }
   for (; i < prog->n_steps; i++)
     {
@@ -2357,7 +2385,7 @@ expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, O
 	  continue;
 	}
       error = prog->steps[i].kernel (&prog->steps[i], &ctx);
-      if (error != NO_ERROR)
+      if (unlikely (error != NO_ERROR))
 	{
 	  return error;
 	}
