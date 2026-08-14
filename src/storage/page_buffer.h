@@ -248,6 +248,8 @@ struct pgbuf_watcher
 #endif
 };
 
+typedef int (*PGBUF_ORDERED_CALLBACK_FUNC) (THREAD_ENTRY * thread_p, void *args);
+
 // *INDENT-OFF*
 using pgbuf_aligned_buffer = cubmem::stack_block<(size_t) IO_MAX_PAGE_SIZE>;
 using pgbuf_resizable_buffer = cubmem::extensible_stack_block<(size_t) IO_MAX_PAGE_SIZE>;
@@ -284,6 +286,12 @@ extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAG
 extern int pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_FETCH_MODE fetch_mode,
 				    const PGBUF_LATCH_MODE requestmode, PGBUF_WATCHER * req_watcher,
 				    const char *caller_file, int caller_line, const char *caller_func);
+
+#define pgbuf_ordered_callback(thread_p, callback_func, callback_args) \
+        pgbuf_ordered_callback_debug(thread_p, callback_func, callback_args, ARG_FILE_LINE_FUNC)
+extern int pgbuf_ordered_callback_debug (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_FUNC callback_func,
+					 void *callback_args, const char *caller_file, int caller_line,
+					 const char *caller_func);
 
 #define pgbuf_promote_read_latch(thread_p, pgptr_p, condition) \
 	pgbuf_promote_read_latch_debug(thread_p, pgptr_p, condition, ARG_FILE_LINE_FUNC)
@@ -328,6 +336,11 @@ extern PAGE_PTR pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, P
 
 extern int pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_FETCH_MODE fetch_mode,
 				      const PGBUF_LATCH_MODE requestmode, PGBUF_WATCHER * watcher_object);
+
+#define pgbuf_ordered_callback(thread_p, callback_func, callback_args) \
+        pgbuf_ordered_callback_release(thread_p, callback_func, callback_args)
+extern int pgbuf_ordered_callback_release (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_FUNC callback_func,
+					   void *callback_args);
 
 #define pgbuf_promote_read_latch(thread_p, pgptr_p, condition) \
   pgbuf_promote_read_latch_release(thread_p, pgptr_p, condition)

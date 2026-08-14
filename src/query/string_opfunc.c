@@ -68,6 +68,82 @@
 #include "misctype_def.h"
 #endif /* !defined (SERVER_MODE) */
 
+
+/* return codes of the qstr_like_match_lockstep_* () instances (like_match_lockstep.i) */
+#define QSTR_LIKE_LOCKSTEP_TRUE	      1
+#define QSTR_LIKE_LOCKSTEP_FALSE      0
+#define QSTR_LIKE_LOCKSTEP_ABORT      (-1)
+#define QSTR_LIKE_LOCKSTEP_FALLBACK   (-2)
+
+/* max recursion depth (one level per '%' group); deeper patterns fall back to the generic loop */
+#define QSTR_LIKE_LOCKSTEP_MAX_DEPTH  256
+
+/* UTF8 instance : literal equivalence with the pre-template matcher — {0x00, 0x20} space class,
+ * intl_Len_utf8_char stepping, memchr scan safe unless firstpat is a continuation byte */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_utf8
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      int nc_len_ = intl_Len_utf8_char[*(p)]; \
+      if (nc_len_ > (remain)) \
+	{ \
+	  /* truncated character : stop at buffer end to avoid an out-of-bounds pointer */ \
+	  (p) += (remain); \
+	  (remain) = -1; \
+	} \
+      else \
+	{ \
+	  (p) += nc_len_; \
+	  (remain) -= nc_len_; \
+	} \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) \
+  ((b1) == (b2) || (((b2) == 0x00 || (b2) == 0x20) && ((b1) == 0x00 || (b1) == 0x20)))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), LOCKSTEP_BYTE_EQ (*(t), (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) ((firstpat) < 0x80 || (firstpat) >= 0xC0)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
+
+/* SB instance (iso88591 identity-weight collations) : one byte per character; keeps the
+ * {0x00, 0x20} space class of lang_strmatch_byte () */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_sb
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      (p)++; \
+      (remain)--; \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) \
+  ((b1) == (b2) || (((b2) == 0x00 || (b2) == 0x20) && ((b1) == 0x00 || (b1) == 0x20)))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), LOCKSTEP_BYTE_EQ (*(t), (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) (1)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
+
+/* BINARY instance : pure byte equality mirroring lang_strmatch_binary (); the trailing 0x20
+ * pad rule comes from the generic driver */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_binary
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      (p)++; \
+      (remain)--; \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) ((b1) == (b2))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), (*(t) == (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) (1)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -235,8 +311,7 @@ static int qstr_bit_coerce (const unsigned char *src, int src_length, int src_pr
 			    DB_DATA_STATUS * data_status);
 static int qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYPE src_type,
 			INTL_CODESET src_codeset, INTL_CODESET dest_codeset, unsigned char **dest, int *dest_length,
-			int *dest_size, int dest_precision, bool is_dest_floating, DB_TYPE dest_type,
-			DB_DATA_STATUS * data_status);
+			int *dest_size, int dest_precision, DB_TYPE dest_type, DB_DATA_STATUS * data_status);
 static int qstr_position (const char *sub_string, const int sub_size, const int sub_length, const char *src_string,
 			  const char *src_end, const char *src_string_bound, int src_length, int coll_id,
 			  bool is_forward_search, int *position);
@@ -1572,7 +1647,7 @@ db_string_space (DB_VALUE const *count, DB_VALUE * result)
 
       if (len > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, len,
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) len,
 		  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 	  db_make_null (result);
 	  return NO_ERROR;
@@ -2061,10 +2136,10 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 	  dummy.domain.general_info.is_null = 0;
 	}
 
-      expected_size = src_size * count_i;
+      expected_size = (DB_BIGINT) src_size *count_i;
       if (OR_CHECK_INT_OVERFLOW (expected_size))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, expected_size,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) expected_size,
 		  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 	  return ER_QPROC_STRING_SIZE_TOO_BIG;
 	}
@@ -2116,14 +2191,12 @@ qstr_retype_char_to_varchar (DB_VALUE * result, int precision, int size, int cod
     {
       char *saved_compressed_buf = result->data.ch.medium.compressed_buf;
       int saved_compressed_size = result->data.ch.medium.compressed_size;
-      int saved_length = result->data.ch.medium.length;
 
       qstr_make_typed_string (DB_TYPE_VARCHAR, result, precision, db_get_string (result), size, codeset, collation);
 
       result->data.ch.medium.compressed_buf = saved_compressed_buf;
       result->data.ch.medium.compressed_size = saved_compressed_size;
       result->data.ch.info.compressed_need_clear = 1;
-      result->data.ch.medium.length = saved_length;
     }
   else
     {
@@ -4245,7 +4318,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
     }
   if ((UINT64) result_size > prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_size,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) result_size,
 	      (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
       db_private_free_and_init (NULL, result);
       return ER_QPROC_STRING_SIZE_TOO_BIG;
@@ -5930,6 +6003,56 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
   current_collation = lang_get_collation (coll_id);
   intl_pad_char (codeset, pad_char, &pad_char_size);
 
+  /* byte-lockstep fast path dispatch; the kind<->codeset cross-guard keeps a mis-tagged
+   * collation on the generic loop. Multi-byte escapes and escapes colliding with a
+   * wildcard change wildcard interpretation, so those fall through as well */
+  if (escape == NULL
+      || ((unsigned char) *escape < 0x80 && *escape != LIKE_WILDCARD_MATCH_MANY && *escape != LIKE_WILDCARD_MATCH_ONE))
+    {
+      int match = QSTR_LIKE_LOCKSTEP_FALLBACK;
+      int escape_byte = (escape != NULL) ? (int) (unsigned char) *escape : -1;
+
+      switch (current_collation->byte_lockstep_kind)
+	{
+	case LANG_LOCKSTEP_UTF8:
+	  if (codeset == INTL_CODESET_UTF8)
+	    {
+	      match = qstr_like_match_lockstep_utf8 (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						     REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						     escape_byte, 0);
+	    }
+	  break;
+	case LANG_LOCKSTEP_SB:
+	  /* escape 0x00/0x20 stays on the generic loop : lang_strmatch_byte () folds
+	   * SPACE to weight zero before its escape comparison, so such an escape
+	   * never matches there */
+	  if (codeset == INTL_CODESET_ISO88591 && escape_byte != 0x00 && escape_byte != 0x20)
+	    {
+	      match = qstr_like_match_lockstep_sb (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						   REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						   escape_byte, 0);
+	    }
+	  break;
+	case LANG_LOCKSTEP_BINARY:
+	  if (codeset == INTL_CODESET_BINARY)
+	    {
+	      match = qstr_like_match_lockstep_binary (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						       REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						       escape_byte, 0);
+	    }
+	  break;
+	default:
+	  break;
+	}
+
+      if (match != QSTR_LIKE_LOCKSTEP_FALLBACK)
+	{
+	  return (match == QSTR_LIKE_LOCKSTEP_TRUE) ? V_TRUE : V_FALSE;
+	}
+      /* ineligible kind, kind/codeset mismatch or pathologically deep pattern :
+       * fall through to the generic loop */
+    }
+
   tar_ptr = REINTERPRET_CAST (const unsigned char *, tar);
   expr_ptr = REINTERPRET_CAST (const unsigned char *, expr);
   end_tar = tar_ptr + tar_length;
@@ -6770,13 +6893,10 @@ db_bit_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_DA
       int dest_prec;
       int dest_length;
 
-      if (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE)
+      dest_prec = DB_VALUE_PRECISION (dest_string);
+      if (dest_prec == TP_FLOATING_PRECISION_VALUE)
 	{
 	  dest_prec = db_get_string_length (src_string);
-	}
-      else
-	{
-	  dest_prec = DB_VALUE_PRECISION (dest_string);
 	}
 
       error_status = qstr_bit_coerce (DB_GET_UCHAR (src_string), db_get_string_length (src_string),
@@ -6870,9 +6990,6 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
       int dest_prec;
       int dest_length;
       int dest_size;
-      bool is_dest_floating;
-      int src_prec;
-      int src_length;
       INTL_CODESET src_codeset = db_get_string_codeset (src_string);
       INTL_CODESET dest_codeset = db_get_string_codeset (dest_string);
 
@@ -6883,21 +7000,17 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
 	  return error_status;
 	}
 
-      /* Recompute char_count since the cached value may no longer match the string. */
-      intl_char_count ((unsigned char *) db_get_string (src_string), db_get_string_size (src_string), src_codeset,
-		       &src_length);
-
       /* Initialize the memory manager of the destination */
-      is_dest_floating = (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE);
-      dest_prec = is_dest_floating ? src_length : DB_VALUE_PRECISION (dest_string);
+      dest_prec = DB_VALUE_PRECISION (dest_string);
+      if (dest_prec == TP_FLOATING_PRECISION_VALUE)
+	{
+	  dest_prec = db_get_string_length (src_string);
+	}
 
-      src_prec =
-	(DB_VALUE_PRECISION (src_string) == TP_FLOATING_PRECISION_VALUE) ? src_length : DB_VALUE_PRECISION (src_string);
-
-      error_status = qstr_coerce (DB_GET_UCHAR (src_string), src_length,
-				  src_prec, DB_VALUE_DOMAIN_TYPE (src_string), src_codeset,
+      error_status = qstr_coerce (DB_GET_UCHAR (src_string), db_get_string_length (src_string),
+				  QSTR_VALUE_PRECISION (src_string), DB_VALUE_DOMAIN_TYPE (src_string), src_codeset,
 				  dest_codeset, &dest, &dest_length, &dest_size, dest_prec,
-				  is_dest_floating, DB_VALUE_DOMAIN_TYPE (dest_string), data_status);
+				  DB_VALUE_DOMAIN_TYPE (dest_string), data_status);
 
       if (error_status == NO_ERROR && dest != NULL)
 	{
@@ -8588,7 +8701,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
 
   if (result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_size,
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) result_size,
 	      (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 
       db_make_null (result);
@@ -9066,7 +9179,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 
 size_error:
   error_status = ER_QPROC_STRING_SIZE_TOO_BIG;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, *result_size,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, (size_t) * result_size,
 	  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
   /*
@@ -9278,7 +9391,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 
 size_error:
   error_status = ER_QPROC_STRING_SIZE_TOO_BIG;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, *result_size,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, (size_t) * result_size,
 	  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
 
@@ -9637,7 +9750,7 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
 static int
 qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYPE src_type, INTL_CODESET src_codeset,
 	     INTL_CODESET dest_codeset, unsigned char **dest, int *dest_length, int *dest_size, int dest_precision,
-	     bool is_dest_floating, DB_TYPE dest_type, DB_DATA_STATUS * data_status)
+	     DB_TYPE dest_type, DB_DATA_STATUS * data_status)
 {
   int src_padded_length, copy_length, copy_size;
   int alloc_size;
@@ -9824,13 +9937,6 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 		  intl_binary_to_euckr (src, copy_size, dest, &conv_size);
 		}
 	      copy_size = conv_size;
-
-	      /* copy_length becomes stale after binary-to-multibyte conversion.
-	       * Skip floating-precision destinations to avoid spurious padding. */
-	      if (dest_type == DB_TYPE_CHAR && !is_dest_floating)
-		{
-		  intl_char_count (*dest, copy_size, dest_codeset, &copy_length);
-		}
 	    }
 	  else
 	    {

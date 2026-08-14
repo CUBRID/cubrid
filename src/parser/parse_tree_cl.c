@@ -2939,7 +2939,24 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   for (n = p; n; n = n->next)
     {				/* print in the original order ... */
+      /* A term shipped into the DBLink conn_sql runs on the remote side only; the plan-dump
+       * printers request it hidden so the dump matches the actual local predicate.  The " and "
+       * separator is emitted before every term but the first printed one, so a skipped term
+       * leaves no dangling separator; if every term is skipped, NULL is returned and the
+       * caller omits the "where" keyword as for an empty list. */
+      if ((parser->custom_print & PT_PRINT_SUPPRESS_DBLINK_PUSHED) && n->node_type == PT_EXPR
+	  && PT_EXPR_INFO_IS_FLAGED (n, PT_EXPR_INFO_DBLINK_PUSHED))
+	{
+	  continue;
+	}
+
       r1 = pt_print_bytes (parser, n);
+
+      if (q != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, " and ");
+	}
+
       if (n->node_type == PT_EXPR && !n->info.expr.paren_type && n->or_next)
 	{
 	  /* found non-parenthesis OR */
@@ -2950,11 +2967,6 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
       else
 	{
 	  q = pt_append_varchar (parser, q, r1);
-	}
-
-      if (n->next)
-	{
-	  q = pt_append_nulstring (parser, q, " and ");
 	}
     }
 

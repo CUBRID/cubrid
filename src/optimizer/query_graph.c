@@ -2044,6 +2044,18 @@ qo_analyze_term (QO_TERM * term, int term_type)
       goto wrapup;
     }
 
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_LIKE_DERIVED_RANGE))
+    {
+      /* keep real selectivity for index-access cost; flag so row-count skips it */
+      QO_TERM_SET_FLAG (term, QO_TERM_LIKE_DERIVED_RANGE);
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE))
+    {
+      /* the LIKE the range above was derived from */
+      QO_TERM_SET_FLAG (term, QO_TERM_LIKE_HAS_DERIVED_RANGE);
+    }
+
   /* only interesting in one predicate term; if 'term' has 'or_next', it was derived from OR term */
   /* also cases that are too complicated and unusual to consider here: (cond and/or cond) is true/false (cond and/or
    * cond) =/!= (cond and/or cond).
@@ -2787,7 +2799,13 @@ wrapup:
       break;
 
     case PREDICATE_TERM:
+      env->sel_hist_used = false;
+      env->sel_hist_fallback = false;
       QO_TERM_SELECTIVITY (term) = qo_expr_selectivity (env, pt_expr);
+      if (env->sel_hist_used && !env->sel_hist_fallback)
+	{
+	  QO_TERM_SET_FLAG (term, QO_TERM_SEL_FROM_HISTOGRAM);
+	}
       break;
 
     default:
@@ -5942,6 +5960,8 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
       env->plan_dump_enabled = true;
     }
   env->multi_range_opt_candidate = false;
+  env->sel_hist_used = false;
+  env->sel_hist_fallback = false;
 
   return env;
 }
@@ -8663,7 +8683,12 @@ qo_node_add_sarg (QO_NODE * node, QO_TERM * sarg)
   double sel_limit;
 
   bitset_add (&(QO_NODE_SARGS (node)), QO_TERM_IDX (sarg));
-  QO_NODE_SELECTIVITY (node) *= QO_TERM_SELECTIVITY (sarg);
+  /* Skip LIKE-derived range in row-count: subset-correlated with the retained
+   * LIKE. Still kept in QO_NODE_SARGS for index key-range use. */
+  if (!QO_TERM_IS_FLAGED (sarg, QO_TERM_LIKE_DERIVED_RANGE))
+    {
+      QO_NODE_SELECTIVITY (node) *= QO_TERM_SELECTIVITY (sarg);
+    }
   sel_limit = (QO_NODE_NCARD (node) == 0) ? 0 : (1.0 / (double) QO_NODE_NCARD (node));
   if (QO_NODE_SELECTIVITY (node) < sel_limit)
     {

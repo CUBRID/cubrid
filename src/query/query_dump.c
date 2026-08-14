@@ -2775,6 +2775,12 @@ qdump_print_xasl (xasl_node * xasl_p)
       qdump_print_xasl (xasl_p->proc.buildlist.eptr_list);
     }
 
+  if (xasl_p->type == CTE_PROC)
+    {
+      qdump_print_xasl (xasl_p->proc.cte.non_recursive_part);
+      qdump_print_xasl (xasl_p->proc.cte.recursive_part);
+    }
+
   qdump_print_xasl (xasl_p->next);
   fprintf (foutput, "creator OID:");
   qdump_print_oid (&xasl_p->creator_oid);
@@ -3362,6 +3368,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
 
       json_object_set_new (groupby, "rows", json_integer (gstats->rows));
+      json_object_set_new (groupby, "readrows", json_integer (gstats->read_rows));
       json_object_set_new (proc, "GROUPBY", groupby);
       if (gstats->parallel_num > 0)
 	{
@@ -3957,7 +3964,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	{
 	  fprintf (fp, ", sort: false");
 	}
-
+      fprintf (fp, ", readrows: %lld", (long long int) gstats->read_rows);
       fprintf (fp, ", rows: %d)\n", gstats->rows);
 
       if (gstats->parallel_num > 0)
