@@ -1108,7 +1108,7 @@ $ LOADDB
 1039 Log-Schreiber: Log-Schreiber gestartet. Modus: %1$d.
 1040 Generisches HA: %1$s. 
 1041 Ein String wurde im Kontext von "%1$s" verkürzt.
-1042 Es wird versucht, ein String zu erstellen, der %1$d Bytes Speicher braucht, während der maximal erlaubte %2$d Bytes ist.
+1042 Es wird versucht, ein String zu erstellen, der %1$zu Bytes Speicher braucht, während der maximal erlaubte %2$d Bytes ist.
 1043 Attribut "%1$s" kann nicht geändert werden. CUBRID kann die Eigenschaften des angeforderten Attributs nicht ändern, wenn die Klasse Subklassen hat.
 1044 Attribut "%1$s" kann nicht geändert werden. CUBRID kann Attribute, die Partitionierungsschlüssel sind, nicht ändern.
 1045 Attribut "%1$s" kann nicht geändert werden. CUBRID kann Attribute, die in Fremdschlüssel angewendet werden (entweder referenziert, oder referenzierend), nicht ändern.
