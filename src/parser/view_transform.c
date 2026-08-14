@@ -111,6 +111,14 @@ typedef struct check_pushable_info
   bool method_found;
 } CHECK_PUSHABLE_INFO;
 
+typedef struct attr_ref_info
+{
+  UINTPTR spec_id;		/* spec id of the attribute to look for */
+  const char *name;		/* name of the attribute to look for */
+
+  bool found;			/* set when a reference is found */
+} ATTR_REF_INFO;
+
 static unsigned int top_cycle = 0;
 static DB_OBJECT *cycle_buffer[MAX_CYCLE];
 
@@ -228,6 +236,13 @@ static bool pt_has_non_deterministic_expr (PARSER_CONTEXT * parser, PT_NODE * te
 static bool pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query, int pos);
 static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
+static PT_NODE *mq_find_sort_dependent_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
+					     int *continue_walk);
+static PT_NODE *mq_find_attr_reference (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
+static bool mq_is_attr_referenced (PARSER_CONTEXT * parser, PT_NODE * node, ATTR_REF_INFO * infop);
+static bool mq_is_sort_dependent_column (PARSER_CONTEXT * parser, PT_NODE * column);
+static bool mq_is_sort_dependent_column_used_in_expr (PARSER_CONTEXT * parser, PT_NODE * subquery,
+						      PT_NODE * mainquery, PT_NODE * class_spec, PT_NODE * class_);
 static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
 					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by,
 					      PT_NODE * class_);
@@ -1738,6 +1753,212 @@ pt_check_odku_refs_view (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * mq_find_sort_dependent_node () - look for ORDERBY_NUM()/GROUPBY_NUM() of the query being walked
+ *   return: node (unchanged)
+ *   parser(in): parser context
+ *   node(in): node to check
+ *   void_arg(in/out): bool *
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_find_sort_dependent_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
+{
+  bool *has_sort_dependent = (bool *) void_arg;
+
+  if (PT_IS_ORDERBYNUM (node) || PT_IS_GROUPBYNUM (node))
+    {
+      *has_sort_dependent = true;
+    }
+
+  if (*has_sort_dependent)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      /* a nested query has its own numbering */
+      *continue_walk = PT_LIST_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * mq_find_attr_reference () - look for a reference to a given attribute of a spec
+ *   return: node (unchanged)
+ *   parser(in): parser context
+ *   node(in): node to check
+ *   void_arg(in/out): ATTR_REF_INFO *
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_find_attr_reference (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
+{
+  ATTR_REF_INFO *infop = (ATTR_REF_INFO *) void_arg;
+
+  if (node->node_type == PT_NAME && node->info.name.spec_id == infop->spec_id
+      && node->info.name.original != NULL && intl_identifier_casecmp (node->info.name.original, infop->name) == 0)
+    {
+      infop->found = true;
+    }
+
+  if (infop->found)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * mq_is_attr_referenced () - check whether a node tree refers to a given attribute of a spec
+ *   return: true if the attribute is referenced in the tree
+ *   parser(in): parser context
+ *   node(in): node tree to search. its 'next' list is searched, too
+ *   infop(in/out): attribute to look for
+ */
+static bool
+mq_is_attr_referenced (PARSER_CONTEXT * parser, PT_NODE * node, ATTR_REF_INFO * infop)
+{
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  infop->found = false;
+  (void) parser_walk_tree (parser, node, mq_find_attr_reference, infop, NULL, NULL);
+
+  return infop->found;
+}
+
+/*
+ * mq_is_sort_dependent_column () - check whether a select list column of a subquery holds a value which is
+ *                                  only known after the subquery's sort is done
+ *   return: true if the column contains ORDERBY_NUM()/GROUPBY_NUM()
+ *   parser(in): parser context
+ *   column(in): a single column of a select list. its 'next' list is not searched
+ *
+ * NOTE:
+ *   ORDERBY_NUM()/GROUPBY_NUM() are not evaluated while the rows are being produced, but while the sorted (or
+ *   grouped) result is being written out. Therefore such a column can only be projected as it is; it can not be
+ *   used as an operand of another expression. see qexec_ordby_put_next () in query_executor.c.
+ */
+static bool
+mq_is_sort_dependent_column (PARSER_CONTEXT * parser, PT_NODE * column)
+{
+  PT_NODE *save_next;
+  bool has_sort_dependent = false;
+
+  if (column == NULL)
+    {
+      return false;
+    }
+
+  /* cut off next to check this column only */
+  save_next = column->next;
+  column->next = NULL;
+
+  (void) parser_walk_tree (parser, column, mq_find_sort_dependent_node, &has_sort_dependent, NULL, NULL);
+
+  column->next = save_next;
+
+  return has_sort_dependent;
+}
+
+/*
+ * mq_is_sort_dependent_column_used_in_expr () - check whether merging would make a sort dependent column of the
+ *                                               subquery an operand of an expression of the main query
+ *   return: true if such a use is found
+ *   parser(in): parser context
+ *   subquery(in): subquery(or view query spec) to be merged
+ *   mainquery(in): query the subquery is to be merged into
+ *   class_spec(in): spec of the subquery in the main query
+ *   class_(in): view name node, NULL for an inline view
+ *
+ * NOTE:
+ *   Merging replaces every reference to a column of subquery with the defining expression of that column
+ *   (see mq_substitute_select_for_inline_view (), mq_substitute_select_in_statement ()). A column holding
+ *   ORDERBY_NUM()/GROUPBY_NUM() may only be projected as it is, so the merged select list is valid only while
+ *   every reference to such a column is a bare column of the select list of the main query. Anything else
+ *   (DECODE (rn, 1, name, 'WRONG'), CAST (rn AS VARCHAR), rn + 0, a subquery reading rn, ...) makes the numbering
+ *   an operand of an expression, which reads the value before it is set and returns a wrong result. That is the
+ *   very shape which is rejected when it is written directly. (see pt_check_orderbynum_pre ()/
+ *   pt_check_orderbynum_post () and MSGCAT_SEMANTIC_ORDERBYNUM_SELECT_LIST_ERR in semantic_check.c)
+ *
+ *   The other clauses of the main query are not checked because a reference from them can not get here: a main
+ *   query which has its own ORDER BY is not merged with a subquery which has one (is_only_spec), and a GROUP BY
+ *   or a HAVING of the main query keeps the numbering column in a spec of its own as well. The WHERE clause is
+ *   left out on purpose: mq_is_rownum_only_predicate () has already restricted it to 'numbering <comparison>
+ *   constant' terms, which merging turns into the TOP-N clause of the merged query (see mq_update_order_by ())
+ *   instead of reading the numbering value.
+ */
+static bool
+mq_is_sort_dependent_column_used_in_expr (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
+					  PT_NODE * class_spec, PT_NODE * class_)
+{
+  PT_NODE *attributes, *attr, *col, *node, *save_next;
+  ATTR_REF_INFO info;
+  bool found = false;
+
+  assert (PT_IS_SELECT (subquery));
+
+  if (!PT_IS_SELECT (mainquery))
+    {
+      /* UPDATE/DELETE/MERGE can not get here: a vclass which numbers its rows is not updatable */
+      return false;
+    }
+
+  /* get the attributes of the spec, which are matched with the select list of the subquery by position */
+  if (class_ != NULL)
+    {
+      attributes = mq_fetch_attributes (parser, class_);
+      info.spec_id = class_->info.name.spec_id;
+    }
+  else
+    {
+      attributes = class_spec->info.spec.as_attr_list;
+      info.spec_id = class_spec->info.spec.id;
+    }
+
+  for (attr = attributes, col = subquery->info.query.q.select.list; attr != NULL && col != NULL;
+       attr = attr->next, col = col->next)
+    {
+      if (attr->node_type != PT_NAME || attr->info.name.original == NULL)
+	{
+	  continue;
+	}
+      if (!mq_is_sort_dependent_column (parser, col))
+	{
+	  continue;
+	}
+
+      info.name = attr->info.name.original;
+
+      /* a bare column of the select list is projected as it is; every other column which reads it is an
+       * expression having the numbering as an operand */
+      for (node = mainquery->info.query.q.select.list; node != NULL; node = node->next)
+	{
+	  if (node->node_type == PT_NAME)
+	    {
+	      continue;
+	    }
+
+	  save_next = node->next;
+	  node->next = NULL;
+	  found = mq_is_attr_referenced (parser, node, &info);
+	  node->next = save_next;
+
+	  if (found)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * mq_is_pushable_subquery () - check if a subquery is pushable
  *  returns: true if pushable, false otherwise
  *   parser(in): parser context
@@ -1774,7 +1995,8 @@ pt_check_odku_refs_view (PARSER_CONTEXT * parser, PT_NODE * statement)
  *  - has CONNECT BY (Hierarchical Queries)
  *  - has DISTINCT
  *  - has aggregate or orderby_for or analytic
- *  - has inst num or orderby_num
+ *  - has inst num or orderby_num, and either it is not the only spec or the main query uses a column holding
+ *    orderby_num/groupby_num in an expression
  *  - has method
  *  TO_DO : check all cases using is_vclass
  */
@@ -1858,8 +2080,10 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* determine if class_spec is the only spec in the statement */
   is_rownum_only = mq_is_rownum_only_predicate (parser, statement_spec, mainquery, order_by, subquery, class_);
+  /* A predicate folded to TRUE, e.g. 'WHERE 1=1', is a no-op. Do not count it as a real predicate here, otherwise it
+   * blocks the merging of a view which would be merged without it. */
   is_only_spec =
-    ((statement_spec->next == NULL && (pred == NULL || is_rownum_only)
+    ((statement_spec->next == NULL && (pt_true_search_condition (parser, pred) || is_rownum_only)
       && (subquery->info.query.order_by == NULL || order_by == NULL)) ? true : false);
 
   /* check if orderby_for set to PT_EXPR_INFO_ROWNUM_ONLY */
@@ -2026,9 +2250,19 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
 
   /* check inst num or orderby_num */
-  if (!is_only_spec && pt_has_inst_in_where_and_select_list (parser, subquery))
+  if (pt_has_inst_in_where_and_select_list (parser, subquery))
     {
-      return NON_PUSHABLE;
+      if (!is_only_spec)
+	{
+	  return NON_PUSHABLE;
+	}
+
+      /* Even for a single spec, merging is given up when the main query embeds a numbering column of the subquery
+       * into an expression, since such a column is not evaluated until the subquery's sort is done. (CBRD-27189) */
+      if (mq_is_sort_dependent_column_used_in_expr (parser, subquery, mainquery, class_spec, class_))
+	{
+	  return NON_PUSHABLE;
+	}
     }
 
   /* check method */
