@@ -3086,6 +3086,11 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   /* persist the latest heap bestspace hints before the log and buffer managers are finalized. */
   (void) heap_update_all_bestspaces (thread_p);
 
+  /* hand the unissued tail of every reserved serial cache block back to _db_serial, so a restart
+   * resumes at the last value issued instead of past the block end. Must run here, while the heap
+   * and log managers are still up; serial_finalize_cache_pool runs after the volumes are dismounted. */
+  serial_flush_cache_pool (thread_p);
+
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
 

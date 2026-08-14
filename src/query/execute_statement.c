@@ -1212,6 +1212,11 @@ do_reset_auto_increment_serial (MOP serial_obj)
   db_make_null (&start_value);
   db_make_null (&started_flag);
 
+  /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
+   * tail of the reserved block back to cur_val, so it has to land before the reset overwrites it.
+   * Running it afterwards would either clobber the reset value or, on rollback, be undone with it. */
+  (void) serial_decache (ws_oid (serial_object));
+
   error_code = db_get (serial_object, SERIAL_ATTR_MIN_VAL, &start_value);
   if (error_code != NO_ERROR)
     {
@@ -1255,10 +1260,6 @@ do_reset_auto_increment_serial (MOP serial_obj)
     {
       goto error_exit;
     }
-
-  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial does not serve
-   * stale values after TRUNCATE-reset (do_alter_serial / do_drop_serial already decache). */
-  (void) serial_decache (ws_oid (serial_object));
 
   db_value_clear (&start_value);
   db_value_clear (&started_flag);
@@ -1316,6 +1317,11 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     {
       return ER_OBJ_INVALID_ARGUMENTS;
     }
+
+  /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
+   * tail of the reserved block back to cur_val, so it has to land before the rebase overwrites it.
+   * Running it afterwards would either clobber the rebase value or, on rollback, be undone with it. */
+  (void) serial_decache (ws_oid (serial_object));
 
   db_make_null (&max_val);
   db_make_null (&new_val);
@@ -1429,10 +1435,6 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     {
       goto error_exit;
     }
-
-  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial reflects the new
-   * base after ALTER ... AUTO_INCREMENT = n (matches do_alter_serial / do_drop_serial). */
-  (void) serial_decache (ws_oid (serial_object));
 
   goto normal_exit;
 

@@ -152,7 +152,10 @@ static int xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE
 static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp,
 					    int num_alloc, SERIAL_CACHE_ENTRY * claimed_entry);
 static int serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
+static int serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * store_val,
+					   int num_alloc);
 static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
+static int serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
 					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
 					const OID * serial_oidp, DB_VALUE * key_val);
@@ -589,13 +592,18 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 }
 
 /*
- * serial_update_cur_val_of_serial () -
- *                cur_val of _db_serial is updated to last_cached_val of entry
+ * serial_store_cur_val_of_serial () - write store_val into the cur_val column of the entry's
+ *                _db_serial row. Two callers want opposite values there, so the value is a
+ *                parameter: see serial_update_cur_val_of_serial () and
+ *                serial_flush_cur_val_of_serial ().
  *   return: NO_ERROR, or ER_status
- *   entry(in)    :
+ *   entry(in)     :
+ *   store_val(in) : the value to write into cur_val
+ *   num_alloc(in) : reported to the supplemental (CDC) log
  */
 static int
-serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc)
+serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * store_val,
+				int num_alloc)
 {
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
@@ -662,7 +670,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
       goto exit_on_error;
     }
   assert (attrid != NOT_FOUND);
-  ret = heap_attrinfo_set (&entry->oid, attrid, &entry->last_cached_val, attr_info_p);
+  ret = heap_attrinfo_set (&entry->oid, attrid, store_val, attr_info_p);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -714,6 +722,87 @@ exit_on_error:
   heap_scancache_end (thread_p, &scan_cache);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * serial_update_cur_val_of_serial () - reserve the cache block durably: cur_val of _db_serial is
+ *                advanced to last_cached_val of entry, so one write covers the whole block.
+ *   return: NO_ERROR, or ER_status
+ *   entry(in)    :
+ */
+static int
+serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc)
+{
+  return serial_store_cur_val_of_serial (thread_p, entry, &entry->last_cached_val, num_alloc);
+}
+
+/*
+ * serial_flush_cur_val_of_serial () - give the unissued tail of the reserved block back before the
+ *                cache entry is dropped: cur_val of _db_serial is lowered to the entry's cur_val,
+ *                the last value actually handed out.
+ *   return: NO_ERROR, or ER_status
+ *   entry(in)    :
+ *
+ * Reserving a block advances the durable cur_val to the end of the block, so whatever drops the
+ * entry afterwards - a reset/rebase DDL, a DROP, or server shutdown - would otherwise strand the
+ * values between the last one issued and the block end, and the next block would start past them.
+ * Writing the real cur_val back first keeps the generator on its lattice; the values are only lost
+ * when the entry disappears without running this (a crash).
+ *
+ * The write is deliberately not part of whatever transaction triggered the drop. A rolled back
+ * reset DDL must still leave the lowered cur_val behind, because the values it covers were already
+ * issued: value state is non-transactional, generation parameters are not.
+ */
+static int
+serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
+{
+  DB_VALUE durable_val;
+  DB_VALUE cmp_result;
+  int error;
+
+  if (DB_IS_NULL (&entry->cur_val) || DB_IS_NULL (&entry->last_cached_val))
+    {
+      /* nothing was issued from this entry yet */
+      return NO_ERROR;
+    }
+
+  error = numeric_db_value_compare (&entry->cur_val, &entry->last_cached_val, &cmp_result);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (db_get_int (&cmp_result) == 0)
+    {
+      /* the block was consumed exactly; the durable value already matches */
+      return NO_ERROR;
+    }
+
+  /* Only hand the tail back while the durable value is still the block end this entry reserved.
+   * A reset/rebase DDL writes cur_val itself and owns the value from then on; writing the stale
+   * cached one over it would undo the DDL. Such a DDL decaches before it writes, so the flush it
+   * triggers still runs - it just runs here, while the block end is what is on disk. */
+  db_make_null (&durable_val);
+  if (xserial_get_current_value_internal (thread_p, &durable_val, &entry->oid) != NO_ERROR)
+    {
+      /* the row is gone (dropped serial); nothing to write back */
+      er_clear ();
+      return NO_ERROR;
+    }
+
+  error = numeric_db_value_compare (&durable_val, &entry->last_cached_val, &cmp_result);
+  pr_clear_value (&durable_val);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (db_get_int (&cmp_result) != 0)
+    {
+      return NO_ERROR;
+    }
+
+  return serial_store_cur_val_of_serial (thread_p, entry, &entry->cur_val, 1);
 }
 
 /*
@@ -1323,6 +1412,33 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
 }
 
 /*
+ * serial_flush_cache_pool () - write every cached serial's issued value back to _db_serial.
+ *   return:
+ *
+ * Called during shutdown while the heap, log and buffer managers are still up (unlike
+ * serial_finalize_cache_pool, which runs after the volumes are dismounted). Without this a clean
+ * restart would resume past the end of each reserved block rather than at the last value issued,
+ * which is what makes every standalone (csql -S) process consume a whole block.
+ */
+void
+serial_flush_cache_pool (THREAD_ENTRY * thread_p)
+{
+  if (!serial_Cache_initialized)
+    {
+      return;
+    }
+
+  // *INDENT-OFF*
+  serial_cache_hashmap_type::iterator it { thread_p, serial_Cache_hashmap };
+  // *INDENT-ON*
+
+  for (SERIAL_CACHE_ENTRY * entry = it.iterate (); entry != NULL; entry = it.iterate ())
+    {
+      (void) serial_flush_cur_val_of_serial (thread_p, entry);
+    }
+}
+
+/*
  * serial_finalize_cache_pool () -
  *   return:
  */
@@ -1641,7 +1757,19 @@ xserial_decache (THREAD_ENTRY * thread_p, OID * oidp)
   if (serial_Cache_initialized)
     {
       OID key = *oidp;
-      (void) serial_Cache_hashmap.erase (thread_p, key);
+      SERIAL_CACHE_ENTRY *entry = serial_Cache_hashmap.find (thread_p, key);
+
+      if (entry != NULL)
+	{
+	  /* Hand the unissued tail of the reserved block back before losing the entry, so the next
+	   * block resumes at the last value actually issued instead of past the block end. */
+	  (void) serial_flush_cur_val_of_serial (thread_p, entry);
+
+	  if (!serial_Cache_hashmap.erase_locked (thread_p, key, entry) && entry != NULL)
+	    {
+	      pthread_mutex_unlock (&entry->mutex);
+	    }
+	}
     }
 }
 
