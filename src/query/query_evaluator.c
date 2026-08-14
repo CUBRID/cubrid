@@ -2729,6 +2729,172 @@ update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualific
 }
 
 /*
+ * eval_mark_lazy_always_eager_regu () - if regu (recursively, through arithmetic / function operands)
+ *   references an attribute of attr_cache, flag its value slot to be read eagerly even in lazy mode.
+ */
+static void
+eval_mark_lazy_always_eager_regu (const REGU_VARIABLE * regu, HEAP_CACHE_ATTRINFO * attr_cache)
+{
+  REGU_VARIABLE_LIST operand;
+  int i;
+
+  if (regu == NULL)
+    {
+      return;
+    }
+
+  switch (regu->type)
+    {
+    case TYPE_ATTR_ID:
+    case TYPE_SHARED_ATTR_ID:
+    case TYPE_CLASS_ATTR_ID:
+      if (regu->value.attr_descr.cache_attrinfo == attr_cache)
+	{
+	  for (i = 0; i < attr_cache->num_values; i++)
+	    {
+	      if (attr_cache->values[i].attrid == regu->value.attr_descr.id)
+		{
+		  attr_cache->values[i].lazy_always_eager = true;
+		  break;
+		}
+	    }
+	}
+      break;
+
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      if (regu->value.arithptr != NULL)
+	{
+	  eval_mark_lazy_always_eager_regu (regu->value.arithptr->leftptr, attr_cache);
+	  eval_mark_lazy_always_eager_regu (regu->value.arithptr->rightptr, attr_cache);
+	  eval_mark_lazy_always_eager_regu (regu->value.arithptr->thirdptr, attr_cache);
+	}
+      break;
+
+    case TYPE_FUNC:
+      if (regu->value.funcp != NULL)
+	{
+	  for (operand = regu->value.funcp->operand; operand != NULL; operand = operand->next)
+	    {
+	      eval_mark_lazy_always_eager_regu (&operand->value, attr_cache);
+	    }
+	}
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * eval_mark_first_term_attrs () - find the terms eval_pred () evaluates for EVERY row: it walks the
+ *   right-linear AND/OR chains left to right with short-circuit, so their leftmost term always runs, and
+ *   B_XOR / B_IS / B_IS_NOT have no short-circuit, so both of their sides always run. The lazy read cannot
+ *   skip those terms' attributes; it would only pay the fetch_peek_dbval_slow () dispatch on them. Flag
+ *   their slots to stay on the eager path (heap_attrinfo_read_dbvalues_lazy () reads them now).
+ *   return: none
+ *   pr(in): data filter predicate
+ *   attr_cache(in/out): predicate attribute cache
+ */
+void
+eval_mark_first_term_attrs (const PRED_EXPR * pr, HEAP_CACHE_ATTRINFO * attr_cache)
+{
+  while (pr != NULL)
+    {
+      if (pr->type == T_PRED)
+	{
+	  if (pr->pe.m_pred.bool_op == B_AND || pr->pe.m_pred.bool_op == B_OR)
+	    {
+	      /* short-circuit: only the leftmost term is evaluated on every row */
+	      pr = pr->pe.m_pred.lhs;
+	    }
+	  else
+	    {
+	      /* B_XOR / B_IS / B_IS_NOT evaluate both sides on every row - mark both */
+	      eval_mark_first_term_attrs (pr->pe.m_pred.lhs, attr_cache);
+	      pr = pr->pe.m_pred.rhs;
+	    }
+	}
+      else if (pr->type == T_NOT_TERM)
+	{
+	  pr = pr->pe.m_not_term;
+	}
+      else
+	{
+	  break;
+	}
+    }
+  if (pr == NULL || pr->type != T_EVAL_TERM)
+    {
+      return;
+    }
+
+  switch (pr->pe.m_eval_term.et_type)
+    {
+    case T_COMP_EVAL_TERM:
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_comp.lhs, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_comp.rhs, attr_cache);
+      break;
+    case T_ALSM_EVAL_TERM:
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_alsm.elem, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_alsm.elemset, attr_cache);
+      break;
+    case T_LIKE_EVAL_TERM:
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_like.src, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_like.pattern, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_like.esc_char, attr_cache);
+      break;
+    case T_RLIKE_EVAL_TERM:
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_rlike.src, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_rlike.pattern, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_rlike.case_sensitive, attr_cache);
+      break;
+    default:
+      break;
+    }
+}
+
+/*
+ * eval_disable_lazy_read () - turn the lazy predicate-column read off when this scan defers nothing
+ *   return: none
+ *   attr_cache(in/out): predicate attribute cache, already marked by eval_mark_first_term_attrs ()
+ *
+ * Note: with every predicate column read up front (all slots flagged lazy_always_eager) nothing is ever
+ *   deferred, so short-circuit evaluation has nothing to skip. A single predicate column, or two conditions
+ *   on the same column, is exactly this case; no measurement is needed to know it cannot pay off.
+ *   Also the feature's off switch: with the enable_lazy_predicate_read system parameter off, every scan
+ *   starts disabled and reads exactly as before.
+ */
+void
+eval_disable_lazy_read (HEAP_CACHE_ATTRINFO * attr_cache)
+{
+  int i;
+
+  if (attr_cache == NULL || attr_cache->num_values <= 0)
+    {
+      return;
+    }
+
+  if (!prm_get_bool_value (PRM_ID_ENABLE_LAZY_PREDICATE_READ))
+    {
+      /* the feature's off switch: behave as before this optimization */
+      attr_cache->lazy_disabled = true;
+      return;
+    }
+
+  for (i = 0; i < attr_cache->num_values; i++)
+    {
+      if (!attr_cache->values[i].lazy_always_eager)
+	{
+	  /* this column is deferred - the lazy read can still pay off */
+	  return;
+	}
+    }
+
+  attr_cache->lazy_disabled = true;
+}
+
+/*
  * eval_data_filter () -
  *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  * 	 oid(in): pointer to OID
@@ -2759,8 +2925,12 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
 
   if (scan_attrsp != NULL && scan_attrsp->attr_cache != NULL && scan_predp->regu_list != NULL)
     {
-      /* read the predicate values from the heap into the attribute cache */
-      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp, scan_attrsp->attr_cache) != NO_ERROR)
+      /* Defer reading the predicate values: mark them and stash the record, so columns skipped by
+       * short-circuit evaluation in eval_pred () below are never read. heap_attrvalue_peek_lazy () reads
+       * each one on demand. The first-evaluated term's column(s) were flagged lazy_always_eager at scan
+       * setup (eval_mark_first_term_attrs () in scan_start_scan ()) so they stay on the eager path. For
+       * class attribute scans (recdesp == NULL) this reads everything now. */
+      if (heap_attrinfo_read_dbvalues_lazy (thread_p, oid, recdesp, scan_attrsp->attr_cache) != NO_ERROR)
 	{
 	  return V_ERROR;
 	}
