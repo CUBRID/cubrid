@@ -11286,8 +11286,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       /* not locked in select phase, need locking at update phase */
       need_locking = true;
 
-      /* without reevaluation data a version changed after the statement snapshot cannot be re-checked --
-       * skip it instead of deleting unevaluated (CBRD-27034) */
+      /* without reevaluation data a version that changed after the statement snapshot cannot be
+       * re-checked, so skip it rather than delete what the predicate never saw */
       mvcc_upddel_reev_data.skip_unevaluated_version = (mvcc_reev_class_cnt == 0);
     }
 
@@ -11558,8 +11558,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  if (need_locking && class_oid != NULL && !mvcc_is_mvcc_disabled_class (class_oid)
 		      && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
 		    {
-		      /* the delete is published: late arrivals settle on our MVCCID self-lock (CBRD-27034;
-		       * kept across 2PC prepare by CBRD-27079), so the row lock is redundant from here */
+		      /* the delete is published: late arrivals settle on our MVCCID self-lock, which the
+		       * prepare record persists across 2PC, so the row lock is redundant from here */
 		      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, X_LOCK);
 		    }
 		}
@@ -12316,11 +12316,13 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   int error = NO_ERROR;
   bool need_clear = 0;
   OID unique_oid;
+  OID unique_class_oid;
   int local_op_type = SINGLE_ROW_UPDATE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
   int ispeeking;
 
   OID_SET_NULL (&unique_oid);
+  OID_SET_NULL (&unique_class_oid);
 
   local_scan_cache = scan_cache;
 
@@ -12342,8 +12344,26 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   /* get attribute values */
   ispeeking = ((local_scan_cache != NULL && local_scan_cache->cache_last_fix_page) ? PEEK : COPY);
 
+  /* A duplicate whose delete is in progress carries no row lock once the deleter has published, and the
+   * visible version hides that delete -- updating it would overwrite a record the deleter still has to
+   * undo. Fetch through the lock path instead: it waits the deleter out and re-reads. */
+  scan_code = heap_get_class_oid (thread_p, &unique_oid, &unique_class_oid);
+  if (scan_code != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit_on_error;
+    }
+
   scan_code =
-    heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
+    locator_lock_and_get_object (thread_p, &unique_oid, &unique_class_oid, &rec_descriptor, local_scan_cache, X_LOCK,
+				 ispeeking, NULL_CHN, LOG_WARNING_IF_DELETED);
+  if (scan_code == S_DOESNT_EXIST)
+    {
+      /* the deleter committed: the key is free, so this row is no longer a duplicate and the caller inserts */
+      er_clear ();
+      *force_count = 0;
+      return NO_ERROR;
+    }
   if (scan_code != S_SUCCESS)
     {
       assert (er_errid () == ER_INTERRUPTED);
