@@ -4878,9 +4878,26 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  bool trace_on = prm_get_bool_value (PRM_ID_QUERY_TRACE);
 	  struct timeval trace_start, trace_end;
+	  SM_CLASS *sm_class = NULL;
+	  int att_count;
 
 	  class_mop = cls->info.name.db_object;
-	  class_type = ((SM_CLASS *) class_mop->object)->class_type;
+	  /* do not read class_mop->object directly: the MOP can be DECACHED (object == NULL) by the
+	   * server round-trips of a previous list entry's statistics update, or -- for the counters
+	   * consumed after the histogram build below -- by this entry's own; a concurrent DDL on the
+	   * class invalidates our cached copy while we wait on its locks (CI crash in bug_bts_14492).
+	   * au_fetch_class_force () recaches a decached class and fails cleanly on a dropped one, and
+	   * is what sm_update_statistics () itself uses in the same situation. Authorization was
+	   * already checked in the loop above, so the force (no-auth) fetch is the right flavor.
+	   * att_count is read now, next to class_type, because the class must not be touched again
+	   * after the statistics calls: it may be decached again by the time the summary needs it. */
+	  error = au_fetch_class_force (class_mop, &sm_class, AU_FETCH_READ);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  class_type = sm_class->class_type;
+	  att_count = sm_class->att_count;
 
 	  if (trace_on)
 	    {
@@ -4981,7 +4998,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (error == NO_ERROR)
 		{
 		  n_tables++;
-		  n_cols += ((SM_CLASS *) class_mop->object)->att_count;
+		  n_cols += att_count;
 		}
 	    }
 
