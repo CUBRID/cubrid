@@ -50,6 +50,7 @@
 #include "schema_manager.h"
 #include "network_interface_cl.h"
 #include "dbtype.h"
+#include "object_domain.h"	/* tp_value_compare (), to tell an empty range from an out-of-range one */
 #include "regu_var.hpp"
 #include "memory_hash.h"	/* MHT_HLS_ENTRY for hash-join spill cost */
 #include "histogram_cl.hpp"
@@ -10921,6 +10922,40 @@ qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 }
 
 /*
+ * qo_between_range_is_empty () - do the bounds themselves rule the range out?
+ *   return          : true when no value can fall in the range
+ *   op_type (in)    : two-sided between-range operator
+ *   lo (in)         : lower bound value, NULL when not a constant the optimizer can see
+ *   hi (in)         : upper bound value, likewise
+ *
+ * `x BETWEEN 200 AND 100` and `x > 5 AND x < 5` hold for no value at all, whatever the column
+ * contains, so their estimate is zero rows on the strength of the bounds alone -- unlike a range
+ * that merely fell outside what the histogram recorded, which is only unknown. Reversed constant
+ * bounds are usually folded away earlier; host variables are not, since their values arrive at
+ * execute time, so this is where a provably empty range still reaches the estimator.
+ */
+static bool
+qo_between_range_is_empty (PT_OP_TYPE op_type, DB_VALUE * lo, DB_VALUE * hi)
+{
+  DB_VALUE_COMPARE_RESULT cmp;
+
+  if (lo == NULL || hi == NULL || DB_IS_NULL (lo) || DB_IS_NULL (hi))
+    {
+      /* an unbound host variable proves nothing */
+      return false;
+    }
+
+  cmp = tp_value_compare (lo, hi, 1, 1);
+  if (cmp == DB_GT)
+    {
+      return true;
+    }
+
+  /* equal bounds leave the single point only when both sides include it */
+  return cmp == DB_EQ && op_type != PT_BETWEEN_GE_LE;
+}
+
+/*
  * qo_range_selectivity () -
  *   return:
  *   env(in):
@@ -11134,11 +11169,20 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 		   * this hole, because each probe is floored at one row inside the histogram code, so
 		   * on the same data `a > 1100` estimates 1/total_rows while `a BETWEEN 1100 AND 1400`
 		   * estimates 0. Give the difference the same one-row floor (and bound it to the unit
-		   * interval first, since two independent estimates can cross on skewed data). */
+		   * interval first, since two independent estimates can cross on skewed data).
+		   *
+		   * A range the bounds themselves rule out is a different thing: no data can satisfy it,
+		   * whatever the statistics say, so it keeps its zero and the floor stays out of the way.
+		   * The bounds have to be compared to tell the two apart -- the sign of the difference
+		   * cannot, since a reversed range whose bounds both sit past the histogram's upper bound
+		   * subtracts 1.0 from 1.0 and reads as 0 just like an out-of-range one. Constant bounds
+		   * are usually folded away before this point, but host variables are not (their values
+		   * arrive at execute time), which is where this case actually shows up. */
 		  double total_rows;
 
 		  selectivity = MAX (0.0, MIN (1.0, selectivity));
-		  if (selectivity <= 0.0 && histogram_get_total_rows (lhs, &total_rows))
+		  if (selectivity <= 0.0 && !qo_between_range_is_empty (op_type, arg1_db_value, arg2_db_value)
+		      && histogram_get_total_rows (lhs, &total_rows))
 		    {
 		      selectivity = 1.0 / total_rows;
 		    }
