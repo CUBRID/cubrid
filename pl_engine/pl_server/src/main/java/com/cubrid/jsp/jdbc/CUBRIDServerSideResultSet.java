@@ -74,9 +74,6 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     private int type = TYPE_FORWARD_ONLY;
     private int concurrency = CONCUR_READ_ONLY;
 
-    /* For findColumn */
-    protected HashMap<String, Integer> colNameToIdx;
-
     private boolean isInserting;
     private int currentRowIndex = -1;
 
@@ -449,10 +446,32 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     @Override
     public int findColumn(String columnName) throws SQLException {
-        Integer index = statementHandler.getColNameIndex().get(columnName.toLowerCase());
+
+        String colName = columnName.toLowerCase();
+        Map<String, Integer> colNameToIdx = statementHandler.getColNameIndex();
+
+        // first, try exact match
+        Integer index = colNameToIdx.get(colName);
         if (index == null) {
-            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
-                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_COLUMN_NAME, null);
+
+            // second, try postfix match with a dot
+            String dotColName = "." + colName;
+            for (String cn: colNameToIdx.keySet()) {
+                if (cn.endsWith(dotColName)) {
+                    if (index == null) {
+                        index = colNameToIdx.get(cn);
+                    } else {
+                        // we already found one. duplicate
+                        index = null;
+                        break;
+                    }
+                }
+            }
+
+            if (index == null) {
+                throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                        CUBRIDServerSideJDBCErrorCode.ER_INVALID_COLUMN_NAME, null);
+            }
         }
 
         return index.intValue() + 1;
