@@ -197,7 +197,7 @@ namespace parallel_scan
 	      {
 		assert (list_id_header.m_list_id_p->last_pgptr == nullptr);
 		qfile_destroy_list (thread_p, list_id_header.m_list_id_p);
-		list_id_header.m_list_id_p = nullptr;
+		QFILE_FREE_AND_INIT_LIST_ID (list_id_header.m_list_id_p);
 	      }
 	    for (std::atomic<TP_DOMAIN *> *type_list_p : list_id_header.m_type_list)
 	      {
