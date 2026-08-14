@@ -13155,6 +13155,14 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
   LOCK lock_mode = X_LOCK;
   int err = NO_ERROR;
 
+  if (mvcc_reev_data != NULL)
+    {
+      /* The verdict below belongs to this fetch alone. An object whose last version is visible is not
+       * reevaluated at all, so without this a previous object's V_FALSE would be read back as this one's
+       * and the caller would skip an object that never failed anything. */
+      mvcc_reev_data->filter_result = V_TRUE;
+    }
+
   if (recdes == NULL && mvcc_reev_data != NULL)
     {
       /* peek if only for reevaluation */
