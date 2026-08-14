@@ -682,7 +682,7 @@ static size_t heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info,
 						size_t * offset_size_ptr);
 
 static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-					RECDES * raw);
+					RECDES * raw, int disk_size);
 static void heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					   RECDES * raw);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw);
@@ -9787,6 +9787,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
       value->last_attrepr = NULL;
       value->read_attrepr = NULL;
       value->lazy_always_eager = false;
+      value->rd_attrepr = NULL;	/* decoding plan resolved on the first record */
     }
 
   /*
@@ -10251,7 +10252,8 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
  *
  */
 static void
-heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw)
+heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw,
+			    int disk_size)
 {
   if (OR_FIXED_ATT_IS_UNBOUND (recdes->data, attr_info->read_classrepr->n_variable,
 			       attr_info->read_classrepr->fixed_length, attrepr->position))
@@ -10264,7 +10266,9 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
   raw->data = ((char *) recdes->data
 	       + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (recdes->data,
 						    attr_info->read_classrepr->n_variable) + attrepr->location);
-  raw->length = tp_domain_disk_size (attrepr->domain);
+  /* the width follows from the attribute's domain and was resolved once, when the value's
+   * decoding plan was built (heap_attrvalue_resolve_plan ()) */
+  raw->length = disk_size;
 }
 
 /*
@@ -10324,8 +10328,12 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
 
   rv = NO_ERROR;
 
-  /* clear/decache if old exists */
-  if (value->state != HEAP_UNINIT_ATTRVALUE)
+  /* Clear/decache if old exists.  A slot whose previous content was produced by this same
+   * decode path, for a type that keeps its whole value inside the DB_VALUE, holds nothing
+   * to release -- the value-producing read below overwrites it entirely.  Any other state
+   * (a writer's value, a type that can carry a pointer) still goes through the clear. */
+  if (value->state != HEAP_UNINIT_ATTRVALUE
+      && !(value->state == HEAP_READ_ATTRVALUE && value->rd_attrepr == attrepr && !value->rd_owns_memory))
     {
       (void) pr_clear_value (&value->dbvalue);
     }
@@ -10345,8 +10353,9 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
     {
       or_init (&buf, raw->data, raw->length);
 
-      /* read the value according to disk information that was found */
-      pr_type = pr_type_from_id (attrepr->type);
+      /* read the value according to disk information that was found; the handler was
+       * resolved with the decoding plan (heap_attrvalue_resolve_plan ()) */
+      pr_type = (value->rd_attrepr == attrepr) ? value->rd_type : pr_type_from_id (attrepr->type);
       if (pr_type)
 	{
 	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, false, NULL, 0);
@@ -10373,7 +10382,57 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
  *   attr_info(in/out): The attribute information structure
  *
  * Note: Read the dbvalue of the given value attribute information.
+ *
+ * (the decoding-plan helper below is used by this function)
  */
+/*
+ * heap_attrvalue_resolve_plan () - resolve the per-record constants of an attribute
+ *   value(in/out): the attribute value slot
+ *   attrepr(in): the descriptor the record will be decoded with
+ *
+ * The type handler, the disk width of a fixed attribute and whether the decoded value can
+ * own heap memory follow from the descriptor alone, so they are settled here once and
+ * reused for every record decoded with the same descriptor.  A representation change gives
+ * the value a different descriptor and rebuilds the plan.
+ */
+static void
+heap_attrvalue_resolve_plan (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr)
+{
+  value->rd_type = pr_type_from_id (attrepr->type);
+  value->rd_disk_size = (attrepr->is_fixed != 0) ? tp_domain_disk_size (attrepr->domain) : -1;
+
+  /* Types whose whole value lives inside the DB_VALUE never hand it a pointer to release.
+   * Character data is decoded without copying (data_readval is called with copy = false),
+   * so it points into the record buffer and is not owned either -- but a slot can also be
+   * filled by a writer that DOES own its value, which is why the clear below is only
+   * skipped for a slot whose previous content came from this same decode path. */
+  switch (attrepr->type)
+    {
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
+      value->rd_owns_memory = false;
+      break;
+    default:
+      value->rd_owns_memory = true;
+      break;
+    }
+
+  value->rd_attrepr = attrepr;
+}
+
 static int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
@@ -10405,10 +10464,14 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
     {
       attrepr = value->read_attrepr;
       prefetch (attrepr, PREFETCH_WRITE, PREFETCH_CACHE_L1);
+      if (unlikely (value->rd_attrepr != attrepr))
+	{
+	  heap_attrvalue_resolve_plan (value, attrepr);
+	}
       /* Is it a fixed size attribute ? */
       if (attrepr->is_fixed != 0)
 	{
-	  heap_attrvalue_point_fixed (recdes, attr_info, attrepr, &raw);
+	  heap_attrvalue_point_fixed (recdes, attr_info, attrepr, &raw, value->rd_disk_size);
 	}
       else
 	{
