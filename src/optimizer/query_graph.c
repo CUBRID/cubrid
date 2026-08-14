@@ -8004,7 +8004,7 @@ qo_discover_partitions (QO_ENV * env)
 	   * user, so a 28-table query silently lost cost-based join ordering and index selection while
 	   * a 27-table one kept it. Report it: the warning lands in the error log, and the plan dump
 	   * (SET OPTIMIZATION LEVEL) says the plan was not generated instead of printing nothing. */
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QO_SET_SIZE_EXCEEDED, 0);
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QO_SET_SIZE_EXCEEDED, 0);
 	  er_log_debug (ARG_FILE_LINE,
 			"cost-based optimization skipped: a join partition has %d tables, "
 			"more than the %d the join_info vector can index\n",
