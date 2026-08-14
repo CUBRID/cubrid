@@ -120,6 +120,7 @@ static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void
 
 static void qo_move_on_clause_of_explicit_join_to_where_clause (PARSER_CONTEXT * parser, PT_NODE ** fromp,
 								PT_NODE ** wherep);
+static PT_NODE *qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void qo_do_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 static void qo_do_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -1892,6 +1893,16 @@ qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 
   if (node->node_type == PT_SELECT)
     {
+      if (!node->flag.done_reduce_equality_terms && node->info.query.q.select.connect_by == NULL)
+	{
+	  int continue_innerjoin;
+
+	  qo_move_on_clause_of_explicit_join_to_where_clause (parser, &node->info.query.q.select.from,
+							      &node->info.query.q.select.where);
+	  node->info.query.q.select.where = pt_cnf (parser, node->info.query.q.select.where);
+	  qo_rewrite_innerjoin (parser, node, NULL, &continue_innerjoin);
+	}
+
       wherep = &node->info.query.q.select.where;
       QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, wherep);
     }
