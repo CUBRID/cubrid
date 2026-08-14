@@ -65,14 +65,19 @@ namespace cubxasl
     db_value *value;		/* value of the aggregate */
     db_value *value2;		/* for GROUP_CONCAT, STTDEV and VARIANCE */
     INT64 curr_cnt;			/* current number of items */
-    bool clear_value_at_clone_decache;	/* true, if need to clear value at clone decache */
-    bool clear_value2_at_clone_decache;	/* true, if need to clear value2 at clone decache */
 
     /* deferred-carry NUMERIC SUM/AVG accumulation (NUMERIC_SUM_STATE *, server runtime
      * only, never serialized).  While non-NULL it holds the pending sum INSTEAD of
      * value; every consumer of value materializes it first through
-     * qdata_numeric_sum_flush () (finalize, accumulator merge, hash spill, clear). */
+     * qdata_numeric_sum_flush () (finalize, accumulator merge, hash spill, clear).
+     *
+     * Declared next to curr_cnt because the per-row accumulate kernels read value,
+     * curr_cnt and sum_state together: keeping the three adjacent holds them in one
+     * cache line instead of spilling sum_state past the trailing flags. */
     void *sum_state;
+
+    bool clear_value_at_clone_decache;	/* true, if need to clear value at clone decache */
+    bool clear_value2_at_clone_decache;	/* true, if need to clear value2 at clone decache */
   };
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
