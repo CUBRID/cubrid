@@ -2416,11 +2416,6 @@ qo_iscan_cost (QO_PLAN * planp)
        * qo_nljoin_cost () as the per-probe fetch count of the repeated-probe correction */
       planp->iscan_index_rows = MAX (1.0, (double) QO_NODE_NCARD (nodep) * sel);
 
-      /* Index-driven heap fetches are random page reads while a sequential scan's pages are
-       * sequential, yet both cost 1.0 per page; the ratio below (optimizer_random_page_cost_ratio,
-       * default 1.0 = no change) prices that difference and is the tuning knob for the gap. */
-      object_IO *= (double) prm_get_float_value (PRM_ID_OPTIMIZER_RANDOM_PAGE_COST_RATIO);
-
       /* heap-page share of the per-probe IO: the MAX (1.0, ...) base charged below plus the
        * fanout surcharge. qo_nljoin_cost () applies the repeated-probe (Mackert-Lohman)
        * saturation to this share only; the leaf/ISS terms added below model index pages the
@@ -3634,10 +3629,6 @@ qo_nljoin_cost (QO_PLAN * planp)
       leaf_io = inner->variable_io_cost - heap_io;
 
       naive_io = guessed_result_cardinality * heap_io;
-      /* pages_fetched is a raw page count while naive_io already carries the
-       * optimizer_random_page_cost_ratio through the inner's iscan_heap_io; scale it by the
-       * same ratio so the MIN () compares like units (both sides are random heap-page reads). */
-      pages_fetched *= (double) prm_get_float_value (PRM_ID_OPTIMIZER_RANDOM_PAGE_COST_RATIO);
       inner_io_cost = MIN (naive_io, pages_fetched) + guessed_result_cardinality * leaf_io;
     }
   else
@@ -10531,6 +10522,112 @@ qo_not_selectivity (QO_ENV * env, double sel)
  *
  * Note: This uses the System R algorithm
  */
+/*
+ * qo_expr_ndv_bound () - upper bound on the distinct values an expression can produce
+ *   return: the bound, or 0.0 when no column with statistics was found
+ *   env(in):
+ *   node(in): the expression side of an equality
+ *   depth(in): recursion guard
+ *
+ * A function cannot create distinct values, only merge them: NDV (f (c)) <= NDV (c), and for
+ * several columns NDV (f (c1, c2)) <= NDV (c1) * NDV (c2).  The product of the referenced
+ * columns' NDVs is therefore an upper bound on the expression's own NDV, which makes
+ * 1 / bound a provable LOWER bound on the average selectivity of "expr = const".  Columns
+ * without statistics are skipped, so the result stays an upper bound of what we can prove.
+ */
+static double
+qo_expr_ndv_bound (QO_ENV * env, PT_NODE * node, int depth)
+{
+  double bound = 0.0, ndv;
+  bool success = false;
+  int icard;
+
+  if (node == NULL || depth > 8)
+    {
+      return 0.0;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_DOT_:
+    case PT_NAME:
+      histogram_get_column_ndv (node, &ndv, &success);
+      if (!success)
+	{
+	  /* no histogram: the index cardinality is the same count when an index exists */
+	  icard = qo_index_cardinality (env, node);
+	  if (icard <= 0)
+	    {
+	      return 0.0;
+	    }
+	  ndv = (double) icard;
+	}
+      return ndv;
+
+    case PT_EXPR:
+      {
+	PT_NODE *args[3];
+	int i;
+
+	args[0] = node->info.expr.arg1;
+	args[1] = node->info.expr.arg2;
+	args[2] = node->info.expr.arg3;
+	for (i = 0; i < 3; i++)
+	  {
+	    ndv = qo_expr_ndv_bound (env, args[i], depth + 1);
+	    if (ndv > 0.0)
+	      {
+		bound = (bound > 0.0) ? bound * ndv : ndv;
+	      }
+	  }
+	return bound;
+      }
+
+    case PT_FUNCTION:
+      {
+	PT_NODE *arg;
+
+	for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
+	  {
+	    ndv = qo_expr_ndv_bound (env, arg, depth + 1);
+	    if (ndv > 0.0)
+	      {
+		bound = (bound > 0.0) ? bound * ndv : ndv;
+	      }
+	  }
+	return bound;
+      }
+
+    default:
+      /* literals and everything else contribute no distinct values of their own */
+      return 0.0;
+    }
+}
+
+/*
+ * qo_expr_equal_selectivity () - selectivity of "expression = const"
+ *   return: 1 / (NDV bound of the expression), floored at DEFAULT_EQUAL_SELECTIVITY
+ *   env(in):
+ *   node(in): the expression side
+ *
+ * PC_OTHER is the residual bucket of qo_classify (), not a semantic category, so a tuned
+ * constant for it improves one half of the cases and hurts the other.  Instead derive the
+ * estimate from the columns the expression reads: 1 / NDV-bound is a provable lower bound on
+ * the average selectivity, and the historical default remains the floor so an expression over
+ * a high-cardinality column keeps its previous estimate.
+ */
+static double
+qo_expr_equal_selectivity (QO_ENV * env, PT_NODE * node)
+{
+  double bound = qo_expr_ndv_bound (env, node, 0);
+
+  if (bound <= 0.0)
+    {
+      return DEFAULT_EQUAL_SELECTIVITY;
+    }
+  return MAX (1.0 / bound, DEFAULT_EQUAL_SELECTIVITY);
+}
+
 static double
 qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
@@ -10681,10 +10778,20 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_SUBQUERY:
 	case PC_SET:
 	case PC_OTHER:
-	  /* const = const; an expression side (PC_OTHER, e.g. UPPER (col) = ?) has an unknown
-	   * distribution -- the near-unique default would oversell it */
-	  selectivity = (pc_lhs == PC_OTHER
-			 || pc_rhs == PC_OTHER) ? DEFAULT_EXPR_EQUAL_SELECTIVITY : DEFAULT_EQUAL_SELECTIVITY;
+	  /* const = const; an expression side (PC_OTHER, e.g. UPPER (col) = ?) is estimated from
+	   * the distinct values its columns can carry (see qo_expr_equal_selectivity ()) */
+	  if (pc_lhs == PC_OTHER)
+	    {
+	      selectivity = qo_expr_equal_selectivity (env, lhs);
+	    }
+	  else if (pc_rhs == PC_OTHER)
+	    {
+	      selectivity = qo_expr_equal_selectivity (env, rhs);
+	    }
+	  else
+	    {
+	      selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    }
 	  break;
 
 	case PC_MULTI_ATTR:

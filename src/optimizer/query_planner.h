@@ -114,9 +114,6 @@ typedef enum
 #define DEFAULT_EXISTS_SELECTIVITY (double) 0.1
 #define DEFAULT_SELECTIVITY (double) 0.1
 #define DEFAULT_EQUAL_SELECTIVITY (double) 0.001
-/* equality over a non-indexable expression (UPPER (col) = ?, col + 1 = ?, ...): nothing is
- * known about the expression's distribution, so do not price it as a near-unique lookup */
-#define DEFAULT_EXPR_EQUAL_SELECTIVITY (double) 0.01
 #define DEFAULT_EQUIJOIN_SELECTIVITY (double) 0.001
 #define DEFAULT_COMP_SELECTIVITY (double) 0.1
 #define DEFAULT_BETWEEN_SELECTIVITY (double) 0.01

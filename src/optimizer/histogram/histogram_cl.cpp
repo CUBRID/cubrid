@@ -1596,6 +1596,36 @@ histogram_lhs_string_domain (PT_NODE *lhs, int fallback_codeset, int fallback_co
     }
 }
 
+/*
+ * histogram_get_column_ndv () - distinct value count of the column a node resolves to
+ *   attr(in)     : PT_NAME (or a path chain ending in one)
+ *   ndv(out)     : MCV entries + non-MCV distinct values
+ *   success(out) : false when the node is not a column or carries no histogram
+ */
+void
+histogram_get_column_ndv (PT_NODE *attr, double *ndv, bool *success)
+{
+  assert (ndv != NULL);
+
+  *success = false;
+
+  hist::HistogramReader reader;
+  if (!histogram_init_reader_from_lhs (attr, reader))
+    {
+      return;
+    }
+
+  /* ndistinct == nmcv + Σ bucket approx_ndv */
+  const double distinct = static_cast<double> (reader.mcv_count ()) + static_cast<double> (reader.nonmcv_distinct ());
+  if (distinct <= 0.0)
+    {
+      return;
+    }
+
+  *ndv = distinct;
+  *success = true;
+}
+
 void
 histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success)
 {

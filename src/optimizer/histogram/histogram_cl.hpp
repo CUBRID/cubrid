@@ -106,6 +106,8 @@ void histogram_get_join_selectivity (PT_NODE *lhs, PT_NODE *rhs, double *selecti
 void histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success);
 void histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case_sensitive,
 				      double fallback_sel, double *selectivity, bool *success);
+/* distinct value count of the column the node resolves to (MCV entries + non-MCV distinct) */
+void histogram_get_column_ndv (PT_NODE *attr, double *ndv, bool *success);
 /* histogram utility functions */
 int db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
 bool is_histogrammable_type (DB_TYPE type);
