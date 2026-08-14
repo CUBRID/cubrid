@@ -37,6 +37,7 @@
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define CSQL_MAXNAME	(256)
+#define IDNEXTIFIER_MAX_LIMIT   (DB_MAX_IDENTIFIER_LENGTH + 10)
 #define NUMBER_LITERAL_MAX_LEN  (254)
 #define NUMBER_LITERAL_EXTRA_BYTE (1) /* extra byte for overflow/rounding check in numeric literals */
 #define INTEGER_MAX_LITERAL (NUMBER_LITERAL_MAX_LEN + NUMBER_LITERAL_EXTRA_BYTE)
@@ -1074,8 +1075,8 @@ _[uU][tT][fF]8[']		{
 				}
 
 ([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* {
-							   if (strlen(yytext) >= 254)
-							     yytext[254] = 0;
+							   if (strlen(yytext) >= IDNEXTIFIER_MAX_LIMIT)
+							     yytext[IDNEXTIFIER_MAX_LIMIT] = '\0';
 							   csql_yylval.cptr = pt_makename(yytext);
 							   return IdName;
 						         }
@@ -1099,9 +1100,9 @@ _[uU][tT][fF]8[']		{
                                         BEGIN(INITIAL);
                                        
                                         len = strlen(yytext);
-                                        if (len >= 254)
+                                        if (len >= IDNEXTIFIER_MAX_LIMIT)
                                           {
-                                             yytext[254] = 0;
+                                             yytext[IDNEXTIFIER_MAX_LIMIT] = '\0';
                                           }
 
                                         for (i = 0; i < len - 1 && IS_BLANK_CHAR (yytext[i]); i++)
@@ -1238,9 +1239,9 @@ _[uU][tT][fF]8[']		{
                                         } else {
                                                 BEGIN(INITIAL);
                                         }
-					if (strlen(csql_yylval.cptr) >= 254)
+					if (strlen(csql_yylval.cptr) >= IDNEXTIFIER_MAX_LIMIT)
 					  {
-					    csql_yylval.cptr[254] = 0;
+					    csql_yylval.cptr[IDNEXTIFIER_MAX_LIMIT] = '\0';
 					  }
 					return DelimitedIdName;
 				}
@@ -1252,9 +1253,9 @@ _[uU][tT][fF]8[']		{
                                         } else {
                                                 BEGIN(INITIAL);
                                         }
-					if (strlen(csql_yylval.cptr) >= 254)
+					if (strlen(csql_yylval.cptr) >= IDNEXTIFIER_MAX_LIMIT)
 					  {
-					    csql_yylval.cptr[254] = 0;
+					    csql_yylval.cptr[IDNEXTIFIER_MAX_LIMIT] = '\0';
 					  }
 					return BracketDelimitedIdName;
 				}
@@ -1266,9 +1267,9 @@ _[uU][tT][fF]8[']		{
                                         } else {
                                                 BEGIN(INITIAL);
                                         }
-					if (strlen(csql_yylval.cptr) >= 254)
+					if (strlen(csql_yylval.cptr) >= IDNEXTIFIER_MAX_LIMIT)
 					  {
-					    csql_yylval.cptr[254] = 0;
+					    csql_yylval.cptr[IDNEXTIFIER_MAX_LIMIT] = '\0';
 					  }
 					return BacktickDelimitedIdName;
 				}
