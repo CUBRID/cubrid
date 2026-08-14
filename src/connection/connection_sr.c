@@ -3101,7 +3101,11 @@ css_wakeup_handler (css_conn_entry * conn)
       return;
     }
 
-  if (!conn->worker->notify ())
+  /* Nothing queued means nothing for the worker to do once it wakes, and the
+   * reply has already gone to the kernel from this thread. Skipping the wake
+   * leaves the worker in epoll_wait, where the client's next request will find
+   * it: the descriptor stays armed EPOLLET | EPOLLIN across requests. */
+  if (conn->worker->has_queued_messages () && !conn->worker->notify ())
     {
       assert_release (false);
     }

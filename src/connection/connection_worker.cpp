@@ -480,6 +480,21 @@ namespace cubconn::connection
 #endif
   }
 
+  bool worker::has_queued_messages () const
+  {
+    std::size_t i;
+
+    for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
+      {
+	if (m_queue_size[i].load (std::memory_order_acquire) != 0)
+	  {
+	    return true;
+	  }
+      }
+
+    return false;
+  }
+
   bool worker::notify ()
   {
     std::uint64_t u;

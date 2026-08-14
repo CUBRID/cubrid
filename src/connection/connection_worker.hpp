@@ -202,6 +202,18 @@ namespace cubconn::connection
       /* used for control from other threads */
       void enqueue (queue_type type, message &&item);
       bool notify ();
+
+      /* Whether notify () has anything for this worker to find.
+       *
+       * enqueue () only pushes; the wake belongs to the caller, and every caller
+       * issues its own. The one exception was css_wakeup_handler, which fires
+       * after each completed request and woke the worker whether or not anything
+       * had been queued for it. In the ordinary case nothing has: the reply went
+       * out inline from the transaction thread and the descriptor stays armed
+       * EPOLLET | EPOLLIN across requests, so the wake only cost an eventfd write
+       * and a worker pulled out of epoll_wait. 11.5.0.2112 has no per-request
+       * wake at all. */
+      bool has_queued_messages () const;
       bool enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func = nullptr,
 			       int wait_time = 0 /* no wait */);
 
