@@ -231,10 +231,9 @@ dblink_2pc_completion_wait (DBLINK_2PC_COMPLETION * completion, int timeout_msec
     }
 
   /* pthread_cond_timedwait takes an absolute CLOCK_REALTIME deadline, so compute it once and let
-   * the loop below re-check it on every wakeup - that also absorbs spurious wakeups.
-   * CLOCK_MONOTONIC would be steadier under an NTP step, but it needs pthread_condattr_setclock(),
-   * which the Windows porting layer (base/porting.h) does not provide.  The existing waits in the
-   * tree take the same approach - see broker.c. */
+   * the loop below re-check it on every wakeup - that absorbs spurious wakeups and keeps the total
+   * wait at the bound however many times we wake, which recomputing a relative timeout would not.
+   * The existing waits in the tree take the same approach - see broker.c. */
   clock_gettime (CLOCK_REALTIME, &deadline);
   deadline.tv_sec += timeout_msec / 1000;
   deadline.tv_nsec += (long) (timeout_msec % 1000) * 1000000L;
