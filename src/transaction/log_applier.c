@@ -5853,13 +5853,11 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
 	      sb.clear ();
 	      db_sprint_value (la_get_item_pk_value (item), sb);
-	      const char *class_name = item->class_name;
 	      const char *pk_string = sb.get_buffer ();
-	      const char *class_ellipsis = strlen (class_name) > 16 ? "..." : "";
-	      const char *pk_ellipsis = strlen (pk_string) > 16 ? "..." : "";
+	      const char *pk_ellipsis = strlen (pk_string) > 255 ? "..." : "";
 
-	      er_log_debug (ARG_FILE_LINE, "Internal system failure: [%.16s%s,%.16s%s] %s", class_name,
-			    class_ellipsis, pk_string, pk_ellipsis, db_error_string (1));
+	      er_log_debug (ARG_FILE_LINE, "Internal system failure: [%s,%.255s%s] %s", item->class_name, pk_string,
+			    pk_ellipsis, db_error_string (1));
 
 	      if (ER_IS_SERVER_DOWN_ERROR (errid))
 		{
