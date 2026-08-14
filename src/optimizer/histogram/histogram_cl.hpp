@@ -106,6 +106,10 @@ void histogram_get_join_selectivity (PT_NODE *lhs, PT_NODE *rhs, double *selecti
 void histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success);
 void histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case_sensitive,
 				      double fallback_sel, double *selectivity, bool *success);
+/* the row count the column's histogram was built from, for callers that combine two probes and
+ * need the same one-row floor the single probes apply. Returns false when the column has no
+ * usable histogram. */
+bool histogram_get_total_rows (PT_NODE * lhs, double *total_rows);
 /* histogram utility functions */
 int db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
 bool is_histogrammable_type (DB_TYPE type);

@@ -11123,6 +11123,26 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  else
 	    {
 	      env->sel_hist_used = true;
+
+	      if (op_type == PT_BETWEEN_GE_LE || op_type == PT_BETWEEN_GE_LT || op_type == PT_BETWEEN_GT_LE
+		  || op_type == PT_BETWEEN_GT_LT)
+		{
+		  /* A two-sided range is the difference of two independent probes, so it has no floor
+		   * of its own: where both probes land past the histogram's bounds they return the
+		   * same value and cancel to exactly 0 rows -- an append-only key or a date column
+		   * whose statistics went stale reads as empty. The one-sided operators do not have
+		   * this hole, because each probe is floored at one row inside the histogram code, so
+		   * on the same data `a > 1100` estimates 1/total_rows while `a BETWEEN 1100 AND 1400`
+		   * estimates 0. Give the difference the same one-row floor (and bound it to the unit
+		   * interval first, since two independent estimates can cross on skewed data). */
+		  double total_rows;
+
+		  selectivity = MAX (0.0, MIN (1.0, selectivity));
+		  if (selectivity <= 0.0 && histogram_get_total_rows (lhs, &total_rows))
+		    {
+		      selectivity = 1.0 / total_rows;
+		    }
+		}
 	    }
 	}
       else if (op_type == PT_BETWEEN_EQ_NA)

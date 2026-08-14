@@ -1169,6 +1169,32 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
 }
 
 /*
+ * histogram_get_total_rows () - the row count the column's histogram was built from
+ *   return               : true when the column has a usable histogram (total_rows is then set)
+ *   lhs (in)             : column node
+ *   total_rows (out)     : rows the histogram summarizes
+ *
+ * A caller that builds a range selectivity out of two single probes cannot apply the one-row
+ * floor those probes apply individually (the floor is inside them, and their difference is not),
+ * so it needs the same denominator to hedge the combined estimate with.
+ */
+bool
+histogram_get_total_rows (PT_NODE *lhs, double *total_rows)
+{
+  hist::HistogramReader histogram_reader;
+
+  assert (total_rows != NULL);
+
+  if (!histogram_init_reader_from_lhs (lhs, histogram_reader))
+    {
+      return false;
+    }
+
+  *total_rows = static_cast<double> (histogram_reader.total_rows ());
+  return *total_rows > 0.0;
+}
+
+/*
  * mcv_join_parts () - match up the two sorted MCV lists for an equijoin.
  *   matchprodfreq (out): Σ freq1 * freq2 over MCV values present on BOTH sides
  *   matchfreq1/2 (out) : Σ freq of the matched MCVs on each side
