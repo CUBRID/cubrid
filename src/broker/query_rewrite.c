@@ -413,7 +413,10 @@ qr_shm_header_sane (const T_QR_SHM_HEADER * h, int mid)
       || h->hash_size != QR_DEFAULT_HASH_SIZE || h->dbuser_hash_size != QR_DEFAULT_HASH_SIZE
       || h->dbuser_count < 0 || h->dbuser_count > h->max_rules
       || h->cfg_max_query_len <= 0 || h->cfg_max_query_len > QR_MAX_QUERY_LEN
-      || h->min_query_len < 0 || h->max_query_len < 0 || h->max_query_len > h->cfg_max_query_len)
+      || h->min_query_len < 0 || h->max_query_len < 0 || h->max_query_len > h->cfg_max_query_len
+      /* broker_name is compared and printed below this gate, so its terminator is part of
+       * being sane, not something the callers may assume */
+      || h->broker_name[BROKER_NAME_LEN - 1] != '\0' || h->writer_pid < 0)
     {
       return false;
     }
@@ -986,6 +989,15 @@ qr_admin_dump_info (FILE * fp, const T_BROKER_INFO * br_info_p)
       return;
     }
 
+  /* same key, same owner_shm_id, other broker: APPL_SERVER_SHM_ID was edited under running
+   * brokers, so what follows would describe someone else's rules (see qr_admin_attach) */
+  if (strcmp (hdr->broker_name, br_info_p->name) != 0)
+    {
+      fprintf (fp, "  QUERY_REWRITE = OFF (segment on this key belongs to broker '%s')\n", hdr->broker_name);
+      shmdt (base);
+      return;
+    }
+
   rule = (T_QR_RULE *) (base + hdr->rule_off);
   pool = base + hdr->pool_off;
 
@@ -1005,6 +1017,14 @@ qr_admin_dump_info (FILE * fp, const T_BROKER_INFO * br_info_p)
   fprintf (fp, "  MAX RULES     : %-3d      MAX QUERY LEN : %-d\n", hdr->max_rules, hdr->cfg_max_query_len);
   fprintf (fp, "  LOADED        : %-3d      DISABLED      : %-3d       SLOTS : %d/%d\n",
 	   loaded, disabled, hdr->rule_count, hdr->max_rules);
+
+  /* this runs without the rule-dir lock, so it cannot tell a running writer from a dead one;
+   * qr_admin_begin makes that call under the lock and recovers */
+  if (hdr->writer_pid != 0)
+    {
+      fprintf (fp, "  MUTATION      : pid %d (in progress, or interrupted and recovered by the next qr command)\n",
+	       hdr->writer_pid);
+    }
 
   /* rules that failed to load have no slot at all, so the listing below cannot show them.
    * point at the rule error log instead: qr_shm_create() unlinks it on entry and recreates
@@ -1744,7 +1764,9 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 
   hdr->magic = QR_SHM_MAGIC;
   hdr->owner_shm_id = br_info_p->appl_server_shm_id;
+  snprintf (hdr->broker_name, sizeof (hdr->broker_name), "%s", br_info_p->name);
   hdr->generation = shm_as_p->query_rewrite_generation + 1;
+  hdr->writer_pid = 0;
   hdr->rule_count = parsed_count;
   hdr->hash_size = hash_size;
   hdr->max_rules = max_rules;
@@ -1960,7 +1982,80 @@ qr_admin_attach (const T_BROKER_INFO * br, char *msg, int msgsz)
       return NULL;
     }
 
+  /* the key and owner_shm_id above both come from the conf as it reads now.  editing
+   * APPL_SERVER_SHM_ID under a running broker makes them address whatever other broker now
+   * answers to that value, and the mutation would silently land in its rules. */
+  if (strcmp (((T_QR_SHM_HEADER *) base)->broker_name, br->name) != 0)
+    {
+      snprintf (msg, msgsz, "rewrite segment on this key belongs to broker '%s', not '%s'; "
+		"APPL_SERVER_SHM_ID changed after the broker started",
+		((T_QR_SHM_HEADER *) base)->broker_name, br->name);
+      shmdt (base);
+      return NULL;
+    }
+
   return base;
+}
+
+/* is slot idx reachable from a bucket chain?  a published slot always is; the window
+ * qr_admin_append leaves between its rule_count store and its bucket store is the only way
+ * to get one that is not. */
+static bool
+qr_slot_referenced (const char *base, int idx)
+{
+  const T_QR_SHM_HEADER *hdr = (const T_QR_SHM_HEADER *) base;
+  const int *bucket = (const int *) (base + hdr->bucket_off);
+  const T_QR_RULE *rule = (const T_QR_RULE *) (base + hdr->rule_off);
+  int i;
+
+  for (i = 0; i < hdr->hash_size; i++)
+    {
+      if (bucket[i] == idx)
+	{
+	  return true;
+	}
+    }
+  for (i = 0; i < hdr->rule_count; i++)
+    {
+      if (rule[i].next_idx == idx)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/* give back the slots an interrupted qr_admin_append reserved.  without this they are counted
+ * against max_rules forever, so repeated crashes turn into "rule capacity full" with nothing
+ * to point at.  returns the number reclaimed.
+ *
+ * this is the one exception to "slots are never reused before a restart", and unreferenced is
+ * exactly what earns it: a slot no chain reaches was never returned by qr_lookup, so no
+ * prepared handle holds its index and a later append cannot redirect one into another rule's
+ * bind map.  reusing a published slot would do precisely that.
+ *
+ * lowering rule_count needs no ordering against readers -- qr_lookup takes it as a hop cap,
+ * never as an index.  the stores also run before writer_pid is restamped, so an interruption
+ * here leaves the marker standing and the next command finishes the job. */
+static int
+qr_admin_reclaim (char *base)
+{
+  T_QR_SHM_HEADER *hdr = (T_QR_SHM_HEADER *) base;
+  int n = 0;
+
+  while (hdr->rule_count > 0 && !qr_slot_referenced (base, hdr->rule_count - 1))
+    {
+      hdr->rule_count--;
+      n++;
+    }
+
+  if (n > 0)
+    {
+      hdr->generation++;
+    }
+
+  return n;
 }
 
 /* acquire the rule-dir lock and attach the segment RW for a runtime mutation.
@@ -1969,6 +2064,7 @@ qr_admin_attach (const T_BROKER_INFO * br, char *msg, int msgsz)
 static char *
 qr_admin_begin (const T_BROKER_INFO * br, char *msg, int msgsz, int *lock_fd)
 {
+  T_QR_SHM_HEADER *hdr;
   char *base;
 
   *lock_fd = qr_admin_lock (br->query_rewrite_rule, msg, msgsz);
@@ -1985,6 +2081,23 @@ qr_admin_begin (const T_BROKER_INFO * br, char *msg, int msgsz, int *lock_fd)
       return NULL;
     }
 
+  /* holding the lock excludes every live writer, so a pid still recorded here belongs to one
+   * that died: no liveness probe, and no pid-reuse race to worry about. */
+  hdr = (T_QR_SHM_HEADER *) base;
+  if (hdr->writer_pid != 0)
+    {
+      char why[256];
+      int reclaimed = qr_admin_reclaim (base);
+
+      snprintf (why, sizeof (why),
+		"warning: a query rewrite command (pid %d) was interrupted; %d unpublished slot(s) reclaimed",
+		hdr->writer_pid, reclaimed);
+      qr_rule_log_write (br, false, "(segment)", why);
+    }
+
+  hdr->writer_pid = (int) getpid ();
+  QR_BARRIER ();
+
   return base;
 }
 
@@ -1994,6 +2107,8 @@ qr_admin_end (char *base, int lock_fd)
 {
   if (base != NULL)
     {
+      QR_BARRIER ();
+      ((T_QR_SHM_HEADER *) base)->writer_pid = 0;
       shmdt (base);
     }
   qr_admin_unlock (lock_fd);

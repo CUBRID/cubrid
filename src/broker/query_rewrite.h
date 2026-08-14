@@ -99,10 +99,17 @@ extern "C"
   {
     int magic;
     int owner_shm_id;		/* appl_server_shm_id that owns this segment */
+    char broker_name[BROKER_NAME_LEN];	/* owning broker.  owner_shm_id alone cannot identify the
+					 * segment: an admin command derives the key from the conf as
+					 * it reads now, which may no longer be what the running broker
+					 * built the segment with (see qr_admin_attach). */
     int generation;		/* bumped on every runtime mutation (add/reload/disable/enable).
 				 * RESERVED: not yet consumed on the CAS side -- process-local cache
 				 * invalidation currently uses T_QR_RULE.admin_seq.  kept for a future
 				 * segment-wide cache-flush signal. */
+    int writer_pid;		/* admin pid mutating the segment, 0 when none.  mutation runs under
+				 * the rule-dir flock, so a non-zero value seen while holding that
+				 * lock can only be a writer that died mid-mutation. */
     int rule_count;		/* number of allocated slots */
     int hash_size;
     int min_query_len;		/* shortest normalized original query length */
