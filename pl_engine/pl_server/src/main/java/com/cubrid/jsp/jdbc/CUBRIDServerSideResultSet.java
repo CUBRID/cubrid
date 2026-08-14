@@ -55,7 +55,6 @@ import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.Calendar;
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -456,7 +455,7 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
             // second, try postfix match with a dot
             String dotColName = "." + colName;
-            for (String cn: colNameToIdx.keySet()) {
+            for (String cn : colNameToIdx.keySet()) {
                 if (cn.endsWith(dotColName)) {
                     if (index == null) {
                         index = colNameToIdx.get(cn);
