@@ -69,9 +69,13 @@ enum expr_pred_kind
 };
 
 typedef struct expr_pred EXPR_PRED;
+/* comparison leaf resolved at compile time from (operand type, relational operator) */
+typedef DB_LOGICAL (*EXPR_PRED_EVAL_FN) (const EXPR_PRED * pred);
+
 struct expr_pred
 {
   enum expr_pred_kind kind;
+  EXPR_PRED_EVAL_FN eval;	/* EXPR_PRED_COMP only: the (type, op) leaf */
 
   EXPR_PRED *lhs;		/* and/or/not */
   EXPR_PRED *rhs;		/* and/or */
@@ -159,17 +163,27 @@ expr_coerce_dbval_to_numeric (const DB_VALUE * dbval_p, DB_VALUE * result_p)
   (void) numeric_db_value_coerce_to_num ((DB_VALUE *) dbval_p, result_p, &data_stat);
 }
 
+/* Arithmetic kernels own a fixed-size result slot -- INTEGER, BIGINT, DOUBLE and NUMERIC
+ * all live inside the DB_VALUE -- so the slot never takes ownership of heap memory and the
+ * per-row pr_clear_value () of the interpreted path is redundant here: the db_make_* below
+ * overwrites the whole slot, and the NULL path sets the NULL flag directly (the same state
+ * pr_clear_value () left behind, minus the out-of-line call and its type switch).
+ *
+ * The result pointer is NOT published per row either.  A slot-owning step writes the same
+ * address into the same cell on every row, so expr_prog_materialize () does it once. */
 #define EXPR_ARITH_PROLOGUE(a, b) \
   DB_VALUE *a = *step->arg1p; \
   DB_VALUE *b = *step->arg2p; \
-  pr_clear_value (step->out); \
-  *step->out_cell = step->out; \
   if (DB_IS_NULL (a) || DB_IS_NULL (b)) \
     { \
+      PRIM_SET_NULL (step->out); \
       return NO_ERROR; \
     }
 
-#define EXPR_ARITH_EPILOGUE() return expr_coerce_result_to_domain (step->out, step->domain)
+/* A result domain the kernel's own type already satisfies is dropped at compile time
+ * (step->domain == NULL), so only the parameterized NUMERIC case reaches the coercion. */
+#define EXPR_ARITH_EPILOGUE() \
+  return (step->domain == NULL) ? NO_ERROR : expr_coerce_result_to_domain (step->out, step->domain)
 
 /* ---- INTEGER ---- */
 
@@ -349,32 +363,26 @@ expr_k_mul_double (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
  * (float) call so the kernels stay exact mirrors -- the two families produce
  * different result scales (visible in division). */
 
-static int
-expr_k_add_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
-{
-  EXPR_ARITH_PROLOGUE (a, b);
-  if ((step->aux ? float_numeric_db_value_add (a, b, step->out) : numeric_db_value_add (a, b, step->out)) != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
-      return ER_QPROC_OVERFLOW_ADDITION;
-    }
-  EXPR_ARITH_EPILOGUE ();
+/* The operand mix decides the family once, at compile time, so each family gets its own
+ * kernel instead of a per-row test on step->aux. */
+#define EXPR_NUMERIC_BINOP_KERNEL(name, call, err) \
+static int \
+name (EXPR_STEP * step, EXPR_EVAL_CTX * ctx) \
+{ \
+  EXPR_ARITH_PROLOGUE (a, b); \
+  if (call (a, b, step->out) != NO_ERROR) \
+    { \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0); \
+      return err; \
+    } \
+  EXPR_ARITH_EPILOGUE (); \
 }
 
-static int
-expr_k_sub_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
-{
-  EXPR_ARITH_PROLOGUE (a, b);
-  if ((step->aux ? float_numeric_db_value_sub (a, b, step->out) : numeric_db_value_sub (a, b, step->out)) != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
-      return ER_QPROC_OVERFLOW_SUBTRACTION;
-    }
-  EXPR_ARITH_EPILOGUE ();
-}
-
-static int
-expr_k_mul_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+EXPR_NUMERIC_BINOP_KERNEL (expr_k_add_numeric_float, float_numeric_db_value_add, ER_QPROC_OVERFLOW_ADDITION)
+EXPR_NUMERIC_BINOP_KERNEL (expr_k_add_numeric_plain, numeric_db_value_add, ER_QPROC_OVERFLOW_ADDITION)
+EXPR_NUMERIC_BINOP_KERNEL (expr_k_sub_numeric_float, float_numeric_db_value_sub, ER_QPROC_OVERFLOW_SUBTRACTION)
+EXPR_NUMERIC_BINOP_KERNEL (expr_k_sub_numeric_plain, numeric_db_value_sub, ER_QPROC_OVERFLOW_SUBTRACTION)
+     static int expr_k_mul_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
   /* multiplication is the float call for every operand mix (qdata_multiply_numeric_
@@ -389,34 +397,35 @@ expr_k_mul_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   EXPR_ARITH_EPILOGUE ();
 }
 
-static int
-expr_k_div_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
-{
-  EXPR_ARITH_PROLOGUE (a, b);
-  if (numeric_db_value_is_zero (b))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_ZERO_DIVIDE, 0);
-      return ER_FAILED;
-    }
-  if ((step->aux ? float_numeric_db_value_div (a, b, step->out) : numeric_db_value_div (a, b, step->out)) != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
-      return ER_QPROC_OVERFLOW_DIVISION;
-    }
-  EXPR_ARITH_EPILOGUE ();
+#define EXPR_NUMERIC_DIV_KERNEL(name, call) \
+static int \
+name (EXPR_STEP * step, EXPR_EVAL_CTX * ctx) \
+{ \
+  EXPR_ARITH_PROLOGUE (a, b); \
+  if (numeric_db_value_is_zero (b)) \
+    { \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_ZERO_DIVIDE, 0); \
+      return ER_FAILED; \
+    } \
+  if (call (a, b, step->out) != NO_ERROR) \
+    { \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0); \
+      return ER_QPROC_OVERFLOW_DIVISION; \
+    } \
+  EXPR_ARITH_EPILOGUE (); \
 }
 
-/* coerce one side to NUMERIC per row (the mirror of qdata_add_numeric's tmp coercion);
- * step->aux == 1 means arg1 needs the coercion, otherwise arg2 */
-static int
-expr_k_coerce_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+EXPR_NUMERIC_DIV_KERNEL (expr_k_div_numeric_float, float_numeric_db_value_div)
+EXPR_NUMERIC_DIV_KERNEL (expr_k_div_numeric_plain, numeric_db_value_div)
+/* coerce one side to NUMERIC (the mirror of qdata_add_numeric's tmp coercion).  The result
+ * is a NUMERIC, which lives inside the DB_VALUE, so the slot needs no per-row clear. */
+     static int expr_k_coerce_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   DB_VALUE *src = *step->arg1p;
 
-  pr_clear_value (step->out);
-  *step->out_cell = step->out;
   if (DB_IS_NULL (src))
     {
+      PRIM_SET_NULL (step->out);
       return NO_ERROR;
     }
   expr_coerce_dbval_to_numeric (src, step->out);
@@ -442,8 +451,9 @@ expr_k_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   DB_VALUE *src = *step->arg1p;
   TP_DOMAIN_STATUS dom_status;
 
+  /* the target domain may be a string type, so this slot CAN own heap memory and keeps
+   * the per-row clear */
   pr_clear_value (step->out);
-  *step->out_cell = step->out;
 
   dom_status = tp_value_cast (src, step->out, step->domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
@@ -455,26 +465,29 @@ expr_k_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 
 /* ---- EXTRACT over a DATE operand ---- */
 
-/* mirror of the T_EXTRACT path (db_string_extract_dbval () DB_TYPE_DATE case): decode
- * the date and take the compile-time-fixed field; NULL propagates through the cleared
- * result slot exactly like the interpreted pre-switch pr_clear_value () */
+/* All EXTRACT kernels produce an INTEGER, so their slot never owns heap memory: no per-row
+ * clear, and the NULL path sets the flag directly.  The field is a compile-time constant
+ * used as an index into the decoded array, so no per-row field test remains either. */
+#define EXPR_EXTRACT_PROLOGUE(src) \
+  DB_VALUE *src = *step->arg1p; \
+  if (DB_IS_NULL (src)) \
+    { \
+      PRIM_SET_NULL (step->out); \
+      return NO_ERROR; \
+    }
+
+/* mirror of the T_EXTRACT path (db_string_extract_dbval () DB_TYPE_DATE case) */
 static int
 expr_k_extract_date (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  DB_VALUE *src = *step->arg1p;
   DB_DATE date;
-  int month, day, year;
+  int extvar[NUM_MISC_OPERANDS];
 
-  pr_clear_value (step->out);
-  *step->out_cell = step->out;
-  if (DB_IS_NULL (src))
-    {
-      return NO_ERROR;
-    }
+  EXPR_EXTRACT_PROLOGUE (src);
 
   date = *db_get_date (src);
-  db_date_decode (&date, &month, &day, &year);
-  db_make_int (step->out, (step->aux == (int) YEAR) ? year : (step->aux == (int) MONTH) ? month : day);
+  db_date_decode (&date, &extvar[MONTH], &extvar[DAY], &extvar[YEAR]);
+  db_make_int (step->out, extvar[step->aux]);
   return NO_ERROR;
 }
 
@@ -482,16 +495,10 @@ expr_k_extract_date (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 static int
 expr_k_extract_time (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  DB_VALUE *src = *step->arg1p;
   DB_TIME time;
   int extvar[NUM_MISC_OPERANDS];
 
-  pr_clear_value (step->out);
-  *step->out_cell = step->out;
-  if (DB_IS_NULL (src))
-    {
-      return NO_ERROR;
-    }
+  EXPR_EXTRACT_PROLOGUE (src);
 
   time = *db_get_time (src);
   db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
@@ -503,16 +510,10 @@ expr_k_extract_time (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 static int
 expr_k_extract_datetime (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  DB_VALUE *src = *step->arg1p;
   DB_DATETIME *datetime_p;
   int extvar[NUM_MISC_OPERANDS];
 
-  pr_clear_value (step->out);
-  *step->out_cell = step->out;
-  if (DB_IS_NULL (src))
-    {
-      return NO_ERROR;
-    }
+  EXPR_EXTRACT_PROLOGUE (src);
 
   datetime_p = db_get_datetime (src);
   db_datetime_decode (datetime_p, &extvar[MONTH], &extvar[DAY], &extvar[YEAR], &extvar[HOUR], &extvar[MINUTE],
@@ -522,33 +523,38 @@ expr_k_extract_datetime (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 }
 
 /* mirror of the db_string_extract_dbval () DB_TYPE_TIMESTAMP case (session timezone
- * decode, identical to the interpreted path) */
+ * decode, identical to the interpreted path).  Which half of the decode the field needs
+ * is fixed at compile time, so the two halves are separate kernels. */
 static int
-expr_k_extract_timestamp (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+expr_k_extract_timestamp_date (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  DB_VALUE *src = *step->arg1p;
   DB_UTIME *utime;
   DB_DATE date;
   DB_TIME time;
   int extvar[NUM_MISC_OPERANDS];
 
-  pr_clear_value (step->out);
-  *step->out_cell = step->out;
-  if (DB_IS_NULL (src))
-    {
-      return NO_ERROR;
-    }
+  EXPR_EXTRACT_PROLOGUE (src);
 
   utime = db_get_timestamp (src);
   (void) db_timestamp_decode_ses (utime, &date, &time);
-  if (step->aux == (int) YEAR || step->aux == (int) MONTH || step->aux == (int) DAY)
-    {
-      db_date_decode (&date, &extvar[MONTH], &extvar[DAY], &extvar[YEAR]);
-    }
-  else
-    {
-      db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
-    }
+  db_date_decode (&date, &extvar[MONTH], &extvar[DAY], &extvar[YEAR]);
+  db_make_int (step->out, extvar[step->aux]);
+  return NO_ERROR;
+}
+
+static int
+expr_k_extract_timestamp_time (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_UTIME *utime;
+  DB_DATE date;
+  DB_TIME time;
+  int extvar[NUM_MISC_OPERANDS];
+
+  EXPR_EXTRACT_PROLOGUE (src);
+
+  utime = db_get_timestamp (src);
+  (void) db_timestamp_decode_ses (utime, &date, &time);
+  db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
   db_make_int (step->out, extvar[step->aux]);
   return NO_ERROR;
 }
@@ -565,8 +571,8 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   int cmp_res;
   TP_DOMAIN_STATUS dom_status;
 
+  /* the cast target may be a string type, so the slot can own heap memory */
   pr_clear_value (step->out);
-  *step->out_cell = step->out;
   if (DB_IS_NULL (v1))
     {
       return NO_ERROR;
@@ -591,6 +597,56 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 }
 
 /* ---- CASE family: compiled predicates, branch regions ---- */
+
+/* The operand type and the relational operator of a comparison are both fixed when the
+ * predicate is compiled, so the per-row work is one indirect call to a leaf that knows
+ * both -- no switch on the type and no switch on the operator inside the row loop.  The
+ * leaves below are the (type x operator) cross product for the direct-compare types; every
+ * other type resolves to the generic leaf that calls tp_value_compare_with_error (). */
+
+/* mirror of eval_pred () T_COMP_EVAL_TERM: a NULL side is V_UNKNOWN before any comparison
+ * (rel_ops needing different NULL handling are rejected at compile time) */
+#define EXPR_PRED_CMP_PROLOGUE(v1, v2) \
+  DB_VALUE *v1 = *pred->arg1p; \
+  DB_VALUE *v2; \
+  if (DB_IS_NULL (v1)) \
+    { \
+      return V_UNKNOWN; \
+    } \
+  v2 = *pred->arg2p; \
+  if (DB_IS_NULL (v2)) \
+    { \
+      return V_UNKNOWN; \
+    }
+
+#define EXPR_PRED_CMP_LEAF(name, get, op) \
+static DB_LOGICAL \
+name (const EXPR_PRED * pred) \
+{ \
+  EXPR_PRED_CMP_PROLOGUE (v1, v2); \
+  return (get (v1) op get (v2)) ? V_TRUE : V_FALSE; \
+}
+
+/* *INDENT-OFF* */
+EXPR_PRED_CMP_LEAF (expr_pred_int_eq, db_get_int, ==)
+EXPR_PRED_CMP_LEAF (expr_pred_int_ne, db_get_int, !=)
+EXPR_PRED_CMP_LEAF (expr_pred_int_lt, db_get_int, <)
+EXPR_PRED_CMP_LEAF (expr_pred_int_le, db_get_int, <=)
+EXPR_PRED_CMP_LEAF (expr_pred_int_gt, db_get_int, >)
+EXPR_PRED_CMP_LEAF (expr_pred_int_ge, db_get_int, >=)
+EXPR_PRED_CMP_LEAF (expr_pred_bigint_eq, db_get_bigint, ==)
+EXPR_PRED_CMP_LEAF (expr_pred_bigint_ne, db_get_bigint, !=)
+EXPR_PRED_CMP_LEAF (expr_pred_bigint_lt, db_get_bigint, <)
+EXPR_PRED_CMP_LEAF (expr_pred_bigint_le, db_get_bigint, <=)
+EXPR_PRED_CMP_LEAF (expr_pred_bigint_gt, db_get_bigint, >)
+EXPR_PRED_CMP_LEAF (expr_pred_bigint_ge, db_get_bigint, >=)
+EXPR_PRED_CMP_LEAF (expr_pred_double_eq, db_get_double, ==)
+EXPR_PRED_CMP_LEAF (expr_pred_double_ne, db_get_double, !=)
+EXPR_PRED_CMP_LEAF (expr_pred_double_lt, db_get_double, <)
+EXPR_PRED_CMP_LEAF (expr_pred_double_le, db_get_double, <=)
+EXPR_PRED_CMP_LEAF (expr_pred_double_gt, db_get_double, >)
+EXPR_PRED_CMP_LEAF (expr_pred_double_ge, db_get_double, >=)
+/* *INDENT-ON* */
 
 /* mirror of the eval_value_rel_cmp () rel_op mapping for ordinal comparisons */
 static DB_LOGICAL
@@ -619,6 +675,60 @@ expr_pred_map_cmp (int result, REL_OP rel_op)
     }
 }
 
+/* the type is not one of the direct-compare kinds: same call the interpreted path makes
+ * (the constant-side pre-coercion in eval_value_rel_cmp () only fires when the value types
+ * differ, which the compiler already excluded) */
+static DB_LOGICAL
+expr_pred_generic_cmp (const EXPR_PRED * pred)
+{
+  bool comparable = true;
+  int result;
+
+  EXPR_PRED_CMP_PROLOGUE (v1, v2);
+
+  result = tp_value_compare_with_error (v1, v2, 1, 0, &comparable);
+  if (!comparable)
+    {
+      return V_ERROR;
+    }
+  return expr_pred_map_cmp (result, pred->rel_op);
+}
+
+/* resolve the (type, operator) pair to its leaf once, at compile time */
+static EXPR_PRED_EVAL_FN
+expr_pred_cmp_leaf (DB_TYPE fast_type, REL_OP rel_op)
+{
+  static const struct
+  {
+    DB_TYPE type;
+    REL_OP op;
+    EXPR_PRED_EVAL_FN fn;
+  } leaves[] =
+  {
+    /* *INDENT-OFF* */
+    { DB_TYPE_INTEGER, R_EQ, expr_pred_int_eq }, { DB_TYPE_INTEGER, R_NE, expr_pred_int_ne },
+    { DB_TYPE_INTEGER, R_LT, expr_pred_int_lt }, { DB_TYPE_INTEGER, R_LE, expr_pred_int_le },
+    { DB_TYPE_INTEGER, R_GT, expr_pred_int_gt }, { DB_TYPE_INTEGER, R_GE, expr_pred_int_ge },
+    { DB_TYPE_BIGINT, R_EQ, expr_pred_bigint_eq }, { DB_TYPE_BIGINT, R_NE, expr_pred_bigint_ne },
+    { DB_TYPE_BIGINT, R_LT, expr_pred_bigint_lt }, { DB_TYPE_BIGINT, R_LE, expr_pred_bigint_le },
+    { DB_TYPE_BIGINT, R_GT, expr_pred_bigint_gt }, { DB_TYPE_BIGINT, R_GE, expr_pred_bigint_ge },
+    { DB_TYPE_DOUBLE, R_EQ, expr_pred_double_eq }, { DB_TYPE_DOUBLE, R_NE, expr_pred_double_ne },
+    { DB_TYPE_DOUBLE, R_LT, expr_pred_double_lt }, { DB_TYPE_DOUBLE, R_LE, expr_pred_double_le },
+    { DB_TYPE_DOUBLE, R_GT, expr_pred_double_gt }, { DB_TYPE_DOUBLE, R_GE, expr_pred_double_ge },
+    /* *INDENT-ON* */
+  };
+  size_t i;
+
+  for (i = 0; i < sizeof (leaves) / sizeof (leaves[0]); i++)
+    {
+      if (leaves[i].type == fast_type && leaves[i].op == rel_op)
+	{
+	  return leaves[i].fn;
+	}
+    }
+  return expr_pred_generic_cmp;
+}
+
 static DB_LOGICAL
 expr_pred_eval (const EXPR_PRED * pred)
 {
@@ -627,57 +737,7 @@ expr_pred_eval (const EXPR_PRED * pred)
   switch (pred->kind)
     {
     case EXPR_PRED_COMP:
-      {
-	DB_VALUE *v1 = *pred->arg1p;
-	DB_VALUE *v2;
-	int result;
-	bool comparable = true;
-
-	/* mirror of eval_pred () T_COMP_EVAL_TERM: a NULL side is V_UNKNOWN before any
-	 * comparison (rel_ops needing different NULL handling are rejected at compile) */
-	if (DB_IS_NULL (v1))
-	  {
-	    return V_UNKNOWN;
-	  }
-	v2 = *pred->arg2p;
-	if (DB_IS_NULL (v2))
-	  {
-	    return V_UNKNOWN;
-	  }
-
-	switch (pred->fast_type)
-	  {
-	  case DB_TYPE_INTEGER:
-	    {
-	      int i1 = db_get_int (v1), i2 = db_get_int (v2);
-	      result = (i1 < i2) ? DB_LT : (i1 > i2) ? DB_GT : DB_EQ;
-	      break;
-	    }
-	  case DB_TYPE_BIGINT:
-	    {
-	      DB_BIGINT b1 = db_get_bigint (v1), b2 = db_get_bigint (v2);
-	      result = (b1 < b2) ? DB_LT : (b1 > b2) ? DB_GT : DB_EQ;
-	      break;
-	    }
-	  case DB_TYPE_DOUBLE:
-	    {
-	      double d1 = db_get_double (v1), d2 = db_get_double (v2);
-	      result = (d1 < d2) ? DB_LT : (d1 > d2) ? DB_GT : DB_EQ;
-	      break;
-	    }
-	  default:
-	    /* same call the interpreted path makes; the constant-side pre-coercion in
-	     * eval_value_rel_cmp () only fires when the value types differ, which the
-	     * compiler already excluded */
-	    result = tp_value_compare_with_error (v1, v2, 1, 0, &comparable);
-	    if (!comparable)
-	      {
-		return V_ERROR;
-	      }
-	    break;
-	  }
-	return expr_pred_map_cmp (result, pred->rel_op);
-      }
+      return pred->eval (pred);
 
     case EXPR_PRED_COMP_TORDER:
       {
@@ -819,84 +879,98 @@ expr_run_region (EXPR_PROG * prog, int start, int n, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
-/* T_CASE / T_IF: evaluate the predicate, execute ONLY the selected branch's deferred
- * steps, publish the branch value.  With a fixed matching result type this is a pure
- * pointer select; otherwise the interpreted trailing tp_value_auto_cast () is kept. */
+/* T_CASE / T_IF: evaluate the predicate, execute ONLY the selected branch's deferred steps,
+ * publish the branch value.  Whether the result needs the interpreted trailing cast is fixed
+ * at compile time, so the two shapes are separate kernels: the select variant publishes the
+ * branch value itself (no slot, so the cell changes per row) and the cast variant owns a slot
+ * whose address was published once at materialization. */
+#define EXPR_CASE_SELECT_BRANCH(sel) \
+  DB_LOGICAL pred = expr_pred_eval ((const EXPR_PRED *) step->pred); \
+  DB_VALUE *sel; \
+  int error; \
+  if (pred == V_ERROR) \
+    { \
+      return ER_FAILED; \
+    } \
+  if (pred == V_TRUE) \
+    { \
+      error = expr_run_region (ctx->prog, step->t_start, step->t_n, ctx); \
+      sel = (error == NO_ERROR) ? *step->arg1p : NULL; \
+    } \
+  else \
+    { \
+      /* V_FALSE and V_UNKNOWN both select the ELSE side, as in fetch_peek_arith () */ \
+      error = expr_run_region (ctx->prog, step->f_start, step->f_n, ctx); \
+      sel = (error == NO_ERROR) ? *step->arg2p : NULL; \
+    } \
+  if (error != NO_ERROR) \
+    { \
+      return error; \
+    }
+
 static int
-expr_k_case (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+expr_k_case_select (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  DB_LOGICAL pred = expr_pred_eval ((const EXPR_PRED *) step->pred);
-  DB_VALUE *sel;
-  int error;
+  EXPR_CASE_SELECT_BRANCH (sel);
 
-  if (pred == V_ERROR)
-    {
-      return ER_FAILED;
-    }
-  if (pred == V_TRUE)
-    {
-      error = expr_run_region (ctx->prog, step->t_start, step->t_n, ctx);
-      sel = (error == NO_ERROR) ? *step->arg1p : NULL;
-    }
-  else
-    {
-      /* V_FALSE and V_UNKNOWN both select the ELSE side, as in fetch_peek_arith () */
-      error = expr_run_region (ctx->prog, step->f_start, step->f_n, ctx);
-      sel = (error == NO_ERROR) ? *step->arg2p : NULL;
-    }
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (step->domain == NULL)
-    {
-      *step->out_cell = sel;
-      return NO_ERROR;
-    }
-
-  pr_clear_value (step->out);
-  *step->out_cell = step->out;
-  {
-    TP_DOMAIN_STATUS dom_status = tp_value_auto_cast (sel, step->out, step->domain);
-    if (dom_status != DOMAIN_COMPATIBLE)
-      {
-	return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, sel, step->domain);
-      }
-  }
+  *step->out_cell = sel;
   return NO_ERROR;
 }
 
-/* T_PREDICATE: the predicate result as a value -- 1, 0 or NULL */
+static int
+expr_k_case_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  TP_DOMAIN_STATUS dom_status;
+
+  EXPR_CASE_SELECT_BRANCH (sel);
+
+  /* the result domain can be a string type, so the slot may own heap memory */
+  pr_clear_value (step->out);
+  dom_status = tp_value_auto_cast (sel, step->out, step->domain);
+  if (dom_status != DOMAIN_COMPATIBLE)
+    {
+      return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, sel, step->domain);
+    }
+  return NO_ERROR;
+}
+
+/* T_PREDICATE: the predicate result as a value -- 1, 0 or NULL.  An INTEGER result needs no
+ * trailing cast (verified no-op), which the compiler decides, so again two kernels. */
+#define EXPR_PREDICATE_VALUE() \
+  DB_LOGICAL pred = expr_pred_eval ((const EXPR_PRED *) step->pred); \
+  if (pred == V_ERROR) \
+    { \
+      return ER_FAILED; \
+    } \
+  if (pred == V_UNKNOWN) \
+    { \
+      PRIM_SET_NULL (step->out); \
+    } \
+  else \
+    { \
+      db_make_int (step->out, (pred == V_TRUE) ? 1 : 0); \
+    }
+
 static int
 expr_k_predicate (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  DB_LOGICAL pred = expr_pred_eval ((const EXPR_PRED *) step->pred);
+  EXPR_PREDICATE_VALUE ();
+  return NO_ERROR;
+}
 
-  if (pred == V_ERROR)
-    {
-      return ER_FAILED;
-    }
+static int
+expr_k_predicate_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  TP_DOMAIN_STATUS dom_status;
 
+  /* the slot can hold the cast result, so it keeps the per-row clear */
   pr_clear_value (step->out);
-  *step->out_cell = step->out;
+  EXPR_PREDICATE_VALUE ();
 
-  if (pred == V_UNKNOWN)
+  dom_status = tp_value_auto_cast (step->out, step->out, step->domain);
+  if (dom_status != DOMAIN_COMPATIBLE)
     {
-      db_make_null (step->out);
-    }
-  else
-    {
-      db_make_int (step->out, (pred == V_TRUE) ? 1 : 0);
-    }
-
-  if (step->domain != NULL)
-    {
-      TP_DOMAIN_STATUS dom_status = tp_value_auto_cast (step->out, step->out, step->domain);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, step->out, step->domain);
-	}
+      return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, step->out, step->domain);
     }
   return NO_ERROR;
 }
@@ -1010,7 +1084,7 @@ expr_cse_add (EXPR_BUILD_CTX * bctx, const void *id, int opcode, int c1, int c2,
 
 /* the arithmetic kernel for (opcode, operand type); DB_TYPE_UNKNOWN when unsupported */
 static EXPR_KERNEL_FN
-expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type)
+expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type, bool numeric_pure)
 {
   switch (opcode)
     {
@@ -1024,7 +1098,7 @@ expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type)
 	case DB_TYPE_DOUBLE:
 	  return expr_k_add_double;
 	case DB_TYPE_NUMERIC:
-	  return expr_k_add_numeric;
+	  return numeric_pure ? expr_k_add_numeric_float : expr_k_add_numeric_plain;
 	default:
 	  return NULL;
 	}
@@ -1038,7 +1112,7 @@ expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type)
 	case DB_TYPE_DOUBLE:
 	  return expr_k_sub_double;
 	case DB_TYPE_NUMERIC:
-	  return expr_k_sub_numeric;
+	  return numeric_pure ? expr_k_sub_numeric_float : expr_k_sub_numeric_plain;
 	default:
 	  return NULL;
 	}
@@ -1064,7 +1138,7 @@ expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type)
 	case DB_TYPE_BIGINT:
 	  return expr_k_div_bigint;
 	case DB_TYPE_NUMERIC:
-	  return expr_k_div_numeric;
+	  return numeric_pure ? expr_k_div_numeric_float : expr_k_div_numeric_plain;
 	default:
 	  return NULL;		/* DOUBLE division: overflow-check gating differs, keep interpreted */
 	}
@@ -1316,6 +1390,9 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 	pred->arg2p = EXPR_ARG_ENCODE (c2);
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
+	/* bind the (type, operator) leaf now so the row loop makes one indirect call
+	 * instead of testing the type and then the operator */
+	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
 	return pred;
       }
 
@@ -1481,7 +1558,9 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		    return -1;
 		  }
 		cell = expr_new_cell (bctx, NULL);
-		step = expr_new_step (bctx, expr_k_predicate, cell);
+		/* an INTEGER result needs no trailing auto-cast (verified no-op) */
+		step =
+		  expr_new_step (bctx, (rtype == DB_TYPE_INTEGER) ? expr_k_predicate : expr_k_predicate_cast, cell);
 		if (cell < 0 || step == NULL)
 		  {
 		    expr_pred_free (cpred);
@@ -1491,7 +1570,6 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		step->out_cell = (DB_VALUE **) (intptr_t) cell;
 		step->out = (DB_VALUE *) 1;
 		bctx->n_slots++;
-		/* an INTEGER result needs no trailing auto-cast (verified no-op) */
 		step->domain = (rtype == DB_TYPE_INTEGER) ? NULL : regu->domain;
 		step->regu = regu;
 		expr_cse_add (bctx, regu, -2, -1, -1, -1, cell);
@@ -1542,7 +1620,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	      t2 = expr_node_type (bctx, arith->rightptr);
 
 	      cell = expr_new_cell (bctx, NULL);
-	      step = expr_new_step (bctx, expr_k_case, cell);
+	      step = expr_new_step (bctx, expr_k_case_select, cell);	/* replaced below when a cast is needed */
 	      if (cell < 0 || step == NULL)
 		{
 		  expr_pred_free (cpred);
@@ -1563,12 +1641,14 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		  /* pure pointer select; the interpreted tp_value_auto_cast () is a
 		   * verified no-op for a same-type non-parameterized domain */
 		  step->domain = NULL;
+		  step->kernel = expr_k_case_select;
 		}
 	      else
 		{
 		  step->domain = regu->domain;
 		  step->out = (DB_VALUE *) 1;
 		  bctx->n_slots++;
+		  step->kernel = expr_k_case_cast;
 		}
 	      expr_cse_add (bctx, regu, -2, -1, -1, -1, cell);
 	      *compiled_something = true;
@@ -1647,7 +1727,9 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		extract_kernel = (date_field || time_field || f == MILLISECOND) ? expr_k_extract_datetime : NULL;
 		break;
 	      case DB_TYPE_TIMESTAMP:
-		extract_kernel = (date_field || time_field) ? expr_k_extract_timestamp : NULL;
+		/* which half of the session decode the field comes from is fixed here */
+		extract_kernel = date_field ? expr_k_extract_timestamp_date
+		  : time_field ? expr_k_extract_timestamp_time : NULL;
 		break;
 	      default:
 		break;
@@ -1754,8 +1836,10 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	    return cell;
 	  }
 
-	kernel = expr_arith_kernel (arith->opcode, rtype);
-	if (kernel == NULL)
+	/* which NUMERIC family the kernel belongs to depends on the operand mix decided
+	 * below; probe here only to reject an unsupported (opcode, result type) pair before
+	 * compiling the operands */
+	if (expr_arith_kernel (arith->opcode, rtype, true) == NULL)
 	  {
 	    return -1;
 	  }
@@ -1860,6 +1944,8 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	  {
 	    return cell;
 	  }
+	/* the operand mix is known now: bind the family-specific kernel */
+	kernel = expr_arith_kernel (arith->opcode, rtype, numeric_pure);
 	cell = expr_new_cell (bctx, NULL);
 	step = expr_new_step (bctx, kernel, cell);
 	if (cell < 0 || step == NULL)
@@ -1869,7 +1955,6 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	step->arg1p = EXPR_ARG_ENCODE (c1);
 	step->arg2p = EXPR_ARG_ENCODE (c2);
 	step->out_cell = (DB_VALUE **) (intptr_t) cell;
-	step->aux = numeric_pure ? 1 : 0;	/* float vs plain numeric family */
 	/* the trailing coercion is a verified no-op for a non-parameterized result domain
 	 * whose type the kernel already produces (tp_value_cast_internal returns straight
 	 * away when desired_type == original_type, !is_parameterized and src == dest), so
@@ -2168,6 +2253,11 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 	{
 	  assert (slot_next < prog->n_slots);
 	  step->out = &prog->slots[slot_next++];
+	  /* a slot-owning step publishes the SAME address on every row -- CSE guarantees one
+	   * producer per cell -- so the cell is wired here instead of in the kernel.  Only the
+	   * pointer-select kernels (NVL, CASE without a cast, leaf fetch, host variable) keep a
+	   * per-row publish, because the address they publish changes with the data. */
+	  *step->out_cell = step->out;
 	}
       if (step->pred != NULL)
 	{
@@ -2313,13 +2403,19 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_mul_double, "mul_double"},
     {
-    expr_k_add_numeric, "add_numeric"},
+    expr_k_add_numeric_float, "add_numeric"},
     {
-    expr_k_sub_numeric, "sub_numeric"},
+    expr_k_add_numeric_plain, "add_numeric*"},
+    {
+    expr_k_sub_numeric_float, "sub_numeric"},
+    {
+    expr_k_sub_numeric_plain, "sub_numeric*"},
     {
     expr_k_mul_numeric, "mul_numeric"},
     {
-    expr_k_div_numeric, "div_numeric"},
+    expr_k_div_numeric_float, "div_numeric"},
+    {
+    expr_k_div_numeric_plain, "div_numeric*"},
     {
     expr_k_coerce_numeric, "coerce_numeric"},
     {
@@ -2329,9 +2425,13 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_cast, "cast"},
     {
-    expr_k_case, "case"},
+    expr_k_case_select, "case"},
+    {
+    expr_k_case_cast, "case_cast"},
     {
     expr_k_predicate, "predicate"},
+    {
+    expr_k_predicate_cast, "predicate_cast"},
     {
     expr_k_leaf_fetch, "leaf_fetch"},
     {
@@ -2341,7 +2441,9 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_extract_datetime, "extract_datetime"},
     {
-    expr_k_extract_timestamp, "extract_timestamp"},
+    expr_k_extract_timestamp_date, "extract_timestamp"},
+    {
+    expr_k_extract_timestamp_time, "extract_timestamp"},
     {
     expr_k_hostvar, "hostvar"},
     {
@@ -2446,21 +2548,21 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 	{
 	  fprintf (fp, " dom=%s", pr_type_name (TP_DOMAIN_TYPE (step->domain)));
 	}
-      if (step->kernel == expr_k_case)
+      if (step->kernel == expr_k_case_select || step->kernel == expr_k_case_cast)
 	{
 	  fprintf (fp, " then=[%d..%d) else=[%d..%d) pred=", step->t_start, step->t_start + step->t_n,
 		   step->f_start, step->f_start + step->f_n);
 	  expr_pred_dump (fp, (const EXPR_PRED *) step->pred, prog);
 	}
-      else if (step->kernel == expr_k_predicate)
+      else if (step->kernel == expr_k_predicate || step->kernel == expr_k_predicate_cast)
 	{
 	  fprintf (fp, " pred=");
 	  expr_pred_dump (fp, (const EXPR_PRED *) step->pred, prog);
 	}
-      else if (step->aux == 1
-	       && (step->kernel == expr_k_add_numeric || step->kernel == expr_k_sub_numeric
-		   || step->kernel == expr_k_div_numeric))
+      else if (step->kernel == expr_k_add_numeric_float || step->kernel == expr_k_sub_numeric_float
+	       || step->kernel == expr_k_div_numeric_float)
 	{
+	  /* the float family: both operands were already NUMERIC (no coercion step) */
 	  fprintf (fp, " pure");
 	}
       fprintf (fp, "\n");
