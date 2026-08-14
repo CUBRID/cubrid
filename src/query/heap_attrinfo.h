@@ -26,6 +26,8 @@
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "object_representation_sr.h"
 
+struct pr_type;
+
 typedef enum
 {
   HEAP_READ_ATTRVALUE,
@@ -54,6 +56,17 @@ struct heap_attrvalue
   OR_ATTRIBUTE *last_attrepr;	/* Used for default values */
   OR_ATTRIBUTE *read_attrepr;	/* Pointer to a desired attribute information */
   DB_VALUE dbvalue;		/* DB values of the attribute in memory */
+
+  /* Decoding plan for this attribute, resolved once per representation instead of once
+   * per row.  The type handler, the disk width of a fixed attribute and whether the value
+   * slot can end up owning heap memory are all properties of the attribute's descriptor,
+   * but heap_attrvalue_read () used to look them up again for every record.  rd_attrepr
+   * is the descriptor the three below were resolved for; a mismatch (or NULL) means the
+   * plan must be rebuilt. */
+  const OR_ATTRIBUTE *rd_attrepr;
+  const struct pr_type *rd_type;
+  int rd_disk_size;		/* fixed attributes: disk width; -1 when not applicable */
+  bool rd_owns_memory;		/* the decoded value can hold a pointer that must be released */
   bool lazy_always_eager;	/* lazy mode: read this attribute now instead of deferring (column of the
 				 * first-evaluated predicate term, touched on nearly every row) */
 };
