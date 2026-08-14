@@ -270,7 +270,7 @@ qo_unnest_one_conjunct (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_n
 {
   PT_NODE *pred_expr, *subq, *inner_spec, *on_cond, *on_cnf, *spec;
   PT_NODE *new_on_pred = NULL;
-  bool is_anti = false, is_in_form = false, has_direct_join = false;
+  bool is_anti = false, is_in_form = false, has_direct_join = false, has_outer_only = false;
   short loc;
 
   assert (node->info.query.q.select.from != NULL);
@@ -366,12 +366,22 @@ qo_unnest_one_conjunct (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_n
   /* Require a direct inner<->single-outer join conjunct: the only shape the optimizer's semi/anti freeze
    * models. Reusing the parse-time invariant keeps us from building a join a hand-written one would be
    * rejected for. on_cond is a CNF list and the invariant takes one conjunct, so accept iff any qualifies. */
-  for (on_cnf = on_cond; on_cnf != NULL && !has_direct_join; on_cnf = on_cnf->next)
+  for (on_cnf = on_cond; on_cnf != NULL && !has_outer_only; on_cnf = on_cnf->next)
     {
-      has_direct_join = pt_semi_anti_has_direct_join_conjunct (parser, on_cnf, inner_spec->info.spec.id,
-							       node->info.query.q.select.from);
+      if (!has_direct_join)
+	{
+	  has_direct_join = pt_semi_anti_has_direct_join_conjunct (parser, on_cnf, inner_spec->info.spec.id,
+								   node->info.query.q.select.from);
+	}
+
+      /* An ANTI JOIN emits the outer row when the ON fails, but qo_analyze_term () classifies a conjunct
+       * naming a single table as a sarg on that table, and qo_classify_outerjoin_terms () -- the pass that
+       * rescues an OUTER JOIN from exactly that -- skips SEMI/ANTI. So a conjunct naming no inner column
+       * would be applied while scanning the outer, dropping the rows the ANTI must emit. SEMI needs no such
+       * check: there a failed ON drops the row anyway. */
+      has_outer_only = is_anti && !pt_conjunct_refers_to_spec (parser, on_cnf, inner_spec->info.spec.id);
     }
-  if (!has_direct_join)
+  if (!has_direct_join || has_outer_only)
     {
       if (new_on_pred != NULL)
 	{

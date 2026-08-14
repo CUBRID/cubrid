@@ -79,4 +79,6 @@ extern bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1,
 extern bool pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR inner_id,
 						   PT_NODE * from_list);
 
+extern bool pt_conjunct_refers_to_spec (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR spec_id);
+
 #endif /* _SEMANTIC_CHECK_H_ */
