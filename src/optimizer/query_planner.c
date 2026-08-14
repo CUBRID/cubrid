@@ -190,6 +190,7 @@ static void qo_plan_compute_subquery_cost (PT_NODE *, double *, double *);
 static void qo_sscan_cost (QO_PLAN *);
 static void qo_iscan_cost (QO_PLAN *);
 static bool qo_index_forbids_key_filter (QO_INDEX_ENTRY *);
+static bool qo_get_like_derived_range_dup_sel (QO_PLAN *, double *, double *);
 static void qo_sort_cost (QO_PLAN *);
 static void qo_mjoin_cost (QO_PLAN *);
 static void qo_nljoin_cost (QO_PLAN *);
@@ -1805,10 +1806,7 @@ qo_index_has_bit_attr (QO_INDEX_ENTRY * index_entryp)
  *   return: true if key-filters are disabled for this index
  *   index_entryp(in):
  *
- * note: A non-covering function index is the only such case. This predicate is
- *   shared by qo_index_scan_new() (which then skips kf_terms population) and
- *   qo_iscan_cost() (which then keeps a LIKE-derived range in the row-count) so
- *   the two sites never drift apart.
+ * note: A non-covering function index is the only such case.
  */
 static bool
 qo_index_forbids_key_filter (QO_INDEX_ENTRY * index_entryp)
@@ -2116,6 +2114,86 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 }
 
 /*
+ * qo_get_like_derived_range_dup_sel () - selectivities of the prefix-LIKE derived ranges that
+ *   this index scan counts although the LIKEs they came from are counted too
+ *   return: true when such a range takes part in this plan, false when there is none
+ *   planp(in): index scan plan
+ *   dup_sel(out): the selectivity to divide out of the key-range product
+ *   kf_dup_sel(out): the selectivity to divide out of the key-filter product
+ *
+ * note: qo_rewrite_like_for_index_scan () keeps the original LIKE and adds a range derived
+ *   from its fixed prefix, so one predicate turns into two terms. The rows matching the LIKE
+ *   are a subset of that range, so once both terms are counted the range restricts nothing on
+ *   top of the LIKE and the caller divides it back out. Which product holds the range depends
+ *   on the plan, hence the two values: it is a key-range term where the scan ranges over it,
+ *   and a key-filter term where another range took that place. The range and its LIKE are
+ *   matched by segment rather than by identity, because qo_apply_range_intersection () may
+ *   merge several derived ranges into a single term.
+ *
+ *   False is returned unless the LIKE became a key filter. A non-covering function index
+ *   forbids key filters, and the LIKE then stays a data filter evaluated after the fetch -
+ *   there the range really is the only restriction the fetch count may use.
+ */
+static bool
+qo_get_like_derived_range_dup_sel (QO_PLAN * planp, double *dup_sel, double *kf_dup_sel)
+{
+  QO_ENV *env;
+  QO_TERM *termp;
+  BITSET_ITERATOR iter;
+  BITSET like_segs;
+  bool found = false;
+  int t;
+
+  *dup_sel = 1.0;
+  *kf_dup_sel = 1.0;
+
+  env = QO_NODE_ENV (planp->plan_un.scan.node);
+  bitset_init (&like_segs, env);
+
+  /* the LIKEs that a range was derived from and that ended up as key filters */
+  for (t = bitset_iterate (&(planp->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (env, t);
+      if (QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_HAS_DERIVED_RANGE))
+	{
+	  bitset_union (&like_segs, &(QO_TERM_SEGS (termp)));
+	}
+    }
+
+  if (!bitset_is_empty (&like_segs))
+    {
+      /* their derived ranges, each reported for the product that holds it. A zero selectivity
+       * is passed over: an empty range leaves nothing to divide by, and the estimate the caller
+       * already holds is as good as it gets. */
+      for (t = bitset_iterate (&(planp->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
+	{
+	  termp = QO_ENV_TERM (env, t);
+	  if (QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE) && QO_TERM_SELECTIVITY (termp) > 0.0
+	      && bitset_intersects (&(QO_TERM_SEGS (termp)), &like_segs))
+	    {
+	      *dup_sel *= QO_TERM_SELECTIVITY (termp);
+	      found = true;
+	    }
+	}
+
+      for (t = bitset_iterate (&(planp->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
+	{
+	  termp = QO_ENV_TERM (env, t);
+	  if (QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE) && QO_TERM_SELECTIVITY (termp) > 0.0
+	      && bitset_intersects (&(QO_TERM_SEGS (termp)), &like_segs))
+	    {
+	      *kf_dup_sel *= QO_TERM_SELECTIVITY (termp);
+	      found = true;
+	    }
+	}
+    }
+
+  bitset_delset (&like_segs);
+
+  return found;
+}
+
+/*
  * qo_iscan_cost () -
  *   return:
  *   planp(in):
@@ -2130,7 +2208,7 @@ qo_iscan_cost (QO_PLAN * planp)
   double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access, heap_rows;
   double heap_fanout = 0.0, iss_leaves = 0.0, first_leaf = 0.0;
   double object_IO, index_IO;
-  double sel_excl_derived_range;
+  double heap_sel, like_dup_sel, like_kf_dup_sel, sel_before_limit;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
   int i, t, n, pkeys_num, index;
@@ -2177,10 +2255,6 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* selectivity of the index terms */
   sel = 1.0;
-  /* like sel, but excludes LIKE-derived range terms: used for output-row
-   * estimates only, not index access cost, to avoid double counting the
-   * retained LIKE. */
-  sel_excl_derived_range = 1.0;
 
   pkeys_num = MIN (n, cum_statsp->pkeys_size);
   assert (pkeys_num <= BTREE_STATS_PKEYS_NUM);
@@ -2195,25 +2269,6 @@ qo_iscan_cost (QO_PLAN * planp)
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
       sel *= QO_TERM_SELECTIVITY (termp);
 
-      /* Invariant: a LIKE-derived range that reached the key-range terms cannot
-       * carry a non-indexable collation. NON_IDX_SARG_COLL is column-driven, so
-       * it would flag the retained LIKE and its derived range alike and keep the
-       * derived range out of the key-range terms. Hence whenever a derived range
-       * is here, the residual LIKE is index-usable and becomes a key-filter -
-       * which is what the exclusion below relies on. */
-      assert (!QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE)
-	      || !QO_TERM_IS_FLAGED (termp, QO_TERM_NON_IDX_SARG_COLL));
-
-      /* Exclude a LIKE-derived range from row-count only when the residual LIKE
-       * can be a key-filter (its selectivity then lives in filter_sel). A
-       * non-covering function index disables key-filters, so the residual LIKE
-       * falls through to a data filter - there keep the range as the row-count
-       * upper bound. */
-      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE) || qo_index_forbids_key_filter (index_entryp))
-	{
-	  sel_excl_derived_range *= QO_TERM_SELECTIVITY (termp);
-	}
-
       /* each term can have multi index column. e.g.) (a,b) in .. */
       for (int j = 0; j < index_entryp->col_num; j++)
 	{
@@ -2226,7 +2281,7 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* check upper bound */
   sel = MIN (sel, 1.0);
-  sel_excl_derived_range = MIN (sel_excl_derived_range, 1.0);
+  sel_before_limit = sel;	/* the prefix-LIKE exception below divides this, not the bounded sel */
 
   sel_limit = 0.0;		/* init */
 
@@ -2266,24 +2321,24 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* check lower bound */
   sel = MAX (sel, sel_limit);
-  sel_excl_derived_range = MAX (sel_excl_derived_range, sel_limit);
 
   /* selectivity of the index key filter terms */
   filter_sel = 1.0;
   for (t = bitset_iterate (&(planp->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
     {
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
-
-      /* A LIKE-derived range that landed in the key-filter is redundant with
-       * the residual LIKE it came from; skip it here just as the key-range loop
-       * skips it from sel_excl_derived_range, so the node-level and iscan-level
-       * estimates stay in agreement. */
-      if (QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE))
-	{
-	  continue;
-	}
-
       filter_sel *= QO_TERM_SELECTIVITY (termp);
+    }
+
+  /* fraction of the rows that reach the heap: the key range and the key filter both run before
+   * the fetch */
+  heap_sel = sel * filter_sel;
+
+  /* exception - a prefix-LIKE rewrite counted its derived range above on top of the LIKE it
+   * came from; divide it back out of whichever product holds it */
+  if (qo_get_like_derived_range_dup_sel (planp, &like_dup_sel, &like_kf_dup_sel))
+    {
+      heap_sel = MAX (sel_before_limit / like_dup_sel, sel_limit) * (filter_sel / like_kf_dup_sel);
     }
 
   /* number of leaf to be selected */
@@ -2330,11 +2385,8 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   else
     {
-      /* Row count reaching the heap: uses sel_excl_derived_range (not sel) so a LIKE-derived
-       * range is not double counted against the residual LIKE it came from - same basis as
-       * scan_rows below. */
-      heap_rows = (double) QO_NODE_NCARD (nodep) * sel_excl_derived_range * filter_sel;
-      object_IO = opages * sel_excl_derived_range * filter_sel;
+      heap_rows = (double) QO_NODE_NCARD (nodep) * heap_sel;
+      object_IO = opages * heap_sel;
       /* Cap the per-row heap-fetch surcharge at the table's page count: fetching more rows
        * than there are heap pages cannot touch more distinct pages (the rows share pages),
        * so an unbounded per-row charge would overprice a wide scan whose non-indexed filter
@@ -2358,7 +2410,7 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_io_cost = index_IO + first_leaf;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
-  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel_excl_derived_range * filter_sel);
+  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * heap_sel);
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");

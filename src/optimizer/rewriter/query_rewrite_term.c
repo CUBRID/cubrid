@@ -990,6 +990,16 @@ qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 
   if (node->node_type == PT_SELECT)
     {
+      if (!node->flag.done_reduce_equality_terms && node->info.query.q.select.connect_by == NULL)
+	{
+	  int continue_innerjoin;
+
+	  qo_move_on_of_explicit_join_to_where (parser, &node->info.query.q.select.from,
+						&node->info.query.q.select.where);
+	  node->info.query.q.select.where = pt_cnf (parser, node->info.query.q.select.where);
+	  qo_rewrite_innerjoin (parser, node, NULL, &continue_innerjoin);
+	}
+
       wherep = &node->info.query.q.select.where;
       QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, wherep);
     }
@@ -2356,8 +2366,11 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * like, P
   like->next = between;
 
   /* Mark the derived range so row-count aggregation excludes it (subset of the
-   * retained LIKE). Set before the copy so it is preserved. */
+   * retained LIKE), and mark the LIKE it came from as its origin: qo_iscan_cost ()
+   * cancels the range only where that LIKE takes part in the same product, so it has
+   * to recognize both ends of the pair. Set before the copy so they are preserved. */
   PT_EXPR_INFO_SET_FLAG (between, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
+  PT_EXPR_INFO_SET_FLAG (like, PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE);
 
   /* fold range bounds : this will allow auto-parametrization */
   like_save = parser_copy_tree_list (parser, like);

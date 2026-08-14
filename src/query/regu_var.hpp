@@ -81,12 +81,14 @@ struct attr_descr_node
   HEAP_CACHE_ATTRINFO *cache_attrinfo;	/* used to cache catalog info */
   DB_VALUE *cache_dbvalp;	/* cached value for particular attr */
   /* in cache_attrinfo */
+  struct heap_attrvalue *cache_slot;	/* slot owning cache_dbvalp; inline peeks its lazy state, no re-locate */
 
   void reset ()
   {
     id = -1;
     type = DB_TYPE_NULL;
     cache_dbvalp = NULL;
+    cache_slot = NULL;
   }
 };				/* Attribute Descriptor */
 
