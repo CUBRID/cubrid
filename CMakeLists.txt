@@ -899,7 +899,21 @@ endif(USE_CUBRID_ENV)
 # For external library options
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
-set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=-w CXXFLAGS=-w)
+
+# What CUBRID adds to every third-party library built below: -fPIC because these
+# are static archives linked into CUBRID's shared libraries, -w because their
+# warnings are not actionable here.
+#
+# The optimization level stays per-library, at whatever upstream declares and
+# tests; debug info is not carried over. Beware how flags reach a library: a make
+# command-line variable overrides the Makefile's own assignments, and CFLAGS given
+# to configure suppresses autoconf's "-g -O2". Passing only -fPIC or -w leaves the
+# library at -O0.
+set(3RDPARTY_COMMON_FLAGS "-fPIC -w")
+
+# restates the level from autoconf's "-g -O2", which supplying CFLAGS suppresses.
+# No CXXFLAGS: none of these compile C++ in the target this build runs.
+set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic "CFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}")
 
 # WITH_LIBEXPAT can have multiple values with different meanings
 # on Linux:
@@ -1080,7 +1094,8 @@ else()
     GIT_TAG fdf2ef5             # https://github.com/lz4/lz4/releases/tag/v1.9.2
     CONFIGURE_COMMAND ""        # no configure
     BUILD_IN_SOURCE true        # lz4 Makefile is designed to run locally
-    BUILD_COMMAND make CFLAGS="-fPIC"  # to allow static linking in shared library
+    # MOREFLAGS is lz4's append hook, so its "CFLAGS ?= -O3" survives
+    BUILD_COMMAND make "MOREFLAGS=${3RDPARTY_COMMON_FLAGS}"
     INSTALL_COMMAND ""          # suppress install
   )
   set(LZ4_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/lz4/lib)
@@ -1201,7 +1216,9 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
       GIT_TAG 5723bb8             # https://github.com/google/re2/releases/tag/2022-06-01
       CONFIGURE_COMMAND ""        # no configure
       BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
-      BUILD_COMMAND make CFLAGS="-fPIC" CXXFLAGS="-fPIC" # to allow static linking in shared library
+      # no append hook, so restate the level from the Makefile's "CXXFLAGS ?= -O3 -g".
+      # No CFLAGS: re2 has no C sources and its Makefile never reads CFLAGS.
+      BUILD_COMMAND make "CXXFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}"
       INSTALL_COMMAND make install prefix="${CMAKE_BINARY_DIR}/external/"
     )
   else(UNIX)
