@@ -13035,8 +13035,8 @@ get_record:
       if (MVCC_IS_HEADER_DELID_VALID (&recdes_header)
 	  && logtb_is_active_other_mvccid (thread_p, MVCC_GET_DELID (&recdes_header)))
 	{
-	  /* An active deleter may hold no per-row lock (CBRD-27034) and may still roll back: wait it out,
-	   * then re-classify. Our row lock is held, so no third writer can re-stamp -- at most one wait. */
+	  /* An active deleter may hold no per-row lock and may still roll back: wait it out, then
+	   * re-classify. Our row lock is held, so no third writer can re-stamp -- at most one wait. */
 	  MVCCID owner_mvccid = MVCC_GET_DELID (&recdes_header);
 
 	  heap_clean_get_context (thread_p, context);
@@ -13230,7 +13230,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 		   && mvcc_reev_data->upddel_reev_data->skip_unevaluated_version)
 	    {
 	      /* no reevaluation data to re-check a version past the statement snapshot: skip the row rather
-	       * than modify it unevaluated (CBRD-27034) */
+	       * than modify what the predicate never saw */
 	      mvcc_reev_data->filter_result = V_FALSE;
 	      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
 	      goto exit;
