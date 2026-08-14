@@ -109,7 +109,7 @@ void histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool
 /* the row count the column's histogram was built from, for callers that combine two probes and
  * need the same one-row floor the single probes apply. Returns false when the column has no
  * usable histogram. */
-bool histogram_get_total_rows (PT_NODE * lhs, double *total_rows);
+bool histogram_get_total_rows (PT_NODE *lhs, double *total_rows);
 /* histogram utility functions */
 int db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
 bool is_histogrammable_type (DB_TYPE type);
