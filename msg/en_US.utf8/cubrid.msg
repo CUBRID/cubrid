@@ -1112,7 +1112,7 @@ $ LOADDB
 1039 log writer: log writer started. mode: %1$d.
 1040 HA generic: %1$s. 
 1041 A string was truncated in context of "%1$s".
-1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
+1042 Trying to create a string requiring %1$zu bytes of memory, while the maximum allowed is %2$d bytes.
 1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
 1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
 1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
@@ -1479,17 +1479,19 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1376 The current transaction is implicitly aborted by the system for the execution of the login method.
 
-1377 Vacuum master daemon is not running; the server may be still booting or already shut down.
+1377 The no-logging index build exceeded its vacuum notification memory limit (%1$d bytes). Retry the loaddb while no concurrent transactions are active, or rebuild the index without the no-logging option.
 
-1378 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
+1378 Vacuum master daemon is not running; the server may be still booting or already shut down.
 
-1379 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
+1379 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
 
-1380 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
+1380 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
 
-1381 Internal error: invalid out-of-row storage argument.
+1381 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
 
-1382 Last Error
+1382 Internal error: invalid out-of-row storage argument.
+
+1383 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2000,10 +2002,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
 336 Numeric scale specifier is out of range -84 to 127
 337 The partition name is too long.
-338 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set storage options.
-339 STORAGE FORCE_OUTLINE can be set only on variable-type normal attributes of a class: '%1$s'.
-
-337 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+339 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set storage options.
+340 STORAGE FORCE_OUTLINE can be set only on variable-type normal attributes of a class: '%1$s'.
 
 
 
@@ -2291,6 +2292,7 @@ including those from the current backup level and higher.\n
 29 COMMENT: Log archive %1$s, which contains log pages before %2$lld, is not needed any longer by any HA utilities.\n
 30 Number of active log archives has been exceeded the max desired number.
 
+31 This backup and log chain contains a no-logging index build (loaddb) and cannot be replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a time before it.
 $set 17 MSGCAT_SET_GLOSSARY
 1 class
 2 trigger

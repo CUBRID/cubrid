@@ -360,7 +360,8 @@ typedef enum
   HEAP_PAGE_VACUUM_UNKNOWN	/* Heap page requires an unknown number of vacuum actions. */
 } HEAP_PAGE_VACUUM_STATUS;
 
-/* TODO (CBRD-26847): audit HEAP_RECDES_CONSUME_RAW_BYTES sites - several are conservative; see the census. */
+/* Use CONSUME_RAW_BYTES only when the caller needs materialized logical RECDES bytes outside the OOS-aware
+ * attribute layer; otherwise preserve the stored RECDES (CBRD-26847). */
 typedef enum
 {
   HEAP_RECDES_CONSUMPTION_POLICY_INVALID = 0,
@@ -494,6 +495,8 @@ extern void heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * at
 extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
 					HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
+					     HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);

@@ -147,6 +147,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HF_MAX_BESTSPACE_ENTRIES "max_bestspace_entries"
 
+#define PRM_NAME_AUTO_INCREMENT_CACHE_SIZE "auto_increment_cache_size"
+
 #define PRM_NAME_BT_UNFILL_FACTOR "index_unfill_factor"
 
 #define PRM_NAME_BT_OID_NBUFFERS "index_scan_oid_buffer_pages"
@@ -805,6 +807,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_BESTSPACE_SHARD_COUNT "bestspace_shard_count"
 #define PRM_NAME_BESTSPACE_DISTRIBUTED_INSERT "bestspace_distributed_insert"
 #define PRM_NAME_BESTSPACE_CACHE_COUNT "bestspace_cache_count"
+
+#define PRM_NAME_ENABLE_LAZY_PREDICATE_READ "enable_lazy_predicate_read"
 
 // #endregion 
 
@@ -5422,6 +5426,30 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 40}},
    {false, {.i = 128}},
    {false, {.i = 10}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_AUTO_INCREMENT_CACHE_SIZE,
+   PRM_NAME_AUTO_INCREMENT_CACHE_SIZE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 20}},
+   {false, {.i = 20}},
+   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_LAZY_PREDICATE_READ,
+   PRM_NAME_ENABLE_LAZY_PREDICATE_READ,
+   (PRM_FOR_SERVER | PRM_HIDDEN | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
