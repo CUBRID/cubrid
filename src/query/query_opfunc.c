@@ -504,7 +504,7 @@ qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_lis
   if (valptr_list_p->eval_prog_state == 1)
     {
       prog = (EXPR_PROG *) valptr_list_p->eval_prog;
-      if (!expr_prog_signature_matches (prog, val_desc_p))
+      if (!expr_prog_signature_ok (prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p)))
 	{
 	  /* different bind types than the program was specialized for: recompile */
 	  qdata_free_valptr_list_prog (thread_p, valptr_list_p);

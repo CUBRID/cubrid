@@ -2662,7 +2662,8 @@ numeric_sum_state_accumulate (NUMERIC_SUM_STATE * state, const DB_VALUE * value)
       return false;
     }
 
-  memset (word, 0, sizeof (word));
+  /* numeric_bytes_to_words () zeroes the whole destination itself on this path
+   * (dest_words > NUMERIC_AS_WORDS), so the caller must not clear it a second time */
   numeric_bytes_to_words (db_locate_numeric (value), DB_NUMERIC_BUF_SIZE, word, NUMERIC_SUM_STATE_WORDS,
 			  NUMERIC_SUM_STATE_WORDS * (int) sizeof (uint64_t));
 

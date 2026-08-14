@@ -1973,7 +1973,7 @@ namespace parallel_scan
 	if (agg_list->operand_prog_state == 1)
 	  {
 	    operand_prog = (EXPR_PROG *) agg_list->operand_prog;
-	    if (!expr_prog_signature_matches (operand_prog, tl_vd))
+	    if (!expr_prog_signature_ok (operand_prog, tl_vd, EXPR_PROG_EXEC_STAMP (tl_vd)))
 	      {
 		/* different bind types than the program was specialized for: recompile */
 		expr_prog_free (operand_prog);
