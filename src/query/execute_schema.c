@@ -8120,7 +8120,7 @@ get_attr_name (PT_NODE * attribute)
 }
 
 static bool
-is_oos_storage_eligible_attribute (DB_CTMPL * ctemplate, SM_NAME_SPACE name_space, const TP_DOMAIN * domain)
+do_is_oos_storage_eligible_attribute (DB_CTMPL * ctemplate, SM_NAME_SPACE name_space, const TP_DOMAIN * domain)
 {
   assert (ctemplate != NULL);
   assert (domain != NULL);
@@ -8130,11 +8130,11 @@ is_oos_storage_eligible_attribute (DB_CTMPL * ctemplate, SM_NAME_SPACE name_spac
 }
 
 static int
-validate_oos_storage_setting (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
-			      SM_NAME_SPACE name_space, const TP_DOMAIN * domain)
+do_validate_oos_storage_setting (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
+				 SM_NAME_SPACE name_space, const TP_DOMAIN * domain)
 {
   if (attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
-      || is_oos_storage_eligible_attribute (ctemplate, name_space, domain))
+      || do_is_oos_storage_eligible_attribute (ctemplate, name_space, domain))
     {
       return NO_ERROR;
     }
@@ -8272,7 +8272,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       name_space = ID_ATTRIBUTE;
     }
 
-  error = validate_oos_storage_setting (parser, ctemplate, attribute, name_space, attr_db_domain);
+  error = do_validate_oos_storage_setting (parser, ctemplate, attribute, name_space, attr_db_domain);
   if (error != NO_ERROR)
     {
       tp_domain_free (attr_db_domain);
@@ -12568,8 +12568,8 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       return (er_errid ());
     }
 
-  error = validate_oos_storage_setting (parser, ctemplate, attr_def, attr_chg_properties->new_name_space,
-					attr_db_domain);
+  error = do_validate_oos_storage_setting (parser, ctemplate, attr_def, attr_chg_properties->new_name_space,
+					   attr_db_domain);
   if (error != NO_ERROR)
     {
       tp_domain_free (attr_db_domain);
@@ -12577,7 +12577,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
     }
 
   if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
-      && !is_oos_storage_eligible_attribute (ctemplate, attr_chg_properties->new_name_space, attr_db_domain))
+      && !do_is_oos_storage_eligible_attribute (ctemplate, attr_chg_properties->new_name_space, attr_db_domain))
     {
       if (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE)
 	{

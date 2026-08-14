@@ -41,7 +41,7 @@
 
 namespace
 {
-  const char *const storage_settings[] = { "PREFER_INLINE", "FORCE_OUTLINE", "PREFER_OUTLINE", "DEFAULT" };
+  const char *const STORAGE_SETTINGS[] = { "PREFER_INLINE", "FORCE_OUTLINE", "PREFER_OUTLINE", "DEFAULT" };
 
   // SHOW CREATE TABLE returns one row with column 0 = table name and column 1 = the
   // CREATE TABLE statement. Read both columns directly (mirroring fetch_single_int's
@@ -285,7 +285,7 @@ TEST_F (OosSqlStorage, SharedAttributeRejectsPreferInline)
 
 TEST_F (OosSqlStorage, CreateRejectsAllStorageSettingsForFixedTypes)
 {
-  for (const char *setting : storage_settings)
+  for (const char *setting : STORAGE_SETTINGS)
     {
       SCOPED_TRACE (setting);
       std::string sql = "CREATE TABLE t_oos_stg (c INT STORAGE ";
@@ -321,7 +321,7 @@ TEST_F (OosSqlStorage, CreateAcceptsStorageForPhysicalVariableTypes)
 
 TEST_F (OosSqlStorage, VclassRejectsAllStorageSettings)
 {
-  for (const char *setting : storage_settings)
+  for (const char *setting : STORAGE_SETTINGS)
     {
       SCOPED_TRACE (setting);
       std::string sql = "CREATE VCLASS t_oos_stg_v (c VARCHAR(4096) STORAGE ";
@@ -341,7 +341,7 @@ TEST_F (OosSqlStorage, AlterRejectsAllStorageSettingsForFixedTypes)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  for (const char *setting : storage_settings)
+  for (const char *setting : STORAGE_SETTINGS)
     {
       SCOPED_TRACE (setting);
       std::string sql = "ALTER TABLE t_oos_stg MODIFY c INT STORAGE ";
