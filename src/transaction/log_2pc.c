@@ -622,17 +622,18 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
        * touches no data, so no MVCCID is acquired - which is what keeps the invariant checked in
        * logtb_clear_tdes() intact (see log_complete() just below).
        *
-       * Bound the wait by what is left of the client's own deadline when it set one, so the response
-       * is never held past the point the caller was willing to wait.  A deadline that has already
-       * passed is treated as none: it is not this commit's budget - an explicit COMMIT carries no
-       * timeout of its own, so what is left here belongs to an earlier statement - and taking it
-       * literally would drop the wait to zero and bring the gap back. */
+       * Extend the wait when the client said it is willing to wait longer than the built-in bound, but
+       * never shorten it below that bound.  The deadline carried here is not this commit's own budget:
+       * an explicit COMMIT arrives as its own request with no timeout, so what is left belongs to an
+       * earlier statement and may be short or already gone.  Shortening on that basis would hand the
+       * visibility gap back to exactly the sessions that set a tight timeout, while extending on it
+       * only costs a longer hold in a situation where delivery is already stuck. */
       wait_msec = DBLINK_2PC_DECISION_WAIT_MSEC;
       if (tdes->last_query_deadline > 0)
 	{
 	  INT64 remaining = tdes->last_query_deadline - log_get_clock_msec ();
 
-	  if (remaining > 0)
+	  if (remaining > wait_msec)
 	    {
 	      wait_msec = (remaining > INT_MAX) ? INT_MAX : (int) remaining;
 	    }

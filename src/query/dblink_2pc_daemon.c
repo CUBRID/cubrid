@@ -416,8 +416,16 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 	{
 	  /* Error: re-enqueue this single participant for retry.  The completion travels with the entry and
 	   * keeps its slot, so the commit path stays blocked until the retry succeeds or its bound
-	   * expires - it must not be woken by a decision that was not delivered. */
-	  (void) dblink_2pc_daemon_enqueue (e.gtrid, send_state, &e.participant, e.completion);
+	   * expires - it must not be woken by a decision that was not delivered.
+	   *
+	   * If the entry cannot go back on the queue, settle it here instead: it took a reference and a
+	   * slot when it was queued, and it no longer exists to release them.  Leaving them behind would
+	   * make the commit path wait out its whole bound and leak the completion.  The decision itself is
+	   * not lost - its _db_global_tran row is still there for recovery to replay. */
+	  if (dblink_2pc_daemon_enqueue (e.gtrid, send_state, &e.participant, e.completion) != NO_ERROR)
+	    {
+	      dblink_2pc_completion_settle (e.completion);
+	    }
 	  return;
 	}
 

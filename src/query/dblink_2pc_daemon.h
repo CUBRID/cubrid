@@ -53,9 +53,10 @@
  * statement of the same session; the bound is what keeps an unresponsive participant from stalling
  * the commit response.
  *
- * It governs a session that stated no deadline of its own - which includes everything that does not
- * come through a CAS, since csql and the utilities connect to the server directly.  When the client
- * did set a query timeout, log_2pc_commit_first_phase() uses what is left of it instead.
+ * It is the floor for every session.  A client that stated a longer deadline of its own gets that
+ * instead - see log_2pc_commit_first_phase() - but nothing waits less than this, including everything
+ * that does not come through a CAS, since csql and the utilities connect to the server directly and
+ * carry no deadline at all.
  *
  * Deliberately generous: a safety net for a participant that stopped responding, not a knob for
  * trimming a slow one.  Tightening it makes healthy-but-busy transactions fall back, which brings
@@ -94,11 +95,15 @@ struct global_tran_queue_entry
 /*
  * Ownership rule for the two counters.  Attaching the completion to a queue entry takes a reference
  * with _ref(); that entry is then settled with exactly one _settle(), which drops both remaining and
- * the reference.  Concretely there are three cases, and only the first two settle an entry:
+ * the reference.  An entry is settled once it can no longer be retried - which is every case below
+ * except the second:
  *
  *   decision delivered      the daemon calls _settle()
- *   delivery failed         nothing is called - the entry keeps its reference and its slot in
- *                           remaining, and is re-enqueued for retry as it is today
+ *   delivery failed, and    nothing is called - the entry keeps its reference and its slot in
+ *   the retry is queued     remaining, and is re-enqueued for retry as it is today
+ *   delivery failed, and    the daemon calls _settle(): the entry is gone from the queue and nothing
+ *   the retry is refused    else will ever release what it holds.  The decision is not lost - its
+ *                           _db_global_tran row is still there for recovery to replay
  *   never enqueued          the caller that took the reference calls _settle() itself, so a queue
  *                           that refused the entry does not leave the commit path waiting for it
  *
