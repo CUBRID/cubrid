@@ -446,6 +446,10 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     @Override
     public int findColumn(String columnName) throws SQLException {
 
+        // NOTE: Suppose that a user wrote T.col as a column in a SELECT statement,
+        // In client-side JDBC, columnName argument must be "col" to find its index.
+        // In server-side JDBC, however, both "T.col" and "col" are allowed.
+
         String colName = columnName.toLowerCase();
         Map<String, Integer> colNameToIdx = statementHandler.getColNameIndex();
 
