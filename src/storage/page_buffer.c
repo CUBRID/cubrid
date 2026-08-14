@@ -486,29 +486,42 @@ union pgbuf_atomic_latch_impl
   } impl;
 };
 
-/* BCB structure */
-struct pgbuf_bcb
+/* BCB structure
+ *
+ * Cache line grouping (COH-01/COH-04: one writer per line; readers on their own line).
+ * The fields are ordered, not renamed - every access is by name, nothing depends on their
+ * order (no memcpy/memset/offsetof over the struct, and the table is walked with
+ * PGBUF_BCB_SIZEOF), so this is a layout-only change.
+ *
+ * Measured motivation (TPC-H SF10 Q21, perf c2c): 30.2% of all HITM landed on two lines of
+ * the BCB. The top line held vpid (read by every hash-chain walker) next to atomic_latch
+ * (written by every fix/unfix of that BCB, 82% of that line's HITM) - so one fix invalidated
+ * the vpid that unrelated lookups were reading. sizeof was also 144, neither a multiple of
+ * 64 nor aligned, so BCBs straddled lines and two unrelated BCBs shared one.
+ *
+ *   line 0: mutex          - its own writer, kept isolated
+ *   line 1: read-mostly    - vpid/hash_next/iopage_buffer are compared or dereferenced by
+ *                            other threads' lookups; written only when the BCB changes page
+ *   line 2: per-fix writes - atomic_latch and the counters/ticks the fixing thread updates
+ */
+struct alignas (64) pgbuf_bcb
 {
 #if defined(SERVER_MODE)
+  /* --- line 0: BCB mutex (single writer per lock/unlock) --- */
   pthread_mutex_t mutex;	/* BCB mutex */
   int owner_mutex;		/* mutex owner */
-#endif				/* SERVER_MODE */
-  VPID vpid;			/* Volume and page identifier of resident page */
-  PGBUF_ATOMIC_LATCH atomic_latch;	/* atomic latch */
-  volatile int flags;
-#if defined(SERVER_MODE)
-  THREAD_ENTRY *next_wait_thrd;	/* BCB waiting queue */
-#endif				/* SERVER_MODE */
-#if defined(SERVER_MODE)
-  THREAD_ENTRY *latch_last_thread;	/* last thread that acquired latch */
-#endif				/* SERVER_MODE && !NDEBUG */
+#endif /* SERVER_MODE */
+
+  /* --- line 1: read-mostly; other threads read these while walking the hash chain --- */
+  alignas (64) VPID vpid;	/* Volume and page identifier of resident page */
   PGBUF_BCB *hash_next;		/* next hash chain */
+  PGBUF_IOPAGE_BUFFER *iopage_buffer;	/* pointer to iopage buffer structure */
   PGBUF_BCB *prev_BCB;		/* prev LRU chain */
   PGBUF_BCB *next_BCB;		/* next LRU or Invalid(Free) chain */
-  int tick_lru_list;		/* age of lru list when this BCB was inserted into. used to decide when bcb has aged
-				 * enough to boost to top. */
-  int tick_lru3;		/* position in lru zone 3. small numbers are at the bottom. used to update LRU victim
-				 * hint. */
+
+  /* --- line 2: written by the thread that fixes/unfixes this BCB --- */
+  alignas (64) PGBUF_ATOMIC_LATCH atomic_latch;	/* atomic latch */
+  volatile int flags;
   volatile int count_fix_and_avoid_dealloc;	/* two-purpose field:
 						 * 1. count fixes up to a threshold (to detect hot pages).
 						 * 2. avoid deallocation count.
@@ -516,9 +529,17 @@ struct pgbuf_bcb
 						 * be changed atomically... 2-byte sized atomic operations are not
 						 * common. */
   int hit_age;			/* age of last hit (used to compute activities and quotas) */
-
+  int tick_lru_list;		/* age of lru list when this BCB was inserted into. used to decide when bcb has aged
+				 * enough to boost to top. */
+  int tick_lru3;		/* position in lru zone 3. small numbers are at the bottom. used to update LRU victim
+				 * hint. */
+#if defined(SERVER_MODE)
+  THREAD_ENTRY *next_wait_thrd;	/* BCB waiting queue */
+#endif /* SERVER_MODE */
+#if defined(SERVER_MODE)
+  THREAD_ENTRY *latch_last_thread;	/* last thread that acquired latch */
+#endif /* SERVER_MODE && !NDEBUG */
   LOG_LSA oldest_unflush_lsa;	/* The oldest LSA record of the page that has not been written to disk */
-  PGBUF_IOPAGE_BUFFER *iopage_buffer;	/* pointer to iopage buffer structure */
 };
 
 /* iopage buffer structure */
@@ -5471,7 +5492,10 @@ pgbuf_initialize_bcb_table (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, "data_buffer_pages");
       return ER_PRM_BAD_VALUE;
     }
-  pgbuf_Pool.BCB_table = (PGBUF_BCB *) malloc ((size_t) alloc_size);
+  /* PGBUF_BCB is alignas (64) so that no two BCBs share a cache line; malloc only guarantees
+   * 16 bytes, which would leave the whole table off by a fixed offset and defeat it. sizeof is
+   * a multiple of the alignment (required by aligned_alloc), so alloc_size is too. */
+  pgbuf_Pool.BCB_table = (PGBUF_BCB *) aligned_alloc (alignof (PGBUF_BCB), (size_t) alloc_size);
   if (pgbuf_Pool.BCB_table == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) alloc_size);
