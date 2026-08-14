@@ -24430,8 +24430,8 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
 	  {
-	    /* a published deleter holds no row lock the path below could suspend on (CBRD-27034):
-	     * serialize on the writer's end instead, then restart */
+	    /* a published deleter holds no row lock the path below could suspend on: serialize on the
+	     * writer's end instead, then restart */
 	    MVCCID conflict_mvccid =
 	      (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
 	      ? BTREE_MVCC_INFO_INSID (&mvcc_info) : BTREE_MVCC_INFO_DELID (&mvcc_info);
@@ -24755,8 +24755,8 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
 	  {
-	    /* a published deleter holds no row lock the path below could suspend on (CBRD-27034):
-	     * serialize on the writer's end instead, then restart */
+	    /* a published deleter holds no row lock the path below could suspend on: serialize on the
+	     * writer's end instead, then restart */
 	    MVCCID conflict_mvccid =
 	      (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
 	      ? BTREE_MVCC_INFO_INSID (&mvcc_info) : BTREE_MVCC_INFO_DELID (&mvcc_info);
@@ -27455,8 +27455,8 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
     case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SERVER_MODE)
       /* a published deleter holds no row lock: the object-lock suspend would be granted at once and the
-       * re-check would spin (CBRD-27034). Wait for the deleter to end, then re-check (mirrors the
-       * INSERT_IN_PROGRESS path above). */
+       * re-check would spin. Wait for the deleter to end, then re-check (mirrors the INSERT_IN_PROGRESS
+       * path above). */
       {
 	MVCCID fk_delete_mvccid = BTREE_MVCC_INFO_DELID (mvcc_info);
 	int fk_wait_error;

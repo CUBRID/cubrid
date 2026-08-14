@@ -23577,8 +23577,8 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       is_mvcc_op = true;
     }
 
-  /* late arrivals settle a DELETE_IN_PROGRESS row against the deleter's MVCCID self-lock (CBRD-27034):
-   * it must be held before the DELID stamp becomes observable */
+  /* late arrivals settle a DELETE_IN_PROGRESS row against the deleter's MVCCID self-lock, so it must be
+   * held before the DELID stamp becomes observable */
   if (is_mvcc_op)
     {
       rc = logtb_ensure_mvccid_self_lock (thread_p);

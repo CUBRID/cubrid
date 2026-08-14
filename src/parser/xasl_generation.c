@@ -21689,8 +21689,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      /* CBRD-27034: DELETE relies on condition-only reevaluation instead of the select-phase row lock;
-       * do not force PT_SELECT_INFO_MVCC_LOCK_NEEDED here. */
+      /* Reevaluation at the delete phase takes over from the select-phase lock: the predicate is
+       * re-checked against the version that phase locks, so the select phase is left unlocked. */
 
       if (abort_reevaluation)
 	{

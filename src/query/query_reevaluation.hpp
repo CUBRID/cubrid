@@ -97,8 +97,8 @@ namespace cubquery
     lc_copy_area *copyarea = NULL;	/* used to build the tuple to be stored to disk after reevaluation */
     val_descr *vd = NULL;	/* values descriptor */
     recdes *new_recdes = NULL;	/* record descriptor after assignment reevaluation */
-    bool skip_unevaluated_version = false;	/* skip a last version the statement's predicate was never evaluated
-						 * against, instead of modifying it (CBRD-27034) */
+    bool skip_unevaluated_version = false;	/* skip a last version the predicate was never evaluated
+						 * against, instead of modifying it */
   };
 
   /* Structure used in condition reevaluation at SELECT */
