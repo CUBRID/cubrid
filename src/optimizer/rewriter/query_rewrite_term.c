@@ -4637,6 +4637,7 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
 #define QO_OR_EXTRACT_MAX_DISJUNCTS 8
   PT_NODE *disjuncts[QO_OR_EXTRACT_MAX_DISJUNCTS];
   PT_NODE *cnf, *spec, *part, *ors, *or_node, *new_terms = NULL;
+  PT_NODE *save_next;
   QO_OR_EXTRACT_REF_INFO info;
   int dis_cnt, i;
   bool ok;
@@ -4648,7 +4649,11 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
 
   for (cnf = *wherep; cnf != NULL; cnf = cnf->next)
     {
-      if (cnf->node_type != PT_EXPR || cnf->info.expr.op != PT_OR)
+      /* qo_or_extract_flatten () collects the disjuncts through arg1/arg2 only, so a factor that
+       * carries further branches on its or_next chain would yield a restriction built from part
+       * of the disjunction -- stronger than what the factor implies, which could drop rows.
+       * Skip such factors, and keep the gate below looking at exactly the node set flatten sees */
+      if (cnf->node_type != PT_EXPR || cnf->info.expr.op != PT_OR || cnf->or_next != NULL)
 	{
 	  continue;
 	}
@@ -4681,7 +4686,16 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
 	  info.refers_spec = false;
 	  info.refers_other = false;
 	  info.is_unsafe = false;
+	  /* cnf is an element of the WHERE CNF list, and parser_walk_tree () follows 'next' after
+	   * the sub-trees (parse_tree_cl.c, pt_walk_private), so the walk would classify this
+	   * factor together with every later WHERE term: a subquery in any of them would set
+	   * is_unsafe and silently disable the extraction, while their spec references would set
+	   * refers_other and let a single-spec factor through the "already a sarg" guard, adding a
+	   * duplicate of itself. Detach the tail for the walk, as qo_rewrite_outerjoin () does */
+	  save_next = cnf->next;
+	  cnf->next = NULL;
 	  (void) parser_walk_tree (parser, cnf, qo_or_extract_check_ref_pre, &info, NULL, NULL);
+	  cnf->next = save_next;
 	  if (info.is_unsafe || !info.refers_spec || !info.refers_other)
 	    {
 	      continue;
@@ -4711,6 +4725,11 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
 		      break;
 		    }
 		  or_node->info.expr.op = PT_OR;
+		  /* as qo_convert_to_range_helper () does for the predicate nodes it builds; the
+		   * location is 0 under the WHERE-level guard above, but carry it explicitly so an
+		   * extension to ON-clause factors (location > 0) does not silently lose it */
+		  or_node->type_enum = PT_TYPE_LOGICAL;
+		  or_node->info.expr.location = cnf->info.expr.location;
 		  or_node->info.expr.arg1 = ors;
 		  or_node->info.expr.arg2 = part;
 		  ors = or_node;
