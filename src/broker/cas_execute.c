@@ -8201,8 +8201,15 @@ class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern
       scale = (short) db_domain_scale (domain);
     }
 
-  /* only a character type carries a codeset; -1 tells the client "not applicable" so it
-   * never has to guess (the DOMAIN column cannot express this) */
+  /* The codeset a character column's values are stored and compared in - what a DBLink
+   * client needs to decide whether a predicate on this column can be pushed down, and
+   * something the DOMAIN column cannot express.  -1 says "not applicable" so the client
+   * never has to guess.
+   *
+   * Reported only for a collation-bearing type.  Other domains do carry a codeset field
+   * (BIT/VARBIT hold INTL_CODESET_RAW_BITS, JSON holds INTL_CODESET_UTF8), but it is a
+   * fixed property of the type rather than of the column, so the client reconstructs it
+   * from the type instead of spending a column on it here. */
   attr_table->codeset = TP_TYPE_HAS_COLLATION (db_type) ? (short) db_domain_codeset (domain) : (short) -1;
 
   attr_table->scale = scale;

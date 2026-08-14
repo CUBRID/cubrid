@@ -5680,8 +5680,13 @@ pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name, cons
 	  rmt_attr->is_invisible = invisible;
 	}
 
-      /* CODESET is the remote column's physical codeset, or -1 for a type that has
-       * none.  BIT keeps its raw-bits marker as the prepare path reports it. */
+      /* CODESET is how the column's characters are encoded at the far end - the column's
+       * own codeset on a CUBRID remote, UTF-8 on a gateway - and -1 for a type that does
+       * not carry a per-column codeset.  Reproduce there what the "SELECT *" prepare
+       * would have reported for the same column, since this path replaces it: the
+       * raw-bits marker for BIT/VARBIT, and 0 for everything else.  (A remote JSON column
+       * gets 0 where the prepare reports INTL_CODESET_UTF8; nothing reads it -
+       * pt_data_type_to_db_domain () takes data_type.units only for char and bit types.) */
       if (codeset >= 0)
 	{
 	  rmt_attr->charset = codeset;
@@ -12451,7 +12456,12 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     {
     case PT_DOT_:
       /* only a plain (qualifier, column) pair: in a nested path (a.b.c) arg1 is
-       * itself a PT_DOT_ and info.name.original would read the wrong union member */
+       * itself a PT_DOT_ and info.name.original would read the wrong union member.
+       * The qualifier filters nothing: the walk is not stopped here, so arg1 and arg2
+       * are visited again as bare PT_NAMEs, and that arm passes no resolved name to
+       * check_for_already_exists ().  A reference qualified with another table's alias
+       * is therefore collected as well - pt_check_column_list () is what keeps the
+       * remote select list to this table's columns. */
       if (node->info.dot.arg1->node_type == PT_NAME && node->info.dot.arg2->node_type == PT_NAME)
 	{
 	  check_for_already_exists (parser, plkcol, node->info.dot.arg1->info.name.original,
@@ -12498,8 +12508,9 @@ pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_QUE
 
   /* an ON condition hangs on the spec at the right side of its JOIN, so the dblink
    * table's columns may appear in another spec's on_cond (e.g. the dblink table on
-   * the left side of a join).  Walk every spec's on_cond; names qualified with other
-   * tables' aliases are filtered out by check_for_already_exists (). */
+   * the left side of a join).  Walk every spec's on_cond; a name qualified with another
+   * table's alias is collected here too (see pt_get_column_name_pre ()), and
+   * pt_check_column_list () afterwards drops whatever is not a column of this table. */
   for (spec = query->q.select.from; spec; spec = spec->next)
     {
       if (spec->info.spec.on_cond)
@@ -12693,6 +12704,7 @@ pt_gather_dblink_cols_in_dml_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
 {
   PT_NODE *stmt = (PT_NODE *) arg;
   PT_NODE *table;
+  *continue_walk = PT_CONTINUE_WALK;
 
   /* the remote spec sits below the generated derived table, so spec subtrees are walked */
   if (node->node_type != PT_SPEC || !(node->info.spec.flag & PT_SPEC_FLAG_DBLINK_DML_SRC)
@@ -12788,15 +12800,21 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
 }
 
 /*
- * pt_dblink_get_remote_col_charset () - physical remote codeset of a DBLink column
+ * pt_dblink_get_remote_col_charset () - codeset a DBLink column's bytes arrive in
  *   return: INTL_CODESET of the named remote column, or -1 if not found
  *   remote_col_list(in): PT_DBLINK_INFO.remote_col_list (S_REMOTE_TBL_COLS *)
  *   col_name(in): bare remote column name
  *
- * The CCI column metadata carries the remote column's true (physical) codeset, which
- * is preserved here regardless of how the parse-tree attr_def later declares the
- * column's codeset.  The correlated push-down guard uses this to detect a cross-codeset
- * key (remote physical codeset != local outer codeset) and fall back to local evaluation.
+ * The CCI column metadata carries how the column's characters are encoded at the far end
+ * - the column's own codeset on a CUBRID remote, UTF-8 on a gateway, which re-encodes
+ * character data to UTF-8 on the way out - and it is preserved here regardless of how the
+ * parse-tree attr_def later declares the column's codeset.  The correlated push-down guard
+ * uses it to detect a key whose value, bound as raw local bytes, would meet a differently
+ * encoded column, and fall back to local evaluation.
+ *
+ * The "SELECT *" prepare already reported this per column; schema_info has to carry it as
+ * well (its CODESET column), because a statement that references a remote invisible column
+ * takes the schema_info path instead and would otherwise lose it for every column.
  */
 int
 pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name)

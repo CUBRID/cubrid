@@ -7296,7 +7296,7 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		{
 		  const char *corr_col = mq_dblink_extract_col_name (parser, remote_expr);
 
-		  /* Cross-codeset guard: a character key whose remote physical codeset differs
+		  /* Cross-codeset guard: a character key whose remote-side codeset differs
 		   * from the local outer codeset must not be pushed.  The outer value is bound as
 		   * a host variable in the local codeset, so a remote comparison against a
 		   * different-codeset column does a wrong raw-byte comparison and silently drops
@@ -7306,13 +7306,24 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		  bool cross_codeset = false;
 		  if (PT_IS_CHAR_STRING_TYPE (outer_expr->type_enum))
 		    {
-		      /* Remote column's physical codeset, from the CCI column metadata.  This is
-		       * authoritative and unaffected by how the attr_def later declares the
-		       * column's codeset (e.g. redeclared with the local codeset for union/compat).
-		       * An unknown codeset must block the push rather than fall back to the
-		       * declared one: Because remote character columns are uniformly declared with
-           * LANG_SYS_CODESET, the declared value always matches outer_cs. Relying on it
-           * would mistakenly disable the guard right when metadata is absent. */
+		      /* How this remote column's characters are encoded at the far end: on a
+		       * CUBRID remote the column's own codeset, on a gateway always UTF-8 - the
+		       * gateway CAS reads character data from the ODBC driver as UTF-16 and
+		       * re-encodes it to UTF-8 before it reaches the client (cgw_unicode_to_utf8 ()),
+		       * and decodes a bound value the same way.  The key value goes out as raw
+		       * local bytes, so the push is meaningful only when that encoding is the local
+		       * one; otherwise the remote compares differently encoded bytes.
+		       *
+		       * The declared codeset cannot stand in for it: remote character columns are
+		       * uniformly declared with LANG_SYS_CODESET, so it always equals outer_cs and
+		       * relying on it would disable the guard exactly when metadata is missing.
+		       *
+		       * The two "< 0" terms are defensive only.  A character column never carries a
+		       * negative codeset (a CUBRID remote reports one for every collation-bearing
+		       * type; a gateway maps every codeset-less ODBC type to CCI_U_TYPE_UNKNOWN and
+		       * refuses it in cgw_is_support_datatype ()), and outer_expr is a resolved
+		       * column reference whose collation the semantic check already matched against
+		       * the remote column. */
 		      int remote_cs = pt_dblink_get_remote_col_charset (dinfo->remote_col_list, corr_col);
 		      int outer_cs = (outer_expr->data_type != NULL) ? outer_expr->data_type->info.data_type.units : -1;
 		      cross_codeset = (remote_cs < 0 || outer_cs < 0 || remote_cs != outer_cs);
