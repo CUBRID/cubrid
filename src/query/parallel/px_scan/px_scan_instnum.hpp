@@ -19,21 +19,22 @@
 /*
  * px_scan_instnum.hpp - ROWNUM (inst_num) support for parallel scan.
  *
- * Header-only on purpose: the eligibility test runs client-side (px_scan_checker.cpp links into
- * cs/sa only) while the numbering runs server-side, and a header has no link boundary.
+ * Implementations live in px_scan_instnum.cpp, split there by build mode: eligibility runs
+ * client-side (px_scan_checker.cpp links into cs/sa only), numbering runs server-side.
+ * get_instnum_upper_limit_rhs stays inline here because both halves call it.
  */
 
 #ifndef _PX_SCAN_INSTNUM_HPP_
 #define _PX_SCAN_INSTNUM_HPP_
 
 #include <atomic>
+#include <vector>
 
 #include "regu_var.hpp"
 #include "xasl.h"
 #include "xasl_predicate.hpp"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include <vector>
 #include "query_list.h"
 #include "thread_entry.hpp"
 #endif /* SERVER_MODE || SA_MODE */
@@ -108,10 +109,11 @@ namespace parallel_scan
 	counter.store (already_emitted);
       }
 
-      /* Clamp before the decrement so BIGINT_MIN cannot wrap to BIGINT_MAX. */
+      /* raw is already inclusive: resolve_instnum_limit folds the R_LT decrement and the
+       * fractional-bound correction into it before calling here. */
       inline void resolve_limit (INT64 raw) noexcept
       {
-	limit = (raw <= 0) ? 0 : (is_less_than ? raw - 1 : raw);
+	limit = (raw <= 0) ? 0 : raw;
 	limit_resolved = true;
       }
 

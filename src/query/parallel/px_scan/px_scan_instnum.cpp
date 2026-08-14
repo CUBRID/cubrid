@@ -46,6 +46,7 @@ namespace parallel_scan
 #if !defined (SERVER_MODE)
   /* returns true if any TYPE_CONSTANT regu var in this subtree points at iv (the inst_num() value). */
   static bool regu_subtree_refs_instnum (REGU_VARIABLE *r, DB_VALUE *iv);
+  static bool pred_refs_instnum (PRED_EXPR *p, DB_VALUE *iv);
 
   static bool
   regu_var_list_refs_instnum (struct regu_variable_list_node *list, DB_VALUE *iv)
@@ -79,8 +80,9 @@ namespace parallel_scan
 	  {
 	    return false;
 	  }
+	/* T_CASE/T_DECODE/T_IF/T_PREDICATE keep their condition in a->pred, not in the operands. */
 	return regu_subtree_refs_instnum (a->leftptr, iv) || regu_subtree_refs_instnum (a->rightptr, iv)
-	       || regu_subtree_refs_instnum (a->thirdptr, iv);
+	       || regu_subtree_refs_instnum (a->thirdptr, iv) || pred_refs_instnum (a->pred, iv);
       }
       case TYPE_FUNC:
 	return regu_var_list_refs_instnum (r->value.funcp->operand, iv);
@@ -102,6 +104,44 @@ namespace parallel_scan
 	return false;
       default:
 	/* unknown container: conservatively assume it may reference instnum -> block. */
+	return true;
+      }
+  }
+
+  static bool
+  pred_refs_instnum (PRED_EXPR *p, DB_VALUE *iv)
+  {
+    if (p == nullptr)
+      {
+	return false;
+      }
+    switch (p->type)
+      {
+      case T_PRED:
+	return pred_refs_instnum (p->pe.m_pred.lhs, iv) || pred_refs_instnum (p->pe.m_pred.rhs, iv);
+      case T_NOT_TERM:
+	return pred_refs_instnum (p->pe.m_not_term, iv);
+      case T_EVAL_TERM:
+	switch (p->pe.m_eval_term.et_type)
+	  {
+	  case T_COMP_EVAL_TERM:
+	    return regu_subtree_refs_instnum (p->pe.m_eval_term.et.et_comp.lhs, iv)
+		   || regu_subtree_refs_instnum (p->pe.m_eval_term.et.et_comp.rhs, iv);
+	  case T_ALSM_EVAL_TERM:
+	    return regu_subtree_refs_instnum (p->pe.m_eval_term.et.et_alsm.elem, iv)
+		   || regu_subtree_refs_instnum (p->pe.m_eval_term.et.et_alsm.elemset, iv);
+	  case T_LIKE_EVAL_TERM:
+	    return regu_subtree_refs_instnum (p->pe.m_eval_term.et.et_like.src, iv)
+		   || regu_subtree_refs_instnum (p->pe.m_eval_term.et.et_like.pattern, iv)
+		   || regu_subtree_refs_instnum (p->pe.m_eval_term.et.et_like.esc_char, iv);
+	  case T_RLIKE_EVAL_TERM:
+	    return regu_subtree_refs_instnum (p->pe.m_eval_term.et.et_rlike.src, iv)
+		   || regu_subtree_refs_instnum (p->pe.m_eval_term.et.et_rlike.pattern, iv)
+		   || regu_subtree_refs_instnum (p->pe.m_eval_term.et.et_rlike.case_sensitive, iv);
+	  default:
+	    return true;	/* unknown term: conservatively block, like the regu default. */
+	  }
+      default:
 	return true;
       }
   }
@@ -233,6 +273,18 @@ namespace parallel_scan
 	if (dom_status == DOMAIN_COMPATIBLE)
 	  {
 	    raw_limit = db_get_bigint (&coerced);
+	    if (raw_limit > 0)
+	      {
+		/* The coercion rounds, so ask the comparison itself - the question serial asks every
+		 * row - whether the rounded candidate qualifies, and step down once if it does not.
+		 * Rounding lands within 1, so that candidate and its predecessor are the only two. */
+		DB_VALUE_COMPARE_RESULT cmp = tp_value_compare (&coerced, limit_val, 1, 0);
+		const bool qualifies = draw.is_less_than ? (cmp == DB_LT) : (cmp != DB_GT);
+		if (!qualifies)
+		  {
+		    raw_limit--;
+		  }
+	      }
 	  }
 	else if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (limit_val) == DB_TYPE_NUMERIC)
 	  {
