@@ -1019,6 +1019,27 @@ static int prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type, void *in_v
 static void update_session_state_from_sys_params (THREAD_ENTRY * thread_p, SESSION_PARAM * session_params);
 #endif
 
+#if defined (SERVER_MODE)
+/*
+ * prm_default_max_connection_worker () - built-in default value of max_connection_worker
+ *   return: half of the cores available to the server, but never less than one
+ *
+ * Note: cubthread::system_core_count () returns 1 on a single core machine and also when the server
+ *       is restricted to a single core (taskset, docker --cpuset-cpus, cpu manager, ...). Halving it
+ *       without a lower bound gives 0, and a connection pool with no connection worker cannot serve
+ *       any client. The lower bound is the lower limit declared for the parameter.
+ */
+static int
+prm_default_max_connection_worker (void)
+{
+  int half_of_cores;
+
+  half_of_cores = (int) cubthread::system_core_count () / 2;
+
+  return half_of_cores < 1 ? 1 : half_of_cores;
+}
+#endif /* SERVER_MODE */
+
 static const SYSPRM_PARAM_VALUE NULL_SYSPRM_PARAM_VALUE = { true, {.str = NULL} };
 
 
@@ -5241,10 +5262,11 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
 #if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count () / 2}},
-   {false, {.i = (int) cubthread::system_core_count () / 2}},
+   {false, {.i = prm_default_max_connection_worker ()}},
+   {false, {.i = prm_default_max_connection_worker ()}},
    {false, {.i = (int) cubthread::system_core_count ()}},
 #else
+   /* TODO: unused - the connection pool is server-only; to be removed */
    {false, {.i = 2}},
    {false, {.i = 2}},
    NULL_SYSPRM_PARAM_VALUE,
