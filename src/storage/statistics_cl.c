@@ -297,8 +297,10 @@ stats_dump (const char *class_name_p, FILE * file_p)
   ATTR_STATS *attr_stats_p;
   BTREE_STATS *bt_stats_p;
   SM_CLASS *smclass_p;
+  SM_CLASS_CONSTRAINT *cons_p;
   int i, j, k;
   const char *name_p;
+  const char *index_name_p;
   const char *prefix_p = "";
   time_t tloc;
 
@@ -355,8 +357,19 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	    {
 	      bt_stats_p = &(attr_stats_p->bt_stats[j]);
 
-	      fprintf (file_p, "        BTID: { %d , %d }\n", bt_stats_p->btid.vfid.volid,
-		       bt_stats_p->btid.vfid.fileid);
+	      index_name_p = NULL;
+	      for (cons_p = smclass_p->constraints; cons_p != NULL; cons_p = cons_p->next)
+		{
+		  if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons_p->type)
+		      && BTID_IS_EQUAL (&bt_stats_p->btid, &cons_p->index_btid))
+		    {
+		      index_name_p = cons_p->name;
+		      break;
+		    }
+		}
+
+	      fprintf (file_p, "        Index: %s , BTID: { %d , %d }\n", (index_name_p ? index_name_p : "not found"),
+		       bt_stats_p->btid.vfid.volid, bt_stats_p->btid.vfid.fileid);
 	      fprintf (file_p, "        Cardinality: %d (", bt_stats_p->keys);
 
 	      prefix_p = "";
