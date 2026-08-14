@@ -2131,6 +2131,7 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) expected_size,
 		  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
+	  pr_clear_value (&dummy);
 	  return ER_QPROC_STRING_SIZE_TOO_BIG;
 	}
 
