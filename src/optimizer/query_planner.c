@@ -9589,13 +9589,16 @@ qo_clean_planner (QO_PLANNER * planner)
  *
  * Calibrated from measured planning times of an n-table equi-join chain (release build, one row
  * per table): 12 tables 1.8 s, 14 tables 5.1 s, 16 tables 12.4 s, 18 tables 29.7 s -- all at
- * level 8 -- against the enumeration the cost model below predicts. The budget is the
- * enumeration a 14-table join already performs, so every join size that plans in a few seconds
- * today keeps the level it is planned at today, and the sizes that used to run tens or hundreds
- * of seconds are held to a few seconds instead. Raise it to buy a wider search for 15..25
- * tables at the cost of planning time.
+ * level 8 -- against the enumeration the cost model below predicts, so the sizes that used to
+ * run tens or hundreds of seconds are held to a fraction of a second.
+ *
+ * The value has a floor that must be respected: it has to cover a 37-table join at level 3,
+ * 37 * SUM (j <= 3) C (37, j) = 313501, because level 3 is what the table-count staircase gave
+ * 26..37 tables. Below that, 34..37 tables come out at level 2 -- a search narrower than before
+ * this change, for join sizes that were never slow to plan. Raising the budget past the current
+ * value buys a wider search for 15..25 tables at the cost of planning time.
  */
-#define QO_JOIN_ENUM_BUDGET  ((double) 200000)
+#define QO_JOIN_ENUM_BUDGET  ((double) 320000)
 
 /*
  * qo_join_unit_from_budget () - how many tables to consider at a time in the partial join search
@@ -9616,8 +9619,9 @@ qo_clean_planner (QO_PLANNER * planner)
  *
  * Pick the largest level whose estimated enumeration fits one budget instead: planning cost is
  * then bounded for every join size and the boundary is smooth. With the budget below the levels
- * are unchanged up to 14 tables, taper from there (16 tables at level 5, 18 and 20 at level 4,
- * 22..37 at level 3) and stay at the staircase's own value from 26 tables on.
+ * are unchanged up to 14 tables, taper from there (15 at level 7, 16 at 6, 18 at 5, 20 and 22 at
+ * 4) and never fall below the staircase's own value for the sizes it had already given up on
+ * (25..37 at level 3, 38 and up at 2).
  */
 static int
 qo_join_unit_from_budget (int nodes_cnt)
