@@ -1988,7 +1988,7 @@ cgw_describe_invisible_attrs (SQLHDBC hdbc, const char *table_name, T_CGW_SCHEMA
     }
   snprintf (p, sql_len - (size_t) (p - sql), " FROM %s", table_name);
 
-  if (SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &hstmt) != SQL_SUCCESS)
+  if (!SQL_SUCCEEDED (SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &hstmt)))
     {
       goto end;
     }
@@ -2274,7 +2274,9 @@ cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** 
     }
   snprintf (sql, sql_len, "SELECT * FROM %s", table_name);
 
-  if (SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &hstmt) != SQL_SUCCESS)
+  /* SQL_SUCCEEDED (): a driver may report a state on the first statement handle of a
+   * connection, and SQL_SUCCESS_WITH_INFO still hands back a usable handle */
+  if (!SQL_SUCCEEDED (SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &hstmt)))
     {
       goto end;
     }
