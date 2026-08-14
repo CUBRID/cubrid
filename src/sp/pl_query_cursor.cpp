@@ -162,7 +162,8 @@ namespace cubpl
 	  }
 
 	QFILE_LIST_ID *list_id = m_query_entry->list_id;
-	for (int i = 0; i < list_id->type_list.type_cnt; i++)
+	int i;
+	for (i = 0; i < list_id->type_list.type_cnt; i++)
 	  {
 	    DB_VALUE *value = &m_current_tuple[i];
 	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
@@ -193,6 +194,16 @@ namespace cubpl
 	    else
 	      {
 		db_make_null (value);
+	      }
+	  }
+	if (i < list_id->type_list.type_cnt)
+	  {
+	    // incomplete tuple due to an error
+	    // clear values in the tuple.
+	    assert (scan_code == S_ERROR);
+	    for (int j = 0; j < i; j++)
+	      {
+		pr_clear_value (&m_current_tuple[j]);
 	      }
 	  }
       }
