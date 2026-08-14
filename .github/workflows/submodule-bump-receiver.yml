@@ -122,6 +122,18 @@ jobs:
           set -euo pipefail
           OPEN=$(gh pr list --repo "$PARENT" --state open --limit 100 --json number,headRefName \
                  | jq -r --arg b "bump/$SUB" '.[] | select(.headRefName==$b) | .number')
+          # A just-merged PR can still read as open. This run is the only chance to
+          # advance, so decide on what the pin already holds, not on the reported state.
+          if [ -n "$OPEN" ]; then
+            HEAD_SHA=$(gh pr view "$OPEN" --repo "$PARENT" --json headRefOid --jq .headRefOid 2>/dev/null || true)
+            if [ -n "$HEAD_SHA" ]; then
+              PR_PIN=$(gh api "repos/$PARENT/contents/$SUB?ref=$HEAD_SHA" --jq .sha 2>/dev/null || true)
+              if [ "$PR_PIN" = "$(git rev-parse "HEAD:$SUB")" ]; then
+                echo "PR #$OPEN already matches the current pin; treating it as merged."
+                OPEN=""
+              fi
+            fi
+          fi
           if [ -z "$OPEN" ]; then
             echo "busy=false" >> "$GITHUB_OUTPUT"
             exit 0
