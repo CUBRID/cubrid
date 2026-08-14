@@ -51,6 +51,7 @@
 
 #include "dbtype_def.h"
 #include "query_evaluator.h"
+#include "porting_inline.hpp"
 #include "regu_var.hpp"
 
 // forward definitions
@@ -135,9 +136,13 @@ struct expr_prog
   int n_compute;
 
   /* host variable domain signature recorded at compile time; a later execution whose
-   * bound types differ must not reuse this program */
+   * bound types differ must not reuse this program.  sig_stamp records the execution the
+   * signature was last verified for, so the walk is charged once per execution
+   * (expr_prog_signature_ok ()) rather than once per row. */
   DB_TYPE *hv_types;
   int n_hv;
+  unsigned long long sig_stamp;
+  bool sig_stamp_valid;
 };
 
 /* compile the regu list into a program; returns NULL when nothing in the list benefits
@@ -164,16 +169,49 @@ extern EXPR_PROG *expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VAR
 					   val_descr * vd, bool allow_fallback_roots, bool allow_wired_only,
 					   bool only_compute_roots, int *root_idx_out);
 
-/* true when the program's recorded host-variable type signature matches vd */
+/* true when the program's recorded host-variable type signature matches vd.  Walks every
+ * bound value, so consumers call it through expr_prog_signature_ok () below rather than
+ * per row. */
 extern bool expr_prog_signature_matches (const EXPR_PROG * prog, const val_descr * vd);
+
+/* Host variables are bound before an execution starts and cannot change while it runs, so
+ * the signature only has to be verified when the executing query changes.  This charges the
+ * walk once per execution instead of once per row.  exec_stamp identifies the execution
+ * (the query id); 0 means "no identity available" and falls back to verifying every time.
+ * The caller passes it because val_descr is only forward declared here. */
+STATIC_INLINE bool
+expr_prog_signature_ok (EXPR_PROG * prog, const val_descr * vd, unsigned long long exec_stamp)
+{
+  if (exec_stamp != 0 && prog->sig_stamp_valid && prog->sig_stamp == exec_stamp)
+    {
+      return true;
+    }
+  if (!expr_prog_signature_matches (prog, vd))
+    {
+      return false;
+    }
+  prog->sig_stamp = exec_stamp;
+  prog->sig_stamp_valid = (exec_stamp != 0);
+  return true;
+}
+
+/* the execution identity a consumer feeds to expr_prog_signature_ok () */
+#define EXPR_PROG_EXEC_STAMP(vd) \
+  (((vd) != NULL && (vd)->xasl_state != NULL) ? (unsigned long long) (vd)->xasl_state->query_id : 0ULL)
 
 /* evaluate all steps for the current row; after this the i-th list element's value is
  * available through expr_prog_value (prog, i) */
 extern int expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid,
 			   QFILE_TUPLE tpl);
 
-/* the published value of the i-th compiled list element (valid until the next eval) */
-extern DB_VALUE *expr_prog_value (const EXPR_PROG * prog, int root_idx);
+/* the published value of the i-th compiled list element (valid until the next eval).
+ * Two dependent loads -- inline so a per-root, per-row read is not a cross-module call. */
+STATIC_INLINE DB_VALUE *
+expr_prog_value (const EXPR_PROG * prog, int root_idx)
+{
+  assert (root_idx >= 0 && root_idx < prog->n_roots);
+  return prog->cells[prog->root_cells[root_idx]];
+}
 
 extern void expr_prog_free (EXPR_PROG * prog);
 

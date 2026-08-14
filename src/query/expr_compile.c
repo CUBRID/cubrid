@@ -2153,8 +2153,10 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
   prog->root_cells = (int *) malloc (sizeof (int) * MAX (1, prog->n_roots));
   if (prog->steps == NULL || prog->cells == NULL || prog->slots == NULL || prog->root_cells == NULL)
     {
-      /* prog->steps holds no valid pred pointers yet (uninitialized memory) */
+      /* neither array is initialized yet: the steps hold no valid pred pointers and the
+       * slots are not DB_VALUEs, so expr_prog_free () must not walk either of them */
       prog->n_steps = 0;
+      prog->n_slots = 0;
       expr_prog_free (prog);
       expr_build_free_preds (&bctx);
       return NULL;
@@ -2361,13 +2363,6 @@ expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, O
 	}
     }
   return NO_ERROR;
-}
-
-DB_VALUE *
-expr_prog_value (const EXPR_PROG * prog, int root_idx)
-{
-  assert (root_idx >= 0 && root_idx < prog->n_roots);
-  return prog->cells[prog->root_cells[root_idx]];
 }
 
 /* the kernel's display name for program listings */
