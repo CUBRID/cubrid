@@ -21960,9 +21960,20 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (PT_IS_SPEC_FLAG_SET (node, PT_SPEC_FLAG_MVCC_COND_REEV))
 	    {
 	      /* set the position in SELECT list */
+	      assert (j < delete_->num_reev_classes);
+	      if (j >= delete_->num_reev_classes)
+		{
+		  break;
+		}
 	      delete_->mvcc_reev_classes[j++] = i;
 	    }
 	}
+
+      /* The count above was taken over the DELETE statement's spec list, but only a class that owns an
+       * OID - CLASS OID pair in the generated SELECT can be reevaluated at all. A class the SELECT dropped
+       * (an outer-joined table none of whose columns the outer query reads) leaves an entry unfilled, so the
+       * executor must be told how many entries this loop actually wrote. */
+      delete_->num_reev_classes = j;
 
       /* OID of the user who is creating this XASL */
       if ((oid = ws_identifier (db_get_user ())) != NULL)
