@@ -10618,6 +10618,14 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
+		      if (!has_spec)
+			{
+			  /* No access spec for this class: the filters of mvcc_reev_class stay uninitialized, so the
+			   * update phase has nothing to re-evaluate with. Fail the statement, as before the delete
+			   * path started distinguishing this case. */
+			  error = ER_FAILED;
+			  GOTO_EXIT_ON_ERROR;
+			}
 		    }
 
 		  /* clear attribute cache information if valid old subclass */
@@ -10787,6 +10795,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		  error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid, &has_spec);
 		  if (error != NO_ERROR)
 		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  if (!has_spec)
+		    {
+		      /* see the other call site: without an access spec there is nothing to re-evaluate with */
+		      error = ER_FAILED;
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
