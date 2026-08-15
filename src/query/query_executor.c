@@ -10213,6 +10213,9 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
   /* start from the struct's empty state, so a field this function does not fill cannot carry over */
   *reev_data = MVCC_UPDDEL_REEV_DATA ();
 
+  /* the value descriptor is bound on every path, including the one that carries no reevaluation class */
+  reev_data->vd = &xasl_state->vd;
+
   if (num_reev_classes == 0)
     {
       return NO_ERROR;
@@ -10276,7 +10279,6 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
   reev_data->curr_attrinfo = NULL;
   reev_data->copyarea = NULL;
   reev_data->cons_pred = cons_pred;
-  reev_data->vd = &xasl_state->vd;
 
   if (qexec_create_mvcc_reev_assignments (thread_p, aptr, has_delete, internal_classes, num_classes, num_assigns,
 					  assigns, mvcc_reev_assigns) != NO_ERROR)
@@ -11233,9 +11235,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   class_oid_cnt = delete_->num_classes;
   mvcc_reev_class_cnt = delete_->num_reev_classes;
   mvcc_reev_data.set_update_reevaluation (mvcc_upddel_reev_data);
-
-  /* the struct defaults are the condition-only state; only the value descriptor is bound here */
-  mvcc_upddel_reev_data.vd = &xasl_state->vd;
 
   /* Allocate memory for oids, hfids and attributes cache info of all classes used in update */
   error = qexec_create_internal_classes (thread_p, delete_->classes, class_oid_cnt, &internal_classes);
