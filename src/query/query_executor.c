@@ -11236,6 +11236,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   bool need_locking;
+  bool reev_disabled = false;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
   thread_p->no_logging = (bool) delete_->no_logging;
@@ -11445,7 +11446,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 		}
 
-	      if (mvcc_reev_class != NULL)
+	      if (mvcc_reev_class != NULL && !reev_disabled)
 		{
 		  /* class has changed to a new subclass */
 		  if (class_oid && !OID_EQ (&mvcc_reev_class->cls_oid, class_oid))
@@ -11461,8 +11462,11 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			{
 			  /* The plan gives this class no filters to re-evaluate with, so the delete phase
 			   * cannot re-check the predicate: skip a version the statement never evaluated
-			   * rather than delete it, exactly as a plan carrying no reevaluation data does. */
-			  mvcc_reev_class_cnt = 0;
+			   * rather than delete it, exactly as a plan carrying no reevaluation data does.
+			   * mvcc_reev_class_cnt stays as it is -- it is this loop's own bound over the
+			   * OID/class OID pairs of the value list, and cutting it short here would leave
+			   * the pairs of the remaining reevaluation classes unconsumed. */
+			  reev_disabled = true;
 			  mvcc_reev_class = NULL;
 			  mvcc_upddel_reev_data.curr_upddel = NULL;
 			  mvcc_upddel_reev_data.mvcc_cond_reev_list = NULL;
@@ -11472,7 +11476,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	    }
 
-	  if (mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL)
+	  if (!reev_disabled && mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL)
 	    {
 	      /* If scan order was not set then do it. This operation must be run only once. We do it here and not at
 	       * the beginning of this function because the class OIDs must be set for classes involved in reevaluation
@@ -11488,7 +11492,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      oid = internal_class->oid;
 	      class_oid = internal_class->class_oid;
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      if (!reev_disabled && mvcc_reev_class_idx < mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
 		{
 		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
 		}
