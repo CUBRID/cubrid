@@ -1256,6 +1256,9 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_MATERIALIZE_CTE		(1ULL << 43)	/* materialize CTE */
 #define  PT_HINT_NO_PARALLEL_SUBQUERY		(1ULL << 44)	/* disable parallel subquery */
 #define  PT_HINT_NO_PARALLEL_HASH_JOIN		(1ULL << 45)	/* disable parallel hash join */
+#define  PT_HINT_BIND_SENSITIVE		(1ULL << 46)	/* replan this statement when the bound values fall in
+							 * different histogram territory (per-statement form of
+							 * plan_cache_bind_sensitivity) */
 #define  PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ	(1ULL << 47)	/* disable correlated push-down for DBLink remote SQL */
 
 /* Codes for error messages */
@@ -2015,6 +2018,7 @@ struct pt_histogram_info
   PT_NODE *target_columns;	/* PT_COLUMN_LIST (PT_NAME) */
   int bucket_count;		/* bucket count */
   int with_fullscan;		/* with fullscan */
+  int random_seed;		/* 1 iff WITH RANDOM SEED */
 };
 
 /* CREATE/DROP INDEX INFO */
@@ -2177,6 +2181,8 @@ struct pt_delete_info
   PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
+  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
+				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -2906,6 +2912,12 @@ struct pt_query_info
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
     unsigned subquery_cached:1;	/* subquery is cached */
+    unsigned uncorr_hoisted:1;	/* correlation_level was 0 (uncorrelated) until pt_uncorr_post ()
+				 * hoisted this subquery into an enclosing aptr list, overwriting
+				 * the level. Lets a plan regeneration from the same tree (see
+				 * do_replan_statement_with_bind_peek ()) restore the level to 0
+				 * first, so the subquery keeps its XASL_ZERO_CORR_LEVEL
+				 * (uncorrelated, parallel-executable) marking. */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
@@ -2923,6 +2935,9 @@ struct pt_query_info
     PT_SELECT_INFO select;
     PT_UNION_INFO union_;
   } q;
+  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
+				 * (quantized selectivities of host-var predicates); 0 = not recorded.
+				 * See histogram_bind_fingerprint (). */
 };
 
 /* Info for Set Optimization Level statement */
@@ -3018,6 +3033,8 @@ struct pt_update_info
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
+  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
+				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -3035,6 +3052,10 @@ struct pt_update_stats_info
   PT_NODE *class_list;		/* PT_NAME */
   int all_classes;		/* 1 iff ALL CLASSES */
   int with_fullscan;		/* 1 iff WITH FULLSCAN */
+  int random_seed;		/* 1 iff WITH RANDOM SEED */
+  int no_histogram;		/* 1 iff WITH NO HISTOGRAM: refresh base statistics only */
+  int drop_histogram;		/* 1 iff WITH DROP HISTOGRAM: drop histograms, then refresh base statistics */
+  int bucket_count;		/* histogram bucket count from WITH n BUCKETS; 0 means the default */
 };
 
 /* GET STATISTICS INFO */
@@ -3326,6 +3347,9 @@ struct pt_execute_info
   XASL_ID xasl_id;		/* XASL id */
   CUBRID_STMT_TYPE stmt_type;	/* statement type */
   int recompile;		/* not 0 if this statement should be recompiled */
+  int bind_before_compile;	/* not 0 when the recompile exists to adapt the plan to the bound
+				 * values (LIKE / MRO / SORT-LIMIT checks): compile after binding,
+				 * the way every recompile worked before the unpeeked-plan path */
   int do_cache;			/* query uses result cache */
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */
@@ -3776,6 +3800,12 @@ struct parser_node
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
+    unsigned hv_pred_plan_unpeeked:1;	/* the plan this statement is about to execute was chosen with unbound
+					 * host-variable predicate markers (HV_PRED_PLAN_UNPEEKED in the XASL
+					 * header), so the first execution must replan under the real values.
+					 * Set in do_prepare_select () -- the driver-neutral prepare path --
+					 * because the SQL-level PREPARE/EXECUTE consumer of that header flag
+					 * is not reached by CCI/JDBC prepared statements. */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
