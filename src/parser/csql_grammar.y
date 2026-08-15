@@ -23980,6 +23980,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_UTC_DATE:
     case PT_VERSION:
     case PT_UTC_TIMESTAMP:
+    case PT_SCHEMA:
       if (c != 0)
 	{
 	  return NULL;
