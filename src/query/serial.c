@@ -1419,6 +1419,9 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
  * serial_finalize_cache_pool, which runs after the volumes are dismounted). Without this a clean
  * restart would resume past the end of each reserved block rather than at the last value issued,
  * which is what makes every standalone (csql -S) process consume a whole block.
+ *
+ * The caller must be on a transaction that may run system operations - each write opens one. The
+ * system main transaction the rest of shutdown uses is not one of them; see xboot_shutdown_server.
  */
 void
 serial_flush_cache_pool (THREAD_ENTRY * thread_p)

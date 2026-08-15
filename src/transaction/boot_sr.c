@@ -3088,8 +3088,16 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 
   /* hand the unissued tail of every reserved serial cache block back to _db_serial, so a restart
    * resumes at the last value issued instead of past the block end. Must run here, while the heap
-   * and log managers are still up; serial_finalize_cache_pool runs after the volumes are dismounted. */
+   * and log managers are still up; serial_finalize_cache_pool runs after the volumes are dismounted.
+   *
+   * The write goes through serial_update_serial_object, which opens a system operation, and the
+   * transaction set above is the system main one - the one kind that is not allowed to run them.
+   * Borrow a system worker transaction for the flush and set the system main one back afterwards,
+   * the way vacuum and the online index builder do for their own logging. */
+  thread_p->claim_system_worker ();
   serial_flush_cache_pool (thread_p);
+  thread_p->retire_system_worker ();
+  logtb_set_to_system_tran_index (thread_p);
 
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
