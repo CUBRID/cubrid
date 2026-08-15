@@ -411,8 +411,7 @@ static int parser_count_prefix_columns (PT_NODE * list, int * arg_count);
 
 static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
 static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
-static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p,
-				   const char *str, const int str_size);
+static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str);
 static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 						const PT_TYPE_ENUM char_type,
 						const char *str,
@@ -20484,15 +20483,11 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
-
-			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
                             PARSER_SET_LINE_COL (p, @1)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
@@ -20502,15 +20497,11 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
-
-			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
                             PARSER_SET_LINE_COL (p, @1)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
@@ -20520,15 +20511,11 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
-
-			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
                             PARSER_SET_LINE_COL (p, @1)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
@@ -20538,15 +20525,11 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
-
-			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
                             PARSER_SET_LINE_COL (p, @1)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
@@ -22085,9 +22068,9 @@ connect_item
                container_2 ctn;
                PT_NODE *val = $3;
                val->type_enum = PT_TYPE_VARCHAR;
-               if (val->info.value.data_value.str->length > 254)
+               if (val->info.value.data_value.str->length >= DB_MAX_IDENTIFIER_LENGTH)
 		 {
-		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_DBNAME_LEN, 254);
+		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_DBNAME_LEN, (DB_MAX_IDENTIFIER_LENGTH - 1));
 		 }
 		 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_DBNAME), val);
@@ -22104,9 +22087,9 @@ connect_item
                container_2 ctn;
                PT_NODE *val = $3;
                val->type_enum = PT_TYPE_VARCHAR;
-               if (val->info.value.data_value.str->length > 254)
+               if (val->info.value.data_value.str->length >= DB_MAX_IDENTIFIER_LENGTH)
 		 {
-		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_USER_LEN, 254);
+		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_USER_LEN, (DB_MAX_IDENTIFIER_LENGTH - 1));
 		 }
 	       PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_USER), val);
@@ -25157,29 +25140,54 @@ resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list)
 }
 
 static char *
-pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
-		     const int str_size)
+pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str)
 {
   char *invalid_pos = NULL;
   int composed_size;
+  const int str_size = strlen (str);
+  static const int check_base_size = ((DB_MAX_IDENTIFIER_LENGTH / 3) * 2);
 
   if (strchr (str, '[') || strchr (str, ']'))
     {
       PT_ERRORf (this_parser, p,
 		 "Identifier name \"%s\" not allowed. It cannot contain '[' or ']'.",
 		 str);
+      return (char*) "";
+    }
+
+  if(str_size >= DB_MAX_IDENTIFIER_LENGTH)
+    {
+      intl_identifier_fix ((char *) str, -1, true);
+      PT_ERRORf2 (this_parser, p,
+                 "Identifier name \"%s\" is too long. Maximum length is %d.",
+                 str, DB_MAX_IDENTIFIER_LENGTH - 1);
+      return (char*) "";
     }
 
   if (intl_check_string ((char *) str, str_size, &invalid_pos, LANG_SYS_CODESET) == INTL_UTF8_INVALID)
     {
       PT_ERRORmf (parser, NULL, MSGCAT_SET_ERROR, -(ER_INVALID_CHAR),
 		  (invalid_pos != NULL) ? invalid_pos - str : 0);
-      return NULL;
+      return (char*) "";
     }
-  else if (intl_identifier_fix ((char *) str, -1, true) != NO_ERROR)
+
+  /*
+   * The byte size may increase when changing the case.
+   * Usernames must be converted to uppercase, while all other cases should be converted to lowercase.
+   * Since the maximum length of a username is smaller than DB_MAX_IDENTIFIER_LENGTH, it does not need to be checked here.
+   * Therefore, we only check for cases where text is converted to lowercase
+   */
+  if (str_size >= check_base_size)
     {
-      PT_ERRORf (parser, p, "invalid identifier : %s", str);
-      return NULL;
+      int lower_length = intl_identifier_lower_string_size (str);
+      if (lower_length > DB_MAX_IDENTIFIER_LENGTH)
+	{
+	  PT_ERRORf4 (this_parser, p,
+		      "Identifier name \"%s\" is too long. Maximum length is %d.\n"
+                      "The current length is %d, but it becomes %d when converted to lowercase.",
+                      str, DB_MAX_IDENTIFIER_LENGTH - 1, str_size, lower_length);
+	  return (char *) "";
+	}
     }
 
   if (LANG_SYS_CODESET == INTL_CODESET_UTF8
@@ -25194,7 +25202,7 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
       if (composed == NULL)
 	{
 	  PT_ERRORf (parser, p, "cannot alloc %d bytes", composed_size + 1);
-	  return NULL;
+	  return (char*) "";
 	}
 
       unicode_compose_string (str, str_size, composed, &composed_size,
