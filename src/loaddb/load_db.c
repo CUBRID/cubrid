@@ -839,6 +839,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "\nStart index loading.\n");
       logddl_set_loaddb_file_type (LOADDB_FILE_TYPE_INDEX);
       logddl_set_load_filename (args.index_file.c_str ());
+      /* The flag is only a request; the server ignores it unless the client is a loaddb type.
+       * In SA mode the option is ignored and the ordinary logging build is used. */
+      btree_set_no_logging_index (args.no_logging_index);
       if (ldr_exec_query_from_file (args.index_file.c_str (), index_file, &index_file_start_line, &args) != NO_ERROR)
 	{
 	  print_log_msg (1, "\nError occurred during index loading." "\nAborting current transaction...");
@@ -850,12 +853,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  logddl_write_end ();
 	  goto error_return;
 	}
+      btree_set_no_logging_index (false);
 
       /* update catalog statistics */
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       sm_update_catalog_statistics (CT_INDEX_NAME, STATS_WITH_FULLSCAN);
       sm_update_catalog_statistics (CT_INDEXKEY_NAME, STATS_WITH_FULLSCAN);
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
 
       print_log_msg (1, "Index loading from %s finished.\n", args.index_file.c_str ());
       db_commit_transaction ();
@@ -885,9 +889,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	}
 
       /* update catalog statistics */
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       sm_update_catalog_statistics (CT_TRIGGER_NAME, STATS_WITH_FULLSCAN);
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
 
       print_log_msg (1, "Trigger loading from %s finished.\n", args.trigger_file.c_str ());
       db_commit_transaction ();
@@ -908,6 +912,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   return status;
 
 error_return:
+  /* The no-logging-index request flag may still be set when the index loading failed (the success path
+   * resets it right after ldr_exec_query_from_file).  Reset it idempotently on every failure path so a
+   * later session in this process can never inherit it. */
+  btree_set_no_logging_index (false);
   if (schema_file != NULL)
     {
       fclose_and_init (schema_file);
@@ -1156,7 +1164,6 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	      do
 		{
 		  session_error = db_get_next_error (session_error, &line, &col);
-
 		  if (line <= 0)
 		    {
 		      db_get_parser_line_col (session, &line, &col);	// current input line and column
@@ -1181,8 +1188,18 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
       if (error < 0)
 	{
-	  int line, col;
-	  db_get_parser_line_col (session, &line, &col);	// current input line and column
+	  DB_SESSION_ERROR *session_error = db_get_errors (session);
+	  int line = -1, col;
+
+	  if (session_error != NULL)
+	    {
+	      db_get_next_error (session_error, &line, &col);
+	    }
+	  if (line <= 0)
+	    {
+	      db_get_parser_line_col (session, &line, &col);	// current input line and column
+	    }
+
 	  ldr_print_error_msg (line, base_line, file_name);
 	  db_close_session (session);
 	  logddl_set_file_line (line + base_line);
@@ -1192,8 +1209,17 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
       error = db_query_end (res);
       if (error < 0)
 	{
-	  int line, col;
-	  db_get_parser_line_col (session, &line, &col);	// current input line and column
+	  DB_SESSION_ERROR *session_error = db_get_errors (session);
+	  int line = -1, col;
+
+	  if (session_error != NULL)
+	    {
+	      db_get_next_error (session_error, &line, &col);
+	    }
+	  if (line <= 0)
+	    {
+	      db_get_parser_line_col (session, &line, &col);	// current input line and column
+	    }
 	  ldr_print_error_msg (line, base_line, file_name);
 	  db_close_session (session);
 	  logddl_set_file_line (line + base_line);
@@ -1324,6 +1350,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->ignore_class_file = ignore_class_file ? ignore_class_file : empty;
   args->no_user_specified_name = utility_get_option_bool_value (arg_map, LOAD_NO_USER_SPECIFIED_NAME_S);
   args->schema_file_list = schema_file_list ? schema_file_list : empty;
+  args->no_logging_index = utility_get_option_bool_value (arg_map, LOAD_NO_LOGGING_INDEX_S);
 }
 
 static void
@@ -1393,7 +1420,8 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
       print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SIG1));
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
 	       last_stat.current_line.load ());
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
+      fprintf (stderr, "%s",
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
     }
 
   if (args->syntax_check)
@@ -1771,7 +1799,7 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
    */
   if (au_is_dba_group_member (Au_user))
     {
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
     }
 
   if (ldr_exec_query_from_file (args.schema_file.c_str (), schema_fp, &schema_file_start_line, &args) != NO_ERROR)
@@ -1783,20 +1811,24 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
       print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S,
 		     args.schema_file.c_str (), schema_file_start_line);
       logddl_write_end ();
+      if (au_is_dba_group_member (Au_user))
+	{
+	  AU_RESTORE (au_save);
+	}
       return status;
     }
 
   if (au_is_dba_group_member (Au_user))
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
     }
 
   print_log_msg (1, "Schema loading from %s finished.\n", args.schema_file.c_str ());
 
   /* update catalog statistics */
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
   sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN);
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   print_log_msg (1, "Statistics for Catalog classes have been updated.\n\n");
 

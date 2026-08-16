@@ -179,7 +179,8 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char
 				OID * class_oids, int n_classes, int n_attrs, int *attr_ids, int *attrs_prefix_length,
 				HFID * hfids, int unique_pk, int not_null_flag, OID * fk_refcls_oid,
 				BTID * fk_refcls_pk_btid, const char *fk_name, char *pred_stream, int pred_stream_size,
-				char *expr_stream, int expr_steram_size, int func_col_id, int func_attr_index_start);
+				char *expr_stream, int expr_steram_size, int func_col_id, int func_attr_index_start,
+				bool eligible_no_redo);
 extern BTID *xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
 				       OID * class_oids, int n_classes, int n_attrs, int *attr_ids,
 				       int *attrs_prefix_length, HFID * hfids, int unique_pk, int not_null_flag,

@@ -81,10 +81,10 @@
 #define DB_NEED_CLEAR(v) \
       ((!DB_IS_NULL(v) \
 	&& ((v)->need_clear == true \
-	    || ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR) && (v)->data.ch.info.compressed_need_clear != 0))))
+	    || (TP_IS_CHAR_TYPE(DB_VALUE_DOMAIN_TYPE(v)) && (v)->data.ch.info.compressed_need_clear != 0))))
 
 #define DB_GET_COMPRESSED_STRING(v) \
-      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) ? NULL : (v)->data.ch.medium.compressed_buf)
+      (!TP_IS_CHAR_TYPE(DB_VALUE_DOMAIN_TYPE(v)) ? NULL : (v)->data.ch.medium.compressed_buf)
 
 #define DB_GET_ENUMERATION(v) \
       ((v)->data.enumeration)
@@ -233,7 +233,7 @@ extern "C"
 
     DB_TYPE type = db_value_domain_type (src);
 
-    if (type == DB_TYPE_STRING)
+    if (TP_IS_CHAR_TYPE (type))
       {
 	dst->data.ch.info.compressed_need_clear = false;
       }

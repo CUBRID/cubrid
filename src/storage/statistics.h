@@ -36,9 +36,6 @@
 
 #define STATS_SAMPLING_THRESHOLD 5000	/* sampling trial count */
 #define STATS_SAMPLING_LEAFS_MAX 5000	/* sampling leaf pages */
-#define MAX_HEAP_SAMPLING_PAGES 10000
-#define MIN_HEAP_SAMPLING_PAGES 5000
-#define EXPECTED_ROWS_PER_PAGE 20
 
 /* disk-resident elements of pkeys[] field */
 #define BTREE_STATS_PKEYS_NUM      8
@@ -112,6 +109,9 @@ typedef struct hist_stats HIST_STATS;
 struct hist_stats
 {
   int n_attrs;			/* number of attributes; size of the histogram[] */
+  int *attr_ids;		/* column id per slot -- consumers must match by id, NOT by the
+				 * position of the id in CLASS_STATS.attr_stats: that array is not
+				 * kept in attribute order after schema updates */
   DB_VALUE **histogram;		/* column histogram , null if not exists */
   double *null_frequency;	/* column null frequency , 0 if not exists */
 };
@@ -129,42 +129,46 @@ struct class_attr_ndv
 {
   int attr_cnt;			/* column id */
   ATTR_NDV *attr_ndv;		/* Number of Distinct Values of column */
+  INT64 total_rows;		/* exact row count when caller-provided (0 => server counts itself); on the
+				 * wire it rides in the trailing sentinel ATTR_NDV entry's ndv field */
 };
-#define CLASS_ATTR_NDV_INITIALIZER	{0, NULL}
+#define CLASS_ATTR_NDV_INITIALIZER	{0, NULL, 0}
+
+/* Sample statistics fed to the NDV estimator (CBRD-26667). Population NDV is
+ * extrapolated from a uniform sample's distinct/singleton counts. */
+typedef struct stats_ndv_sample_input STATS_NDV_SAMPLE_INPUT;
+struct stats_ndv_sample_input
+{
+  INT64 sample_rows;		/* rows in sample; includes null rows; weight not applied */
+  INT64 sample_nulls;		/* null rows in sample for this column */
+  INT64 sample_distinct;	/* d: distinct non-null values in the sample */
+  INT64 sample_singleton;	/* f1: distinct values that appear exactly once in the sample */
+  int sampling_weight;		/* expansion factor: estimated population non-null rows / sample non-null rows */
+  INT64 total_nn_rows;		/* exact population non-null rows; when > 0 it is used directly as N_nn
+				 * (full reservoir scan knows it exactly), bypassing the lossy integer-weight
+				 * reconstruction. 0 => fall back to sample_rows * sampling_weight. */
+};
+
+/* NDV (number of distinct values) estimator from a sample (statistics_ndv.c). Pure
+ * math; usable on client and server. Deliberately NOT tied to the query path. */
+extern INT64 stats_estimate_ndv_from_sample (const STATS_NDV_SAMPLE_INPUT * in);
+
+/* MCV selection. Decides how many of the
+ * top-frequency candidate values (sorted by descending count) genuinely qualify as MCVs.
+ * Pure math; usable on client and server. Returns the number of leading candidates to keep.
+ *   mcv_counts  : per-candidate sample counts, sorted descending; length num_candidates
+ *   stadistinct : estimated population NDV (non-null), > 0
+ *   stanullfrac : null fraction of the population (0 when analyzing in non-null space)
+ *   samplerows  : non-null rows examined in the sample (reservoir non-null size)
+ *   totalrows   : population non-null rows */
+extern int stats_analyze_mcv_list (const INT64 * mcv_counts, int num_candidates, double stadistinct,
+				   double stanullfrac, INT64 samplerows, double totalrows);
 
 #if !defined(SERVER_MODE)
 extern int stats_get_statistics (OID * classoid, unsigned int timestamp, CLASS_STATS ** stats_p);
 extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
 extern void stats_ndv_dump (const char *classname, FILE * fp);
-extern char *stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv);
-extern int stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FILE * file_p,
-				   int with_fullscan);
 #endif /* !SERVER_MODE */
-STATIC_INLINE int stats_adjust_sampling_weight (INT64 sampling_ndv, int sampling_weight)
-  __attribute__ ((ALWAYS_INLINE));
-
-/*
- * stats_adjust_sampling_weight () - adjust sampling weight
- * return : adjusted sampling weight
- * sampling_ndv (in)  : sampling number of distinct values
- */
-STATIC_INLINE int
-stats_adjust_sampling_weight (INT64 sampling_ndv, int sampling_weight)
-{
-  /* This is based on the assumption that if the sample data is a lot of duplicated, */
-  /* there will also be duplicate in the overall data. */
-  /* Differential weight is applied to NDV within 1% of all rows of sample data. */
-  if (sampling_weight <= 1)
-    {
-      return sampling_weight;
-    }
-  int min_NDV = MAX_HEAP_SAMPLING_PAGES * EXPECTED_ROWS_PER_PAGE / 100;	/* 1% of number of sampling data */
-  if (sampling_ndv < min_NDV)
-    {
-      return MAX (sampling_weight * sampling_ndv / min_NDV, 1);
-    }
-  return sampling_weight;
-}
 
 #endif /* _STATISTICS_H_ */

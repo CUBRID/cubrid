@@ -117,19 +117,6 @@ typedef struct tf_ct_class
 #define META_QUERY_SPEC_NAME		"sqlx_query_spec"
 #define META_PARTITION_NAME		"sqlx_partition"
 
-#define SET_AUTO_INCREMENT_SERIAL_NAME(SR_NAME, CL_NAME, AT_NAME)  \
-                         sprintf(SR_NAME, "%s_ai_%s", CL_NAME, AT_NAME)
-
-#define AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH (4)
-
-/*
- * AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH : (255 - 1) + 4 + (255 -1) + 1 = 513
- *   - sprintf (..., "%s_ai_%s", unique_name, attribute_name)
- */
-#define AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH \
-  ((DB_MAX_IDENTIFIER_LENGTH - 1) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + (DB_MAX_IDENTIFIER_LENGTH - 1) + 1)
-#define DB_MAX_SERIAL_NAME_LENGTH             (AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH)
-
 /*
  * Metaclass definitions
  *    Static definitions of the meta classes.
@@ -225,6 +212,8 @@ typedef enum
 
 // TODO: create CT_ATTR_*_INDEX of other CT_CLASSes
 #endif /* !CS_MODE */
+
+extern int set_auto_increment_serial_name (char *serial_name, const char *class_name, const char *attr_name);
 
 /* This fills in misc information missing from the static definitions */
 extern void tf_compile_meta_classes (void);

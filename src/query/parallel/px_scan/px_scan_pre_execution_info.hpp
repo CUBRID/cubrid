@@ -17,12 +17,13 @@
  */
 
 /*
- * px_scan_join_info.hpp
+ * px_scan_pre_execution_info.hpp
  */
 
-#ifndef _PX_SCAN_JOIN_INFO_HPP_
-#define _PX_SCAN_JOIN_INFO_HPP_
+#ifndef _PX_SCAN_PRE_EXECUTION_INFO_HPP_
+#define _PX_SCAN_PRE_EXECUTION_INFO_HPP_
 
+#include "dbtype_def.h"
 #include "storage_common.h"
 #include "xasl.h"
 
@@ -45,26 +46,32 @@ namespace parallel_scan
     bool qualified_block;
   };
 
-  using XASL_ID = int;
+  /* renamed from XASL_ID to avoid colliding with the global XASL_ID (sha1 struct). */
+  using XASL_NODE_ID = int;
 
-  class join_info
+  class pre_execution_info
   {
     public:
-      join_info();
-      ~join_info() = default;
+      pre_execution_info();
+      ~pre_execution_info();
 
-      void capture_join_info (xasl_node *head);
-      scan_info get_scan_info (XASL_ID xasl_id)
+      void capture_pre_execution_info (xasl_node *head);
+      scan_info get_scan_info (XASL_NODE_ID xasl_id)
       {
 	return m_scan_infos[xasl_id];
       }
-      void record_join_info (XASL_ID xasl_id, xasl_node *xptr);
-      void apply_join_info (xasl_node *xptr);
+      void record_pre_execution_info (XASL_NODE_ID xasl_id, xasl_node *xptr);
+      void apply_pre_execution_info (xasl_node *xptr);
+
+      /* precomputed scalar values, keyed by subquery xasl header.id; never operator[] (default-inserts NULL on miss) -- find/at/emplace only. */
+      const DB_VALUE *find_precomp_val (XASL_NODE_ID subquery_id) const;
+      void capture_precomp_vals (xasl_node *head);
 
     private:
       std::mutex m_mutex;
-      std::map <XASL_ID, scan_info> m_scan_infos;
+      std::map <XASL_NODE_ID, scan_info> m_scan_infos;
+      std::map <XASL_NODE_ID, DB_VALUE> m_precomp_vals;
   };
 }
 
-#endif /* _PX_SCAN_JOIN_INFO_HPP_ */
+#endif /* _PX_SCAN_PRE_EXECUTION_INFO_HPP_ */

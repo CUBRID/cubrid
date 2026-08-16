@@ -38,6 +38,8 @@
 #include "language_support.h"
 #include "system_catalog.h"
 #endif /* !CS_MODE */
+#include "intl_support.h"
+#include "crypt_opfunc.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -631,3 +633,97 @@ tf_install_meta_classes ()
   return NO_ERROR;
 }
 #endif /* CS_MODE */
+
+
+
+#define AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH (4)	// "_ai_"
+
+static int
+set_auto_increment_serial_partial_name (char *serial_name, int copy_length, const char *name1, const char *name2)
+{
+  if (copy_length >= (int) strlen (name1))
+    {
+      return sprintf (serial_name, "%s%s", name1, name2);
+    }
+  else
+    {
+      char name_buf[DB_MAX_IDENTIFIER_LENGTH];
+
+      memcpy (name_buf, name1, copy_length);
+      name_buf[copy_length] = '\0';
+      /* make sure last character is not truncated */
+      if (intl_identifier_fix (name_buf, copy_length, false) != NO_ERROR)
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+
+      return sprintf (serial_name, "%s%s", name_buf, name2);
+    }
+}
+
+int
+set_auto_increment_serial_name (char *serial_name, const char *class_name, const char *attr_name)
+{
+  // class_name and attr_name must be in lowercase
+  int attr_length, class_only_length;
+  const char *dot = strchr (class_name, '.');
+
+  assert (dot != NULL);		// class_name must be in the form of 'user.class'
+  assert (dot - class_name < DB_MAX_USER_LENGTH);	// the part before dot must be less than DB_MAX_USER_LENGTH
+
+  class_only_length = strlen (dot + 1);
+  attr_length = strlen (attr_name);
+
+  if ((class_only_length + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + attr_length) < DB_MAX_SERIAL_NAME_LENGTH)
+    {
+      snprintf (serial_name, DB_MAX_IDENTIFIER_LENGTH, "%s_ai_%s", class_name, attr_name);
+      return NO_ERROR;
+    }
+  else
+    {
+      const int md5_str_len = 33;	// 1 + 32,  '_' + <md5(32)>
+      char md5_str[md5_str_len + 1] = { '_', '\0', };
+      char name_buf[DB_MAX_CLASS_LENGTH + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + DB_MAX_IDENTIFIER_LENGTH] =
+	{ '\0' };
+      char *buf_ptr = NULL;
+      int pos, copy_length = 0;
+      const int name_space = DB_MAX_SERIAL_NAME_LENGTH - (AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + md5_str_len);
+
+      assert ((class_only_length + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + attr_length) < (int) sizeof (name_buf));
+
+      // original serial name is too long, we need to generate a unique name using md5 hash value of the original serial name
+      copy_length = sprintf (name_buf, "%s_ai_%s", dot + 1, attr_name);
+      pos = crypt_md5_buffer_hex (name_buf, copy_length, md5_str + 1);
+      if (pos != NO_ERROR)
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, pos, 0);
+	  return pos;
+	}
+
+      // make <user_name>.<serail_name>  
+      pos = (dot - class_name) + 1;
+      memcpy (serial_name, class_name, pos);	// <user_name>.
+      buf_ptr = serial_name + pos;
+
+      // The string written to buf_ptr is the serial name and should not exceed DB_MAX_SERIAL_NAME_LENGTH
+      // <class_name> + "_ai_" + <attr_name> + "_" + <md5_str>
+      pos = set_auto_increment_serial_partial_name (buf_ptr, (name_space / 2), dot + 1, "_ai_");
+      if (pos < 0)
+	{
+	  return pos;
+	}
+
+      pos = set_auto_increment_serial_partial_name (buf_ptr + pos, (name_space - pos), attr_name, md5_str);
+      if (pos < 0)
+	{
+	  return pos;
+	}
+      assert (strlen (serial_name) < DB_MAX_IDENTIFIER_LENGTH);
+      assert (strlen (serial_name + ((dot - class_name) + 1)) < DB_MAX_SERIAL_NAME_LENGTH);
+    }
+
+  return NO_ERROR;
+}

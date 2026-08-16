@@ -351,6 +351,9 @@ namespace cubthread
   // safe-guard for multi-thread features not being used in single-thread context
   void check_not_single_thread (void);
 
+  // get the main/system thread entry (lives outside the managed entry array); may be NULL before/after init
+  entry *get_main_entry (void);
+
   // get current thread's entry
   entry &get_entry (void);
   void set_thread_local_entry (entry &tl_entry);      // for unit test easy mock-ups

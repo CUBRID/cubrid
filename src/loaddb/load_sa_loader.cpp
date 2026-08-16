@@ -1791,7 +1791,7 @@ display_error (int adjust)
 
   display_error_line (adjust);
   msg = db_error_string (3);
-  fprintf (stderr, msg);
+  fprintf (stderr, "%s", msg);
   fprintf (stderr, "\n");
 }
 
@@ -2711,8 +2711,10 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
 {
   char *mem;
   int precision;
-  int err;
+  int err = NO_ERROR;
   DB_VALUE val;
+
+  db_make_null (&val);
 
   precision = att->domain->precision;
 
@@ -2760,17 +2762,19 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   val.domain = ldr_char_tmpl.domain;
   val.domain.char_info.length = precision;
   val.data.ch.info.style = MEDIUM_STRING;
+  val.data.ch.info.codeset = att->domain->codeset;
   val.data.ch.info.is_max_string = false;
   val.data.ch.info.compressed_need_clear = false;
   val.data.ch.medium.size = (int) len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.medium.compressed_buf = NULL;
   val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
+  val.data.ch.medium.length = -1;
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
-  OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
+  pr_clear_value (&val);
   return err;
 }
 
@@ -4724,7 +4728,7 @@ check_commit (LDR_CONTEXT *context)
 	{
 	  CHECK_ERR (err, db_abort_transaction ());
 	  display_error_line (-1);
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
+	  fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
 	  if (context->args->periodic_commit && Total_objects >= context->args->periodic_commit)
 	    {
 	      committed_instances = Total_objects - (context->args->periodic_commit - context->commit_counter);
@@ -4744,7 +4748,7 @@ check_commit (LDR_CONTEXT *context)
 	      committed_instances = Total_objects + 1;
 	      display_error_line (-1);
 	      fprintf (stderr,
-		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_COMMIT));
+		       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_COMMIT));
 	    }
 	}
 
