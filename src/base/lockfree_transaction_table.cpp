@@ -109,6 +109,13 @@ namespace lockfree
       return m_min_active_tranid;
     }
 
+    id
+    table::refresh_min_active_tranid ()
+    {
+      compute_min_active_tranid ();
+      return m_min_active_tranid;
+    }
+
     size_t
     table::get_total_retire_count () const
     {

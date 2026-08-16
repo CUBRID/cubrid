@@ -133,6 +133,19 @@ namespace lockfree
     descriptor::reclaim_retired_list ()
     {
       id min_tran_id = m_table->get_min_active_tranid ();
+
+      // INVALID_TRANID is the largest id there is, so it authorizes reclaiming the whole list - and the
+      // value is a cache the table refreshes only once every MATI_REFRESH_INTERVAL global ids. Acting on
+      // a stale copy of it frees nodes a reader pinned after that refresh: a reader takes its id with
+      // start_tran (), which reads the global id without incrementing it and so never triggers a refresh
+      // of its own. Recompute before trusting the sentinel, so that "nothing is active" is a statement
+      // about now rather than about the last refresh. A finite cached minimum needs no such care: every
+      // id below it was already inactive when it was computed, and ids only grow from there.
+      if (min_tran_id == INVALID_TRANID)
+	{
+	  min_tran_id = m_table->refresh_min_active_tranid ();
+	}
+
       if (min_tran_id <= m_last_reclaim_minid)
 	{
 	  // nothing changed
@@ -147,11 +160,10 @@ namespace lockfree
 	  m_retired_tail = NULL;
 	}
 
-      // Do not record the fully-idle sentinel. With no transaction active, get_min_active_tranid ()
-      // returns INVALID_TRANID, which is the largest id there is; storing that here would make the
-      // "min <= m_last_reclaim_minid" early return above true forever, and this descriptor would
-      // never reclaim anything again. Everything reclaimable was still reclaimed above - only the
-      // high-water mark is left finite, so that later passes keep making progress.
+      // Do not record the fully-idle sentinel. Storing the largest id there is would make the
+      // "min <= m_last_reclaim_minid" early return above true forever, and this descriptor would never
+      // reclaim anything again. Everything reclaimable was still reclaimed above - only the high-water
+      // mark is left finite, so that later passes keep making progress.
       if (min_tran_id != INVALID_TRANID)
 	{
 	  m_last_reclaim_minid = min_tran_id;
