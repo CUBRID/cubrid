@@ -324,6 +324,7 @@ static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_C
 static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                                       size_t min_args, size_t max_args, size_t mod2);
 
+static PT_NODE *parser_reverse_link (PT_NODE * list);
 static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
 static PT_NODE *parser_make_link_or (PT_NODE * list, PT_NODE * node);
 
@@ -6897,7 +6898,9 @@ insert_stmt_value_clause
 insert_expression_value_clause
 	: of_value_values insert_value_clause_list
 		{{
-			$$ = $2;
+			/* insert_value_clause_list prepends to avoid walking to the tail on every row,
+			 * so the rows arrive back to front and are put back in the original order here. */
+			$$ = parser_reverse_link ($2);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| DEFAULT opt_values
@@ -6943,7 +6946,12 @@ into_clause_opt
 insert_value_clause_list
 	: insert_value_clause_list ',' insert_value_clause
 		{{
-			$$ = parser_make_link ($1, $3);
+			/* parser_make_link walks to the tail on every row,
+			 * which makes building a multi-row VALUES quadratic in the number of rows.
+			 * Prepended instead, so the list is built back to front,
+			 * and insert_expression_value_clause puts it back in the original order. */
+			$3->next = $1;
+			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| insert_value_clause
@@ -22698,6 +22706,22 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
     }
 
   return expr;
+}
+
+static PT_NODE *
+parser_reverse_link (PT_NODE * list)
+{
+  PT_NODE *prev = NULL, *curr = list, *next;
+
+  while (curr != NULL)
+    {
+      next = curr->next;
+      curr->next = prev;
+      prev = curr;
+      curr = next;
+    }
+
+  return prev;
 }
 
 static PT_NODE *
