@@ -5220,17 +5220,10 @@ mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
 
   while (temp)
     {
-      /* generate as_attr_list */
-      if (temp->node_type == PT_NAME && temp->info.name.original != NULL)
-	{
-	  /* we have the original name */
-	  node = pt_name (parser, temp->info.name.original);
-	}
-      else
-	{
-	  /* don't have name for attribute; generate new name */
-	  node = pt_name (parser, mq_generate_name (parser, "a", &i));
-	}
+      /* generate as_attr_list; each column gets a freshly synthesized name. The counter i is local
+       * to this call and only increases, so the generated names are unique among themselves without
+       * needing to check as_attr_list. */
+      node = pt_name (parser, mq_generate_name (parser, "a", &i));
 
       if (node == NULL)
 	{
