@@ -147,10 +147,10 @@ static PARSER_PRINT_NODE_FUNC *pt_print_f = NULL;
 static PARSER_APPLY_NODE_FUNC *pt_apply_f = NULL;
 PARSER_CONTEXT *parent_parser = NULL;
 
-static void strcat_with_realloc (PT_STRING_BLOCK * local_print_buf, const char *tail);
 static void pt_string_block_disable (PT_STRING_BLOCK * local_print_buf);
 static void pt_string_block_append_bytes (PT_STRING_BLOCK * local_print_buf, const char *tail, int tail_length);
 static void pt_string_block_append_varchar (PT_STRING_BLOCK * local_print_buf, const PARSER_VARCHAR * value);
+static void strcat_with_realloc (PT_STRING_BLOCK * local_print_buf, const char *tail);
 static PARSER_VARCHAR *pt_string_block_flush (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf,
 					      PARSER_VARCHAR * dest);
 static PT_NODE *pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
@@ -482,20 +482,6 @@ extern "C"
   extern int g_query_string_len;
 }
 /*
- * strcat_with_realloc () -
- *   return:
- *   PT_STRING_BLOCK(in/out):
- *   tail(in):
- */
-static void
-strcat_with_realloc (PT_STRING_BLOCK * local_print_buf, const char *tail)
-{
-  assert (local_print_buf != NULL);
-
-  pt_string_block_append_bytes (local_print_buf, tail, strlen (tail));
-}
-
-/*
  * pt_string_block_disable () - give the buffer back and let nothing more into the block
  *   return:
  *   local_print_buf(in/out):
@@ -533,6 +519,10 @@ pt_string_block_append_bytes (PT_STRING_BLOCK * local_print_buf, const char *tai
   assert (tail_length >= 0);
 
   if (local_print_buf->size < 0)
+    {
+      return;
+    }
+  if (tail == NULL)
     {
       return;
     }
@@ -588,6 +578,26 @@ pt_string_block_append_varchar (PT_STRING_BLOCK * local_print_buf, const PARSER_
   if (value != NULL)
     {
       pt_string_block_append_bytes (local_print_buf, (const char *) value->bytes, value->length);
+    }
+}
+
+/*
+ * strcat_with_realloc () -
+ *   return:
+ *   PT_STRING_BLOCK(in/out):
+ *   tail(in):
+ *
+ * Mirrors pt_append_nulstring: it measures the string and ignores a NULL one,
+ * so a printer moving to the local buffer keeps the calls it had.
+ */
+static void
+strcat_with_realloc (PT_STRING_BLOCK * local_print_buf, const char *tail)
+{
+  assert (local_print_buf != NULL);
+
+  if (tail != NULL)
+    {
+      pt_string_block_append_bytes (local_print_buf, tail, strlen (tail));
     }
 }
 
