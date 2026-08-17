@@ -150,7 +150,7 @@ PARSER_CONTEXT *parent_parser = NULL;
 static void pt_string_block_disable (PT_STRING_BLOCK * local_print_buf);
 static void pt_string_block_append_bytes (PT_STRING_BLOCK * local_print_buf, const char *tail, int tail_length);
 static void pt_string_block_append_varchar (PT_STRING_BLOCK * local_print_buf, const PARSER_VARCHAR * value);
-static void strcat_with_realloc (PT_STRING_BLOCK * local_print_buf, const char *tail);
+static void pt_string_block_append_nulstring (PT_STRING_BLOCK * local_print_buf, const char *tail);
 static PARSER_VARCHAR *pt_string_block_flush (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf,
 					      PARSER_VARCHAR * dest);
 static PT_NODE *pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
@@ -582,16 +582,16 @@ pt_string_block_append_varchar (PT_STRING_BLOCK * local_print_buf, const PARSER_
 }
 
 /*
- * strcat_with_realloc () -
+ * pt_string_block_append_nulstring () -
  *   return:
- *   PT_STRING_BLOCK(in/out):
+ *   local_print_buf(in/out):
  *   tail(in):
  *
  * Mirrors pt_append_nulstring: it measures the string and ignores a NULL one,
  * so a printer moving to the local buffer keeps the calls it had.
  */
 static void
-strcat_with_realloc (PT_STRING_BLOCK * local_print_buf, const char *tail)
+pt_string_block_append_nulstring (PT_STRING_BLOCK * local_print_buf, const char *tail)
 {
   assert (local_print_buf != NULL);
 
@@ -2564,7 +2564,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   if (prev)
     {
-      strcat_with_realloc (&local_print_buf, (const char *) prev->bytes);
+      pt_string_block_append_nulstring (&local_print_buf, (const char *) prev->bytes);
     }
 
   while (p->next)
@@ -2575,10 +2575,10 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 	{
 	  if (prev)
 	    {
-	      strcat_with_realloc (&local_print_buf, ", ");
+	      pt_string_block_append_nulstring (&local_print_buf, ", ");
 	    }
 
-	  strcat_with_realloc (&local_print_buf, (const char *) r->bytes);
+	  pt_string_block_append_nulstring (&local_print_buf, (const char *) r->bytes);
 	  prev = r;
 	}
       if (local_print_buf.size < 0	/* an append failed */
@@ -3076,15 +3076,15 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 
       if (local_print_buf.length > 0)
 	{
-	  strcat_with_realloc (&local_print_buf, " and ");
+	  pt_string_block_append_nulstring (&local_print_buf, " and ");
 	}
 
       if (n->node_type == PT_EXPR && !n->info.expr.paren_type && n->or_next)
 	{
 	  /* found non-parenthesis OR */
-	  strcat_with_realloc (&local_print_buf, "(");
+	  pt_string_block_append_nulstring (&local_print_buf, "(");
 	  pt_string_block_append_varchar (&local_print_buf, r1);
-	  strcat_with_realloc (&local_print_buf, ")");
+	  pt_string_block_append_nulstring (&local_print_buf, ")");
 	}
       else
 	{
@@ -10274,16 +10274,16 @@ pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf, P
 
   if (lhs && rhs1)
     {
-      strcat_with_realloc (local_print_buf, (const char *) lhs->bytes);
-      strcat_with_realloc (local_print_buf, (char *) op1);
-      strcat_with_realloc (local_print_buf, (const char *) rhs1->bytes);
+      pt_string_block_append_nulstring (local_print_buf, (const char *) lhs->bytes);
+      pt_string_block_append_nulstring (local_print_buf, (char *) op1);
+      pt_string_block_append_nulstring (local_print_buf, (const char *) rhs1->bytes);
 
       if (rhs2)
 	{
-	  strcat_with_realloc (local_print_buf, " and ");
-	  strcat_with_realloc (local_print_buf, (const char *) lhs->bytes);
-	  strcat_with_realloc (local_print_buf, (char *) op2);
-	  strcat_with_realloc (local_print_buf, (const char *) rhs2->bytes);
+	  pt_string_block_append_nulstring (local_print_buf, " and ");
+	  pt_string_block_append_nulstring (local_print_buf, (const char *) lhs->bytes);
+	  pt_string_block_append_nulstring (local_print_buf, (char *) op2);
+	  pt_string_block_append_nulstring (local_print_buf, (const char *) rhs2->bytes);
 	}
     }
 }
@@ -12383,31 +12383,38 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
 	    {
-	      strcat_with_realloc (&local_print_buf, "(");
+	      pt_string_block_append_nulstring (&local_print_buf, "(");
 	    }
 
 	  for (t = p->info.expr.arg2; t; t = t->or_next)
 	    {
 	      if (!p->info.expr.paren_type)
 		{
-		  strcat_with_realloc (&local_print_buf, "(");
+		  pt_string_block_append_nulstring (&local_print_buf, "(");
 		}
 
 	      pt_print_range_op (parser, &local_print_buf, t, r4);
 
 	      if (!p->info.expr.paren_type)
 		{
-		  strcat_with_realloc (&local_print_buf, ")");
+		  pt_string_block_append_nulstring (&local_print_buf, ")");
+		}
+
+	      if (local_print_buf.size < 0	/* an append failed */
+		  || (0 < parser->max_print_len && parser->max_print_len < local_print_buf.length))
+		{
+		  /* to help early break, before the separator that would be left dangling */
+		  break;
 		}
 
 	      if (t->or_next)
 		{
-		  strcat_with_realloc (&local_print_buf, " or ");
+		  pt_string_block_append_nulstring (&local_print_buf, " or ");
 		}
 	    }
 	  if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
 	    {
-	      strcat_with_realloc (&local_print_buf, ")");
+	      pt_string_block_append_nulstring (&local_print_buf, ")");
 	    }
 
 	  if (local_print_buf.size < 0)
@@ -13465,7 +13472,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       if (!is_first_list)
 	{
-	  strcat_with_realloc (&local_print_buf, ", ");
+	  pt_string_block_append_nulstring (&local_print_buf, ", ");
 	}
 
       switch (crt_list->info.node_list.list_type)
@@ -13473,20 +13480,20 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	case PT_IS_DEFAULT_VALUE:
 	  if (is_first_list && multiple_values_insert)
 	    {
-	      strcat_with_realloc (&local_print_buf, "values ");
+	      pt_string_block_append_nulstring (&local_print_buf, "values ");
 	    }
-	  strcat_with_realloc (&local_print_buf, "default values");
+	  pt_string_block_append_nulstring (&local_print_buf, "default values");
 	  break;
 
 	case PT_IS_VALUE:
 	  r1 = pt_print_bytes_l (parser, crt_list->info.node_list.list);
 	  if (is_first_list)
 	    {
-	      strcat_with_realloc (&local_print_buf, "values ");
+	      pt_string_block_append_nulstring (&local_print_buf, "values ");
 	    }
-	  strcat_with_realloc (&local_print_buf, "(");
+	  pt_string_block_append_nulstring (&local_print_buf, "(");
 	  pt_string_block_append_varchar (&local_print_buf, r1);
-	  strcat_with_realloc (&local_print_buf, ")");
+	  pt_string_block_append_nulstring (&local_print_buf, ")");
 	  break;
 
 	case PT_IS_SUBQUERY:
@@ -14734,18 +14741,18 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  if (!is_first_list)
 	    {
-	      strcat_with_realloc (&local_print_buf, ",(");
+	      pt_string_block_append_nulstring (&local_print_buf, ",(");
 	    }
 	  else
 	    {
-	      strcat_with_realloc (&local_print_buf, "(");
+	      pt_string_block_append_nulstring (&local_print_buf, "(");
 	      is_first_list = false;
 	    }
 
 	  r1 = pt_print_bytes_l (parser, temp->info.node_list.list);
 	  pt_string_block_append_varchar (&local_print_buf, r1);
 
-	  strcat_with_realloc (&local_print_buf, ")");
+	  pt_string_block_append_nulstring (&local_print_buf, ")");
 
 	  if (local_print_buf.size < 0	/* an append failed */
 	      || (0 < parser->max_print_len && parser->max_print_len < local_print_buf.length))
