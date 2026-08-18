@@ -95,11 +95,8 @@ namespace lockfree
     {
       if (!is_tran_started ())
 	{
-	  // this is the store-buffer shape, and the one reordering x86 does allow. a reader publishes its id and
-	  // then reads the chain; a reclaimer unlinks a node and then reads every id. safety needs at least one
-	  // of the two to see the other's write, so the store must not sink past the reads it protects - that is
-	  // store-load ordering, and it is the one case that costs a real instruction. the legacy path spelled it
-	  // as an explicit MEMORY_BARRIER () right after assigning transaction_id (lf_tran_start_with_mb).
+	  // store-load: this id must be visible before the chain reads it protects. the one order x86 does not
+	  // give free, and what lf_tran_start_with_mb ()'s MEMORY_BARRIER () bought.
 	  m_tranid.store (m_table->get_current_global_tranid (), std::memory_order_seq_cst);
 	}
     }
@@ -110,10 +107,9 @@ namespace lockfree
       if (!m_did_incr)
 	{
 	  m_tranid.store (m_table->get_new_global_tranid (), std::memory_order_seq_cst);
-	  // remember that this transaction already owns an incremented id. a second promote must be a no-op,
-	  // the way lf_tran_start (entry, true) is once entry->did_incr is set; otherwise every retire done under
-	  // an already promoted transaction burns a new global id and raises this descriptor's own id while it
-	  // still holds pointers taken under the previous one.
+	  // only now that the id is published, so the scan counts this thread - see the header
+	  m_table->refresh_min_active_tranid_if_due (m_tranid.load (std::memory_order_relaxed));
+	  // a second promote is now a no-op, as it is in lf_tran_start (entry, true) once did_incr is set
 	  m_did_incr = true;
 	}
       assert (m_tranid.load () != INVALID_TRANID);
@@ -129,9 +125,8 @@ namespace lockfree
     descriptor::end_tran ()
     {
       assert (is_tran_started ());
-      // everything this transaction read must be complete before it stops protecting it. that is load-store
-      // ordering, which release gives and which x86 provides at no cost - lf_tran_end_with_mb ()'s full
-      // MEMORY_BARRIER () in front of the same assignment was stronger than the requirement.
+      // load-store: the reads this id protected must finish before it is dropped. free on x86;
+      // lf_tran_end_with_mb ()'s full barrier was stronger than needed.
       m_tranid.store (INVALID_TRANID, std::memory_order_release);
       m_did_incr = false;
     }
@@ -139,8 +134,7 @@ namespace lockfree
     id
     descriptor::get_transaction_id () const
     {
-      // acquire pairs with the publishing store: a reclaimer that reads INVALID_TRANID here must also see
-      // everything the owner did before it released. free on x86.
+      // pairs with the release in end_tran ()
       return m_tranid.load (std::memory_order_acquire);
     }
 
@@ -153,10 +147,9 @@ namespace lockfree
 	  // nothing changed
 	  return;
 	}
-      // the retired list is ordered by retire id, because retire_node () appends, so everything reclaimable is a
-      // prefix of it. detach the whole prefix and hand it over in one call: an owner that can retire a batch for
-      // the price of one - the freelist splices it onto its available list with a single CAS - then does not pay
-      // per node. lf_freelist_transport () collected the same run for the same reason.
+      // retire_node () appends, so the list is ordered by retire id and everything reclaimable is a prefix.
+      // hand the whole prefix over at once, the way lf_freelist_transport () did, so an owner that can splice
+      // a run does not pay per node.
       reclaimable_node *run_head = m_retired_head;
       reclaimable_node *run_tail = NULL;
       size_t run_count = 0;
@@ -177,10 +170,8 @@ namespace lockfree
 	  m_reclaim_count += run_count;
 	}
 
-      // do not latch the idle sentinel. get_min_active_tranid () answers INVALID_TRANID - the largest id there is -
-      // when no descriptor is active, which happens routinely because get_new_global_tranid () recomputes the
-      // minimum before the caller is assigned its own id. storing it would make the early return above true for
-      // every later pass and stop this descriptor from ever reclaiming again.
+      // never latch the idle sentinel: INVALID_TRANID is the largest id there is, so storing it would make the
+      // early return above true for every later pass and stop this descriptor reclaiming for good.
       if (min_tran_id != INVALID_TRANID)
 	{
 	  m_last_reclaim_minid = min_tran_id;

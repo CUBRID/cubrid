@@ -72,12 +72,17 @@ namespace lockfree
     id
     table::get_new_global_tranid ()
     {
-      id ret = ++m_global_tranid;
-      if (ret % MATI_REFRESH_INTERVAL == 0)
+      return ++m_global_tranid;
+    }
+
+    void
+    table::refresh_min_active_tranid_if_due (id assigned_tranid)
+    {
+      // called once the caller has published assigned_tranid, never before - see the header.
+      if (assigned_tranid % MATI_REFRESH_INTERVAL == 0)
 	{
 	  compute_min_active_tranid ();
 	}
-      return ret;
     }
 
     id

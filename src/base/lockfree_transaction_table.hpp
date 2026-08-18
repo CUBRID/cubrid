@@ -67,6 +67,11 @@ namespace lockfree
 
 	id get_current_global_tranid () const;
 	id get_new_global_tranid ();
+	// Only from a caller that has already published the id it was given. The scan counts a descriptor idle
+	// until its id is stored, so refreshing first can compute INVALID_TRANID - "nothing active" - while the
+	// refreshing thread is about to be, and every later reclaim pass reads that cached value as
+	// "everything is reclaimable".
+	void refresh_min_active_tranid_if_due (id assigned_tranid);
 	id get_min_active_tranid () const;
 
 	size_t get_total_retire_count () const;
