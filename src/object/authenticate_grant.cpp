@@ -193,7 +193,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
       else if (ws_is_same_object (classobj->owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
 	}
       else if ((error = au_compare_grantor_and_return (&grantor, class_mop, type, Au_user, classobj->owner,
 			NULL)) != NO_ERROR)
@@ -352,7 +352,9 @@ au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH ty
       if (ws_is_same_object (owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,
+		  (obj_type == DB_OBJECT_PACKAGE) ? MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PACKAGE) :
+		  MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
 	}
       else if ((error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, owner, NULL)) != NO_ERROR)
 	{
@@ -756,7 +758,9 @@ au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH t
       if (ws_is_same_object (owner, user))
 	{
 	  error = ER_AU_CANT_REVOKE_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,
+		  (obj_type == DB_OBJECT_PACKAGE) ? MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PACKAGE) :
+		  MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
 	  goto fail_end;
 	}
 

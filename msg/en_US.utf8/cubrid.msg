@@ -215,7 +215,7 @@ $set 5 MSGCAT_SET_ERROR
 143 Encountered a class with no owner.
 144 Unable to access user object.
 145 Cannot issue grant/revoke commands to yourself.
-146 Cannot issue GRANT/REVOKE to the owner.
+146 Cannot issue GRANT to owner of a %1$s.
 147 No GRANT option.
 148 Cannot obtain write lock on authorization object.
 149 Cannot create instance of authorization object.

@@ -290,6 +290,14 @@ jsp_find_package (const char *name, DB_AUTH purpose)
 
   char *checked_name = jsp_check_package_name (name);
   MOP mop = jsp_find_pkg (checked_name, purpose);
+  if (!mop)
+    {
+      if (er_errid() == NO_ERROR)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PKG_NOT_EXIST, 1, checked_name);
+	}
+    }
+
   free_and_init (checked_name);
 
   return mop;
@@ -3332,7 +3340,7 @@ jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 int
 jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  int err = NO_ERROR;
+  int err = NO_ERROR, save;
   char owner_name[DB_MAX_USER_LENGTH];
   MOP owner_mop, pkg_mop;
 
@@ -3387,7 +3395,9 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 	{
 	  DB_VALUE value;
 
+	  AU_SAVE_AND_DISABLE (save);
 	  err = db_get (pkg_mop, PKG_ATTR_FLAGS, &value);
+	  AU_RESTORE (save);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
