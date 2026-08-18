@@ -1389,11 +1389,15 @@ $set 61 MSGCAT_UTIL_SET_UPGRADEDB
 6 System metadata upgrade script validation failed: %1$s\n
 7 Failed to read system metadata upgrade script: %1$s\n
 8 No system metadata upgrade script is listed in %1$s\n
+9 System metadata is up to date; no upgrade is required.\n
+10 System metadata upgrade is required. Run 'cubrid upgradedb'.\n
 60 \
 upgradedb: upgrade system metadata to match the current CUBRID version.\n\
 usage: %1$s upgradedb [OPTION] database-name\n\
 \n\
 valid options:\n\
-      --check                  exit 0 if the version matches the engine, 1 otherwise\n\
+      --check                  report whether an upgrade is required, without applying it;\n\
+                               exit 0 if up to date, 1 if it cannot be checked or\n\
+                               upgraded, 2 if an upgrade is required\n\
   -f, --force                  apply the upgrade without prompting for confirmation\n\
   -v, --verbose                print upgrade scripts before applying them\n
