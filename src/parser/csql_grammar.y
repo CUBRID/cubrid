@@ -6375,9 +6375,15 @@ alter_modify_clause_for_alter_list
 			  }
 		}}
 	| CLASS ATTRIBUTE
-	  { allow_attribute_ordering = true; }
+	  {
+	    parser_attr_type = PT_META_ATTR;
+	    allow_attribute_ordering = true;
+	  }
 	  attr_def_one
-	  { allow_attribute_ordering = false; }
+	  {
+	    parser_attr_type = PT_NORMAL;
+	    allow_attribute_ordering = false;
+	  }
 		{{
 			PT_NODE *node = parser_get_alter_node ();
 
@@ -6395,9 +6401,15 @@ alter_modify_clause_for_alter_list
 
 alter_change_clause_for_alter_list
 	: normal_column_or_class_attribute
-	  { allow_attribute_ordering = true; }
+	  {
+	    parser_attr_type = $1->info.name.meta_class;
+	    allow_attribute_ordering = true;
+	  }
 	  attr_def_one
-	  { allow_attribute_ordering = false; }
+	  {
+	    parser_attr_type = PT_NORMAL;
+	    allow_attribute_ordering = false;
+	  }
 		{{
 			PT_NODE *node = parser_get_alter_node ();
 

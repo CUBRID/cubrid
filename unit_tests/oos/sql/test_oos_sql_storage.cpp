@@ -131,16 +131,23 @@ namespace
     return xoos_get_stats_by_class_oid (thread_get_thread_entry_info (), class_oid, out_stats);
   }
 
+  enum class storage_attribute_error
+  {
+    NON_NORMAL_ATTRIBUTE,
+    NON_VARIABLE_NORMAL_ATTRIBUTE
+  };
+
   void
-  expect_storage_attribute_error ()
+  expect_storage_attribute_error (storage_attribute_error expected_error)
   {
     const char *message = db_error_string (3);
     ASSERT_NE (message, nullptr);
     std::string error (message);
-    EXPECT_TRUE (error.find ("STORAGE options can be set only on variable-type normal attributes")
-		 != std::string::npos
-		 || error.find ("only normal attributes can set storage options") != std::string::npos)
-	<< message;
+    const char *expected_message =
+	    expected_error == storage_attribute_error::NON_NORMAL_ATTRIBUTE
+	    ? "only normal attributes can set storage options"
+	    : "STORAGE options can be set only on variable-type normal attributes";
+    EXPECT_NE (error.find (expected_message), std::string::npos) << message;
   }
 }
 
@@ -272,14 +279,17 @@ TEST_F (OosSqlStorage, SharedAttributeRejectsPreferInline)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (s VARCHAR(4096) SHARED 'x' STORAGE PREFER_INLINE)");
   EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE TABLE t_oos_stg (s VARCHAR(4096) SHARED 'x' STORAGE PREFER_OUTLINE)");
   EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE TABLE t_oos_stg (s VARCHAR(4096) SHARED 'x' STORAGE DEFAULT)");
   EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 }
 
@@ -294,13 +304,13 @@ TEST_F (OosSqlStorage, CreateRejectsAllStorageSettingsForFixedTypes)
 
       int rc = exec_sql (sql.c_str ());
       EXPECT_LT (rc, 0);
-      expect_storage_attribute_error ();
+      expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
       db_abort_transaction ();
     }
 
   int rc = exec_sql ("CREATE TABLE t_oos_stg (c BIT(128) STORAGE PREFER_INLINE)");
   EXPECT_LT (rc, 0);
-  expect_storage_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 }
 
@@ -330,7 +340,7 @@ TEST_F (OosSqlStorage, VclassRejectsAllStorageSettings)
 
       int rc = exec_sql (sql.c_str ());
       EXPECT_LT (rc, 0);
-      expect_storage_attribute_error ();
+      expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
       db_abort_transaction ();
     }
 }
@@ -349,13 +359,37 @@ TEST_F (OosSqlStorage, AlterRejectsAllStorageSettingsForFixedTypes)
 
       rc = exec_sql (sql.c_str ());
       EXPECT_LT (rc, 0);
-      expect_storage_attribute_error ();
+      expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
       db_abort_transaction ();
     }
 
   rc = exec_sql ("ALTER TABLE t_oos_stg CHANGE c c INT STORAGE PREFER_INLINE");
   EXPECT_LT (rc, 0);
-  expect_storage_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
+  db_abort_transaction ();
+}
+
+TEST_F (OosSqlStorage, AlterModifyClassAttributeReportsNonNormalAttributeError)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (a INT, CLASS ca VARCHAR(100))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY CLASS ATTRIBUTE ca VARCHAR(4096) STORAGE PREFER_INLINE");
+  EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
+  db_abort_transaction ();
+}
+
+TEST_F (OosSqlStorage, AlterChangeClassAttributeReportsNonNormalAttributeError)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (a INT, CLASS ca VARCHAR(100))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg CHANGE CLASS ATTRIBUTE ca ca VARCHAR(4096) STORAGE PREFER_INLINE");
+  EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 }
 
@@ -363,17 +397,17 @@ TEST_F (OosSqlStorage, ForceOutlineRejectsUnsupportedAttributes)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (c INT STORAGE FORCE_OUTLINE)");
   EXPECT_LT (rc, 0);
-  expect_storage_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE TABLE t_oos_stg (c VARCHAR(4096) SHARED 'x' STORAGE FORCE_OUTLINE)");
   EXPECT_LT (rc, 0);
-  expect_storage_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE TABLE t_oos_stg CLASS ATTRIBUTE (c VARCHAR(4096) STORAGE FORCE_OUTLINE)");
   EXPECT_LT (rc, 0);
-  expect_storage_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE TABLE t_oos_stg (c INT)");
@@ -382,12 +416,12 @@ TEST_F (OosSqlStorage, ForceOutlineRejectsUnsupportedAttributes)
 
   rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c INT STORAGE FORCE_OUTLINE");
   EXPECT_LT (rc, 0);
-  expect_storage_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE VCLASS t_oos_stg_v (c VARCHAR(4096) STORAGE FORCE_OUTLINE)");
   EXPECT_LT (rc, 0);
-  expect_storage_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 }
 
@@ -570,7 +604,7 @@ TEST_F (OosSqlStorage, FailedExplicitFixedTypeAlterPreservesSchemaAndData)
 
   rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c INT STORAGE DEFAULT");
   EXPECT_LT (rc, 0);
-  expect_storage_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   std::string ddl;
