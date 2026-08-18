@@ -38,6 +38,37 @@ namespace test_lockfree
 {
   using dummy_int_hashmap = hashmap<int, int>;    // for compile
 
+  // A per-thread xorshift, because the two generators this file used before cost more than everything they were
+  // measuring. std::random_device is 31 us per call on the machine this was written on - it is a true random
+  // source, not a PRNG - and std::rand () takes a process-wide lock in glibc, so every thread serialized on it
+  // and a four-thread case took exactly four times a one-thread case. Both hid the hash entirely.
+  class xorshift_rng
+  {
+    public:
+      xorshift_rng ()
+	: m_state (next_seed ())
+      {
+      }
+
+      unsigned int operator() ()
+      {
+	m_state ^= m_state << 13;
+	m_state ^= m_state >> 17;
+	m_state ^= m_state << 5;
+	return m_state;
+      }
+
+    private:
+      static unsigned int next_seed ()
+      {
+	static std::atomic<unsigned int> seed_counter { 0x9e3779b9 };
+	// distinct per instance, and every instance is thread-local by construction
+	return seed_counter += 0x9e3779b9;
+      }
+
+      unsigned int m_state;
+  };
+
   struct my_key
   {
     unsigned int m_1;
@@ -47,9 +78,20 @@ namespace test_lockfree
   static int compare_my_key (void *key1, void *key2);
   static unsigned int hash_my_key (void *key, int hash_size);
 
-  static void keygen_no_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd);
-  static void keygen_avg_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd);
-  static void keygen_high_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd);
+  static void keygen_no_conflict (my_key &k, size_t hash_size, size_t nops, xorshift_rng &rd);
+  static void keygen_avg_conflict (my_key &k, size_t hash_size, size_t nops, xorshift_rng &rd);
+  static void keygen_high_conflict (my_key &k, size_t hash_size, size_t nops, xorshift_rng &rd);
+
+  // an entry carries a second copy of its own key and a life-cycle magic, both written by whoever claimed and
+  // inserted it. a reader that holds the entry - through the entry mutex, or through the lock-free transaction
+  // its find () left open - may assume all three agree. they stop agreeing the moment epoch protection lets the
+  // entry be reclaimed and handed to another thread while the reader still points at it.
+  // any entry that failed its consistency check, over every case and both implementations
+  static std::atomic<std::uint64_t> g_total_consistency_errors { 0 };
+
+  static const unsigned int MY_ENTRY_MAGIC_FREE = 0u;          // never claimed, or uninitialized after reclaim
+  static const unsigned int MY_ENTRY_MAGIC_CLAIMED = 0xc1a1ed00;  // claimed, key not written yet
+  static const unsigned int MY_ENTRY_MAGIC_LIVE = 0x11feda7a;   // key and payload written
 
   struct my_entry
   {
@@ -60,6 +102,9 @@ namespace test_lockfree
     UINT64 m_delid;
 
     bool m_init;
+
+    my_key m_payload_key;
+    unsigned int m_magic;
 
     my_entry () = default;
     ~my_entry () = default;
@@ -158,6 +203,7 @@ namespace test_lockfree
     std::atomic<std::uint64_t> m_found_on_erase_ops;
     std::atomic<std::uint64_t> m_not_found_on_erase_ops;
     std::atomic<std::uint64_t> m_iterate_increments;
+    std::atomic<std::uint64_t> m_consistency_errors;
 
     cubmonitor::timer_stat m_timer;
 
@@ -184,6 +230,7 @@ namespace test_lockfree
       m_found_on_erase_ops = 0;
       m_not_found_on_erase_ops = 0;
       m_iterate_increments = 0;
+      m_consistency_errors = 0;
     }
 
     void dump_stats ()
@@ -211,6 +258,7 @@ namespace test_lockfree
       dump_not_zero ("ers_succ", m_found_on_erase_ops);
       dump_not_zero ("ers_fail", m_not_found_on_erase_ops);
       dump_not_zero ("iter_incr", m_iterate_increments);
+      dump_not_zero ("BROKEN", m_consistency_errors);
 
       cout_new_line ();
       std::cout << "TIME: ";
@@ -265,6 +313,8 @@ namespace test_lockfree
       static void testcase_find_insdel_iter_clear (test_result &tres, Hash &hash, Tran lftran, size_t find_count,
 	  size_t find_insert_count, size_t erase_count, size_t iter_count,
 	  size_t clear_count);
+      static void testcase_held_entry_consistency (test_result &tres, Hash &hash, Tran lftran, size_t find_count,
+	  size_t insert_count, size_t erase_count, size_t clear_count);
 
     private:
       test_type m_tt;
@@ -283,7 +333,7 @@ namespace test_lockfree
     size_t inserted = 0;
     size_t rejected = 0;
     my_entry *ent;
-    std::random_device rd;
+    xorshift_rng rd;
 
     for (size_t i = 0; i < insert_count; ++i)
       {
@@ -320,7 +370,7 @@ namespace test_lockfree
     size_t found_inserts = 0;
     size_t erased = 0;
     size_t erase_not_found = 0;
-    std::random_device rd;
+    xorshift_rng rd;
     my_entry *myent;
 
     size_t hash_size = hash.get_size ();
@@ -383,7 +433,7 @@ namespace test_lockfree
     size_t found_inserts = 0;
     size_t erased = 0;
     size_t erase_not_found = 0;
-    std::random_device rd;
+    xorshift_rng rd;
     my_entry *myent;
 
     size_t hash_size = hash.get_size ();
@@ -459,7 +509,7 @@ namespace test_lockfree
     size_t inserts = 0;
     size_t found_inserts = 0;
     size_t erased = 0;
-    std::random_device rd;
+    xorshift_rng rd;
     my_entry *myent;
 
     assert (g_edesc.using_mutex != 0);
@@ -524,7 +574,7 @@ namespace test_lockfree
     size_t erased = 0;
     size_t erase_not_found = 0;
     size_t iter_incr = 0;
-    std::random_device rd;
+    xorshift_rng rd;
     my_entry *myent;
 
     size_t hash_size = hash.get_size ();
@@ -609,7 +659,7 @@ namespace test_lockfree
     size_t iter_incr = 0;
     size_t find_found = 0;
     size_t find_not_found = 0;
-    std::random_device rd;
+    xorshift_rng rd;
     my_entry *myent;
 
     size_t hash_size = hash.get_size ();
@@ -700,6 +750,162 @@ namespace test_lockfree
 
   template <> const char *my_lf_hash_table_tester::TEST_MESSAGE_PREFIX = "test lf_hash_table";
   template <> const char *my_hashmap_tester::TEST_MESSAGE_PREFIX = "test lockfree::hashmap";
+
+  //
+  // testcase_held_entry_consistency () - an entry a thread holds must not change identity underneath it.
+  //
+  // This is the property epoch reclamation exists to provide. A thread that found an entry keeps it protected -
+  // by the entry mutex when the descriptor uses one, otherwise by the lock-free transaction find () left open -
+  // until it calls unlock (). For as long as it holds it, the entry must still be the one it searched for.
+  //
+  // Every entry carries a second copy of its own key and a magic word that init/uninit and the inserter move
+  // through free -> claimed -> live, so a holder can check three things that only agree while the entry is
+  // really its own: the magic says live, the entry's key is the key that was searched, and the entry's payload
+  // copy matches its key. If protection fails, the entry is reclaimed, handed back out, re-initialized and
+  // filled with a different key while the holder still points at it, and the three stop agreeing.
+  //
+  // The check is made twice with a spin in between, to leave the entry held long enough for a racing writer to
+  // reach it. Key space and hash size are kept small so the same entries are inserted, erased, cleared and
+  // recycled constantly - the recycling is what turns a lost epoch guarantee into an observable mismatch.
+  //
+  // Note what this can and cannot do: it is a stress test, not a proof. It samples interleavings, so a clean
+  // run is evidence and not a guarantee, and the memory-ordering half of the property is only reachable on a
+  // machine that actually reorders that way.
+  //
+  static bool
+  check_held_entry (my_entry *ent, const my_key &searched)
+  {
+    if (ent->m_magic != MY_ENTRY_MAGIC_LIVE)
+      {
+	return false;
+      }
+    if (compare_my_key ((void *) &searched, (void *) &ent->m_key) != 0)
+      {
+	return false;
+      }
+    if (compare_my_key ((void *) &ent->m_payload_key, (void *) &ent->m_key) != 0)
+      {
+	return false;
+      }
+    return true;
+  }
+
+  template <typename Hash, typename Tran>
+  void
+  hash_tester<Hash, Tran>::testcase_held_entry_consistency (test_result &tres, Hash &hash, Tran lftran,
+      size_t find_count, size_t insert_count, size_t erase_count, size_t clear_count)
+  {
+    // a deliberately tiny key space, so entries are recycled hard
+    const unsigned int KEY_SPACE = 64;
+    // wide enough that the fault injection this test was calibrated against - reclaim_retired_list () ignoring
+    // the minimum active id - is caught on every run out of five. it costs no measurable wall clock.
+    const int HOLD_SPIN = 200000;
+
+    my_key k;
+    my_entry *ent;
+    xorshift_rng rd;
+    size_t found = 0;
+    size_t not_found = 0;
+    size_t inserted = 0;
+    size_t found_inserts = 0;
+    size_t erased = 0;
+    size_t erase_not_found = 0;
+    size_t errors = 0;
+
+    size_t total_ops = find_count + insert_count + erase_count + clear_count;
+    size_t left_ops = total_ops;
+    size_t random_op;
+
+    tres.m_find_ops += find_count;
+    tres.m_insert_given_ops += insert_count;
+    tres.m_erase_ops += erase_count;
+    tres.m_clear_ops += clear_count;
+    tres.m_claim_ops += insert_count;
+
+    while (left_ops > 0)
+      {
+	k.m_1 = rd () % KEY_SPACE;
+	k.m_2 = k.m_1;
+	random_op = rd () % left_ops;
+
+	if (random_op < find_count)
+	  {
+	    ent = hash.find (lftran, k);
+	    if (ent != NULL)
+	      {
+		++found;
+		// hold it and look twice - the entry must not become somebody else's in between
+		bool ok = check_held_entry (ent, k);
+		for (volatile int spin = 0; spin < HOLD_SPIN; ++spin)
+		  ;
+		ok = check_held_entry (ent, k) && ok;
+		if (!ok)
+		  {
+		    ++errors;
+		  }
+		hash.unlock (lftran, ent);
+	      }
+	    else
+	      {
+		++not_found;
+	      }
+	    --find_count;
+	  }
+	else if (random_op < find_count + insert_count)
+	  {
+	    ent = hash.freelist_claim (lftran);
+	    assert (ent != NULL);
+	    ent->m_key = k;
+	    ent->m_payload_key = k;
+	    ent->m_magic = MY_ENTRY_MAGIC_LIVE;
+
+	    if (hash.insert_given (lftran, k, ent))
+	      {
+		++inserted;
+	      }
+	    else
+	      {
+		// the key was already there; ent is now the entry that was found, filled in by whoever
+		// inserted it, and it must read as consistently as one found by find ()
+		++found_inserts;
+	      }
+	    assert (ent != NULL);
+	    if (!check_held_entry (ent, k))
+	      {
+		++errors;
+	      }
+	    hash.unlock (lftran, ent);
+	    --insert_count;
+	  }
+	else if (random_op < find_count + insert_count + erase_count)
+	  {
+	    if (hash.erase (lftran, k))
+	      {
+		++erased;
+	      }
+	    else
+	      {
+		++erase_not_found;
+	      }
+	    --erase_count;
+	  }
+	else
+	  {
+	    hash.clear (lftran);
+	    --clear_count;
+	  }
+	--left_ops;
+      }
+
+    tres.m_found_on_finds += found;
+    tres.m_not_found_on_finds += not_found;
+    tres.m_successful_inserts += inserted;
+    tres.m_found_on_inserts += found_inserts;
+    tres.m_found_on_erase_ops += erased;
+    tres.m_not_found_on_erase_ops += erase_not_found;
+    tres.m_consistency_errors += errors;
+    g_total_consistency_errors += errors;
+  }
 
   template <typename Hash, typename Tran>
   hash_tester<Hash, Tran>::hash_tester (test_type tt)
@@ -943,6 +1149,11 @@ namespace test_lockfree
     hm_tester.run_test ("testcase_insdel_iter_clear=10000,1000,100,10",
 			&my_hashmap_tester::testcase_insdel_iter_clear, 10000, 1000, 100, 10);
 
+    lfht_tester.run_test ("testcase_held_entry_consistency=20000,10000,10000,20",
+			  &my_lf_hash_table_tester::testcase_held_entry_consistency, 20000, 10000, 10000, 20);
+    hm_tester.run_test ("testcase_held_entry_consistency=20000,10000,10000,20",
+			&my_hashmap_tester::testcase_held_entry_consistency, 20000, 10000, 10000, 20);
+
     decrement_tab_indent ();
     cout_new_line ();
   }
@@ -1041,6 +1252,15 @@ namespace test_lockfree
     test_hashmap_functional_internal (MUTEX_OFF, short_version);
     test_hashmap_functional_internal (MUTEX_ON, short_version);
 
+    if (g_total_consistency_errors != 0)
+      {
+	cout_new_line ();
+	std::cout << "FAILED: " << g_total_consistency_errors.load ()
+		  << " held entries changed identity while a thread was holding them";
+	cout_new_line ();
+	err = 1;
+      }
+
     return err;
   }
 
@@ -1099,29 +1319,26 @@ namespace test_lockfree
   }
 
   static void
-  keygen_no_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd)
+  keygen_no_conflict (my_key &k, size_t hash_size, size_t nops, xorshift_rng &rd)
   {
-    unsigned int bucket_size = std::numeric_limits<unsigned int>::max ();
-    std::uniform_int_distribution<unsigned int> uid1 (0, (unsigned int) hash_size);
-    std::uniform_int_distribution<unsigned int> uid2 (0, bucket_size);
-    k.m_1 = uid1 (rd);
-    k.m_2 = uid2 (rd);
+    k.m_1 = rd () % ((unsigned int) hash_size + 1);
+    k.m_2 = rd ();
   }
 
   static void
-  keygen_avg_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd)
+  keygen_avg_conflict (my_key &k, size_t hash_size, size_t nops, xorshift_rng &rd)
   {
-    k.m_1 = std::rand () % hash_size;
+    k.m_1 = rd () % hash_size;
     size_t bucket_size = std::max ((size_t ) 2, (nops / hash_size) * 5);
-    k.m_2 = std::rand () % bucket_size;
+    k.m_2 = rd () % bucket_size;
   }
 
   static void
-  keygen_high_conflict (my_key &k, size_t hash_size, size_t nops, std::random_device &rd)
+  keygen_high_conflict (my_key &k, size_t hash_size, size_t nops, xorshift_rng &rd)
   {
-    k.m_1 = std::rand () % hash_size;
+    k.m_1 = rd () % hash_size;
     size_t bucket_size = std::max ((size_t ) 2, (nops / hash_size));
-    k.m_2 = std::rand () % bucket_size;
+    k.m_2 = rd () % bucket_size;
   }
 
   static void *
@@ -1144,6 +1361,7 @@ namespace test_lockfree
     my_entry *e = (my_entry *) p;
     assert (!e->m_init);
     e->m_init = true;
+    e->m_magic = MY_ENTRY_MAGIC_CLAIMED;
     return 0;
   }
 
@@ -1153,6 +1371,7 @@ namespace test_lockfree
     my_entry *e = (my_entry *) p;
     assert (e->m_init);
     e->m_init = false;
+    e->m_magic = MY_ENTRY_MAGIC_FREE;
     return 0;
   }
 
