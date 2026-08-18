@@ -24254,6 +24254,32 @@ btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 
 #if defined (SERVER_MODE)
 /*
+ * btree_key_release_locked_object_and_pages () - Drop what this scan holds on the key: the object it
+ *						  locked and the page latches. The caller re-reads from root.
+ *
+ * thread_p (in)       : Thread entry.
+ * find_unique_helper (in/out) : Find-unique state; any object it has locked is released and forgotten.
+ * leaf_page (in/out)  : Leaf node page latch; unfixed and left NULL.
+ * overflow_page (in/out) : Optional overflow node page latch; unfixed and left NULL, NULL when there is none.
+ */
+static void
+btree_key_release_locked_object_and_pages (THREAD_ENTRY * thread_p, BTREE_FIND_UNIQUE_HELPER * find_unique_helper,
+					   PAGE_PTR * leaf_page, PAGE_PTR * overflow_page)
+{
+  if (!OID_ISNULL (&find_unique_helper->locked_oid))
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_unique_helper->locked_oid,
+					       &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
+      OID_SET_NULL (&find_unique_helper->locked_oid);
+    }
+  if (overflow_page != NULL && *overflow_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, *overflow_page);
+    }
+  pgbuf_unfix_and_init (thread_p, *leaf_page);
+}
+
+/*
  * btree_key_wait_for_tran_end () - Wait for the writer working under the given MVCCID to end,
  *				    then signal a restart from root.
  *
@@ -24275,19 +24301,8 @@ btree_key_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID writer_mvccid,
 {
   int error_code = NO_ERROR;
 
-  /* Release any previously locked object before suspending. */
-  if (!OID_ISNULL (&find_unique_helper->locked_oid))
-    {
-      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_unique_helper->locked_oid,
-					       &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
-      OID_SET_NULL (&find_unique_helper->locked_oid);
-    }
-  /* Release page latches before blocking on the lock. */
-  if (overflow_page != NULL && *overflow_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, *overflow_page);
-    }
-  pgbuf_unfix_and_init (thread_p, *leaf_page);
+  /* Release the locked object and the page latches before blocking on the lock. */
+  btree_key_release_locked_object_and_pages (thread_p, find_unique_helper, leaf_page, overflow_page);
 
   error_code = logtb_wait_for_tran_end (thread_p, writer_mvccid);
   if (error_code != NO_ERROR)
@@ -24440,7 +24455,15 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 		return btree_key_wait_for_tran_end (thread_p, conflict_mvccid, find_unique_helper, leaf_page,
 						    NULL, restart);
 	      }
-	    /* No active writer (e.g. our own in-progress insert/delete) -- fall through to the row-lock path. */
+	    if (satisfies_delete == DELETE_RECORD_DELETE_IN_PROGRESS)
+	      {
+		/* The deleter ended in the race since mvcc_satisfies_delete (): the verdict is stale, and a
+		 * deleter takes no row lock, so it may have landed on an object this scan already locked. */
+		btree_key_release_locked_object_and_pages (thread_p, find_unique_helper, leaf_page, NULL);
+		*restart = true;
+		return NO_ERROR;
+	      }
+	    /* Our own in-progress insert -- fall through to the row-lock path. */
 	  }
 	  /* Object is being inserted/deleted. We need to lock and suspend until its fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
@@ -24765,7 +24788,15 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 		return btree_key_wait_for_tran_end (thread_p, conflict_mvccid, find_unique_helper, leaf_page,
 						    &overflow_page, restart);
 	      }
-	    /* No active writer (e.g. our own in-progress insert/delete) -- fall through to the row-lock path. */
+	    if (satisfies_delete == DELETE_RECORD_DELETE_IN_PROGRESS)
+	      {
+		/* The deleter ended in the race since mvcc_satisfies_delete (): the verdict is stale, and a
+		 * deleter takes no row lock, so it may have landed on an object this scan already locked. */
+		btree_key_release_locked_object_and_pages (thread_p, find_unique_helper, leaf_page, &overflow_page);
+		*restart = true;
+		return NO_ERROR;
+	      }
+	    /* Our own in-progress insert -- fall through to the row-lock path. */
 	  }
 	  /* Object is being inserted/deleted. We need to lock and suspend until its fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
