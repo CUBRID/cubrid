@@ -147,7 +147,14 @@ namespace lockfree
 	  m_retired_tail = NULL;
 	}
 
-      m_last_reclaim_minid = min_tran_id;
+      // do not latch the idle sentinel. get_min_active_tranid () answers INVALID_TRANID - the largest id there is -
+      // when no descriptor is active, which happens routinely because get_new_global_tranid () recomputes the
+      // minimum before the caller is assigned its own id. storing it would make the early return above true for
+      // every later pass and stop this descriptor from ever reclaiming again.
+      if (min_tran_id != INVALID_TRANID)
+	{
+	  m_last_reclaim_minid = min_tran_id;
+	}
     }
 
     void
