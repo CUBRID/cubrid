@@ -105,6 +105,11 @@ namespace lockfree
       if (!m_did_incr)
 	{
 	  m_tranid = m_table->get_new_global_tranid ();
+	  // remember that this transaction already owns an incremented id. a second promote must be a no-op,
+	  // the way lf_tran_start (entry, true) is once entry->did_incr is set; otherwise every retire done under
+	  // an already promoted transaction burns a new global id and raises this descriptor's own id while it
+	  // still holds pointers taken under the previous one.
+	  m_did_incr = true;
 	}
       assert (m_tranid != INVALID_TRANID);
     }
