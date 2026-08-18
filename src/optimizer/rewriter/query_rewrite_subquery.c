@@ -26,6 +26,16 @@
 #include "query_rewrite.h"
 #include "dbi.h"
 
+static void qo_move_subquery_hints (PT_NODE * node, PT_NODE * subq);
+static bool qo_index_hint_is_movable (PT_NODE * using_index);
+static bool qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require_where);
+static bool qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list);
+static bool qo_classify_conjunct (PT_NODE * cnf_node, QO_UNNEST_INFO * info);
+static bool qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node,
+				       QO_UNNEST_INFO * info);
+static void qo_replace_conjunct_with_join (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node,
+					   PT_NODE * prev, const QO_UNNEST_INFO * info);
+
 
 /*
  * Subquery unnesting: [NOT] EXISTS / [NOT] IN -> SEMI / ANTI JOIN (CBRD-24043)
@@ -39,9 +49,8 @@
  * (negated form) joined spec and its WHERE becomes that spec's ON; the IN forms synthesize the extra
  * 'lhs = select-list item' equality shown above.
  *
- * Running after name resolution means every PT_NAME is already bound, so moving a spec between FROM lists
- * re-resolves nothing -- but it also means the generated joins bypass pt_check_semi_anti_join (), whose
- * direct-join invariant is therefore reused explicitly below.
+ * This runs after pt_check_semi_anti_join (), so the joins it builds are never checked there; the
+ * direct-join invariant is reused explicitly below instead.
  */
 
 /*
@@ -50,10 +59,7 @@
  *   node(in/out): the enclosing SELECT, which takes over the spec the hints name
  *   subq(in/out): the subquery being discarded, left with no hints
  *
- * Note: mq_rewrite_aggregate_as_derived () does the same when it moves a FROM between SELECTs. Appended
- *   rather than assigned -- that one fills a node it just made, while the enclosing SELECT may already
- *   carry hints of its own. NO_MERGE / QUERY_CACHE / NO_SUBQUERY_CACHE describe the subquery itself and
- *   mean nothing once it is gone.
+ * Note: appended rather than assigned, since the enclosing SELECT may already carry hints of its own.
  */
 static void
 qo_move_subquery_hints (PT_NODE * node, PT_NODE * subq)
@@ -94,8 +100,7 @@ qo_move_subquery_hints (PT_NODE * node, PT_NODE * subq)
     parser_append_node (subq->info.query.q.select.no_use_hash, node->info.query.q.select.no_use_hash);
   subq->info.query.q.select.no_use_hash = NULL;
 
-  node->info.query.q.select.hint |=
-    (subq->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE));
+  node->info.query.q.select.hint |= (subq->info.query.q.select.hint & ~PT_HINT_NO_SUBQUERY_CACHE);
 }
 
 /*
@@ -104,9 +109,8 @@ qo_move_subquery_hints (PT_NODE * node, PT_NODE * subq)
  *   return: bool
  *   using_index(in): the subquery's USING INDEX list, may be NULL
  *
- * Note: every other form names its table -- add_using_index () matches entries against QO_NODE_NAME -- so
- *   it keeps applying to the same spec, which is the one moving up. USING INDEX NONE names none, and is
- *   applied to every node in scope; lifted out of the subquery it would silence the outer tables too.
+ * Note: every other form names its table, so it keeps applying to the spec moving up. USING INDEX NONE
+ *   names none and applies to every node in scope; lifted out it would silence the outer tables too.
  */
 static bool
 qo_index_hint_is_movable (PT_NODE * using_index)
@@ -149,6 +153,11 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
       return false;
     }
 
+  if (subq->info.query.q.select.hint & (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE))
+    {
+      return false;
+    }
+
   if (require_where && subq->info.query.q.select.where == NULL)
     {
       return false;
@@ -167,10 +176,9 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
       return false;
     }
 
-  /* INST_NUM / ROWNUM is legal in a nested subquery (it restarts per outer row), but once lifted into ON
-   * it is re-checked in the outer scope and rejected -- unnesting would turn a working query into an
-   * error. The walker stops at query-node scope boundaries, so probe the lifted clauses, not 'subq'
-   * itself; a deeper subquery's own ROWNUM moves intact inside its scope and rightly stays invisible. */
+  /* INST_NUM / ROWNUM restarts per outer row in a nested subquery, but once lifted into ON it is
+   * re-checked in the outer scope and rejected. The walker stops at query-node scope boundaries, so probe
+   * the lifted clauses rather than 'subq' itself. */
   if (pt_has_inst_num (parser, subq->info.query.q.select.where)
       || pt_has_inst_num (parser, subq->info.query.q.select.list))
     {
@@ -178,8 +186,7 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
     }
 
   /* the WHERE becomes an ON condition, and the grammar forbids a subquery there
-   * (MSGCAT_SYNTAX_JOIN_COND_SUBQ, raised while parser_within_join_condition). Running after parsing, this
-   * rewrite would build an ON no one could write by hand and nothing downstream would reject it. */
+   * (MSGCAT_SYNTAX_JOIN_COND_SUBQ) */
   has_subquery = false;
   (void) parser_walk_tree (parser, subq->info.query.q.select.where, pt_check_subquery_pre, NULL,
 			   pt_check_subquery_post, &has_subquery);
@@ -188,8 +195,7 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
       return false;
     }
 
-  /* the index hint hangs on the subquery node, which the unnest discards; it is carried over to the
-   * enclosing SELECT instead, so only the form that cannot survive the move is rejected here */
+  /* the hint is carried to the enclosing SELECT, so reject only the form that cannot survive the move */
   if (!qo_index_hint_is_movable (subq->info.query.q.select.using_index))
     {
       return false;
@@ -210,8 +216,7 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
 
 /*
  * qo_operand_is_non_null () - true iff 'operand' is a base-table column the schema guarantees is never
- *      NULL (NOT NULL or PRIMARY KEY). Anything unprovable -- an expression, a view, a class hierarchy,
- *      an outer-scope reference -- is reported nullable. Licenses the NOT IN -> ANTI JOIN rewrite only.
+ *      NULL (NOT NULL or PRIMARY KEY); anything unprovable is reported nullable
  *   return: bool
  *   operand(in): one side of the synthesized join equality
  *   spec_list(in): the FROM list the operand's spec_id must resolve in
@@ -241,7 +246,7 @@ qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list)
       return false;
     }
 
-  /* one resolved class only: a hierarchy would need every subclass checked, a view has no constraints */
+  /* one resolved class only: a hierarchy would need every subclass checked */
   flat = spec->info.spec.flat_entity_list;
   if (flat == NULL || flat->next != NULL || flat->info.name.db_object == NULL
       || db_is_class (flat->info.name.db_object) <= 0)
@@ -255,25 +260,18 @@ qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list)
 }
 
 /*
- * qo_unnest_one_conjunct () - try to unnest one top-level WHERE conjunct into a SEMI / ANTI joined spec
- *   return: true iff 'cnf_node' was unnested, in which case it is unlinked from the WHERE and freed
- *   parser(in):
- *   node(in/out): the enclosing PT_SELECT, with a non-empty FROM
+ * qo_classify_conjunct () - recognize one WHERE conjunct as a [NOT] EXISTS / [NOT] IN form
+ *   return: bool
  *   cnf_node(in): the conjunct to examine
- *   prev(in), next(in): its CNF-list neighbours, used to unlink it on success
- *
- * Note: every rejection returns false without touching the tree, so a case we cannot handle simply keeps
- *   its nested subquery -- a missed optimization, never a wrong answer.
+ *   info(out): subq, is_anti and is_in_form, filled only when this returns true
  */
 static bool
-qo_unnest_one_conjunct (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node, PT_NODE * prev, PT_NODE * next)
+qo_classify_conjunct (PT_NODE * cnf_node, QO_UNNEST_INFO * info)
 {
-  PT_NODE *pred_expr, *subq, *inner_spec, *on_cond, *on_cnf, *spec;
-  PT_NODE *new_on_pred = NULL;
-  bool is_anti = false, is_in_form = false, has_direct_join = false, has_outer_only = false;
-  short loc;
-
-  assert (node->info.query.q.select.from != NULL);
+  info->subq = NULL;
+  info->on_cond = NULL;
+  info->is_anti = false;
+  info->is_in_form = false;
 
   /* a plain conjunct only: an OR-ed alternative can hold with the subquery false, which no join expresses */
   if (cnf_node->or_next != NULL || cnf_node->node_type != PT_EXPR)
@@ -281,59 +279,91 @@ qo_unnest_one_conjunct (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_n
       return false;
     }
 
-  /* an explicit NOT flips the sense of whatever it wraps */
-  pred_expr = cnf_node;
-  if (pred_expr->info.expr.op == PT_NOT)
+  /* pt_cnf () pushes negation into the operator (pt_negate_op ()), so the only NOT still standing wraps
+   * EXISTS, the one form with no negated opcode of its own */
+  if (cnf_node->info.expr.op == PT_NOT)
     {
-      pred_expr = pred_expr->info.expr.arg1;
-      if (pred_expr == NULL || pred_expr->node_type != PT_EXPR)
+      PT_NODE *inner = cnf_node->info.expr.arg1;
+
+      if (inner == NULL || inner->node_type != PT_EXPR || inner->info.expr.op != PT_EXISTS)
 	{
 	  return false;
 	}
-      is_anti = true;
+      info->is_anti = true;	/* NOT EXISTS -> ANTI */
+      info->subq = inner->info.expr.arg1;
+      return true;
     }
 
-  switch (pred_expr->info.expr.op)
+  switch (cnf_node->info.expr.op)
     {
-    case PT_EXISTS:		/* EXISTS -> SEMI, NOT EXISTS -> ANTI */
+    case PT_EXISTS:		/* EXISTS -> SEMI */
       break;
     case PT_IS_IN:		/* IN / = SOME -> SEMI */
     case PT_EQ_SOME:
-      is_in_form = true;
+      info->is_in_form = true;
       break;
-    case PT_IS_NOT_IN:		/* NOT IN / <> ALL -> ANTI; a wrapping NOT folds it back to SEMI */
+    case PT_IS_NOT_IN:		/* NOT IN / <> ALL -> ANTI */
     case PT_NE_ALL:
-      is_in_form = true;
-      is_anti = !is_anti;
+      info->is_in_form = true;
+      info->is_anti = true;
       break;
     default:
       return false;
     }
 
   /* EXISTS holds its subquery in arg1, the IN forms in arg2 */
-  subq = is_in_form ? pred_expr->info.expr.arg2 : pred_expr->info.expr.arg1;
+  info->subq = info->is_in_form ? cnf_node->info.expr.arg2 : cnf_node->info.expr.arg1;
+  return true;
+}
+
+/*
+ * qo_conjunct_is_unnestable () - decide whether one WHERE conjunct can become a SEMI / ANTI joined spec,
+ *      and assemble the ON condition it would carry
+ *   return: bool
+ *   parser(in):
+ *   node(in): the enclosing PT_SELECT, with a non-empty FROM
+ *   cnf_node(in): the conjunct to examine
+ *   info(out): the classification and the assembled ON, filled only when this returns true
+ *
+ * Note: the tree is never modified here; a rejected conjunct keeps its nested subquery, a missed
+ *   optimization and never a wrong answer.
+ */
+static bool
+qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node, QO_UNNEST_INFO * info)
+{
+  PT_NODE *subq, *inner_spec, *cond, *cnf, *new_on_pred = NULL;
+  bool is_anti, is_in_form, has_direct_join = false, has_outer_only = false;
+
+  if (!qo_classify_conjunct (cnf_node, info))
+    {
+      return false;
+    }
+  subq = info->subq;
+  is_anti = info->is_anti;
+  is_in_form = info->is_in_form;
+
   if (!qo_is_unnestable_subquery (parser, subq, !is_in_form))
     {
       return false;
     }
 
-  /* uncorrelated IN / = SOME belongs to qo_rewrite_subqueries (), which ran just above and turns it into a
-   * DISTINCT derived-table join -- one plan shape per form. The ANTI forms have no such path. */
+  /* uncorrelated IN / = SOME belongs to qo_rewrite_subqueries (), which ran just above; the ANTI forms
+   * have no such path */
   if (is_in_form && !is_anti && subq->info.query.correlation_level != 1)
     {
       return false;
     }
 
   inner_spec = subq->info.query.q.select.from;
-  on_cond = subq->info.query.q.select.where;
+  cond = subq->info.query.q.select.where;
 
   if (is_in_form)
     {
-      /* the IN forms carry no join predicate of their own, so synthesize 'lhs = select-list item'.
-       * v1 is single column: '(a, b) IN (SELECT x, y ...)' would need one equality per pair. */
-      PT_NODE *lhs = pred_expr->info.expr.arg1;
+      /* the IN forms carry no join predicate of their own, so synthesize 'lhs = select-list item'. */
+      PT_NODE *lhs = cnf_node->info.expr.arg1;
       PT_NODE *item = subq->info.query.q.select.list;
 
+      /* v1 is single column: '(a, b) IN (SELECT x, y ...)' would need one equality per pair. */
       if (lhs == NULL || lhs->next != NULL || PT_IS_COLLECTION_TYPE (lhs->type_enum)
 	  || item == NULL || item->next != NULL || item->flag.is_hidden_column
 	  || PT_IS_COLLECTION_TYPE (item->type_enum))
@@ -341,8 +371,6 @@ qo_unnest_one_conjunct (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_n
 	  return false;
 	}
 
-      /* NOT IN / <> ALL matches an ANTI JOIN only when neither side can be NULL: a NULL leaves the predicate
-       * UNKNOWN and drops the row, while the ANTI JOIN reads that comparison as a non-match and emits it */
       if (is_anti
 	  && !(qo_operand_is_non_null (lhs, node->info.query.q.select.from)
 	       && qo_operand_is_non_null (item, inner_spec)))
@@ -357,30 +385,27 @@ qo_unnest_one_conjunct (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_n
 	  return false;
 	}
       new_on_pred->info.expr.op = PT_EQ;
-      new_on_pred->info.expr.arg1 = lhs;	/* still owned by pred_expr until the commit below */
+      new_on_pred->info.expr.arg1 = lhs;	/* still owned by cnf_node until the caller commits */
       new_on_pred->info.expr.arg2 = item;	/* likewise by the subquery select list */
-      new_on_pred->next = on_cond;
-      on_cond = new_on_pred;
+      new_on_pred->next = cond;
+      cond = new_on_pred;
     }
 
-  /* Require a direct inner<->single-outer join conjunct: the only shape the optimizer's semi/anti freeze
-   * models. Reusing the parse-time invariant keeps us from building a join a hand-written one would be
-   * rejected for. on_cond is a CNF list and the invariant takes one conjunct, so accept iff any qualifies. */
-  for (on_cnf = on_cond; on_cnf != NULL && !has_outer_only; on_cnf = on_cnf->next)
+  for (cnf = cond; cnf != NULL && !has_outer_only; cnf = cnf->next)
     {
       if (!has_direct_join)
 	{
-	  has_direct_join = pt_semi_anti_has_direct_join_conjunct (parser, on_cnf, inner_spec->info.spec.id,
+	  has_direct_join = pt_semi_anti_has_direct_join_conjunct (parser, cnf, inner_spec->info.spec.id,
 								   node->info.query.q.select.from);
 	}
 
-      /* An ANTI JOIN emits the outer row when the ON fails, but qo_analyze_term () classifies a conjunct
-       * naming a single table as a sarg on that table, and qo_classify_outerjoin_terms () -- the pass that
-       * rescues an OUTER JOIN from exactly that -- skips SEMI/ANTI. So a conjunct naming no inner column
-       * would be applied while scanning the outer, dropping the rows the ANTI must emit. SEMI needs no such
-       * check: there a failed ON drops the row anyway. */
-      has_outer_only = is_anti && !pt_conjunct_refers_to_spec (parser, on_cnf, inner_spec->info.spec.id);
+      if (is_anti && !pt_conjunct_refers_to_spec (parser, cnf, inner_spec->info.spec.id))
+	{
+	  has_outer_only = true;
+	  break;
+	}
     }
+
   if (!has_direct_join || has_outer_only)
     {
       if (new_on_pred != NULL)
@@ -394,23 +419,50 @@ qo_unnest_one_conjunct (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_n
       return false;
     }
 
+  info->on_cond = cond;
+  return true;
+}
+
+/*
+ * qo_replace_conjunct_with_join () - turn the subquery into a SEMI / ANTI joined spec of the enclosing
+ *      FROM and drop the conjunct that held it
+ *   return: none
+ *   parser(in):
+ *   node(in/out): the enclosing PT_SELECT
+ *   cnf_node(in/out): the conjunct, unlinked from the WHERE and freed here
+ *   prev(in): the conjunct's CNF-list predecessor, NULL when it heads the list
+ *   info(in): what qo_conjunct_is_unnestable () worked out; its subquery is emptied and freed here
+ *
+ * Note: called only after qo_conjunct_is_unnestable () returned true, so nothing here can fail.
+ */
+static void
+qo_replace_conjunct_with_join (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node, PT_NODE * prev,
+			       const QO_UNNEST_INFO * info)
+{
+  PT_NODE *subq = info->subq;
+  PT_NODE *on_cond = info->on_cond;
+  PT_NODE *inner_spec = subq->info.query.q.select.from;
+  PT_NODE *spec;
+  short loc;
+
   /* detach everything we keep, before the subquery shell is freed at the end */
   subq->info.query.q.select.from = NULL;
   subq->info.query.q.select.where = NULL;
-  if (new_on_pred != NULL)
+  if (info->is_in_form)
     {
-      pred_expr->info.expr.arg1 = NULL;
+      /* the synthesized equality owns these two now */
+      cnf_node->info.expr.arg1 = NULL;
       subq->info.query.q.select.list = NULL;
     }
 
   qo_move_subquery_hints (node, subq);
 
-  inner_spec->info.spec.join_type = (is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
+  inner_spec->info.spec.join_type = (info->is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
   inner_spec->info.spec.on_cond = on_cond;
 
-  /* Append at the FROM tail. Count the position rather than read the last spec's location: a derived spec
-   * appended earlier in this pass by qo_rewrite_subqueries () still carries the unset -1, and
-   * qo_analyze_term () indexes the node array by location, so it must equal the FROM position. */
+  /* count the position rather than read the last spec's location: a derived spec appended earlier by
+   * qo_rewrite_subqueries () still carries the unset -1, and qo_analyze_term () indexes the node array by
+   * location, so it must equal the FROM position */
   loc = 0;
   for (spec = node->info.query.q.select.from; spec->next != NULL; spec = spec->next)
     {
@@ -419,10 +471,10 @@ qo_unnest_one_conjunct (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_n
   spec->next = inner_spec;
   inner_spec->info.spec.location = (short) (loc + 1);
 
-  /* stamp the moved ON as pt_bind_names () would, with the same helpers: this spec's location on every term,
-   * plus (ANTI only) PT_EXPR_INFO_ANTI_JOIN_ON so qo_reduce_equality_terms () keeps them as join predicates */
+  /* stamp the moved ON as pt_bind_names () would: this spec's location on every term, plus (ANTI only)
+   * PT_EXPR_INFO_ANTI_JOIN_ON so qo_reduce_equality_terms () keeps them as join predicates */
   (void) parser_walk_tree (parser, on_cond, pt_mark_location, &inner_spec->info.spec.location, NULL, NULL);
-  if (is_anti)
+  if (info->is_anti)
     {
       (void) parser_walk_tree (parser, on_cond, pt_mark_anti_join_on, NULL, NULL, NULL);
     }
@@ -430,16 +482,14 @@ qo_unnest_one_conjunct (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_n
   /* unlink the conjunct and free its now empty shell */
   if (prev == NULL)
     {
-      node->info.query.q.select.where = next;
+      node->info.query.q.select.where = cnf_node->next;
     }
   else
     {
-      prev->next = next;
+      prev->next = cnf_node->next;
     }
   cnf_node->next = NULL;
   parser_free_tree (parser, cnf_node);
-
-  return true;
 }
 
 /*
@@ -459,7 +509,8 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  /* SEMI/ANTI JOIN cannot appear in a hierarchical query, and the unnest needs a FROM tail to append to */
+  /* pt_check_semi_anti_join () rejects SEMI/ANTI in a hierarchical query; the unnest also needs a FROM
+   * tail to append to */
   if (node->info.query.q.select.connect_by != NULL || node->info.query.q.select.from == NULL)
     {
       return;
@@ -468,11 +519,17 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
   prev = NULL;
   for (cnf_node = node->info.query.q.select.where; cnf_node != NULL; cnf_node = next)
     {
+      QO_UNNEST_INFO info;
+
       next = cnf_node->next;
-      if (!qo_unnest_one_conjunct (parser, node, cnf_node, prev, next))
+
+      if (!qo_conjunct_is_unnestable (parser, node, cnf_node, &info))
 	{
-	  prev = cnf_node;	/* kept, so it is the predecessor of whatever comes next */
+	  prev = cnf_node;
+	  continue;
 	}
+
+      qo_replace_conjunct_with_join (parser, node, cnf_node, prev, &info);
     }
 }
 
