@@ -659,7 +659,10 @@ namespace parallel_scan
 	    }
 	}
 
-	if (m_.instnum_mode == parallel_scan::instnum_mode::RENUMBER)
+	/* Restamp by merged position. RENUMBER left the columns unnumbered; ATOMIC_DRAW put the number
+	 * each worker drew there, which is not where the row lands once the worker lists are chained -
+	 * serial guarantees the k-th returned row carries k, so the merge has to restore that. */
+	if (m_.instnum_mode != parallel_scan::instnum_mode::NONE && !m_.rownum_col_indices.empty ())
 	  {
 	    if (parallel_scan::renumber_instnum_lists (thread_p, m_.writer_results, m_.rownum_col_indices,
 		dest->tuple_cnt) != NO_ERROR)

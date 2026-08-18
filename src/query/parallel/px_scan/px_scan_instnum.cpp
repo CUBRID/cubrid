@@ -223,9 +223,10 @@ namespace parallel_scan
   {
     instnum_mode mode = instnum_mode::NONE;
 
-    /* collect pass-through ROWNUM output columns; index == position in the outptr valptr list. */
-    if (x->instnum_val != nullptr && x->instnum_pred == nullptr && x->save_instnum_val == nullptr
-	&& x->outptr_list != nullptr)
+    /* Pass-through ROWNUM output columns; index == position in the outptr valptr list. Both modes
+     * need them: RENUMBER never numbers them during the scan, and ATOMIC_DRAW numbers them with
+     * whatever each worker drew, which is not the position the row lands in after the merge. */
+    if (x->instnum_val != nullptr && x->save_instnum_val == nullptr && x->outptr_list != nullptr)
       {
 	int idx = 0;
 	for (regu_variable_list_node *v = x->outptr_list->valptrp; v != nullptr; v = v->next, idx++)
@@ -235,20 +236,18 @@ namespace parallel_scan
 		rownum_col_indices.push_back (idx);
 	      }
 	  }
-	if (!rownum_col_indices.empty ())
-	  {
-	    mode = instnum_mode::RENUMBER;
-	  }
       }
 
     /* the limit itself is resolved later, once a VAL_DESCR is available. */
     draw.limit_rhs = get_instnum_upper_limit_rhs (x, &draw.is_less_than);
     if (draw.limit_rhs != nullptr)
       {
-	/* RENUMBER requires instnum_pred == NULL, so the two modes cannot both apply. */
-	assert (mode != instnum_mode::RENUMBER);
 	mode = instnum_mode::ATOMIC_DRAW;
 	draw.seed (x->list_id != nullptr ? (INT64) x->list_id->tuple_cnt : 0);
+      }
+    else if (x->instnum_pred == nullptr && !rownum_col_indices.empty ())
+      {
+	mode = instnum_mode::RENUMBER;
       }
     return mode;
   }
