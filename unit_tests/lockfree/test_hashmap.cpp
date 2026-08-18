@@ -62,8 +62,11 @@ namespace test_lockfree
       static unsigned int next_seed ()
       {
 	static std::atomic<unsigned int> seed_counter { 0x9e3779b9 };
-	// distinct per instance, and every instance is thread-local by construction
-	return seed_counter += 0x9e3779b9;
+	// distinct per instance, and every instance is thread-local by construction.
+	// never zero: xorshift is stuck there for good, and a generator returning one key forever would leave the
+	// tests passing while covering nothing.
+	unsigned int seed = seed_counter += 0x9e3779b9;
+	return seed != 0 ? seed : 0x9e3779b9;
       }
 
       unsigned int m_state;
