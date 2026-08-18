@@ -7,7 +7,14 @@ on:
 jobs:
   run_test:
     name: Run test on CircleCI
-    if: ${{ github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/run') }}
+    # A comment can take all 50 self-hosted slots, so the commenter needs write
+    # access. Read from the payload rather than the permission API, which would
+    # refuse everyone if it failed. CONTRIBUTOR is refused, so an outside
+    # contributor's own PR needs a maintainer to ask for the run.
+    if: >-
+      ${{ github.event.issue.pull_request != null
+      && startsWith(github.event.comment.body, '/run')
+      && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) }}
     runs-on: ubuntu-24.04
     steps:
       - name: Validate Command
@@ -15,6 +22,8 @@ jobs:
         run: |
           COMMENT="${{ github.event.comment.body }}"
           echo "[debug] Comment: $COMMENT"
+          # Echoed so the value the job condition gated on is visible in the log.
+          echo "[debug] Author association: ${{ github.event.comment.author_association }}"
 
           # Allowed commands: /run all, /run shell, /run sql, /run medium
           # Or any combination of them (up to 4)

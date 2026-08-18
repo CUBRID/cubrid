@@ -500,6 +500,7 @@ extern bool pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p);
 #endif /* !SERVER_MODE */
 
 extern void pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page);
+extern void pgbuf_mark_page_for_lru_bottom (THREAD_ENTRY * thread_p, PAGE_PTR page);
 extern bool pgbuf_is_io_stressful (void);
 
 #if defined (SERVER_MODE)

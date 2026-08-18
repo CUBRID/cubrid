@@ -4005,11 +4005,48 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       /* is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+      if (regu_var->value.attr_descr.cache_slot != NULL
+	  && regu_var->value.attr_descr.cache_slot->state == HEAP_LAZY_ATTRVALUE
+	  && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
+	{
+	  *peek_dbval = heap_attrvalue_peek_lazy (regu_var->value.attr_descr.cache_slot,
+						  regu_var->value.attr_descr.cache_attrinfo);
+	  if (*peek_dbval == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  break;
+	}
       *peek_dbval = regu_var->value.attr_descr.cache_dbvalp;
       if (*peek_dbval != NULL)
 	{
 	  /* we have a cached pointer already */
 	  break;
+	}
+      else if (regu_var->value.attr_descr.cache_attrinfo != NULL
+	       && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
+	{
+	  /* first fetch of a predicate column in a lazy scan: locate its slot once. A first-term column is
+	   * already read in place; a deferred one is read here and keeps its slot for the inline fast path. */
+	  HEAP_ATTRVALUE *slot =
+	    heap_attrvalue_locate (regu_var->value.attr_descr.id, regu_var->value.attr_descr.cache_attrinfo);
+	  if (slot == NULL || slot->state == HEAP_UNINIT_ATTRVALUE)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "fetch_peek_dbval_slow: unreadable attr = %d",
+			    regu_var->value.attr_descr.id);
+	      if (er_errid () == NO_ERROR)
+		{
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		}
+	      goto exit_on_error;
+	    }
+	  if (!slot->lazy_always_eager
+	      && heap_attrvalue_peek_lazy (slot, regu_var->value.attr_descr.cache_attrinfo) == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  *peek_dbval = &slot->dbvalue;
+	  regu_var->value.attr_descr.cache_slot = slot->lazy_always_eager ? NULL : slot;
 	}
       else
 	{
@@ -4018,6 +4055,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	    {
 	      goto exit_on_error;
 	    }
+	  regu_var->value.attr_descr.cache_slot = NULL;	/* eager fetch: no deferred slot for this regu */
 	}
       regu_var->value.attr_descr.cache_dbvalp = *peek_dbval;	/* cache */
       break;
@@ -4921,6 +4959,7 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
     {
       regu_var = &regu_p->value;
       regu_var->value.attr_descr.cache_dbvalp = NULL;
+      regu_var->value.attr_descr.cache_slot = NULL;	/* keep lazy slot in lock-step with cache_dbvalp */
     }
 }
 

@@ -103,6 +103,10 @@ static BOOT_CLIENT_CREDENTIAL log_Client_credential;
 
 static const unsigned int LOGTB_RETRY_SLAM_MAX_TIMES = 10;
 
+/* When set, logtb_define/undefine_trantable_log_latch reuse the boot-time
+ * pgbuf/lock/file/mvcc pool instead of tearing it down and rebuilding it. */
+bool logtb_Reuse_boot_managers = false;
+
 static int logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices);
 static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
 				      const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
@@ -476,23 +480,27 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
-  log_Gl.mvcc_table.initialize ();
+  /* Reusing the boot-time pool: skip re-initialization. */
+  if (!logtb_Reuse_boot_managers)
+    {
+      log_Gl.mvcc_table.initialize ();
 
-  /* Initialize the lock manager and the page buffer pool */
-  error_code = lock_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = pgbuf_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = file_manager_init ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
+      /* Initialize the lock manager and the page buffer pool */
+      error_code = lock_initialize ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      error_code = pgbuf_initialize ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      error_code = file_manager_init ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
   return error_code;
 
@@ -575,10 +583,22 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
-  log_Gl.mvcc_table.finalize ();
-  lock_finalize ();
-  pgbuf_finalize ();
-  file_manager_final ();
+  /* Reusing the boot-time pool: keep the managers alive; only free the array below. */
+  if (!logtb_Reuse_boot_managers)
+    {
+      log_Gl.mvcc_table.finalize ();
+      lock_finalize ();
+      pgbuf_finalize ();
+      file_manager_final ();
+    }
+#if !defined (NDEBUG)
+  else
+    {
+      /* Carried into recovery while pristine: pre-recovery logs nothing (WAL),
+       * so no lock is held (hence no MVCCID assigned). */
+      assert (lock_get_number_object_locks () == 0);
+    }
+#endif /* !NDEBUG */
 
   if (log_Gl.trantable.area != NULL)
     {
@@ -1243,10 +1263,9 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
   if (tran_index != LOG_SYSTEM_TRAN_INDEX)
     {
+      TR_TABLE_CS_ENTER (thread_p);
       tdes->trid = NULL_TRANID;
       tdes->client_id = -1;
-
-      TR_TABLE_CS_ENTER (thread_p);
       logtb_decrement_number_of_assigned_tran_indices ();
       if (log_Gl.trantable.hint_free_index > tran_index)
 	{
@@ -4021,6 +4040,79 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
   return id;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * logtb_acquire_mvccid_self_lock () - Acquire the transaction X self-lock on a specific MVCCID and record it as the
+ *				       transaction's self-locked MVCCID.
+ *
+ * return: NO_ERROR, or an error code if the X self-lock could not be granted.
+ *
+ *   thread_p(in): thread entry
+ *   curr_mvcc_info(in/out): current MVCC info; self_locked_mvccid is set on success
+ *   mvccid(in): the (NORMAL) MVCCID to self-lock
+ *
+ * Note: shared by the acquire-at-assignment choke points and logtb_ensure_mvccid_self_lock; takes the MVCCID
+ *	 explicitly so the choke points do not recurse through logtb_get_current_mvccid. Idempotent via the
+ *	 self_locked_mvccid hint. A fresh MVCCID is unknown to any other transaction, so the X never waits.
+ *	 A no-op during boot/recovery and for non-worker (system/vacuum) transactions -- the guard is here so
+ *	 both entry points inherit it.
+ */
+static int
+logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
+{
+  int error_code = NO_ERROR;
+
+  assert (curr_mvcc_info != NULL);
+  assert (MVCCID_IS_NORMAL (mvccid));
+
+  if (curr_mvcc_info->self_locked_mvccid == mvccid)
+    {
+      /* already self-locked in this (sub-)transaction */
+      return NO_ERROR;
+    }
+
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  if (!BO_IS_SERVER_RESTARTED () || tdes == NULL || !tdes->is_active_worker_transaction ())
+    {
+      /* No self-lock during boot/recovery or for system/vacuum transactions: they never run lock_unlock_all, so
+       * the entry would leak and block later waiters keyed on this MVCCID; and no concurrent waiter exists there
+       * to serialize with. Shared by both entry points (the choke-point wrapper and the heap-site ensure). */
+      return NO_ERROR;
+    }
+
+  if (lock_transaction_mvccid (thread_p, mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  curr_mvcc_info->self_locked_mvccid = mvccid;
+  return NO_ERROR;
+}
+
+/*
+ * logtb_self_lock_assigned_mvccid () - Best-effort self-lock of a just-assigned MVCCID -- the choke point every
+ *					INSID producer passes, making "an observable INSID implies a held X
+ *					self-lock" hold by construction.
+ *
+ *   thread_p(in): thread entry
+ *   curr_mvcc_info(in/out): current MVCC info
+ *   mvccid(in): the MVCCID that was just assigned
+ *
+ * Note: best-effort variant for the choke points, which cannot return an error: a failure is logged and left
+ *	 for the heap-site logtb_ensure_mvccid_self_lock to surface before the stamp is observable.
+ */
+static void
+logtb_self_lock_assigned_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
+{
+  if (logtb_acquire_mvccid_self_lock (thread_p, curr_mvcc_info, mvccid) != NO_ERROR)
+    {
+      /* Unconditional (_er_log_debug): a silent failure here would make a later waiter-side breach undiagnosable. */
+      _er_log_debug (ARG_FILE_LINE, "could not self-lock assigned MVCCID %llu\n", (unsigned long long) mvccid);
+    }
+}
+#endif /* SERVER_MODE */
+
 /*
  * logtb_get_current_mvccid - return current transaction MVCC id. Assign
  *			      a new ID if not previously set.
@@ -4044,6 +4136,9 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
   if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
     {
       curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
+#if defined (SERVER_MODE)
+      logtb_self_lock_assigned_mvccid (thread_p, curr_mvcc_info, curr_mvcc_info->id);
+#endif /* SERVER_MODE */
     }
 
   if (!tdes->mvccinfo.sub_ids.empty ())
@@ -4052,6 +4147,38 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
     }
 
   return curr_mvcc_info->id;
+}
+
+/*
+ * logtb_ensure_mvccid_self_lock () - Acquire the transaction self-lock on the current MVCCID, at most once per
+ *				      (sub-)transaction.
+ *
+ * return: NO_ERROR, or an error code if the X self-lock could not be granted.
+ *
+ * Note: the error-propagating layer over the choke-point acquisition (logtb_self_lock_assigned_mvccid): a fast
+ *	 no-op via the self_locked_mvccid hint when the choke point succeeded, otherwise re-tries and returns the
+ *	 error so the caller can fail the statement before the INSID stamp becomes observable.
+ */
+int
+logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  if (!BO_IS_SERVER_RESTARTED () || tdes == NULL || !tdes->is_active_worker_transaction ())
+    {
+      /* Checked before touching mvccinfo: logtb_get_current_mvccid would dereference a NULL tdes and lazily
+       * assign an MVCCID -- neither may happen for boot/recovery or non-worker contexts. */
+      return NO_ERROR;
+    }
+
+  MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
+  MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
+
+  return logtb_acquire_mvccid_self_lock (thread_p, curr_mvcc_info, my_mvccid);
+#else /* SERVER_MODE */
+  return NO_ERROR;
+#endif /* SERVER_MODE */
 }
 
 /*
@@ -4654,9 +4781,18 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_m
   else
     {
       mvcc_table->get_two_new_mvccid (curr_mvcc_info->id, mvcc_subid);
+#if defined (SERVER_MODE)
+      /* The main id is assigned here too, and logtb_get_current_mvccid's lazy branch will never re-fire for it. */
+      logtb_self_lock_assigned_mvccid (thread_p, curr_mvcc_info, curr_mvcc_info->id);
+#endif /* SERVER_MODE */
     }
 
   logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+
+#if defined (SERVER_MODE)
+  /* selupd/INCR stamps rows with the sub-MVCCID -- same choke-point self-lock as the main id. */
+  logtb_self_lock_assigned_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+#endif /* SERVER_MODE */
 }
 
 /*
@@ -4695,6 +4831,15 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   mvcc_sub_id = curr_mvcc_info->sub_ids.back ();
 
   mvcc_table->complete_sub_mvcc (mvcc_sub_id);
+
+#if defined (SERVER_MODE)
+  /* Release the inserter self-lock keyed by mvcc_sub_id (see heap_get_insert_location_with_lock) to wake
+   * unique/FK checkers at sub-transaction end, not main-transaction end -- holding it to main end was the
+   * original hang. Runs for both commit and abort (the selupd producer funnels both here) and fully releases
+   * regardless of acquire count, since a multi-row INCR re-takes the same key once per row. */
+  lock_unlock_transaction_mvccid (thread_p, mvcc_sub_id, X_LOCK);
+#endif /* SERVER_MODE */
+
   curr_mvcc_info->sub_ids.pop_back ();
 
   if (tdes->mvccinfo.snapshot.valid)

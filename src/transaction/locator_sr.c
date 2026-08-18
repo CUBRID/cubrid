@@ -7507,8 +7507,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  scan = heap_get_last_version (thread_p, &context);
 	  heap_clean_get_context (thread_p, &context);
 
-	  assert ((lock_get_object_lock (oid, &class_oid) >= X_LOCK)
-		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid) >= X_LOCK));
+	  /* an in-place update requires the object to be exclusively held by the current transaction. */
+	  assert (lock_has_xlock_or_self_lock (thread_p, oid, &class_oid));
 	}
       else
 	{

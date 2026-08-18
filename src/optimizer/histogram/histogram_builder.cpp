@@ -93,6 +93,7 @@ namespace hist
       case DB_TYPE_INTEGER:
       case DB_TYPE_SHORT:
       case DB_TYPE_BIGINT:
+      case DB_TYPE_ENUMERATION:
 	if (std::holds_alternative<std::int64_t> (v))
 	  {
 	    write<std::int64_t> (dest, std::get<std::int64_t> (v));
@@ -102,6 +103,7 @@ namespace hist
       case DB_TYPE_DOUBLE:
       case DB_TYPE_FLOAT:
       case DB_TYPE_NUMERIC:
+      case DB_TYPE_MONETARY:
 	if (std::holds_alternative<double> (v))
 	  {
 	    write<double> (dest, std::get<double> (v));

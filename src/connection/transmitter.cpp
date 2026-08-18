@@ -52,7 +52,6 @@ namespace cubconn
     m_buf (IOV_MAX),
     m_stats (stats)
   {
-    m_deleter.reserve (IOV_MAX);
   }
 
   transmitter::transmitter ()
@@ -137,12 +136,23 @@ namespace cubconn
 	return;
       }
 
-    m_deleter.push_back (std::move (deleter));
+    /* keep the data alive until every iovec preceding this deleter is fully consumed. */
+    m_deleter.push_back ({ m_appended_iov_count, std::move (deleter) });
   }
 
   void transmitter::stamp ()
   {
     m_buf.stamp_msghdr ();
+  }
+
+  bool transmitter::prepare_append (std::size_t additional_count)
+  {
+    std::size_t completed_iov_count;
+    bool can_append;
+
+    can_append = m_buf.prepare_append (additional_count, completed_iov_count);
+    this->release_completed (completed_iov_count);
+    return can_append;
   }
 
   bool transmitter::empty ()
@@ -152,14 +162,30 @@ namespace cubconn
 
   void transmitter::clear ()
   {
-    for (auto &deleter : m_deleter)
+    for (deleter_entry &entry : m_deleter)
       {
+	if (entry.m_deleter)
+	  {
+	    entry.m_deleter ();
+	  }
+      }
+    m_deleter.clear ();
+    m_buf.clear ();
+    m_appended_iov_count = 0;
+  }
+
+  void transmitter::release_completed (std::size_t completed_iov_count)
+  {
+    assert (completed_iov_count <= m_appended_iov_count);
+
+    while (!m_deleter.empty () && m_deleter.front ().m_completion_iov_count <= completed_iov_count)
+      {
+	std::function<void ()> deleter = std::move (m_deleter.front ().m_deleter);
+	m_deleter.pop_front ();
 	if (deleter)
 	  {
 	    deleter ();
 	  }
       }
-    m_deleter.clear ();
-    m_buf.clear ();
   }
 }

@@ -934,6 +934,8 @@ extern LOG_GLOBAL log_Gl;
 
 extern LOG_LOGGING_STAT log_Stat;
 
+extern bool logtb_Reuse_boot_managers;
+
 /* Name of the database and logs */
 extern char log_Path[];
 extern char log_Archive_path[];
@@ -1174,6 +1176,7 @@ extern void logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_I
 
 extern MVCCID logtb_find_current_mvccid (THREAD_ENTRY * thread_p);
 extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);
+extern int logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p);
 extern int logtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p);
 extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 

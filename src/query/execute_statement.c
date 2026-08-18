@@ -189,9 +189,17 @@ typedef struct reserved_class_info
   char name[DB_MAX_IDENTIFIER_LENGTH];
 } RESERVED_CLASS_INFO;
 
+typedef struct reserved_class_info_list
+{
+  RESERVED_CLASS_INFO *cls_info;
+  int num_classes;
+} RESERVED_CLASS_INFO_LIST;
+
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
 					 PT_OP_TYPE cmp_op, int val1_msgid, int val2_msgid, int error_type);
 static int check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int *ret_msg_id);
+static int auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALUE * max_val, int cached_num,
+					    bool * fits);
 static bool truncate_need_repl_log (PT_NODE * statement);
 static int do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -210,10 +218,12 @@ static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_v
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
 static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner);
 
-static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
-				      OID * reserved_oid);
+static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
+				      RESERVED_CLASS_INFO_LIST & reserved_cls_info, OID * reserved_oid);
 
-static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info);
+static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement,
+				 RESERVED_CLASS_INFO_LIST & reserved_cls_info);
+static void do_free_reserved_classinfo (RESERVED_CLASS_INFO_LIST & reserved_cls_info);
 
 static int do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** oid);
 /*
@@ -331,6 +341,101 @@ check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int 
     }
 
   return NO_ERROR;
+}
+
+/*
+ * auto_increment_cache_fits_range() - can one cache block of cached_num values fit the serial's range?
+ *   return: Error code
+ *   inc_val(in):
+ *   min_val(in):
+ *   max_val(in):
+ *   cached_num(in):
+ *   fits(out): false when ABS (cached_num * inc_val) > max_val - min_val
+ *
+ * Note: this is the invariant CREATE SERIAL / ALTER SERIAL enforce on CACHE n (see do_create_serial).
+ *   An AUTO_INCREMENT serial takes its block size from auto_increment_cache_size rather than from the
+ *   statement, so the caller turns the cache off instead of failing the DDL. A column whose whole
+ *   range holds fewer values than one block would have its range clamped to max_val and durably
+ *   consumed by the first generated value, and it can never see the row volume a cache amortizes.
+ */
+static int
+auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALUE * max_val, int cached_num,
+				 bool * fits)
+{
+  DB_VALUE range_val, cached_num_int_val, cached_num_val, tmp_val, abs_cached_range_val, cmp_result;
+  DB_DATA_STATUS data_stat;
+  int error = NO_ERROR;
+
+  *fits = true;
+
+  db_make_null (&range_val);
+  db_make_null (&cached_num_int_val);
+  db_make_null (&cached_num_val);
+  db_make_null (&tmp_val);
+  db_make_null (&abs_cached_range_val);
+  db_make_null (&cmp_result);
+
+  error = numeric_db_value_sub (max_val, min_val, &range_val);
+  if (error == ER_IT_DATA_OVERFLOW)
+    {
+      /* max - min flooded, so the range is wide enough for any block size */
+      er_clear ();
+      error = NO_ERROR;
+      goto end;
+    }
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  FLOAT_TO_FIXED_NUMERIC (&range_val);
+
+  /* ABS (cached_num * inc_val) <= range_val */
+  db_make_int (&cached_num_int_val, cached_num);
+  db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
+  error = numeric_db_value_coerce_to_num (&cached_num_int_val, &cached_num_val, &data_stat);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = numeric_db_value_mul (inc_val, &cached_num_val, &tmp_val);
+  if (error == ER_IT_DATA_OVERFLOW)
+    {
+      /* the block overflows the numeric domain, so it cannot fit any range */
+      er_clear ();
+      error = NO_ERROR;
+      *fits = false;
+      goto end;
+    }
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  FLOAT_TO_FIXED_NUMERIC (&tmp_val);
+
+  error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = numeric_db_value_compare (&abs_cached_range_val, &range_val, &cmp_result);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  *fits = (db_get_int (&cmp_result) <= 0);
+
+end:
+  pr_clear_value (&range_val);
+  pr_clear_value (&cached_num_int_val);
+  pr_clear_value (&cached_num_val);
+  pr_clear_value (&tmp_val);
+  pr_clear_value (&abs_cached_range_val);
+  pr_clear_value (&cmp_result);
+
+  return error;
 }
 
 /*
@@ -1151,6 +1256,10 @@ do_reset_auto_increment_serial (MOP serial_obj)
       goto error_exit;
     }
 
+  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial does not serve
+   * stale values after TRUNCATE-reset (do_alter_serial / do_drop_serial already decache). */
+  (void) serial_decache (ws_oid (serial_object));
+
   db_value_clear (&start_value);
   db_value_clear (&started_flag);
 
@@ -1320,6 +1429,10 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     {
       goto error_exit;
     }
+
+  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial reflects the new
+   * base after ALTER ... AUTO_INCREMENT = n (matches do_alter_serial / do_drop_serial). */
+  (void) serial_decache (ws_oid (serial_object));
 
   goto normal_exit;
 
@@ -2026,6 +2139,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   DB_VALUE e38;
   char *p, num[DB_MAX_FIXED_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
+  int cached_num;
 
   db_make_null (&e38);
   db_make_null (&value);
@@ -2237,10 +2351,31 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       goto end;
     }
 
+  /* cached_num comes from auto_increment_cache_size. 0 keeps the per-row durable catalog write;
+   * n >= 2 makes the serial cache a block of n values so heap_set_autoincrement_value takes the
+   * cached path. A column whose whole range holds fewer values than one block goes uncached: the
+   * parameter is a global default, so it cannot fail the DDL the way CREATE SERIAL ... CACHE n does. */
+  cached_num = prm_get_integer_value (PRM_ID_AUTO_INCREMENT_CACHE_SIZE);
+  if (cached_num > 1)
+    {
+      bool fits = true;
+
+      error = auto_increment_cache_fits_range (&inc_val, &min_val, &max_val, cached_num, &fits);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      if (!fits)
+	{
+	  cached_num = 0;
+	}
+    }
+
   /* create auto increment serial object */
   error =
-    do_create_serial_internal (serial_object, serial_name, &start_val, &inc_val, &min_val, &max_val, 0, 0, 0, NULL,
-			       class_name, att_name);
+    do_create_serial_internal (serial_object, serial_name, &start_val, &inc_val, &min_val, &max_val, 0, cached_num, 0,
+			       NULL, class_name, att_name);
   if (error < 0)
     {
       goto end;
@@ -3293,7 +3428,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error = NO_ERROR;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
+  RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
 
   /* save old read fetch instance version */
@@ -3385,8 +3520,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_CREATE_SERIAL:
 	case PT_CREATE_TRIGGER:
 	case PT_CREATE_USER:
-	case PT_UPDATE_HISTOGRAM:
-	case PT_DROP_HISTOGRAM:
 	case PT_ALTER:
 	case PT_ALTER_INDEX:
 	case PT_ALTER_SERIAL:
@@ -3464,14 +3597,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = do_create_index (parser, statement);
 	  break;
 
-	case PT_UPDATE_HISTOGRAM:
-	  error = do_update_histogram (parser, statement);
-	  break;
-
-	case PT_DROP_HISTOGRAM:
-	  error = do_drop_histogram (parser, statement);
-	  break;
-
 
 	case PT_EVALUATE:
 	  error = do_evaluate (parser, statement);
@@ -3486,7 +3611,12 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP:
-	  (void) do_reserve_classinfo (parser, statement, cls_info);
+	  error = do_reserve_classinfo (parser, statement, reserved_cls_info);
+	  /* Do not execute DROP if CDC supplemental log metadata cannot be reserved. */
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
 
 	  error = do_check_internal_statements (parser, statement,
 						/* statement->info.drop. internal_stmts, */
@@ -3715,23 +3845,11 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (error >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	{
-	  (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
+	  (void) do_supplemental_statement (parser, statement, reserved_cls_info, reserved_oid);
 	}
     }
 
 end:
-  /* release the class info reserved for supplemental logging; entries consumed by do_supplemental_statement are
-   * already freed and cleared (free_and_init), so this only frees what is left (e.g. a failed DROP skips the call) */
-  if (cls_info[0] != NULL)
-    {
-      int i = 0;
-
-      while (cls_info[i] != NULL)
-	{
-	  free_and_init (cls_info[i++]);
-	}
-    }
-
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
   /* There may be parse tree fragments that were collected during the execution of the statement that should be freed
@@ -3751,6 +3869,8 @@ end:
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  do_free_reserved_classinfo (reserved_cls_info);
 
   if (reserved_oid != NULL)
     {
@@ -4019,7 +4139,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
+  RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
 
   assert (parser->query_id == NULL_QUERY_ID);
@@ -4100,7 +4220,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_VACUUM:
     case PT_QUERY_TRACE:
     case PT_KILL_STMT:
-    case PT_SHOW_HISTOGRAM:
 
       db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
       break;
@@ -4111,8 +4230,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_SERIAL:
     case PT_CREATE_TRIGGER:
     case PT_CREATE_USER:
-    case PT_UPDATE_HISTOGRAM:
-    case PT_DROP_HISTOGRAM:
     case PT_ALTER:
     case PT_ALTER_INDEX:
     case PT_ALTER_SERIAL:
@@ -4186,15 +4303,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_USER:
       err = do_create_user (parser, statement);
       break;
-    case PT_UPDATE_HISTOGRAM:
-      err = do_update_histogram (parser, statement);
-      break;
-    case PT_DROP_HISTOGRAM:
-      err = do_drop_histogram (parser, statement);
-      break;
-    case PT_SHOW_HISTOGRAM:
-      err = do_show_histogram (parser, statement);
-      break;
     case PT_ALTER:
       /* err = do_alter(parser, statement); */
       /* execute internal statements before and after do_alter() */
@@ -4217,7 +4325,12 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* err = do_drop(parser, statement); */
       /* execute internal statements before and after do_drop() */
 
-      (void) do_reserve_classinfo (parser, statement, cls_info);
+      err = do_reserve_classinfo (parser, statement, reserved_cls_info);
+      /* Do not execute DROP if CDC supplemental log metadata cannot be reserved. */
+      if (err != NO_ERROR)
+	{
+	  goto end;
+	}
       err = do_check_internal_statements (parser, statement,
 					  /* statement->info.drop.internal_stmts, */
 					  do_drop);
@@ -4425,22 +4538,10 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (err >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
     {
-      (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
+      (void) do_supplemental_statement (parser, statement, reserved_cls_info, reserved_oid);
     }
 
 end:
-
-  /* release the class info reserved for supplemental logging; entries consumed by do_supplemental_statement are
-   * already freed and cleared (free_and_init), so this only frees what is left (e.g. a failed DROP skips the call) */
-  if (cls_info[0] != NULL)
-    {
-      int i = 0;
-
-      while (cls_info[i] != NULL)
-	{
-	  free_and_init (cls_info[i++]);
-	}
-    }
 
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
@@ -4462,6 +4563,8 @@ end:
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  do_free_reserved_classinfo (reserved_cls_info);
 
   if (reserved_oid != NULL)
     {
@@ -4670,6 +4773,26 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
+  if (statement->info.update_stats.all_classes != 0
+      && (statement->info.update_stats.drop_histogram || statement->info.update_stats.bucket_count > 0))
+    {
+      /* DROP HISTOGRAM and n BUCKETS act on one class's histogram catalog rows; the
+       * all/catalog-classes statistics refresh runs server-side and has no per-class
+       * histogram parameters to thread them through */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  if (statement->info.update_stats.all_classes < 0
+      && (statement->info.update_stats.no_histogram || statement->info.update_stats.random_seed))
+    {
+      /* the CATALOG CLASSES refresh (sm_update_all_catalog_statistics) builds no histograms
+       * and takes no sampling seed; reject these options like DROP HISTOGRAM / n BUCKETS
+       * above instead of silently ignoring them */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
   if (statement->info.update_stats.all_classes > 0)
     {
       // ALL CLASSES
@@ -4680,7 +4803,9 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       error = sm_update_all_statistics (statement->info.update_stats.with_fullscan
-					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING);
+					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING,
+					statement->info.update_stats.random_seed,
+					statement->info.update_stats.no_histogram);
       return error;
     }
   else if (statement->info.update_stats.all_classes < 0)
@@ -4744,17 +4869,82 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
+      int n_tables = 0, n_cols = 0;
+
+      int n_hist_skipped = 0;
+
       // update stats
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
 	{
+	  bool trace_on = prm_get_bool_value (PRM_ID_QUERY_TRACE);
+	  struct timeval trace_start, trace_end;
+	  SM_CLASS *sm_class = NULL;
+	  int att_count;
+
 	  class_mop = cls->info.name.db_object;
-	  class_type = ((SM_CLASS *) class_mop->object)->class_type;
+	  /* do not read class_mop->object directly: the MOP can be DECACHED (object == NULL) by the
+	   * server round-trips of a previous list entry's statistics update, or -- for the counters
+	   * consumed after the histogram build below -- by this entry's own; a concurrent DDL on the
+	   * class invalidates our cached copy while we wait on its locks (CI crash in bug_bts_14492).
+	   * au_fetch_class_force () recaches a decached class and fails cleanly on a dropped one, and
+	   * is what sm_update_statistics () itself uses in the same situation. Authorization was
+	   * already checked in the loop above, so the force (no-auth) fetch is the right flavor.
+	   * att_count is read now, next to class_type, because the class must not be touched again
+	   * after the statistics calls: it may be decached again by the time the summary needs it. */
+	  error = au_fetch_class_force (class_mop, &sm_class, AU_FETCH_READ);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  class_type = sm_class->class_type;
+	  att_count = sm_class->att_count;
+
+	  if (trace_on)
+	    {
+	      /* "page sampling eligible" is the requested mode only: sampling actually runs when the
+	       * server-side gate (statistics_sampling_threshold_pages, 0 = disabled) admits the heap.
+	       * The histogram TRACE lines report the realized coverage after the collection. */
+	      fprintf (stdout, "\nTRACE update statistics: %s (%s%s%s%s)\n", sm_get_ch_name (class_mop),
+		       statement->info.update_stats.with_fullscan ? "fullscan" : "page sampling eligible",
+		       statement->info.update_stats.random_seed ? ", random seed" : "",
+		       statement->info.update_stats.no_histogram ? ", no histogram" : "",
+		       statement->info.update_stats.drop_histogram ? ", drop histogram" : "");
+	      gettimeofday (&trace_start, NULL);
+	    }
 
 	  if (class_type == SM_CLASS_CT)
 	    {
 	      bool stats_updated = false;
 
-	      if (prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
+	      if (statement->info.update_stats.drop_histogram)
+		{
+		  DB_OBJECT *obj;
+		  PT_HISTOGRAM_INFO histogram_info;
+		  int save;
+
+		  AU_SAVE_AND_DISABLE (save);
+		  obj = db_find_class (sm_get_ch_name (class_mop));
+		  if (obj == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      AU_RESTORE (save);
+		      return er_errid ();
+		    }
+
+		  histogram_info.target_columns = NULL;
+		  histogram_info.bucket_count = -1;
+		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
+		  histogram_info.random_seed = statement->info.update_stats.random_seed;
+		  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
+							   DO_HISTOGRAM_DROP, NULL);
+		  AU_RESTORE (save);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		  /* the histograms are gone; fall through to the plain statistics update below */
+		}
+	      else if (!statement->info.update_stats.no_histogram)
 		{
 		  DB_OBJECT *obj;
 		  PT_HISTOGRAM_INFO histogram_info;
@@ -4774,9 +4964,15 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		   * class once more only to have its result overwritten right away. Run the combined path first
 		   * and fall back to the plain statistics update only when it could not. */
 		  histogram_info.target_columns = NULL;
-		  histogram_info.bucket_count = -1;
+		  histogram_info.bucket_count =
+		    (statement->info.update_stats.bucket_count > 0) ? statement->info.update_stats.bucket_count : -1;
 		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
-		  error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
+		  histogram_info.random_seed = statement->info.update_stats.random_seed;
+		  int hist_skipped = 0;
+
+		  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
+							   DO_HISTOGRAM_CREATE, &hist_skipped);
+		  n_hist_skipped += hist_skipped;
 		  if (error == NO_ERROR)
 		    {
 		      stats_updated = true;
@@ -4798,7 +4994,38 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
 		}
+
+	      if (error == NO_ERROR)
+		{
+		  n_tables++;
+		  n_cols += att_count;
+		}
 	    }
+
+	  if (trace_on)
+	    {
+	      gettimeofday (&trace_end, NULL);
+	      fprintf (stdout, "TRACE update statistics: %s done in %.1f ms\n", sm_get_ch_name (class_mop),
+		       (trace_end.tv_sec - trace_start.tv_sec) * 1000.0
+		       + (trace_end.tv_usec - trace_start.tv_usec) / 1000.0);
+	      fflush (stdout);
+	    }
+	}
+
+      if (error == NO_ERROR && n_tables > 0)
+	{
+	  if (n_hist_skipped > 0)
+	    {
+	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s"
+		       " (%d skipped: histogram type not supported).\n", n_tables,
+		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s", n_hist_skipped);
+	    }
+	  else
+	    {
+	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+	    }
+	  fflush (stdout);
 	}
 
       return error;
@@ -9718,6 +9945,9 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
 	    {
+	      XASL_NODE_HEADER xasl_header = { 0, 0 };
+
+	      stream.xasl_header = &xasl_header;
 	      err = prepare_query (contextp, &stream);
 
 	      if (err != NO_ERROR)
@@ -9731,6 +9961,13 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    {
 		      free_and_init (stream.xasl_id);
 		    }
+		}
+	      else if (stream.xasl_id != NULL && (xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* the cached plan was chosen with unbound host-variable predicate markers;
+		   * record it so the first execution replans under the real values (same
+		   * driver-neutral recording as do_prepare_select ()) */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
 	    }
 
@@ -9746,6 +9983,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      /* pt_to_update_xasl() will build XASL tree from parse tree */
 	      contextp->xasl = pt_to_update_xasl (parser, statement, &not_nulls);
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* freshly compiled with unbound host-variable markers */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
 	      AU_RESTORE (au_save);
 
 	      if (contextp->xasl && (err >= NO_ERROR))
@@ -11077,6 +11319,9 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
 	    {
+	      XASL_NODE_HEADER xasl_header = { 0, 0 };
+
+	      stream.xasl_header = &xasl_header;
 	      err = prepare_query (contextp, &stream);
 	      if (err != NO_ERROR)
 		{
@@ -11089,6 +11334,13 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		    {
 		      free_and_init (stream.xasl_id);
 		    }
+		}
+	      else if (stream.xasl_id != NULL && (xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* the cached plan was chosen with unbound host-variable predicate markers;
+		   * record it so the first execution replans under the real values (same
+		   * driver-neutral recording as do_prepare_select ()) */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -11103,6 +11355,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 
 	      /* pt_to_delete_xasl() will build XASL tree from parse tree */
 	      contextp->xasl = pt_to_delete_xasl (parser, statement);
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* freshly compiled with unbound host-variable markers */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
 	      AU_RESTORE (au_save);
 
 	      if (contextp->xasl && (err >= NO_ERROR))
@@ -14534,9 +14791,17 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (DB_VALUE_TYPE (&target_value) == DB_TYPE_NULL)
     {
       /*
-       * Don't understand the rationale behind this case.  What's the
-       * point here?  MRS 4/30/96
+       * The target evaluates to NULL. If it comes from a bind variable
+       * (host variable/parameter), reject it with METH_TARGET_NOT_OBJ,
+       * since NULL cannot be a method target.
+       * Otherwise (e.g. the target is a literal NULL, which is already
+       * rejected earlier in the parser via opt_on_target), just fall
+       * through without error.
        */
+      if (target->node_type == PT_NAME && target->info.name.meta_class == PT_PARAMETER)
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_TARGET_NOT_OBJ);
+	}
       error = NO_ERROR;
     }
   else
@@ -15048,6 +15313,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  free_and_init (stream.xasl_id);
 		}
 	    }
+	  if (stream.xasl_header->xasl_flag & HV_PRED_PLAN_UNPEEKED)
+	    {
+	      /* the cached plan was chosen with unbound host-variable predicate markers; record it so
+	       * the first execution replans under the real values. The SQL-level PREPARE/EXECUTE
+	       * consumer of this header flag (do_get_prepared_statement_info ()) is never reached by
+	       * CCI/JDBC prepared statements, which arrive through this driver-neutral path. */
+	      statement->flag.hv_pred_plan_unpeeked = 1;
+	    }
 	}
     }
 
@@ -15064,6 +15337,11 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (contextp->xasl && statement->info.query.oids_included)
 	{
 	  contextp->xasl->header.xasl_flag |= RESULT_CACHE_INHIBITED;
+	}
+      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+	{
+	  /* freshly compiled with unbound host-variable markers (see the cache-hit branch above) */
+	  statement->flag.hv_pred_plan_unpeeked = 1;
 	}
       AU_RESTORE (au_save);
 
@@ -15840,14 +16118,21 @@ do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TY
 }
 
 static int
-do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info)
+do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO_LIST & reserved_cls_info)
 {
   int count = 0;
+  int num_class = 0;
+  int error = NO_ERROR;
+  size_t cls_info_size = 0;
   PT_NODE *entity = NULL;
   PT_NODE *entity_spec = NULL;
 
   const char *classname;
   DB_OBJECT *class_obj;
+  OID *class_oid;
+
+  reserved_cls_info.cls_info = NULL;
+  reserved_cls_info.num_classes = 0;
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
     {
@@ -15863,41 +16148,88 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
 	{
-	  entity = entity_spec->info.spec.flat_entity_list;
+	  num_class++;
+	}
 
-	  cls_info[count] = (RESERVED_CLASS_INFO *) malloc (sizeof (RESERVED_CLASS_INFO));
-	  if (cls_info[count] == NULL)
+      cls_info_size = num_class * sizeof (RESERVED_CLASS_INFO);
+      reserved_cls_info.cls_info = (RESERVED_CLASS_INFO *) calloc (num_class, sizeof (RESERVED_CLASS_INFO));
+      if (reserved_cls_info.cls_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cls_info_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      reserved_cls_info.num_classes = 0;
+
+      for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
+	{
+	  RESERVED_CLASS_INFO & class_info = reserved_cls_info.cls_info[count];
+
+	  entity = entity_spec->info.spec.flat_entity_list;
+	  if (entity == NULL || entity->info.name.original == NULL)
 	    {
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      assert (false);
+	      error = ER_FAILED;
+	      goto error_exit;
 	    }
 
 	  classname = entity->info.name.original;
 	  class_obj = db_find_class (classname);
-
-	  assert ((int) sizeof (cls_info[count]->name) > strlen (classname));
-	  strcpy (cls_info[count]->name, classname);
-
-	  memcpy (&cls_info[count]->oid, ws_oid (class_obj), sizeof (OID));
-
-	  if (do_find_object_type (statement->info.drop.entity_type, classname, &cls_info[count]->objtype) != NO_ERROR)
+	  if (class_obj == NULL)
 	    {
-	      return ER_FAILED;
+	      if (statement->info.drop.if_exists)
+		{
+		  er_clear ();
+		  continue;
+		}
+
+	      ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, classname);
+	      goto error_exit;
 	    }
 
-	  assert (cls_info[count]->objtype == CDC_TABLE || cls_info[count]->objtype == CDC_VIEW);
+	  class_oid = ws_oid (class_obj);
+	  if (class_oid == NULL)
+	    {
+	      assert (false);
+	      error = ER_FAILED;
+	      goto error_exit;
+	    }
+
+	  assert ((int) sizeof (class_info.name) > strlen (classname));
+	  strcpy (class_info.name, classname);
+
+	  memcpy (&class_info.oid, class_oid, sizeof (OID));
+
+	  if (do_find_object_type (statement->info.drop.entity_type, classname, &class_info.objtype) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto error_exit;
+	    }
+
+	  assert (class_info.objtype == CDC_TABLE || class_info.objtype == CDC_VIEW);
 
 	  count++;
 	}
+
+      reserved_cls_info.num_classes = count;
     }
 
-  cls_info[count] = NULL;
-
   return NO_ERROR;
+
+error_exit:
+  do_free_reserved_classinfo (reserved_cls_info);
+  return error;
+}
+
+static void
+do_free_reserved_classinfo (RESERVED_CLASS_INFO_LIST & reserved_cls_info)
+{
+  free_and_init (reserved_cls_info.cls_info);
+  reserved_cls_info.num_classes = 0;
 }
 
 static int
-do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
-			   OID * reserved_oid)
+do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
+			   RESERVED_CLASS_INFO_LIST & reserved_cls_info, OID * reserved_oid)
 {
   int error = NO_ERROR;
   PARSER_VARCHAR **host_val = NULL;
@@ -15910,8 +16242,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
   const char *classname = NULL;
   const char *objname = NULL;
 
-  CDC_DDL_TYPE ddl_type;
-  CDC_DDL_OBJECT_TYPE objtype;
+  CDC_DDL_TYPE ddl_type = CDC_CREATE;
+  CDC_DDL_OBJECT_TYPE objtype = CDC_TABLE;
   PT_NODE *target = NULL;
   OID *classoid = NULL;
   OID oid_tmp = OID_INITIALIZER;
@@ -16054,75 +16386,70 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	pre_drop_length =
 	  MAX (drop_prefix_len, drop_view_prefix_len) + if_exist_statement_len + cascade_statement_len + 2;
 
-	if (cls_info != NULL)
+	for (int i = 0; i < reserved_cls_info.num_classes; i++)
 	  {
-	    for (int i = 0; cls_info[i] != NULL; i++)
+	    RESERVED_CLASS_INFO & class_info = reserved_cls_info.cls_info[i];
+
+	    name_len = strlen (class_info.name);
+	    drop_copied_length = pre_drop_length + name_len;
+
+	    if (drop_stmt_length < drop_copied_length)
 	      {
-		name_len = strlen (cls_info[i]->name);
-		drop_copied_length = pre_drop_length + name_len;
-
-		if (drop_stmt_length < drop_copied_length)
+		if (drop_stmt)
 		  {
-		    if (drop_stmt)
-		      {
-			free (drop_stmt);
-		      }
-		    else
-		      {
-			drop_copied_length += 32;	// Ensure sufficient size to avoid reallocation of memory.
-		      }
-
-		    drop_stmt_length = drop_copied_length;
-		    drop_stmt = (char *) malloc (drop_stmt_length);
-		    if (drop_stmt == NULL)
-		      {
-			error = ER_OUT_OF_VIRTUAL_MEMORY;
-			goto end;
-		      }
-		  }
-
-		if (cls_info[i]->objtype == CDC_TABLE)
-		  {
-		    memcpy (drop_stmt, drop_prefix, drop_prefix_len);
-		    drop_copied_length = drop_prefix_len;
-		  }
-		else if (cls_info[i]->objtype == CDC_VIEW)
-		  {
-		    memcpy (drop_stmt, drop_view_prefix, drop_view_prefix_len);
-		    drop_copied_length = drop_view_prefix_len;
+		    free (drop_stmt);
 		  }
 		else
 		  {
-		    assert (false);
-		    error = ER_FAILED;
+		    drop_copied_length += 32;	/* Ensure sufficient size to avoid reallocation of memory. */
+		  }
+
+		drop_stmt_length = drop_copied_length;
+		drop_stmt = (char *) malloc (drop_stmt_length);
+		if (drop_stmt == NULL)
+		  {
+		    error = ER_OUT_OF_VIRTUAL_MEMORY;
 		    goto end;
 		  }
-
-		if (statement->info.drop.if_exists)
-		  {
-		    memcpy (drop_stmt + drop_copied_length, if_exist_statement, if_exist_statement_len);
-		    drop_copied_length += if_exist_statement_len;
-		  }
-
-		memcpy (drop_stmt + drop_copied_length, cls_info[i]->name, name_len);
-		drop_copied_length += name_len;
-
-		if (statement->info.drop.is_cascade_constraints)
-		  {
-		    memcpy (drop_stmt + drop_copied_length, cascade_statement, cascade_statement_len);
-		    drop_copied_length += cascade_statement_len;
-		  }
-
-		drop_stmt[drop_copied_length] = '\0';
-
-		error =
-		  log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid,
-					    drop_stmt);
-
-		free_and_init (cls_info[i]);
 	      }
-	  }
 
+	    if (class_info.objtype == CDC_TABLE)
+	      {
+		memcpy (drop_stmt, drop_prefix, drop_prefix_len);
+		drop_copied_length = drop_prefix_len;
+	      }
+	    else if (class_info.objtype == CDC_VIEW)
+	      {
+		memcpy (drop_stmt, drop_view_prefix, drop_view_prefix_len);
+		drop_copied_length = drop_view_prefix_len;
+	      }
+	    else
+	      {
+		assert (false);
+		error = ER_FAILED;
+		goto end;
+	      }
+
+	    if (statement->info.drop.if_exists)
+	      {
+		memcpy (drop_stmt + drop_copied_length, if_exist_statement, if_exist_statement_len);
+		drop_copied_length += if_exist_statement_len;
+	      }
+
+	    memcpy (drop_stmt + drop_copied_length, class_info.name, name_len);
+	    drop_copied_length += name_len;
+
+	    if (statement->info.drop.is_cascade_constraints)
+	      {
+		memcpy (drop_stmt + drop_copied_length, cascade_statement, cascade_statement_len);
+		drop_copied_length += cascade_statement_len;
+	      }
+
+	    drop_stmt[drop_copied_length] = '\0';
+
+	    error =
+	      log_supplement_statement (ddl_type, class_info.objtype, &class_info.oid, &class_info.oid, drop_stmt);
+	  }
 	supp_appended = true;
 
 	break;
@@ -16498,16 +16825,6 @@ end:
       free_and_init (drop_stmt);
     }
 
-  if (cls_info[0] != NULL && statement->node_type == PT_DROP)
-    {
-      int i = 0;
-
-      while (cls_info[i] != NULL)
-	{
-	  free_and_init (cls_info[i++]);
-	}
-    }
-
   return error;
 }
 
@@ -16591,18 +16908,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_INDEX:
       name = pt_print_bytes (parser, statement->info.index.indexed_class);
       repl_stmt.statement_type = CUBRID_STMT_DROP_INDEX;
-      break;
-
-    case PT_UPDATE_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_UPDATE_HISTOGRAM;
-      break;
-
-    case PT_DROP_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_DROP_HISTOGRAM;
-      break;
-
-    case PT_SHOW_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_SHOW_HISTOGRAM;
       break;
 
     case PT_CREATE_SERIAL:

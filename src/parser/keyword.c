@@ -646,6 +646,7 @@ static FUNCTION_MAP functions[] = {
   {0, "cos", PT_COS},
   {0, "cot", PT_COT},
   {0, "cume_dist", PT_CUME_DIST},
+  {0, "current_schema", PT_SCHEMA},
   {0, "curtime", PT_CURRENT_TIME},
   {0, "curdate", PT_CURRENT_DATE},
   {0, "utc_time", PT_UTC_TIME},
@@ -1105,7 +1106,7 @@ pt_find_function_name (const char *text)
 #endif
     }
 
-  char temp[MAX_KEYWORD_SIZE];
+  char temp[DB_MAX_IDENTIFIER_LENGTH];
 
   dummy.keyword = temp;
   return (FUNCTION_MAP *) find_keyword_tables (functions, dummy, finfo, keyword_hash_comparator < FUNCTION_MAP >, text);

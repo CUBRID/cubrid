@@ -3100,13 +3100,14 @@ qo_find_driving_scan_plan (QO_PLAN * plan)
  *   plan(in): root plan
  *
  * Note: When the driving table is an index-family scan, compute
- *       metric = ceil (sel * leaf_pages).  If the metric is below the
+ *       metric = ceil (sel * index pages).  If the metric is below the
  *       session threshold (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD) or
  *       any required input is missing, mark the spec with
  *       PT_SPEC_FLAG_NO_PARALLEL_SCAN (fail-safe).  Otherwise pick a
  *       degree and record it on the spec so xasl_generation propagates
  *       it to the server exactly like a user hint.
- *       An explicit PARALLEL(N) hint bypasses the metric check.
+ *       An explicit PARALLEL(N) hint bypasses the metric check and the
+ *       auto parallelism cap; the server re-gates by actual index size.
  */
 static void
 qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
@@ -3158,15 +3159,10 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
   has_hint = (select->info.query.q.select.hint & PT_HINT_PARALLEL) != 0;
   if (has_hint)
     {
-      /* Parallel index scan needs at least two threads after applying the global cap. */
-      cap = prm_get_integer_value (PRM_ID_PARALLELISM);
-      if (cap <= 1 || spec->info.spec.num_parallel_threads <= 1)
+      /* hint bypasses the metric check and the auto parallelism cap */
+      if (spec->info.spec.num_parallel_threads <= 1)
 	{
 	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
-	}
-      else if (spec->info.spec.num_parallel_threads > cap)
-	{
-	  spec->info.spec.num_parallel_threads = cap;
 	}
       return;
     }
@@ -3190,6 +3186,11 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
   for (t = bitset_iterate (&(driving->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
     {
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_SEL_FROM_HISTOGRAM))
+	{
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  return;
+	}
       sel *= QO_TERM_SELECTIVITY (termp);
     }
   if (sel > 1.0)

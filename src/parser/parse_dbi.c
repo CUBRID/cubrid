@@ -2127,6 +2127,12 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
 	  domain = pt_data_type_to_db_domain (parser, dt, NULL);
 	  if (domain)
 	    {
+	      /* LEAVE is set only for an all-maybes string result, whose codeset/collation are already LANG_SYS.
+	       * Collection elements have no runtime resolution path, so finalize to NORMAL here. */
+	      if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)) && domain->collation_flag == TP_DOMAIN_COLL_LEAVE)
+		{
+		  domain->collation_flag = TP_DOMAIN_COLL_NORMAL;
+		}
 	      error = tp_domain_add (&setdomain, domain);
 	    }
 	  dt = dt->next;
@@ -2257,6 +2263,13 @@ pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node, const char *class
 		    }
 		  else
 		    {
+		      /* LEAVE is set only for an all-maybes string result, whose codeset/collation are already LANG_SYS.
+		       * Collection elements have no runtime resolution path, so finalize to NORMAL here. */
+		      if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain))
+			  && domain->collation_flag == TP_DOMAIN_COLL_LEAVE)
+			{
+			  domain->collation_flag = TP_DOMAIN_COLL_NORMAL;
+			}
 		      error = tp_domain_add (&setdomain, domain);
 		    }
 		}

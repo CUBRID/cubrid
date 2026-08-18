@@ -74,6 +74,16 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_de
 	case TYPE_ATTR_ID:
 	case TYPE_SHARED_ATTR_ID:
 	case TYPE_CLASS_ATTR_ID:
+	  if (regu_var->value.attr_descr.cache_slot != NULL
+	      && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
+	    {
+	      /* deferred predicate column: read it on this row's first reference. The result goes into
+	       * cache_dbvalp, so the exit below returns it and a failed read falls to the slow path. After
+	       * the scan gives up on lazy (lazy_recdes NULL), cache_slot stays set but is not consulted. */
+	      regu_var->value.attr_descr.cache_dbvalp =
+		heap_attrvalue_peek_lazy (regu_var->value.attr_descr.cache_slot,
+					  regu_var->value.attr_descr.cache_attrinfo);
+	    }
 	  if (regu_var->value.attr_descr.cache_dbvalp != NULL)
 	    {
 	      *peek_dbval = regu_var->value.attr_descr.cache_dbvalp;

@@ -200,6 +200,10 @@ struct mvcc_info
   /* MVCC ID - increase with each transaction that modified data */
   MVCCID id;
 
+  /* MVCCID this transaction already holds an X self-lock on (LOCK_RESOURCE_TRANSACTION); INSERT/UPDATE reuse it
+   * instead of re-acquiring per row. MVCCID_NULL if none. Safe dedup hint: MVCCIDs are monotonic and never reused. */
+  MVCCID self_locked_mvccid;
+
   /* recent_snapshot_lowest_active_mvccid - the lowest active MVCCID computed for the most recent snapshot of current
    * transaction. This field help to know faster whether an MVCCID is active or not. Thus, mvccid older than this field
    * are not active anymore */
