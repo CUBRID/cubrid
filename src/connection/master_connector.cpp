@@ -134,13 +134,11 @@ namespace cubconn::master
 	/* m_conn is not a real connection entry. see the constructor. */
 	delete reinterpret_cast<int *> (m_eventfd_context->m_conn);
 	delete m_eventfd_context;
-	m_eventfd_context = nullptr;
       }
 
     if (m_eventfd != -1)
       {
 	::close (m_eventfd);
-	m_eventfd = -1;
       }
   }
 

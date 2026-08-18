@@ -395,7 +395,7 @@ namespace cubconn::connection
     m_exhausted.reserve (128);
 
     /* notifier */
-    m_eventfd_contexts.reserve (2);
+    m_eventfd_contexts[0] = m_eventfd_contexts[1] = NULL;
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (m_eventfd < 0 || m_timerfd < 0)
@@ -457,15 +457,13 @@ namespace cubconn::connection
     /* release the dummy contexts registered for m_eventfd and m_timerfd.
      * they are not tracked in m_context, so nothing else releases them.
      */
-    for (context *ctx : m_eventfd_contexts)
+    for (int i = 0; i < DIM (m_eventfd_contexts); i++)
       {
-	(void) m_events.remove_descriptor (ctx->m_conn->fd);
+	(void) m_events.remove_descriptor (m_eventfd_contexts[i]->m_conn->fd);
 	/* m_conn is not a real connection entry. see eventfd_register (). */
-	delete reinterpret_cast<int *> (ctx->m_conn);
-	ctx->m_conn = nullptr;
-	delete ctx;
+	delete reinterpret_cast<int *> (m_eventfd_contexts[i]->m_conn);
+	delete m_eventfd_contexts[i];
       }
-    m_eventfd_contexts.clear ();
 
     ::close (m_eventfd);
     ::close (m_timerfd);
@@ -1039,7 +1037,7 @@ retry:
       }
 
     /* epoll holds ctx as its user data. release it in the destructor. */
-    m_eventfd_contexts.push_back (ctx);
+    m_eventfd_contexts[ (fd == m_eventfd) ? 0 : 1] = ctx;
 
     return true;
   }
