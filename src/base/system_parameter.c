@@ -4554,7 +4554,7 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
+   {false, {.b = true}},
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
