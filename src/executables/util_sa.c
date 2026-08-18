@@ -77,6 +77,7 @@
 #include "log_impl.h"
 #include "log_manager.h"
 #include "schema_system_catalog.hpp"
+#include "schema_information_schema.hpp"
 #include "catalog_class.h"
 #include "system_metadata_version.h"
 #include "crypt_opfunc.h"
@@ -130,6 +131,10 @@ static bool check_ha_db_and_node_list (char *database_name, char *source_host_na
 #define UPGRADEDB_INTERNAL_SCRIPT_FORMAT   "internal/%s"
 #endif
 
+#define UPGRADEDB_EXIT_OK             EXIT_SUCCESS
+#define UPGRADEDB_EXIT_ERROR          EXIT_FAILURE	/* 1: cannot check or upgrade */
+#define UPGRADEDB_EXIT_NEED_UPGRADE   2	/* --check only */
+
 typedef enum
 {
   UPGRADEDB_OP_PRINT,
@@ -164,6 +169,8 @@ typedef struct
 } UPGRADEDB_OPTIONS;
 
 static int upgradedb_truncate_catalog_classes (void);
+static int upgradedb_rebuild_catalog_vclasses (void);
+static int upgradedb_drop_catalog_class_representations (void);
 static int upgradedb_rebuild_catalog (void);
 static void upgradedb_update_and_log_version (int target_version);
 static bool upgradedb_confirm (void);
@@ -5283,6 +5290,58 @@ upgradedb_truncate_catalog_classes (void)
 }
 
 /*
+ * upgradedb_rebuild_catalog_vclasses () - redefine the catalog vclasses from
+ *     the running binary's definitions
+ *   return: error code
+ *
+ *   Note: writing them in SQL instead would duplicate *_query_spec.cpp and have
+ *   to stay identical to it. Runs after the scripts, whose altered catalog
+ *   classes the vclasses select from.
+ */
+static int
+upgradedb_rebuild_catalog_vclasses (void)
+{
+  int error = catcls_rebuild_vclasses ();
+
+  if (error == NO_ERROR)
+    {
+      error = info_schema_rebuild_vclasses ();
+    }
+
+  return error;
+}
+
+/*
+ * upgradedb_drop_catalog_class_representations () - drop the representation
+ *     history the upgrade scripts left on the catalog classes
+ *   return: error code
+ *
+ *   Note: each altered class leaves a dead representation behind and compactdb
+ *   skips catalog classes, so they would pile up one per release. Only
+ *   ct_Classes, truncated above, may be dropped: any other catalog class still
+ *   holds rows an older representation is needed to decode.
+ */
+static int
+upgradedb_drop_catalog_class_representations (void)
+{
+  int error = NO_ERROR;
+
+  for (int i = 0; error == NO_ERROR && ct_Classes[i] != NULL; i++)
+    {
+      MOP class_mop = sm_find_class (ct_Classes[i]->cc_name);
+      if (class_mop == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  break;
+	}
+
+      error = sm_destroy_representations (class_mop);
+    }
+
+  return error;
+}
+
+/*
  * upgradedb_rebuild_catalog () - recompile catalog classes (skipped at boot via
  *     boot_set_skip_check_ct_classes) and flush metadata to disk
  *   return: error code
@@ -5611,29 +5670,37 @@ upgradedb_run_scripts (const UPGRADEDB_OPTIONS * opts, UPGRADEDB_SCRIPT_OP op)
   return upgradedb_process_versioned_scripts (op);
 }
 
+/*
+ * upgradedb_run () - check or upgrade the system metadata
+ *   return: UPGRADEDB_EXIT_OK / UPGRADEDB_EXIT_ERROR / UPGRADEDB_EXIT_NEED_UPGRADE
+ */
 static int
 upgradedb_run (const UPGRADEDB_OPTIONS * opts)
 {
   int current_version = (int) log_Gl.hdr.sysmeta_version;
   int target_version = SYSTEM_METADATA_VERSION;
+  bool up_to_date = (current_version == target_version);
   bool is_executed = false;
   int error = NO_ERROR;
-
-  if (opts->check_only)
-    {
-      return (current_version == target_version) ? NO_ERROR : ER_FAILED;
-    }
 
   if (current_version == 0 || current_version > target_version)
     {
       int msg_id = (current_version == 0) ? UPGRADEDB_MSG_NOT_UPGRADABLE : UPGRADEDB_MSG_DOWNGRADE_NOT_SUPPORTED;
       PRINT_AND_LOG_ERR_MSG ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, msg_id));
-      return ER_FAILED;
+      return UPGRADEDB_EXIT_ERROR;
     }
 
-  if ((opts->mode == UPGRADEDB_MODE_VERSIONED) && (current_version == target_version))
+  if (opts->check_only)
     {
-      return NO_ERROR;
+      int msg_id = up_to_date ? UPGRADEDB_MSG_CHECK_UP_TO_DATE : UPGRADEDB_MSG_CHECK_NEED_UPGRADE;
+
+      fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, msg_id));
+      return up_to_date ? UPGRADEDB_EXIT_OK : UPGRADEDB_EXIT_NEED_UPGRADE;
+    }
+
+  if ((opts->mode == UPGRADEDB_MODE_VERSIONED) && up_to_date)
+    {
+      return UPGRADEDB_EXIT_OK;
     }
 
   if (opts->verbose)
@@ -5647,7 +5714,7 @@ upgradedb_run (const UPGRADEDB_OPTIONS * opts)
 
   if (!opts->force && !upgradedb_confirm ())
     {
-      return NO_ERROR;
+      return UPGRADEDB_EXIT_OK;
     }
 
   is_executed = true;
@@ -5659,6 +5726,18 @@ upgradedb_run (const UPGRADEDB_OPTIONS * opts)
     }
 
   error = upgradedb_run_scripts (opts, UPGRADEDB_OP_EXECUTE);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = upgradedb_rebuild_catalog_vclasses ();
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = upgradedb_drop_catalog_class_representations ();
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -5680,7 +5759,7 @@ upgradedb_run (const UPGRADEDB_OPTIONS * opts)
       goto error_exit;
     }
 
-  return NO_ERROR;
+  return UPGRADEDB_EXIT_OK;
 
 error_exit:
   if (er_errid () != NO_ERROR)
@@ -5691,12 +5770,12 @@ error_exit:
     {
       db_abort_transaction ();
     }
-  return error;
+  return UPGRADEDB_EXIT_ERROR;
 }
 
 /*
  * upgradedb () - upgrade a database's system metadata in place
- *   return: EXIT_SUCCESS/EXIT_FAILURE
+ *   return: UPGRADEDB_EXIT_OK / UPGRADEDB_EXIT_ERROR / UPGRADEDB_EXIT_NEED_UPGRADE
  *   arg(in): utility function arguments
  */
 int
@@ -5705,7 +5784,7 @@ upgradedb (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   UPGRADEDB_OPTIONS opts;
-  int error;
+  int status = UPGRADEDB_EXIT_ERROR;
   int save;
 
   if (upgradedb_parse_options (arg_map, &opts) != NO_ERROR)
@@ -5713,18 +5792,18 @@ upgradedb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_USAGE),
 	       basename (arg->argv0));
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-      return EXIT_FAILURE;
+      return UPGRADEDB_EXIT_ERROR;
     }
 
   if (check_database_name (opts.db_name))
     {
-      return EXIT_FAILURE;
+      return UPGRADEDB_EXIT_ERROR;
     }
 
 #if !defined(NDEBUG)
   if (opts.mode == UPGRADEDB_MODE_SCRIPT_LIST && upgradedb_load_script_list (&opts.apply_script_list) != NO_ERROR)
     {
-      return EXIT_FAILURE;
+      return UPGRADEDB_EXIT_ERROR;
     }
 #endif
 
@@ -5741,14 +5820,13 @@ upgradedb (UTIL_FUNCTION_ARG * arg)
   if (db_restart (arg->command_name, TRUE, opts.db_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      error = ER_FAILED;
       goto exit;
     }
 
   prm_set_bool_value (PRM_ID_TB_DEFAULT_REUSE_OID, false);
 
   AU_SAVE_AND_DISABLE (save);
-  error = upgradedb_run (&opts);
+  status = upgradedb_run (&opts);
   AU_RESTORE (save);
 
   db_shutdown ();
@@ -5757,7 +5835,7 @@ exit:
 #if !defined(NDEBUG)
   upgradedb_free_script_list (&opts.apply_script_list);
 #endif
-  return (error != NO_ERROR) ? EXIT_FAILURE : EXIT_SUCCESS;
+  return status;
 }
 
 #if !defined(NDEBUG)
