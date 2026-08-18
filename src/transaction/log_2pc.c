@@ -533,11 +533,12 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
        * (committed on success, rolled back on abort).  No XA-prepared branch exists on
        * them, so a leftover row would only make recovery deliver an undeliverable XA
        * decision.  A system operation makes the removal permanent regardless of the local
-       * commit/abort outcome, mirroring the sysop used for the 'P' inserts above; it is
-       * opened on the first such participant so transactions without one pay nothing.
-       * Several participants can be marked even though only one may be committed without
-       * XA: send_prepare marks every one it finds and then refuses the transaction, so
-       * this loop must clear all of them, not just the first. */
+       * commit/abort outcome, mirroring the sysop used for the 'P' inserts above.
+       * More than one participant can be marked here, because this loop runs even when
+       * send_prepare refused the transaction: it refuses only after marking every
+       * XA-incapable participant it found.  Clear all of them, not just the first.
+       * has_xa_unsupported keeps that single sysop no matter how many are marked; a
+       * transaction with none never reaches the body, so it pays nothing. */
       for (i = 0; i < tdes->coord->num_particps; i++)
 	{
 	  if (!participants[i].xa_unsupported)
