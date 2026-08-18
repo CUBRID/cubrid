@@ -555,8 +555,11 @@ namespace lockfree
   typename hashmap<Key, T>::freelist_type::free_node *
   hashmap<Key, T>::to_free_node (T *p)
   {
-    // not nice, but necessary until we fully refactor lockfree hashmap
-    const std::ptrdiff_t off = free_node_offset_of_data (free_node_type ());
+    // not nice, but necessary until we fully refactor lockfree hashmap.
+    // the offset is fixed by the type, but obtaining it needs an instance, and building one constructs and then
+    // destroys a whole T - for xasl_cache_ent that is a pthread_mutex_init/destroy pair. this runs on every
+    // retire and every save_temporary, so compute it once.
+    static const std::ptrdiff_t off = free_node_offset_of_data (free_node_type ());
     char *cp = (char *) p;
     cp -= off;
     return (free_node_type *) cp;
