@@ -1419,6 +1419,14 @@ namespace lockfree
       {
 	m_tdes->end_tran();
       }
+    // the bucket index must go back to its pre-iteration value, the way lf_hash_table_cpp::iterator::restart ()
+    // resets lf_hash_table_iterator::bucket_index to -1. two things break when it is left behind:
+    //   - iterate () resumes at the next bucket, so the rest of the interrupted bucket and every bucket already
+    //     visited are never looked at again. every caller restarts precisely to re-scan from the beginning after
+    //     deleting the entries it collected, so those entries are silently missed.
+    //   - iterate () takes the m_bucket_index != INVALID_INDEX branch and ends a transaction that is no longer
+    //     started - callers end it themselves before breaking out - which trips assert (is_tran_started ()).
+    m_bucket_index = INVALID_INDEX;
     m_curr = NULL;
   }
 
