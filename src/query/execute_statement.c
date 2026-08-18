@@ -2356,7 +2356,9 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   /* cached_num comes from auto_increment_cache_size. 0 keeps the per-row durable catalog write;
    * n >= 2 makes the serial cache a block of n values so heap_set_autoincrement_value takes the
    * cached path. A column whose whole range holds fewer values than one block goes uncached: the
-   * parameter is a global default, so it cannot fail the DDL the way CREATE SERIAL ... CACHE n does. */
+   * parameter is a default the user did not spell out on this column, so it cannot fail the DDL the
+   * way CREATE SERIAL ... CACHE n does. It is a session parameter: SET SYSTEM PARAMETERS applies to
+   * the tables the session creates afterwards, and a serial keeps the size it was created with. */
   cached_num = prm_get_integer_value (PRM_ID_AUTO_INCREMENT_CACHE_SIZE);
   if (cached_num > 1)
     {
