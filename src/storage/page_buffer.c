@@ -12935,6 +12935,38 @@ exit:
   return er_status;
 }
 
+#if !defined(NDEBUG)
+/*
+ * pgbuf_only_qresult_pages_fixed () - is every page still fixed by this thread a query result page?
+ *   return: true if no other page type is fixed
+ *   thrd_idx (in): thread index
+ *
+ * Note: pgbuf_ordered_callback used to require that the thread holds no page at all. It unfixes ordered pages only,
+ *       so a fix without a watcher may now remain - in practice the query result page of the thread's own list file
+ *       scan, which no other thread fixes. This is deliberately narrower than "not an ordered page", so that any
+ *       other type surfaces in testing: the shard allocator the callback waits for fixes PAGE_FTAB and
+ *       PAGE_VOLHEADER itself, and keeping one of those across the wait would deadlock against it.
+ *
+ * TODO: if this fires, decide whether the reported page type must be unfixed across the callback too, rather than
+ *       allowing it here.
+ */
+static bool
+pgbuf_only_qresult_pages_fixed (int thrd_idx)
+{
+  PGBUF_HOLDER *holder;
+
+  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+    {
+      if (holder->bufptr->iopage_buffer->iopage.prv.ptype != PAGE_QRESULT)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+#endif				/* NDEBUG */
+
 /*
  * pgbuf_ordered_callback () - Temporarily unfix all ordered pages while executing a callback.
  *   return: error code
@@ -12942,12 +12974,10 @@ exit:
  *   callback_func (in): callback executed without any fixed pages
  *   callback_args (in): callback arguments
  *
- * Note: Every ordered page fixed by the current thread must have a watcher, because its fix can only be restored
- *       through the watcher's page pointer. Fixes on pages that are not ordered pages are left alone: the heap
- *       allocation path never fixes them, so keeping them cannot deadlock with the allocating thread. The callback
- *       must not leave any page fixed. Unfixed pages are re-fixed in page order even when the callback returns an
- *       error. If re-fixing fails, some watchers may remain without a fixed page and callers must check watcher page
- *       pointers before using them.
+ * Note: Only ordered pages are unfixed, because only they carry a watcher through which the fix can be restored. Any
+ *       other fix is left in place - see pgbuf_only_qresult_pages_fixed. The callback must not fix a page of its own.
+ *       Unfixed pages are re-fixed in page order even when the callback returns an error. If re-fixing fails, some
+ *       watchers may remain without a fixed page and callers must check watcher page pointers before using them.
  */
 #if !defined(NDEBUG)
 int
@@ -12999,10 +13029,8 @@ pgbuf_ordered_callback_release (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_
 
       if (!PGBUF_IS_ORDERED_PAGETYPE (holder->bufptr->iopage_buffer->iopage.prv.ptype))
 	{
-	  /* not part of the heap latch ordering protocol, so the heap allocation path never fixes it and keeping it */
-	  /* across the callback cannot deadlock with the thread that owns the allocation. query result page fixed by */
-	  /* the select side of an INSERT ... SELECT is the usual case here, and it carries no watcher. leave it fixed */
-	  /* and untouched, exactly as pgbuf_ordered_fix does for the holders it cannot restore. */
+	  /* outside the heap latch ordering protocol, so it has no watcher and its fix cannot be restored. leave it
+	   * in place, exactly as pgbuf_ordered_fix does for the holders it cannot restore. */
 	  continue;
 	}
 
@@ -13132,13 +13160,9 @@ pgbuf_ordered_callback_release (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_
 	}
     }
 
-  assert (pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list == NULL);
+  assert (pgbuf_only_qresult_pages_fixed (thrd_idx));
 
   callback_status = callback_func (thread_p, callback_args);
-
-  /* only callback functions that do not fix any pages are allowed. */
-  /* it must not leave a page fixed. */
-  assert (pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list == NULL);
 
   /* restore every page in the same global order used by ordered fix. */
   for (i = 0; i < saved_pages_cnt; i++)
