@@ -116,6 +116,7 @@ namespace lockfree
       T &get_data ();
 
       void reclaim () final override;
+      void reclaim_run (tran::reclaimable_node *tail, size_t count) final override;
 
     private:
       friend freelist;
@@ -553,6 +554,60 @@ namespace lockfree
 
     ++m_owner->m_available_count;
     m_owner->push_to_list (*this, *this, m_owner->m_available_list);
+  }
+
+  template<class T>
+  void
+  freelist<T>::free_node::reclaim_run (tran::reclaimable_node *tail, size_t count)
+  {
+    // every node in a descriptor's retired list belongs to this freelist - each freelist builds its own
+    // tran::table, so its descriptors are reached through it and nothing else retires into them. that is what
+    // makes a batch splice sound.
+    freelist *owner = m_owner;              // save it: nodes below, including this one, may be deleted
+    free_node *run_head = NULL;
+    free_node *run_tail = NULL;
+    size_t reusable = 0;
+    size_t freed = 0;
+    size_t alloc_now = owner->m_alloc_count.load ();
+    free_node *save_next = NULL;
+
+    for (free_node *node = this; node != NULL; node = save_next)
+      {
+	save_next = (node == static_cast<free_node *> (tail)) ? NULL : node->get_freelist_next ();
+	node->m_t.on_reclaim ();
+	node->reset_freelist_next ();
+
+	if (alloc_now > owner->m_max_alloc_count)
+	  {
+	    // over the cap: hand the memory back instead of recycling it, the way lf_freelist_transport () frees a
+	    // reclaimed entry once freelist->alloc_cnt passes edesc->max_alloc_cnt
+	    delete node;
+	    --alloc_now;
+	    ++freed;
+	    continue;
+	  }
+
+	// prepend, so the first node kept becomes the run's tail and already has a NULL link
+	if (run_tail == NULL)
+	  {
+	    run_tail = node;
+	  }
+	node->set_freelist_next (run_head);
+	run_head = node;
+	++reusable;
+      }
+
+    owner->m_retired_count -= count;
+    if (freed != 0)
+      {
+	owner->m_alloc_count -= freed;
+      }
+    if (run_head != NULL)
+      {
+	// the whole run joins the available list with one CAS and one counter update
+	owner->m_available_count += reusable;
+	owner->push_to_list (*run_head, *run_tail, owner->m_available_list);
+      }
   }
 
   template<class T>

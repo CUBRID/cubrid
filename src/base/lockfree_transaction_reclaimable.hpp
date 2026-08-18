@@ -31,6 +31,8 @@
 
 #include "lockfree_transaction_def.hpp"
 
+#include <cstddef>
+
 namespace lockfree
 {
   namespace tran
@@ -58,6 +60,23 @@ namespace lockfree
 	{
 	  // default is to delete itself
 	  delete this;
+	}
+
+	// reclaim a whole run of nodes at once, from this one to tail inclusive, linked by m_retired_next.
+	// a descriptor always reclaims a run rather than single nodes, so an owner that can retire a batch more
+	// cheaply than one at a time - a freelist splicing the run onto its available list with a single CAS -
+	// overrides this. the default just walks the run.
+	virtual void reclaim_run (reclaimable_node *tail, size_t count)
+	{
+	  (void) count;
+	  reclaimable_node *save_next = NULL;
+	  for (reclaimable_node *node = this; node != NULL; node = save_next)
+	    {
+	      // read the link before reclaim (), which may delete the node
+	      save_next = (node == tail) ? NULL : node->m_retired_next;
+	      node->m_retired_next = NULL;
+	      node->reclaim ();
+	    }
 	}
 
       protected:

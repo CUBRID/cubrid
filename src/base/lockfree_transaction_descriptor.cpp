@@ -153,13 +153,28 @@ namespace lockfree
 	  // nothing changed
 	  return;
 	}
+      // the retired list is ordered by retire id, because retire_node () appends, so everything reclaimable is a
+      // prefix of it. detach the whole prefix and hand it over in one call: an owner that can retire a batch for
+      // the price of one - the freelist splices it onto its available list with a single CAS - then does not pay
+      // per node. lf_freelist_transport () collected the same run for the same reason.
+      reclaimable_node *run_head = m_retired_head;
+      reclaimable_node *run_tail = NULL;
+      size_t run_count = 0;
       while (m_retired_head != NULL && m_retired_head->m_retire_tranid < min_tran_id)
 	{
-	  reclaim_retired_head ();
+	  run_tail = m_retired_head;
+	  m_retired_head = m_retired_head->m_retired_next;
+	  ++run_count;
 	}
       if (m_retired_head == NULL)
 	{
 	  m_retired_tail = NULL;
+	}
+      if (run_count != 0)
+	{
+	  run_tail->m_retired_next = NULL;
+	  run_head->reclaim_run (run_tail, run_count);
+	  m_reclaim_count += run_count;
 	}
 
       // do not latch the idle sentinel. get_min_active_tranid () answers INVALID_TRANID - the largest id there is -
