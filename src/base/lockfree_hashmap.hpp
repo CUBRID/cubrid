@@ -473,7 +473,14 @@ namespace lockfree
   size_t
   hashmap<Key, T>::get_hash (Key &key) const
   {
-    return m_edesc->f_hash (&key, (int) m_size);
+    size_t hash_value = m_edesc->f_hash (&key, (int) m_size);
+    if (hash_value >= m_size)
+      {
+	// lf_hash_find () and friends rejected an out-of-range hash instead of indexing the bucket array with it
+	assert (false);
+	return 0;
+      }
+    return hash_value;
   }
 
   template <class Key, class T>
