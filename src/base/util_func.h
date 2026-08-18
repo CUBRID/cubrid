@@ -46,6 +46,13 @@
         } while(0)
 #endif
 
+#if defined(WINDOWS)
+#define PRINT_AND_LOG_ERR_MSG(...) \
+  do {\
+    fprintf(stderr, __VA_ARGS__);\
+    util_log_write_errstr(__VA_ARGS__);\
+  }while (0)
+#else
 #define PRINT_AND_LOG_ERR_MSG(...) \
   do {\
     _Pragma("GCC diagnostic push") \
@@ -54,6 +61,7 @@
     util_log_write_errstr(__VA_ARGS__);\
     _Pragma("GCC diagnostic pop") \
   }while (0)
+#endif
 
 extern unsigned int hashpjw (const char *);
 

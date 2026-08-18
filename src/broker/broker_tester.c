@@ -85,6 +85,16 @@
            }                                         \
         } while(0)
 
+#if defined(WINDOWS)
+#define PRINT_RESULT(...)                                                   \
+        do {                                                                 \
+          if (out_file_fp != NULL)                                           \
+          {                                                                  \
+            fprintf (out_file_fp ,__VA_ARGS__);                              \
+          }                                                                  \
+          fprintf (stdout, __VA_ARGS__);                                     \
+        } while (0)
+#else
 #define PRINT_RESULT(...)                                                   \
         do {                                                                 \
           _Pragma("GCC diagnostic push")                                     \
@@ -96,6 +106,7 @@
           fprintf (stdout, __VA_ARGS__);                                     \
           _Pragma("GCC diagnostic pop")                                      \
         } while (0)
+#endif
 
 #define PRINT_TITLE(n, ...)                          \
         do {                                         \
