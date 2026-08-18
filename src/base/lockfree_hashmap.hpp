@@ -262,6 +262,10 @@ namespace lockfree
 			 size_t freelist_block_count, lf_entry_descriptor &edesc)
   {
     m_freelist = new freelist_type (transys, freelist_block_size, freelist_block_count);
+    // CBRD-24474 capped the legacy freelist through edesc.max_alloc_cnt. the new freelist has no notion of an
+    // entry descriptor, so hand it the same cap.
+    m_freelist->set_max_alloc_count (edesc.max_alloc_cnt > 0
+				     ? (size_t) edesc.max_alloc_cnt : std::numeric_limits<size_t>::max ());
 
     m_edesc = &edesc;
 

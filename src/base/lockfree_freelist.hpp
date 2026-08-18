@@ -26,6 +26,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <limits>
 
 namespace lockfree
 {
@@ -55,6 +56,8 @@ namespace lockfree
       void retire (tran::descriptor &tdes, free_node &node);
       void retire (tran::index tran_index, free_node &node);
 
+      void set_max_alloc_count (size_t max_alloc_count);
+
       size_t get_alloc_count () const;
       size_t get_available_count () const;
       size_t get_backbuffer_count () const;
@@ -81,6 +84,9 @@ namespace lockfree
       // statistics:
       std::atomic<size_t> m_available_count;
       std::atomic<size_t> m_alloc_count;
+      // reclaiming beyond this many allocated nodes gives the memory back instead of recycling it; the legacy
+      // freelist did the same with edesc->max_alloc_cnt (CBRD-24474). uncapped by default.
+      std::atomic<size_t> m_max_alloc_count;
       std::atomic<size_t> m_bb_count;
       std::atomic<size_t> m_forced_alloc_count;
       std::atomic<size_t> m_retired_count;
@@ -145,6 +151,7 @@ namespace lockfree
     , m_backbuffer_tail { NULL }
     , m_available_count { 0 }
     , m_alloc_count { 0 }
+    , m_max_alloc_count { std::numeric_limits<size_t>::max () }
     , m_bb_count { 0 }
     , m_forced_alloc_count { 0 }
     , m_retired_count { 0 }
@@ -379,6 +386,13 @@ namespace lockfree
   }
 
   template<class T>
+  void
+  freelist<T>::set_max_alloc_count (size_t max_alloc_count)
+  {
+    m_max_alloc_count = max_alloc_count;
+  }
+
+  template<class T>
   size_t
   freelist<T>::get_alloc_count () const
   {
@@ -526,6 +540,17 @@ namespace lockfree
 
     m_retired_next = NULL;
     --m_owner->m_retired_count;
+
+    if (m_owner->m_alloc_count > m_owner->m_max_alloc_count)
+      {
+	// over the cap: hand the memory back rather than recycling it, the way lf_freelist_transport () frees a
+	// reclaimed entry once freelist->alloc_cnt passes edesc->max_alloc_cnt. the node is already unreachable -
+	// only nodes older than the minimum active transaction get here - so deleting it is safe.
+	--m_owner->m_alloc_count;
+	delete this;
+	return;
+      }
+
     ++m_owner->m_available_count;
     m_owner->push_to_list (*this, *this, m_owner->m_available_list);
   }
