@@ -1002,15 +1002,25 @@ namespace test_lockfree
     my_hashmap l_hash;
     init_hashmap (l_transys, hash_size, l_hash);
 
-    l_hash.activate_stats ();
+    // Off by default. lf_hash_table has no equivalent, and these are atomic_counter_timer_stat - two clock
+    // reads and two shared atomic counters on every operation - so leaving them on measured the instrumentation
+    // rather than the implementation, and charged it to only one of the two.
+    const bool want_stats = getenv ("LFTEST_HASHMAP_STATS") != NULL;
+    if (want_stats)
+      {
+	l_hash.activate_stats ();
+      }
 
     tres.m_timer.reset_timer ();
     start_threads (tres, l_hash, l_indexes, std::forward<F> (f), std::forward<Args> (args)...);
     tres.m_timer.time ();
 
-    cout_new_line ();
-    std::cout << "hash stats: ";
-    l_hash.dump_stats<std::chrono::milliseconds> (std::cout);
+    if (want_stats)
+      {
+	cout_new_line ();
+	std::cout << "hash stats: ";
+	l_hash.dump_stats<std::chrono::milliseconds> (std::cout);
+      }
     l_hash.destroy ();
     for (size_t i = 0; i < thread_count; ++i)
       {
