@@ -3963,6 +3963,30 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
 }
 
 /*
+ * pt_trim_whitespace_edges () - shrink [*str, *str + *len) past its leading
+ *	and trailing whitespace; the string itself is not modified
+ *   str(in/out): start of the region
+ *   len(in/out): its length
+ *
+ * The parser printer leaves whitespace around some keyword tokens (e.g.
+ * " unix_timestamp()"), so printed fragments are trimmed before they are
+ * analyzed or embedded in the normalized DEFAULT text.
+ */
+static void
+pt_trim_whitespace_edges (const char **str, size_t * len)
+{
+  while (*len > 0 && char_isspace ((*str)[0]))
+    {
+      (*str)++;
+      (*len)--;
+    }
+  while (*len > 0 && char_isspace ((*str)[*len - 1]))
+    {
+      (*len)--;
+    }
+}
+
+/*
  * pt_default_expr_normalized_text () - source text of a DEFAULT expression,
  *	wrapped in exactly one outer pair of parentheses
  *   return: parser-allocated normalized text (NULL on failure)
@@ -3991,7 +4015,10 @@ pt_default_expr_normalized_text (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
     }
 
+  /* trim up front so the wrapped-group detection below sees the parentheses */
   len = strlen (printed);
+  pt_trim_whitespace_edges (&printed, &len);
+
   fully_wrapped = false;
   if (len >= 2 && printed[0] == '(' && printed[len - 1] == ')')
     {
@@ -4031,12 +4058,21 @@ pt_default_expr_normalized_text (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (fully_wrapped)
     {
-      return pt_append_string (parser, NULL, printed);
+      /* drop the printer's own parentheses (re-wrapped below) and trim again */
+      printed++;
+      len -= 2;
+      pt_trim_whitespace_edges (&printed, &len);
     }
 
-  result = pt_append_string (parser, NULL, "(");
-  result = pt_append_string (parser, result, printed);
-  result = pt_append_string (parser, result, ")");
+  result = (char *) parser_alloc (parser, (int) len + 3);
+  if (result == NULL)
+    {
+      return NULL;
+    }
+  result[0] = '(';
+  memcpy (result + 1, printed, len);
+  result[len + 1] = ')';
+  result[len + 2] = '\0';
   return result;
 }
 
@@ -4057,7 +4093,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
   PT_NODE *data_default;
   PT_NODE *prev;
   bool has_query;
-  bool is_expr_derived;
+  PT_VOLATILITY expr_vol;
   char *edl_text;
 
   if (pt_has_error (parser))
@@ -4097,16 +4133,37 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
        * Capture the normalized source text and effective volatility BEFORE
        * folding, because pt_semantic_type folds an Immutable expression down to a
        * single literal value. */
-      is_expr_derived = false;
+      expr_vol = PT_VOLATILITY_UNSET;
       edl_text = NULL;
       if (data_default->info.data_default.shared == PT_DEFAULT
 	  && data_default->info.data_default.default_expr_type == DB_DEFAULT_NONE
-	  && default_value != NULL
-	  && (PT_IS_EXPR_NODE (default_value) || default_value->node_type == PT_FUNCTION)
-	  && pt_get_expr_tree_volatility (parser, default_value) == PT_VOLATILITY_IMMUTABLE)
+	  && default_value != NULL && (PT_IS_EXPR_NODE (default_value) || default_value->node_type == PT_FUNCTION))
 	{
-	  is_expr_derived = true;
-	  edl_text = pt_default_expr_normalized_text (parser, default_value);
+	  PT_VOLATILITY vol = pt_get_expr_tree_volatility (parser, default_value);
+
+	  if (vol == PT_VOLATILITY_IMMUTABLE || vol == PT_VOLATILITY_STABLE)
+	    {
+	      /* An IMMUTABLE expression folds to a single literal; a STABLE
+	       * residual survives folding (only its IMMUTABLE subtrees fold) and
+	       * is stored (text + Compact DEFAULT Tree + REGU stream) for
+	       * once-per-statement evaluation. */
+	      expr_vol = vol;
+	      edl_text = pt_default_expr_normalized_text (parser, default_value);
+
+	      /* the persisted text surfaces through catalog columns declared as
+	       * VARCHAR (DB_MAX_DEFAULT_EXPR_LENGTH); a longer one would be
+	       * silently truncated there, so reject it up front (the same
+	       * policy PL/CSQL applies to its parameter defaults).
+	       * NOTE: catalog_class.c appends " ON UPDATE <expr>" (at most ~28 characters,
+	       * ON UPDATE stays a pseudo-column enum) to the same cell, so a text within
+	       * the limit can still lose that suffix to the catalog truncation. */
+	      if (edl_text != NULL && strlen (edl_text) > DB_MAX_DEFAULT_EXPR_LENGTH)
+		{
+		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG, DB_MAX_DEFAULT_EXPR_LENGTH);
+		  goto end;
+		}
+	    }
 	}
 
       result = pt_semantic_type (parser, data_default, NULL);
@@ -4123,17 +4180,17 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	    }
 	  data_default = result;
 
-	  /* If the Immutable expression folded to a single literal, record it as
-	   * an Expression-Derived Literal so it is stored/displayed as the
-	   * original expression rather than the folded value. */
-	  if (is_expr_derived)
+	  /* Record the original text and volatility so storage and DDL execution
+	   * derive the stored forms from them.  An IMMUTABLE expression counts
+	   * only if it actually folded to a single literal (Expression-Derived
+	   * Literal); a STABLE residual keeps its expression. */
+	  if (expr_vol == PT_VOLATILITY_STABLE
+	      || (expr_vol == PT_VOLATILITY_IMMUTABLE
+		  && data_default->info.data_default.default_value != NULL
+		  && data_default->info.data_default.default_value->node_type == PT_VALUE))
 	    {
-	      PT_NODE *folded = data_default->info.data_default.default_value;
-
-	      if (folded != NULL && folded->node_type == PT_VALUE)
-		{
-		  data_default->info.data_default.expr_text = edl_text;
-		}
+	      data_default->info.data_default.expr_text = edl_text;
+	      data_default->info.data_default.expr_volatility = expr_vol;
 	    }
 	}
       else
@@ -4144,7 +4201,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 
       node_ptr = NULL;
       (void) parser_walk_tree (parser, default_value, pt_find_default_expression, &node_ptr, NULL, NULL);
-      if (node_ptr != NULL && node_ptr != default_value)
+      if (node_ptr != NULL && node_ptr != default_value && expr_vol != PT_VOLATILITY_STABLE)
 	{
 	  /* nested default expressions are not supported */
 	  PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_NESTED_EXPR_NOT_ALLOWED,

@@ -1406,6 +1406,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_CONCAT:
     case PT_SYS_CONNECT_BY_PATH:
       num = 0;
+      sig.volatility = PT_VOLATILITY_IMMUTABLE;
 
       /* two overloads */
 
@@ -2257,6 +2258,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_CURRENT_DATE:
       num = 0;
 
+      /* constant within a statement, differs across statements */
+      sig.volatility = PT_VOLATILITY_STABLE;
+
       /* one overload */
 
       /* return type */
@@ -2270,6 +2274,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_SYS_DATETIME:
     case PT_CURRENT_DATETIME:
       num = 0;
+
+      /* constant within a statement, differs across statements */
+      sig.volatility = PT_VOLATILITY_STABLE;
 
       /* one overload */
 
@@ -2286,6 +2293,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_CURRENT_TIME:
       num = 0;
 
+      /* constant within a statement, differs across statements */
+      sig.volatility = PT_VOLATILITY_STABLE;
+
       /* one overload */
 
       /* return type */
@@ -2300,6 +2310,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_UTC_TIMESTAMP:
     case PT_CURRENT_TIMESTAMP:
       num = 0;
+
+      /* constant within a statement, differs across statements */
+      sig.volatility = PT_VOLATILITY_STABLE;
 
       /* one overload */
 
@@ -3848,6 +3861,11 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
     case PT_UNIX_TIMESTAMP:
       num = 0;
+
+      /* UNIX_TIMESTAMP () reads the statement clock; the one-argument forms
+       * convert through the session timezone, so all overloads are STABLE
+       * (looks-immutable-but-environment-dependent must not fold at DDL). */
+      sig.volatility = PT_VOLATILITY_STABLE;
 
       /* three overloads */
 

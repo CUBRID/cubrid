@@ -1303,6 +1303,12 @@ extern "C"
     int default_expr_op;	/* default expression operator */
     const char *default_expr_format;	/* default expression format */
     const char *default_expr_text;	/* original text of an Expression-Derived Literal DEFAULT; NULL otherwise */
+    const char *default_expr_regu_stream;	/* serialized REGU form (FUNC_PRED stream) of a residual DEFAULT
+						 * expression for Server Evaluation; NULL otherwise */
+    int default_expr_regu_stream_size;	/* size in bytes of default_expr_regu_stream */
+    const char *default_expr_tree_stream;	/* Compact DEFAULT Tree of a residual DEFAULT expression for
+						 * Local Evaluation; NULL otherwise */
+    int default_expr_tree_stream_size;	/* size in bytes of default_expr_tree_stream */
   };
 
   typedef DB_DATETIME DB_C_DATETIME;
