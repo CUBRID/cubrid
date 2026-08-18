@@ -69,7 +69,7 @@ namespace lockfree
 
       reclaim_retired_list ();
 
-      node.m_retire_tranid = m_tranid;
+      node.m_retire_tranid = m_tranid.load ();
       node.m_retired_next = NULL;
       // add to tail to keep delete ids ordered
       if (m_retired_tail == NULL)
@@ -95,7 +95,12 @@ namespace lockfree
     {
       if (!is_tran_started ())
 	{
-	  m_tranid = m_table->get_current_global_tranid ();
+	  // this is the store-buffer shape, and the one reordering x86 does allow. a reader publishes its id and
+	  // then reads the chain; a reclaimer unlinks a node and then reads every id. safety needs at least one
+	  // of the two to see the other's write, so the store must not sink past the reads it protects - that is
+	  // store-load ordering, and it is the one case that costs a real instruction. the legacy path spelled it
+	  // as an explicit MEMORY_BARRIER () right after assigning transaction_id (lf_tran_start_with_mb).
+	  m_tranid.store (m_table->get_current_global_tranid (), std::memory_order_seq_cst);
 	}
     }
 
@@ -104,34 +109,39 @@ namespace lockfree
     {
       if (!m_did_incr)
 	{
-	  m_tranid = m_table->get_new_global_tranid ();
+	  m_tranid.store (m_table->get_new_global_tranid (), std::memory_order_seq_cst);
 	  // remember that this transaction already owns an incremented id. a second promote must be a no-op,
 	  // the way lf_tran_start (entry, true) is once entry->did_incr is set; otherwise every retire done under
 	  // an already promoted transaction burns a new global id and raises this descriptor's own id while it
 	  // still holds pointers taken under the previous one.
 	  m_did_incr = true;
 	}
-      assert (m_tranid != INVALID_TRANID);
+      assert (m_tranid.load () != INVALID_TRANID);
     }
 
     bool
     descriptor::is_tran_started () const
     {
-      return m_tranid != INVALID_TRANID;
+      return m_tranid.load () != INVALID_TRANID;
     }
 
     void
     descriptor::end_tran ()
     {
       assert (is_tran_started ());
-      m_tranid = INVALID_TRANID;
+      // everything this transaction read must be complete before it stops protecting it. that is load-store
+      // ordering, which release gives and which x86 provides at no cost - lf_tran_end_with_mb ()'s full
+      // MEMORY_BARRIER () in front of the same assignment was stronger than the requirement.
+      m_tranid.store (INVALID_TRANID, std::memory_order_release);
       m_did_incr = false;
     }
 
     id
     descriptor::get_transaction_id () const
     {
-      return m_tranid;
+      // acquire pairs with the publishing store: a reclaimer that reads INVALID_TRANID here must also see
+      // everything the owner did before it released. free on x86.
+      return m_tranid.load (std::memory_order_acquire);
     }
 
     void

@@ -30,6 +30,7 @@
 
 #include "lockfree_transaction_def.hpp"
 
+#include <atomic>
 #include <limits>
 
 // forward definition
@@ -83,7 +84,11 @@ namespace lockfree
 	void reclaim_retired_head ();
 
 	table *m_table;
-	id m_tranid;
+	// the epoch id this descriptor publishes so a reclaimer can see it is reading. written by the owner,
+	// read by every reclaimer running compute_min_active_tranid (), so it must be atomic - and the ordering
+	// it needs is store-load, which is why the accesses below are sequentially consistent rather than
+	// release/acquire. see start_tran ().
+	std::atomic<id> m_tranid;
 	id m_last_reclaim_minid;
 	reclaimable_node *m_retired_head;
 	reclaimable_node *m_retired_tail;
