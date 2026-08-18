@@ -593,8 +593,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> datetime_field
 %type <boolean> opt_invisible
 %type <number> opt_paren_plus
-%type <number> opt_with_fullscan
-%type <number> opt_with_n_buckets
+%type <number> opt_stats_options
+%type <number> stats_option_list
+%type <number> stats_option
 %type <number> online_parallel
 %type <number> comp_op
 %type <number> opt_of_all_some_any
@@ -675,11 +676,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> rename_class_list
 %type <node> rename_class_pair
 %type <node> drop_stmt
-%type <node> drop_histogram_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
 %type <node> update_statistics_stmt
-%type <node> update_histogram_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
 %type <node> char_string_literal_list
@@ -906,7 +905,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> constant_set
 %type <node> file_path_name
 %type <node> identifier_list
-%type <node> opt_with_column_list
 %type <node> opt_bracketed_identifier_list
 %type <node> index_column_identifier_list
 %type <node> identifier_without_dot
@@ -973,7 +971,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
 %type <node> show_stmt
-%type <node> show_histogram_stmt
 %type <node> session_variable;
 %type <node> session_variable_assignment_list
 %type <node> session_variable_assignment
@@ -1670,6 +1667,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> PUBLIC
 %token <cptr> QUARTER
 %token <cptr> QUEUES
+%token <cptr> RANDOM_
 %token <cptr> RANGE_
 %token <cptr> RANK
 %token <cptr> REBUILD
@@ -1691,6 +1689,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
+%token <cptr> SEED_
 %token <cptr> SEMICOLON
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
@@ -1943,12 +1942,6 @@ stmt_
 	| rename_stmt
 		{ $$ = $1; }
 	| update_statistics_stmt
-		{ $$ = $1; }
-	| update_histogram_stmt
-		{ $$ = $1; }
-        | show_histogram_stmt
-                { $$ = $1; }
-	| drop_histogram_stmt
 		{ $$ = $1; }
 	| drop_stmt
 		{ $$ = $1; }
@@ -4743,112 +4736,69 @@ index_column_name_list
 		}}
 	;
 
-opt_with_column_list
-        : /* empty */
-        {{ $$ = NULL; }}
-
-        | ON_ identifier_list
-        {{ $$ = $2; }}
-        ;
-
 update_statistics_stmt
-	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
+	: UPDATE STATISTICS ON_ only_class_name_list opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = $4;
 			    ups->info.update_stats.all_classes = 0;
-			    ups->info.update_stats.with_fullscan = $5;
+			    ups->info.update_stats.with_fullscan = (($5 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($5 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($5 & 0x04) != 0);
+			    ups->info.update_stats.drop_histogram = (($5 & 0x08) != 0);
+			    ups->info.update_stats.bucket_count = ($5 >> 8);
+			    if (($5 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| UPDATE STATISTICS ON_ ALL CLASSES opt_with_fullscan
+	| UPDATE STATISTICS ON_ ALL CLASSES opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = 1;
-			    ups->info.update_stats.with_fullscan = $6;
+			    ups->info.update_stats.with_fullscan = (($6 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($6 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($6 & 0x04) != 0);
+			    ups->info.update_stats.drop_histogram = (($6 & 0x08) != 0);
+			    ups->info.update_stats.bucket_count = ($6 >> 8);
+			    if (($6 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| UPDATE STATISTICS ON_ CATALOG CLASSES opt_with_fullscan
+	| UPDATE STATISTICS ON_ CATALOG CLASSES opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = -1;
-			    ups->info.update_stats.with_fullscan = $6;
+			    ups->info.update_stats.with_fullscan = (($6 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($6 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($6 & 0x04) != 0);
+			    ups->info.update_stats.drop_histogram = (($6 & 0x08) != 0);
+			    ups->info.update_stats.bucket_count = ($6 >> 8);
+			    if (($6 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	;
 
-show_histogram_stmt
-        : SHOW HISTOGRAM only_class_name opt_with_column_list
-                {{
-                        PT_NODE *uhs = parser_new_node (this_parser, PT_SHOW_HISTOGRAM);
-                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
-
-                        if (uhs && target_t)
-                        {
-                            target_t->info.spec.entity_name = $3;
-                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
-                            target_t->info.spec.meta_class = PT_CLASS;
-                            uhs->info.histogram.target_table_spec = target_t;
-                            uhs->info.histogram.target_columns = $4;
-                        }
-
-                        $$ = uhs;
-                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                }}
-        ;
-
-update_histogram_stmt
-        : ANALYZE TABLE only_class_name UPDATE HISTOGRAM opt_with_column_list opt_with_n_buckets opt_with_fullscan
-                {{
-                        PT_NODE *uhs = parser_new_node (this_parser, PT_UPDATE_HISTOGRAM);
-                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
-                        if (uhs && target_t)
-                        {
-                            target_t->info.spec.entity_name = $3;
-                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
-                            target_t->info.spec.meta_class = PT_CLASS;
-                            uhs->info.histogram.target_table_spec = target_t;
-
-                            uhs->info.histogram.target_columns = $6;
-                            uhs->info.histogram.bucket_count = $7;
-                            uhs->info.histogram.with_fullscan = $8;             
-                        }
-
-                        $$ = uhs;
-                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                }}
-        ;
-
-drop_histogram_stmt
-        : ANALYZE TABLE only_class_name DROP HISTOGRAM opt_with_column_list
-                {{
-                        PT_NODE *dhs = parser_new_node (this_parser, PT_DROP_HISTOGRAM);
-                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
-                        if (dhs && target_t)
-                        {
-                            target_t->info.spec.entity_name = $3;
-                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
-                            target_t->info.spec.meta_class = PT_CLASS;
-                            dhs->info.histogram.target_table_spec = target_t;
-                            dhs->info.histogram.target_columns = $6;
-                        }
-                        $$ = dhs;
-                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                }}
-        ;
 
 only_class_name_list
 	: only_class_name_list ',' only_class_name
@@ -4879,28 +4829,83 @@ opt_invisible
 	;
 
 
-opt_with_fullscan
+opt_stats_options
         : /* empty */
                 {{
                         $$ = 0;
                 }}
-        | WITH FULLSCAN
+        | WITH stats_option_list
                 {{
-                        $$ = 1;
+                        $$ = $2;
                 }}
         ;
 
-
-opt_with_n_buckets
-        : /* empty */
+stats_option_list
+        : stats_option
                 {{
-                        $$ = 0;
+                        $$ = $1;
                 }}
-        | WITH unsigned_integer BUCKETS
+        | stats_option_list ',' stats_option
                 {{
-                        $$ = $2->info.value.data_value.i;
+                        /* stats_option value layout (see the stats_option rule below):
+                         *   0x01 FULLSCAN | 0x02 RANDOM SEED | 0x04 NO HISTOGRAM | 0x08 DROP HISTOGRAM
+                         *   0x10 poison flag: the combined list is invalid (set here, tested in the
+                         *        UPDATE STATISTICS statement rules, where a parse node exists to
+                         *        attach the error to)
+                         *   bits 8.. : the BUCKETS count, shifted left by 8
+                         *
+                         * A repeated option kind or a contradictory pair must not OR-merge silently
+                         * (WITH 3 BUCKETS, 5 BUCKETS would become 7 buckets), so poison the value when
+                         *   1. ((($1 & $3) & 0x0F) != 0)   -- the same flag option appears on both
+                         *      sides (e.g. WITH FULLSCAN, FULLSCAN);
+                         *   2. (($1 & ~0xFF) != 0 && ($3 & ~0xFF) != 0)   -- both sides carry a
+                         *      BUCKETS count (two BUCKETS clauses; their shifted counts would OR);
+                         *   3. ((merged & 0x0C) == 0x0C)   -- NO HISTOGRAM and DROP HISTOGRAM are
+                         *      both present, which is a contradiction (skip vs remove). */
+                        int merged = $1 | $3;
+                        if ((($1 & $3) & 0x0F) != 0
+                            || (($1 & ~0xFF) != 0 && ($3 & ~0xFF) != 0)
+                            || ((merged & 0x0C) == 0x0C))
+                          {
+                            merged |= 0x10;
+                          }
+                        $$ = merged;
                 }}
         ;
+
+stats_option
+        : FULLSCAN
+                {{
+                        $$ = 0x01;
+                }}
+        | RANDOM_ SEED_
+                {{
+                        $$ = 0x02;
+                }}
+        | NO HISTOGRAM
+                {{
+                        $$ = 0x04;
+                }}
+        | DROP HISTOGRAM
+                {{
+                        $$ = 0x08;
+                }}
+        | unsigned_integer BUCKETS
+                {{
+                        int bcnt = $1->info.value.data_value.i;
+
+                        if (bcnt < 1)
+                          {
+                            bcnt = 1;
+                          }
+                        else if (bcnt > 0x7FFFFF)
+                          {
+                            bcnt = 0x7FFFFF;
+                          }
+                        $$ = (bcnt << 8);
+                }}
+        ;
+
 
 opt_of_to_eq
 	: /* empty */
@@ -20740,6 +20745,7 @@ identifier
 	| PUBLIC                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| QUARTER                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| QUEUES                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RANDOM_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANGE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANK                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REBUILD                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20759,6 +20765,7 @@ identifier
 	| REVERSE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ROW_NUMBER             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SECTIONS               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SEED_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SEPARATOR              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SERIAL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SERVER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -23994,6 +24001,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_USE_HASH", PT_HINT_NO_USE_HASH),
   INIT_PT_HINT("INLINE", PT_HINT_INLINE_CTE),
   INIT_PT_HINT("MATERIALIZE", PT_HINT_MATERIALIZE_CTE),
+  INIT_PT_HINT("BIND_SENSITIVE", PT_HINT_BIND_SENSITIVE),
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
 
@@ -24035,6 +24043,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_UTC_DATE:
     case PT_VERSION:
     case PT_UTC_TIMESTAMP:
+    case PT_SCHEMA:
       if (c != 0)
 	{
 	  return NULL;

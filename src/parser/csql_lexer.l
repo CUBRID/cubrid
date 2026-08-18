@@ -732,6 +732,8 @@ IDL       [a-zA-Z0-9_]
 									  return QUEUES; }
 [rR][aA][nN][kK]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return RANK; }
+[rR][aA][nN][dD][oO][mM]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return RANDOM_; }
 [rR][aA][nN][gG][eE]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return RANGE_; }
 [rR][eE][aA][dD]							{ return READ; }
@@ -802,6 +804,8 @@ IDL       [a-zA-Z0-9_]
 [sS][eE][cC][tT][iI][oO][nN]						{ return SECTION; }
 [sS][eE][cC][tT][iI][oO][nN][sS]					{ csql_yylval.cptr = pt_makename(yytext);
 									  return SECTIONS; }
+[sS][eE][eE][dD]							{ csql_yylval.cptr = pt_makename(yytext);
+									  return SEED_; }
 [sS][eE][lL][eE][cC][tT]						{ return SELECT; }
 [sS][eE][nN][sS][iI][tT][iI][vV][eE]					{ return SENSITIVE; }
 [sS][eE][pP][aA][rR][aA][tT][oO][rR]					{ csql_yylval.cptr = pt_makename(yytext);
