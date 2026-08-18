@@ -1112,7 +1112,7 @@ $ LOADDB
 1039 log writer: log writer started. mode: %1$d.
 1040 HA generic: %1$s. 
 1041 A string was truncated in context of "%1$s".
-1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
+1042 Trying to create a string requiring %1$zu bytes of memory, while the maximum allowed is %2$d bytes.
 1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
 1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
 1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
@@ -2004,7 +2004,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 336 Numeric scale specifier is out of range -84 to 127
 337 The partition name is too long.
 
-337 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 
 
 
