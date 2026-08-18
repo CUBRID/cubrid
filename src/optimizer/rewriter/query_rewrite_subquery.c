@@ -100,7 +100,9 @@ qo_move_subquery_hints (PT_NODE * node, PT_NODE * subq)
     parser_append_node (subq->info.query.q.select.no_use_hash, node->info.query.q.select.no_use_hash);
   subq->info.query.q.select.no_use_hash = NULL;
 
-  node->info.query.q.select.hint |= (subq->info.query.q.select.hint & ~PT_HINT_NO_SUBQUERY_CACHE);
+  /* these three name the subquery block being discarded, so they have nothing left to describe */
+  node->info.query.q.select.hint |=
+    (subq->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE));
 }
 
 /*
@@ -153,7 +155,7 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
       return false;
     }
 
-  if (subq->info.query.q.select.hint & (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE))
+  if (subq->info.query.q.select.hint & PT_HINT_NO_UNNEST)
     {
       return false;
     }

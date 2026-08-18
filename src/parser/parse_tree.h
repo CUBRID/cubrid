@@ -1248,7 +1248,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_PUSH_PRED			(1ULL << 33)	/* do not push predicates */
 #define  PT_HINT_NO_MERGE			(1ULL << 34)	/* do not merge view or in-line view */
 #define  PT_HINT_NO_ELIMINATE_JOIN		(1ULL << 35)	/* do not eliminate join */
-/* (1ULL << 36) was PT_HINT_SAMPLING_SCAN, removed with the query-based statistics sampling path */
+#define  PT_HINT_NO_UNNEST			(1ULL << 36)	/* do not unnest a subquery into a SEMI / ANTI JOIN */
 #define  PT_HINT_LEADING			(1ULL << 37)	/* force specific table to join left-to-right */
 #define  PT_HINT_NO_SUBQUERY_CACHE		(1ULL << 38)	/* don't use the subquery result cache */
 #define  PT_HINT_NO_USE_HASH			(1ULL << 39)	/* disable hash-join */
