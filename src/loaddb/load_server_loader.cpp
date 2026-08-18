@@ -243,8 +243,9 @@ namespace cubload
 			       HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	if (scan_code == S_SUCCESS)
 	  {
+	    // record is consumed only through the attribute layer (CBRD-26847)
 	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache,
-						  PEEK, NULL_CHN, HEAP_RECDES_CONSUME_RAW_BYTES);
+						  PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	    if (scan_code == S_SNAPSHOT_NOT_SATISFIED || scan_code == S_DOESNT_EXIST)
 	      {
 		continue;
