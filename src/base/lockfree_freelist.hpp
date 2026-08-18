@@ -84,8 +84,7 @@ namespace lockfree
       // statistics:
       std::atomic<size_t> m_available_count;
       std::atomic<size_t> m_alloc_count;
-      // reclaiming beyond this many allocated nodes gives the memory back instead of recycling it; the legacy
-      // freelist did the same with edesc->max_alloc_cnt (CBRD-24474). uncapped by default.
+      // above this, reclaim frees instead of recycling - edesc->max_alloc_cnt (CBRD-24474). uncapped by default.
       std::atomic<size_t> m_max_alloc_count;
       std::atomic<size_t> m_bb_count;
       std::atomic<size_t> m_forced_alloc_count;
@@ -192,7 +191,11 @@ namespace lockfree
     free_node *bb_tail = m_backbuffer_tail.exchange (NULL);
     assert (bb_tail != NULL);
 
-    m_available_count += m_bb_count.exchange (0);
+    // credit what is moved, not m_bb_count: a swap racing alloc_backbuffer () used to read 0 here and publish
+    // a whole block with no count behind it, so claim () popped a node with m_available_count already at 0 and
+    // wrapped it. the back-buffer holds exactly one block, as final_sanity_checks () also relies on.
+    m_bb_count -= m_block_size;
+    m_available_count += m_block_size;
     push_to_list (*bb_head, *bb_tail, m_available_list);
 
     alloc_backbuffer ();
@@ -211,9 +214,9 @@ namespace lockfree
     free_node *dummy_null = NULL;
     m_backbuffer_tail.compare_exchange_strong (dummy_null, new_bb_tail);
 
-    // update backbuffer head
-    push_to_list (*new_bb_head, *new_bb_tail, m_backbuffer_head);
+    // count the block before publishing it, so a swap that takes the list never finds it uncounted
     m_bb_count += m_block_size;
+    push_to_list (*new_bb_head, *new_bb_tail, m_backbuffer_head);
   }
 
   template <class T>
@@ -544,9 +547,8 @@ namespace lockfree
 
     if (m_owner->m_alloc_count > m_owner->m_max_alloc_count)
       {
-	// over the cap: hand the memory back rather than recycling it, the way lf_freelist_transport () frees a
-	// reclaimed entry once freelist->alloc_cnt passes edesc->max_alloc_cnt. the node is already unreachable -
-	// only nodes older than the minimum active transaction get here - so deleting it is safe.
+	// over the cap: free rather than recycle, as lf_freelist_transport () does. only nodes older than the
+	// minimum active transaction reach here, so the node is already unreachable.
 	--m_owner->m_alloc_count;
 	delete this;
 	return;
@@ -560,10 +562,9 @@ namespace lockfree
   void
   freelist<T>::free_node::reclaim_run (tran::reclaimable_node *tail, size_t count)
   {
-    // every node in a descriptor's retired list belongs to this freelist - each freelist builds its own
-    // tran::table, so its descriptors are reached through it and nothing else retires into them. that is what
-    // makes a batch splice sound.
-    freelist *owner = m_owner;              // save it: nodes below, including this one, may be deleted
+    // splicing is sound because every node in a descriptor's retired list belongs to this freelist: each
+    // freelist builds its own tran::table, so nothing else can retire into its descriptors.
+    freelist *owner = m_owner;              // nodes below, including this one, may be deleted
     free_node *run_head = NULL;
     free_node *run_tail = NULL;
     size_t reusable = 0;
@@ -579,15 +580,14 @@ namespace lockfree
 
 	if (alloc_now > owner->m_max_alloc_count)
 	  {
-	    // over the cap: hand the memory back instead of recycling it, the way lf_freelist_transport () frees a
-	    // reclaimed entry once freelist->alloc_cnt passes edesc->max_alloc_cnt
+	    // over the cap - see reclaim ()
 	    delete node;
 	    --alloc_now;
 	    ++freed;
 	    continue;
 	  }
 
-	// prepend, so the first node kept becomes the run's tail and already has a NULL link
+	// prepend: the first node kept becomes the tail, already NULL-linked
 	if (run_tail == NULL)
 	  {
 	    run_tail = node;
@@ -604,7 +604,7 @@ namespace lockfree
       }
     if (run_head != NULL)
       {
-	// the whole run joins the available list with one CAS and one counter update
+	// the whole run joins with one CAS and one counter update
 	owner->m_available_count += reusable;
 	owner->push_to_list (*run_head, *run_tail, owner->m_available_list);
       }
