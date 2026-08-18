@@ -61,6 +61,7 @@ namespace test_lockfree
 		       size_t retire_all_weight, const my_end_job_function &f_on_finish);
   static int run_test (size_t thread_count, size_t ops_per_thread, size_t claim_weight, size_t retire_weight,
 		       size_t retire_all_weight);
+  static int test_reclaim_after_idle ();
 
   int
   test_freelist_functional ()
@@ -69,7 +70,8 @@ namespace test_lockfree
 
     test_common::sync_cout ("start test_freelist_functional\n");
 
-    int err = run_test (4, 1000, 60, 39, 1);
+    int err = test_reclaim_after_idle ();
+    err = err | run_test (4, 1000, 60, 39, 1);
     err = err | run_test (64, 1000, 60, 39, 1);
 
     if (err == 0)
@@ -82,6 +84,61 @@ namespace test_lockfree
       }
 
     return err;
+  }
+
+  //
+  // test_reclaim_after_idle () - epoch reclamation must survive the transaction table going fully idle.
+  //
+  // table::get_min_active_tranid () answers INVALID_TRANID - the largest id there is - when no descriptor is
+  // active, and that happens routinely: get_new_global_tranid () recomputes the minimum before the caller has
+  // been assigned its own id. descriptor::reclaim_retired_list () used to store that sentinel as the pass's
+  // high-water mark, after which its "minimum has not moved" early return was true forever and the descriptor
+  // never reclaimed again, so its retired list grew without bound.
+  //
+  // A single thread retiring one node at a time with no transaction open between retires is the cheapest way
+  // to reproduce it: the table is idle at every recompute.
+  //
+  int
+  test_reclaim_after_idle ()
+  {
+    const size_t RETIRE_COUNT = 1000;
+    // the minimum active id is only recomputed every MATI_REFRESH_INTERVAL (100) transactions, so a healthy
+    // descriptor still carries up to one refresh interval of not-yet-reclaimed nodes. anything beyond a couple
+    // of intervals means reclamation stopped.
+    const size_t MAX_EXPECTED_BACKLOG = 300;
+
+    test_common::sync_cout ("test_reclaim_after_idle\n");
+
+    lockfree::tran::system l_lfsys { 1 };
+    my_freelist l_freelist { l_lfsys, 16, 2 };
+    tran::index l_index = l_lfsys.assign_index ();
+
+    for (size_t i = 0; i < RETIRE_COUNT; i++)
+      {
+	my_node *node = l_freelist.claim (l_index);
+	test_common::custom_assert (node != NULL);
+	// claim () leaves the transaction started on purpose; end it so the table is fully idle
+	l_freelist.get_transaction_table ().end_tran (l_index);
+	l_freelist.retire (l_index, *node);
+      }
+
+    tran::table &l_table = l_freelist.get_transaction_table ();
+    size_t retired = l_table.get_total_retire_count ();
+    size_t reclaimed = l_table.get_total_reclaim_count ();
+    size_t backlog = l_table.get_current_retire_count ();
+
+    l_lfsys.free_index (l_index);
+
+    string_buffer result_str;
+    result_str ("  retired = %zu, reclaimed = %zu, backlog = %zu\n", retired, reclaimed, backlog);
+    test_common::sync_cout (result_str.get_buffer ());
+
+    if (backlog > MAX_EXPECTED_BACKLOG)
+      {
+	test_common::sync_cout ("failed test_reclaim_after_idle: reclamation stalled\n");
+	return 1;
+      }
+    return 0;
   }
 
   void

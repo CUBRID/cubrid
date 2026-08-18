@@ -79,6 +79,8 @@ namespace test_lockfree
 
     0, // is subject to change
 
+    LF_ENTRY_DESCRIPTOR_MAX_ALLOC,
+
     alloc_my_entry,
     free_my_entry,
     init_my_entry,
@@ -103,6 +105,8 @@ namespace test_lockfree
 
   static void init_lf_hash_table (lf_tran_system &transys, int hash_size, my_lf_hash_table &hash);
   static void init_hashmap (tran::system &transys, size_t hash_size, my_hashmap &hash);
+
+  static int testcase_iterator_restart ();
 
   std::string g_tabs = "";
 
@@ -735,8 +739,9 @@ namespace test_lockfree
 
     for (size_t i = 0; i < count; i++)
       {
-	all_threads[i] = std::thread (std::forward<F> (f), std::ref (tres), std::ref (hash), std::ref (tran_array[i]),
-				      std::forward<Args> (args)...);
+	// note: reserve () only sizes the buffer, it does not create the elements. assigning through
+	// all_threads[i] wrote past the end and left join () below walking uninitialized threads.
+	all_threads.emplace_back (f, std::ref (tres), std::ref (hash), std::ref (tran_array[i]), args...);
       }
     for (size_t i = 0; i < count; i++)
       {
@@ -942,13 +947,101 @@ namespace test_lockfree
     cout_new_line ();
   }
 
+  //
+  // testcase_iterator_restart () - iterator::restart () must put the iterator back to its pre-iteration state.
+  //
+  // Every caller of restart () - xcache_invalidate_entries (), xcache_invalidate_qcaches (),
+  // fpcache_remove_by_class (), session_remove_expired_sessions () - runs the same shape: iterate until the
+  // delete buffer fills, release the current entry, end the lock-free transaction, break, delete what was
+  // collected, then restart and scan again from the beginning. An iterator that resumes where it stopped both
+  // skips every entry it has already walked past and ends a transaction that is no longer started.
+  //
+  static int
+  testcase_iterator_restart ()
+  {
+    const size_t HASH_SIZE = 16;                  // small, so each bucket holds several entries
+    const unsigned int ENTRY_COUNT = 200;
+    const size_t INTERRUPT_AFTER = 7;             // stands in for a full delete buffer
+
+    cout_new_line ();
+    std::cout << "test lockfree::hashmap|iterator_restart [mutex = " << (g_edesc.using_mutex != 0) << "]";
+
+    tran::system transys { 1 };
+    tran::index tran_index = transys.assign_index ();
+
+    my_hashmap hash;
+    init_hashmap (transys, HASH_SIZE, hash);
+
+    for (unsigned int i = 0; i < ENTRY_COUNT; i++)
+      {
+	my_key k = { i, i };
+	my_entry *ent = hash.freelist_claim (tran_index);
+	assert (ent != NULL);
+	ent->m_key = k;
+	if (!hash.insert_given (tran_index, k, ent))
+	  {
+	    assert (false);
+	  }
+	hash.unlock (tran_index, ent);
+      }
+
+    my_hashmap::iterator iter { tran_index, hash };
+
+    // walk part of the map, then interrupt exactly the way the callers do
+    size_t walked = 0;
+    my_entry *ent = NULL;
+    while (walked < INTERRUPT_AFTER)
+      {
+	ent = iter.iterate ();
+	if (ent == NULL)
+	  {
+	    break;
+	  }
+	++walked;
+      }
+    assert (ent != NULL);    // ENTRY_COUNT is well above INTERRUPT_AFTER
+    if (g_edesc.using_mutex)
+      {
+	// release the entry mutex iterate () left locked
+	hash.unlock (tran_index, ent);
+      }
+    hash.end_tran (tran_index);
+
+    iter.restart ();
+
+    // a restart that restarts sees the whole map again
+    size_t second_pass = 0;
+    for (ent = iter.iterate (); ent != NULL; ent = iter.iterate ())
+      {
+	++second_pass;
+      }
+
+    hash.destroy ();
+    transys.free_index (tran_index);
+
+    if (second_pass != ENTRY_COUNT)
+      {
+	cout_new_line ();
+	std::cout << "FAILED: second pass saw " << second_pass << " of " << ENTRY_COUNT << " entries";
+	return 1;
+      }
+    return 0;
+  }
+
   int
   test_hashmap_functional (bool short_version)
   {
+    int err = 0;
+
+    set_entry_mutex_mode (MUTEX_OFF);
+    err = err | testcase_iterator_restart ();
+    set_entry_mutex_mode (MUTEX_ON);
+    err = err | testcase_iterator_restart ();
+
     test_hashmap_functional_internal (MUTEX_OFF, short_version);
     test_hashmap_functional_internal (MUTEX_ON, short_version);
 
-    return 0;
+    return err;
   }
 
   static void
