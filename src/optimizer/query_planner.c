@@ -2194,6 +2194,52 @@ qo_get_like_derived_range_dup_sel (QO_PLAN * planp, double *dup_sel, double *kf_
 }
 
 /*
+ * qo_iscan_terms_all_measured () - did every key range term of this scan get its selectivity from
+ *   the column histograms, rather than from an estimate the average key share has to stand in for?
+ *   return: true when every term was measured
+ *   planp(in): index scan plan
+ *   nodep(in): the scanned node
+ */
+static bool
+qo_iscan_terms_all_measured (QO_PLAN * planp, QO_NODE * nodep)
+{
+  QO_TERM *termp;
+  BITSET_ITERATOR iter;
+  int t;
+
+  if (bitset_is_empty (&(planp->plan_un.scan.terms)))
+    {
+      return false;
+    }
+
+  for (t = bitset_iterate (&(planp->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+
+      /* qo_analyze_term () sets QO_TERM_SEL_FROM_HISTOGRAM when histogram probes alone produced
+       * the selectivity, with no fallback to a default guess. */
+      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_SEL_FROM_HISTOGRAM))
+	{
+	  return false;
+	}
+
+      /* A join term is measured too, but it measures the wrong thing for this cost: an equijoin
+       * selectivity is the fraction of the CARTESIAN PRODUCT the join emits, averaged over every
+       * value of the other side - including the values that match nothing here. What this scan
+       * costs is the share one probe reads, for the outer values a query actually looks up, and
+       * those are the values that do have rows. The probe value is unknown while planning, so no
+       * histogram can answer that; the average share of a key (1/pkeys) is the estimate that
+       * fits, and it is what PostgreSQL uses for the same case (var_eq_non_const ()). */
+      if (QO_TERM_CLASS (termp) != QO_TC_SARG)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
  * qo_iscan_cost () -
  *   return:
  *   planp(in):
@@ -2318,6 +2364,20 @@ qo_iscan_cost (QO_PLAN * planp)
 	}
     }
   assert (sel_limit <= 1.0);
+
+  /* The floor computed above is an average key share taken from the index NDV (pkeys), a
+   * statistic that predates the column histograms: it stood in for the selectivities the
+   * optimizer could not measure. Where every key range term WAS measured, that average knows
+   * nothing the measurements do not know better, and applying it as a floor overprices exactly
+   * the scan the histograms exist to price -- an equality on a rare value of a skewed low-NDV
+   * column is priced at 1/pkeys, so a competing index reading orders of magnitude more rows
+   * wins the plan. A measured selectivity therefore keeps only the one-row floor, since a probe
+   * that finds its row reads that row (PostgreSQL's clamp_row_est ()). Default guesses,
+   * fallback-tainted selectivities and histogram-less tables keep the average key share. */
+  if (qo_iscan_terms_all_measured (planp, nodep) && QO_NODE_NCARD (nodep) >= 1)
+    {
+      sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
+    }
 
   /* check lower bound */
   sel = MAX (sel, sel_limit);
