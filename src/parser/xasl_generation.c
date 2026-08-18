@@ -45,6 +45,7 @@
 #include "view_transform.h"
 #include "locator_cl.h"
 #include "optimizer.h"
+#include "histogram_cl.hpp"
 #include "parser_message.h"
 #include "virtual_object.h"
 #include "set_object.h"
@@ -13877,8 +13878,11 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 	{
 	  if (node->info.query.correlation_level == 0)
 	    {
-	      /* add to this level */
+	      /* add to this level; the overwrite is remembered so a regeneration from this
+	       * same tree can restore the level (and with it the subquery's uncorrelated,
+	       * parallel-executable status) before generating again */
 	      node->info.query.correlation_level = info->level;
+	      node->info.query.flag.uncorr_hoisted = 1;
 	    }
 
 	  if (node->info.query.correlation_level == info->level)
@@ -18312,6 +18316,17 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       xasl = pt_to_buildlist_proc (parser, select_node, plan);
     }
 
+  if (xasl != NULL && !parser->flag.set_host_var && parser->host_var_count > 0
+      && histogram_stmt_has_hv_predicate (parser, select_node))
+    {
+      /* the plan was chosen with unbound host-variable predicate markers (default
+       * selectivity), e.g. at PREPARE. The first EXECUTE detects this flag and replans
+       * once under the actual bind values; the value-bound regeneration runs with
+       * set_host_var on, so its plan does not carry the flag and later executions reuse
+       * the fixed plan. */
+      xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
+    }
+
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
@@ -22020,6 +22035,15 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser_free_tree (parser, aptr_statement);
     }
 
+  if (xasl != NULL && !parser->flag.set_host_var && parser->host_var_count > 0
+      && histogram_stmt_has_hv_predicate (parser, statement))
+    {
+      /* same contract as the SELECT producer in pt_plan_query (): the plan was chosen with
+       * unbound host-variable predicate markers, so the first execution replans once under
+       * the actual bind values */
+      xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
+    }
+
   return xasl;
 
 error_return:
@@ -22948,6 +22972,15 @@ cleanup:
   else if (error != NO_ERROR)
     {
       xasl = NULL;
+    }
+
+  if (xasl != NULL && !parser->flag.set_host_var && parser->host_var_count > 0
+      && histogram_stmt_has_hv_predicate (parser, statement))
+    {
+      /* same contract as the SELECT producer in pt_plan_query (): the plan was chosen with
+       * unbound host-variable predicate markers, so the first execution replans once under
+       * the actual bind values */
+      xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
   return xasl;
 }

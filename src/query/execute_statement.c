@@ -3520,8 +3520,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_CREATE_SERIAL:
 	case PT_CREATE_TRIGGER:
 	case PT_CREATE_USER:
-	case PT_UPDATE_HISTOGRAM:
-	case PT_DROP_HISTOGRAM:
 	case PT_ALTER:
 	case PT_ALTER_INDEX:
 	case PT_ALTER_SERIAL:
@@ -3597,14 +3595,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_CREATE_INDEX:
 	  error = do_create_index (parser, statement);
-	  break;
-
-	case PT_UPDATE_HISTOGRAM:
-	  error = do_update_histogram (parser, statement);
-	  break;
-
-	case PT_DROP_HISTOGRAM:
-	  error = do_drop_histogram (parser, statement);
 	  break;
 
 
@@ -4230,7 +4220,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_VACUUM:
     case PT_QUERY_TRACE:
     case PT_KILL_STMT:
-    case PT_SHOW_HISTOGRAM:
 
       db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
       break;
@@ -4241,8 +4230,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_SERIAL:
     case PT_CREATE_TRIGGER:
     case PT_CREATE_USER:
-    case PT_UPDATE_HISTOGRAM:
-    case PT_DROP_HISTOGRAM:
     case PT_ALTER:
     case PT_ALTER_INDEX:
     case PT_ALTER_SERIAL:
@@ -4315,15 +4302,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_CREATE_USER:
       err = do_create_user (parser, statement);
-      break;
-    case PT_UPDATE_HISTOGRAM:
-      err = do_update_histogram (parser, statement);
-      break;
-    case PT_DROP_HISTOGRAM:
-      err = do_drop_histogram (parser, statement);
-      break;
-    case PT_SHOW_HISTOGRAM:
-      err = do_show_histogram (parser, statement);
       break;
     case PT_ALTER:
       /* err = do_alter(parser, statement); */
@@ -4795,6 +4773,26 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
+  if (statement->info.update_stats.all_classes != 0
+      && (statement->info.update_stats.drop_histogram || statement->info.update_stats.bucket_count > 0))
+    {
+      /* DROP HISTOGRAM and n BUCKETS act on one class's histogram catalog rows; the
+       * all/catalog-classes statistics refresh runs server-side and has no per-class
+       * histogram parameters to thread them through */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  if (statement->info.update_stats.all_classes < 0
+      && (statement->info.update_stats.no_histogram || statement->info.update_stats.random_seed))
+    {
+      /* the CATALOG CLASSES refresh (sm_update_all_catalog_statistics) builds no histograms
+       * and takes no sampling seed; reject these options like DROP HISTOGRAM / n BUCKETS
+       * above instead of silently ignoring them */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
   if (statement->info.update_stats.all_classes > 0)
     {
       // ALL CLASSES
@@ -4805,7 +4803,9 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       error = sm_update_all_statistics (statement->info.update_stats.with_fullscan
-					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING);
+					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING,
+					statement->info.update_stats.random_seed,
+					statement->info.update_stats.no_histogram);
       return error;
     }
   else if (statement->info.update_stats.all_classes < 0)
@@ -4869,17 +4869,82 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
+      int n_tables = 0, n_cols = 0;
+
+      int n_hist_skipped = 0;
+
       // update stats
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
 	{
+	  bool trace_on = prm_get_bool_value (PRM_ID_QUERY_TRACE);
+	  struct timeval trace_start, trace_end;
+	  SM_CLASS *sm_class = NULL;
+	  int att_count;
+
 	  class_mop = cls->info.name.db_object;
-	  class_type = ((SM_CLASS *) class_mop->object)->class_type;
+	  /* do not read class_mop->object directly: the MOP can be DECACHED (object == NULL) by the
+	   * server round-trips of a previous list entry's statistics update, or -- for the counters
+	   * consumed after the histogram build below -- by this entry's own; a concurrent DDL on the
+	   * class invalidates our cached copy while we wait on its locks (CI crash in bug_bts_14492).
+	   * au_fetch_class_force () recaches a decached class and fails cleanly on a dropped one, and
+	   * is what sm_update_statistics () itself uses in the same situation. Authorization was
+	   * already checked in the loop above, so the force (no-auth) fetch is the right flavor.
+	   * att_count is read now, next to class_type, because the class must not be touched again
+	   * after the statistics calls: it may be decached again by the time the summary needs it. */
+	  error = au_fetch_class_force (class_mop, &sm_class, AU_FETCH_READ);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  class_type = sm_class->class_type;
+	  att_count = sm_class->att_count;
+
+	  if (trace_on)
+	    {
+	      /* "page sampling eligible" is the requested mode only: sampling actually runs when the
+	       * server-side gate (statistics_sampling_threshold_pages, 0 = disabled) admits the heap.
+	       * The histogram TRACE lines report the realized coverage after the collection. */
+	      fprintf (stdout, "\nTRACE update statistics: %s (%s%s%s%s)\n", sm_get_ch_name (class_mop),
+		       statement->info.update_stats.with_fullscan ? "fullscan" : "page sampling eligible",
+		       statement->info.update_stats.random_seed ? ", random seed" : "",
+		       statement->info.update_stats.no_histogram ? ", no histogram" : "",
+		       statement->info.update_stats.drop_histogram ? ", drop histogram" : "");
+	      gettimeofday (&trace_start, NULL);
+	    }
 
 	  if (class_type == SM_CLASS_CT)
 	    {
 	      bool stats_updated = false;
 
-	      if (prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
+	      if (statement->info.update_stats.drop_histogram)
+		{
+		  DB_OBJECT *obj;
+		  PT_HISTOGRAM_INFO histogram_info;
+		  int save;
+
+		  AU_SAVE_AND_DISABLE (save);
+		  obj = db_find_class (sm_get_ch_name (class_mop));
+		  if (obj == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      AU_RESTORE (save);
+		      return er_errid ();
+		    }
+
+		  histogram_info.target_columns = NULL;
+		  histogram_info.bucket_count = -1;
+		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
+		  histogram_info.random_seed = statement->info.update_stats.random_seed;
+		  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
+							   DO_HISTOGRAM_DROP, NULL);
+		  AU_RESTORE (save);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		  /* the histograms are gone; fall through to the plain statistics update below */
+		}
+	      else if (!statement->info.update_stats.no_histogram)
 		{
 		  DB_OBJECT *obj;
 		  PT_HISTOGRAM_INFO histogram_info;
@@ -4899,9 +4964,15 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		   * class once more only to have its result overwritten right away. Run the combined path first
 		   * and fall back to the plain statistics update only when it could not. */
 		  histogram_info.target_columns = NULL;
-		  histogram_info.bucket_count = -1;
+		  histogram_info.bucket_count =
+		    (statement->info.update_stats.bucket_count > 0) ? statement->info.update_stats.bucket_count : -1;
 		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
-		  error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
+		  histogram_info.random_seed = statement->info.update_stats.random_seed;
+		  int hist_skipped = 0;
+
+		  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
+							   DO_HISTOGRAM_CREATE, &hist_skipped);
+		  n_hist_skipped += hist_skipped;
 		  if (error == NO_ERROR)
 		    {
 		      stats_updated = true;
@@ -4923,7 +4994,38 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
 		}
+
+	      if (error == NO_ERROR)
+		{
+		  n_tables++;
+		  n_cols += att_count;
+		}
 	    }
+
+	  if (trace_on)
+	    {
+	      gettimeofday (&trace_end, NULL);
+	      fprintf (stdout, "TRACE update statistics: %s done in %.1f ms\n", sm_get_ch_name (class_mop),
+		       (trace_end.tv_sec - trace_start.tv_sec) * 1000.0
+		       + (trace_end.tv_usec - trace_start.tv_usec) / 1000.0);
+	      fflush (stdout);
+	    }
+	}
+
+      if (error == NO_ERROR && n_tables > 0)
+	{
+	  if (n_hist_skipped > 0)
+	    {
+	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s"
+		       " (%d skipped: histogram type not supported).\n", n_tables,
+		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s", n_hist_skipped);
+	    }
+	  else
+	    {
+	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+	    }
+	  fflush (stdout);
 	}
 
       return error;
@@ -9843,6 +9945,9 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
 	    {
+	      XASL_NODE_HEADER xasl_header = { 0, 0 };
+
+	      stream.xasl_header = &xasl_header;
 	      err = prepare_query (contextp, &stream);
 
 	      if (err != NO_ERROR)
@@ -9856,6 +9961,13 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    {
 		      free_and_init (stream.xasl_id);
 		    }
+		}
+	      else if (stream.xasl_id != NULL && (xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* the cached plan was chosen with unbound host-variable predicate markers;
+		   * record it so the first execution replans under the real values (same
+		   * driver-neutral recording as do_prepare_select ()) */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
 	    }
 
@@ -9871,6 +9983,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      /* pt_to_update_xasl() will build XASL tree from parse tree */
 	      contextp->xasl = pt_to_update_xasl (parser, statement, &not_nulls);
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* freshly compiled with unbound host-variable markers */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
 	      AU_RESTORE (au_save);
 
 	      if (contextp->xasl && (err >= NO_ERROR))
@@ -11202,6 +11319,9 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
 	    {
+	      XASL_NODE_HEADER xasl_header = { 0, 0 };
+
+	      stream.xasl_header = &xasl_header;
 	      err = prepare_query (contextp, &stream);
 	      if (err != NO_ERROR)
 		{
@@ -11214,6 +11334,13 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		    {
 		      free_and_init (stream.xasl_id);
 		    }
+		}
+	      else if (stream.xasl_id != NULL && (xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* the cached plan was chosen with unbound host-variable predicate markers;
+		   * record it so the first execution replans under the real values (same
+		   * driver-neutral recording as do_prepare_select ()) */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -11228,6 +11355,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 
 	      /* pt_to_delete_xasl() will build XASL tree from parse tree */
 	      contextp->xasl = pt_to_delete_xasl (parser, statement);
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* freshly compiled with unbound host-variable markers */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
 	      AU_RESTORE (au_save);
 
 	      if (contextp->xasl && (err >= NO_ERROR))
@@ -15181,6 +15313,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  free_and_init (stream.xasl_id);
 		}
 	    }
+	  if (stream.xasl_header->xasl_flag & HV_PRED_PLAN_UNPEEKED)
+	    {
+	      /* the cached plan was chosen with unbound host-variable predicate markers; record it so
+	       * the first execution replans under the real values. The SQL-level PREPARE/EXECUTE
+	       * consumer of this header flag (do_get_prepared_statement_info ()) is never reached by
+	       * CCI/JDBC prepared statements, which arrive through this driver-neutral path. */
+	      statement->flag.hv_pred_plan_unpeeked = 1;
+	    }
 	}
     }
 
@@ -15197,6 +15337,11 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (contextp->xasl && statement->info.query.oids_included)
 	{
 	  contextp->xasl->header.xasl_flag |= RESULT_CACHE_INHIBITED;
+	}
+      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+	{
+	  /* freshly compiled with unbound host-variable markers (see the cache-hit branch above) */
+	  statement->flag.hv_pred_plan_unpeeked = 1;
 	}
       AU_RESTORE (au_save);
 
@@ -16763,18 +16908,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_INDEX:
       name = pt_print_bytes (parser, statement->info.index.indexed_class);
       repl_stmt.statement_type = CUBRID_STMT_DROP_INDEX;
-      break;
-
-    case PT_UPDATE_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_UPDATE_HISTOGRAM;
-      break;
-
-    case PT_DROP_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_DROP_HISTOGRAM;
-      break;
-
-    case PT_SHOW_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_SHOW_HISTOGRAM;
       break;
 
     case PT_CREATE_SERIAL:
