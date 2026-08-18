@@ -133,12 +133,10 @@ namespace lockfree
       free_node_type *to_free_node (T *p);
       T *from_free_node (free_node_type *fn);
       void save_temporary (tran::descriptor &tdes, T *&p);
-      T *claim_temporary (tran::descriptor &tdes);
       T *freelist_claim (tran::descriptor &tdes);
       void freelist_retire (tran::descriptor &tdes, T *&p);
 
       void safeguard_use_mutex_or_tran_started (const tran::descriptor &tdes, const pthread_mutex_t *mtx);
-      void start_tran_if_not_started (tran::descriptor &tdes);
       void start_tran_force (tran::descriptor &tdes);
       void promote_tran_force (tran::descriptor &tdes);
       void end_tran_if_started (tran::descriptor &tdes);
@@ -582,13 +580,6 @@ namespace lockfree
   }
 
   template <class Key, class T>
-  T *
-  hashmap<Key, T>::claim_temporary (tran::descriptor &tdes)
-  {
-    return from_free_node (reinterpret_cast<free_node_type *> (tdes.pull_saved_reclaimable ()));
-  }
-
-  template <class Key, class T>
   void
   hashmap<Key, T>::freelist_retire (tran::index tran_index, T *&entry)
   {
@@ -725,13 +716,6 @@ namespace lockfree
 
     /* If we use mutex, we have a mutex locked. */
     assert (!m_edesc->using_mutex || mtx != NULL);
-  }
-
-  template <class Key, class T>
-  void
-  hashmap<Key, T>::start_tran_if_not_started (tran::descriptor &tdes)
-  {
-    tdes.start_tran ();   // same result if it was started or not
   }
 
   template <class Key, class T>
