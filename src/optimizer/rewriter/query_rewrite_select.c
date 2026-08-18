@@ -46,7 +46,6 @@ static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NOD
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_rewrite_oid_equality (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * pred, int *seqno);
-static PT_NODE *qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_get_next_oid_pred (PT_NODE * pred);
 
@@ -3526,8 +3525,9 @@ qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
  *
  * Note: If join order hint is set, skip and go ahead.
  *   do parser_walk_tree() pre function
+ *   Also called from qo_reduce_equality_terms_post (), which needs the location reset. Calling it twice is harmless.
  */
-static PT_NODE *
+PT_NODE *
 qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *spec, *spec2;
