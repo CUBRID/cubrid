@@ -393,6 +393,17 @@ TEST_F (OosSqlStorage, AlterChangeClassAttributeReportsNonNormalAttributeError)
   db_abort_transaction ();
 }
 
+TEST_F (OosSqlStorage, AlterChangeClassAttributePreservesConstraintValidation)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (a INT, CLASS ca INT)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg CHANGE CLASS ATTRIBUTE ca ca INT AUTO_INCREMENT");
+  EXPECT_EQ (rc, ER_SM_INVALID_CONSTRAINT);
+  db_abort_transaction ();
+}
+
 TEST_F (OosSqlStorage, ForceOutlineRejectsUnsupportedAttributes)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (c INT STORAGE FORCE_OUTLINE)");
