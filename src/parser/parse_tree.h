@@ -307,6 +307,14 @@ struct json_t;
 #define PT_IS_FUNCTION(n) \
         ( (n) && ((n)->node_type == PT_FUNCTION) )
 
+/* a PT_DATA_DEFAULT node carrying a STABLE residual DEFAULT expression:
+ * classified STABLE by pt_check_data_default, on the new DEFAULT path
+ * (no legacy pseudo-column enum) */
+#define PT_IS_STABLE_RESIDUAL_DEFAULT(n) \
+        ( (n) && ((n)->node_type == PT_DATA_DEFAULT) && \
+          (n)->info.data_default.default_expr_type == DB_DEFAULT_NONE && \
+          (n)->info.data_default.expr_volatility == PT_VOLATILITY_STABLE )
+
 #define PT_IS_MULTI_COL_TERM(n) \
 	( (n) && \
 	  PT_IS_FUNCTION((n)) && \
@@ -2108,6 +2116,9 @@ struct pt_data_default_info
   PT_MISC_TYPE shared;		/* will PT_SHARED or PT_DEFAULT */
   DB_DEFAULT_EXPR_TYPE default_expr_type;	/* if it is a pseudocolumn, do not evaluate expr */
   char *expr_text;		/* normalized source text of an Expression-Derived Literal DEFAULT; NULL otherwise */
+  PT_VOLATILITY expr_volatility;	/* effective volatility of a DEFAULT expression on the new path:
+					 * IMMUTABLE for an Expression-Derived Literal, STABLE for a residual
+					 * expression that survives folding; UNSET otherwise */
 };
 
 /* Info for the AUTO_INCREMENT node */

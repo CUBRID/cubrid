@@ -707,6 +707,9 @@ extern "C"
 						  int *continue_walk);
   extern void pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
 								DB_DEFAULT_EXPR * default_expr);
+  extern int pt_compact_default_tree_to_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream,
+						int *stream_size);
+  extern PT_NODE *pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream, int stream_size);
   extern void pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size,
 						     DB_DEFAULT_EXPR * default_expr);
   extern PT_NODE *pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser,

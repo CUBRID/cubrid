@@ -208,6 +208,7 @@ extern XASL_NODE *pt_gen_simple_merge_plan (PARSER_CONTEXT * parser, PT_NODE * s
 					    XASL_NODE * xasl);
 extern XASL_NODE *parser_generate_do_stmt_xasl (PARSER_CONTEXT * p, PT_NODE * node);
 extern FUNC_PRED *pt_to_func_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * expr);
+extern int pt_to_default_expr_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *stream_size);
 extern PT_NODE *pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MERGE_INFO * info);
 extern PT_NODE *pt_to_merge_insert_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MERGE_INFO * info);
 extern XASL_NODE *pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_upd_attrs,
