@@ -678,7 +678,15 @@ namespace lockfree
     if (fn == NULL)
       {
 	fn = m_freelist->claim (tdes);
-	assert (fn != NULL);
+	if (fn == NULL)
+	  {
+	    // out of memory; lf_freelist_claim () answered NULL here too and callers check for it
+	    if (is_local_tran)
+	      {
+		tdes.end_tran ();
+	      }
+	    return NULL;
+	  }
 	// make sure m_edesc is initialized
 	fn->get_data ().m_edesc = m_edesc;
 
@@ -1037,7 +1045,13 @@ namespace lockfree
 		    assert (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN));
 
 		    entry = freelist_claim (tdes);
-		    assert (entry != NULL);
+		    if (entry == NULL)
+		      {
+			// out of memory. lf_list_insert_internal () ended the transaction and returned ER_FAILED,
+			// which reached the caller as "not inserted"; same end state here.
+			end_tran_force (tdes);
+			return false;
+		      }
 
 		    /* set it's key */
 		    if (m_edesc->f_key_copy (&key, get_keyp (entry)) != NO_ERROR)

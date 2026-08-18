@@ -27,6 +27,7 @@
 #include <atomic>
 #include <cstddef>
 #include <limits>
+#include <new>
 
 namespace lockfree
 {
@@ -92,10 +93,10 @@ namespace lockfree
 
       void swap_backbuffer ();
       void alloc_backbuffer ();
-      void force_alloc_block ();
+      bool force_alloc_block ();
 
-      void alloc_list (free_node *&head, free_node *&tail);
-      void dealloc_list (free_node *head);
+      size_t alloc_list (free_node *&head, free_node *&tail);
+      size_t dealloc_list (free_node *head);
 
       free_node *pop_from_available ();
       void push_to_list (free_node &head, free_node &tail, std::atomic<free_node *> &dest);
@@ -208,7 +209,14 @@ namespace lockfree
     free_node *new_bb_head = NULL;
     free_node *new_bb_tail = NULL;
 
-    alloc_list (new_bb_head, new_bb_tail);
+    if (alloc_list (new_bb_head, new_bb_tail) < m_block_size)
+      {
+	// the back-buffer must hold a whole block or nothing: swap_backbuffer () credits m_block_size for it, and
+	// final_sanity_checks () asserts the same. give a short block back and leave the buffer empty - claim ()
+	// falls through to force_alloc_block () and reports the failure from there.
+	m_alloc_count -= dealloc_list (new_bb_head);
+	return;
+      }
 
     // update backbuffer tail
     free_node *dummy_null = NULL;
@@ -220,28 +228,41 @@ namespace lockfree
   }
 
   template <class T>
-  void
+  bool
   freelist<T>::force_alloc_block ()
   {
     free_node *new_head = NULL;
     free_node *new_tail = NULL;
-    alloc_list (new_head, new_tail);
+    size_t allocated = alloc_list (new_head, new_tail);
+    if (allocated == 0)
+      {
+	return false;
+      }
 
-    // push directly to available
-    m_available_count += m_block_size;
+    // push directly to available; a short block is still usable here
+    m_available_count += allocated;
     ++m_forced_alloc_count;
     push_to_list (*new_head, *new_tail, m_available_list);
+    return true;
   }
 
   template <class T>
-  void
+  size_t
   freelist<T>::alloc_list (free_node *&head, free_node *&tail)
   {
     head = tail = NULL;
     free_node *node;
+    size_t allocated = 0;
     for (size_t i = 0; i < m_block_size; i++)
       {
-	node = new free_node ();
+	// nothrow, and checked: lf_freelist_alloc_block () reported ER_OUT_OF_VIRTUAL_MEMORY and let the caller
+	// fail the statement. throwing from here would unwind through a started lock-free transaction that
+	// nothing ends, pinning the minimum active id and stopping reclamation for this table for good.
+	node = new (std::nothrow) free_node ();
+	if (node == NULL)
+	  {
+	    break;
+	  }
 	node->set_owner (*this);
 	if (tail == NULL)
 	  {
@@ -249,21 +270,26 @@ namespace lockfree
 	  }
 	node->set_freelist_next (head);
 	head = node;
+	++allocated;
       }
-    m_alloc_count += m_block_size;
+    m_alloc_count += allocated;
+    return allocated;
   }
 
   template <class T>
-  void
+  size_t
   freelist<T>::dealloc_list (free_node *head)
   {
-    // free all
+    // free all; returns how many, so a caller undoing a partial allocation can correct m_alloc_count
+    size_t count = 0;
     free_node *save_next = NULL;
     for (free_node *node = head; node != NULL; node = save_next)
       {
 	save_next = node->get_freelist_next ();
 	delete node;
+	++count;
       }
+    return count;
   }
 
   template <class T>
@@ -316,11 +342,15 @@ namespace lockfree
     // allocating directly into available list
     while (node == NULL)
       {
-	force_alloc_block ();
+	if (!force_alloc_block ())
+	  {
+	    // out of memory. legacy lf_freelist_claim () answered NULL here and its callers - xcache_new_entry ()
+	    // among them - already expect that.
+	    return NULL;
+	  }
 	node = pop_from_available ();
       }
 
-    assert (node != NULL);
     assert (m_available_count > 0);
     m_available_count--;
     check_my_pointer (node);
