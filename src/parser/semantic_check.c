@@ -4153,7 +4153,10 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	      /* the persisted text surfaces through catalog columns declared as
 	       * VARCHAR (DB_MAX_DEFAULT_EXPR_LENGTH); a longer one would be
 	       * silently truncated there, so reject it up front (the same
-	       * policy PL/CSQL applies to its parameter defaults) */
+	       * policy PL/CSQL applies to its parameter defaults).
+	       * NOTE: catalog_class.c appends " ON UPDATE <expr>" (at most ~28 characters,
+	       * ON UPDATE stays a pseudo-column enum) to the same cell, so a text within
+	       * the limit can still lose that suffix to the catalog truncation. */
 	      if (edl_text != NULL && strlen (edl_text) > DB_MAX_DEFAULT_EXPR_LENGTH)
 		{
 		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
