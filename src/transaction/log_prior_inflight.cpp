@@ -285,6 +285,11 @@ log_prior_inflight_retire (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node)
   slot.start_lsa.store (NULL_LSA, std::memory_order_release);
   log_Inflight_head.store (head + 1, std::memory_order_release);
 
+  /* Pairs with start_tran (): the scan in retire_node () below is a load after the unlink above, the one
+   * order the hardware may swap. Unlink is serialized under LOG_CS, so one fence covers every node freed
+   * from here. */
+  std::atomic_thread_fence (std::memory_order_seq_cst);
+
   log_prior_inflight_holder *holder = node->inflight_holder;
   node->inflight_holder = NULL;
 
@@ -315,7 +320,8 @@ log_prior_inflight_pin_lookup (THREAD_ENTRY *thread_p, const LOG_LSA &lsa, LOG_P
     }
 
   /* Pin before reading any slot: a node retired from here on cannot be freed until this thread leaves,
-   * because the drain tags what it retires with a later transaction id. */
+   * because the drain tags what it retires with a later transaction id. start_tran () publishes that id
+   * seq_cst, which keeps it ahead of the slot reads below. */
   tdes->start_tran ();
 
   LOG_PRIOR_NODE *node = log_inflight_find (lsa);
