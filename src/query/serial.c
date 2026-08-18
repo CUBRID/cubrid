@@ -153,7 +153,7 @@ static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * 
 					    int num_alloc, SERIAL_CACHE_ENTRY * claimed_entry);
 static int serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
 static int serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * store_val,
-					   int num_alloc);
+					   int num_alloc, bool log_supplemental);
 static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
 static int serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
@@ -597,13 +597,19 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
  *                parameter: see serial_update_cur_val_of_serial () and
  *                serial_flush_cur_val_of_serial ().
  *   return: NO_ERROR, or ER_status
- *   entry(in)     :
- *   store_val(in) : the value to write into cur_val
- *   num_alloc(in) : reported to the supplemental (CDC) log
+ *   entry(in)            :
+ *   store_val(in)        : the value to write into cur_val
+ *   num_alloc(in)        : how many values this write hands out, reported to the supplemental
+ *                          (CDC) log; ignored when log_supplemental is false
+ *   log_supplemental(in) : append the supplemental (CDC) record for this write. The record is a
+ *                          "SELECT SERIAL_NEXT_VALUE (name, num_alloc)" statement, so it may only
+ *                          be appended by a write that actually hands values out. A write-back
+ *                          hands out nothing and must pass false - see
+ *                          serial_flush_cur_val_of_serial ().
  */
 static int
 serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * store_val,
-				int num_alloc)
+				int num_alloc, bool log_supplemental)
 {
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
@@ -684,7 +690,7 @@ serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
       goto exit_on_error;
     }
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
+  if (log_supplemental && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
     {
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
@@ -733,7 +739,7 @@ exit_on_error:
 static int
 serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc)
 {
-  return serial_store_cur_val_of_serial (thread_p, entry, &entry->last_cached_val, num_alloc);
+  return serial_store_cur_val_of_serial (thread_p, entry, &entry->last_cached_val, num_alloc, true);
 }
 
 /*
@@ -752,6 +758,13 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
  * The write is deliberately not part of whatever transaction triggered the drop. A rolled back
  * reset DDL must still leave the lowered cur_val behind, because the values it covers were already
  * issued: value state is non-transactional, generation parameters are not.
+ *
+ * No supplemental (CDC) record is appended. That record is a "SELECT SERIAL_NEXT_VALUE (name, n)"
+ * statement, which advances a consumer's serial by n: it reports the values a write hands out, not
+ * the value the write stores. This one hands out nothing, so there is nothing to report - any n
+ * would push the consumer past the master, and it would do so in the direction opposite to the
+ * write. The values this write-back gives back were never reported as handed out either, so the
+ * consumer stays level with the master without it.
  */
 static int
 serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
@@ -802,7 +815,7 @@ serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
       return NO_ERROR;
     }
 
-  return serial_store_cur_val_of_serial (thread_p, entry, &entry->cur_val, 1);
+  return serial_store_cur_val_of_serial (thread_p, entry, &entry->cur_val, 0, false);
 }
 
 /*
