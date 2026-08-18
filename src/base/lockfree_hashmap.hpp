@@ -260,8 +260,7 @@ namespace lockfree
 			 size_t freelist_block_count, lf_entry_descriptor &edesc)
   {
     m_freelist = new freelist_type (transys, freelist_block_size, freelist_block_count);
-    // CBRD-24474 capped the legacy freelist through edesc.max_alloc_cnt. the new freelist has no notion of an
-    // entry descriptor, so hand it the same cap.
+    // the freelist knows nothing of entry descriptors, so hand it CBRD-24474's cap
     m_freelist->set_max_alloc_count (edesc.max_alloc_cnt > 0
 				     ? (size_t) edesc.max_alloc_cnt : std::numeric_limits<size_t>::max ());
 
@@ -561,9 +560,8 @@ namespace lockfree
   hashmap<Key, T>::to_free_node (T *p)
   {
     // not nice, but necessary until we fully refactor lockfree hashmap.
-    // the offset is fixed by the type, but obtaining it needs an instance, and building one constructs and then
-    // destroys a whole T - for xasl_cache_ent that is a pthread_mutex_init/destroy pair. this runs on every
-    // retire and every save_temporary, so compute it once.
+    // static because obtaining the offset needs an instance, and building one constructs and destroys a whole T
+    // - a pthread_mutex_init/destroy pair for xasl_cache_ent - on a path taken by every retire.
     static const std::ptrdiff_t off = free_node_offset_of_data (free_node_type ());
     char *cp = (char *) p;
     cp -= off;
@@ -1417,13 +1415,9 @@ namespace lockfree
       {
 	m_tdes->end_tran();
       }
-    // the bucket index must go back to its pre-iteration value, the way lf_hash_table_cpp::iterator::restart ()
-    // resets lf_hash_table_iterator::bucket_index to -1. two things break when it is left behind:
-    //   - iterate () resumes at the next bucket, so the rest of the interrupted bucket and every bucket already
-    //     visited are never looked at again. every caller restarts precisely to re-scan from the beginning after
-    //     deleting the entries it collected, so those entries are silently missed.
-    //   - iterate () takes the m_bucket_index != INVALID_INDEX branch and ends a transaction that is no longer
-    //     started - callers end it themselves before breaking out - which trips assert (is_tran_started ()).
+    // the bucket index must reset too, as lf_hash_table_cpp::iterator::restart () does. left behind, iterate ()
+    // resumes at the next bucket - silently skipping everything already walked, which is exactly what callers
+    // restart to re-scan - and ends a transaction the caller already ended.
     m_bucket_index = INVALID_INDEX;
     m_curr = NULL;
   }
