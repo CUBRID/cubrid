@@ -67,7 +67,8 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         // main class name ends with a string of the form _<seqno>_<creation-time>
         // Detaching this string yields the invariant part of the main class name
         // (invariant over recreations by executing CREATE OR REPLACE PROCEDURE/FUNCTION)
-        // of the form Proc_<owner>_<procedure-name> or Func_<owner>_<function-name>.
+        // of the form Proc_<owner-name-len>_<owner-name>_<procedure-name> or
+        // Func_<owner-name-len>_<owner-name>_<function-name>.
         String unitKey = getInvariantPartOfMainClassName(mainClassName);
         if (unitKey == null) {
             // the name is not a unit (procedure, function) class name
@@ -78,10 +79,7 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         if (classLoader == null || !mainClassName.equals(classLoader.mainClassName)) {
             // if the unit's class is first loaded or it is recompiled to a new class
             classLoader = new CatalogClassLoader(mainClassName, this);
-            CatalogClassLoader old = unitClassLoaders.put(unitKey, classLoader);
-            if (old != null) {
-                old.clear();
-            }
+            unitClassLoaders.put(unitKey, classLoader);
         }
 
         assert classLoader != null;
