@@ -2341,7 +2341,11 @@ qo_iscan_cost (QO_PLAN * planp)
       index = (i == 0) ? 0 : i - 1;
     }
 
-  if (i <= pkeys_num && cum_statsp->pkeys[index] >= 1)
+  /* the guard must key off the subscript that is read: an index skip scan sets index = i
+   * (its key prefix includes the skipped leading column), so i <= pkeys_num let it read one
+   * past the pkeys array, which holds BTREE_STATS_PKEYS_NUM entries at most. Non-ISS scans
+   * read index = i - 1 and are unaffected by the change. (CBRD-27253) */
+  if (index < pkeys_num && cum_statsp->pkeys[index] >= 1)
     {
       sel_limit = 1.0 / (double) cum_statsp->pkeys[index];
     }
