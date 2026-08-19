@@ -86,7 +86,9 @@
 #                                 그래서 shard 가 PID 1 을 확인하고 즉시 죽는다.
 #   privileged: true              overlay 마운트에 쓴다. 없으면 mount 가 실패한다.
 #
-# ConfigMap `cubrid-arc-pod-template` (PROTOTYPE-s6-pod-template.yaml 이 정본).
+# ConfigMap `cubrid-arc-pod-template`. 정본은 ARC-1526-pod-template.yaml 이다.
+# ⚠ PROTOTYPE-s6-pod-template.yaml 이 아니다 — 그 파일의 metadata.name 은 아직
+#   cubridqa-1503-poc-pod-template 이라 그것으로 만들면 마운트가 안 붙고 모든 job 이 죽는다.
 
 name: gha-ci
 
@@ -132,26 +134,39 @@ on:
         default: ""
         type: string
 
-# 저장소 기본값에 기대지 않고 필요한 것만 명시한다 (tc-* 워크플로와 같은 관례).
-# contents 는 read 다 — 이 워크플로는 저장소에 쓰지 않는다.
-# pull-requests: write 는 collect 가 결과를 PR 에 붙이는 데 쓴다.
-permissions:
-  contents: read
-  pull-requests: write
+# 전부 막고 job 이 필요한 것만 가져간다 (tc-branch-sync·tc-merge-gate 와 같은 관례).
+#
+# ⚠ 워크플로 수준에 쓰기 권한을 두면 안 된다. shard 는 job pod 50개이고 privileged 이며
+#   그 안에서 도는 것은 테스트케이스 코드다. 그 pod 에 PR 쓰기 토큰을 줄 이유가 없다.
+#   실제로 토큰을 쓰는 job 은 gate 와 collect 둘뿐이다 —
+#   plan·shard 는 GitHub App 토큰만 쓰고, build_debug 는 GlusterFS 미러에서 clone 한다.
+#   이 워크플로에는 actions/checkout 이 없다. 그래서 contents 도 필요 없다.
+permissions: {} # Least privilege — jobs opt-in below
 
 # PR 하나가 한 그룹이다. **다른 PR 은 서로 병렬로 돈다** — 코멘트로 쏘는 것이
 # 여러 사람이라 전역 그룹으로 묶으면 남의 run 이 조용히 취소된다.
 # 같은 PR 에 다시 쏘면 앞 run 을 대체한다. 최신 코멘트가 이긴다.
 #
-# 같은 PR 로 묶는 것만으로 공유 상태가 안전해지는 근거:
-#   * 발행물은 SHA 로 나뉘고 tmp·old 이름에 run id 가 붙는다 — run 끼리 안 겹친다
-#   * CTP seed 는 run 별 경로다 (아래 plan 참조). 옛 판은 공유 경로라 이 그룹이 필요했다
-#   * timings 는 읽고-고쳐-쓰기라 갱신을 잃을 수 있다. 깨지지는 않는다 —
-#     rename 이 원자적이다. 잃으면 다음 run 이 다시 채운다
+# ⚠ dispatch 는 PR 번호가 없을 수 있다. 그때 폴백은 `github.run_id` 가 아니라 **SHA** 다.
+#   run_id 는 run 마다 달라 그룹이 늘 유일해지고, 그러면 같은 SHA 에 `force_build=true`
+#   를 두 번 쏘았을 때 둘이 `builds/<sha>/debug` 재발행을 다툰다. 재발행은 rename 2회이고
+#   그 사이 경로가 **없다** — 돌고 있는 shard 의 overlay lowerdir 가 사라진다.
+#   SHA 로 묶으면 그 둘이 같은 그룹에 들어가 겹치지 않는다.
+#
+# 그룹을 이렇게 잡으면 남는 공유 상태와 그 성질:
+#   * `builds/<sha>/debug`      SHA 별. 위 폴백이 같은 SHA 를 한 그룹으로 묶어 지킨다.
+#                               tmp·old 이름에 run id 가 붙어 이름 충돌은 없다
+#   * `runs/<run id>/*`         run 별. CTP seed 도 여기다 (옛 판은 공유 경로였고,
+#                               그래서 전역 그룹이 필요했다)
+#   * `timings/shell.tsv`       전역. 읽고-고쳐-쓰기라 **갱신을 잃을 수 있다.**
+#                               깨지지는 않는다 — rename 이 원자적이다.
+#                               잃으면 다음 run 이 다시 채운다
+#   * `ccache-shell-debug`      전역. ccache 가 스스로 동시 접근을 처리한다
+#   * `cubrid-mirror`           읽기만 한다
 #
 # 클러스터 용량은 이 그룹이 아니라 러너 scale set 의 maxRunners 가 막는다.
 concurrency:
-  group: gha-ci-${{ github.event.issue.number || inputs.pr || github.run_id }}
+  group: gha-ci-${{ github.event.issue.number || inputs.pr || inputs.sha }}
   cancel-in-progress: true
 
 env:
@@ -178,6 +193,8 @@ jobs:
     name: 게이트
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      pull-requests: read # 코멘트가 가리키는 PR 의 head SHA 를 읽는다
     # 코멘트 경로의 방어선이다. issue_comment 는 base 저장소 문맥에서 돌아
     # 시크릿이 붙는다. 그래서 코멘트를 단 사람의 권한으로 판정한다.
     # CONTRIBUTOR 는 거부한다 — 외부 기여자의 PR 은 메인테이너가 대신 쏜다.
@@ -273,6 +290,7 @@ jobs:
   build_debug:
     name: 빌드 (rl8.10 노드)
     needs: gate
+    permissions: {} # 토큰을 쓰지 않는다. 엔진은 GlusterFS 미러에서 clone 한다
     if: needs.gate.outputs.run == 'true'
     runs-on: cubrid-arc
     timeout-minutes: 120
@@ -432,6 +450,35 @@ jobs:
           ccache -s
 
       # ---------------------------------------------------------------
+      # 취소된 run 이 남긴 찌꺼기를 쓸어낸다.
+      #
+      # `cancel-in-progress: true` 라 취소가 정상 종료 경로다. 취소되면 정리 스텝도
+      # 안 돌기 때문에 staging 과 run 디렉토리가 남는다. 발행물 하나가 745MB 다.
+      #
+      # ⚠ GlusterFS 정리 CronJob 은 /home/build-cache/builds 하나만 본다. 이 경로는
+      #   그것의 범위 밖이다. 그래서 여기가 유일한 정리 경로다.
+      #   CronJob 범위를 넓히는 것은 circleci-k8s-ansible 쪽 별도 작업이다.
+      #
+      # 1일 기준이 안전한 근거: shard 의 timeout-minutes 가 120 이라 run 하나가
+      # 하루를 넘지 못한다. 그래서 돌고 있는 run 의 것을 지울 수 없다.
+      # ---------------------------------------------------------------
+      - name: 3b. 찌꺼기 정리 — 취소된 run 이 남긴 것
+        run: |
+          set -eo pipefail
+          swept=0
+          for pat in "$CI_BUILD_ROOT"/*/debug.tmp.* "$CI_BUILD_ROOT"/*/debug.old.* \
+                     "$CI_ROOT"/runs/*/testtools "$CI_ROOT"/runs/*/testtools.tmp.* ; do
+            # glob 이 안 맞으면 셸이 패턴 문자열을 그대로 준다. -e 로 걸러진다.
+            [ -e "$pat" ] || continue
+            # 이 run 의 것은 건드리지 않는다.
+            case "$pat" in *".${GITHUB_RUN_ID}"|*"/${GITHUB_RUN_ID}/"*) continue ;; esac
+            [ -n "$(find "$pat" -maxdepth 0 -mtime +0 2>/dev/null)" ] || continue
+            echo "지운다: $pat ($(du -sh "$pat" 2>/dev/null | cut -f1))"
+            rm -rf "$pat" && swept=$((swept + 1))
+          done
+          echo "쓸어낸 것: $swept 건"
+
+      # ---------------------------------------------------------------
       - name: 4. 발행 — staging 에 모으고 rename 한 번으로 공개한다
         id: publish
         env:
@@ -469,7 +516,9 @@ jobs:
             #
             # 옛것을 원자적으로 비켜 놓고, 새것을 원자적으로 들여놓는다. 둘 다 rename 이다.
             # 그 사이 $dir 이 잠깐 **없다**. 이것은 "절반만 쓰인 것"과 다르다 —
-            # 없는 것은 plan 이 sentinel 검사로 즉시 잡는다. 겹치는 run 은 concurrency 가 막는다.
+            # 없는 것은 plan 이 sentinel 검사로 즉시 잡는다.
+            # 같은 SHA 를 재발행하는 run 끼리 겹치는 것은 concurrency 그룹이 막는다 —
+            # 그룹 폴백이 run id 가 아니라 SHA 인 이유가 이것이다 (위 concurrency 참조).
             old="${dir}.old.${GITHUB_RUN_ID}"
             rm -rf "$old"
             if [ -e "$dir" ]; then
@@ -532,6 +581,7 @@ jobs:
   plan:
     name: 분배
     needs: [gate, build_debug]
+    permissions: {} # 테스트케이스는 GitHub App 토큰으로 받는다. GITHUB_TOKEN 은 안 쓴다
     runs-on: cubrid-arc
     timeout-minutes: 30
     container:
@@ -753,12 +803,19 @@ jobs:
           # 형식: <케이스 경로>\t<초>.  없으면 빈 파일로 시작한다.
           mkdir -p "$(dirname "$TIMINGS")"
           [ -f "$TIMINGS" ] || : > "$TIMINGS"
-          echo "소요시간 데이터: $(wc -l < "$TIMINGS") 건"
+          timings_n=$(wc -l < "$TIMINGS")
+          echo "소요시간 데이터: $timings_n 건"
 
           # 기본값은 실측 중앙값이다. 데이터가 있으면 그 중앙값을 쓴다.
           if [ -s "$TIMINGS" ]; then
             dflt=$(cut -f2 "$TIMINGS" | sort -n | awk '{a[NR]=$1} END {print (NR? a[int(NR/2)+1] : 10)}')
           else
+            # ⚠ 데이터가 없으면 모든 케이스가 같은 무게가 되어 LPT 가 사실상 이름순 분배로
+            #   떨어진다. 그것은 오류가 아니라 **조용한 회귀**다 — 최장 shard 가 실측
+            #   24.8분에서 49.4분으로 늘어진다 (약 2배). 그래서 눈에 보이게 남긴다.
+            echo "::warning::소요시간 데이터가 비었다. LPT 가 이름순 분배로 떨어진다 —"
+            echo "::warning::  최장 shard 가 약 2배로 늘어난다. $TIMINGS 를 확인해라."
+            echo "::warning::  경로를 옮겼다면 옛 경로에서 복사해야 한다 (RUNBOOK 참조)."
             dflt=10
           fi
           echo "기본값(신규 케이스에 매기는 초): $dflt"
@@ -928,6 +985,9 @@ jobs:
   shard:
     name: "shard ${{ matrix.i }}"
     needs: plan
+    # ⚠ 이 job 은 pod 50개이고 privileged 이며 그 안에서 테스트케이스 코드가 돈다.
+    #   GITHUB_TOKEN 에 아무 권한도 주지 않는다. 테스트케이스는 App 토큰으로 받는다.
+    permissions: {}
     runs-on: cubrid-arc
     timeout-minutes: 120
     strategy:
@@ -1200,6 +1260,13 @@ jobs:
     # ⚠ always() 만 두면 gate 가 넘어간 코멘트(`/run sql` 등)에도 이 job 이 돈다.
     #   gate 판정을 함께 봐야 한다. gate 가 skip 되면 outputs 가 빈 값이라 거짓이 된다.
     if: always() && needs.gate.outputs.run == 'true'
+    permissions:
+      # 벽시계가 run 시작 시각을 API 로 읽는다 (아래 `벽시계 — AC 3`).
+      # ⚠ 공개 저장소라 이 호출은 권한 없이도 된다. 그래서 없어도 우연히 돌아간다.
+      #   의도를 적어 둔다 — 저장소가 비공개가 되면 조용히 실패할 자리다.
+      actions: read
+      # 결과 요약을 PR 에 붙인다. 이 워크플로에서 쓰기 권한이 필요한 곳은 여기뿐이다.
+      pull-requests: write
     runs-on: cubrid-arc
     timeout-minutes: 30
     container:
@@ -1424,6 +1491,11 @@ jobs:
 
           # run 시작 시각은 컨텍스트에 없다. API 한 번이면 나온다 (수 KB).
           # 큐 대기가 여기에만 잡힌다 — CUBRIDQA-1521 이 그 숫자를 쓴다.
+          #
+          # ⚠ 값의 뜻이 fork 판과 달라졌다. queue_sec = build 시작 - run 시작 인데,
+          #   이 워크플로에는 그 사이에 gate job 이 들어왔다. 그래서 이 값은
+          #   `gate 소요 + 러너 큐 대기` 다. gate 는 GitHub 호스트 러너에서 도는
+          #   API 호출 하나라 보통 수 초다. 그래도 8/14 이전 판의 값과 직접 비교하지 마라.
           run_started=""
           if code=$(curl -sS -o /tmp/run.json -w '%{http_code}' \
                 -H "Authorization: Bearer $GITHUB_TOKEN" \
