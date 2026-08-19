@@ -11071,18 +11071,29 @@ heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TD
   return error;
 }
 
-bool
-heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
+/*
+ * heap_get_class_replication () - Check whether a class has replication turned on.
+ *   return: error code
+ *   thread_p (in):
+ *   class_oid (in):
+ *   is_replication (out): true if the class has replication on, false otherwise
+ *
+ * Note: the class-record fetch may fail with a real error (e.g. ER_INTERRUPTED);
+ *       return it to the caller rather than asserting.
+ */
+int
+heap_get_class_replication (THREAD_ENTRY * thread_p, const OID * class_oid, bool * is_replication)
 {
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
-  bool ret;
 
   assert (class_oid != NULL);
 
+  *is_replication = false;
+
   if (OID_ISNULL (class_oid))
     {
-      return false;
+      return NO_ERROR;
     }
 
   (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
@@ -11090,21 +11101,15 @@ heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
   if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
       heap_scancache_end (thread_p, &scan_cache);
-      /* The class record fetch can legitimately fail when this transaction is being
-       * interrupted (e.g. a killed server-side loaddb session): pgbuf_fix rejects any
-       * further page fix with ER_INTERRUPTED before touching the page. That is a normal
-       * shutdown path, not a corruption, so it must not abort the server. The transaction
-       * is rolled back anyway, so returning false (skip the replication log) cannot break
-       * replication consistency. Any other fetch failure is still unexpected. */
-      assert (er_errid () == ER_INTERRUPTED);
-      return false;
+      assert (er_errid () != NO_ERROR);
+      return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
     }
 
-  ret = or_class_is_replication_on (&recdes);
+  *is_replication = or_class_is_replication_on (&recdes);
 
   heap_scancache_end (thread_p, &scan_cache);
 
-  return ret;
+  return NO_ERROR;
 }
 
 /*
