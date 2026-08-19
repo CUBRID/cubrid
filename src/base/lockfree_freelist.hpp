@@ -169,8 +169,10 @@ namespace lockfree
       }
     assert (m_block_size > 0);
 
+    // initial_block_count blocks in total, the back-buffer's included. lf_freelist_init () allocates exactly
+    // that many, and lock_dump_resource () prints the count, so one block more would change cubrid lockdb.
     alloc_backbuffer ();
-    for (size_t i = 0; i < initial_block_count; i++)
+    for (size_t i = 1; i < initial_block_count; i++)
       {
 	swap_backbuffer ();
       }
