@@ -16313,15 +16313,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_INTEGER:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as
-		 * multiplication.
-		 */
-		volatile int i1, i2, itmp;
+		int i1 = db_get_int (arg1);
+		int i2 = db_get_int (arg2);
+		int itmp;
 
-		i1 = db_get_int (arg1);
-		i2 = db_get_int (arg2);
-		itmp = i1 * i2;
-		if (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp))
+		if (__builtin_mul_overflow (i1, i2, &itmp))
 		  {
 		    goto overflow;
 		  }
@@ -16334,15 +16330,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_BIGINT:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as
-		 * multiplication.
-		 */
-		volatile DB_BIGINT bi1, bi2, bitmp;
+		DB_BIGINT bi1 = db_get_bigint (arg1);
+		DB_BIGINT bi2 = db_get_bigint (arg2);
+		DB_BIGINT bitmp;
 
-		bi1 = db_get_bigint (arg1);
-		bi2 = db_get_bigint (arg2);
-		bitmp = bi1 * bi2;
-		if (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp))
+		if (__builtin_mul_overflow (bi1, bi2, &bitmp))
 		  {
 		    goto overflow;
 		  }
@@ -16355,15 +16347,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_SHORT:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as
-		 * multiplication.
-		 */
-		volatile short s1, s2, stmp;
+		short s1 = db_get_short (arg1);
+		short s2 = db_get_short (arg2);
+		short stmp;
 
-		s1 = db_get_short (arg1);
-		s2 = db_get_short (arg2);
-		stmp = s1 * s2;
-		if (OR_CHECK_MULT_OVERFLOW (s1, s2, stmp))
+		if (__builtin_mul_overflow (s1, s2, &stmp))
 		  {
 		    goto overflow;
 		  }
