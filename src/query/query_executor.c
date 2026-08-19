@@ -25888,7 +25888,8 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 			 + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_expr_type_string)
 			 + (default_expr_format ? strlen (default_expr_format) : 0));
 
-		  default_value_string = (char *) malloc (len + 1);
+		  default_value_string = (char *) db_private_alloc (thread_p, len + 1);
+>>>>>>> 61137e9a3 ([CBRD-27273] core dump at 'show columns' for default to_char column)
 		  if (default_value_string == NULL)
 		    {
 		      GOTO_EXIT_ON_ERROR;
