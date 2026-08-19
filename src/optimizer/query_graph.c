@@ -2056,6 +2056,18 @@ qo_analyze_term (QO_TERM * term, int term_type)
       QO_TERM_SET_FLAG (term, QO_TERM_LIKE_HAS_DERIVED_RANGE);
     }
 
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_OR_DERIVED))
+    {
+      /* keep real selectivity for index-access cost; flag so row-count skips it */
+      QO_TERM_SET_FLAG (term, QO_TERM_OR_DERIVED);
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_OR_DERIVED_EXPENSIVE))
+    {
+      /* make_pred_from_plan () drops it from the data filter unless an index adopted it */
+      QO_TERM_SET_FLAG (term, QO_TERM_OR_DERIVED_EXPENSIVE);
+    }
+
   /* only interesting in one predicate term; if 'term' has 'or_next', it was derived from OR term */
   /* also cases that are too complicated and unusual to consider here: (cond and/or cond) is true/false (cond and/or
    * cond) =/!= (cond and/or cond).
@@ -2813,6 +2825,17 @@ wrapup:
       QO_TERM_SELECTIVITY (term) = -1.0;
       break;
     }				/* switch (term_type) */
+
+  /* an OR-derived implied duplicate earns its keep only when it rejects most rows: when it does
+   * not, keep it out of key ranges/filters as well -- an index scan repeated per outer row over
+   * most of the index costs more than it saves, and an implied duplicate must never steer the
+   * plan by itself (make_pred_from_plan () applies the same bound to the data filter it may
+   * remain as) */
+  if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (term) > 0.5)
+    {
+      QO_TERM_SET_FLAG (term, QO_TERM_NON_IDX_SARG_COLL);
+      QO_TERM_CAN_USE_INDEX (term) = 0;
+    }
 
   bitset_delset (&lhs_segs);
   bitset_delset (&rhs_segs);
@@ -8683,9 +8706,11 @@ qo_node_add_sarg (QO_NODE * node, QO_TERM * sarg)
   double sel_limit;
 
   bitset_add (&(QO_NODE_SARGS (node)), QO_TERM_IDX (sarg));
-  /* Skip LIKE-derived range in row-count: subset-correlated with the retained
-   * LIKE. Still kept in QO_NODE_SARGS for index key-range use. */
-  if (!QO_TERM_IS_FLAGED (sarg, QO_TERM_LIKE_DERIVED_RANGE))
+  /* Skip derived duplicates in row-count: a LIKE-derived range is subset-correlated with the
+   * retained LIKE, and an OR-derived restriction is implied by the multi-spec factor it was
+   * extracted from, so counting either would double count the same constraint.  Both stay in
+   * QO_NODE_SARGS for index key-range use. */
+  if (!QO_TERM_IS_FLAGED (sarg, QO_TERM_LIKE_DERIVED_RANGE | QO_TERM_OR_DERIVED))
     {
       QO_NODE_SELECTIVITY (node) *= QO_TERM_SELECTIVITY (sarg);
     }

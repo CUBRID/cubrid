@@ -8071,10 +8071,12 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		}
 	      else
 		{
-		  /* Skip a LIKE-derived range in both the row-count selectivity and the
-		   * join hit probability: it is subset-correlated with the retained LIKE,
-		   * so counting it in either would double count the same constraint. */
-		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE))
+		  /* Skip a LIKE-derived range and an OR-derived restriction in both the
+		   * row-count selectivity and the join hit probability: the former is
+		   * subset-correlated with the retained LIKE, the latter is implied by the
+		   * multi-spec factor it was extracted from, so counting either would double
+		   * count the same constraint. */
+		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE | QO_TERM_OR_DERIVED))
 		    {
 		      double head_factor, tail_factor;
 
