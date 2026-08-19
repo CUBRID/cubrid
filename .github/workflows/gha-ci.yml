@@ -1,0 +1,1742 @@
+# CUBRIDQA-1526 — 빌드 → 발행 → shell suite 를 한 GHA 파이프라인으로 잇는다.
+#
+# CircleCI 의 build_debug + download-build + test_shell 을 대체한다.
+# 이관 기간에는 CircleCI 와 나란히 돈다 — 같은 `/run` 코멘트가 둘 다 깨운다.
+# 그래서 두 판의 결과를 같은 PR 에서 대조할 수 있다.
+#
+# 파일명이 `gha-ci` 인 이유: 앞으로 sql·medium 이 이 파일에 붙는다.
+# 그때 파일명을 바꾸면 run 이력과 required status check 등록이 끊긴다.
+#
+# --- 어떻게 쏘나 ---
+#
+#   PR 코멘트 — 평소 경로다. comment_trigger.yml 과 같은 말을 쓴다.
+#
+#     /run shell      이 PR 의 head 커밋으로 shell suite 를 돈다
+#     /run all        shell 을 포함하므로 이것도 깨운다
+#
+#     ⚠ 쓰기 권한이 있는 사람만 된다 (OWNER · MEMBER · COLLABORATOR).
+#       코멘트 하나가 러너를 50개 잡는다.
+#     같은 PR 에 다시 쏘면 앞 run 을 대체한다.
+#
+#   workflow_dispatch — nightly·재실행·조사용. 코멘트로 못 하는 것들이다.
+#
+#     gh workflow run gha-ci.yml --repo CUBRID/cubrid \
+#       -f sha=<40자 SHA> -f parallelism=50
+#
+#     ⚠ 기본 브랜치(develop)의 워크플로만 실행된다.
+#
+# ⚠ issue_comment 는 base 저장소 문맥에서 돈다. 시크릿이 붙고 토큰이 산다.
+#   그래서 **author_association 게이트가 방어선이다.** fork PR 이라도 코멘트를 단
+#   사람의 권한으로 판정한다. 러너 job hook 의 ALLOWED_EVENTS 에도 issue_comment 가
+#   있어야 한다 — 없으면 러너가 job 을 거부한다.
+#
+# --- 무엇을 이어 붙였나 ---
+#
+#   S3 (PROTOTYPE-s3-workflow.yml)  = build_debug        rl8.10 노드 빌드, 4분 8초, WAN 372MB
+#   S6 (PROTOTYPE-s6-workflow.yml)  = plan/shard/collect LPT 분배, 3겹 방지 장치, 3,241 케이스
+#
+# 둘은 따로 돌았다. S6 는 **운영 CircleCI 가 발행한 빌드**를 읽었다.
+# 여기서는 plan 이 build_debug 의 발행물만 읽는다.
+#
+# --- S3·S6 에서 바꾼 것 넷 ---
+#
+# 1. **plan 이 빌드를 고르지 않는다.** S6 는 build-cache 에서 가장 최근 debug 를 골랐다.
+#    그러면 "어느 빌드를 읽었나"가 run 마다 달라져 AC 2 를 증명하지 못한다.
+#    이제 SHA 는 build_debug 의 job output 하나에서만 온다.
+#
+# 2. **읽는 경로가 운영이 아니다.** S6 는 /home/build-cache/builds (운영)를 읽었다.
+#    이제 /home/build-cache/gha-ci/builds 다. 운영 test_shell 과 겹치지 않는다.
+#
+# 3. **발행물이 자기 출처를 갖는다.** build_debug 가 CUBRID 트리 안에
+#    `.gha-ci-build.meta` 를 넣는다. shard 가 **overlay 를 통해** 그것을 읽는다.
+#    hostPath 를 직접 보는 것이 아니라 테스트가 실제로 쓰는 마운트를 보므로 증거가 된다.
+#
+# 4. **벽시계를 잰다.** job 마다 GlusterFS 의 runs/<id>/stamps/ 에 epoch 를 남긴다.
+#    collect 가 구간별로 합산한다. 아티팩트도 캐시도 쓰지 않아 WAN 이 0 이다.
+#
+# --- 그대로 둔 것 (S6 의 발견이라 손대면 안 된다) ---
+#
+#   * "0건 통과 = 초록"을 막는 세 겹 (plan / shard / collect)
+#   * LPT 분배 + GlusterFS timings/shell.tsv  (3,082건. 지우면 최장 shard 24.8분 -> 49.4분)
+#   * CTP 를 plan 이 한 번만 받는다 (shard 마다 받으면 50-way 에 WAN 1.25GB)
+#   * 테스트케이스는 노드 seed 를 overlay lowerdir 로 쓴다 (private 토큰 불필요, WAN 0)
+#   * CIRCLE_NODE_INDEX 를 shard 번호로 넘긴다 (CTP 가 읽는 유일한 CircleCI 변수)
+#   * 실패 목록 파싱은 ` name="` — 앞의 공백이 필수다. classname 에 먼저 걸린다
+#
+# --- 테스트케이스는 매 run 최신화한다 ---
+#
+#   운영 test_shell 이 노드마다 `/entrypoint.sh checkout` 을 부르는 것과 같다.
+#   노드 seed(overlay lowerdir) 위에 fetch --depth 1 + reset --hard 로 증분만 올린다.
+#
+#   어느 브랜치인가 — **엔진 PR 번호가 engine 과 tc 를 잇는 키다.**
+#     pr 입력 있음 -> tc/pr-<번호>   (sync bot 이 PR 열릴 때 만든다. 없으면 develop 으로 폴백)
+#     pr 입력 없음 -> develop
+#   운영 config.yml 도 같은 규칙이다 (CIRCLE_BRANCH 가 pull/* 면 tc/pr-<번호>).
+#
+#   plan 이 한 번 정하고 **커밋 SHA 로 못 박아** shard 에 넘긴다. 브랜치는 움직이는
+#   표적이라, plan 이 나눈 목록과 shard 가 가진 케이스가 어긋나면 조용히 빠진다.
+#   운영에는 없는 안전장치다 — 운영은 50 노드에 브랜치 이름을 나눠 준다.
+#
+#   자격증명은 이 저장소가 이미 쓰는 GitHub App 이다 (TC_APP_ID / TC_APP_PRIVATE_KEY).
+#   tc-branch-sync·tc-merge-gate·tc-branch-finalize 가 같은 것을 쓴다.
+#
+# --- pod template 에 걸린 전제 둘. 워크플로가 못 고친다 ---
+#
+#   shareProcessNamespace: true   없으면 shell 테스트가 실패가 아니라 **정지**한다.
+#                                 그래서 shard 가 PID 1 을 확인하고 즉시 죽는다.
+#   privileged: true              overlay 마운트에 쓴다. 없으면 mount 가 실패한다.
+#
+# ConfigMap `cubrid-arc-pod-template` (PROTOTYPE-s6-pod-template.yaml 이 정본).
+
+name: gha-ci
+
+on:
+  # 평소 경로. comment_trigger.yml 과 같은 말을 쓴다 — `/run shell`, `/run all`.
+  # ⚠ 어느 코멘트가 이것을 깨우는지는 gate job 이 판정한다. 여기서는 좁힐 수 없다.
+  issue_comment:
+    types: [created, edited]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "CUBRID/cubrid 의 40자 커밋 SHA"
+        required: true
+        type: string
+      force_build:
+        description: "이미 발행된 빌드가 있어도 다시 빌드한다. AC 2 실증에는 true 로 쏜다"
+        required: false
+        default: false
+        type: boolean
+      parallelism:
+        description: "shard 수 (CircleCI test_shell 은 50). 1..256"
+        required: false
+        default: "50"
+        type: string
+      limit:
+        description: "케이스 수 상한. 0 이면 전체 (약 3,241)"
+        required: false
+        default: "0"
+        type: string
+      rerun_from:
+        description: "이 run id 의 실패 케이스만 다시 돌린다. 비우면 전체. limit 보다 우선한다"
+        required: false
+        default: ""
+        type: string
+      sabotage:
+        description: "분배 실패 방지 장치 시험. none | empty-shard | lose-shard"
+        required: false
+        default: "none"
+        type: string
+      pr:
+        description: "엔진 PR 번호. 테스트케이스는 tc/pr-<번호> 를 쓰고 결과도 그 PR 에 붙인다. 비우면 develop"
+        required: false
+        default: ""
+        type: string
+
+# 저장소 기본값에 기대지 않고 필요한 것만 명시한다 (tc-* 워크플로와 같은 관례).
+# contents 는 read 다 — 이 워크플로는 저장소에 쓰지 않는다.
+# pull-requests: write 는 collect 가 결과를 PR 에 붙이는 데 쓴다.
+permissions:
+  contents: read
+  pull-requests: write
+
+# PR 하나가 한 그룹이다. **다른 PR 은 서로 병렬로 돈다** — 코멘트로 쏘는 것이
+# 여러 사람이라 전역 그룹으로 묶으면 남의 run 이 조용히 취소된다.
+# 같은 PR 에 다시 쏘면 앞 run 을 대체한다. 최신 코멘트가 이긴다.
+#
+# 같은 PR 로 묶는 것만으로 공유 상태가 안전해지는 근거:
+#   * 발행물은 SHA 로 나뉘고 tmp·old 이름에 run id 가 붙는다 — run 끼리 안 겹친다
+#   * CTP seed 는 run 별 경로다 (아래 plan 참조). 옛 판은 공유 경로라 이 그룹이 필요했다
+#   * timings 는 읽고-고쳐-쓰기라 갱신을 잃을 수 있다. 깨지지는 않는다 —
+#     rename 이 원자적이다. 잃으면 다음 run 이 다시 채운다
+#
+# 클러스터 용량은 이 그룹이 아니라 러너 scale set 의 maxRunners 가 막는다.
+concurrency:
+  group: gha-ci-${{ github.event.issue.number || inputs.pr || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  # 발행 경로는 운영 builds/ 가 아니다. 거기에 쓰면 운영 test_shell 이 이것을 먹는다.
+  CI_ROOT: /home/build-cache/gha-ci
+  CI_BUILD_ROOT: /home/build-cache/gha-ci/builds
+  TIMINGS: /home/build-cache/gha-ci/timings/shell.tsv
+  # 벽시계 스탬프. 워크플로 수준이라 job 마다 다시 조립하지 않는다 (AC 3).
+  STAMPS: /home/build-cache/gha-ci/runs/${{ github.run_id }}/stamps
+  BUILD_SENTINEL: .complete
+  BUILD_META: .gha-ci-build.meta
+
+jobs:
+  # =================================================================
+  # 0. 게이트.  두 트리거를 하나의 모양으로 바꾼다.
+  #
+  # 아래 job 들은 트리거를 모른다. 전부 needs.gate.outputs 만 읽는다.
+  # 그래서 트리거를 더할 때 이 job 하나만 고치면 된다.
+  #
+  # ⚠ 이 job 은 GitHub 호스트 러너에서 돈다. 우리 클러스터를 쓰지 않는다 —
+  #   권한 판정이 러너 배정보다 **앞**이어야 하기 때문이다.
+  # =================================================================
+  gate:
+    name: 게이트
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # 코멘트 경로의 방어선이다. issue_comment 는 base 저장소 문맥에서 돌아
+    # 시크릿이 붙는다. 그래서 코멘트를 단 사람의 권한으로 판정한다.
+    # CONTRIBUTOR 는 거부한다 — 외부 기여자의 PR 은 메인테이너가 대신 쏜다.
+    # comment_trigger.yml 의 조건과 같은 집합이다.
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch'
+      || (github.event.issue.pull_request != null
+      && startsWith(github.event.comment.body, '/run')
+      && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) }}
+    outputs:
+      run: ${{ steps.g.outputs.run }}
+      sha: ${{ steps.g.outputs.sha }}
+      pr: ${{ steps.g.outputs.pr }}
+      parallelism: ${{ steps.g.outputs.parallelism }}
+      limit: ${{ steps.g.outputs.limit }}
+      force_build: ${{ steps.g.outputs.force_build }}
+      rerun_from: ${{ steps.g.outputs.rerun_from }}
+      sabotage: ${{ steps.g.outputs.sabotage }}
+    steps:
+      - name: 트리거를 해석한다
+        id: g
+        env:
+          # 입력을 셸 본문에 박지 않는다. env 로 받는다 (S4 의 규칙).
+          EV: ${{ github.event_name }}
+          BODY: ${{ github.event.comment.body }}
+          ISSUE: ${{ github.event.issue.number }}
+          IN_SHA: ${{ inputs.sha }}
+          IN_PR: ${{ inputs.pr }}
+          IN_PAR: ${{ inputs.parallelism }}
+          IN_LIMIT: ${{ inputs.limit }}
+          IN_FORCE: ${{ inputs.force_build }}
+          IN_RERUN: ${{ inputs.rerun_from }}
+          IN_SAB: ${{ inputs.sabotage }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eo pipefail
+
+          emit() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
+
+          if [ "$EV" = 'workflow_dispatch' ]; then
+            # dispatch 는 사람이 값을 다 준다. 그대로 넘긴다.
+            emit run true
+            emit sha "$IN_SHA"
+            emit pr "$IN_PR"
+            emit parallelism "$IN_PAR"
+            emit limit "$IN_LIMIT"
+            emit force_build "$IN_FORCE"
+            emit rerun_from "$IN_RERUN"
+            emit sabotage "$IN_SAB"
+            echo "dispatch: sha=$IN_SHA pr=${IN_PR:-(없음)} parallelism=$IN_PAR"
+            exit 0
+          fi
+
+          # --- 코멘트 경로 ---
+          # 문법은 comment_trigger.yml 과 **같아야 한다.** 사람이 배운 말이 하나여야 한다.
+          #   ^/run( (all|shell|sql|medium)){1,4}$
+          if ! [[ "$BODY" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
+            echo "[info] /run 문법이 아니다. 넘어간다: $BODY"
+            emit run false
+            exit 0
+          fi
+
+          # 이 워크플로가 가진 것은 shell 뿐이다. sql·medium 은 CircleCI 가 받는다.
+          if ! [[ "$BODY" =~ (^|[[:space:]])(all|shell)($|[[:space:]]) ]]; then
+            echo "[info] shell 을 요청하지 않았다. 넘어간다: $BODY"
+            emit run false
+            exit 0
+          fi
+
+          # PR 의 head 커밋으로 못 박는다. 브랜치 이름은 움직이는 표적이라 쓰지 않는다.
+          sha=$(gh api "repos/${REPO}/pulls/${ISSUE}" --jq '.head.sha') || {
+            echo "::error::PR ${ISSUE} 의 head SHA 를 못 읽었다"; exit 1; }
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::head SHA 가 40자 16진수가 아니다: $sha"; exit 1
+          fi
+
+          emit run true
+          emit sha "$sha"
+          emit pr "$ISSUE"
+          # 코멘트에는 조절 손잡이를 두지 않는다. 기본값으로 돈다.
+          # 값을 바꾸려면 workflow_dispatch 를 쓴다.
+          emit parallelism 50
+          emit limit 0
+          emit force_build false
+          emit rerun_from ""
+          emit sabotage none
+          echo "코멘트: PR #${ISSUE} / head ${sha} / parallelism 50"
+
+  # =================================================================
+  # 1. 빌드.  S3 그대로다.  발행물에 출처를 심는 것만 더했다.
+  # =================================================================
+  build_debug:
+    name: 빌드 (rl8.10 노드)
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: cubrid-arc
+    timeout-minutes: 120
+    container:
+      image: cubridci/cubridci:rl8.10
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      sha: ${{ steps.args.outputs.sha }}
+      mode: ${{ steps.reuse.outputs.mode }}
+
+    env:
+      # CircleCI executor cubrid-build-node 의 environment 와 같은 값이다.
+      BUILD_MIRROR: /home/build-cache/cubrid-mirror
+      CCACHE_DIR: /home/build-cache/ccache-shell-debug
+      CCACHE_COMPILERCHECK: content
+      # CCACHE_HARDLINK 는 주지 않는다. 캐시는 gluster, 빌드 트리는 pod 로컬이라
+      # cross-device 다. 하드링크가 조용히 복사로 떨어진다.
+      CI_LOG_ROOT: /home/build-cache/gha-ci/logs
+
+    steps:
+      # ---------------------------------------------------------------
+      - name: 0. 환경 실사 — 여기서 막히면 뒤는 볼 것도 없다
+        id: args
+        env:
+          # 입력을 ${{ }} 로 셸 본문에 박지 않고 환경변수로 건넨다. 본문에 박으면
+          # 입력값이 셸 코드로 해석될 수 있다 (S4 의 규칙).
+          INPUT_SHA: ${{ needs.gate.outputs.sha }}
+        run: |
+          set -eo pipefail
+          echo "=== 정체 ==="
+          echo "job pod    : $(hostname)"
+          echo "runner     : ${RUNNER_NAME:-(없음)}"
+          echo "이미지     : $(cat /etc/redhat-release)"
+
+          echo "=== 입력 SHA 검사 ==="
+          # 전체 40자 SHA 만 받는다. 짧은 SHA 나 ref 이름은 받지 않는다 (S4 설계).
+          if [[ ! "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha 는 소문자 40자 hex 여야 한다"
+            exit 1
+          fi
+          echo "SHA: $INPUT_SHA"
+          echo "sha=$INPUT_SHA" >> "$GITHUB_OUTPUT"
+          echo "SHA=$INPUT_SHA" >> "$GITHUB_ENV"
+
+          echo "=== 마운트 ==="
+          ls -ld /home/build-cache "$BUILD_MIRROR/cubrid.git" "$CCACHE_DIR" || true
+          if [ ! -d "$BUILD_MIRROR/cubrid.git" ]; then
+            echo "::error::미러가 안 보인다. pod template 이 job pod 에 적용되지 않았다."
+            exit 1
+          fi
+
+          echo "=== 쓰기 가능한지 ==="
+          # 발행 스텝에서 처음 알게 되면 30분을 버린다. 지금 확인한다.
+          mkdir -p "$CI_BUILD_ROOT"
+          probe="$CI_BUILD_ROOT/.write-probe.$$"
+          touch "$probe" && rm -f "$probe"
+          echo "쓰기 가능"
+
+          # --- 벽시계 스탬프 (AC 3). run 디렉토리를 여기서 연다 ---
+          # plan 보다 먼저 도므로 plan 을 기다리지 않고 직접 만든다.
+          # plan 의 mkdir -p 는 이것을 덮지 않는다.
+          mkdir -p "$STAMPS"
+          printf 'start\t%s\n' "$(date -u +%s)" > "$STAMPS/build.tsv"
+
+          # WAN 기준선. GlusterFS 읽기는 hostPath 라 pod 의 netns 를 지나지 않는다.
+          # 여기 잡히는 것은 사실상 GitHub 왕복 + 3rdparty 내려받기다.
+          awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' \
+            /proc/net/dev > "$RUNNER_TEMP/rx0"
+
+          # --- job container 는 root, workspace 는 러너 uid(1001) 소유다 (함정 5) ---
+          # git 이 detected dubious ownership 으로 저장소를 아예 열지 않는다.
+          # safe.directory 로도 되지만 소유자를 맞추는 편이 확실하다 — build.sh 도
+          # 빌드 번호를 git rev-list 로 세므로 어느 프로세스가 git 을 부르든 안 걸린다.
+          chown root:root "$GITHUB_WORKSPACE"
+          ls -ld "$GITHUB_WORKSPACE"
+
+      # ---------------------------------------------------------------
+      - name: 1. 이미 발행된 빌드가 있나
+        id: reuse
+        env:
+          INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
+        run: |
+          set -eo pipefail
+          # CircleCI 는 여기서 `circleci-agent step halt` 로 job 을 성공 종료한다.
+          # GHA 에는 halt 가 없다. 출력 하나를 내고 뒤 스텝을 if 로 건다.
+          dir="$CI_BUILD_ROOT/$SHA/debug"
+          if [ "$INPUT_FORCE" = 'true' ]; then
+            echo "force_build=true — 발행물이 있어도 다시 빌드한다"
+            mode=built
+          elif [ -f "$dir/$BUILD_SENTINEL" ]; then
+            echo "이미 발행됨: $dir"
+            mode=reused
+          else
+            echo "발행물 없음 — 빌드한다"
+            mode=built
+          fi
+          echo "mode=$mode"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------
+      - name: 2. 소스 준비 — 미러에서 빌리고 증분만 WAN 으로 받는다
+        if: steps.reuse.outputs.mode != 'reused'
+        run: |
+          set -eo pipefail
+          cd "$GITHUB_WORKSPACE"
+
+          # 미러에는 절대 쓰지 않는다. 공유 디렉토리의 writer 가 여럿이 되면
+          # 동시 fetch 가 ref 락을 다투고, fetch 도중 pod 가 죽으면 .lock 이 남아
+          # 이후 모든 빌드가 멈춘다. 이력만 빌리고(--shared) 증분은 여기서 받는다.
+          git clone --quiet --shared --no-checkout "$BUILD_MIRROR/cubrid.git" .
+
+          # shallow 금지. 빌드 번호 serial 이 git rev-list --count 라
+          # shallow 면 패키지에 0001 이 찍힌다.
+          git fetch --quiet https://github.com/CUBRID/cubrid.git "$SHA"
+          git checkout --quiet --detach "$SHA"
+
+          git submodule sync
+          git submodule init
+          # 미러가 그 커밋을 가진 서브모듈만 미러로 바꾼다. 미러 seed 이후 bump 된
+          # 서브모듈은 GitHub 에서 통째로 받는다 (git submodule update 는 이미 저장소가
+          # 있는 경로에 fetch 하지 않으므로 증분 구조가 성립하지 않는다).
+          while read -r sub_sha sub_path; do
+            url=$(git config -f .gitmodules --get "submodule.${sub_path}.url")
+            mirror="$BUILD_MIRROR/$(basename "${url%.git}").git"
+            if git -C "$mirror" cat-file -e "${sub_sha}^{commit}" 2>/dev/null; then
+              git config "submodule.${sub_path}.url" "$mirror"
+              echo "[mirror] $sub_path"
+            else
+              echo "[warn] $sub_path 는 미러에 없다 — GitHub 에서 전체를 받는다"
+            fi
+          done < <(git ls-tree HEAD | awk '$2 == "commit" { print $3, $4 }')
+
+          # git 2.38 부터 로컬 경로에서 서브모듈을 클론하지 않는다 (CVE-2022-39253).
+          git -c protocol.file.allow=always submodule update
+
+          echo "HEAD        : $(git rev-parse HEAD)"
+          echo "build serial: $(git rev-list --count HEAD)"
+
+      # ---------------------------------------------------------------
+      - name: 3. 빌드 — 소스 루트에서 해야 한다
+        if: steps.reuse.outputs.mode != 'reused'
+        run: |
+          set -eo pipefail
+          # entrypoint 의 run_build 는 build.log 를 현재 디렉토리에 쓰면서 실패 검사는
+          # $CUBRID_SRCDIR/build.log 를 읽는다. 소스가 한 단계 아래면 그 경로가 없어서
+          # **실패한 빌드가 성공으로 보고된다**. 소스 루트에서 돌려야 둘이 맞는다.
+          cd "$GITHUB_WORKSPACE"
+
+          mkdir -p "$CCACHE_DIR"
+          ccache --max-size=5G
+          ccache -z
+
+          # -j 를 주지 않는다. ninja 1.11.1 이 cgroup quota 를 읽어 스스로 정한다.
+          /entrypoint.sh build -m optdebug
+          ccache -s
+
+      # ---------------------------------------------------------------
+      - name: 4. 발행 — staging 에 모으고 rename 한 번으로 공개한다
+        id: publish
+        env:
+          MODE: ${{ steps.reuse.outputs.mode }}
+        run: |
+          set -eo pipefail
+          dir="$CI_BUILD_ROOT/$SHA/debug"
+
+          if [ "$MODE" = 'reused' ]; then
+            echo "재사용이라 발행하지 않는다: $dir"
+          else
+            tmp="${dir}.tmp.${GITHUB_RUN_ID}"
+            rm -rf "$tmp"
+            mkdir -p "$tmp"
+            cp -a /home/CUBRID "$tmp/CUBRID"
+
+            # --- 출처를 심는다 (AC 2) ---
+            # CUBRID 트리 **안**에 넣는 것이 핵심이다. shard 는 이 트리를 overlay
+            # lowerdir 로 마운트하므로, 트리 안의 파일을 읽으면 "테스트가 실제로 쓰는
+            # 마운트를 읽었다"가 된다. 트리 밖에 두면 hostPath 를 직접 본 것에 그친다.
+            # CUBRID 루트의 점 파일이라 CTP 도 서버도 건드리지 않는다.
+            meta=$(printf 'sha=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
+              "$SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)")
+            printf '%s\n' "$meta" > "$tmp/CUBRID/$BUILD_META"
+            printf '%s\n' "$meta" > "$tmp/build.meta"
+
+            # sentinel 은 staging 안에서 만든다. rename 이 원자적이므로 sentinel 이
+            # 절반만 쓰인 트리 위에 나타나는 일이 없다.
+            touch "$tmp/$BUILD_SENTINEL"
+
+            # ⚠ rename(2) 는 **비어 있지 않은 디렉토리를 덮어쓰지 못한다** (EEXIST).
+            # 그래서 `mv -T "$tmp" "$dir"` 한 번으로는 force_build 가 성립하지 않는다.
+            # 2026-08-14 run 31764174553 에서 실물로 걸렸다 — 빌드는 4분 걸려 성공했는데
+            # 발행이 "File exists" 로 죽었다. S3 은 늘 새 SHA 에 발행해 안 걸렸다.
+            #
+            # 옛것을 원자적으로 비켜 놓고, 새것을 원자적으로 들여놓는다. 둘 다 rename 이다.
+            # 그 사이 $dir 이 잠깐 **없다**. 이것은 "절반만 쓰인 것"과 다르다 —
+            # 없는 것은 plan 이 sentinel 검사로 즉시 잡는다. 겹치는 run 은 concurrency 가 막는다.
+            old="${dir}.old.${GITHUB_RUN_ID}"
+            rm -rf "$old"
+            if [ -e "$dir" ]; then
+              mv -T "$dir" "$old" || {
+                rm -rf "$tmp"
+                echo "::error::옛 발행물을 비켜 놓지 못했다: $dir"; exit 1; }
+            fi
+            if ! mv -T "$tmp" "$dir"; then
+              # 되돌린다. 옛것이라도 남아 있는 편이 아무것도 없는 것보다 낫다.
+              [ -e "$old" ] && mv -T "$old" "$dir"
+              rm -rf "$tmp"
+              echo "::error::새 발행물을 들여놓지 못했다: $dir"; exit 1
+            fi
+            rm -rf "$old"
+          fi
+
+          # --- 발행물이 이 파이프라인의 계약을 지키는지 확인한다 ---
+          # plan 과 shard 가 이 셋을 전제로 돈다. 없으면 여기서 죽는 편이 낫다.
+          for f in "$BUILD_SENTINEL" build.meta "CUBRID/$BUILD_META"; do
+            [ -f "$dir/$f" ] || {
+              echo "::error::발행물에 $f 가 없다: $dir"
+              echo "  S3 이 발행한 옛 빌드는 meta 가 없다. force_build=true 로 다시 쏴라."
+              exit 1
+            }
+          done
+          by=$(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta")
+          echo "발행물   : $dir"
+          echo "만든 run : $by (이 run: $GITHUB_RUN_ID)"
+          cat "$dir/build.meta"
+          du -sh "$dir"
+          df -h /home/build-cache | tail -1
+
+          printf 'end\t%s\n' "$(date -u +%s)" >> "$STAMPS/build.tsv"
+
+      # ---------------------------------------------------------------
+      - name: 5. WAN + 빌드 로그
+        if: always()
+        run: |
+          set -eo pipefail
+          if [ -f "$RUNNER_TEMP/rx0" ]; then
+            rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
+            echo "이 job 의 WAN 수신: $(( (rx1 - $(cat "$RUNNER_TEMP/rx0")) / 1048576 )) MB"
+            echo "  기준: S3 실측 372.02MB (CircleCI artifact 290MB 를 대체한 값)"
+          fi
+
+          # build.log 는 실패했을 때 유일한 단서다. 무엇을 내려받았는지는
+          # entrypoint 의 grep 을 통과하지 못해 GHA 로그에 안 보인다.
+          f="$GITHUB_WORKSPACE/build.log"
+          if [ -f "$f" ]; then
+            mkdir -p "$CI_LOG_ROOT"
+            cp "$f" "$CI_LOG_ROOT/${GITHUB_RUN_ID}-build.log"
+            echo "저장: $CI_LOG_ROOT/${GITHUB_RUN_ID}-build.log ($(wc -l < "$f") 줄)"
+            echo "=== build.log 끝 60줄 ==="
+            tail -60 "$f"
+          fi
+
+  # =================================================================
+  # 2. 분배.  여기가 실패하면 shard 는 하나도 돌지 않는다.
+  # =================================================================
+  plan:
+    name: 분배
+    needs: [gate, build_debug]
+    runs-on: cubrid-arc
+    timeout-minutes: 30
+    container:
+      image: cubridci/cubridci:test_shell
+    defaults:
+      run:
+        shell: bash
+    env:
+      TC_DIR: /home/cubrid-testcases-private-ex
+    outputs:
+      matrix: ${{ steps.split.outputs.matrix }}
+      total: ${{ steps.split.outputs.total }}
+      rundir: ${{ steps.split.outputs.rundir }}
+      sha: ${{ needs.build_debug.outputs.sha }}
+      timed: ${{ steps.split.outputs.timed }}
+      build_run_id: ${{ steps.build.outputs.build_run_id }}
+      tc_sha: ${{ steps.tc.outputs.tc_sha }}
+      tc_branch: ${{ steps.tc.outputs.tc_branch }}
+
+    steps:
+      - name: 입력 검사
+        id: args
+        env:
+          IN_PAR: ${{ needs.gate.outputs.parallelism }}
+          IN_LIMIT: ${{ needs.gate.outputs.limit }}
+          IN_SAB: ${{ needs.gate.outputs.sabotage }}
+          IN_RERUN: ${{ needs.gate.outputs.rerun_from }}
+        run: |
+          set -eo pipefail
+          # 입력을 셸 본문에 박지 않는다. env 로 받는다 (S4 의 규칙).
+          if [[ ! "$IN_PAR" =~ ^[0-9]{1,3}$ ]] || [ "$IN_PAR" -lt 1 ] || [ "$IN_PAR" -gt 256 ]; then
+            echo "::error::parallelism 은 1..256 의 정수여야 한다"; exit 1
+          fi
+          if [[ ! "$IN_LIMIT" =~ ^[0-9]{1,5}$ ]]; then
+            echo "::error::limit 은 정수여야 한다"; exit 1
+          fi
+          case "$IN_SAB" in
+            none|empty-shard|lose-shard) ;;
+            *) echo "::error::sabotage 는 none|empty-shard|lose-shard 여야 한다"; exit 1 ;;
+          esac
+          if [ -n "$IN_RERUN" ] && [[ ! "$IN_RERUN" =~ ^[0-9]{1,20}$ ]]; then
+            echo "::error::rerun_from 은 run id (정수) 여야 한다"; exit 1
+          fi
+          echo "parallelism=$IN_PAR / limit=$IN_LIMIT / sabotage=$IN_SAB / rerun_from=${IN_RERUN:-(없음)}"
+          echo "par=$IN_PAR" >> "$GITHUB_OUTPUT"
+          echo "limit=$IN_LIMIT" >> "$GITHUB_OUTPUT"
+
+          mkdir -p "$STAMPS"
+          printf 'start\t%s\n' "$(date -u +%s)" > "$STAMPS/plan.tsv"
+
+      - name: 빌드 확인 — build_debug 가 발행한 것만 읽는다
+        id: build
+        env:
+          # S6 는 build-cache 에서 가장 최근 debug 를 골랐다. 그러면 "어느 빌드를
+          # 읽었나"가 run 마다 달라져 AC 2 를 증명하지 못한다. 이제 출처가 하나다.
+          SHA: ${{ needs.build_debug.outputs.sha }}
+          MODE: ${{ needs.build_debug.outputs.mode }}
+        run: |
+          set -eo pipefail
+          dir="$CI_BUILD_ROOT/$SHA/debug"
+
+          # sentinel 이 있어야 발행이 끝난 트리다. S6 는 디렉토리 존재만 봤다 —
+          # 그 검사는 절반만 쓰인 트리를 통과시킨다.
+          [ -f "$dir/$BUILD_SENTINEL" ] || {
+            echo "::error::발행이 끝나지 않은 빌드다 (sentinel 없음): $dir"; exit 1; }
+          [ -d "$dir/CUBRID" ] || { echo "::error::CUBRID 트리가 없다: $dir"; exit 1; }
+          [ -f "$dir/build.meta" ] || {
+            echo "::error::build.meta 가 없다: $dir"
+            echo "  S3 이 발행한 옛 빌드다. force_build=true 로 다시 쏴라."; exit 1; }
+
+          meta_sha=$(awk -F= '/^sha=/ {print $2}' "$dir/build.meta")
+          [ "$meta_sha" = "$SHA" ] || {
+            echo "::error::meta 의 sha($meta_sha)가 build_debug 의 sha($SHA)와 다르다"; exit 1; }
+
+          brid=$(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta")
+          echo "빌드     : $dir"
+          echo "만든 run : $brid (이 run: $GITHUB_RUN_ID / mode=$MODE)"
+          echo "발행 시각: $(stat -c '%y' "$dir")"
+          echo "build_run_id=$brid" >> "$GITHUB_OUTPUT"
+
+      # private 저장소를 읽으려면 자격증명이 필요하다. 이 저장소가 이미 쓰는 방식을
+      # 그대로 쓴다 — tc-branch-sync·tc-merge-gate·tc-branch-finalize 가 같은 App 이다.
+      # PAT 이 아니라 1시간짜리 단명 토큰이고 repo 2개로 범위가 좁다.
+      # secret 은 fork 와 본 repo 양쪽에 이미 있어 새로 만들 것이 없다.
+      - name: GitHub App 토큰
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          # ⚠ private repo 하나만 요청한다. App 설치 범위에 cubrid-testtools 가 없어
+          # 그것을 함께 요청하면 "Not Found" 로 토큰 발급 자체가 실패한다 (2026-08-18 실측).
+          # testtools 는 공개 저장소라 이 토큰으로도 읽힌다 — 설치 범위 밖이어도 공개 읽기는 된다.
+          repositories: cubrid-testcases-private-ex
+          owner: CUBRID
+          # 이 워크플로는 테스트케이스를 **읽기만** 한다. 기본값은 App 설치 권한
+          # 전체를 그대로 받아 contents: write 가 따라온다. 읽기로 좁힌다.
+          permission-contents: read
+
+      - name: 토큰 마스킹
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: echo "::add-mask::$APP_TOKEN"
+
+      # ---------------------------------------------------------------
+      - name: 테스트케이스 최신화 — 여기서 한 번만 정한다
+        id: tc
+        env:
+          GHI_TOKEN: ${{ steps.app-token.outputs.token }}
+          INPUT_PR: ${{ needs.gate.outputs.pr }}
+        run: |
+          set -eo pipefail
+          # --- overlay 를 먼저 깐다. checkout 이 이 위에 증분을 올린다 ---
+          # 노드 seed(/ro)가 lowerdir 다. entrypoint 의 clone_repository 가
+          # `.git` 을 보고 fetch+reset 경로를 탄다 — 통째로 clone 하지 않는다.
+          mkdir -p /rw/upper /rw/work "$TC_DIR"
+          mount -t overlay overlay -o lowerdir=/ro,upperdir=/rw/upper,workdir=/rw/work "$TC_DIR"
+          echo "seed HEAD : $(git -C "$TC_DIR" log -1 --format='%h %ci' 2>/dev/null)"
+
+          # entrypoint 의 configure() 와 같은 설정. ls-remote 를 먼저 하려면 필요하다.
+          git config --global url."https://x-access-token:${GHI_TOKEN}@github.com/".insteadof https://github.com/
+
+          # --- 어느 테스트케이스 브랜치인가 ---
+          # 엔진 PR 번호가 engine 과 tc 를 잇는 키다. sync bot 이 PR 이 열릴 때
+          # tc/pr-<N> 을 만든다. 운영 config.yml 도 같은 규칙이다
+          # (CIRCLE_BRANCH 가 pull/* 면 tc/pr-<번호>, 아니면 develop).
+          TC_REPO=https://github.com/CUBRID/cubrid-testcases-private-ex.git
+          if [ -n "$INPUT_PR" ]; then
+            if [[ ! "$INPUT_PR" =~ ^[0-9]{1,7}$ ]]; then
+              echo "::error::pr 은 정수여야 한다"; exit 1
+            fi
+            TC_BRANCH="tc/pr-${INPUT_PR}"
+          else
+            TC_BRANCH=develop
+          fi
+
+          # 없을 수 있다 — sync bot 이 생기기 전에 열린 PR 등. develop 으로 떨어진다.
+          if ! git ls-remote --exit-code --heads "$TC_REPO" "$TC_BRANCH" >/dev/null 2>&1; then
+            echo "::warning::$TC_BRANCH 가 없다 — develop 으로 간다"
+            TC_BRANCH=develop
+          fi
+          echo "tc 브랜치 : $TC_BRANCH"
+
+          # --- 최신화. testtools 와 testcases 를 함께 받는다 ---
+          # 운영 test_shell 이 노드마다 부르는 것과 같은 명령이다.
+          export BRANCH_TESTCASES="$TC_BRANCH"
+          rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
+          /entrypoint.sh checkout
+          rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
+          echo "최신화 WAN: $(( (rx1 - rx0) / 1048576 )) MB"
+
+          # --- 이 시점의 커밋을 못 박는다 ---
+          # 브랜치는 움직이는 표적이다. plan 이 나눈 목록과 shard 가 가진 케이스가
+          # 어긋나면 조용히 빠진다. shard 는 브랜치가 아니라 이 SHA 로 맞춘다.
+          TC_SHA=$(git -C "$TC_DIR" rev-parse HEAD)
+          echo "tc SHA    : $TC_SHA"
+          echo "tc HEAD   : $(git -C "$TC_DIR" log -1 --format='%ci %s')"
+          {
+            echo "tc_sha=$TC_SHA"
+            echo "tc_branch=$TC_BRANCH"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 케이스 목록 + LPT 분배
+        id: split
+        env:
+          PAR: ${{ steps.args.outputs.par }}
+          LIMIT: ${{ steps.args.outputs.limit }}
+          SABOTAGE: ${{ needs.gate.outputs.sabotage }}
+          RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
+        run: |
+          set -eo pipefail
+
+          # overlay 마운트와 최신화는 앞 스텝이 끝냈다.
+          # ⚠ _25_unstable 제거는 반드시 checkout **뒤**여야 한다.
+          #    checkout 의 `reset --hard` 가 지운 것을 되살리기 때문이다.
+          rm -rf "$TC_DIR/shell/_25_unstable"     # 운영과 같은 제외
+
+          # --- 목록. 운영 config.yml 과 같은 glob + 필터다 ---
+          find "$TC_DIR/shell" -path '*/cases/*.sh' 2>/dev/null \
+            | grep -P '/([^/]+)/cases/\1\.sh$' \
+            | sed "s#^$TC_DIR/#cubrid-testcases-private-ex/#" \
+            | sort > /tmp/all.list
+          # --- 실패만 재실행 (CUBRIDQA-1522 의 자리) ---
+          # 앞선 run 이 failed.list 를 남긴다. 그것을 그대로 입력으로 받는다.
+          # 형식은 <shard>\t<shell/...> 이고 all.list 는 접두사가 붙어 있어 맞춰 준다.
+          if [ -n "$RERUN_FROM" ]; then
+            src="$CI_ROOT/runs/$RERUN_FROM/failed.list"
+            [ -f "$src" ] || { echo "::error::failed.list 가 없다: $src"; exit 1; }
+            cut -f2 "$src" | sed 's#^#cubrid-testcases-private-ex/#' | sort -u > /tmp/want.list
+            want=$(wc -l < /tmp/want.list)
+            # 지금 트리에 있는 것만 남긴다. 그사이 지워진 케이스는 뺀다.
+            grep -xF -f /tmp/want.list /tmp/all.list > /tmp/cases.list || : > /tmp/cases.list
+            got=$(wc -l < /tmp/cases.list)
+            echo "재실행 대상: run $RERUN_FROM 의 실패 $want 건 중 현재 트리에 있는 $got 건"
+            if [ "$got" -ne "$want" ]; then
+              echo "::warning::$((want - got)) 건은 지금 트리에 없다 (지워졌거나 이름이 바뀌었다)"
+              comm -23 /tmp/want.list <(sort /tmp/cases.list) | sed 's/^/  없음: /'
+            fi
+          elif [ "$LIMIT" -gt 0 ]; then
+            head -"$LIMIT" /tmp/all.list > /tmp/cases.list
+          else
+            cp /tmp/all.list /tmp/cases.list
+          fi
+          total=$(wc -l < /tmp/cases.list)
+          echo "전체 케이스: $(wc -l < /tmp/all.list) / 대상: $total"
+          # CUBRIDQA-1522 AC 3 — 대상 0건의 원인을 구별한다.
+          # 재실행에서 0건인 것과 전체 run 에서 glob 이 아무것도 못 찾은 것은
+          # 원인이 다르다. 문구가 같으면 로그가 원인을 잘못 가리킨다.
+          if [ "$total" -eq 0 ]; then
+            if [ -n "$RERUN_FROM" ]; then
+              echo "::error::돌릴 것이 없다 — run $RERUN_FROM 의 실패 목록에 지금 돌릴 수 있는 케이스가 0건이다"
+            else
+              echo "::error::케이스가 하나도 없다 — glob 이 아무것도 못 찾았다. 테스트케이스 트리를 봐라"
+            fi
+            exit 1
+          fi
+
+          # --- 소요시간 읽기 ---
+          # 형식: <케이스 경로>\t<초>.  없으면 빈 파일로 시작한다.
+          mkdir -p "$(dirname "$TIMINGS")"
+          [ -f "$TIMINGS" ] || : > "$TIMINGS"
+          echo "소요시간 데이터: $(wc -l < "$TIMINGS") 건"
+
+          # 기본값은 실측 중앙값이다. 데이터가 있으면 그 중앙값을 쓴다.
+          if [ -s "$TIMINGS" ]; then
+            dflt=$(cut -f2 "$TIMINGS" | sort -n | awk '{a[NR]=$1} END {print (NR? a[int(NR/2)+1] : 10)}')
+          else
+            dflt=10
+          fi
+          echo "기본값(신규 케이스에 매기는 초): $dflt"
+
+          # --- LPT 분배 ---
+          # 긴 것부터 꺼내 그때까지 합이 가장 작은 shard 에 넣는다.
+          # 실측 편차가 크다 — 최소 1.5초, 중앙 10.4초, 최대 301초. 29배다.
+          # 이름순으로 나누면 긴 것이 한 shard 에 몰린다 (최장 49.4분 vs LPT 24.8분).
+          # awk 로 짠다. test_shell 이미지에 python 이 없다 (확인함).
+          mkdir -p /tmp/shards
+          awk -v dflt="$dflt" -v tf="$TIMINGS" '
+            BEGIN {
+              FS = "\t"
+              while ((getline line < tf) > 0) {
+                n = split(line, a, "\t")
+                if (n >= 2) t[a[1]] = a[2] + 0
+              }
+              close(tf)
+            }
+            {
+              c = $0
+              if (c in t) { sec = t[c]; timed++ } else { sec = dflt }
+              # 내림차순 정렬을 위해 키를 만든다. 같은 값이면 이름순으로 결정론적이다.
+              printf "%015.3f\t%s\n", sec, c
+            }
+            # timed 가 한 번도 안 늘면 미정의라 빈 줄이 나간다. +0 으로 0 을 보장한다.
+            END { print timed + 0 > "/tmp/timed.count" }
+          ' /tmp/cases.list | sort -rn -k1,1 -k2,2 > /tmp/sorted.tsv
+
+          timed=$(cat /tmp/timed.count 2>/dev/null || echo 0)
+          timed=${timed:-0}
+          echo "실측값 적용: $timed 건 / 기본값: $((total - timed)) 건"
+
+          awk -v par="$PAR" '
+            BEGIN { FS = "\t"; for (i = 0; i < par; i++) load[i] = 0 }
+            {
+              # 가장 한산한 shard 를 찾는다.
+              best = 0
+              for (i = 1; i < par; i++) if (load[i] < load[best]) best = i
+              load[best] += $1
+              printf "%s\n", $2 >> sprintf("/tmp/shards/%02d.list", best)
+              cnt[best]++
+            }
+            END {
+              for (i = 0; i < par; i++)
+                printf "%02d\t%d\t%.1f\n", i, cnt[i] + 0, load[i]
+            }
+          ' /tmp/sorted.tsv > /tmp/plan.tsv
+
+          echo
+          echo "=== 분배 결과 (shard / 케이스 수 / 예상 초) ==="
+          sort -t$'\t' -k3,3 -rn /tmp/plan.tsv | head -5
+          echo "..."
+          sort -t$'\t' -k3,3 -rn /tmp/plan.tsv | tail -3
+          echo
+          awk -F'\t' '{s+=$3; if(NR==1||$3>mx)mx=$3; if(NR==1||$3<mn)mn=$3}
+                      END {printf "예상 최장 shard: %.1f초 (%.1f분) / 최단: %.1f초 / 편차: %.2f배\n",
+                             mx, mx/60, mn, (mn>0? mx/mn : 0)
+                           printf "전부 합치면: %.1f분 (순차라면)\n", s/60}' /tmp/plan.tsv
+
+          # --- ① 방지 장치: 나눈 것의 합이 전체와 같은가 ---
+          got=$(awk -F'\t' '{s+=$2} END {print s+0}' /tmp/plan.tsv)
+          echo
+          echo "검증 ①: 분배 합계 $got vs 전체 $total"
+          if [ "$got" -ne "$total" ]; then
+            echo "::error::분배가 케이스를 잃었다 ($got != $total)"
+            exit 1
+          fi
+          echo "  일치한다"
+
+          # --- run 디렉토리에 발행 ---
+          rundir="$CI_ROOT/runs/${GITHUB_RUN_ID}"
+          mkdir -p "$rundir/shards" "$rundir/results"
+          for i in $(seq 0 $((PAR - 1))); do
+            f=$(printf "%02d.list" "$i")
+            # 케이스가 shard 수보다 적으면 빈 shard 가 생긴다. 그것은 정상이 아니다 —
+            # plan 이 여기서 막는다. shard 쪽 검사는 "받지 못했다"를 잡는 용도다.
+            if [ ! -f "/tmp/shards/$f" ]; then
+              echo "::error::shard $i 에 배정된 케이스가 없다. parallelism($PAR)이 케이스 수($total)보다 큰가"
+              exit 1
+            fi
+            cp "/tmp/shards/$f" "$rundir/shards/$f"
+          done
+          cp /tmp/plan.tsv "$rundir/plan.tsv"
+          cp /tmp/cases.list "$rundir/cases.list"
+
+          # --- sabotage: 방지 장치가 실제로 잡는지 본다 ---
+          case "$SABOTAGE" in
+            empty-shard)
+              echo "::warning::sabotage=empty-shard — shard 00 의 몫을 비운다. shard 00 이 실패해야 한다"
+              : > "$rundir/shards/00.list"
+              ;;
+            lose-shard)
+              echo "::warning::sabotage=lose-shard — shard 00 의 몫 파일을 지운다. shard 00 이 실패해야 한다"
+              rm -f "$rundir/shards/00.list"
+              ;;
+          esac
+
+          # --- matrix ---
+          matrix=$(seq 0 $((PAR - 1)) | awk '{printf "%02d\n", $1}' | jq -R . | jq -sc .)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "timed=$timed" >> "$GITHUB_OUTPUT"
+          echo "rundir=$rundir" >> "$GITHUB_OUTPUT"
+          echo
+          echo "발행: $rundir"
+
+      - name: CTP 를 공유 저장소에 발행한다
+        run: |
+          set -eo pipefail
+          # 앞 스텝의 checkout 이 /home/cubrid-testtools 를 이미 받아 두었다.
+          # 그것을 GlusterFS 에 두면 shard 50개가 LAN 으로 복사한다 — shard WAN 0.
+          # ⚠ 노드에 testtools seed 가 없어 plan 의 clone 은 통째로 받는다 (약 25MB).
+          #    노드 seed 로 바꾸는 일은 CUBRIDQA-1497 이다. 그것이 서면 이 스텝은 사라진다.
+          src="$WORKDIR/cubrid-testtools"
+          [ -d "$src/.git" ] || { echo "::error::checkout 이 CTP 를 받지 않았다: $src"; exit 1; }
+          # ⚠ 경로가 run 별이다. 공유 경로(`$CI_ROOT/testtools`)를 쓰면 안 된다 —
+          #   발행이 "옛것 비키기 → 새것 들이기" 두 단계라 그 사이 seed 가 **없다.**
+          #   다른 run 의 shard 가 그 순간 읽으면 실패한다. 옛 판은 전역 concurrency
+          #   그룹으로 그것을 막았고, 그 그룹이 PR 별 병렬 실행을 못 하게 했다.
+          #   collect 가 run 끝에 이 디렉토리를 지운다 (59MB/run).
+          seed="$CI_ROOT/runs/${GITHUB_RUN_ID}/testtools"
+          head=$(git -C "$src" rev-parse HEAD)
+
+          tmp="${seed}.tmp.${GITHUB_RUN_ID}"
+          rm -rf "$tmp"
+          mkdir -p "$(dirname "$seed")"
+          cp -a "$src" "$tmp"
+
+          # rename 하나로 공개한다. 소비자가 반쯤 복사된 트리를 보는 일이 없다.
+          # 경로가 run 별이라 보통 $seed 는 없다. 재실행(run attempt 2)에서만 있다.
+          rm -rf "${seed}.old"
+          [ -d "$seed" ] && mv -T "$seed" "${seed}.old"
+          mv -T "$tmp" "$seed"
+          rm -rf "${seed}.old"
+          echo "CTP seed: $seed @ $head"
+
+          printf 'end\t%s\n' "$(date -u +%s)" >> "$STAMPS/plan.tsv"
+
+      - name: 분배 요약
+        env:
+          TOTAL: ${{ steps.split.outputs.total }}
+          PAR: ${{ steps.args.outputs.par }}
+          TIMED: ${{ steps.split.outputs.timed }}
+          SHA: ${{ needs.build_debug.outputs.sha }}
+          MODE: ${{ needs.build_debug.outputs.mode }}
+          BRID: ${{ steps.build.outputs.build_run_id }}
+          RUNDIR: ${{ steps.split.outputs.rundir }}
+        run: |
+          set -eo pipefail
+          {
+            echo "## 분배"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| 대상 케이스 | $TOTAL |"
+            echo "| shard | $PAR |"
+            echo "| 소요시간 실측 적용 | $TIMED 건 |"
+            echo "| 빌드 SHA | \`$SHA\` |"
+            echo "| 빌드 | $MODE (만든 run \`$BRID\`) |"
+            echo "| run 디렉토리 | \`$RUNDIR\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # =================================================================
+  # 3. 실행.  shard 마다 자기 몫만 돌린다.
+  # =================================================================
+  shard:
+    name: "shard ${{ matrix.i }}"
+    needs: plan
+    runs-on: cubrid-arc
+    timeout-minutes: 120
+    strategy:
+      # 하나가 죽어도 나머지를 계속 돌린다. 실패 목록을 모으는 것이 목적이다.
+      fail-fast: false
+      # max-parallel 을 주지 않는다. maxRunners 가 상한이다.
+      matrix:
+        i: ${{ fromJson(needs.plan.outputs.matrix) }}
+    container:
+      image: cubridci/cubridci:test_shell
+    defaults:
+      run:
+        shell: bash
+    env:
+      WORKDIR: /home
+      TC_DIR: /home/cubrid-testcases-private-ex
+      CUBRID_DIR: /home/CUBRID
+      RUNDIR: ${{ needs.plan.outputs.rundir }}
+      IDX: ${{ matrix.i }}
+
+    steps:
+      - name: pod template 전제 확인 — 없으면 실패가 아니라 정지한다
+        run: |
+          set -eo pipefail
+          printf 'start\t%s\n' "$(date -u +%s)" > "$STAMPS/shard-${IDX}.tsv"
+
+          # ⚠ shareProcessNamespace 가 빠지면 PID 1 이 `tail -f /dev/null` 이 된다.
+          # tail 은 wait(2) 를 하지 않는다. CUBRID 서버는 데몬(double fork)이라 PPID 가
+          # 1 이고, 끝나면 좀비가 되어 `cubrid server stop` 이 무한 대기한다.
+          # 그러면 이 job 은 실패하지 않고 120분 타임아웃까지 **멈춘다.** 로그로는 안 보인다.
+          # S6 에서 이것을 찾는 데 반나절이 들었다. 두 줄로 즉시 빨강으로 바꾼다.
+          pid1=$(ps -p 1 -o comm= | tr -d ' ')
+          echo "PID 1: $pid1"
+          if [ "$pid1" != "pause" ]; then
+            echo "::error::PID 1 이 pause 가 아니다 ($pid1). pod template 에 shareProcessNamespace: true 가 빠졌다."
+            echo "  이대로 두면 shell 테스트가 실패가 아니라 정지한다 (CUBRIDQA-1503 S6)."
+            exit 1
+          fi
+
+      - name: 내 몫을 받는다 — 여기가 "0건 통과 = 초록"을 막는 둘째 겹이다
+        id: mine
+        run: |
+          set -eo pipefail
+          f="$RUNDIR/shards/${IDX}.list"
+
+          # ② 방지 장치.
+          # CircleCI 판은 여기서 `circleci-agent step halt` 로 **성공 종료**한다.
+          # 그 판에서는 서버가 "네 몫은 0건"이라고 답할 수 있어 정상이기 때문이다.
+          # 이 설계에서는 plan 이 이미 전부 나눴다. 빈 몫은 정상이 아니라 **버그다.**
+          if [ ! -f "$f" ]; then
+            echo "::error::내 몫 파일이 없다: $f"
+            echo "  plan 이 만들지 않았거나 사라졌다. 0건을 성공으로 보지 않는다."
+            exit 1
+          fi
+          n=$(wc -l < "$f")
+          if [ "$n" -eq 0 ]; then
+            echo "::error::내 몫이 0건이다: $f"
+            echo "  plan 이 전부 나눴으므로 0건은 버그다. 0건을 성공으로 보지 않는다."
+            exit 1
+          fi
+          echo "내 몫: $n 건"
+          head -3 "$f"
+          echo "n=$n" >> "$GITHUB_OUTPUT"
+
+      - name: 저장 구조 — overlay 두 개 + 빌드 출처 확인
+        env:
+          SHA: ${{ needs.plan.outputs.sha }}
+          WANT_BRID: ${{ needs.plan.outputs.build_run_id }}
+        run: |
+          set -eo pipefail
+          mkdir -p /rw/upper /rw/work "$TC_DIR"
+          mount -t overlay overlay -o lowerdir=/ro,upperdir=/rw/upper,workdir=/rw/work "$TC_DIR"
+
+          lower="$CI_BUILD_ROOT/$SHA/debug/CUBRID"
+          [ -d "$lower" ] || { echo "::error::빌드가 없다: $lower"; exit 1; }
+          mkdir -p /build-rw/upper /build-rw/work "$CUBRID_DIR"
+          mount -t overlay overlay \
+            -o lowerdir="$lower",upperdir=/build-rw/upper,workdir=/build-rw/work "$CUBRID_DIR"
+          echo "테스트케이스 + CUBRID 마운트됨"
+
+          # --- AC 2 의 증거를 여기서 만든다 ---
+          # hostPath 를 직접 보지 않는다. **테스트가 실제로 쓰는 마운트**를 읽는다.
+          # $CUBRID_DIR 는 방금 만든 overlay 이고 lowerdir 가 발행물이다.
+          m="$CUBRID_DIR/$BUILD_META"
+          [ -f "$m" ] || {
+            echo "::error::마운트된 CUBRID 안에 $BUILD_META 가 없다"
+            echo "  이 shard 가 읽는 것이 build_debug 의 발행물이 아니다."; exit 1; }
+
+          got_sha=$(awk -F= '/^sha=/ {print $2}' "$m")
+          got_brid=$(awk -F= '/^run_id=/ {print $2}' "$m")
+          echo "읽은 빌드: sha=$got_sha run_id=$got_brid"
+          [ "$got_sha" = "$SHA" ] || {
+            echo "::error::읽은 빌드의 sha($got_sha)가 plan 의 sha($SHA)와 다르다"; exit 1; }
+          [ "$got_brid" = "$WANT_BRID" ] || {
+            echo "::error::읽은 빌드를 만든 run($got_brid)이 plan 이 확인한 run($WANT_BRID)과 다르다"
+            echo "  파이프라인 도중에 발행물이 바뀌었다."; exit 1; }
+
+          # collect 가 이 파일을 세어 "shard 전수가 같은 빌드를 읽었다"를 판정한다.
+          out="$RUNDIR/results/${IDX}"
+          mkdir -p "$out"
+          cp -f "$m" "$out/build.read"
+          echo "일치한다 — 이 shard 는 run $got_brid 의 빌드를 읽는다"
+
+      - name: CTP 준비 — plan 이 받아 둔 것을 LAN 으로 복사한다
+        run: |
+          set -eo pipefail
+          # run 별 경로다. 다른 run 의 발행이 이것을 비켜 놓는 일이 없다.
+          seed="$RUNDIR/testtools"
+          [ -d "$seed" ] || { echo "::error::CTP seed 가 없다: $seed"; exit 1; }
+
+          # GlusterFS 는 LAN 이다. 여기서 WAN 을 쓰지 않는다 (S6a 실측: clone 하나가 25MB).
+          rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
+          cp -a "$seed" "$WORKDIR/cubrid-testtools"
+          rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
+          echo "CTP 복사 WAN: $(( (rx1 - rx0) / 1048576 )) MB (0 이어야 한다)"
+          ls "$CTP_HOME/bin/ctp.sh" "$CTP_HOME/conf/shell_ci.conf"
+
+          sudo /usr/sbin/sshd || /usr/sbin/sshd || true
+
+      # ---------------------------------------------------------------
+      # 토큰은 job 마다 각자 받는다. job output 으로 넘기지 않는다 —
+      # output 은 job 경계를 그냥 넘고 마스킹되지도 않는다 (함정 8).
+      - name: GitHub App 토큰
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          # ⚠ private repo 하나만 요청한다. App 설치 범위에 cubrid-testtools 가 없어
+          # 그것을 함께 요청하면 "Not Found" 로 토큰 발급 자체가 실패한다 (2026-08-18 실측).
+          # testtools 는 공개 저장소라 이 토큰으로도 읽힌다 — 설치 범위 밖이어도 공개 읽기는 된다.
+          repositories: cubrid-testcases-private-ex
+          owner: CUBRID
+          # 이 워크플로는 테스트케이스를 **읽기만** 한다. 기본값은 App 설치 권한
+          # 전체를 그대로 받아 contents: write 가 따라온다. 읽기로 좁힌다.
+          permission-contents: read
+
+      - name: 토큰 마스킹
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: echo "::add-mask::$APP_TOKEN"
+
+      - name: 테스트케이스 최신화 — plan 이 본 그 커밋으로 맞춘다
+        env:
+          GHI_TOKEN: ${{ steps.app-token.outputs.token }}
+          TC_BRANCH: ${{ needs.plan.outputs.tc_branch }}
+          WANT_TC_SHA: ${{ needs.plan.outputs.tc_sha }}
+        run: |
+          set -eo pipefail
+          # CTP 복사가 이 스텝보다 **앞**이어야 한다. /home/cubrid-testtools 에 .git 이
+          # 있어야 entrypoint 가 통째로 clone 하지 않고 증분 fetch 로 간다.
+          [ -d "$WORKDIR/cubrid-testtools/.git" ] || {
+            echo "::error::CTP 가 없다. 스텝 순서가 틀렸다"; exit 1; }
+
+          export BRANCH_TESTCASES="$TC_BRANCH"
+          rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
+          /entrypoint.sh checkout
+
+          # --- plan 이 본 커밋으로 못 박는다 ---
+          # checkout 은 브랜치 tip 으로 맞춘다. 그사이 브랜치가 움직였으면
+          # plan 의 목록과 어긋난다. 여기서 되돌린다. 안 움직였으면 fetch 는 no-op 이다.
+          cd "$TC_DIR"
+          git fetch -q --depth 1 --no-tags origin "$WANT_TC_SHA"
+          git reset -q --hard "$WANT_TC_SHA"
+          rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
+
+          got=$(git rev-parse HEAD)
+          echo "tc 브랜치 : $TC_BRANCH"
+          echo "tc SHA    : $got"
+          echo "최신화 WAN: $(( (rx1 - rx0) / 1048576 )) MB"
+          [ "$got" = "$WANT_TC_SHA" ] || {
+            echo "::error::plan 이 본 tc SHA($WANT_TC_SHA)로 못 맞췄다 (지금 $got)"; exit 1; }
+
+          # collect 가 이 파일을 세어 shard 전수가 같은 테스트케이스를 봤는지 판정한다.
+          out="$RUNDIR/results/${IDX}"
+          mkdir -p "$out"
+          printf 'tc_sha=%s\ntc_branch=%s\n' "$got" "$TC_BRANCH" > "$out/tc.read"
+
+      - name: 내 몫만 남긴다
+        run: |
+          set -eo pipefail
+          rm -rf "$TC_DIR/shell/_25_unstable"
+
+          # plan 이 준 경로는 cubrid-testcases-private-ex/... 로 시작한다.
+          # 지우는 쪽은 절대 경로라 접두사를 맞춘다.
+          sed "s#^cubrid-testcases-private-ex/#$TC_DIR/#" "$RUNDIR/shards/${IDX}.list" \
+            | xargs -n1 dirname | sort -u > /tmp/keep_dirs.list
+          echo "남길 디렉토리: $(wc -l < /tmp/keep_dirs.list)"
+
+          find "$TC_DIR/shell" -name cases -type d \
+            | grep -v -F -f /tmp/keep_dirs.list \
+            | xargs -r rm -rf
+
+          left=$(find "$TC_DIR/shell" -path '*/cases/*.sh' 2>/dev/null | grep -Pc '/([^/]+)/cases/\1\.sh$' || echo 0)
+          echo "남은 케이스: $left (기대: ${{ steps.mine.outputs.n }})"
+          echo "/rw: $(df -h /rw | tail -1 | awk '{print $3" 사용 / "$2}')"
+
+      - name: CTP 실행
+        id: ctp
+        env:
+          # CTP 가 읽는 CircleCI 변수는 이것 하나다 (ShellHelper.getTestNodeTitle).
+          # 로그의 EnvId 라벨에만 쓴다 — 없으면 전부 `local` 이 되어 어느 shard 의
+          # 로그인지 구별되지 않는다. 넣으면 운영과 같은 `parallel-NN` 이 된다.
+          # 테스트케이스(.sh) 쪽은 CIRCLE_* 를 하나도 읽지 않는다 (3,241건 전수 확인).
+          CIRCLE_NODE_INDEX: ${{ matrix.i }}
+        run: |
+          set -eo pipefail
+          ulimit -c 10485760
+          set +e
+          ( cd "$CTP_HOME" && HOME="$WORKDIR" ./bin/ctp.sh shell -c "$CTP_HOME/conf/shell_ci.conf" )
+          rc=$?
+          set -e
+          echo "ctp exit: $rc"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          # CTP 가 0 이 아니어도 여기서 죽이지 않는다. 결과를 발행해야 collect 가 센다.
+          # 실패 판정은 결과를 보고 아래에서 한다.
+
+      - name: 결과 발행 — collect 가 이것을 딛는다
+        if: always()
+        run: |
+          set -eo pipefail
+          out="$RUNDIR/results/${IDX}"
+          mkdir -p "$out"
+          logs="$CTP_HOME/result/shell/current_runtime_logs"
+
+          if [ -d "$logs" ]; then
+            for f in test-shell.xml test_status.data feedback.log; do
+              cp -f "$(readlink -f "$logs")/$f" "$out/$f" 2>/dev/null || true
+            done
+          fi
+
+          # shard 가 여기까지 왔다는 표식. 없으면 collect 가 "통째로 죽었다"로 센다.
+          printf 'idx=%s\nassigned=%s\nctp_rc=%s\n' \
+            "$IDX" "${{ steps.mine.outputs.n }}" "${{ steps.ctp.outputs.rc }}" > "$out/shard.done"
+
+          printf 'end\t%s\n' "$(date -u +%s)" >> "$STAMPS/shard-${IDX}.tsv"
+
+          echo "발행: $out"
+          ls -la "$out"
+          [ -f "$out/test_status.data" ] && cat "$out/test_status.data" || echo "(상태 파일 없음)"
+
+      - name: 판정
+        if: always()
+        run: |
+          set -eo pipefail
+          out="$RUNDIR/results/${IDX}"
+          st="$out/test_status.data"
+          [ -f "$st" ] || { echo "::error::CTP 상태 파일이 없다 — 테스트가 돌지 않았다"; exit 1; }
+
+          exec_n=$(awk -F= '/total_executed_case_count/ {print $2+0}' "$st")
+          fail_n=$(awk -F= '/total_fail_case_count/ {print $2+0}' "$st")
+          skip_n=$(awk -F= '/total_skip_case_count/ {print $2+0}' "$st")
+          want="${{ steps.mine.outputs.n }}"
+          echo "배정 $want / 실행 $exec_n / 실패 $fail_n / 건너뜀 $skip_n"
+
+          # 실행 + 건너뜀 이 배정과 맞아야 한다. 적으면 조용히 빠진 것이 있다.
+          if [ "$((exec_n + skip_n))" -lt "$want" ]; then
+            echo "::error::배정 $want 인데 $((exec_n + skip_n)) 건만 처리됐다 — 조용히 빠진 케이스가 있다"
+            exit 1
+          fi
+          [ "$fail_n" -eq 0 ] || { echo "::error::$fail_n 건 실패"; exit 1; }
+          echo "이 shard 는 통과다"
+
+  # =================================================================
+  # 4. 수집.  shard 가 죽어도 돈다. 여기가 셋째 겹이다.
+  # =================================================================
+  collect:
+    name: 수집
+    needs: [gate, build_debug, plan, shard]
+    # ⚠ always() 만 두면 gate 가 넘어간 코멘트(`/run sql` 등)에도 이 job 이 돈다.
+    #   gate 판정을 함께 봐야 한다. gate 가 skip 되면 outputs 가 빈 값이라 거짓이 된다.
+    if: always() && needs.gate.outputs.run == 'true'
+    runs-on: cubrid-arc
+    timeout-minutes: 30
+    container:
+      image: cubridci/cubridci:test_shell
+    defaults:
+      run:
+        shell: bash
+    env:
+      RUNDIR: ${{ needs.plan.outputs.rundir }}
+      TOTAL: ${{ needs.plan.outputs.total }}
+
+    steps:
+      - name: 결과를 모은다
+        id: gather
+        env:
+          BUILD_RESULT: ${{ needs.build_debug.result }}
+          PLAN_RESULT: ${{ needs.plan.result }}
+        run: |
+          set -eo pipefail
+          if [ -z "$RUNDIR" ] || [ ! -d "$RUNDIR" ]; then
+            # 어느 단계에서 끊겼는지 말해 준다. S6 는 "plan 이 실패했다"만 말했다.
+            if [ "$BUILD_RESULT" != 'success' ]; then
+              echo "::error::빌드가 $BUILD_RESULT 로 끝났다. 테스트는 하나도 돌지 않았다."
+            else
+              echo "::error::plan 이 $PLAN_RESULT 로 끝났다. 분배 단계에서 끊겼다."
+            fi
+            exit 1
+          fi
+
+          # ⚠ `ls <글롭> | wc -l` 을 쓰지 마라. 매치가 0 이면 ls 가 실패하고
+          # `set -eo pipefail` 이 이 스텝을 죽인다 (실측: exit 2).
+          # shard 가 전부 죽으면 shard.done 이 하나도 없다 — 바로 그때 collect 가
+          # 살아서 ③ 을 외쳐야 하는데, ls 판은 그 순간에 조용히 죽는다.
+          # find 는 무매치에 0 을 반환한다.
+          planned=$(find "$RUNDIR/shards" -maxdepth 1 -name '*.list' 2>/dev/null | wc -l)
+          done_n=$(find "$RUNDIR/results" -mindepth 2 -maxdepth 2 -name shard.done 2>/dev/null | wc -l)
+          read_n=$(find "$RUNDIR/results" -mindepth 2 -maxdepth 2 -name build.read 2>/dev/null | wc -l)
+          tcread_n=$(find "$RUNDIR/results" -mindepth 2 -maxdepth 2 -name tc.read 2>/dev/null | wc -l)
+          echo "shard: 계획 $planned / 결과 발행 $done_n / 빌드 출처 $read_n / tc 출처 $tcread_n"
+
+          # 각 shard 의 상태를 합산한다.
+          : > /tmp/agg.tsv
+          for d in "$RUNDIR"/results/*/; do
+            i=$(basename "$d")
+            st="$d/test_status.data"
+            if [ -f "$st" ]; then
+              awk -F= -v i="$i" '
+                /total_case_count/        {c=$2+0}
+                /total_executed_case_count/ {e=$2+0}
+                /total_success_case_count/  {s=$2+0}
+                /total_fail_case_count/     {f=$2+0}
+                /total_skip_case_count/     {k=$2+0}
+                END {printf "%s\t%d\t%d\t%d\t%d\t%d\n", i, c, e, s, f, k}' "$st" >> /tmp/agg.tsv
+            else
+              printf "%s\t0\t0\t0\t0\t0\n" "$i" >> /tmp/agg.tsv
+            fi
+          done
+
+          exec_sum=$(awk -F'\t' '{s+=$3} END {print s+0}' /tmp/agg.tsv)
+          succ_sum=$(awk -F'\t' '{s+=$4} END {print s+0}' /tmp/agg.tsv)
+          fail_sum=$(awk -F'\t' '{s+=$5} END {print s+0}' /tmp/agg.tsv)
+          skip_sum=$(awk -F'\t' '{s+=$6} END {print s+0}' /tmp/agg.tsv)
+          echo "실행 $exec_sum / 성공 $succ_sum / 실패 $fail_sum / 건너뜀 $skip_sum (대상 $TOTAL)"
+
+          for k in planned done_n read_n tcread_n exec_sum succ_sum fail_sum skip_sum; do
+            echo "$k=${!k}" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: 빌드 출처 대조 — AC 2 는 여기서 판정된다
+        id: provenance
+        env:
+          WANT_BRID: ${{ needs.plan.outputs.build_run_id }}
+          MODE: ${{ needs.build_debug.outputs.mode }}
+          WANT_TC_SHA: ${{ needs.plan.outputs.tc_sha }}
+        run: |
+          set -eo pipefail
+          # shard 마다 자기가 마운트한 CUBRID 안에서 읽은 meta 를 남겼다.
+          # 전부 같은 run 을 가리켜야 한다.
+          : > /tmp/brids.txt
+          for f in "$RUNDIR"/results/*/build.read; do
+            [ -f "$f" ] || continue
+            awk -F= '/^run_id=/ {print $2}' "$f" >> /tmp/brids.txt
+          done
+          uniq_n=$(sort -u /tmp/brids.txt | wc -l)
+          echo "shard 가 읽은 빌드의 run_id 종류: $uniq_n"
+          sort /tmp/brids.txt | uniq -c
+
+          # 어긋나는 방식이 셋이라 원인을 구별해서 남긴다.
+          # 뭉뚱그리면 "몇 개가 안 남겼다"와 "서로 다른 것을 읽었다"가 같은 문구로 나와
+          # 나중에 로그만 보고는 어느 쪽인지 알 수 없다.
+          if [ "$uniq_n" -eq 0 ]; then
+            reason=none        # 아무도 출처를 안 남겼다
+          elif [ "$uniq_n" -gt 1 ]; then
+            reason=mixed       # shard 마다 다른 빌드를 읽었다
+          elif [ "$(sort -u /tmp/brids.txt)" != "$WANT_BRID" ]; then
+            reason=mismatch    # 전원이 같은 것을 읽었지만 plan 이 확인한 빌드가 아니다
+          else
+            reason=ok
+          fi
+
+          # mode=built 면 그 빌드를 만든 run 이 곧 이 run 이다.
+          this_run=no
+          [ "$WANT_BRID" = "$GITHUB_RUN_ID" ] && this_run=yes
+          echo "빌드를 만든 run: $WANT_BRID (이 run: $GITHUB_RUN_ID / mode=$MODE)"
+          echo "출처 판정: $reason / 이 run 이 만든 빌드: $this_run"
+
+          # --- 테스트케이스 출처도 같은 방식으로 본다 ---
+          : > /tmp/tcs.txt
+          for f in "$RUNDIR"/results/*/tc.read; do
+            [ -f "$f" ] || continue
+            awk -F= '/^tc_sha=/ {print $2}' "$f" >> /tmp/tcs.txt
+          done
+          tc_uniq=$(sort -u /tmp/tcs.txt | wc -l)
+          echo "shard 가 읽은 테스트케이스 SHA 종류: $tc_uniq"
+          sort /tmp/tcs.txt | uniq -c
+
+          if [ "$tc_uniq" -eq 0 ]; then
+            tc_reason=none
+          elif [ "$tc_uniq" -gt 1 ]; then
+            tc_reason=mixed
+          elif [ "$(sort -u /tmp/tcs.txt)" != "$WANT_TC_SHA" ]; then
+            tc_reason=mismatch
+          else
+            tc_reason=ok
+          fi
+          echo "tc 판정: $tc_reason (plan 이 정한 것: $WANT_TC_SHA)"
+
+          {
+            echo "reason=$reason"
+            echo "uniq=$uniq_n"
+            echo "this_run=$this_run"
+            echo "tc_reason=$tc_reason"
+            echo "tc_uniq=$tc_uniq"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 실패 케이스 목록 — 출처는 CTP 의 JUnit XML 이다
+        id: failures
+        run: |
+          set -eo pipefail
+          : > /tmp/failed.list
+          for x in "$RUNDIR"/results/*/test-shell.xml; do
+            [ -f "$x" ] || continue
+            i=$(basename "$(dirname "$x")")
+            awk -v shard="$i" '
+              /<testcase/ {
+                cur = ""
+                # ⚠ 앞의 공백을 반드시 요구한다. CTP 가 쓰는 줄은
+                #   <testcase classname="https://…" name="shell/…" file="…" time="…">
+                # 이고 classname 이 name 보다 앞에 온다. / name="…"/ 가 아니라
+                # /name="…"/ 로 찾으면 **classname 에 먼저 걸려 URL 을 뽑는다.**
+                # 2026-08-13 S6 전체 run 에서 실물로 겪었다.
+                if (match($0, / name="[^"]*"/)) {
+                  cur = substr($0, RSTART + 7, RLENGTH - 8)
+                }
+                next
+              }
+              /<failure/ && cur != "" { printf "%s\t%s\n", shard, cur; cur = "" }
+              /<\/testcase>/ { cur = "" }
+            ' "$x" >> /tmp/failed.list
+          done
+          n=$(wc -l < /tmp/failed.list)
+          echo "실패 케이스: $n 건"
+          [ "$n" -eq 0 ] || head -30 /tmp/failed.list
+          cp /tmp/failed.list "$RUNDIR/failed.list"
+          echo "n=$n" >> "$GITHUB_OUTPUT"
+
+      - name: 소요시간 갱신 — 다음 run 의 분배가 이것을 쓴다
+        run: |
+          set -eo pipefail
+          # feedback.log 형식: [OK]:  <케이스 경로> <밀리초> EnvId=...
+          : > /tmp/new_timings.tsv
+          for f in "$RUNDIR"/results/*/feedback.log; do
+            [ -f "$f" ] || continue
+            grep -E '^\[(OK|NOK)\]' "$f" 2>/dev/null | awk '
+              {
+                # 뒤에서부터 EnvId= 앞의 숫자를 찾는다. 경로에 공백이 없다는 전제다.
+                for (i = NF; i > 1; i--) {
+                  if ($i ~ /^EnvId=/) { ms = $(i-1); path = $(i-2); break }
+                }
+                if (ms ~ /^[0-9]+$/ && path != "") printf "%s\t%.3f\n", path, ms / 1000
+              }' >> /tmp/new_timings.tsv
+          done
+          new_n=$(wc -l < /tmp/new_timings.tsv)
+          echo "이번 run 이 잰 것: $new_n 건"
+
+          mkdir -p "$(dirname "$TIMINGS")"
+          [ -f "$TIMINGS" ] || : > "$TIMINGS"
+          old_n=$(wc -l < "$TIMINGS")
+
+          # 새 값이 옛 값을 이긴다. CircleCI 도 최근 값을 쓴다.
+          awk -F'\t' '
+            NR == FNR { t[$1] = $2; next }        # 새 값 먼저 담는다
+            !($1 in t) { t[$1] = $2 }             # 옛 값은 없던 것만 채운다
+            END { for (k in t) printf "%s\t%s\n", k, t[k] }
+          ' /tmp/new_timings.tsv "$TIMINGS" | sort > /tmp/merged.tsv
+
+          # ⚠ 이 파일은 3,082건이 쌓인 자산이다. 지우면 최장 shard 가 24.8분 -> 49.4분이 된다.
+          # 병합은 합집합이라 줄 수가 절대 줄지 않는다. 줄었다면 병합이 중간에 깨진 것이므로
+          # 옛 파일을 그대로 둔다. 갱신을 건너뛰는 손해가 자산을 잃는 손해보다 작다.
+          merged_n=$(wc -l < /tmp/merged.tsv)
+          if [ "$merged_n" -lt "$old_n" ]; then
+            echo "::error::병합 결과가 옛 파일보다 짧다 ($merged_n < $old_n). 갱신하지 않는다."
+            exit 1
+          fi
+
+          # /tmp 는 pod 로컬, $TIMINGS 는 GlusterFS 다. 파일시스템을 넘는 mv 는
+          # 복사+unlink 라 원자적이지 않다. 같은 파일시스템으로 먼저 옮기고
+          # 거기서 rename 한 번으로 바꾼다.
+          mv -f /tmp/merged.tsv "${TIMINGS}.tmp.$$"
+          mv -f "${TIMINGS}.tmp.$$" "$TIMINGS"
+          echo "소요시간 데이터: $old_n -> $(wc -l < "$TIMINGS") 건"
+
+      - name: 벽시계 — AC 3
+        id: clock
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -eo pipefail
+          now=$(date -u +%s)
+          mkdir -p "$STAMPS"
+          printf 'start\t%s\n' "$now" > "$STAMPS/collect.tsv"
+
+          # run 시작 시각은 컨텍스트에 없다. API 한 번이면 나온다 (수 KB).
+          # 큐 대기가 여기에만 잡힌다 — CUBRIDQA-1521 이 그 숫자를 쓴다.
+          run_started=""
+          if code=$(curl -sS -o /tmp/run.json -w '%{http_code}' \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"); then
+            if [ "$code" = "200" ]; then
+              run_started=$(date -u -d "$(jq -r '.run_started_at' /tmp/run.json)" +%s 2>/dev/null || echo "")
+            fi
+          fi
+          [ -n "$run_started" ] || echo "::warning::run 시작 시각을 못 받았다 (HTTP ${code:-?}). 큐 대기는 뺀다."
+
+          dur() {   # <파일> -> 초. start/end 가 다 있어야 한다.
+            [ -f "$1" ] || { echo ""; return; }
+            awk -F'\t' '$1=="start"{s=$2} $1=="end"{e=$2} END {if (s&&e) print e-s}' "$1"
+          }
+
+          build_sec=$(dur "$STAMPS/build.tsv")
+          plan_sec=$(dur "$STAMPS/plan.tsv")
+
+          # shard 는 개수가 많다. 최장·중앙·최단과 벽시계 span 을 낸다.
+          : > /tmp/shard_dur.txt
+          first_start=""; last_end=""
+          for f in "$STAMPS"/shard-*.tsv; do
+            [ -f "$f" ] || continue
+            d=$(dur "$f"); [ -n "$d" ] && echo "$d" >> /tmp/shard_dur.txt
+          done
+          # span 은 죽은 shard 의 start 도 센다. 실제 점유 구간이기 때문이다.
+          # 글롭이 무매치면 awk 가 실패한다. `|| true` 로 감싸야 pipefail 이 안 죽인다 —
+          # shard 가 전부 죽었을 때야말로 벽시계를 보고해야 한다.
+          stamp_field() { { awk -F'\t' -v k="$1" '$1==k {print $2}' "$STAMPS"/shard-*.tsv 2>/dev/null || true; } | sort -n; }
+          first_start=$(stamp_field start | head -1)
+          last_end=$(stamp_field end | tail -1)
+
+          read -r sh_n sh_max sh_med <<<"$(sort -n /tmp/shard_dur.txt | awk '
+            {a[NR]=$1} END {
+              if (NR==0) {print "0 0 0"; exit}
+              printf "%d %d %d\n", NR, a[NR], a[int((NR+1)/2)]
+            }')"
+          sh_span=""
+          [ -n "$first_start" ] && [ -n "$last_end" ] && sh_span=$((last_end - first_start))
+
+          build_start=$(awk -F'\t' '$1=="start"{print $2}' "$STAMPS/build.tsv" 2>/dev/null)
+          queue_sec=""
+          [ -n "$run_started" ] && [ -n "$build_start" ] && queue_sec=$((build_start - run_started))
+          total_sec=""
+          [ -n "$run_started" ] && total_sec=$((now - run_started))
+
+          fmt() { [ -z "$1" ] && { echo "(못 잼)"; return; }; awk -v s="$1" 'BEGIN{printf "%d초 (%.1f분)", s, s/60}'; }
+
+          {
+            echo "clock_build=$(fmt "$build_sec")"
+            echo "clock_plan=$(fmt "$plan_sec")"
+            echo "clock_shard_max=$(fmt "$sh_max")"
+            echo "clock_shard_med=$(fmt "$sh_med")"
+            echo "clock_shard_span=$(fmt "$sh_span")"
+            echo "clock_queue=$(fmt "$queue_sec")"
+            echo "clock_total=$(fmt "$total_sec")"
+            echo "clock_shard_n=$sh_n"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "=== 벽시계 ==="
+          echo "큐 대기      : $(fmt "$queue_sec")"
+          echo "빌드         : $(fmt "$build_sec")"
+          echo "분배         : $(fmt "$plan_sec")"
+          echo "shard 최장   : $(fmt "$sh_max")   (중앙 $(fmt "$sh_med") / $sh_n 개)"
+          echo "shard 구간   : $(fmt "$sh_span")  (첫 shard 시작 ~ 마지막 shard 종료)"
+          echo "전체         : $(fmt "$total_sec")  (run 시작 ~ 지금. 수집 나머지는 안 들어간다)"
+
+      - name: 검증 ③ + 요약
+        env:
+          TIMED: ${{ needs.plan.outputs.timed }}
+          SHA: ${{ needs.plan.outputs.sha }}
+          MODE: ${{ needs.build_debug.outputs.mode }}
+          BRID: ${{ needs.plan.outputs.build_run_id }}
+          PLANNED: ${{ steps.gather.outputs.planned }}
+          DONE_N: ${{ steps.gather.outputs.done_n }}
+          READ_N: ${{ steps.gather.outputs.read_n }}
+          EXEC_SUM: ${{ steps.gather.outputs.exec_sum }}
+          SUCC_SUM: ${{ steps.gather.outputs.succ_sum }}
+          FAIL_SUM: ${{ steps.gather.outputs.fail_sum }}
+          SKIP_SUM: ${{ steps.gather.outputs.skip_sum }}
+          FAILED_N: ${{ steps.failures.outputs.n }}
+          PROV_REASON: ${{ steps.provenance.outputs.reason }}
+          PROV_UNIQ: ${{ steps.provenance.outputs.uniq }}
+          PROV_THIS: ${{ steps.provenance.outputs.this_run }}
+          TC_REASON: ${{ steps.provenance.outputs.tc_reason }}
+          TC_UNIQ: ${{ steps.provenance.outputs.tc_uniq }}
+          TCREAD_N: ${{ steps.gather.outputs.tcread_n }}
+          TC_SHA: ${{ needs.plan.outputs.tc_sha }}
+          TC_BRANCH: ${{ needs.plan.outputs.tc_branch }}
+          RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}   # CUBRIDQA-1522 AC 2 — 요약에 출처를 밝힌다
+          C_QUEUE: ${{ steps.clock.outputs.clock_queue }}
+          C_BUILD: ${{ steps.clock.outputs.clock_build }}
+          C_PLAN: ${{ steps.clock.outputs.clock_plan }}
+          C_SMAX: ${{ steps.clock.outputs.clock_shard_max }}
+          C_SMED: ${{ steps.clock.outputs.clock_shard_med }}
+          C_SPAN: ${{ steps.clock.outputs.clock_shard_span }}
+          C_TOTAL: ${{ steps.clock.outputs.clock_total }}
+        run: |
+          set -eo pipefail
+          covered=$((EXEC_SUM + SKIP_SUM))
+          v_cov="✅"; [ "$covered" -ge "$TOTAL" ] || v_cov="❌"
+          v_shard="✅"; [ "$DONE_N" -eq "$PLANNED" ] || v_shard="❌"
+          # 출처는 두 가지가 따로 어긋난다 — 남긴 shard 의 **수**와 읽은 빌드의 **동일성**이다.
+          # 하나로 묶으면 로그가 원인을 잘못 가리킨다.
+          v_read="✅"; [ "$READ_N" -eq "$PLANNED" ] || v_read="❌"
+          case "$PROV_REASON" in
+            ok)       v_same="✅ 전부 같다" ;;
+            mixed)    v_same="❌ shard 마다 다르다 ($PROV_UNIQ 종류)" ;;
+            mismatch) v_same="❌ 전부 같지만 plan 이 확인한 빌드가 아니다" ;;
+            *)        v_same="❌ 아무도 출처를 안 남겼다" ;;
+          esac
+          v_this="✅"; [ "$PROV_THIS" = 'yes' ] || v_this="⚠ 재사용"
+          v_tcread="✅"; [ "$TCREAD_N" -eq "$PLANNED" ] || v_tcread="❌"
+          case "$TC_REASON" in
+            ok)       v_tcsame="✅ 전부 같다" ;;
+            mixed)    v_tcsame="❌ shard 마다 다르다 ($TC_UNIQ 종류)" ;;
+            mismatch) v_tcsame="❌ 전부 같지만 plan 이 정한 것이 아니다" ;;
+            *)        v_tcsame="❌ 아무도 tc 출처를 안 남겼다" ;;
+          esac
+
+          {
+            echo "## CUBRIDQA-1526 — 빌드 → 발행 → shell suite"
+            echo
+            # CUBRIDQA-1522 AC 2 — 재실행이면 출처 run 을 맨 위에 밝힌다.
+            # 결과는 runs/<새 run id>/ 로 갈리지만 요약만 보는 사람은 그것을 모른다.
+            if [ -n "$RERUN_FROM" ]; then
+              echo "> ⟳ **run \`$RERUN_FROM\` 의 실패 케이스만 다시 돌린 결과다. 전체 run 이 아니다.**"
+              echo ">"
+              echo "> 원본 run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
+              echo
+            fi
+            echo "### AC 1 — 한 run 에서 이어 돈다"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| 대상 케이스 | $TOTAL |"
+            echo "| shard | 계획 $PLANNED / 결과 발행 $DONE_N $v_shard |"
+            echo "| 실행 | $EXEC_SUM |"
+            echo "| 건너뜀 | $SKIP_SUM |"
+            echo "| 처리 합계 | $covered / $TOTAL $v_cov |"
+            echo "| 성공 | $SUCC_SUM |"
+            echo "| **실패** | **$FAIL_SUM** |"
+            echo "| 분배에 실측 소요시간이 쓰인 케이스 | $TIMED |"
+            echo
+            echo "### AC 2 — 테스트가 그 run 이 만든 빌드를 읽었나"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| 빌드 SHA | \`$SHA\` |"
+            echo "| 빌드 | $MODE |"
+            echo "| 빌드를 만든 run | \`$BRID\` (이 run \`$GITHUB_RUN_ID\`) $v_this |"
+            echo "| 마운트된 CUBRID 안의 meta 를 읽은 shard | $READ_N / $PLANNED $v_read |"
+            echo "| 전 shard 가 같은 빌드를 읽었나 | $v_same |"
+            echo
+            echo "출처 확인은 hostPath 가 아니라 **shard 가 실제로 마운트한 overlay** 를 읽어서 한다."
+            echo
+            echo "### 테스트케이스 — 전 shard 가 같은 커밋을 봤나"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| tc 브랜치 | \`$TC_BRANCH\` |"
+            echo "| tc 커밋 | \`$TC_SHA\` |"
+            echo "| tc 출처를 남긴 shard | $TCREAD_N / $PLANNED $v_tcread |"
+            echo "| 전 shard 가 같은 커밋인가 | $v_tcsame |"
+            echo
+            echo "### AC 3 — 파이프라인 벽시계"
+            echo
+            echo "| 구간 | 시간 |"
+            echo "|---|---|"
+            echo "| 큐 대기 (run 시작 → 빌드 시작) | $C_QUEUE |"
+            echo "| 빌드 | $C_BUILD |"
+            echo "| 분배 | $C_PLAN |"
+            echo "| shard 최장 | $C_SMAX |"
+            echo "| shard 중앙 | $C_SMED |"
+            echo "| shard 구간 (첫 시작 ~ 마지막 종료) | $C_SPAN |"
+            echo "| **전체 (run 시작 ~ 수집)** | **$C_TOTAL** |"
+            echo
+            if [ "$FAILED_N" -gt 0 ]; then
+              echo "### 실패 케이스 ($FAILED_N)"
+              echo
+              echo "출처: 각 shard 의 \`test-shell.xml\` 에서 \`<failure>\` 가 달린 \`<testcase>\`"
+              echo
+              echo "| shard | 케이스 |"
+              echo "|---|---|"
+              head -50 /tmp/failed.list | awk -F'\t' '{printf "| %s | `%s` |\n", $1, $2}'
+              [ "$FAILED_N" -gt 50 ] && echo && echo "_… 그리고 $((FAILED_N - 50)) 건 더. 전체는 \`$RUNDIR/failed.list\`_"
+            else
+              echo "### 실패 케이스 없음"
+            fi
+            echo
+            echo "---"
+            echo "산출물: \`$RUNDIR\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "=== 요약 ==="
+          cat "$GITHUB_STEP_SUMMARY"
+          # 다음 스텝(PR 코멘트)이 같은 내용을 쓴다. summary 파일은 append 전용이라
+          # 뒤 스텝에서 다시 읽을 수 있게 사본을 남긴다.
+          cp "$GITHUB_STEP_SUMMARY" /tmp/summary.md
+
+          # --- ③ 방지 장치 ---
+          # shard 가 통째로 죽으면 ② 가 못 잡는다. 여기서 잡는다.
+          rc=0
+          if [ "$DONE_N" -ne "$PLANNED" ]; then
+            echo "::error::shard $PLANNED 개 중 $DONE_N 개만 결과를 냈다 — 나머지는 통째로 죽었다"
+            rc=1
+          fi
+          if [ "$covered" -lt "$TOTAL" ]; then
+            echo "::error::대상 $TOTAL 건 중 $covered 건만 처리됐다 — 조용히 빠진 케이스가 있다"
+            rc=1
+          fi
+          # --- AC 2 의 판정도 여기서 한다. 두 조건을 따로 외친다 ---
+          if [ "$READ_N" -ne "$PLANNED" ]; then
+            echo "::error::shard $PLANNED 개 중 $READ_N 개만 빌드 출처를 남겼다 — 나머지는 마운트 전에 죽었다"
+            rc=1
+          fi
+          case "$PROV_REASON" in
+            ok) ;;
+            mixed)
+              echo "::error::shard 가 서로 다른 빌드를 읽었다 (run_id $PROV_UNIQ 종류). 파이프라인 도중 발행물이 바뀌었다"
+              rc=1 ;;
+            mismatch)
+              echo "::error::전 shard 가 같은 빌드를 읽었지만 plan 이 확인한 run($BRID)의 것이 아니다"
+              rc=1 ;;
+            *)
+              echo "::error::빌드 출처를 남긴 shard 가 하나도 없다"
+              rc=1 ;;
+          esac
+          # --- 테스트케이스 출처 판정 ---
+          if [ "$TCREAD_N" -ne "$PLANNED" ]; then
+            echo "::error::shard $PLANNED 개 중 $TCREAD_N 개만 tc 출처를 남겼다"
+            rc=1
+          fi
+          case "$TC_REASON" in
+            ok) ;;
+            mixed)
+              echo "::error::shard 가 서로 다른 테스트케이스를 봤다 ($TC_UNIQ 종류). 분배 목록과 어긋난다"
+              rc=1 ;;
+            mismatch)
+              echo "::error::전 shard 가 같지만 plan 이 정한 커밋($TC_SHA)이 아니다"
+              rc=1 ;;
+            *)
+              echo "::error::tc 출처를 남긴 shard 가 하나도 없다"
+              rc=1 ;;
+          esac
+          if [ "$FAIL_SUM" -gt 0 ]; then
+            echo "::error::$FAIL_SUM 건 실패"
+            rc=1
+          fi
+          [ "$rc" -eq 0 ] && echo "완주했다. 실패 0."
+          exit $rc
+
+      - name: PR 에 붙인다 — job summary 는 PR 대화창에 안 보인다
+        # ⚠ always() 다. **실패했을 때야말로 PR 에 알려야 한다.**
+        #   앞 스텝이 exit 1 로 끝나면 기본값으로는 이 스텝이 건너뛰어진다.
+        if: always() && needs.gate.outputs.pr != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR: ${{ needs.gate.outputs.pr }}
+        run: |
+          set -eo pipefail
+          # CircleCI 는 Tests 탭이 PR 에서 바로 열린다. GHA 의 job summary 는
+          # **run 페이지에만** 있다 — PR 대화창에는 안 나온다.
+          if [[ ! "$PR" =~ ^[0-9]{1,7}$ ]]; then
+            echo "::error::pr 은 정수여야 한다"; exit 1
+          fi
+          if [ ! -f /tmp/summary.md ]; then
+            printf '## CUBRIDQA-1526\n\n요약을 만들지 못했다. run 을 봐라.\n' > /tmp/summary.md
+          fi
+
+          {
+            cat /tmp/summary.md
+            echo
+            echo "<sub>gha-ci / run [\`${GITHUB_RUN_ID}\`](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) · 산출물 \`${RUNDIR}\`</sub>"
+          } > /tmp/body.md
+
+          # 코멘트 본문은 65536자 상한이 있다. 실패가 많으면 넘칠 수 있어 잘라 둔다.
+          head -c 60000 /tmp/body.md > /tmp/body.trim.md
+          jq -Rs '{body: .}' < /tmp/body.trim.md > /tmp/comment.json
+
+          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+            -d @/tmp/comment.json)
+
+          echo "HTTP $code"
+          if [ "$code" != "201" ]; then
+            # 403 이면 GITHUB_TOKEN 에 pull-requests: write 가 안 온 것이다.
+            echo "::error::PR 코멘트 실패"
+            jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
+            exit 1
+          fi
+          echo "붙였다: $(jq -r '.html_url' /tmp/resp.json)"
+
+      # -----------------------------------------------------------------
+      # CTP seed 를 지운다.  run 마다 59MB 이고 보관할 값이 없다.
+      # seed 가 run 별 경로인 것은 PR 별 병렬 실행의 전제다 (위 plan 참조).
+      # ⚠ 이 스텝이 유일한 정리 경로다. GlusterFS 정리 CronJob 은
+      #   /home/build-cache/builds 만 본다 — 이 경로를 지우지 않는다.
+      #   run 이 취소되면 이 스텝도 안 돈다. 그때 남는 것은 사람이 치운다.
+      # -----------------------------------------------------------------
+      - name: CTP seed 정리
+        if: always()
+        run: |
+          set -eo pipefail
+          seed="$RUNDIR/testtools"
+          if [ -d "$seed" ]; then
+            du -sh "$seed" 2>/dev/null || true
+            rm -rf "$seed" "${seed}.tmp.${GITHUB_RUN_ID}" "${seed}.old"
+            echo "지웠다: $seed"
+          else
+            echo "지울 것이 없다: $seed"
+          fi
