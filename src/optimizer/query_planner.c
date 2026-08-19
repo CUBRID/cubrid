@@ -11073,11 +11073,10 @@ static double
 qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
   PT_NODE *lhs, *arg1, *arg2;
-  DB_VALUE *lhs_db_value;
   DB_VALUE *arg1_db_value;
   DB_VALUE *arg2_db_value;
   PRED_CLASS pc1, pc2;
-  PRED_CLASS pc_arg1, pc_arg2;
+  PRED_CLASS pc_arg1;
 
   double total_selectivity;
   double selectivity = DEFAULT_BETWEEN_SELECTIVITY;
