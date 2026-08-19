@@ -57,6 +57,7 @@
 #include "chartype.h"
 #include "query_executor.h"
 #include "fetch.h"
+#include "numeric_opfunc.h"	/* NUMERIC_VALUE_SIGN_BIT_MASK: disk NUMERIC header parsing */
 #include "server_interface.h"
 #include "elo.h"
 #include "db_elo.h"
@@ -10242,21 +10243,8 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 }
 
 
-/* Per-record decoding layout.  Locating any attribute inside a record needs the object
- * header size, the width of a variable-offset entry, the start of the fixed area and the
- * bound-bit vector -- all properties of the record as a whole.  They used to be re-derived
- * for every attribute (each one calling or_header_size () and re-reading the header word),
- * so a caller that decodes several attributes of the same record builds this once and
- * hands it down. */
-typedef struct heap_rec_layout HEAP_REC_LAYOUT;
-struct heap_rec_layout
-{
-  char *var_table;		/* first entry of the variable-offset table */
-  char *fixed_base;		/* first byte of the fixed-attribute area */
-  char *bound_bits;		/* bound-bit vector, NULL when the record carries none */
-  int offset_size;		/* width of one variable-offset table entry */
-};
-
+/* HEAP_REC_LAYOUT (heap_attrinfo.h): what the record header says about where attributes
+ * live, derived once per record instead of once per attribute. */
 STATIC_INLINE void
 heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEAP_CACHE_ATTRINFO * attr_info)
 {
@@ -10403,6 +10391,20 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
 	}
       value->state = HEAP_READ_ATTRVALUE;
     }
+  else if (value->rd_attrepr == attrepr && value->rd_readval != NULL)
+    {
+      /* type-fixed kernel resolved with the decoding plan: same stores as the generic
+       * handler, none of its per-row scaffolding */
+      rv = value->rd_readval (&value->dbvalue, raw->data, raw->length, attrepr);
+      value->state = HEAP_READ_ATTRVALUE;
+      if (rv != NO_ERROR)
+	{
+	  (void) db_value_domain_init (&value->dbvalue, attrepr->type, attrepr->domain->precision,
+				       attrepr->domain->scale);
+	  value->state = HEAP_UNINIT_ATTRVALUE;
+	  return rv;
+	}
+    }
   else
     {
       or_init (&buf, raw->data, raw->length);
@@ -10440,6 +10442,164 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
  * (the decoding-plan helper below is used by this function)
  */
 /*
+ * Type-fixed decode kernels, resolved once per representation by
+ * heap_attrvalue_resolve_plan () and called for every record after that.
+ *
+ * pr_type->data_readval () re-does per row what never changes for a fixed attribute: it
+ * builds an OR_BUF over bytes whose width the decoding plan already knows, dispatches
+ * through the handler table, and for NUMERIC re-validates the precision and scale that
+ * DDL settled (db_value_domain_init ()).  Each kernel below performs the same stores its
+ * mr_data_readval_ counterpart ends up doing, straight from the record bytes.  The fixed
+ * area is guaranteed to hold rd_disk_size bytes (heap_attrvalue_point_fixed ()), so the
+ * OR_BUF range checks have nothing left to catch; NUMERIC keeps the one check with teeth
+ * (its per-value header declares its own size, which corrupt data could overstate) and
+ * hands anything unusual back to the generic handler.
+ */
+static int
+heap_attr_readval_int (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
+{
+  out->domain.general_info.type = DB_TYPE_INTEGER;
+  out->data.i = OR_GET_INT (disk);
+  out->domain.general_info.is_null = 0;
+  out->need_clear = false;
+  return NO_ERROR;
+}
+
+static int
+heap_attr_readval_bigint (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
+{
+  out->domain.general_info.type = DB_TYPE_BIGINT;
+  OR_GET_BIGINT (disk, &out->data.bigint);
+  out->domain.general_info.is_null = 0;
+  out->need_clear = false;
+  return NO_ERROR;
+}
+
+static int
+heap_attr_readval_short (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
+{
+  out->domain.general_info.type = DB_TYPE_SHORT;
+  out->data.sh = (short) OR_GET_SHORT (disk);
+  out->domain.general_info.is_null = 0;
+  out->need_clear = false;
+  return NO_ERROR;
+}
+
+static int
+heap_attr_readval_float (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
+{
+  out->domain.general_info.type = DB_TYPE_FLOAT;
+  OR_GET_FLOAT (disk, &out->data.f);
+  out->domain.general_info.is_null = 0;
+  out->need_clear = false;
+  return NO_ERROR;
+}
+
+static int
+heap_attr_readval_double (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
+{
+  out->domain.general_info.type = DB_TYPE_DOUBLE;
+  OR_GET_DOUBLE (disk, &out->data.d);
+  out->domain.general_info.is_null = 0;
+  out->need_clear = false;
+  return NO_ERROR;
+}
+
+static int
+heap_attr_readval_date (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
+{
+  out->domain.general_info.type = DB_TYPE_DATE;
+  OR_GET_DATE (disk, &out->data.date);
+  out->domain.general_info.is_null = 0;
+  out->need_clear = false;
+  return NO_ERROR;
+}
+
+/* disk NUMERIC leads with a 3-byte header: size|sign, precision, scale|sign
+ * (must match NUMERIC_HEADER_SIZE in object_primitive.c) */
+#define HEAP_ATTR_NUMERIC_HEADER_SIZE 3
+
+static int
+heap_attr_readval_numeric (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
+{
+  /* the value's header, parsed exactly as mr_data_readval_numeric () does */
+  const unsigned char *header = (const unsigned char *) disk;
+  int val_size = header[0] & 0x7F;
+  bool is_negative = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+  int precision = header[1] & 0x7F;
+  int scale = ((header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0) ? -((int) header[2]) : (int) header[2];
+  unsigned char *num = out->data.num.d.buf;
+
+  if (unlikely (precision == 0 || precision > DB_MAX_NUMERIC_PRECISION
+		|| scale < DB_MIN_NUMERIC_SCALE || scale > DB_MAX_NUMERIC_SCALE || val_size > size))
+    {
+      /* a header the fast path was not built for (or one that overstates its size, which
+       * the generic path's buffer guard rejects): let the generic handler decide */
+      OR_BUF buf;
+
+      or_init (&buf, CONST_CAST (char *, disk), size);
+      return pr_type_from_id (DB_TYPE_NUMERIC)->data_readval (&buf, out, attrepr->domain, size, false, NULL, 0);
+    }
+
+  /* the stores db_value_domain_init () + db_make_numeric () perform for a valid header,
+   * minus their re-validation */
+  out->data.ch.info.codeset = 0;
+  out->domain.general_info.type = DB_TYPE_NUMERIC;
+  out->domain.general_info.is_null = 0;
+  out->domain.numeric_info.is_value_negative = is_negative;
+  if (attrepr->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      /* float numeric: the value carries its own precision/scale */
+      out->data.num.header.precision = precision;
+      out->data.num.header.scale = scale;
+      out->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
+      out->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
+    }
+  else
+    {
+      out->data.num.header.precision = 0;
+      out->data.num.header.scale = 0;
+      out->domain.numeric_info.precision = precision;
+      out->domain.numeric_info.scale = scale;
+    }
+
+  switch (val_size)
+    {
+    case 4:
+      memset (num, 0, 16);
+      memcpy (num + 16, disk + HEAP_ATTR_NUMERIC_HEADER_SIZE, 1);
+      break;
+    case 8:
+      memset (num, 0, 12);
+      memcpy (num + 12, disk + HEAP_ATTR_NUMERIC_HEADER_SIZE, 5);
+      break;
+    case 12:
+      memset (num, 0, 8);
+      memcpy (num + 8, disk + HEAP_ATTR_NUMERIC_HEADER_SIZE, 9);
+      break;
+    case 16:
+      memset (num, 0, 4);
+      memcpy (num + 4, disk + HEAP_ATTR_NUMERIC_HEADER_SIZE, 13);
+      break;
+    case DB_NUMERIC_BUF_SIZE:	/* 17 */
+    case 20:
+      memcpy (num, disk + HEAP_ATTR_NUMERIC_HEADER_SIZE, DB_NUMERIC_BUF_SIZE);
+      break;
+    default:
+      {
+	/* size db_make_numeric () does not enumerate: generic handler, same as above */
+	OR_BUF buf;
+
+	or_init (&buf, CONST_CAST (char *, disk), size);
+	return pr_type_from_id (DB_TYPE_NUMERIC)->data_readval (&buf, out, attrepr->domain, size, false, NULL, 0);
+      }
+    }
+
+  out->need_clear = false;
+  return NO_ERROR;
+}
+
+/*
  * heap_attrvalue_resolve_plan () - resolve the per-record constants of an attribute
  *   value(in/out): the attribute value slot
  *   attrepr(in): the descriptor the record will be decoded with
@@ -10454,6 +10614,43 @@ heap_attrvalue_resolve_plan (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr)
 {
   value->rd_type = pr_type_from_id (attrepr->type);
   value->rd_disk_size = (attrepr->is_fixed != 0) ? tp_domain_disk_size (attrepr->domain) : -1;
+
+  /* type-fixed decode kernel: only fixed-width attributes qualify (a variable attribute's
+   * raw length carries different semantics through the generic path) */
+  value->rd_readval = NULL;
+  if (attrepr->is_fixed != 0 && attrepr->domain != NULL)
+    {
+      switch (attrepr->type)
+	{
+	case DB_TYPE_INTEGER:
+	  value->rd_readval = heap_attr_readval_int;
+	  break;
+	case DB_TYPE_BIGINT:
+	  value->rd_readval = heap_attr_readval_bigint;
+	  break;
+	case DB_TYPE_SHORT:
+	  value->rd_readval = heap_attr_readval_short;
+	  break;
+	case DB_TYPE_FLOAT:
+	  value->rd_readval = heap_attr_readval_float;
+	  break;
+	case DB_TYPE_DOUBLE:
+	  value->rd_readval = heap_attr_readval_double;
+	  break;
+	case DB_TYPE_DATE:
+	  value->rd_readval = heap_attr_readval_date;
+	  break;
+	case DB_TYPE_NUMERIC:
+	  if (attrepr->domain->precision != 0)
+	    {
+	      /* precision-0 domains take the generic handler's leave-the-value branch */
+	      value->rd_readval = heap_attr_readval_numeric;
+	    }
+	  break;
+	default:
+	  break;
+	}
+    }
 
   /* Types whose whole value lives inside the DB_VALUE never hand it a pointer to release.
    * Character data is decoded without copying (data_readval is called with copy = false),
@@ -10791,6 +10988,12 @@ heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid,
 	}
     }
 
+  /* The record layout serves both the eager reads below (once per row instead of once per
+   * eager column) and, kept in attr_info, every deferred read of this record
+   * (heap_attrvalue_peek_lazy ()).  It stays meaningful exactly as long as lazy_recdes
+   * stays armed, since both describe the same record. */
+  heap_rec_layout_init (&attr_info->lazy_layout, recdes, attr_info);
+
   /* Read now the slots flagged lazy_always_eager (first-evaluated predicate term's column(s), touched on
    * nearly every row) so their per-row first reference stays on the inline fast path; mark every other value
    * HEAP_LAZY_ATTRVALUE (clearing any previously read value first to avoid leaks) so heap_attrvalue_peek_lazy ()
@@ -10802,7 +11005,7 @@ heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid,
       if (value->lazy_always_eager)
 	{
 	  /* first-term-eager: read now (column of the first-evaluated predicate term) rather than defer */
-	  ret = heap_attrvalue_read (recdes, value, attr_info, NULL);
+	  ret = heap_attrvalue_read (recdes, value, attr_info, &attr_info->lazy_layout);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -11124,7 +11327,8 @@ heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATTRINFO * attr_info
   if (slot->state == HEAP_LAZY_ATTRVALUE)
     {
       attr_info->lazy_decoded++;	/* measured: a deferred read that was not skipped */
-      if (heap_attrvalue_read (attr_info->lazy_recdes, slot, attr_info, NULL) != NO_ERROR)
+      /* lazy_layout was computed for lazy_recdes when it was armed */
+      if (heap_attrvalue_read (attr_info->lazy_recdes, slot, attr_info, &attr_info->lazy_layout) != NO_ERROR)
 	{
 	  return NULL;
 	}
