@@ -26794,7 +26794,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	    {
 	      /* COUNT(*) optimization uses global statistics that bypass MVCC visibility;
 	       * fall back to full scan under REPEATABLE_READ or SERIALIZABLE to prevent phantom reads. */
-	      agg_ptr->flag.agg_optimized = false;
+	      agg_ptr->flag_agg_optimize = false;
 	      *is_scan_needed = true;
 	      continue;
 	    }
