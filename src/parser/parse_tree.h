@@ -1916,6 +1916,7 @@ struct pt_alter_user_info
   PT_NODE *comment;		/* PT_VALUE */
   PT_ALTER_CODE code;		/* PT_ADD_MEMBERS, PT_DROP_MEMBERS */
   PT_NODE *members;		/* PT_NAME list */
+  PT_MISC_TYPE login_capability;	/* PT_LOGIN, PT_NOLOGIN, PT_MISC_DUMMY */
 };
 
 /* Info for ALTER_TRIGGER */
@@ -2054,6 +2055,7 @@ struct pt_create_user_info
   PT_NODE *groups;		/* PT_NAME list */
   PT_NODE *members;		/* PT_NAME list */
   PT_NODE *comment;		/* PT_VALUE */
+  PT_MISC_TYPE login_capability;	/* PT_LOGIN, PT_NOLOGIN, PT_MISC_DUMMY */
 };
 
 /* CREATE TRIGGER INFO */
