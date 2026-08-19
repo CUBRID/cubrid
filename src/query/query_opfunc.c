@@ -4709,13 +4709,10 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 static int
 qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
 {
-  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
-  volatile short s1, stmp;
+  short s1 = db_get_short (short_val_p);
+  short stmp;
 
-  s1 = db_get_short (short_val_p);
-  stmp = s1 * s2;
-
-  if (OR_CHECK_MULT_OVERFLOW (s1, s2, stmp))
+  if (__builtin_mul_overflow (s1, s2, &stmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -4729,13 +4726,10 @@ qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
 static int
 qdata_multiply_int (DB_VALUE * int_val_p, int i2, DB_VALUE * result_p)
 {
-  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
-  volatile int i1, itmp;
+  int i1 = db_get_int (int_val_p);
+  int itmp;
 
-  i1 = db_get_int (int_val_p);
-  itmp = i1 * i2;
-
-  if (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp))
+  if (__builtin_mul_overflow (i1, i2, &itmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -4748,13 +4742,10 @@ qdata_multiply_int (DB_VALUE * int_val_p, int i2, DB_VALUE * result_p)
 static int
 qdata_multiply_bigint (DB_VALUE * bigint_val_p, DB_BIGINT bi2, DB_VALUE * result_p)
 {
-  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
-  volatile DB_BIGINT bi1, bitmp;
+  DB_BIGINT bi1 = db_get_bigint (bigint_val_p);
+  DB_BIGINT bitmp;
 
-  bi1 = db_get_bigint (bigint_val_p);
-  bitmp = bi1 * bi2;
-
-  if (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp))
+  if (__builtin_mul_overflow (bi1, bi2, &bitmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
