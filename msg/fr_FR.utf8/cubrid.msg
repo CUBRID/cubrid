@@ -1109,7 +1109,7 @@ $ LOADDB
 1039 Écrivain du journal: écrivain du journal a commencé. Mode: %1$d.
 1040 Générique HA: %1$s. 
 1041 Une chaîne a été tronquée dans le contexte de "%1$s".
-1042 Tentative de créer une chaîne de %1$d octets de mémoire, alors que le maximum autorisé est de %2$d octets.
+1042 Tentative de créer une chaîne de %1$zu octets de mémoire, alors que le maximum autorisé est de %2$d octets.
 1043 Impossible de modifier l'attribut "%1$s". CUBRID ne peut pas modifier les propriétés de l'attribut demandé si la classe possède des sous-classes.
 1044 Impossible de modifier l'attribut "%1$s". CUBRID ne peut pas changer les attributs qui sont des clés pour le partitionnement.
 1045 Impossible de modifier l'attribut "%1$s". CUBRID ne peut pas modifier les attributs utilisés dans les clés étrangères (soit référencée ou de référencement).
