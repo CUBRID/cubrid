@@ -12697,6 +12697,13 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
   FUNC_CODE code;
   PARSER_VARCHAR *q = 0, *r1;
   PT_NODE *order_by = NULL;
+  unsigned int save_custom = parser->custom_print;
+
+  /* a function argument is never followed by "AS alias" in SQL syntax; an arg_list member's own
+   * alias_print may be set for unrelated bookkeeping (e.g. carried over from view/subquery
+   * merging), so it must not leak into the printed text here -- restored below, right before
+   * this call's own alias (if any) is appended. */
+  parser->custom_print &= ~PT_PRINT_ALIAS;
 
   code = p->info.function.function_type;
   if (code == PT_GENERIC)
@@ -12932,6 +12939,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ")");
     }
 
+  parser->custom_print = save_custom;
   if ((parser->custom_print & PT_PRINT_ALIAS) && p->alias_print != NULL)
     {
       q = pt_append_nulstring (parser, q, " as [");
