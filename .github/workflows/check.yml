@@ -21,10 +21,15 @@ on:
       - develop
       - 'release/11.**'
       - 'feature/**'
+
+permissions: {} # Least privilege — jobs opt-in below
+
 jobs:
   license:
     name: license
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read # checkout, changed-files (compare API)
     steps:
       - uses: actions/checkout@v5
       - id: files
@@ -79,12 +84,18 @@ jobs:
   pr-style:
     name: pr-style
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read # checkout
+      pull-requests: read # check-pr-title (pulls API)
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/check-pr-title
   code-style:
     name: code-style
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read # checkout, changed-files (compare API)
+      pull-requests: write # reviewdog/action-suggester posts review comments
     env:
       working-directory: .github/workflows
     steps:
@@ -131,6 +142,9 @@ jobs:
   cppcheck:
     name: cppcheck
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read # checkout, changed-files (compare API)
+      pull-requests: write # unsplash/comment-on-pr posts the summary
     steps:
       - name: Install packages
         run: |
@@ -216,6 +230,8 @@ jobs:
   memory-monitor-check:
     name: memory-monitor-check
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read # checkout, changed-files (compare API)
     steps:
       - uses: actions/checkout@v5
       - id: files
