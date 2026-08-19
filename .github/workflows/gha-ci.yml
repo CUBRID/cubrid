@@ -1,47 +1,22 @@
 # CUBRIDQA-1526 -- build, publish, then run the shell suite on self-hosted runners.
+# Replaces the CircleCI jobs build_debug + download-build + test_shell. Both stay
+# live during the migration, so one /run comment can be compared across the two.
 #
-# Replaces the CircleCI jobs build_debug + download-build + test_shell. While the
-# migration runs, both are live: one `/run` comment wakes CircleCI and this
-# workflow, so the two results can be compared on the same pull request.
+# Trigger
+#   /run shell | /run all   on a pull request. Write access only; claims 50 runners
+#   gh workflow run gha-ci.yml -f sha=<40-char SHA>   default branch only
 #
-# Named gha-ci, not test-shell, because sql and medium are meant to join this
-# file. Renaming a workflow later drops its run history and any required status
-# check registered against it.
+# Prerequisites in the runner, not here. Apply ARC-1526-* per RUNBOOK-1526.
+#   pod template   shareProcessNamespace, or the shell tests hang instead of
+#                  failing; privileged, or the overlay mount fails
+#   job hook       ALLOWED_EVENTS must include issue_comment
 #
-# How to trigger
-#
-#   PR comment, the everyday path. Same grammar as comment_trigger.yml:
-#     /run shell        run the shell suite against this PR's head commit
-#     /run all          includes shell, so it wakes this too
-#   Write access is required (OWNER, MEMBER, COLLABORATOR): one comment claims
-#   50 runners. Commenting again on the same PR replaces the run in flight.
-#
-#   workflow_dispatch, for nightly runs, re-runs and investigation:
-#     gh workflow run gha-ci.yml --repo CUBRID/cubrid -f sha=<40-char SHA>
-#   Only the default branch's copy of a workflow can be dispatched.
-#
-# Two prerequisites live in the runner, not here. Both are in ARC-1526-*.
-#
-#   pod template   shareProcessNamespace: true, or the shell tests hang instead
-#                  of failing; privileged: true, or the overlay mount fails.
-#                  ConfigMap cubrid-arc-pod-template, from
-#                  ARC-1526-pod-template.yaml. Not from the PROTOTYPE file --
-#                  its metadata.name still carries the old PoC name, and a
-#                  ConfigMap built from it leaves every job without mounts.
-#   job hook       ALLOWED_EVENTS must include issue_comment, or the runner
-#                  refuses jobs that arrived from a comment.
-#
-# issue_comment runs in the base-repo context, with secrets and a live token.
-# The author_association check in the gate job is what stands in front of that;
-# a fork PR's code cannot reach it, because only the default branch's workflow
-# runs. Rationale and measurements for the rest of this file are in
-# CUBRIDQA-1526 and in workspace/ci-migration-research/.
+# Rationale, measurements and the shared-path analysis: CUBRIDQA-1526.
 
 name: gha-ci
 
 on:
-  # Which comments actually wake this is decided by the gate job; it cannot be
-  # narrowed here.
+  # Which comments wake this is decided by the gate job; it cannot be narrowed here.
   issue_comment:
     types: [created, edited]
   workflow_dispatch:
@@ -81,41 +56,19 @@ on:
         default: ""
         type: string
 
-# Nothing at the workflow level. shard is 50 privileged pods running testcase
-# code; it has no reason to hold a token that can write to pull requests. Only
-# gate and collect use GITHUB_TOKEN at all -- plan and shard use the GitHub App
-# token, build_debug clones from the GlusterFS mirror, and there is no
-# actions/checkout anywhere, so no job needs contents.
-permissions: {} # Least privilege -- jobs opt-in below
+# shard is 50 privileged pods running testcase code; it holds no token at all.
+permissions: {} # jobs opt-in below
 
 # One group per pull request, so different PRs run in parallel. A global group
-# would silently cancel someone else's run once anyone can trigger by comment.
-#
-# The dispatch fallback is the SHA, not github.run_id. run_id is unique per run,
-# which would put two force_build dispatches for one SHA in different groups;
-# they would then race the republish of builds/<sha>/debug, which is two renames
-# with the path absent in between -- long enough to pull the overlay lowerdir out
-# from under a shard already running.
-#
-# What stays shared, and how it behaves:
-#   builds/<sha>/debug   per SHA, protected by that fallback. tmp and old names
-#                        carry the run id, so they never collide.
-#   runs/<run id>/*      per run. The CTP seed lives here too; it used to be one
-#                        shared path, which is why a global group was needed.
-#   timings/shell.tsv    global, read-modify-write, so an update can be lost.
-#                        It cannot tear -- the rename is atomic -- and the next
-#                        run refills it.
-#   ccache-shell-debug   global. ccache handles concurrent access itself.
-#   cubrid-mirror        read-only.
-#
-# Cluster capacity is bounded by the scale set's maxRunners, not by this group.
+# would cancel someone else's run once anyone can trigger by comment.
+# The dispatch fallback is the SHA, not run_id: two force_build dispatches for one
+# SHA would race the republish and pull the overlay lowerdir from a running shard.
 concurrency:
   group: gha-ci-${{ github.event.issue.number || inputs.pr || inputs.sha }}
   cancel-in-progress: true
 
 env:
-  # Not the operational builds/ path: writing there would feed our artifacts to
-  # the CircleCI test_shell that is still running.
+  # Not the operational builds/ path -- the CircleCI test_shell still reads that.
   CI_ROOT: /home/build-cache/gha-ci
   CI_BUILD_ROOT: /home/build-cache/gha-ci/builds
   TIMINGS: /home/build-cache/gha-ci/timings/shell.tsv
@@ -124,18 +77,15 @@ env:
   BUILD_META: .gha-ci-build.meta
 
 jobs:
-  # Turns both triggers into one shape: every job below reads
-  # needs.gate.outputs and never looks at the event, so adding a trigger means
-  # editing this job only. Runs on a GitHub-hosted runner so the permission
-  # decision happens before a self-hosted runner is claimed.
+  # Both triggers become one shape: every job below reads needs.gate.outputs.
+  # GitHub-hosted, so the permission decision lands before a runner is claimed.
   gate:
     name: gate
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       pull-requests: read # reads the head SHA of the commented PR
-    # Same author set as comment_trigger.yml. CONTRIBUTOR is refused, so an
-    # outside contributor's PR needs a maintainer to ask for the run.
+    # Same author set as comment_trigger.yml. CONTRIBUTOR is refused.
     if: >-
       ${{ github.event_name == 'workflow_dispatch'
       || (github.event.issue.pull_request != null
@@ -186,8 +136,7 @@ jobs:
             exit 0
           fi
 
-          # Comment path. This regex must stay identical to the one in
-          # comment_trigger.yml so that there is one syntax to learn.
+          # Regex must stay identical to comment_trigger.yml: one syntax to learn.
           if ! [[ "$BODY" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
             echo "[info] not /run syntax, ignoring: $BODY"
             emit run false
@@ -240,17 +189,14 @@ jobs:
       BUILD_MIRROR: /home/build-cache/cubrid-mirror
       CCACHE_DIR: /home/build-cache/ccache-shell-debug
       CCACHE_COMPILERCHECK: content
-      # No CCACHE_HARDLINK: the cache is on gluster and the build tree is pod-local,
-      # so a hardlink silently degrades to a copy across devices.
+      # No CCACHE_HARDLINK: cache on gluster, build tree pod-local -- it would copy.
       CI_LOG_ROOT: /home/build-cache/gha-ci/logs
 
     steps:
-      # ---------------------------------------------------------------
       - name: 0. Environment check
         id: args
         env:
-          # Inputs arrive through env; interpolating them into the body would let
-          # a value be read as shell code.
+          # Inputs via env, never interpolated into the body.
           INPUT_SHA: ${{ needs.gate.outputs.sha }}
         run: |
           set -eo pipefail
@@ -283,30 +229,25 @@ jobs:
           touch "$probe" && rm -f "$probe"
           echo "writable"
 
-          # Wall-clock stamps. build_debug runs before plan, so it opens the run
-          # directory itself; plan's mkdir -p does not overwrite it.
+          # Wall-clock stamps. build_debug opens the run dir; plan's mkdir -p keeps it.
           mkdir -p "$STAMPS"
           printf 'start\t%s\n' "$(date -u +%s)" > "$STAMPS/build.tsv"
 
-          # WAN baseline. GlusterFS reads go through hostPath, not the pod netns,
-          # so what lands here is the GitHub round trip plus 3rdparty downloads.
+          # WAN baseline. GlusterFS goes via hostPath, so this counts GitHub + 3rdparty.
           awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' \
             /proc/net/dev > "$RUNNER_TEMP/rx0"
 
-          # The job container is root, the workspace is owned by the runner uid 1001,
-          # and git then refuses the repository outright (dubious ownership).
+          # The workspace is owned by runner uid 1001; git refuses it (dubious ownership).
           chown root:root "$GITHUB_WORKSPACE"
           ls -ld "$GITHUB_WORKSPACE"
 
-      # ---------------------------------------------------------------
       - name: 1. Is this SHA already published
         id: reuse
         env:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
         run: |
           set -eo pipefail
-          # CircleCI ends the job successfully here with `circleci-agent step halt`.
-          # There is no halt in GHA: emit an output and gate later steps on it.
+          # No `step halt` in GHA: emit an output and gate later steps on it.
           dir="$CI_BUILD_ROOT/$SHA/debug"
           if [ "$INPUT_FORCE" = 'true' ]; then
             echo "force_build=true, rebuilding even though an artifact exists"
@@ -321,27 +262,23 @@ jobs:
           echo "mode=$mode"
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
 
-      # ---------------------------------------------------------------
       - name: 2. Source, borrowed from the mirror with only the delta fetched
         if: steps.reuse.outputs.mode != 'reused'
         run: |
           set -eo pipefail
           cd "$GITHUB_WORKSPACE"
 
-          # Never write to the mirror. Several writers means concurrent fetches
-          # fighting over ref locks, and a pod dying mid-fetch leaves a .lock that
-          # stalls every later build. Borrow history with --shared, fetch here.
+          # Never write to the mirror: a pod dying mid-fetch leaves a .lock that stalls
+          # every later build. Borrow history with --shared, fetch here.
           git clone --quiet --shared --no-checkout "$BUILD_MIRROR/cubrid.git" .
 
-          # Not shallow: the build serial is `git rev-list --count`, and a shallow
-          # clone stamps 0001 on the package.
+          # Not shallow: the serial is `git rev-list --count`; shallow stamps 0001.
           git fetch --quiet https://github.com/CUBRID/cubrid.git "$SHA"
           git checkout --quiet --detach "$SHA"
 
           git submodule sync
           git submodule init
-          # Only submodules the mirror already has are pointed at it; ones bumped
-          # after the mirror was seeded come from GitHub in full.
+          # Only submodules the mirror has are pointed at it; the rest come from GitHub.
           while read -r sub_sha sub_path; do
             url=$(git config -f .gitmodules --get "submodule.${sub_path}.url")
             mirror="$BUILD_MIRROR/$(basename "${url%.git}").git"
@@ -359,14 +296,12 @@ jobs:
           echo "HEAD        : $(git rev-parse HEAD)"
           echo "build serial: $(git rev-list --count HEAD)"
 
-      # ---------------------------------------------------------------
       - name: 3. Build, from the source root
         if: steps.reuse.outputs.mode != 'reused'
         run: |
           set -eo pipefail
-          # entrypoint's run_build writes build.log to the current directory but
-          # checks $CUBRID_SRCDIR/build.log. One level down, that path is missing
-          # and a failed build reports success. Run from the source root.
+          # entrypoint's run_build writes build.log to cwd but checks $CUBRID_SRCDIR.
+          # One level down, a failed build reports success. Run from the source root.
           cd "$GITHUB_WORKSPACE"
 
           mkdir -p "$CCACHE_DIR"
@@ -377,14 +312,8 @@ jobs:
           /entrypoint.sh build -m optdebug
           ccache -s
 
-      # ---------------------------------------------------------------
-      # Sweeps what cancelled runs leave behind. cancel-in-progress makes
-      # cancellation a normal exit, so the cleanup step never runs and staging
-      # survives; one published build is 745MB. The GlusterFS cleanup CronJob only
-      # prunes /home/build-cache/builds, so this is the only path that collects
-      # these. A shard tops out at 120 minutes, so the one-day cutoff cannot catch
-      # a run still in flight.
-      # ---------------------------------------------------------------
+      # cancel-in-progress makes cancellation a normal exit, so staging survives;
+      # one build is 745MB and the cleanup CronJob does not look at this path.
       - name: 3b. Sweep what cancelled runs left behind
         run: |
           set -eo pipefail
@@ -401,7 +330,6 @@ jobs:
           done
           echo "swept: $swept"
 
-      # ---------------------------------------------------------------
       - name: 4. Publish, staged then moved in with one rename
         id: publish
         env:
@@ -418,24 +346,18 @@ jobs:
             mkdir -p "$tmp"
             cp -a /home/CUBRID "$tmp/CUBRID"
 
-            # Inside the CUBRID tree on purpose: shard mounts this tree as the overlay
-            # lowerdir, so reading the file proves the mount the tests actually use.
-            # A dotfile at the CUBRID root, which neither CTP nor the server touches.
+            # Inside the CUBRID tree on purpose: shard mounts it as the overlay lowerdir,
+            # so reading this file proves the mount the tests actually use.
             meta=$(printf 'sha=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
               "$SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)")
             printf '%s\n' "$meta" > "$tmp/CUBRID/$BUILD_META"
             printf '%s\n' "$meta" > "$tmp/build.meta"
 
-            # The sentinel is created inside staging, so an atomic rename means it
-            # never appears over a half-written tree.
+            # Sentinel created inside staging, so the rename never exposes a partial tree.
             touch "$tmp/$BUILD_SENTINEL"
 
-            # rename(2) cannot replace a non-empty directory (EEXIST), so one
-            # `mv -T "$tmp" "$dir"` does not implement force_build. Move the old one
-            # aside atomically, then move the new one in: both are renames, and $dir
-            # is briefly absent between them. Absent is not half-written -- plan
-            # catches it through the sentinel check, and the concurrency group's SHA
-            # fallback keeps two runs republishing one SHA from overlapping.
+            # rename(2) cannot replace a non-empty directory, so force_build needs two
+            # renames. $dir is briefly absent -- plan's sentinel check catches that.
             old="${dir}.old.${GITHUB_RUN_ID}"
             rm -rf "$old"
             if [ -e "$dir" ]; then
@@ -469,7 +391,6 @@ jobs:
 
           printf 'end\t%s\n' "$(date -u +%s)" >> "$STAMPS/build.tsv"
 
-      # ---------------------------------------------------------------
       - name: 5. WAN and build log
         if: always()
         run: |
@@ -490,8 +411,6 @@ jobs:
             tail -60 "$f"
           fi
 
-  # =================================================================
-  # =================================================================
   plan:
     name: plan
     needs: [gate, build_debug]
@@ -555,8 +474,7 @@ jobs:
           set -eo pipefail
           dir="$CI_BUILD_ROOT/$SHA/debug"
 
-          # The sentinel is what marks a finished tree; directory existence is not
-          # enough, because it passes a half-written one.
+          # The sentinel marks a finished tree; directory existence passes a partial one.
           [ -f "$dir/$BUILD_SENTINEL" ] || {
             echo "::error::the build is not finished publishing (no sentinel): $dir"; exit 1; }
           [ -d "$dir/CUBRID" ] || { echo "::error::no CUBRID tree: $dir"; exit 1; }
@@ -574,17 +492,14 @@ jobs:
           echo "published: $(stat -c '%y' "$dir")"
           echo "build_run_id=$brid" >> "$GITHUB_OUTPUT"
 
-          # Same App the repository already uses for tc-branch-sync, tc-merge-gate
-          # and tc-branch-finalize. Short-lived (1 hour) and scoped to two repos.
+          # Same App as tc-branch-sync/tc-merge-gate. 1-hour token, two repos.
       - name: GitHub App token
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
-          # One private repo only. cubrid-testtools is outside the App installation,
-          # and asking for it makes token issuance itself fail with Not Found.
-          # It is public, so this token reads it anyway.
+          # One private repo only: asking for cubrid-testtools fails token issuance.
           repositories: cubrid-testcases-private-ex
           owner: CUBRID
           # Read-only: the default would carry the installation's contents: write.
@@ -595,7 +510,6 @@ jobs:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: echo "::add-mask::$APP_TOKEN"
 
-      # ---------------------------------------------------------------
       - name: Refresh testcases, decided once here
         id: tc
         env:
@@ -603,8 +517,7 @@ jobs:
           INPUT_PR: ${{ needs.gate.outputs.pr }}
         run: |
           set -eo pipefail
-          # Overlay first, checkout on top. The node seed (/ro) is the lowerdir, so
-          # entrypoint's clone_repository sees .git and takes the fetch+reset path.
+          # Overlay first: the node seed (/ro) is the lowerdir, so entrypoint sees .git.
           mkdir -p /rw/upper /rw/work "$TC_DIR"
           mount -t overlay overlay -o lowerdir=/ro,upperdir=/rw/upper,workdir=/rw/work "$TC_DIR"
           echo "seed HEAD : $(git -C "$TC_DIR" log -1 --format='%h %ci' 2>/dev/null)"
@@ -612,8 +525,7 @@ jobs:
           # Same settings as entrypoint's configure(); ls-remote needs them first.
           git config --global url."https://x-access-token:${GHI_TOKEN}@github.com/".insteadof https://github.com/
 
-          # The engine PR number is the key joining engine and testcases: the sync bot
-          # creates tc/pr-<N> when the PR opens. Same rule as the CircleCI config.
+          # The sync bot creates tc/pr-<N> when the PR opens. Same rule as CircleCI.
           TC_REPO=https://github.com/CUBRID/cubrid-testcases-private-ex.git
           if [ -n "$INPUT_PR" ]; then
             if [[ ! "$INPUT_PR" =~ ^[0-9]{1,7}$ ]]; then
@@ -638,8 +550,7 @@ jobs:
           rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
           echo "refresh WAN: $(( (rx1 - rx0) / 1048576 )) MB"
 
-          # Pin the commit. A branch is a moving target, and if plan's list and the
-          # shard's checkout drift apart, cases go missing without a word.
+          # Pin the commit: if plan's list and the shard's checkout drift, cases vanish.
           TC_SHA=$(git -C "$TC_DIR" rev-parse HEAD)
           echo "tc SHA    : $TC_SHA"
           echo "tc HEAD   : $(git -C "$TC_DIR" log -1 --format='%ci %s')"
@@ -665,8 +576,7 @@ jobs:
             | grep -P '/([^/]+)/cases/\1\.sh$' \
             | sed "s#^$TC_DIR/#cubrid-testcases-private-ex/#" \
             | sort > /tmp/all.list
-          # Re-run only failures. The previous run left failed.list; its format is
-          # <shard>\t<shell/...>, and all.list carries a prefix, so they are aligned.
+          # Re-run only failures. failed.list is <shard>\t<shell/...>; align the prefix.
           if [ -n "$RERUN_FROM" ]; then
             src="$CI_ROOT/runs/$RERUN_FROM/failed.list"
             [ -f "$src" ] || { echo "::error::no failed.list: $src"; exit 1; }
@@ -687,8 +597,7 @@ jobs:
           fi
           total=$(wc -l < /tmp/cases.list)
           echo "all cases: $(wc -l < /tmp/all.list) / selected: $total"
-          # Zero cases from a re-run and zero cases from a broken glob have different
-          # causes; one wording for both would point the log at the wrong one.
+          # Zero from a re-run and zero from a broken glob have different causes.
           if [ "$total" -eq 0 ]; then
             if [ -n "$RERUN_FROM" ]; then
               echo "::error::nothing to run: none of the failures from run $RERUN_FROM can be run now"
@@ -707,9 +616,8 @@ jobs:
           if [ -s "$TIMINGS" ]; then
             dflt=$(cut -f2 "$TIMINGS" | sort -n | awk '{a[NR]=$1} END {print (NR? a[int(NR/2)+1] : 10)}')
           else
-            # An empty file makes every case weigh the same, which turns LPT into name
-            # order and stretches the longest shard from 24.8 to 49.4 minutes. That is
-            # a silent regression, so say it out loud.
+            # Empty timings turn LPT into name order: longest shard 24.8m -> 49.4m.
+            # A silent regression, so say it out loud.
             echo "::warning::timing data is empty, so LPT degrades to name order --"
             echo "::warning::  the longest shard roughly doubles. Check $TIMINGS."
             echo "::warning::  If the path moved, copy it from the old one (see RUNBOOK)."
@@ -717,8 +625,7 @@ jobs:
           fi
           echo "default seconds for an unseen case: $dflt"
 
-          # LPT: take the longest first, put it on the shard with the smallest sum.
-          # Durations span 1.5s to 301s, so name order piles the long ones together.
+          # LPT: longest first onto the lightest shard. Durations span 1.5s to 301s.
           # In awk, because the test_shell image has no python.
           mkdir -p /tmp/shards
           awk -v dflt="$dflt" -v tf="$TIMINGS" '
@@ -785,8 +692,7 @@ jobs:
           mkdir -p "$rundir/shards" "$rundir/results"
           for i in $(seq 0 $((PAR - 1))); do
             f=$(printf "%02d.list" "$i")
-            # Fewer cases than shards leaves an empty shard, which is not a normal
-            # state. plan refuses it here; the shard-side check catches "never received".
+            # Fewer cases than shards is a bug, not a normal state. Refuse it here.
             if [ ! -f "/tmp/shards/$f" ]; then
               echo "::error::no cases assigned to shard $i. Is parallelism($PAR) larger than the case count($total)?"
               exit 1
@@ -820,16 +726,12 @@ jobs:
       - name: Publish CTP for the shards
         run: |
           set -eo pipefail
-          # The checkout above already fetched CTP; putting it on GlusterFS lets 50
-          # shards copy it over the LAN, so shard WAN stays 0. plan itself clones in
-          # full (~25MB) because the nodes carry no testtools seed -- CUBRIDQA-1497.
+          # On GlusterFS so 50 shards copy it over the LAN and shard WAN stays 0.
+          # plan clones in full (~25MB): the nodes carry no testtools seed -- CUBRIDQA-1497.
           src="$WORKDIR/cubrid-testtools"
           [ -d "$src/.git" ] || { echo "::error::checkout did not fetch CTP: $src"; exit 1; }
-          # Per-run path, not the shared $CI_ROOT/testtools. Publishing is "move the
-          # old one aside, move the new one in", and the seed is absent between those
-          # two steps; another run's shard reading it right then fails. The shared
-          # path is why a global concurrency group used to be necessary.
-          # collect removes this directory at the end of the run (59MB each).
+          # Per-run path, not a shared one: publishing leaves the seed briefly absent,
+          # which another run's shard would read. collect removes it (59MB each).
           seed="$CI_ROOT/runs/${GITHUB_RUN_ID}/testtools"
           head=$(git -C "$src" rev-parse HEAD)
 
@@ -839,7 +741,6 @@ jobs:
           cp -a "$src" "$tmp"
 
           # One rename publishes it, so no consumer sees a half-copied tree.
-          # $seed normally does not exist; only a second run attempt finds one.
           rm -rf "${seed}.old"
           [ -d "$seed" ] && mv -T "$seed" "${seed}.old"
           mv -T "$tmp" "$seed"
@@ -872,19 +773,15 @@ jobs:
             echo "| run directory | \`$RUNDIR\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # =================================================================
-  # =================================================================
   shard:
     name: "shard ${{ matrix.i }}"
     needs: plan
-    # 50 privileged pods running testcase code. They get no token permissions at
-    # all; testcases arrive through the App token.
+    # 50 privileged pods running testcase code; testcases arrive via the App token.
     permissions: {}
     runs-on: cubrid-arc
     timeout-minutes: 120
     strategy:
-      # One dying does not stop the rest: the point is to collect the failure list.
-      # No max-parallel -- maxRunners is the ceiling.
+      # One dying must not stop the rest. No max-parallel: maxRunners is the ceiling.
       fail-fast: false
       matrix:
         i: ${{ fromJson(needs.plan.outputs.matrix) }}
@@ -906,11 +803,9 @@ jobs:
           set -eo pipefail
           printf 'start\t%s\n' "$(date -u +%s)" > "$STAMPS/shard-${IDX}.tsv"
 
-          # Without shareProcessNamespace, PID 1 is `tail -f /dev/null`, which never
-          # calls wait(2). The CUBRID server double-forks, so its PPID is 1, and it
-          # becomes a zombie nobody reaps -- `cubrid server stop` then waits forever
-          # and this job hangs to the 120-minute timeout instead of failing. Nothing
-          # in the log says so, hence these two lines.
+          # Without shareProcessNamespace, PID 1 never reaps the double-forked server,
+          # so `cubrid server stop` waits forever and the job hangs to the timeout.
+          # Nothing in the log says so, hence this check.
           pid1=$(ps -p 1 -o comm= | tr -d ' ')
           echo "PID 1: $pid1"
           if [ "$pid1" != "pause" ]; then
@@ -925,9 +820,8 @@ jobs:
           set -eo pipefail
           f="$RUNDIR/shards/${IDX}.list"
 
-          # Guard 2 of 3. CircleCI ends successfully here, because there the server can
-          # legitimately answer "your share is 0". plan has already split everything,
-          # so an empty share is a bug, not a normal state.
+          # Guard 2 of 3. plan split everything, so an empty share is a bug.
+          # CircleCI could legitimately answer "your share is 0"; here it cannot.
           if [ ! -f "$f" ]; then
             echo "::error::my share file is missing: $f"
             echo "  plan either never wrote it or it vanished. Zero cases is not success."
@@ -959,8 +853,7 @@ jobs:
             -o lowerdir="$lower",upperdir=/build-rw/upper,workdir=/build-rw/work "$CUBRID_DIR"
           echo "testcases and CUBRID mounted"
 
-          # Read through the mount the tests actually use, not the hostPath:
-          # $CUBRID_DIR is the overlay just created and its lowerdir is the artifact.
+          # Read through the overlay the tests use, not the hostPath.
           m="$CUBRID_DIR/$BUILD_META"
           [ -f "$m" ] || {
             echo "::error::no $BUILD_META inside the mounted CUBRID"
@@ -997,18 +890,14 @@ jobs:
 
           sudo /usr/sbin/sshd || /usr/sbin/sshd || true
 
-      # ---------------------------------------------------------------
-      # Each job mints its own token. Job outputs cross job boundaries unmasked,
-      # so a token must never travel that way.
+      # Each job mints its own: job outputs cross boundaries unmasked.
       - name: GitHub App token
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
-          # One private repo only. cubrid-testtools is outside the App installation,
-          # and asking for it makes token issuance itself fail with Not Found.
-          # It is public, so this token reads it anyway.
+          # One private repo only: asking for cubrid-testtools fails token issuance.
           repositories: cubrid-testcases-private-ex
           owner: CUBRID
           # Read-only: the default would carry the installation's contents: write.
@@ -1026,8 +915,7 @@ jobs:
           WANT_TC_SHA: ${{ needs.plan.outputs.tc_sha }}
         run: |
           set -eo pipefail
-          # CTP must be copied before this step: entrypoint needs .git present to
-          # take the incremental fetch path instead of cloning in full.
+          # CTP must be copied first: entrypoint needs .git to fetch instead of clone.
           [ -d "$WORKDIR/cubrid-testtools/.git" ] || {
             echo "::error::CTP is missing. The steps are in the wrong order"; exit 1; }
 
@@ -1035,8 +923,7 @@ jobs:
           rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
           /entrypoint.sh checkout
 
-          # Pin to the commit plan saw. checkout aligns to the branch tip, so if the
-          # branch moved since, undo that here; if it did not, the fetch is a no-op.
+          # Pin to the commit plan saw. checkout aligns to the tip; undo that here.
           cd "$TC_DIR"
           git fetch -q --depth 1 --no-tags origin "$WANT_TC_SHA"
           git reset -q --hard "$WANT_TC_SHA"
@@ -1059,8 +946,7 @@ jobs:
           set -eo pipefail
           rm -rf "$TC_DIR/shell/_25_unstable"
 
-          # plan emits paths prefixed cubrid-testcases-private-ex/...; the delete side
-          # is absolute, so line up the prefix.
+          # plan emits a repo-prefixed path; the delete side is absolute. Align them.
           sed "s#^cubrid-testcases-private-ex/#$TC_DIR/#" "$RUNDIR/shards/${IDX}.list" \
             | xargs -n1 dirname | sort -u > /tmp/keep_dirs.list
           echo "directories kept: $(wc -l < /tmp/keep_dirs.list)"
@@ -1076,8 +962,7 @@ jobs:
       - name: Run CTP
         id: ctp
         env:
-          # The only CircleCI variable CTP reads (ShellHelper.getTestNodeTitle). It
-          # labels EnvId in the log; without it every shard logs as `local`.
+          # The only CircleCI variable CTP reads. Without it every shard logs as `local`.
           CIRCLE_NODE_INDEX: ${{ matrix.i }}
         run: |
           set -eo pipefail
@@ -1088,8 +973,7 @@ jobs:
           set -e
           echo "ctp exit: $rc"
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
-          # A non-zero CTP exit does not stop us here: the results have to be published
-          # for collect to count them. The pass/fail call happens below.
+          # Do not stop on a non-zero exit: collect needs the results published first.
 
       - name: Publish results for collect
         if: always()
@@ -1137,18 +1021,14 @@ jobs:
           [ "$fail_n" -eq 0 ] || { echo "::error::$fail_n failed"; exit 1; }
           echo "this shard passed"
 
-  # =================================================================
-  # =================================================================
   collect:
     name: collect
     needs: [gate, build_debug, plan, shard]
-    # always() alone would run this for comments the gate turned away, so the gate
-    # verdict is part of the condition. A skipped gate yields empty outputs.
+    # always() alone would also run for comments the gate turned away.
     if: always() && needs.gate.outputs.run == 'true'
     permissions:
-      # The wall-clock step reads the run start time from the API. On a public repo
-      # that call needs no scope, so it would work by accident; stated so it does
-      # not fail silently if the repository ever becomes private.
+      # The wall-clock step reads the run start time. Public repos need no scope --
+      # stated so it does not fail silently if this repository ever becomes private.
       actions: read
       # Posts the result summary. The only place here that needs write.
       pull-requests: write
@@ -1181,9 +1061,8 @@ jobs:
             exit 1
           fi
 
-          # Not `ls <glob> | wc -l`: with no match ls fails and `set -eo pipefail`
-          # kills the step -- exactly when every shard died and guard 3 must speak.
-          # find returns 0 on no match.
+          # Not `ls <glob> | wc -l`: with no match it kills the step under pipefail --
+          # exactly when every shard died and guard 3 must speak. find returns 0.
           planned=$(find "$RUNDIR/shards" -maxdepth 1 -name '*.list' 2>/dev/null | wc -l)
           done_n=$(find "$RUNDIR/results" -mindepth 2 -maxdepth 2 -name shard.done 2>/dev/null | wc -l)
           read_n=$(find "$RUNDIR/results" -mindepth 2 -maxdepth 2 -name build.read 2>/dev/null | wc -l)
@@ -1225,8 +1104,7 @@ jobs:
           WANT_TC_SHA: ${{ needs.plan.outputs.tc_sha }}
         run: |
           set -eo pipefail
-          # Every shard recorded the meta it read inside its own CUBRID mount.
-          # They must all name the same run.
+          # Every shard recorded the meta it read. They must all name the same run.
           : > /tmp/brids.txt
           for f in "$RUNDIR"/results/*/build.read; do
             [ -f "$f" ] || continue
@@ -1236,8 +1114,7 @@ jobs:
           echo "distinct run_ids among the builds shards read: $uniq_n"
           sort /tmp/brids.txt | uniq -c
 
-          # Three distinct ways to disagree, reported separately: lumping them together
-          # makes "some recorded nothing" and "they read different builds" look alike.
+          # Three ways to disagree, reported separately: they are different faults.
           if [ "$uniq_n" -eq 0 ]; then
             reason=none        # nobody recorded a provenance file
           elif [ "$uniq_n" -gt 1 ]; then
@@ -1293,9 +1170,8 @@ jobs:
             awk -v shard="$i" '
               /<testcase/ {
                 cur = ""
-                # The leading space is required. CTP writes classname before name:
-                #   <testcase classname="https://..." name="shell/..." ...>
-                # so /name="..."/ matches classname first and extracts a URL.
+                # The leading space is required: CTP writes classname before name,
+                # so /name="..."/ would match classname and extract a URL.
                 if (match($0, / name="[^"]*"/)) {
                   cur = substr($0, RSTART + 7, RLENGTH - 8)
                 }
@@ -1341,17 +1217,15 @@ jobs:
             END { for (k in t) printf "%s\t%s\n", k, t[k] }
           ' /tmp/new_timings.tsv "$TIMINGS" | sort > /tmp/merged.tsv
 
-          # This file is accumulated data; losing it takes the longest shard from 24.8
-          # to 49.4 minutes. The merge is a union, so the line count can never drop --
-          # if it did, the merge broke, and keeping the old file is the smaller loss.
+          # Losing this data takes the longest shard 24.8m -> 49.4m. The merge is a
+          # union, so a shorter result means the merge broke. Keep the old file then.
           merged_n=$(wc -l < /tmp/merged.tsv)
           if [ "$merged_n" -lt "$old_n" ]; then
             echo "::error::the merge is shorter than the old file ($merged_n < $old_n). Not updating."
             exit 1
           fi
 
-          # /tmp is pod-local and $TIMINGS is GlusterFS. A cross-filesystem mv is
-          # copy+unlink, so move within the filesystem first, then rename once.
+          # A cross-filesystem mv is copy+unlink: move onto GlusterFS, then rename.
           mv -f /tmp/merged.tsv "${TIMINGS}.tmp.$$"
           mv -f "${TIMINGS}.tmp.$$" "$TIMINGS"
           echo "timing data: $old_n -> $(wc -l < "$TIMINGS") rows"
@@ -1367,9 +1241,8 @@ jobs:
           printf 'start\t%s\n' "$now" > "$STAMPS/collect.tsv"
 
           # The run start time is not in the context; one API call returns it.
-          # queue_sec = build start - run start, and the gate job now sits inside that
-          # window, so the number means gate + runner queue. Not comparable with the
-          # pre-port runs.
+          # queue_sec now covers gate + runner queue, so it is not comparable
+          # with the pre-port runs.
           run_started=""
           if code=$(curl -sS -o /tmp/run.json -w '%{http_code}' \
                 -H "Authorization: Bearer $GITHUB_TOKEN" \
@@ -1396,8 +1269,7 @@ jobs:
             [ -f "$f" ] || continue
             d=$(dur "$f"); [ -n "$d" ] && echo "$d" >> /tmp/shard_dur.txt
           done
-          # The span counts a dead shard's start too, since it held the slot.
-          # `|| true` keeps pipefail from killing the step when the glob misses --
+          # The span counts a dead shard's start too, since it held the slot. `|| true`:
           # every shard dying is exactly when the wall clock must still be reported.
           stamp_field() { { awk -F'\t' -v k="$1" '$1==k {print $2}' "$STAMPS"/shard-*.tsv 2>/dev/null || true; } | sort -n; }
           first_start=$(stamp_field start | head -1)
@@ -1473,8 +1345,7 @@ jobs:
           covered=$((EXEC_SUM + SKIP_SUM))
           v_cov="✅"; [ "$covered" -ge "$TOTAL" ] || v_cov="❌"
           v_shard="✅"; [ "$DONE_N" -eq "$PLANNED" ] || v_shard="❌"
-          # Two independent things can disagree: how many shards recorded, and whether
-          # they read the same build. One combined message would misattribute.
+          # How many recorded and whether they agree are separate faults.
           v_read="✅"; [ "$READ_N" -eq "$PLANNED" ] || v_read="❌"
           case "$PROV_REASON" in
             ok)       v_same="✅ all the same" ;;
@@ -1494,8 +1365,7 @@ jobs:
           {
             echo "## CUBRIDQA-1526 -- build, publish, shell suite"
             echo
-            # On a re-run, name the source run at the top: results land under the new
-            # run id, which someone reading only the summary would not know.
+            # Name the source run at the top: results land under the new run id.
             if [ -n "$RERUN_FROM" ]; then
               echo "> **Only the failures from run \`$RERUN_FROM\` were re-run. This is not a full run.**"
               echo ">"
@@ -1567,8 +1437,7 @@ jobs:
 
           echo "=== summary ==="
           cat "$GITHUB_STEP_SUMMARY"
-          # The next step writes the same text. The summary file is append-only, so
-          # leave a copy it can read.
+          # The summary file is append-only; leave a copy for the next step.
           cp "$GITHUB_STEP_SUMMARY" /tmp/summary.md
 
           # Guard 3 of 3: a shard dying whole is invisible to guard 2.
@@ -1621,8 +1490,7 @@ jobs:
           exit $rc
 
       - name: Post to the PR
-        # always(): a failure is exactly when the PR needs to hear about it. By
-        # default a step is skipped once an earlier one exits 1.
+        # always(): a failure is exactly when the PR needs to hear about it.
         if: always() && needs.gate.outputs.pr != ''
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1663,13 +1531,8 @@ jobs:
           fi
           echo "posted: $(jq -r '.html_url' /tmp/resp.json)"
 
-      # -----------------------------------------------------------------
-      # Removes the CTP seed: 59MB per run, nothing worth keeping. Its per-run path is
-      # what lets runs for different PRs proceed in parallel (see plan above).
-      # This is the only path that collects it -- the GlusterFS cleanup CronJob looks
-      # at /home/build-cache/builds only. A cancelled run skips this step; what it
-      # leaves is swept by build_debug on a later run.
-      # -----------------------------------------------------------------
+      # 59MB per run, nothing worth keeping, and the cleanup CronJob does not see it.
+      # A cancelled run skips this step; build_debug sweeps what it leaves.
       - name: Clean up the CTP seed
         if: always()
         run: |
