@@ -45,6 +45,20 @@ typedef enum
   HEAP_CLASS_ATTR
 } HEAP_ATTR_TYPE;
 
+/* Per-record decoding layout.  Locating any attribute inside a record needs the object
+ * header size, the width of a variable-offset entry, the start of the fixed area and the
+ * bound-bit vector -- all properties of the record as a whole, so a caller that decodes
+ * several attributes of the same record builds this once and hands it down
+ * (heap_rec_layout_init () in heap_file.c). */
+typedef struct heap_rec_layout HEAP_REC_LAYOUT;
+struct heap_rec_layout
+{
+  char *var_table;		/* first entry of the variable-offset table */
+  char *fixed_base;		/* first byte of the fixed-attribute area */
+  char *bound_bits;		/* bound-bit vector, NULL when the record carries none */
+  int offset_size;		/* width of one variable-offset table entry */
+};
+
 typedef struct heap_attrvalue HEAP_ATTRVALUE;
 struct heap_attrvalue
 {
@@ -65,6 +79,10 @@ struct heap_attrvalue
    * plan must be rebuilt. */
   const OR_ATTRIBUTE *rd_attrepr;
   const struct pr_type *rd_type;
+  /* type-fixed decode kernel: writes the DB_VALUE straight from the record bytes, doing
+   * none of the per-row work the generic path repeats (OR_BUF setup, handler dispatch,
+   * domain re-validation).  NULL when the type keeps the generic path. */
+  int (*rd_readval) (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr);
   int rd_disk_size;		/* fixed attributes: disk width; -1 when not applicable */
   bool rd_owns_memory;		/* the decoded value can hold a pointer that must be released */
   bool lazy_always_eager;	/* lazy mode: read this attribute now instead of deferring (column of the
@@ -86,6 +104,8 @@ struct heap_cache_attrinfo
   int num_values;		/* Number of desired attribute values */
   HEAP_ATTRVALUE *values;	/* Value for the attributes */
   RECDES *lazy_recdes;		/* lazy mode when non-NULL: record the deferred attrs are read from */
+  HEAP_REC_LAYOUT lazy_layout;	/* lazy_recdes's decoding layout, computed once when it is armed;
+				 * meaningful only while lazy_recdes != NULL */
   /* deferring is worth it or not depending on the data, so it is measured over the first
    * HEAP_LAZY_CALIBRATE_ROWS rows (see heap_attrinfo_read_dbvalues_lazy ()). */
   INT64 lazy_rows;		/* rows prepared in lazy mode */
