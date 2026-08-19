@@ -1390,7 +1390,9 @@ namespace parallel_scan
     tl_vd = vd;
     tl_xasl_p = xasl_p;
     tl_tpl_buf.tpl = (char *)db_private_alloc (thread_p, DB_PAGESIZE);
-    tl_tpl_buf.size = DB_PAGESIZE;
+    /* on allocation failure size 0 makes the first user grow the buffer through
+     * db_private_realloc (), whose failure path already returns false */
+    tl_tpl_buf.size = (tl_tpl_buf.tpl != nullptr) ? DB_PAGESIZE : 0;
     tl_xasl_p->proc.buildvalue.agg_domains_resolved = 0;
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
       {

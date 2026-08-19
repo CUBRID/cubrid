@@ -87,7 +87,6 @@ struct expr_step
    * stable value (constant, host variable) or to a producer step's cell */
   DB_VALUE **arg1p;
   DB_VALUE **arg2p;
-  DB_VALUE **arg3p;
 
   DB_VALUE *out;		/* this step's owned result slot (NULL for pure pointer-select steps) */
   DB_VALUE **out_cell;		/* cell to publish the result pointer into */

@@ -2399,11 +2399,11 @@ expr_prog_compile (cubthread::entry * thread_p, regu_variable_list_node * list, 
   return expr_prog_compile_roots (thread_p, roots, n, vd, true, false, false, NULL);
 }
 
-EXPR_PROG *
-expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots, val_descr * vd,
-			 bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots, int *root_idx_out)
+static EXPR_PROG *
+expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots,
+			      val_descr * vd, bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots,
+			      int *root_idx_out)
 {
-  EXPR_BUILD_CTX bctx;
   EXPR_PROG *prog = NULL;
   bool compiled_something = false;
   int n_roots = 0, i, slot_next = 0;
@@ -2414,23 +2414,23 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
       return NULL;
     }
 
-  memset (&bctx, 0, sizeof (bctx));
-  bctx.vd = vd;
-  bctx.thread_p = thread_p;
+  memset (bctx, 0, sizeof (*bctx));
+  bctx->vd = vd;
+  bctx->thread_p = thread_p;
 
   for (i = 0; i < in_roots; i++)
     {
-      int snap_steps = bctx.n_steps, snap_cells = bctx.n_cells, snap_cse = bctx.n_cse, snap_slots = bctx.n_slots;
-      int cell = expr_compile_node (&bctx, roots[i], &compiled_something);
+      int snap_steps = bctx->n_steps, snap_cells = bctx->n_cells, snap_cse = bctx->n_cse, snap_slots = bctx->n_slots;
+      int cell = expr_compile_node (bctx, roots[i], &compiled_something);
 
       if (cell >= 0 && only_compute_roots)
 	{
 	  bool has_compute = false;
 	  int j;
 
-	  for (j = snap_steps; j < bctx.n_steps; j++)
+	  for (j = snap_steps; j < bctx->n_steps; j++)
 	    {
-	      if (bctx.steps[j].kernel != expr_k_leaf_fetch && bctx.steps[j].kernel != expr_k_hostvar)
+	      if (bctx->steps[j].kernel != expr_k_leaf_fetch && bctx->steps[j].kernel != expr_k_hostvar)
 		{
 		  has_compute = true;
 		  break;
@@ -2441,27 +2441,27 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 	      /* nothing computed: discard this root's steps and keep the consumer's
 	       * interpreted per-root path (its CSE entries go too, so a later root
 	       * cannot reference a cell no step publishes) */
-	      for (j = snap_steps; j < bctx.n_steps; j++)
+	      for (j = snap_steps; j < bctx->n_steps; j++)
 		{
-		  expr_pred_free ((EXPR_PRED *) bctx.steps[j].pred);
-		  bctx.steps[j].pred = NULL;
-		  bctx.step_prologue[j] = false;
-		  bctx.step_exec_prologue[j] = false;
+		  expr_pred_free ((EXPR_PRED *) bctx->steps[j].pred);
+		  bctx->steps[j].pred = NULL;
+		  bctx->step_prologue[j] = false;
+		  bctx->step_exec_prologue[j] = false;
 		}
-	      bctx.n_steps = snap_steps;
-	      bctx.n_cells = snap_cells;
-	      bctx.n_cse = snap_cse;
-	      bctx.n_slots = snap_slots;
+	      bctx->n_steps = snap_steps;
+	      bctx->n_cells = snap_cells;
+	      bctx->n_cse = snap_cse;
+	      bctx->n_slots = snap_slots;
 	      cell = -1;
 	    }
 	}
 
       if (cell < 0 && allow_fallback_roots)
 	{
-	  cell = expr_emit_fallback (&bctx, roots[i]);
+	  cell = expr_emit_fallback (bctx, roots[i]);
 	  if (cell < 0)
 	    {
-	      expr_build_free_preds (&bctx);
+	      expr_build_free_preds (bctx);
 	      return NULL;	/* out of room; keep the interpreted path */
 	    }
 	}
@@ -2483,21 +2483,21 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
   if (n_roots == 0 || (!compiled_something && !allow_wired_only))
     {
       /* everything fell back or was excluded: the program would only add indirection */
-      expr_build_free_preds (&bctx);
+      expr_build_free_preds (bctx);
       return NULL;
     }
 
   prog = (EXPR_PROG *) malloc (sizeof (EXPR_PROG));
   if (prog == NULL)
     {
-      expr_build_free_preds (&bctx);
+      expr_build_free_preds (bctx);
       return NULL;
     }
   memset (prog, 0, sizeof (*prog));
 
-  prog->n_steps = bctx.n_steps;
-  prog->n_cells = bctx.n_cells;
-  prog->n_slots = bctx.n_slots;
+  prog->n_steps = bctx->n_steps;
+  prog->n_cells = bctx->n_cells;
+  prog->n_slots = bctx->n_slots;
   prog->n_roots = n_roots;
 
   prog->steps = (EXPR_STEP *) malloc (sizeof (EXPR_STEP) * MAX (1, prog->n_steps));
@@ -2522,7 +2522,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
       prog->n_steps = 0;
       prog->n_slots = 0;
       expr_prog_free (prog);
-      expr_build_free_preds (&bctx);
+      expr_build_free_preds (bctx);
       return NULL;
     }
 
@@ -2532,7 +2532,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
     }
   for (i = 0; i < prog->n_cells; i++)
     {
-      prog->cells[i] = bctx.cells[i];	/* stable addresses; step-published cells start NULL */
+      prog->cells[i] = bctx->cells[i];	/* stable addresses; step-published cells start NULL */
     }
   memcpy (prog->root_cells, root_cells, sizeof (int) * prog->n_roots);
 
@@ -2547,30 +2547,30 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
     prog->prologue_done = false;
     prog->n_exec_prologue = 0;
     prog->exec_stamp_valid = false;
-    for (i = 0; i < bctx.n_steps; i++)
+    for (i = 0; i < bctx->n_steps; i++)
       {
-	if (bctx.step_prologue[i])
+	if (bctx->step_prologue[i])
 	  {
 	    remap[i] = prog->n_prologue;
-	    prog->steps[prog->n_prologue++] = bctx.steps[i];
+	    prog->steps[prog->n_prologue++] = bctx->steps[i];
 	  }
       }
     slot_next = prog->n_prologue;
-    for (i = 0; i < bctx.n_steps; i++)
+    for (i = 0; i < bctx->n_steps; i++)
       {
-	if (!bctx.step_prologue[i] && bctx.step_exec_prologue[i])
+	if (!bctx->step_prologue[i] && bctx->step_exec_prologue[i])
 	  {
 	    remap[i] = slot_next;
-	    prog->steps[slot_next++] = bctx.steps[i];
+	    prog->steps[slot_next++] = bctx->steps[i];
 	    prog->n_exec_prologue++;
 	  }
       }
-    for (i = 0; i < bctx.n_steps; i++)
+    for (i = 0; i < bctx->n_steps; i++)
       {
-	if (!bctx.step_prologue[i] && !bctx.step_exec_prologue[i])
+	if (!bctx->step_prologue[i] && !bctx->step_exec_prologue[i])
 	  {
 	    remap[i] = slot_next;
-	    prog->steps[slot_next++] = bctx.steps[i];
+	    prog->steps[slot_next++] = bctx->steps[i];
 	  }
       }
 
@@ -2610,10 +2610,6 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 	{
 	  step->arg2p = &prog->cells[(intptr_t) step->arg2p - 1];
 	}
-      if (step->arg3p != NULL)
-	{
-	  step->arg3p = &prog->cells[(intptr_t) step->arg3p - 1];
-	}
       step->out_cell = &prog->cells[(intptr_t) step->out_cell];
       if (step->out != NULL)
 	{
@@ -2647,6 +2643,25 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 	}
     }
 
+  return prog;
+}
+
+EXPR_PROG *
+expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots, val_descr * vd,
+			 bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots, int *root_idx_out)
+{
+  /* the build context is a page-plus of scratch arrays: too big for a server worker's
+   * stack, and compilation happens once per clone, so it lives on the heap */
+  EXPR_BUILD_CTX *bctx = (EXPR_BUILD_CTX *) malloc (sizeof (EXPR_BUILD_CTX));
+  EXPR_PROG *prog;
+
+  if (bctx == NULL)
+    {
+      return NULL;
+    }
+  prog = expr_prog_compile_roots_impl (bctx, thread_p, roots, in_roots, vd, allow_fallback_roots, allow_wired_only,
+				       only_compute_roots, root_idx_out);
+  free (bctx);
   return prog;
 }
 
