@@ -67,7 +67,7 @@
  * on V_ERROR, comparison terms yield V_UNKNOWN when either side is NULL */
 enum expr_pred_kind
 { EXPR_PRED_COMP, EXPR_PRED_COMP_TORDER, EXPR_PRED_AND, EXPR_PRED_OR, EXPR_PRED_NOT, EXPR_PRED_ISNULL,
-  EXPR_PRED_LIKE
+  EXPR_PRED_LIKE, EXPR_PRED_COMP_FETCH, EXPR_PRED_INTERP, EXPR_PRED_INTERP_COMP0
 };
 
 typedef struct expr_pred EXPR_PRED;
@@ -87,6 +87,18 @@ struct expr_pred
   DB_VALUE **arg3p;		/* LIKE escape, when present */
   REL_OP rel_op;
   DB_TYPE fast_type;		/* direct-compare type, or DB_TYPE_UNKNOWN -> tp_value_compare */
+
+  /* scan-filter leaves (EXPR_PRED_COMP_FETCH): the operands are fetched per row through
+   * the regular fetch path into the two holders below, which arg1p/arg2p were wired to
+   * at build time so the resolved leaf above compares them unchanged.  fetch_src is the
+   * original term, evaluated verbatim for a row whose runtime types the leaf was not
+   * resolved for (a host variable bound to a different type). */
+  REGU_VARIABLE *fetch_lhs;
+  REGU_VARIABLE *fetch_rhs;
+  const void *fetch_src;
+  DB_VALUE *fetched1;
+  DB_VALUE *fetched2;
+  bool need_type_guard;		/* a side is a host variable: verify runtime types per row */
 };
 
 /* growable build-time buffers, sized once and converted to tight arrays at the end */
@@ -648,6 +660,14 @@ EXPR_PRED_CMP_LEAF (expr_pred_double_lt, db_get_double, <)
 EXPR_PRED_CMP_LEAF (expr_pred_double_le, db_get_double, <=)
 EXPR_PRED_CMP_LEAF (expr_pred_double_gt, db_get_double, >)
 EXPR_PRED_CMP_LEAF (expr_pred_double_ge, db_get_double, >=)
+/* a DATE is one unsigned int (mr_cmpval_date () orders it the same way) */
+#define EXPR_GET_DATE(v) (*db_get_date (v))
+EXPR_PRED_CMP_LEAF (expr_pred_date_eq, EXPR_GET_DATE, ==)
+EXPR_PRED_CMP_LEAF (expr_pred_date_ne, EXPR_GET_DATE, !=)
+EXPR_PRED_CMP_LEAF (expr_pred_date_lt, EXPR_GET_DATE, <)
+EXPR_PRED_CMP_LEAF (expr_pred_date_le, EXPR_GET_DATE, <=)
+EXPR_PRED_CMP_LEAF (expr_pred_date_gt, EXPR_GET_DATE, >)
+EXPR_PRED_CMP_LEAF (expr_pred_date_ge, EXPR_GET_DATE, >=)
 /* *INDENT-ON* */
 
 /* mirror of the eval_value_rel_cmp () rel_op mapping for ordinal comparisons */
@@ -717,6 +737,9 @@ expr_pred_cmp_leaf (DB_TYPE fast_type, REL_OP rel_op)
     { DB_TYPE_DOUBLE, R_EQ, expr_pred_double_eq }, { DB_TYPE_DOUBLE, R_NE, expr_pred_double_ne },
     { DB_TYPE_DOUBLE, R_LT, expr_pred_double_lt }, { DB_TYPE_DOUBLE, R_LE, expr_pred_double_le },
     { DB_TYPE_DOUBLE, R_GT, expr_pred_double_gt }, { DB_TYPE_DOUBLE, R_GE, expr_pred_double_ge },
+    { DB_TYPE_DATE, R_EQ, expr_pred_date_eq }, { DB_TYPE_DATE, R_NE, expr_pred_date_ne },
+    { DB_TYPE_DATE, R_LT, expr_pred_date_lt }, { DB_TYPE_DATE, R_LE, expr_pred_date_le },
+    { DB_TYPE_DATE, R_GT, expr_pred_date_gt }, { DB_TYPE_DATE, R_GE, expr_pred_date_ge },
     /* *INDENT-ON* */
   };
   size_t i;
@@ -1200,6 +1223,334 @@ expr_pred_generic_cmp_type (DB_TYPE type)
     }
 }
 
+/******************************************************************************
+ * scan-filter predicates
+ *
+ * A scan's data filter runs eval_pred () for every row: a recursive walk that
+ * re-discovers the tree shape, the term kinds and the operand types on each
+ * visit, and compares through eval_value_rel_cmp ()'s per-row type dispatch.
+ * The shape, the kinds and the types are all fixed when the XASL is made, so
+ * the tree below is built ONCE per clone: AND/OR/NOT nodes reuse the compiled
+ * predicate walker's Kleene logic, and every comparison is a leaf whose
+ * (type, operator) function was resolved at build time.  Operands are fetched
+ * per row through the regular fetch path -- lazily-deferred columns keep the
+ * exact decode-skipping behavior of the interpreted walk, since a leaf whose
+ * left side is NULL never touches its right side, and a term short-circuited
+ * by AND/OR is never visited at all.
+ *
+ * Anything the builder does not cover (subqueries, IN/LIKE/REGEXP terms,
+ * mismatched operand types, hostvar-typed sides) leaves the whole tree on the
+ * interpreted path -- the caller keeps pr_eval_fnc as before.
+ ******************************************************************************/
+
+/* the static type of a scan-filter operand: its plan-time domain, or UNKNOWN */
+static DB_TYPE
+expr_scan_operand_type (const REGU_VARIABLE * regu)
+{
+  if (regu == NULL || regu->domain == NULL)
+    {
+      return DB_TYPE_UNKNOWN;
+    }
+  return TP_DOMAIN_TYPE (regu->domain);
+}
+
+/* a term the compiler leaves alone: the interpreted evaluator runs the original subtree,
+ * so its behavior (subqueries, LIKE/IN/REGEXP terms, mixed-type coercions) is exactly as
+ * before; the tree around it still skips eval_pred ()'s per-row shape re-discovery.
+ * Plain comparison terms take eval_pred_comp0 () straight -- the same function eval_fnc ()
+ * would have picked -- which skips eval_pred ()'s per-call recursion accounting. */
+static EXPR_PRED *
+expr_scan_pred_interp_leaf (const PRED_EXPR * pr, bool comp0)
+{
+  EXPR_PRED *pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
+
+  if (pred == NULL)
+    {
+      return NULL;
+    }
+  memset (pred, 0, sizeof (*pred));
+  pred->kind = comp0 ? EXPR_PRED_INTERP_COMP0 : EXPR_PRED_INTERP;
+  pred->fetch_src = pr;
+  return pred;
+}
+
+/* build the compiled tree; NULL only on allocation failure */
+static EXPR_PRED *
+expr_scan_pred_build (const PRED_EXPR * pr)
+{
+  EXPR_PRED *pred = NULL, *lhs = NULL, *rhs = NULL;
+
+  if (pr == NULL)
+    {
+      return NULL;
+    }
+
+  switch (pr->type)
+    {
+    case T_PRED:
+      if (pr->pe.m_pred.bool_op != B_AND && pr->pe.m_pred.bool_op != B_OR)
+	{
+	  return expr_scan_pred_interp_leaf (pr, false);
+	}
+      lhs = expr_scan_pred_build (pr->pe.m_pred.lhs);
+      if (lhs == NULL)
+	{
+	  return NULL;
+	}
+      rhs = expr_scan_pred_build (pr->pe.m_pred.rhs);
+      if (rhs == NULL)
+	{
+	  expr_pred_free (lhs);
+	  return NULL;
+	}
+      pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
+      if (pred == NULL)
+	{
+	  expr_pred_free (lhs);
+	  expr_pred_free (rhs);
+	  return NULL;
+	}
+      memset (pred, 0, sizeof (*pred));
+      pred->kind = (pr->pe.m_pred.bool_op == B_AND) ? EXPR_PRED_AND : EXPR_PRED_OR;
+      pred->lhs = lhs;
+      pred->rhs = rhs;
+      return pred;
+
+    case T_NOT_TERM:
+      lhs = expr_scan_pred_build (pr->pe.m_not_term);
+      if (lhs == NULL)
+	{
+	  return NULL;
+	}
+      pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
+      if (pred == NULL)
+	{
+	  expr_pred_free (lhs);
+	  return NULL;
+	}
+      memset (pred, 0, sizeof (*pred));
+      pred->kind = EXPR_PRED_NOT;
+      pred->lhs = lhs;
+      return pred;
+
+    case T_EVAL_TERM:
+      {
+	const COMP_EVAL_TERM *et;
+	DB_TYPE t1, t2, fast_type;
+
+	if (pr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
+	  {
+	    return expr_scan_pred_interp_leaf (pr, false);
+	  }
+	et = &pr->pe.m_eval_term.et.et_comp;
+
+	switch (et->rel_op)
+	  {
+	  case R_EQ:
+	  case R_NE:
+	  case R_LT:
+	  case R_LE:
+	  case R_GT:
+	  case R_GE:
+	    break;
+	  default:
+	    /* IS NULL / EXISTS / NULLSAFE / set and list relations keep eval_pred () */
+	    return expr_scan_pred_interp_leaf (pr, false);
+	  }
+
+	if (et->lhs == NULL || et->rhs == NULL || et->lhs->type == TYPE_LIST_ID || et->rhs->type == TYPE_LIST_ID)
+	  {
+	    /* linked subqueries evaluate through eval_pred_comp3 (); interpreted */
+	    return expr_scan_pred_interp_leaf (pr, false);
+	  }
+
+	t1 = expr_scan_operand_type (et->lhs);
+	t2 = expr_scan_operand_type (et->rhs);
+	if (t1 != t2 || t1 == DB_TYPE_UNKNOWN
+	    || !(t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
+		 || expr_pred_generic_cmp_type (t1)))
+	  {
+	    /* differing sides would hit the constant-side coercion in
+	     * eval_value_rel_cmp (); the plain term evaluator applies it as before */
+	    return expr_scan_pred_interp_leaf (pr, true);
+	  }
+	fast_type = (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
+		     || t1 == DB_TYPE_DATE) ? t1 : DB_TYPE_UNKNOWN;
+
+	pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
+	if (pred == NULL)
+	  {
+	    return NULL;
+	  }
+	memset (pred, 0, sizeof (*pred));
+	pred->kind = EXPR_PRED_COMP_FETCH;
+	pred->fetch_lhs = et->lhs;
+	pred->fetch_rhs = et->rhs;
+	pred->fetch_src = pr;
+	pred->arg1p = &pred->fetched1;
+	pred->arg2p = &pred->fetched2;
+	pred->rel_op = et->rel_op;
+	pred->fast_type = fast_type;
+	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
+	/* an attribute decodes to its domain type and a plan constant keeps its type, so
+	 * only sides that can be rebound (host variables and computed operands) make the
+	 * leaf verify the runtime types per row */
+	pred->need_type_guard = !((et->lhs->type == TYPE_ATTR_ID || et->lhs->type == TYPE_CONSTANT
+				   || et->lhs->type == TYPE_DBVAL)
+				  && (et->rhs->type == TYPE_ATTR_ID || et->rhs->type == TYPE_CONSTANT
+				      || et->rhs->type == TYPE_DBVAL));
+	return pred;
+      }
+
+    default:
+      return expr_scan_pred_interp_leaf (pr, false);
+    }
+}
+
+/* count the compiled comparison leaves: the tree earns its keep only if at least one
+ * comparison actually skips the interpreted term machinery */
+static int
+expr_scan_pred_fetch_leaves (const EXPR_PRED * pred)
+{
+  if (pred == NULL)
+    {
+      return 0;
+    }
+  if (pred->kind == EXPR_PRED_COMP_FETCH)
+    {
+      return 1;
+    }
+  return expr_scan_pred_fetch_leaves (pred->lhs) + expr_scan_pred_fetch_leaves (pred->rhs);
+}
+
+void *
+expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr)
+{
+  EXPR_PRED *pred = expr_scan_pred_build (pr);
+
+  if (pred == NULL)
+    {
+      return NULL;
+    }
+  if (expr_scan_pred_fetch_leaves (pred) == 0
+      || (pred->kind == EXPR_PRED_COMP_FETCH && pred->fast_type == DB_TYPE_UNKNOWN))
+    {
+      /* nothing compiled (all-interp tree), or a single generic-compare leaf that would
+       * make the same calls eval_pred_comp0 () makes: pure indirection, dropped */
+      expr_pred_free (pred);
+      return NULL;
+    }
+  return pred;
+}
+
+/* mirror of the eval_pred () walk over the compiled tree; fetch errors are V_ERROR and
+ * a NULL side is V_UNKNOWN before the right side is even fetched, exactly as
+ * eval_pred_comp0 () orders them */
+static DB_LOGICAL
+expr_scan_pred_eval_node (EXPR_PRED * pred, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid)
+{
+  DB_LOGICAL r1, r2;
+
+  switch (pred->kind)
+    {
+    case EXPR_PRED_COMP_FETCH:
+      {
+	DB_TYPE rt1, rt2;
+
+	if (fetch_peek_dbval (thread_p, pred->fetch_lhs, vd, NULL, obj_oid, NULL, &pred->fetched1) != NO_ERROR)
+	  {
+	    return V_ERROR;
+	  }
+	if (DB_IS_NULL (pred->fetched1))
+	  {
+	    return V_UNKNOWN;
+	  }
+	if (fetch_peek_dbval (thread_p, pred->fetch_rhs, vd, NULL, obj_oid, NULL, &pred->fetched2) != NO_ERROR)
+	  {
+	    return V_ERROR;
+	  }
+	if (likely (!pred->need_type_guard))
+	  {
+	    return pred->eval (pred);
+	  }
+	rt1 = DB_VALUE_DOMAIN_TYPE (pred->fetched1);
+	rt2 = DB_VALUE_DOMAIN_TYPE (pred->fetched2);
+	if (rt1 == rt2 && (pred->fast_type == DB_TYPE_UNKNOWN || rt1 == pred->fast_type))
+	  {
+	    return pred->eval (pred);
+	  }
+	/* runtime types the leaf was not resolved for (a host variable bound to another
+	 * type): the interpreted term evaluator applies its coercion exactly as before */
+	return eval_pred_comp0 (thread_p, (const PRED_EXPR *) pred->fetch_src, vd, obj_oid);
+      }
+
+    case EXPR_PRED_INTERP_COMP0:
+      /* a plain comparison the leaf table does not cover (mixed types): the same
+       * function eval_fnc () would have picked, with its coercion */
+      return eval_pred_comp0 (thread_p, (const PRED_EXPR *) pred->fetch_src, vd, obj_oid);
+
+    case EXPR_PRED_INTERP:
+      /* a term the compiler left alone: the original subtree, evaluated verbatim */
+      return eval_pred (thread_p, (const PRED_EXPR *) pred->fetch_src, vd, obj_oid);
+
+    case EXPR_PRED_AND:
+      /* Kleene AND with immediate exit on V_FALSE/V_ERROR == the eval_pred () loop */
+      r1 = expr_scan_pred_eval_node (pred->lhs, thread_p, vd, obj_oid);
+      if (r1 == V_FALSE || r1 == V_ERROR)
+	{
+	  return r1;
+	}
+      r2 = expr_scan_pred_eval_node (pred->rhs, thread_p, vd, obj_oid);
+      if (r2 == V_FALSE || r2 == V_ERROR)
+	{
+	  return r2;
+	}
+      return (r1 == V_UNKNOWN || r2 == V_UNKNOWN) ? V_UNKNOWN : V_TRUE;
+
+    case EXPR_PRED_OR:
+      r1 = expr_scan_pred_eval_node (pred->lhs, thread_p, vd, obj_oid);
+      if (r1 == V_TRUE || r1 == V_ERROR)
+	{
+	  return r1;
+	}
+      r2 = expr_scan_pred_eval_node (pred->rhs, thread_p, vd, obj_oid);
+      if (r2 == V_TRUE || r2 == V_ERROR)
+	{
+	  return r2;
+	}
+      return (r1 == V_UNKNOWN || r2 == V_UNKNOWN) ? V_UNKNOWN : V_FALSE;
+
+    case EXPR_PRED_NOT:
+      /* mirror of eval_negative () */
+      r1 = expr_scan_pred_eval_node (pred->lhs, thread_p, vd, obj_oid);
+      if (r1 == V_TRUE)
+	{
+	  return V_FALSE;
+	}
+      if (r1 == V_FALSE)
+	{
+	  return V_TRUE;
+	}
+      return r1;
+
+    default:
+      assert (false);
+      return V_ERROR;
+    }
+}
+
+DB_LOGICAL
+expr_scan_pred_eval (void *compiled, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid)
+{
+  return expr_scan_pred_eval_node ((EXPR_PRED *) compiled, thread_p, vd, obj_oid);
+}
+
+void
+expr_scan_pred_free (void *compiled)
+{
+  expr_pred_free ((EXPR_PRED *) compiled);
+}
+
 /* compile a PRED_EXPR into an EXPR_PRED tree; NULL when any construct is unsupported.
  * Operand sub-expressions compile through expr_compile_node (), so their steps run
  * unconditionally -- exactly when eval_pred () would fetch them. */
@@ -1362,7 +1713,7 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 	     * eval_value_rel_cmp (); left interpreted */
 	    return NULL;
 	  }
-	if (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE)
+	if (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE || t1 == DB_TYPE_DATE)
 	  {
 	    fast_type = t1;
 	  }

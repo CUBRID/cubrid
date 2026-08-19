@@ -40,6 +40,7 @@
 #include "dbtype.h"
 #include "query_executor.h"
 #include "query_opfunc.h"
+#include "expr_compile.h"
 #include "dbtype.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
@@ -2955,7 +2956,24 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
   ev_res = V_TRUE;
   if (scan_predp->pr_eval_fnc && scan_predp->pred_expr)
     {
-      ev_res = (*scan_predp->pr_eval_fnc) (thread_p, scan_predp->pred_expr, filterp->val_descr, oid);
+      PRED_EXPR *pred_root = scan_predp->pred_expr;
+
+      /* compiled form of the tree (expr_compile.h): the shape, the term kinds and the
+       * operand types eval_pred () re-discovers per row are fixed in the XASL, so they
+       * are resolved once per clone here; anything not covered keeps pr_eval_fnc */
+      if (unlikely (pred_root->scan_prog_state == 0))
+	{
+	  pred_root->scan_prog = expr_scan_pred_compile (thread_p, pred_root);
+	  pred_root->scan_prog_state = (pred_root->scan_prog != NULL) ? 1 : 2;
+	}
+      if (pred_root->scan_prog_state == 1)
+	{
+	  ev_res = expr_scan_pred_eval (pred_root->scan_prog, thread_p, filterp->val_descr, oid);
+	}
+      else
+	{
+	  ev_res = (*scan_predp->pr_eval_fnc) (thread_p, pred_root, filterp->val_descr, oid);
+	}
     }
 
   if (oid == NULL && recdesp == NULL)

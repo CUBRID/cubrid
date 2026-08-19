@@ -3780,6 +3780,21 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
     }
 
+  /* data filters of this node's access specs (compiled scan predicates) */
+  {
+    ACCESS_SPEC_TYPE *spec;
+
+    for (spec = xasl_p->spec_list; spec != NULL; spec = spec->next)
+      {
+	if (spec->where_pred == NULL || spec->where_pred->scan_prog_state == 0)
+	  {
+	    continue;
+	  }
+	fprintf (fp, "%*cEXPR_COMPILE (data filter): %s\n", indent, ' ',
+		 (spec->where_pred->scan_prog_state == 1) ? "active" : "interpreted (not covered)");
+      }
+  }
+
   for (k = 0; k < 2; k++)
     {
       OUTPTR_LIST *out = outs[k];

@@ -1779,6 +1779,15 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
       return pg_cnt;
     }
 
+  /* release the compiled scan-filter form (root node only; see expr_compile.h) when the
+   * clone is being retired -- a clone kept cached keeps its compiled tree */
+  if (pr->scan_prog != NULL && (is_final || XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE)))
+    {
+      expr_scan_pred_free (pr->scan_prog);
+      pr->scan_prog = NULL;
+      pr->scan_prog_state = 0;
+    }
+
   switch (pr->type)
     {
     case T_PRED:
