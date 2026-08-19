@@ -1108,7 +1108,7 @@ $ LOADDB
 1039 log writer: log yazar başladı. modu: %1$d.
 1040 HA genel: %1$s.
 1041 Bir dize "%1$s" çerçevesinde eksik kalırdı.
-1042 Izin verilen maksimum %2$d bayt iken, bellek %1$d byte gerektiren bir dize oluşturmak için çalışıyorum.
+1042 Izin verilen maksimum %2$d bayt iken, bellek %1$zu byte gerektiren bir dize oluşturmak için çalışıyorum.
 1043 "%1$s" özniteliği değiştirilemiyor. Sınıfın alt sınıfları varsa CUBRID istenen nitelik özelliklerini değiştiremezsiniz.
 1044 "%1$s" özniteliği değiştirilemiyor. CUBRID anahtarları bölümleme öznitelikleri değiştiremezsiniz.
 1045 "%1$s" özniteliği değiştirilemiyor. CUBRID (ya başvurulan veya başvuran) yabancı tuşları kullanılan niteliklerini değiştiremezsiniz.
