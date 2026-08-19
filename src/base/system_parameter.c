@@ -816,6 +816,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
 
+#define PRM_NAME_HISTOGRAM_PATTERN_TRUST_BUCKETS "histogram_pattern_trust_buckets"
+
+#define PRM_NAME_HISTOGRAM_PATTERN_CHAR_SELECTIVITY "histogram_pattern_char_selectivity"
+
 // #endregion 
 
 /*
@@ -5514,6 +5518,30 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HISTOGRAM_PATTERN_TRUST_BUCKETS,
+   PRM_NAME_HISTOGRAM_PATTERN_TRUST_BUCKETS,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 20}},
+   {false, {.i = 20}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HISTOGRAM_PATTERN_CHAR_SELECTIVITY,
+   PRM_NAME_HISTOGRAM_PATTERN_CHAR_SELECTIVITY,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 0.70f}},
+   {false, {.f = 0.70f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 0.0f}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

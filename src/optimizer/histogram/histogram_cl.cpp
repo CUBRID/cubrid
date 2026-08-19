@@ -47,6 +47,7 @@
 #include "string_regex.hpp"
 #include "language_support.h"
 #include "error_manager.h"
+#include "system_parameter.h"
 
 static bool histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key);
 static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq);
@@ -1869,24 +1870,63 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
 	}
     }
 
-  /* char-count heuristic; used only as a fallback for small histograms */
-  const double pattern_sel = pattern_heuristic_selectivity (pattern, '\0');
+  /* Estimate for a small histogram. pattern_heuristic_selectivity () skips the fixed prefix
+   * and decays at 0.2 per remaining character, which only holds when a prefix anchors the
+   * match. With a leading wildcard there is no prefix, the whole pattern decays, and the
+   * estimate collapses: '%BRASS' scores 0.00032 against a true 0.199794 on TPC-H SF10.
+   * The decay itself carries real signal -- a longer literal run is rarer -- so keep it and
+   * decay at the calibrated per-character rate instead. Inverting the true selectivity of
+   * the TPC-H leading-wildcard patterns gives 0.56..0.73 per character ('%BRASS' 0.725,
+   * '%green%' 0.558, '%special%requests%' 0.729, '%Customer%Complaints%' 0.641), and 0.70
+   * holds all four within 3.1x (CBRD-27180). */
+  double pattern_sel;
+  if (pattern[0] == '%' || pattern[0] == '_')
+    {
+      int literal_chars = 0;
+      for (size_t i = 0; i < pattern.size (); i++)
+	{
+	  if (pattern[i] != '%' && pattern[i] != '_')
+	    {
+	      literal_chars++;
+	    }
+	}
+      pattern_sel = pow ((double) prm_get_float_value (PRM_ID_HISTOGRAM_PATTERN_CHAR_SELECTIVITY),
+			 (double) literal_chars);
+    }
+  else
+    {
+      pattern_sel = pattern_heuristic_selectivity (pattern, '\0');
+    }
   assert_release (pattern_sel >= 0.0 && pattern_sel <= 1.0);
 
-  /* the histogram value-match fraction is the primary
-   * non-MCV estimate. Trust it fully once the histogram is large enough (>=100 entries);
-   * blend with the heuristic for 10..99 entries (weight = size/100); below 10 use the
-   * heuristic alone. */
+  /* the histogram value-match fraction is the primary non-MCV estimate. Trust it fully once
+   * the histogram carries at least histogram_pattern_trust_buckets entries; blend with the
+   * pattern estimate from 10 entries up to that count (weight = size/count); below 10 use
+   * the pattern estimate alone. */
   double total_non_mcv_sel;
   const int hist_size = static_cast<int> (non_mcv_buckets);
-  if (hist_size >= 100)
+  const int trust_buckets = prm_get_integer_value (PRM_ID_HISTOGRAM_PATTERN_TRUST_BUCKETS);
+  if (hist_size >= trust_buckets)
     {
-      total_non_mcv_sel = matched_non_mcv_buckets / non_mcv_buckets;
+      if (matched_non_mcv_buckets > 0.0)
+	{
+	  total_non_mcv_sel = matched_non_mcv_buckets / non_mcv_buckets;
+	}
+      else
+	{
+	  /* No endpoint matched. That bounds the selectivity from above -- it is below roughly
+	   * one endpoint's worth -- rather than pinning it at zero, and the lower clamp below
+	   * would replace it with a constant unrelated to the sample size. Keep the pattern
+	   * estimate, which is independent evidence, and hold it under the bound the sample
+	   * supports (CBRD-27180). */
+	  const double sample_bound = 1.0 / (non_mcv_buckets + 1.0);
+	  total_non_mcv_sel = (pattern_sel < sample_bound) ? pattern_sel : sample_bound;
+	}
     }
   else if (hist_size >= 10)
     {
       const double matched_buckets_sel = matched_non_mcv_buckets / non_mcv_buckets;
-      const double w = static_cast<double> (hist_size) / 100.0;
+      const double w = static_cast<double> (hist_size) / static_cast<double> (trust_buckets);
       total_non_mcv_sel = matched_buckets_sel * w + pattern_sel * (1.0 - w);
     }
   else
@@ -2066,14 +2106,15 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
    * large enough (>=100 entries); blend for 10..99 entries; below 10 keep the fallback. */
   double total_non_mcv_sel;
   const int hist_size = static_cast<int> (non_mcv_buckets);
-  if (hist_size >= 100)
+  const int trust_buckets = prm_get_integer_value (PRM_ID_HISTOGRAM_PATTERN_TRUST_BUCKETS);
+  if (hist_size >= trust_buckets)
     {
       total_non_mcv_sel = matched_non_mcv_buckets / non_mcv_buckets;
     }
   else if (hist_size >= 10)
     {
       const double matched_buckets_sel = matched_non_mcv_buckets / non_mcv_buckets;
-      const double w = static_cast<double> (hist_size) / 100.0;
+      const double w = static_cast<double> (hist_size) / static_cast<double> (trust_buckets);
       total_non_mcv_sel = matched_buckets_sel * w + fallback_sel * (1.0 - w);
     }
   else
