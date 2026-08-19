@@ -339,6 +339,8 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * parti
   return NO_ERROR;
 }
 
+REGISTER_DAEMON (dblink_2pc_daemon);
+
 void
 dblink_2pc_daemon_init (void)
 {

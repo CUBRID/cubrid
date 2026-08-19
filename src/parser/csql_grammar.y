@@ -108,7 +108,6 @@ void csql_yyerror (const char *s);
 
 extern int g_msg[1024];
 extern int msg_ptr;
-extern int yybuffer_pos;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
 extern int yylex(void);
@@ -227,7 +226,6 @@ static bool is_analytic_function = false;
 
 static bool is_in_sp_func_type = false;
 
-
 #define PT_EMPTY INT_MAX
 
 
@@ -280,6 +278,18 @@ static bool is_in_sp_func_type = false;
     { \
      (node)->buffer_pos = context; \
     }
+
+/* Correct a node's reported line/column to the source location of a parsed token (e.g. @1).
+ * parser_new_node() stamps line_number/column_number from the YYLTYPE info (first_line/first_column) at the scanner's current position.
+ *  A reduce action runs only after bison has fetched the look-ahead token,
+ * so that position has already moved past the token (and across any blank lines).
+ */
+#define PARSER_SET_LINE_COL(node, loc) \
+    { \
+      assert (node);                            \
+      (node)->line_number   = (loc).first_line; \
+      (node)->column_number = (loc).first_column; \
+    }    
 
 typedef enum
 {
@@ -401,8 +411,7 @@ static int parser_count_prefix_columns (PT_NODE * list, int * arg_count);
 
 static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
 static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
-static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p,
-				   const char *str, const int str_size);
+static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str);
 static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 						const PT_TYPE_ENUM char_type,
 						const char *str,
@@ -498,11 +507,12 @@ static int g_plcsql_text_pos;
 	     (Loc).first_line, (Loc).first_column,	\
 	     (Loc).last_line,  (Loc).last_column)
 
-#define SET_CPTR_2_PTNAME(rv, iv, b_p) do {             \
+#define SET_CPTR_2_PTNAME(rv, iv, iloc, b_p) do {       \
    (rv) = parser_new_node (this_parser, PT_NAME);       \
    if ((rv))                                            \
      {                                                  \
              (rv)->info.name.original = (iv);           \
+             PARSER_SET_LINE_COL ((rv), (iloc))          \
      }                                                  \
    PARSER_SAVE_ERR_CONTEXT ((rv), (b_p))                \
 } while (0)
@@ -572,6 +582,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> opt_class
 %type <number> isolation_level_name
 %type <number> opt_status
+%type <number> opt_login_capability
 %type <number> trigger_status
 %type <number> trigger_time
 %type <number> opt_trigger_action_time
@@ -582,8 +593,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> datetime_field
 %type <boolean> opt_invisible
 %type <number> opt_paren_plus
-%type <number> opt_with_fullscan
-%type <number> opt_with_n_buckets
+%type <number> opt_stats_options
+%type <number> stats_option_list
+%type <number> stats_option
 %type <number> online_parallel
 %type <number> comp_op
 %type <number> opt_of_all_some_any
@@ -664,11 +676,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> rename_class_list
 %type <node> rename_class_pair
 %type <node> drop_stmt
-%type <node> drop_histogram_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
 %type <node> update_statistics_stmt
-%type <node> update_histogram_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
 %type <node> char_string_literal_list
@@ -895,7 +905,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> constant_set
 %type <node> file_path_name
 %type <node> identifier_list
-%type <node> opt_with_column_list
 %type <node> opt_bracketed_identifier_list
 %type <node> index_column_identifier_list
 %type <node> identifier_without_dot
@@ -962,7 +971,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
 %type <node> show_stmt
-%type <node> show_histogram_stmt
 %type <node> session_variable;
 %type <node> session_variable_assignment_list
 %type <node> session_variable_assignment
@@ -1497,6 +1505,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token COMP_LE
 %token PARAM_HEADER
 
+/* The UNEXPECTED_EOF token should not appear in the grammar rules. 
+ * It signifies that the lexer reached the EOF before completing a valid token, 
+ * and its purpose is to intentionally induce a parsing error */
+%token UNEXPECTED_EOF
+
 %token <cptr> ACTIVE
 %token <cptr> ADDDATE
 %token <cptr> AES
@@ -1607,6 +1620,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> LEAD
 %token <cptr> LOCK_
 %token <cptr> LOG
+%token <cptr> LOGIN
 %token <cptr> MATCHED
 %token <cptr> MAXIMUM
 %token <cptr> MAXVALUE
@@ -1617,6 +1631,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> NESTED
 %token <cptr> NOCYCLE
 %token <cptr> NOCACHE
+%token <cptr> NOLOGIN
 %token <cptr> NOMAXVALUE
 %token <cptr> NOMINVALUE
 %token <cptr> NONE
@@ -1649,6 +1664,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> PUBLIC
 %token <cptr> QUARTER
 %token <cptr> QUEUES
+%token <cptr> RANDOM_
 %token <cptr> RANGE_
 %token <cptr> RANK
 %token <cptr> REBUILD
@@ -1670,6 +1686,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
+%token <cptr> SEED_
 %token <cptr> SEMICOLON
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
@@ -1722,9 +1739,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> NCHAR_STRING
 %token <cptr> BIT_STRING
 %token <cptr> HEX_STRING
-%token <cptr> CPP_STYLE_HINT
-%token <cptr> C_STYLE_HINT
-%token <cptr> SQL_STYLE_HINT
+%token <cptr> SQL_HINT
 %token <cptr> BINARY_STRING
 %token <cptr> EUCKR_STRING
 %token <cptr> ISO_STRING
@@ -1924,12 +1939,6 @@ stmt_
 	| rename_stmt
 		{ $$ = $1; }
 	| update_statistics_stmt
-		{ $$ = $1; }
-	| update_histogram_stmt
-		{ $$ = $1; }
-        | show_histogram_stmt
-                { $$ = $1; }
-	| drop_histogram_stmt
 		{ $$ = $1; }
 	| drop_stmt
 		{ $$ = $1; }
@@ -2298,6 +2307,7 @@ set_stmt
 			    charset_node->info.value.string_type = ' ';
 			    charset_node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $4, strlen ($4));
+                            PARSER_SET_LINE_COL (charset_node, @4)
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, charset_node);
 			  }
 
@@ -2841,9 +2851,10 @@ create_stmt
                 }	                /* 3 */
 	  identifier_without_dot	/* 4 */
 	  opt_password			/* 5 */
-	  opt_groups			/* 6 */
-	  opt_members			/* 7 */
-	  opt_comment_spec		/* 8 */
+	  opt_login_capability		/* 6 */
+	  opt_groups			/* 7 */
+	  opt_members			/* 8 */
+	  opt_comment_spec		/* 9 */
 		{ pop_msg(); }
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_USER);
@@ -2852,9 +2863,10 @@ create_stmt
 			  {
 			    node->info.create_user.user_name = $4;
 			    node->info.create_user.password = $5;
-			    node->info.create_user.groups = $6;
-			    node->info.create_user.members = $7;
-			    node->info.create_user.comment = $8;
+			    node->info.create_user.login_capability = $6;
+			    node->info.create_user.groups = $7;
+			    node->info.create_user.members = $8;
+			    node->info.create_user.comment = $9;
 			  }
 
 			$$ = node;
@@ -3091,6 +3103,7 @@ create_stmt
 		{{
 			push_msg (MSGCAT_SYNTAX_INVALID_CREATE);
 			csql_yyerror_explicit (@2.first_line, @2.first_column);
+                        YYABORT;
 		}}
 	| CREATE					/* 1 */
 		{					/* 2 */
@@ -3650,7 +3663,8 @@ alter_stmt
 	  USER				/* 2 */
 	  identifier	        	/* 3 */
 	  opt_password  	        /* 4 */
-	  opt_comment_spec              /* 5 */
+	  opt_login_capability		/* 5 */
+	  opt_comment_spec              /* 6 */
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
 
@@ -3658,8 +3672,10 @@ alter_stmt
 			  {
 			    node->info.alter_user.user_name = $3;
 			    node->info.alter_user.password = $4;
-			    node->info.alter_user.comment = $5;
+			    node->info.alter_user.login_capability = $5;
+			    node->info.alter_user.comment = $6;
 			    if (node->info.alter_user.password == NULL
+				&& node->info.alter_user.login_capability == PT_MISC_DUMMY
 				&& node->info.alter_user.comment == NULL)
 			      {
 			        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
@@ -4722,112 +4738,69 @@ index_column_name_list
 		}}
 	;
 
-opt_with_column_list
-        : /* empty */
-        {{ $$ = NULL; }}
-
-        | ON_ identifier_list
-        {{ $$ = $2; }}
-        ;
-
 update_statistics_stmt
-	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
+	: UPDATE STATISTICS ON_ only_class_name_list opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = $4;
 			    ups->info.update_stats.all_classes = 0;
-			    ups->info.update_stats.with_fullscan = $5;
+			    ups->info.update_stats.with_fullscan = (($5 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($5 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($5 & 0x04) != 0);
+			    ups->info.update_stats.drop_histogram = (($5 & 0x08) != 0);
+			    ups->info.update_stats.bucket_count = ($5 >> 8);
+			    if (($5 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| UPDATE STATISTICS ON_ ALL CLASSES opt_with_fullscan
+	| UPDATE STATISTICS ON_ ALL CLASSES opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = 1;
-			    ups->info.update_stats.with_fullscan = $6;
+			    ups->info.update_stats.with_fullscan = (($6 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($6 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($6 & 0x04) != 0);
+			    ups->info.update_stats.drop_histogram = (($6 & 0x08) != 0);
+			    ups->info.update_stats.bucket_count = ($6 >> 8);
+			    if (($6 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| UPDATE STATISTICS ON_ CATALOG CLASSES opt_with_fullscan
+	| UPDATE STATISTICS ON_ CATALOG CLASSES opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = -1;
-			    ups->info.update_stats.with_fullscan = $6;
+			    ups->info.update_stats.with_fullscan = (($6 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($6 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($6 & 0x04) != 0);
+			    ups->info.update_stats.drop_histogram = (($6 & 0x08) != 0);
+			    ups->info.update_stats.bucket_count = ($6 >> 8);
+			    if (($6 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	;
 
-show_histogram_stmt
-        : SHOW HISTOGRAM only_class_name opt_with_column_list
-                {{
-                        PT_NODE *uhs = parser_new_node (this_parser, PT_SHOW_HISTOGRAM);
-                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
-
-                        if (uhs && target_t)
-                        {
-                            target_t->info.spec.entity_name = $3;
-                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
-                            target_t->info.spec.meta_class = PT_CLASS;
-                            uhs->info.histogram.target_table_spec = target_t;
-                            uhs->info.histogram.target_columns = $4;
-                        }
-
-                        $$ = uhs;
-                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                }}
-        ;
-
-update_histogram_stmt
-        : ANALYZE TABLE only_class_name UPDATE HISTOGRAM opt_with_column_list opt_with_n_buckets opt_with_fullscan
-                {{
-                        PT_NODE *uhs = parser_new_node (this_parser, PT_UPDATE_HISTOGRAM);
-                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
-                        if (uhs && target_t)
-                        {
-                            target_t->info.spec.entity_name = $3;
-                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
-                            target_t->info.spec.meta_class = PT_CLASS;
-                            uhs->info.histogram.target_table_spec = target_t;
-
-                            uhs->info.histogram.target_columns = $6;
-                            uhs->info.histogram.bucket_count = $7;
-                            uhs->info.histogram.with_fullscan = $8;             
-                        }
-
-                        $$ = uhs;
-                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                }}
-        ;
-
-drop_histogram_stmt
-        : ANALYZE TABLE only_class_name DROP HISTOGRAM opt_with_column_list
-                {{
-                        PT_NODE *dhs = parser_new_node (this_parser, PT_DROP_HISTOGRAM);
-                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
-                        if (dhs && target_t)
-                        {
-                            target_t->info.spec.entity_name = $3;
-                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
-                            target_t->info.spec.meta_class = PT_CLASS;
-                            dhs->info.histogram.target_table_spec = target_t;
-                            dhs->info.histogram.target_columns = $6;
-                        }
-                        $$ = dhs;
-                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                }}
-        ;
 
 only_class_name_list
 	: only_class_name_list ',' only_class_name
@@ -4858,28 +4831,83 @@ opt_invisible
 	;
 
 
-opt_with_fullscan
+opt_stats_options
         : /* empty */
                 {{
                         $$ = 0;
                 }}
-        | WITH FULLSCAN
+        | WITH stats_option_list
                 {{
-                        $$ = 1;
+                        $$ = $2;
                 }}
         ;
 
-
-opt_with_n_buckets
-        : /* empty */
+stats_option_list
+        : stats_option
                 {{
-                        $$ = 0;
+                        $$ = $1;
                 }}
-        | WITH unsigned_integer BUCKETS
+        | stats_option_list ',' stats_option
                 {{
-                        $$ = $2->info.value.data_value.i;
+                        /* stats_option value layout (see the stats_option rule below):
+                         *   0x01 FULLSCAN | 0x02 RANDOM SEED | 0x04 NO HISTOGRAM | 0x08 DROP HISTOGRAM
+                         *   0x10 poison flag: the combined list is invalid (set here, tested in the
+                         *        UPDATE STATISTICS statement rules, where a parse node exists to
+                         *        attach the error to)
+                         *   bits 8.. : the BUCKETS count, shifted left by 8
+                         *
+                         * A repeated option kind or a contradictory pair must not OR-merge silently
+                         * (WITH 3 BUCKETS, 5 BUCKETS would become 7 buckets), so poison the value when
+                         *   1. ((($1 & $3) & 0x0F) != 0)   -- the same flag option appears on both
+                         *      sides (e.g. WITH FULLSCAN, FULLSCAN);
+                         *   2. (($1 & ~0xFF) != 0 && ($3 & ~0xFF) != 0)   -- both sides carry a
+                         *      BUCKETS count (two BUCKETS clauses; their shifted counts would OR);
+                         *   3. ((merged & 0x0C) == 0x0C)   -- NO HISTOGRAM and DROP HISTOGRAM are
+                         *      both present, which is a contradiction (skip vs remove). */
+                        int merged = $1 | $3;
+                        if ((($1 & $3) & 0x0F) != 0
+                            || (($1 & ~0xFF) != 0 && ($3 & ~0xFF) != 0)
+                            || ((merged & 0x0C) == 0x0C))
+                          {
+                            merged |= 0x10;
+                          }
+                        $$ = merged;
                 }}
         ;
+
+stats_option
+        : FULLSCAN
+                {{
+                        $$ = 0x01;
+                }}
+        | RANDOM_ SEED_
+                {{
+                        $$ = 0x02;
+                }}
+        | NO HISTOGRAM
+                {{
+                        $$ = 0x04;
+                }}
+        | DROP HISTOGRAM
+                {{
+                        $$ = 0x08;
+                }}
+        | unsigned_integer BUCKETS
+                {{
+                        int bcnt = $1->info.value.data_value.i;
+
+                        if (bcnt < 1)
+                          {
+                            bcnt = 1;
+                          }
+                        else if (bcnt > 0x7FFFFF)
+                          {
+                            bcnt = 0x7FFFFF;
+                          }
+                        $$ = (bcnt << 8);
+                }}
+        ;
+
 
 opt_of_to_eq
 	: /* empty */
@@ -8666,6 +8694,21 @@ opt_password
 		}}
 	;
 
+opt_login_capability
+	: /* empty */
+		{{
+			$$ = PT_MISC_DUMMY;
+		}}
+	| LOGIN
+		{{
+			$$ = PT_LOGIN;
+		}}
+	| NOLOGIN
+		{{
+			$$ = PT_NOLOGIN;
+		}}
+	;
+
 opt_groups
 	: /* empty */
 		{{
@@ -9339,6 +9382,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_CASCADE);
@@ -9351,6 +9395,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_NO_ACTION);
@@ -9363,6 +9408,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_RESTRICT);
@@ -9375,6 +9421,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_SET_NULL);
@@ -9387,6 +9434,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c2 = FROM_NUMBER (PT_RULE_NO_ACTION);
@@ -9399,6 +9447,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c2 = FROM_NUMBER (PT_RULE_RESTRICT);
@@ -9411,6 +9460,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c2 = FROM_NUMBER (PT_RULE_SET_NULL);
@@ -13194,37 +13244,13 @@ opt_hint_list
 	;
 
 hint_list
-	: hint_list CPP_STYLE_HINT
+	: hint_list SQL_HINT
 		{{
 			PT_NODE *node = parser_top_hint_node ();
 			char *hint_comment = $2;
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 		}}
-	| hint_list SQL_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $2;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| hint_list C_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $2;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| CPP_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $1;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| SQL_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $1;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| C_STYLE_HINT
+	| SQL_HINT
 		{{
 			PT_NODE *node = parser_top_hint_node ();
 			char *hint_comment = $1;
@@ -17270,6 +17296,10 @@ opt_on_target
 		}}
 	| ON_ primary
 		{{
+                        if( $2 == NULL ||  ($2->node_type == PT_VALUE && PT_IS_NULL_NODE($2)))
+                          {
+                            PT_ERRORm (this_parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_TARGET_NOT_OBJ);
+                          }
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -18223,11 +18253,13 @@ comp_op
 		{{
 			push_msg (MSGCAT_SYNTAX_INVALID_EQUAL_OP);
 			csql_yyerror_explicit (@1.first_line, @1.first_column);
+                        YYABORT;
 		}}
 	| '!''=' opt_of_all_some_any
 		{{
 			push_msg (MSGCAT_SYNTAX_INVALID_NOT_EQUAL);
 			csql_yyerror_explicit (@1.first_line, @1.first_column);
+                        YYABORT;
 		}}
 	| COMP_NULLSAFE_EQ opt_of_all_some_any
 		{{
@@ -19718,10 +19750,11 @@ collation_spec
 
 			if (node)
 			  {
-			    node->type_enum = PT_TYPE_CHAR;
+                            node->type_enum = PT_TYPE_CHAR;
 			    node->info.value.string_type = ' ';
 			    node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
+                            PARSER_SET_LINE_COL (node, @2)
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
@@ -19985,6 +20018,7 @@ charset_spec
 			    node->info.value.string_type = ' ';
 			    node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
+                            PARSER_SET_LINE_COL (node, @2)
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
@@ -20048,23 +20082,21 @@ opt_using_charset
 			    temp_node->info.value.string_type = ' ';
 			    temp_node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
+                            PARSER_SET_LINE_COL (temp_node, @2)
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, temp_node);
-			  }
-
-			if (temp_node)
-			{
-			  if (pt_check_grammar_charset_collation
+			    if (pt_check_grammar_charset_collation
 				(this_parser, temp_node, NULL, &charset, &dummy) == 0)
-			    {
+			      {
 				parser_free_node (this_parser, temp_node);
-			    }
-			}
+			      }
+			  }
 
 			node = parser_new_node (this_parser, PT_VALUE);
 			if (node)
 			  {
 			    node->type_enum = PT_TYPE_INTEGER;
 			    node->info.value.data_value.i = charset;
+                            PARSER_SET_LINE_COL (node, @2)
 			  }
 
 			$$ = node;
@@ -20479,14 +20511,11 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
 
-			    size_in = strlen(str_name);
-
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+                            PARSER_SET_LINE_COL (p, @1)
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
@@ -20496,14 +20525,11 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
 
-			    size_in = strlen(str_name);
-
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+                            PARSER_SET_LINE_COL (p, @1)
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
@@ -20513,14 +20539,11 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
 
-			    size_in = strlen(str_name);
-
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+                            PARSER_SET_LINE_COL (p, @1)
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
@@ -20530,228 +20553,229 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
 
-			    size_in = strlen(str_name);
-
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+                            PARSER_SET_LINE_COL (p, @1)
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
 		}}
 /*{{{*/
-	| ACTIVE                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ADDDATE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| AES                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ANALYZE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ARCHIVE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ARIA                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| AUTHID                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| AUTO_INCREMENT         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | BENCHMARK              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| BIT_AND                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| BIT_OR                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| BIT_XOR                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| BUFFER                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CALLER                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CACHE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CAPACITY               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CHARACTER_SET_         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CHARSET                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CHR                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CLOB_TO_CHAR           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CLOSE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COLLATION              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COLUMNS                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COMMENT                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COMMITTED              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COMPILE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COST                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CRITICAL               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CUME_DIST              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DATE_ADD               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DATE_SUB               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DB_TIMEZONE            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DBLINK                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DBNAME                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DECREMENT              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
-	| DEFINER                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
-       	| DEDUPLICATE_           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 	
-        | DENSE_RANK             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | DETERMINISTIC          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DISK_SIZE              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DONT_REUSE_OID         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ELT                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| EMPTY                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ENCRYPT                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GE_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GE_LT_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GRANTS                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GROUPS                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GROUP_CONCAT           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GT_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GT_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GT_LT_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| HASH                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| HEADER                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| HEAP                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
-	| HOST                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| IFNULL                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INACTIVE               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INCREMENT              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INDEXES                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INDEX_PREFIX           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INFINITE_              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INF_LE_                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INF_LT_                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INSTANCES              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INVALIDATE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INVISIBLE              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ISNULL                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JAVA                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JOB                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_ARRAYAGG          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_ARRAY_APPEND      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_ARRAY_INSERT      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_ARRAY_LEX         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_CONTAINS          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_CONTAINS_PATH     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_DEPTH             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_EXTRACT           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_GET_ALL_PATHS     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_INSERT            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_KEYS              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_LENGTH            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_MERGE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_MERGE_PATCH       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_MERGE_PRESERVE    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_OBJECTAGG         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_OBJECT_LEX        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_PRETTY            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_QUOTE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_REMOVE            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_REPLACE           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_SEARCH            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_SET               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_TABLE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_TYPE              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_UNQUOTE           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_VALID             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| KEYLIMIT               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| KEYS                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| KILL                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LAG                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LAST_VALUE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LCASE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LEAD                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LOCK_                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LOG                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
-	| MATCHED                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| MAXIMUM                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| MAXVALUE               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| MEDIAN                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}	
-	| MEMBERS                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| MINVALUE               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NAME                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NESTED                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NOCACHE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NOCYCLE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NOMAXVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NOMINVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NTH_VALUE              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NTILE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NULLS                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| OFFSET                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ONLINE                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| OPEN                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ORDINALITY             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| OVER                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| OWNER                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PAGE                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PARALLEL               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PARTITIONING           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PARTITIONS             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PASSWORD               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PATH                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PERCENTILE_CONT        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PERCENTILE_DISC        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PERCENT_RANK           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PLCSQL                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PORT                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PRINT                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PRIORITY               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PRIVATE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PROMOTE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PROPERTIES             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PUBLIC                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| QUARTER                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| QUEUES                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| RANGE_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| RANK                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REBUILD                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP_COUNT           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP_INSTR           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP_LIKE            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP_REPLACE         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP_SUBSTR          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REJECT_                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REMOVE                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REORGANIZE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REPEATABLE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| RESPECT                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| RETAIN                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REUSE_OID              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REVERSE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ROW_NUMBER             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SECTIONS               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SEPARATOR              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SERIAL                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SERVER                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SESSION_TIMEZONE       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SHOW                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SLOTS                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SLOTTED                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STABILITY              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| START_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STATEMENT              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STATUS                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STDDEV                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STDDEV_POP             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STDDEV_SAMP            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STR_TO_DATE            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SUBDATE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SYNONYM                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SYSTEM                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TABLES                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TEXT                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| THAN                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| THREADS                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TIMEOUT                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TIMEZONE               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TIMEZONES              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TRACE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TRAN                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TRIGGERS               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TYPE                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| UCASE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| UNCOMMITTED            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| VARIANCE               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| VAR_POP                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| VAR_SAMP               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| VISIBLE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| VOLUME                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| WEEK                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| WITHIN                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| WORKSPACE              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
+	| ACTIVE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ADDDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| AES                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ANALYZE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ARCHIVE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ARIA                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| AUTHID                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| AUTO_INCREMENT         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+        | BENCHMARK              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BIT_AND                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BIT_OR                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BIT_XOR                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BUFFER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CALLER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CACHE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CAPACITY               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CHARACTER_SET_         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CHARSET                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CHR                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CLOB_TO_CHAR           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CLOSE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COLLATION              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COLUMNS                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COMMENT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COMMITTED              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COMPILE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COST                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CRITICAL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CUME_DIST              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DATE_ADD               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DATE_SUB               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DB_TIMEZONE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DBLINK                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DBNAME                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DECREMENT              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 
+	| DEFINER                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 
+       	| DEDUPLICATE_           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 	
+        | DENSE_RANK             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+        | DETERMINISTIC          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DISK_SIZE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DONT_REUSE_OID         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ELT                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| EMPTY                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ENCRYPT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GE_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GE_LT_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GRANTS                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GROUPS                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GROUP_CONCAT           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GT_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GT_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GT_LT_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| HASH                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| HEADER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| HEAP                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}        
+	| HOST                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| IFNULL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INACTIVE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INCREMENT              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INDEXES                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INDEX_PREFIX           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INFINITE_              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INF_LE_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INF_LT_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INSTANCES              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INVALIDATE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INVISIBLE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ISNULL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JAVA                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JOB                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_ARRAYAGG          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_ARRAY_APPEND      {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_ARRAY_INSERT      {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_ARRAY_LEX         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_CONTAINS          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_CONTAINS_PATH     {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_DEPTH             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_EXTRACT           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_GET_ALL_PATHS     {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_INSERT            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_KEYS              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_LENGTH            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_MERGE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_MERGE_PATCH       {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_MERGE_PRESERVE    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_OBJECTAGG         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_OBJECT_LEX        {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_PRETTY            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_QUOTE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_REMOVE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_REPLACE           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_SEARCH            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_SET               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_TABLE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_TYPE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_UNQUOTE           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_VALID             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| KEYLIMIT               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| KEYS                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| KILL                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LAG                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LAST_VALUE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LCASE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LEAD                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LOCK_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LOG                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}        
+	| LOGIN                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| MATCHED                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| MAXIMUM                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| MAXVALUE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| MEDIAN                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}	
+	| MEMBERS                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| MINVALUE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NAME                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NESTED                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NOCACHE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NOCYCLE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NOLOGIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NOMAXVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NOMINVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NTH_VALUE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NTILE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NULLS                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| OFFSET                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ONLINE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| OPEN                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ORDINALITY             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| OVER                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| OWNER                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PAGE                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PARALLEL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PARTITIONING           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PARTITIONS             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PASSWORD               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PATH                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PERCENTILE_CONT        {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PERCENTILE_DISC        {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PERCENT_RANK           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PLCSQL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PORT                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PRINT                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PRIORITY               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PRIVATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PROMOTE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PROPERTIES             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PUBLIC                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| QUARTER                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| QUEUES                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RANDOM_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RANGE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RANK                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REBUILD                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP_COUNT           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP_INSTR           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP_LIKE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP_REPLACE         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP_SUBSTR          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REJECT_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REMOVE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REORGANIZE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REPEATABLE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RESPECT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RETAIN                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REUSE_OID              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REVERSE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ROW_NUMBER             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SECTIONS               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SEED_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SEPARATOR              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SERIAL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SERVER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SESSION_TIMEZONE       {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SHOW                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SLOTS                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SLOTTED                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STABILITY              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| START_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STATEMENT              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STATUS                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STDDEV                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STDDEV_POP             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STDDEV_SAMP            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STR_TO_DATE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SUBDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SYNONYM                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SYSTEM                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TABLES                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TEXT                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| THAN                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| THREADS                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TIMEOUT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TIMEZONE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TIMEZONES              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TRACE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TRAN                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TRIGGERS               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TYPE                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| UCASE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| UNCOMMITTED            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| VARIANCE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| VAR_POP                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| VAR_SAMP               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| VISIBLE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| VOLUME                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| WEEK                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| WITHIN                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| WORKSPACE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 
 /*}}}*/
 	;
 
@@ -22076,9 +22100,9 @@ connect_item
                container_2 ctn;
                PT_NODE *val = $3;
                val->type_enum = PT_TYPE_VARCHAR;
-               if (val->info.value.data_value.str->length > 254)
+               if (val->info.value.data_value.str->length >= DB_MAX_IDENTIFIER_LENGTH)
 		 {
-		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_DBNAME_LEN, 254);
+		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_DBNAME_LEN, (DB_MAX_IDENTIFIER_LENGTH - 1));
 		 }
 		 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_DBNAME), val);
@@ -22095,9 +22119,9 @@ connect_item
                container_2 ctn;
                PT_NODE *val = $3;
                val->type_enum = PT_TYPE_VARCHAR;
-               if (val->info.value.data_value.str->length > 254)
+               if (val->info.value.data_value.str->length >= DB_MAX_IDENTIFIER_LENGTH)
 		 {
-		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_USER_LEN, 254);
+		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_USER_LEN, (DB_MAX_IDENTIFIER_LENGTH - 1));
 		 }
 	       PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_USER), val);
@@ -22559,9 +22583,6 @@ pop_msg ()
 {
   msg_ptr--;
 }
-
-int yycolumn = 0;
-int yycolumn_end = 0;
 
 int parser_function_code = PT_EMPTY;
 size_t json_table_column_count = 0;
@@ -23730,7 +23751,9 @@ parser_main (PARSER_CONTEXT * parser)
 {
   long desc_index = 0;
   long i, top;
-  int rv, yybuffer_pos_save;
+  int rv, yybuffer_pos_save, yyline_start_pos_save, yylineno_prev_save, yylineno_save; 
+  int yytoken_start_line_save, yytoken_start_column_save;
+  YYLTYPE yylloc_save;
 
   PARSER_CONTEXT *this_parser_saved;
 
@@ -23744,10 +23767,16 @@ parser_main (PARSER_CONTEXT * parser)
   this_parser = parser;
 
   dbcs_start_input ();
-
-  yycolumn = yycolumn_end = 1;
+   
   yybuffer_pos_save = yybuffer_pos;
+  yyline_start_pos_save = yyline_start_pos; 
+  yylineno_prev_save = yylineno_prev;
+  yylineno_save = csql_yyget_lineno();
   yybuffer_pos=0;
+  yylloc_save = csql_yylloc; 
+  yytoken_start_line_save = yytoken_start_line;
+  yytoken_start_column_save = yytoken_start_column;
+
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
   csql_yylloc.buffer_pos=0;
@@ -23766,6 +23795,12 @@ parser_main (PARSER_CONTEXT * parser)
   // parser_main can be reentered while executing statements loaded by loaddb -s.
   // During the loaddb -s, the yybuffer_pos must not be currupted.
   yybuffer_pos = yybuffer_pos_save;
+  yyline_start_pos = yyline_start_pos_save;
+  yylineno_prev = yylineno_prev_save;
+  csql_yyset_lineno(yylineno_save);
+  csql_yylloc = yylloc_save;
+  yytoken_start_line = yytoken_start_line_save;
+  yytoken_start_column = yytoken_start_column_save;
 
   pt_cleanup_hint (parser, parser_hint_table);
 
@@ -23848,8 +23883,7 @@ parse_one_statement (int state)
     {
       // a new session starts. reset line and column number.
       csql_yyset_lineno (1);
-      yycolumn = yycolumn_end = 1;
-
+      
       // init only for the first time in order to make csql_yylloc.buffer_pos identical to the file pos
       yybuffer_pos=0;
 
@@ -23937,6 +23971,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_USE_HASH", PT_HINT_NO_USE_HASH),
   INIT_PT_HINT("INLINE", PT_HINT_INLINE_CTE),
   INIT_PT_HINT("MATERIALIZE", PT_HINT_MATERIALIZE_CTE),
+  INIT_PT_HINT("BIND_SENSITIVE", PT_HINT_BIND_SENSITIVE),
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
 
@@ -23978,6 +24013,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_UTC_DATE:
     case PT_VERSION:
     case PT_UTC_TIMESTAMP:
+    case PT_SCHEMA:
       if (c != 0)
 	{
 	  return NULL;
@@ -24412,7 +24448,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
       if (c < 1 || c > 2)
 	{
 	  push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
-	  csql_yyerror_explicit (10, 10);
+	  /* no parse-tree location available here; keep the scanner's current position 
+           * (the previous behavior when the arguments were ignored). */
+	  csql_yyerror_explicit (csql_yyget_lineno (), (c < 1) ? csql_yylloc.first_column : args->next->next->column_number);
 	  return NULL;
 	}
 
@@ -25136,29 +25174,54 @@ resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list)
 }
 
 static char *
-pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
-		     const int str_size)
+pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str)
 {
   char *invalid_pos = NULL;
   int composed_size;
+  const int str_size = strlen (str);
+  static const int check_base_size = ((DB_MAX_IDENTIFIER_LENGTH / 3) * 2);
 
   if (strchr (str, '[') || strchr (str, ']'))
     {
       PT_ERRORf (this_parser, p,
 		 "Identifier name \"%s\" not allowed. It cannot contain '[' or ']'.",
 		 str);
+      return (char*) "";
+    }
+
+  if(str_size >= DB_MAX_IDENTIFIER_LENGTH)
+    {
+      intl_identifier_fix ((char *) str, -1, true);
+      PT_ERRORf2 (this_parser, p,
+                 "Identifier name \"%s\" is too long. Maximum length is %d.",
+                 str, DB_MAX_IDENTIFIER_LENGTH - 1);
+      return (char*) "";
     }
 
   if (intl_check_string ((char *) str, str_size, &invalid_pos, LANG_SYS_CODESET) == INTL_UTF8_INVALID)
     {
       PT_ERRORmf (parser, NULL, MSGCAT_SET_ERROR, -(ER_INVALID_CHAR),
 		  (invalid_pos != NULL) ? invalid_pos - str : 0);
-      return NULL;
+      return (char*) "";
     }
-  else if (intl_identifier_fix ((char *) str, -1, true) != NO_ERROR)
+
+  /*
+   * The byte size may increase when changing the case.
+   * Usernames must be converted to uppercase, while all other cases should be converted to lowercase.
+   * Since the maximum length of a username is smaller than DB_MAX_IDENTIFIER_LENGTH, it does not need to be checked here.
+   * Therefore, we only check for cases where text is converted to lowercase
+   */
+  if (str_size >= check_base_size)
     {
-      PT_ERRORf (parser, p, "invalid identifier : %s", str);
-      return NULL;
+      int lower_length = intl_identifier_lower_string_size (str);
+      if (lower_length > DB_MAX_IDENTIFIER_LENGTH)
+	{
+	  PT_ERRORf4 (this_parser, p,
+		      "Identifier name \"%s\" is too long. Maximum length is %d.\n"
+                      "The current length is %d, but it becomes %d when converted to lowercase.",
+                      str, DB_MAX_IDENTIFIER_LENGTH - 1, str_size, lower_length);
+	  return (char *) "";
+	}
     }
 
   if (LANG_SYS_CODESET == INTL_CODESET_UTF8
@@ -25173,7 +25236,7 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
       if (composed == NULL)
 	{
 	  PT_ERRORf (parser, p, "cannot alloc %d bytes", composed_size + 1);
-	  return NULL;
+	  return (char*) "";
 	}
 
       unicode_compose_string (str, str_size, composed, &composed_size,

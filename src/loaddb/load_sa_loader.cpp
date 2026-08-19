@@ -2713,67 +2713,63 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   int precision;
   int err = NO_ERROR;
   DB_VALUE val;
-  int char_count = 0;
 
-  /* Safe init so pr_clear_value at error_exit stays valid regardless of where the jump comes from. */
   db_make_null (&val);
 
   precision = att->domain->precision;
 
-  intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
-
-  if (char_count > precision)
+  /* char_count <= byte_count in every codeset, so byte_size <= precision guarantees no truncation */
+  if ((int) len > precision)
     {
-      /*
-       * May be a violation, but first we have to check for trailing pad
-       * characters that might allow us to successfully truncate the
-       * thing.
-       */
-      int safe;
-      const char *p;
-      int truncate_size;
-
-      intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) att->domain->codeset, &truncate_size);
-
-      for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
-	{
-	  if (*p != ' ')
-	    {
-	      safe = 0;
-	      break;
-	    }
-	}
-      if (safe)
-	{
-	  len = truncate_size;
-	  char_count = precision;
-	}
-      else
+      int char_count = 0;
+      intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
+      if (char_count > precision)
 	{
 	  /*
-	   * It's a genuine violation; raise an error.
+	   * May be a violation, but first we have to check for trailing pad
+	   * characters that might allow us to successfully truncate the
+	   * thing.
 	   */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_CHAR));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_CHAR, str);
+	  int safe;
+	  const char *p;
+	  int truncate_size;
+
+	  intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) att->domain->codeset, &truncate_size);
+
+	  for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
+	    {
+	      if (*p != ' ')
+		{
+		  safe = 0;
+		  break;
+		}
+	    }
+	  if (safe)
+	    {
+	      len = truncate_size;
+	    }
+	  else
+	    {
+	      /*
+	       * It's a genuine violation; raise an error.
+	       */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_CHAR));
+	      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_CHAR, str);
+	    }
 	}
     }
 
   val.domain = ldr_char_tmpl.domain;
   val.domain.char_info.length = precision;
   val.data.ch.info.style = MEDIUM_STRING;
+  val.data.ch.info.codeset = att->domain->codeset;
   val.data.ch.info.is_max_string = false;
   val.data.ch.info.compressed_need_clear = false;
   val.data.ch.medium.size = (int) len;
-  val.data.ch.medium.length = char_count;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.medium.compressed_buf = NULL;
   val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
-
-  if (char_count < precision)
-    {
-      CHECK_ERR (err, pr_pad_char_to_precision (&val, precision));
-    }
-
+  val.data.ch.medium.length = -1;
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
 
@@ -2797,7 +2793,6 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   int precision;
   int err;
   DB_VALUE val;
-  int medium_length = -1;
 
   precision = att->domain->precision;
   /* char_count <= byte_count in every codeset, so byte_size <= precision guarantees no truncation */
@@ -2805,8 +2800,6 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
     {
       int char_count = 0;
       intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
-      medium_length = char_count;
-
       if (char_count > precision)
 	{
 	  /*
@@ -2830,7 +2823,6 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
 	  if (safe)
 	    {
 	      len = truncate_size;
-	      medium_length = -1;	/* truncated: let setmem recompute on the new buffer */
 	    }
 	  else
 	    {
@@ -2846,7 +2838,6 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   val.domain = ldr_varchar_tmpl.domain;
   val.domain.char_info.length = precision;
   val.data.ch.medium.size = (int) len;
-  val.data.ch.medium.length = medium_length;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.info.style = MEDIUM_STRING;
   val.data.ch.info.is_max_string = false;

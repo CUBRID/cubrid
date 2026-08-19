@@ -271,7 +271,7 @@ stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, boo
   npages = estimated_nobjs = 0;
 
   /* do not use estimated npages, get correct info */
-  if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), &npages) != NO_ERROR)
+  if (heap_get_num_data_pages (thread_p, &cls_info_p->ci_hfid, &npages) != NO_ERROR)
     {
       goto error;
     }
@@ -363,7 +363,7 @@ stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, boo
       else
 	{
 	  if (xstats_collect_ndv_by_fullscan_reservoir (thread_p, class_id_p, &(cls_info_p->ci_hfid), rs_ndv_attr_ids,
-							rs_ndv_attr_types, rs_n_attrs, rs_ndv_values,
+							rs_ndv_attr_types, rs_n_attrs, with_fullscan, rs_ndv_values,
 							&rs_total_rows, out_ndv_sketches) != NO_ERROR)
 	    {
 	      goto error;

@@ -147,6 +147,7 @@ static char *xts_process_ls_merge_info (char *ptr, const QFILE_LIST_MERGE_INFO *
 static char *xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls);
 static char *xts_save_update_assignment (char *ptr, const UPDATE_ASSIGNMENT * assign);
 static char *xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info);
+static char *xts_process_remote_dml_sink (char *ptr, const REMOTE_DML_SINK * sink);
 static char *xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_proc);
 static char *xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_proc);
 static char *xts_process_merge_proc (char *ptr, const MERGE_PROC_NODE * merge_info);
@@ -209,6 +210,7 @@ static int xts_sizeof_upddel_class_info (const UPDDEL_CLASS_INFO * upd_cls);
 static int xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign);
 static int xts_sizeof_odku_info (const ODKU_INFO * odku_info);
 static int xts_sizeof_update_proc (const UPDATE_PROC_NODE * ptr);
+static int xts_sizeof_remote_dml_sink (void);
 static int xts_sizeof_delete_proc (const DELETE_PROC_NODE * ptr);
 static int xts_sizeof_insert_proc (const INSERT_PROC_NODE * ptr);
 static int xts_sizeof_merge_proc (const MERGE_PROC_NODE * ptr);
@@ -1022,6 +1024,11 @@ xts_save_arith_type (const ARITH_TYPE * arithmetic)
       goto end;
     }
   assert (buf <= buf_p + size);
+
+  /* xts_sizeof_arith_type reserves space for next, but xts_process_arith_type
+   * does not write it, leaving an unwritten tail. Zero only that tail to avoid
+   * copying uninitialized bytes. */
+  memset (buf, 0, size - (buf - buf_p));
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
@@ -4143,6 +4150,49 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
   return ptr;
 }
 
+/*
+ * xts_process_remote_dml_sink () - pack the common DBLink remote push-sink fields (is_remote flag +
+ *   url/user/pwd/table_name), shared by INSERT SELECT and DELETE local-subquery procs.
+ *   return: advanced ptr, or NULL on failure
+ */
+static char *
+xts_process_remote_dml_sink (char *ptr, const REMOTE_DML_SINK * sink)
+{
+  int offset;
+
+  ptr = or_pack_int (ptr, (int) sink->is_remote);
+
+  offset = xts_save_string (sink->url);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (sink->user);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (sink->pwd);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (sink->table_name);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
 static char *
 xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
 {
@@ -4150,10 +4200,19 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
 
   ptr = or_pack_int (ptr, delete_info->num_classes);
 
-  offset = xts_save_upddel_class_info_array (delete_info->classes, delete_info->num_classes);
-  if (offset == ER_FAILED)
+  /* a remote DELETE + local subquery sink has no local classes (num_classes == 0); xts_save_upddel_class_info_array
+   * asserts nelements > 0, so pack offset 0 directly (stx_build_delete_proc already treats num_classes == 0 as NULL). */
+  if (delete_info->num_classes > 0)
     {
-      return NULL;
+      offset = xts_save_upddel_class_info_array (delete_info->classes, delete_info->num_classes);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+    }
+  else
+    {
+      offset = 0;
     }
   ptr = or_pack_int (ptr, offset);
 
@@ -4176,6 +4235,27 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
   else
     {
       offset = 0;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  /* remote DELETE + local subquery sink fields */
+  ptr = xts_process_remote_dml_sink (ptr, &delete_info->sink);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  offset = xts_save_string (delete_info->remote_key_col);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (delete_info->remote_op);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
@@ -4246,35 +4326,11 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
   ptr = or_pack_int (ptr, offset);
 
   /* remote INSERT SELECT fields */
-  ptr = or_pack_int (ptr, (int) insert_info->is_remote_insert);
-
-  offset = xts_save_string (insert_info->remote_url);
-  if (offset == ER_FAILED)
+  ptr = xts_process_remote_dml_sink (ptr, &insert_info->sink);
+  if (ptr == NULL)
     {
       return NULL;
     }
-  ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_string (insert_info->remote_user);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_string (insert_info->remote_pwd);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_string (insert_info->remote_table_name);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
 
   ptr = or_pack_int (ptr, insert_info->remote_num_attrs);
 
@@ -6506,6 +6562,21 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
 }
 
 /*
+ * xts_sizeof_remote_dml_sink () - size of the common DBLink remote push-sink fields (is_remote flag +
+ *   url/user/pwd/table_name), shared by INSERT SELECT and DELETE local-subquery procs.
+ *   return:
+ */
+static int
+xts_sizeof_remote_dml_sink (void)
+{
+  return (OR_INT_SIZE		/* is_remote */
+	  + PTR_SIZE		/* url */
+	  + PTR_SIZE		/* user */
+	  + PTR_SIZE		/* pwd */
+	  + PTR_SIZE);		/* table_name */
+}
+
+/*
  * xts_sizeof_delete_proc () -
  *   return:
  *   ptr(in)    :
@@ -6521,7 +6592,10 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
 	   + OR_INT_SIZE	/* no_logging */
 	   + OR_INT_SIZE	/* no_supplemental_log */
 	   + OR_INT_SIZE	/* num_cond_reev_classes */
-	   + PTR_SIZE);		/* mvcc_cond_reev_classes */
+	   + PTR_SIZE		/* mvcc_cond_reev_classes */
+	   + xts_sizeof_remote_dml_sink ()	/* remote DELETE + local subquery sink fields */
+	   + PTR_SIZE		/* remote_key_col */
+	   + PTR_SIZE);		/* remote_op */
 
   return size;
 }
@@ -6551,12 +6625,7 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* num_val_lists */
 	   + PTR_SIZE		/* obj_oid */
 	   + (insert_info->num_val_lists * PTR_SIZE)	/* valptr_lists */
-	   /* remote INSERT SELECT fields */
-	   + OR_INT_SIZE	/* is_remote_insert */
-	   + PTR_SIZE		/* remote_url */
-	   + PTR_SIZE		/* remote_user */
-	   + PTR_SIZE		/* remote_pwd */
-	   + PTR_SIZE		/* remote_table_name */
+	   + xts_sizeof_remote_dml_sink ()	/* remote INSERT SELECT fields */
 	   + OR_INT_SIZE	/* remote_num_attrs */
 	   + (insert_info->remote_num_attrs * PTR_SIZE));	/* remote_attr_names */
 
