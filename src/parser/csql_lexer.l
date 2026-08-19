@@ -584,6 +584,8 @@ IDL       [a-zA-Z0-9_]
 									  return LOCK_; }
 [lL][oO][gG]								{ csql_yylval.cptr = pt_makename(yytext);
 									  return LOG; }
+[lL][oO][gG][iI][nN]							{ csql_yylval.cptr = pt_makename(yytext);
+									  return LOGIN; }
 [lL][oO][oO][pP]							{ return LOOP; }
 [lL][oO][wW][eE][rR]							{ return LOWER; }
 [mM][aA][tT][cC][hH]							{ return MATCH; }
@@ -630,6 +632,8 @@ IDL       [a-zA-Z0-9_]
 									  return NOCACHE; }
 [nN][oO][cC][yY][cC][lL][eE]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return NOCYCLE; }
+[nN][oO][lL][oO][gG][iI][nN]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return NOLOGIN; }
 [nN][oO][mM][aA][xX][vV][aA][lL][uU][eE]				{ csql_yylval.cptr = pt_makename(yytext);
 									  return NOMAXVALUE; }
 [nN][oO][mM][iI][nN][vV][aA][lL][uU][eE]				{ csql_yylval.cptr = pt_makename(yytext);

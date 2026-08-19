@@ -2280,6 +2280,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   PT_NODE *node, *node2;
   const char *user_name, *password, *comment;
   const char *group_name, *member_name;
+  PT_MISC_TYPE login_capability;
   bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2388,7 +2389,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       goto end;
     }
 
-  /* Now treats optional password, group, member and comment of the created user */
+  /* Now treats optional password, login capability, group, member and comment of the created user */
 
   /* password */
   node = statement->info.create_user.password;
@@ -2396,6 +2397,17 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (password != NULL)
     {
       error = au_set_password_encrypt (user, password);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  /* login capability */
+  login_capability = statement->info.create_user.login_capability;
+  if (login_capability == PT_LOGIN || login_capability == PT_NOLOGIN)
+    {
+      error = au_set_user_loginable (user, login_capability == PT_LOGIN);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2565,6 +2577,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   const PT_ALTER_CODE alter_user_code = statement->info.alter_user.code;
   const char *user_name, *password, *comment;
   const char *member_name;
+  PT_MISC_TYPE login_capability;
   bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2601,9 +2614,9 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   set_savepoint = true;
 
   /*
-   * here, both password and comment are optional,
-   * either password or comment shall exist,
-   * csql_grammar denies the error case with the missing of both.
+   * here, password, login capability and comment are optional,
+   * at least one of them shall exist,
+   * csql_grammar denies the error case with the missing of all.
    */
 
   /* password */
@@ -2612,6 +2625,17 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     {
       password = IS_STRING (node) ? GET_STRING (node) : NULL;
       error = au_set_password_encrypt (user, password);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  /* login capability */
+  login_capability = statement->info.alter_user.login_capability;
+  if (login_capability == PT_LOGIN || login_capability == PT_NOLOGIN)
+    {
+      error = au_set_user_loginable (user, login_capability == PT_LOGIN);
       if (error != NO_ERROR)
 	{
 	  goto end;
