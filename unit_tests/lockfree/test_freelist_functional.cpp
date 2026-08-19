@@ -25,6 +25,7 @@
 #include "lockfree_transaction_system.hpp"
 #include "string_buffer.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <condition_variable>
 #include <cstdlib>
@@ -62,6 +63,7 @@ namespace test_lockfree
   static int run_test (size_t thread_count, size_t ops_per_thread, size_t claim_weight, size_t retire_weight,
 		       size_t retire_all_weight);
   static int test_reclaim_after_idle ();
+  static int test_initial_allocation ();
 
   int
   test_freelist_functional ()
@@ -70,7 +72,8 @@ namespace test_lockfree
 
     test_common::sync_cout ("start test_freelist_functional\n");
 
-    int err = test_reclaim_after_idle ();
+    int err = test_initial_allocation ();
+    err = err | test_reclaim_after_idle ();
     err = err | run_test (4, 1000, 60, 39, 1);
     err = err | run_test (64, 1000, 60, 39, 1);
 
@@ -83,6 +86,69 @@ namespace test_lockfree
 	test_common::sync_cout ("failed test_freelist_functional\n");
       }
 
+    return err;
+  }
+
+  //
+  // test_initial_allocation () - the constructor must accept a block of one and must allocate exactly the
+  //                              number of blocks it was asked for.
+  //
+  // Two defects, both reachable only once new_lfhash defaults on. assert (block_size > 1) aborted the server in
+  // boot_restart_server () for every database with max_plan_cache_entries <= 3, where xcache_initialize ()
+  // computes a block size of one - a block lf_freelist_init () has always accepted. And the constructor
+  // allocated one block more than asked, alloc_backbuffer () once and another inside every swap_backbuffer (),
+  // which lf_freelist_init () does not: lock_dump_resource () reads that count, so cubrid lockdb reported 1500
+  // allocated objects where it had always reported 1000.
+  //
+  int
+  test_initial_allocation ()
+  {
+    struct block_request
+    {
+      size_t block_size;
+      size_t block_count;
+    };
+    const block_request REQUESTS[] =
+    {
+      { 1, 2 },     // xcache_initialize () for max_plan_cache_entries <= 3
+      { 500, 2 },   // the object lock resource table's defaults, the count cubrid lockdb prints
+      { 16, 3 },
+      { 1, 1 },     // the "minimum two blocks" path with nothing left to halve
+      { 16, 1 },
+    };
+
+    test_common::sync_cout ("test_initial_allocation\n");
+
+    int err = 0;
+    for (const block_request &request : REQUESTS)
+      {
+	// what the constructor promises for a request of a single block
+	const size_t block_size =
+		request.block_count <= 1 ? std::max<size_t> (request.block_size / 2, 1) : request.block_size;
+	const size_t block_count = request.block_count <= 1 ? 2 : request.block_count;
+	const size_t expected = block_size * block_count;
+
+	lockfree::tran::system l_lfsys { 1 };
+	my_freelist l_freelist { l_lfsys, request.block_size, request.block_count };
+
+	const size_t allocated = l_freelist.get_alloc_count ();
+	const size_t on_hand = l_freelist.get_available_count () + l_freelist.get_backbuffer_count ();
+
+	string_buffer result_str;
+	result_str ("  block_size = %zu, block_count = %zu: allocated = %zu, expected = %zu, on hand = %zu\n",
+		    request.block_size, request.block_count, allocated, expected, on_hand);
+	test_common::sync_cout (result_str.get_buffer ());
+
+	if (allocated != expected || on_hand != allocated)
+	  {
+	    err = 1;
+	  }
+      }
+
+    if (err != 0)
+      {
+	test_common::sync_cout ("failed test_initial_allocation\n");
+      }
     return err;
   }
 
