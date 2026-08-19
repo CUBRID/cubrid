@@ -4030,6 +4030,12 @@ qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p, bool is_commit)
  * Note: Used by 2PC send-prepare: once a participant has been XA-prepared, the decision is owned by
  *       the 2PC daemon (which holds the same conn_handle via the participant block copy), so the
  *       entry must be dropped from the per-transaction list. The CCI connection is NOT touched here.
+ *       Also used by the remote DML sink abort path when its fallback tears the connection down.
+ *
+ *       Removing an entry can leave the transaction without any 2PC participant, so
+ *       is_dblink_autocommit is recomputed here. Left false with no participant left, nothing would
+ *       end the remaining (SELECT-only) connections: qmgr_check_dblink_trans() skips them while the
+ *       flag says the 2PC path owns them, and that path does not run without a participant.
  */
 int
 qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
@@ -4052,6 +4058,17 @@ qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
 	      prev->next = dblink->next;
 	    }
 	  free_and_init (dblink);
+
+	  tran_entry_p->is_dblink_autocommit = true;
+	  for (dblink = tran_entry_p->dblink_entry; dblink != NULL; dblink = dblink->next)
+	    {
+	      if (dblink->is_2pc_participant)
+		{
+		  tran_entry_p->is_dblink_autocommit = false;
+		  break;
+		}
+	    }
+
 	  return NO_ERROR;
 	}
       prev = dblink;
