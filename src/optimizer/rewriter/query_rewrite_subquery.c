@@ -51,6 +51,10 @@ static void qo_replace_conjunct_with_join (PARSER_CONTEXT * parser, PT_NODE * no
  *
  * This runs after pt_check_semi_anti_join (), so the joins it builds are never checked there; the
  * direct-join invariant is reused explicitly below instead.
+ *
+ * The WHERE of every SELECT is already in CNF here -- pt_bind_names () runs pt_cnf () at binding time --
+ * so a conjunct is one ->next list element, negation is folded into the operators (pt_negate_op ()), and
+ * the only PT_NOT left standing wraps EXISTS. The classification below relies on all three.
  */
 
 /*
