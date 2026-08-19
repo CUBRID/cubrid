@@ -157,6 +157,12 @@ namespace cubxasl
     } pe;
     TYPE_PRED_EXPR type;
 
+    /* compiled scan-filter form of this tree (expr_compile.c), resolved lazily by the
+     * first eval_data_filter () over it and released with the XASL clone
+     * (qexec_clear_pred ()).  Only the tree's root ever holds one. */
+    void *scan_prog;
+    int scan_prog_state;	/* 0 = not tried yet, 1 = active, 2 = keep the interpreted path */
+
     void clear_xasl ();
   };
 } // namespace cubxasl

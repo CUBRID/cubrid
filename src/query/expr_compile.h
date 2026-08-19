@@ -56,6 +56,10 @@
 
 // forward definitions
 struct val_descr;
+namespace cubxasl
+{
+  struct pred_expr;
+}
 
 typedef struct expr_prog EXPR_PROG;
 typedef struct expr_step EXPR_STEP;
@@ -226,5 +230,15 @@ extern void expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent);
 /* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c); exported for
  * consumers that replicate an interpreted tail coercion (e.g. aggregate accumulation) */
 extern int expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p);
+
+/* scan-filter predicates: eval_pred () re-discovers the tree shape, the term kinds and
+ * the operand types on every row.  These compile a data filter's PRED_EXPR once per
+ * clone into a tree of (type, operator)-resolved comparison leaves under Kleene AND/OR
+ * nodes; operands are fetched per row through the regular fetch path, so short-circuit
+ * and lazy-decode behavior stay identical.  NULL when anything in the tree is not
+ * covered -- the caller keeps the interpreted pr_eval_fnc. */
+extern void *expr_scan_pred_compile (cubthread::entry * thread_p, const cubxasl::pred_expr * pr);
+extern DB_LOGICAL expr_scan_pred_eval (void *compiled, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid);
+extern void expr_scan_pred_free (void *compiled);
 
 #endif /* _EXPR_COMPILE_H_ */

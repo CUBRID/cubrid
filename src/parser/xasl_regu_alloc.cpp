@@ -265,6 +265,8 @@ regu_init (cubxasl::pred_expr &pr)
 {
   pr.type = T_NOT_TERM;
   pr.pe.m_not_term = NULL;
+  pr.scan_prog = NULL;
+  pr.scan_prog_state = 0;
 }
 
 void
