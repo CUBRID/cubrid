@@ -1643,7 +1643,7 @@ db_string_space (DB_VALUE const *count, DB_VALUE * result)
 
       if (len > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, len,
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) len,
 		  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 	  db_make_null (result);
 	  return NO_ERROR;
@@ -2140,11 +2140,12 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 	  dummy.domain.general_info.is_null = 0;
 	}
 
-      expected_size = src_size * count_i;
+      expected_size = (DB_BIGINT) src_size *count_i;
       if (OR_CHECK_INT_OVERFLOW (expected_size))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, expected_size,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) expected_size,
 		  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
+	  pr_clear_value (&dummy);
 	  return ER_QPROC_STRING_SIZE_TOO_BIG;
 	}
 
@@ -4168,7 +4169,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
     }
   if ((UINT64) result_size > prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_size,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) result_size,
 	      (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
       db_private_free_and_init (NULL, result);
       return ER_QPROC_STRING_SIZE_TOO_BIG;
@@ -8908,7 +8909,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
 
   if (result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_size,
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) result_size,
 	      (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 
       db_make_null (result);
@@ -9418,7 +9419,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 
 size_error:
   error_status = ER_QPROC_STRING_SIZE_TOO_BIG;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, *result_size,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, (size_t) * result_size,
 	  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
   /*
@@ -9647,7 +9648,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 
 size_error:
   error_status = ER_QPROC_STRING_SIZE_TOO_BIG;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, *result_size,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, (size_t) * result_size,
 	  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
 

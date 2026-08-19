@@ -9241,8 +9241,8 @@ fileio_make_error_message (THREAD_ENTRY * thread_p, char *error_message_p)
   char *header_message_p = NULL;
   char *remote_message_p = NULL;
 
-  if (asprintf (&header_message_p, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO,
-						   MSGCAT_FILEIO_INCORRECT_BKVOLUME)) < 0)
+  if (asprintf (&header_message_p, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO,
+							 MSGCAT_FILEIO_INCORRECT_BKVOLUME)) < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
@@ -9685,7 +9685,7 @@ fileio_list_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, char *
     }
 
   /* Show the backup volume header information. */
-  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BKUP_HDR));
+  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BKUP_HDR));
 
   tmp_time = (time_t) backup_header_p->db_creation;
   (void) ctime_r (&tmp_time, time_val);
@@ -9821,10 +9821,10 @@ fileio_get_backup_volume (THREAD_ENTRY * thread_p, const char *db_fullname, cons
       /*
        * Backup volume information is not online
        */
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+      fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_BACKUPINFO_NEEDED),
 	       from_volbackup);
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+      fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 
       if (scanf ("%d", &retry) != 1)
 	{
@@ -9840,7 +9840,7 @@ fileio_get_backup_volume (THREAD_ENTRY * thread_p, const char *db_fullname, cons
 	  return error_code;
 
 	case 2:
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_NEWLOCATION));
+	  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_NEWLOCATION));
 	  if (scanf (format_string, from_volbackup) != 1)
 	    {
 	      /* Cannot access backup file.. Restore from backup is cancelled */
@@ -10614,8 +10614,8 @@ fileio_find_restore_volume (THREAD_ENTRY * thread_p, const char *db_name_p, char
   FILEIO_RELOCATION_VOLUME rval;
 
   /* Try to build up the outgoing message */
-  if (asprintf (&ptr1, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_STARTS)) < 0
-      || asprintf (&ptr2, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, reason)) < 0
+  if (asprintf (&ptr1, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_STARTS)) < 0
+      || asprintf (&ptr2, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, reason)) < 0
       || asprintf (&ptr3, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_REST_RELO_NEEDED),
 		   db_name_p, to_vol_name_p, unit_num, level, fileio_get_backup_level_string (level)) < 0
       || asprintf (&ptr4, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_REST_RELO_OPTIONS),
@@ -10628,7 +10628,8 @@ fileio_find_restore_volume (THREAD_ENTRY * thread_p, const char *db_name_p, char
 
   if (asprintf (&fail_prompt_p, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_INPUT_RANGE_ERROR),
 		(int) FILEIO_RELOCATION_FIRST, (int) FILEIO_RELOCATION_LAST) < 0
-      || asprintf (&reprompt_p, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_NEWLOCATION)) < 0
+      || asprintf (&reprompt_p, "%s",
+		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_NEWLOCATION)) < 0
       || asprintf (&full_message_p, "%s%s%s%s%s", ptr1, ptr2, ptr3, ptr4, ptr1) < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -11358,7 +11359,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
   while (is_retry_in)
     {
       /* Display prompt, then get user's input. */
-      fprintf (stdout, display_string_p);
+      fprintf (stdout, "%s", display_string_p);
 
       pr_status = ER_FAILED;
       pr_len = 0;
@@ -11379,7 +11380,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
 		  result = parse_int (&x, user_response_p, 10);
 		  if (result != 0 || x < range_low || x > range_high)
 		    {
-		      fprintf (stdout, failure_prompt_p);
+		      fprintf (stdout, "%s", failure_prompt_p);
 		      is_retry_in = true;
 		    }
 		  else
@@ -11416,7 +11417,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
 		  result = parse_int (&x, user_response_p, 10);
 		  if (result != 0 || x < range_low || x > range_high)
 		    {
-		      fprintf (stdout, failure_prompt_p);
+		      fprintf (stdout, "%s", failure_prompt_p);
 		      is_retry_in = true;
 		    }
 		  else if (x == reprompt_value)
