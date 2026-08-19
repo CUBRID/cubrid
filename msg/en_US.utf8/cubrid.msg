@@ -1112,7 +1112,7 @@ $ LOADDB
 1039 log writer: log writer started. mode: %1$d.
 1040 HA generic: %1$s. 
 1041 A string was truncated in context of "%1$s".
-1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
+1042 Trying to create a string requiring %1$zu bytes of memory, while the maximum allowed is %2$d bytes.
 1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
 1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
 1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
@@ -1481,7 +1481,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1377 The no-logging index build exceeded its vacuum notification memory limit (%1$d bytes). Retry the loaddb while no concurrent transactions are active, or rebuild the index without the no-logging option.
 
-1378 Last Error
+1378 Cannot change the login capability of user "%1$s".
+
+1379 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
