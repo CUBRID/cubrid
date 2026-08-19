@@ -2561,7 +2561,25 @@ fast_path:
     {
       /* this cannot be a new page or a deallocated page.
        * note: temporary pages are not strictly handled in regard with their deallocation status. */
-      assert (fetch_mode != NEW_PAGE || pgbuf_is_lsa_temporary (pgptr));
+      if (fetch_mode == NEW_PAGE && !pgbuf_is_lsa_temporary (pgptr))
+	{
+	  /* a buffered copy with live content was found for a page that is being allocated as new. this can happen
+	   * after a crash: destroying a file discards its buffered pages without logging (see file_destroy), so when
+	   * recovery redo replays the log written before the destroy, it re-materializes those pages in the buffer,
+	   * and nothing replays the discard. the copy is void by definition - the page's sectors were unreserved and
+	   * re-reserved for the new owner, which initializes the page from scratch - so neutralize it the same way a
+	   * freshly claimed frame is initialized instead of handing out the stale content. */
+	  er_log_debug (ARG_FILE_LINE, "pgbuf_fix: neutralize stale buffered copy of new page %d|%d (ptype = %d)\n",
+			VPID_AS_ARGS (vpid), (int) bufptr->iopage_buffer->iopage.prv.ptype);
+	  PGBUF_BCB_LOCK (bufptr);
+	  if (pgbuf_bcb_is_dirty (bufptr))
+	    {
+	      /* the stale content must not reach disk; the new owner logs its own initialization. */
+	      pgbuf_bcb_clear_dirty (thread_p, bufptr);
+	    }
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  fileio_initialize_res (thread_p, &bufptr->iopage_buffer->iopage, IO_PAGESIZE);
+	}
     }
 
   show_status->num_page_request++;

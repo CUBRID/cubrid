@@ -4127,7 +4127,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   if (file_get_tde_algorithm_internal (fhead) != TDE_ALGORITHM_NONE)
     {
       tde_er_log
-	("file_destroy(): clear tde bit in pflag in all user pages, VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
+	("file_destroy(): destroy encrypted file; buffered pages are discarded and never written again, VFID = %d|%d, # of (user) pages = %d, tde algorithm = %s\n",
 	 VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
 	 tde_get_algorithm_name (file_get_tde_algorithm_internal (fhead)));
     }
