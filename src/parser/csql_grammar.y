@@ -582,6 +582,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> opt_class
 %type <number> isolation_level_name
 %type <number> opt_status
+%type <number> opt_login_capability
 %type <number> trigger_status
 %type <number> trigger_time
 %type <number> opt_trigger_action_time
@@ -1619,6 +1620,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> LEAD
 %token <cptr> LOCK_
 %token <cptr> LOG
+%token <cptr> LOGIN
 %token <cptr> MATCHED
 %token <cptr> MAXIMUM
 %token <cptr> MAXVALUE
@@ -1629,6 +1631,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> NESTED
 %token <cptr> NOCYCLE
 %token <cptr> NOCACHE
+%token <cptr> NOLOGIN
 %token <cptr> NOMAXVALUE
 %token <cptr> NOMINVALUE
 %token <cptr> NONE
@@ -2848,9 +2851,10 @@ create_stmt
                 }	                /* 3 */
 	  identifier_without_dot	/* 4 */
 	  opt_password			/* 5 */
-	  opt_groups			/* 6 */
-	  opt_members			/* 7 */
-	  opt_comment_spec		/* 8 */
+	  opt_login_capability		/* 6 */
+	  opt_groups			/* 7 */
+	  opt_members			/* 8 */
+	  opt_comment_spec		/* 9 */
 		{ pop_msg(); }
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_USER);
@@ -2859,9 +2863,10 @@ create_stmt
 			  {
 			    node->info.create_user.user_name = $4;
 			    node->info.create_user.password = $5;
-			    node->info.create_user.groups = $6;
-			    node->info.create_user.members = $7;
-			    node->info.create_user.comment = $8;
+			    node->info.create_user.login_capability = $6;
+			    node->info.create_user.groups = $7;
+			    node->info.create_user.members = $8;
+			    node->info.create_user.comment = $9;
 			  }
 
 			$$ = node;
@@ -3658,7 +3663,8 @@ alter_stmt
 	  USER				/* 2 */
 	  identifier	        	/* 3 */
 	  opt_password  	        /* 4 */
-	  opt_comment_spec              /* 5 */
+	  opt_login_capability		/* 5 */
+	  opt_comment_spec              /* 6 */
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
 
@@ -3666,8 +3672,10 @@ alter_stmt
 			  {
 			    node->info.alter_user.user_name = $3;
 			    node->info.alter_user.password = $4;
-			    node->info.alter_user.comment = $5;
+			    node->info.alter_user.login_capability = $5;
+			    node->info.alter_user.comment = $6;
 			    if (node->info.alter_user.password == NULL
+				&& node->info.alter_user.login_capability == PT_MISC_DUMMY
 				&& node->info.alter_user.comment == NULL)
 			      {
 			        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
@@ -8683,6 +8691,21 @@ opt_password
                         pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, false, en_none_password);
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+opt_login_capability
+	: /* empty */
+		{{
+			$$ = PT_MISC_DUMMY;
+		}}
+	| LOGIN
+		{{
+			$$ = PT_LOGIN;
+		}}
+	| NOLOGIN
+		{{
+			$$ = PT_NOLOGIN;
 		}}
 	;
 
@@ -20651,6 +20674,7 @@ identifier
 	| LEAD                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| LOCK_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| LOG                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}        
+	| LOGIN                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| MATCHED                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| MAXIMUM                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| MAXVALUE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20661,6 +20685,7 @@ identifier
 	| NESTED                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| NOCACHE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| NOCYCLE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NOLOGIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| NOMAXVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| NOMINVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| NTH_VALUE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
