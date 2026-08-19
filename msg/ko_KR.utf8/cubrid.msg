@@ -1480,7 +1480,9 @@ $ LOADDB
 
 1377 no-logging 인덱스 빌드가 vacuum notification 메모리 한도(%1$d 바이트)를 초과했습니다. 동시 트랜잭션이 없는 상태에서 loaddb를 재시도하거나, no-logging 옵션 없이 인덱스를 다시 빌드하십시오.
 
-1378 마지막 에러
+1378 사용자 "%1$s"의 login 가능 여부를 변경할 수 없습니다.
+
+1379 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
