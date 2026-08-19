@@ -344,7 +344,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, hostname, HOSTS_FILE);
-      fprintf (stderr, er_msg ());
+      fprintf (stderr, "%s", er_msg ());
       fflush (stderr);
       return -1;
     }

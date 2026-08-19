@@ -5694,7 +5694,15 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	  if (PT_IS_NAME_NODE (arg1) && PT_IS_VALUE_NODE (arg2)
 	      && (arg3_type == PT_TYPE_NONE || PT_IS_VALUE_NODE (arg3)) && arg1_type != PT_TYPE_ENUMERATION)
 	    {
-	      arg1_eq_type = arg2_eq_type = arg1_type;
+	      if (arg1_type == PT_TYPE_NA && common_type != PT_TYPE_NULL)
+		{
+		  /* NA column vs constant: use inferred type (e.g. string literal) */
+		  arg1_eq_type = arg2_eq_type = common_type;
+		}
+	      else
+		{
+		  arg1_eq_type = arg2_eq_type = arg1_type;
+		}
 	      if (arg3_type != PT_TYPE_NONE)
 		{
 		  arg3_eq_type = arg1_type;
@@ -5718,7 +5726,14 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	  else if (PT_IS_NAME_NODE (arg2) && PT_IS_VALUE_NODE (arg1) && arg3_type == PT_TYPE_NONE
 		   && arg2_type != PT_TYPE_ENUMERATION)
 	    {
-	      arg1_eq_type = arg2_eq_type = arg2_type;
+	      if (arg2_type == PT_TYPE_NA && common_type != PT_TYPE_NULL)
+		{
+		  arg1_eq_type = arg2_eq_type = common_type;
+		}
+	      else
+		{
+		  arg1_eq_type = arg2_eq_type = arg2_type;
+		}
 	      if (arg1_type != arg2_type && PT_IS_NUMERIC_TYPE (arg2_type) && arg2_type != PT_TYPE_NUMERIC
 		  && op != PT_EQ && op != PT_EQ_SOME && op != PT_EQ_ALL)
 		{
@@ -5743,6 +5758,16 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		      arg3_eq_type = arg2_type;
 		    }
 		}
+	    }
+	  else if (arg1_type == PT_TYPE_NA && PT_IS_CHAR_STRING_TYPE (arg2_type)
+		   && PT_IS_NAME_NODE (arg1) && !PT_IS_NAME_NODE (arg2))
+	    {
+	      arg1_eq_type = arg2_eq_type = arg2_type;
+	    }
+	  else if (arg2_type == PT_TYPE_NA && PT_IS_CHAR_STRING_TYPE (arg1_type)
+		   && PT_IS_NAME_NODE (arg2) && !PT_IS_NAME_NODE (arg1))
+	    {
+	      arg1_eq_type = arg2_eq_type = arg1_type;
 	    }
 	}
 
@@ -7166,6 +7191,40 @@ pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
     }
 
   return false;
+}
+
+/*
+ * pt_true_search_condition () - Test for constant-folded search condition
+ * 				  that evaluated true
+ *   return: true if there is no search condition or all of the conjuncts are
+ *           effectively true, false otherwise
+ *   parser(in):
+ *   node(in):
+ *
+ * Note: A search condition folded to TRUE is a no-op, but it is not removed
+ *       from the CNF list. pt_where_type () removes such a conjunct while it
+ *       runs in the type checking walk of pt_semantic_type (), which is done
+ *       before the constant folding walk. So an expression of constants like
+ *       '1=1' is still an expression when it is checked and it becomes a
+ *       folded TRUE value only afterwards.
+ *       Use this function instead of a plain 'where == NULL' test to keep a
+ *       no-op predicate from being treated as a real one.
+ */
+bool
+pt_true_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  while (node)
+    {
+      if (node->or_next != NULL || node->node_type != PT_VALUE || node->type_enum != PT_TYPE_LOGICAL
+	  || node->info.value.data_value.i != 1)
+	{
+	  return false;
+	}
+
+      node = node->next;
+    }
+
+  return true;
 }
 
 /*
