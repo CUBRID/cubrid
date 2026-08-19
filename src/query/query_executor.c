@@ -12455,7 +12455,7 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
   SCAN_ID *s_id = NULL;
   QPROC_DB_VALUE_LIST vallist;
   int k, val_no;
-  DBLINK_INSERT_STATE dblink_state = { -1, -1, false, false, false };
+  DBLINK_INSERT_STATE dblink_state = { -1, -1, false, false };
 
   assert (specp != NULL);
   assert (insert->is_remote_insert);
@@ -12535,6 +12535,10 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;
     }
+
+  /* The statement succeeded: from here on its rows are the connection's uncommitted work, which a
+   * later statement of this transaction must not discard silently. */
+  dblink_insert_stmt_done (thread_p, &dblink_state);
 
   dblink_insert_close (&dblink_state);
   qexec_close_scan (thread_p, specp);

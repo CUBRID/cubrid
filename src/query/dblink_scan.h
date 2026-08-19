@@ -124,10 +124,7 @@ struct dblink_insert_state
 				 * (unsupported by the remote, or the request failed), so a failure must roll
 				 * back and tear down the whole remote transaction; the local transaction's
 				 * commit is then refused only when that rollback discards work of earlier
-				 * statements (conn_had_dml). */
-  bool conn_had_dml;		/* the connection already carried uncommitted remote DML of this transaction
-				 * when this statement opened. Only then does the fallback lose work that
-				 * has to be reported. */
+				 * statements (the connection's has_uncommitted_dml mark). */
   bool rows_sent;		/* this statement has executed at least one row on the remote */
 };
 
@@ -136,6 +133,7 @@ extern int dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const c
 			       DBLINK_INSERT_STATE * state);
 extern int dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals,
 				      int num_vals);
+extern void dblink_insert_stmt_done (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state);
 extern void dblink_insert_stmt_abort (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state);
 extern void dblink_insert_close (DBLINK_INSERT_STATE * state);
 

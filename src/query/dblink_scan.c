@@ -1338,7 +1338,8 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
  *   dblink_insert_stmt_abort() can roll back just this statement's remote work. A remote without
  *   savepoint support (gateway) still opens successfully, with savepoint_set left false; a failure
  *   there rolls the whole remote transaction back, which only loses something if the connection was
- *   already carrying uncommitted work of this transaction (state->conn_had_dml).
+ *   already carrying uncommitted work of this transaction (the connection's has_uncommitted_dml mark,
+ *   which this statement does not set until it succeeds).
  *
  *   Every failure return past the point where the connection is acquired clears state->conn_handle:
  *   the statement has written nothing on the remote yet, so its error path must not roll back or tear
@@ -1361,7 +1362,6 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
   state->conn_handle = -1;
   state->stmt_handle = -1;
   state->savepoint_set = false;
-  state->conn_had_dml = false;
   state->rows_sent = false;
 
   /* guard: must have at least one column to insert */
@@ -1442,11 +1442,6 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 	  return ER_DBLINK;
 	}
     }
-
-  /* Snapshot taken before this statement runs: only work that was already on the connection can be
-   * lost by the fallback in dblink_insert_stmt_abort(). This statement's own rows do not count -
-   * undoing them is what the failure asks for. */
-  state->conn_had_dml = qmgr_dblink_conn_has_dml (thread_p, state->conn_handle);
 
   /* build INSERT SQL: INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...) */
   table_name_len = strlen (table_name);
@@ -1640,14 +1635,32 @@ dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state,
       return ER_DBLINK;
     }
 
-  if (!state->rows_sent)
-    {
-      /* from here on the connection carries uncommitted work of this transaction */
-      state->rows_sent = true;
-      qmgr_dblink_set_conn_dml (thread_p, state->conn_handle, true);
-    }
+  /* The connection is marked as carrying uncommitted work only once the whole statement succeeds
+   * (dblink_insert_stmt_done); a statement that fails is undone by dblink_insert_stmt_abort(), so its
+   * own rows must not count as work the transaction expects to commit. */
+  state->rows_sent = true;
 
   return NO_ERROR;
+}
+
+/*
+ * dblink_insert_stmt_done () - Record this statement's remote rows on the connection.
+ *   thread_p(in) : thread entry
+ *   state(in)    : statement state
+ *
+ * Note: Called from the success path of qexec_execute_remote_insert_select(), which mirrors where the
+ *   remote DML push marks its connection (dblink_execute_query, after the statement succeeded). From
+ *   here on the connection carries uncommitted work of this transaction, so a later statement that has
+ *   to roll the whole remote transaction back knows it is discarding work the transaction still
+ *   expects to commit.
+ */
+void
+dblink_insert_stmt_done (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state)
+{
+  if (state->conn_handle >= 0 && state->rows_sent)
+    {
+      qmgr_dblink_set_conn_dml (thread_p, state->conn_handle, true);
+    }
 }
 
 /*
@@ -1656,28 +1669,23 @@ dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state,
  *   state(in/out) : statement state; conn_handle is cleared if the connection is torn down
  *
  * Note: Called from the error path of qexec_execute_remote_insert_select(), after the stmt handle has
- *   been released (stmt close must precede connection teardown). The remote connection is shared by
- *   every sink statement of the local transaction, so the undo has to stop at this statement: rolling
- *   the remote transaction back as a whole would also discard what earlier statements wrote there.
+ *   been released - stmt close must precede a connection teardown. The remote connection is shared by
+ *   every sink statement of the local transaction, so the undo stops at this statement: the savepoint
+ *   dblink_insert_open() took bounds it, and the earlier statements' work is still committed by the
+ *   normal end-of-transaction path.
  *
- *   That scope comes from the savepoint dblink_insert_open() took. Once rolled back to, the connection
- *   stays live and registered, and the earlier statements' work is still committed by the normal
- *   end-of-transaction path (2PC included).
- *
- *   Fallback, when no savepoint was taken (gateway) or the rollback to it failed (dead connection):
- *   roll back the remote transaction as a whole, and disconnect and unregister the connection so that
- *   transaction end and 2PC prepare do not reach it again.
- *
- *   That whole-connection rollback loses work only if the connection already carried uncommitted
- *   remote DML of this transaction (state->conn_had_dml). Only then is the local transaction marked
- *   sink-aborted, so that its commit is refused rather than reporting a success that confirms the
- *   loss. When nothing was there to lose - typically a statement that failed on its first row - the
- *   failure stays a statement error and the transaction may still commit.
+ *   Without a usable savepoint (gateway, or a rollback that failed on a dead connection) the whole
+ *   remote transaction goes back, and the connection is disconnected and unregistered so that
+ *   transaction end and 2PC prepare do not reach it again. That loses work only if the connection
+ *   already carries this transaction's uncommitted DML - this statement has not marked it yet (only
+ *   dblink_insert_stmt_done does, on success), so the mark speaks for the earlier statements alone -
+ *   and only then is the transaction marked sink-aborted, so that its commit is refused.
  */
 void
 dblink_insert_stmt_abort (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state)
 {
   T_CCI_ERROR err_buf;
+  bool conn_had_dml;
 
   if (state->conn_handle < 0)
     {
@@ -1687,21 +1695,18 @@ dblink_insert_stmt_abort (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state)
   if (state->savepoint_set
       && cci_savepoint (state->conn_handle, CCI_SP_ROLLBACK, (char *) DBLINK_SINK_SAVEPOINT_NAME, &err_buf) >= 0)
     {
-      if (state->rows_sent && !state->conn_had_dml)
-	{
-	  /* this statement's rows were the only uncommitted work on the connection and the savepoint
-	   * has just undone them, so the connection is back to carrying nothing */
-	  qmgr_dblink_set_conn_dml (thread_p, state->conn_handle, false);
-	}
       return;
     }
+
+  /* Read the mark while the entry is still there: the removal below frees it. */
+  conn_had_dml = qmgr_dblink_conn_has_dml (thread_p, state->conn_handle);
 
   (void) cci_end_tran (state->conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
   (void) cci_disconnect (state->conn_handle, &err_buf);
   (void) qmgr_dblink_remove_conn_entry (thread_p, state->conn_handle);
   state->conn_handle = -1;
 
-  if (state->conn_had_dml)
+  if (conn_had_dml)
     {
       qmgr_dblink_set_sink_aborted (thread_p);
     }
