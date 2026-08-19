@@ -24,6 +24,7 @@
 #include "lockfree_transaction_reclaimable.hpp"
 #include "lockfree_transaction_table.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <limits>
@@ -157,13 +158,16 @@ namespace lockfree
     , m_forced_alloc_count { 0 }
     , m_retired_count { 0 }
   {
-    assert (block_size > 1);
     // minimum two blocks
     if (initial_block_count <= 1)
       {
-	m_block_size /= 2;
+	// halve, but never below one: at zero alloc_backbuffer () publishes an empty block and push_to_list ()
+	// dereferences NULL. lf_freelist_init () accepts a block of one - xcache_initialize () passes one for
+	// max_plan_cache_entries <= 3 - so this constructor must not be stricter.
+	m_block_size = std::max<size_t> (m_block_size / 2, 1);
 	initial_block_count = 2;
       }
+    assert (m_block_size > 0);
 
     alloc_backbuffer ();
     for (size_t i = 0; i < initial_block_count; i++)
