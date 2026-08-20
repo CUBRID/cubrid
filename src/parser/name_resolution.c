@@ -258,8 +258,8 @@ static int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * nod
 static int pt_resolve_dblink_check_owner_name (PARSER_CONTEXT * parser, PT_NODE * node, char **server_owner_name);
 
 static void pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt);
-static PT_NODE *pt_remove_hidden_attrs (PARSER_CONTEXT * parser, PT_NODE * attr_list);
-static bool pt_spec_star_passes_hidden (const PT_NODE * spec);
+static PT_NODE *pt_dblink_remove_invisible_attrs (PARSER_CONTEXT * parser, PT_NODE * attr_list);
+static bool pt_dblink_spec_star_passes_invisible (const PT_NODE * spec);
 typedef struct
 {
   int norder;
@@ -2280,9 +2280,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 				  as_attr->info.name.resolved = range_var->info.name.original;
 				}
 			      copied_attrs = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
-			      if (!pt_spec_star_passes_hidden (spec))
+			      if (!pt_dblink_spec_star_passes_invisible (spec))
 				{
-				  copied_attrs = pt_remove_hidden_attrs (parser, copied_attrs);
+				  copied_attrs = pt_dblink_remove_invisible_attrs (parser, copied_attrs);
 				}
 			      resolved_attrs = parser_append_node (attr->next, copied_attrs);
 			    }
@@ -4148,21 +4148,22 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
       assert (PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec));
       col = pt_is_on_list (parser, name, spec->info.spec.as_attr_list);
 
-      if (col != NULL && col->flag.is_hidden_column && (spec->info.spec.flag & PT_SPEC_FLAG_DUMMY_REMOVED))
+      if (col != NULL && col->flag.is_remote_invisible_column
+	  && (spec->info.spec.flag & PT_SPEC_FLAG_DUMMY_REMOVED))
 	{
-	  /* dummy spec from subquery cannot see hidden columns - the subquery projected
-	   * "SELECT *", so only the visible columns were ever in scope there.  Mirrors the
-	   * is_spec_dummy check pt_find_attr_in_class_list () makes on the native path. */
+	  /* dummy spec from subquery cannot see invisible columns - the subquery projected
+	   * "SELECT *", so only the visible columns were ever in scope there.  The native path
+	   * reaches through the same spec flag, but asks the schema (db_attribute_is_invisible_column ())
+	   * instead of a node mark - a DBLink spec has no local schema to ask. */
 	  col = NULL;
 	}
 
       ok = (col != NULL);
       if (col && !name->info.name.spec_id)
 	{
-	  /* copy the type, not the flags: flag.is_hidden_column must NOT travel to the
-	   * reference - an explicitly referenced invisible column is a visible output
-	   * column (query_result.c stripping and pt_to_update_xasl ()'s num_orderby_keys
-	   * both count hidden marks in select lists) */
+	  /* copy the type, not the flags: an explicitly referenced invisible column
+	   * is a visible output column, so flag.is_remote_invisible_column must not
+	   * travel to the reference */
 	  name->type_enum = col->type_enum;
 	  if (col->data_type)
 	    {
@@ -5174,7 +5175,7 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
    * as_attr_list entry; a node flag never prints into the stored spec */
   if (attr->is_invisible)
     {
-      attr_def_node->info.attr_def.attr_name->flag.is_hidden_column = 1;
+      attr_def_node->info.attr_def.attr_name->flag.is_remote_invisible_column = 1;
     }
 
   return true;
@@ -5341,7 +5342,7 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
  * Note: the i-th entry of dblink_table->cols (and so of the spec's as_attr_list built
  *   from it) must correspond to the i-th column of the remote query text built here -
  *   dblink_scan fetches by position and enforces val_cnt == remote col_cnt.  Hidden
- *   entries keep their slot: flag.is_hidden_column never reaches XASL
+ *   entries keep their slot: flag.is_remote_invisible_column never reaches XASL
  *   (REGU_VARIABLE_HIDDEN_COLUMN is a different, unrelated field).
  */
 static int
@@ -5921,8 +5922,8 @@ pt_dblink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * dblink_column
       PT_NODE *next_attr = dblink_column->info.attr_def.attr_name;
       next_attr->type_enum = dblink_column->type_enum;
 
-      /* is_hidden_column was set by pt_dblink_table_fill_attr_def () for a remote
-       * invisible column; a reparsed spec leaves it clear */
+      /* is_remote_invisible_column was set by pt_dblink_table_fill_attr_def () for a
+       * remote invisible column; a reparsed spec leaves it clear */
 
       if (dblink_column->data_type != NULL)
 	{
@@ -7809,21 +7810,22 @@ pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from)
 }
 
 /*
- * pt_remove_hidden_attrs () - drop the hidden columns from a copied attribute list of a
- *   derived spec, for star expansion
+ * pt_dblink_remove_invisible_attrs () - drop the remote invisible columns from a copied
+ *   attribute list of a derived spec, for star expansion
  *   return: the filtered list
  *   parser(in): parser context
  *   attr_list(in/out): a copy of the spec's as_attr_list
  *
- * Note: a hidden column keeps its slot in the spec's tuple and stays resolvable by name;
- *   only a star must not expand to it.  This is the same rule the local hidden columns
- *   follow, and for a DBLink spec it is what makes a remote invisible column behave like
- *   a native one.  The mark travels on the name node (pt_dblink_table_gather_attribs (),
+ * Note: an invisible column keeps its slot in the spec's tuple and stays resolvable by
+ *   name; only a star must not expand to it. 
+ *   The native path never has to mark anything - it filters when it
+ *   builds the list (pt_get_all_attributes_and_types ()) because the schema is at hand.
+ *   Here the mark travels on the name node (pt_dblink_table_gather_attribs (),
  *   and pt_get_attr_list_of_derived_table () for a derived table wrapped around it), so
  *   nothing here has to be kept in step with a second list.
  */
 static PT_NODE *
-pt_remove_hidden_attrs (PARSER_CONTEXT * parser, PT_NODE * attr_list)
+pt_dblink_remove_invisible_attrs (PARSER_CONTEXT * parser, PT_NODE * attr_list)
 {
   PT_NODE *attr, *prev, *next;
 
@@ -7831,7 +7833,7 @@ pt_remove_hidden_attrs (PARSER_CONTEXT * parser, PT_NODE * attr_list)
   for (attr = attr_list; attr != NULL; attr = next)
     {
       next = attr->next;
-      if (attr->flag.is_hidden_column)
+      if (attr->flag.is_remote_invisible_column)
 	{
 	  if (prev)
 	    {
@@ -7854,8 +7856,8 @@ pt_remove_hidden_attrs (PARSER_CONTEXT * parser, PT_NODE * attr_list)
 }
 
 /*
- * pt_spec_star_passes_hidden () - true when a star over this spec must expose the hidden
- *   columns instead of skipping them
+ * pt_dblink_spec_star_passes_invisible () - true when a star over this spec must expose the remote
+ *   invisible columns instead of skipping them
  *   return: whether the spec's star is transparent
  *   spec(in): the spec the star is being expanded over
  *
@@ -7874,7 +7876,7 @@ pt_remove_hidden_attrs (PARSER_CONTEXT * parser, PT_NODE * attr_list)
  *   every one of those readers.
  */
 static bool
-pt_spec_star_passes_hidden (const PT_NODE * spec)
+pt_dblink_spec_star_passes_invisible (const PT_NODE * spec)
 {
   return (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE
 	  && (spec->info.spec.flag & PT_SPEC_FLAG_DBLINK_DML_SRC) != 0);
@@ -7922,9 +7924,9 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
       if (PT_SPEC_IS_DERIVED (spec) || PT_SPEC_IS_CTE (spec))
 	{
 	  spec_att = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
-	  if (!pt_spec_star_passes_hidden (spec))
+	  if (!pt_dblink_spec_star_passes_invisible (spec))
 	    {
-	      spec_att = pt_remove_hidden_attrs (parser, spec_att);
+	      spec_att = pt_dblink_remove_invisible_attrs (parser, spec_att);
 	    }
 	}
       else
@@ -9046,9 +9048,10 @@ generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list, NATURA
 	  continue;
 	}
 
-      /* hidden columns (e.g. remote invisible columns in a DML wrapper spec's list)
-       * never join, matching the skip in generate_natural_join_attrs_from_db_attrs () */
-      if (pt_cur->flag.is_hidden_column)
+      /* remote invisible columns (a DML wrapper spec's list carries them) never join,
+       * matching the skip generate_natural_join_attrs_from_db_attrs () makes for a native
+       * invisible column */
+      if (pt_cur->flag.is_remote_invisible_column)
 	{
 	  continue;
 	}
@@ -9222,8 +9225,6 @@ get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  /* the hidden entries are skipped in generate_natural_join_attrs_from_subquery (),
-	   * so the list no longer has to be copied to be filtered */
 	  subquery_attrs_list = node->info.spec.as_attr_list;
 	}
 
@@ -11906,9 +11907,9 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 
 	  col->type_enum = att->type_enum;
 
-	  /* A hidden column of the inner query stays hidden through this derived table:
-	   * it keeps its slot in the tuple, but the outer star must not expand to it. */
-	  col->flag.is_hidden_column = att->flag.is_hidden_column;
+	  /* A remote invisible column of the inner query stays invisible through this derived
+	   * table: it keeps its slot in the tuple, but the outer star must not expand to it. */
+	  col->flag.is_remote_invisible_column = att->flag.is_remote_invisible_column;
 
 	  if (att->data_type)
 	    {

@@ -3757,12 +3757,10 @@ struct parser_node
     unsigned clt_cache_reusable:1;	/* client cache is reusable */
     unsigned use_plan_cache:1;	/* used for plan cache */
     unsigned use_query_cache:1;
-    unsigned is_hidden_column:1;	/* two populations share this bit: a select-list item appended by the compiler
-					 * (e.g. an ORDER BY expression, pt_check_order_by ()) that owns a tuple slot but
-					 * is stripped from the client output, and - on a derived spec's as_attr_list
-					 * name (dblink) - a schema-invisible column that stars and NATURAL JOIN must
-					 * skip while explicit references still resolve.  A reader must know which
-					 * population its list holds; the bit never reaches XASL */
+    unsigned is_hidden_column:1;
+    unsigned is_remote_invisible_column:1;	/* a DBLink derived spec's as_attr_list name whose remote schema
+						 * marks it INVISIBLE: it keeps its tuple slot, but stars and
+						 * NATURAL JOIN skip it while explicit references still resolve */
     unsigned is_paren:1;
     unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
     unsigned force_auto_parameterize:1;	/* forces a call to qo_auto_parameterize (); this is a special flag used for
