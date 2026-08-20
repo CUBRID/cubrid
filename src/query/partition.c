@@ -3021,6 +3021,7 @@ partition_set_cache_dbvalp_for_attribute (REGU_VARIABLE * var, DB_VALUE * val)
       /* Since partition key expression can only contain a single column,
        * we can skip checking attribute id and simply check if the value is cached. */
       var->value.attr_descr.cache_dbvalp = val;
+      var->value.attr_descr.cache_slot = NULL;
       break;
 
     case TYPE_INARITH:

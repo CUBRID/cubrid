@@ -95,6 +95,8 @@ namespace cubconn::connection
       };
 
     public:
+      static constexpr std::size_t MAX_DIRECT_PACKET_COUNT = 8;
+
       enum class queue_type : uint8_t
       {
 	IMMEDIATE,
@@ -120,8 +122,6 @@ namespace cubconn::connection
 	HANDOFF_CLIENT, /* lazy queue */
 	TAKEOVER_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
-
-	SEND_PACKET,
 	RELEASE_PACKET,
 
 	TYPE_COUNT
@@ -134,6 +134,7 @@ namespace cubconn::connection
 	    id (0),
 	    ctx (nullptr),
 	    conn (nullptr),
+	    packet (nullptr),
 	    worker_ptr (nullptr),
 	    worker_index (-1),
 	    ignore (ignore_level::DONT_IGNORE),
@@ -158,12 +159,8 @@ namespace cubconn::connection
 	  /* the members below are used to deliver a target data */
 	  /* each comment is a message_type using that member */
 
-	  /* SEND_PACKET    */
 	  /* RELEASE_PACKET */
-	  std::vector<cubbase::span<std::byte>> packet;
-
-	  /* SEND_PACKET    */
-	  std::function<void ()> deleter;
+	  std::byte *packet;
 
 	  /* HANDOFF_CLIENT */
 	  worker *worker_ptr;
@@ -176,7 +173,6 @@ namespace cubconn::connection
 	  /* waiter handle (implemented only for START, SHUTDOWN_CLIENT) */
 	  /* START	     */
 	  /* SHUTDOWN_CLIENT */
-	  /* SEND_PACKET     */
 	  std::shared_ptr<message_blocker> waiter_handle;
 
 	  /* debug purpose */
@@ -191,10 +187,17 @@ namespace cubconn::connection
       ~worker ();
 
       void initialize ();
+
       void finalize ();
+      void finalize_resources ();
+
       bool run ();
 
       void attach ();
+
+      static unsigned int send_packet (css_conn_entry *conn, const cubbase::span<std::byte> *packet,
+				       std::size_t packet_count, const bool *retain_packet,
+				       std::function<void ()> &&deleter, int wait_time);
 
       /* used for control from other threads */
       void enqueue (queue_type type, message &&item);
@@ -229,6 +232,8 @@ namespace cubconn::connection
       /* index is a type of timer handle block */
       std::array<timer_handle, static_cast<std::size_t> (timer_type::TYPE_COUNT)> m_timer_handler;
 
+      /* true while an eventfd notification is pending or being handled */
+      std::atomic<bool> m_notified;
       bool m_has_retry;
 
       /* this is a multi-producer single-consumer queue, so */
@@ -262,13 +267,16 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* close connection							     */
       /* --------------------------------------------------------------------------- */
-      bool is_wait_required (context *ctx);
+      bool requires_client_info (context *ctx);
+      bool is_registering_client (context *ctx);
+
       bool has_remaining_tasks (context *ctx);
 
       std::pair<int, int> start_connection_close (context *ctx);
       void end_connection_close ();
+      bool retry_connection_close (context *ctx, bool is_retry, std::shared_ptr<message_blocker> handle);
 
-      bool handle_connection_close (context *ctx, bool retry = false, std::shared_ptr<message_blocker> handle = nullptr);
+      bool handle_connection_close (context *ctx, bool is_retry = false, std::shared_ptr<message_blocker> handle = nullptr);
 
       /* --------------------------------------------------------------------------- */
       /* statistics and hibernation						     */
@@ -304,7 +312,6 @@ namespace cubconn::connection
       bool validate_message_generation (const message &item, context *ctx) const;
       bool forward_message_to_successor (queue_type type, message &item, context *ctx);
 
-      bool handle_message_queue_send_packet (message &item);
       bool handle_message_queue_release_packet (message &item);
 
       bool handle_message_queue_new_client (message &item);

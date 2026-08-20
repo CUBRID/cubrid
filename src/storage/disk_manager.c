@@ -1124,7 +1124,7 @@ disk_set_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, const HFID * hfid)
   vhdr = (DISK_VOLUME_HEADER *) addr.pgptr;
 
   log_append_undoredo_data (thread_p, RVDK_RESET_BOOT_HFID, &addr, sizeof (vhdr->boot_hfid), sizeof (*hfid),
-			    &vhdr->boot_hfid, &hfid);
+			    &vhdr->boot_hfid, hfid);
   HFID_COPY (&(vhdr->boot_hfid), hfid);
 
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
@@ -5867,11 +5867,7 @@ xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid)
       return NULL;
     }
 
-  remarks = (char *) malloc ((int) strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1);
-  if (remarks != NULL)
-    {
-      strcpy (remarks, disk_vhdr_get_vol_remarks (vhdr));
-    }
+  remarks = strdup (disk_vhdr_get_vol_remarks (vhdr));
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 

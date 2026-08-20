@@ -64,11 +64,7 @@ char *object_print::copy_string (const char *source)
 
   if (source != NULL)
     {
-      new_str = (char *) malloc (strlen (source) + 1);
-      if (new_str != NULL)
-	{
-	  strcpy (new_str, source);
-	}
+      new_str = strdup (source);
     }
 
   return new_str;

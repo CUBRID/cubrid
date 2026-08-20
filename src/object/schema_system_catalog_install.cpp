@@ -333,7 +333,7 @@ catcls_install (void)
   std::vector<MOP> class_mop (num_classes, nullptr);
   int save;
   size_t i;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   using catalog_builder = cubschema::system_catalog_builder;
 
@@ -379,7 +379,7 @@ catcls_install (void)
     }
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   clist.clear ();
   vclist.clear ();

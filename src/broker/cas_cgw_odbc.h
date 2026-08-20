@@ -148,15 +148,16 @@ extern void cgw_database_disconnect (void);
 extern int cgw_is_database_connected (void);
 
 // Prepare funtions
-extern int cgw_sql_prepare (SQLCHAR * sql_stmt);
+extern int cgw_sql_prepare (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, SQLCHAR * sql_stmt);
 extern int cgw_get_num_cols (SQLHSTMT hstmt, SQLSMALLINT * num_cols);
 extern int cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info);
 
 // Execute funtions
 extern int cgw_set_commit_mode (SQLHDBC hdbc, bool auto_commit);
-extern int cgw_execute (T_SRV_HANDLE * srv_handle, SQLLEN * row_count);
+extern int cgw_execute (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, SQLLEN * row_count);
 extern int cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_type);
-extern int cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, void **argv, ODBC_BIND_INFO ** ret_val);
+extern int cgw_make_bind_value (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, int num_bind, int argc, void **argv,
+				ODBC_BIND_INFO ** ret_val);
 
 // Resultset funtions
 extern int cgw_cursor_close (T_SRV_HANDLE * srv_handle);

@@ -65,6 +65,12 @@
 
 namespace cubconn::master
 {
+  static bool
+  is_valid_early_client_type (int client_type)
+  {
+    return client_type >= DB_CLIENT_TYPE_DEFAULT && client_type < DB_CLIENT_TYPE_MAX;
+  }
+
   /* Master connector uses Main_entry_p (TT_MASTER) instead of claiming a separate entry. */
   /* It is still registered here for consistency with other connection components.	  */
   REGISTER_CONNECTION (master_connector, 0);
@@ -766,10 +772,14 @@ namespace cubconn::master
     CSS_CONN_ENTRY *conn;
     unsigned short request_id;
     SOCKET new_fd;
+    int client_type;
+    bool pending_client_type = false;
     result status;
 
     /* master context goes back to waiting for next request regardless of send path */
     NEXT_STATE (ctx, RecvRequestType);
+    client_type = ctx->m_pending_client_type;
+    ctx->m_pending_client_type = DB_CLIENT_TYPE_UNKNOWN;
 
     /* receive new socket descriptor from the master */
     new_fd = css_open_new_socket_from_master (ctx->m_conn->fd, &request_id);
@@ -816,9 +826,39 @@ namespace cubconn::master
 	return result::RefuseConnection;
       }
 
+    if (is_valid_early_client_type (client_type))
+      {
+	if (css_increment_num_conn ((BOOT_CLIENT_TYPE) client_type) != NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
+
+	    new_ctx->m_conn = new css_conn_entry;
+	    css_initialize_conn (new_ctx->m_conn, new_fd);
+	    new_ctx->m_conn->request_id = request_id;
+
+	    if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_CLIENTS_EXCEEDED))
+	      {
+		delete new_ctx->m_conn;
+		delete new_ctx;
+
+		return result::RefuseConnection;
+	      }
+
+	    NEXT_STATE (new_ctx, SendReplyToClient);
+	    return result::RefuseConnection;
+	  }
+
+	pending_client_type = true;
+      }
+
     conn = css_make_conn (new_fd);
     if (conn == NULL)
       {
+	if (pending_client_type)
+	  {
+	    css_decrement_num_conn ((BOOT_CLIENT_TYPE) client_type);
+	  }
+
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
 
 	new_ctx->m_conn = new css_conn_entry;
@@ -839,6 +879,10 @@ namespace cubconn::master
 
     new_ctx->m_conn = conn;
     new_ctx->m_conn->request_id = request_id;
+    if (pending_client_type)
+      {
+	new_ctx->m_conn->client_type = (BOOT_CLIENT_TYPE) client_type;
+      }
     if (!this->prepare_reply (new_ctx, SERVER_CONNECTED))
       {
 	css_prepare_shutdown_conn (new_ctx->m_conn);
@@ -886,7 +930,7 @@ namespace cubconn::master
   {
     const int *buf;
     result status;
-    int request;
+    int packed_request, request;
 
     std::tie (status, buf) = buffered_socket::read_fixed_size<int> (ctx->m_conn->fd, ctx->m_recvbuf);
     if (status != result::Ok)
@@ -895,7 +939,9 @@ namespace cubconn::master
 	return status;
       }
 
-    request = ntohl (*buf);
+    packed_request = ntohl (*buf);
+    request = CSS_UNPACK_SERVER_REQUEST_CODE (packed_request);
+    ctx->m_pending_client_type = CSS_UNPACK_SERVER_REQUEST_CLIENT_TYPE (packed_request);
     ctx->m_recvbuf.mark_consumed ();
 
     er_log_debug (__FILE__, __LINE__, "cub_server received %d as request from master\n", request);

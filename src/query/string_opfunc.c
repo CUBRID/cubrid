@@ -68,6 +68,82 @@
 #include "misctype_def.h"
 #endif /* !defined (SERVER_MODE) */
 
+
+/* return codes of the qstr_like_match_lockstep_* () instances (like_match_lockstep.i) */
+#define QSTR_LIKE_LOCKSTEP_TRUE	      1
+#define QSTR_LIKE_LOCKSTEP_FALSE      0
+#define QSTR_LIKE_LOCKSTEP_ABORT      (-1)
+#define QSTR_LIKE_LOCKSTEP_FALLBACK   (-2)
+
+/* max recursion depth (one level per '%' group); deeper patterns fall back to the generic loop */
+#define QSTR_LIKE_LOCKSTEP_MAX_DEPTH  256
+
+/* UTF8 instance : literal equivalence with the pre-template matcher — {0x00, 0x20} space class,
+ * intl_Len_utf8_char stepping, memchr scan safe unless firstpat is a continuation byte */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_utf8
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      int nc_len_ = intl_Len_utf8_char[*(p)]; \
+      if (nc_len_ > (remain)) \
+	{ \
+	  /* truncated character : stop at buffer end to avoid an out-of-bounds pointer */ \
+	  (p) += (remain); \
+	  (remain) = -1; \
+	} \
+      else \
+	{ \
+	  (p) += nc_len_; \
+	  (remain) -= nc_len_; \
+	} \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) \
+  ((b1) == (b2) || (((b2) == 0x00 || (b2) == 0x20) && ((b1) == 0x00 || (b1) == 0x20)))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), LOCKSTEP_BYTE_EQ (*(t), (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) ((firstpat) < 0x80 || (firstpat) >= 0xC0)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
+
+/* SB instance (iso88591 identity-weight collations) : one byte per character; keeps the
+ * {0x00, 0x20} space class of lang_strmatch_byte () */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_sb
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      (p)++; \
+      (remain)--; \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) \
+  ((b1) == (b2) || (((b2) == 0x00 || (b2) == 0x20) && ((b1) == 0x00 || (b1) == 0x20)))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), LOCKSTEP_BYTE_EQ (*(t), (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) (1)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
+
+/* BINARY instance : pure byte equality mirroring lang_strmatch_binary (); the trailing 0x20
+ * pad rule comes from the generic driver */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_binary
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      (p)++; \
+      (remain)--; \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) ((b1) == (b2))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), (*(t) == (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) (1)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -154,7 +230,18 @@ typedef enum
 
 #define MAX_TOKEN_SIZE 16000
 
-#define GUID_STANDARD_BYTES_LENGTH 16
+static int uuidv4_generate_bytes (unsigned char *out_bytes);
+static int uuidv7_generate_bytes (UUID_STATE * base_state, UINT64 new_epoch_ms, unsigned char *out_bytes);
+
+#define UPPER_HEX_DIGIT "0123456789ABCDEF"
+
+#define UUID_FORMAT_LEN 36
+#define UUID_HEX_LEN 32
+
+/* NOTE: argument 'c' must be a simple expression; it is evaluated up to 6 times. */
+#define IS_HEX_CHAR(c) ((((unsigned char)(c) >= '0' && (unsigned char)(c) <= '9') \
+            || ((unsigned char)(c) >= 'A' && (unsigned char)(c) <= 'F') \
+            || ((unsigned char)(c) >= 'a' && (unsigned char)(c) <= 'f')))
 
 typedef enum
 {
@@ -200,6 +287,7 @@ static bool is_char_string (const DB_VALUE * s);
 static bool is_integer (const DB_VALUE * i);
 static bool is_number (const DB_VALUE * n);
 static int qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size);
+static void qstr_retype_char_to_varchar (DB_VALUE * result, int precision, int size, int codeset, int collation);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type, const unsigned char *s2,
 			int s2_length, int s2_precision, DB_TYPE s2_type, INTL_CODESET codeset, int *result_length,
@@ -440,7 +528,7 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
 
 	  if (!ignore_trailing_space)
 	    {
-	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) && QSTR_IS_FIXED_LENGTH (str2_type));
+	      ti = (QSTR_IS_PADDED_LENGTH (str1_type) && QSTR_IS_PADDED_LENGTH (str2_type));
 	    }
 	  cmp_result = QSTR_COMPARE (coll_id, DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
 				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2), ti);
@@ -1559,7 +1647,7 @@ db_string_space (DB_VALUE const *count, DB_VALUE * result)
 
       if (len > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, len,
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) len,
 		  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 	  db_make_null (result);
 	  return NO_ERROR;
@@ -2048,11 +2136,12 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 	  dummy.domain.general_info.is_null = 0;
 	}
 
-      expected_size = src_size * count_i;
+      expected_size = (DB_BIGINT) src_size *count_i;
       if (OR_CHECK_INT_OVERFLOW (expected_size))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, expected_size,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) expected_size,
 		  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
+	  pr_clear_value (&dummy);
 	  return ER_QPROC_STRING_SIZE_TOO_BIG;
 	}
 
@@ -2089,6 +2178,33 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
     }
 
   return error_status;
+}
+
+/*
+ * qstr_retype_char_to_varchar () - Retype a CHAR value to VARCHAR in place.
+ *   Preserve the compressed image (compressed_size > 0) across the rebuild,
+ *   since db_make_varchar() resets the compression fields.
+ */
+static void
+qstr_retype_char_to_varchar (DB_VALUE * result, int precision, int size, int codeset, int collation)
+{
+  if (result->data.ch.medium.compressed_size > 0)
+    {
+      char *saved_compressed_buf = result->data.ch.medium.compressed_buf;
+      int saved_compressed_size = result->data.ch.medium.compressed_size;
+
+      qstr_make_typed_string (DB_TYPE_VARCHAR, result, precision, db_get_string (result), size, codeset, collation);
+
+      result->data.ch.medium.compressed_buf = saved_compressed_buf;
+      result->data.ch.medium.compressed_size = saved_compressed_size;
+      result->data.ch.info.compressed_need_clear = 1;
+    }
+  else
+    {
+      qstr_make_typed_string (DB_TYPE_VARCHAR, result, precision, db_get_string (result), size, codeset, collation);
+    }
+
+  result->need_clear = true;
 }
 
 /*
@@ -2347,11 +2463,9 @@ db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const
 	  error_status = pr_clone_value ((DB_VALUE *) src_string, result);
 	  if (src_type == DB_TYPE_CHAR)
 	    {
-	      /* convert CHARACTER(N) to CHARACTER VARYING(N) */
-	      qstr_make_typed_string (DB_TYPE_VARCHAR, result,
-				      DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
-				      src_cs, src_coll);
-	      result->need_clear = true;
+	      /* convert CHARACTER(N) to CHARACTER VARYING(N), keeping any compressed image */
+	      qstr_retype_char_to_varchar (result, DB_VALUE_PRECISION (result), db_get_string_size (result), src_cs,
+					   src_coll);
 	    }
 
 	  if (error_status < 0)
@@ -2737,6 +2851,171 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
 }
 
 /*
+ * UUID_FORMAT(val) - format UUID string or bit as 8-4-4-4-12 hyphenated string
+ * Arguments
+ *	val: string (32 hex chars) or bit (128 bits) representing UUID without hyphens
+ *	result: DB_VALUE to receive the formatted UUID string (e.g. 'a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6')
+ */
+int
+db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
+{
+  char *hex_buf = NULL;
+  const char *str = NULL;
+  int str_size = 0;
+  int i, j;
+  static const int dash_pos[] = { 8, 13, 18, 23 };
+  static const int dash_len = 4;
+  DB_TYPE val_type;
+  bool is_bit_input = false;
+  int error_status = NO_ERROR;
+
+  assert (val != (DB_VALUE *) NULL);
+  assert (result != (DB_VALUE *) NULL);
+
+  if (DB_IS_NULL (val))
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  val_type = DB_VALUE_DOMAIN_TYPE (val);
+
+  hex_buf = (char *) db_private_alloc (NULL, UUID_FORMAT_LEN + 1);
+  if (hex_buf == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_status = er_errid ();
+      goto exit;
+    }
+
+  if (QSTR_IS_ANY_CHAR (val_type))
+    {
+      str = db_get_string (val);
+      str_size = db_get_string_length (val);
+
+      if (str_size == UUID_HEX_LEN)
+	{
+	  for (i = 0, j = 0; i < UUID_FORMAT_LEN; i++)
+	    {
+	      char c = (char) str[i - j];
+
+	      if (j < dash_len && i == dash_pos[j])
+		{
+		  j++;
+		  hex_buf[i++] = '-';
+		}
+
+	      if (IS_HEX_CHAR (c))
+		{
+		  hex_buf[i] = (char) toupper ((unsigned char) c);
+		}
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+		  goto exit;
+		}
+	    }
+	}
+      else if (str_size == UUID_FORMAT_LEN)
+	{
+	  /* 36-char string: already has hyphens, validate positions and hex chars */
+	  for (j = 0; j < dash_len; j++)
+	    {
+	      if (str[dash_pos[j]] != '-')
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+		  goto exit;
+		}
+	    }
+
+	  for (i = 0, j = 0; i < UUID_FORMAT_LEN; i++)
+	    {
+	      if (j < dash_len && i == dash_pos[j])
+		{
+		  hex_buf[i] = '-';
+		  j++;
+		}
+	      else
+		{
+		  char c = str[i];
+		  if (IS_HEX_CHAR (c))
+		    {
+		      hex_buf[i] = (char) toupper ((unsigned char) c);
+		    }
+		  else
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		      error_status = ER_QSTR_INVALID_UUID_FORMAT;
+		      goto exit;
+		    }
+		}
+	    }
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+	  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+	  goto exit;
+	}
+    }
+  else if (QSTR_IS_BIT (val_type))
+    {
+      str = db_get_bit (val, &str_size);
+      if (str_size != UUID_HEX_LEN * 4)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+	  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+	  goto exit;
+	}
+      for (i = 0, j = 0; i < UUID_HEX_LEN / 2; i++)
+	{
+	  if (j < dash_len && i == (dash_pos[j] - j) / 2)
+	    {
+	      hex_buf[i * 2 + j] = '-';
+	      j++;
+	    }
+	  hex_buf[i * 2 + j] = UPPER_HEX_DIGIT[((unsigned char) str[i] >> 4) & 0xF];
+	  hex_buf[i * 2 + 1 + j] = UPPER_HEX_DIGIT[(unsigned char) str[i] & 0xF];
+	}
+      is_bit_input = true;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+      error_status = ER_QSTR_INVALID_UUID_FORMAT;
+      goto exit;
+    }
+  hex_buf[UUID_FORMAT_LEN] = '\0';
+
+  if (is_bit_input)
+    {
+      /* Bit input: do not use db_get_string_codeset/collation (invalid for bit).
+       * Use db_make_string with allocated copy so result has a valid string representation. */
+      error_status = db_make_string (result, hex_buf);
+    }
+  else
+    {
+      error_status = db_make_varchar (result, UUID_FORMAT_LEN, hex_buf, UUID_FORMAT_LEN,
+				      db_get_string_codeset (val), db_get_string_collation (val));
+    }
+  if (error_status == NO_ERROR)
+    {
+      result->need_clear = true;
+    }
+
+exit:
+  if (error_status != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, hex_buf);
+      db_make_null (result);
+    }
+
+  return error_status;
+}
+
+/*
  * db_string_insert_substring - insert a substring into a string replacing
  *				"length" characters starting at "position"
  *
@@ -3009,9 +3288,8 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
   /* force type to variable string */
   if (src_type == DB_TYPE_CHAR)
     {
-      /* convert CHARACTER(N) to CHARACTER VARYING(N) */
-      qstr_make_typed_string (DB_TYPE_VARCHAR, result,
-			      TP_FLOATING_PRECISION_VALUE, db_get_string (result), result_size, src_cs, src_coll);
+      /* convert CHARACTER(N) to CHARACTER VARYING(N), keeping any compressed image */
+      qstr_retype_char_to_varchar (result, TP_FLOATING_PRECISION_VALUE, result_size, src_cs, src_coll);
     }
   else if (src_type == DB_TYPE_BIT)
     {
@@ -3691,7 +3969,7 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
 
 	  if (!ignore_trailing_space)
 	    {
-	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) && QSTR_IS_FIXED_LENGTH (str2_type));
+	      ti = (QSTR_IS_PADDED_LENGTH (str1_type) && QSTR_IS_PADDED_LENGTH (str2_type));
 	    }
 	  cmp_result = QSTR_COMPARE (coll_id, DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
 				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2), ti);
@@ -4041,7 +4319,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
     }
   if ((UINT64) result_size > prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_size,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) result_size,
 	      (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
       db_private_free_and_init (NULL, result);
       return ER_QPROC_STRING_SIZE_TOO_BIG;
@@ -5274,10 +5552,9 @@ exit_copy:
     DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src);
     if (src_type == DB_TYPE_CHAR)
       {
-	/* convert CHARACTER(N) to CHARACTER VARYING(N) */
-	qstr_make_typed_string (DB_TYPE_VARCHAR, result,
-				DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
-				db_get_string_codeset (src), db_get_string_collation (src));
+	/* convert CHARACTER(N) to CHARACTER VARYING(N), keeping any compressed image */
+	qstr_retype_char_to_varchar (result, DB_VALUE_PRECISION (result), db_get_string_size (result),
+				     db_get_string_codeset (src), db_get_string_collation (src));
       }
     result->need_clear = true;
   }
@@ -5623,7 +5900,7 @@ db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int
       memcpy (r, db_get_string (src_string), adj_char_size);
     }
   /* adjust also domain precision in case of fixed length types */
-  if (QSTR_IS_FIXED_LENGTH (src_type))
+  if (QSTR_IS_PADDED_LENGTH (src_type))
     {
       src_domain_precision = MIN (src_domain_precision, char_count);
     }
@@ -5726,6 +6003,56 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 
   current_collation = lang_get_collation (coll_id);
   intl_pad_char (codeset, pad_char, &pad_char_size);
+
+  /* byte-lockstep fast path dispatch; the kind<->codeset cross-guard keeps a mis-tagged
+   * collation on the generic loop. Multi-byte escapes and escapes colliding with a
+   * wildcard change wildcard interpretation, so those fall through as well */
+  if (escape == NULL
+      || ((unsigned char) *escape < 0x80 && *escape != LIKE_WILDCARD_MATCH_MANY && *escape != LIKE_WILDCARD_MATCH_ONE))
+    {
+      int match = QSTR_LIKE_LOCKSTEP_FALLBACK;
+      int escape_byte = (escape != NULL) ? (int) (unsigned char) *escape : -1;
+
+      switch (current_collation->byte_lockstep_kind)
+	{
+	case LANG_LOCKSTEP_UTF8:
+	  if (codeset == INTL_CODESET_UTF8)
+	    {
+	      match = qstr_like_match_lockstep_utf8 (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						     REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						     escape_byte, 0);
+	    }
+	  break;
+	case LANG_LOCKSTEP_SB:
+	  /* escape 0x00/0x20 stays on the generic loop : lang_strmatch_byte () folds
+	   * SPACE to weight zero before its escape comparison, so such an escape
+	   * never matches there */
+	  if (codeset == INTL_CODESET_ISO88591 && escape_byte != 0x00 && escape_byte != 0x20)
+	    {
+	      match = qstr_like_match_lockstep_sb (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						   REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						   escape_byte, 0);
+	    }
+	  break;
+	case LANG_LOCKSTEP_BINARY:
+	  if (codeset == INTL_CODESET_BINARY)
+	    {
+	      match = qstr_like_match_lockstep_binary (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						       REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						       escape_byte, 0);
+	    }
+	  break;
+	default:
+	  break;
+	}
+
+      if (match != QSTR_LIKE_LOCKSTEP_FALLBACK)
+	{
+	  return (match == QSTR_LIKE_LOCKSTEP_TRUE) ? V_TRUE : V_FALSE;
+	}
+      /* ineligible kind, kind/codeset mismatch or pathologically deep pattern :
+       * fall through to the generic loop */
+    }
 
   tar_ptr = REINTERPRET_CAST (const unsigned char *, tar);
   expr_ptr = REINTERPRET_CAST (const unsigned char *, expr);
@@ -6567,13 +6894,10 @@ db_bit_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_DA
       int dest_prec;
       int dest_length;
 
-      if (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE)
+      dest_prec = DB_VALUE_PRECISION (dest_string);
+      if (dest_prec == TP_FLOATING_PRECISION_VALUE)
 	{
 	  dest_prec = db_get_string_length (src_string);
-	}
-      else
-	{
-	  dest_prec = DB_VALUE_PRECISION (dest_string);
 	}
 
       error_status = qstr_bit_coerce (DB_GET_UCHAR (src_string), db_get_string_length (src_string),
@@ -6678,13 +7002,10 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
 	}
 
       /* Initialize the memory manager of the destination */
-      if (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE)
+      dest_prec = DB_VALUE_PRECISION (dest_string);
+      if (dest_prec == TP_FLOATING_PRECISION_VALUE)
 	{
 	  dest_prec = db_get_string_length (src_string);
-	}
-      else
-	{
-	  dest_prec = DB_VALUE_PRECISION (dest_string);
 	}
 
       error_status = qstr_coerce (DB_GET_UCHAR (src_string), db_get_string_length (src_string),
@@ -8381,7 +8702,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
 
   if (result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_size,
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) result_size,
 	      (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 
       db_make_null (result);
@@ -8471,7 +8792,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
    *  we are through.
    */
 
-  if (QSTR_IS_FIXED_LENGTH (s1_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type))
     {
       s1_logical_length = s1_precision;
     }
@@ -8481,7 +8802,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
     }
 
 
-  if (QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s2_type))
     {
       s2_logical_length = s2_precision;
     }
@@ -8494,7 +8815,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
    *  If both source strings are fixed-length, the concatenated
    *  result will be fixed-length.
    */
-  if (QSTR_IS_FIXED_LENGTH (s1_type) && QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type) && QSTR_IS_PADDED_LENGTH (s2_type))
     {
       /*
        *  The result will be a chararacter string of length =
@@ -8666,7 +8987,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
    *  characters are present.  They all will be by the time
    *  we are through.
    */
-  if (QSTR_IS_FIXED_LENGTH (s1_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type))
     {
       s1_logical_length = s1_precision;
     }
@@ -8676,7 +8997,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
     }
 
 
-  if (QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s2_type))
     {
       s2_logical_length = s2_precision;
     }
@@ -8689,7 +9010,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
    *  If both source strings are fixed-length, the concatenated
    *  result will be fixed-length.
    */
-  if (QSTR_IS_FIXED_LENGTH (s1_type) && QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type) && QSTR_IS_PADDED_LENGTH (s2_type))
     {
       /*
        * The only time we enter inside this if statement is 
@@ -8859,7 +9180,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 
 size_error:
   error_status = ER_QPROC_STRING_SIZE_TOO_BIG;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, *result_size,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, (size_t) * result_size,
 	  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
   /*
@@ -9071,7 +9392,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 
 size_error:
   error_status = ER_QPROC_STRING_SIZE_TOO_BIG;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, *result_size,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, (size_t) * result_size,
 	  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
 
@@ -9333,7 +9654,7 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
    *  <src_padded_length> is the length of the fully padded
    *  source string.
    */
-  if (QSTR_IS_FIXED_LENGTH (src_type))
+  if (QSTR_IS_PADDED_LENGTH (src_type))
     {
       src_padded_length = src_precision;
     }
@@ -9381,7 +9702,7 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
    *    Allocate enough for a fully padded source string, copy
    *    the source string and pad the rest.
    */
-  if (QSTR_IS_FIXED_LENGTH (dest_type))
+  if (QSTR_IS_PADDED_LENGTH (dest_type))
     {
       *dest_length = dest_precision;
     }
@@ -9444,7 +9765,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
    *  <src_padded_length> is the length of the fully padded
    *  source string.
    */
-  if (QSTR_IS_FIXED_LENGTH (src_type))
+  if (QSTR_IS_PADDED_LENGTH (src_type))
     {
       src_padded_length = src_precision;
     }
@@ -9480,7 +9801,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
    *    Allocate enough for a fully padded source string, copy
    *    the source string and pad the rest.
    */
-  if (QSTR_IS_FIXED_LENGTH (dest_type))
+  if (QSTR_IS_PADDED_LENGTH (dest_type))
     {
       *dest_length = dest_precision;
     }
@@ -9503,7 +9824,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 	      copy_size = dest_precision;
 	    }
 	  copy_length = copy_size;
-	  if (QSTR_IS_VARIABLE_LENGTH (dest_type))
+	  if (QSTR_IS_UNPADDED_LENGTH (dest_type))
 	    {
 	      *dest_length = copy_length;
 	    }
@@ -25908,9 +26229,6 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
     0xFFFFFFFFFFFFFFFF
   };
 
-  /* hex digits */
-  const char hex_digit[] = "0123456789ABCDEF";
-
   /* other variables */
   DB_TYPE param_type = DB_TYPE_UNKNOWN;
   const char *str = NULL;
@@ -25977,8 +26295,8 @@ coerce_pos:
       /* compute hex representation */
       for (i = 0; i < str_size; i++)
 	{
-	  hexval[i * 2] = hex_digit[(str[i] >> 4) & 0xF];
-	  hexval[i * 2 + 1] = hex_digit[str[i] & 0xF];
+	  hexval[i * 2] = UPPER_HEX_DIGIT[((unsigned char) str[i] >> 4) & 0xF];
+	  hexval[i * 2 + 1] = UPPER_HEX_DIGIT[(unsigned char) str[i] & 0xF];
 	}
 
       /* set return string */
@@ -26025,7 +26343,7 @@ coerce_pos:
       /* compute hex representation */
       for (i = hexval_len - 1; i >= 0; --i)
 	{
-	  hexval[i] = hex_digit[param_bigint & 0xF];
+	  hexval[i] = UPPER_HEX_DIGIT[param_bigint & 0xF];
 	  param_bigint >>= 4;
 	}
 
@@ -26080,20 +26398,18 @@ error:
   return error_code;
 }
 
-#if !defined (CS_MODE)
 /*
- * db_guid() - Generate a type 4 (randomly generated) UUID.
+ * db_uuidv4() - Generate a type 4 (randomly generated) UUID String.
  *   return: error code or NO_ERROR
- *   thread_p(in): thread context
- *   result(out): HEX encoded UUID string
+ *   result(out): HEX encoded UUID string(32-character uppercase hexadecimal)
  * Note:
+ *   Behavior matches SQL function SYS_GUID()
  */
 int
-db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
+db_uuidv4 (DB_VALUE * result)
 {
   int i = 0, error_code = NO_ERROR;
-  const char hex_digit[] = "0123456789ABCDEF";
-  char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
+  unsigned char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
   char *guid_hex = NULL;
 
   if (result == NULL)
@@ -26105,25 +26421,14 @@ db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
 
   db_make_null (result);
 
-  /* Generate random bytes */
-  error_code = crypt_generate_random_bytes (guid_bytes, GUID_STANDARD_BYTES_LENGTH);
-
+  /* Generate UUIDv4 bytes using helper */
+  error_code = uuidv4_generate_bytes (guid_bytes);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  /* Clear UUID version field */
-  guid_bytes[6] &= 0x0F;
-  /* Set UUID version according to UUID version 4 protocol */
-  guid_bytes[6] |= 0x40;
-
-  /* Clear variant field */
-  guid_bytes[8] &= 0x3f;
-  /* Set variant according to UUID version 4 protocol */
-  guid_bytes[8] |= 0x80;
-
-  guid_hex = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH * 2 + 1);
+  guid_hex = (char *) db_private_alloc (NULL, GUID_STANDARD_BYTES_LENGTH * 2 + 1);
   if (guid_hex == NULL)
     {
       error_code = er_errid ();
@@ -26135,8 +26440,8 @@ db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
   /* Encode the bytes to HEX */
   for (i = 0; i < GUID_STANDARD_BYTES_LENGTH; i++)
     {
-      guid_hex[i * 2] = hex_digit[(guid_bytes[i] >> 4) & 0xF];
-      guid_hex[i * 2 + 1] = hex_digit[(guid_bytes[i] & 0xF)];
+      guid_hex[i * 2] = UPPER_HEX_DIGIT[((unsigned char) guid_bytes[i] >> 4) & 0xF];
+      guid_hex[i * 2 + 1] = UPPER_HEX_DIGIT[(unsigned char) guid_bytes[i] & 0xF];
     }
 
   db_make_string (result, guid_hex);
@@ -26145,15 +26450,184 @@ db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
   return NO_ERROR;
 
 error:
-  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-    {
-      er_clear ();
-      error_code = NO_ERROR;
-    }
-
   return error_code;
 }
-#endif /* !defined (CS_MODE) */
+
+/*
+ * db_uuid_bin() - Generate a UUID and return as BIT(128) value.
+ *   return: error code or NO_ERROR
+ *   version(in): UUID version
+ *   base_state(in/out): Required if the version belongs to timebased UUID (UUID_V7). 
+ *     Use the variable address from the current generator context:
+ *     THREAD_ENTRY on server, PARSER_CONTEXT on CAS.
+ *   epoch_ms(in): Required if the version belongs to timebased UUID (UUID_V7).
+ *     Epoch time in milliseconds compares with base_state.
+ *   result(out): BIT(128) DB_VALUE
+ */
+int
+db_uuid_bin (UUID_VERSION version, UUID_STATE * base_state, uint64_t epoch_ms, DB_VALUE * result)
+{
+  int error_code = NO_ERROR;
+  char *guid_bytes = NULL;
+
+  if (result == NULL)
+    {
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto error;
+    }
+
+  db_make_null (result);
+
+  guid_bytes = (char *) db_private_alloc (NULL, GUID_STANDARD_BYTES_LENGTH);
+  if (guid_bytes == NULL)
+    {
+      error_code = er_errid ();
+      goto error;
+    }
+
+  switch (version)
+    {
+    case UUID_V4:
+      error_code = uuidv4_generate_bytes ((unsigned char *) guid_bytes);
+      break;
+    case UUID_V7:
+      error_code = uuidv7_generate_bytes (base_state, epoch_ms, (unsigned char *) guid_bytes);
+      break;
+    case UUID_UNSUPPORTED:
+    default:
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto error;
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_bit (result, GUID_STANDARD_BYTES_LENGTH * 8, guid_bytes, GUID_STANDARD_BYTES_LENGTH * 8);
+  result->need_clear = true;
+
+  return NO_ERROR;
+
+error:
+  if (guid_bytes != NULL)
+    {
+      db_private_free (NULL, guid_bytes);
+    }
+  return error_code;
+}
+
+/*
+ * uuidv7_generate_bytes() - Generate UUIDv7 bytes using per-thread monotonic state.
+ *   return: error code or NO_ERROR
+ *   base_state(in/out): CAN NOT be NULL. 
+ *     Use the variable address from the current generator context:
+ *     THREAD_ENTRY on server, PARSER_CONTEXT on CAS.
+ *   new_epoch_ms(in): epoch time in milliseconds
+ *   out_bytes(out): 16-byte UUID output buffer
+ * Note:
+ *   UUIDv7 layout (RFC 9562):
+ *   - Octets 0-5 (bits 0 ~ 47): Unix timestamp in milliseconds (big-endian)
+ *     - GUID_V7_TS_BYTES_LENGTH
+ *   - Octet 6 (bits 48 ~ 51): version (0x7)
+ *   - Octets 6-7 (bits 52 ~ 59): seq (sequence counter)
+ *     - GUID_V7_SEQ_BITS
+ *   - Octet 7 (bits 60 ~ 63): random_a
+ *   - Octet 8 (bits 64 ~ 65): variant (0b10)
+ *   - Octets 8-15 (bits 66 ~ 127): random_b
+ *
+ *   This implementation uses per-thread state for monotonic ordering within a thread.
+ *   The epoch_ms comes from the (query's xasl_state.vd) or (parser's sys_datetime and sys_epochtime) for efficiency and
+ *   consistency within a single query execution.
+ */
+static int
+uuidv7_generate_bytes (UUID_STATE * base_state, UINT64 new_epoch_ms, unsigned char *out_bytes)
+{
+  int i = 0, error_code = NO_ERROR;
+
+  assert (base_state != NULL);
+
+  if (new_epoch_ms > *base_state->last_ms)
+    {
+      /* New millisecond: reset sequence */
+      *base_state->last_ms = new_epoch_ms;
+      *base_state->seq = 0;
+    }
+  else
+    {
+      /* 
+       * Cases
+       *   1. Same millisecond
+       *   2. Same Query Context
+       *   3. Clock went backwards
+       *   : use last_ms to preserve monotonicity
+       * Increment sequence to ensure uniqueness within the same effective timestamp
+       */
+      ++(*base_state->seq);
+      if (*base_state->seq == 0)
+	{
+	  /* Sequence overflow
+	   *   (seq is uint8_t and GUID_V7_SEQ_MAX represents maximum value of an 8-bit)
+	   *   : advance timestamp by 1ms to preserve monotonicity 
+	   */
+	  ++(*base_state->last_ms);
+	}
+    }
+
+  /* Generate random bytes for the lower part (bytes 7-15) */
+  error_code = crypt_generate_random_bytes ((char *) (out_bytes + 7), GUID_STANDARD_BYTES_LENGTH - 7);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* Fill timestamp (bytes 0-5, big-endian) */
+  for (i = 0; i < GUID_V7_TS_BYTES_LENGTH; i++)
+    {
+      out_bytes[i] = (unsigned char) ((*base_state->last_ms >> ((GUID_V7_TS_BYTES_LENGTH - i - 1) * 8)) & 0xFF);
+    }
+
+  /* Set version (byte 6 high nibble = 0x7) and embed seq high 4 bits in byte 6 low nibble */
+  out_bytes[6] = (unsigned char) (0x70 | ((*base_state->seq >> 4) & 0x0F));
+
+  /* Set seq low 4bits in byte 7 high nibble and remain low nibble as random */
+  out_bytes[7] = (unsigned char) (((*base_state->seq & 0x0F) << 4) | (out_bytes[7] & 0x0F));
+
+  /* Set variant (byte 8 high 2 bits = 0b10) */
+  out_bytes[8] = (unsigned char) ((out_bytes[8] & 0x3F) | 0x80);
+
+  return NO_ERROR;
+}
+
+/*
+ * uuidv4_generate_bytes() - Generate UUIDv4 bytes (random UUID).
+ *   return: error code or NO_ERROR
+ *   out_bytes(out): 16-byte UUID output buffer
+ * Note:
+ *   UUIDv4 is fully random except for version and variant bits.
+ */
+static int
+uuidv4_generate_bytes (unsigned char *out_bytes)
+{
+  int error_code = NO_ERROR;
+
+  /* Generate random bytes */
+  error_code = crypt_generate_random_bytes ((char *) out_bytes, GUID_STANDARD_BYTES_LENGTH);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* Set version field (byte 6 high nibble = 0x4) */
+  out_bytes[6] = (unsigned char) ((out_bytes[6] & 0x0F) | 0x40);
+
+  /* Set variant field (byte 8 high 2 bits = 0b10) */
+  out_bytes[8] = (unsigned char) ((out_bytes[8] & 0x3F) | 0x80);
+
+  return NO_ERROR;
+}
 
 /*
  * db_ascii() - return ASCII code of first character in string
