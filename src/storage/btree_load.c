@@ -3252,7 +3252,7 @@ bt_load_new_page_serial (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BTREE_N
 			 VPID * vpid_new, PAGE_PTR * page_new)
 {
   return btree_load_new_page (thread_p, load_args->btid->sys_btid, header, node_level, vpid_new, page_new,
-			     load_args->ovf_v2);
+			      load_args->ovf_v2);
 }
 
 static int
