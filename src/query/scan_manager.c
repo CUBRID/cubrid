@@ -8499,6 +8499,7 @@ scan_print_stats_json (SCAN_ID * scan_id, cub_json_t * scan_stats)
 	      agl_index = (char *) malloc (len);
 	      if (agl_index == NULL)
 		{
+		  cub_json_decref (scan);
 		  return;
 		}
 

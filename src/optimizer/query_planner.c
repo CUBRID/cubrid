@@ -13316,6 +13316,12 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   json = qo_plan_print_json (plan);
+  if (json == NULL)
+    {
+      /* a plan type this dump has nothing to say about; recording an empty
+       * entry would only make every reader of plan_trace guard against it */
+      return;
+    }
 
   if (select->info.query.order_by)
     {
