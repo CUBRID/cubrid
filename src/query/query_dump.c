@@ -126,8 +126,9 @@ static int qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_N
 #endif /* CUBRID_DEBUG */
 static const char *qdump_hashjoin_type_string (HASH_METHOD hash_method);
 static void qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent);
-static void qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent);
-static void qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor, json_t * parent);
+static void qdump_print_hashjoin_stats_json (xasl_node * xasl_p, cub_json_t * parent);
+static void qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor,
+						cub_json_t * parent);
 
 /*
  * qdump_print_xasl_type () -
@@ -2862,15 +2863,15 @@ qdump_xasl_type_string (XASL_NODE * xasl_p)
  *   spec_list_p(in):
  *   proc(in):
  */
-static json_t *
+static cub_json_t *
 qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 {
   TARGET_TYPE type;
   char *class_name = NULL, *index_name = NULL;
   CLS_SPEC_TYPE *cls_node;
   ACCESS_SPEC_TYPE *spec;
-  json_t *scan = NULL, *scan_array = NULL;
-  json_t *part_scan = NULL, *part_scan_array = NULL;
+  cub_json_t *scan = NULL, *scan_array = NULL;
+  cub_json_t *part_scan = NULL, *part_scan_array = NULL;
   int num_spec = 0;
   char spec_name[1024];
   THREAD_ENTRY *thread_p;
@@ -2884,12 +2885,12 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
   if (num_spec > 1)
     {
-      scan_array = json_array ();
+      scan_array = cub_json_array ();
     }
 
   for (spec = spec_list_p; spec != NULL; spec = spec->next)
     {
-      scan = json_object ();
+      scan = cub_json_object ();
       type = spec->type;
 
       if (type == TARGET_CLASS)
@@ -2933,7 +2934,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 		}
 	    }
 
-	  json_object_set_new (scan, "access", json_string (spec_name));
+	  cub_json_object_set_new (scan, "access", cub_json_string (spec_name));
 
 	  if (class_name != NULL)
 	    {
@@ -2956,7 +2957,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	      /* save */
 	      memcpy (&save_stats, &spec->s_id.scan_stats, sizeof (SCAN_STATS));
 
-	      part_scan_array = json_array ();
+	      part_scan_array = cub_json_array ();
 
 	      for (curr_part = spec->parts; curr_part != NULL; prev_part = curr_part, curr_part = curr_part->next)
 		{
@@ -2968,7 +2969,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 		      continue;
 		    }
 
-		  part_scan = json_object ();
+		  part_scan = cub_json_object ();
 
 		  if (heap_get_class_name (thread_p, &curr_part->oid, &class_name) != NO_ERROR)
 		    {
@@ -3017,7 +3018,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 		      break;
 		    }
 
-		  json_object_set_new (part_scan, "access", json_string (spec_name));
+		  cub_json_object_set_new (part_scan, "access", cub_json_string (spec_name));
 
 		  memcpy (scan_stats, &curr_part->scan_stats, sizeof (SCAN_STATS));
 
@@ -3026,7 +3027,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
 		  scan_print_stats_json (&spec->s_id, part_scan);
 
-		  json_array_append_new (part_scan_array, part_scan);
+		  cub_json_array_append_new (part_scan_array, part_scan);
 
 		  if (class_name != NULL)
 		    {
@@ -3045,34 +3046,34 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	}
       else if (type == TARGET_LIST)
 	{
-	  json_object_set_new (scan, "access", json_string ("temp"));
+	  cub_json_object_set_new (scan, "access", cub_json_string ("temp"));
 	}
       else if (type == TARGET_SHOWSTMT)
 	{
-	  json_object_set_new (scan, "access", json_string ("show"));
+	  cub_json_object_set_new (scan, "access", cub_json_string ("show"));
 	}
       else if (type == TARGET_SET)
 	{
-	  json_object_set_new (scan, "access", json_string ("set"));
+	  cub_json_object_set_new (scan, "access", cub_json_string ("set"));
 	}
       else if (type == TARGET_METHOD)
 	{
-	  json_object_set_new (scan, "access", json_string ("method"));
+	  cub_json_object_set_new (scan, "access", cub_json_string ("method"));
 	}
       else if (type == TARGET_CLASS_ATTR)
 	{
-	  json_object_set_new (scan, "access", json_string ("class_attr"));
+	  cub_json_object_set_new (scan, "access", cub_json_string ("class_attr"));
 	}
       else if (type == TARGET_DBLINK)
 	{
-	  json_object_set_new (scan, "access", json_string ("dblink"));
+	  cub_json_object_set_new (scan, "access", cub_json_string ("dblink"));
 	}
 
       scan_print_stats_json (&spec->s_id, scan);
 
       if (part_scan_array != NULL)
 	{
-	  json_object_set_new (scan, "PARTITION", part_scan_array);
+	  cub_json_object_set_new (scan, "PARTITION", part_scan_array);
 	}
 
 #if !WINDOWS
@@ -3120,7 +3121,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
       if (scan_array != NULL)
 	{
-	  json_array_append_new (scan_array, scan);
+	  cub_json_array_append_new (scan_array, scan);
 	}
     }
 
@@ -3135,16 +3136,16 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 }
 
 void
-qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor, json_t * parent)
+qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor, cub_json_t * parent)
 {
-  json_t *input;
-  input = json_object ();
-  json_object_set_new (input, "parallel_workers", json_integer (px_executor->get_parallelism () + 1));
-  json_object_set_new (input, "time", json_integer (TO_MSEC (px_executor->get_stats ().elapsed_time)));
-  json_object_set_new (input, "fetch", json_integer (px_executor->get_stats ().fetches));
-  json_object_set_new (input, "fetch_time", json_integer (px_executor->get_stats ().fetch_time));
-  json_object_set_new (input, "ioread", json_integer (px_executor->get_stats ().ioreads));
-  json_object_set_new (parent, "parallel subquery execution", input);
+  cub_json_t *input;
+  input = cub_json_object ();
+  cub_json_object_set_new (input, "parallel_workers", cub_json_integer (px_executor->get_parallelism () + 1));
+  cub_json_object_set_new (input, "time", cub_json_integer (TO_MSEC (px_executor->get_stats ().elapsed_time)));
+  cub_json_object_set_new (input, "fetch", cub_json_integer (px_executor->get_stats ().fetches));
+  cub_json_object_set_new (input, "fetch_time", cub_json_integer (px_executor->get_stats ().fetch_time));
+  cub_json_object_set_new (input, "ioread", cub_json_integer (px_executor->get_stats ().ioreads));
+  cub_json_object_set_new (parent, "parallel subquery execution", input);
 }
 
 /*
@@ -3153,20 +3154,20 @@ qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_
  *   xasl_p(in):
  */
 void
-qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
+qdump_print_stats_json (xasl_node * xasl_p, cub_json_t * parent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
   ANALYTIC_STATS *astats;
-  json_t *proc, *scan = NULL;
-  json_t *subquery, *groupby, *orderby, *analytic, *parallel;
-  json_t *outer, *inner;
-  json_t *cte_non_recursive_part, *cte_recursive_part;
-  json_t *temp;
-  json_t *func;
+  cub_json_t *proc, *scan = NULL;
+  cub_json_t *subquery, *groupby, *orderby, *analytic, *parallel;
+  cub_json_t *outer, *inner;
+  cub_json_t *cte_non_recursive_part, *cte_recursive_part;
+  cub_json_t *temp;
+  cub_json_t *func;
   xasl_node *xptr;
-  json_t *sq_cache;
-  json_t *memoize;
+  cub_json_t *sq_cache;
+  cub_json_t *memoize;
 
   if (xasl_p == NULL || parent == NULL)
     {
@@ -3179,8 +3180,8 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     }
   else
     {
-      proc = json_object ();
-      json_object_set_new (parent, qdump_xasl_type_string (xasl_p), proc);
+      proc = cub_json_object ();
+      cub_json_object_set_new (parent, qdump_xasl_type_string (xasl_p), proc);
     }
 
   switch (xasl_p->type)
@@ -3192,46 +3193,46 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
     case INSERT_PROC:
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
-      json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
-      json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
-      json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+      cub_json_object_set_new (proc, "time", cub_json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+      cub_json_object_set_new (proc, "fetch", cub_json_integer (xasl_p->xasl_stats.fetches));
+      cub_json_object_set_new (proc, "fetch_time", cub_json_integer (xasl_p->xasl_stats.fetch_time));
+      cub_json_object_set_new (proc, "ioread", cub_json_integer (xasl_p->xasl_stats.ioreads));
       if (xasl_p->func_stats.calls > 0)
 	{
-	  func = json_object ();
-	  json_object_set_new (func, "time", json_integer (xasl_p->func_stats.time));
-	  json_object_set_new (func, "fetch", json_integer (xasl_p->func_stats.fetches));
-	  json_object_set_new (func, "ioread", json_integer (xasl_p->func_stats.ioreads));
-	  json_object_set_new (func, "calls", json_integer (xasl_p->func_stats.calls));
+	  func = cub_json_object ();
+	  cub_json_object_set_new (func, "time", cub_json_integer (xasl_p->func_stats.time));
+	  cub_json_object_set_new (func, "fetch", cub_json_integer (xasl_p->func_stats.fetches));
+	  cub_json_object_set_new (func, "ioread", cub_json_integer (xasl_p->func_stats.ioreads));
+	  cub_json_object_set_new (func, "calls", cub_json_integer (xasl_p->func_stats.calls));
 
-	  json_object_set_new (proc, "func", func);
+	  cub_json_object_set_new (proc, "func", func);
 	}
       break;
 
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
-      json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
-      json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
-      subquery = json_array ();
+      cub_json_object_set_new (proc, "time", cub_json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+      cub_json_object_set_new (proc, "fetch", cub_json_integer (xasl_p->xasl_stats.fetches));
+      cub_json_object_set_new (proc, "fetch_time", cub_json_integer (xasl_p->xasl_stats.fetch_time));
+      cub_json_object_set_new (proc, "ioread", cub_json_integer (xasl_p->xasl_stats.ioreads));
+      subquery = cub_json_array ();
       if (xasl_p->px_executor)
 	{
 	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, proc);
 	}
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  temp = json_object ();
+	  temp = cub_json_object ();
 	  qdump_print_stats_json (xptr, temp);
-	  json_array_append_new (subquery, temp);
+	  cub_json_array_append_new (subquery, temp);
 	}
-      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
+      cub_json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
       break;
 
     case MERGELIST_PROC:
-      outer = json_object ();
-      inner = json_object ();
+      outer = cub_json_object ();
+      inner = cub_json_object ();
 
       qdump_print_stats_json (xasl_p->proc.mergelist.outer_xasl, outer);
       qdump_print_stats_json (xasl_p->proc.mergelist.inner_xasl, inner);
@@ -3241,43 +3242,43 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, proc);
 	}
 
-      json_object_set_new (proc, "outer", outer);
-      json_object_set_new (proc, "inner", inner);
+      cub_json_object_set_new (proc, "outer", outer);
+      cub_json_object_set_new (proc, "inner", inner);
       break;
 
     case HASHJOIN_PROC:
-      json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
-      json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
-      json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+      cub_json_object_set_new (proc, "time", cub_json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+      cub_json_object_set_new (proc, "fetch", cub_json_integer (xasl_p->xasl_stats.fetches));
+      cub_json_object_set_new (proc, "fetch_time", cub_json_integer (xasl_p->xasl_stats.fetch_time));
+      cub_json_object_set_new (proc, "ioread", cub_json_integer (xasl_p->xasl_stats.ioreads));
       if (xasl_p->proc.hashjoin.stats_group.status == HASHJOIN_STATUS_PARALLEL && xasl_p->executed_parallelism > 1)
 	{
-	  json_object_set_new (proc, "parallel workers", json_integer (xasl_p->executed_parallelism));
+	  cub_json_object_set_new (proc, "parallel workers", cub_json_integer (xasl_p->executed_parallelism));
 	}
       qdump_print_hashjoin_stats_json (xasl_p, proc);
       break;
 
     case MERGE_PROC:
-      inner = json_object ();
-      outer = json_object ();
+      inner = cub_json_object ();
+      outer = cub_json_object ();
 
       qdump_print_stats_json (xasl_p->proc.merge.update_xasl, inner);
       qdump_print_stats_json (xasl_p->proc.merge.insert_xasl, outer);
 
-      json_object_set_new (proc, "update", inner);
-      json_object_set_new (proc, "insert", outer);
+      cub_json_object_set_new (proc, "update", inner);
+      cub_json_object_set_new (proc, "insert", outer);
       break;
 
     case CTE_PROC:
-      cte_non_recursive_part = json_object ();
+      cte_non_recursive_part = cub_json_object ();
       qdump_print_stats_json (xasl_p->proc.cte.non_recursive_part, cte_non_recursive_part);
-      json_object_set_new (proc, "non_recursive_part", cte_non_recursive_part);
+      cub_json_object_set_new (proc, "non_recursive_part", cte_non_recursive_part);
 
       if (xasl_p->proc.cte.recursive_part != NULL)
 	{
-	  cte_recursive_part = json_object ();
+	  cte_recursive_part = cub_json_object ();
 	  qdump_print_stats_json (xasl_p->proc.cte.recursive_part, cte_recursive_part);
-	  json_object_set_new (proc, "recursive_part", cte_recursive_part);
+	  cub_json_object_set_new (proc, "recursive_part", cte_recursive_part);
 	}
       break;
 
@@ -3298,18 +3299,19 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
   if (xasl_p->memoize_storage && xasl_p->memoize_storage->hit > 0)
     {
-      memoize = json_object ();
-      json_object_set_new (memoize, "time", json_integer (TO_MSEC (xasl_p->memoize_storage->m_elapsed_time)));
-      json_object_set_new (memoize, "hit", json_integer (xasl_p->memoize_storage->hit));
-      json_object_set_new (memoize, "miss", json_integer (xasl_p->memoize_storage->miss));
-      json_object_set_new (memoize, "size", json_integer (xasl_p->memoize_storage->get_current_size () / 1024));
-      json_object_set_new (memoize, "enabled", json_boolean (xasl_p->memoize_storage->is_disabled ()? false : true));
-      json_object_set_new (proc, "MEMOIZE", memoize);
+      memoize = cub_json_object ();
+      cub_json_object_set_new (memoize, "time", cub_json_integer (TO_MSEC (xasl_p->memoize_storage->m_elapsed_time)));
+      cub_json_object_set_new (memoize, "hit", cub_json_integer (xasl_p->memoize_storage->hit));
+      cub_json_object_set_new (memoize, "miss", cub_json_integer (xasl_p->memoize_storage->miss));
+      cub_json_object_set_new (memoize, "size", cub_json_integer (xasl_p->memoize_storage->get_current_size () / 1024));
+      cub_json_object_set_new (memoize, "enabled",
+			       cub_json_boolean (xasl_p->memoize_storage->is_disabled ()? false : true));
+      cub_json_object_set_new (proc, "MEMOIZE", memoize);
     }
 
   if (scan != NULL)
     {
-      json_object_set_new (proc, "SCAN", scan);
+      cub_json_object_set_new (proc, "SCAN", scan);
       qdump_print_stats_json (xasl_p->scan_ptr, scan);
     }
   else
@@ -3321,103 +3323,103 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
   if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE) && SQ_CACHE_HIT (xasl_p) > 0)
     {
-      sq_cache = json_object ();
-      json_object_set_new (sq_cache, "hit", json_integer (SQ_CACHE_HIT (xasl_p)));
-      json_object_set_new (sq_cache, "miss", json_integer (SQ_CACHE_MISS (xasl_p)));
-      json_object_set_new (sq_cache, "size", json_integer (SQ_CACHE_SIZE (xasl_p)));
+      sq_cache = cub_json_object ();
+      cub_json_object_set_new (sq_cache, "hit", cub_json_integer (SQ_CACHE_HIT (xasl_p)));
+      cub_json_object_set_new (sq_cache, "miss", cub_json_integer (SQ_CACHE_MISS (xasl_p)));
+      cub_json_object_set_new (sq_cache, "size", cub_json_integer (SQ_CACHE_SIZE (xasl_p)));
       if (SQ_CACHE_ENABLED (xasl_p))
 	{
-	  json_object_set_new (sq_cache, "status", json_string ("enabled"));
+	  cub_json_object_set_new (sq_cache, "status", cub_json_string ("enabled"));
 	}
       else
 	{
-	  json_object_set_new (sq_cache, "status", json_string ("disabled"));
+	  cub_json_object_set_new (sq_cache, "status", cub_json_string ("disabled"));
 	}
-      json_object_set_new (proc, "SUBQUERY_CACHE", sq_cache);
+      cub_json_object_set_new (proc, "SUBQUERY_CACHE", sq_cache);
     }
 
   gstats = &xasl_p->groupby_stats;
   if (gstats->run_groupby)
     {
-      groupby = json_object ();
+      groupby = cub_json_object ();
 
-      json_object_set_new (groupby, "time", json_integer (TO_MSEC (gstats->groupby_time)));
+      cub_json_object_set_new (groupby, "time", cub_json_integer (TO_MSEC (gstats->groupby_time)));
 
       if (gstats->groupby_hash == HS_ACCEPT_ALL)
 	{
-	  json_object_set_new (groupby, "hash", json_true ());
+	  cub_json_object_set_new (groupby, "hash", cub_json_true ());
 	}
       else if (gstats->groupby_hash == HS_REJECT_ALL)
 	{
-	  json_object_set_new (groupby, "hash", json_string ("partial"));
+	  cub_json_object_set_new (groupby, "hash", cub_json_string ("partial"));
 	}
       else
 	{
-	  json_object_set_new (groupby, "hash", json_false ());
+	  cub_json_object_set_new (groupby, "hash", cub_json_false ());
 	}
 
       if (gstats->groupby_sort)
 	{
-	  json_object_set_new (groupby, "sort", json_true ());
-	  json_object_set_new (groupby, "page", json_integer (gstats->groupby_pages));
-	  json_object_set_new (groupby, "ioread", json_integer (gstats->groupby_ioreads));
+	  cub_json_object_set_new (groupby, "sort", cub_json_true ());
+	  cub_json_object_set_new (groupby, "page", cub_json_integer (gstats->groupby_pages));
+	  cub_json_object_set_new (groupby, "ioread", cub_json_integer (gstats->groupby_ioreads));
 	}
       else
 	{
-	  json_object_set_new (groupby, "sort", json_false ());
+	  cub_json_object_set_new (groupby, "sort", cub_json_false ());
 	}
 
-      json_object_set_new (groupby, "rows", json_integer (gstats->rows));
-      json_object_set_new (groupby, "readrows", json_integer (gstats->read_rows));
-      json_object_set_new (proc, "GROUPBY", groupby);
+      cub_json_object_set_new (groupby, "rows", cub_json_integer (gstats->rows));
+      cub_json_object_set_new (groupby, "readrows", cub_json_integer (gstats->read_rows));
+      cub_json_object_set_new (proc, "GROUPBY", groupby);
       if (gstats->parallel_num > 0)
 	{
-	  parallel = json_object ();
-	  json_object_set_new (parallel, "parallel workers", json_integer (gstats->parallel_num));
-	  json_object_set_new (parallel, "min time", json_integer (gstats->px_min_groupby_time));
-	  json_object_set_new (parallel, "max time", json_integer (gstats->px_max_groupby_time));
-	  json_object_set_new (parallel, "min pages", json_integer (gstats->px_min_groupby_pages));
-	  json_object_set_new (parallel, "max pages", json_integer (gstats->px_max_groupby_pages));
-	  json_object_set_new (parallel, "min ioreads", json_integer (gstats->px_min_groupby_ioreads));
-	  json_object_set_new (parallel, "max ioreads", json_integer (gstats->px_max_groupby_ioreads));
-	  json_object_set_new (proc, "PARALLEL GROUPBY", parallel);
+	  parallel = cub_json_object ();
+	  cub_json_object_set_new (parallel, "parallel workers", cub_json_integer (gstats->parallel_num));
+	  cub_json_object_set_new (parallel, "min time", cub_json_integer (gstats->px_min_groupby_time));
+	  cub_json_object_set_new (parallel, "max time", cub_json_integer (gstats->px_max_groupby_time));
+	  cub_json_object_set_new (parallel, "min pages", cub_json_integer (gstats->px_min_groupby_pages));
+	  cub_json_object_set_new (parallel, "max pages", cub_json_integer (gstats->px_max_groupby_pages));
+	  cub_json_object_set_new (parallel, "min ioreads", cub_json_integer (gstats->px_min_groupby_ioreads));
+	  cub_json_object_set_new (parallel, "max ioreads", cub_json_integer (gstats->px_max_groupby_ioreads));
+	  cub_json_object_set_new (proc, "PARALLEL GROUPBY", parallel);
 	}
     }
 
   ostats = &xasl_p->orderby_stats;
   if (ostats->orderby_filesort || ostats->orderby_topnsort || XASL_IS_FLAGED (xasl_p, XASL_SKIP_ORDERBY_LIST))
     {
-      orderby = json_object ();
+      orderby = cub_json_object ();
 
-      json_object_set_new (orderby, "time", json_integer (TO_MSEC (ostats->orderby_time)));
+      cub_json_object_set_new (orderby, "time", cub_json_integer (TO_MSEC (ostats->orderby_time)));
 
       if (ostats->orderby_filesort)
 	{
-	  json_object_set_new (orderby, "sort", json_true ());
-	  json_object_set_new (orderby, "page", json_integer (ostats->orderby_pages));
-	  json_object_set_new (orderby, "ioread", json_integer (ostats->orderby_ioreads));
+	  cub_json_object_set_new (orderby, "sort", cub_json_true ());
+	  cub_json_object_set_new (orderby, "page", cub_json_integer (ostats->orderby_pages));
+	  cub_json_object_set_new (orderby, "ioread", cub_json_integer (ostats->orderby_ioreads));
 	}
       else if (ostats->orderby_topnsort)
 	{
-	  json_object_set_new (orderby, "topnsort", json_true ());
+	  cub_json_object_set_new (orderby, "topnsort", cub_json_true ());
 	}
       else
 	{
-	  json_object_set_new (orderby, "skipsort", json_true ());
+	  cub_json_object_set_new (orderby, "skipsort", cub_json_true ());
 	}
 
-      json_object_set_new (proc, "ORDERBY", orderby);
+      cub_json_object_set_new (proc, "ORDERBY", orderby);
       if (ostats->parallel_num > 0)
 	{
-	  parallel = json_object ();
-	  json_object_set_new (parallel, "parallel workers", json_integer (ostats->parallel_num));
-	  json_object_set_new (parallel, "min time", json_integer (ostats->px_min_orderby_time));
-	  json_object_set_new (parallel, "max time", json_integer (ostats->px_max_orderby_time));
-	  json_object_set_new (parallel, "min pages", json_integer (ostats->px_min_orderby_pages));
-	  json_object_set_new (parallel, "max pages", json_integer (ostats->px_max_orderby_pages));
-	  json_object_set_new (parallel, "min ioreads", json_integer (ostats->px_min_orderby_ioreads));
-	  json_object_set_new (parallel, "max ioreads", json_integer (ostats->px_max_orderby_ioreads));
-	  json_object_set_new (proc, "PARALLEL ORDERBY", parallel);
+	  parallel = cub_json_object ();
+	  cub_json_object_set_new (parallel, "parallel workers", cub_json_integer (ostats->parallel_num));
+	  cub_json_object_set_new (parallel, "min time", cub_json_integer (ostats->px_min_orderby_time));
+	  cub_json_object_set_new (parallel, "max time", cub_json_integer (ostats->px_max_orderby_time));
+	  cub_json_object_set_new (parallel, "min pages", cub_json_integer (ostats->px_min_orderby_pages));
+	  cub_json_object_set_new (parallel, "max pages", cub_json_integer (ostats->px_max_orderby_pages));
+	  cub_json_object_set_new (parallel, "min ioreads", cub_json_integer (ostats->px_min_orderby_ioreads));
+	  cub_json_object_set_new (parallel, "max ioreads", cub_json_integer (ostats->px_max_orderby_ioreads));
+	  cub_json_object_set_new (proc, "PARALLEL ORDERBY", parallel);
 	}
 
     }
@@ -3425,80 +3427,80 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   astats = xasl_p->analytic_stats;
   if (astats != NULL)
     {
-      json_t *analytic_array = json_array ();
+      cub_json_t *analytic_array = cub_json_array ();
 
       for (ANALYTIC_STATS * curr = astats; curr != NULL; curr = curr->next)
 	{
-	  analytic = json_object ();
-	  json_object_set_new (analytic, "time", json_integer (TO_MSEC (curr->analytic_time)));
+	  analytic = cub_json_object ();
+	  cub_json_object_set_new (analytic, "time", cub_json_integer (TO_MSEC (curr->analytic_time)));
 
 	  if (curr->analytic_sort)
 	    {
-	      json_object_set_new (analytic, "sort", json_true ());
+	      cub_json_object_set_new (analytic, "sort", cub_json_true ());
 	    }
 	  else
 	    {
-	      json_object_set_new (analytic, "sort", json_false ());
+	      cub_json_object_set_new (analytic, "sort", cub_json_false ());
 	    }
 
 	  if (curr->analytic_stopkey)
 	    {
-	      json_object_set_new (analytic, "stopkey", json_true ());
+	      cub_json_object_set_new (analytic, "stopkey", cub_json_true ());
 	    }
 	  else
 	    {
-	      json_object_set_new (analytic, "stopkey", json_false ());
+	      cub_json_object_set_new (analytic, "stopkey", cub_json_false ());
 	    }
 
-	  json_object_set_new (analytic, "page", json_integer (curr->analytic_pages));
-	  json_object_set_new (analytic, "ioread", json_integer (curr->analytic_ioreads));
-	  json_object_set_new (analytic, "rows", json_integer (curr->rows));
+	  cub_json_object_set_new (analytic, "page", cub_json_integer (curr->analytic_pages));
+	  cub_json_object_set_new (analytic, "ioread", cub_json_integer (curr->analytic_ioreads));
+	  cub_json_object_set_new (analytic, "rows", cub_json_integer (curr->rows));
 	  if (curr->parallel_num > 0)
 	    {
-	      parallel = json_object ();
-	      json_object_set_new (parallel, "parallel workers", json_integer (curr->parallel_num));
-	      json_object_set_new (parallel, "min time", json_integer (curr->px_min_analytic_time));
-	      json_object_set_new (parallel, "max time", json_integer (curr->px_max_analytic_time));
-	      json_object_set_new (parallel, "min pages", json_integer (curr->px_min_analytic_pages));
-	      json_object_set_new (parallel, "max pages", json_integer (curr->px_max_analytic_pages));
-	      json_object_set_new (parallel, "min ioreads", json_integer (curr->px_min_analytic_ioreads));
-	      json_object_set_new (parallel, "max ioreads", json_integer (curr->px_max_analytic_ioreads));
-	      json_object_set_new (analytic, "PARALLEL ANALYTIC", parallel);
+	      parallel = cub_json_object ();
+	      cub_json_object_set_new (parallel, "parallel workers", cub_json_integer (curr->parallel_num));
+	      cub_json_object_set_new (parallel, "min time", cub_json_integer (curr->px_min_analytic_time));
+	      cub_json_object_set_new (parallel, "max time", cub_json_integer (curr->px_max_analytic_time));
+	      cub_json_object_set_new (parallel, "min pages", cub_json_integer (curr->px_min_analytic_pages));
+	      cub_json_object_set_new (parallel, "max pages", cub_json_integer (curr->px_max_analytic_pages));
+	      cub_json_object_set_new (parallel, "min ioreads", cub_json_integer (curr->px_min_analytic_ioreads));
+	      cub_json_object_set_new (parallel, "max ioreads", cub_json_integer (curr->px_max_analytic_ioreads));
+	      cub_json_object_set_new (analytic, "PARALLEL ANALYTIC", parallel);
 	    }
-	  json_array_append_new (analytic_array, analytic);
+	  cub_json_array_append_new (analytic_array, analytic);
 	}
 
-      json_object_set_new (proc, "ANALYTIC", analytic_array);
+      cub_json_object_set_new (proc, "ANALYTIC", analytic_array);
     }
 
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
-      subquery = json_array ();
+      subquery = cub_json_array ();
       if (xasl_p->px_executor)
 	{
-	  temp = json_object ();
+	  temp = cub_json_object ();
 	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, temp);
-	  json_array_append_new (subquery, temp);
+	  cub_json_array_append_new (subquery, temp);
 	}
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
-	  temp = json_object ();
+	  temp = cub_json_object ();
 	  qdump_print_stats_json (xptr, temp);
-	  json_array_append_new (subquery, temp);
+	  cub_json_array_append_new (subquery, temp);
 	}
-      json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
+      cub_json_object_set_new (proc, "SUBQUERY (uncorrelated)", subquery);
     }
 
   if (xasl_p->dptr_list != NULL)
     {
-      subquery = json_array ();
+      subquery = cub_json_array ();
       for (xptr = xasl_p->dptr_list; xptr; xptr = xptr->next)
 	{
-	  temp = json_object ();
+	  temp = cub_json_object ();
 	  qdump_print_stats_json (xptr, temp);
-	  json_array_append_new (subquery, temp);
+	  cub_json_array_append_new (subquery, temp);
 	}
-      json_object_set_new (proc, "SUBQUERY (correlated)", subquery);
+      cub_json_object_set_new (proc, "SUBQUERY (correlated)", subquery);
     }
 }
 
@@ -4371,10 +4373,10 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 }
 
 static void
-qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
+qdump_print_hashjoin_stats_json (xasl_node * xasl_p, cub_json_t * parent)
 {
-  json_t *split, *part_array, *parallel, *build, *probe, *merge, *subquery;
-  json_t *input, *profile;
+  cub_json_t *split, *part_array, *parallel, *build, *probe, *merge, *subquery;
+  cub_json_t *input, *profile;
 
   XASL_NODE *outer_xasl, *inner_xasl;
 
@@ -4476,12 +4478,12 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	  stats->probe.ioreads += probe_xasl->xasl_stats.ioreads;
 	}
 
-      build = json_object ();
-      json_object_set_new (build, "time", json_integer (TO_MSEC (stats->build.elapsed_time)));
-      json_object_set_new (build, "fetch", json_integer (stats->build.fetches));
-      json_object_set_new (build, "ioread", json_integer (stats->build.ioreads));
-      json_object_set_new (build, "rows", json_integer (stats->build.qualified_rows));
-      json_object_set_new (build, "method", json_string (qdump_hashjoin_type_string (stats->hash_method)));
+      build = cub_json_object ();
+      cub_json_object_set_new (build, "time", cub_json_integer (TO_MSEC (stats->build.elapsed_time)));
+      cub_json_object_set_new (build, "fetch", cub_json_integer (stats->build.fetches));
+      cub_json_object_set_new (build, "ioread", cub_json_integer (stats->build.ioreads));
+      cub_json_object_set_new (build, "rows", cub_json_integer (stats->build.qualified_rows));
+      cub_json_object_set_new (build, "method", cub_json_string (qdump_hashjoin_type_string (stats->hash_method)));
 
 #if HASHJOIN_COLLISION_RATE
       if (stats->use_hash_file)
@@ -4490,104 +4492,104 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
       else
 	{
-	  json_object_set_new (build, "collision_rate", json_real (stats->collision_rate * 100));
+	  cub_json_object_set_new (build, "collision_rate", cub_json_real (stats->collision_rate * 100));
 	}
 #endif /* HASHJOIN_COLLISION_RATE */
-      json_object_set_new (parent, "build", build);
+      cub_json_object_set_new (parent, "build", build);
 
 #if HASHJOIN_PROFILE_TIME
-      profile = json_object ();
-      json_object_set_new (profile, "F", json_integer (TO_MSEC (stats->profile.build.fetch)));
-      json_object_set_new (profile, "H", json_integer (TO_MSEC (stats->profile.build.hash)));
-      json_object_set_new (profile, "I", json_integer (TO_MSEC (stats->profile.build.insert)));
-      json_object_set_new (build, "profile", profile);
+      profile = cub_json_object ();
+      cub_json_object_set_new (profile, "F", cub_json_integer (TO_MSEC (stats->profile.build.fetch)));
+      cub_json_object_set_new (profile, "H", cub_json_integer (TO_MSEC (stats->profile.build.hash)));
+      cub_json_object_set_new (profile, "I", cub_json_integer (TO_MSEC (stats->profile.build.insert)));
+      cub_json_object_set_new (build, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
 
       /* no parallel subquery */
       if (xasl_p->px_executor == NULL)
 	{
-	  input = json_object ();
+	  input = cub_json_object ();
 	  qdump_print_stats_json (build_xasl, input);
-	  json_object_set_new (build, "input", input);
+	  cub_json_object_set_new (build, "input", input);
 	}
 
-      probe = json_object ();
-      json_object_set_new (probe, "time", json_integer (TO_MSEC (stats->probe.elapsed_time)));
-      json_object_set_new (probe, "fetch", json_integer (stats->probe.fetches));
-      json_object_set_new (probe, "ioread", json_integer (stats->probe.ioreads));
-      json_object_set_new (probe, "readrows", json_integer (stats->probe.read_rows));
-      json_object_set_new (probe, "readkeys", json_integer (stats->probe.read_keys));
-      json_object_set_new (probe, "rows", json_integer (stats->probe.qualified_rows));
-      json_object_set_new (parent, "probe", probe);
+      probe = cub_json_object ();
+      cub_json_object_set_new (probe, "time", cub_json_integer (TO_MSEC (stats->probe.elapsed_time)));
+      cub_json_object_set_new (probe, "fetch", cub_json_integer (stats->probe.fetches));
+      cub_json_object_set_new (probe, "ioread", cub_json_integer (stats->probe.ioreads));
+      cub_json_object_set_new (probe, "readrows", cub_json_integer (stats->probe.read_rows));
+      cub_json_object_set_new (probe, "readkeys", cub_json_integer (stats->probe.read_keys));
+      cub_json_object_set_new (probe, "rows", cub_json_integer (stats->probe.qualified_rows));
+      cub_json_object_set_new (parent, "probe", probe);
 
 #if HASHJOIN_PROFILE_TIME
-      profile = json_object ();
-      json_object_set_new (profile, "F", json_integer (TO_MSEC (stats->profile.probe.fetch)));
-      json_object_set_new (profile, "H", json_integer (TO_MSEC (stats->profile.probe.hash)));
-      json_object_set_new (profile, "S", json_integer (TO_MSEC (stats->profile.probe.search)));
-      json_object_set_new (profile, "M", json_integer (TO_MSEC (stats->profile.probe.match)));
-      json_object_set_new (profile, "A", json_integer (TO_MSEC (stats->profile.probe.add)));
-      json_object_set_new (probe, "profile", profile);
+      profile = cub_json_object ();
+      cub_json_object_set_new (profile, "F", cub_json_integer (TO_MSEC (stats->profile.probe.fetch)));
+      cub_json_object_set_new (profile, "H", cub_json_integer (TO_MSEC (stats->profile.probe.hash)));
+      cub_json_object_set_new (profile, "S", cub_json_integer (TO_MSEC (stats->profile.probe.search)));
+      cub_json_object_set_new (profile, "M", cub_json_integer (TO_MSEC (stats->profile.probe.match)));
+      cub_json_object_set_new (profile, "A", cub_json_integer (TO_MSEC (stats->profile.probe.add)));
+      cub_json_object_set_new (probe, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
 
       if (stats->num_parallel_threads > 1)
 	{
-	  parallel = json_object ();
+	  parallel = cub_json_object ();
 
-	  json_object_set_new (parallel, "parallel workers", json_integer (stats->num_parallel_threads));
+	  cub_json_object_set_new (parallel, "parallel workers", cub_json_integer (stats->num_parallel_threads));
 
 	  snprintf (time_str, time_str_size, "%d..%d", TO_MSEC (stats->probe.range.elapsed_time.min),
 		    TO_MSEC (stats->probe.range.elapsed_time.max));
-	  json_object_set_new (parallel, "time", json_string (time_str));
+	  cub_json_object_set_new (parallel, "time", cub_json_string (time_str));
 
 	  snprintf (rows_str, rows_str_size, "%lu..%lu", (unsigned long) stats->probe.range.read_rows.min,
 		    (unsigned long) stats->probe.range.read_rows.max);
-	  json_object_set_new (parallel, "readrows", json_string (rows_str));
+	  cub_json_object_set_new (parallel, "readrows", cub_json_string (rows_str));
 
 	  snprintf (rows_str, rows_str_size, "%lu..%lu", (unsigned long) stats->probe.range.read_keys.min,
 		    (unsigned long) stats->probe.range.read_keys.max);
-	  json_object_set_new (parallel, "readkeys", json_string (rows_str));
+	  cub_json_object_set_new (parallel, "readkeys", cub_json_string (rows_str));
 
 	  snprintf (rows_str, rows_str_size, "%lu..%lu", (unsigned long) stats->probe.range.qualified_rows.min,
 		    (unsigned long) stats->probe.range.qualified_rows.max);
-	  json_object_set_new (parallel, "rows", json_string (rows_str));
+	  cub_json_object_set_new (parallel, "rows", cub_json_string (rows_str));
 
-	  json_object_set_new (probe, "parallel", parallel);
+	  cub_json_object_set_new (probe, "parallel", parallel);
 	}
 
       /* no parallel subquery */
       if (xasl_p->px_executor == NULL)
 	{
-	  input = json_object ();
+	  input = cub_json_object ();
 	  qdump_print_stats_json (probe_xasl, input);
-	  json_object_set_new (probe, "input", input);
+	  cub_json_object_set_new (probe, "input", input);
 	}
     }
   else
     {
-      split = json_object ();
-      json_object_set_new (split, "time", json_integer (TO_MSEC (stats->split.elapsed_time)));
-      json_object_set_new (split, "fetch", json_integer (stats->split.fetches));
-      json_object_set_new (split, "ioread", json_integer (stats->split.ioreads));
-      json_object_set_new (split, "partitions", json_integer (part_cnt));
-      json_object_set_new (parent, "split", split);
+      split = cub_json_object ();
+      cub_json_object_set_new (split, "time", cub_json_integer (TO_MSEC (stats->split.elapsed_time)));
+      cub_json_object_set_new (split, "fetch", cub_json_integer (stats->split.fetches));
+      cub_json_object_set_new (split, "ioread", cub_json_integer (stats->split.ioreads));
+      cub_json_object_set_new (split, "partitions", cub_json_integer (part_cnt));
+      cub_json_object_set_new (parent, "split", split);
 
-      build = json_object ();
+      build = cub_json_object ();
       if (stats->num_parallel_threads > 1)
 	{
 	  snprintf (time_str, time_str_size, "%d..%d", TO_MSEC (stats->build.range_elapsed_time.min),
 		    TO_MSEC (stats->build.range_elapsed_time.max));
 
-	  json_object_set_new (build, "time", json_string (time_str));
+	  cub_json_object_set_new (build, "time", cub_json_string (time_str));
 	}
       else
 	{
-	  json_object_set_new (build, "time", json_integer (TO_MSEC (stats->build.elapsed_time)));
+	  cub_json_object_set_new (build, "time", cub_json_integer (TO_MSEC (stats->build.elapsed_time)));
 	}
-      json_object_set_new (build, "fetch", json_integer (stats->build.fetches));
-      json_object_set_new (build, "ioread", json_integer (stats->build.ioreads));
-      json_object_set_new (build, "rows", json_integer (stats->build.qualified_rows));
-      json_object_set_new (build, "method", json_string (hash_method_str));
+      cub_json_object_set_new (build, "fetch", cub_json_integer (stats->build.fetches));
+      cub_json_object_set_new (build, "ioread", cub_json_integer (stats->build.ioreads));
+      cub_json_object_set_new (build, "rows", cub_json_integer (stats->build.qualified_rows));
+      cub_json_object_set_new (build, "method", cub_json_string (hash_method_str));
 
 #if HASHJOIN_COLLISION_RATE
       if (stats->use_hash_file)
@@ -4596,133 +4598,134 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
       else
 	{
-	  json_object_set_new (build, "collision_rate", json_real (stats->collision_rate * 100));
+	  cub_json_object_set_new (build, "collision_rate", cub_json_real (stats->collision_rate * 100));
 	}
 #endif /* HASHJOIN_COLLISION_RATE */
 
 #if HASHJOIN_DUMP_PARTITION
-      part_array = json_array ();
+      part_array = cub_json_array ();
 
       for (part_index = 0; part_index < part_cnt; part_index++)
 	{
 	  current_stats = &part_stats[part_index];
 	  assert (current_stats != NULL);
 
-	  input = json_object ();
-	  json_object_set_new (input, "time", json_integer (TO_MSEC (current_stats->build.elapsed_time)));
-	  json_object_set_new (input, "fetch", json_integer (current_stats->build.fetches));
-	  json_object_set_new (input, "ioread", json_integer (current_stats->build.ioreads));
-	  json_object_set_new (input, "rows", json_integer (current_stats->build.qualified_rows));
-	  json_object_set_new (input, "method", json_string (qdump_hashjoin_type_string (current_stats->hash_method)));
-	  json_array_append_new (part_array, input);
+	  input = cub_json_object ();
+	  cub_json_object_set_new (input, "time", cub_json_integer (TO_MSEC (current_stats->build.elapsed_time)));
+	  cub_json_object_set_new (input, "fetch", cub_json_integer (current_stats->build.fetches));
+	  cub_json_object_set_new (input, "ioread", cub_json_integer (current_stats->build.ioreads));
+	  cub_json_object_set_new (input, "rows", cub_json_integer (current_stats->build.qualified_rows));
+	  cub_json_object_set_new (input, "method",
+				   cub_json_string (qdump_hashjoin_type_string (current_stats->hash_method)));
+	  cub_json_array_append_new (part_array, input);
 
 #if HASHJOIN_PROFILE_TIME
-	  profile = json_object ();
-	  json_object_set_new (profile, "F", json_integer (TO_MSEC (current_stats->profile.build.fetch)));
-	  json_object_set_new (profile, "H", json_integer (TO_MSEC (current_stats->profile.build.hash)));
-	  json_object_set_new (profile, "I", json_integer (TO_MSEC (current_stats->profile.build.insert)));
-	  json_object_set_new (input, "profile", profile);
+	  profile = cub_json_object ();
+	  cub_json_object_set_new (profile, "F", cub_json_integer (TO_MSEC (current_stats->profile.build.fetch)));
+	  cub_json_object_set_new (profile, "H", cub_json_integer (TO_MSEC (current_stats->profile.build.hash)));
+	  cub_json_object_set_new (profile, "I", cub_json_integer (TO_MSEC (current_stats->profile.build.insert)));
+	  cub_json_object_set_new (input, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
 	}
 
-      json_object_set_new (build, "partition_list", part_array);
+      cub_json_object_set_new (build, "partition_list", part_array);
 #endif /* HASHJOIN_DUMP_PARTITION */
 
-      probe = json_object ();
+      probe = cub_json_object ();
       if (stats->num_parallel_threads > 1)
 	{
 	  snprintf (time_str, time_str_size, "%d..%d", TO_MSEC (stats->probe.range.elapsed_time.min),
 		    TO_MSEC (stats->probe.range.elapsed_time.max));
-	  json_object_set_new (probe, "time", json_string (time_str));
+	  cub_json_object_set_new (probe, "time", cub_json_string (time_str));
 	}
       else
 	{
-	  json_object_set_new (probe, "time", json_integer (TO_MSEC (stats->probe.elapsed_time)));
+	  cub_json_object_set_new (probe, "time", cub_json_integer (TO_MSEC (stats->probe.elapsed_time)));
 	}
-      json_object_set_new (probe, "fetch", json_integer (stats->probe.fetches));
-      json_object_set_new (probe, "ioread", json_integer (stats->probe.ioreads));
-      json_object_set_new (probe, "readrows", json_integer (stats->probe.read_rows));
-      json_object_set_new (probe, "readkeys", json_integer (stats->probe.read_keys));
-      json_object_set_new (probe, "rows", json_integer (stats->probe.qualified_rows));
+      cub_json_object_set_new (probe, "fetch", cub_json_integer (stats->probe.fetches));
+      cub_json_object_set_new (probe, "ioread", cub_json_integer (stats->probe.ioreads));
+      cub_json_object_set_new (probe, "readrows", cub_json_integer (stats->probe.read_rows));
+      cub_json_object_set_new (probe, "readkeys", cub_json_integer (stats->probe.read_keys));
+      cub_json_object_set_new (probe, "rows", cub_json_integer (stats->probe.qualified_rows));
 
 #if HASHJOIN_DUMP_PARTITION
-      part_array = json_array ();
+      part_array = cub_json_array ();
 
       for (part_index = 0; part_index < part_cnt; part_index++)
 	{
 	  current_stats = &part_stats[part_index];
 	  assert (current_stats != NULL);
 
-	  input = json_object ();
-	  json_object_set_new (input, "part_id", json_integer (part_index + 1));
-	  json_object_set_new (input, "time", json_integer (TO_MSEC (current_stats->probe.elapsed_time)));
-	  json_object_set_new (input, "fetch", json_integer (current_stats->probe.fetches));
-	  json_object_set_new (input, "ioread", json_integer (current_stats->probe.ioreads));
-	  json_object_set_new (input, "readrows", json_integer (current_stats->probe.read_rows));
-	  json_object_set_new (input, "readkeys", json_integer (current_stats->probe.read_keys));
-	  json_object_set_new (input, "rows", json_integer (current_stats->probe.qualified_rows));
-	  json_array_append_new (part_array, input);
+	  input = cub_json_object ();
+	  cub_json_object_set_new (input, "part_id", cub_json_integer (part_index + 1));
+	  cub_json_object_set_new (input, "time", cub_json_integer (TO_MSEC (current_stats->probe.elapsed_time)));
+	  cub_json_object_set_new (input, "fetch", cub_json_integer (current_stats->probe.fetches));
+	  cub_json_object_set_new (input, "ioread", cub_json_integer (current_stats->probe.ioreads));
+	  cub_json_object_set_new (input, "readrows", cub_json_integer (current_stats->probe.read_rows));
+	  cub_json_object_set_new (input, "readkeys", cub_json_integer (current_stats->probe.read_keys));
+	  cub_json_object_set_new (input, "rows", cub_json_integer (current_stats->probe.qualified_rows));
+	  cub_json_array_append_new (part_array, input);
 
 #if HASHJOIN_PROFILE_TIME
-	  profile = json_object ();
-	  json_object_set_new (profile, "F", json_integer (TO_MSEC (current_stats->profile.probe.fetch)));
-	  json_object_set_new (profile, "H", json_integer (TO_MSEC (current_stats->profile.probe.hash)));
-	  json_object_set_new (profile, "S", json_integer (TO_MSEC (current_stats->profile.probe.search)));
-	  json_object_set_new (profile, "M", json_integer (TO_MSEC (current_stats->profile.probe.match)));
-	  json_object_set_new (profile, "A", json_integer (TO_MSEC (current_stats->profile.probe.add)));
-	  json_object_set_new (input, "profile", profile);
+	  profile = cub_json_object ();
+	  cub_json_object_set_new (profile, "F", cub_json_integer (TO_MSEC (current_stats->profile.probe.fetch)));
+	  cub_json_object_set_new (profile, "H", cub_json_integer (TO_MSEC (current_stats->profile.probe.hash)));
+	  cub_json_object_set_new (profile, "S", cub_json_integer (TO_MSEC (current_stats->profile.probe.search)));
+	  cub_json_object_set_new (profile, "M", cub_json_integer (TO_MSEC (current_stats->profile.probe.match)));
+	  cub_json_object_set_new (profile, "A", cub_json_integer (TO_MSEC (current_stats->profile.probe.add)));
+	  cub_json_object_set_new (input, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
 	}
 
-      json_object_set_new (probe, "partition_list", part_array);
+      cub_json_object_set_new (probe, "partition_list", part_array);
 #endif /* HASHJOIN_DUMP_PARTITION */
 
       if (stats->num_parallel_threads > 1)
 	{
-	  parallel = json_object ();
-	  json_object_set_new (parallel, "time", json_integer (TO_MSEC (stats->parallel.elapsed_time)));
+	  parallel = cub_json_object ();
+	  cub_json_object_set_new (parallel, "time", cub_json_integer (TO_MSEC (stats->parallel.elapsed_time)));
 
-	  json_object_set_new (parent, "parallel", parallel);
-	  json_object_set_new (parallel, "build", build);
-	  json_object_set_new (parallel, "probe", probe);
+	  cub_json_object_set_new (parent, "parallel", parallel);
+	  cub_json_object_set_new (parallel, "build", build);
+	  cub_json_object_set_new (parallel, "probe", probe);
 	}
       else
 	{
-	  json_object_set_new (parent, "build", build);
-	  json_object_set_new (parent, "probe", probe);
+	  cub_json_object_set_new (parent, "build", build);
+	  cub_json_object_set_new (parent, "probe", probe);
 	}
 
 #if HASHJOIN_PROFILE_TIME
-      merge = json_object ();
-      json_object_set_new (merge, "time", json_integer (TO_MSEC (stats->profile.merge.elapsed_time)));
-      json_object_set_new (merge, "fetch", json_integer (stats->profile.merge.fetches));
-      json_object_set_new (merge, "ioread", json_integer (stats->profile.merge.ioreads));
-      json_object_set_new (merge, "rows", json_integer (stats->profile.merge.qualified_rows));
-      json_object_set_new (parent, "merge", merge);
+      merge = cub_json_object ();
+      cub_json_object_set_new (merge, "time", cub_json_integer (TO_MSEC (stats->profile.merge.elapsed_time)));
+      cub_json_object_set_new (merge, "fetch", cub_json_integer (stats->profile.merge.fetches));
+      cub_json_object_set_new (merge, "ioread", cub_json_integer (stats->profile.merge.ioreads));
+      cub_json_object_set_new (merge, "rows", cub_json_integer (stats->profile.merge.qualified_rows));
+      cub_json_object_set_new (parent, "merge", merge);
 #endif /* HASHJOIN_PROFILE_TIME */
     }
 
   /* parallel subquery or partitioned hash join */
   if (xasl_p->px_executor != NULL || is_partition_parallel)
     {
-      subquery = json_array ();
+      subquery = cub_json_array ();
 
       if (xasl_p->px_executor)
 	{
-	  input = json_object ();
+	  input = cub_json_object ();
 	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, input);
-	  json_array_append_new (subquery, input);
+	  cub_json_array_append_new (subquery, input);
 	}
 
-      input = json_object ();
+      input = cub_json_object ();
       qdump_print_stats_json (outer_xasl, input);
-      json_array_append_new (subquery, input);
+      cub_json_array_append_new (subquery, input);
 
-      input = json_object ();
+      input = cub_json_object ();
       qdump_print_stats_json (inner_xasl, input);
-      json_array_append_new (subquery, input);
+      cub_json_array_append_new (subquery, input);
 
-      json_object_set_new (parent, "SUBQUERY (uncorrelated)", subquery);
+      cub_json_object_set_new (parent, "SUBQUERY (uncorrelated)", subquery);
     }
 }
 

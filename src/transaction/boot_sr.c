@@ -66,7 +66,6 @@
 #include "intl_support.h"
 #include "serial.h"
 #include "server_interface.h"
-#include "json_builder.h"
 #include "pl_sr.h"
 #include "xserver_interface.h"
 #include "session.h"
@@ -2731,9 +2730,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       /* server is up! */
       boot_server_status (BOOT_SERVER_UP);
     }
-#if !defined(SA_MODE)
-  json_set_alloc_funcs (malloc, free);
-#endif
 
   return NO_ERROR;
 

@@ -307,11 +307,11 @@ static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
 static bool qo_is_sort_limit (QO_PLAN * plan);
 static int qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg);
 
-static json_t *qo_plan_scan_print_json (QO_PLAN * plan);
-static json_t *qo_plan_sort_print_json (QO_PLAN * plan);
-static json_t *qo_plan_join_print_json (QO_PLAN * plan);
-static json_t *qo_plan_follow_print_json (QO_PLAN * plan);
-static json_t *qo_plan_print_json (QO_PLAN * plan);
+static cub_json_t *qo_plan_scan_print_json (QO_PLAN * plan);
+static cub_json_t *qo_plan_sort_print_json (QO_PLAN * plan);
+static cub_json_t *qo_plan_join_print_json (QO_PLAN * plan);
+static cub_json_t *qo_plan_follow_print_json (QO_PLAN * plan);
+static cub_json_t *qo_plan_print_json (QO_PLAN * plan);
 
 static void qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent);
 static void qo_plan_sort_print_text (FILE * fp, QO_PLAN * plan, int indent);
@@ -13023,19 +13023,19 @@ qo_has_like_recompile_candidate (QO_PLAN * plan, void *arg)
  *   return:
  *   plan(in):
  */
-static json_t *
+static cub_json_t *
 qo_plan_scan_print_json (QO_PLAN * plan)
 {
   BITSET_ITERATOR bi;
   QO_ENV *env;
   bool natural_desc_index = false;
-  json_t *scan, *range, *filter;
+  cub_json_t *scan, *range, *filter;
   const char *scan_string = "";
   const char *class_name;
   char buf[257] = { '\0', };
   int i;
 
-  scan = json_object ();
+  scan = cub_json_object ();
 
   class_name = QO_NODE_NAME (plan->plan_un.scan.node);
   if (class_name == NULL)
@@ -13043,7 +13043,7 @@ qo_plan_scan_print_json (QO_PLAN * plan)
       class_name = "unknown";
     }
 
-  json_object_set_new (scan, "table", json_string (class_name));
+  cub_json_object_set_new (scan, "table", cub_json_string (class_name));
 
   switch (plan->plan_un.scan.scan_method)
     {
@@ -13056,54 +13056,54 @@ qo_plan_scan_print_json (QO_PLAN * plan)
     case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:
     case QO_SCANMETHOD_INDEX_SCAN_INSPECT:
       scan_string = "INDEX SCAN";
-      json_object_set_new (scan, "index", json_string (plan->plan_un.scan.index->head->constraints->name));
+      cub_json_object_set_new (scan, "index", cub_json_string (plan->plan_un.scan.index->head->constraints->name));
 
       env = (plan->info)->env;
-      range = json_array ();
+      range = cub_json_array ();
 
       for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi); i != -1; i = bitset_next_member (&bi))
 	{
-	  json_array_append_new (range, json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
+	  cub_json_array_append_new (range, cub_json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
 	}
 
-      json_object_set_new (scan, "key range", range);
+      cub_json_object_set_new (scan, "key range", range);
 
       if (bitset_cardinality (&(plan->plan_un.scan.kf_terms)) > 0)
 	{
-	  filter = json_array ();
+	  filter = cub_json_array ();
 	  for (i = bitset_iterate (&(plan->plan_un.scan.kf_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	    {
-	      json_array_append_new (filter, json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
+	      cub_json_array_append_new (filter, cub_json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
 	    }
 
-	  json_object_set_new (scan, "key filter", filter);
+	  cub_json_object_set_new (scan, "key filter", filter);
 	}
 
       if (qo_is_index_covering_scan (plan))
 	{
-	  json_object_set_new (scan, "covered", json_true ());
+	  cub_json_object_set_new (scan, "covered", cub_json_true ());
 	}
 
       if (plan->plan_un.scan.index && plan->plan_un.scan.index->head->use_descending)
 	{
-	  json_object_set_new (scan, "desc_index", json_true ());
+	  cub_json_object_set_new (scan, "desc_index", cub_json_true ());
 	  natural_desc_index = true;
 	}
 
       if (!natural_desc_index && (QO_ENV_PT_TREE (plan->info->env)->info.query.q.select.hint & PT_HINT_USE_IDX_DESC))
 	{
-	  json_object_set_new (scan, "desc_index forced", json_true ());
+	  cub_json_object_set_new (scan, "desc_index forced", cub_json_true ());
 	}
 
       if (qo_is_index_loose_scan (plan))
 	{
-	  json_object_set_new (scan, "loose", json_true ());
+	  cub_json_object_set_new (scan, "loose", cub_json_true ());
 	}
 
       break;
     }
 
-  return json_pack ("{s:o}", scan_string, scan);
+  return cub_json_pack ("{s:o}", scan_string, scan);
 }
 
 /*
@@ -13111,10 +13111,10 @@ qo_plan_scan_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static cub_json_t *
 qo_plan_sort_print_json (QO_PLAN * plan)
 {
-  json_t *sort, *subplan = NULL;
+  cub_json_t *sort, *subplan = NULL;
   const char *type;
 
   switch (plan->plan_un.sort.sort_type)
@@ -13145,16 +13145,16 @@ qo_plan_sort_print_json (QO_PLAN * plan)
       break;
     }
 
-  sort = json_object ();
+  sort = cub_json_object ();
 
   if (plan->plan_un.sort.subplan)
     {
       subplan = qo_plan_print_json (plan->plan_un.sort.subplan);
-      json_object_set_new (sort, type, subplan);
+      cub_json_object_set_new (sort, type, subplan);
     }
   else
     {
-      json_object_set_new (sort, type, json_string (""));
+      cub_json_object_set_new (sort, type, cub_json_string (""));
     }
 
   return sort;
@@ -13165,10 +13165,10 @@ qo_plan_sort_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static cub_json_t *
 qo_plan_join_print_json (QO_PLAN * plan)
 {
-  json_t *join, *outer, *inner;
+  cub_json_t *join, *outer, *inner;
   const char *type, *method = "";
   char buf[32];
 
@@ -13234,7 +13234,7 @@ qo_plan_join_print_json (QO_PLAN * plan)
 
   sprintf (buf, "%s (%s)", method, type);
 
-  join = json_pack ("{s:[o,o]}", buf, outer, inner);
+  join = cub_json_pack ("{s:[o,o]}", buf, outer, inner);
 
   return join;
 }
@@ -13244,19 +13244,19 @@ qo_plan_join_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static cub_json_t *
 qo_plan_follow_print_json (QO_PLAN * plan)
 {
-  json_t *head, *follow;
+  cub_json_t *head, *follow;
   char buf[257] = { '\0', };
 
   head = qo_plan_print_json (plan->plan_un.follow.head);
 
-  follow = json_object ();
-  json_object_set_new (follow, "edge", json_string (qo_term_string (plan->plan_un.follow.path, buf)));
-  json_object_set_new (follow, "head", head);
+  follow = cub_json_object ();
+  cub_json_object_set_new (follow, "edge", cub_json_string (qo_term_string (plan->plan_un.follow.path, buf)));
+  cub_json_object_set_new (follow, "head", head);
 
-  return json_pack ("{s:o}", "FOLLOW", follow);
+  return cub_json_pack ("{s:o}", "FOLLOW", follow);
 }
 
 /*
@@ -13264,10 +13264,10 @@ qo_plan_follow_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static cub_json_t *
 qo_plan_print_json (QO_PLAN * plan)
 {
-  json_t *json = NULL;
+  cub_json_t *json = NULL;
 
   switch (plan->plan_type)
     {
@@ -13305,7 +13305,7 @@ qo_plan_print_json (QO_PLAN * plan)
 void
 qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * select, QO_PLAN * plan)
 {
-  json_t *json;
+  cub_json_t *json;
   unsigned int save_custom;
 
   assert (parser != NULL && xasl != NULL && plan != NULL && select != NULL);
@@ -13321,7 +13321,7 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     {
       if (xasl && xasl->spec_list && xasl->spec_list->indexptr && xasl->spec_list->indexptr->orderby_skip)
 	{
-	  json_object_set_new (json, "skip order by", json_true ());
+	  cub_json_object_set_new (json, "skip order by", cub_json_true ());
 	}
     }
 
@@ -13329,14 +13329,14 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     {
       if (xasl && xasl->spec_list && xasl->spec_list->indexptr && xasl->spec_list->indexptr->groupby_skip)
 	{
-	  json_object_set_new (json, "group by nosort", json_true ());
+	  cub_json_object_set_new (json, "group by nosort", cub_json_true ());
 	}
     }
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
 
-  json_object_set_new (json, "rewritten query", json_string (parser_print_tree (parser, select)));
+  cub_json_object_set_new (json, "rewritten query", cub_json_string (parser_print_tree (parser, select)));
 
   parser->custom_print = save_custom;
 

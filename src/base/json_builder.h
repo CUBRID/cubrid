@@ -17,15 +17,25 @@
  */
 
 /*
- * json_builder.h - JSON tree building for execution plan output
+ * json_builder.h - JSON tree building for execution plan and trace output
  *
  * Note: This is the interface the plan and trace dump code uses to build a JSON
  *       document and serialize it. It is implemented over RapidJSON, the same
- *       library the JSON data type uses, and replaces the jansson dependency.
+ *       library the JSON data type uses.
  *
- *       The names and signatures are kept as they were so the call sites do not
- *       change. Ownership follows the same rule: the _new variants take over the
- *       value they are given, and json_decref () releases the whole tree.
+ *       Ownership. cub_json_object () and friends hand back a node the caller
+ *       owns. The _set_new () and _append_new () functions take that node over
+ *       whether they succeed or fail, so a caller never has to release a value
+ *       it has already passed in. cub_json_decref () releases a node the caller
+ *       still owns, and with it the tree hanging off it.
+ *
+ *       Every node has to end up in one of those two places. A node that is
+ *       neither stored nor released holds the whole thread's node pool open,
+ *       so error paths matter more here than a plain leak would suggest.
+ *
+ *       A node stays usable after it has been stored, which is what the plan
+ *       dump relies on: it puts an empty object in its parent and then keeps
+ *       adding members through the handle it already has.
  */
 
 #ifndef _JSON_BUILDER_H_
@@ -40,45 +50,47 @@ extern "C"
 {
 #endif
 
-  /* the tag matters: parse_tree.h forward-declares "struct json_t" */
-  typedef struct json_t json_t;
-  typedef long long json_int_t;
+  /* the tag matters: parse_tree.h and query_dump.h forward-declare
+   * "struct cub_json_t" rather than including this header */
+  typedef struct cub_json_t cub_json_t;
+  typedef long long cub_json_int_t;
 
-/* accepted for source compatibility; formatting is fixed at two-space indent
- * with members emitted in insertion order, which is what the callers ask for */
-#define JSON_INDENT(n)      (n)
-#define JSON_PRESERVE_ORDER 0
+  extern cub_json_t *cub_json_object (void);
+  extern cub_json_t *cub_json_array (void);
+  extern cub_json_t *cub_json_true (void);
+  extern cub_json_t *cub_json_false (void);
+  extern cub_json_t *cub_json_boolean (int value);
+  extern cub_json_t *cub_json_integer (cub_json_int_t value);
 
-  extern json_t *json_object (void);
-  extern json_t *json_array (void);
-  extern json_t *json_null (void);
-  extern json_t *json_true (void);
-  extern json_t *json_false (void);
-  extern json_t *json_boolean (int value);
-  extern json_t *json_integer (json_int_t value);
-  extern json_t *json_real (double value);
-  extern json_t *json_string (const char *value);
+  /* NULL for a value JSON cannot carry, that is NaN or an infinity */
+  extern cub_json_t *cub_json_real (double value);
 
-  /* both take over the reference to value */
-  extern int json_object_set_new (json_t * object, const char *key, json_t * value);
-  extern int json_array_append_new (json_t * array, json_t * value);
+  /* NULL for a NULL pointer or for bytes that are not valid UTF-8 */
+  extern cub_json_t *cub_json_string (const char *value);
 
-  extern int json_object_clear (json_t * object);
+  /* both take the value over, on success and on failure alike; a key that is
+   * already present has its value replaced */
+  extern int cub_json_object_set_new (cub_json_t * object, const char *key, cub_json_t * value);
+  extern int cub_json_array_append_new (cub_json_t * array, cub_json_t * value);
 
-  /* releases the tree this node belongs to, once no root of it is left */
-  extern void json_decref (json_t * node);
-  extern void json_delete (json_t * node);
+  /* releases the tree this node belongs to, once no node of it is still owned */
+  extern void cub_json_decref (cub_json_t * node);
 
-  /* caller frees the result with free () */
-  extern char *json_dumps (const json_t * node, size_t flags);
-  extern json_t *json_loads (const char *text, size_t flags, void *error);
+  /* two-space indent, members in insertion order; the caller frees the result
+   * with free (). NULL if the tree holds something that cannot be written. */
+  extern char *cub_json_dumps (const cub_json_t * node);
 
-  /* supports the subset of the pack language the callers use:
-   * an object of "s" keys whose values are o, s, i, I, f, b or an array of o */
-  extern json_t *json_pack (const char *fmt, ...);
+  extern cub_json_t *cub_json_loads (const char *text);
 
-  /* accepted and ignored; RapidJSON manages its own allocation */
-  extern void json_set_alloc_funcs (void *(*malloc_fn) (size_t), void (*free_fn) (void *));
+  /* supports the subset of the pack language the callers use: an object of "s"
+   * keys whose values are o, s, i, I, f, b or an array of o. Every "o" argument
+   * is taken over, on success and on failure alike. */
+  extern cub_json_t *cub_json_pack (const char *fmt, ...);
+
+  /* How many nodes on this thread the caller still owns. It is zero once every
+   * tree has been released, and that is the invariant the node pool is freed
+   * on, so a caller that wants to prove it did not lose a node can check it. */
+  extern long cub_json_owned_count (void);
 
 #ifdef __cplusplus
 }

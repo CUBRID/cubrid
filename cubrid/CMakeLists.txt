@@ -76,7 +76,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/bit.c
   ${BASE_DIR}/chartype.c
-  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/dtoa.c
   ${BASE_DIR}/dynamic_array.c
@@ -91,6 +90,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
+  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/language_support.c
   ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/locale_support.c

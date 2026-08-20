@@ -84,7 +84,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/chartype.c
-  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/dtoa.c
   ${BASE_DIR}/dynamic_array.c
@@ -99,6 +98,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
+  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/language_support.c
   ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/locale_support.c

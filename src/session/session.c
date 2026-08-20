@@ -2905,7 +2905,7 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
   char *trace_str = NULL;
   size_t sizeloc;
   FILE *fp;
-  json_t *plan, *xasl, *stats;
+  cub_json_t *plan, *xasl, *stats;
   DB_VALUE temp_result;
 
   state_p = session_get_session_state (thread_p);
@@ -2940,30 +2940,29 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
     }
   else if (state_p->trace_format == QUERY_TRACE_JSON)
     {
-      stats = json_object ();
+      stats = cub_json_object ();
 
       if (state_p->plan_string != NULL)
 	{
-	  plan = json_loads (state_p->plan_string, 0, NULL);
+	  plan = cub_json_loads (state_p->plan_string);
 	  if (plan != NULL)
 	    {
-	      json_object_set_new (stats, "Query Plan", plan);
+	      cub_json_object_set_new (stats, "Query Plan", plan);
 	    }
 	}
 
       if (state_p->trace_stats != NULL)
 	{
-	  xasl = json_loads (state_p->trace_stats, 0, NULL);
+	  xasl = cub_json_loads (state_p->trace_stats);
 	  if (xasl != NULL)
 	    {
-	      json_object_set_new (stats, "Trace Statistics", xasl);
+	      cub_json_object_set_new (stats, "Trace Statistics", xasl);
 	    }
 	}
 
-      trace_str = json_dumps (stats, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
+      trace_str = cub_json_dumps (stats);
 
-      json_object_clear (stats);
-      json_decref (stats);
+      cub_json_decref (stats);
     }
 
   if (trace_str != NULL)

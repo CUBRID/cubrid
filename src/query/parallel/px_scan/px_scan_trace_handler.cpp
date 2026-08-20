@@ -308,7 +308,7 @@ namespace parallel_scan
       }
   }
 
-  void accumulative_trace_storage::dump_stats_json (json_t *scan, char *class_name)
+  void accumulative_trace_storage::dump_stats_json (cub_json_t *scan, char *class_name)
   {
     int parallel_workers = m_stats.size();
     const char *result_type_str = m_result_type == RESULT_TYPE::MERGEABLE_LIST ? "mergeable list" :
@@ -318,29 +318,29 @@ namespace parallel_scan
 				  m_scan_type == SCAN_TYPE::LIST ? "parallel temp" : "parallel heap";
     if (m_stats.empty())
       {
-	json_t *parallel_obj;
+	cub_json_t *parallel_obj;
 	if (m_scan_type == SCAN_TYPE::INDEX)
 	  {
-	    parallel_obj = json_pack ("{s:I, s:s, s:s, s:s, s:s, s:s}",
-				      "parallel_workers", (json_int_t) 0,
-				      "time", "0..0",
-				      "readkeys", "0..0",
-				      "filteredkeys", "0..0",
-				      "rows", "0..0",
-				      "gather", result_type_str);
-	    json_t *lookup_obj = json_pack ("{s:s, s:s}", "time", "0..0", "rows", "0..0");
-	    json_object_set_new (parallel_obj, "lookup", lookup_obj);
+	    parallel_obj = cub_json_pack ("{s:I, s:s, s:s, s:s, s:s, s:s}",
+					  "parallel_workers", (cub_json_int_t) 0,
+					  "time", "0..0",
+					  "readkeys", "0..0",
+					  "filteredkeys", "0..0",
+					  "rows", "0..0",
+					  "gather", result_type_str);
+	    cub_json_t *lookup_obj = cub_json_pack ("{s:s, s:s}", "time", "0..0", "rows", "0..0");
+	    cub_json_object_set_new (parallel_obj, "lookup", lookup_obj);
 	  }
 	else
 	  {
-	    parallel_obj = json_pack ("{s:I, s:s, s:s, s:s, s:s}",
-				      "parallel_workers", (json_int_t) 0,
-				      "time", "0..0",
-				      "readrows", "0..0",
-				      "rows", "0..0",
-				      "gather", result_type_str);
+	    parallel_obj = cub_json_pack ("{s:I, s:s, s:s, s:s, s:s}",
+					  "parallel_workers", (cub_json_int_t) 0,
+					  "time", "0..0",
+					  "readrows", "0..0",
+					  "rows", "0..0",
+					  "gather", result_type_str);
 	  }
-	json_object_set_new (scan, scan_type_label, parallel_obj);
+	cub_json_object_set_new (scan, scan_type_label, parallel_obj);
 	return;
       }
     UINT64 min_elapsed_scan = std::numeric_limits<UINT64>::max();
@@ -386,23 +386,23 @@ namespace parallel_scan
       }
     char time_buf[64];
     snprintf (time_buf, sizeof (time_buf), "%lu..%lu", min_elapsed_scan, max_elapsed_scan);
-    json_t *parallel_obj;
+    cub_json_t *parallel_obj;
     if (m_scan_type == SCAN_TYPE::INDEX)
       {
 	char readkeys_buf[64], filteredkeys_buf[64], rows_buf[64];
 	snprintf (readkeys_buf, sizeof (readkeys_buf), "%lu..%lu", min_read_keys, max_read_keys);
 	snprintf (filteredkeys_buf, sizeof (filteredkeys_buf), "%lu..%lu", min_qualified_keys, max_qualified_keys);
 	snprintf (rows_buf, sizeof (rows_buf), "%lu..%lu", min_key_qualified_rows, max_key_qualified_rows);
-	parallel_obj = json_pack ("{s:I, s:s, s:s, s:s, s:s, s:s}",
-				  "parallel_workers", parallel_workers,
-				  "time", time_buf,
-				  "readkeys", readkeys_buf,
-				  "filteredkeys", filteredkeys_buf,
-				  "rows", rows_buf,
-				  "gather", result_type_str);
+	parallel_obj = cub_json_pack ("{s:I, s:s, s:s, s:s, s:s, s:s}",
+				      "parallel_workers", parallel_workers,
+				      "time", time_buf,
+				      "readkeys", readkeys_buf,
+				      "filteredkeys", filteredkeys_buf,
+				      "rows", rows_buf,
+				      "gather", result_type_str);
 	if (any_covered)
 	  {
-	    json_object_set_new (parallel_obj, "covered", json_true ());
+	    cub_json_object_set_new (parallel_obj, "covered", cub_json_true ());
 	  }
 	else
 	  {
@@ -410,28 +410,28 @@ namespace parallel_scan
 	    snprintf (lookup_time_buf, sizeof (lookup_time_buf), "%lu..%lu", min_lookup, max_lookup);
 	    snprintf (lookup_rows_buf, sizeof (lookup_rows_buf), "%lu..%lu",
 		      min_data_qualified_rows, max_data_qualified_rows);
-	    json_t *lookup_obj = json_pack ("{s:s, s:s}", "time", lookup_time_buf, "rows", lookup_rows_buf);
-	    json_object_set_new (parallel_obj, "lookup", lookup_obj);
+	    cub_json_t *lookup_obj = cub_json_pack ("{s:s, s:s}", "time", lookup_time_buf, "rows", lookup_rows_buf);
+	    cub_json_object_set_new (parallel_obj, "lookup", lookup_obj);
 	  }
 	if (any_count_only)
 	  {
-	    json_object_set_new (parallel_obj, "count_only", json_true ());
+	    cub_json_object_set_new (parallel_obj, "count_only", cub_json_true ());
 	  }
 	if (any_mro)
 	  {
-	    json_object_set_new (parallel_obj, "mro", json_true ());
+	    cub_json_object_set_new (parallel_obj, "mro", cub_json_true ());
 	  }
 	if (any_iss)
 	  {
-	    json_object_set_new (parallel_obj, "iss", json_true ());
+	    cub_json_object_set_new (parallel_obj, "iss", cub_json_true ());
 	  }
 	if (any_lis)
 	  {
-	    json_object_set_new (parallel_obj, "loose", json_true ());
+	    cub_json_object_set_new (parallel_obj, "loose", cub_json_true ());
 	  }
 	if (m_topnsort_used)
 	  {
-	    json_object_set_new (parallel_obj, "topnsort", json_true ());
+	    cub_json_object_set_new (parallel_obj, "topnsort", cub_json_true ());
 	  }
       }
     else
@@ -439,18 +439,18 @@ namespace parallel_scan
 	char readrows_buf[64], rows_buf[64];
 	snprintf (readrows_buf, sizeof (readrows_buf), "%lu..%lu", min_read_rows, max_read_rows);
 	snprintf (rows_buf, sizeof (rows_buf), "%lu..%lu", min_qualified_rows, max_qualified_rows);
-	parallel_obj = json_pack ("{s:I, s:s, s:s, s:s, s:s}",
-				  "parallel_workers", parallel_workers,
-				  "time", time_buf,
-				  "readrows", readrows_buf,
-				  "rows", rows_buf,
-				  "gather", result_type_str);
+	parallel_obj = cub_json_pack ("{s:I, s:s, s:s, s:s, s:s}",
+				      "parallel_workers", parallel_workers,
+				      "time", time_buf,
+				      "readrows", readrows_buf,
+				      "rows", rows_buf,
+				      "gather", result_type_str);
 	if (m_topnsort_used)
 	  {
-	    json_object_set_new (parallel_obj, "topnsort", json_true ());
+	    cub_json_object_set_new (parallel_obj, "topnsort", cub_json_true ());
 	  }
       }
-    json_object_set_new (scan, scan_type_label, parallel_obj);
+    cub_json_object_set_new (scan, scan_type_label, parallel_obj);
   }
 
   void trace_storage_for_sibling_xasl::set_main_xasl_tree (xasl_node *xasl_tree)

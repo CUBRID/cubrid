@@ -29,12 +29,12 @@
 #include <cstdio>
 
 // forward definitions
-struct json_t;
+struct cub_json_t;
 struct xasl_node;
 
 extern bool qdump_print_xasl (xasl_node * xasl);
 #if defined (SERVER_MODE)
-extern void qdump_print_stats_json (xasl_node * xasl_p, json_t * parent);
+extern void qdump_print_stats_json (xasl_node * xasl_p, cub_json_t * parent);
 extern void qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent);
 #endif /* SERVER_MODE */
 extern const char *qdump_operator_type_string (OPERATOR_TYPE optype);
