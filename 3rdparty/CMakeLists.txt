@@ -99,7 +99,6 @@ if(WIN32)
   set(WINDOWS_EXTERNAL_DIR ${WINDOWS_BASE_DIR}/3rdparty)
   set(WINDOWS_EXTERNAL_LIB_DIR ${WINDOWS_EXTERNAL_DIR}/lib64)
   set(WINDOWS_EXTERNAL_INCLUDE_DIR ${WINDOWS_EXTERNAL_DIR}/include)
-  # I could not load debug dll for jansson. disabled for now.
   # if(CMAKE_BUILD_TYPE MATCHES "Debug")
   #   set(WINDOWS_EXTERNAL_DLL_DIR ${WINDOWS_EXTERNAL_DIR}/dll_debug)
   # else()
