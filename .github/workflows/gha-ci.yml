@@ -957,7 +957,10 @@ jobs:
 
           left=$(find "$TC_DIR/shell" -path '*/cases/*.sh' 2>/dev/null | grep -Pc '/([^/]+)/cases/\1\.sh$' || echo 0)
           echo "cases left: $left (expected: ${{ steps.mine.outputs.n }})"
-          echo "/rw: $(df -h /rw | tail -1 | awk '{print $3" used of "$2}')"
+          # Both are tmpfs and charged to this container's memory cgroup, with no
+          # swap to reclaim to. Read these numbers before changing either sizeLimit.
+          echo "/rw       : $(df -h /rw | tail -1 | awk '{print $3" used of "$2}')"
+          echo "/build-rw : $(df -h /build-rw | tail -1 | awk '{print $3" used of "$2}')"
 
       - name: Run CTP
         id: ctp
@@ -1532,12 +1535,26 @@ jobs:
           echo "posted: $(jq -r '.html_url' /tmp/resp.json)"
 
       # 59MB per run, nothing worth keeping, and the cleanup CronJob does not see it.
+      #
+      # ⚠ Keep it when anything failed. "Re-run failed jobs" does not re-run plan,
+      # so the re-run shards read this seed; deleting it here made every one of them
+      # die at "no CTP seed" and the whole re-run path unusable.
+      #
       # A cancelled run skips this step; build_debug sweeps what it leaves.
       - name: Clean up the CTP seed
         if: always()
+        env:
+          FAIL_SUM: ${{ steps.gather.outputs.fail_sum }}
+          DONE_N: ${{ steps.gather.outputs.done_n }}
+          PLANNED: ${{ steps.gather.outputs.planned }}
         run: |
           set -eo pipefail
           seed="$RUNDIR/testtools"
+          if [ "${FAIL_SUM:-1}" != '0' ] || [ "${DONE_N:-0}" != "${PLANNED:-1}" ]; then
+            echo "kept for a re-run: $seed"
+            echo "  failed $FAIL_SUM / shards published ${DONE_N} of ${PLANNED}"
+            exit 0
+          fi
           if [ -d "$seed" ]; then
             du -sh "$seed" 2>/dev/null || true
             rm -rf "$seed" "${seed}.tmp.${GITHUB_RUN_ID}" "${seed}.old"
