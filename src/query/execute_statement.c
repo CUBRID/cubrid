@@ -2699,6 +2699,13 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    */
   assert (WS_ISDIRTY (serial_object) == false);
 
+  /* Drop the server-side cache before the refetch below takes the write lock: decaching hands the
+   * unissued tail of the reserved block back to cur_val, so the value this statement reads, checks
+   * its invariants against and writes back is the last one actually issued, not the block end.
+   * Running it at the end instead - after the object template has been filled from the block end -
+   * lets the template's stale cur_val overwrite the write-back when the ALTER commits. */
+  (void) serial_decache (&serial_obj_id);
+
   ws_decache (serial_object);
 
   /* no need to get the last version for serial - actually, AU_FETCH_WRITE will get only last version, for locking */
