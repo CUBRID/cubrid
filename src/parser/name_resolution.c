@@ -188,6 +188,7 @@ static PT_NODE *pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * const node);
+static PT_NODE *pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att);
 
 static PT_NODE *pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE * name, PT_BIND_NAMES_ARG * bind_arg,
@@ -3842,6 +3843,47 @@ pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node)
 }				/* pt_bind_values_to_hostvars */
 
 /*
+ * pt_make_attribute_default_value_node () - Builds the PT_NODE a Default
+ *	Reference (the DEFAULT keyword used as a value) resolves to for one
+ *	attribute: the rehydrated Compact DEFAULT Tree for a residual DEFAULT
+ *	expression, the reconstructed expression for a legacy
+ *	DB_DEFAULT_EXPR_TYPE default, or a PT_VALUE of the stored value for a
+ *	plain literal or Expression-Derived Literal.
+ *
+ * return      : default value node or NULL on error
+ * parser (in) : parser context
+ * att (in)    : resolved attribute
+ */
+static PT_NODE *
+pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att)
+{
+  const DB_DEFAULT_EXPR *default_expr = &att->default_value.default_expr;
+  PT_NODE *node;
+
+  if (default_expr->default_expr_type == DB_DEFAULT_NONE && default_expr->default_expr_tree_stream != NULL
+      && default_expr->default_expr_tree_stream_size > 0)
+    {
+      /* residual DEFAULT expression: rehydrate it so the reference evaluates at execution time; the
+       * rehydrated nodes carry do_not_fold, keeping generic constant folding from freezing it */
+      return pt_compact_default_tree_from_stream (parser, default_expr->default_expr_tree_stream,
+						  default_expr->default_expr_tree_stream_size);
+    }
+
+  if (default_expr->default_expr_type != DB_DEFAULT_NONE)
+    {
+      /* legacy expression default (also still used by ON UPDATE / SHARED) */
+      return pt_make_default_value_tree_from_default_expr (parser, default_expr);
+    }
+
+  node = pt_dbval_to_value (parser, &att->default_value.value);
+  if (node != NULL && TP_DOMAIN_TYPE (att->domain) == DB_TYPE_ENUMERATION)
+    {
+      node->data_type = pt_domain_to_data_type (parser, att->domain);
+    }
+  return node;
+}
+
+/*
  * pt_resolve_default_value () - Fills PT_NAME node with default value
  *
  * return      : error code
@@ -3886,30 +3928,11 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
       return ER_FAILED;
     }
 
-  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+  name->info.name.default_value = pt_make_attribute_default_value_node (parser, att);
+  if (name->info.name.default_value == NULL)
     {
-      /* if the default value is an expression, make a node for it */
-      name->info.name.default_value =
-	pt_make_default_value_tree_from_default_expr (parser, &att->default_value.default_expr);
-      if (name->info.name.default_value == NULL)
-	{
-	  PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  return ER_FAILED;
-	}
-    }
-  else
-    {
-      /* just set the default value */
-      name->info.name.default_value = pt_dbval_to_value (parser, &att->default_value.value);
-      if (name->info.name.default_value == NULL)
-	{
-	  PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  return ER_FAILED;
-	}
-      if (TP_DOMAIN_TYPE (att->domain) == DB_TYPE_ENUMERATION)
-	{
-	  name->info.name.default_value->data_type = pt_domain_to_data_type (parser, att->domain);
-	}
+      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_FAILED;
     }
 
   PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_FILL_DEFAULT);
@@ -3989,30 +4012,11 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	      /* default value was already set */
 	      return 1;
 	    }
-	  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+	  attr->info.name.default_value = pt_make_attribute_default_value_node (parser, att);
+	  if (attr->info.name.default_value == NULL)
 	    {
-	      /* if the default value is an expression, make a node for it */
-	      attr->info.name.default_value =
-		pt_make_default_value_tree_from_default_expr (parser, &att->default_value.default_expr);
-	      if (attr->info.name.default_value == NULL)
-		{
-		  PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  return 0;
-		}
-	    }
-	  else
-	    {
-	      /* just set the default value */
-	      attr->info.name.default_value = pt_dbval_to_value (parser, &att->default_value.value);
-	      if (attr->info.name.default_value == NULL)
-		{
-		  PT_INTERNAL_ERROR (parser, "resolution");
-		  return 0;
-		}
-	      if (TP_DOMAIN_TYPE (att->domain) == DB_TYPE_ENUMERATION)
-		{
-		  attr->info.name.default_value->data_type = pt_domain_to_data_type (parser, att->domain);
-		}
+	      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return 0;
 	    }
 	}
 

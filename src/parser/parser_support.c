@@ -10730,9 +10730,9 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
  * A PT_FUNCTION_HOLDER wrapper is transparent: its held PT_FUNCTION is stored.
  */
 #define PT_CDT_VERSION 1
-#define PT_CDT_TAG_VALUE 1
-#define PT_CDT_TAG_OP 2
-#define PT_CDT_TAG_FUNC 3
+#define PT_CDT_TAG_VALUE 1	/* PT_VALUE */
+#define PT_CDT_TAG_OP 2		/* PT_EXPR (PT_OP_TYPE) */
+#define PT_CDT_TAG_FUNC 3	/* PT_FUNCTION_HOLDER (FUNC_CODE) */
 
 /*
  * pt_cdt_canonical_domain () - canonicalize a result domain before packing
@@ -11124,7 +11124,20 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
     {
       node->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
       node->data_type = pt_domain_to_data_type (parser, domain);
+
+      /* PT_CAST keeps its target type in cast_type, which is not serialized on its own; for a cast the
+       * result domain IS the target, so restore cast_type from it (type checking rejects a cast_type-less
+       * PT_CAST: "'cast' operator is not defined on ...") */
+      if (node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+	{
+	  node->info.expr.cast_type = pt_domain_to_data_type (parser, domain);
+	}
     }
+
+  /* a rehydrated residual is Stable by construction (the Immutable parts were folded at DDL time);
+   * generic constant folding must not freeze it when the rehydrated tree is grafted into a statement
+   * (Default Reference), so its evaluation stays at execution time */
+  node->flag.do_not_fold = 1;
 
   return node;
 }
