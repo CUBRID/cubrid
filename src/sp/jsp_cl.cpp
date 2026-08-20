@@ -3207,6 +3207,7 @@ jsp_create_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err;
   const char *unique_name;
+  char downcased[DB_MAX_IDENTIFIER_LENGTH + 1];
   char owner_name[DB_MAX_USER_LENGTH];
   MOP owner;
 
@@ -3219,6 +3220,9 @@ jsp_create_package (PARSER_CONTEXT *parser, PT_NODE *statement)
   // get unique_name, owner_name, and owner
   {
     unique_name = PT_NODE_PKG_NAME (statement);
+    sm_downcase_name (unique_name, downcased, DB_MAX_IDENTIFIER_LENGTH + 1);
+    unique_name = downcased;
+
     if (sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
       {
 	ASSERT_ERROR ();
@@ -3300,6 +3304,7 @@ int
 jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR;
+  char downcased[DB_MAX_IDENTIFIER_LENGTH + 1];
   char owner_name[DB_MAX_USER_LENGTH];
   MOP owner_mop, pkg_mop;
 
@@ -3310,6 +3315,8 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
   for (PT_NODE *name_node = statement->info.pkg.name; name_node != NULL; name_node = name_node->next)
     {
       const char *unique_name = name_node->info.name.original;
+      sm_downcase_name (unique_name, downcased, DB_MAX_IDENTIFIER_LENGTH + 1);
+      unique_name = downcased;
 
       // check for duplicate names in the list
       for (PT_NODE *prev_node = statement->info.pkg.name; prev_node != name_node; prev_node = prev_node->next)
@@ -3389,6 +3396,8 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
   for (PT_NODE *name_node = statement->info.pkg.name; name_node != NULL; name_node = name_node->next)
     {
       const char *unique_name = name_node->info.name.original;
+      sm_downcase_name (unique_name, downcased, DB_MAX_IDENTIFIER_LENGTH + 1);
+      unique_name = downcased;
 
       owner_name[0] = '\0';
       sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH);

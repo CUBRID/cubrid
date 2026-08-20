@@ -174,6 +174,14 @@ namespace cubpl
     DB_VALUE value; // only for auto parameterized
   };
 
+  enum global_semantics_question_type
+  {
+    GSQT_PROCEDURE = 1,
+    GSQT_FUNCTION = 2,
+    GSQT_SERIAL = 3,
+    GSQT_ID_TYPE = 4,
+  };
+
   struct EXPORT_IMPORT global_semantics_question : public cubpacking::packable_object
   {
     global_semantics_question () = default;
@@ -230,15 +238,15 @@ namespace cubpl
     size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
   };
 
-  struct EXPORT_IMPORT global_semantics_response_column : public global_semantics_response_common
+  struct EXPORT_IMPORT global_semantics_response_id_type : public global_semantics_response_common
   {
-    global_semantics_response_column ();
+    global_semantics_response_id_type ();
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
-    cubmethod::column_info c_info;
+    cubmethod::type_info t_info;
   };
 
   struct EXPORT_IMPORT global_semantics_response : public cubpacking::packable_object

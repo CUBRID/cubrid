@@ -965,7 +965,7 @@ $ LOADDB
 892 Primary key "%2$s" already defined for class "%1$s".
 893 Attribute '%1$s', a member of the primary key, could not be dropped.
 894 Stored procedure/function '%1$s' does not exist.
-895 Invalid stored procedure type: '%1$s' is the '%2$s'.
+895 Invalid stored procedure type: '%1$s' is a '%2$s'.
 896 Compression failed. Zip Method: %1$d (%2$s), Zip Level: %3$d (%4$s)
 897 Decompression failed.
 898 Replication error: "%1$s"

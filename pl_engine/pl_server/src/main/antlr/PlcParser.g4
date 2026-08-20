@@ -188,9 +188,14 @@ assignment_statement
     : assign_target ':=' expression
     ;
 
+qualified_id
+    : qualSingle=identifier '.' name=identifier                             // qualifier can be a record, owner, pkg, or table
+    | qualLeft=identifier '.' qualRight=identifier '.' name=identifier      // qualifier can be a onwer.pkg or owner.table
+    ;
+
 assign_target
     : identifier
-    | record_field
+    | qualified_id    // record.field, or (owner.)pkg.var
     ;
 
 continue_statement
@@ -263,7 +268,9 @@ procedure_call
     ;
 
 proc_call_name
-    : (owner=identifier '.')? (DBMS_OUTPUT '.')? name=identifier
+    : identifier
+    | DBMS_OUTPUT '.' identifier
+    | qualified_id    // owner.proc, or (owner.)pkg.proc
     ;
 
 body
@@ -395,7 +402,7 @@ unary_expression
 
 atom
     : literal                                   # literal_exp
-    | record_field                              # field_exp
+    | qualified_id                              # qualified_name   // record.field, serial-value, (owner.)pkg.var, or (owner.)pkg.const
     | syntaxed_call                             # syntaxed_call_exp
     | function_call                             # call_exp
     | identifier                                # id_exp
@@ -408,16 +415,13 @@ atom
     | SQLERRM                                   # sqlerrm_exp
     ;
 
-record_field
-    : record=identifier '.' field=identifier
-    ;
-
 function_call
     : func_call_name function_argument
     ;
 
 func_call_name
-    : (owner=identifier '.')? name=func_name
+    : func_name
+    | qualified_id    // owner.func, or (owner.)pkg.func
     ;
 
 func_name
@@ -609,6 +613,7 @@ label_name
 
 exception_name
     : identifier
+    | qualified_id    // (owner.)pkg.exception
     ;
 
 index_name
@@ -617,22 +622,10 @@ index_name
 
 cursor_exp
     : identifier
+    | qualified_id    // (owner.)pkg.cursor
     ;
 
 record_name
-    : identifier
-    ;
-
-table_name
-    : (identifier '.')? identifier
-    ;
-
-/* row name: table name or cursor name to which %ROWTYPE can be applied */
-row_name
-    : (user=identifier '.')? name=identifier
-    ;
-
-column_name
     : identifier
     ;
 
@@ -658,11 +651,13 @@ native_datatype
     ;
 
 percent_type
-    : (table_name '.')? identifier PERCENT_TYPE
+    : identifier PERCENT_TYPE       // var, const
+    | qualified_id PERCENT_TYPE   // (owner.)table.column, (owner.)pkg.var, or (owner.)pkg.const
     ;
 
 percent_rowtype
-    : row_name PERCENT_ROWTYPE
+    : identifier PERCENT_ROWTYPE        // table, or cursor
+    | qualified_id PERCENT_ROWTYPE    // owner.table, or (owner.)pkg.cursor
     ;
 
 numeric_type

@@ -2236,10 +2236,6 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   /* If the name is already a user-specified name or a system class name, do not recreate it. */
   if (dot != NULL)
     {
-      /* There must be only one dot(.) because dot(.) cannot be used in identifier names
-       * even if the exception rule is used. */
-      assert (strchr (dot + 1, '.') == NULL);
-
       assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
       assert (strlen (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
