@@ -556,7 +556,7 @@ namespace cubschema
 	AU_SAVE_AND_DISABLE (au_save);
 
 	(void) snprintf (select_query, sizeof (select_query),
-			 "SELECT COUNT(*) FROM [_db_domain] WHERE [data_type]=%d AND ([class_of].[unique_name]='%s' OR [class_of] IS NULL) AND ROWNUM <= %d",
+			 "SELECT COUNT(*) FROM [_db_domain] WHERE [data_type]=%d AND (IF ([class_of].[is_system_class] = 0, CONCAT (LOWER ([class_of].[owner].[name]), '.', [class_of].[class_name]), [class_of].[class_name]) = '%s' OR [class_of] IS NULL) AND ROWNUM <= %d",
 			 DB_TYPE_OBJECT, class_name, CNT_CATCLS_OBJECTS + 1);
 
 	session = db_open_buffer (select_query);

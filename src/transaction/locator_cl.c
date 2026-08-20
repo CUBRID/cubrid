@@ -2986,12 +2986,19 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
 {
   LC_FIND_CLASSNAME found;
   int error_code;
+  char synonym_target[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  bool is_synonym = false;
 
   assert (classname != NULL);
 
   /* Need to check the classname to oid in the server */
   *class_mop = NULL;
-  found = locator_find_class_oid (classname, class_oid, lock);
+  found = locator_find_class_oid (classname, class_oid, lock, synonym_target, &is_synonym);
+  if (is_synonym)
+    {
+      /* the name resolved through a synonym; continue with its target class */
+      classname = synonym_target;
+    }
   switch (found)
     {
     case LC_CLASSNAME_EXIST:

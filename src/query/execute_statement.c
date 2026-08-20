@@ -19217,6 +19217,12 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
       ASSERT_ERROR ();
     }
 
+  if (error == NO_ERROR && target_name != NULL && intl_identifier_casecmp (old_target_name, target_name) != 0)
+    {
+      /* mirror the target change into the server classname table */
+      error = locator_synonym_ddl (LC_SYNONYM_DDL_ALTER, synonym_name, target_name, NULL);
+    }
+
   if (old_target_obj_id != NULL)
     {
       synonym_remove_xasl_by_oid (old_target_obj_id);
@@ -19521,6 +19527,12 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
       ASSERT_ERROR ();
     }
 
+  if (error == NO_ERROR)
+    {
+      /* mirror the new synonym into the server classname table */
+      error = locator_synonym_ddl (LC_SYNONYM_DDL_ADD, synonym_name, target_name, ws_identifier (instance_obj));
+    }
+
 end:
   if (obj_tmpl != NULL && instance_obj == NULL)
     {
@@ -19659,6 +19671,12 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
+    }
+
+  if (error == NO_ERROR)
+    {
+      /* mirror the drop into the server classname table */
+      error = locator_synonym_ddl (LC_SYNONYM_DDL_DROP, synonym_name, NULL, NULL);
     }
 
   if (old_target_obj_id != NULL)
@@ -19854,6 +19872,12 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
+    }
+
+  if (error == NO_ERROR)
+    {
+      /* mirror the rename into the server classname table */
+      error = locator_synonym_ddl (LC_SYNONYM_DDL_RENAME, old_synonym_name, new_synonym_name, NULL);
     }
 
   if (old_target_obj_id != NULL)
@@ -20721,7 +20745,8 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
     }
 
   class_name = sm_remove_qualifier_name (name);
-  query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  query = "SELECT IF ([is_system_class] = 0, CONCAT (LOWER ([owner].[name]), '.', [class_name]), [class_name]) "
+    "FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, qualifier_name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, qualifier_name);
   assert (query_buf[0] != '\0');

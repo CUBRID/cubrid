@@ -251,6 +251,10 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_get_reserved_class_name_oid;
 
+  req_p = &net_Requests[NET_SERVER_LC_SYNONYM_DDL];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = slocator_synonym_ddl;
+
   req_p = &net_Requests[NET_SERVER_LC_DELETE_CLASSNAME];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_delete_class_name;

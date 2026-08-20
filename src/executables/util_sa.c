@@ -3532,7 +3532,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	"SELECT "
 	  "[a].[class_of].[class_type] AS [class_type], "
 	  "[a].[class_of].[is_system_class] AS [is_system_class], "
-	  "[a].[class_of].[unique_name] AS [unique_name], "
+	  "IF ([a].[class_of].[is_system_class] = 0, CONCAT (LOWER ([a].[class_of].[owner].[name]), '.', [a].[class_of].[class_name]), [a].[class_of].[class_name]) AS [unique_name], "
 	  "[a].[class_of].[class_name] AS [class_name], "
 	  "LOWER ([a].[class_of].[owner].[name]) AS [owner_name], "
 	  "[a].[attr_name] AS [attr_name], "
@@ -3567,7 +3567,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	  "[d].[collation_id] = %d "
 	  "AND [p].[pname] IS NULL "
 	"ORDER BY "
-	  "[a].[class_of].[unique_name], "
+	  "[unique_name], "
 	  "[a].[attr_name]",
 	db_coll->coll_id);
   // *INDENT-ON*

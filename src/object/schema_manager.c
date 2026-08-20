@@ -5519,7 +5519,6 @@ sm_find_class_with_purpose (const char *name, bool for_update)
 {
   char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   MOP class_mop = NULL;
-  MOP synonym_mop = NULL;
   int error = NO_ERROR;
 
   if (name == NULL || name[0] == '\0')
@@ -5530,37 +5529,8 @@ sm_find_class_with_purpose (const char *name, bool for_update)
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
+  /* the locator resolves synonyms to their target class within the same server probe */
   class_mop = locator_find_class_with_purpose (realname, for_update);
-  if (class_mop)
-    {
-      return class_mop;
-    }
-
-  /* class_mop == NULL */
-  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
-    {
-      synonym_mop = sm_find_synonym (realname);
-      if (synonym_mop)
-	{
-	  char target_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-	  sm_get_synonym_target_name (synonym_mop, target_name, SM_MAX_IDENTIFIER_LENGTH);
-	  class_mop = locator_find_class_with_purpose (target_name, for_update);
-	  if (class_mop)
-	    {
-	      er_clear ();
-	    }
-	}
-      else
-	{
-	  /* synonym_mop == NULL */
-	  ASSERT_ERROR ();
-
-	  if (er_errid () == ER_SYNONYM_NOT_EXIST)
-	    {
-	      ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, realname);
-	    }
-	}
-    }
 
   return class_mop;
 }

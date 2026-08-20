@@ -301,7 +301,6 @@ static CT_ATTR ct_class_atts[] = {
   {"created_time", NULL_ATTRID, DB_TYPE_DATETIME},
   {"updated_time", NULL_ATTRID, DB_TYPE_DATETIME},
   {"checked_time", NULL_ATTRID, DB_TYPE_DATETIME},
-  {"unique_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"class_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"sub_classes", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"super_classes", NULL_ATTRID, DB_TYPE_SEQUENCE},

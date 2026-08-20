@@ -217,7 +217,7 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
 	  "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?"
 	  " AND [au].[object_of] = (%s) AND [au].[auth_type] = ?";
-  char obj_fetch_query[256];
+  char obj_fetch_query[512];
   const char *class_unique_name = NULL;
   char sp_unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   char error_msg[ERR_MSG_SIZE];
@@ -244,7 +244,9 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
 	  goto exit;
 	}
 
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
+	       " WHERE IF ([cl].[is_system_class] = 0,"
+	       " CONCAT (LOWER ([cl].[owner].[name]), '.', [cl].[class_name]), [cl].[class_name]) = ?");
       break;
     case DB_OBJECT_PROCEDURE:
       sp_unique_name[0] = '\0';
@@ -578,7 +580,7 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   int stmt_id;
-  char obj_fetch_query[256];
+  char obj_fetch_query[512];
 
   db_make_null (&val);
 
@@ -590,7 +592,9 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
+	       " WHERE IF ([cl].[is_system_class] = 0,"
+	       " CONCAT (LOWER ([cl].[owner].[name]), '.', [cl].[class_name]), [cl].[class_name]) = ?");
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
@@ -741,7 +745,7 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
   DB_SESSION *session = NULL;
   int stmt_id;
   int row_count = -1;
-  char obj_fetch_query[256];
+  char obj_fetch_query[512];
   const char *sql_query =
 	  "SELECT [au].grantee, [au].object_of, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = (%s);";
@@ -763,7 +767,9 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
+	       " WHERE IF ([cl].[is_system_class] = 0,"
+	       " CONCAT (LOWER ([cl].[owner].[name]), '.', [cl].[class_name]), [cl].[class_name]) = ?");
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
@@ -1253,7 +1259,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 				    const char *unique_name, int *row_count)
 {
   int error = NO_ERROR, save, current_cache;
-  char obj_fetch_query[256];
+  char obj_fetch_query[512];
   const char *sql_query =
 	  "SELECT [au].grantee, [au].object_of FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[object_of] = (%s)"
@@ -1283,7 +1289,9 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
+	       " WHERE IF ([cl].[is_system_class] = 0,"
+	       " CONCAT (LOWER ([cl].[owner].[name]), '.', [cl].[class_name]), [cl].[class_name]) = ?");
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
@@ -1512,7 +1520,7 @@ static int
 update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop, const char *unique_name)
 {
   int error = NO_ERROR, save;
-  char obj_fetch_query[256];
+  char obj_fetch_query[512];
   const char *sql_query =
 	  "SELECT [au].object, [au].grantor, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable FROM ["
 	  CT_CLASSAUTH_NAME "] [au]"

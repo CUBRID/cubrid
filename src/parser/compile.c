@@ -688,12 +688,9 @@ pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 int
 pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spec, LC_PREFETCH_FLAGS flags)
 {
-  MOP synonym_mop = NULL;
   char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *class_name = NULL;
-  char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int len = 0;
-  int error = NO_ERROR;
 
   if (lcks->num_classes >= lcks->allocated_count)
     {
@@ -743,33 +740,8 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
       lcks->allocated_count++;
     }
 
-  /* If it is a synonym name, change it to the target name. */
+  /* Synonym names are resolved to their target class by the server inside the lockhint request. */
   class_name = spec->info.spec.entity_name->info.name.original;
-  synonym_mop = db_find_synonym (class_name);
-  if (synonym_mop != NULL)
-    {
-      class_name = db_get_synonym_target_name (synonym_mop, target_name, DB_MAX_IDENTIFIER_LENGTH);
-      if (class_name == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  return error;
-	}
-    }
-  else
-    {
-      /* synonym_mop == NULL */
-      ASSERT_ERROR_AND_SET (error);
-
-      if (error == ER_SYNONYM_NOT_EXIST)
-	{
-	  er_clear ();
-	  error = NO_ERROR;
-	}
-      else
-	{
-	  return error;
-	}
-    }
 
   sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
 

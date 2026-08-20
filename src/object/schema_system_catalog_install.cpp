@@ -402,7 +402,6 @@ namespace cubschema
 		   // columns
     {
       {"class_of", "object"},
-      {"unique_name", format_varchar (255)},
       {"class_name", format_varchar (255)},
       {"class_type", "integer"},
       {"is_system_class", "integer"},
@@ -454,9 +453,8 @@ namespace cubschema
       *
       *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
       */
-      {DB_CONSTRAINT_INDEX, "i__db_class_unique_name", {"unique_name", nullptr}, false},
       {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false}
+      {DB_CONSTRAINT_INDEX, "i__db_class_class_of", {"class_of", nullptr}, false}
     },
 // authorization
     {

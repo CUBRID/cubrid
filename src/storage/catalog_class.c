@@ -60,7 +60,7 @@
     b = t; \
   } while (0)
 
-#define CATCLS_INDEX_NAME "i__db_class_unique_name"
+#define CATCLS_INDEX_NAME "i__db_class_class_of"
 
 #define CATCLS_OID_TABLE_SIZE   1024
 
@@ -165,8 +165,8 @@ static void catcls_free_or_value (OR_VALUE * value);
 static int catcls_expand_or_value_by_def (OR_VALUE * value_p, CT_CLASS * def);
 static int catcls_guess_record_length (OR_VALUE * value_p);
 static int catcls_find_class_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name, OID * class_oid);
-static int catcls_find_btid_of_class_name (THREAD_ENTRY * thread_p, BTID * btid);
-static int catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name, OID * oid);
+static int catcls_find_btid_of_class_of (THREAD_ENTRY * thread_p, BTID * btid);
+static int catcls_find_oid_by_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid);
 static int catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p, DB_VALUE * oid_val);
 static int catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VALUE * value_p);
 static void catcls_apply_component_type (OR_VALUE * value_p, int type);
@@ -615,22 +615,23 @@ catcls_find_class_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p
 }
 
 /*
- * catcls_find_btid_of_class_name () -
+ * catcls_find_btid_of_class_of () - Find the btid of the (class_of) index of ct_Class
  *   return:
  *   btid(in):
  */
 static int
-catcls_find_btid_of_class_name (THREAD_ENTRY * thread_p, BTID * btid_p)
+catcls_find_btid_of_class_of (THREAD_ENTRY * thread_p, BTID * btid_p)
 {
   DISK_REPR *repr_p = NULL;
   DISK_ATTR *att_repr_p;
   REPR_ID repr_id;
   OID *index_class_p;
   ATTR_ID index_key;
+  int i;
   int error = NO_ERROR;
 
   index_class_p = &ct_Class.cc_classoid;
-  index_key = (ct_Class.cc_atts)[CT_CLASS_UNIQUE_NAME_INDEX].ca_id;
+  index_key = (ct_Class.cc_atts)[CT_CLASS_CLASS_OF_INDEX].ca_id;
 
   error = catalog_get_last_representation_id (thread_p, index_class_p, &repr_id);
   if (error != NO_ERROR)
@@ -648,12 +649,18 @@ catcls_find_btid_of_class_name (THREAD_ENTRY * thread_p, BTID * btid_p)
 	}
     }
 
-  for (att_repr_p = repr_p->variable; att_repr_p->id != index_key; att_repr_p++)
+  /* class_of is an object attribute: it lives in the fixed attribute list */
+  att_repr_p = NULL;
+  for (i = 0; i < repr_p->n_fixed; i++)
     {
-      ;
+      if (repr_p->fixed[i].id == index_key)
+	{
+	  att_repr_p = &repr_p->fixed[i];
+	  break;
+	}
     }
 
-  if (att_repr_p->bt_stats == NULL)
+  if (att_repr_p == NULL || att_repr_p->bt_stats == NULL)
     {
       error = ER_SM_NO_INDEX;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, CATCLS_INDEX_NAME);
@@ -679,24 +686,19 @@ error:
 }
 
 /*
- * catcls_find_oid_by_class_name () - Get an instance oid in the ct_Class using the
- *                               index for classname
+ * catcls_find_oid_by_class_oid () - Get the ct_Class row oid of a class using the
+ *                                   (class_of) index
  *   return:
- *   name(in):
- *   oid(in):
+ *   class_oid_p(in): OID of the class whose catalog row is looked up
+ *   oid_p(out): OID of the ct_Class row; NULL OID when not found
  */
 static int
-catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p, OID * oid_p)
+catcls_find_oid_by_class_oid (THREAD_ENTRY * thread_p, OID * class_oid_p, OID * oid_p)
 {
   DB_VALUE key_val;
   int error = NO_ERROR;
 
-  error = db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, name_p, (int) strlen (name_p), LANG_SYS_CODESET,
-			   LANG_SYS_COLLATION);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  db_make_oid (&key_val, class_oid_p);
 
   error = xbtree_find_unique (thread_p, &catcls_Btid, S_SELECT, &key_val, &ct_Class.cc_classoid, oid_p, false);
   if (error == BTREE_ERROR_OCCURRED)
@@ -723,7 +725,6 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p, OID 
 static int
 catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p, DB_VALUE * oid_val_p)
 {
-  char *name_p = NULL;
   OID oid_buf;
   OID *class_oid_p, *oid_p;
   CATCLS_ENTRY *entry_p;
@@ -748,59 +749,40 @@ catcls_convert_class_oid_to_oid (THREAD_ENTRY * thread_p, DB_VALUE * oid_val_p)
   if (oid_p == NULL)
     {
       oid_p = &oid_buf;
-      if (heap_get_class_name (thread_p, class_oid_p, &name_p) != NO_ERROR)
+      if (catcls_find_oid_by_class_oid (thread_p, class_oid_p, oid_p) != NO_ERROR)
 	{
-	  /* class_oid object may be deleted */
-	  ASSERT_ERROR ();
-	  db_make_null (oid_val_p);
-
-	  return er_errid ();
-	}
-
-      if (name_p == NULL)
-	{
-	  /* this is only possible if ER_HEAP_NODATA_NEWADDRESS occur */
-	  db_make_null (oid_val_p);
-	  return NO_ERROR;
-	}
-
-      if (catcls_find_oid_by_class_name (thread_p, name_p, oid_p) != NO_ERROR)
-	{
-	  free_and_init (name_p);
-
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
-      if (!OID_ISNULL (oid_p))
+      if (OID_ISNULL (oid_p))
 	{
-	  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  if ((entry_p = catcls_allocate_entry (thread_p)) != NULL)
-	    {
-	      COPY_OID (&entry_p->class_oid, class_oid_p);
-	      COPY_OID (&entry_p->oid, oid_p);
-	      catcls_put_entry (thread_p, entry_p, &already_exists);
-	      /* if it already exists, just free current entry_p */
-	      if (already_exists)
-		{
-		  catcls_free_entry (entry_p);
-		}
-	    }
-
-	  csect_exit (thread_p, CSECT_CT_OID_TABLE);
+	  /* class_oid object may be deleted */
+	  db_make_null (oid_val_p);
+	  return NO_ERROR;
 	}
+
+      if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      if ((entry_p = catcls_allocate_entry (thread_p)) != NULL)
+	{
+	  COPY_OID (&entry_p->class_oid, class_oid_p);
+	  COPY_OID (&entry_p->oid, oid_p);
+	  catcls_put_entry (thread_p, entry_p, &already_exists);
+	  /* if it already exists, just free current entry_p */
+	  if (already_exists)
+	    {
+	      catcls_free_entry (entry_p);
+	    }
+	}
+
+      csect_exit (thread_p, CSECT_CT_OID_TABLE);
     }
 
   db_make_oid (oid_val_p, oid_p);
-
-  if (name_p)
-    {
-      free_and_init (name_p);
-    }
 
   return NO_ERROR;
 }
@@ -1074,30 +1056,31 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 
   /* variable */
 
-  /* unique_name */
-  attr_val_p = &attrs[CT_CLASS_UNIQUE_NAME_INDEX].value;
+  /* class_name: the record name ("owner.name") is read first; the qualifier is stripped in place below */
+  attr_val_p = &attrs[CT_CLASS_CLASS_NAME_INDEX].value;
   tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
-  /* class_name */
-  class_name = db_get_string (attr_val_p);
-  assert (class_name != NULL);
-  dot = strchr (class_name, '.');
-  if (dot)
-    {
-      class_name = dot + 1;
-    }
-  db_make_string (&attrs[CT_CLASS_CLASS_NAME_INDEX].value, class_name);
-
-  /* (class_of) */
-  if (catcls_find_class_oid_by_class_name
-      (thread_p, db_get_string (&attrs[CT_CLASS_UNIQUE_NAME_INDEX].value), &class_oid) != NO_ERROR)
+  /* (class_of) — look up by the full record name before stripping the qualifier */
+  if (catcls_find_class_oid_by_class_name (thread_p, db_get_string (attr_val_p), &class_oid) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error;
     }
   db_make_oid (&attrs[CT_CLASS_CLASS_OF_INDEX].value, &class_oid);
+
+  /* strip the owner qualifier from class_name in place */
+  class_name = db_get_string (attr_val_p);
+  assert (class_name != NULL);
+  dot = strchr (class_name, '.');
+  if (dot)
+    {
+      size_t bare_size = strlen (dot + 1);
+
+      memmove ((char *) class_name, dot + 1, bare_size + 1);
+      db_string_truncate (attr_val_p, (int) bare_size);
+    }
 
   /* loader_commands */
   or_advance (buf_p, vars[ORC_LOADER_COMMANDS_INDEX].length);
@@ -4385,7 +4368,7 @@ catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p, OID 
   HEAP_SCANCACHE scan;
   bool is_scan_inited = false;
 
-  if (catcls_find_oid_by_class_name (thread_p, name_p, &oid) != NO_ERROR)
+  if (catcls_find_oid_by_class_oid (thread_p, class_oid_p, &oid) != NO_ERROR)
     {
       goto error;
     }
@@ -4466,7 +4449,16 @@ catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsi
   RECDES record = RECDES_INITIALIZER;
   HEAP_OPERATION_CONTEXT update_context;
 
-  error = catcls_find_oid_by_class_name (thread_p, class_name, &oid);
+  OID stats_class_oid;
+
+  OID_SET_NULL (&stats_class_oid);
+  error = catcls_find_class_oid_by_class_name (thread_p, class_name, &stats_class_oid);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  error = catcls_find_oid_by_class_oid (thread_p, &stats_class_oid, &oid);
   if (error != NO_ERROR)
     {
       goto error;
@@ -4581,7 +4573,7 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p, RECD
   HEAP_SCANCACHE scan;
   bool is_scan_inited = false;
 
-  if (catcls_find_oid_by_class_name (thread_p, name_p, &oid) != NO_ERROR)
+  if (catcls_find_oid_by_class_oid (thread_p, class_oid_p, &oid) != NO_ERROR)
     {
       goto error;
     }
@@ -4830,7 +4822,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 
   catcls_Enable = true;
 
-  if (catcls_find_btid_of_class_name (thread_p, &catcls_Btid) != NO_ERROR)
+  if (catcls_find_btid_of_class_of (thread_p, &catcls_Btid) != NO_ERROR)
     {
       return ER_FAILED;
     }

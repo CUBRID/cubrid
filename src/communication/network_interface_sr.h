@@ -55,6 +55,7 @@ extern void slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p, unsig
 extern void slocator_find_class_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_reserve_classnames (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void slocator_synonym_ddl (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_delete_class_name (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_rename_class_name (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_assign_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

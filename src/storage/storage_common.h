@@ -373,6 +373,15 @@ typedef enum
   LC_CLASSNAME_DELETED_RENAME
 } LC_FIND_CLASSNAME;
 
+/* Synonym DDL operations mirrored into the server classname table */
+typedef enum
+{
+  LC_SYNONYM_DDL_ADD,		/* CREATE SYNONYM: name + target unique name */
+  LC_SYNONYM_DDL_DROP,		/* DROP SYNONYM: name */
+  LC_SYNONYM_DDL_ALTER,		/* ALTER SYNONYM: name + new target unique name */
+  LC_SYNONYM_DDL_RENAME		/* RENAME SYNONYM: old name + new name */
+} LC_SYNONYM_DDL_OP;
+
 #define LC_EXIST              1
 #define LC_DOESNOT_EXIST      2
 #define LC_ERROR              3

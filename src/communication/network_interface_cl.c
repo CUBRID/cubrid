@@ -1006,21 +1006,30 @@ locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_oid, int cl
  * NOTE:
  */
 LC_FIND_CLASSNAME
-locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock)
+locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char *synonym_target, bool * is_synonym)
 {
 #if defined(CS_MODE)
   LC_FIND_CLASSNAME found = LC_CLASSNAME_ERROR;
   int xfound;
+  int xis_synonym = 0;
+  char *xtarget = NULL;
   int req_error;
   char *ptr;
   int request_size, strlen;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_OID_SIZE + DB_MAX_IDENTIFIER_LENGTH + MAX_ALIGNMENT * 2) a_reply;
   char *reply;
+
+  assert ((synonym_target == NULL) == (is_synonym == NULL));
+
+  if (is_synonym != NULL)
+    {
+      *is_synonym = false;
+    }
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (class_name, &strlen) + OR_OID_SIZE + OR_INT_SIZE;
+  request_size = length_const_string (class_name, &strlen) + OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE;
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -1031,6 +1040,7 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock)
   ptr = pack_const_string_with_length (request, class_name, strlen);
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_lock (ptr, lock);
+  ptr = or_pack_int (ptr, (is_synonym != NULL) ? 1 : 0);
 
   req_error = net_client_request (NET_SERVER_LC_FIND_CLASSOID, request, request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
@@ -1039,6 +1049,14 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock)
       ptr = or_unpack_int (reply, &xfound);
       found = (LC_FIND_CLASSNAME) xfound;
       ptr = or_unpack_oid (ptr, class_oid);
+      ptr = or_unpack_int (ptr, &xis_synonym);
+      ptr = or_unpack_string_nocopy (ptr, &xtarget);
+      if (is_synonym != NULL && xis_synonym && xtarget != NULL)
+	{
+	  *is_synonym = true;
+	  strncpy (synonym_target, xtarget, DB_MAX_IDENTIFIER_LENGTH - 1);
+	  synonym_target[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';
+	}
     }
   free_and_init (request);
 
@@ -1048,11 +1066,89 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  found = xlocator_find_class_oid (thread_p, class_name, class_oid, lock);
+  if (is_synonym != NULL)
+    {
+      found = xlocator_find_class_oid_ex (thread_p, class_name, class_oid, lock, synonym_target, is_synonym);
+    }
+  else
+    {
+      found = xlocator_find_class_oid (thread_p, class_name, class_oid, lock);
+    }
 
   exit_server (*thread_p);
 
   return found;
+#endif /* !CS_MODE */
+}
+
+/*
+ * locator_synonym_ddl -
+ *
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   op(in): Synonym DDL operation to mirror into the server classname table
+ *   name(in): Synonym unique name (the old name for RENAME)
+ *   arg(in): Target unique name (ADD, ALTER) or the new name (RENAME); NULL for DROP
+ *   synonym_oid(in): OID of the flushed _db_synonym row (ADD only; NULL otherwise)
+ */
+int
+locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg, OID * synonym_oid)
+{
+  OID oid;
+
+  if (synonym_oid != NULL)
+    {
+      COPY_OID (&oid, synonym_oid);
+    }
+  else
+    {
+      OID_SET_NULL (&oid);
+    }
+
+#if defined(CS_MODE)
+  int success = ER_FAILED;
+  int req_error;
+  char *ptr;
+  int request_size;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = OR_INT_SIZE + length_const_string (name, NULL) + length_const_string (arg, NULL) + OR_OID_SIZE;
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_FAILED;
+    }
+
+  ptr = or_pack_int (request, (int) op);
+  ptr = pack_const_string (ptr, name);
+  ptr = pack_const_string (ptr, arg);
+  ptr = or_pack_oid (ptr, &oid);
+
+  req_error = net_client_request (NET_SERVER_LC_SYNONYM_DDL, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      (void) or_unpack_int (reply, &success);
+    }
+
+  free_and_init (request);
+
+  return success;
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xlocator_synonym_ddl (thread_p, op, name, arg, &oid);
+
+  exit_server (*thread_p);
+
+  return success;
 #endif /* !CS_MODE */
 }
 
