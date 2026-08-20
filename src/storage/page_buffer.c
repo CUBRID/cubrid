@@ -17303,8 +17303,7 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
   const int num_cols = 19;
   int idx;
   int error = NO_ERROR;
-  DB_VALUE *vals = NULL, db_val;
-  DB_DATA_STATUS data_status;
+  DB_VALUE *vals = NULL;
   PGBUF_STATUS_SNAPSHOT *status_snapshot = &pgbuf_Pool.show_status_snapshot;
 
   *ptr = NULL;
@@ -17331,22 +17330,16 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 
   idx = 0;
 
-  /* Hit_rate: deprecated, always 0. see Data_page_buffer_hit_ratio of cubrid statdump. */
-  db_make_double (&db_val, 0);
-  db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 13, 10);
-  error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
-  idx++;
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  /* Num_hit: deprecated, always 0. */
-  db_make_bigint (&vals[idx], 0);
+  /* Hit_rate: deprecated, always NULL. see Data_page_buffer_hit_ratio of cubrid statdump. */
+  db_make_null (&vals[idx]);
   idx++;
 
-  /* Num_page_request: deprecated, always 0. see Num_data_page_fetches of cubrid statdump. */
-  db_make_bigint (&vals[idx], 0);
+  /* Num_hit: deprecated, always NULL. */
+  db_make_null (&vals[idx]);
+  idx++;
+
+  /* Num_page_request: deprecated, always NULL. see Num_data_page_fetches of cubrid statdump. */
+  db_make_null (&vals[idx]);
   idx++;
 
   db_make_int (&vals[idx], pgbuf_Pool.num_buffers);
@@ -17379,40 +17372,28 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
   db_make_int (&vals[idx], status_snapshot->num_temp_pages);
   idx++;
 
-  /* Num_pages_created: deprecated, always 0. */
-  db_make_bigint (&vals[idx], 0);
+  /* Num_pages_created: deprecated, always NULL. */
+  db_make_null (&vals[idx]);
   idx++;
 
-  /* Num_pages_written: deprecated, always 0. see Num_data_page_iowrites of cubrid statdump. */
-  db_make_bigint (&vals[idx], 0);
+  /* Num_pages_written: deprecated, always NULL. see Num_data_page_iowrites of cubrid statdump. */
+  db_make_null (&vals[idx]);
   idx++;
 
-  /* Pages_written_rate: deprecated, always 0. */
-  db_make_double (&db_val, 0);
-  db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 20, 10);
-  error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
-  idx++;
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  /* Num_pages_read: deprecated, always 0. see Num_data_page_ioreads of cubrid statdump. */
-  db_make_bigint (&vals[idx], 0);
+  /* Pages_written_rate: deprecated, always NULL. */
+  db_make_null (&vals[idx]);
   idx++;
 
-  /* Pages_read_rate: deprecated, always 0. */
-  db_make_double (&db_val, 0);
-  db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 20, 10);
-  error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
+  /* Num_pages_read: deprecated, always NULL. see Num_data_page_ioreads of cubrid statdump. */
+  db_make_null (&vals[idx]);
   idx++;
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
 
-  /* Num_flusher_waiting_threads: deprecated, always 0. */
-  db_make_int (&vals[idx], 0);
+  /* Pages_read_rate: deprecated, always NULL. */
+  db_make_null (&vals[idx]);
+  idx++;
+
+  /* Num_flusher_waiting_threads: deprecated, always NULL. */
+  db_make_null (&vals[idx]);
   idx++;
 
   assert (idx == num_cols);
