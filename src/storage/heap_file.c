@@ -9663,6 +9663,12 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
  *   Approximates the serial "last page" for avg_freespace_nolast (serial drops its chain-tail page,
  *   this drops the largest-VPID page). The file-table header page is excluded.
  *   return: true and *max_vpid set if a data page exists, else false.
+ *
+ * Note: picked from the same collector the workers split, so the page is guaranteed to be one of
+ *       the pages counted into num_pages / sum_freespace - which is what makes
+ *       (sum_freespace - last_page_freespace) / (num_pages - 1) self-consistent. Reading the heap
+ *       header's estimates.last_vpid instead would need an extra page fix and could name a page
+ *       outside the counted set (stale estimate), skewing that average.
  */
 static bool
 heap_capacity_max_vpid_page (const HFID * hfid, const FILE_FTAB_COLLECTOR * collector, VPID * max_vpid)
@@ -9789,7 +9795,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
     ftab_set fs;
     fs.convert (&collector);
 
-    /* compute the "last page" (largest-VPID) once */
+    /* compute the "last page" (largest-VPID) once, from the same collector the workers split */
     VPID last_page_vpid = VPID_INITIALIZER;
     bool have_last_page = heap_capacity_max_vpid_page (hfid, &collector, &last_page_vpid);
 
