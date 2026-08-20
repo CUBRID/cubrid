@@ -9596,7 +9596,6 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
   for (ps = arg->slice->get_next (); !VSID_IS_NULL (&ps.vsid); ps = arg->slice->get_next ())
     {
       VPID vpid;
-      bool stop = false;
 
       vpid.volid = ps.vsid.volid;
       vpid.pageid = SECTOR_FIRST_PAGEID (ps.vsid.sectid);
@@ -9604,6 +9603,12 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
       for (int off = 0; off < DISK_SECTOR_NPAGES; off++, vpid.pageid++)
 	{
 	  PAGE_PTR page;
+
+	  /* another worker hit a genuine error: stop early, skip the rest of this sector's pages */
+	  if (arg->failed->load (std::memory_order_relaxed))
+	    {
+	      break;
+	    }
 
 	  /* the file header page is not a heap page (serial avoids it via the heap chain walk) */
 	  if (vpid.volid == arg->hfid->vfid.volid && vpid.pageid == arg->hfid->vfid.fileid)
@@ -9631,7 +9636,6 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 		  arg->fail_errid->store (err, std::memory_order_relaxed);
 		  arg->failed->store (true, std::memory_order_relaxed);
 		  er_clear ();
-		  stop = true;
 		  break;
 		}
 	      /* deallocated since the snapshot (DDL/vacuum race); skip it. Best-effort, like serial. */
@@ -9643,7 +9647,7 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	  pgbuf_unfix_and_init (&thread_ref, page);
 	}
 
-      if (stop || arg->failed->load (std::memory_order_relaxed))
+      if (arg->failed->load (std::memory_order_relaxed))
 	{
 	  break;
 	}
@@ -9711,8 +9715,10 @@ static int
 heap_get_capacity_internal_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, parallel_query::worker_manager * wm,
 				     int n_workers, FILE_FTAB_COLLECTOR * collector, HEAP_CAPACITY_INFO * capacity)
 {
-  std::atomic < bool > failed (false);
-  std::atomic < int >fail_errid (NO_ERROR);
+// *INDENT-OFF*
+  std::atomic<bool> failed (false);
+  std::atomic<int> fail_errid (NO_ERROR);
+// *INDENT-ON*
 
   /* The dispatcher (heap_get_capacity) owns parallel eligibility and resources: it reserved
    * n_workers (>= 2), enumerated the heap sectors (collector), and frees the collector; this
