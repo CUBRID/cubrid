@@ -82,12 +82,19 @@
  * so call sites are untouched. Defaults equal the historical literals -> unchanged plans
  * for an unmodified parameter set. PostgreSQL exposes the same knobs (cpu_tuple_cost, the
  * heap-fetch penalty, and the random/seq page-cost ratio); the optimizer runs client-side
- * so each is PRM_FOR_CLIENT. */
-static double qo_Cost_cpu_tuple = 0.0025;
-static double qo_Cost_heap_fetch_per_oid = 5.0;
-static double qo_Cost_index_page_hit_ratio = 0.5;
-static double qo_Cost_seq_page = 1.0;	/* PG seq_page_cost; per sequential heap/temp page */
-static double qo_Cost_random_page = 1.0;	/* PG random_page_cost; per index/heap-fetch page */
+ * so each is PRM_FOR_CLIENT.  The defaults mirror the PRM_ID_COST_* entries of prm_Def;
+ * the float literals go through the same float widening as prm_get_float_value (), so the
+ * default test in qo_plan_dump_cost_params () compares exactly. */
+#define QO_COST_CPU_TUPLE_DEFAULT ((double) 0.0025f)
+#define QO_COST_HEAP_FETCH_PER_OID_DEFAULT 5.0
+#define QO_COST_INDEX_PAGE_HIT_RATIO_DEFAULT ((double) 0.5f)
+#define QO_COST_SEQ_PAGE_DEFAULT ((double) 1.0f)
+#define QO_COST_RANDOM_PAGE_DEFAULT ((double) 1.0f)
+static double qo_Cost_cpu_tuple = QO_COST_CPU_TUPLE_DEFAULT;
+static double qo_Cost_heap_fetch_per_oid = QO_COST_HEAP_FETCH_PER_OID_DEFAULT;
+static double qo_Cost_index_page_hit_ratio = QO_COST_INDEX_PAGE_HIT_RATIO_DEFAULT;
+static double qo_Cost_seq_page = QO_COST_SEQ_PAGE_DEFAULT;	/* PG seq_page_cost; per sequential heap/temp page */
+static double qo_Cost_random_page = QO_COST_RANDOM_PAGE_DEFAULT;	/* PG random_page_cost; per index/heap-fetch page */
 
 #define QO_CPU_WEIGHT qo_Cost_cpu_tuple
 /* Per-OID heap-access CPU penalty for NON-covering index scans (covering scans: 0).
@@ -5432,6 +5439,33 @@ qo_plans_stats (FILE * f)
 }
 
 /*
+ * qo_plan_dump_cost_params () - record the cost parameters the plan was priced with
+ *   return: nothing
+ *   output(in): The stream the plan is being dumped to
+ *
+ * Note: printed only when some cost parameter differs from its default, so an untuned
+ *	 configuration dumps exactly as before, while a tuned session's dump records what
+ *	 its costs were computed from -- without this a saved dump cannot be compared
+ *	 against one taken under different parameters.
+ */
+static void
+qo_plan_dump_cost_params (FILE * output)
+{
+  if (qo_Cost_cpu_tuple == QO_COST_CPU_TUPLE_DEFAULT
+      && qo_Cost_heap_fetch_per_oid == QO_COST_HEAP_FETCH_PER_OID_DEFAULT
+      && qo_Cost_index_page_hit_ratio == QO_COST_INDEX_PAGE_HIT_RATIO_DEFAULT
+      && qo_Cost_seq_page == QO_COST_SEQ_PAGE_DEFAULT && qo_Cost_random_page == QO_COST_RANDOM_PAGE_DEFAULT)
+    {
+      return;
+    }
+
+  fprintf (output,
+	   "\nCost parameters: cost_cpu_tuple %g, cost_heap_fetch_per_oid %g, cost_index_page_hit_ratio %g,"
+	   " cost_seq_page %g, cost_random_page %g\n", qo_Cost_cpu_tuple, qo_Cost_heap_fetch_per_oid,
+	   qo_Cost_index_page_hit_ratio, qo_Cost_seq_page, qo_Cost_random_page);
+}
+
+/*
  * qo_plan_dump () - Print a representation of the plan on the indicated
  *		     stream
  *   return: nothing
@@ -5447,6 +5481,8 @@ qo_plan_dump (QO_PLAN * plan, FILE * output)
     {
       output = stdout;
     }
+
+  qo_plan_dump_cost_params (output);
 
   if (plan == NULL)
     {
