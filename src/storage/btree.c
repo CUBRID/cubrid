@@ -1409,13 +1409,13 @@ static int btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTI
 						    BTREE_OBJECT_INFO * object_info,
 						    BTREE_INSERT_HELPER * insert_helper,
 						    BTREE_SEARCH_KEY_HELPER * search_key, RECDES * leaf_rec,
-						    VPID * first_ovfl_vpid, bool make_v2);
+						    VPID * first_ovfl_vpid, bool make_dir_chain);
 static int btree_key_append_object_to_overflow (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR ovfl_page,
 						BTREE_OBJECT_INFO * object_info, BTREE_INSERT_HELPER * insert_helper);
 static int btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * first_ovfl_vpid,
 					       PAGE_PTR * overflow_page);
 
-/* CBRD-24094: OID-ordered overflow chains with a separator directory (v2 format). */
+/* CBRD-24094: OID-ordered overflow chains with a separator directory. */
 static int btree_ovf_dir_write_header (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page,
 				       const VPID * next_vpid, const VPID * dir_vpid);
 static int btree_ovf_dir_format_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page,
@@ -8574,7 +8574,7 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
     }
   else
     {				/* a leaf page */
-      /* CBRD-24094: validate the v2 overflow OID directory (routing invariants) of every key that has an
+      /* CBRD-24094: validate the directory-format overflow OID directory (routing invariants) of every key that has an
        * overflow chain. The generic checks only walk the chain sequentially and cannot see the directory. */
       for (i = 1; i <= key_cnt; i++)
 	{
@@ -10701,7 +10701,7 @@ btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
 			    PAGE_PTR ovfl_page, VPID * next_ovfl_vpid)
 {
   LOG_DATA_ADDR ovf_addr;
-  BTREE_OVERFLOW_HEADER_V2 ovf_header_info;	/* Big enough for either header format (CBRD-24094). */
+  BTREE_OVF_DIR_HEADER ovf_header_info;	/* Big enough for either header format (CBRD-24094). */
   RECDES overflow_header_record;
 
   LOG_LSA prev_lsa;
@@ -10722,7 +10722,7 @@ btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
   /* Create record with new overflow header info and update page. */
 
   /* We need undoredo logging. */
-  overflow_header_record.area_size = sizeof (BTREE_OVERFLOW_HEADER_V2);
+  overflow_header_record.area_size = sizeof (BTREE_OVF_DIR_HEADER);
   overflow_header_record.data = rv_undo_data;
   if (spage_get_record (thread_p, ovfl_page, HEADER, &overflow_header_record, COPY) != S_SUCCESS)
     {
@@ -10731,7 +10731,7 @@ btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
     }
   rv_undo_data_length = overflow_header_record.length;
 
-  /* Update the next link in place, preserving the header record length and any extended (v2) fields such as the
+  /* Update the next link in place, preserving the header record length and any extended (directory-format) fields such as the
    * directory link (CBRD-24094). */
   assert (overflow_header_record.length <= (int) sizeof (ovf_header_info));
   memcpy (&ovf_header_info, overflow_header_record.data, overflow_header_record.length);
@@ -11974,14 +11974,14 @@ btree_node_mergeable (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR L_page,
  * search_key (in)	     : Search key result.
  * leaf_rec (in)	     : Leaf record.
  * first_ovfl_vpid (in)	     : VPID of first overflow.
- * make_v2 (in)		     : True to create the page in the v2 (OID-ordered chain) format. Only used when a brand
+ * make_dir_chain (in)		     : True to create the page in the directory (OID-ordered chain) format. Only used when a brand
  *			       new chain of a non-unique index is created (CBRD-24094).
  */
 static int
 btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_page,
 					 BTREE_OBJECT_INFO * object_info, BTREE_INSERT_HELPER * insert_helper,
 					 BTREE_SEARCH_KEY_HELPER * search_key, RECDES * leaf_rec,
-					 VPID * first_ovfl_vpid, bool make_v2)
+					 VPID * first_ovfl_vpid, bool make_dir_chain)
 {
   int ret = NO_ERROR;
   VPID ovfl_vpid;
@@ -12026,9 +12026,9 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
       goto error;
     }
 
-  if (make_v2)
+  if (make_dir_chain)
     {
-      /* CBRD-24094: upgrade the header to the v2 (OID-ordered chain) format; no directory yet. */
+      /* CBRD-24094: upgrade the header to the directory (OID-ordered chain) format; no directory yet. */
       VPID null_dir_vpid;
 
       assert (VPID_ISNULL (first_ovfl_vpid) && !BTREE_IS_UNIQUE (btid_int->unique_pk));
@@ -12288,9 +12288,9 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VP
 }
 
 /*
- * CBRD-24094: OID-ordered overflow chains with a separator directory (v2 format).
+ * CBRD-24094: OID-ordered overflow chains with a separator directory.
  *
- * Non-unique indexes create overflow OID pages with an extended header (BTREE_OVERFLOW_HEADER_V2, detected by the
+ * Non-unique indexes create overflow OID pages with an extended header (BTREE_OVF_DIR_HEADER, detected by the
  * header record length). Objects are kept globally OID-ordered across the chain and a directory of separator
  * entries (one per data page, stored in directory pages reachable through the data page headers) routes any OID
  * lookup to its data page directly. This turns the per-object O(chain length) linear scans of
@@ -12300,7 +12300,7 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VP
  * - A data page owns the OID range [its separator, next separator); the first page also catches anything below its
  *   separator. Separators are fixed at page creation: inserts are routed by separator and deletions only remove
  *   objects, so a separator never becomes invalid.
- * - The directory exists if and only if the chain has grown to two or more data pages. Every v2 data page header
+ * - The directory exists if and only if the chain has grown to two or more data pages. Every directory-format data page header
  *   stores the (immutable) directory head VPID, stamped at page creation.
  * - Directory entries are sorted by separator and their order matches the chain (next_vpid) order.
  * - All structural changes happen under the key's leaf write latch, inside a system operation, and are logged with
@@ -12310,7 +12310,7 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VP
  */
 
 /*
- * btree_ovf_dir_write_header () - Write a v2 overflow header (undoredo logged, UPDATE_ALL).
+ * btree_ovf_dir_write_header () - Write a directory-format overflow header (undoredo logged, UPDATE_ALL).
  *
  * return	  : Error code.
  * thread_p (in)  : Thread entry.
@@ -12323,7 +12323,7 @@ static int
 btree_ovf_dir_write_header (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page, const VPID * next_vpid,
 			    const VPID * dir_vpid)
 {
-  BTREE_OVERFLOW_HEADER_V2 header_v2;
+  BTREE_OVF_DIR_HEADER dir_header;
   RECDES old_header_record;
   RECDES new_header_record;
   LOG_DATA_ADDR addr;
@@ -12339,18 +12339,18 @@ btree_ovf_dir_write_header (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_P
       assert_release (false);
       return ER_FAILED;
     }
-  assert (old_header_record.length <= (int) sizeof (BTREE_OVERFLOW_HEADER_V2));
+  assert (old_header_record.length <= (int) sizeof (BTREE_OVF_DIR_HEADER));
   memcpy (rv_undo_data, old_header_record.data, old_header_record.length);
   rv_undo_data_length = old_header_record.length;
 
   /* Clear the struct padding so the full 16 bytes written to the page and the WAL are deterministic. */
-  memset (&header_v2, 0, sizeof (header_v2));
-  VPID_COPY (&header_v2.next_vpid, next_vpid);
-  VPID_COPY (&header_v2.dir_vpid, dir_vpid);
+  memset (&dir_header, 0, sizeof (dir_header));
+  VPID_COPY (&dir_header.next_vpid, next_vpid);
+  VPID_COPY (&dir_header.dir_vpid, dir_vpid);
 
   new_header_record.type = REC_HOME;
-  new_header_record.data = (char *) &header_v2;
-  new_header_record.length = sizeof (header_v2);
+  new_header_record.data = (char *) &dir_header;
+  new_header_record.length = sizeof (dir_header);
 
   if (spage_update (thread_p, page, HEADER, &new_header_record) != SP_SUCCESS)
     {
@@ -12364,16 +12364,16 @@ btree_ovf_dir_write_header (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_P
   BTREE_RV_SET_OVERFLOW_NODE (&addr);
   LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_ALL);
   log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, rv_undo_data_length,
-			    (int) sizeof (header_v2), rv_undo_data, &header_v2);
+			    (int) sizeof (dir_header), rv_undo_data, &dir_header);
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
   return NO_ERROR;
 }
 
 /*
- * btree_ovf_dir_format_page () - Initialize a freshly allocated v2 overflow page: header, contents record and
+ * btree_ovf_dir_format_page () - Initialize a freshly allocated directory-format overflow page: header, contents record and
  *				 logging. The "create new overflow page" redo record replays a legacy header plus
- *				 the record; a second (UPDATE_ALL) header log upgrades it to v2, so recovery
+ *				 the record; a second (UPDATE_ALL) header log upgrades it to the directory format, so recovery
  *				 replays the exact same two steps and no new recovery code is needed.
  *
  * return	  : Error code.
@@ -12429,7 +12429,7 @@ btree_ovf_dir_format_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PT
   assert (rv_redo_data_length <= IO_MAX_PAGE_SIZE);
   log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &addr, rv_redo_data_length, rv_redo_data);
 
-  /* Upgrade the header to v2 (separately logged; replay order is preserved). */
+  /* Upgrade the header to the directory format (separately logged; replay order is preserved). */
   error_code = btree_ovf_dir_write_header (thread_p, btid_int, page, next_vpid, dir_vpid);
   if (error_code != NO_ERROR)
     {
@@ -12442,7 +12442,7 @@ btree_ovf_dir_format_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PT
 }
 
 /*
- * btree_ovf_dir_create_page () - Allocate and format a new v2 overflow page.
+ * btree_ovf_dir_create_page () - Allocate and format a new directory-format overflow page.
  *
  * return	  : Error code.
  * thread_p (in)  : Thread entry.
@@ -12662,7 +12662,7 @@ btree_ovf_dir_find_pred (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, co
 }
 
 /*
- * btree_ovf_dir_find_oid () - Find an object in a v2 overflow chain using the directory.
+ * btree_ovf_dir_find_oid () - Find an object in a directory-format overflow chain using the directory.
  *
  * return		  : Error code.
  * thread_p (in)	  : Thread entry.
@@ -12683,7 +12683,7 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 			PAGE_PTR * found_page, PAGE_PTR * prev_page, int *offset_to_object,
 			BTREE_MVCC_INFO * object_mvcc_info)
 {
-  BTREE_OVERFLOW_HEADER_V2 *hdr_v2;
+  BTREE_OVF_DIR_HEADER *dir_hdr;
   VPID dir_head_vpid, target_vpid, prev_vpid;
   PAGE_PTR dir_page = NULL;
   PAGE_PTR target_page = NULL;
@@ -12701,13 +12701,13 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 
   *offset_to_object = NOT_FOUND;
 
-  hdr_v2 = btree_get_overflow_header_v2 (thread_p, *first_ovf_page);
-  if (hdr_v2 == NULL)
+  dir_hdr = btree_ovf_dir_get_header (thread_p, *first_ovf_page);
+  if (dir_hdr == NULL)
     {
       assert_release (false);
       return ER_FAILED;
     }
-  VPID_COPY (&dir_head_vpid, &hdr_v2->dir_vpid);
+  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
 
   thread_p->read_ovfl_pages_count = 0;	/* For Vacuum only. */
 
@@ -13397,7 +13397,7 @@ btree_ovf_dir_destroy (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID 
 }
 
 /*
- * btree_ovf_dir_check () - CBRD-24094 consistency check for a v2 (OID-ordered) overflow chain's separator
+ * btree_ovf_dir_check () - CBRD-24094 consistency check for a directory (OID-ordered) overflow chain's separator
  *   directory. checkdb's generic btree check only walks the chain sequentially (next_vpid) and cannot see the
  *   directory's routing invariants, so this validates them explicitly. In a single lockstep pass over the data
  *   chain and the directory it verifies:
@@ -13417,7 +13417,7 @@ btree_ovf_dir_destroy (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID 
 static DISK_ISVALID
 btree_ovf_dir_check (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid)
 {
-  BTREE_OVERFLOW_HEADER_V2 *hdr_v2;
+  BTREE_OVF_DIR_HEADER *dir_hdr;
   VPID dir_head_vpid, data_vpid, dir_vpid;
   PAGE_PTR data_page = NULL;
   PAGE_PTR dir_page = NULL;
@@ -13438,14 +13438,14 @@ btree_ovf_dir_check (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * 
     {
       return DISK_ERROR;
     }
-  hdr_v2 = btree_get_overflow_header_v2 (thread_p, data_page);
-  if (hdr_v2 == NULL)
+  dir_hdr = btree_ovf_dir_get_header (thread_p, data_page);
+  if (dir_hdr == NULL)
     {
       /* Legacy chain: no directory to validate. */
       pgbuf_unfix_and_init (thread_p, data_page);
       return DISK_VALID;
     }
-  VPID_COPY (&dir_head_vpid, &hdr_v2->dir_vpid);
+  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
   if (VPID_ISNULL (&dir_head_vpid))
     {
       /* Single-page chain: no directory. */
@@ -13637,7 +13637,7 @@ end:
 }
 
 /*
- * btree_ovf_dir_grow_chain () - Add a new data page to a v2 chain whose routed target page is full: either append a
+ * btree_ovf_dir_grow_chain () - Add a new data page to a directory chain whose routed target page is full: either append a
  *				new rightmost page (ascending insert pattern) or split the target page. Creates the
  *				directory when the chain grows from one page to two. Runs inside a system operation.
  *
@@ -13657,7 +13657,7 @@ btree_ovf_dir_grow_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 			  BTREE_INSERT_HELPER * insert_helper, BTREE_OBJECT_INFO * object_info, PAGE_PTR target_page,
 			  PAGE_PTR dir_page, int dir_idx)
 {
-  BTREE_OVERFLOW_HEADER_V2 *target_hdr;
+  BTREE_OVF_DIR_HEADER *target_hdr;
   VPID target_next_vpid, target_vpid, dir_head_vpid;
   VPID q_vpid = VPID_INITIALIZER;
   VPID d_vpid = VPID_INITIALIZER;
@@ -13680,7 +13680,7 @@ btree_ovf_dir_grow_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 
   VPID_SET_NULL (&null_vpid);
 
-  target_hdr = btree_get_overflow_header_v2 (thread_p, target_page);
+  target_hdr = btree_ovf_dir_get_header (thread_p, target_page);
   if (target_hdr == NULL)
     {
       assert_release (false);
@@ -13898,7 +13898,7 @@ error:
 }
 
 /*
- * btree_ovf_dir_append_object () - Insert an object into a v2 (OID-ordered) overflow chain: route by the directory,
+ * btree_ovf_dir_append_object () - Insert an object into a directory (OID-ordered) overflow chain: route by the directory,
  *				   insert in OID order, and grow the chain when the routed page is full.
  *
  * return		  : Error code.
@@ -13914,7 +13914,7 @@ btree_ovf_dir_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VA
 			     BTREE_INSERT_HELPER * insert_helper, BTREE_OBJECT_INFO * object_info,
 			     PAGE_PTR * first_ovf_page)
 {
-  BTREE_OVERFLOW_HEADER_V2 *hdr_v2;
+  BTREE_OVF_DIR_HEADER *dir_hdr;
   VPID dir_head_vpid, first_vpid, target_vpid;
   PAGE_PTR dir_page = NULL;
   PAGE_PTR target_page = NULL;
@@ -13926,14 +13926,14 @@ btree_ovf_dir_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VA
 
   assert (first_ovf_page != NULL && *first_ovf_page != NULL);
 
-  hdr_v2 = btree_get_overflow_header_v2 (thread_p, *first_ovf_page);
-  if (hdr_v2 == NULL)
+  dir_hdr = btree_ovf_dir_get_header (thread_p, *first_ovf_page);
+  if (dir_hdr == NULL)
     {
       assert_release (false);
       pgbuf_unfix_and_init (thread_p, *first_ovf_page);
       return ER_FAILED;
     }
-  VPID_COPY (&dir_head_vpid, &hdr_v2->dir_vpid);
+  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
   pgbuf_get_vpid (*first_ovf_page, &first_vpid);
 
   if (VPID_ISNULL (&dir_head_vpid))
@@ -14095,7 +14095,7 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
       return NO_ERROR;
     }
 
-  /* CBRD-24094: v2 (OID-ordered) chains route through the OID directory instead of the linear scan. */
+  /* CBRD-24094: directory (OID-ordered) chains route through the OID directory instead of the linear scan. */
   PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
   overflow_page = pgbuf_fix (thread_p, &leaf_rec_info->ovfl, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
@@ -14104,7 +14104,7 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-  if (btree_get_overflow_header_v2 (thread_p, overflow_page) != NULL)
+  if (btree_ovf_dir_get_header (thread_p, overflow_page) != NULL)
     {
       return btree_ovf_dir_find_oid (thread_p, btid_int, oid, leaf_page, &overflow_page, purpose, match_mvccinfo,
 				     found_page, prev_page, offset_to_object, object_mvcc_info);
@@ -31934,7 +31934,7 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   assert (btree_is_insert_object_purpose (insert_helper->purpose));
   assert (append_object != NULL);
 
-  /* CBRD-24094: existing v2 (OID-ordered) chains are appended through the OID directory. */
+  /* CBRD-24094: existing directory (OID-ordered) chains are appended through the OID directory. */
   if (!VPID_ISNULL (&leaf_record_info->ovfl))
     {
       PAGE_PTR first_ovf_page;
@@ -31946,7 +31946,7 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
-      if (btree_get_overflow_header_v2 (thread_p, first_ovf_page) != NULL)
+      if (btree_ovf_dir_get_header (thread_p, first_ovf_page) != NULL)
 	{
 	  return btree_ovf_dir_append_object (thread_p, btid_int, key, insert_helper, append_object, &first_ovf_page);
 	}
@@ -31979,7 +31979,7 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
       /* Notification */
       BTREE_SET_CREATED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key, &append_object->oid, notification_class_oid,
 						    btid_int->sys_btid);
-      /* A brand new chain of a non-unique index is created in the v2 (OID-ordered) format. */
+      /* A brand new chain of a non-unique index is created in the directory (OID-ordered) format. */
       error_code =
 	btree_key_append_object_as_new_overflow (thread_p, btid_int, leaf, append_object, insert_helper, search_key,
 						 leaf_record, &leaf_record_info->ovfl,
@@ -35027,18 +35027,18 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
     {
       /* Only one object. */
       /* Remove page completely. */
-      BTREE_OVERFLOW_HEADER_V2 *hdr_v2;
+      BTREE_OVF_DIR_HEADER *dir_hdr;
       VPID dir_head_vpid;
 
       /* Safe guard: only first object can be deleted. */
       assert (offset_to_object == 0);
 
-      /* CBRD-24094: v2 chains must keep the OID directory in sync with the removed data page. */
+      /* CBRD-24094: directory chains must keep the OID directory in sync with the removed data page. */
       VPID_SET_NULL (&dir_head_vpid);
-      hdr_v2 = btree_get_overflow_header_v2 (thread_p, *overflow_page);
-      if (hdr_v2 != NULL)
+      dir_hdr = btree_ovf_dir_get_header (thread_p, *overflow_page);
+      if (dir_hdr != NULL)
 	{
-	  VPID_COPY (&dir_head_vpid, &hdr_v2->dir_vpid);
+	  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
 	}
 
       /* Get VPID of next overflow page. */
@@ -35106,7 +35106,7 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 	    }
 	}
 
-      /* CBRD-24094: maintain the OID directory of v2 chains. */
+      /* CBRD-24094: maintain the OID directory of directory chains. */
       if (!VPID_ISNULL (&dir_head_vpid))
 	{
 	  if (prev_page == leaf_page && VPID_ISNULL (&next_overflow_vpid))
@@ -36759,11 +36759,10 @@ btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
       return PERF_PAGE_BTREE_GENERIC;
     }
 
-  if (header_record.length == sizeof (BTREE_OVERFLOW_HEADER)
-      || header_record.length == sizeof (BTREE_OVERFLOW_HEADER_V2))
+  if (header_record.length == sizeof (BTREE_OVERFLOW_HEADER) || header_record.length == sizeof (BTREE_OVF_DIR_HEADER))
     {
-      /* CBRD-24094: v2 (OID-ordered) overflow data/directory pages carry the 16-byte
-       * BTREE_OVERFLOW_HEADER_V2; classify them as overflow pages too. Without this they fall through to the
+      /* CBRD-24094: directory (OID-ordered) overflow data/directory pages carry the 16-byte
+       * BTREE_OVF_DIR_HEADER; classify them as overflow pages too. Without this they fall through to the
        * root-header branch and trip its size assertion. */
       return PERF_PAGE_BTREE_OVF;
     }

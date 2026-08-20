@@ -85,7 +85,7 @@ deletions need **no** directory update.
 - `leaf_rec.ovfl` keeps pointing at the **first data page** → all sequential
   traversal (range scan, capacity, `first_visible`, vacuum full-scan) is unchanged.
 - **Data-page header** carries `dir_vpid` after `next_vpid`. On-disk detection is
-  by header-record length: 8 B = legacy (no directory), 16 B = v2. `next_vpid`
+  by header-record length: 8 B = legacy (no directory), 16 B = directory format. `next_vpid`
   stays at offset 0, so `btree_get_next_overflow_vpid` and every sequential walk
   are byte-compatible. `dir_vpid` is written once when the directory is born and
   never moves (see §3.4), so every data page can carry the same value with no
@@ -131,12 +131,12 @@ shrinks to 1 data page (dealloc directory, `dir_vpid = NULL`).
   Sequential readers only follow `next_vpid` and never read the directory →
   unchanged.
 - `btree_modify_overflow_link` must become read-modify-write (update `next_vpid`,
-  preserve any trailing `dir_vpid`) so it never silently shrinks a v2 header.
+  preserve any trailing `dir_vpid`) so it never silently shrinks a directory-format header.
 
 ### 3.6 Compatibility
 
 Existing indexes stay legacy (linear) until rebuilt; new/rebuilt non-unique
-indexes are v2. Old servers reading a v2 page still see `next_vpid` at offset 0,
+indexes are directory-format. Old servers reading a directory-format page still see `next_vpid` at offset 0,
 so cross-version sequential traversal works (a downgrade that rewrites the header
 8 B would leak directory pages — not corruption).
 
@@ -152,12 +152,12 @@ so cross-version sequential traversal works (a downgrade that rewrites the heade
 
 ## 5. Files / estimated size
 
-- `src/storage/btree_load.h` — v2 header offset macros, directory entry struct,
+- `src/storage/btree_load.h` — directory-format header offset macros, directory entry struct,
   accessors (~40 lines).
 - `src/storage/btree.c` — format detect, directory search/insert/delete,
   ordered-insert routing, split, unlink extension, `find` branch,
   `btree_modify_overflow_link` read-modify-write (~500–600 lines).
-- `src/storage/btree_load.c` — build directory at key end for v2 chains (~120 lines).
+- `src/storage/btree_load.c` — build directory at key end for directory chains (~120 lines).
 
 ## 6. Test plan
 

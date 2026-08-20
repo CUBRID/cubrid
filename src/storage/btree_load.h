@@ -269,11 +269,11 @@ struct btree_overflow_header
 
 /* CBRD-24094: extended overflow header for OID-ordered overflow chains of non-unique
  * indexes. The on-disk format is detected by the length of the header record: legacy
- * pages store BTREE_OVERFLOW_HEADER only (8 bytes), v2 pages store
- * BTREE_OVERFLOW_HEADER_V2 (16 bytes). next_vpid must stay first so that all
+ * pages store BTREE_OVERFLOW_HEADER only (8 bytes), directory-format pages store
+ * BTREE_OVF_DIR_HEADER (16 bytes). next_vpid must stay first so that all
  * sequential chain traversal code works on both formats unchanged. */
-typedef struct btree_overflow_header_v2 BTREE_OVERFLOW_HEADER_V2;
-struct btree_overflow_header_v2
+typedef struct btree_ovf_dir_header BTREE_OVF_DIR_HEADER;
+struct btree_ovf_dir_header
 {
   VPID next_vpid;		/* Next page in chain. Must be first (same offset as legacy). */
   VPID dir_vpid;		/* Head of the OID-directory page list of the chain. NULL while
@@ -399,9 +399,8 @@ STATIC_INLINE bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_valu
 STATIC_INLINE void btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value) __attribute__ ((ALWAYS_INLINE));
 extern int btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid);
 extern int btree_init_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OVERFLOW_HEADER * ovf_header);
-extern int btree_init_overflow_header_v2 (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr,
-					  BTREE_OVERFLOW_HEADER_V2 * ovf_header);
-extern BTREE_OVERFLOW_HEADER_V2 *btree_get_overflow_header_v2 (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
+extern int btree_ovf_dir_init_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OVF_DIR_HEADER * ovf_header);
+extern BTREE_OVF_DIR_HEADER *btree_ovf_dir_get_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 extern int btree_init_node_header (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR page_ptr,
 				   BTREE_NODE_HEADER * header, bool redo);
 extern int btree_init_root_header (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
