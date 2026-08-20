@@ -43,6 +43,7 @@
 #include "db_date.h"
 #include "tz_support.h"
 #include <cas_cci.h>
+#include <broker_cas_protocol.h>	/* CAS_*_DBMS_* values returned by cci_get_dbms_type */
 
 #include <db_json.hpp>
 
@@ -1469,22 +1470,151 @@ sql_build_error:
 }
 
 /*
- * dblink_dml_build_delete_sql () - Build "DELETE FROM <table> WHERE <key_col> <op> ?" (one placeholder).
+ * Restoring the pushed value's declared type -- the whole policy in one place.
+ *
+ * The sink pushes the local subquery's value as a bare host variable, so the remote resolves the marker's
+ * domain from the target column and reshapes the value into it. The comparison then stops matching what the
+ * all-local form matches: a CHAR target pads a VARCHAR value, a DATE target drops the time part, a TIME
+ * target drops the date part, TIMESTAMP drops the fractional second, and the zone-qualified domains
+ * reinterpret the value. Wrapping the placeholder in a CAST puts the declared type back.
+ *
+ *   source type        | decided                        | cast
+ *   -------------------+--------------------------------+-------------------------------------------------
+ *   VARCHAR            | before the first prepare       | always CAST(? AS VARCHAR)
+ *   DATETIME/TIMESTAMP | after prepare, from the marker | CAST when the marker's domain differs
+ *   anything else      | --                             | bare "?"
+ *
+ * Both rows are gated on the remote being CUBRID: CAST is CUBRID syntax that Oracle and MySQL reject.
+ *
+ * Why the two rows are decided at different times: for VARCHAR the marker would add nothing -- casting is
+ * right for every target measured (CHAR, VARCHAR, INT, NUMERIC, DATE, BIT) and keeps the remote index (a
+ * CHAR column against CAST(? AS VARCHAR) still reads one key) -- so it rides the first prepare and the
+ * statement is never prepared twice. Date/time has to ask, because there an unnecessary cast costs the
+ * remote index and the sink pays that once per pushed row; asking buys the ability to leave the bare
+ * placeholder alone when the domains already agree.
+ *
+ * A zone-qualified *source* is a separate problem no cast can reach: cci_bind_param rejects those types, so
+ * the statement errors before any comparison happens.
+ */
+
+/*
+ * dblink_dml_delete_remote_is_cubrid () - Is the remote a native CUBRID server?
+ *   return: true only for a direct or proxied CUBRID connection
+ *   conn_handle(in): open CCI connection
+ *
+ * Free to ask: cci_get_dbms_type() returns broker_info[BROKER_INFO_DBMS_TYPE], which the connection
+ * handshake already filled in, so this is a memory read rather than a round-trip.
+ */
+static bool
+dblink_dml_delete_remote_is_cubrid (int conn_handle)
+{
+  int dbms_type = cci_get_dbms_type (conn_handle);
+
+  return dbms_type == CAS_DBMS_CUBRID || dbms_type == CAS_PROXY_DBMS_CUBRID;
+}
+
+/*
+ * dblink_dml_delete_precast_type () - The cast decided before the first prepare (VARCHAR row of the table).
+ *   return: type name to wrap the placeholder in, or NULL to leave the decision to the marker
+ *   src_type(in): DB_TYPE of the local subquery's source column
+ */
+static const char *
+dblink_dml_delete_precast_type (int src_type)
+{
+  return (src_type == (int) DB_TYPE_VARCHAR) ? "VARCHAR" : NULL;
+}
+
+/*
+ * dblink_dml_delete_marker_cast_type () - The cast decided from the remote's marker domain (date/time row of
+ *   the table). Asks the remote what domain it resolved the marker to and compares that with the source type.
+ *   return: type name to wrap the placeholder in, or NULL to keep the bare placeholder
+ *   stmt_handle(in): prepared DELETE whose single marker is being asked about
+ *   src_type(in)   : DB_TYPE of the local subquery's source column
+ *
+ * Only DATETIME/TIMESTAMP sources are asked about -- for anything else the answer could not change the
+ * decision. The marker is the sink's only way to see the target type: a DML prepare carries no column
+ * information (CAS ships that only for SELECT).
+ *
+ * Within date/time the rule is the family, not a pair table -- cast whenever the marker's domain differs
+ * from the source type, because every measured pair whose domain differs lost information. With a TIME
+ * target the all-local form fails type checking ("'=' operator is not defined on types time and datetime")
+ * while the bare marker silently deletes a row; restoring the source type puts that back on the error.
+ */
+static const char *
+dblink_dml_delete_marker_cast_type (int stmt_handle, int src_type)
+{
+  T_CCI_PARAM_INFO *param_info = NULL;
+  T_CCI_ERROR err_buf;
+  const char *cast_type = NULL;
+  int marker_type, num_param;
+
+  if (src_type != (int) DB_TYPE_DATETIME && src_type != (int) DB_TYPE_TIMESTAMP)
+    {
+      return NULL;
+    }
+
+  memset (&err_buf, 0, sizeof (err_buf));
+  num_param = cci_get_param_info (stmt_handle, &param_info, &err_buf);
+  if (num_param < 1 || param_info == NULL)
+    {
+      /* nothing to compare against; leaving the bare placeholder keeps the historical shape */
+      return NULL;
+    }
+
+  /* the CCI *ext* type as reported for the marker. The sink's DELETE has a single scalar marker, so it
+   * carries none of the collection bits and compares equal to the plain CCI_U_TYPE_* value. */
+  marker_type = CCI_GET_PARAM_INFO_TYPE (param_info, 1);
+
+  switch (marker_type)
+    {
+    case CCI_U_TYPE_DATE:
+    case CCI_U_TYPE_TIME:
+    case CCI_U_TYPE_TIMESTAMP:
+    case CCI_U_TYPE_DATETIME:
+    case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_TIMESTAMPLTZ:
+    case CCI_U_TYPE_DATETIMETZ:
+    case CCI_U_TYPE_DATETIMELTZ:
+      if (src_type == (int) DB_TYPE_DATETIME && marker_type != (int) CCI_U_TYPE_DATETIME)
+	{
+	  cast_type = "DATETIME";
+	}
+      else if (src_type == (int) DB_TYPE_TIMESTAMP && marker_type != (int) CCI_U_TYPE_TIMESTAMP)
+	{
+	  cast_type = "TIMESTAMP";
+	}
+      break;
+    default:
+      break;
+    }
+
+  cci_param_info_free (param_info);
+
+  return cast_type;
+}
+
+/*
+ * dblink_dml_build_delete_sql () - Build "DELETE FROM <table> WHERE <key_col> <op> <placeholder>" (one
+ *   placeholder, bare "?" or wrapped in a CAST -- see cast_type).
  *   return: NO_ERROR on success (sql_out set to a db_private_alloc'd string, caller frees with
  *           db_private_free), error code on failure.
  *   thread_p(in)   : thread entry
  *   table_name(in) : remote table name
  *   key_col(in)    : remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)         : comparison operator SQL text ("=", "<", ">", "<=", ">=")
+ *   cast_type(in)  : CUBRID type name to restore on the pushed value ("... <op> CAST(? AS <cast_type>)"), or
+ *                    NULL to push the bare placeholder. Decided by dblink_dml_delete_cast_*(); see the policy
+ *                    table above those functions
  *   sql_out(out)   : set to the built SQL text on success
  */
 static int
 dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, const char *key_col, const char *op,
-			     char **sql_out)
+			     const char *cast_type, char **sql_out)
 {
   int ret, remaining;
   char *sql;
   size_t sql_len;
+  char bind_expr[64];
 
   *sql_out = NULL;
 
@@ -1494,7 +1624,21 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
       return ER_DBLINK;
     }
 
-  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + 64;
+  if (cast_type != NULL && cast_type[0] != '\0')
+    {
+      ret = snprintf (bind_expr, sizeof (bind_expr), "CAST(? AS %s)", cast_type);
+      if (ret < 0 || ret >= (int) sizeof (bind_expr))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: cast type name too long");
+	  return ER_DBLINK;
+	}
+    }
+  else
+    {
+      strcpy (bind_expr, "?");
+    }
+
+  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + strlen (bind_expr) + 64;
   sql = (char *) db_private_alloc (thread_p, sql_len);
   if (sql == NULL)
     {
@@ -1503,7 +1647,8 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
     }
 
   remaining = (int) sql_len;
-  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s ?", table_name, key_col, op);
+  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s %s", table_name, key_col, op,
+		  bind_expr);
   if (ret < 0 || ret >= remaining)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: SQL assembly truncated");
@@ -1512,6 +1657,48 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
     }
 
   *sql_out = sql;
+  return NO_ERROR;
+}
+
+/*
+ * dblink_dml_delete_reprepare_with_cast () - Replace the prepared DELETE with one whose placeholder carries
+ *   the restored type. Used when the marker's domain turned out to differ from the source type, which is only
+ *   knowable after the first prepare.
+ *   return: NO_ERROR, or an error code with state->stmt_handle left pointing at the original statement
+ *   state(in/out) : sink state; stmt_handle is swapped only after the new prepare succeeds
+ *   cast_type(in) : type name from dblink_dml_delete_marker_cast_type()
+ *
+ * Failure is raised, not swallowed: the quiet alternative -- drop the cast and run the bare statement --
+ * goes back to deleting the wrong rows with nothing to show for it. Swapping only after success means the
+ * caller's dblink_dml_close() closes exactly one handle on either path, so no descriptor leaks.
+ */
+static int
+dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, const char *table_name,
+				       const char *key_col, const char *op, const char *cast_type)
+{
+  T_CCI_ERROR err_buf;
+  char *sql = NULL;
+  int ret, req;
+
+  ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, cast_type, &sql);
+  if (ret != NO_ERROR)
+    {
+      /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
+      return ret;
+    }
+
+  req = cci_prepare (state->conn_handle, sql, 0, &err_buf);
+  db_private_free (thread_p, sql);
+  if (req < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
+      return ER_DBLINK;
+    }
+
+  (void) cci_close_req_handle (state->stmt_handle);
+  state->stmt_handle = req;
+
   return NO_ERROR;
 }
 
@@ -1530,6 +1717,9 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
  *   num_bind(in)    : INSERT only -- number of ? placeholders (= SELECT column count)
  *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<", ">", "<=", ">=")
+ *   src_type(in)    : DELETE only -- DB_TYPE of the local subquery's source column (DB_TYPE_NULL when
+ *                     unknown). Used to restore the pushed value's declared type; see the policy table above
+ *                     dblink_dml_delete_remote_is_cubrid()
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
  * Note: To prevent partial writes, both kinds ALWAYS:
@@ -1545,12 +1735,14 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 int
 dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user, const char *pwd,
 		 const char *table_name, char **attr_names, int num_attrs, int num_bind, const char *key_col,
-		 const char *op, DBLINK_DML_STATE * state)
+		 const char *op, int src_type, DBLINK_DML_STATE * state)
 {
   int ret;
   T_CCI_ERROR err_buf;
   char *sql = NULL;
   const char *errctx;
+  const char *cast_type = NULL;
+  bool restore_type = false;
 
   state->conn_handle = -1;
   state->stmt_handle = -1;
@@ -1597,7 +1789,11 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
       ret = dblink_dml_build_insert_sql (thread_p, table_name, attr_names, num_attrs, num_bind, &sql);
       break;
     case DBLINK_DML_DELETE:
-      ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, &sql);
+      /* the value's declared type is restored only against a CUBRID remote (CAST is CUBRID syntax); the
+       * VARCHAR row of the policy table is decided here so the cast rides this first prepare. */
+      restore_type = (key_col != NULL && dblink_dml_delete_remote_is_cubrid (state->conn_handle));
+      cast_type = restore_type ? dblink_dml_delete_precast_type (src_type) : NULL;
+      ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, cast_type, &sql);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
@@ -1619,6 +1815,21 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
       /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
       return ER_DBLINK;
+    }
+
+  /* date/time row of the policy table: the marker's domain is only knowable once the statement is prepared,
+   * so a cast decided here costs a re-prepare. Skipped when the VARCHAR row already settled the cast. */
+  if (restore_type && cast_type == NULL)
+    {
+      cast_type = dblink_dml_delete_marker_cast_type (state->stmt_handle, src_type);
+      if (cast_type != NULL)
+	{
+	  ret = dblink_dml_delete_reprepare_with_cast (thread_p, state, table_name, key_col, op, cast_type);
+	  if (ret != NO_ERROR)
+	    {
+	      return ret;
+	    }
+	}
     }
 
   return NO_ERROR;

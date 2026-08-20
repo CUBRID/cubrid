@@ -127,7 +127,7 @@ typedef enum dblink_dml_kind
 
 extern int dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user,
 			    const char *pwd, const char *table_name, char **attr_names, int num_attrs, int num_bind,
-			    const char *key_col, const char *op, DBLINK_DML_STATE * state);
+			    const char *key_col, const char *op, int src_type, DBLINK_DML_STATE * state);
 extern int dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VALUE ** vals,
 				   int num_vals, int *affected_rows);
 extern void dblink_dml_rollback (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);

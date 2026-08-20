@@ -12566,6 +12566,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   char **attr_names = NULL;
   int num_attrs = 0;
   const char *key_col = NULL, *op = NULL;
+  int src_type = (int) DB_TYPE_NULL;
   DBLINK_DML_STATE dblink_state = { -1, -1 };
 
   assert (specp != NULL);
@@ -12595,6 +12596,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	sink = &del->sink;
 	key_col = del->remote_key_col;
 	op = del->remote_op;
+	src_type = del->remote_src_type;
 	break;
       }
     default:
@@ -12607,7 +12609,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 
   /* open remote connection and prepare the INSERT/DELETE statement */
   if (dblink_dml_open (thread_p, kind, sink->url, sink->user, sink->pwd, sink->table_name, attr_names, num_attrs,
-		       val_no, key_col, op, &dblink_state) != NO_ERROR)
+		       val_no, key_col, op, src_type, &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;
