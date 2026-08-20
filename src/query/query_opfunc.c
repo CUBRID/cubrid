@@ -4710,7 +4710,7 @@ qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
   short s1 = db_get_short (short_val_p);
   short stmp;
 
-  if (__builtin_mul_overflow (s1, s2, &stmp))
+  if (OR_MULT_OVERFLOW (s1, s2, &stmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -4727,7 +4727,7 @@ qdata_multiply_int (DB_VALUE * int_val_p, int i2, DB_VALUE * result_p)
   int i1 = db_get_int (int_val_p);
   int itmp;
 
-  if (__builtin_mul_overflow (i1, i2, &itmp))
+  if (OR_MULT_OVERFLOW (i1, i2, &itmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -4743,7 +4743,7 @@ qdata_multiply_bigint (DB_VALUE * bigint_val_p, DB_BIGINT bi2, DB_VALUE * result
   DB_BIGINT bi1 = db_get_bigint (bigint_val_p);
   DB_BIGINT bitmp;
 
-  if (__builtin_mul_overflow (bi1, bi2, &bitmp))
+  if (OR_MULT_OVERFLOW (bi1, bi2, &bitmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
