@@ -18349,6 +18349,15 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       fputs ("\nQuery plan:\n", dump_fp);
       qo_plan_dump (plan, dump_fp);
     }
+  else if (dump_plan == true)
+    {
+      /* No plan although the dump was asked for: the optimizer gave up (a join partition wider than
+       * the join_info vector can index, an allocation failure, a failed internal assertion) and the
+       * statement runs with the syntactic join order. Say so, rather than leaving the dump with no
+       * plan section at all -- the absence was indistinguishable from "the dump is off". */
+      FILE *dump_fp = db_query_get_plan_dump_fp ();
+      fputs ("\nQuery plan: (not generated -- cost-based optimization was skipped for this query)\n", dump_fp);
+    }
 
   if (dump_plan == true)
     {
