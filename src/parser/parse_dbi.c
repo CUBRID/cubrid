@@ -519,7 +519,7 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
   const SM_DEFAULT_VALUE *default_value;
   PT_NODE *data_type;
 
-  if (sm_attr == NULL || &sm_attr->default_value == NULL)
+  if (sm_attr == NULL)
     {
       return NULL;
     }

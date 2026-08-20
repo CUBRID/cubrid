@@ -222,10 +222,6 @@ net_connect_proxy (void)
 
   ut_get_proxy_port_name (port_name, shm_appl->broker_name, as_info->proxy_id, BROKER_PATH_MAX);
 
-  if (port_name == NULL)
-    {
-      return (INVALID_SOCKET);
-    }
   /* FOR DEBUG */
   SHARD_ERR ("<CAS> connect to unixdoamin:[%s].\n", port_name);
 
