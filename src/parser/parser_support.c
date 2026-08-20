@@ -11717,9 +11717,37 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
 	  er_stack_push ();
 	  for (spec = statement->info.update.spec; spec && !found; spec = spec->next)
 	    {
-	      if (spec->info.spec.remote_server_name == NULL && spec->info.spec.entity_name != NULL
-		  && spec->info.spec.entity_name->node_type == PT_NAME
-		  && db_get_attribute_by_name (spec->info.spec.entity_name->info.name.original, lhs_name) != NULL)
+	      /* DB_MAX_IDENTIFIER_LENGTH is the budget for the qualified form already:
+	       * DB_MAX_CLASS_LENGTH is derived from it as owner + '.' + class */
+	      char qualified_name[DB_MAX_IDENTIFIER_LENGTH];
+	      const char *owner, *cls_name;
+
+	      if (spec->info.spec.remote_server_name != NULL || spec->info.spec.entity_name == NULL
+		  || spec->info.spec.entity_name->node_type != PT_NAME)
+		{
+		  continue;
+		}
+
+	      owner = spec->info.spec.entity_name->info.name.resolved;
+	      cls_name = spec->info.spec.entity_name->info.name.original;
+
+	      if (owner != NULL && owner[0] != '\0')
+		{
+		  /* the owner is still in resolved, not in original: this rewrite runs before
+		   * name binding.  db_find_class () resolves a bare name in the connected user's
+		   * schema only, so another owner's class would be missed and its column taken
+		   * for a remote one. */
+		  if (snprintf (qualified_name, sizeof (qualified_name), "%s.%s", owner, cls_name)
+		      >= (int) sizeof (qualified_name))
+		    {
+		      /* longer than any class name can be, so no local class matches it */
+		      continue;
+		    }
+
+		  cls_name = qualified_name;
+		}
+
+	      if (db_get_attribute_by_name (cls_name, lhs_name) != NULL)
 		{
 		  found = true;
 		  local++;
