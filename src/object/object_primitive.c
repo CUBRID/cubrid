@@ -9007,11 +9007,12 @@ pr_type_name (DB_TYPE id)
  *    return: non-zero if this is a variable width type
  *    id(in): type id
  * Note:
- *    With the advent of parameterized types like CHAR(n), NUMERIC(p,s) etc.
- *    this doesn't mean that all values of this type will be the same size,
- *    it means that for any particular attribute of a class, they will all be
- *    the same size and the value will be stored in the "fixed" region of the
- *    disk representation.
+ *    A variable width value is stored in the "variable" region of the disk
+ *    representation.  Parameterized types such as CHAR(n) (CBRD-26663) and
+ *    NUMERIC(p,s) (CBRD-26006), which used to be fixed width, are now stored
+ *    as variable width.  For the remaining fixed width types (e.g. BIT(n)),
+ *    all values of any particular attribute of a class have the same size
+ *    and are stored in the "fixed" region.
  */
 int
 pr_is_variable_type (DB_TYPE id)

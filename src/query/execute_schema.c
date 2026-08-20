@@ -8272,13 +8272,6 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       name_space = ID_ATTRIBUTE;
     }
 
-  error = do_validate_oos_storage_setting (parser, ctemplate, attribute, name_space, attr_db_domain);
-  if (error != NO_ERROR)
-    {
-      tp_domain_free (attr_db_domain);
-      goto error_exit;
-    }
-
   on_update_expr = attribute->info.attr_def.on_update;
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &default_expr);
   default_value = &stack_value;
@@ -8320,31 +8313,31 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 	}
     }
 
-  if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+  if (error == NO_ERROR && attribute->info.attr_def.attr_storage != PT_ATTR_STORAGE_UNSET)
     {
+      /* Validated after the pre-existing checks so that errors such as a duplicate attribute name keep their
+       * original precedence.  attr_db_domain may have been freed by domain caching inside
+       * smt_add_attribute_w_dflt_w_order, so consult the domain owned by the template attribute. */
+
       /* skip finding attribute if att is already available */
       if (att == NULL)
 	{
-	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	  error = smt_find_attribute (ctemplate, attr_name, meta ? 1 : 0, &att);
 	}
 
       if (error == NO_ERROR)
 	{
-	  att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
+	  error = do_validate_oos_storage_setting (parser, ctemplate, attribute, name_space, att->domain);
 	}
+    }
+
+  if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+    {
+      att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
     }
   else if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
     {
-      /* skip finding attribute if att is already available */
-      if (att == NULL)
-	{
-	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
-	}
-
-      if (error == NO_ERROR)
-	{
-	  att->flags |= SM_ATTFLAG_OOS_FORCE_OUTLINE;
-	}
+      att->flags |= SM_ATTFLAG_OOS_FORCE_OUTLINE;
     }
 
   comment = attribute->info.attr_def.comment;

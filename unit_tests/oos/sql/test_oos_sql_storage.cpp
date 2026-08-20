@@ -369,6 +369,29 @@ TEST_F (OosSqlStorage, AlterRejectsAllStorageSettingsForFixedTypes)
   db_abort_transaction ();
 }
 
+// ALTER ADD ATTRIBUTE runs the STORAGE eligibility check after the pre-existing template
+// checks, so a duplicate attribute name must be reported instead of the STORAGE error
+// (PR #7611 review). A non-duplicate fixed-type column still gets the STORAGE error.
+TEST_F (OosSqlStorage, AlterAddDuplicateAttributeKeepsDuplicateErrorPrecedence)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (c INT)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg ADD ATTRIBUTE c INT STORAGE PREFER_INLINE");
+  EXPECT_EQ (rc, ER_SM_NAME_RESERVED_BY_ATT);
+  db_abort_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg ADD ATTRIBUTE c INT STORAGE FORCE_OUTLINE");
+  EXPECT_EQ (rc, ER_SM_NAME_RESERVED_BY_ATT);
+  db_abort_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg ADD ATTRIBUTE d INT STORAGE PREFER_INLINE");
+  EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
+  db_abort_transaction ();
+}
+
 TEST_F (OosSqlStorage, AlterModifyClassAttributeReportsNonNormalAttributeError)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (a INT, CLASS ca VARCHAR(100))");
