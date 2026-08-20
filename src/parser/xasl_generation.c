@@ -19744,7 +19744,7 @@ static char *
 pt_dblink_delete_deparse_extra_where (PARSER_CONTEXT * parser, PT_NODE * node, char *extra_where, bool * error)
 {
   unsigned int save_custom_print;
-  char *piece;
+  char *piece, *joined;
 
   if (*error || node == NULL || node->node_type != PT_EXPR)
     {
@@ -19786,8 +19786,7 @@ pt_dblink_delete_deparse_extra_where (PARSER_CONTEXT * parser, PT_NODE * node, c
 
   if (extra_where != NULL)
     {
-      char *joined = pt_append_string (parser, extra_where, " AND ");
-
+      joined = pt_append_string (parser, extra_where, " AND ");
       if (joined == NULL)
 	{
 	  *error = true;
@@ -19796,16 +19795,14 @@ pt_dblink_delete_deparse_extra_where (PARSER_CONTEXT * parser, PT_NODE * node, c
       extra_where = joined;
     }
 
-  {
-    char *result = pt_append_string (parser, extra_where, piece);
+  joined = pt_append_string (parser, extra_where, piece);
+  if (joined == NULL)
+    {
+      *error = true;
+      return extra_where;
+    }
 
-    if (result == NULL)
-      {
-	*error = true;
-	return extra_where;
-      }
-    return result;
-  }
+  return joined;
 }
 
 /*
@@ -19832,6 +19829,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   const char *op_sql = NULL;
   const char *key_col = NULL;
   DBLINK_REMOTE_SINK_MODE sink_mode = DBLINK_SINK_MODE_PER_ROW;
+  bool extra_where_error = false;
 
   assert (parser != NULL && statement != NULL);
 
@@ -19999,17 +19997,12 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   del->remote_op = pt_append_string (parser, NULL, op_sql);
   del->remote_sink_mode = sink_mode;
 
-  {
-    bool extra_where_error = false;
-
-    del->remote_extra_where = pt_dblink_delete_deparse_extra_where (parser, cond, NULL, &extra_where_error);
-    if (extra_where_error)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-		"remote DELETE: failed to deparse a remote-only AND arm");
-	return NULL;
-      }
-  }
+  del->remote_extra_where = pt_dblink_delete_deparse_extra_where (parser, cond, NULL, &extra_where_error);
+  if (extra_where_error)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: failed to deparse a remote-only AND arm");
+      return NULL;
+    }
 
   if (del->sink.table_name == NULL || del->remote_key_col == NULL || del->remote_op == NULL || pt_has_error (parser))
     {
