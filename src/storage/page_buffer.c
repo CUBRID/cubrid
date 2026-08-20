@@ -12965,7 +12965,7 @@ pgbuf_only_qresult_pages_fixed (int thrd_idx)
 
   return true;
 }
-#endif				/* NDEBUG */
+#endif /* NDEBUG */
 
 /*
  * pgbuf_ordered_callback () - Temporarily unfix all ordered pages while executing a callback.
