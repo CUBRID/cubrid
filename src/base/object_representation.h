@@ -71,6 +71,12 @@ struct setobj;
 #define OR_CHECK_MULT_OVERFLOW(a, b, c) \
   (((b) == 0) ? ((c) != 0) \
    : (((b) == -1) ? ((a) != 0 && (c) == (a)) : ((c) / (b) != (a))))
+#if defined (__GNUC__) || defined (__clang__)
+#define OR_MULT_OVERFLOW(a, b, r) __builtin_mul_overflow ((a), (b), (r))
+#else
+#define OR_MULT_OVERFLOW(a, b, r) \
+  (*(r) = (a) * (b), OR_CHECK_MULT_OVERFLOW ((a), (b), *(r)))
+#endif
 #define OR_CHECK_SHORT_DIV_OVERFLOW(a, b) \
   ((a) == DB_INT16_MIN && (b) == -1)
 #define OR_CHECK_INT_DIV_OVERFLOW(a, b) \
