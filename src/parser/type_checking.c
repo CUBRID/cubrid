@@ -312,7 +312,15 @@ pt_get_op_volatility (PT_OP_TYPE op)
 
   if (!pt_get_expression_definition (op, &def) || def.overloads_count <= 0)
     {
-      return PT_VOLATILITY_UNSET;
+      switch (op)
+	{
+	case PT_CAST:
+	  /* PT_CAST has no entry in the expression-definition table; a cast
+	   * itself adds no volatility (its operand's propagates over it) */
+	  return PT_VOLATILITY_IMMUTABLE;
+	default:
+	  return PT_VOLATILITY_UNSET;
+	}
     }
   return def.overloads[0].volatility;
 }
@@ -353,6 +361,13 @@ pt_get_expr_tree_volatility (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return pt_get_expr_tree_volatility (parser, node->info.expr.arg1);
 	}
       v = pt_get_op_volatility (node->info.expr.op);
+      if (v == PT_VOLATILITY_UNSET)
+	{
+	  /* name the unclassified operator itself; a parent tainted only through
+	   * MAX-propagation keeps its own (set) volatility and does not re-report */
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_UNCLASSIFIED_VOLATILITY,
+		      pt_show_binopcode (node->info.expr.op));
+	}
       v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, node->info.expr.arg1));
       v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, node->info.expr.arg2));
       v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, node->info.expr.arg3));
@@ -363,6 +378,11 @@ pt_get_expr_tree_volatility (PARSER_CONTEXT * parser, PT_NODE * node)
 	PT_NODE *arg;
 
 	v = pt_get_func_volatility (node->info.function.function_type);
+	if (v == PT_VOLATILITY_UNSET)
+	  {
+	    PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_UNCLASSIFIED_VOLATILITY,
+			fcode_get_lowercase_name (node->info.function.function_type));
+	  }
 	for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
 	  {
 	    v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, arg));
@@ -373,6 +393,8 @@ pt_get_expr_tree_volatility (PARSER_CONTEXT * parser, PT_NODE * node)
     default:
       /* names (column refs), host vars, sub-queries: not classified for DEFAULT
        * folding in this scope */
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_UNCLASSIFIED_VOLATILITY,
+		  pt_show_node_type (node));
       return PT_VOLATILITY_UNSET;
     }
 }

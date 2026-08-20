@@ -4077,6 +4077,40 @@ pt_default_expr_normalized_text (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_is_signed_numeric_literal () - whether a DEFAULT value is a signed numeric
+ *	literal such as "DEFAULT -5".
+ *   return: true if node is PT_UNARY_MINUS applied to a single numeric PT_VALUE
+ *   node(in): the DEFAULT value parse node
+ *
+ * The column DEFAULT grammar routes its value through expression_, so a signed
+ * numeric literal arrives as PT_UNARY_MINUS over a numeric PT_VALUE rather than
+ * the negative literal that signed_literal_ builds.  It is a plain literal, not
+ * a compound expression: keep it off the expression-DEFAULT path (the volatility
+ * classification would reject the unary minus, which is not an admissible
+ * DEFAULT operator) so the constant folder simply negates it to a plain value
+ * (stored / shown as the literal).
+ */
+static bool
+pt_is_signed_numeric_literal (const PT_NODE * node)
+{
+  const PT_NODE *arg;
+
+  if (node == NULL || node->node_type != PT_EXPR || node->info.expr.op != PT_UNARY_MINUS
+      || node->info.expr.arg2 != NULL || node->info.expr.arg3 != NULL)
+    {
+      return false;
+    }
+
+  arg = node->info.expr.arg1;
+  if (arg == NULL || arg->node_type != PT_VALUE || arg->next != NULL)
+    {
+      return false;
+    }
+
+  return PT_IS_NUMERIC_TYPE (arg->type_enum);
+}
+
+/*
  * pt_check_data_default () - checks data_default for semantic errors
  *
  * result	    	 : modified data_default
@@ -4137,7 +4171,8 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
       edl_text = NULL;
       if (data_default->info.data_default.shared == PT_DEFAULT
 	  && data_default->info.data_default.default_expr_type == DB_DEFAULT_NONE
-	  && default_value != NULL && (PT_IS_EXPR_NODE (default_value) || default_value->node_type == PT_FUNCTION))
+	  && default_value != NULL && (PT_IS_EXPR_NODE (default_value) || default_value->node_type == PT_FUNCTION)
+	  && !pt_is_signed_numeric_literal (default_value))
 	{
 	  PT_VOLATILITY vol = pt_get_expr_tree_volatility (parser, default_value);
 
@@ -4163,6 +4198,14 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 			      MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG, DB_MAX_DEFAULT_EXPR_LENGTH);
 		  goto end;
 		}
+	    }
+	  else if (vol == PT_VOLATILITY_UNSET)
+	    {
+	      /* the expression contains an operator or function whose volatility
+	       * is not classified; reject it so an unclassified DEFAULT expression
+	       * does not silently bypass the checks below (each offending node was
+	       * already reported by pt_get_expr_tree_volatility) */
+	      goto end;
 	    }
 	}
 

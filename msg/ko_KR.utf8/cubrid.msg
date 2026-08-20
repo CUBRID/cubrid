@@ -1992,6 +1992,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 337 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
 
+339 유효하지 않은 DEFAULT 절: '%1$s'의 volatility(휘발성) 속성이 분류되지 않았습니다.
+
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
