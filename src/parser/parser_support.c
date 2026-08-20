@@ -12080,14 +12080,24 @@ pt_dblink_delete_is_remote_only_conjunct (PT_NODE * conjunct)
   return arg1 != NULL && arg1->node_type == PT_NAME && arg2 != NULL && arg2->node_type == PT_VALUE;
 }
 
-/* Walks the pre-CNF PT_AND tree rooted at node (carve-out runs before CNF, so multiple conjuncts are
- * still one PT_AND tree, not a cond->next list): every leaf must be the one driving predicate or a
- * remote-only conjunct. *driving_seen counts driving leaves found so far; a second one, an OR, or any
- * other shape fails the gate. Recursion is manual, not parser_walk_tree(), so the driving predicate's
- * own subquery arm is never descended into. */
+/* The one traversal of a DELETE WHERE tree, answering both questions the carve-out asks: is the shape in
+ * scope (return value), and which leaf is the driving predicate (*driving). Both callers below are thin
+ * wrappers, so the gate and every later phase classify leaves the same way by construction.
+ *
+ * The tree is pre-CNF (the carve-out runs before CNF), so multiple conjuncts are still one PT_AND tree
+ * rather than a cond->next list. In scope means: every leaf is either the single driving predicate
+ * (pt_dblink_delete_is_driving_pred) or a remote-only conjunct (pt_dblink_delete_is_remote_only_conjunct);
+ * a second driving predicate, an OR, or any other shape fails. Recursion is manual, not
+ * parser_walk_tree(), so the driving predicate's own subquery arm is never descended into.
+ *
+ * Both AND arms are walked even after one fails, so *driving is found wherever it sits. Later phases rely
+ * on that: they locate the node the gate validated, and by then a rewrite may have left an arm in a shape
+ * this walk no longer accepts. */
 static bool
-pt_dblink_delete_and_tree_is_inscope (PT_NODE * node, int *driving_seen)
+pt_dblink_delete_and_tree_walk (PT_NODE * node, PT_NODE ** driving)
 {
+  bool arg1_ok, arg2_ok;
+
   if (node == NULL || node->node_type != PT_EXPR)
     {
       return false;
@@ -12095,14 +12105,19 @@ pt_dblink_delete_and_tree_is_inscope (PT_NODE * node, int *driving_seen)
 
   if (node->info.expr.op == PT_AND)
     {
-      return (pt_dblink_delete_and_tree_is_inscope (node->info.expr.arg1, driving_seen)
-	      && pt_dblink_delete_and_tree_is_inscope (node->info.expr.arg2, driving_seen));
+      arg1_ok = pt_dblink_delete_and_tree_walk (node->info.expr.arg1, driving);
+      arg2_ok = pt_dblink_delete_and_tree_walk (node->info.expr.arg2, driving);
+      return arg1_ok && arg2_ok;
     }
 
   if (pt_dblink_delete_is_driving_pred (node))
     {
-      (*driving_seen)++;
-      return *driving_seen == 1;
+      if (*driving != NULL)
+	{
+	  return false;		/* a second driving predicate: out of scope */
+	}
+      *driving = node;
+      return true;
     }
 
   return pt_dblink_delete_is_remote_only_conjunct (node);
@@ -12125,39 +12140,29 @@ static bool
 pt_dblink_delete_where_is_inscope (PT_NODE * node)
 {
   PT_NODE *cond = node->info.delete_.search_cond;
-  int driving_seen = 0;
+  PT_NODE *driving = NULL;
 
   if (cond == NULL || cond->next != NULL)
     {
       return false;		/* defensive: carve-out runs pre-CNF, so a cond->next list is unexpected here */
     }
 
-  return pt_dblink_delete_and_tree_is_inscope (cond, &driving_seen) && driving_seen == 1;
+  return pt_dblink_delete_and_tree_walk (cond, &driving) && driving != NULL;
 }
 
-/* Returns the sole driving predicate node within node's pre-CNF WHERE tree (node itself, if node isn't
- * PT_AND), or NULL if none is found. Callers rely on pt_dblink_delete_where_is_inscope() having already
- * validated the shape (exactly one driving predicate); this just locates it, e.g. so semantic_check.c
- * can bind/correlation-check its subquery and xasl_generation.c can read its op/columns -- both must
- * locate the *same* node the gate validated, which is why this traversal lives here and is shared
- * rather than reimplemented per caller. */
+/* Returns the driving predicate node within node's pre-CNF WHERE tree, or NULL if there is none. Shared
+ * (non-static) so semantic_check.c can bind/correlation-check its subquery and xasl_generation.c can read
+ * its op/columns -- both must land on the *same* node the gate validated, which is why they call this
+ * rather than re-deriving it. Shape validity is not re-checked here: the gate established it, and a
+ * rewrite since then may have left an AND arm in a shape the walk no longer accepts. */
 PT_NODE *
 pt_dblink_delete_and_tree_find_driving (PT_NODE * node)
 {
-  PT_NODE *found;
+  PT_NODE *driving = NULL;
 
-  if (node == NULL || node->node_type != PT_EXPR)
-    {
-      return NULL;
-    }
+  (void) pt_dblink_delete_and_tree_walk (node, &driving);
 
-  if (node->info.expr.op == PT_AND)
-    {
-      found = pt_dblink_delete_and_tree_find_driving (node->info.expr.arg1);
-      return (found != NULL) ? found : pt_dblink_delete_and_tree_find_driving (node->info.expr.arg2);
-    }
-
-  return pt_dblink_delete_is_driving_pred (node) ? node : NULL;
+  return driving;
 }
 
 static void
