@@ -4058,8 +4058,8 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
  * Note: shared by the acquire-at-assignment choke points and logtb_ensure_mvccid_self_lock; takes the MVCCID
  *	 explicitly so the choke points do not recurse through logtb_get_current_mvccid. Idempotent via the
  *	 self_locked_mvccid hint. A fresh MVCCID is unknown to any other transaction, so the X never waits.
- *	 A no-op during boot/recovery and for non-worker (system/vacuum) transactions -- the guard is here so
- *	 both entry points inherit it.
+ *	 A no-op during boot/recovery, for non-worker (system/vacuum) transactions and for load workers -- the
+ *	 guard is here so both entry points inherit it.
  */
 static int
 logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
@@ -4072,6 +4072,18 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
   if (curr_mvcc_info->self_locked_mvccid == mvccid)
     {
       /* already self-locked in this (sub-)transaction */
+      return NO_ERROR;
+    }
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p->type == TT_LOADDB)
+    {
+      /* Load workers rely on the session transaction's BU_LOCK, and bulk records do not expose an INSID. No waiter
+       * can address the worker's MVCCID, so a transaction self-lock is not needed. */
       return NO_ERROR;
     }
 
