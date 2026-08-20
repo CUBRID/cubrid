@@ -2319,12 +2319,12 @@ cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** 
    * flag and the per-driver precision fixups) */
   if (cgw_describe_invisible_attrs (hdbc, table_name, attrs, count) < 0)
     {
-      /* best effort: the invisible columns keep their SQLColumns metadata, which has no
-       * unsigned flag and none of the per-driver precision fixups.  Record it - the
-       * columns are typed differently from the visible ones and nothing else says so. */
-      cas_log_write (0, false,
-		     "cgw_schema_info: describe of the invisible columns of %s failed, "
-		     "their type metadata is from SQLColumns only", table_name);
+      /* the SQLColumns-only metadata left on the invisible columns has no unsigned
+       * flag and none of the per-driver precision fixups, so serving it would compile
+       * those columns with the wrong type.  Fail instead - the client falls back to
+       * the "SELECT *" prepare, where an invisible reference is a clear compile error
+       * rather than a silently mistyped column. */
+      goto end;
     }
 
   *ret_attrs = attrs;
@@ -2333,6 +2333,16 @@ cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** 
   err = 0;
 
 end:
+  if (err < 0)
+    {
+      /* every failure above ends the same way - the client falls back to the "SELECT *"
+       * prepare and loses the invisible columns - and the reason is only knowable here.
+       * One line per failed request, at compile time, so log it once for all of them
+       * instead of at one path out of twelve. */
+      cas_log_write (0, false, "cgw_schema_info: could not describe %s, the client falls back to the prepare",
+		     table_name);
+    }
+
   if (hstmt != SQL_NULL_HSTMT)
     {
       SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
