@@ -1481,17 +1481,19 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1377 The no-logging index build exceeded its vacuum notification memory limit (%1$d bytes). Retry the loaddb while no concurrent transactions are active, or rebuild the index without the no-logging option.
 
-1378 Vacuum master daemon is not running; the server may be still booting or already shut down.
+1378 Cannot change the login capability of user "%1$s".
 
-1379 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
+1379 Vacuum master daemon is not running; the server may be still booting or already shut down.
 
-1380 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
+1380 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
 
-1381 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
+1381 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
 
-1382 Internal error: invalid out-of-row storage argument.
+1382 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
 
-1383 Last Error
+1383 Internal error: invalid out-of-row storage argument.
+
+1384 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
