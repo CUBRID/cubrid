@@ -1,24 +1,40 @@
 # CUBRIDQA-1526 -- build, publish, then run the shell suite on self-hosted runners.
-# Replaces the CircleCI jobs build_debug + download-build + test_shell. Both stay
-# live during the migration, so one /run comment can be compared across the two.
+# Replaces the CircleCI jobs build + build_debug + download-build + test_shell.
+# Both stay live during the migration, so one /run comment can be compared.
 #
-# Trigger
-#   /run shell | /run all   on a pull request. Write access only; claims 50 runners
-#   gh workflow run gha-ci.yml -f sha=<40-char SHA>   default branch only
+# Trigger, and what each one runs. Same shape as the CircleCI baseline, where the
+# test parameters default to false so the automatic path builds only.
+#
+#   pull_request opened, synchronize   build only
+#   issue_comment  /run shell | all    build, then the shell suite on the debug build
+#   push develop, feature/**           build only. develop also writes the ccache
+#   workflow_dispatch                  build; tests follow the inputs
 #
 # Prerequisites in the runner, not here. Apply ARC-1526-* per RUNBOOK-1526.
 #   pod template   shareProcessNamespace, or the shell tests hang instead of
-#                  failing; privileged, or the overlay mount fails
-#   job hook       ALLOWED_EVENTS must include issue_comment
+#                  failing; privileged, or the overlay mount fails;
+#                  imagePullPolicy Always, or nodes keep a stale image
+#   job hook       ALLOWED_EVENTS must list pull_request, issue_comment, push
+#                  and workflow_dispatch
 #
-# Rationale, measurements and the shared-path analysis: CUBRIDQA-1526.
+# Decisions, measurements and the ccache/path contract:
+# SPEC-1526-triggers-and-cache.md, and CUBRIDQA-1526.
 
 name: gha-ci
 
 on:
+  # Builds only. A fork PR runs its own copy of this file, so nothing here may
+  # reach a test job -- the repository setting "Require approval for all external
+  # contributors" is what keeps an outsider's PR off these runners.
+  pull_request:
+    types: [opened, synchronize]
+    branches: [develop, 'feature/**']
   # Which comments wake this is decided by the gate job; it cannot be narrowed here.
   issue_comment:
     types: [created, edited]
+  # Post-merge build. Only develop refreshes the ccache.
+  push:
+    branches: [develop, 'feature/**']
   workflow_dispatch:
     inputs:
       sha:
@@ -64,8 +80,10 @@ permissions: {} # jobs opt-in below
 # The dispatch fallback is the SHA, not run_id: two force_build dispatches for one
 # SHA would race the republish and pull the overlay lowerdir from a running shard.
 concurrency:
-  group: gha-ci-${{ github.event.issue.number || inputs.pr || inputs.sha }}
-  cancel-in-progress: true
+  group: gha-ci-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr || inputs.sha || github.ref }}
+  # A develop push publishes the preserved artifact and refreshes the ccache, so the
+  # next merge must not cancel it. Everything else supersedes its own predecessor.
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:
   # Not the operational builds/ path -- the CircleCI test_shell still reads that.
@@ -77,24 +95,31 @@ env:
   BUILD_META: .gha-ci-build.meta
 
 jobs:
-  # Both triggers become one shape: every job below reads needs.gate.outputs.
+  # All four triggers become one shape: every job below reads needs.gate.outputs and
+  # never looks at the event, so adding a trigger means editing this job only.
   # GitHub-hosted, so the permission decision lands before a runner is claimed.
   gate:
     name: gate
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      pull-requests: read # reads the head SHA of the commented PR
-    # Same author set as comment_trigger.yml. CONTRIBUTOR is refused.
+      pull-requests: read # the head SHA of the commented PR
+    # Only the comment path needs an author check -- it is the one event anyone with
+    # read access can raise. Same author set as comment_trigger.yml; CONTRIBUTOR is
+    # refused. push and workflow_dispatch already require write access, and
+    # pull_request is gated by the repository's fork-approval setting.
     if: >-
-      ${{ github.event_name == 'workflow_dispatch'
+      ${{ github.event_name != 'issue_comment'
       || (github.event.issue.pull_request != null
       && startsWith(github.event.comment.body, '/run')
       && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) }}
     outputs:
       run: ${{ steps.g.outputs.run }}
+      test: ${{ steps.g.outputs.test }} # only the comment path and dispatch run tests
       sha: ${{ steps.g.outputs.sha }}
       pr: ${{ steps.g.outputs.pr }}
+      build_ns: ${{ steps.g.outputs.build_ns }} # develop | pr -- artifacts stay apart
+      cache_write: ${{ steps.g.outputs.cache_write }} # ccache is written on develop only
       parallelism: ${{ steps.g.outputs.parallelism }}
       limit: ${{ steps.g.outputs.limit }}
       force_build: ${{ steps.g.outputs.force_build }}
@@ -108,6 +133,12 @@ jobs:
           EV: ${{ github.event_name }}
           BODY: ${{ github.event.comment.body }}
           ISSUE: ${{ github.event.issue.number }}
+          # pull_request: the head SHA, not the merge commit -- that is what the PR
+          # proposes, and it is the same value the comment path resolves to.
+          PR_NUM: ${{ github.event.pull_request.number }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_SHA: ${{ github.sha }}
+          REF: ${{ github.ref }}
           IN_SHA: ${{ inputs.sha }}
           IN_PR: ${{ inputs.pr }}
           IN_PAR: ${{ inputs.parallelism }}
@@ -122,75 +153,136 @@ jobs:
 
           emit() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
 
-          if [ "$EV" = 'workflow_dispatch' ]; then
-            # A dispatch supplies every value; pass them through.
-            emit run true
-            emit sha "$IN_SHA"
-            emit pr "$IN_PR"
-            emit parallelism "$IN_PAR"
-            emit limit "$IN_LIMIT"
-            emit force_build "$IN_FORCE"
-            emit rerun_from "$IN_RERUN"
-            emit sabotage "$IN_SAB"
-            echo "dispatch: sha=$IN_SHA pr=${IN_PR:-(none)} parallelism=$IN_PAR"
-            exit 0
-          fi
+          # Knobs no path but workflow_dispatch exposes. plan clamps parallelism when
+          # rerun_from is set, so both rerun paths land on one shard.
+          par=50; limit=0; force=false; rerun=''; sab=none
+          # Builds only, PR namespace, ccache read-only. Each branch below narrows this.
+          test_run=false; pr=''; ns=pr; cache_write=false
 
-          # Regex must stay identical to comment_trigger.yml: one syntax to learn.
-          if ! [[ "$BODY" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
-            echo "[info] not /run syntax, ignoring: $BODY"
-            emit run false
-            exit 0
-          fi
+          case "$EV" in
+            pull_request)
+              sha="$PR_HEAD"
+              pr="$PR_NUM"
+              echo "pull_request: PR #${pr} / head ${sha} / build only"
+              ;;
 
-          # Only shell lives here; sql and medium are CircleCI's.
-          if ! [[ "$BODY" =~ (^|[[:space:]])(all|shell)($|[[:space:]]) ]]; then
-            echo "[info] shell was not requested, ignoring: $BODY"
-            emit run false
-            exit 0
-          fi
+            push)
+              sha="$PUSH_SHA"
+              # develop is the only ref that refreshes the shared ccache and lands in
+              # the preserved namespace. feature/** builds like a PR.
+              if [ "$REF" = 'refs/heads/develop' ]; then
+                ns=develop
+                cache_write=true
+              fi
+              echo "push: ${REF} / ${sha} / build only"
+              ;;
 
-          # Pin the head commit. A branch name is a moving target.
-          sha=$(gh api "repos/${REPO}/pulls/${ISSUE}" --jq '.head.sha') || {
-            echo "::error::could not read the head SHA of PR ${ISSUE}"; exit 1; }
+            workflow_dispatch)
+              # A dispatch supplies every value; pass them through.
+              sha="$IN_SHA"; pr="$IN_PR"
+              par="$IN_PAR"; limit="$IN_LIMIT"; force="$IN_FORCE"
+              rerun="$IN_RERUN"; sab="$IN_SAB"
+              test_run=true
+              echo "dispatch: sha=${sha} pr=${pr:-(none)} parallelism=${par}"
+              ;;
+
+            issue_comment)
+              pr="$ISSUE"
+              # Checked before the shared grammar so that regex can stay byte-identical
+              # to comment_trigger.yml. The run id comes from the comment collect posts.
+              if [[ "$BODY" =~ ^/run[[:space:]]+rerun[[:space:]]+([0-9]{1,20})[[:space:]]*$ ]]; then
+                rerun="${BASH_REMATCH[1]}"
+                test_run=true
+                echo "comment: re-run only the failures of run ${rerun}"
+              # Regex must stay identical to comment_trigger.yml: one syntax to learn.
+              elif [[ "$BODY" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
+                # Only shell lives here; sql and medium are CircleCI's.
+                if ! [[ "$BODY" =~ (^|[[:space:]])(all|shell)($|[[:space:]]) ]]; then
+                  echo "[info] shell was not requested, ignoring: $BODY"
+                  emit run false
+                  exit 0
+                fi
+                test_run=true
+                echo "comment: PR #${pr} / shell suite"
+              else
+                echo "[info] not /run syntax, ignoring: $BODY"
+                emit run false
+                exit 0
+              fi
+              # Pin the head commit. A branch name is a moving target.
+              sha=$(gh api "repos/${REPO}/pulls/${pr}" --jq '.head.sha') || {
+                echo "::error::could not read the head SHA of PR ${pr}"; exit 1; }
+              ;;
+
+            *)
+              echo "::error::unhandled event: $EV"; exit 1 ;;
+          esac
+
+          # Every path ends here, so one check covers all four.
           if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::head SHA is not 40 hex characters: $sha"; exit 1
+            echo "::error::sha must be 40 lowercase hex characters, got: ${sha}"; exit 1
           fi
 
           emit run true
+          emit test "$test_run"
           emit sha "$sha"
-          emit pr "$ISSUE"
-          # The comment path exposes no knobs; use workflow_dispatch to change these.
-          emit parallelism 50
-          emit limit 0
-          emit force_build false
-          emit rerun_from ""
-          emit sabotage none
-          echo "comment: PR #${ISSUE} / head ${sha} / parallelism 50"
+          emit pr "$pr"
+          emit build_ns "$ns"
+          emit cache_write "$cache_write"
+          emit parallelism "$par"
+          emit limit "$limit"
+          emit force_build "$force"
+          emit rerun_from "$rerun"
+          emit sabotage "$sab"
+          echo "resolved: event=$EV test=$test_run namespace=$ns ccache_write=$cache_write"
 
-  build_debug:
-    name: build (rl8.10 node)
+  # Both modes of the CircleCI baseline, which differ only in the build argument and
+  # the ccache they use. One image serves both: the release build here is for testing,
+  # not distribution, so it carries no glibc constraint.
+  #
+  # No job outputs. A matrix job reports the last-completing element's outputs, which
+  # would make `mode` ambiguous; plan derives the path from gate instead and reads the
+  # rest out of build.meta.
+  build:
+    name: build (${{ matrix.mode }})
     needs: gate
     permissions: {} # no token used; the engine is cloned from the GlusterFS mirror
     if: needs.gate.outputs.run == 'true'
     runs-on: cubrid-arc
     timeout-minutes: 120
+    strategy:
+      # One mode failing must not hide the other's result.
+      fail-fast: false
+      matrix:
+        include:
+          - mode: release
+            args: ""
+          - mode: debug
+            args: "-m optdebug"
     container:
       image: cubridci/cubridci:rl8.10
     defaults:
       run:
         shell: bash
-    outputs:
-      sha: ${{ steps.args.outputs.sha }}
-      mode: ${{ steps.reuse.outputs.mode }}
 
     env:
-      # Same values as the CircleCI executor cubrid-build-node.
+      # Same values as the CircleCI executor cubrid-build.
       BUILD_MIRROR: /home/build-cache/cubrid-mirror
-      CCACHE_DIR: /home/build-cache/ccache-shell-debug
-      CCACHE_COMPILERCHECK: content
-      # No CCACHE_HARDLINK: cache on gluster, build tree pod-local -- it would copy.
       CI_LOG_ROOT: /home/build-cache/gha-ci/logs
+      MODE: ${{ matrix.mode }}
+      BUILD_ARGS: ${{ matrix.args }}
+      # develop | pr. Keeps the preserved develop artifacts out of reach of PR builds.
+      BUILD_NS: ${{ needs.gate.outputs.build_ns }}
+
+      # One cache per mode, mounted straight off GlusterFS -- there is no restore/save
+      # step to gate, so "write on develop only" is enforced by ccache itself below.
+      CCACHE_DIR: /home/build-cache/ccache-develop-${{ matrix.mode }}
+      # The default is mtime, which a fresh clone always misses.
+      CCACHE_COMPILERCHECK: content
+      # `ccache --max-size` writes into the cache directory; the variable does not.
+      CCACHE_MAXSIZE: 5G
+      # No CCACHE_HARDLINK: cache on gluster, build tree pod-local -- it would copy.
+      CACHE_WRITE: ${{ needs.gate.outputs.cache_write }}
 
     steps:
       - name: 0. Environment check
@@ -229,7 +321,7 @@ jobs:
           touch "$probe" && rm -f "$probe"
           echo "writable"
 
-          # Wall-clock stamps. build_debug opens the run dir; plan's mkdir -p keeps it.
+          # Wall-clock stamps. build opens the run dir; plan's mkdir -p keeps it.
           mkdir -p "$STAMPS"
           printf 'start\t%s\n' "$(date -u +%s)" > "$STAMPS/build.tsv"
 
@@ -248,7 +340,7 @@ jobs:
         run: |
           set -eo pipefail
           # No `step halt` in GHA: emit an output and gate later steps on it.
-          dir="$CI_BUILD_ROOT/$SHA/debug"
+          dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
           if [ "$INPUT_FORCE" = 'true' ]; then
             echo "force_build=true, rebuilding even though an artifact exists"
             mode=built
@@ -304,12 +396,25 @@ jobs:
           # One level down, a failed build reports success. Run from the source root.
           cd "$GITHUB_WORKSPACE"
 
-          mkdir -p "$CCACHE_DIR"
-          ccache --max-size=5G
-          ccache -z
+          # Read-only unless this is a develop push. There is no save_cache step to
+          # gate, so ccache enforces it -- read_only stops writes, stats=false stops the
+          # counter file, and temporary_dir keeps scratch off GlusterFS (the default is
+          # <cache_dir>/tmp). CCACHE_MAXSIZE stands in for `ccache --max-size`, which
+          # writes into the cache directory, as `ccache -z` also would.
+          if [ "$CACHE_WRITE" = 'true' ]; then
+            echo "ccache: writable, this is a develop push -- $CCACHE_DIR"
+          else
+            export CCACHE_READONLY=1 CCACHE_NOSTATS=1
+            echo "ccache: read-only -- $CCACHE_DIR"
+          fi
+          export CCACHE_TEMPDIR="$RUNNER_TEMP/ccache-tmp"
+          mkdir -p "$CCACHE_TEMPDIR"
+          [ -d "$CCACHE_DIR" ] || echo "::warning::no ccache at $CCACHE_DIR yet, so this is a cold build"
 
           # No -j: ninja 1.11.1 reads the cgroup quota and decides for itself.
-          /entrypoint.sh build -m optdebug
+          # BUILD_ARGS is one flag pair from the matrix, so it must word-split.
+          # shellcheck disable=SC2086
+          /entrypoint.sh build $BUILD_ARGS
           ccache -s
 
       # cancel-in-progress makes cancellation a normal exit, so staging survives;
@@ -318,7 +423,7 @@ jobs:
         run: |
           set -eo pipefail
           swept=0
-          for pat in "$CI_BUILD_ROOT"/*/debug.tmp.* "$CI_BUILD_ROOT"/*/debug.old.* \
+          for pat in "$CI_BUILD_ROOT"/*/*/*.tmp.* "$CI_BUILD_ROOT"/*/*/*.old.* \
                      "$CI_ROOT"/runs/*/testtools "$CI_ROOT"/runs/*/testtools.tmp.* ; do
             # An unmatched glob arrives as the pattern itself; -e filters it out.
             [ -e "$pat" ] || continue
@@ -333,12 +438,13 @@ jobs:
       - name: 4. Publish, staged then moved in with one rename
         id: publish
         env:
-          MODE: ${{ steps.reuse.outputs.mode }}
+          # Not MODE: the job already uses that name for the matrix mode.
+          REUSE: ${{ steps.reuse.outputs.mode }}
         run: |
           set -eo pipefail
-          dir="$CI_BUILD_ROOT/$SHA/debug"
+          dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
 
-          if [ "$MODE" = 'reused' ]; then
+          if [ "$REUSE" = 'reused' ]; then
             echo "reused, not publishing: $dir"
           else
             tmp="${dir}.tmp.${GITHUB_RUN_ID}"
@@ -348,8 +454,8 @@ jobs:
 
             # Inside the CUBRID tree on purpose: shard mounts it as the overlay lowerdir,
             # so reading this file proves the mount the tests actually use.
-            meta=$(printf 'sha=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
-              "$SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)")
+            meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
+              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)")
             printf '%s\n' "$meta" > "$tmp/CUBRID/$BUILD_META"
             printf '%s\n' "$meta" > "$tmp/build.meta"
 
@@ -413,7 +519,15 @@ jobs:
 
   plan:
     name: plan
-    needs: [gate, build_debug]
+    needs: [gate, build]
+    # Builds run on every trigger; the split and the suite only on a comment or a
+    # dispatch. gate is the one place that decides.
+    #
+    # always(), because needs.build is the whole matrix: a failed release build would
+    # otherwise block the shell suite, which CircleCI does not do either -- there
+    # test_shell hangs off build_debug alone. The debug artifact is checked below on
+    # its sentinel and its meta, so a missing one still fails loudly.
+    if: always() && needs.gate.outputs.test == 'true'
     permissions: {} # testcases come from the App token; GITHUB_TOKEN is unused
     runs-on: cubrid-arc
     timeout-minutes: 30
@@ -424,11 +538,14 @@ jobs:
         shell: bash
     env:
       TC_DIR: /home/cubrid-testcases-private-ex
+      # The suite always runs against the debug build, in the namespace gate chose.
+      BUILD_NS: ${{ needs.gate.outputs.build_ns }}
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
       total: ${{ steps.split.outputs.total }}
       rundir: ${{ steps.split.outputs.rundir }}
-      sha: ${{ needs.build_debug.outputs.sha }}
+      sha: ${{ needs.gate.outputs.sha }}
+      build_ns: ${{ needs.gate.outputs.build_ns }}
       timed: ${{ steps.split.outputs.timed }}
       build_run_id: ${{ steps.build.outputs.build_run_id }}
       tc_sha: ${{ steps.tc.outputs.tc_sha }}
@@ -458,6 +575,12 @@ jobs:
           if [ -n "$IN_RERUN" ] && [[ ! "$IN_RERUN" =~ ^[0-9]{1,20}$ ]]; then
             echo "::error::rerun_from must be a run id (integer)"; exit 1
           fi
+          # Re-running failures goes to one shard, the way CircleCI's "rerun only
+          # failed tests" does. Failures are few, and 50 pods for three cases is waste.
+          if [ -n "$IN_RERUN" ]; then
+            echo "rerun_from=$IN_RERUN: pinning parallelism to 1"
+            IN_PAR=1
+          fi
           echo "parallelism=$IN_PAR / limit=$IN_LIMIT / sabotage=$IN_SAB / rerun_from=${IN_RERUN:-(none)}"
           echo "par=$IN_PAR" >> "$GITHUB_OUTPUT"
           echo "limit=$IN_LIMIT" >> "$GITHUB_OUTPUT"
@@ -465,14 +588,13 @@ jobs:
           mkdir -p "$STAMPS"
           printf 'start\t%s\n' "$(date -u +%s)" > "$STAMPS/plan.tsv"
 
-      - name: Verify the build published by build_debug
+      - name: Verify the debug build the build job published
         id: build
         env:
-          SHA: ${{ needs.build_debug.outputs.sha }}
-          MODE: ${{ needs.build_debug.outputs.mode }}
+          SHA: ${{ needs.gate.outputs.sha }}
         run: |
           set -eo pipefail
-          dir="$CI_BUILD_ROOT/$SHA/debug"
+          dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/debug"
 
           # The sentinel marks a finished tree; directory existence passes a partial one.
           [ -f "$dir/$BUILD_SENTINEL" ] || {
@@ -484,11 +606,11 @@ jobs:
 
           meta_sha=$(awk -F= '/^sha=/ {print $2}' "$dir/build.meta")
           [ "$meta_sha" = "$SHA" ] || {
-            echo "::error::meta sha($meta_sha) differs from build_debug sha($SHA)"; exit 1; }
+            echo "::error::meta sha($meta_sha) differs from the sha gate resolved($SHA)"; exit 1; }
 
           brid=$(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta")
           echo "build    : $dir"
-          echo "built by : $brid (this run: $GITHUB_RUN_ID / mode=$MODE)"
+          echo "built by : $brid (this run: $GITHUB_RUN_ID)"
           echo "published: $(stat -c '%y' "$dir")"
           echo "build_run_id=$brid" >> "$GITHUB_OUTPUT"
 
@@ -754,8 +876,7 @@ jobs:
           TOTAL: ${{ steps.split.outputs.total }}
           PAR: ${{ steps.args.outputs.par }}
           TIMED: ${{ steps.split.outputs.timed }}
-          SHA: ${{ needs.build_debug.outputs.sha }}
-          MODE: ${{ needs.build_debug.outputs.mode }}
+          SHA: ${{ needs.gate.outputs.sha }}
           BRID: ${{ steps.build.outputs.build_run_id }}
           RUNDIR: ${{ steps.split.outputs.rundir }}
         run: |
@@ -769,7 +890,7 @@ jobs:
             echo "| shard | $PAR |"
             echo "| cases with measured timings | $TIMED |"
             echo "| build SHA | \`$SHA\` |"
-            echo "| build | $MODE (built by run \`$BRID\`) |"
+            echo "| build | built by run \`$BRID\` |"
             echo "| run directory | \`$RUNDIR\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -796,6 +917,7 @@ jobs:
       CUBRID_DIR: /home/CUBRID
       RUNDIR: ${{ needs.plan.outputs.rundir }}
       IDX: ${{ matrix.i }}
+      BUILD_NS: ${{ needs.plan.outputs.build_ns }}
 
     steps:
       - name: Check the pod template assumptions
@@ -846,7 +968,7 @@ jobs:
           mkdir -p /rw/upper /rw/work "$TC_DIR"
           mount -t overlay overlay -o lowerdir=/ro,upperdir=/rw/upper,workdir=/rw/work "$TC_DIR"
 
-          lower="$CI_BUILD_ROOT/$SHA/debug/CUBRID"
+          lower="$CI_BUILD_ROOT/$BUILD_NS/$SHA/debug/CUBRID"
           [ -d "$lower" ] || { echo "::error::no build: $lower"; exit 1; }
           mkdir -p /build-rw/upper /build-rw/work "$CUBRID_DIR"
           mount -t overlay overlay \
@@ -857,7 +979,7 @@ jobs:
           m="$CUBRID_DIR/$BUILD_META"
           [ -f "$m" ] || {
             echo "::error::no $BUILD_META inside the mounted CUBRID"
-            echo "  What this shard reads is not the artifact build_debug published."; exit 1; }
+            echo "  What this shard reads is not the artifact the build job published."; exit 1; }
 
           got_sha=$(awk -F= '/^sha=/ {print $2}' "$m")
           got_brid=$(awk -F= '/^run_id=/ {print $2}' "$m")
@@ -1026,9 +1148,10 @@ jobs:
 
   collect:
     name: collect
-    needs: [gate, build_debug, plan, shard]
-    # always() alone would also run for comments the gate turned away.
-    if: always() && needs.gate.outputs.run == 'true'
+    needs: [gate, build, plan, shard]
+    # always() alone would also run for comments the gate turned away, and for the
+    # build-only triggers where there is nothing to collect.
+    if: always() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true'
     permissions:
       # The wall-clock step reads the run start time. Public repos need no scope --
       # stated so it does not fail silently if this repository ever becomes private.
@@ -1045,12 +1168,13 @@ jobs:
     env:
       RUNDIR: ${{ needs.plan.outputs.rundir }}
       TOTAL: ${{ needs.plan.outputs.total }}
+      BUILD_NS: ${{ needs.plan.outputs.build_ns }}
 
     steps:
       - name: Gather the results
         id: gather
         env:
-          BUILD_RESULT: ${{ needs.build_debug.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
           PLAN_RESULT: ${{ needs.plan.result }}
         run: |
           set -eo pipefail
@@ -1103,7 +1227,6 @@ jobs:
         id: provenance
         env:
           WANT_BRID: ${{ needs.plan.outputs.build_run_id }}
-          MODE: ${{ needs.build_debug.outputs.mode }}
           WANT_TC_SHA: ${{ needs.plan.outputs.tc_sha }}
         run: |
           set -eo pipefail
@@ -1131,7 +1254,7 @@ jobs:
           # With mode=built, the run that made the build is this run.
           this_run=no
           [ "$WANT_BRID" = "$GITHUB_RUN_ID" ] && this_run=yes
-          echo "build made by run: $WANT_BRID (this run: $GITHUB_RUN_ID / mode=$MODE)"
+          echo "build made by run: $WANT_BRID (this run: $GITHUB_RUN_ID)"
           echo "provenance: $reason / built by this run: $this_run"
 
           : > /tmp/tcs.txt
@@ -1317,7 +1440,6 @@ jobs:
         env:
           TIMED: ${{ needs.plan.outputs.timed }}
           SHA: ${{ needs.plan.outputs.sha }}
-          MODE: ${{ needs.build_debug.outputs.mode }}
           BRID: ${{ needs.plan.outputs.build_run_id }}
           PLANNED: ${{ steps.gather.outputs.planned }}
           DONE_N: ${{ steps.gather.outputs.done_n }}
@@ -1393,7 +1515,7 @@ jobs:
             echo "| item | value |"
             echo "|---|---|"
             echo "| build SHA | \`$SHA\` |"
-            echo "| build | $MODE |"
+            echo "| build namespace | \`$BUILD_NS\` |"
             echo "| built by run | \`$BRID\` (this run \`$GITHUB_RUN_ID\`) $v_this |"
             echo "| shards that read the meta inside the mounted CUBRID | $READ_N / $PLANNED $v_read |"
             echo "| did every shard read the same build | $v_same |"
@@ -1540,7 +1662,7 @@ jobs:
       # so the re-run shards read this seed; deleting it here made every one of them
       # die at "no CTP seed" and the whole re-run path unusable.
       #
-      # A cancelled run skips this step; build_debug sweeps what it leaves.
+      # A cancelled run skips this step; the build job sweeps what it leaves.
       - name: Clean up the CTP seed
         if: always()
         env:
