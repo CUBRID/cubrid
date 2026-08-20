@@ -12747,13 +12747,19 @@ exit_on_error:
  *   sink_mode(in)  : DBLINK_SINK_MODE_REDUCE_MIN, DBLINK_SINK_MODE_REDUCE_MAX, or
  *                    DBLINK_SINK_MODE_EQ_ALL
  *
- * Note: A NULL anywhere in the local subquery result makes the comparison unknown for every remote row
- *   (ALL over a set containing NULL), so this leaves the remote table untouched -- no connection is
- *   opened. An empty local subquery result is vacuously true for ALL, so every remote row is deleted
- *   instead, or every row matching extra_where if a remote-only AND arm is present (dblink_dml_open/
- *   dblink_dml_build_delete_sql with a NULL key_col builds a WHERE-less, or extra_where-only, DELETE
- *   for this case). For EQ_ALL specifically, if the local subquery rows do not all share one value,
- *   "col = ALL (...)" is always false, so the remote table is also left untouched.
+ * What the scan decides, in one table (values_seen counts the rows that reached the reduction, so it is 0
+ * only when the local subquery returned nothing -- a NULL row returns early, before any row is counted):
+ *
+ *   scan outcome                       | remote effect
+ *   -----------------------------------+-------------------------------------------------------------
+ *   a NULL in the set                  | nothing: ALL over a set containing NULL is unknown for every
+ *                                      | remote row. No connection is opened
+ *   values_seen == 0 (empty subquery)  | delete every remote row: ALL over the empty set is vacuously
+ *                                      | true. A WHERE-less DELETE, or extra_where-only when a
+ *                                      | remote-only AND arm is present
+ *   EQ_ALL, values differ              | nothing: "col = ALL (...)" is then always false
+ *   otherwise                          | one DELETE bound to the reduced value (MIN, MAX, or the one
+ *                                      | value every row shares)
  */
 static int
 qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -12768,7 +12774,8 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
   bool has_boundary = false;
   bool null_seen = false;
   bool all_equal = true;
-  int row_count = 0;
+  bool delete_all;
+  int values_seen = 0;
   int row_affected;
   DBLINK_DML_STATE dblink_state = { -1, -1 };
 
@@ -12812,7 +12819,7 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 	      continue;
 	    }
 
-	  row_count++;
+	  values_seen++;
 	  if (!has_boundary)
 	    {
 	      if (pr_clone_value (bindv[0], &boundary) != NO_ERROR)
@@ -12879,21 +12886,21 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
       return NO_ERROR;
     }
 
-  if (sink_mode == DBLINK_SINK_MODE_EQ_ALL && row_count > 0 && !all_equal)
+  if (sink_mode == DBLINK_SINK_MODE_EQ_ALL && values_seen > 0 && !all_equal)
     {
       /* local subquery rows do not all share one value: "col = ALL (...)" is always false */
       pr_clear_value (&boundary);
       return NO_ERROR;
     }
 
-  /* row_count == 0: the local subquery is empty, so ALL is vacuously true -- delete every remote row
-   * (or every row matching extra_where, if a remote-only AND arm is present: TRUE AND extra_where is
-   * just extra_where). dblink_dml_build_delete_sql() builds a WHERE-less (or extra_where-only) DELETE
-   * when key_col is NULL; bind_count 0 means dblink_dml_execute_row() skips binding (boundary is unset
-   * DB_NULL in this case, never read). extra_where itself never needs a placeholder (gate-enforced
-   * literal-only shape), so it is passed through unconditionally either way. */
+  /* The empty-subquery row of the table above: a NULL key_col makes dblink_dml_build_delete_sql() build a
+   * WHERE-less (or extra_where-only) DELETE, and bind count 0 makes dblink_dml_execute_row() skip binding
+   * (boundary stays the unset DB_NULL and is never read). extra_where never needs a placeholder itself
+   * (gate-enforced literal-only shape), so it is passed through either way. */
+  delete_all = (values_seen == 0);
+
   if (dblink_dml_open (thread_p, DBLINK_DML_DELETE, sink->url, sink->user, sink->pwd, sink->table_name, NULL, 0, 0,
-		       (row_count == 0) ? NULL : key_col, (row_count == 0) ? NULL : op, extra_where,
+		       delete_all ? NULL : key_col, delete_all ? NULL : op, extra_where,
 		       &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
@@ -12901,7 +12908,7 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
     }
 
   bindv[0] = &boundary;
-  if (dblink_dml_execute_row (thread_p, &dblink_state, bindv, (row_count == 0) ? 0 : 1, &row_affected) != NO_ERROR)
+  if (dblink_dml_execute_row (thread_p, &dblink_state, bindv, delete_all ? 0 : 1, &row_affected) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto dml_error;
@@ -12914,6 +12921,7 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 
   return NO_ERROR;
 
+  /* failed after the scan was closed and the remote statement opened: undo the remote side */
 dml_error:
   dblink_dml_close (&dblink_state);
   dblink_dml_rollback (thread_p, &dblink_state);
@@ -12921,6 +12929,7 @@ dml_error:
 
   return ER_FAILED;
 
+  /* failed while scanning, before any remote connection existed */
 exit_on_error:
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
