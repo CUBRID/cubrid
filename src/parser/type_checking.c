@@ -16317,7 +16317,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		int i2 = db_get_int (arg2);
 		int itmp;
 
-		if (__builtin_mul_overflow (i1, i2, &itmp))
+		if (OR_MULT_OVERFLOW (i1, i2, &itmp))
 		  {
 		    goto overflow;
 		  }
@@ -16334,7 +16334,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		DB_BIGINT bi2 = db_get_bigint (arg2);
 		DB_BIGINT bitmp;
 
-		if (__builtin_mul_overflow (bi1, bi2, &bitmp))
+		if (OR_MULT_OVERFLOW (bi1, bi2, &bitmp))
 		  {
 		    goto overflow;
 		  }
@@ -16351,7 +16351,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		short s2 = db_get_short (arg2);
 		short stmp;
 
-		if (__builtin_mul_overflow (s1, s2, &stmp))
+		if (OR_MULT_OVERFLOW (s1, s2, &stmp))
 		  {
 		    goto overflow;
 		  }
