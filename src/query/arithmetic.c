@@ -1091,6 +1091,10 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  db_make_int (result, i1);
 	}
+      else if (OR_CHECK_INT_DIV_OVERFLOW (i1, s2))
+	{
+	  db_make_int (result, 0);
+	}
       else
 	{
 	  db_make_int (result, (int) (i1 % s2));
@@ -1101,6 +1105,10 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       if (i2 == 0)
 	{
 	  db_make_int (result, i1);
+	}
+      else if (OR_CHECK_INT_DIV_OVERFLOW (i1, i2))
+	{
+	  db_make_int (result, 0);
 	}
       else
 	{
@@ -1240,6 +1248,10 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  db_make_bigint (result, bi1);
 	}
+      else if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi1, s2))
+	{
+	  db_make_bigint (result, 0);
+	}
       else
 	{
 	  db_make_bigint (result, (DB_BIGINT) (bi1 % s2));
@@ -1251,6 +1263,10 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  db_make_bigint (result, bi1);
 	}
+      else if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi1, i2))
+	{
+	  db_make_bigint (result, 0);
+	}
       else
 	{
 	  db_make_bigint (result, (DB_BIGINT) (bi1 % i2));
@@ -1261,6 +1277,10 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       if (bi2 == 0)
 	{
 	  db_make_bigint (result, bi1);
+	}
+      else if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi1, bi2))
+	{
+	  db_make_bigint (result, 0);
 	}
       else
 	{
