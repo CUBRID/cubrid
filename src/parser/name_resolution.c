@@ -189,6 +189,9 @@ static PT_NODE *pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, voi
 static PT_NODE *pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * const node);
 static PT_NODE *pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att);
+static PT_NODE *pt_residual_needs_si_datetime_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						    int *continue_walk);
+static bool pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr);
 
 static PT_NODE *pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE * name, PT_BIND_NAMES_ARG * bind_arg,
@@ -1835,6 +1838,84 @@ pt_set_fill_default_in_path_expression (PT_NODE * node)
 }
 
 /*
+ * pt_residual_needs_si_datetime_walk () - walker that detects operators
+ *	reading the statement clock (the SYS/CURRENT/UTC date-time family)
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(out): bool, set when a statement-clock operator is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_residual_needs_si_datetime_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *needs_si_datetime = (bool *) arg;
+
+  if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_SYS_DATE:
+	case PT_CURRENT_DATE:
+	case PT_UTC_DATE:
+	case PT_SYS_TIME:
+	case PT_CURRENT_TIME:
+	case PT_UTC_TIME:
+	case PT_SYS_DATETIME:
+	case PT_CURRENT_DATETIME:
+	case PT_SYS_TIMESTAMP:
+	case PT_CURRENT_TIMESTAMP:
+	case PT_UTC_TIMESTAMP:
+	  *needs_si_datetime = true;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	case PT_UNIX_TIMESTAMP:
+	  /* only the argument-less form reads the statement clock; the one-argument forms convert their
+	   * argument through the session timezone instead */
+	  if (node->info.expr.arg1 == NULL)
+	    {
+	      *needs_si_datetime = true;
+	      *continue_walk = PT_STOP_WALK;
+	    }
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_residual_default_needs_si_datetime () - whether an attribute's residual
+ *	DEFAULT expression reads the statement clock, i.e. whether the Local
+ *	Evaluation path must synchronize SI_SYS_DATETIME before evaluating it
+ *   return: true if server time synchronization is needed
+ *   parser(in):
+ *   attr(in): attribute carrying a Compact DEFAULT Tree stream
+ */
+static bool
+pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr)
+{
+  PT_NODE *residual;
+  bool needs_si_datetime = false;
+
+  residual =
+    pt_compact_default_tree_from_stream (parser, attr->default_value.default_expr.default_expr_tree_stream,
+					 attr->default_value.default_expr.default_expr_tree_stream_size);
+  if (residual == NULL)
+    {
+      /* let the evaluation path report the broken stream; synchronize conservatively */
+      return true;
+    }
+
+  (void) parser_walk_tree (parser, residual, pt_residual_needs_si_datetime_walk, &needs_si_datetime, NULL, NULL);
+  parser_free_tree (parser, residual);
+
+  return needs_si_datetime;
+}
+
+/*
  * fill_in_insert_default_function_arguments () - Fills in the argument of the
  *                                                DEFAULT function when used
  *                                                for INSERT, MERGE INSERT
@@ -1880,7 +1961,12 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
       for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
 	{
 	  if (DB_IS_DEFAULT_DATETIME_EXPR (attr->default_value.default_expr.default_expr_type)
-	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (attr->default_value.default_expr.default_expr_type))
+	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (attr->default_value.default_expr.default_expr_type)
+	      /* a residual DEFAULT expression referencing the statement clock needs the server time
+	       * synchronized before the Local Evaluation path evaluates it */
+	      || (attr->default_value.default_expr.default_expr_tree_stream != NULL
+		  && attr->default_value.default_expr.default_expr_tree_stream_size > 0
+		  && pt_residual_default_needs_si_datetime (parser, attr)))
 	    {
 	      node->flag.si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
