@@ -13420,10 +13420,12 @@ btree_ovf_dir_destroy (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID 
  *   chain and the directory it verifies:
  *     - directory entry count equals the data-page count and entry order matches the chain (next_vpid) order;
  *     - each directory entry's vpid is the matching data page;
- *     - separators are strictly ascending;
- *     - the routing invariant holds: every object in data page i has OID >= sep_i (i > 0; page 0 is the
- *       catch-all and has no lower bound) and OID < sep_{i+1} (i < last). A corrupt directory that would
- *       mis-route a point lookup (the CBRD-24094 bug class) fails here.
+ *     - separators are non-descending (equal neighbors are legal: a split run of one reusable OID's
+ *       un-vacuumed duplicates).
+ *   Object OID ranges are intentionally NOT compared against separators: same-OID runs may straddle
+ *   backwards across page boundaries and btree_ovf_dir_find_oid () steps back on a miss, so a page holding
+ *   an object below its separator is a valid state, not corruption. What the binary search depends on --
+ *   separator ordering and the directory/chain structure -- is what is validated here.
  *   Single-data-page chains (no directory) are trivially valid; a legacy (8 byte) header on a non-unique
  *   chain is reported as corruption (the format is a function of the index type).
  *
@@ -13577,19 +13579,21 @@ btree_ovf_dir_check (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * 
 	  valid = DISK_INVALID;
 	  goto end;
 	}
-      /* Separators must be strictly ascending, EXCEPT the head catch-all (entry 0 of the head directory page,
+      /* Separators must be non-descending, EXCEPT the head catch-all (entry 0 of the head directory page,
        * i.e. chain index 0): btree_ovf_dir_locate() treats it as -infinity, so its stored separator is a
        * don't-care and may legitimately exceed later separators once the catch-all page absorbs smaller OIDs
-       * and splits (the int_idx / OID-reuse case). The first compared pair is therefore sep_1 < sep_2 (i >= 2).
+       * and splits (the int_idx / OID-reuse case). The first compared pair is therefore sep_1 <= sep_2 (i >= 2).
+       * Equal adjacent separators can arise when a run of one reusable OID's un-vacuumed duplicates splits
+       * across pages; the lookup's backward step handles them.
        *
        * Object OID ranges are intentionally NOT checked against separators. Reusable / un-vacuumed OID runs can
        * straddle backwards across a page boundary, so btree_ovf_dir_find_oid() steps back to the previous page on a
        * miss; an object legitimately sitting in an earlier page than its separator implies is a valid state, not
        * corruption. Only separator ordering (which the binary search depends on) and the directory/chain structure
        * are invariants here. */
-      if (i >= 2 && !OID_LT (&prev_sep, &cur_sep))
+      if (i >= 2 && OID_GT (&prev_sep, &cur_sep))
 	{
-	  snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: separators not ascending at entry %d\n", i);
+	  snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: separators descending at entry %d\n", i);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
 	  valid = DISK_INVALID;
 	  goto end;
@@ -13727,7 +13731,9 @@ btree_ovf_dir_grow_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   BTREE_GET_OID (target_record.data, &target_first_oid);
   BTREE_GET_OID (target_record.data + (num_objects - 1) * obj_size, &last_oid);
 
-  grow_right = VPID_ISNULL (&target_next_vpid) && !OID_LT (&object_info->oid, &last_oid);
+  /* Strictly greater: an OID equal to the last one (a reusable-OID duplicate) must not become a new rightmost
+   * page's separator, which could duplicate an existing separator. It goes through the split path instead. */
+  grow_right = VPID_ISNULL (&target_next_vpid) && OID_GT (&object_info->oid, &last_oid);
 
   /* Notification (parity with legacy overflow page creation). */
   if (!OID_ISNULL (&object_info->class_oid))
