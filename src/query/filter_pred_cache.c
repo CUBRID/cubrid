@@ -282,7 +282,9 @@ static int
 fpcache_entry_init (void *entry)
 {
   FPCACHE_ENTRY *fpcache_entry = FPCACHE_PTR_TO_ENTRY (entry);
-  /* Add here if anything should be initialized. */
+  /* Empty the stack first: on the failure below fpcache_entry_uninit () still runs, and the constructor
+   * leaves clone_stack_head indeterminate. */
+  fpcache_entry->clone_stack_head = -1;
   /* Allocate clone stack. */
   fpcache_entry->clone_stack =
     (PRED_EXPR_WITH_CONTEXT **) malloc (fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT *));
@@ -292,7 +294,6 @@ fpcache_entry_init (void *entry)
 	      fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  fpcache_entry->clone_stack_head = -1;
   return NO_ERROR;
 }
 

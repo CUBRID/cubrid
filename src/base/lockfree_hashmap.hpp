@@ -691,10 +691,17 @@ namespace lockfree
 	fn->get_data ().m_edesc = m_edesc;
 
 	claimed = from_free_node (fn);
-	// call f_init
-	if (m_edesc->f_init != NULL)
+	if (m_edesc->f_init != NULL && m_edesc->f_init (claimed) != NO_ERROR)
 	  {
-	    m_edesc->f_init (claimed);
+	    // lf_freelist_claim () answered NULL here. dropping the answer published a half-initialized entry -
+	    // fpcache_entry_init () leaves clone_stack NULL. retire rather than leak: the node may still be the
+	    // stale head of a concurrent pop, so it has to go back through the epoch.
+	    m_freelist->retire (tdes, *fn);
+	    if (is_local_tran)
+	      {
+		tdes.end_tran ();
+	      }
+	    return NULL;
 	  }
       }
     else
