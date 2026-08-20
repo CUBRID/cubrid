@@ -8042,10 +8042,10 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	  && or_is_replication_candidate_key (index)
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
-	  bool is_replication = false;
+	  bool repl_on = false;
 
-	  error_code = heap_get_class_replication (thread_p, class_oid, &is_replication);
-	  if (error_code == NO_ERROR && is_replication)
+	  error_code = heap_get_class_repl_on (thread_p, class_oid, &repl_on);
+	  if (error_code == NO_ERROR && repl_on)
 	    {
 	      error_code =
 		repl_log_insert (thread_p, class_oid, inst_oid,
