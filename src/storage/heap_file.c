@@ -9795,7 +9795,11 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
     ftab_set fs;
     fs.convert (&collector);
 
-    /* compute the "last page" (largest-VPID) once, from the same collector the workers split */
+    /* compute the "last page" (largest-VPID) once, from the same collector the workers split.
+     * have_last_page is false when that snapshot held no heap data page at all - no sectors, empty
+     * bitmaps, or the file header page as the only allocated page (possible if a concurrent
+     * truncate/delete freed the pages after the snapshot). last_page_vpid then stays NULL and must
+     * not be fixed, so the reduce step below excludes nothing from avg_freespace_nolast. */
     VPID last_page_vpid = VPID_INITIALIZER;
     bool have_last_page = heap_capacity_max_vpid_page (hfid, &collector, &last_page_vpid);
 
