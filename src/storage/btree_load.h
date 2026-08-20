@@ -175,11 +175,14 @@ typedef enum bt_load_px_outcome
 #define BTREE_MAX_OIDCOUNT_IN_LEAF_RECORD(btid) \
   (BTREE_MAX_OIDCOUNT_IN_SIZE (btid, BTREE_MAX_OIDLEN_INPAGE))
 
-#define BTREE_MAX_OVERFLOW_RECORD_SIZE \
+/* CBRD-24094: the overflow OID page header is 8 bytes on legacy (unique) chains and 16 bytes on directory
+ * (non-unique) chains, so the capacity depends on the index type. */
+#define BTREE_MAX_OVERFLOW_RECORD_SIZE(btid) \
   (DB_PAGESIZE - DB_ALIGN (SPAGE_HEADER_SIZE, BTREE_MAX_ALIGN) \
-   - DB_ALIGN (sizeof (BTREE_OVERFLOW_HEADER), BTREE_MAX_ALIGN))
+   - DB_ALIGN (BTREE_IS_UNIQUE ((btid)->unique_pk) \
+	       ? sizeof (BTREE_OVERFLOW_HEADER) : sizeof (BTREE_OVF_DIR_HEADER), BTREE_MAX_ALIGN))
 #define BTREE_MAX_OIDCOUNT_IN_OVERFLOW_RECORD(btid) \
-  (BTREE_MAX_OIDCOUNT_IN_SIZE (btid, BTREE_MAX_OVERFLOW_RECORD_SIZE))
+  (BTREE_MAX_OIDCOUNT_IN_SIZE (btid, BTREE_MAX_OVERFLOW_RECORD_SIZE (btid)))
 
 extern int btree_node_number_of_keys (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 extern int btree_get_next_overflow_vpid (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, VPID * vpid);

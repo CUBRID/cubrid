@@ -1409,7 +1409,7 @@ static int btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTI
 						    BTREE_OBJECT_INFO * object_info,
 						    BTREE_INSERT_HELPER * insert_helper,
 						    BTREE_SEARCH_KEY_HELPER * search_key, RECDES * leaf_rec,
-						    VPID * first_ovfl_vpid, bool make_dir_chain);
+						    VPID * first_ovfl_vpid);
 static int btree_key_append_object_to_overflow (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR ovfl_page,
 						BTREE_OBJECT_INFO * object_info, BTREE_INSERT_HELPER * insert_helper);
 static int btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * first_ovfl_vpid,
@@ -8595,8 +8595,9 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
 	      valid = DISK_ERROR;
 	      goto error;
 	    }
-	  if (!VPID_ISNULL (&leaf_pnt.ovfl))
+	  if (!VPID_ISNULL (&leaf_pnt.ovfl) && !BTREE_IS_UNIQUE (btid->unique_pk))
 	    {
+	      /* Unique chains keep the legacy format and have no directory to validate. */
 	      valid = btree_ovf_dir_check (thread_p, btid, &leaf_pnt.ovfl);
 	      if (valid != DISK_VALID)
 		{
@@ -11974,14 +11975,16 @@ btree_node_mergeable (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR L_page,
  * search_key (in)	     : Search key result.
  * leaf_rec (in)	     : Leaf record.
  * first_ovfl_vpid (in)	     : VPID of first overflow.
- * make_dir_chain (in)		     : True to create the page in the directory (OID-ordered chain) format. Only used when a brand
- *			       new chain of a non-unique index is created (CBRD-24094).
+ *
+ * Note: CBRD-24094: for a non-unique index this is only reached when the key has no overflow chain yet, and the
+ *	 new page is created in the directory (OID-ordered chain) format. A unique index keeps the legacy format
+ *	 and may also prepend to an existing chain.
  */
 static int
 btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_page,
 					 BTREE_OBJECT_INFO * object_info, BTREE_INSERT_HELPER * insert_helper,
 					 BTREE_SEARCH_KEY_HELPER * search_key, RECDES * leaf_rec,
-					 VPID * first_ovfl_vpid, bool make_dir_chain)
+					 VPID * first_ovfl_vpid)
 {
   int ret = NO_ERROR;
   VPID ovfl_vpid;
@@ -12026,12 +12029,12 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
       goto error;
     }
 
-  if (make_dir_chain)
+  if (!BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
       /* CBRD-24094: upgrade the header to the directory (OID-ordered chain) format; no directory yet. */
       VPID null_dir_vpid;
 
-      assert (VPID_ISNULL (first_ovfl_vpid) && !BTREE_IS_UNIQUE (btid_int->unique_pk));
+      assert (VPID_ISNULL (first_ovfl_vpid));
       VPID_SET_NULL (&null_dir_vpid);
       ret = btree_ovf_dir_write_header (thread_p, btid_int, ovfl_page, first_ovfl_vpid, &null_dir_vpid);
       if (ret != NO_ERROR)
@@ -12234,6 +12237,8 @@ btree_rv_write_log_record (char *log_rec, int *log_length, RECDES * recp, BTREE_
 
 /*
  * btree_find_free_overflow_oids_page () - Find overflow page that has enough free space to store a new object.
+ *					     Legacy chains only, i.e. unique indexes (CBRD-24094: non-unique chains
+ *					     route through the OID directory instead).
  *
  * return		: Error code.
  * thread_p (in)	: Thread entry.
@@ -12698,6 +12703,7 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
   assert (first_ovf_page != NULL && *first_ovf_page != NULL);
   assert (found_page != NULL && *found_page == NULL);
   assert (prev_page == NULL || *prev_page == NULL);
+  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
 
   *offset_to_object = NOT_FOUND;
 
@@ -13407,7 +13413,8 @@ btree_ovf_dir_destroy (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID 
  *     - the routing invariant holds: every object in data page i has OID >= sep_i (i > 0; page 0 is the
  *       catch-all and has no lower bound) and OID < sep_{i+1} (i < last). A corrupt directory that would
  *       mis-route a point lookup (the CBRD-24094 bug class) fails here.
- *   Legacy (8 byte header) chains and single-data-page chains (no directory) are trivially valid.
+ *   Single-data-page chains (no directory) are trivially valid; a legacy (8 byte) header on a non-unique
+ *   chain is reported as corruption (the format is a function of the index type).
  *
  * return		: DISK_VALID, DISK_INVALID or DISK_ERROR.
  * thread_p (in)	: Thread entry.
@@ -13438,12 +13445,17 @@ btree_ovf_dir_check (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * 
     {
       return DISK_ERROR;
     }
+  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
+
   dir_hdr = btree_ovf_dir_get_header (thread_p, data_page);
   if (dir_hdr == NULL)
     {
-      /* Legacy chain: no directory to validate. */
+      /* A non-unique chain must be directory-format; a legacy (8 byte) header here is corruption. */
+      snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: non-unique chain has a legacy header at %d|%d\n",
+		VPID_AS_ARGS (first_ovf_vpid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
       pgbuf_unfix_and_init (thread_p, data_page);
-      return DISK_VALID;
+      return DISK_INVALID;
     }
   VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
   if (VPID_ISNULL (&dir_head_vpid))
@@ -13677,6 +13689,7 @@ btree_ovf_dir_grow_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   int error_code = NO_ERROR;
 
   assert (btree_is_insert_object_purpose (insert_helper->purpose));
+  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
 
   VPID_SET_NULL (&null_vpid);
 
@@ -13925,6 +13938,7 @@ btree_ovf_dir_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VA
   PERF_UTIME_TRACKER ovf_fix_time_track;
 
   assert (first_ovf_page != NULL && *first_ovf_page != NULL);
+  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
 
   dir_hdr = btree_ovf_dir_get_header (thread_p, *first_ovf_page);
   if (dir_hdr == NULL)
@@ -14095,22 +14109,22 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
       return NO_ERROR;
     }
 
-  /* CBRD-24094: directory (OID-ordered) chains route through the OID directory instead of the linear scan. */
-  PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-  overflow_page = pgbuf_fix (thread_p, &leaf_rec_info->ovfl, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
-  if (overflow_page == NULL)
+  /* CBRD-24094: a non-unique index's overflow chain is always OID-ordered and routes through the OID directory.
+   * Only unique indexes keep the legacy format (linear scan below); the format is a function of the index type. */
+  if (!BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
-    }
-  if (btree_ovf_dir_get_header (thread_p, overflow_page) != NULL)
-    {
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+      overflow_page = pgbuf_fix (thread_p, &leaf_rec_info->ovfl, OLD_PAGE, PGBUF_LATCH_WRITE,
+				 PGBUF_UNCONDITIONAL_LATCH);
+      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+      if (overflow_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
       return btree_ovf_dir_find_oid (thread_p, btid_int, oid, leaf_page, &overflow_page, purpose, match_mvccinfo,
 				     found_page, prev_page, offset_to_object, object_mvcc_info);
     }
-  /* Legacy chain: linear scan below (it re-fixes the first page). */
-  pgbuf_unfix_and_init (thread_p, overflow_page);
 
   thread_p->read_ovfl_pages_count = 0;	// For Vacuum only.
 
@@ -31934,8 +31948,9 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   assert (btree_is_insert_object_purpose (insert_helper->purpose));
   assert (append_object != NULL);
 
-  /* CBRD-24094: existing directory (OID-ordered) chains are appended through the OID directory. */
-  if (!VPID_ISNULL (&leaf_record_info->ovfl))
+  /* CBRD-24094: a non-unique index's overflow chain is always OID-ordered and appends through the OID directory.
+   * Only unique indexes keep the legacy format (first-fit linear scan below). */
+  if (!BTREE_IS_UNIQUE (btid_int->unique_pk) && !VPID_ISNULL (&leaf_record_info->ovfl))
     {
       PAGE_PTR first_ovf_page;
 
@@ -31946,12 +31961,7 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
-      if (btree_ovf_dir_get_header (thread_p, first_ovf_page) != NULL)
-	{
-	  return btree_ovf_dir_append_object (thread_p, btid_int, key, insert_helper, append_object, &first_ovf_page);
-	}
-      /* Legacy chain: first-fit linear scan below (it re-fixes the first page). */
-      pgbuf_unfix_and_init (thread_p, first_ovf_page);
+      return btree_ovf_dir_append_object (thread_p, btid_int, key, insert_helper, append_object, &first_ovf_page);
     }
 
   /* Is there enough space in existing overflow pages? */
@@ -31979,12 +31989,9 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
       /* Notification */
       BTREE_SET_CREATED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key, &append_object->oid, notification_class_oid,
 						    btid_int->sys_btid);
-      /* A brand new chain of a non-unique index is created in the directory (OID-ordered) format. */
       error_code =
 	btree_key_append_object_as_new_overflow (thread_p, btid_int, leaf, append_object, insert_helper, search_key,
-						 leaf_record, &leaf_record_info->ovfl,
-						 VPID_ISNULL (&leaf_record_info->ovfl)
-						 && !BTREE_IS_UNIQUE (btid_int->unique_pk));
+						 leaf_record, &leaf_record_info->ovfl);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -35033,11 +35040,17 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
       /* Safe guard: only first object can be deleted. */
       assert (offset_to_object == 0);
 
-      /* CBRD-24094: directory chains must keep the OID directory in sync with the removed data page. */
+      /* CBRD-24094: a non-unique chain must keep its OID directory in sync with the removed data page. */
       VPID_SET_NULL (&dir_head_vpid);
-      dir_hdr = btree_ovf_dir_get_header (thread_p, *overflow_page);
-      if (dir_hdr != NULL)
+      if (!BTREE_IS_UNIQUE (btid_int->unique_pk))
 	{
+	  dir_hdr = btree_ovf_dir_get_header (thread_p, *overflow_page);
+	  if (dir_hdr == NULL)
+	    {
+	      /* Non-unique chains are always directory-format. */
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
 	  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
 	}
 
