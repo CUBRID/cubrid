@@ -616,6 +616,7 @@ namespace cubmethod
 
   execute_info::~execute_info ()
   {
+    delete call_info;
     call_info = nullptr;
   }
 
