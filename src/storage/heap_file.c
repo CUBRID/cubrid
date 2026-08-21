@@ -18370,24 +18370,29 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
   int i = 0;
   int parts_count = 0;
   bool is_all = false;
-  bool is_exact = false;
-  LOCK class_lock = IS_LOCK;
+  SHOWSTMT_SCAN_MODE scan_mode = SHOWSTMT_SCAN_EXACT;
+  LOCK class_lock;
 
-  assert (arg_cnt == 3);
+  /* The scan mode is the last argument, and it is missing when the request comes from a client
+   * which does not know it yet; such a client gets the default (EXACT). */
+  assert (arg_cnt == 2 || arg_cnt == 3);
   assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
-  assert (DB_VALUE_TYPE (arg_values[1]) == DB_TYPE_INTEGER);	/* EXACT flag */
-  assert (DB_VALUE_TYPE (arg_values[2]) == DB_TYPE_INTEGER);	/* partition type */
+  assert (DB_VALUE_TYPE (arg_values[1]) == DB_TYPE_INTEGER);	/* partition type */
 
   *ptr = NULL;
 
   class_name = db_get_string (arg_values[0]);
+  partition_type = (DB_CLASS_PARTITION_TYPE) db_get_int (arg_values[1]);
 
-  /* default uses IS_LOCK so that DML (IX_LOCK) can run concurrently; the EXACT option requests
-   * S_LOCK to read fully consistent statistics */
-  is_exact = (db_get_int (arg_values[1]) != 0);
-  class_lock = is_exact ? S_LOCK : IS_LOCK;
-
-  partition_type = (DB_CLASS_PARTITION_TYPE) db_get_int (arg_values[2]);
+  /* S_LOCK is the default so that the statistics are consistent with the committed DML; the APPROX
+   * option asks for IS_LOCK instead, which runs concurrently with DML (IX_LOCK) at the price of
+   * approximate numbers. */
+  if (arg_cnt > 2)
+    {
+      assert (DB_VALUE_TYPE (arg_values[2]) == DB_TYPE_INTEGER);	/* scan mode */
+      scan_mode = (SHOWSTMT_SCAN_MODE) db_get_int (arg_values[2]);
+    }
+  class_lock = (scan_mode == SHOWSTMT_SCAN_APPROX) ? IS_LOCK : S_LOCK;
 
   ctx = (HEAP_SHOW_SCAN_CTX *) db_private_alloc (thread_p, sizeof (HEAP_SHOW_SCAN_CTX));
   if (ctx == NULL)
