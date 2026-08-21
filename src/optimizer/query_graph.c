@@ -7997,6 +7997,19 @@ qo_discover_partitions (QO_ENV * env)
        */
       if (bitset_cardinality (&(QO_PARTITION_NODES (part))) > _WORDSIZE - 2 - LOG2_SIZEOF_POINTER)
 	{
+	  /* The join_info vector is indexed by a subset bitmask of the partition's nodes, so it holds
+	   * 2**nodes entries and its byte size stops fitting in a signed int past this many nodes.
+	   * Optimization gives up on the whole query here and the statement runs with the syntactic
+	   * join order, which is a legitimate fallback -- but it used to happen without a word to the
+	   * user, so a 28-table query silently lost cost-based join ordering and index selection while
+	   * a 27-table one kept it. Report it: the warning lands in the error log, and the plan dump
+	   * (SET OPTIMIZATION LEVEL) says the plan was not generated instead of printing nothing. */
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QO_SET_SIZE_EXCEEDED, 0);
+	  er_log_debug (ARG_FILE_LINE,
+			"cost-based optimization skipped: a join partition has %d tables, "
+			"more than the %d the join_info vector can index\n",
+			bitset_cardinality (&(QO_PARTITION_NODES (part))), _WORDSIZE - 2 - LOG2_SIZEOF_POINTER);
+
 	  if (buddy)
 	    {
 	      free_and_init (buddy);
