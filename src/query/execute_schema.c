@@ -2050,7 +2050,7 @@ do_grant_or_revoke_obj_list (DB_OBJECT * user_obj, DB_OBJECT_TYPE obj_type, PT_N
 
       const char *obj_name = obj->info.name.original;
 
-      MOP obj_mop;
+      MOP obj_mop = NULL;
       switch (obj_type)
 	{
 	case DB_OBJECT_CLASS:
