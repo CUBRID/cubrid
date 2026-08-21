@@ -4783,15 +4783,11 @@ exit_on_error:
 // A package member's unique_name is "<owner>.<package>.<member>", so the package's unique_name is the
 // prefix up to the last dot. Membership is confirmed by that prefix actually resolving to a package
 // (so standalone SPs and package objects yield a NULL *pkg_mop_p).
-//
-// The return value is the error code: a NULL *pkg_mop_p with NO_ERROR means "not a member", while a
-// non-NO_ERROR return means the lookup itself failed. The caller must rely on this instead of the
-// global er_errid(), which may hold a stale error left over from earlier processing.
 static int
 jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p)
 {
   int save, error = NO_ERROR;
-  DB_VALUE pkgname_val, uname_val;
+  DB_VALUE uname_val;
   MOP pkg_mop = NULL;
 
   assert (pkg_mop_p != NULL);
@@ -4799,23 +4795,11 @@ jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p)
 
   AU_SAVE_AND_DISABLE (save);
 
-  if (db_get (sp_obj, SP_ATTR_PKG_NAME, &pkgname_val) != NO_ERROR)
+  error = db_get (sp_obj, SP_ATTR_UNIQUE_NAME, &uname_val);
+  if (error == NO_ERROR)
     {
-      error = er_errid ();
-      AU_RESTORE (save);
-      return error;
-    }
-  const char *pkgname = DB_IS_NULL (&pkgname_val) ? NULL : db_get_string (&pkgname_val);
-  bool is_member_candidate = (pkgname != NULL && pkgname[0] != '\0');
-  pr_clear_value (&pkgname_val);
-  if (!is_member_candidate)
-    {
-      AU_RESTORE (save);
-      return NO_ERROR;
-    }
+      assert (!DB_IS_NULL (&uname_val));
 
-  if (db_get (sp_obj, SP_ATTR_UNIQUE_NAME, &uname_val) == NO_ERROR && !DB_IS_NULL (&uname_val))
-    {
       const char *uname = db_get_string (&uname_val);
       const char *last_dot = (uname != NULL) ? strrchr (uname, '.') : NULL;
       if (last_dot != NULL)
