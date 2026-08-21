@@ -228,7 +228,7 @@ static PT_NODE *parser_create_node_block (const PARSER_CONTEXT * parser);
 static void pt_free_node_blocks (const PARSER_CONTEXT * parser);
 static PARSER_STRING_BLOCK *parser_create_string_block (PARSER_CONTEXT * parser, const int length);
 static void pt_free_one_string_block (PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block);
-static PARSER_STRING_BLOCK *pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string);
+static PARSER_STRING_BLOCK *pt_find_block_by_last_string (const PARSER_CONTEXT * parser, const char *old_string);
 static PARSER_STRING_BLOCK *pt_find_available_string_block (const PARSER_CONTEXT * parser, const int length, const int align);
 static char *pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
 				   const int wrap_with_single_quote);
@@ -548,26 +548,26 @@ pt_free_one_string_block (PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block)
 }
 
 /*
- * pt_find_string_block () - finds a string block from same parser that
- * 			    has oldstring as its last string
+ * pt_find_block_by_last_string () - finds the block on the parser's own list
+ * 			    whose last string is old_string
  *   return:
  *   parser(in):
  *   old_string(in):
  */
 static PARSER_STRING_BLOCK *
-pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string)
+pt_find_block_by_last_string (const PARSER_CONTEXT * parser, const char *old_string)
 {
-  PARSER_STRING_BLOCK *string;
+  PARSER_STRING_BLOCK *block;
 
   /* the parser's own list; the block being appended to is almost always the
    * newest, so this usually stops at the first node */
-  string = parser->string_blocks;
-  while (string != NULL && &PT_STRBLK_LAST_START (string) != old_string)
+  block = parser->string_blocks;
+  while (block != NULL && &PT_STRBLK_LAST_START (block) != old_string)
     {
-      string = string->next;
+      block = block->next;
     }
 
-  return string;
+  return block;
 }
 
 /*
@@ -594,7 +594,7 @@ pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const cha
   int new_tail_length;
 
   /* here, you know you have two non-NULL pointers */
-  string = pt_find_string_block (parser, old_string);
+  string = pt_find_block_by_last_string (parser, old_string);
   new_tail_length = strlen (new_tail);
   if (wrap_with_single_quote)
     {
@@ -684,7 +684,7 @@ pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const
     }
 
   /* here, you know you have two non-NULL pointers */
-  string = pt_find_string_block (parser, (char *) old_string);
+  string = pt_find_block_by_last_string (parser, (char *) old_string);
 
   /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
