@@ -502,7 +502,6 @@ parser_allocate_string_buffer (PARSER_CONTEXT * parser, const int length, const 
   block = pt_find_available_string_block (parser, length, align);
   if (block == NULL)
     {
-      /* a fresh block places at offset 0 with no padding, so the string's own length is the whole need */
       block = parser_create_string_block (parser, length);
       if (block == NULL)
 	{
