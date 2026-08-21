@@ -648,7 +648,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> show_type_arg1_opt
 %type <number> show_type_arg_named
 %type <number> show_type_id
+%type <number> show_heap_type_id
 %type <number> show_type_id_dot_id
+%type <number> opt_show_scan_mode
 %type <number> kill_type
 %type <number> procedure_or_function
 %type <boolean> opt_analytic_from_last
@@ -1514,6 +1516,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ADDDATE
 %token <cptr> AES
 %token <cptr> ANALYZE
+%token <cptr> APPROX
 %token <cptr> ARCHIVE
 %token <cptr> ARIA
 %token <cptr> AUTHID
@@ -1553,6 +1556,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> EMPTY
 %token <cptr> ENCRYPT
 %token <cptr> ERROR_
+%token <cptr> EXACT
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
 %token <cptr> FORCE
@@ -7368,6 +7372,26 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| SHOW show_heap_type_id OF class_name opt_show_scan_mode
+		{{
+			int type = $2;
+			PT_NODE *node, *args = $4;
+			PT_NODE *scan_mode = pt_make_integer_value (this_parser, $5);
+
+			if (scan_mode == NULL)
+			  {
+			    PT_INTERNAL_ERROR (this_parser, "allocate new node");
+			  }
+
+			/* the scan mode is moved after the partition type argument by
+			 * pt_check_table_in_show_heap (), so that it always stays last */
+			args->next = scan_mode;
+
+			node = pt_make_query_showstmt (this_parser, type, args, 0, NULL);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	| SHOW show_type_id_dot_id OF class_name DOT identifier
 		{{
 			int type = $2;
@@ -7520,7 +7544,7 @@ show_type_arg_named
 		}}
 	;
 
-show_type_id
+show_heap_type_id
 	: HEAP HEADER
 		{{
 			$$ = SHOWSTMT_HEAP_HEADER;
@@ -7537,13 +7561,31 @@ show_type_id
 		{{
 			$$ = SHOWSTMT_ALL_HEAP_CAPACITY;
 		}}
-	| ALL INDEXES HEADER
+	;
+
+show_type_id
+	: ALL INDEXES HEADER
 		{{
 			$$ = SHOWSTMT_ALL_INDEXES_HEADER;
 		}}
 	| ALL INDEXES CAPACITY
 		{{
 			$$ = SHOWSTMT_ALL_INDEXES_CAPACITY;
+		}}
+	;
+
+opt_show_scan_mode
+	: /* empty */
+		{{
+			$$ = SHOWSTMT_SCAN_EXACT;
+		}}
+	| EXACT
+		{{
+			$$ = SHOWSTMT_SCAN_EXACT;
+		}}
+	| APPROX
+		{{
+			$$ = SHOWSTMT_SCAN_APPROX;
 		}}
 	;
 
@@ -20567,6 +20609,7 @@ identifier
 	| ADDDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| AES                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ANALYZE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| APPROX                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ARCHIVE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ARIA                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| AUTHID                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20608,6 +20651,7 @@ identifier
 	| EMPTY                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ENCRYPT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| EXACT                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
