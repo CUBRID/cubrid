@@ -3087,14 +3087,10 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   (void) heap_update_all_bestspaces (thread_p);
 
   /* Hand the unissued tail of every reserved serial cache block back to _db_serial, so a restart
-   * resumes at the last value issued instead of past the block end. Must run here, while the heap
-   * and log managers are still up; serial_finalize_cache_pool runs after the volumes are dismounted.
-   * The write opens a system operation, which the system main transaction set above may not do, so
-   * borrow a system worker the way vacuum does and set the system main one back afterwards. Claim
-   * only if the thread does not already hold one: xvacuum () returns on an interrupt without
-   * running vacuum_restore_thread (), and in SA_MODE that same thread reaches here through
-   * xboot_unregister_client (). Retiring is unconditional - a system worker left over from there is
-   * abandoned, and the rest of shutdown wants the system main transaction back. */
+   * resumes at the last value issued instead of past the block end. Must run while the heap and log
+   * managers are still up; serial_finalize_cache_pool runs after the volumes are dismounted. The
+   * write opens a system operation, which the system main transaction may not do, so borrow a
+   * system worker - an interrupted xvacuum () may have left one - and put the main one back. */
   if (thread_p->get_system_tdes () == NULL)
     {
       thread_p->claim_system_worker ();
