@@ -2097,6 +2097,26 @@ cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** 
       lookup_name = dot + 1;
     }
 
+  /* ODBC hands the owner to one of two arguments and the driver declares which */
+  qual_is_catalog = cgw_qualifier_is_catalog (hdbc);
+
+  if (lookup_qualifier == NULL && !qual_is_catalog)
+    {
+      /* Given no SchemaName, SQLColumns searches every schema and answers with several
+       * owners at once.  Search the session schema only - the one the remote resolves an
+       * unqualified name in.  A catalog-based driver needs none of this: a NULL
+       * CatalogName already restricts it to the connected database. */
+      if (cgw_get_driver_info (hdbc, SQL_USER_NAME, qualifier, (SQLSMALLINT) sizeof (qualifier)) == NO_ERROR
+	  && qualifier[0] != '\0')
+	{
+	  lookup_qualifier = qualifier;
+	}
+      else
+	{
+	  qualifier[0] = '\0';
+	}
+    }
+
   /* SQLColumns is a catalog function: its arguments are literal values and there is no
    * parser behind them to fold an unquoted identifier the way the remote folds it in a
    * query.  Ask the driver how it stores one and do the same, so this lookup and the
@@ -2135,9 +2155,6 @@ cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** 
     {
       goto end;
     }
-
-  /* ODBC hands the owner to one of two arguments and the driver declares which */
-  qual_is_catalog = cgw_qualifier_is_catalog (hdbc);
 
   if (qual_is_catalog)
     {
@@ -2183,10 +2200,10 @@ cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** 
 	  continue;
 	}
 
-      /* The search is restricted to one owner only when a qualifier was given, so an
-       * unqualified name can be answered by a same-named table of another owner as well.
-       * Such columns are absent from the "SELECT *" describe below and would be served
-       * as invisible ones, so keep only the owner the first row reported. */
+      /* With a qualifier the search already covers one owner.  Without one, rows of a
+       * same-named table of another owner can arrive; they are absent from the "SELECT *"
+       * describe below and would be served as invisible columns, so keep the first
+       * owner only. */
       if (lookup_qualifier != NULL)
 	{
 	  if (schem_buf[0] != '\0' && strcasecmp (schem_buf, lookup_qualifier) != 0)
