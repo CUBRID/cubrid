@@ -49,22 +49,28 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
+/* Byte overhead of a block outside its string area: the header fields plus malloc bookkeeping. */
+#define STRING_BLOCK_OVERHEAD (4*sizeof(long)+sizeof(char *)+40)
+
 /*
- * this should be big enough for "largish" select statements to print.
- * It is sized at 8192 less enough to let it fit in 2 blocks with some
- * overhead for malloc headers plus string block header.
+ * Byte size of a default block's string area.
+ * Sized so a block fills an 8KB allocation after the overhead.
+ * This should be big enough for "largish" select statements to print.
  */
-#define STRINGS_PER_BLOCK (8192-(4*sizeof(long)+sizeof(char *)+40))
+#define STRING_BLOCK_DEFAULT_SIZE (8192-STRING_BLOCK_OVERHEAD)
 
 /*
  * How many of the newest blocks an allocation checks before taking a new one.
- * A full scan grows with the statement and rarely finds room: a block that
- * refused one request keeps refusing the similar ones that follow. The newest
- * few still catch a smaller request fitting a recent block's tail.
+ * A full scan grows with the statement and rarely finds room: a block that refused one request
+ * keeps refusing the similar ones that follow. The newest few still catch a smaller request
+ * fitting a recent block's tail.
  */
 #define STRING_BLOCK_SCAN_LIMIT 8
 
-/* room reserved past an unusually large string, so later appends can still extend it in place */
+/*
+ * Room an oversized block reserves past its one large string.
+ * It lets later appends extend that string in place instead of relocating it.
+ */
 #define LARGE_STRING_APPEND_ROOM 1001
 
 #define HASH_NUMBER 128
@@ -95,9 +101,15 @@ struct parser_string_block
   union aligned
   {
     double dummy;
-    char chars[STRINGS_PER_BLOCK];
+    char chars[STRING_BLOCK_DEFAULT_SIZE];
   } u;
 };
+
+/* pointer to the last string placed in the block */
+#define BLOCK_LAST_STRING(b) (&(b)->u.chars[(b)->last_string_start])
+
+/* room left after the block's last string, for extending it in place */
+#define BLOCK_ROOM_LEFT(b) ((b)->block_end - (b)->last_string_end)
 
 /* Global reserved name table including info for each reserved name */
 PT_RESERVED_NAME pt_Reserved_name_table[] = {
@@ -417,16 +429,16 @@ parser_create_string_block (PARSER_CONTEXT * parser, const int length)
   size_t alloc_size;
   int block_end;
 
-  if (length < (int) STRINGS_PER_BLOCK)
+  if (length < (int) STRING_BLOCK_DEFAULT_SIZE)
     {
       alloc_size = sizeof (PARSER_STRING_BLOCK);
-      block_end = STRINGS_PER_BLOCK - 1;
+      block_end = STRING_BLOCK_DEFAULT_SIZE - 1;
     }
   else
     {
       /* This is an unusually large string.
        * Allocate a special block for it, with space for one string, plus some space for appending to. */
-      alloc_size = sizeof (PARSER_STRING_BLOCK) + (length + LARGE_STRING_APPEND_ROOM - STRINGS_PER_BLOCK);
+      alloc_size = sizeof (PARSER_STRING_BLOCK) + (length + LARGE_STRING_APPEND_ROOM - STRING_BLOCK_DEFAULT_SIZE);
       block_end = CAST_BUFLEN (length + LARGE_STRING_APPEND_ROOM - 1);
     }
 
@@ -492,9 +504,9 @@ parser_allocate_string_buffer (PARSER_CONTEXT * parser, const int length, const 
   /* set start to the aligned length */
   block->last_string_start = CAST_BUFLEN (DB_ALIGN (block->last_string_end + 1, align));
   block->last_string_end = CAST_BUFLEN (block->last_string_start + length);
-  block->u.chars[block->last_string_start] = 0;
+  *BLOCK_LAST_STRING (block) = 0;
 
-  return &block->u.chars[block->last_string_start];
+  return BLOCK_LAST_STRING (block);
 }
 
 
@@ -542,7 +554,7 @@ pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string)
   /* the parser's own list; the block being appended to is almost always the
    * newest, so this usually stops at the first node */
   string = parser->string_blocks;
-  while (string != NULL && &(string->u.chars[string->last_string_start]) != old_string)
+  while (string != NULL && BLOCK_LAST_STRING (string) != old_string)
     {
       string = string->next;
     }
@@ -583,7 +595,7 @@ pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const cha
 
   /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
-  if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
+  if ((string == NULL) || (BLOCK_ROOM_LEFT (string) < new_tail_length))
     {
       s = (char *) parser_allocate_string_buffer (parser, strlen (old_string) + new_tail_length, sizeof (char));
       if (s == NULL)
@@ -627,7 +639,7 @@ pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const cha
 	  strcpy (s, new_tail);
 	}
       string->last_string_end += new_tail_length;
-      s = &string->u.chars[string->last_string_start];
+      s = BLOCK_LAST_STRING (string);
     }
 
   return s;
@@ -668,7 +680,7 @@ pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const
 
   /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
-  if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
+  if ((string == NULL) || (BLOCK_ROOM_LEFT (string) < new_tail_length))
     {
       s = (char *) parser_allocate_string_buffer (parser,
 						  offsetof (PARSER_VARCHAR,
@@ -705,7 +717,7 @@ pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const
       old_string->bytes[old_string->length] = 0;	/* nul terminate */
 
       string->last_string_end += (int) new_tail_length;
-      s = &string->u.chars[string->last_string_start];
+      s = BLOCK_LAST_STRING (string);
     }
 
   return old_string;
