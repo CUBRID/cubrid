@@ -192,6 +192,7 @@ extern int qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url
 					 bool set_participant);
 extern int qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name,
 					char *password, bool set_participant);
-extern DBLINK_CONN_ENTRY *qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p);
-extern void qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p);
+extern DBLINK_CONN_ENTRY *qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p, bool * is_autocommit);
+extern int qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p, bool is_commit);
+extern int qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle);
 #endif /* _QUERY_MANAGER_H_ */

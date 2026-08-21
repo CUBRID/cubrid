@@ -461,6 +461,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_ASCII:
     case T_SPACE:
     case T_MD5:
+    case T_UUID_FORMAT:
+    case T_UUID:
     case T_SHA_ONE:
     case T_TO_BASE64:
     case T_FROM_BASE64:
@@ -1390,6 +1392,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else if (db_string_md5 (peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_UUID_FORMAT:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_uuid_format (peek_right, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3517,10 +3530,56 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       /* sys_guid() is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-      if (db_guid (thread_p, arithptr->value) != NO_ERROR)
+      if (db_uuidv4 (arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
+      break;
+
+    case T_UUID:
+      {
+	REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+	assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+	int version;
+	if (DB_IS_NULL (peek_right))
+	  {
+	    /* NULL version argument is not allowed; UUID() with no argument arrives as the constant 4 */
+	    version = -1;
+	  }
+	else
+	  {
+	    version = db_get_int (peek_right);
+	  }
+
+	if (version == 0 || version == 4)
+	  {
+	    if (db_uuid_bin (UUID_V4, NULL, 0, arithptr->value) != NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+	else if (version == 7)
+	  {
+	    UUID_STATE uuid_state;
+	    uuid_state.last_ms = &thread_p->uuidv7_last_ms;
+	    uuid_state.seq = &thread_p->uuidv7_seq;
+
+	    if (db_uuid_bin
+		(UUID_V7, &uuid_state,
+		 ((uint64_t) vd->sys_epochtime * 1000ULL) + (uint64_t) (vd->sys_datetime.time % 1000),
+		 arithptr->value) != NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+	else
+	  {
+	    if (db_uuid_bin (UUID_UNSUPPORTED, NULL, 0, arithptr->value) != NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+      }
       break;
 
     case T_TYPEOF:
@@ -3874,6 +3933,8 @@ fetch_peek_arith_end:
     case T_DRANDOM:
       /* sys_guid() is not constant */
     case T_SYS_GUID:
+      /* uuid() is not constant */
+    case T_UUID:
       /* sleep() is not constant */
     case T_SLEEP:
 
@@ -3944,11 +4005,48 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       /* is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+      if (regu_var->value.attr_descr.cache_slot != NULL
+	  && regu_var->value.attr_descr.cache_slot->state == HEAP_LAZY_ATTRVALUE
+	  && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
+	{
+	  *peek_dbval = heap_attrvalue_peek_lazy (regu_var->value.attr_descr.cache_slot,
+						  regu_var->value.attr_descr.cache_attrinfo);
+	  if (*peek_dbval == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  break;
+	}
       *peek_dbval = regu_var->value.attr_descr.cache_dbvalp;
       if (*peek_dbval != NULL)
 	{
 	  /* we have a cached pointer already */
 	  break;
+	}
+      else if (regu_var->value.attr_descr.cache_attrinfo != NULL
+	       && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
+	{
+	  /* first fetch of a predicate column in a lazy scan: locate its slot once. A first-term column is
+	   * already read in place; a deferred one is read here and keeps its slot for the inline fast path. */
+	  HEAP_ATTRVALUE *slot =
+	    heap_attrvalue_locate (regu_var->value.attr_descr.id, regu_var->value.attr_descr.cache_attrinfo);
+	  if (slot == NULL || slot->state == HEAP_UNINIT_ATTRVALUE)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "fetch_peek_dbval_slow: unreadable attr = %d",
+			    regu_var->value.attr_descr.id);
+	      if (er_errid () == NO_ERROR)
+		{
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		}
+	      goto exit_on_error;
+	    }
+	  if (!slot->lazy_always_eager
+	      && heap_attrvalue_peek_lazy (slot, regu_var->value.attr_descr.cache_attrinfo) == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  *peek_dbval = &slot->dbvalue;
+	  regu_var->value.attr_descr.cache_slot = slot->lazy_always_eager ? NULL : slot;
 	}
       else
 	{
@@ -3957,6 +4055,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	    {
 	      goto exit_on_error;
 	    }
+	  regu_var->value.attr_descr.cache_slot = NULL;	/* eager fetch: no deferred slot for this regu */
 	}
       regu_var->value.attr_descr.cache_dbvalp = *peek_dbval;	/* cache */
       break;
@@ -4860,6 +4959,7 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
     {
       regu_var = &regu_p->value;
       regu_var->value.attr_descr.cache_dbvalp = NULL;
+      regu_var->value.attr_descr.cache_slot = NULL;	/* keep lazy slot in lock-step with cache_dbvalp */
     }
 }
 
