@@ -11536,6 +11536,19 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      else if (force_count)
 		{
 		  xasl->list_id->tuple_cnt++;
+
+		  if (need_locking && class_oid != NULL && !mvcc_is_mvcc_disabled_class (class_oid)
+		      && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
+		    {
+		      /* Transient row lock (CBRD-27034): the delete is published -- DELID is stamped on the
+		       * record header and its index entries -- so a later writer settles against our
+		       * transaction self-lock instead of this per-row lock. Release the row lock now; the
+		       * uncommitted write-lock footprint stays O(transactions) instead of O(rows). An in-doubt
+		       * 2PC transaction keeps serializing late arrivals because the prepare record persists the
+		       * MVCCID self-lock (CBRD-27079). If the self-lock cannot be ensured, keep the row lock
+		       * (baseline behavior). */
+		      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, X_LOCK);
+		    }
 		}
 	    }
 
