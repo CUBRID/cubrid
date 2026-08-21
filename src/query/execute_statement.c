@@ -17740,6 +17740,13 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       PT_NODE *save_list;
       PT_MISC_TYPE save_type;
 
+      /* evaluate statement-level DEFAULTs before the insert fills omitted columns, as do_execute_merge does */
+      err = do_evaluate_statement_default_expr (parser, flat);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+
       /* save node list */
       save_type = values_list->info.node_list.list_type;
       save_list = values_list->info.node_list.list;
