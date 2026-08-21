@@ -2301,3 +2301,4 @@ $set 17 MSGCAT_SET_GLOSSARY
 4 서버
 5 동의어
 6 프로시저
+7 패키지

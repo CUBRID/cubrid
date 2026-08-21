@@ -4828,8 +4828,8 @@ jsp_get_package_of_member (const MOP sp_obj)
 		}
 	    }
 	}
+      pr_clear_value (&uname_val);
     }
-  pr_clear_value (&uname_val);
 
   AU_RESTORE (save);
   return pkg_mop;

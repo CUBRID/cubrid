@@ -755,7 +755,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> delete_stmt
 %type <node> author_cmd_list
 %type <node> authorized_cmd
-%type <node> authorized_execute_procedure_cmd
+%type <node> authorized_execute_proc_or_pkg_cmd
 %type <node> opt_password
 %type <node> opt_groups
 %type <node> opt_members
@@ -957,8 +957,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> grant_head
 %type <node> grant_cmd
 %type <node> revoke_cmd
-%type <node> grant_proc_cmd
-%type <node> revoke_proc_cmd
+%type <node> grant_proc_or_pkg_cmd
+%type <node> revoke_proc_or_pkg_cmd
 %type <node> opt_from_table_spec_list
 %type <node> method_file_list
 %type <node> incr_arg_name_list__inc
@@ -5876,17 +5876,24 @@ procedure_or_function_name
 	;
 
 procedure_or_function_name_list
-	: procedure_or_function_name_list ',' procedure_or_function_name
+	: procedure_or_function_name_list ',' procedure_or_function_name_without_dot
 		{{
 			$$ = parser_make_link($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| procedure_or_function_name
+	| procedure_or_function_name_without_dot
 		{{
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	;
+
+proc_or_pkg_name_list
+        : proc_or_pkg_name_list ',' procedure_or_function_name_without_dot
+        | proc_or_pkg_name_list ',' package_name_without_dot
+        | procedure_or_function_name_without_dot
+        | package_name_without_dot
+        ;
 
 opt_partition_spec
 	: /* empty */
@@ -8464,7 +8471,7 @@ auth_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-        | revoke_proc_cmd procedure_or_function_name_list from_id_list
+        | revoke_proc_or_pkg_cmd proc_or_pkg_name_list from_id_list
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_REVOKE);
 
@@ -8495,18 +8502,18 @@ grant_cmd
 		{ pop_msg(); }
 		{ $$ = $3; }
 
-grant_proc_cmd
+grant_proc_or_pkg_cmd
         : GRANT
 		{ push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); }
-	  authorized_execute_procedure_cmd
+	  authorized_execute_proc_or_pkg_cmd
 		{ pop_msg(); }
 		{ $$ = $3; }
 	;
 
-revoke_proc_cmd
+revoke_proc_or_pkg_cmd
         : REVOKE
 		{ push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); }
-	  authorized_execute_procedure_cmd
+	  authorized_execute_proc_or_pkg_cmd
 		{ pop_msg(); }
 		{ $$ = $3; }
 	;
@@ -8554,7 +8561,7 @@ grant_head
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-        | grant_proc_cmd procedure_or_function_name_list to_id_list
+        | grant_proc_or_pkg_cmd proc_or_pkg_name_list to_id_list
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_GRANT);
 
@@ -8618,7 +8625,7 @@ author_cmd_list
 		}}
 	;
 
-authorized_execute_procedure_cmd
+authorized_execute_proc_or_pkg_cmd
         : EXECUTE ON_ PROCEDURE
                 {{
 			PT_NODE *node = parser_new_node (this_parser, PT_AUTH_CMD);
