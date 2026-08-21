@@ -49,12 +49,18 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-/* Byte overhead of a block outside its string area: the header fields plus malloc bookkeeping. */
-#define STRING_BLOCK_OVERHEAD (4*sizeof(long)+sizeof(char *)+40)
+/*
+ * Byte size of the header fields in front of a block's string area, alignment padding included.
+ * The field list mirrors struct parser_string_block below; the static_assert under the struct catches drift.
+ */
+#define STRING_BLOCK_OVERHEAD \
+  DB_ALIGN (sizeof (PARSER_STRING_BLOCK *)	/* the next pointer */ \
+	    + 3 * sizeof (int),	/* last_string_start, last_string_end, block_end */ \
+	    sizeof (double))	/* padded up to where the double-aligned union starts */
 
 /*
  * Byte size of a default block's string area.
- * Sized so a block fills an 8KB allocation after the overhead.
+ * Sized so the whole block struct is exactly 8KB.
  * This should be big enough for "largish" select statements to print.
  */
 #define STRING_BLOCK_DEFAULT_SIZE (8192-STRING_BLOCK_OVERHEAD)
@@ -105,9 +111,8 @@ struct parser_string_block
   } u;
 };
 
-/* the overhead estimate must keep a default block, plus malloc's own bookkeeping, inside one 8KB allocation */
-static_assert (sizeof (PARSER_STRING_BLOCK) + 2 * sizeof (size_t) <= 8192,
-	       "a default string block must fit in one 8KB allocation");
+/* the exact 8KB holds only while STRING_BLOCK_OVERHEAD's field list matches the struct */
+static_assert (sizeof (PARSER_STRING_BLOCK) == 8192, "a default string block must be exactly 8KB");
 
 /* the first character of the last string placed in the block */
 #define PT_STRBLK_LAST_START(b) ((b)->u.chars[(b)->last_string_start])
