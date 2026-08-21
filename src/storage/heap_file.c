@@ -18406,16 +18406,13 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
   status = xlocator_find_class_oid (thread_p, class_name, &class_oid, class_lock);
   if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
     {
-      /* A failed class-lock acquisition (e.g. an S_LOCK timeout under EXACT while concurrent DML
-       * holds an IX_LOCK) is reported only via LC_CLASSNAME_ERROR, with the real error already set
-       * by the lock manager (ER_LK_OBJECT_TIMEOUT_*). Preserve that error; otherwise (a genuine
+      /* A failed class-lock acquisition (e.g. an S_LOCK timeout while a concurrent DML holds an
+       * IX_LOCK) is reported only via LC_CLASSNAME_ERROR, with the real error already set by the
+       * lock manager (ER_LK_OBJECT_TIMEOUT_*). Preserve that error; otherwise (a genuine
        * unknown/deleted class, which returns LC_CLASSNAME_DELETED without setting an error) report
        * ER_LC_UNKNOWN_CLASSNAME. */
-      if (status == LC_CLASSNAME_ERROR && er_errid () != NO_ERROR)
-	{
-	  error = er_errid ();
-	}
-      else
+      error = (status == LC_CLASSNAME_ERROR) ? er_errid_if_has_error () : NO_ERROR;
+      if (error == NO_ERROR)
 	{
 	  error = ER_LC_UNKNOWN_CLASSNAME;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, class_name);
