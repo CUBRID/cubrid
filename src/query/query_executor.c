@@ -21178,6 +21178,29 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
 	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 
+	  /* count(distinct) still collects values into its list file; expose the resolved
+	   * type there as well (see the distinct/sort block below), or the *variable* cmpdisk
+	   * returns DB_UNK and duplicate elimination silently fails. */
+	  if (agg_p->option == Q_DISTINCT && agg_p->list_id != NULL
+	      && agg_p->list_id->type_list.type_cnt > 0
+	      && TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
+	    {
+	      /* count(*) cannot take DISTINCT */
+	      assert (agg_p->function == PT_COUNT);
+	      if (fetch_peek_dbval (thread_p, &agg_p->operands->value, vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	      if (dbval != NULL && !DB_IS_NULL (dbval))
+		{
+		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
+		}
+	      else
+		{
+		  *resolved = 0;
+		}
+	    }
+
 	  continue;
 	}
 

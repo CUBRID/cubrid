@@ -220,6 +220,20 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
   if (func_p->option == Q_DISTINCT)
     {
+      /* Only the first row is coerced by the HV late-binding block above; later rows are fetched
+       * with their raw types. Coerce all values to the list domain to avoid mixed types during
+       * duplicate elimination and finalize. */
+      if (func_p->list_id != NULL && func_p->list_id->type_list.type_cnt > 0
+	  && TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) != DB_TYPE_VARIABLE
+	  && DB_VALUE_DOMAIN_TYPE (&dbval) != TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]))
+	{
+	  if (tp_value_coerce (&dbval, &dbval, func_p->list_id->type_list.domp[0]) != DOMAIN_COMPATIBLE)
+	    {
+	      error = ER_FAILED;
+	      goto exit;
+	    }
+	}
+
       /* handle distincts by adding to the temp list file */
       dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
       pr_type_p = pr_type_from_id (dbval_type);
