@@ -8370,6 +8370,11 @@ qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
       return S_SUCCESS;
     }
 
+  if (inner->curr_spec == NULL)
+    {
+      return S_SUCCESS;
+    }
+
   return scan_reset_scan_block (thread_p, &inner->curr_spec->s_id);
 }
 
