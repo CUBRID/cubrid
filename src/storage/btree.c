@@ -13123,6 +13123,9 @@ btree_ovf_dir_insert_entry (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_P
 /*
  * btree_ovf_dir_remove_entry () - Remove the directory entry of a removed data page. Unlinks (or pulls up into
  *				      the immutable head) emptied directory pages.
+ *				      The entry is located by a linear scan over the directory pages: entries are
+ *				      keyed by separator, not by vpid, and this path only runs when a delete empties
+ *				      a data page, against at most a handful of directory pages.
  *
  * return		  : Error code.
  * thread_p (in)	  : Thread entry.
@@ -13732,7 +13735,9 @@ btree_ovf_dir_grow_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   BTREE_GET_OID (target_record.data + (num_objects - 1) * obj_size, &last_oid);
 
   /* Strictly greater: an OID equal to the last one (a reusable-OID duplicate) must not become a new rightmost
-   * page's separator, which could duplicate an existing separator. It goes through the split path instead. */
+   * page's separator, which could duplicate an existing separator. It goes through the split path instead.
+   * Note that only the rightmost page can grow right; a routed page with a successor (e.g. the head catch-all)
+   * always splits. */
   grow_right = VPID_ISNULL (&target_next_vpid) && OID_GT (&object_info->oid, &last_oid);
 
   /* Notification (parity with legacy overflow page creation). */
@@ -13757,6 +13762,7 @@ btree_ovf_dir_grow_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   if (grow_right)
     {
       /* The new page holds just the new (rightmost) object; loader-like fill for ascending OIDs. */
+      assert (obj_size <= 128);	/* q_rec_buf below holds exactly one fixed-size object */
       q_record.type = REC_HOME;
       q_record.area_size = 128;
       q_record.data = PTR_ALIGN (q_rec_buf, BTREE_MAX_ALIGN);

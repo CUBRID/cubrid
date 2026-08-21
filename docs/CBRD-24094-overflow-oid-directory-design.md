@@ -85,7 +85,8 @@ deletions need **no** directory update.
 - `leaf_rec.ovfl` keeps pointing at the **first data page** → all sequential
   traversal (range scan, capacity, `first_visible`, vacuum full-scan) is unchanged.
 - **Data-page header** carries `dir_vpid` after `next_vpid`. On-disk detection is
-  by header-record length: 8 B = legacy (no directory), 16 B = directory format. `next_vpid`
+  by the index type (unique = legacy 8 B header, non-unique = 16 B directory
+  header; the on-disk length still differs accordingly). `next_vpid`
   stays at offset 0, so `btree_get_next_overflow_vpid` and every sequential walk
   are byte-compatible. `dir_vpid` is written once when the directory is born and
   never moves (see §3.4), so every data page can carry the same value with no
@@ -97,11 +98,15 @@ deletions need **no** directory update.
 
 ### 3.3 Algorithms
 
-- **Search** (`btree_find_oid_and_its_page`, new branch): read first data page
-  header; if 8 B (legacy) → existing linear scan unchanged. Else walk the
-  directory (≤2 pages) binary-searching separators to the target data page, fix
-  it, binary-search within (existing `btree_find_oid_from_ovfl`). For delete
-  callers needing `prev_page`, fix `entry[i-1].vpid` first to keep latch order.
+- **Search** (`btree_find_oid_and_its_page`, new branch): the format is decided
+  by the index type -- unique keeps the legacy linear scan, non-unique routes
+  through the directory. Directory pages are advanced **linearly** (singly
+  linked, ~670K OIDs covered per directory page) and the covering entry within
+  a page is found by **binary search**; the routed data page is then searched
+  by the existing `btree_find_oid_from_ovfl`. On a miss the lookup steps back
+  while the searched OID does not exceed a page's first object (same-OID runs
+  of a reusable OID may straddle page boundaries backwards). For delete callers
+  needing `prev_page`, fix `entry[i-1].vpid` first to keep latch order.
 - **Insert** (`btree_key_append_object_into_ovf`, new branch): route to page P.
   Space → `btree_insert_object_ordered_by_oid` (existing). Full → **split** upper
   half into new page Q, link P→Q, add `(Q.min, Q)` to directory, insert into P or
