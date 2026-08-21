@@ -3318,6 +3318,27 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
 }
 
 /*
+ * session_clear_pl_session_interrupt - clear a collateral ER_INTERRUPTED left on the pl session
+ *
+ * Parallel query error propagation signals workers through logtb_set_tran_index_interrupt,
+ * whose TT_WORKER hook also interrupts the pl session as a side effect. Only that collateral
+ * ER_INTERRUPTED is cleared here; pl-specific interrupts (nested-call limit, OOM, shutdown, ...)
+ * are preserved. Accessing the session state directly avoids session_get_pl_session, which
+ * reports an error exactly when the session is in this poisoned state.
+ */
+void
+session_clear_pl_session_interrupt (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p != NULL && state_p->pl_session_p != NULL
+      && state_p->pl_session_p->get_interrupt_id () == ER_INTERRUPTED)
+    {
+      state_p->pl_session_p->clear_interrupt ();
+    }
+}
+
+/*
  * session_interrupt_attached_threads - interrupt extra attached threads (not connection worker
  *                                      thread) associated with the session, without freeing the
  *                                      load session

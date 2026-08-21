@@ -26,6 +26,7 @@
 #include "xasl_cache.h"
 #include "xasl_iteration.hpp"
 #include "px_query_task.hpp"
+#include "session.h"
 
 #if !defined(NDEBUG)
 #include <sys/syscall.h>
@@ -192,6 +193,16 @@ namespace parallel_query_execute
 		  {
 		    /* this function set interrupt when session got pl_session, so we need to clear interrupt before set error */
 		    is_interrupt = logtb_is_interrupted_tran (thread_p, true, &continue_checking, thread_p->tran_index);
+		  }
+		if (m_interrupt.get_code() == interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_MAIN_THREAD
+		    || m_interrupt.get_code() == interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD)
+		  {
+		    /* The tran-index interrupt raised above for error propagation also interrupted the
+		     * pl session (TT_WORKER hook in logtb_set_tran_index_interrupt). Left set, it poisons
+		     * every later pl access of this session (session_get_pl_session rejects, new stacks are
+		     * blocked) even after the failed query is gone. Clear it for px-internal errors only;
+		     * a user cancel (USER_INTERRUPTED_*) must keep interrupting a surrounding SP chain. */
+		    session_clear_pl_session_interrupt (thread_p);
 		  }
 	      }
 	    std::lock_guard<std::mutex> lock (m_error_messages.m_mutex);
