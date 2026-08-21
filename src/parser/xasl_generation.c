@@ -21680,7 +21680,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       cl_name_node = cl_name_node->next)
 	    {
 	      if (cl_name_node->info.spec.derived_table != NULL
-		  && (cl_name_node->info.spec.flag | PT_SPEC_FLAG_MVCC_COND_REEV))
+		  && (cl_name_node->info.spec.flag & PT_SPEC_FLAG_MVCC_COND_REEV))
 		{
 		  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
 		  abort_reevaluation = true;
@@ -22067,12 +22067,24 @@ pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
     {
       level++;
     }
-  else if (tree->node_type == PT_SPEC
-	   && (tree->info.spec.flag | PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV) && level > 1)
+  else if (tree->node_type == PT_SPEC && level > 1)
     {
+      /* Any spec below a subquery, flagged or not.  Reevaluation flags are only ever set on the
+       * statement's own spec list (pt_mvcc_flag_specs_cond_reev walks `from`), so a spec down here
+       * can never carry one -- testing for the flag would make this unreachable.
+       *
+       * Do not try to spare the uncorrelated ones.  It looks safe -- a subquery that does not read
+       * the current row is evaluated once and its result stands for the statement -- and it does
+       * open the constant-scalar-assignment case.  But x18, x22 and r5, all WHERE k IN (SELECT ...),
+       * fail with it: the materialized list lives in the select's scan state and the force phase
+       * cannot re-check the predicate against it.  Correlation is not the property that decides. */
       level = -1;
       *continue_walk = PT_STOP_WALK;
     }
+
+  /* the walk carries the level through arg; without this the local copy is discarded on
+   * every node, level never leaves 0, and the level > 1 test above can never be reached */
+  *(int *) arg = level;
 
   return tree;
 }
@@ -22101,6 +22113,8 @@ pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg
     {
       level--;
     }
+
+  *(int *) arg = level;
 
   return tree;
 }
