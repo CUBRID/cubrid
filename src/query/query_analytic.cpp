@@ -393,6 +393,22 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
     case PT_AVG:
     case PT_SUM:
     {
+      /* An operand resolved by late binding (opr_dbtype == DB_TYPE_VARIABLE) is
+       * coerced in place only on the first row. Repeat the coercion on later rows
+       * so the value matches the accumulation type, as the legacy add does
+       * implicitly on every row.
+       */
+      if (func_p->sum_acc.is_active
+	  && func_p->sum_acc.sum_type != sum_acc_analytic_sum_type_for (DB_VALUE_DOMAIN_TYPE (&dbval)))
+	{
+	  dom_status = tp_value_coerce (&dbval, &dbval, func_p->domain);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, func_p->domain);
+	      goto exit;
+	    }
+	}
+
       /* whether the accumulator takes this value's type */
       bool use_sum_acc = SUM_ACC_IS_ANALYTIC_SUPPORTED_TYPE (DB_VALUE_DOMAIN_TYPE (&dbval));
 
