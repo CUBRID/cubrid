@@ -678,7 +678,9 @@ IDL       [a-zA-Z0-9_]
 									  return PAGE; }
                                                                                 
 [pP][aA][rR][aA][lL][lL][eE][lL]					{ csql_yylval.cptr = pt_makename(yytext);
-                                                                          return PARALLEL; }										
+                                                                          return PARALLEL; }
+[pP][aA][rR][aA][lL][lL][eE][lL]_[eE][nN][aA][bB][lL][eE]		{ csql_yylval.cptr = pt_makename(yytext);
+                                                                          return PARALLEL_ENABLE; }
 [pP][aA][rR][aA][mM][eE][tT][eE][rR][sS]				{ return PARAMETERS; }
 [pP][aA][rR][tT][iI][aA][lL]						{ return PARTIAL; }
 [pP][aA][rR][tT][iI][tT][iI][oO][nN]					{ csql_yylval.cptr = pt_makename(yytext);

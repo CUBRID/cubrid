@@ -3334,6 +3334,7 @@ struct pt_stored_proc_info
   PT_MISC_TYPE dtrm_type;	/* PT_NOT_DETERMINISTIC, PT_DETERMINISTIC */
   PT_MISC_TYPE type;
   unsigned or_replace:1;	/* OR REPLACE clause */
+  unsigned parallel_enable:1;	/* PARALLEL_ENABLE clause */
   PT_TYPE_ENUM ret_type;
   PT_NODE *ret_data_type;
   int recompile;

@@ -100,6 +100,9 @@
 #define PT_NODE_SP_DETERMINISTIC_TYPE(node) \
   ((node)->info.sp.dtrm_type)
 
+#define PT_NODE_SP_PARALLEL_ENABLE(node) \
+  ((node)->info.sp.parallel_enable)
+
 #define PT_NODE_SP_COMMENT(node) \
   (((node)->info.sp.comment == NULL) ? "" : \
    (char *) (node)->info.sp.comment->info.value.data_value.str->bytes)
@@ -1031,6 +1034,18 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVOKERS_RIGHTS_NOT_SUPPORTED, 0);
       return er_errid ();
+    }
+
+  // check PL/CSQL's PARALLEL_ENABLE
+  if (PT_NODE_SP_PARALLEL_ENABLE (statement))
+    {
+      if (sp_info.lang == SP_LANG_PLCSQL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PARALLEL_ENABLE_NOT_SUPPORTED, 0);
+	  return er_errid ();
+	}
+      sp_info.directive = static_cast<SP_DIRECTIVE_ENUM> (static_cast<int> (sp_info.directive) | static_cast<int>
+			  (SP_DIRECTIVE_ENUM::SP_DIRECTIVE_PARALLEL_ENABLE));
     }
 
   temp = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));
@@ -2147,6 +2162,15 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	else
 	  {
 	    sig.is_deterministic = false;
+	  }
+
+	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_PARALLEL_ENABLE)
+	  {
+	    sig.is_parallel_enabled = true;
+	  }
+	else
+	  {
+	    sig.is_parallel_enabled = false;
 	  }
 #endif
 

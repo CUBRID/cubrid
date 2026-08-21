@@ -27,6 +27,7 @@
 #include "authenticate.h"
 #include "deduplicate_key.h"
 #include "schema_system_catalog_constants.h"
+#include "sp_catalog.hpp"
 #include "trigger_manager.h"
 
 // TODO: Add checking the following rules in compile time (@hgryoo)
@@ -1223,6 +1224,8 @@ sm_define_view_stored_procedure_spec (void)
 	  "CASE [sp].[lang] WHEN 0 THEN 'PLCSQL' WHEN 1 THEN 'JAVA' ELSE 'UNKNOWN' END AS [lang], "
           "CASE [sp].[directive] & 1 WHEN 0 THEN 'DEFINER' ELSE 'CURRENT_USER' END AS [authid], "
 	  "CASE [sp].[directive] & 2 WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_deterministic], "
+	  /* SP_DIRECTIVE_PARALLEL_ENABLE */
+	  "CASE [sp].[directive] & %d WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_parallel_enabled], "
 	  "CASE [sp].[lang] "
 	    "WHEN 0 THEN NULL "
 	    "ELSE CONCAT ([sp].[target_class], '.', [sp].[target_method]) "
@@ -1305,6 +1308,7 @@ sm_define_view_stored_procedure_spec (void)
 		")"
 	    ")",
 	CT_DATATYPE_NAME,
+	SP_DIRECTIVE_PARALLEL_ENABLE,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_STORED_PROC_NAME,

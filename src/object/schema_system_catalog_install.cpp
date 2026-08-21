@@ -1846,6 +1846,7 @@ namespace cubschema
       {"lang", format_varchar (16)},
       {"authid", format_varchar (16)},
       {"is_deterministic", format_varchar (3)},
+      {"is_parallel_enabled", format_varchar (3)},
       {"target", format_varchar (4096)},
       {"owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"code", format_varchar (1073741823)},

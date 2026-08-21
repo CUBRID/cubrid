@@ -166,6 +166,9 @@ namespace cubpl
     , auth {nullptr}
     , result_type {0}
   {
+#if defined (CS_MODE)
+    is_parallel_enabled = false;
+#endif
     memset (&ext, 0, sizeof (pl_ext));
 
 #if defined (SERVER_MODE)

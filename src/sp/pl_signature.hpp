@@ -93,6 +93,7 @@ namespace cubpl
 
 #if defined (CS_MODE)
     bool is_deterministic; // DETERMINISTIC
+    bool is_parallel_enabled; // PARALLEL_ENABLE
 #endif
 
     pl_arg arg;

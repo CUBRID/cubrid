@@ -7781,6 +7781,11 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  q = pt_append_nulstring (parser, q, " DETERMINISTIC");
 	}
+
+      if (p->info.sp.parallel_enable)
+	{
+	  q = pt_append_nulstring (parser, q, " PARALLEL_ENABLE");
+	}
     }
   else
     {
@@ -7796,6 +7801,11 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.sp.dtrm_type == PT_DETERMINISTIC)
 	{
 	  q = pt_append_nulstring (parser, q, " deterministic");
+	}
+
+      if (p->info.sp.parallel_enable)
+	{
+	  q = pt_append_nulstring (parser, q, " parallel_enable");
 	}
     }
 
