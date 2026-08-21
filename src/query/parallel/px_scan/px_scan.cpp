@@ -2027,6 +2027,9 @@ namespace parallel_scan
 	    return S_END;
 	  }
 	  break;
+	  case parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED:
+	    /* benign early-stop: quota met, merged list already holds the first N rows. */
+	    break;
 	  default:
 	    break;
 	  }

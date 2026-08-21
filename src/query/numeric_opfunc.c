@@ -1353,8 +1353,16 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUM
 
       numeric_coerce_num_to_int (arg1, &int_arg1, arg1_value_is_negative);
       numeric_coerce_num_to_int (arg2, &int_arg2, arg2_value_is_negative);
-      numeric_coerce_int_to_num ((int_arg1 / int_arg2), answer, NULL);
-      numeric_coerce_int_to_num ((int_arg1 % int_arg2), remainder, NULL);
+      if (OR_CHECK_INT_DIV_OVERFLOW (int_arg1, int_arg2))
+	{
+	  numeric_coerce_bigint_to_num ((DB_BIGINT) int_arg1 / int_arg2, answer, NULL);
+	  numeric_coerce_bigint_to_num ((DB_BIGINT) int_arg1 % int_arg2, remainder, NULL);
+	}
+      else
+	{
+	  numeric_coerce_int_to_num ((int_arg1 / int_arg2), answer, NULL);
+	  numeric_coerce_int_to_num ((int_arg1 % int_arg2), remainder, NULL);
+	}
     }
 
   /* Case 4 - arg1, arg2 fit in DB_BIGINT. Do machine divide.
@@ -1367,8 +1375,15 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUM
 
       numeric_coerce_num_to_bigint (arg1, 0, &bi_arg1, arg1_value_is_negative);
       numeric_coerce_num_to_bigint (arg2, 0, &bi_arg2, arg2_value_is_negative);
-      numeric_coerce_bigint_to_num ((bi_arg1 / bi_arg2), answer, NULL);
-      numeric_coerce_bigint_to_num ((bi_arg1 % bi_arg2), remainder, NULL);
+      if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi_arg1, bi_arg2))
+	{
+	  numeric_long_div (arg1, arg2, answer, remainder, false);
+	}
+      else
+	{
+	  numeric_coerce_bigint_to_num ((bi_arg1 / bi_arg2), answer, NULL);
+	  numeric_coerce_bigint_to_num ((bi_arg1 % bi_arg2), remainder, NULL);
+	}
     }
 
   /* Default case: perform long division */
