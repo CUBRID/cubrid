@@ -11402,6 +11402,13 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	      class_oid = db_get_oid (valp);
 
+	      if (mvcc_reev_class != NULL)
+		{
+		  /* this class's own row, the way the UPDATE path binds it.  Binding it later, from the
+		   * loop over the classes being deleted, would hand every entry the target's OID. */
+		  mvcc_reev_class->inst_oid = oid;
+		}
+
 	      if (class_oid_idx < class_oid_cnt)
 		{
 		  internal_class = &internal_classes[class_oid_idx];
@@ -11495,12 +11502,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  mvcc_reev_class = NULL;
 		}
 	      mvcc_upddel_reev_data.curr_upddel = mvcc_reev_class;
-	      if (mvcc_reev_class != NULL)
-		{
-		  /* the reevaluation dereferences inst_oid at force time; left unbound, the predicate is
-		   * never re-checked */
-		  mvcc_reev_class->inst_oid = oid;
-		}
+	      /* inst_oid was bound per class while scanning; do not overwrite it with the target's */
 
 	      if (oid == NULL)
 		{
