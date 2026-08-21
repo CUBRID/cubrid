@@ -1997,7 +1997,7 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 	   *    When the grants column in the _db_authorization catalog is empty.
 	   * 2. db_get_object(&element) != obj_mop: Indicates that permissions exist for other objects but not for the current one
 	   *    When the grants column in the _db_authorization catalog contains permissions for other objects
-	   *    (such as classes,  procedures, and pacakges), but lacks permissions for the obj_mop object.
+	   *    (such as classes,  procedures, and packages), but lacks permissions for the obj_mop object.
 	   */
 	  if (error == NO_ERROR && *grantor == NULL)
 	    {
@@ -2083,7 +2083,7 @@ au_check_execute_authorization (MOP obj_mop, DB_OBJECT_TYPE obj_type)
     {
       if (*bits == AU_CACHE_INVALID)
 	{
-	  error = db_get (obj_mop, CT_ATTR_OWNER, &owner);
+	  error = db_get (obj_mop, CT_COMMON_ATTR_OWNER, &owner);
 	  owner_mop = db_get_object (&owner);
 
 	  /* update the cache and try again */

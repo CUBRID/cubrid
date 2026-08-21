@@ -104,9 +104,8 @@
 #define CT_DBCHARSET_CHAR_SIZE		  "char_size"
 
 // common to many system tables and views
-#define CT_ATTR_UNIQUE_NAME             "unique_name"
-#define CT_ATTR_OWNER                   "owner"
-#define CT_ATTR_COMMENT                 "comment"
+#define CT_COMMON_ATTR_UNIQUE_NAME             "unique_name"
+#define CT_COMMON_ATTR_OWNER                   "owner"
 
 
 /*

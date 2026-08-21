@@ -629,7 +629,7 @@ jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
   AU_SAVE_AND_DISABLE (save);
 
   /* check type */
-  err = db_get (mop_p, CT_ATTR_UNIQUE_NAME, &value);
+  err = db_get (mop_p, CT_COMMON_ATTR_UNIQUE_NAME, &value);
   if (err != NO_ERROR)
     {
       AU_RESTORE (save);
