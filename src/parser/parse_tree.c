@@ -105,6 +105,10 @@ struct parser_string_block
   } u;
 };
 
+/* the overhead estimate must keep a default block, plus malloc's own bookkeeping, inside one 8KB allocation */
+static_assert (sizeof (PARSER_STRING_BLOCK) + 2 * sizeof (size_t) <= 8192,
+	       "a default string block must fit in one 8KB allocation");
+
 /* pointer to the last string placed in the block */
 #define BLOCK_LAST_STRING(b) (&(b)->u.chars[(b)->last_string_start])
 
