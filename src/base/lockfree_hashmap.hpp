@@ -151,7 +151,7 @@ namespace lockfree
       T *&get_bucket (Key &key);
       tran::descriptor &get_tran_descriptor (tran::index tran_index);
 
-      void list_find (tran::index tran_index, T *list_head, Key &key, int *behavior_flags, T *&found_node);
+      void list_find (tran::index tran_index, T *&list_head, Key &key, int *behavior_flags, T *&found_node);
       bool list_insert_internal (tran::index tran_index, T *&list_head, Key &key, int *behavior_flags,
 				 T *&found_node);
       bool list_delete (tran::index tran_index, T *&list_head, Key &key, T *locked_entry, int *behavior_flags);
@@ -821,7 +821,7 @@ namespace lockfree
 
   template <class Key, class T>
   void
-  hashmap<Key, T>::list_find (tran::index tran_index, T *list_head, Key &key, int *behavior_flags, T *&entry)
+  hashmap<Key, T>::list_find (tran::index tran_index, T *&list_head, Key &key, int *behavior_flags, T *&entry)
   {
     tran::descriptor &tdes = get_tran_descriptor (tran_index);
     T *curr = NULL;
@@ -830,6 +830,10 @@ namespace lockfree
     /* by default, not found */
     entry = NULL;
 
+    // before the head is read, never after: list_head is the bucket slot, and a head loaded outside the
+    // transaction can be unlinked, retired and reclaimed while this thread is invisible to
+    // compute_min_active_tranid (). lf_list_find () takes the slot by address for the same reason and reads it
+    // at :1247, after lf_tran_start_with_mb (). Taking it by value here dropped that ordering.
     tdes.start_tran ();
     bool restart_search = true;
 
