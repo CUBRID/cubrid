@@ -68,6 +68,9 @@ struct pt_class_locks
   int *only_all;
   LOCK *locks;
   LC_PREFETCH_FLAGS *flags;
+  /* Filled in by the server: the name request i resolved to, when the statement left the
+   * owner out and the class turned out to live in another schema. NULL means unchanged. */
+  const char **resolved_names;
 };
 
 enum pt_order_by_adjustment
@@ -79,10 +82,9 @@ enum pt_order_by_adjustment
 static PT_NODE *pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement, VIEW_HANDLING how);
 static PT_NODE *pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spec, LC_PREFETCH_FLAGS flags);
-static void pt_rewrite_resolved_name (PARSER_CONTEXT * parser, PT_NODE * name, struct pt_resolved_names *rn);
+static void pt_rewrite_resolved_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_CLASS_LOCKS * lcks);
 static PT_NODE *pt_rewrite_resolved_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static void pt_apply_resolved_names (PARSER_CONTEXT * parser, PT_NODE * statement, PT_CLASS_LOCKS * lcks,
-				     const char **resolved_names);
+static void pt_apply_resolved_names (PARSER_CONTEXT * parser, PT_NODE * statement, PT_CLASS_LOCKS * lcks);
 static PT_NODE *pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node, PT_CLASS_LOCKS * locks);
 static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags);
@@ -409,25 +411,15 @@ pt_compile (PARSER_CONTEXT * parser, PT_NODE * volatile statement)
 }
 
 
-/* argument for pt_rewrite_resolved_spec */
-typedef struct pt_resolved_names PT_RESOLVED_NAMES;
-struct pt_resolved_names
-{
-  PT_CLASS_LOCKS *lcks;
-  const char **resolved_names;
-};
-
 /*
- * pt_rewrite_resolved_spec () - parser_walk_tree callback; point one spec at the class
- *                               that was actually locked for it
- *   return: node
+ * pt_rewrite_resolved_name () - Give one name the owner it resolved to
+ *   return: void
  *   parser(in):
- *   node(in): the node to check, returns node unchanged
- *   arg(in): pointer to PT_RESOLVED_NAMES
- *   continue_walk(in):
+ *   name(in/out): candidate node; ignored unless it is a name whose owner was defaulted
+ *   lcks(in): the request that was sent, carrying the resolved names
  */
 static void
-pt_rewrite_resolved_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_RESOLVED_NAMES * rn)
+pt_rewrite_resolved_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_CLASS_LOCKS * lcks)
 {
   int i;
 
@@ -436,43 +428,44 @@ pt_rewrite_resolved_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_RESOLVED_N
       return;
     }
 
-  for (i = 0; i < rn->lcks->num_classes; i++)
+  for (i = 0; i < lcks->num_classes; i++)
     {
-      if (rn->resolved_names[i] == NULL || rn->lcks->classes[i] == NULL)
-	{
-	  continue;
-	}
-
       /* Match on the name that was sent, which is what this node still carries. */
-      if (intl_identifier_casecmp (rn->lcks->classes[i], name->info.name.original) == 0)
+      if (lcks->resolved_names[i] != NULL && intl_identifier_casecmp (lcks->classes[i], name->info.name.original) == 0)
 	{
-	  name->info.name.original = pt_append_string (parser, NULL, rn->resolved_names[i]);
-	  /* The owner is settled now; nothing downstream should default it again. */
+	  name->info.name.original = pt_append_string (parser, NULL, lcks->resolved_names[i]);
 	  name->info.name.owner_defaulted = 0;
 	  break;
 	}
     }
 }
 
+/*
+ * pt_rewrite_resolved_spec () - parser_walk_tree callback; point the statement at the
+ *                               classes that were really locked for it
+ *   return: node
+ *   parser(in):
+ *   node(in): the node to check, returns node unchanged
+ *   arg(in/out): pointer to PT_CLASS_LOCKS
+ *   continue_walk(in):
+ */
 static PT_NODE *
 pt_rewrite_resolved_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_RESOLVED_NAMES *rn = (PT_RESOLVED_NAMES *) arg;
+  PT_CLASS_LOCKS *lcks = (PT_CLASS_LOCKS *) arg;
   PT_NODE *name;
 
   if (node->node_type == PT_SPEC)
     {
-      pt_rewrite_resolved_name (parser, node->info.spec.entity_name, rn);
-      return node;
+      pt_rewrite_resolved_name (parser, node->info.spec.entity_name, lcks);
     }
-
-  if (node->node_type == PT_DELETE)
+  else if (node->node_type == PT_DELETE)
     {
       /* DELETE names its targets a second time, outside the spec list, and name resolution
        * reads that list rather than the spec. Both have to point at the same class. */
       for (name = node->info.delete_.target_classes; name != NULL; name = name->next)
 	{
-	  pt_rewrite_resolved_name (parser, name, rn);
+	  pt_rewrite_resolved_name (parser, name, lcks);
 	}
     }
 
@@ -480,47 +473,33 @@ pt_rewrite_resolved_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 }
 
 /*
- * pt_apply_resolved_names () - Rewrite every owner-omitted spec that resolved in another
- *                              schema to name that schema explicitly
+ * pt_apply_resolved_names () - Rewrite the names that resolved in another schema
  *   return: void
  *   parser(in):
  *   statement(in/out):
- *   lcks(in): the lock/prefetch request that was sent
- *   resolved_names(in): per-request resolved names, NULL entry meaning "unchanged"
+ *   lcks(in): the request that was sent, carrying the resolved names
  *
- * Note: Does nothing at all unless some request actually resolved elsewhere, which is the
- *       case for every statement on a database that was never upgraded from before user
- *       schemas.
+ * Note: Walks the statement only when something actually resolved elsewhere, so a
+ *       statement that resolves the way it always did is not walked at all.
  */
 static void
-pt_apply_resolved_names (PARSER_CONTEXT * parser, PT_NODE * statement, PT_CLASS_LOCKS * lcks,
-			 const char **resolved_names)
+pt_apply_resolved_names (PARSER_CONTEXT * parser, PT_NODE * statement, PT_CLASS_LOCKS * lcks)
 {
-  PT_RESOLVED_NAMES rn;
   int i;
 
-  if (resolved_names == NULL || lcks->classes == NULL || pt_has_error (parser))
+  if (pt_has_error (parser))
     {
       return;
     }
 
   for (i = 0; i < lcks->num_classes; i++)
     {
-      if (resolved_names[i] != NULL)
+      if (lcks->resolved_names[i] != NULL)
 	{
-	  break;
+	  (void) parser_walk_tree (parser, statement, pt_rewrite_resolved_spec, lcks, NULL, NULL);
+	  return;
 	}
     }
-
-  if (i == lcks->num_classes)
-    {
-      return;
-    }
-
-  rn.lcks = lcks;
-  rn.resolved_names = resolved_names;
-
-  (void) parser_walk_tree (parser, statement, pt_rewrite_resolved_spec, &rn, NULL, NULL);
 }
 
 /*
@@ -554,12 +533,12 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *node = NULL;
   LOCK lock_rr_tran = NULL_LOCK;
   LC_FIND_CLASSNAME find_result;
-  const char **resolved_names = NULL;
 
   lcks.classes = NULL;
   lcks.only_all = NULL;
   lcks.locks = NULL;
   lcks.flags = NULL;
+  lcks.resolved_names = NULL;
 
   /* we don't pre fetch for non query statements */
   if (statement == NULL)
@@ -665,26 +644,24 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   memset (lcks.flags, 0, lcks.num_classes * sizeof (LC_PREFETCH_FLAGS));
 
-  /* reset so parser_walk_tree can step through arrays */
-  lcks.num_classes = 0;
-
-  (void) parser_walk_tree (parser, statement, pt_find_lck_classes, &lcks, NULL, NULL);
-
-  /* Slot i receives the name request i actually resolved to, when the statement left the
-   * owner out and the class turned out to live in another schema. NULL for every request
-   * that resolved the way it always did. */
-  resolved_names = (const char **) calloc (lcks.num_classes > 0 ? lcks.num_classes : 1, sizeof (const char *));
-  if (resolved_names == NULL)
+  lcks.resolved_names = (const char **) malloc (lcks.num_classes * sizeof (const char *));
+  if (lcks.resolved_names == NULL)
     {
       PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		  lcks.num_classes * sizeof (const char *));
       goto cleanup;
     }
+  memset (lcks.resolved_names, 0, lcks.num_classes * sizeof (const char *));
+
+  /* reset so parser_walk_tree can step through arrays */
+  lcks.num_classes = 0;
+
+  (void) parser_walk_tree (parser, statement, pt_find_lck_classes, &lcks, NULL, NULL);
 
   if (!pt_has_error (parser)
       && (find_result =
 	  locator_lockhint_classes (lcks.num_classes, (const char **) lcks.classes, lcks.locks, lcks.only_all,
-				    lcks.flags, true, lock_rr_tran, resolved_names)) != LC_CLASSNAME_EXIST)
+				    lcks.flags, true, lock_rr_tran, lcks.resolved_names)) != LC_CLASSNAME_EXIST)
     {
       if (find_result == LC_CLASSNAME_ERROR
 	  && (er_errid () == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED))
@@ -702,11 +679,10 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
       PT_ERRORc (parser, statement, db_error_string (3));
     }
 
-  /* Point the statement at the classes that were really locked, before anything reads a
-   * class off it. Doing it here means name resolution, XASL generation and the printed
-   * form that keys the plan cache all see one and the same class. Must run while
-   * lcks.classes is still ours: the names sent are what the specs are matched against. */
-  pt_apply_resolved_names (parser, statement, &lcks, resolved_names);
+  /* Before anything reads a class off the statement, so that name resolution, XASL
+   * generation and the printed form that keys the plan cache all see the same class.
+   * Must run while lcks.classes is still ours; the specs are matched against it. */
+  pt_apply_resolved_names (parser, statement, &lcks);
 
   /* free already assigned parser->lcks_classes if exist */
   parser_free_lcks_classes (parser);
@@ -719,9 +695,9 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   (void) parser_walk_tree (parser, statement, pt_set_class_chn, NULL, NULL, NULL);
 
 cleanup:
-  if (resolved_names)
+  if (lcks.resolved_names)
     {
-      free_and_init (resolved_names);
+      free_and_init (lcks.resolved_names);
     }
 
   if (lcks.classes)
@@ -918,9 +894,6 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
   if (spec->info.spec.entity_name != NULL && spec->info.spec.entity_name->node_type == PT_NAME
       && spec->info.spec.entity_name->info.name.owner_defaulted)
     {
-      /* Tell the server the qualifier in this name is only the connecting user, filled in
-       * because the statement named no owner. It may then look in the other schemas when
-       * that user owns nothing by this name. */
       flags = (LC_PREFETCH_FLAGS) (flags | LC_PREF_FLAG_OWNER_OMITTED);
     }
 

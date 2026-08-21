@@ -6076,14 +6076,8 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
  *   resolved_names(out): Slot i receives the resolved name when request i named a class
  *                        in a schema other than the one it asked for, NULL otherwise
  *
- * Note: A request flagged LC_PREF_FLAG_OWNER_OMITTED carries the connecting user as its
- *       qualifier, and the server may have satisfied it from another schema. The caller
- *       needs the name it landed on -- to rewrite the statement, so that everything
- *       downstream, plan cache key included, refers to the class that was actually locked.
- *
- *       No extra server request is needed for this. The reply describes the classes in
- *       request order, skipping the requests the server never looked at, and the class
- *       objects themselves are already here, each carrying its own name.
+ * Note: Costs no extra server request: the reply describes the classes in request order,
+ *       and a class object carries its own name.
  *
  *       Call only when every request was found. A request that failed occupies no slot in
  *       the reply, which would shift everything after it.
@@ -6104,7 +6098,7 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
 
       resolved_names[i] = NULL;
 
-      /* Mirror the requests the server passes over, so that slot keeps step with it. */
+      /* Mirror the requests the server passes over, so slot keeps step with it. */
       if (requested == NULL || !(flags[i] & LC_PREF_FLAG_LOCK))
 	{
 	  continue;
@@ -6129,8 +6123,8 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
 	  continue;
 	}
 
-      /* A null OID here means this request named the same class as an earlier one, which
-       * the server merges into that earlier slot. The earlier request carries the name. */
+      /* Null OID means the server merged this request into an earlier slot naming the
+       * same class; that earlier request carries the name. */
       if (OID_ISNULL (&lockhint->classes[my_slot].oid))
 	{
 	  continue;

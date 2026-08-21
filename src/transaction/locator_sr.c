@@ -127,17 +127,10 @@ struct locator_return_nxobj
 
 bool locator_Dont_check_foreign_key = false;
 
-/* Primary index: full name -> entry. One probe resolves a qualified name, which is what
- * nearly every compile asks for. The key is the entry's own e_name, so nothing is stored
- * twice: the full name has to exist anyway for error messages, dump, checkdb and the
- * client protocol, all of which name a class by "qualifier.name". */
+/* Two indexes over one set of entries: full name for a qualified lookup, bare name to
+ * answer "who owns something called X?". Both keys point into the entry's own e_name, so
+ * neither index allocates or frees a key. */
 static MHT_TABLE *locator_Mht_classnames = NULL;
-
-/* Secondary index: bare name -> every entry carrying that bare name, one per qualifier.
- * Serves the one question the primary cannot answer -- "who owns something called X?" --
- * which is what resolving an owner-omitted name needs. Duplicate keys are the point here,
- * hence the mht_put2/mht_get2/mht_rem2 family. Both indexes point at the same entries;
- * an entry is allocated once and never copied. */
 static MHT_TABLE *locator_Mht_classnames_bare = NULL;
 
 static const HFID NULL_HFID = { {-1, -1}, -1 };
@@ -151,10 +144,11 @@ static int locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *clas
 static void locator_split_classname (const char *name, const char **bare_name, int *qualifier_len);
 static LOCATOR_CLASSNAME_ENTRY *locator_get_classname_entry (const char *classname);
 static int locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
-static int locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
+static void locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
+static LOCATOR_CLASSNAME_ENTRY *locator_chase_synonym_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static int locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_name,
-					      const char *skip_qualifier, int skip_qualifier_len,
-					      LOCATOR_CLASSNAME_ENTRY ** candidates, int max_cand);
+					      const char *skip_name, LOCATOR_CLASSNAME_ENTRY ** candidates,
+					      int max_cand);
 static void locator_free_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static int locator_classname_action_push (LOCATOR_CLASSNAME_ENTRY * entry);
 static void locator_classname_action_restore (LOCATOR_CLASSNAME_ENTRY * entry);
@@ -350,68 +344,84 @@ locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 /*
  * locator_unlink_classname_entry () - Withdraw an entry from both name indexes
  *
- * return: NO_ERROR if all OK, ER_ status otherwise
- *
  *   entry(in): Entry to unlink; the entry itself is not freed here
  *
  * Note: The caller must be inside CSECT_LOCATOR_SR_CLASSNAME_TABLE.
  */
-static int
+static void
 locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 {
   (void) mht_rem (locator_Mht_classnames, entry->e_name, NULL, NULL);
 
-  /* mht_rem would drop whichever entry with this bare name comes first in the bucket;
-   * only mht_rem2 removes the one we actually mean. */
+  /* mht_rem drops whichever entry with this bare name comes first; only mht_rem2 takes
+   * the one we mean. */
   (void) mht_rem2 (locator_Mht_classnames_bare, entry->e_bare_name, entry, NULL, NULL);
-
-  return NO_ERROR;
 }
 
 /*
- * locator_find_bare_name_candidates () - Collect entries whose bare name matches, owned by
- *                                        someone other than the given qualifier
+ * locator_chase_synonym_entry () - Follow a synonym entry to the entry it names
+ *
+ * return: The target entry, or entry itself when it is not a synonym, or NULL when the
+ *         target is missing or is itself a synonym
+ *
+ *   entry(in): Entry to resolve
+ *
+ * Note: The caller must be inside CSECT_LOCATOR_SR_CLASSNAME_TABLE.
+ *
+ *       One hop only, mirroring sm_find_class_with_purpose () on the client.
+ */
+static LOCATOR_CLASSNAME_ENTRY *
+locator_chase_synonym_entry (LOCATOR_CLASSNAME_ENTRY * entry)
+{
+  if (entry == NULL || entry->e_type != LC_ENTRY_SYNONYM)
+    {
+      return entry;
+    }
+
+  assert (entry->e_current.synonym_target != NULL);
+
+  entry = locator_get_classname_entry (entry->e_current.synonym_target);
+
+  return (entry != NULL && entry->e_type == LC_ENTRY_SYNONYM) ? NULL : entry;
+}
+
+/*
+ * locator_find_bare_name_candidates () - Collect entries whose bare name matches, under a
+ *                                        name other than the one already probed
  *
  * return: Number of candidates collected; stops at max_cand
  *
  *   thread_p(in):
  *   bare_name(in): Bare name to look for
- *   skip_qualifier(in): Qualifier already tried; its entry is not a candidate
- *   skip_qualifier_len(in): Length of skip_qualifier
+ *   skip_name(in): Full name already probed; its entry is not a candidate
  *   candidates(out): Array receiving the candidates
  *   max_cand(in): Capacity of candidates; collection stops once reached
  *
  * Note: The caller must be inside CSECT_LOCATOR_SR_CLASSNAME_TABLE.
  *
- *       Callers only need to tell "none" from "exactly one" from "more than one", so
- *       max_cand of 2 is enough and the walk stops there. That keeps the cost independent
- *       of how many users happen to own something with this bare name -- which in the
- *       field can be one per tenant.
+ *       Telling "none" from "one" from "more than one" is all any caller needs, so this
+ *       stops at max_cand rather than counting. That is what keeps the cost independent of
+ *       how many users own something by this bare name -- in the field, one per tenant.
  */
 static int
-locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_name, const char *skip_qualifier,
-				   int skip_qualifier_len, LOCATOR_CLASSNAME_ENTRY ** candidates, int max_cand)
+locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_name, const char *skip_name,
+				   LOCATOR_CLASSNAME_ENTRY ** candidates, int max_cand)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   void *last = NULL;
   int num_cand = 0;
 
-  assert (bare_name != NULL && candidates != NULL && max_cand > 0);
-
   for (entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get2 (locator_Mht_classnames_bare, bare_name, &last);
        entry != NULL && num_cand < max_cand;
        entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get2 (locator_Mht_classnames_bare, bare_name, &last))
     {
-      if (entry->e_qualifier_len == skip_qualifier_len
-	  && (skip_qualifier_len == 0 || memcmp (entry->e_name, skip_qualifier, skip_qualifier_len) == 0))
+      if (strcmp (entry->e_name, skip_name) == 0)
 	{
-	  /* The qualifier the caller already probed. */
 	  continue;
 	}
 
-      /* A name reserved by a transaction that has not committed yet is not a candidate:
-       * resolving to it would let one session's uncommitted DDL steer another session's
-       * query. Deleted entries are likewise not candidates. */
+      /* A name another transaction only reserved is not a candidate: resolving to it would
+       * let uncommitted DDL steer this query. Nor is one already deleted. */
       if (!locator_is_exist_class_name_entry (thread_p, entry))
 	{
 	  continue;
@@ -937,12 +947,8 @@ locator_finalize (THREAD_ENTRY * thread_p)
   mht_destroy (locator_Mht_classnames);
   locator_Mht_classnames = NULL;
 
-  /* locator_force_drop_class_name_entry already withdrew every entry from this index. */
-  if (locator_Mht_classnames_bare != NULL)
-    {
-      mht_destroy (locator_Mht_classnames_bare);
-      locator_Mht_classnames_bare = NULL;
-    }
+  mht_destroy (locator_Mht_classnames_bare);
+  locator_Mht_classnames_bare = NULL;
 
   csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
@@ -1240,7 +1246,7 @@ start:
 	    {
 	      locator_decr_num_transient_classnames (entry->e_tran_index);
 
-	      (void) locator_unlink_classname_entry (entry);
+	      locator_unlink_classname_entry (entry);
 	      locator_free_classname_entry (entry);
 	    }
 	  else
@@ -2433,7 +2439,7 @@ locator_force_drop_one_entry (THREAD_ENTRY * thread_p, LOCATOR_CLASSNAME_ENTRY *
       locator_classname_action_restore (entry);
     }
 
-  (void) locator_unlink_classname_entry (entry);
+  locator_unlink_classname_entry (entry);
   locator_free_classname_entry (entry);
 
   (void) catcls_remove_entry (thread_p, &class_oid);
@@ -12042,13 +12048,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 		      && entry->e_current.action != LC_CLASSNAME_DELETED_RENAME))
 		{
 		  /* a visible synonym: prefetch and lock its target class instead */
-		  assert (entry->e_current.synonym_target != NULL);
-		  entry = locator_get_classname_entry (entry->e_current.synonym_target);
-		  if (entry != NULL && entry->e_type == LC_ENTRY_SYNONYM)
-		    {
-		      /* synonym chains do not resolve */
-		      entry = NULL;
-		    }
+		  entry = locator_chase_synonym_entry (entry);
 		}
 	      /* other cases (a transient synonym of another transaction, or one deleted by the current
 	       * transaction) follow the generic entry handling below */
@@ -12144,36 +12144,21 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 
 	      locator_split_classname (classname, &bare_name, &qualifier_len);
 	      num_cand =
-		locator_find_bare_name_candidates (thread_p, bare_name, classname, qualifier_len, candidates, 2);
+		locator_find_bare_name_candidates (thread_p, bare_name, classname, candidates,
+						   sizeof (candidates) / sizeof (candidates[0]));
 
-	      if (num_cand == 1)
+	      if (num_cand > 1)
 		{
-		  entry = candidates[0];
-		  if (entry->e_type == LC_ENTRY_SYNONYM)
-		    {
-		      assert (entry->e_current.synonym_target != NULL);
-		      entry = locator_get_classname_entry (entry->e_current.synonym_target);
-		      if (entry != NULL && entry->e_type == LC_ENTRY_SYNONYM)
-			{
-			  /* synonym chains do not resolve */
-			  entry = NULL;
-			}
-		    }
-		}
-
-	      if (num_cand == 1 && entry != NULL)
-		{
-		  COPY_OID (&(*hlock)->classes[n].oid, &entry->e_current.oid);
-		  assert (find == LC_CLASSNAME_EXIST);
-		}
-	      else if (num_cand > 1)
-		{
-		  /* Two owners is already enough to know the name is ambiguous; which other
-		   * owners exist does not change the answer. Report both that were found so
-		   * the user can qualify the name. */
+		  /* Two owners already settle it; the rest cannot change the answer. Name both
+		   * so the user can qualify. */
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_AMBIGUOUS_CLASSNAME, 3, bare_name,
 			  candidates[0]->e_name, candidates[1]->e_name);
 		  allfind = find = LC_CLASSNAME_ERROR;
+		}
+	      else if (num_cand == 1 && (entry = locator_chase_synonym_entry (candidates[0])) != NULL)
+		{
+		  COPY_OID (&(*hlock)->classes[n].oid, &entry->e_current.oid);
+		  assert (find == LC_CLASSNAME_EXIST);
 		}
 	      else
 		{
