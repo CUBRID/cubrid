@@ -1627,6 +1627,8 @@ typedef enum
  * Type definitions
  */
 
+typedef struct parser_string_block PARSER_STRING_BLOCK;	/* defined in parse_tree.c */
+
 typedef struct parser_varchar PARSER_VARCHAR;
 
 typedef struct parser_context PARSER_CONTEXT;
@@ -3875,7 +3877,7 @@ struct parser_context
   PT_CASECMP_FUN casecmp;	/* for case insensitive comparisons */
 
   int id;			/* internal parser id */
-  void *string_blocks;		/* this parser's string block list (PARSER_STRING_BLOCK, private to parse_tree.c) */
+  PARSER_STRING_BLOCK *string_blocks;	/* this parser's string block list (private to parse_tree.c) */
   int statement_number;		/* user-initialized, incremented by parser */
 
   const char *original_buffer;	/* pointer to the original parse buffer */

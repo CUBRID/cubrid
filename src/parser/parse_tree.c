@@ -63,6 +63,10 @@
  * few still catch a smaller request fitting a recent block's tail.
  */
 #define STRING_BLOCK_SCAN_LIMIT 8
+
+/* room reserved past an unusually large string, so later appends can still extend it in place */
+#define LARGE_STRING_APPEND_ROOM 1001
+
 #define HASH_NUMBER 128
 #define NODES_PER_BLOCK 256
 
@@ -82,7 +86,6 @@ struct parser_node_free_list
   int parser_id;
 };
 
-typedef struct parser_string_block PARSER_STRING_BLOCK;
 struct parser_string_block
 {
   PARSER_STRING_BLOCK *next;
@@ -203,8 +206,9 @@ static int parser_id = 1;
 static PT_NODE *parser_create_node_block (const PARSER_CONTEXT * parser);
 static void pt_free_node_blocks (const PARSER_CONTEXT * parser);
 static PARSER_STRING_BLOCK *parser_create_string_block (const PARSER_CONTEXT * parser, const int length);
-static void pt_free_a_string_block (const PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * string_to_free);
+static void pt_free_a_string_block (const PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block);
 static PARSER_STRING_BLOCK *pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string);
+static PARSER_STRING_BLOCK *pt_find_block_with_room (const PARSER_CONTEXT * parser, const int length, const int align);
 static char *pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
 				   const int wrap_with_single_quote);
 static PARSER_VARCHAR *pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
@@ -373,6 +377,33 @@ pt_free_node_blocks (const PARSER_CONTEXT * parser)
 }
 
 /*
+ * pt_find_block_with_room () - scans the newest few blocks of the parser's own
+ * list for one whose aligned placement of a new string stays within the block
+ *   return: a block with room, or NULL if none of the scanned blocks fits
+ *   parser(in):
+ *   length(in): length of the string to place
+ *   align(in): alignment the placement will round up to
+ */
+static PARSER_STRING_BLOCK *
+pt_find_block_with_room (const PARSER_CONTEXT * parser, const int length, const int align)
+{
+  PARSER_STRING_BLOCK *candidate;
+  int scanned;
+
+  /* the list holds only this parser's blocks, newest first */
+  for (candidate = parser->string_blocks, scanned = 0;
+       candidate != NULL && scanned < STRING_BLOCK_SCAN_LIMIT; candidate = candidate->next, scanned++)
+    {
+      if (DB_ALIGN (candidate->last_string_end + 1, align) + length <= candidate->block_end)
+	{
+	  return candidate;
+	}
+    }
+
+  return NULL;
+}
+
+/*
  * parser_create_string_block () - creates a new block of strings, links the block
  * on the parser's own list, and returns the block
  *   return:
@@ -383,55 +414,45 @@ static PARSER_STRING_BLOCK *
 parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
 {
   PARSER_STRING_BLOCK *block;
+  size_t alloc_size;
+  int block_end;
 
   if (length < (int) STRINGS_PER_BLOCK)
     {
-      block = (PARSER_STRING_BLOCK *) malloc (sizeof (PARSER_STRING_BLOCK));
-      if (!block)
-	{
-	  if (parser->jmp_env_active)
-	    {
-	      /* long jump back to routine that set up the jump env for clean up and run down. */
-	      longjmp (((PARSER_CONTEXT *) parser)->jmp_env, 1);
-	    }
-	  else
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PARSER_STRING_BLOCK));
-	      return NULL;
-	    }
-	}
-      block->block_end = STRINGS_PER_BLOCK - 1;
+      alloc_size = sizeof (PARSER_STRING_BLOCK);
+      block_end = STRINGS_PER_BLOCK - 1;
     }
   else
     {
-      /* This is an unusually large string. Allocate a special block for it, with space for one string, plus some space
-       * for appending to. */
-      block = (PARSER_STRING_BLOCK *) malloc (sizeof (PARSER_STRING_BLOCK) + (length + 1001 - STRINGS_PER_BLOCK));
-      if (!block)
-	{
-	  if (parser->jmp_env_active)
-	    {
-	      /* long jump back to routine that set up the jump env for clean up and run down. */
-	      longjmp (((PARSER_CONTEXT *) parser)->jmp_env, 1);
-	    }
-	  else
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (sizeof (PARSER_STRING_BLOCK) + (length + 1001 - STRINGS_PER_BLOCK)));
-	      return NULL;
-	    }
-	}
-      block->block_end = CAST_BUFLEN (length + 1001 - 1);
+      /* This is an unusually large string.
+       * Allocate a special block for it, with space for one string, plus some space for appending to. */
+      alloc_size = sizeof (PARSER_STRING_BLOCK) + (length + LARGE_STRING_APPEND_ROOM - STRINGS_PER_BLOCK);
+      block_end = CAST_BUFLEN (length + LARGE_STRING_APPEND_ROOM - 1);
     }
 
+  block = (PARSER_STRING_BLOCK *) malloc (alloc_size);
+  if (!block)
+    {
+      if (parser->jmp_env_active)
+	{
+	  /* long jump back to routine that set up the jump env for clean up and run down. */
+	  longjmp (((PARSER_CONTEXT *) parser)->jmp_env, 1);
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+	  return NULL;
+	}
+    }
+
+  block->block_end = block_end;
   block->last_string_start = -1;
   block->last_string_end = -1;
   block->u.chars[0] = 0;
 
-  /* link on the parser's own list, newest first. The list is private to the
-   * parser -- and to its thread -- so no lock; the newest block is the one
-   * with room, so the allocation scan usually stops at the first node. */
-  block->next = (PARSER_STRING_BLOCK *) parser->string_blocks;
+  /* link on the parser's own list, newest first.
+   * The newest block is the one with room, so the allocation scan usually stops at the first node. */
+  block->next = parser->string_blocks;
   ((PARSER_CONTEXT *) parser)->string_blocks = block;
 
   return block;
@@ -455,25 +476,13 @@ parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
 void *
 parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align)
 {
-  PARSER_STRING_BLOCK *block, *candidate;
-  int scanned;
+  PARSER_STRING_BLOCK *block;
 
-
-  /* the parser's own list holds only its blocks, newest first; look at the newest few */
-  block = NULL;
-  for (candidate = (PARSER_STRING_BLOCK *) parser->string_blocks, scanned = 0;
-       candidate != NULL && scanned < STRING_BLOCK_SCAN_LIMIT; candidate = candidate->next, scanned++)
-    {
-      if ((candidate->block_end - candidate->last_string_end) >= (length + (align - 1) + 1))
-	{
-	  block = candidate;
-	  break;
-	}
-    }
-
+  block = pt_find_block_with_room (parser, length, align);
   if (block == NULL)
     {
-      block = parser_create_string_block (parser, length + (align - 1) + 1);
+      /* a fresh block places at offset 0 with no padding, so the string's own length is the whole need */
+      block = parser_create_string_block (parser, length);
       if (block == NULL)
 	{
 	  return NULL;
@@ -481,7 +490,7 @@ parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, 
     }
 
   /* set start to the aligned length */
-  block->last_string_start = CAST_BUFLEN ((block->last_string_end + (align - 1) + 1) & ~(align - 1));
+  block->last_string_start = CAST_BUFLEN (DB_ALIGN (block->last_string_end + 1, align));
   block->last_string_end = CAST_BUFLEN (block->last_string_start + length);
   block->u.chars[block->last_string_start] = 0;
 
@@ -494,27 +503,27 @@ parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, 
  * 			    the parser's own list and frees the memory
  *   return:
  *   parser(in):
- *   string_to_free(in):
+ *   block(in):
  */
 static void
-pt_free_a_string_block (const PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * string_to_free)
+pt_free_a_string_block (const PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block)
 {
-  PARSER_STRING_BLOCK **previous_string;
-  PARSER_STRING_BLOCK *string;
+  PARSER_STRING_BLOCK **prev;
+  PARSER_STRING_BLOCK *curr;
 
   /* unlink from the parser's own list */
-  previous_string = (PARSER_STRING_BLOCK **) & (((PARSER_CONTEXT *) parser)->string_blocks);
-  string = *previous_string;
-  while (string != NULL && string != string_to_free)
+  prev = &((PARSER_CONTEXT *) parser)->string_blocks;
+  curr = *prev;
+  while (curr != NULL && curr != block)
     {
-      previous_string = &string->next;
-      string = *previous_string;
+      prev = &curr->next;
+      curr = *prev;
     }
 
-  if (string)
+  if (curr)
     {
-      *previous_string = string->next;
-      free_and_init (string);
+      *prev = curr->next;
+      free_and_init (curr);
     }
 }
 
@@ -532,7 +541,7 @@ pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string)
 
   /* the parser's own list; the block being appended to is almost always the
    * newest, so this usually stops at the first node */
-  string = (PARSER_STRING_BLOCK *) parser->string_blocks;
+  string = parser->string_blocks;
   while (string != NULL && &(string->u.chars[string->last_string_start]) != old_string)
     {
       string = string->next;
@@ -1094,7 +1103,7 @@ pt_free_string_blocks (const PARSER_CONTEXT * parser)
   PARSER_STRING_BLOCK *block;
 
   /* the whole list is this parser's; free it outright */
-  block = (PARSER_STRING_BLOCK *) parser->string_blocks;
+  block = parser->string_blocks;
   while (block != NULL)
     {
       PARSER_STRING_BLOCK *next = block->next;
