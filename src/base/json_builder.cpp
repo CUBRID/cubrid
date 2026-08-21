@@ -318,6 +318,23 @@ namespace
     return INDEX_NOT_FOUND;
   }
 
+#if !defined (NDEBUG)
+  /* what index_probe () has to agree with: where a plain scan finds the key */
+  rapidjson::SizeType
+  index_debug_scan (const rapidjson::Value *container, const char *key, size_t len)
+  {
+    rapidjson::SizeType slot = 0;
+    for (rapidjson::Value::ConstMemberIterator m = container->MemberBegin (); m != container->MemberEnd (); ++m, ++slot)
+      {
+	if (m->name.GetStringLength () == len && memcmp (m->name.GetString (), key, len) == 0)
+	  {
+	    return slot;
+	  }
+      }
+    return INDEX_NOT_FOUND;
+  }
+#endif /* !NDEBUG */
+
   void
   index_rebuild (key_index *ix, const rapidjson::Value *container, size_t cells)
   {
@@ -492,7 +509,17 @@ trace_json_object_set_new (trace_json_t *object, const char *key, trace_json_t *
 
   if (o->index != NULL)
     {
+      /* One cell is filled per member, so this is the cheap way to notice that
+       * the container has been changed behind the index's back - by a member
+       * being removed, say, which nothing does today. */
+      assert (o->index->used == container->MemberCount ());
+
       slot = index_probe (o->index, container, key, len, &free_cell);
+
+      /* And this is the thorough way: the index has to answer what the scan it
+       * replaced would have answered. It costs a scan, so only a debug build
+       * pays for it, but every run of the unit tests checks it. */
+      assert (slot == index_debug_scan (container, key, len));
     }
   else
     {
