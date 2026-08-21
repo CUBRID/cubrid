@@ -229,11 +229,12 @@ static void pt_free_node_blocks (const PARSER_CONTEXT * parser);
 static PARSER_STRING_BLOCK *parser_create_string_block (PARSER_CONTEXT * parser, const int length);
 static void pt_free_one_string_block (PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block);
 static PARSER_STRING_BLOCK *pt_find_block_by_last_string (const PARSER_CONTEXT * parser, const char *old_string);
-static PARSER_STRING_BLOCK *pt_find_available_string_block (const PARSER_CONTEXT * parser, const int length, const int align);
+static PARSER_STRING_BLOCK *pt_find_available_string_block (const PARSER_CONTEXT * parser, const int length,
+							    const int align);
 static char *pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
 				   const int wrap_with_single_quote);
-static PARSER_VARCHAR *pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
-					    const char *new_tail, const int new_tail_length);
+static PARSER_VARCHAR *pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const char *new_tail,
+					    const int new_tail_length);
 static int pt_register_parser (const PARSER_CONTEXT * parser);
 static void pt_unregister_parser (const PARSER_CONTEXT * parser);
 static void pt_free_string_blocks (PARSER_CONTEXT * parser);
