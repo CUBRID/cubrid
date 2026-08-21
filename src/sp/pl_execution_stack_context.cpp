@@ -248,10 +248,20 @@ namespace cubpl
   execution_stack::interrupt_handler ()
   {
     bool dummy_continue;
-    if (logtb_is_interrupted (m_thread_p, true, &dummy_continue))
+    bool interrupted = logtb_is_interrupted (m_thread_p, true, &dummy_continue);
+    session *sess = get_session ();
+
+    /* The tran flag is one-shot and px workers consume it (logtb_is_interrupted_tran with clear),
+     * so an SP blocked on the PL server could miss a cancel delivered while parallel jobs were
+     * draining. The session pl interrupt is non-consuming and covers that window. */
+    if (!interrupted && sess != nullptr && sess->is_interrupted ())
+      {
+	interrupted = true;
+      }
+
+    if (interrupted)
       {
 	m_connection->invalidate ();
-	session *sess = get_session ();
 	if (sess)
 	  {
 	    sess->set_local_error_for_interrupt ();
