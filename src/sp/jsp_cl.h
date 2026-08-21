@@ -67,7 +67,6 @@ extern int jsp_get_return_type (const char *name);
 extern int jsp_get_sp_type (const char *name);
 extern MOP jsp_find_stored_procedure (const char *name, DB_AUTH purpose);
 extern MOP jsp_find_package (const char *name, DB_AUTH purpose);
-extern int jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
 extern MOP jsp_find_stored_procedure_code (const char *name);
 extern int jsp_find_sp_of_another_owner (const char *name, MOP * return_mop);
 

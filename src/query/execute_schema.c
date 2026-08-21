@@ -2038,6 +2038,30 @@ error_exit:
 #define GET_STRING(n)   ((char *) (n)->info.value.data_value.str->bytes)
 
 static int
+do_grant_or_revoke_single_obj (DB_OBJECT * user_obj, DB_OBJECT_TYPE obj_type, MOP obj_mop, bool granting,
+			       DB_AUTH db_auth, int grant_option)
+{
+  int error;
+
+  if (obj_mop == NULL)
+    {
+      assert (er_errid () != NO_ERROR);	// error from db_find_class, jsp_find_stored_procedure, or jsp_find_package
+      return er_errid ();
+    }
+
+  if (granting)
+    {
+      error = db_grant_object (obj_type, user_obj, obj_mop, db_auth, grant_option);
+    }
+  else
+    {
+      error = db_revoke_object (obj_type, user_obj, obj_mop, db_auth);
+    }
+
+  return error;
+}
+
+static int
 do_grant_or_revoke_obj_list (DB_OBJECT * user_obj, DB_OBJECT_TYPE obj_type, PT_NODE * obj_list, bool granting,
 			     DB_AUTH db_auth, int grant_option)
 {
@@ -2046,40 +2070,40 @@ do_grant_or_revoke_obj_list (DB_OBJECT * user_obj, DB_OBJECT_TYPE obj_type, PT_N
 
   for (PT_NODE * obj = obj_list; obj != NULL; obj = obj->next)
     {
-      // obj is a class, procedure, or package
-
-      const char *obj_name = obj->info.name.original;
-
       MOP obj_mop = NULL;
-      switch (obj_type)
-	{
-	case DB_OBJECT_CLASS:
-	  obj_mop = db_find_class (obj_name);
-	  break;
-	case DB_OBJECT_PROCEDURE:
-	  obj_mop = jsp_find_stored_procedure (obj_name, DB_AUTH_NONE);
-	  break;
-	case DB_OBJECT_PACKAGE:
-	  obj_mop = jsp_find_package (obj_name, DB_AUTH_NONE);
-	  break;
-	default:
-	  assert (false);
-	}
 
-      if (obj_mop == NULL)
+      if (obj_type == DB_OBJECT_CLASS)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  goto end;
-	}
 
-      if (granting)
-	{
-	  error = db_grant_object (obj_type, user_obj, obj_mop, db_auth, grant_option);
+	  PT_NODE *entity_list = obj->info.spec.flat_entity_list;
+	  for (PT_NODE * entity = entity_list; entity != NULL; entity = entity->next)
+	    {
+	      obj_mop = db_find_class (entity->info.name.original);
+	      error =
+		do_grant_or_revoke_single_obj (user_obj, DB_OBJECT_CLASS, obj_mop, granting, db_auth, grant_option);
+	      if (error != NO_ERROR)
+		{
+		  break;
+		}
+	    }
 	}
       else
 	{
-	  error = db_revoke_object (obj_type, user_obj, obj_mop, db_auth);
+
+	  const char *obj_name = obj->info.name.original;
+	  switch (obj_type)
+	    {
+	    case DB_OBJECT_PROCEDURE:
+	      obj_mop = jsp_find_stored_procedure (obj_name, DB_AUTH_NONE);
+	      break;
+	    case DB_OBJECT_PACKAGE:
+	      obj_mop = jsp_find_package (obj_name, DB_AUTH_NONE);
+	      break;
+	    default:
+	      assert (false);
+	    }
+
+	  error = do_grant_or_revoke_single_obj (user_obj, obj_type, obj_mop, granting, db_auth, grant_option);
 	}
     }
 

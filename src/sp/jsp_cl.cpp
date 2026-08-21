@@ -144,6 +144,7 @@ static int jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_ty
 static int jsp_drop_stored_procedure_code (const char *name);
 
 static MOP jsp_get_package_of_member (const MOP sp_obj);
+static int jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
 
 extern bool ssl_client;
 
@@ -4835,7 +4836,7 @@ jsp_get_package_of_member (const MOP sp_obj)
   return pkg_mop;
 }
 
-int
+static int
 jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 {
   if (au_type != DB_AUTH_EXECUTE)
