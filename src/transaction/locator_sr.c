@@ -13651,10 +13651,27 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
   cls_oid = &mvcc_cond_reeval->cls_oid;
   if (!is_upddel)
     {
-      /* the class is different than the class to be updated/deleted, so use the latest version of row */
+      /* The class is different from the one being updated/deleted, so re-read ITS latest version --
+       * its own row out of its own heap.  Reading the target's OID from the target's heap and then
+       * evaluating this class's filters against that record is how a join DELETE came to delete rows
+       * whose predicate no longer held, and, where the two layouts differ, to skip rows that still
+       * qualified. */
+      HFID cls_hfid;
+
       recdesp = &temp_recdes;
-      oid_inst = oid;
-      if (heap_scancache_quick_start_with_class_hfid (thread_p, &local_scan_cache, &scan_cache->node.hfid) != NO_ERROR)
+      oid_inst = mvcc_cond_reeval->inst_oid;
+      if (oid_inst == NULL || OID_ISNULL (oid_inst))
+	{
+	  /* nothing to re-read this class against */
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+      if (heap_get_class_info (thread_p, cls_oid, &cls_hfid, NULL, NULL) != NO_ERROR)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+      if (heap_scancache_quick_start_with_class_hfid (thread_p, &local_scan_cache, &cls_hfid) != NO_ERROR)
 	{
 	  ev_res = V_ERROR;
 	  goto end;
