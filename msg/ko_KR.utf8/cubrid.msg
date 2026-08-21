@@ -1992,7 +1992,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 336 NUMERIC의 스케일 범위(-84부터 127)를 초과했습니다.
 337 파티션 이름이 너무 깁니다.
 338 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
-341 ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
+341 SEMI/ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 

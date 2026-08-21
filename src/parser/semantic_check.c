@@ -10857,7 +10857,7 @@ pt_conjunct_refers_to_spec (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR spe
 /*
  * pt_check_semi_anti_join () - enforce v1 SEMI/ANTI JOIN semantic rules:
  *      (1) the ON predicate must reference the outer (left) side;
- *      (2) ANTI inner columns may not be referenced outside the ANTI ON predicate.
+ *      (2) inner columns may not be referenced outside the join's own ON predicate.
  *   return:  none
  *   parser(in): the parser context
  *   select(in): a PT_SELECT node
@@ -10913,54 +10913,56 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	  }
       }
 
-      /* (2) ANTI inner cols allowed only in the ANTI ON; scan select clauses + sibling ON/START WITH too */
-      if (spec->info.spec.join_type == PT_JOIN_ANTI)
-	{
-	  PT_SEMI_ANTI_REF_INFO info;
-	  PT_NODE *targets[9];
-	  PT_NODE *other;
-	  int i;
+      /* (2) inner cols allowed only in this join's own ON; scan select clauses + sibling ON/START WITH too.
+       * both forms stop scanning the inner early -- ANTI survives only when it fetched nothing at all, and
+       * SEMI stops at the first match -- so which inner row (if any) is left behind is a plan artifact.
+       * exposing its columns outside the ON would make the answer depend on the access path. */
+      {
+	PT_SEMI_ANTI_REF_INFO info;
+	PT_NODE *targets[9];
+	PT_NODE *other;
+	int i;
 
-	  info.inner_id = spec->info.spec.id;
-	  info.from_list = select->info.query.q.select.from;
-	  info.found_inner = false;
-	  info.found_outer = false;
-	  info.skip_nested_for_outer_gate = false;	/* ANTI-leak check must descend into scalar subqueries */
+	info.inner_id = spec->info.spec.id;
+	info.from_list = select->info.query.q.select.from;
+	info.found_inner = false;
+	info.found_outer = false;
+	info.skip_nested_for_outer_gate = false;	/* the leak check must descend into scalar subqueries */
 
-	  targets[0] = select->info.query.q.select.list;
-	  targets[1] = select->info.query.q.select.where;
-	  targets[2] = select->info.query.q.select.group_by;
-	  targets[3] = select->info.query.q.select.having;
-	  targets[4] = select->info.query.order_by;
-	  targets[5] = select->info.query.q.select.connect_by;
-	  targets[6] = select->info.query.q.select.start_with;
-	  targets[7] = select->info.query.orderby_for;
-	  targets[8] = select->info.query.q.select.with_increment;
+	targets[0] = select->info.query.q.select.list;
+	targets[1] = select->info.query.q.select.where;
+	targets[2] = select->info.query.q.select.group_by;
+	targets[3] = select->info.query.q.select.having;
+	targets[4] = select->info.query.order_by;
+	targets[5] = select->info.query.q.select.connect_by;
+	targets[6] = select->info.query.q.select.start_with;
+	targets[7] = select->info.query.orderby_for;
+	targets[8] = select->info.query.q.select.with_increment;
 
-	  for (i = 0; i < 9 && !info.found_inner; i++)
-	    {
-	      if (targets[i] != NULL)
-		{
-		  (void) parser_walk_tree (parser, targets[i], pt_semi_anti_ref_pre, &info, NULL, NULL);
-		}
-	    }
+	for (i = 0; i < 9 && !info.found_inner; i++)
+	  {
+	    if (targets[i] != NULL)
+	      {
+		(void) parser_walk_tree (parser, targets[i], pt_semi_anti_ref_pre, &info, NULL, NULL);
+	      }
+	  }
 
-	  /* other from-list specs' ON conditions (the ANTI spec's own ON is the one legal place) */
-	  for (other = select->info.query.q.select.from; other != NULL && !info.found_inner; other = other->next)
-	    {
-	      if (other == spec || other->info.spec.on_cond == NULL)
-		{
-		  continue;
-		}
-	      (void) parser_walk_tree (parser, other->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
-	    }
+	/* other from-list specs' ON conditions (this spec's own ON is the one legal place) */
+	for (other = select->info.query.q.select.from; other != NULL && !info.found_inner; other = other->next)
+	  {
+	    if (other == spec || other->info.spec.on_cond == NULL)
+	      {
+		continue;
+	      }
+	    (void) parser_walk_tree (parser, other->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
+	  }
 
-	  if (info.found_inner)
-	    {
-	      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ANTI_JOIN_RHS_NOT_ALLOWED,
-			  spec->info.spec.range_var ? spec->info.spec.range_var->info.name.original : "");
-	    }
-	}
+	if (info.found_inner)
+	  {
+	    PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_RHS_NOT_ALLOWED,
+			spec->info.spec.range_var ? spec->info.spec.range_var->info.name.original : "");
+	  }
+      }
     }
 }
 
