@@ -8420,6 +8420,11 @@ qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
 		  continue;
 		}
 
+	      if (QO_NODE_IS_SEMI_ANTI_JOIN (node1) || QO_NODE_IS_SEMI_ANTI_JOIN (node2))
+		{
+		  continue;
+		}
+
 	      if (QO_NODE_IDX (node1) < QO_NODE_IDX (node2))
 		{
 		  head_seg = seg1;
