@@ -68,8 +68,10 @@ extern "C"
   /* NULL for a NULL pointer or for bytes that are not valid UTF-8 */
   extern cub_json_t *cub_json_string (const char *value);
 
-  /* both take the value over, on success and on failure alike; a key that is
-   * already present has its value replaced */
+  /* Both take the value over, on success and on failure alike. A key that is
+   * already present has its value replaced, which costs a scan of the object,
+   * so these are meant for objects with a handful of members - which is what
+   * the plan dump builds. */
   extern int cub_json_object_set_new (cub_json_t * object, const char *key, cub_json_t * value);
   extern int cub_json_array_append_new (cub_json_t * array, cub_json_t * value);
 

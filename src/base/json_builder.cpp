@@ -97,9 +97,17 @@ namespace
     std::vector<node_impl *> nodes;
     // *INDENT-ON*
     long owned = 0;
-  };
 
-  thread_local json_arena *tl_arena = NULL;
+    ~json_arena ()
+    {
+      /* a thread that ends without having released every tree still gives its
+       * nodes back here, rather than leaving them to the process */
+      for (size_t i = 0; i < nodes.size (); i++)
+	{
+	  delete nodes[i];
+	}
+    }
+  };
 
   rapidjson::Value *
   node_impl::value ()
@@ -123,11 +131,9 @@ namespace
   json_arena *
   arena_get ()
   {
-    if (tl_arena == NULL)
-      {
-	tl_arena = new json_arena ();
-      }
-    return tl_arena;
+    /* one pool per thread, released when the thread ends */
+    thread_local json_arena arena;
+    return &arena;
   }
 
   void
@@ -387,13 +393,17 @@ cub_json_object_set_new (cub_json_t *object, const char *key, cub_json_t *value)
       return -1;
     }
 
-  pool_type &pool = o->arena->pool;
-  rapidjson::Value k (key, (rapidjson::SizeType) strlen (key), pool);
-
-  /* A key set twice replaces what was there. Appending it instead would emit
-   * the same key twice, which is not what a client reading the trace expects,
-   * and the lookup costs a few percent of the time this whole walk takes. */
-  rapidjson::Value::MemberIterator member = container->FindMember (k);
+  /* A key set twice replaces what was there, the way it used to. Appending it
+   * instead would put the same key in the document twice.
+   *
+   * RapidJSON keeps no index of the keys, so this is a scan of the container
+   * where jansson's hash table was constant time, and filling one object is
+   * quadratic in the number of members it ends up with. The plan dump is well
+   * inside that: its objects are keyed by a fixed handful of literals and none
+   * of them passes about twenty members, where the scan is still cheaper than
+   * the hash was. The parts of a trace that have no bound - partitions,
+   * analytics, subqueries - are arrays, and arrays do not pay it. */
+  rapidjson::Value::MemberIterator member = container->FindMember (key);
   if (member != container->MemberEnd ())
     {
       member->value = *v->value ();
@@ -401,6 +411,9 @@ cub_json_object_set_new (cub_json_t *object, const char *key, cub_json_t *value)
       return 0;
     }
 
+  /* the key is copied into the pool only once it is known to be a new one */
+  pool_type &pool = o->arena->pool;
+  rapidjson::Value k (key, (rapidjson::SizeType) strlen (key), pool);
   container->AddMember (k, *v->value (), pool);
   node_attached (v, o, container->MemberCount () - 1);
   return 0;
@@ -479,7 +492,7 @@ cub_json_decref (cub_json_t *node)
 long
 cub_json_owned_count (void)
 {
-  return tl_arena == NULL ? 0 : tl_arena->owned;
+  return arena_get ()->owned;
 }
 
 char *
@@ -519,16 +532,27 @@ cub_json_loads (const char *text)
       return NULL;
     }
 
-  /* parse into the arena, so the parsed data outlives this call */
-  rapidjson::Document doc (&n->arena->pool);
-  doc.Parse (text);
-  if (doc.HasParseError ())
+  bool parsed;
+
+  {
+    /* parse into the arena, so the parsed data outlives this call */
+    rapidjson::Document doc (&n->arena->pool);
+    doc.Parse (text);
+    parsed = !doc.HasParseError ();
+    if (parsed)
+      {
+	n->own.Swap (doc);
+      }
+  }
+
+  if (!parsed)
     {
+      /* releasing the node can clear the pool the document parsed into, so it
+       * has to happen once the document is out of scope */
       cub_json_decref (as_handle (n));
       return NULL;
     }
 
-  n->own.Swap (doc);
   return as_handle (n);
 }
 
