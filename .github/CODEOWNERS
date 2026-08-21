@@ -29,7 +29,6 @@
 /src/parser/ @beyondykk9
 /src/parser/view_transform.* @shparkcubrid
 /src/query/ @beyondykk9
-/src/query/query_executor.* @shparkcubrid
 /src/query/query_hash_scan.* @shparkcubrid
 /src/query/query_hash_join.* @shparkcubrid
 /src/query/scan_manager.* @shparkcubrid

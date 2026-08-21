@@ -244,6 +244,8 @@ namespace cubstorage
 
 	  status find (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
 		       std::size_t bias, PGBUF_WATCHER &page_watcher);
+	  status find_candidate (OID *class_oid, std::uint16_t needed_size, std::uint16_t consume_size,
+				 bestspace_entry &candidate, bool &valid, PGBUF_WATCHER &page_watcher);
 
 	  void add_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen);
 	  void subtract_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen);
@@ -338,6 +340,7 @@ namespace cubstorage
 	  bool try_push (bestspace_entry candidate);
 	  void push (bestspace_entry candidate);
 
+	  bool pop (bestspace_entry &candidate, std::uint16_t needed_size);
 	  std::size_t pop (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t needed_size);
 
 	  std::size_t to_entries (bestspace_entry *candidates);
@@ -345,6 +348,7 @@ namespace cubstorage
 	private:
 	  std::array<bestspace_entry, MAX_CANDIDATES_QUEUE_SIZE> m_array;
 	  std::size_t m_size;
+	  std::atomic<std::uint16_t> m_max_freespace;
 
 	  std::mutex m_mutex;
 
@@ -384,6 +388,7 @@ namespace cubstorage
       candidate_queue m_candidates;
 
       // parameter
+      const bool m_distributed_insert;
       std::uint16_t m_unfill_space;
 
       // statistics
@@ -458,11 +463,11 @@ namespace cubstorage
 
     private:
       registry_entry *m_head;
+      std::size_t m_cache_count;
       std::mutex m_mutex;
 
       alignas (64) std::atomic<uint64_t> m_generation;
 
-      static constexpr std::size_t TLS_MAX_SIZE = 40;
       inline static thread_local registry_cache TLS_cache;
 
       bestspace *find_from_cache (HFID *hfid);

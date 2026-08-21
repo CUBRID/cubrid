@@ -84,6 +84,7 @@ struct or_auto_increment
 {
   std::atomic<or_aligned_oid> serial_obj;
   std::atomic<char *> serial_name;
+  std::atomic<int> cached_num;	/* serial cache block size; -1 = unresolved. shared like the two above */
 };
 // *INDENT-ON*
 
@@ -120,11 +121,12 @@ struct or_attribute
   // Notice: Be sure to place "auto_increment" at the end of the structure.
   or_auto_increment auto_increment;
 
-  // *INDENT-OFF*  
+  // *INDENT-OFF*
   or_attribute () // constructor
   {
     memset (this, 0x00, offsetof (OR_ATTRIBUTE, auto_increment));
     auto_increment.serial_obj = oid_Null_oid;
+    auto_increment.cached_num = -1;
   }
   // *INDENT-ON*
 };

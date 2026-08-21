@@ -1112,7 +1112,7 @@ $ LOADDB
 1039 log writer: log writer started. mode: %1$d.
 1040 HA generic: %1$s. 
 1041 A string was truncated in context of "%1$s".
-1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
+1042 Trying to create a string requiring %1$zu bytes of memory, while the maximum allowed is %2$d bytes.
 1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
 1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
 1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
@@ -1479,10 +1479,14 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1376 The current transaction is implicitly aborted by the system for the execution of the login method.
 
-1377 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
-1378 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
+1377 The no-logging index build exceeded its vacuum notification memory limit (%1$d bytes). Retry the loaddb while no concurrent transactions are active, or rebuild the index without the no-logging option.
 
-1379 Last Error
+1378 Cannot change the login capability of user "%1$s".
+
+1379 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
+1380 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
+
+1381 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1995,7 +1999,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 336 Numeric scale specifier is out of range -84 to 127
 337 The partition name is too long.
 
-337 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 
 
 
@@ -2283,6 +2287,7 @@ including those from the current backup level and higher.\n
 29 COMMENT: Log archive %1$s, which contains log pages before %2$lld, is not needed any longer by any HA utilities.\n
 30 Number of active log archives has been exceeded the max desired number.
 
+31 This backup and log chain contains a no-logging index build (loaddb) and cannot be replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a time before it.
 $set 17 MSGCAT_SET_GLOSSARY
 1 class
 2 trigger

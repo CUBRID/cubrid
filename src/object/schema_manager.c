@@ -4420,7 +4420,7 @@ sm_update_statistics_without_gathering_stats (MOP classop, bool with_fullscan)
  */
 
 int
-sm_update_all_statistics (bool with_fullscan)
+sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram)
 {
   int error = NO_ERROR;
   DB_OBJLIST *cl;
@@ -4433,7 +4433,7 @@ sm_update_all_statistics (bool with_fullscan)
       return er_errid ();
     }
 
-  error = stats_update_all_statistics (with_fullscan);
+  error = stats_update_all_statistics (with_fullscan, no_histogram /* print_summary */ );
   if (error == NO_ERROR)
     {
       /* Need to reset the statistics cache for all resident classes */
@@ -4466,9 +4466,9 @@ sm_update_all_statistics (bool with_fullscan)
 	}
     }
 
-  if (prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
+  if (!no_histogram)
     {
-      error = update_histogram_for_all_classes ();
+      error = update_histogram_for_all_classes (random_seed);
       if (error != NO_ERROR)
 	{
 	  return error;

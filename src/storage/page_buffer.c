@@ -280,14 +280,16 @@ typedef enum
 
 #if defined (SERVER_MODE)
 /* vacuum workers and checkpoint thread should not contribute to promoting a bcb as active/hot */
-#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) VACUUM_IS_THREAD_VACUUM_WORKER (th)
+#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) (VACUUM_IS_THREAD_VACUUM_WORKER (th))
 #else
 #define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) false
 #endif
 
 #if defined (SERVER_MODE)
-/* vacuum workers ,checkpoint thread and temp page should not contribute to promoting a bcb as active/hot */
-#define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) VACUUM_IS_THREAD_VACUUM_WORKER (th) || pgbuf_is_temporary_volume (buf->vpid.volid)
+/* vacuum workers, checkpoint thread and temp pages should not contribute to promoting a bcb as
+ * active/hot */
+#define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) \
+  (VACUUM_IS_THREAD_VACUUM_WORKER (th) || pgbuf_is_temporary_volume (buf->vpid.volid))
 #else
 #define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) false
 #endif
@@ -13005,10 +13007,12 @@ exit:
  *   callback_func (in): callback executed without any fixed pages
  *   callback_args (in): callback arguments
  *
- * Note: All pages fixed by the current thread must be ordered pages and every fix must have a watcher. The callback
- *       must not leave any page fixed. Previously fixed pages are re-fixed in page order even when the callback
- *       returns an error. If re-fixing fails, some watchers may remain without a fixed page and callers must check
- *       watcher page pointers before using them.
+ * Note: Every ordered page fixed by the current thread must have a watcher, because its fix can only be restored
+ *       through the watcher's page pointer. Fixes on pages that are not ordered pages are left alone: the heap
+ *       allocation path never fixes them, so keeping them cannot deadlock with the allocating thread. The callback
+ *       must not leave any page fixed. Unfixed pages are re-fixed in page order even when the callback returns an
+ *       error. If re-fixing fails, some watchers may remain without a fixed page and callers must check watcher page
+ *       pointers before using them.
  */
 #if !defined(NDEBUG)
 int
@@ -13058,17 +13062,21 @@ pgbuf_ordered_callback_release (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_
 	  goto exit;
 	}
 
+      if (!PGBUF_IS_ORDERED_PAGETYPE (holder->bufptr->iopage_buffer->iopage.prv.ptype))
+	{
+	  /* not part of the heap latch ordering protocol, so the heap allocation path never fixes it and keeping it */
+	  /* across the callback cannot deadlock with the thread that owns the allocation. query result page fixed by */
+	  /* the select side of an INSERT ... SELECT is the usual case here, and it carries no watcher. leave it fixed */
+	  /* and untouched, exactly as pgbuf_ordered_fix does for the holders it cannot restore. */
+	  continue;
+	}
+
       if (holder->watch_count <= 0 || holder->fix_count != holder->watch_count
 	  || holder->watch_count > PGBUF_MAX_PAGE_WATCHERS)
 	{
-	  /* raw fix cannot be restored because there is no watcher whose page pointer can be updated. */
-	  assert_release (false);
-	  er_status = ER_FAILED_ASSERTION;
-	  goto exit;
-	}
-
-      if (!PGBUF_IS_ORDERED_PAGETYPE (holder->bufptr->iopage_buffer->iopage.prv.ptype))
-	{
+	  /* ordered page whose fix cannot be restored, because there is no watcher whose page pointer can be */
+	  /* updated. It may be this heap's header or last page, which the allocating thread needs, so waiting while */
+	  /* holding it could deadlock. refuse instead of unfixing what we cannot put back. */
 	  assert_release (false);
 	  er_status = ER_FAILED_ASSERTION;
 	  goto exit;
@@ -16127,6 +16135,26 @@ pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page)
 
   CAST_PGPTR_TO_BFPTR (bcb, page);
   pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_TO_VACUUM_FLAG, 0);
+}
+
+/*
+ * pgbuf_mark_page_for_lru_bottom () - mark a fixed page so that its coming unfix drops the bcb to
+ *   the bottom of its LRU list (immediately victimizable) instead of keeping or boosting it.
+ *   Long scans that will not revisit a page (statistics collection) use this to hand the buffer
+ *   back without polluting the working set. Same mechanism page deallocation uses, minus the
+ *   dirty flag.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * page (in)     : page to demote on unfix
+ */
+void
+pgbuf_mark_page_for_lru_bottom (THREAD_ENTRY * thread_p, PAGE_PTR page)
+{
+  PGBUF_BCB *bcb;
+
+  CAST_PGPTR_TO_BFPTR (bcb, page);
+  pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG, 0);
 }
 
 /*

@@ -43,11 +43,16 @@
 #include "page_buffer.h"
 #include "porting_inline.hpp"
 #include "recovery.h"
+#include "scope_exit.hpp"
 #include "slotted_page.h"
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+/* True while log_recovery () replays a media crash (restoredb).  Held for the whole function -- redo scan and
+ * finish-postpone alike -- so the no-logging index recovery functions below fail-stop in either phase. */
+static bool log_Rcv_is_media_crash = false;
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -102,6 +107,8 @@ static int log_recovery_get_redo_parallel_count ();
 #endif
 
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
+static void log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p);
+static void log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_LSA * lsa);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
 static void log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -750,6 +757,12 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   int error_code = NO_ERROR;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  /* Cleared on every path out of this function. */
+  log_Rcv_is_media_crash = (ismedia_crash != false);
+  // *INDENT-OFF*
+  scope_exit reset_rcv_media_crash_flag {[] { log_Rcv_is_media_crash = false; }};
+  // *INDENT-ON*
 
   /* Save the transaction index and find the transaction descriptor */
 
@@ -3256,6 +3269,132 @@ REGISTER_WORKERPOOL (parallel_recovery_redo, []() { return log_recovery_get_redo
 // *INDENT-ON*
 #endif
 
+/*
+ * log_recovery_2pc_reactivate_mvccids - re-mark the MVCCIDs of in-doubt 2PC-prepared transactions as active
+ *
+ * return: nothing
+ *
+ * Note: Called once after the final reset_start_mvccid, which anchored the active set above every MVCCID seen during
+ *       redo -- leaving in-doubt ids reading as committed. Re-mark them so checkers keep waiting on the self-lock.
+ *       rv_reactivate_mvccid keeps the long-tran list sorted, hence the ascending selection sort.
+ */
+static void
+log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p)
+{
+  MVCCID last_added = MVCCID_NULL;
+
+  while (true)
+    {
+      MVCCID next = MVCCID_NULL;
+      int i;
+
+      for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+	{
+	  LOG_TDES *tdes = LOG_FIND_TDES (i);
+	  MVCCID id;
+
+	  if (tdes == NULL || tdes->trid == NULL_TRANID || tdes->state != TRAN_UNACTIVE_2PC_PREPARE)
+	    {
+	      continue;
+	    }
+	  id = tdes->mvccinfo.id;
+	  if (!MVCCID_IS_NORMAL (id))
+	    {
+	      continue;
+	    }
+	  /* pick the smallest id strictly greater than the last one already re-marked */
+	  if (MVCC_ID_PRECEDES (last_added, id) && (next == MVCCID_NULL || MVCC_ID_PRECEDES (id, next)))
+	    {
+	      next = id;
+	    }
+	}
+
+      if (next == MVCCID_NULL)
+	{
+	  break;
+	}
+      log_Gl.mvcc_table.rv_reactivate_mvccid (next);
+      last_added = next;
+    }
+}
+
+/*
+ * log_recovery_refuse_no_logging_index_replay () - fail-stop a media recovery replay that reaches a record left
+ *   by a no-logging index build (loaddb).  Its index pages were never WAL-logged, so replaying past it
+ *   cannot reconstruct them.  A replay in which the index would survive always dispatches either the
+ *   barrier postpone (RVBT_NO_LOGGING_INDEX_DURABLE) or its committed marker (RVBT_NO_LOGGING_INDEX_COMMITTED)
+ *   first, and both refuse here; a build that never committed leaves no marker and the replay undoes it.
+ *
+ * thread_p(in): thread entry
+ * lsa(in): LSA of the barrier or marker record, or NULL if unavailable on this dispatch path
+ */
+static void
+log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_LSA * lsa)
+{
+  char *catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_NO_LOGGING_INDEX_REPLAY_UNSUPPORTED);
+
+  if (catmsg == NULL)
+    {
+      catmsg = (char *) "This backup and log chain contains a no-logging index build (loaddb) and cannot be "
+	"replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a "
+	"time before it.";
+    }
+
+  if (lsa != NULL && !LSA_ISNULL (lsa))
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "%s (barrier record LSA = %lld|%d)", catmsg, LSA_AS_ARGS (lsa));
+    }
+  else
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "%s", catmsg);
+    }
+}
+
+/*
+ * log_rv_no_logging_index_durable_redo () - redo for RVBT_NO_LOGGING_INDEX_DURABLE, the barrier postpone action.
+ *   Media recovery refuses; otherwise the barrier is really executing (runtime commit, or restart
+ *   recovery finishing an interrupted one), so append the redo-only RVBT_NO_LOGGING_INDEX_COMMITTED marker.
+ *
+ * return: NO_ERROR (does not return while media recovery is in progress)
+ * thread_p(in): thread entry
+ * rcv(in): recovery structure; rcv->reference_lsa carries the barrier's LSA when available
+ */
+int
+log_rv_no_logging_index_durable_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  if (log_Rcv_is_media_crash)
+    {
+      log_recovery_refuse_no_logging_index_replay (thread_p, &rcv->reference_lsa);
+      /* not reached: log_recovery_refuse_no_logging_index_replay() never returns */
+    }
+
+  LOG_DATA_ADDR addr = { NULL, NULL, 0 };
+  log_append_redo_data (thread_p, RVBT_NO_LOGGING_INDEX_COMMITTED, &addr, 0, NULL);
+
+  return NO_ERROR;
+}
+
+/*
+ * log_rv_no_logging_index_committed_redo () - redo for RVBT_NO_LOGGING_INDEX_COMMITTED, the marker recording that a
+ *   no-logging index build's barrier postpone executed.  Replaying it under media recovery means the chain
+ *   contains a completed no-logging index build -- refuse.  A no-op everywhere else.
+ *
+ * return: NO_ERROR (does not return while media recovery is in progress)
+ * thread_p(in): thread entry
+ * rcv(in): recovery structure; rcv->reference_lsa carries the marker's LSA when available
+ */
+int
+log_rv_no_logging_index_committed_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  if (log_Rcv_is_media_crash)
+    {
+      log_recovery_refuse_no_logging_index_replay (thread_p, &rcv->reference_lsa);
+      /* not reached: log_recovery_refuse_no_logging_index_replay() never returns */
+    }
+
+  return NO_ERROR;
+}
+
 static void
 log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa)
 {
@@ -3920,6 +4059,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_CS_ENTER (thread_p);
 
   log_Gl.mvcc_table.reset_start_mvccid ();
+
+  /* Must run after the last reset_start_mvccid: otherwise an in-doubt transaction's rows read as visible and checkers
+   * skip the self-lock wait. */
+  log_recovery_2pc_reactivate_mvccids (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
 
@@ -5416,6 +5559,10 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
   return;
 }
 
+/* Largest addend for one LOG_READ_ADD_ALIGN: log_lsa::offset is a 16-bit field and the call adds to it before unwinding
+ * the excess into page advances. A multiple of DOUBLE_ALIGNMENT, so each call's realign stays a no-op. */
+#define LOG_LSA_OFFSET_SAFE_STEP 8192
+
 /*
  * log_startof_nxrec - FIND START OF NEXT RECORD (USED FOR PARTIAL RECOVERY)
  *
@@ -5453,7 +5600,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
   int undo_length;		/* Undo length */
   int redo_length;		/* Redo length */
-  unsigned int nobj_locks;
+  unsigned int nlocks;
+  int gtrinfo_length;
   int repl_log_length;
   size_t size;
 
@@ -5707,20 +5855,28 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       /* Get the DATA HEADER */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_2PC_PREPCOMMIT), &log_lsa, log_pgptr);
       prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
-      nobj_locks = prepared->num_object_locks;
+      /* Read before the first advance: it may refetch the page prepared points into. */
+      nlocks = prepared->num_locks;
+      gtrinfo_length = prepared->gtrinfo_length;
       /* ignore npage_locks */
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_PREPCOMMIT), &log_lsa, log_pgptr);
 
-      if (prepared->gtrinfo_length > 0)
+      if (gtrinfo_length > 0)
 	{
-	  LOG_READ_ADD_ALIGN (thread_p, prepared->gtrinfo_length, &log_lsa, log_pgptr);
+	  LOG_READ_ADD_ALIGN (thread_p, gtrinfo_length, &log_lsa, log_pgptr);
 	}
 
-      if (nobj_locks > 0)
+      if (nlocks > 0)
 	{
-	  size = nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-	  LOG_READ_ADD_ALIGN (thread_p, (INT16) size, &log_lsa, log_pgptr);
+	  size = nlocks * sizeof (LK_ACQ_LOCK);
+	  while (size > 0)
+	    {
+	      size_t step = (size < LOG_LSA_OFFSET_SAFE_STEP) ? size : LOG_LSA_OFFSET_SAFE_STEP;
+
+	      LOG_READ_ADD_ALIGN (thread_p, step, &log_lsa, log_pgptr);
+	      size -= step;
+	    }
 	}
       break;
 

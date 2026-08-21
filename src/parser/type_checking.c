@@ -6960,6 +6960,40 @@ pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
 }
 
 /*
+ * pt_true_search_condition () - Test for constant-folded search condition
+ * 				  that evaluated true
+ *   return: true if there is no search condition or all of the conjuncts are
+ *           effectively true, false otherwise
+ *   parser(in):
+ *   node(in):
+ *
+ * Note: A search condition folded to TRUE is a no-op, but it is not removed
+ *       from the CNF list. pt_where_type () removes such a conjunct while it
+ *       runs in the type checking walk of pt_semantic_type (), which is done
+ *       before the constant folding walk. So an expression of constants like
+ *       '1=1' is still an expression when it is checked and it becomes a
+ *       folded TRUE value only afterwards.
+ *       Use this function instead of a plain 'where == NULL' test to keep a
+ *       no-op predicate from being treated as a real one.
+ */
+bool
+pt_true_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  while (node)
+    {
+      if (node->or_next != NULL || node->node_type != PT_VALUE || node->type_enum != PT_TYPE_LOGICAL
+	  || node->info.value.data_value.i != 1)
+	{
+	  return false;
+	}
+
+      node = node->next;
+    }
+
+  return true;
+}
+
+/*
  * pt_to_false_subquery () -
  *   return:
  *   parser(in):
@@ -12910,6 +12944,22 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 			db_make_short (result, (INT16) (bi[0] / bi[1]));
 		      }
 		  }
+		else if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi[0], bi[1]))
+		  {
+		    /* MIN % -1 is 0; computing it would trap on the machine divide instruction */
+		    if (typ1 == DB_TYPE_INTEGER)
+		      {
+			db_make_int (result, 0);
+		      }
+		    else if (typ1 == DB_TYPE_BIGINT)
+		      {
+			db_make_bigint (result, 0);
+		      }
+		    else
+		      {
+			db_make_short (result, 0);
+		      }
+		  }
 		else
 		  {
 		    if (typ1 == DB_TYPE_INTEGER)
@@ -14937,15 +14987,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_INTEGER:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as
-		 * multiplication.
-		 */
-		volatile int i1, i2, itmp;
+		int i1 = db_get_int (arg1);
+		int i2 = db_get_int (arg2);
+		int itmp;
 
-		i1 = db_get_int (arg1);
-		i2 = db_get_int (arg2);
-		itmp = i1 * i2;
-		if (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp))
+		if (OR_MULT_OVERFLOW (i1, i2, &itmp))
 		  {
 		    goto overflow;
 		  }
@@ -14958,15 +15004,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_BIGINT:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as
-		 * multiplication.
-		 */
-		volatile DB_BIGINT bi1, bi2, bitmp;
+		DB_BIGINT bi1 = db_get_bigint (arg1);
+		DB_BIGINT bi2 = db_get_bigint (arg2);
+		DB_BIGINT bitmp;
 
-		bi1 = db_get_bigint (arg1);
-		bi2 = db_get_bigint (arg2);
-		bitmp = bi1 * bi2;
-		if (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp))
+		if (OR_MULT_OVERFLOW (bi1, bi2, &bitmp))
 		  {
 		    goto overflow;
 		  }
@@ -14979,15 +15021,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_SHORT:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as
-		 * multiplication.
-		 */
-		volatile short s1, s2, stmp;
+		short s1 = db_get_short (arg1);
+		short s2 = db_get_short (arg2);
+		short stmp;
 
-		s1 = db_get_short (arg1);
-		s2 = db_get_short (arg2);
-		stmp = s1 * s2;
-		if (OR_CHECK_MULT_OVERFLOW (s1, s2, stmp))
+		if (OR_MULT_OVERFLOW (s1, s2, &stmp))
 		  {
 		    goto overflow;
 		  }
@@ -15078,6 +15116,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_SHORT:
 	      if (db_get_short (arg2) != 0)
 		{
+		  if (OR_CHECK_SHORT_DIV_OVERFLOW (db_get_short (arg1), db_get_short (arg2)))
+		    {
+		      goto overflow;
+		    }
 		  db_make_short (result, db_get_short (arg1) / db_get_short (arg2));
 		  return 1;
 		}
@@ -15086,6 +15128,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_INTEGER:
 	      if (db_get_int (arg2) != 0)
 		{
+		  if (OR_CHECK_INT_DIV_OVERFLOW (db_get_int (arg1), db_get_int (arg2)))
+		    {
+		      goto overflow;
+		    }
 		  db_make_int (result, (db_get_int (arg1) / db_get_int (arg2)));
 		  return 1;
 		}
@@ -15093,6 +15139,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_BIGINT:
 	      if (db_get_bigint (arg2) != 0)
 		{
+		  if (OR_CHECK_BIGINT_DIV_OVERFLOW (db_get_bigint (arg1), db_get_bigint (arg2)))
+		    {
+		      goto overflow;
+		    }
 		  db_make_bigint (result, (db_get_bigint (arg1) / db_get_bigint (arg2)));
 		  return 1;
 		}
