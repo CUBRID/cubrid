@@ -229,7 +229,7 @@ static void pt_free_node_blocks (const PARSER_CONTEXT * parser);
 static PARSER_STRING_BLOCK *parser_create_string_block (PARSER_CONTEXT * parser, const int length);
 static void pt_free_a_string_block (PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block);
 static PARSER_STRING_BLOCK *pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string);
-static PARSER_STRING_BLOCK *pt_find_block_with_room (const PARSER_CONTEXT * parser, const int length, const int align);
+static PARSER_STRING_BLOCK *pt_find_available_string_block (const PARSER_CONTEXT * parser, const int length, const int align);
 static char *pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
 				   const int wrap_with_single_quote);
 static PARSER_VARCHAR *pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
@@ -398,15 +398,15 @@ pt_free_node_blocks (const PARSER_CONTEXT * parser)
 }
 
 /*
- * pt_find_block_with_room () - scans the newest few blocks of the parser's own
+ * pt_find_available_string_block () - scans the newest few blocks of the parser's own
  * list for one whose aligned placement of a new string stays within the block
- *   return: a block with room, or NULL if none of the scanned blocks fits
+ *   return: a block with enough available bytes, or NULL if none of the scanned blocks fits
  *   parser(in):
  *   length(in): length of the string to place
  *   align(in): alignment the placement will round up to
  */
 static PARSER_STRING_BLOCK *
-pt_find_block_with_room (const PARSER_CONTEXT * parser, const int length, const int align)
+pt_find_available_string_block (const PARSER_CONTEXT * parser, const int length, const int align)
 {
   PARSER_STRING_BLOCK *candidate;
   int scanned;
@@ -499,7 +499,7 @@ parser_allocate_string_buffer (PARSER_CONTEXT * parser, const int length, const 
 {
   PARSER_STRING_BLOCK *block;
 
-  block = pt_find_block_with_room (parser, length, align);
+  block = pt_find_available_string_block (parser, length, align);
   if (block == NULL)
     {
       /* a fresh block places at offset 0 with no padding, so the string's own length is the whole need */
