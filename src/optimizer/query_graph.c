@@ -251,6 +251,7 @@ static void qo_free_index (QO_ENV * env, QO_INDEX *);
 static QO_INDEX *qo_alloc_index (QO_ENV * env, int);
 static void qo_free_node_index_info (QO_ENV * env, QO_NODE_INDEX * node_indexp);
 static void qo_free_attr_info (QO_ENV * env, QO_ATTR_INFO * info);
+static DB_VALUE *qo_copy_histogram_value (PARSER_CONTEXT * parser, DB_VALUE * src);
 static QO_ATTR_INFO *qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg);
 static QO_ATTR_INFO *qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_str);
 static void qo_free_class_info (QO_ENV * env, QO_CLASS_INFO *);
@@ -5209,6 +5210,71 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 }
 
 /*
+ * qo_copy_histogram_value () - parser-arena copy of a cached histogram blob
+ *   return: the copy, or NULL when there is nothing usable to copy
+ *   parser(in):
+ *   src(in): DB_VALUE owned by the workspace class cache (smclass->histogram)
+ *
+ * Note: PT_NAME.histogram used to alias the cache-owned blob directly, but the cache frees the
+ *	 blob on any statistics refresh or class decache (sm_get_class_with_statistics () when
+ *	 the server reports newer statistics, sm_get_statistics_force (),
+ *	 sm_update_statistics (), install_new_representation (), classobj_free_class ()) while
+ *	 the annotation is consumed only later, by the term analysis.  A self-join's later FROM
+ *	 entities re-fetch the very class the earlier entities annotated, so term selectivity
+ *	 read freed memory: usually a silently wrong join selectivity, and a crash when the
+ *	 block had been reused.  Copy the blob into the parser arena, whose lifetime covers the
+ *	 whole optimization, so the annotation owns what it points to.  The buffer is arena
+ *	 memory, so the copy carries no need_clear and is freed with the parser.
+ */
+static DB_VALUE *
+qo_copy_histogram_value (PARSER_CONTEXT * parser, DB_VALUE * src)
+{
+  DB_VALUE *copy;
+  const char *src_buf;
+  char *buf;
+  int bit_len = 0, size;
+  DB_TYPE src_type;
+
+  if (src == NULL || DB_IS_NULL (src))
+    {
+      return NULL;
+    }
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src);
+  if (src_type != DB_TYPE_BIT && src_type != DB_TYPE_VARBIT)
+    {
+      /* not a histogram blob shape; annotating nothing beats annotating a guess */
+      return NULL;
+    }
+
+  src_buf = db_get_bit (src, &bit_len);
+  if (src_buf == NULL || bit_len <= 0)
+    {
+      return NULL;
+    }
+  size = (bit_len + 7) / 8;
+
+  copy = (DB_VALUE *) parser_alloc (parser, (int) sizeof (DB_VALUE));
+  buf = (char *) parser_alloc (parser, size);
+  if (copy == NULL || buf == NULL)
+    {
+      return NULL;		/* same effect as having no histogram */
+    }
+
+  memcpy (buf, src_buf, size);
+  if (src_type == DB_TYPE_BIT)
+    {
+      db_make_bit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+  else
+    {
+      db_make_varbit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+
+  return copy;
+}
+
+/*
  * qo_get_attr_info () - Find the ATTR_STATS information about each actual
  *			 attribute that underlies this segment
  *   return: QO_ATTR_INFO *
@@ -5356,7 +5422,10 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	    {
 	      if (hist_stats->attr_ids[h] == attr_id)
 		{
-		  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[h];
+		  /* own a copy: the cache-owned blob can be freed before the term analysis
+		   * consumes this annotation (see qo_copy_histogram_value ()) */
+		  QO_SEG_PT_NODE (seg)->info.name.histogram =
+		    qo_copy_histogram_value (QO_ENV_PARSER (env), hist_stats->histogram[h]);
 		  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[h];
 		  break;
 		}
