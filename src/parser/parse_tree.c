@@ -227,7 +227,7 @@ static int parser_id = 1;
 static PT_NODE *parser_create_node_block (const PARSER_CONTEXT * parser);
 static void pt_free_node_blocks (const PARSER_CONTEXT * parser);
 static PARSER_STRING_BLOCK *parser_create_string_block (PARSER_CONTEXT * parser, const int length);
-static void pt_free_a_string_block (PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block);
+static void pt_free_one_string_block (PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block);
 static PARSER_STRING_BLOCK *pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string);
 static PARSER_STRING_BLOCK *pt_find_available_string_block (const PARSER_CONTEXT * parser, const int length, const int align);
 static char *pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
@@ -519,14 +519,14 @@ parser_allocate_string_buffer (PARSER_CONTEXT * parser, const int length, const 
 
 
 /*
- * pt_free_a_string_block() - finds a string block, removes it from
+ * pt_free_one_string_block() - finds a string block, removes it from
  * 			    the parser's own list and frees the memory
  *   return:
  *   parser(in):
  *   block(in):
  */
 static void
-pt_free_a_string_block (PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block)
+pt_free_one_string_block (PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block)
 {
   PARSER_STRING_BLOCK **prev;
   PARSER_STRING_BLOCK *curr;
@@ -628,7 +628,7 @@ pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const cha
 	  && string->last_string_start == 0)
 	{
 	  /* old_string is the only contents of string, free it. */
-	  pt_free_a_string_block (parser, string);
+	  pt_free_one_string_block (parser, string);
 	}
     }
   else
@@ -712,7 +712,7 @@ pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const
 	  && string->last_string_start == 0)
 	{
 	  /* old_string is the only contents of string, free it. */
-	  pt_free_a_string_block (parser, string);
+	  pt_free_one_string_block (parser, string);
 	}
     }
   else
