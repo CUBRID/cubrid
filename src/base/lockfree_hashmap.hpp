@@ -1436,6 +1436,11 @@ namespace lockfree
   void
   hashmap<Key, T>::iterator::restart ()
   {
+    if (m_curr != NULL && m_hashmap != NULL && m_hashmap->m_edesc->using_mutex)
+      {
+	// iterate () locked this entry and unlocks it on the way past; dropping m_curr below would leak it
+	m_hashmap->unlock_entry (*m_curr);
+      }
     if (m_tdes->is_tran_started ())
       {
 	m_tdes->end_tran();
