@@ -1160,9 +1160,17 @@ lock_initialize_tran_lock_table (void)
  *
  *   total_indices(in): new number of transaction indices
  *
- * Note: Existing slots must survive: lock_reacquire_crash_locks() has already
- *     rebuilt the hold lists of the in-doubt 2PC branches by the time this runs.
- *     They survive the move because LK_ENTRY names its owner by tran_index.
+ * Note: Growing in place moves the existing slots. Two things make that safe, and
+ *     both are properties of recovery: the expanding thread is the lock manager's
+ *     only user, so no mutex in this table is held and none is waited on, and
+ *     LK_ENTRY names its owner by tran_index rather than by a pointer into the
+ *     table, so the hold lists lock_reacquire_crash_locks() has already rebuilt
+ *     for the in-doubt 2PC branches still reach their slot.
+ *
+ *     Moving an initialized mutex is not portable - the Windows pthread_mutex_t
+ *     carries a pointer to itself. qmgr_allocate_tran_entries() reallocs its own
+ *     mutex-bearing table on this same notification path, so that limit belongs to
+ *     the path rather than to this call.
  *
  *     The loop resumes from tran_lock_table_initialized_count and a slot is
  *     counted only once complete, so a call after a partial failure does not lay

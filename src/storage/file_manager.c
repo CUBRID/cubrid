@@ -9308,6 +9308,9 @@ file_tempcache_init (void)
  * Note: tran_files is indexed by transaction index, so it has to cover every
  *     index the transaction table can hand out. realloc is the only failure
  *     point, so a failure leaves the cache untouched.
+ *
+ *     Growing in place moves the existing entries and the mutex each one carries.
+ *     See lock_expand_tran_lock_slots () for what makes that safe during recovery.
  */
 static int
 file_tempcache_expand (int total_indices)
