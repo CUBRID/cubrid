@@ -2503,6 +2503,12 @@ namespace parallel_scan
 	    orig_agg_p->accumulator_domain.value2_dom = cur_agg_p->accumulator_domain.value2_dom;
 	  }
 
+	if (orig_agg_p->opr_dbtype == DB_TYPE_VARIABLE && cur_agg_p->opr_dbtype != DB_TYPE_VARIABLE)
+	  {
+	    orig_agg_p->domain = cur_agg_p->domain;
+	    orig_agg_p->opr_dbtype = cur_agg_p->opr_dbtype;
+	  }
+
 	HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
 	int err = qdata_aggregate_accumulator_to_accumulator (thread_p, &orig_agg_p->accumulator,
 		  &orig_agg_p->accumulator_domain, orig_agg_p->function,
