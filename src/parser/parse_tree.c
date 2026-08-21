@@ -420,7 +420,8 @@ parser_create_string_block (PARSER_CONTEXT * parser, const int length)
     {
       /* This is an unusually large string.
        * Allocate a special block for it, with space for one string, plus some space for appending to. */
-      alloc_size = sizeof (PARSER_STRING_BLOCK) + (length + LARGE_STRING_APPEND_RESERVE - STRING_BLOCK_DEFAULT_SIZE);
+      /* the header alone plus the string area this block wants */
+      alloc_size = STRING_BLOCK_OVERHEAD + (length + LARGE_STRING_APPEND_RESERVE);
       block_end = CAST_BUFLEN (length + LARGE_STRING_APPEND_RESERVE - 1);
     }
 
