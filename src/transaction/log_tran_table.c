@@ -4487,6 +4487,21 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
       LSA_COPY (lsa, min_lsa);
     }
 
+  /* Consider system worker transactions (e.g. online index loaders) as well.
+   * Recovery undo processes them too (see logtb_rv_read_only_map_undo_tdes),
+   * so the smallest LSA that decides log archive retention must not skip
+   * their in-flight log.
+   */
+  // *INDENT-OFF*
+  log_system_tdes::map_all_tdes ([lsa] (log_tdes & sys_tdes)
+    {
+      if (!LSA_ISNULL (&sys_tdes.head_lsa) && (LSA_ISNULL (lsa) || LSA_LT (&sys_tdes.head_lsa, lsa)))
+	{
+	  LSA_COPY (lsa, &sys_tdes.head_lsa);
+	}
+    });
+  // *INDENT-ON*
+
   TR_TABLE_CS_EXIT (thread_p);
 }
 
