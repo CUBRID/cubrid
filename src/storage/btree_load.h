@@ -279,8 +279,10 @@ typedef struct btree_ovf_dir_header BTREE_OVF_DIR_HEADER;
 struct btree_ovf_dir_header
 {
   VPID next_vpid;		/* Next page in chain. Must be first (same offset as legacy). */
-  VPID dir_vpid;		/* Head of the OID-directory page list of the chain. NULL while
-				 * the chain has a single data page. Immutable once created. */
+  VPID dir_vpid;		/* Head of the OID-directory page list of the chain. NULL until the
+				 * chain grows to a second data page; stays set if the chain later
+				 * shrinks back to one (the directory is torn down only when the
+				 * chain's last data page is removed). Immutable once created. */
 };
 
 /* One OID-directory entry: separator OID and the data page it routes to. Entries are

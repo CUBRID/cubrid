@@ -12523,6 +12523,7 @@ btree_ovf_dir_locate (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID *
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
+  thread_p->read_ovfl_pages_count++;	/* For Vacuum only: directory pages are overflow reads too. */
 
   /* Advance while the next directory page's first separator does not exceed the OID. */
   while (true)
@@ -12547,6 +12548,7 @@ btree_ovf_dir_locate (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID *
 	  pgbuf_unfix_and_init (thread_p, dir_page);
 	  return error_code;
 	}
+      thread_p->read_ovfl_pages_count++;
       if (spage_get_record (thread_p, next_page, 1, &next_record, PEEK) != S_SUCCESS)
 	{
 	  assert_release (false);
@@ -12708,6 +12710,8 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 
   *offset_to_object = NOT_FOUND;
 
+  thread_p->read_ovfl_pages_count = 0;	/* For Vacuum only; directory fixes below count too. */
+
   PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
   first_ovf_page = pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
@@ -12716,6 +12720,7 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
+  thread_p->read_ovfl_pages_count++;
 
   dir_hdr = btree_ovf_dir_get_header (thread_p, first_ovf_page);
   if (dir_hdr == NULL)
@@ -12725,8 +12730,6 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
       return ER_FAILED;
     }
   VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
-
-  thread_p->read_ovfl_pages_count = 0;	/* For Vacuum only. */
 
   if (VPID_ISNULL (&dir_head_vpid))
     {
@@ -12740,7 +12743,6 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 	  pgbuf_unfix_and_init (thread_p, first_ovf_page);
 	  return error_code;
 	}
-      thread_p->read_ovfl_pages_count++;
       if (*offset_to_object != NOT_FOUND)
 	{
 	  *found_page = first_ovf_page;
@@ -13476,8 +13478,23 @@ btree_ovf_dir_check (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * 
   VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
   if (VPID_ISNULL (&dir_head_vpid))
     {
-      /* Single-page chain: no directory. */
+      /* No directory is legal only while the chain has a single data page (a fresh chain; a shrunken chain
+       * keeps its directory). A successor here means lookups would silently stop at this page. */
+      VPID next_vpid;
+
+      if (btree_get_next_overflow_vpid (thread_p, data_page, &next_vpid) != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, data_page);
+	  return DISK_ERROR;
+	}
       pgbuf_unfix_and_init (thread_p, data_page);
+      if (!VPID_ISNULL (&next_vpid))
+	{
+	  snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: multi-page chain without a directory link at %d|%d\n",
+		    VPID_AS_ARGS (first_ovf_vpid));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	  return DISK_INVALID;
+	}
       return DISK_VALID;
     }
 
@@ -13563,6 +13580,19 @@ btree_ovf_dir_check (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * 
 	{
 	  snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: directory entry %d vpid %d|%d != data page %d|%d\n", i,
 		    VPID_AS_ARGS (&entries[dir_idx].vpid), VPID_AS_ARGS (pgbuf_get_vpid_ptr (data_page)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	  valid = DISK_INVALID;
+	  goto end;
+	}
+
+      /* Every data page must carry the directory-format header and point at this chain's directory head:
+       * btree_overflow_remove_object () reads dir_vpid from whichever page it empties, so a stray value would
+       * silently update the wrong directory. */
+      dir_hdr = btree_ovf_dir_get_header (thread_p, data_page);
+      if (dir_hdr == NULL || !VPID_EQ (&dir_hdr->dir_vpid, &dir_head_vpid))
+	{
+	  snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: data page %d|%d has a %s directory link\n",
+		    VPID_AS_ARGS (pgbuf_get_vpid_ptr (data_page)), (dir_hdr == NULL) ? "legacy header, no" : "stray");
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
 	  valid = DISK_INVALID;
 	  goto end;
@@ -35135,7 +35165,10 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 	    }
 	}
 
-      /* CBRD-24094: maintain the OID directory of directory chains. */
+      /* CBRD-24094: maintain the OID directory of directory chains. The directory is torn down only when the
+       * chain's last data page goes away; a chain shrinking to a single data page keeps its one-entry directory
+       * on purpose (hysteresis: a key oscillating around the two-page boundary would otherwise rebuild and
+       * destroy the directory on every transition). */
       if (!VPID_ISNULL (&dir_head_vpid))
 	{
 	  if (prev_page == leaf_page && VPID_ISNULL (&next_overflow_vpid))
