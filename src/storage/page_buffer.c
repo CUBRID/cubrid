@@ -7081,6 +7081,8 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 		      set_waiter_exists (&bufptr->atomic_latch, false);
 		    }
 		  PGBUF_BCB_UNLOCK (bufptr);
+		  /* set an error like the READ/WRITE wait path does (pgbuf_timed_sleep); callers assert one is set */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 		  return ER_FAILED;
 		}
 
