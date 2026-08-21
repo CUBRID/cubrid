@@ -189,6 +189,15 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       func_p->opr_dbtype = TP_DOMAIN_TYPE (func_p->domain);
       db_value_domain_init (func_p->value, func_p->opr_dbtype, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+
+      /* Expose the resolved domain on the distinct list file.
+       * the *variable* readval is a no-op, so the finalize would silently drop every value. */
+      if (func_p->option == Q_DISTINCT && func_p->list_id != NULL && func_p->list_id->type_list.type_cnt > 0
+	  && TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
+	{
+	  /* written values are coerced to func_p->domain above */
+	  func_p->list_id->type_list.domp[0] = func_p->domain;
+	}
     }
 
   if (DB_IS_NULL (&dbval) && func_p->function != PT_ROW_NUMBER && func_p->function != PT_FIRST_VALUE

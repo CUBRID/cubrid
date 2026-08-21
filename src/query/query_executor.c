@@ -21385,6 +21385,24 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	      break;
 	    }
 
+	  /* Expose the resolved type on the distinct/sort list file.
+	   * the *variable* readval is a no-op, so finalize would silently drop every value. */
+	  if ((agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL) && agg_p->list_id != NULL
+	      && agg_p->list_id->type_list.type_cnt > 0
+	      && TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
+	    {
+	      if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
+		{
+		  /* interpolation funcs write values coerced to agg_p->domain */
+		  agg_p->list_id->type_list.domp[0] = agg_p->domain;
+		}
+	      else
+		{
+		  /* the fetched value is written as is */
+		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
+		}
+	    }
+
 	  /* initialize accumulators */
 	  if (agg_p->accumulator.value != NULL && agg_p->accumulator_domain.value_dom != NULL
 	      && DB_VALUE_TYPE (agg_p->accumulator.value) == DB_TYPE_NULL)
