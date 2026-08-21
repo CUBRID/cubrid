@@ -117,6 +117,38 @@ namespace test_lockfree
   static int init_my_entry (void *p);
   static int uninit_my_entry (void *p);
 
+  // what a failed held-entry check saw. recorded only on failure, so the happy path pays nothing. without this
+  // a failure is a bare "BROKEN = 1", which says nothing about whether the entry was reclaimed, refilled, or
+  // simply never consistent - the three the investigation had to tell apart.
+  enum brk_site
+  {
+    BRK_FIND_FIRST = 0,
+    BRK_FIND_SECOND,
+    BRK_INSERT_GIVEN
+  };
+  static const char *BRK_SITE_NAME[] = { "find/1st", "find/2nd", "insert_given" };
+  struct brk_record
+  {
+    int m_site;
+    unsigned int m_magic;
+    bool m_init;
+    my_key m_searched;
+    my_key m_key;
+    my_key m_payload;
+  };
+  static const size_t BRK_MAX = 16;
+  static brk_record g_brk[BRK_MAX];
+  static std::atomic<size_t> g_brk_count { 0 };
+
+  // LFTEST_ONLY_CONSISTENCY runs just the held-entry case. It fails on the order of one run in fifteen, so
+  // confirming a fix means sampling it in bulk, and the rest of the suite is four fifths of the wall clock.
+  static bool
+  case_is_enabled (const std::string &case_name)
+  {
+    static const char *only = getenv ("LFTEST_ONLY_CONSISTENCY");
+    return only == NULL || case_name.find ("held_entry_consistency") != std::string::npos;
+  }
+
   static lf_entry_descriptor g_edesc =
   {
     offsetof (my_entry, m_rstack),
@@ -262,10 +294,31 @@ namespace test_lockfree
       dump_not_zero ("ers_fail", m_not_found_on_erase_ops);
       dump_not_zero ("iter_incr", m_iterate_increments);
       dump_not_zero ("BROKEN", m_consistency_errors);
+      dump_broken_records ();
 
       cout_new_line ();
       std::cout << "TIME: ";
       cout_msec_count (m_timer.get_time ());
+    }
+
+    void dump_broken_records ()
+    {
+      const size_t n = g_brk_count.load ();
+      for (size_t i = 0; i < n && i < BRK_MAX; i++)
+	{
+	  const brk_record &r = g_brk[i];
+	  const char *magic_name = r.m_magic == MY_ENTRY_MAGIC_LIVE ? "LIVE"
+				   : r.m_magic == MY_ENTRY_MAGIC_CLAIMED ? "CLAIMED"
+				   : r.m_magic == MY_ENTRY_MAGIC_FREE ? "FREE" : "?";
+	  cout_new_line ();
+	  std::cout << "BRK site=" << BRK_SITE_NAME[r.m_site]
+		    << " magic=" << magic_name
+		    << " init=" << (r.m_init ? 1 : 0)
+		    << " searched=" << r.m_searched.m_1 << "/" << r.m_searched.m_2
+		    << " m_key=" << r.m_key.m_1 << "/" << r.m_key.m_2
+		    << " payload=" << r.m_payload.m_1 << "/" << r.m_payload.m_2;
+	}
+      g_brk_count = 0;
     }
 
     void dump_not_zero (const char *name, std::atomic<std::uint64_t> &val)
@@ -776,21 +829,27 @@ namespace test_lockfree
   // machine that actually reorders that way.
   //
   static bool
-  check_held_entry (my_entry *ent, const my_key &searched)
+  check_held_entry (my_entry *ent, const my_key &searched, int site)
   {
-    if (ent->m_magic != MY_ENTRY_MAGIC_LIVE)
+    // snapshot, so what is reported is what was compared
+    const unsigned int magic = ent->m_magic;
+    const my_key key = ent->m_key;
+    const my_key payload = ent->m_payload_key;
+    const bool init = ent->m_init;
+
+    if (magic == MY_ENTRY_MAGIC_LIVE
+	&& compare_my_key ((void *) &searched, (void *) &key) == 0
+	&& compare_my_key ((void *) &payload, (void *) &key) == 0)
       {
-	return false;
+	return true;
       }
-    if (compare_my_key ((void *) &searched, (void *) &ent->m_key) != 0)
+
+    const size_t slot = g_brk_count++;
+    if (slot < BRK_MAX)
       {
-	return false;
+	g_brk[slot] = { site, magic, init, searched, key, payload };
       }
-    if (compare_my_key ((void *) &ent->m_payload_key, (void *) &ent->m_key) != 0)
-      {
-	return false;
-      }
-    return true;
+    return false;
   }
 
   template <typename Hash, typename Tran>
@@ -838,10 +897,10 @@ namespace test_lockfree
 	      {
 		++found;
 		// hold it and look twice - the entry must not become somebody else's in between
-		bool ok = check_held_entry (ent, k);
+		bool ok = check_held_entry (ent, k, BRK_FIND_FIRST);
 		for (volatile int spin = 0; spin < HOLD_SPIN; ++spin)
 		  ;
-		ok = check_held_entry (ent, k) && ok;
+		ok = check_held_entry (ent, k, BRK_FIND_SECOND) && ok;
 		if (!ok)
 		  {
 		    ++errors;
@@ -873,7 +932,7 @@ namespace test_lockfree
 		++found_inserts;
 	      }
 	    assert (ent != NULL);
-	    if (!check_held_entry (ent, k))
+	    if (!check_held_entry (ent, k, BRK_INSERT_GIVEN))
 	      {
 		++errors;
 	      }
@@ -1036,6 +1095,10 @@ namespace test_lockfree
   void
   hash_tester<Hash, Tran>::run_test (const std::string &case_name, F &&f, Args &&...args)
   {
+    if (!case_is_enabled (case_name))
+      {
+	return;
+      }
     cout_new_line ();
     m_timer_stat = {};
 
