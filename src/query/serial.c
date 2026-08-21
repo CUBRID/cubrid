@@ -156,6 +156,7 @@ static int serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE
 					   int num_alloc, bool log_supplemental);
 static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
 static int serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
+static void serial_flush_entry_best_effort (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
 					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
 					const OID * serial_oidp, DB_VALUE * key_val);
@@ -819,6 +820,35 @@ serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
 }
 
 /*
+ * serial_flush_entry_best_effort () - write the entry's issued value back, and swallow a failure
+ *                explicitly.
+ *   return: void
+ *   entry(in)    :
+ *
+ * Both callers drop the entry whatever happens here, and that is deliberate: they run because the
+ * serial's definition changed or the object is gone, so keeping a stale entry would let the serial
+ * keep serving values from a definition that no longer exists. A failed write-back only leaves the
+ * gap this issue removes - bounded by cached_num, and the behavior before the write-back existed -
+ * which is the lesser of the two.
+ *
+ * Clearing the error is the point of this wrapper. The failure is invisible to the caller either
+ * way, but a set error area is not: xserial_decache () runs inside whatever DDL triggered it, and
+ * er_errid () left behind here surfaces as that statement's failure. Same reason
+ * xserial_get_cached_num ()'s fallback clears its own.
+ */
+static void
+serial_flush_entry_best_effort (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
+{
+  if (serial_flush_cur_val_of_serial (thread_p, entry) != NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "serial cache write-back failed for (%d|%d|%d); the unissued tail of its block is lost\n",
+		    OID_AS_ARGS (&entry->oid));
+      er_clear ();
+    }
+}
+
+/*
  * xserial_get_next_value_internal () -
  *   return: NO_ERROR, or ER_status
  *   result_num(out)    :
@@ -1450,7 +1480,7 @@ serial_flush_cache_pool (THREAD_ENTRY * thread_p)
 
   for (SERIAL_CACHE_ENTRY * entry = it.iterate (); entry != NULL; entry = it.iterate ())
     {
-      (void) serial_flush_cur_val_of_serial (thread_p, entry);
+      serial_flush_entry_best_effort (thread_p, entry);
     }
 }
 
@@ -1779,7 +1809,7 @@ xserial_decache (THREAD_ENTRY * thread_p, OID * oidp)
 	{
 	  /* Hand the unissued tail of the reserved block back before losing the entry, so the next
 	   * block resumes at the last value actually issued instead of past the block end. */
-	  (void) serial_flush_cur_val_of_serial (thread_p, entry);
+	  serial_flush_entry_best_effort (thread_p, entry);
 
 	  if (!serial_Cache_hashmap.erase_locked (thread_p, key, entry) && entry != NULL)
 	    {
