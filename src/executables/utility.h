@@ -91,7 +91,8 @@ typedef enum
   MSGCAT_UTIL_SET_TDE = 57,
   MSGCAT_UTIL_SET_FLASHBACK = 58,
   MSGCAT_UTIL_SET_MEMMON = 59,
-  MSGCAT_UTIL_SET_CLEANFILEDB = 60
+  MSGCAT_UTIL_SET_CLEANFILEDB = 60,
+  MSGCAT_UTIL_SET_CALIBRATEDB = 61
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -772,6 +773,12 @@ typedef enum
   CLEANFILEDB_MSG_USAGE = 60
 } MSGCAT_CLEANFILEDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_CALIBRATEDB */
+typedef enum
+{
+  CALIBRATEDB_MSG_USAGE = 60
+} MSGCAT_CALIBRATEDB_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -790,6 +797,7 @@ typedef enum
   LOCKDB,
   KILLTRAN,
   OPTIMIZEDB,
+  CALIBRATEDB,
   INSTALLDB,
   DIAGDB,
   CLEANFILEDB,
@@ -1006,6 +1014,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_TRANLIST                    "tranlist"
 #define UTIL_OPTION_KILLTRAN                    "killtran"
 #define UTIL_OPTION_OPTIMIZEDB                  "optimizedb"
+#define UTIL_OPTION_CALIBRATEDB                 "calibratedb"
 #define UTIL_OPTION_INSTALLDB                   "installdb"
 #define UTIL_OPTION_DIAGDB                      "diagdb"
 #define UTIL_OPTION_CLEANFILEDB                 "cleanfiledb"
@@ -1220,6 +1229,8 @@ typedef struct _ha_config
 /* optimizedb option list */
 #define OPTIMIZE_CLASS_NAME_S                   'n'
 #define OPTIMIZE_CLASS_NAME_L                   "class-name"
+#define CALIBRATE_CLASS_NAME_S                  'n'
+#define CALIBRATE_CLASS_NAME_L                  "class-name"
 
 /* installdb option list */
 #define INSTALL_SERVER_NAME_S                   11100
@@ -1905,6 +1916,7 @@ extern "C"
   extern int installdb (UTIL_FUNCTION_ARG * arg_map);
   extern int copydb (UTIL_FUNCTION_ARG * arg_map);
   extern int optimizedb (UTIL_FUNCTION_ARG * arg_map);
+  extern int calibratedb (UTIL_FUNCTION_ARG * arg_map);
   extern int diagdb (UTIL_FUNCTION_ARG * arg_map);
   extern int cleanfiledb (UTIL_FUNCTION_ARG * arg_map);
   extern int patchdb (UTIL_FUNCTION_ARG * arg_map);

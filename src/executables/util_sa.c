@@ -30,6 +30,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <time.h>
+#include <math.h>
 #if defined(WINDOWS)
 #include <io.h>
 #include <direct.h>
@@ -43,6 +47,7 @@
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "boot_sr.h"
+#include "file_io.h"
 #include "db.h"
 #include "authenticate.h"
 #include "schema_manager.h"
@@ -1495,6 +1500,554 @@ print_optimize_usage:
 error_exit:
   return EXIT_FAILURE;
 }
+
+/*
+ * calibratedb () - measure host IO/CPU characteristics and report recommended
+ *                  optimizer cost parameter values (CBRD-27126)
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ *
+ * Report only: nothing is applied. The cost_* parameters are PRM_FOR_CLIENT,
+ * so the recommended lines belong in the cubrid.conf of every host where
+ * query compilation runs (the csql host, and the broker host for CAS).
+ *
+ * Measurements (single run, one report):
+ *   - cost_random_page : random/sequential page read time ratio on the largest
+ *     permanent volume, through a separate O_DIRECT descriptor so neither the
+ *     page buffer nor the OS cache distorts or is disturbed.
+ *   - cost_cpu_tuple / cost_heap_fetch_per_oid : calibration queries over a
+ *     scratch table (created and dropped here); covering and non-covering
+ *     scans of the SAME index so the difference isolates the heap fetch.
+ *   - cost_seq_page is the unit anchor (1.0) and is never recommended away
+ *     from it; cost_index_page_hit_ratio is workload-dependent and is not
+ *     measurable by a synthetic run, so it is reported as "keep default".
+ */
+
+#define CALIB_SCRATCH_TABLE "__calibratedb_scratch"
+#define CALIB_SCRATCH_ROWS 100000
+#define CALIB_RAND_SAMPLES 1200
+#define CALIB_RAND_BUDGET_USEC (4 * 1000000)
+#define CALIB_SEQ_RUNS 24
+#define CALIB_SEQ_RUN_PAGES 48
+#define CALIB_QUERY_REPS 9
+/* below this, the "device" is RAM-backed (tmpfs) or the reads are served from
+ * cache despite O_DIRECT; the page time is then not a usable denominator */
+#define CALIB_MIN_PLAUSIBLE_SEQ_USEC 20.0
+/* the median must agree within this much between two interleaved halves */
+#define CALIB_MAX_SPLIT_HALF_ERR 0.25
+
+static double
+calib_now_usec (void)
+{
+  struct timespec ts;
+
+  clock_gettime (CLOCK_MONOTONIC, &ts);
+  return (double) ts.tv_sec * 1000000.0 + (double) ts.tv_nsec / 1000.0;
+}
+
+static int
+calib_cmp_double (const void *a, const void *b)
+{
+  double d = *(const double *) a - *(const double *) b;
+
+  return (d < 0) ? -1 : (d > 0) ? 1 : 0;
+}
+
+static double
+calib_median (double *vals, int n)
+{
+  qsort (vals, n, sizeof (double), calib_cmp_double);
+  return (n % 2) ? vals[n / 2] : (vals[n / 2 - 1] + vals[n / 2]) / 2.0;
+}
+
+/*
+ * calib_split_half_error () - relative disagreement between the medians of two
+ *     interleaved halves of the sample
+ *
+ * Device latency is heavy-tailed and often multimodal (device cache hit vs
+ * seek), so the coefficient of variation of the raw samples does not describe
+ * the stability of the statistic we actually use. What matters is whether the
+ * median is reproducible: split the sample by parity (so drift affects both
+ * halves equally), take each median, and report their relative gap.
+ */
+static double
+calib_split_half_error (const double *vals, int n)
+{
+  double *a, *b, ma, mb, ref;
+  int i, na = 0, nb = 0;
+  double err;
+
+  if (n < 8)
+    {
+      return 1.0;		/* too small to judge */
+    }
+  a = (double *) malloc (sizeof (double) * n);
+  b = (double *) malloc (sizeof (double) * n);
+  if (a == NULL || b == NULL)
+    {
+      free (a);
+      free (b);
+      return 1.0;
+    }
+  for (i = 0; i < n; i++)
+    {
+      if (i % 2 == 0)
+	{
+	  a[na++] = vals[i];
+	}
+      else
+	{
+	  b[nb++] = vals[i];
+	}
+    }
+  ma = calib_median (a, na);
+  mb = calib_median (b, nb);
+  free (a);
+  free (b);
+
+  ref = MIN (ma, mb);
+  err = (ref > 0.0) ? fabs (ma - mb) / ref : 1.0;
+  return err;
+}
+
+/*
+ * calib_measure_io () - sequential vs random page read time on the largest
+ *                       permanent volume, via a private O_DIRECT descriptor
+ */
+static int
+calib_measure_io (double *seq_usec, double *rand_usec, int *rand_samples, double *rand_cv)
+{
+  char *label;
+  char best_label[PATH_MAX] = { '\0' };
+  INT64 best_pages = 0;
+  VOLID volid;
+  struct stat st;
+  int fd = -1;
+  char *buf = NULL;
+  double *t_seq = NULL, *t_rand = NULL;
+  int n_seq = 0, n_rand = 0;
+  INT64 pages;
+  int i, k;
+  int status = NO_ERROR;
+
+  /* the largest mounted permanent volume gives the most room for uniform
+   * random page ids */
+  for (volid = 0; volid < VOLID_MAX; volid++)
+    {
+      label = fileio_get_volume_label (volid, PEEK);
+      if (label == NULL)
+	{
+	  break;
+	}
+      if (stat (label, &st) == 0 && (INT64) st.st_size / IO_PAGESIZE > best_pages)
+	{
+	  best_pages = (INT64) st.st_size / IO_PAGESIZE;
+	  strncpy (best_label, label, PATH_MAX - 1);
+	}
+    }
+  if (best_label[0] == '\0' || best_pages < CALIB_SEQ_RUN_PAGES * 2)
+    {
+      fprintf (stderr, "calibratedb: no permanent volume large enough to measure.\n");
+      return ER_FAILED;
+    }
+  pages = best_pages;
+
+  fd = open (best_label, O_RDONLY | O_DIRECT);
+  if (fd < 0)
+    {
+      fprintf (stderr, "calibratedb: cannot open '%s' with O_DIRECT (%s); IO measurement skipped.\n", best_label,
+	       strerror (errno));
+      return ER_FAILED;
+    }
+
+  if (posix_memalign ((void **) &buf, IO_PAGESIZE, IO_PAGESIZE) != 0)
+    {
+      close (fd);
+      return ER_FAILED;
+    }
+  t_seq = (double *) malloc (sizeof (double) * CALIB_SEQ_RUNS * CALIB_SEQ_RUN_PAGES);
+  t_rand = (double *) malloc (sizeof (double) * CALIB_RAND_SAMPLES);
+  if (t_seq == NULL || t_rand == NULL)
+    {
+      status = ER_FAILED;
+      goto cleanup;
+    }
+
+  srand48 ((long) time (NULL));
+
+  /* sequential: single-page consecutive reads (the engine's own IO unit);
+   * the first page of every run is dropped so OS readahead warm-up does not
+   * bias the sample */
+  for (k = 0; k < CALIB_SEQ_RUNS; k++)
+    {
+      INT64 start = (INT64) (drand48 () * (pages - CALIB_SEQ_RUN_PAGES - 1));
+
+      for (i = 0; i < CALIB_SEQ_RUN_PAGES; i++)
+	{
+	  double t0 = calib_now_usec ();
+
+	  if (pread (fd, buf, IO_PAGESIZE, (off_t) (start + i) * IO_PAGESIZE) != IO_PAGESIZE)
+	    {
+	      status = ER_FAILED;
+	      goto cleanup;
+	    }
+	  if (i > 0)
+	    {
+	      t_seq[n_seq++] = calib_now_usec () - t0;
+	    }
+	}
+    }
+
+  /* random: uniform page ids over the whole volume, bounded by samples and
+   * wall-clock budget */
+  {
+    double budget_end = calib_now_usec () + CALIB_RAND_BUDGET_USEC;
+
+    for (i = 0; i < CALIB_RAND_SAMPLES && calib_now_usec () < budget_end; i++)
+      {
+	INT64 pgid = (INT64) (drand48 () * (pages - 1));
+	double t0 = calib_now_usec ();
+
+	if (pread (fd, buf, IO_PAGESIZE, (off_t) pgid * IO_PAGESIZE) != IO_PAGESIZE)
+	  {
+	    status = ER_FAILED;
+	    goto cleanup;
+	  }
+	t_rand[n_rand++] = calib_now_usec () - t0;
+      }
+  }
+
+  if (n_rand < 50)
+    {
+      fprintf (stderr, "calibratedb: too few random read samples (%d).\n", n_rand);
+      status = ER_FAILED;
+      goto cleanup;
+    }
+
+  *rand_cv = calib_split_half_error (t_rand, n_rand);
+  *seq_usec = calib_median (t_seq, n_seq);
+  *rand_usec = calib_median (t_rand, n_rand);
+  *rand_samples = n_rand;
+
+cleanup:
+  if (buf != NULL)
+    {
+      free (buf);
+    }
+  free (t_seq);
+  free (t_rand);
+  close (fd);
+  return status;
+}
+
+/*
+ * calib_exec () - run one statement; elapsed wall time out, first-column
+ *                 integer of the first row out (both optional)
+ */
+static int
+calib_exec (const char *sql, double *elapsed_usec, DB_BIGINT * first_int)
+{
+  DB_SESSION *session;
+  DB_QUERY_RESULT *result = NULL;
+  int stmt_id, db_error;
+  double t0;
+
+  session = db_open_buffer (sql);
+  if (session == NULL)
+    {
+      return ER_FAILED;
+    }
+  stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      db_close_session (session);
+      return ER_FAILED;
+    }
+  t0 = calib_now_usec ();
+  db_error = db_execute_statement (session, stmt_id, &result);
+  if (elapsed_usec != NULL)
+    {
+      *elapsed_usec = calib_now_usec () - t0;
+    }
+  if (db_error >= 0 && result != NULL && first_int != NULL)
+    {
+      DB_VALUE value;
+
+      if (db_query_first_tuple (result) == DB_CURSOR_SUCCESS
+	  && db_query_get_tuple_value (result, 0, &value) == NO_ERROR)
+	{
+	  *first_int = db_get_bigint (&value);
+	  db_value_clear (&value);
+	}
+    }
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+  db_close_session (session);
+  return (db_error < 0) ? ER_FAILED : NO_ERROR;
+}
+
+/*
+ * calibratedb () - the utility body
+ */
+int
+calibratedb (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *db_name;
+  const char *user_class;
+  char scan_sql[512], cov_sql[512], noncov_sql[512];
+  double seq_us = 0.0, rand_us = 0.0, rand_cv = 0.0;
+  int rand_n = 0;
+  bool io_ok, io_plausible = false, cpu_ok = false, fetch_ok = false;
+  bool cpu_clamped = false, fetch_clamped = false;
+  double t_tuple_us = 0.0;
+  double cov_med = 0.0, noncov_med = 0.0;
+  double reco_random = 0.0, reco_cpu = 0.0, reco_fetch = 0.0;
+  DB_BIGINT rows = 0;
+  int i;
+
+  db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (db_name == NULL || utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_calibrate_usage;
+    }
+  user_class = utility_get_option_string_value (arg_map, CALIBRATE_CLASS_NAME_S, 0);
+
+  if (check_database_name (db_name))
+    {
+      goto error_exit;
+    }
+
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+  if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  printf ("calibratedb: measuring on database '%s' (report only; nothing is applied)\n\n", db_name);
+
+  /* -------- IO: sequential vs random page reads -------- */
+  io_ok = (calib_measure_io (&seq_us, &rand_us, &rand_n, &rand_cv) == NO_ERROR);
+  io_plausible = io_ok && seq_us >= CALIB_MIN_PLAUSIBLE_SEQ_USEC;
+  if (io_ok)
+    {
+      /* the effective ratio the cost model wants is well below the raw device
+       * ratio (part of every index scan hits cache); clamp into the effective
+       * band rather than trusting a raw HDD 50-100x */
+      reco_random = rand_us / seq_us;
+      reco_random = MAX (1.0, MIN (4.0, reco_random));
+    }
+
+  /* -------- CPU: calibration queries -------- */
+  if (user_class != NULL && user_class[0] != '\0')
+    {
+      snprintf (scan_sql, sizeof (scan_sql), "SELECT /*+ RECOMPILE */ COUNT(*) FROM [%s]", user_class);
+      if (calib_exec (scan_sql, NULL, &rows) == NO_ERROR && rows > 0	/* warm */
+	  && calib_exec (scan_sql, NULL, NULL) == NO_ERROR)
+	{
+	  double reps[CALIB_QUERY_REPS];
+
+	  for (i = 0; i < CALIB_QUERY_REPS; i++)
+	    {
+	      if (calib_exec (scan_sql, &reps[i], NULL) != NO_ERROR)
+		{
+		  break;
+		}
+	    }
+	  if (i == CALIB_QUERY_REPS)
+	    {
+	      t_tuple_us = calib_median (reps, CALIB_QUERY_REPS) / (double) rows;
+	      cpu_ok = true;
+	    }
+	}
+      /* a user class gives no covering/non-covering pair on one index */
+    }
+  else
+    {
+      /* scratch table: dropped again below; ~10MB of data and log */
+      calib_exec ("DROP TABLE IF EXISTS " CALIB_SCRATCH_TABLE, NULL, NULL);
+      if (calib_exec ("CREATE TABLE " CALIB_SCRATCH_TABLE " (id INT, v INT, pad CHAR(50))", NULL, NULL) == NO_ERROR
+	  && calib_exec ("INSERT INTO " CALIB_SCRATCH_TABLE
+			 " SELECT ROWNUM, ROWNUM % 97, 'x' FROM table({0,1,2,3,4,5,6,7,8,9}) a,"
+			 " table({0,1,2,3,4,5,6,7,8,9}) b, table({0,1,2,3,4,5,6,7,8,9}) c,"
+			 " table({0,1,2,3,4,5,6,7,8,9}) d, table({0,1,2,3,4,5,6,7,8,9}) e LIMIT 100000",
+			 NULL, NULL) == NO_ERROR
+	  && calib_exec ("CREATE INDEX ix_calib ON " CALIB_SCRATCH_TABLE " (id, v)", NULL, NULL) == NO_ERROR)
+	{
+	  double reps[CALIB_QUERY_REPS], cov[CALIB_QUERY_REPS], noncov[CALIB_QUERY_REPS];
+
+	  rows = CALIB_SCRATCH_ROWS;
+	  snprintf (scan_sql, sizeof (scan_sql), "SELECT /*+ RECOMPILE */ COUNT(pad) FROM " CALIB_SCRATCH_TABLE);
+	  snprintf (cov_sql, sizeof (cov_sql),
+		    "SELECT /*+ RECOMPILE */ COUNT(v) FROM " CALIB_SCRATCH_TABLE " WHERE id >= 0 USING INDEX ix_calib");
+	  snprintf (noncov_sql, sizeof (noncov_sql),
+		    "SELECT /*+ RECOMPILE */ COUNT(pad) FROM " CALIB_SCRATCH_TABLE
+		    " WHERE id >= 0 USING INDEX ix_calib");
+
+	  /* warm the buffer pool once per shape */
+	  calib_exec (scan_sql, NULL, NULL);
+	  calib_exec (cov_sql, NULL, NULL);
+	  calib_exec (noncov_sql, NULL, NULL);
+
+	  cpu_ok = fetch_ok = true;
+	  for (i = 0; i < CALIB_QUERY_REPS; i++)
+	    {
+	      /* interleave the pair so clock drift hits both sides equally */
+	      if (calib_exec (scan_sql, &reps[i], NULL) != NO_ERROR
+		  || calib_exec (cov_sql, &cov[i], NULL) != NO_ERROR
+		  || calib_exec (noncov_sql, &noncov[i], NULL) != NO_ERROR)
+		{
+		  cpu_ok = fetch_ok = false;
+		  break;
+		}
+	    }
+	  if (cpu_ok)
+	    {
+	      t_tuple_us = calib_median (reps, CALIB_QUERY_REPS) / (double) rows;
+	      cov_med = calib_median (cov, CALIB_QUERY_REPS);
+	      noncov_med = calib_median (noncov, CALIB_QUERY_REPS);
+	      if (noncov_med <= cov_med)
+		{
+		  fetch_ok = false;	/* difference lost in noise */
+		}
+	    }
+	}
+      calib_exec ("DROP TABLE IF EXISTS " CALIB_SCRATCH_TABLE, NULL, NULL);
+      db_commit_transaction ();
+    }
+
+  if (cpu_ok && io_plausible)
+    {
+      double raw = t_tuple_us / seq_us;
+
+      reco_cpu = MAX (0.0005, MIN (0.05, raw));
+      /* landing on a clamp bound means the ratio left the band the cost model
+       * is built for -- report it as suspect instead of recommending it */
+      cpu_clamped = (raw != reco_cpu);
+    }
+  if (fetch_ok && cpu_ok)
+    {
+      double raw = ((noncov_med - cov_med) / (double) rows) / t_tuple_us;
+
+      reco_fetch = MAX (1.0, MIN (50.0, raw));
+      fetch_clamped = (raw != reco_fetch);
+    }
+
+  /* -------- report -------- */
+  printf ("== measurements ==\n");
+  if (io_ok)
+    {
+      printf ("  sequential page read : %10.1f us/page (median)\n", seq_us);
+      printf ("  random page read     : %10.1f us/page (median, n=%d, split-half gap %.0f%%)\n", rand_us,
+	      rand_n, rand_cv * 100.0);
+    }
+  else
+    {
+      printf ("  page IO              : measurement skipped\n");
+    }
+  if (io_ok && !io_plausible)
+    {
+      printf ("  storage class        : RAM-backed or cached (%.1f us/page < %.0f us) -- page time is not\n"
+	      "                         a usable denominator; run this on the host holding the real volumes\n",
+	      seq_us, CALIB_MIN_PLAUSIBLE_SEQ_USEC);
+    }
+  if (cpu_ok)
+    {
+      printf ("  per-tuple CPU        : %10.3f us/tuple (%lld rows)\n", t_tuple_us, (long long) rows);
+    }
+  if (fetch_ok)
+    {
+      printf ("  heap fetch (per OID) : %10.3f us  (non-covering %0.0f us vs covering %0.0f us)\n",
+	      (noncov_med - cov_med) / (double) rows, noncov_med, cov_med);
+    }
+
+#if !defined (NDEBUG)
+  if (cpu_ok)
+    {
+      printf ("\n  NOTE: this is a debug build -- assertions and unoptimized code inflate the\n");
+      printf ("        per-tuple CPU time, so the CPU-derived values below read high. Calibrate\n");
+      printf ("        with a release build before putting them in cubrid.conf.\n");
+    }
+#endif
+
+  printf ("\n== recommended cost parameters (defaults kept where not measured) ==\n");
+  printf ("  cost_seq_page             = 1.0     ; unit anchor, never changes\n");
+  if (io_plausible && rand_cv <= CALIB_MAX_SPLIT_HALF_ERR)
+    {
+      printf ("  cost_random_page          = %-7.2f ; measured ratio %.2f, clamped to [1,4]\n", reco_random,
+	      rand_us / seq_us);
+    }
+  else if (io_ok && !io_plausible)
+    {
+      printf ("  cost_random_page          = (keep default) ; storage is RAM-backed or cached\n");
+    }
+  else if (io_ok)
+    {
+      printf ("  cost_random_page          = (keep default) ; median not reproducible"
+	      " (split-half gap %.0f%% > %.0f%%)\n", rand_cv * 100.0, CALIB_MAX_SPLIT_HALF_ERR * 100.0);
+    }
+  else
+    {
+      printf ("  cost_random_page          = (keep default) ; not measured\n");
+    }
+  if (cpu_ok && io_plausible && !cpu_clamped)
+    {
+      printf ("  cost_cpu_tuple            = %-7.4f ; tuple CPU / sequential page time\n", reco_cpu);
+    }
+  else if (cpu_ok && io_plausible)
+    {
+      printf ("  cost_cpu_tuple            = (keep default) ; ratio %.4f outside the plausible band"
+	      " [0.0005, 0.05]\n", t_tuple_us / seq_us);
+    }
+  else
+    {
+      printf ("  cost_cpu_tuple            = (keep default) ; %s\n",
+	      cpu_ok ? "no usable page time as denominator" : "no scratch/class timing");
+    }
+  if (fetch_ok && cpu_ok && !fetch_clamped)
+    {
+      printf ("  cost_heap_fetch_per_oid   = %-7.1f ; best-case (fully clustered) lower bound\n", reco_fetch);
+    }
+  else if (fetch_ok && cpu_ok)
+    {
+      printf ("  cost_heap_fetch_per_oid   = (keep default) ; ratio %.1f outside the plausible band [1, 50]\n",
+	      ((noncov_med - cov_med) / (double) rows) / t_tuple_us);
+    }
+  else
+    {
+      printf ("  cost_heap_fetch_per_oid   = (keep default) ; covering/non-covering pair unavailable%s\n",
+	      (user_class != NULL) ? " with --class-name" : "");
+    }
+  printf ("  cost_index_page_hit_ratio = (keep default) ; workload-dependent, not synthetically measurable\n");
+
+  printf ("\n== how to apply ==\n");
+  printf ("  These parameters steer the CLIENT-side optimizer. Add the lines above to the\n");
+  printf ("  cubrid.conf [client] section of every host that compiles queries: the csql\n");
+  printf ("  host, and the BROKER host for CAS traffic. Then restart those clients.\n");
+  printf ("  A session can also try them out first:\n");
+  printf ("    SET SYSTEM PARAMETERS 'cost_random_page=%.2f';  -- with /*+ RECOMPILE */ on test queries\n",
+	  (io_plausible && rand_cv <= CALIB_MAX_SPLIT_HALF_ERR) ? reco_random : 1.0);
+
+  db_shutdown ();
+  return EXIT_SUCCESS;
+
+print_calibrate_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CALIBRATEDB, CALIBRATEDB_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+error_exit:
+  return EXIT_FAILURE;
+}
+
 
 typedef enum
 {
