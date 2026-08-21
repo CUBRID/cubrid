@@ -57,12 +57,10 @@
 #define STRINGS_PER_BLOCK (8192-(4*sizeof(long)+sizeof(char *)+40))
 
 /*
- * How many of the newest blocks an allocation looks at before taking a new one.
- * Searching the whole list costs more than the room it finds -- it grows with the statement.
- * Searching only the newest spends blocks instead -- the tail a block just left still takes
- * a smaller request.
- * Searching deeper than a few does neither -- similar requests follow one another, so a
- * block that failed one keeps failing.
+ * How many of the newest blocks an allocation checks before taking a new one.
+ * A full scan grows with the statement and rarely finds room: a block that
+ * refused one request keeps refusing the similar ones that follow. The newest
+ * few still catch a smaller request fitting a recent block's tail.
  */
 #define STRING_BLOCK_SCAN_LIMIT 8
 #define HASH_NUMBER 128
@@ -88,7 +86,6 @@ typedef struct parser_string_block PARSER_STRING_BLOCK;
 struct parser_string_block
 {
   PARSER_STRING_BLOCK *next;
-  int parser_id;
   int last_string_start;
   int last_string_end;
   int block_end;
@@ -427,8 +424,6 @@ parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
       block->block_end = CAST_BUFLEN (length + 1001 - 1);
     }
 
-  /* remember which parser allocated this block */
-  block->parser_id = parser->id;
   block->last_string_start = -1;
   block->last_string_end = -1;
   block->u.chars[0] = 0;

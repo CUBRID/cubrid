@@ -3875,10 +3875,7 @@ struct parser_context
   PT_CASECMP_FUN casecmp;	/* for case insensitive comparisons */
 
   int id;			/* internal parser id */
-  void *string_blocks;		/* this parser's string block list (PARSER_STRING_BLOCK, private to parse_tree.c).
-				 * Owned here rather than hashed globally by id: the global bucket mixed every
-				 * parser's blocks, so each allocation scanned other parsers' blocks and a long
-				 * statement paid O(blocks) per string. */
+  void *string_blocks;		/* this parser's string block list (PARSER_STRING_BLOCK, private to parse_tree.c) */
   int statement_number;		/* user-initialized, incremented by parser */
 
   const char *original_buffer;	/* pointer to the original parse buffer */
