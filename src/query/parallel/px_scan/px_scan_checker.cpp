@@ -421,20 +421,12 @@ namespace parallel_scan
 	    result |= check<false> (arg->s.cls_node.cls_regu_list_range);
 	    result |= check<false> (arg->where_range);
 	  }
-	if (!arg->s.cls_node.cls_regu_list_pred && !arg->s.cls_node.cls_regu_list_rest)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
       }
     else if (arg->type == TARGET_LIST)
       {
 	result |= check<false> (arg->s.list_node.list_regu_list_pred);
 	result |= check<false> (arg->s.list_node.list_regu_list_rest);
 	result |= check<false> (arg->where_pred);
-	if (!arg->s.list_node.list_regu_list_pred && !arg->s.list_node.list_regu_list_rest)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
       }
     return result;
   }
