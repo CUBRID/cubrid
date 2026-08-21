@@ -2558,7 +2558,9 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	    /* analytic functions */
 	    pg_cnt += qexec_clear_analytic_function_list (thread_p, xasl, buildlist->a_eval_list, is_final, false);
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_regu_list, is_final, false);
-	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_scan_regu_list, is_final, true);
+	    /* not a parallel-aptr clear: this is the owning thread's pass, which must dispose TYPE_SP
+	     * signatures (passing true here would skip them for good — see qexec_clear_regu_var). */
+	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_scan_regu_list, is_final, false);
 
 	    /* group by regu list */
 	    if (buildlist->g_scan_regu_list)
