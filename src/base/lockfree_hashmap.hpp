@@ -24,6 +24,7 @@
 #define _LOCKFREE_HASHMAP_HPP_
 
 #include "error_code.h"
+#include "error_manager.h"
 #include "lock_free.h"                        // for lf_entry_descriptor
 #include "lockfree_address_marker.hpp"
 #include "lockfree_freelist.hpp"
@@ -680,7 +681,13 @@ namespace lockfree
 	fn = m_freelist->claim (tdes);
 	if (fn == NULL)
 	  {
-	    // out of memory; lf_freelist_claim () answered NULL here too and callers check for it
+	    // out of memory. lf_freelist_alloc_block () raised this before answering NULL
+	    // (lock_free.c:640-646) and the callers are written to find it: xcache_new_entry () runs
+	    // ASSERT_ERROR_AND_SET (xasl_cache.c:1574-1578), which assert (false)s and degrades to ER_FAILED
+	    // when nothing is set. Raised here rather than in alloc_list (): a short block there is not yet a
+	    // failure - claim () goes on to force_alloc_block () - and the freelist is generic code with no
+	    // business in the error manager.
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) sizeof (free_node_type));
 	    if (is_local_tran)
 	      {
 		tdes.end_tran ();
