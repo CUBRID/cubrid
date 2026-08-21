@@ -143,7 +143,7 @@ static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 static int jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
 static int jsp_drop_stored_procedure_code (const char *name);
 
-static MOP jsp_get_package_of_member (const MOP sp_obj);
+static int jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p);
 static int jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
 
 extern bool ssl_client;
@@ -4779,23 +4779,31 @@ exit_on_error:
   return error;
 }
 
-// If sp_obj is a package member, return the MOP of its owning package; otherwise NULL.
-// A package member's unique_name is "<owner>.<package>.<member>", so the package's
-// unique_name is the prefix up to the last dot. Membership is confirmed by that prefix
-// actually resolving to a package (so standalone SPs and package objects return NULL).
-static MOP
-jsp_get_package_of_member (const MOP sp_obj)
+// If sp_obj is a package member, return its owning package through *pkg_mop_p; otherwise set it to NULL.
+// A package member's unique_name is "<owner>.<package>.<member>", so the package's unique_name is the
+// prefix up to the last dot. Membership is confirmed by that prefix actually resolving to a package
+// (so standalone SPs and package objects yield a NULL *pkg_mop_p).
+//
+// The return value is the error code: a NULL *pkg_mop_p with NO_ERROR means "not a member", while a
+// non-NO_ERROR return means the lookup itself failed. The caller must rely on this instead of the
+// global er_errid(), which may hold a stale error left over from earlier processing.
+static int
+jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p)
 {
-  int save;
+  int save, error = NO_ERROR;
   DB_VALUE pkgname_val, uname_val;
   MOP pkg_mop = NULL;
+
+  assert (pkg_mop_p != NULL);
+  *pkg_mop_p = NULL;
 
   AU_SAVE_AND_DISABLE (save);
 
   if (db_get (sp_obj, SP_ATTR_PKG_NAME, &pkgname_val) != NO_ERROR)
     {
+      error = er_errid ();
       AU_RESTORE (save);
-      return NULL;
+      return error;
     }
   const char *pkgname = DB_IS_NULL (&pkgname_val) ? NULL : db_get_string (&pkgname_val);
   bool is_member_candidate = (pkgname != NULL && pkgname[0] != '\0');
@@ -4803,7 +4811,7 @@ jsp_get_package_of_member (const MOP sp_obj)
   if (!is_member_candidate)
     {
       AU_RESTORE (save);
-      return NULL;
+      return NO_ERROR;
     }
 
   if (db_get (sp_obj, SP_ATTR_UNIQUE_NAME, &uname_val) == NO_ERROR && !DB_IS_NULL (&uname_val))
@@ -4822,10 +4830,16 @@ jsp_get_package_of_member (const MOP sp_obj)
 	      DB_VALUE v;
 	      db_make_string (&v, pkg_unique);
 	      pkg_mop = db_find_unique (db_find_class (CT_PACKAGE_NAME), PKG_ATTR_UNIQUE_NAME, &v);
-	      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	      if (pkg_mop == NULL)
 		{
-		  er_clear ();
-		  pkg_mop = NULL;
+		  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+		    {
+		      er_clear ();
+		    }
+		  else
+		    {
+		      error = er_errid ();
+		    }
 		}
 	    }
 	}
@@ -4833,7 +4847,8 @@ jsp_get_package_of_member (const MOP sp_obj)
     }
 
   AU_RESTORE (save);
-  return pkg_mop;
+  *pkg_mop_p = pkg_mop;
+  return error;
 }
 
 static int
@@ -4851,14 +4866,15 @@ jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 
   // EXECUTE on a package member is governed by the grant on its owning package, because a
   // privilege cannot be granted on an individual member.
-  MOP pkg_mop = jsp_get_package_of_member (sp_obj);
+  MOP pkg_mop = NULL;
+  int error = jsp_get_package_of_member (sp_obj, &pkg_mop);
   if (pkg_mop != NULL)
     {
       return (au_check_package_authorization (pkg_mop) == NO_ERROR) ? NO_ERROR : ER_FAILED;
     }
-  else if (er_errid() != NO_ERROR)
+  else if (error != NO_ERROR)
     {
-      return er_errid();
+      return error;
     }
 
   // check execute authorization (Au_user is granted by owner)
