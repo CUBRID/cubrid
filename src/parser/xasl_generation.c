@@ -623,6 +623,7 @@ static bool pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * coveri
 static int pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static int pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl);
 static DB_VALUE **pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type);
+static bool pt_cond_spans_multiple_specs (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond);
 static int pt_mvcc_flag_specs_cond_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond);
 static int pt_mvcc_flag_specs_assign_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * assign_list);
 static int pt_mvcc_set_spec_assign_reev_extra_indexes (PARSER_CONTEXT * parser, PT_NODE * spec_assign,
@@ -20857,6 +20858,60 @@ exit_on_error:
 }
 
 /*
+ * pt_cond_spans_multiple_specs () - does any single conjunct reference more than one spec?
+ *   return: true if some term relates two or more specs
+ *   parser(in): parser context
+ *   spec_list(in): the statement's spec list
+ *   cond(in): a list of AND-ed conditions, or NULL
+ *
+ *  Note: Force-time reevaluation visits one spec at a time and matches it against that spec's own
+ *	  range/key/data filters.  A term confined to a single spec survives that; a term relating
+ *	  two specs does not, because no per-scan filter can carry the other spec's row.  Counting
+ *	  the specs a statement mentions is a coarser test than this and pulls in statements whose
+ *	  terms are all independent.
+ */
+static bool
+pt_cond_spans_multiple_specs (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond)
+{
+  PT_NODE *term, *spec, *node, *real_refs, *saved_next;
+  int nspecs;
+  bool spans = false;
+
+  if (spec_list == NULL || cond == NULL)
+    {
+      return false;
+    }
+
+  for (term = cond; term != NULL && !spans; term = term->next)
+    {
+      saved_next = term->next;
+      term->next = NULL;
+
+      nspecs = 0;
+      for (spec = spec_list; spec != NULL; spec = spec->next)
+	{
+	  real_refs = spec->info.spec.referenced_attrs;
+	  spec->info.spec.referenced_attrs = NULL;
+	  node = mq_get_references (parser, term, spec);
+	  spec->info.spec.referenced_attrs = real_refs;
+	  if (node != NULL)
+	    {
+	      parser_free_tree (parser, node);
+	      nspecs++;
+	    }
+	}
+
+      term->next = saved_next;
+      if (nspecs > 1)
+	{
+	  spans = true;
+	}
+    }
+
+  return spans;
+}
+
+/*
  * pt_mvcc_flag_specs_cond_reev () - flag specs that are involved in condition
  *   return: NO_ERROR or error code.
  *   parser(in):
@@ -21672,6 +21727,25 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* remove reevaluation flags if we have GROUP BY because the locking will be made at SELECT stage */
 	  abort_reevaluation = true;
 	}
+      else if (has_partitioned || pt_has_reev_in_subquery (parser, aptr_statement))
+	{
+	  /* A partitioned class never gets the reevaluation flags at all (see the has_partitioned guard around
+	   * pt_mvcc_flag_specs_cond_reev above), and a predicate living in a subquery cannot be replayed as a
+	   * scan filter.  Either way the delete phase has nothing to re-check with, so the select phase must
+	   * keep the lock -- exactly as the UPDATE path already does. */
+	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+	  abort_reevaluation = true;
+	}
+      else if (statement->info.delete_.limit != NULL)
+	{
+	  /* LIMIT is applied while the select builds the candidate list, so the list holds exactly n rows.
+	   * When reevaluation later rejects one of them the delete simply skips it -- there is no way back
+	   * into the finished scan to fetch a replacement, so a statement that should have deleted n rows
+	   * deletes fewer while rows that qualify are left behind.  Locking at select instead makes the
+	   * candidates settle before the quota is spent.  The lock footprint stays bounded by n. */
+	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+	  abort_reevaluation = true;
+	}
       else
 	{
 	  /* if at least one table involved in reevaluation is a derived table then abort reevaluation and force
@@ -21689,8 +21763,47 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      /* Reevaluation at the delete phase takes over from the select-phase lock: the predicate is
-       * re-checked against the version that phase locks, so the select phase is left unlocked. */
+      /* CBRD-27034: DELETE relies on condition-only reevaluation instead of the select-phase row lock.
+       * The delete phase resolves each reevaluation class to its access spec by exact class OID
+       * (qexec_upddel_mvcc_set_filters), which only holds for a spec this statement deletes from and that
+       * scans one class: a class the condition merely references is fetched, not scanned, and a hierarchy
+       * scan reports subclass OIDs no spec carries. Neither can be re-checked, so those keep the
+       * select-phase lock. */
+      for (cl_name_node = from; cl_name_node != NULL && !abort_reevaluation; cl_name_node = cl_name_node->next)
+	{
+	  if (!(cl_name_node->info.spec.flag & PT_SPEC_FLAG_MVCC_COND_REEV))
+	    {
+	      continue;
+	    }
+	  /* A hierarchy scan reports subclass OIDs that no spec carries, so the delete phase cannot
+	   * resolve them back to an access spec and has nothing to re-check with.
+	   *
+	   * A class the condition merely references used to be listed here too.  It no longer needs
+	   * to be: force-time reevaluation now re-reads that class's own row from its own heap
+	   * (locator_mvcc_reeval_scan_filters), so a term confined to it is checkable.  A term that
+	   * relates it to another spec still is not, and the cross-spec test below catches that. */
+	  if (cl_name_node->info.spec.flat_entity_list != NULL
+	      && cl_name_node->info.spec.flat_entity_list->next != NULL)
+	    {
+	      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+	      abort_reevaluation = true;
+	    }
+	}
+
+      /* A term relating two specs is re-checked one spec at a time, against that spec's own
+       * range/key/data filters, and such a filter cannot carry the other spec's row.  Both classes
+       * being delete targets does not make it any more re-checkable -- DELETE a, b FROM a, b WHERE
+       * a.k = b.k is the case the loop above lets through.  Terms that each stay inside one spec
+       * are fine, so ask whether any single term crosses, not how many specs appear. */
+      if (!abort_reevaluation && pt_cond_spans_multiple_specs (parser, from, where))
+	{
+	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+	  abort_reevaluation = true;
+	}
+
+      /* Whatever survives the tests above is re-checked at the delete phase instead of being locked
+       * at select: the row is locked there and, if its version moved, the predicate is evaluated
+       * again against the latest one. */
 
       if (abort_reevaluation)
 	{
