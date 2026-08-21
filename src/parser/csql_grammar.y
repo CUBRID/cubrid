@@ -712,6 +712,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> synonym_name
 %type <node> package_name_without_dot
 %type <node> package_name_list
+%type <node> proc_or_pkg_name_list
 %type <node> procedure_or_function_name_without_dot
 %type <node> procedure_or_function_name
 %type <node> procedure_or_function_name_list
@@ -5890,9 +5891,25 @@ procedure_or_function_name_list
 
 proc_or_pkg_name_list
         : proc_or_pkg_name_list ',' procedure_or_function_name_without_dot
+		{{
+			$$ = parser_make_link($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
         | proc_or_pkg_name_list ',' package_name_without_dot
+		{{
+			$$ = parser_make_link($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
         | procedure_or_function_name_without_dot
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
         | package_name_without_dot
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
         ;
 
 opt_partition_spec
