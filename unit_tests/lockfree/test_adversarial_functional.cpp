@@ -295,11 +295,11 @@ namespace test_lockfree
   // A node larger than the address space makes new (std::nothrow) answer NULL without touching a page, so the
   // out-of-memory path runs deterministically. claim () must answer NULL, and must leave the transaction it
   // started ENDED - a descriptor keeping a published id pins the table's minimum active id and stops
-  // reclamation for good, and lf_freelist_claim () does end it (lock_free.c:850-857). The constructor must not
-  // leave the back-buffer short of the block final_sanity_checks () asserts (lockfree_freelist.hpp:516);
-  // lf_freelist_init () answers ER_FAILED instead (lock_free.c:713-716).
+  // reclamation for good, and lf_freelist_claim () does end it (lock_free.c:850-857). The freelist must also
+  // survive its own destructor: it cannot fill the back-buffer here, and final_sanity_checks () has to admit
+  // the empty buffer alloc_backbuffer () deliberately leaves behind.
   //
-  // The legacy side of the last two is read, not run: er_set () asserts with no error manager in this binary.
+  // The legacy side is read, not run: er_set () asserts with no error manager in this binary.
   //
   struct adv_oom_data
   {
@@ -318,7 +318,6 @@ namespace test_lockfree
     test_common::sync_cout ("case_oom_freelist_state\n");
     int err = 0;
 
-    // deliberately leaked: destroying it would run final_sanity_checks (), which is what this case reports on
     tran::system *l_transys = new tran::system { 2 };
     freelist<adv_oom_data> *l_freelist = new freelist<adv_oom_data> { *l_transys, BLOCK_SIZE, BLOCK_COUNT };
     tran::index l_index = l_transys->assign_index ();
@@ -330,6 +329,7 @@ namespace test_lockfree
 	// end it here, or the descriptor destructor would assert
 	l_freelist->get_transaction_table ().end_tran (l_index);
       }
+    (void) BLOCK_COUNT;
 
     const size_t bb_count = l_freelist->get_backbuffer_count ();
     const size_t alloc_count = l_freelist->get_alloc_count ();
@@ -345,20 +345,17 @@ namespace test_lockfree
 	test_common::sync_cout ("  FAILED: claim () answered a node although no allocation can succeed\n");
 	err = 1;
       }
-    // reported, not failed: both are known and deliberately left for a separate change. claim () cannot end the
-    // transaction blindly - it is also called with one the caller started - and the constructor has no way to
-    // report at all, which lf_hash_table_cpp::init () does not either (it assert (false)s).
     if (tran_left_started)
       {
-	test_common::sync_cout ("  KNOWN: claim () returned NULL with the transaction still started\n");
-      }
-    if (bb_count != BLOCK_SIZE)
-      {
-	test_common::sync_cout ("  KNOWN: the constructor left the back-buffer short of a block, which"
-				" final_sanity_checks () asserts against\n");
+	test_common::sync_cout ("  FAILED: claim () returned NULL with the transaction still started\n");
+	err = 1;
       }
 
+    // the destructor runs final_sanity_checks (): with nothing allocated the back-buffer is empty, and the
+    // invariant has to accept that rather than abort a debug build on a boot-time out-of-memory.
     l_transys->free_index (l_index);
+    delete l_freelist;
+    delete l_transys;
     return err;
   }
 

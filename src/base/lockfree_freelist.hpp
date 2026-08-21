@@ -53,7 +53,8 @@ namespace lockfree
 
       free_node *claim (tran::descriptor &tdes);
       free_node *claim (tran::index tran_index);                // claim a free node
-      // note: transaction will remain started!
+      // note: on success the transaction will remain started! on failure it is ended again if this call is what
+      //       started it, as lf_freelist_claim () does.
 
       void retire (tran::descriptor &tdes, free_node &node);
       void retire (tran::index tran_index, free_node &node);
@@ -333,6 +334,7 @@ namespace lockfree
   typename freelist<T>::free_node *
   freelist<T>::claim (tran::descriptor &tdes)
   {
+    const bool is_local_tran = !tdes.is_tran_started ();
     tdes.start_tran ();
     tdes.reclaim_retired_list ();
 
@@ -351,7 +353,13 @@ namespace lockfree
 	if (!force_alloc_block ())
 	  {
 	    // out of memory. legacy lf_freelist_claim () answered NULL here and its callers - xcache_new_entry ()
-	    // among them - already expect that.
+	    // among them - already expect that. It also ended the transaction it had opened
+	    // (lock_free.c:850-857): a descriptor left holding a published id pins the table's minimum active id
+	    // and stops reclamation for this table for the life of the process.
+	    if (is_local_tran)
+	      {
+		tdes.end_tran ();
+	      }
 	    return NULL;
 	  }
 	node = pop_from_available ();
@@ -513,7 +521,9 @@ namespace lockfree
 	save_last = iter;
       }
     assert (list_count == m_bb_count);
-    assert (list_count == m_block_size);
+    // a whole block, or nothing: alloc_backbuffer () gives a short block back and leaves the buffer empty when
+    // it cannot allocate, and claim () falls through to force_alloc_block () from there.
+    assert (list_count == m_block_size || list_count == 0);
     assert (save_last == m_backbuffer_tail);
 
     // check available
