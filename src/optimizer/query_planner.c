@@ -76,7 +76,7 @@
 #define VALID_INNER(plan)	(plan->well_rooted || \
 				 (plan->plan_type == QO_PLANTYPE_SORT))
 
-#define TEMP_SETUP_COST 5.0
+#define TEMP_SETUP_COST (5.0 * qo_Cost_seq_page)	/* page-denominated list-file setup */
 /* Optimizer cost constants, cached once per query optimization from system parameters
  * (qo_load_cost_params); see the PRM_ID_COST_* group. The macros alias the cached values
  * so call sites are untouched. Defaults equal the historical literals -> unchanged plans
@@ -2965,7 +2965,8 @@ qo_sort_cost (QO_PLAN * planp)
 		   * that the io costs increase by the number of pages required to hold the intermediate result.  CPU
 		   * costs increase as above. Model courtesy of Ender.
 		   */
-		  sort_io = pages * log3 (pages / 4.0);
+		  /* external sort spills to the temp file sequentially: seq page unit cost */
+		  sort_io = pages * log3 (pages / 4.0) * qo_Cost_seq_page;
 
 		  /* guess: apply IO caching for big size sort list. Disk IO cost cannot be greater than the 10% number
 		   * of the requested IO pages
@@ -3786,7 +3787,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
   inner_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
-  inner_build_io_cost = inner_pages;
+  inner_build_io_cost = inner_pages * qo_Cost_seq_page;
 
   /**
    * STEP 3: Calculate the cost when outer is used as build input.
@@ -3794,7 +3795,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
   outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   outer_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
-  outer_build_io_cost = outer_pages;
+  outer_build_io_cost = outer_pages * qo_Cost_seq_page;
 
   /* Partitioned hash join spills to disk once the build input exceeds the in-memory
    * hash limit. The executor switches to a partitioned (spilling) hash join at
@@ -3811,12 +3812,12 @@ qo_hjoin_cost (QO_PLAN * plan_p)
 
     if ((inner_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR)
       {
-	inner_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
+	inner_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT * qo_Cost_seq_page;
       }
 
     if ((outer_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR)
       {
-	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
+	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT * qo_Cost_seq_page;
       }
   }
 
@@ -4082,7 +4083,8 @@ qo_follow_cost (QO_PLAN * planp)
   planp->fixed_cpu_cost = head->fixed_cpu_cost;
   planp->fixed_io_cost = head->fixed_io_cost;
   planp->variable_cpu_cost = head->variable_cpu_cost + (cardinality * (double) QO_CPU_WEIGHT);
-  planp->variable_io_cost = head->variable_io_cost + fetch_ios;
+  /* follow fetches the target objects by OID: random page unit cost */
+  planp->variable_io_cost = head->variable_io_cost + fetch_ios * qo_Cost_random_page;
 
 #if TEST_DUMP_PLAN_FOLLOW_COST
   fprintf (stdout, "\nFollow Cost: \n");
