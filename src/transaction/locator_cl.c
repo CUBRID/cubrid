@@ -6179,8 +6179,10 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
 	}
 
       /* The slot can be gone: the server merges a request naming a class an earlier one
-       * already named. Falling back to the bare name cannot pick the wrong class -- a
-       * second owner of it would have made the name ambiguous and failed the statement. */
+       * already named. The bare name finds it back, and cannot find the wrong class -- a
+       * second owner of that name would have failed the statement as ambiguous. It does
+       * come up empty for a synonym, whose bare name is not its target's; those are asked
+       * again one at a time below. */
       if (my_slot < lockhint->num_classes && !OID_ISNULL (&lockhint->classes[my_slot].oid))
 	{
 	  resolved_names[i] = locator_lockhint_class_name (lockhint, my_slot);
@@ -6189,6 +6191,58 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
 	{
 	  resolved_names[i] = locator_lockhint_find_bare_name (lockhint, requested);
 	}
+    }
+}
+
+/*
+ * locator_retry_unreported_names () - Ask again, one name at a time, for the owner-omitted
+ *                                     names the batched reply could not account for
+ *
+ * return: void
+ *
+ *   num_classes(in): Number of requested names
+ *   many_classnames(in): Requested names, qualified with the connecting user
+ *   many_locks(in): Per-request lock
+ *   need_subclasses(in): Per-request subclass flag
+ *   flags(in): Per-request prefetch flags
+ *   resolved_names(in/out): Slots still NULL that should not be are filled in here
+ *
+ * Note: A synonym asked for without an owner resolves to its target class, whose name
+ *       shares nothing with the one asked for, so when the reply merges its slot into
+ *       another request's there is no way to tell from the reply alone what it resolved
+ *       to. Asking for that one name by itself leaves nothing to merge it with.
+ *
+ *       Costs a round trip, and only for a statement that names both a synonym and
+ *       something else resolving to the same class as that synonym.
+ */
+static void
+locator_retry_unreported_names (int num_classes, const char **many_classnames, LOCK * many_locks,
+				int *need_subclasses, LC_PREFETCH_FLAGS * flags, const char **resolved_names)
+{
+  int i;
+
+  for (i = 0; i < num_classes; i++)
+    {
+      const char *one_name = many_classnames[i];
+      const char *one_resolved = NULL;
+      LOCK one_lock;
+      int one_subclasses;
+      LC_PREFETCH_FLAGS one_flag;
+
+      if (resolved_names[i] != NULL || one_name == NULL || !(flags[i] & LC_PREF_FLAG_OWNER_OMITTED)
+	  || !(flags[i] & LC_PREF_FLAG_LOCK) || ws_find_class (one_name) != NULL)
+	{
+	  continue;
+	}
+
+      one_lock = many_locks[i];
+      one_subclasses = need_subclasses[i];
+      one_flag = flags[i];
+
+      /* One name cannot be merged into anything, so the reply accounts for it exactly. */
+      (void) locator_lockhint_classes (1, &one_name, &one_lock, &one_subclasses, &one_flag, false, NULL_LOCK,
+				       &one_resolved);
+      resolved_names[i] = one_resolved;
     }
 }
 
@@ -6229,6 +6283,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
   OID *guessmany_class_oids = NULL;
   int *guessmany_class_chns = NULL;
   LOCK conv_lock;
+  bool retry_unreported = false;
 
   all_found = LC_CLASSNAME_EXIST;
   need_call_server = need_flush = false;
@@ -6491,11 +6546,19 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
   if (lockhint != NULL && resolved_names != NULL && all_found == LC_CLASSNAME_EXIST)
     {
       locator_report_resolved_names (lockhint, num_classes, many_classnames, flags, resolved_names);
+      retry_unreported = true;
     }
 
   if (lockhint != NULL)
     {
       locator_free_lockhint (lockhint);
+    }
+
+  /* A lone request cannot have been merged into anything, so there is nothing to ask
+   * again -- and asking would recurse. */
+  if (retry_unreported && num_classes > 1)
+    {
+      locator_retry_unreported_names (num_classes, many_classnames, many_locks, need_subclasses, flags, resolved_names);
     }
 
 error:
