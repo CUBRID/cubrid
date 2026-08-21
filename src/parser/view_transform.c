@@ -1715,6 +1715,19 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 
   /* copy select_list to as_attr_list before mq_lambda() */
   as_attr_list = parser_copy_tree_list (parser, tmp_query->info.query.q.select.list);
+  if (parser->flag.is_parsing_static_sql)
+    {
+      /* as_attr_list entries are bare column-name declarations for the derived table's exposed
+       * interface (printed as "spec (col1, col2)"); an "AS alias" is never valid there, but
+       * select.list items copied above may carry one over from how the outer query referenced
+       * this spec (e.g. "A.col1 AS out1") -- discard it so it can't leak into the printed spec.
+       * scoped to static SQL: rewritten_query is the only printer that turns on PT_PRINT_ALIAS
+       * for this kind of spec, so elsewhere this alias_print is already harmless. */
+      for (col = as_attr_list; col != NULL; col = col->next)
+	{
+	  col->alias_print = NULL;
+	}
+    }
 
   /* substitute attributes for query_spec_columns in statement */
   tmp_query = mq_lambda (parser, tmp_query, attributes, query_spec_columns);
@@ -2196,8 +2209,10 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* determine if class_spec is the only spec in the statement */
   is_rownum_only = mq_is_rownum_only_predicate (parser, statement_spec, mainquery, order_by, subquery, class_);
+  /* A predicate folded to TRUE, e.g. 'WHERE 1=1', is a no-op. Do not count it as a real predicate here, otherwise it
+   * blocks the merging of a view which would be merged without it. */
   is_only_spec =
-    ((statement_spec->next == NULL && (pred == NULL || is_rownum_only)
+    ((statement_spec->next == NULL && (pt_true_search_condition (parser, pred) || is_rownum_only)
       && (subquery->info.query.order_by == NULL || order_by == NULL)) ? true : false);
 
   /* check if orderby_for set to PT_EXPR_INFO_ROWNUM_ONLY */
@@ -5799,6 +5814,19 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
   else
     {
       spec->info.spec.as_attr_list = parser_copy_tree_list (parser, new_query->info.query.q.select.list);
+      if (parser->flag.is_parsing_static_sql)
+	{
+	  /* as_attr_list entries are bare column-name declarations for the derived table's exposed
+	   * interface (printed as "spec (col1, col2)"); an "AS alias" is never valid there, but
+	   * select.list items copied above may carry one over from how the outer query referenced
+	   * this spec (e.g. "A.col1 AS out1") -- discard it so it can't leak into the printed spec.
+	   * scoped to static SQL: rewritten_query is the only printer that turns on PT_PRINT_ALIAS
+	   * for this kind of spec, so elsewhere this alias_print is already harmless. */
+	  for (col = spec->info.spec.as_attr_list; col != NULL; col = col->next)
+	    {
+	      col->alias_print = NULL;
+	    }
+	}
     }
   spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
   spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FROM_VCLASS);
@@ -5998,17 +6026,10 @@ mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
 
   while (temp)
     {
-      /* generate as_attr_list */
-      if (temp->node_type == PT_NAME && temp->info.name.original != NULL)
-	{
-	  /* we have the original name */
-	  node = pt_name (parser, temp->info.name.original);
-	}
-      else
-	{
-	  /* don't have name for attribute; generate new name */
-	  node = pt_name (parser, mq_generate_name (parser, "a", &i));
-	}
+      /* generate as_attr_list; each column gets a freshly synthesized name. The counter i is local
+       * to this call and only increases, so the generated names are unique among themselves without
+       * needing to check as_attr_list. */
+      node = pt_name (parser, mq_generate_name (parser, "a", &i));
 
       if (node == NULL)
 	{
@@ -13017,6 +13038,14 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 #if 0
 		  result->info.name.original = node->info.name.original;
 #endif /* 0 */
+		  if (parser->flag.is_parsing_static_sql)
+		    {
+		      /* discard tree's own alias: result may end up nested inside another expr
+		       * (e.g. a function arg), where re-printing tree's alias breaks the SQL text.
+		       * scoped to static SQL: rewritten_query is the only printer affected by this,
+		       * elsewhere the substituted alias_print is already harmless. */
+		      result->alias_print = node->alias_print;
+		    }
 		}
 
 	      /* we may have just copied a whole query, if so, reset its id's */
