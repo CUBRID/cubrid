@@ -109,11 +109,11 @@ struct parser_string_block
 static_assert (sizeof (PARSER_STRING_BLOCK) + 2 * sizeof (size_t) <= 8192,
 	       "a default string block must fit in one 8KB allocation");
 
-/* pointer to the last string placed in the block */
-#define BLOCK_LAST_STRING(b) (&(b)->u.chars[(b)->last_string_start])
+/* the first character of the last string placed in the block */
+#define PT_STRBLK_LAST_START(b) ((b)->u.chars[(b)->last_string_start])
 
-/* room left after the block's last string, for extending it in place */
-#define BLOCK_ROOM_LEFT(b) ((b)->block_end - (b)->last_string_end)
+/* bytes still available after the block's last string, for extending it in place */
+#define PT_STRBLK_AVAILABLE_SIZE(b) ((b)->block_end - (b)->last_string_end)
 
 /* Global reserved name table including info for each reserved name */
 PT_RESERVED_NAME pt_Reserved_name_table[] = {
@@ -508,9 +508,9 @@ parser_allocate_string_buffer (PARSER_CONTEXT * parser, const int length, const 
   /* set start to the aligned length */
   block->last_string_start = CAST_BUFLEN (DB_ALIGN (block->last_string_end + 1, align));
   block->last_string_end = CAST_BUFLEN (block->last_string_start + length);
-  *BLOCK_LAST_STRING (block) = 0;
+  PT_STRBLK_LAST_START (block) = 0;
 
-  return BLOCK_LAST_STRING (block);
+  return &PT_STRBLK_LAST_START (block);
 }
 
 
@@ -558,7 +558,7 @@ pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string)
   /* the parser's own list; the block being appended to is almost always the
    * newest, so this usually stops at the first node */
   string = parser->string_blocks;
-  while (string != NULL && BLOCK_LAST_STRING (string) != old_string)
+  while (string != NULL && &PT_STRBLK_LAST_START (string) != old_string)
     {
       string = string->next;
     }
@@ -599,7 +599,7 @@ pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const cha
 
   /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
-  if ((string == NULL) || (BLOCK_ROOM_LEFT (string) < new_tail_length))
+  if ((string == NULL) || (PT_STRBLK_AVAILABLE_SIZE (string) < new_tail_length))
     {
       s = (char *) parser_allocate_string_buffer (parser, strlen (old_string) + new_tail_length, sizeof (char));
       if (s == NULL)
@@ -643,7 +643,7 @@ pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const cha
 	  strcpy (s, new_tail);
 	}
       string->last_string_end += new_tail_length;
-      s = BLOCK_LAST_STRING (string);
+      s = &PT_STRBLK_LAST_START (string);
     }
 
   return s;
@@ -684,7 +684,7 @@ pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const
 
   /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
-  if ((string == NULL) || (BLOCK_ROOM_LEFT (string) < new_tail_length))
+  if ((string == NULL) || (PT_STRBLK_AVAILABLE_SIZE (string) < new_tail_length))
     {
       s = (char *) parser_allocate_string_buffer (parser,
 						  offsetof (PARSER_VARCHAR,
@@ -721,7 +721,7 @@ pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const
       old_string->bytes[old_string->length] = 0;	/* nul terminate */
 
       string->last_string_end += (int) new_tail_length;
-      s = BLOCK_LAST_STRING (string);
+      s = &PT_STRBLK_LAST_START (string);
     }
 
   return old_string;
