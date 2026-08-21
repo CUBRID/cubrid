@@ -2326,6 +2326,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   PT_NODE *node, *node2;
   const char *user_name, *password, *comment;
   const char *group_name, *member_name;
+  PT_MISC_TYPE login_capability;
   bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2434,7 +2435,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       goto end;
     }
 
-  /* Now treats optional password, group, member and comment of the created user */
+  /* Now treats optional password, login capability, group, member and comment of the created user */
 
   /* password */
   node = statement->info.create_user.password;
@@ -2442,6 +2443,17 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (password != NULL)
     {
       error = au_set_password_encrypt (user, password);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  /* login capability */
+  login_capability = statement->info.create_user.login_capability;
+  if (login_capability == PT_LOGIN || login_capability == PT_NOLOGIN)
+    {
+      error = au_set_user_loginable (user, login_capability == PT_LOGIN);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2611,6 +2623,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   const PT_ALTER_CODE alter_user_code = statement->info.alter_user.code;
   const char *user_name, *password, *comment;
   const char *member_name;
+  PT_MISC_TYPE login_capability;
   bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2647,9 +2660,9 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   set_savepoint = true;
 
   /*
-   * here, both password and comment are optional,
-   * either password or comment shall exist,
-   * csql_grammar denies the error case with the missing of both.
+   * here, password, login capability and comment are optional,
+   * at least one of them shall exist,
+   * csql_grammar denies the error case with the missing of all.
    */
 
   /* password */
@@ -2658,6 +2671,17 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     {
       password = IS_STRING (node) ? GET_STRING (node) : NULL;
       error = au_set_password_encrypt (user, password);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  /* login capability */
+  login_capability = statement->info.alter_user.login_capability;
+  if (login_capability == PT_LOGIN || login_capability == PT_NOLOGIN)
+    {
+      error = au_set_user_loginable (user, login_capability == PT_LOGIN);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -4321,8 +4345,9 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
  *   histogram_info(in): Histogram information
 */
 int
-update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
-				 PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram)
+update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj, bool quiet,
+				 PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram,
+				 int *out_histogram_skipped)
 {
   int error = NO_ERROR;
   int bucket_count, nnames = 0, bucket_count_min, bucket_count_max;
@@ -4334,8 +4359,12 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 
   /* fill infos for catlaog table */
   nnames = pt_length_of_list (histogram_info->target_columns);
+  /* no explicit WITH n BUCKETS: UPDATE STATISTICS passes -1 and ANALYZE passes 0 -- both
+   * mean "use the default". Treating only 0 as the default let the -1 fall through to the
+   * range clamp below and every UPDATE STATISTICS histogram was built with the parameter's
+   * LOWER BOUND (4 buckets) instead of the default (300). */
   bucket_count =
-    (histogram_info->bucket_count ==
+    (histogram_info->bucket_count <=
      0) ? prm_get_integer_value (PRM_ID_DEFAULT_HISTOGRAM_BUCKET_COUNT) : histogram_info->bucket_count;
 
   sysprm_get_range (PRM_ID_DEFAULT_HISTOGRAM_BUCKET_COUNT, &bucket_count_min, &bucket_count_max);
@@ -4350,6 +4379,18 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 
   cur_column = histogram_info->target_columns;
   with_fullscan = histogram_info->with_fullscan ? true : false;
+
+  bool trace_on = prm_get_bool_value (PRM_ID_QUERY_TRACE);
+
+  if (trace_on && do_histogram == DO_HISTOGRAM_CREATE)
+    {
+      /* "page sampling eligible" is the REQUESTED mode only -- sampling actually runs when the
+       * server-side gate (statistics_sampling_threshold_pages, 0 = disabled) admits the heap;
+       * the post-collection TRACE line below reports what the scan really did */
+      fprintf (stdout, "TRACE   histogram: bucket target %d, %s%s\n", bucket_count,
+	       with_fullscan ? "fullscan" : "page sampling eligible",
+	       histogram_info->random_seed ? ", random seed" : "");
+    }
 
   /* Update statistics for the class. For the all-columns histogram path (nnames == 0) this is
    * DEFERRED to after the histogram build so it can reuse that scan's NDV and skip its own NDV
@@ -4391,6 +4432,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
   if (nnames == 0)
     {
       SM_ATTRIBUTE *att;
+      int trace_n_histogrammable = 0, trace_n_skipped = 0, trace_n_dropped = 0;
 
       for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
 	{
@@ -4403,6 +4445,10 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 		{
 		  return error;
 		}
+	      if (error == NO_ERROR)
+		{
+		  trace_n_dropped++;
+		}
 	    }
 	  else if (do_histogram == DO_HISTOGRAM_CREATE)
 	    {
@@ -4410,10 +4456,16 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      attr_type = TP_DOMAIN_TYPE (att->domain);
 	      if (!is_histogrammable_type (attr_type))
 		{
-		  error = ER_OBJ_INVALID_ARGUMENTS;
-		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		  /* not an error: the column simply gets no histogram. The per-column notice
+		   * is trace-only; the statement prints one aggregated count in its summary */
+		  trace_n_skipped++;
+		  if (trace_on)
+		    {
+		      fprintf (stdout, "TRACE   histogram: column %s skipped (type not supported)\n", attname);
+		    }
 		  continue;
 		}
+	      trace_n_histogrammable++;
 
 	      /* create the histogram catalog entry; the actual histogram is built once, below,
 	       * in a single shared heap scan across all columns */
@@ -4425,30 +4477,44 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 		  return error;
 		}
 	    }
-	  else if (do_histogram == DO_HISTOGRAM_SHOW)
-	    {
-	      attr_type = TP_DOMAIN_TYPE (att->domain);
-	      error = dump_histogram (obj, attname, attr_type, true, error, stdout);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-	    }
+	}
+
+      if (out_histogram_skipped != NULL)
+	{
+	  *out_histogram_skipped = trace_n_skipped;
+	}
+      if (trace_on && do_histogram == DO_HISTOGRAM_DROP)
+	{
+	  fprintf (stdout, "TRACE   histogram: dropped %d histogram(s)\n", trace_n_dropped);
+	}
+      else if (trace_on && do_histogram == DO_HISTOGRAM_CREATE)
+	{
+	  fprintf (stdout, "TRACE   histogram: %d histogrammable column(s), %d skipped\n",
+		   trace_n_histogrammable, trace_n_skipped);
 	}
 
       /* single heap scan builds the histograms for every histogrammable column at once
        * (instead of one full scan per column), then dump each result */
       if (do_histogram == DO_HISTOGRAM_CREATE)
 	{
+	  struct timeval trace_t0, trace_t1;
+
+	  if (trace_on)
+	    {
+	      gettimeofday (&trace_t0, NULL);
+	    }
 	  /* one heap scan yields all histogram blobs AND per-column NDV + row count. The blobs are
 	   * COLLECTED (not yet written to the catalog); UPDATE STATISTICS reuses the NDV/row count from
 	   * the same scan, and the histograms are written only after it succeeds -- so a failed stats
 	   * update never leaves new histograms beside stale class statistics. */
 	  CLASS_ATTR_NDV ndv_info = CLASS_ATTR_NDV_INITIALIZER;
 	  INT64 hist_total_rows = 0;
+	  INT64 hist_pages_seen = 0, hist_pages_kept = 0;
 	  HISTOGRAM_COLLECT hist_collect = HISTOGRAM_COLLECT_INITIALIZER;
-	  error = analyze_classes_multi_by_reservoir (NULL, db_get_class_name (obj), bucket_count, obj, &ndv_info,
-						      &hist_total_rows, &hist_collect);
+	  error =
+	    analyze_classes_multi_by_reservoir (NULL, db_get_class_name (obj), bucket_count, with_fullscan ? 1 : 0,
+						histogram_info->random_seed, obj, &ndv_info, &hist_total_rows,
+						&hist_collect, &hist_pages_seen, &hist_pages_kept);
 	  if (error == NO_ERROR)
 	    {
 	      error = sm_update_statistics (obj, with_fullscan, &ndv_info);
@@ -4467,7 +4533,33 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 	      return error;
 	    }
-	  for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
+	  if (trace_on)
+	    {
+	      gettimeofday (&trace_t1, NULL);
+	      /* report what the scan actually did (the header line above only shows the REQUESTED
+	       * mode): full scan vs realized page sampling, the realized fraction, and whether the
+	       * stored NDV is the exact HLL count or the Duj1 sample extrapolation */
+	      if (hist_pages_seen > 0 && hist_pages_kept < hist_pages_seen)
+		{
+		  fprintf (stdout, "TRACE   histogram: single heap scan SAMPLED %lld of %lld data page(s) (%.2f%%),"
+			   " population estimated at %lld row(s); NDV extrapolated (Duj1); histograms built,"
+			   " class statistics refreshed and histograms stored in %.1f ms\n",
+			   (long long) hist_pages_kept, (long long) hist_pages_seen,
+			   100.0 * (double) hist_pages_kept / (double) hist_pages_seen, (long long) hist_total_rows,
+			   (trace_t1.tv_sec - trace_t0.tv_sec) * 1000.0 +
+			   (trace_t1.tv_usec - trace_t0.tv_usec) / 1000.0);
+		}
+	      else
+		{
+		  fprintf (stdout, "TRACE   histogram: single FULL heap scan of %lld data page(s), %lld row(s);"
+			   " NDV exact (HLL); histograms built, class statistics refreshed and histograms stored"
+			   " in %.1f ms\n", (long long) hist_pages_seen, (long long) hist_total_rows,
+			   (trace_t1.tv_sec - trace_t0.tv_sec) * 1000.0 +
+			   (trace_t1.tv_usec - trace_t0.tv_usec) / 1000.0);
+		}
+	    }
+	  for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); (!quiet || trace_on) && att != NULL;
+	       att = db_attribute_next (att))
 	    {
 	      attr_type = TP_DOMAIN_TYPE (att->domain);
 	      if (!is_histogrammable_type (attr_type))
@@ -4530,8 +4622,15 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	       * returns NO_ERROR, so `error` is reset and the statement still succeeds -- the
 	       * statistics refreshed above stand as a normal, committed-with-the-statement effect.
 	       * No savepoint rollback is needed here. */
-	      error = ER_OBJ_INVALID_ARGUMENTS;
-	      error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+	      if (quiet)
+		{
+		  error = NO_ERROR;	/* same net effect as the printed notice path below */
+		}
+	      else
+		{
+		  error = ER_OBJ_INVALID_ARGUMENTS;
+		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		}
 	      continue;
 	    }
 	  /* create histogram catalog entry */
@@ -4540,7 +4639,10 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    {
 	      if (error != ER_LC_CLASSNAME_EXIST)
 		{
-		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		  if (!quiet)
+		    {
+		      error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		    }
 		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;
 		}
@@ -4560,33 +4662,6 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    {
 	      assert (false);
 	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
-	      return error;
-	    }
-	}
-      else if (do_histogram == DO_HISTOGRAM_SHOW)
-	{
-	  DB_ATTRIBUTE *attribute;
-	  DB_DOMAIN *attr_domain;
-
-	  attribute = db_get_attribute (obj, attname);
-	  if (attribute == NULL)
-	    {
-	      error = ER_OBJ_INVALID_ARGUMENTS;
-	      assert (false);
-	      return error;
-	    }
-	  attr_domain = db_attribute_domain (attribute);
-	  if (attr_domain == NULL)
-	    {
-	      error = ER_OBJ_INVALID_ARGUMENTS;
-	      assert (false);
-	      return error;
-	    }
-
-	  attr_type = TP_DOMAIN_TYPE (attr_domain);
-	  error = dump_histogram (obj, attname, attr_type, true, error, stdout);
-	  if (error != NO_ERROR)
-	    {
 	      return error;
 	    }
 	}
@@ -4640,159 +4715,8 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 }
 
 
-/**
- * do_update_histogram() - Create or Update a histogram on a class.
- *   return: Error code if it fails
- *   parser(in): Parser context
- *   statement(in): Parse tree of a create histogram statement
- */
-int
-do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  PT_NODE *cls;
-  DB_OBJECT *obj;
-  int error = NO_ERROR, save;
-  CHECK_MODIFICATION_ERROR ();
-  AU_SAVE_AND_DISABLE (save);
 
-  /* class should be already available */
-  assert (statement->info.histogram.target_table_spec);
 
-  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
-
-  obj = db_find_class (cls->info.name.original);
-  if (obj == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      AU_RESTORE (save);
-      return er_errid ();
-    }
-
-  /* The histogram build below runs with authorization disabled and scans every row of the
-   * class server-side; the blob it stores exposes sampled values (MCVs, bucket bounds).
-   * Require the same rights as UPDATE STATISTICS: ALTER, and SELECT for the data read.
-   * (au_check_class_authorization ignores Au_disable, so it still checks under AU_DISABLE.) */
-  error = au_check_class_authorization (obj, AU_ALTER);
-  if (error != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
-      AU_RESTORE (save);
-      return error;
-    }
-  error = au_check_class_authorization (obj, AU_SELECT);
-  if (error != NO_ERROR)
-    {
-      PT_ERRORmf2 (parser, cls, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
-		   "SELECT", db_get_class_name (obj));
-      AU_RESTORE (save);
-      return error;
-    }
-
-  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_CREATE);
-
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      AU_RESTORE (save);
-      return error;
-    }
-
-  AU_RESTORE (save);
-  return error;
-}
-
-/**
- * do_drop_histogram () - drop a histogram on a class.
- *   return: Error code if it fails
- *   parser(in): Parser context
- *   statement(in): Parse tree of a create histogram statement
- */
-int
-do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  PT_NODE *cls;
-  DB_OBJECT *obj;
-  int error = NO_ERROR, save;
-  CHECK_MODIFICATION_ERROR ();
-  AU_SAVE_AND_DISABLE (save);
-
-  /* class should be already available */
-  assert (statement->info.histogram.target_table_spec);
-
-  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
-
-  obj = db_find_class (cls->info.name.original);
-  if (obj == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      AU_RESTORE (save);
-      return er_errid ();
-    }
-
-  /* Dropping a histogram is a statistics change on the class; require ALTER like
-   * UPDATE STATISTICS (the drop runs with authorization disabled below). */
-  error = au_check_class_authorization (obj, AU_ALTER);
-  if (error != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
-      AU_RESTORE (save);
-      return error;
-    }
-
-  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_DROP);
-
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      AU_RESTORE (save);
-      return error;
-    }
-
-  AU_RESTORE (save);
-  return error;
-}
-
-/**
- * do_show_histogram() - Show a histogram on a class.
- *   return: Error code if it fails
- *   parser(in): Parser context
- *   statement(in): Parse tree of a show histogram statement
- */
-int
-do_show_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  PT_NODE *cls;
-  DB_OBJECT *obj;
-  int error = NO_ERROR, save;
-  AU_SAVE_AND_DISABLE (save);
-
-  /* class should be already available */
-  assert (statement->info.histogram.target_table_spec);
-
-  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
-  obj = db_find_class (cls->info.name.original);
-  if (obj == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      AU_RESTORE (save);
-      return er_errid ();
-    }
-
-  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_SHOW);
-
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      AU_RESTORE (save);
-      return error;
-    }
-  AU_RESTORE (save);
-
-  return NO_ERROR;
-}
 
 /*
  * do_create_partition() -  Creates partitions
@@ -11113,6 +11037,30 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 	      goto exit;
 	    }
 	}
+    }
+
+  if (error == NO_ERROR && change_mode != SM_ATTR_CHG_NOT_NEEDED)
+    {
+      /* the attribute's definition changed: a histogram collected under the old definition would
+       * be decoded with stale semantics (an ENUM's member indices, a different key kind), so drop
+       * it here -- the next UPDATE STATISTICS rebuilds it under the new definition. A missing
+       * histogram row is not an error for the ALTER. */
+      PT_NODE *hist_att_def = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+      PT_NODE *hist_old = alter->info.alter.alter_clause.attr_mthd.attr_old_name;
+      const char *hist_new_name = (hist_att_def != NULL && hist_att_def->info.attr_def.attr_name != NULL)
+	? hist_att_def->info.attr_def.attr_name->info.name.original : NULL;
+      const char *hist_old_name = (hist_old != NULL) ? hist_old->info.name.original : NULL;
+
+      if (hist_new_name != NULL)
+	{
+	  (void) sm_drop_histogram (class_obj, hist_new_name);
+	}
+      if (hist_old_name != NULL
+	  && (hist_new_name == NULL || intl_identifier_casecmp (hist_old_name, hist_new_name) != 0))
+	{
+	  (void) sm_drop_histogram (class_obj, hist_old_name);
+	}
+      er_clear ();
     }
 
 exit:
