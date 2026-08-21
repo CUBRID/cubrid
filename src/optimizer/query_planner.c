@@ -209,6 +209,7 @@ static void qo_sort_cost (QO_PLAN *);
 static void qo_mjoin_cost (QO_PLAN *);
 static void qo_nljoin_cost (QO_PLAN *);
 static void qo_hjoin_cost (QO_PLAN *);
+static double qo_mackert_lohman_pages (double T, double N);
 static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
@@ -2404,15 +2405,13 @@ qo_iscan_cost (QO_PLAN * planp)
   else
     {
       heap_rows = (double) QO_NODE_NCARD (nodep) * heap_sel;
-      /* With no physical-order (clustering/correlation) statistic, assume the heap order is
-       * uncorrelated with the index -- as PostgreSQL does when correlation is unknown: every
-       * fetched row costs one page read, bounded by the table's page count. The previous
-       * formula (opages * heap_sel, a perfect-clustering assumption softened by a small
-       * per-row surcharge) still priced an N-row scattered fetch far under its page
-       * count and made high-fanout inner index scans of nested loops look nearly free -- JOB
-       * 30a/31a/31c pick such orders under it. Unique/pk probes (heap_rows <= 1) keep the old
-       * cost through the MAX (1.0, ...) floor below. */
-      object_IO = MIN (heap_rows, opages);
+      /* Uncorrelated heap-fetch model (no clustering/correlation statistic): use Mackert-Lohman
+       * to estimate the distinct pages that heap_rows random probes touch in an opages-page heap,
+       * consistent with the NL repeated-probe model in qo_nljoin_cost ().  ML tracks the Cardenas
+       * exact formula to within 5%; the previous MIN (heap_rows, opages) overestimated by up to
+       * 58% near k ~= T.  Unique/pk probes (heap_rows <= 1) give ML ~= 1.0, which meets the
+       * MAX (1.0, ...) floor below and keeps their cost unchanged. */
+      object_IO = qo_mackert_lohman_pages ((double) opages, heap_rows);
       heap_access = heap_rows * (double) ISCAN_OID_ACCESS_OVERHEAD;
 
       /* index-condition-only rows per probe (before non-index filters): the heap pages of these
