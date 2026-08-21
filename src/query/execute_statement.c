@@ -1213,8 +1213,8 @@ do_reset_auto_increment_serial (MOP serial_obj)
   db_make_null (&started_flag);
 
   /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
-   * tail of the reserved block back to cur_val, so it has to land before the reset overwrites it.
-   * Running it afterwards would either clobber the reset value or, on rollback, be undone with it. */
+   * tail back to cur_val, so it has to land first. Afterwards it would clobber the reset value, or
+   * on rollback be undone with it. */
   (void) serial_decache (ws_oid (serial_object));
 
   error_code = db_get (serial_object, SERIAL_ATTR_MIN_VAL, &start_value);
@@ -1319,8 +1319,8 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     }
 
   /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
-   * tail of the reserved block back to cur_val, so it has to land before the rebase overwrites it.
-   * Running it afterwards would either clobber the rebase value or, on rollback, be undone with it. */
+   * tail back to cur_val, so it has to land first. Afterwards it would clobber the rebase value, or
+   * on rollback be undone with it. */
   (void) serial_decache (ws_oid (serial_object));
 
   db_make_null (&max_val);
@@ -2355,10 +2355,10 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
 
   /* cached_num comes from auto_increment_cache_size. 0 keeps the per-row durable catalog write;
    * n >= 2 makes the serial cache a block of n values so heap_set_autoincrement_value takes the
-   * cached path. A column whose whole range holds fewer values than one block goes uncached: the
-   * parameter is a default the user did not spell out on this column, so it cannot fail the DDL the
-   * way CREATE SERIAL ... CACHE n does. It is a session parameter: SET SYSTEM PARAMETERS applies to
-   * the tables the session creates afterwards, and a serial keeps the size it was created with. */
+   * cached path. A column whose whole range holds fewer values than one block goes uncached - the
+   * parameter is a default this column did not spell out, so it cannot fail the DDL the way
+   * CREATE SERIAL ... CACHE n does. It is a session parameter, and a serial keeps the size it was
+   * created with. */
   cached_num = prm_get_integer_value (PRM_ID_AUTO_INCREMENT_CACHE_SIZE);
   if (cached_num > 1)
     {
@@ -2699,11 +2699,10 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    */
   assert (WS_ISDIRTY (serial_object) == false);
 
-  /* Drop the server-side cache before the refetch below takes the write lock: decaching hands the
-   * unissued tail of the reserved block back to cur_val, so the value this statement reads, checks
-   * its invariants against and writes back is the last one actually issued, not the block end.
-   * Running it at the end instead - after the object template has been filled from the block end -
-   * lets the template's stale cur_val overwrite the write-back when the ALTER commits. */
+  /* Drop the server-side cache before the refetch below takes the write lock, so the value this
+   * statement reads, checks its invariants against and writes back is the last one actually issued
+   * rather than the block end. At the end label instead, the template is already filled from the
+   * block end and its stale cur_val overwrites the write-back when the ALTER commits. */
   (void) serial_decache (&serial_obj_id);
 
   ws_decache (serial_object);

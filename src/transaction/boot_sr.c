@@ -3086,14 +3086,11 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   /* persist the latest heap bestspace hints before the log and buffer managers are finalized. */
   (void) heap_update_all_bestspaces (thread_p);
 
-  /* hand the unissued tail of every reserved serial cache block back to _db_serial, so a restart
+  /* Hand the unissued tail of every reserved serial cache block back to _db_serial, so a restart
    * resumes at the last value issued instead of past the block end. Must run here, while the heap
    * and log managers are still up; serial_finalize_cache_pool runs after the volumes are dismounted.
-   *
-   * The write goes through serial_update_serial_object, which opens a system operation, and the
-   * transaction set above is the system main one - the one kind that is not allowed to run them.
-   * Borrow a system worker transaction for the flush and set the system main one back afterwards,
-   * the way vacuum and the online index builder do for their own logging. */
+   * The write opens a system operation, which the system main transaction set above may not do, so
+   * borrow a system worker the way vacuum does and set the system main one back afterwards. */
   thread_p->claim_system_worker ();
   serial_flush_cache_pool (thread_p);
   thread_p->retire_system_worker ();
