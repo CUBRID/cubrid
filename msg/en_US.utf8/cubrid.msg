@@ -2006,7 +2006,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 337 The partition name is too long.
 338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 339 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set storage options.
-340 STORAGE FORCE_OUTLINE can be set only on variable-type normal attributes of a class: '%1$s'.
+340 STORAGE options can be set only on variable-type normal attributes of a class: '%1$s'.
 
 
 
