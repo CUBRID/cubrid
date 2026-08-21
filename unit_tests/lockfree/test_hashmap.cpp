@@ -1454,12 +1454,16 @@ namespace test_lockfree
   static void
   init_lf_hash_table (lf_tran_system &transys, int hash_size, my_lf_hash_table &hash)
   {
-    hash.init (transys, hash_size, 100, 100, g_edesc);
+    const int error_code = hash.init (transys, hash_size, 100, 100, g_edesc);
+    assert (error_code == NO_ERROR);
+    (void) error_code;
   }
 
   static void
   init_hashmap (tran::system &transys, size_t hash_size, my_hashmap &hash)
   {
-    hash.init (transys, hash_size, 100, 100, g_edesc);
+    const int error_code = hash.init (transys, hash_size, 100, 100, g_edesc);
+    assert (error_code == NO_ERROR);
+    (void) error_code;
   }
 } // namespace test_lockfree

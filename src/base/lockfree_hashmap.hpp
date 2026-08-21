@@ -48,8 +48,8 @@ namespace lockfree
       hashmap ();
       ~hashmap ();
 
-      void init (tran::system &transys, size_t hash_size, size_t freelist_block_size, size_t freelist_block_count,
-		 lf_entry_descriptor &edesc);
+      int init (tran::system &transys, size_t hash_size, size_t freelist_block_size, size_t freelist_block_count,
+		lf_entry_descriptor &edesc);
       void destroy ();
 
       T *find (tran::index tran_index, Key &key);
@@ -256,25 +256,46 @@ namespace lockfree
   }
 
   template <class Key, class T>
-  void
+  int
   hashmap<Key, T>::init (tran::system &transys, size_t hash_size, size_t freelist_block_size,
 			 size_t freelist_block_count, lf_entry_descriptor &edesc)
   {
-    m_freelist = new freelist_type (transys, freelist_block_size, freelist_block_count);
+    // nothrow and checked, both because lf_hash_init () answered ER_OUT_OF_VIRTUAL_MEMORY for these arrays
+    // (lock_free.c:1927-1946) and because a throw here unwinds through C callers - xcache_initialize (),
+    // spage_boot (), catalog_initialize () - which cannot unwind, so it arrives as std::terminate.
+    m_freelist = new (std::nothrow) freelist_type (transys, freelist_block_size, freelist_block_count);
+    if (m_freelist == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) sizeof (freelist_type));
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
     // the freelist knows nothing of entry descriptors, so hand it CBRD-24474's cap
     m_freelist->set_max_alloc_count (edesc.max_alloc_cnt > 0
 				     ? (size_t) edesc.max_alloc_cnt : std::numeric_limits<size_t>::max ());
 
     m_edesc = &edesc;
-
     m_size = hash_size;
-    m_buckets = new T *[m_size] ();
 
-    m_backbuffer = new T *[m_size] ();
+    m_buckets = new (std::nothrow) T *[m_size] ();
+    m_backbuffer = new (std::nothrow) T *[m_size] ();
+    if (m_buckets == NULL || m_backbuffer == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (sizeof (T *) * m_size));
+	delete [] m_buckets;
+	m_buckets = NULL;
+	delete [] m_backbuffer;
+	m_backbuffer = NULL;
+	delete m_freelist;
+	m_freelist = NULL;
+	m_size = 0;
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
+
     for (size_t i = 0; i < m_size; i++)
       {
 	m_backbuffer[i] = address_type::set_adress_mark (NULL);
       }
+    return NO_ERROR;
   }
 
   template <class Key, class T>

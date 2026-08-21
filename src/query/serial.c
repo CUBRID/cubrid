@@ -1309,8 +1309,13 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
       return NO_ERROR;
     }
 
-  serial_Cache_hashmap.init (serial_Cache_Ts, THREAD_TS_SERIAL_CACHE, SERIAL_CACHE_HASH_SIZE, freelist_block_size,
-			     freelist_block_count, serial_Cache_entry_descriptor);
+  if (serial_Cache_hashmap.init (serial_Cache_Ts, THREAD_TS_SERIAL_CACHE, SERIAL_CACHE_HASH_SIZE,
+				 freelist_block_size, freelist_block_count, serial_Cache_entry_descriptor) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      serial_finalize_cache_pool ();
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
   serial_Cache_initialized = true;
 
   for (i = 0; i < sizeof (serial_Attrs_id) / sizeof (ATTR_ID); i++)

@@ -160,8 +160,13 @@ fpcache_initialize (THREAD_ENTRY * thread_p)
   /* Initialize free list */
   const int freelist_block_count = 2;
   const int freelist_block_size = std::max (1, fpcache_Soft_capacity / freelist_block_count);
-  fpcache_Hashmap.init (fpcache_Ts, THREAD_TS_FPCACHE, fpcache_Soft_capacity, freelist_block_size, freelist_block_count,
-			fpcache_Entry_descriptor);
+  if (fpcache_Hashmap.init (fpcache_Ts, THREAD_TS_FPCACHE, fpcache_Soft_capacity, freelist_block_size,
+			    freelist_block_count, fpcache_Entry_descriptor) != NO_ERROR)
+    {
+      int error_code = NO_ERROR;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
   fpcache_Entry_counter = 0;
   fpcache_Clone_counter = 0;
 
