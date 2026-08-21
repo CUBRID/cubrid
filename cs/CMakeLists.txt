@@ -431,10 +431,12 @@ set(API_HEADERS
 
 set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_checker.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.cpp
   )
 
 set(PARALLEL_SCAN_HEADERS
   ${PARALLEL_SCAN_DIR}/px_scan_checker.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
