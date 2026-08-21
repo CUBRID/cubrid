@@ -6064,6 +6064,69 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
 }
 
 /*
+ * locator_lockhint_class_name () - Name of the class described by one lockhint slot
+ *
+ * return: The name, or NULL when the slot has no usable class
+ *
+ *   lockhint(in): Reply describing the classes that were locked and prefetched
+ *   slot(in): Slot to read
+ */
+static const char *
+locator_lockhint_class_name (LC_LOCKHINT * lockhint, int slot)
+{
+  MOP class_mop;
+  MOBJ class_obj = NULL;
+
+  class_mop = ws_mop (&lockhint->classes[slot].oid, sm_Root_class_mop);
+  if (class_mop == NULL || ws_find (class_mop, &class_obj) == WS_FIND_MOP_DELETED || class_obj == NULL)
+    {
+      return NULL;
+    }
+
+  return sm_ch_name (class_obj);
+}
+
+/*
+ * locator_lockhint_find_bare_name () - Find a locked class by the bare part of a name
+ *
+ * return: The full name of the match, or NULL
+ *
+ *   lockhint(in): Reply describing the classes that were locked and prefetched
+ *   name(in): Name whose bare part to look for
+ */
+static const char *
+locator_lockhint_find_bare_name (LC_LOCKHINT * lockhint, const char *name)
+{
+  const char *dot = strchr (name, '.');
+  const char *bare = (dot != NULL) ? dot + 1 : name;
+  int i;
+
+  for (i = 0; i < lockhint->num_classes; i++)
+    {
+      const char *found;
+
+      if (OID_ISNULL (&lockhint->classes[i].oid))
+	{
+	  continue;
+	}
+
+      found = locator_lockhint_class_name (lockhint, i);
+      if (found == NULL)
+	{
+	  continue;
+	}
+
+      dot = strchr (found, '.');
+      if (intl_identifier_casecmp ((dot != NULL) ? dot + 1 : found, bare) == 0)
+	{
+	  return found;
+	}
+    }
+
+  return NULL;
+}
+
+/*
  * locator_report_resolved_names () - Report back which name each owner-omitted request
  *                                   actually resolved to
  *
@@ -6092,8 +6155,6 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
   for (i = 0; i < num_classes; i++)
     {
       const char *requested = many_classnames[i];
-      MOP class_mop;
-      MOBJ class_obj = NULL;
       int my_slot;
 
       resolved_names[i] = NULL;
@@ -6117,26 +6178,17 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
 	  continue;
 	}
 
-      if (my_slot >= lockhint->num_classes)
+      /* The slot can be gone: the server merges a request naming a class an earlier one
+       * already named. Falling back to the bare name cannot pick the wrong class -- a
+       * second owner of it would have made the name ambiguous and failed the statement. */
+      if (my_slot < lockhint->num_classes && !OID_ISNULL (&lockhint->classes[my_slot].oid))
 	{
-	  assert (false);
-	  continue;
+	  resolved_names[i] = locator_lockhint_class_name (lockhint, my_slot);
 	}
-
-      /* Null OID means the server merged this request into an earlier slot naming the
-       * same class; that earlier request carries the name. */
-      if (OID_ISNULL (&lockhint->classes[my_slot].oid))
+      else
 	{
-	  continue;
+	  resolved_names[i] = locator_lockhint_find_bare_name (lockhint, requested);
 	}
-
-      class_mop = ws_mop (&lockhint->classes[my_slot].oid, sm_Root_class_mop);
-      if (class_mop == NULL || ws_find (class_mop, &class_obj) == WS_FIND_MOP_DELETED || class_obj == NULL)
-	{
-	  continue;
-	}
-
-      resolved_names[i] = sm_ch_name (class_obj);
     }
 }
 

@@ -68,8 +68,8 @@ struct pt_class_locks
   int *only_all;
   LOCK *locks;
   LC_PREFETCH_FLAGS *flags;
-  /* Filled in by the server: the name request i resolved to, when the statement left the
-   * owner out and the class turned out to live in another schema. NULL means unchanged. */
+  /* Where request i landed, when the owner was left out and the class turned out to live
+   * in another schema. NULL means unchanged. */
   const char **resolved_names;
 };
 
@@ -478,9 +478,6 @@ pt_rewrite_resolved_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
  *   parser(in):
  *   statement(in/out):
  *   lcks(in): the request that was sent, carrying the resolved names
- *
- * Note: Walks the statement only when something actually resolved elsewhere, so a
- *       statement that resolves the way it always did is not walked at all.
  */
 static void
 pt_apply_resolved_names (PARSER_CONTEXT * parser, PT_NODE * statement, PT_CLASS_LOCKS * lcks)
@@ -679,9 +676,8 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
       PT_ERRORc (parser, statement, db_error_string (3));
     }
 
-  /* Before anything reads a class off the statement, so that name resolution, XASL
-   * generation and the printed form that keys the plan cache all see the same class.
-   * Must run while lcks.classes is still ours; the specs are matched against it. */
+  /* Before anything reads a class off the statement, and while lcks.classes is still
+   * ours: the specs are matched against the names that were sent. */
   pt_apply_resolved_names (parser, statement, &lcks);
 
   /* free already assigned parser->lcks_classes if exist */

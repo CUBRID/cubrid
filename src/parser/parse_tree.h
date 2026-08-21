@@ -2693,11 +2693,9 @@ struct pt_name_info
   unsigned int custom_print;
   unsigned short correlation_level;	/* for correlated attributes */
   char hidden_column;		/* used for updates and deletes for the class OID column */
-  /* The statement left the owner out and pt_set_user_specified_name () filled in the
-   * connecting user, as opposed to the statement naming an owner itself. Only a name in
-   * the first case may be looked for in another schema; one the user qualified must keep
-   * resolving exactly as before. The flag field below is a full short, so this gets its
-   * own byte rather than a bit. */
+  /* Set when pt_set_user_specified_name () filled the owner in, not when the statement
+   * named one. Only the former may be looked for in another schema. Its own byte rather
+   * than a bit in flag below, which is a full short. */
   char owner_defaulted;
 
 #define PT_NAME_INFO_DOT_SPEC        1	/* x, y of x.y.z */

@@ -330,8 +330,6 @@ locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
       return ER_FAILED;
     }
 
-  /* Both keys point into e_name, which the entry owns, so neither index allocates a key
-   * and both stay valid exactly as long as the entry does. */
   if (mht_put2_new (locator_Mht_classnames_bare, entry->e_bare_name, entry) == NULL)
     {
       (void) mht_rem (locator_Mht_classnames, entry->e_name, NULL, NULL);
@@ -595,6 +593,17 @@ locator_initialize (THREAD_ENTRY * thread_p)
 
   if (locator_Mht_classnames == NULL || locator_Mht_classnames_bare == NULL)
     {
+      /* Leave them both created or both absent: locator_finalize () decides by the first. */
+      if (locator_Mht_classnames != NULL)
+	{
+	  mht_destroy (locator_Mht_classnames);
+	  locator_Mht_classnames = NULL;
+	}
+      if (locator_Mht_classnames_bare != NULL)
+	{
+	  mht_destroy (locator_Mht_classnames_bare);
+	  locator_Mht_classnames_bare = NULL;
+	}
       assert (false);
       goto error;
     }

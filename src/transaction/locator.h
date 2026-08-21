@@ -349,10 +349,9 @@ enum lc_prefetch_flags
 {
   LC_PREF_FLAG_LOCK = 0x00000001,
   LC_PREF_FLAG_COUNT_OPTIM = 0x00000002,
-  /* The statement named this class without an owner, so the qualifier in the name sent
-   * along is the connecting user, filled in by the client. It tells the server that if
-   * that user owns nothing by this name, the other schemas may be searched. Set only for
-   * DML table references; a name the user qualified explicitly never carries it. */
+  /* The qualifier in the name sent along is only the connecting user, filled in by the
+   * client. Lets the server search the other schemas when that user owns nothing by the
+   * name. Set for DML table references alone. */
   LC_PREF_FLAG_OWNER_OMITTED = 0x00000004
 };
 typedef enum lc_prefetch_flags LC_PREFETCH_FLAGS;
