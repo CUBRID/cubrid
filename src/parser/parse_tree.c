@@ -457,7 +457,7 @@ parser_create_string_block (PARSER_CONTEXT * parser, const int length)
       if (parser->jmp_env_active)
 	{
 	  /* long jump back to routine that set up the jump env for clean up and run down. */
-	  longjmp (((PARSER_CONTEXT *) parser)->jmp_env, 1);
+	  longjmp (parser->jmp_env, 1);
 	}
       else
 	{
@@ -951,6 +951,7 @@ parser_alloc (const PARSER_CONTEXT * parser, const int length)
 
   void *pointer;
 
+  /* the public API stays const for its callers; the block list this fills is the parser's own */
   pointer = parser_allocate_string_buffer ((PARSER_CONTEXT *) parser, length + sizeof (long), sizeof (double));
   if (pointer)
     memset (pointer, 0, length);
@@ -985,6 +986,7 @@ pt_append_string (const PARSER_CONTEXT * parser, const char *old_string, const c
     }
   else if (old_string == NULL)
     {
+      /* the public API stays const for its callers; the block list this fills is the parser's own */
       s = (char *) parser_allocate_string_buffer ((PARSER_CONTEXT *) parser, strlen (new_tail), sizeof (char));
       if (s == NULL)
 	{
@@ -1016,6 +1018,7 @@ pt_append_bytes (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, con
 
   if (old_string == NULL)
     {
+      /* the public API stays const for its callers; the block list this fills is the parser's own */
       old_string =
 	(PARSER_VARCHAR *) parser_allocate_string_buffer ((PARSER_CONTEXT *) parser, offsetof (PARSER_VARCHAR, bytes),
 							  sizeof (long));
