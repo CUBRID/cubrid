@@ -74,10 +74,10 @@
 #define STRING_BLOCK_SCAN_LIMIT 8
 
 /*
- * Room an oversized block reserves past its one large string.
+ * Bytes an oversized block reserves past its one large string.
  * It lets later appends extend that string in place instead of relocating it.
  */
-#define LARGE_STRING_APPEND_ROOM 1001
+#define LARGE_STRING_APPEND_RESERVE 1001
 
 #define HASH_NUMBER 128
 #define NODES_PER_BLOCK 256
@@ -420,8 +420,8 @@ parser_create_string_block (PARSER_CONTEXT * parser, const int length)
     {
       /* This is an unusually large string.
        * Allocate a special block for it, with space for one string, plus some space for appending to. */
-      alloc_size = sizeof (PARSER_STRING_BLOCK) + (length + LARGE_STRING_APPEND_ROOM - STRING_BLOCK_DEFAULT_SIZE);
-      block_end = CAST_BUFLEN (length + LARGE_STRING_APPEND_ROOM - 1);
+      alloc_size = sizeof (PARSER_STRING_BLOCK) + (length + LARGE_STRING_APPEND_RESERVE - STRING_BLOCK_DEFAULT_SIZE);
+      block_end = CAST_BUFLEN (length + LARGE_STRING_APPEND_RESERVE - 1);
     }
 
   block = (PARSER_STRING_BLOCK *) malloc (alloc_size);
