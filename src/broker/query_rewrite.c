@@ -1363,7 +1363,7 @@ qr_check_rewrite_policy (const T_QR_PARSED * p, int allow_non_select, char *reas
     {
       const short *src_orig_pos = p->src_orig_pos;
       bool used[QR_MAX_BINDS];
-      char list[128];		/* leading positions only; n_unused carries the full count */
+      char list[QR_MAX_BINDS];	/* display only: it truncates, n_unused carries the real count */
       int j, n_unused = 0, w = 0;
 
       if (p->num_map_entries != k_rewrite)
@@ -1537,7 +1537,12 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 	}
       if (qr_parse_dir_name (ent->d_name, up_user, up_db) < 0)
 	{
-	  /* not a valid "user@dbname" directory, skip it */
+	  char why[128];
+
+	  snprintf (why, sizeof (why),
+		    "not a valid \"user@dbname\" directory (each name must be under %d bytes); rules under it are ignored",
+		    QR_NAME_LEN);
+	  QR_RULE_LOG_WRITE (ent->d_name, why);
 	  continue;
 	}
 
