@@ -1488,6 +1488,14 @@ sql_build_error:
  *                      is NULL
  *   extra_where(in)  : deparsed remote-only AND arm(s), or NULL/empty if there are none
  *   sql_out(out)     : set to the built SQL text on success
+ *
+ * TODO: key_col and the identifiers inside extra_where are appended unquoted, matching the parser-side
+ *       push-down paths (pt_copypush_terms, and mq_dblink_append_corr_pred_sql -- see the TODO there).  A
+ *       reserved-word or space-bearing column therefore fails the remote prepare instead of deleting the
+ *       wrong rows.  One thing differs here: this text is assembled at execution time, where
+ *       cci_get_dbms_type() identifies the remote, so vendor-aware quoting is feasible in this path even
+ *       though it is not at XASL generation.  Deferred until the quoting semantics are settled per vendor
+ *       (quoting makes identifiers case-sensitive on Oracle, and MySQL's default quote is the backtick).
  */
 static int
 dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, const char *key_col, const char *op,
