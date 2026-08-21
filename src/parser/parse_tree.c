@@ -1305,7 +1305,7 @@ parser_free_parser (PARSER_CONTEXT * parser)
 	    {
 	      if (parser->plan_trace[i].trace.json_plan != NULL)
 		{
-		  cub_json_decref (parser->plan_trace[i].trace.json_plan);
+		  trace_json_decref (parser->plan_trace[i].trace.json_plan);
 		  parser->plan_trace[i].trace.json_plan = NULL;
 		}
 	    }

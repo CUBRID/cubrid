@@ -21007,16 +21007,16 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
     }
   else if (format == QUERY_TRACE_JSON)
     {
-      cub_json_t *jplan;
+      trace_json_t *jplan;
 
       if (parser->num_plan_trace > 1)
 	{
-	  jplan = cub_json_array ();
+	  jplan = trace_json_array ();
 
 	  for (i = 0; i < parser->num_plan_trace; i++)
 	    {
 	      assert (parser->plan_trace[i].format == format);
-	      cub_json_array_append_new (jplan, parser->plan_trace[i].trace.json_plan);
+	      trace_json_array_append_new (jplan, parser->plan_trace[i].trace.json_plan);
 	      parser->plan_trace[i].trace.json_plan = NULL;
 	    }
 	}
@@ -21026,9 +21026,9 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
 	  parser->plan_trace[0].trace.json_plan = NULL;
 	}
 
-      plan_str = cub_json_dumps (jplan);
+      plan_str = trace_json_dumps (jplan);
 
-      cub_json_decref (jplan);
+      trace_json_decref (jplan);
     }
 
   parser->num_plan_trace = 0;

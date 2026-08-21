@@ -106,7 +106,7 @@ namespace parallel_scan
 
       void add_stats (trace_handler &trace_handler);
       void dump_stats_text (FILE *fp, int indent, char *class_name);
-      void dump_stats_json (cub_json_t *scan, char *class_name);
+      void dump_stats_json (trace_json_t *scan, char *class_name);
       void set_last_partition_stats (SCAN_STATS *partition_stats);
     private:
       std::vector<child_stats> m_stats;

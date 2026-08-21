@@ -42,7 +42,7 @@
  * Node data lives in one pool per thread, an arena. A node this interface hands
  * back is owned by the caller until a container takes it over or the caller
  * releases it. The arena is freed once nothing on the thread is owned any more,
- * which is what cub_json_decref () counts.
+ * which is what trace_json_decref () counts.
  *
  * The consequence is that one node that is neither stored nor released keeps the
  * arena open for as long as the thread lives, and every later tree built on that
@@ -60,6 +60,41 @@ namespace
    * point where the only sane reading is that a node went missing, so refuse to
    * grow instead of holding memory the arena can no longer reclaim. */
   const size_t ARENA_NODE_LIMIT = 1 << 18;
+
+  /* An object past this many members carries an index of its keys, so that
+   * setting one stops being a scan of the whole container. Below it the scan
+   * wins and the index would only cost an allocation. */
+  const rapidjson::SizeType OBJECT_INDEX_THRESHOLD = 128;
+
+  /*
+   * The index is an open-addressed table of member positions - nothing else.
+   * It stores no key: on a probe it compares against the member's own name in
+   * the container, which is where the key already lives. So it copies no
+   * strings, allocates once per growth rather than once per key, and stays in
+   * one cache-friendly run of memory.
+   *
+   * A cell holds the member position plus one, so that zero can mean empty.
+   */
+  struct key_index
+  {
+    // *INDENT-OFF*
+    std::vector<rapidjson::SizeType> cells;
+    // *INDENT-ON*
+    size_t used = 0;
+  };
+
+  size_t
+  key_hash (const char *key, size_t len)
+  {
+    /* FNV-1a */
+    size_t h = 1469598103934665603ULL;
+    for (size_t i = 0; i < len; i++)
+      {
+	h ^= (unsigned char) key[i];
+	h *= 1099511628211ULL;
+      }
+    return h;
+  }
 
   struct json_arena;
 
@@ -86,6 +121,12 @@ namespace
     rapidjson::SizeType slot;	/* member or element index inside the owner */
     json_arena *arena;
     bool is_owned_by_caller;
+    key_index *index;		/* built once this object outgrows the scan */
+
+    ~node_impl ()
+    {
+      delete index;
+    }
 
     rapidjson::Value *value ();
   };
@@ -170,6 +211,7 @@ namespace
     n->slot = 0;
     n->arena = a;
     n->is_owned_by_caller = true;
+    n->index = NULL;
     a->nodes.push_back (n);
     a->owned++;
     return n;
@@ -251,21 +293,62 @@ namespace
     return true;
   }
 
+  const rapidjson::SizeType INDEX_NOT_FOUND = (rapidjson::SizeType) -1;
+
+  /* Where key sits in container, or INDEX_NOT_FOUND. free_cell comes back as
+   * the cell an insert of that key would take. */
+  rapidjson::SizeType
+  index_probe (const key_index *ix, const rapidjson::Value *container, const char *key, size_t len, size_t *free_cell)
+  {
+    size_t mask = ix->cells.size () - 1;
+    size_t i = key_hash (key, len) & mask;
+
+    while (ix->cells[i] != 0)
+      {
+	rapidjson::SizeType slot = ix->cells[i] - 1;
+	const rapidjson::Value &name = (container->MemberBegin () + slot)->name;
+	if (name.GetStringLength () == len && memcmp (name.GetString (), key, len) == 0)
+	  {
+	    return slot;
+	  }
+	i = (i + 1) & mask;
+      }
+
+    *free_cell = i;
+    return INDEX_NOT_FOUND;
+  }
+
+  void
+  index_rebuild (key_index *ix, const rapidjson::Value *container, size_t cells)
+  {
+    ix->cells.assign (cells, 0);
+    ix->used = 0;
+
+    rapidjson::SizeType slot = 0;
+    for (rapidjson::Value::ConstMemberIterator m = container->MemberBegin (); m != container->MemberEnd (); ++m, ++slot)
+      {
+	size_t free_cell = 0;
+	(void) index_probe (ix, container, m->name.GetString (), m->name.GetStringLength (), &free_cell);
+	ix->cells[free_cell] = slot + 1;
+	ix->used++;
+      }
+  }
+
   // *INDENT-OFF*
   inline node_impl *
-  as_node (cub_json_t *p)
+  as_node (trace_json_t *p)
   {
     return reinterpret_cast<node_impl *> (p);
   }
 
-  inline cub_json_t *
+  inline trace_json_t *
   as_handle (node_impl *n)
   {
-    return reinterpret_cast<cub_json_t *> (n);
+    return reinterpret_cast<trace_json_t *> (n);
   }
   // *INDENT-ON*
 
-  cub_json_t *
+  trace_json_t *
   scalar_new (rapidjson::Value &&v)
   {
     node_impl *n = node_new (rapidjson::kNullType);
@@ -278,48 +361,48 @@ namespace
   }
 }				// namespace
 
-cub_json_t *
-cub_json_object (void)
+trace_json_t *
+trace_json_object (void)
 {
   node_impl *n = node_new (rapidjson::kObjectType);
   return n == NULL ? NULL : as_handle (n);
 }
 
-cub_json_t *
-cub_json_array (void)
+trace_json_t *
+trace_json_array (void)
 {
   node_impl *n = node_new (rapidjson::kArrayType);
   return n == NULL ? NULL : as_handle (n);
 }
 
-cub_json_t *
-cub_json_true (void)
+trace_json_t *
+trace_json_true (void)
 {
   return scalar_new (rapidjson::Value (true));
 }
 
-cub_json_t *
-cub_json_false (void)
+trace_json_t *
+trace_json_false (void)
 {
   return scalar_new (rapidjson::Value (false));
 }
 
-cub_json_t *
-cub_json_boolean (int value)
+trace_json_t *
+trace_json_boolean (int value)
 {
   return scalar_new (rapidjson::Value (value != 0));
 }
 
-cub_json_t *
-cub_json_integer (cub_json_int_t value)
+trace_json_t *
+trace_json_integer (trace_json_int_t value)
 {
   rapidjson::Value v;
   v.SetInt64 ((int64_t) value);
   return scalar_new (std::move (v));
 }
 
-cub_json_t *
-cub_json_real (double value)
+trace_json_t *
+trace_json_real (double value)
 {
   if (!std::isfinite (value))
     {
@@ -330,8 +413,8 @@ cub_json_real (double value)
   return scalar_new (rapidjson::Value (value));
 }
 
-cub_json_t *
-cub_json_string (const char *value)
+trace_json_t *
+trace_json_string (const char *value)
 {
   if (value == NULL || !is_valid_utf8 (value))
     {
@@ -348,7 +431,7 @@ cub_json_string (const char *value)
 }
 
 int
-cub_json_object_set_new (cub_json_t *object, const char *key, cub_json_t *value)
+trace_json_object_set_new (trace_json_t *object, const char *key, trace_json_t *value)
 {
   if (value == NULL)
     {
@@ -359,7 +442,7 @@ cub_json_object_set_new (cub_json_t *object, const char *key, cub_json_t *value)
 
   if (object == NULL || key == NULL)
     {
-      cub_json_decref (value);
+      trace_json_decref (value);
       return -1;
     }
 
@@ -379,7 +462,7 @@ cub_json_object_set_new (cub_json_t *object, const char *key, cub_json_t *value)
        * pool this container has no say over; splicing it in would leave the
        * container pointing at storage that can go away under it */
       assert (false);
-      cub_json_decref (value);
+      trace_json_decref (value);
       return -1;
     }
 
@@ -389,38 +472,70 @@ cub_json_object_set_new (cub_json_t *object, const char *key, cub_json_t *value)
       /* Turning the container into an object here would throw away whatever it
        * holds. The multi-spec SCAN of a class hierarchy hands an array to code
        * that goes on to set members on it, so this is reachable. */
-      cub_json_decref (value);
+      trace_json_decref (value);
       return -1;
     }
 
-  /* A key set twice replaces what was there, the way it used to. Appending it
-   * instead would put the same key in the document twice.
-   *
-   * RapidJSON keeps no index of the keys, so this is a scan of the container
-   * where jansson's hash table was constant time, and filling one object is
-   * quadratic in the number of members it ends up with. The plan dump is well
-   * inside that: its objects are keyed by a fixed handful of literals and none
-   * of them passes about twenty members, where the scan is still cheaper than
-   * the hash was. The parts of a trace that have no bound - partitions,
-   * analytics, subqueries - are arrays, and arrays do not pay it. */
-  rapidjson::Value::MemberIterator member = container->FindMember (key);
-  if (member != container->MemberEnd ())
+  /* A key set twice replaces what was there, the way it used to. RapidJSON
+   * keeps no index of the keys, so finding it is a scan - the cheaper of the
+   * two while the object is small, quadratic once it is not. Past a threshold
+   * the object carries an index and the scan stops. */
+  size_t len = strlen (key);
+  size_t free_cell = 0;
+  rapidjson::SizeType slot = INDEX_NOT_FOUND;
+
+  if (o->index == NULL && container->MemberCount () >= OBJECT_INDEX_THRESHOLD)
     {
-      member->value = *v->value ();
-      node_attached (v, o, (rapidjson::SizeType) (member - container->MemberBegin ()));
+      o->index = new key_index ();
+      index_rebuild (o->index, container, 4 * (size_t) OBJECT_INDEX_THRESHOLD);
+    }
+
+  if (o->index != NULL)
+    {
+      slot = index_probe (o->index, container, key, len, &free_cell);
+    }
+  else
+    {
+      rapidjson::Value::MemberIterator member = container->FindMember (key);
+      if (member != container->MemberEnd ())
+	{
+	  slot = (rapidjson::SizeType) (member - container->MemberBegin ());
+	}
+    }
+
+  if (slot != INDEX_NOT_FOUND)
+    {
+      (container->MemberBegin () + slot)->value = *v->value ();
+      node_attached (v, o, slot);
       return 0;
     }
 
   /* the key is copied into the pool only once it is known to be a new one */
   pool_type &pool = o->arena->pool;
-  rapidjson::Value k (key, (rapidjson::SizeType) strlen (key), pool);
+  rapidjson::Value k (key, (rapidjson::SizeType) len, pool);
   container->AddMember (k, *v->value (), pool);
-  node_attached (v, o, container->MemberCount () - 1);
+  slot = container->MemberCount () - 1;
+
+  if (o->index != NULL)
+    {
+      /* keep the table under a 0.7 load, so a probe stays short */
+      if ((o->index->used + 1) * 10 >= o->index->cells.size () * 7)
+	{
+	  index_rebuild (o->index, container, o->index->cells.size () * 2);
+	}
+      else
+	{
+	  o->index->cells[free_cell] = slot + 1;
+	  o->index->used++;
+	}
+    }
+
+  node_attached (v, o, slot);
   return 0;
 }
 
 int
-cub_json_array_append_new (cub_json_t *array, cub_json_t *value)
+trace_json_array_append_new (trace_json_t *array, trace_json_t *value)
 {
   if (value == NULL)
     {
@@ -431,7 +546,7 @@ cub_json_array_append_new (cub_json_t *array, cub_json_t *value)
 
   if (array == NULL)
     {
-      cub_json_decref (value);
+      trace_json_decref (value);
       return -1;
     }
 
@@ -451,14 +566,14 @@ cub_json_array_append_new (cub_json_t *array, cub_json_t *value)
        * pool this container has no say over; splicing it in would leave the
        * container pointing at storage that can go away under it */
       assert (false);
-      cub_json_decref (value);
+      trace_json_decref (value);
       return -1;
     }
 
   rapidjson::Value *container = a->value ();
   if (!container->IsArray ())
     {
-      cub_json_decref (value);
+      trace_json_decref (value);
       return -1;
     }
 
@@ -468,7 +583,7 @@ cub_json_array_append_new (cub_json_t *array, cub_json_t *value)
 }
 
 void
-cub_json_decref (cub_json_t *node)
+trace_json_decref (trace_json_t *node)
 {
   if (node == NULL)
     {
@@ -490,13 +605,13 @@ cub_json_decref (cub_json_t *node)
 }
 
 long
-cub_json_owned_count (void)
+trace_json_owned_count (void)
 {
   return arena_get ()->owned;
 }
 
 char *
-cub_json_dumps (const cub_json_t *node)
+trace_json_dumps (const trace_json_t *node)
 {
   if (node == NULL)
     {
@@ -509,7 +624,7 @@ cub_json_dumps (const cub_json_t *node)
   // *INDENT-ON*
   writer.SetIndent (' ', 2);
 
-  if (!as_node (const_cast<cub_json_t *> (node))->value ()->Accept (writer))
+  if (!as_node (const_cast<trace_json_t *> (node))->value ()->Accept (writer))
     {
       /* the writer refused a value; what is in the buffer is not a document */
       return NULL;
@@ -518,8 +633,8 @@ cub_json_dumps (const cub_json_t *node)
   return strdup (sb.GetString ());
 }
 
-cub_json_t *
-cub_json_loads (const char *text)
+trace_json_t *
+trace_json_loads (const char *text)
 {
   if (text == NULL)
     {
@@ -549,15 +664,15 @@ cub_json_loads (const char *text)
     {
       /* releasing the node can clear the pool the document parsed into, so it
        * has to happen once the document is out of scope */
-      cub_json_decref (as_handle (n));
+      trace_json_decref (as_handle (n));
       return NULL;
     }
 
   return as_handle (n);
 }
 
-cub_json_t *
-cub_json_pack (const char *fmt, ...)
+trace_json_t *
+trace_json_pack (const char *fmt, ...)
 {
   if (fmt == NULL || *fmt != '{')
     {
@@ -574,7 +689,7 @@ cub_json_pack (const char *fmt, ...)
    * cannot follow does not leave one behind. Releasing a node the setters have
    * already taken over is a no-op, so the list can be walked unconditionally. */
   // *INDENT-OFF*
-  std::vector<cub_json_t *> taken;
+  std::vector<trace_json_t *> taken;
   // *INDENT-ON*
   const char *p = fmt + 1;
   bool ok = true;
@@ -605,32 +720,32 @@ cub_json_pack (const char *fmt, ...)
       p++;
 
       /* each case leaves p on the last format character it consumed */
-      cub_json_t *v = NULL;
+      trace_json_t *v = NULL;
 
       switch (*p)
 	{
 	case 'o':
-	  v = va_arg (ap, cub_json_t *);
+	  v = va_arg (ap, trace_json_t *);
 	  break;
 
 	case 's':
-	  v = cub_json_string (va_arg (ap, const char *));
+	  v = trace_json_string (va_arg (ap, const char *));
 	  break;
 
 	case 'i':
-	  v = cub_json_integer ((cub_json_int_t) va_arg (ap, int));
+	  v = trace_json_integer ((trace_json_int_t) va_arg (ap, int));
 	  break;
 
 	case 'I':
-	  v = cub_json_integer (va_arg (ap, cub_json_int_t));
+	  v = trace_json_integer (va_arg (ap, trace_json_int_t));
 	  break;
 
 	case 'f':
-	  v = cub_json_real (va_arg (ap, double));
+	  v = trace_json_real (va_arg (ap, double));
 	  break;
 
 	case 'b':
-	  v = cub_json_boolean (va_arg (ap, int));
+	  v = trace_json_boolean (va_arg (ap, int));
 	  break;
 
 	case '[':
@@ -657,9 +772,9 @@ cub_json_pack (const char *fmt, ...)
 		  break;
 		}
 
-	      cub_json_t *element = va_arg (ap, cub_json_t *);
+	      trace_json_t *element = va_arg (ap, trace_json_t *);
 	      taken.push_back (element);
-	      if (cub_json_array_append_new (v, element) != 0)
+	      if (trace_json_array_append_new (v, element) != 0)
 		{
 		  ok = false;
 		  break;
@@ -687,7 +802,7 @@ cub_json_pack (const char *fmt, ...)
 	  break;
 	}
 
-      if (cub_json_object_set_new (as_handle (root), key, v) != 0)
+      if (trace_json_object_set_new (as_handle (root), key, v) != 0)
 	{
 	  ok = false;
 	  break;
@@ -708,9 +823,9 @@ cub_json_pack (const char *fmt, ...)
        * released, so none of these handles can go stale mid-loop */
       for (size_t i = 0; i < taken.size (); i++)
 	{
-	  cub_json_decref (taken[i]);
+	  trace_json_decref (taken[i]);
 	}
-      cub_json_decref (as_handle (root));
+      trace_json_decref (as_handle (root));
       return NULL;
     }
 

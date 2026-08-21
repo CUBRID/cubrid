@@ -654,7 +654,7 @@ extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 #if defined(SERVER_MODE)
-extern void scan_print_stats_json (SCAN_ID * scan_id, cub_json_t * stats);
+extern void scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);
 #endif /* SERVER_MODE */
 
