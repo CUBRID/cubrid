@@ -6064,6 +6064,89 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
 }
 
 /*
+ * locator_report_resolved_names () - Report back which name each owner-omitted request
+ *                                   actually resolved to
+ *
+ * return: void
+ *
+ *   lockhint(in): Reply describing the classes that were locked and prefetched
+ *   num_classes(in): Number of requested names
+ *   many_classnames(in): Requested names, qualified with the connecting user
+ *   flags(in): Per-request prefetch flags
+ *   resolved_names(out): Slot i receives the resolved name when request i named a class
+ *                        in a schema other than the one it asked for, NULL otherwise
+ *
+ * Note: A request flagged LC_PREF_FLAG_OWNER_OMITTED carries the connecting user as its
+ *       qualifier, and the server may have satisfied it from another schema. The caller
+ *       needs the name it landed on -- to rewrite the statement, so that everything
+ *       downstream, plan cache key included, refers to the class that was actually locked.
+ *
+ *       No extra server request is needed for this. The reply describes the classes in
+ *       request order, skipping the requests the server never looked at, and the class
+ *       objects themselves are already here, each carrying its own name.
+ *
+ *       Call only when every request was found. A request that failed occupies no slot in
+ *       the reply, which would shift everything after it.
+ */
+static void
+locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const char **many_classnames,
+			       LC_PREFETCH_FLAGS * flags, const char **resolved_names)
+{
+  int i;
+  int slot = 0;
+
+  for (i = 0; i < num_classes; i++)
+    {
+      const char *requested = many_classnames[i];
+      MOP class_mop;
+      MOBJ class_obj = NULL;
+      int my_slot;
+
+      resolved_names[i] = NULL;
+
+      /* Mirror the requests the server passes over, so that slot keeps step with it. */
+      if (requested == NULL || !(flags[i] & LC_PREF_FLAG_LOCK))
+	{
+	  continue;
+	}
+
+      my_slot = slot++;
+
+      if (!(flags[i] & LC_PREF_FLAG_OWNER_OMITTED))
+	{
+	  continue;
+	}
+
+      if (ws_find_class (requested) != NULL)
+	{
+	  /* Resolved in the user's own schema, exactly as before. */
+	  continue;
+	}
+
+      if (my_slot >= lockhint->num_classes)
+	{
+	  assert (false);
+	  continue;
+	}
+
+      /* A null OID here means this request named the same class as an earlier one, which
+       * the server merges into that earlier slot. The earlier request carries the name. */
+      if (OID_ISNULL (&lockhint->classes[my_slot].oid))
+	{
+	  continue;
+	}
+
+      class_mop = ws_mop (&lockhint->classes[my_slot].oid, sm_Root_class_mop);
+      if (class_mop == NULL || ws_find (class_mop, &class_obj) == WS_FIND_MOP_DELETED || class_obj == NULL)
+	{
+	  continue;
+	}
+
+      resolved_names[i] = sm_ch_name (class_obj);
+    }
+}
+
+/*
  * locator_lockhint_classes () - The given classes should be prelocked and prefetched
  *                          since they are likely to be needed
  *
@@ -6085,7 +6168,7 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
  */
 LC_FIND_CLASSNAME
 locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * many_locks, int *need_subclasses,
-			  LC_PREFETCH_FLAGS * flags, int quit_on_errors, LOCK lock_rr_tran)
+			  LC_PREFETCH_FLAGS * flags, int quit_on_errors, LOCK lock_rr_tran, const char **resolved_names)
 {
   MOP class_mop = NULL;		/* The mop of a class */
   MOBJ class_obj = NULL;	/* The class object of above mop */
@@ -6357,6 +6440,11 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
   if (lockhint != NULL && (all_found == LC_CLASSNAME_EXIST || quit_on_errors == false))
     {
       locator_cache_lock_lockhint_classes (lockhint);
+    }
+
+  if (lockhint != NULL && resolved_names != NULL && all_found == LC_CLASSNAME_EXIST)
+    {
+      locator_report_resolved_names (lockhint, num_classes, many_classnames, flags, resolved_names);
     }
 
   if (lockhint != NULL)

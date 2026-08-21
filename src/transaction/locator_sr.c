@@ -108,17 +108,8 @@ struct locator_classname_entry
   const char *e_bare_name;	/* Portion of e_name after the qualifier dot; e_name itself when unqualified */
   int e_qualifier_len;		/* Length of the qualifier part of e_name; 0 when unqualified */
   LC_ENTRY_TYPE e_type;		/* Class or synonym */
-  LOCATOR_CLASSNAME_ENTRY *e_next;	/* Next entry sharing the same bare name (different qualifier) */
   int e_tran_index;		/* Transaction of entry */
   LOCATOR_CLASSNAME_ACTION e_current;	/* The most current action */
-};
-
-/* Value stored in locator_Mht_classnames; one bucket per bare (unqualified) name. */
-typedef struct locator_classname_bucket LOCATOR_CLASSNAME_BUCKET;
-struct locator_classname_bucket
-{
-  char *b_name;			/* Bare name; also the hash key (owned by the bucket) */
-  LOCATOR_CLASSNAME_ENTRY *b_head;	/* Chain of entries sharing the bare name */
 };
 
 typedef struct locator_return_nxobj LOCATOR_RETURN_NXOBJ;
@@ -136,7 +127,18 @@ struct locator_return_nxobj
 
 bool locator_Dont_check_foreign_key = false;
 
+/* Primary index: full name -> entry. One probe resolves a qualified name, which is what
+ * nearly every compile asks for. The key is the entry's own e_name, so nothing is stored
+ * twice: the full name has to exist anyway for error messages, dump, checkdb and the
+ * client protocol, all of which name a class by "qualifier.name". */
 static MHT_TABLE *locator_Mht_classnames = NULL;
+
+/* Secondary index: bare name -> every entry carrying that bare name, one per qualifier.
+ * Serves the one question the primary cannot answer -- "who owns something called X?" --
+ * which is what resolving an owner-omitted name needs. Duplicate keys are the point here,
+ * hence the mht_put2/mht_get2/mht_rem2 family. Both indexes point at the same entries;
+ * an entry is allocated once and never copied. */
+static MHT_TABLE *locator_Mht_classnames_bare = NULL;
 
 static const HFID NULL_HFID = { {-1, -1}, -1 };
 
@@ -150,6 +152,9 @@ static void locator_split_classname (const char *name, const char **bare_name, i
 static LOCATOR_CLASSNAME_ENTRY *locator_get_classname_entry (const char *classname);
 static int locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static int locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
+static int locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_name,
+					      const char *skip_qualifier, int skip_qualifier_len,
+					      LOCATOR_CLASSNAME_ENTRY ** candidates, int max_cand);
 static void locator_free_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static int locator_classname_action_push (LOCATOR_CLASSNAME_ENTRY * entry);
 static void locator_classname_action_restore (LOCATOR_CLASSNAME_ENTRY * entry);
@@ -301,40 +306,18 @@ locator_split_classname (const char *name, const char **bare_name, int *qualifie
  *
  * return: The matching entry or NULL
  *
- *   classname(in): Full name; both qualifier and bare name must match exactly
+ *   classname(in): Full name; "qualifier.name" except for unqualified system classes
  *
  * Note: The caller must be inside CSECT_LOCATOR_SR_CLASSNAME_TABLE.
  */
 static LOCATOR_CLASSNAME_ENTRY *
 locator_get_classname_entry (const char *classname)
 {
-  LOCATOR_CLASSNAME_BUCKET *bucket;
-  LOCATOR_CLASSNAME_ENTRY *entry;
-  const char *bare_name;
-  int qualifier_len;
-
-  locator_split_classname (classname, &bare_name, &qualifier_len);
-
-  bucket = (LOCATOR_CLASSNAME_BUCKET *) mht_get (locator_Mht_classnames, bare_name);
-  if (bucket == NULL)
-    {
-      return NULL;
-    }
-
-  for (entry = bucket->b_head; entry != NULL; entry = entry->e_next)
-    {
-      if (entry->e_qualifier_len == qualifier_len && memcmp (entry->e_name, classname, qualifier_len) == 0)
-	{
-	  return entry;
-	}
-    }
-
-  return NULL;
+  return (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
 }
 
 /*
- * locator_insert_classname_entry () - Chain an entry under the bucket of its bare
- *                                     name, creating the bucket if needed
+ * locator_insert_classname_entry () - Publish an entry in both name indexes
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
@@ -346,48 +329,26 @@ locator_get_classname_entry (const char *classname)
 static int
 locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 {
-  LOCATOR_CLASSNAME_BUCKET *bucket;
-
   locator_split_classname (entry->e_name, &entry->e_bare_name, &entry->e_qualifier_len);
 
-  bucket = (LOCATOR_CLASSNAME_BUCKET *) mht_get (locator_Mht_classnames, entry->e_bare_name);
-  if (bucket == NULL)
+  if (mht_put (locator_Mht_classnames, entry->e_name, entry) == NULL)
     {
-      bucket = (LOCATOR_CLASSNAME_BUCKET *) malloc (sizeof (*bucket));
-      if (bucket == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*bucket));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      bucket->b_name = strdup (entry->e_bare_name);
-      if (bucket->b_name == NULL)
-	{
-	  free_and_init (bucket);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (size_t) (strlen (entry->e_bare_name) + 1));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      bucket->b_head = NULL;
-
-      if (mht_put (locator_Mht_classnames, bucket->b_name, bucket) == NULL)
-	{
-	  free_and_init (bucket->b_name);
-	  free_and_init (bucket);
-	  return ER_FAILED;
-	}
+      return ER_FAILED;
     }
 
-  entry->e_next = bucket->b_head;
-  bucket->b_head = entry;
+  /* Both keys point into e_name, which the entry owns, so neither index allocates a key
+   * and both stay valid exactly as long as the entry does. */
+  if (mht_put2_new (locator_Mht_classnames_bare, entry->e_bare_name, entry) == NULL)
+    {
+      (void) mht_rem (locator_Mht_classnames, entry->e_name, NULL, NULL);
+      return ER_FAILED;
+    }
 
   return NO_ERROR;
 }
 
 /*
- * locator_unlink_classname_entry () - Unlink an entry from its bucket chain and
- *                                     drop the bucket when it becomes empty
+ * locator_unlink_classname_entry () - Withdraw an entry from both name indexes
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
@@ -398,44 +359,74 @@ locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 static int
 locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 {
-  LOCATOR_CLASSNAME_BUCKET *bucket;
-  LOCATOR_CLASSNAME_ENTRY **prev;
+  (void) mht_rem (locator_Mht_classnames, entry->e_name, NULL, NULL);
 
-  bucket = (LOCATOR_CLASSNAME_BUCKET *) mht_get (locator_Mht_classnames, entry->e_bare_name);
-  if (bucket == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  for (prev = &bucket->b_head; *prev != NULL && *prev != entry; prev = &(*prev)->e_next)
-    {
-      ;
-    }
-
-  if (*prev == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  *prev = entry->e_next;
-  entry->e_next = NULL;
-
-  if (bucket->b_head == NULL)
-    {
-      (void) mht_rem (locator_Mht_classnames, bucket->b_name, NULL, NULL);
-      free_and_init (bucket->b_name);
-      free_and_init (bucket);
-    }
+  /* mht_rem would drop whichever entry with this bare name comes first in the bucket;
+   * only mht_rem2 removes the one we actually mean. */
+  (void) mht_rem2 (locator_Mht_classnames_bare, entry->e_bare_name, entry, NULL, NULL);
 
   return NO_ERROR;
 }
 
 /*
+ * locator_find_bare_name_candidates () - Collect entries whose bare name matches, owned by
+ *                                        someone other than the given qualifier
+ *
+ * return: Number of candidates collected; stops at max_cand
+ *
+ *   thread_p(in):
+ *   bare_name(in): Bare name to look for
+ *   skip_qualifier(in): Qualifier already tried; its entry is not a candidate
+ *   skip_qualifier_len(in): Length of skip_qualifier
+ *   candidates(out): Array receiving the candidates
+ *   max_cand(in): Capacity of candidates; collection stops once reached
+ *
+ * Note: The caller must be inside CSECT_LOCATOR_SR_CLASSNAME_TABLE.
+ *
+ *       Callers only need to tell "none" from "exactly one" from "more than one", so
+ *       max_cand of 2 is enough and the walk stops there. That keeps the cost independent
+ *       of how many users happen to own something with this bare name -- which in the
+ *       field can be one per tenant.
+ */
+static int
+locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_name, const char *skip_qualifier,
+				   int skip_qualifier_len, LOCATOR_CLASSNAME_ENTRY ** candidates, int max_cand)
+{
+  LOCATOR_CLASSNAME_ENTRY *entry;
+  void *last = NULL;
+  int num_cand = 0;
+
+  assert (bare_name != NULL && candidates != NULL && max_cand > 0);
+
+  for (entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get2 (locator_Mht_classnames_bare, bare_name, &last);
+       entry != NULL && num_cand < max_cand;
+       entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get2 (locator_Mht_classnames_bare, bare_name, &last))
+    {
+      if (entry->e_qualifier_len == skip_qualifier_len
+	  && (skip_qualifier_len == 0 || memcmp (entry->e_name, skip_qualifier, skip_qualifier_len) == 0))
+	{
+	  /* The qualifier the caller already probed. */
+	  continue;
+	}
+
+      /* A name reserved by a transaction that has not committed yet is not a candidate:
+       * resolving to it would let one session's uncommitted DDL steer another session's
+       * query. Deleted entries are likewise not candidates. */
+      if (!locator_is_exist_class_name_entry (thread_p, entry))
+	{
+	  continue;
+	}
+
+      candidates[num_cand++] = entry;
+    }
+
+  return num_cand;
+}
+
+/*
  * locator_free_classname_entry () - Free an entry and its owned strings
  *
- *   entry(in): Entry already unlinked from its bucket; its action history must
+ *   entry(in): Entry already withdrawn from both name indexes; its action history must
  *              have been popped already
  */
 static void
@@ -587,9 +578,12 @@ locator_initialize (THREAD_ENTRY * thread_p)
     {
       locator_Mht_classnames =
 	mht_create ("Memory hash Classname to OID", CLASSNAME_CACHE_SIZE, mht_1strhash, mht_compare_strings_are_equal);
+      locator_Mht_classnames_bare =
+	mht_create ("Memory hash bare Classname to OID", CLASSNAME_CACHE_SIZE, mht_1strhash,
+		    mht_compare_strings_are_equal);
     }
 
-  if (locator_Mht_classnames == NULL)
+  if (locator_Mht_classnames == NULL || locator_Mht_classnames_bare == NULL)
     {
       assert (false);
       goto error;
@@ -633,7 +627,6 @@ locator_initialize (THREAD_ENTRY * thread_p)
 	}
 
       entry->e_type = LC_ENTRY_CLASS;
-      entry->e_next = NULL;
       entry->e_tran_index = NULL_TRAN_INDEX;
 
       entry->e_current.action = LC_CLASSNAME_EXIST;
@@ -871,7 +864,6 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	}
 
       entry->e_type = LC_ENTRY_SYNONYM;
-      entry->e_next = NULL;
       entry->e_tran_index = NULL_TRAN_INDEX;
 
       entry->e_current.action = LC_CLASSNAME_EXIST;
@@ -944,6 +936,13 @@ locator_finalize (THREAD_ENTRY * thread_p)
 
   mht_destroy (locator_Mht_classnames);
   locator_Mht_classnames = NULL;
+
+  /* locator_force_drop_class_name_entry already withdrew every entry from this index. */
+  if (locator_Mht_classnames_bare != NULL)
+    {
+      mht_destroy (locator_Mht_classnames_bare);
+      locator_Mht_classnames_bare = NULL;
+    }
 
   csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
@@ -1177,7 +1176,6 @@ start:
 	}
 
       entry->e_type = type;
-      entry->e_next = NULL;
       entry->e_tran_index = tran_index;
 
       entry->e_current.action = LC_CLASSNAME_RESERVED;
@@ -2364,8 +2362,7 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, L
 static int
 locator_defence_drop_class_name_entry (const void *name, void *ent, void *args)
 {
-  LOCATOR_CLASSNAME_BUCKET *bucket = (LOCATOR_CLASSNAME_BUCKET *) ent;
-  LOCATOR_CLASSNAME_ENTRY *entry, *next;
+  LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) ent;
   LOG_LSA *savep_lsa = (LOG_LSA *) args;
   THREAD_ENTRY *thread_p;
   int tran_index;
@@ -2378,41 +2375,35 @@ locator_defence_drop_class_name_entry (const void *name, void *ent, void *args)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index != NULL_TRAN_INDEX);
 
-  for (entry = bucket->b_head; entry != NULL; entry = next)
-    {
-      /* locator_drop_class_name_entry may free the entry (and the bucket when it becomes empty) */
-      next = entry->e_next;
-
 #if !defined(NDEBUG)
-      if (locator_is_exist_class_name_entry (thread_p, entry) && entry->e_type == LC_ENTRY_CLASS)
+  if (locator_is_exist_class_name_entry (thread_p, entry) && entry->e_type == LC_ENTRY_CLASS)
+    {
+      OID class_oid;
+
+      COPY_OID (&class_oid, &entry->e_current.oid);
+
+      assert (heap_does_exist (thread_p, oid_Root_class_oid, &class_oid));
+
+      /* check class_oid */
+      if (class_oid.slotid <= 0 || class_oid.volid < 0 || class_oid.pageid < 0)
 	{
-	  OID class_oid;
-
-	  COPY_OID (&class_oid, &entry->e_current.oid);
-
-	  assert (heap_does_exist (thread_p, oid_Root_class_oid, &class_oid));
-
-	  /* check class_oid */
-	  if (class_oid.slotid <= 0 || class_oid.volid < 0 || class_oid.pageid < 0)
-	    {
-	      assert (false);
-	    }
-
-	  if (disk_is_page_sector_reserved_with_debug_crash (thread_p, class_oid.volid, class_oid.pageid, true)
-	      != DISK_VALID)
-	    {
-	      assert (false);
-	    }
+	  assert (false);
 	}
+
+      if (disk_is_page_sector_reserved_with_debug_crash (thread_p, class_oid.volid, class_oid.pageid, true)
+	  != DISK_VALID)
+	{
+	  assert (false);
+	}
+    }
 #endif
 
-      /* check iff uncleared entry */
-      if (entry->e_tran_index == tran_index)
-	{
-	  assert (entry->e_tran_index != NULL_TRAN_INDEX);
+  /* check iff uncleared entry */
+  if (entry->e_tran_index == tran_index)
+    {
+      assert (entry->e_tran_index != NULL_TRAN_INDEX);
 
-	  (void) locator_drop_class_name_entry (thread_p, entry->e_name, savep_lsa);
-	}
+      (void) locator_drop_class_name_entry (thread_p, entry->e_name, savep_lsa);
     }
 
   return NO_ERROR;
@@ -2451,30 +2442,23 @@ locator_force_drop_one_entry (THREAD_ENTRY * thread_p, LOCATOR_CLASSNAME_ENTRY *
 }
 
 /*
- * locator_force_drop_class_name_entry () - mht_map callback; drop every entry of a bucket
+ * locator_force_drop_class_name_entry () - mht_map callback; drop one entry unconditionally
  *
  * return:
  *
- *   name(in): Bare name (hash key)
- *   ent(in): LOCATOR_CLASSNAME_BUCKET
+ *   name(in): Full name (hash key)
+ *   ent(in): LOCATOR_CLASSNAME_ENTRY
  *   args(in): Not used
  */
 static int
 locator_force_drop_class_name_entry (const void *name, void *ent, void *args)
 {
   THREAD_ENTRY *thread_p;
-  LOCATOR_CLASSNAME_BUCKET *bucket = (LOCATOR_CLASSNAME_BUCKET *) ent;
-  LOCATOR_CLASSNAME_ENTRY *entry, *next;
+  LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) ent;
 
   thread_p = thread_get_thread_entry_info ();
 
-  for (entry = bucket->b_head; entry != NULL; entry = next)
-    {
-      next = entry->e_next;
-      (void) locator_force_drop_one_entry (thread_p, entry);
-    }
-
-  return NO_ERROR;
+  return locator_force_drop_one_entry (thread_p, entry);
 }
 
 /*
@@ -2610,8 +2594,7 @@ locator_savepoint_class_name_entry (const char *classname, LOG_LSA * savep_lsa)
 static int
 locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key, void *ent, void *args)
 {
-  LOCATOR_CLASSNAME_BUCKET *bucket = (LOCATOR_CLASSNAME_BUCKET *) ent;
-  LOCATOR_CLASSNAME_ENTRY *entry;
+  LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) ent;
   int *class_no_p = (int *) args;
   LOCATOR_CLASSNAME_ACTION *action;
   const char *str_action;
@@ -2620,47 +2603,44 @@ locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key
 
   assert (class_no_p != NULL);
 
-  for (entry = bucket->b_head; entry != NULL; entry = entry->e_next)
+  fprintf (outfp, "   %2d   %s%s   ", *class_no_p, entry->e_name,
+	   (entry->e_type == LC_ENTRY_SYNONYM) ? " (synonym)" : "");
+  (*class_no_p)++;
+  key_size = strlen (entry->e_name);
+  for (i = 0; i < (29 - key_size); i++)
     {
-      fprintf (outfp, "   %2d   %s%s   ", *class_no_p, entry->e_name,
-	       (entry->e_type == LC_ENTRY_SYNONYM) ? " (synonym)" : "");
-      (*class_no_p)++;
-      key_size = strlen (entry->e_name);
-      for (i = 0; i < (29 - key_size); i++)
-	{
-	  fprintf (outfp, " ");
-	}
-      fprintf (outfp, "TRAN_INDEX = %d\n", entry->e_tran_index);
+      fprintf (outfp, " ");
+    }
+  fprintf (outfp, "TRAN_INDEX = %d\n", entry->e_tran_index);
 
-      action = &entry->e_current;
-      while (action != NULL)
+  action = &entry->e_current;
+  while (action != NULL)
+    {
+      switch (action->action)
 	{
-	  switch (action->action)
-	    {
-	    case LC_CLASSNAME_RESERVED:
-	      str_action = "LC_CLASSNAME_RESERVE";
-	      break;
-	    case LC_CLASSNAME_DELETED:
-	      str_action = "LC_CLASSNAME_DELETED";
-	      break;
-	    case LC_CLASSNAME_EXIST:
-	      str_action = "LC_CLASSNAME_EXIST";
-	      break;
-	    case LC_CLASSNAME_RESERVED_RENAME:
-	      str_action = "LC_CLASSNAME_RESERVED_RENAME";
-	      break;
-	    case LC_CLASSNAME_DELETED_RENAME:
-	      str_action = "LC_CLASSNAME_DELETED_RENAME";
-	      break;
-	    default:
-	      assert (action->action == LC_CLASSNAME_ERROR);
-	      str_action = "UNKNOWN";
-	      break;
-	    }
-	  fprintf (outfp, "           action = %s, OID = %d|%d|%d, Save_Lsa = %lld|%d\n", str_action, action->oid.volid,
-		   action->oid.pageid, action->oid.slotid, LSA_AS_ARGS (&action->savep_lsa));
-	  action = action->prev;
+	case LC_CLASSNAME_RESERVED:
+	  str_action = "LC_CLASSNAME_RESERVE";
+	  break;
+	case LC_CLASSNAME_DELETED:
+	  str_action = "LC_CLASSNAME_DELETED";
+	  break;
+	case LC_CLASSNAME_EXIST:
+	  str_action = "LC_CLASSNAME_EXIST";
+	  break;
+	case LC_CLASSNAME_RESERVED_RENAME:
+	  str_action = "LC_CLASSNAME_RESERVED_RENAME";
+	  break;
+	case LC_CLASSNAME_DELETED_RENAME:
+	  str_action = "LC_CLASSNAME_DELETED_RENAME";
+	  break;
+	default:
+	  assert (action->action == LC_CLASSNAME_ERROR);
+	  str_action = "UNKNOWN";
+	  break;
 	}
+      fprintf (outfp, "           action = %s, OID = %d|%d|%d, Save_Lsa = %lld|%d\n", str_action, action->oid.volid,
+	       action->oid.pageid, action->oid.slotid, LSA_AS_ARGS (&action->savep_lsa));
+      action = action->prev;
     }
 
   return (true);
@@ -2748,8 +2728,7 @@ static int
 locator_check_class_on_heap (const void *name, void *ent, void *args)
 {
   THREAD_ENTRY *thread_p;
-  LOCATOR_CLASSNAME_BUCKET *bucket = (LOCATOR_CLASSNAME_BUCKET *) ent;
-  LOCATOR_CLASSNAME_ENTRY *entry;
+  LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) ent;
   DISK_ISVALID *isvalid = (DISK_ISVALID *) args;
   const char *classname;
   char *heap_classname;
@@ -2759,49 +2738,46 @@ locator_check_class_on_heap (const void *name, void *ent, void *args)
 
   assert (csect_check_own (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE) == 1);
 
-  for (entry = bucket->b_head; entry != NULL; entry = entry->e_next)
+  if (entry->e_current.action != LC_CLASSNAME_EXIST)
     {
-      if (entry->e_current.action != LC_CLASSNAME_EXIST)
+      /* is not permanent classname */
+      return NO_ERROR;
+    }
+
+  if (entry->e_type != LC_ENTRY_CLASS)
+    {
+      /* synonym entries have no counterpart in the heap of classes */
+      return NO_ERROR;
+    }
+
+  classname = entry->e_name;
+  class_oid = &entry->e_current.oid;
+
+  if (heap_get_class_name_alloc_if_diff (thread_p, class_oid, (char *) classname, &heap_classname) != NO_ERROR
+      || heap_classname == NULL)
+    {
+      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	{
-	  /* is not permanent classname */
-	  continue;
-	}
-
-      if (entry->e_type != LC_ENTRY_CLASS)
-	{
-	  /* synonym entries have no counterpart in the heap of classes */
-	  continue;
-	}
-
-      classname = entry->e_name;
-      class_oid = &entry->e_current.oid;
-
-      if (heap_get_class_name_alloc_if_diff (thread_p, class_oid, (char *) classname, &heap_classname) != NO_ERROR
-	  || heap_classname == NULL)
-	{
-	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_CLASSNAME_TYPE4, 4, classname,
-		      class_oid->volid, class_oid->pageid, class_oid->slotid);
-	      *isvalid = DISK_INVALID;
-	    }
-	  else
-	    {
-	      *isvalid = DISK_ERROR;
-	    }
-
-	  goto error;
-	}
-
-      /* Compare the classname pointers. If the same pointers classes are the same since the class was no malloc */
-      if (heap_classname != classname)
-	{
-	  /* Different names */
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_CLASSNAME_TYPE1, 5, class_oid->volid,
-		  class_oid->pageid, class_oid->slotid, classname, heap_classname);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_CLASSNAME_TYPE4, 4, classname,
+		  class_oid->volid, class_oid->pageid, class_oid->slotid);
 	  *isvalid = DISK_INVALID;
-	  free_and_init (heap_classname);
 	}
+      else
+	{
+	  *isvalid = DISK_ERROR;
+	}
+
+      goto error;
+    }
+
+  /* Compare the classname pointers. If the same pointers classes are the same since the class was no malloc */
+  if (heap_classname != classname)
+    {
+      /* Different names */
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_INCONSISTENT_CLASSNAME_TYPE1, 5, class_oid->volid,
+	      class_oid->pageid, class_oid->slotid, classname, heap_classname);
+      *isvalid = DISK_INVALID;
+      free_and_init (heap_classname);
     }
 
 error:
@@ -12150,6 +12126,58 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 		      /* already exit cset */
 		      continue;
 		    }
+		}
+	    }
+	  else if (many_flags[i] & LC_PREF_FLAG_OWNER_OMITTED)
+	    {
+	      /* The connecting user owns nothing by this name. Before 11.2 a class name was
+	       * unique database-wide, so a query carried no owner; after the upgrade the old
+	       * objects sit in one user's schema and every other user's queries would fail
+	       * here. Look for the name in the remaining schemas.
+	       *
+	       * Reached only when the name was not found under the user's own schema, so a
+	       * query that resolves the way it always did never pays for this. */
+	      LOCATOR_CLASSNAME_ENTRY *candidates[2];
+	      const char *bare_name;
+	      int qualifier_len;
+	      int num_cand;
+
+	      locator_split_classname (classname, &bare_name, &qualifier_len);
+	      num_cand =
+		locator_find_bare_name_candidates (thread_p, bare_name, classname, qualifier_len, candidates, 2);
+
+	      if (num_cand == 1)
+		{
+		  entry = candidates[0];
+		  if (entry->e_type == LC_ENTRY_SYNONYM)
+		    {
+		      assert (entry->e_current.synonym_target != NULL);
+		      entry = locator_get_classname_entry (entry->e_current.synonym_target);
+		      if (entry != NULL && entry->e_type == LC_ENTRY_SYNONYM)
+			{
+			  /* synonym chains do not resolve */
+			  entry = NULL;
+			}
+		    }
+		}
+
+	      if (num_cand == 1 && entry != NULL)
+		{
+		  COPY_OID (&(*hlock)->classes[n].oid, &entry->e_current.oid);
+		  assert (find == LC_CLASSNAME_EXIST);
+		}
+	      else if (num_cand > 1)
+		{
+		  /* Two owners is already enough to know the name is ambiguous; which other
+		   * owners exist does not change the answer. Report both that were found so
+		   * the user can qualify the name. */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_AMBIGUOUS_CLASSNAME, 3, bare_name,
+			  candidates[0]->e_name, candidates[1]->e_name);
+		  allfind = find = LC_CLASSNAME_ERROR;
+		}
+	      else
+		{
+		  find = LC_CLASSNAME_DELETED;
 		}
 	    }
 	  else

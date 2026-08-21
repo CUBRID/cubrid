@@ -6802,7 +6802,8 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
 
   /* lock splitted classes with X_LOCK */
   if (locator_lockhint_classes
-      (num_classes, (const char **) classes_names, locks, need_subclasses, flags, 1, NULL_LOCK) != LC_CLASSNAME_EXIST)
+      (num_classes, (const char **) classes_names, locks, need_subclasses, flags, 1, NULL_LOCK,
+       NULL) != LC_CLASSNAME_EXIST)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();

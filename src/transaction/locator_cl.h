@@ -113,7 +113,7 @@ extern LC_FIND_CLASSNAME locator_find_query_class (const char *classname, DB_FET
 #endif
 extern LC_FIND_CLASSNAME locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * many_locks,
 						   int *need_subclasses, LC_PREFETCH_FLAGS * flags, int quit_on_errors,
-						   LOCK lock_rr_tran);
+						   LOCK lock_rr_tran, const char **resolved_names);
 extern int locator_does_exist_object (MOP mop, DB_FETCH_MODE purpose);
 extern LIST_MOPS *locator_get_all_mops (MOP class_mop, DB_FETCH_MODE class_purpose,
 					LC_FETCH_VERSION_TYPE * force_fetch_version_type);

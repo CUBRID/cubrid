@@ -11025,6 +11025,10 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   if (resolved_name == NULL || resolved_name[0] == '\0')
     {
       resolved_name = sc_current_schema_name ();
+      if (PT_IS_NAME_NODE (node))
+	{
+	  node->info.name.owner_defaulted = 1;
+	}
     }
   else if (intl_identifier_lower_string_size (resolved_name) >= DB_MAX_USER_LENGTH)
     {
