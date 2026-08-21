@@ -357,6 +357,7 @@ struct lf_hash_table_iterator
 extern void lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator, LF_TRAN_ENTRY * tran_entry,
 				     LF_HASH_TABLE * table);
 extern void *lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it);
+extern void lf_hash_iterate_restart (LF_HASH_TABLE_ITERATOR * it);
 
 #if defined (UNITTEST_LF)
 extern void lf_reset_counters (void);
@@ -672,11 +673,7 @@ template <class Key, class T>
 void
 lf_hash_table_cpp<Key, T>::iterator::restart ()
 {
-  m_iter.bucket_index = -1;
-  if (m_iter.tran_entry->transaction_id != LF_NULL_TRANSACTION_ID)
-    {
-      lf_tran_end_with_mb (m_iter.tran_entry);
-    }
+  lf_hash_iterate_restart (&m_iter);
   m_crt_val = NULL;
 }
 
