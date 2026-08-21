@@ -398,33 +398,6 @@ pt_free_node_blocks (const PARSER_CONTEXT * parser)
 }
 
 /*
- * pt_find_available_string_block () - scans the newest few blocks of the parser's own
- * list for one whose aligned placement of a new string stays within the block
- *   return: a block with enough available bytes, or NULL if none of the scanned blocks fits
- *   parser(in):
- *   length(in): length of the string to place
- *   align(in): alignment the placement will round up to
- */
-static PARSER_STRING_BLOCK *
-pt_find_available_string_block (const PARSER_CONTEXT * parser, const int length, const int align)
-{
-  PARSER_STRING_BLOCK *candidate;
-  int scanned;
-
-  /* the list holds only this parser's blocks, newest first */
-  for (candidate = parser->string_blocks, scanned = 0;
-       candidate != NULL && scanned < STRING_BLOCK_SCAN_LIMIT; candidate = candidate->next, scanned++)
-    {
-      if (DB_ALIGN (candidate->last_string_end + 1, align) + length <= candidate->block_end)
-	{
-	  return candidate;
-	}
-    }
-
-  return NULL;
-}
-
-/*
  * parser_create_string_block () - creates a new block of strings, links the block
  * on the parser's own list, and returns the block
  *   return:
@@ -568,6 +541,33 @@ pt_find_block_by_last_string (const PARSER_CONTEXT * parser, const char *old_str
     }
 
   return block;
+}
+
+/*
+ * pt_find_available_string_block () - scans the newest few blocks of the parser's own
+ * list for one whose aligned placement of a new string stays within the block
+ *   return: a block with enough available bytes, or NULL if none of the scanned blocks fits
+ *   parser(in):
+ *   length(in): length of the string to place
+ *   align(in): alignment the placement will round up to
+ */
+static PARSER_STRING_BLOCK *
+pt_find_available_string_block (const PARSER_CONTEXT * parser, const int length, const int align)
+{
+  PARSER_STRING_BLOCK *candidate;
+  int scanned;
+
+  /* the list holds only this parser's blocks, newest first */
+  for (candidate = parser->string_blocks, scanned = 0;
+       candidate != NULL && scanned < STRING_BLOCK_SCAN_LIMIT; candidate = candidate->next, scanned++)
+    {
+      if (DB_ALIGN (candidate->last_string_end + 1, align) + length <= candidate->block_end)
+	{
+	  return candidate;
+	}
+    }
+
+  return NULL;
 }
 
 /*
