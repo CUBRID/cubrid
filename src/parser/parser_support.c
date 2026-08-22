@@ -11891,14 +11891,14 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   return;
 }
 
-/* true iff cond is a driving predicate over a subquery: col IN (subquery), col {= | <> | < | > | <= |
+/* true iff cond is a predicate the sink can push over a subquery: col IN (subquery), col {= | <> | < | > | <= |
  * >=} ANY (subquery), or a scalar comparison. Every admitted shape is satisfied by pushing the local
  * values one at a time and letting the remote compare each; ALL shapes are not, because they need the
  * local result reduced to a single value first and the ordering that reduction must use is the remote
  * column's, which is not visible here. This only gates predicate *shape*; how each shape executes is
  * decided in XASL generation. */
 static bool
-pt_dblink_delete_is_driving_pred (PT_NODE * cond)
+pt_dblink_delete_is_pushable_pred (PT_NODE * cond)
 {
   PT_NODE *arg2;
 
@@ -11987,7 +11987,7 @@ pt_dblink_delete_target_range_name (PT_NODE * spec)
 }
 
 /*
- * pt_dblink_delete_qualifier_names_target () - true when the driving predicate's left-hand side is either
+ * pt_dblink_delete_qualifier_names_target () - true when the pushed predicate's left-hand side is either
  *   unqualified or qualified with the DELETE target's own correlation name. *bad_qualifier names the offending
  *   qualifier, or is NULL when the shape itself (a nested a.b.c) is the problem.
  *
@@ -12005,8 +12005,8 @@ pt_dblink_delete_qualifier_names_target (PT_NODE * node, const char **bad_qualif
 
   *bad_qualifier = NULL;
 
-  /* The gate (pt_dblink_delete_where_is_inscope) established a single driving predicate before the sink was
-   * confirmed, and a driving predicate is always a PT_EXPR, so this cannot be anything else here; a mismatch
+  /* The gate (pt_dblink_delete_where_is_inscope) established a single pushable predicate before the sink was
+   * confirmed, and such a predicate is always a PT_EXPR, so this cannot be anything else here; a mismatch
    * means the gate and this check have drifted -- DBLINK_REMOTE_SINK_* leaves room for an UPDATE extension
    * that would add a second site setting the flag. Fail closed rather than skipping the comparison: an
    * unverified qualifier deletes remote rows the statement never named. */
@@ -12041,7 +12041,7 @@ pt_dblink_delete_qualifier_names_target (PT_NODE * node, const char **bad_qualif
 }
 
 /* true iff the DELETE WHERE clause is in scope for the remote-sink-with-local-subquery carve-out: a single
- * driving predicate (see pt_dblink_delete_is_driving_pred) and nothing else.
+ * pushable predicate (see pt_dblink_delete_is_pushable_pred) and nothing else.
  *
  * Correlation and row/multi-column subqueries are NOT decided here. query.correlation_level is 0 for a DELETE
  * WHERE subquery (a DELETE target is not a query scope), so it cannot flag a target-correlated subquery at this
@@ -12059,7 +12059,7 @@ pt_dblink_delete_where_is_inscope (PT_NODE * node)
       return false;		/* defensive: carve-out runs pre-CNF, so a cond->next list is unexpected here */
     }
 
-  return pt_dblink_delete_is_driving_pred (cond);
+  return pt_dblink_delete_is_pushable_pred (cond);
 }
 
 /* true when the DELETE WHERE tree still holds a spec carrying a remote server name that nothing rewrote
