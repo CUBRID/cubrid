@@ -9643,16 +9643,73 @@ qo_clean_planner (QO_PLANNER * planner)
   qo_plans_teardown (planner->env);
 }
 
-/* Tables considered at a time during a join
- * -------------------------------------------
- * Tables joined | Tables considered at a time
- * --------------+----------------------------
- *  8..25        | 8
- * 26..37        | 3
- * 38..          | 2
- * -------------------------------------------
- * Refer Sybase Ataptive Server
+/* Bounds on the tables considered at a time during a join (the join unit level). The upper
+ * bound is the level a small join is planned at exactly; the lower bound keeps a pass wide
+ * enough to compare a join of two nodes at all.
  */
+#define QO_JOIN_UNIT_MAX  8
+#define QO_JOIN_UNIT_MIN  2
+
+/* Budget for one partition's partial join search, in enumerated node subsets.
+ *
+ * Calibrated from measured planning times of an n-table equi-join chain (release build, one row
+ * per table): 12 tables 1.8 s, 14 tables 5.1 s, 16 tables 12.4 s, 18 tables 29.7 s -- all at
+ * level 8 -- against the enumeration the cost model below predicts, so the sizes that used to
+ * run tens or hundreds of seconds are held to a fraction of a second.
+ *
+ * The value has a floor that must be respected: it has to cover a 37-table join at level 3,
+ * 37 * SUM (j <= 3) C (37, j) = 313501, because level 3 is what the table-count staircase gave
+ * 26..37 tables. Below that, 34..37 tables come out at level 2 -- a search narrower than before
+ * this change, for join sizes that were never slow to plan. Raising the budget past the current
+ * value buys a wider search for 15..25 tables at the cost of planning time.
+ */
+#define QO_JOIN_ENUM_BUDGET  ((double) 320000)
+
+/*
+ * qo_join_unit_from_budget () - how many tables to consider at a time in the partial join search
+ *   return: join unit level, in [QO_JOIN_UNIT_MIN, MIN (QO_JOIN_UNIT_MAX, nodes_cnt)]
+ *   nodes_cnt(in): number of nodes (tables) in the partition
+ *
+ * The partial search fixes one more node per pass and enumerates the node subsets that extend
+ * the fixed prefix up to the join unit level, so a pass costs about SUM (j <= level) C (n, j)
+ * plan-generation steps and the whole search about n times that.
+ *
+ * Deriving the level from a table-count staircase (8 up to 25 tables, then 3, then 2) makes
+ * that product jump by orders of magnitude at the step boundaries: 25 tables enumerate ~1.4e6
+ * subsets per pass at level 8 while 26 tables enumerate ~3e3 at level 3, so adding one table
+ * to a query made it several orders of magnitude cheaper to plan -- 25 tables took 452 s and
+ * 1.66 GB where 26 took 0.12 s. The staircase also spends the whole budget on the join sizes
+ * just below a step and almost none just above it, which is backwards: the larger join is the
+ * one that needs the search.
+ *
+ * Pick the largest level whose estimated enumeration fits one budget instead: planning cost is
+ * then bounded for every join size and the boundary is smooth. With the budget below the levels
+ * are unchanged up to 14 tables, taper from there (15 at level 7, 16 at 6, 18 at 5, 20 and 22 at
+ * 4) and never fall below the staircase's own value for the sizes it had already given up on
+ * (25..37 at level 3, 38 and up at 2).
+ */
+static int
+qo_join_unit_from_budget (int nodes_cnt)
+{
+  int max_level = MIN (QO_JOIN_UNIT_MAX, nodes_cnt);
+  int level, chosen = QO_JOIN_UNIT_MIN;
+  double subsets_at_level = 1.0;	/* C (nodes_cnt, level) */
+  double subsets_up_to_level = 0.0;	/* SUM (j <= level) C (nodes_cnt, j) */
+
+  for (level = 1; level <= max_level; level++)
+    {
+      subsets_at_level = subsets_at_level * (double) (nodes_cnt - level + 1) / (double) level;
+      subsets_up_to_level += subsets_at_level;
+
+      if ((double) nodes_cnt * subsets_up_to_level > QO_JOIN_ENUM_BUDGET)
+	{
+	  break;
+	}
+      chosen = level;
+    }
+
+  return MIN (MAX (chosen, QO_JOIN_UNIT_MIN), max_level);
+}
 
 /*
  * qo_search_partition_join () -
@@ -9725,7 +9782,7 @@ qo_search_partition_join (QO_PLANNER * planner, QO_PARTITION * partition, BITSET
     }
   else
     {
-      planner->join_unit = (nodes_cnt <= 25) ? MIN (8, nodes_cnt) : (nodes_cnt <= 37) ? 3 : 2;
+      planner->join_unit = qo_join_unit_from_budget (nodes_cnt);
     }
 
   /* STEP 1: do join search with visited nodes */
