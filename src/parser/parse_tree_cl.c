@@ -106,8 +106,8 @@ struct pt_walk_arg
   int continue_walk;
 };
 
-typedef struct pt_string_block PT_STRING_BLOCK;
-struct pt_string_block
+typedef struct pt_local_print_buffer PT_STRING_BLOCK;
+struct pt_local_print_buffer
 {
   char *body;
   int length;
@@ -115,7 +115,8 @@ struct pt_string_block
 };
 
 /* A fresh block owns no buffer; the first append allocates one.
- * A failed append and flush both leave a negative size,
+ * A failed append reports the failure where it happens, like an arena OOM --
+ * er_set, then a longjmp under an active jmp_env -- and leaves a negative size,
  * which makes later appends do nothing and flush return NULL.
  *
  * The buffer is malloc'd and the parser context does not own it,
@@ -148,9 +149,12 @@ static PARSER_APPLY_NODE_FUNC *pt_apply_f = NULL;
 PARSER_CONTEXT *parent_parser = NULL;
 
 static void pt_string_block_disable (PT_STRING_BLOCK * local_print_buf);
-static void pt_string_block_append_bytes (PT_STRING_BLOCK * local_print_buf, const char *tail, int tail_length);
-static void pt_string_block_append_varchar (PT_STRING_BLOCK * local_print_buf, const PARSER_VARCHAR * value);
-static void pt_string_block_append_nulstring (PT_STRING_BLOCK * local_print_buf, const char *tail);
+static void pt_string_block_append_bytes (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf, const char *tail,
+					   int tail_length);
+static void pt_string_block_append_varchar (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf,
+					    const PARSER_VARCHAR * value);
+static void pt_string_block_append_nulstring (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf,
+					      const char *tail);
 static PARSER_VARCHAR *pt_string_block_flush (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf,
 					      PARSER_VARCHAR * dest);
 static PT_NODE *pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
@@ -499,6 +503,7 @@ pt_string_block_disable (PT_STRING_BLOCK * local_print_buf)
 /*
  * pt_string_block_append_bytes () - append to the local print buffer
  *   return:
+ *   parser(in):
  *   local_print_buf(in/out):
  *   tail(in):
  *   tail_length(in):
@@ -509,11 +514,13 @@ pt_string_block_disable (PT_STRING_BLOCK * local_print_buf)
  * realloc allocates when the body is NULL, so there is no separate allocation step.
  */
 static void
-pt_string_block_append_bytes (PT_STRING_BLOCK * local_print_buf, const char *tail, int tail_length)
+pt_string_block_append_bytes (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf, const char *tail,
+			      int tail_length)
 {
   size_t available, needed;
   int margin = 32;
 
+  assert (parser != NULL);
   assert (local_print_buf != NULL);
   assert (tail != NULL);
   assert (tail_length >= 0);
@@ -541,6 +548,12 @@ pt_string_block_append_bytes (PT_STRING_BLOCK * local_print_buf, const char *tai
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
 	  pt_string_block_disable (local_print_buf);
+	  if (parser->jmp_env_active)
+	    {
+	      /* to the setjmp in PT_SET_JMP_ENV, parse_tree.h;
+	       * local_print_buf must be disabled first -- the landing pad does not free it */
+	      longjmp (parser->jmp_env, 1);
+	    }
 	  return;
 	}
 
@@ -549,6 +562,12 @@ pt_string_block_append_bytes (PT_STRING_BLOCK * local_print_buf, const char *tai
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
 	  pt_string_block_disable (local_print_buf);
+	  if (parser->jmp_env_active)
+	    {
+	      /* to the setjmp in PT_SET_JMP_ENV, parse_tree.h;
+	       * local_print_buf must be disabled first -- the landing pad does not free it */
+	      longjmp (parser->jmp_env, 1);
+	    }
 	  return;
 	}
 
@@ -564,6 +583,7 @@ pt_string_block_append_bytes (PT_STRING_BLOCK * local_print_buf, const char *tai
 /*
  * pt_string_block_append_varchar () -
  *   return:
+ *   parser(in):
  *   local_print_buf(in/out):
  *   value(in):
  *
@@ -571,19 +591,21 @@ pt_string_block_append_bytes (PT_STRING_BLOCK * local_print_buf, const char *tai
  * so a printer moving to the local buffer keeps the calls it had.
  */
 static void
-pt_string_block_append_varchar (PT_STRING_BLOCK * local_print_buf, const PARSER_VARCHAR * value)
+pt_string_block_append_varchar (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf,
+				const PARSER_VARCHAR * value)
 {
   assert (local_print_buf != NULL);
 
   if (value != NULL)
     {
-      pt_string_block_append_bytes (local_print_buf, (const char *) value->bytes, value->length);
+      pt_string_block_append_bytes (parser, local_print_buf, (const char *) value->bytes, value->length);
     }
 }
 
 /*
  * pt_string_block_append_nulstring () -
  *   return:
+ *   parser(in):
  *   local_print_buf(in/out):
  *   tail(in):
  *
@@ -591,13 +613,13 @@ pt_string_block_append_varchar (PT_STRING_BLOCK * local_print_buf, const PARSER_
  * so a printer moving to the local buffer keeps the calls it had.
  */
 static void
-pt_string_block_append_nulstring (PT_STRING_BLOCK * local_print_buf, const char *tail)
+pt_string_block_append_nulstring (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf, const char *tail)
 {
   assert (local_print_buf != NULL);
 
   if (tail != NULL)
     {
-      pt_string_block_append_bytes (local_print_buf, tail, strlen (tail));
+      pt_string_block_append_bytes (parser, local_print_buf, tail, strlen (tail));
     }
 }
 
@@ -2564,7 +2586,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   if (prev)
     {
-      pt_string_block_append_nulstring (&local_print_buf, (const char *) prev->bytes);
+      pt_string_block_append_nulstring (parser, &local_print_buf, (const char *) prev->bytes);
     }
 
   while (p->next)
@@ -2575,10 +2597,10 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 	{
 	  if (prev)
 	    {
-	      pt_string_block_append_nulstring (&local_print_buf, ", ");
+	      pt_string_block_append_nulstring (parser, &local_print_buf, ", ");
 	    }
 
-	  pt_string_block_append_nulstring (&local_print_buf, (const char *) r->bytes);
+	  pt_string_block_append_nulstring (parser, &local_print_buf, (const char *) r->bytes);
 	  prev = r;
 	}
       if (local_print_buf.size < 0	/* an append failed */
@@ -3076,19 +3098,19 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 
       if (local_print_buf.length > 0)
 	{
-	  pt_string_block_append_nulstring (&local_print_buf, " and ");
+	  pt_string_block_append_nulstring (parser, &local_print_buf, " and ");
 	}
 
       if (n->node_type == PT_EXPR && !n->info.expr.paren_type && n->or_next)
 	{
 	  /* found non-parenthesis OR */
-	  pt_string_block_append_nulstring (&local_print_buf, "(");
-	  pt_string_block_append_varchar (&local_print_buf, r1);
-	  pt_string_block_append_nulstring (&local_print_buf, ")");
+	  pt_string_block_append_nulstring (parser, &local_print_buf, "(");
+	  pt_string_block_append_varchar (parser, &local_print_buf, r1);
+	  pt_string_block_append_nulstring (parser, &local_print_buf, ")");
 	}
       else
 	{
-	  pt_string_block_append_varchar (&local_print_buf, r1);
+	  pt_string_block_append_varchar (parser, &local_print_buf, r1);
 	}
 
       if (local_print_buf.size < 0	/* an append failed */
@@ -10274,16 +10296,16 @@ pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf, P
 
   if (lhs && rhs1)
     {
-      pt_string_block_append_nulstring (local_print_buf, (const char *) lhs->bytes);
-      pt_string_block_append_nulstring (local_print_buf, (char *) op1);
-      pt_string_block_append_nulstring (local_print_buf, (const char *) rhs1->bytes);
+      pt_string_block_append_nulstring (parser, local_print_buf, (const char *) lhs->bytes);
+      pt_string_block_append_nulstring (parser, local_print_buf, (char *) op1);
+      pt_string_block_append_nulstring (parser, local_print_buf, (const char *) rhs1->bytes);
 
       if (rhs2)
 	{
-	  pt_string_block_append_nulstring (local_print_buf, " and ");
-	  pt_string_block_append_nulstring (local_print_buf, (const char *) lhs->bytes);
-	  pt_string_block_append_nulstring (local_print_buf, (char *) op2);
-	  pt_string_block_append_nulstring (local_print_buf, (const char *) rhs2->bytes);
+	  pt_string_block_append_nulstring (parser, local_print_buf, " and ");
+	  pt_string_block_append_nulstring (parser, local_print_buf, (const char *) lhs->bytes);
+	  pt_string_block_append_nulstring (parser, local_print_buf, (char *) op2);
+	  pt_string_block_append_nulstring (parser, local_print_buf, (const char *) rhs2->bytes);
 	}
     }
 }
@@ -12383,21 +12405,21 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
 	    {
-	      pt_string_block_append_nulstring (&local_print_buf, "(");
+	      pt_string_block_append_nulstring (parser, &local_print_buf, "(");
 	    }
 
 	  for (t = p->info.expr.arg2; t; t = t->or_next)
 	    {
 	      if (!p->info.expr.paren_type)
 		{
-		  pt_string_block_append_nulstring (&local_print_buf, "(");
+		  pt_string_block_append_nulstring (parser, &local_print_buf, "(");
 		}
 
 	      pt_print_range_op (parser, &local_print_buf, t, r4);
 
 	      if (!p->info.expr.paren_type)
 		{
-		  pt_string_block_append_nulstring (&local_print_buf, ")");
+		  pt_string_block_append_nulstring (parser, &local_print_buf, ")");
 		}
 
 	      if (local_print_buf.size < 0	/* an append failed */
@@ -12409,12 +12431,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	      if (t->or_next)
 		{
-		  pt_string_block_append_nulstring (&local_print_buf, " or ");
+		  pt_string_block_append_nulstring (parser, &local_print_buf, " or ");
 		}
 	    }
 	  if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
 	    {
-	      pt_string_block_append_nulstring (&local_print_buf, ")");
+	      pt_string_block_append_nulstring (parser, &local_print_buf, ")");
 	    }
 
 	  if (local_print_buf.size < 0)
@@ -13487,7 +13509,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       if (!is_first_list)
 	{
-	  pt_string_block_append_nulstring (&local_print_buf, ", ");
+	  pt_string_block_append_nulstring (parser, &local_print_buf, ", ");
 	}
 
       switch (crt_list->info.node_list.list_type)
@@ -13495,20 +13517,20 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	case PT_IS_DEFAULT_VALUE:
 	  if (is_first_list && multiple_values_insert)
 	    {
-	      pt_string_block_append_nulstring (&local_print_buf, "values ");
+	      pt_string_block_append_nulstring (parser, &local_print_buf, "values ");
 	    }
-	  pt_string_block_append_nulstring (&local_print_buf, "default values");
+	  pt_string_block_append_nulstring (parser, &local_print_buf, "default values");
 	  break;
 
 	case PT_IS_VALUE:
 	  r1 = pt_print_bytes_l (parser, crt_list->info.node_list.list);
 	  if (is_first_list)
 	    {
-	      pt_string_block_append_nulstring (&local_print_buf, "values ");
+	      pt_string_block_append_nulstring (parser, &local_print_buf, "values ");
 	    }
-	  pt_string_block_append_nulstring (&local_print_buf, "(");
-	  pt_string_block_append_varchar (&local_print_buf, r1);
-	  pt_string_block_append_nulstring (&local_print_buf, ")");
+	  pt_string_block_append_nulstring (parser, &local_print_buf, "(");
+	  pt_string_block_append_varchar (parser, &local_print_buf, r1);
+	  pt_string_block_append_nulstring (parser, &local_print_buf, ")");
 	  break;
 
 	case PT_IS_SUBQUERY:
@@ -13521,7 +13543,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 		ptr_subquery->info.query.is_subquery = (PT_MISC_TYPE) 0;
 	      }
 	    r1 = pt_print_bytes (parser, ptr_subquery);
-	    pt_string_block_append_varchar (&local_print_buf, r1);
+	    pt_string_block_append_varchar (parser, &local_print_buf, r1);
 	  }
 	  break;
 
@@ -14756,18 +14778,18 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  if (!is_first_list)
 	    {
-	      pt_string_block_append_nulstring (&local_print_buf, ",(");
+	      pt_string_block_append_nulstring (parser, &local_print_buf, ",(");
 	    }
 	  else
 	    {
-	      pt_string_block_append_nulstring (&local_print_buf, "(");
+	      pt_string_block_append_nulstring (parser, &local_print_buf, "(");
 	      is_first_list = false;
 	    }
 
 	  r1 = pt_print_bytes_l (parser, temp->info.node_list.list);
-	  pt_string_block_append_varchar (&local_print_buf, r1);
+	  pt_string_block_append_varchar (parser, &local_print_buf, r1);
 
-	  pt_string_block_append_nulstring (&local_print_buf, ")");
+	  pt_string_block_append_nulstring (parser, &local_print_buf, ")");
 
 	  if (local_print_buf.size < 0	/* an append failed */
 	      || (0 < parser->max_print_len && parser->max_print_len < local_print_buf.length))
