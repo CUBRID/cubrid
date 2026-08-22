@@ -12187,8 +12187,7 @@ pt_dblink_delete_diagnose_declined (PARSER_CONTEXT * parser, PT_NODE * node, PT_
 {
   if (node->info.delete_.spec->next != NULL)
     {
-      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery supports only a single "
-		"FROM table");
+      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery supports only a single " "FROM table");
       return true;
     }
 
