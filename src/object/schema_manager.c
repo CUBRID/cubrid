@@ -6022,6 +6022,69 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
 }
 
 /*
+ * sm_find_index_for_count_star_optimization () - MVCC COUNT(*) fast path: unique index if any, else non-unique index;
+ *						  skips partial/filter/function indexes.
+ *						  NULL rows are tracked in num_nulls so num_oids always equals
+ *						  the total row count, making the NOT NULL restriction unnecessary.
+ */
+BTID *
+sm_find_index_for_count_star_optimization (MOP classop, BTID * btid)
+{
+  int error = NO_ERROR;
+  SM_CLASS *class_ = NULL;
+  SM_CLASS_CONSTRAINT *con = NULL;
+  BTID *index = NULL;
+  bool force_local_index = false;
+  int is_global = 0;
+
+  if (sm_find_index (classop, NULL, 0, true, false, btid) != NULL)
+    {
+      return btid;
+    }
+
+  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  if (class_->partition != NULL && class_->users == NULL)
+    {
+      force_local_index = true;
+    }
+
+  for (con = class_->constraints; con != NULL; con = con->next)
+    {
+      if (!SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
+	{
+	  continue;
+	}
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type))
+	{
+	  continue;
+	}
+      if (con->filter_predicate != NULL || con->func_index_info != NULL)
+	{
+	  continue;
+	}
+      if (sm_is_global_only_constraint (classop, con, &is_global, NULL) != NO_ERROR)
+	{
+	  return NULL;
+	}
+      if (force_local_index && is_global)
+	{
+	  continue;
+	}
+
+      BTID_COPY (btid, &con->index_btid);
+      index = btid;
+      break;
+    }
+
+  return index;
+}
+
+/*
  * sm_att_constrained() - Returns whether the attribute is auto_increment.
  *   classop(in): class object
  *   name(in): attribute

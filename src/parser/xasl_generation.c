@@ -3995,22 +3995,14 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      || aggregate_list->function == PT_MAX || aggregate_list->function == PT_MIN))
 	{
 	  BTID *btid = NULL;
-	  bool need_unique_index;
+	  const bool need_unique_index = false;
 
 	  classop = sm_find_class (info->class_name);
-	  if (aggregate_list->function == PT_COUNT_STAR)
-	    {
-	      need_unique_index = true;
-	    }
-	  else
-	    {
-	      need_unique_index = false;
-	    }
 
-	  /* enable count optimization in MVCC if have unique index */
+	  /* enable count optimization in MVCC if a suitable index exists (unique or non-unique full-row coverage) */
 	  if (aggregate_list->function == PT_COUNT_STAR)
 	    {
-	      btid = sm_find_index (classop, NULL, 0, need_unique_index, false, &aggregate_list->btid);
+	      btid = sm_find_index_for_count_star_optimization (classop, &aggregate_list->btid);
 	      if (btid != NULL)
 		{
 		  /* If btree does not exist, optimize with heap in non-MVCC */

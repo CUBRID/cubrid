@@ -687,6 +687,8 @@ struct btree_insert_helper
 
   bool log_operations;		/* er_log. */
   bool is_null;			/* is key NULL. */
+  bool nonunique_oid_stats_valid;	/* true when the non-unique b-tree root header has valid (non-legacy) OID
+					 * statistics; set once in btree_fix_root_for_insert on first try. */
   char *printed_key;		/* Printed key. */
   SHA1Hash printed_key_sha1;	/* SHA1 of printed key - useful for very large keys */
 
@@ -732,6 +734,7 @@ btree_insert_helper::btree_insert_helper ()
   , is_ha_enabled (false)
   , log_operations (false)
   , is_null (false)
+  , nonunique_oid_stats_valid (false)
   , printed_key (NULL)
   , printed_key_sha1 (SHA1_HASH_INITIALIZER)
   , insert_list (NULL)
@@ -5865,9 +5868,10 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
     }
   else
     {
-      root_header->num_oids = -1;
-      root_header->num_nulls = -1;
-      root_header->num_keys = -1;
+      /* Maintain OID/key counters for COUNT(*) optimization on non-unique indexes. */
+      root_header->num_oids = 0;
+      root_header->num_nulls = 0;
+      root_header->num_keys = 0;
       root_header->unique_pk = 0;
     }
 
@@ -6653,6 +6657,10 @@ btree_get_unique_statistics_for_count (THREAD_ENTRY * thread_p, BTID * btid, lon
   *oid_cnt = unique_stats->tran_stats.num_oids + unique_stats->global_stats.num_oids;
   *key_cnt = unique_stats->tran_stats.num_keys + unique_stats->global_stats.num_keys;
   *null_cnt = unique_stats->tran_stats.num_nulls + unique_stats->global_stats.num_nulls;
+  if (*oid_cnt < 0 || *key_cnt < 0 || *null_cnt < 0)
+    {
+      return ER_FAILED;
+    }
 
   return NO_ERROR;
 }
@@ -6696,13 +6704,26 @@ btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, long long *oi
       return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
     }
 
-  assert ((root_header->unique_pk & (BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY)) != 0);
+  if (BTREE_IS_UNIQUE (root_header->unique_pk))
+    {
+      assert ((root_header->unique_pk & (BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY)) != 0);
+    }
 
   *oid_cnt = root_header->num_oids;
   *null_cnt = root_header->num_nulls;
   *key_cnt = root_header->num_keys;
 
-  pgbuf_unfix_and_init (thread_p, root);
+  {
+    int r_unique_pk = root_header->unique_pk;
+
+    pgbuf_unfix_and_init (thread_p, root);
+
+    if (!BTREE_IS_UNIQUE (r_unique_pk) && (*oid_cnt < 0 || *null_cnt < 0 || *key_cnt < 0))
+      {
+	/* Legacy non-unique index created before per-index OID statistics. */
+	return ER_FAILED;
+      }
+  }
 
   return NO_ERROR;
 }
@@ -15399,8 +15420,6 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
 
   if (root_header->num_nulls != -1)
     {
-      assert_release (BTREE_IS_UNIQUE (root_header->unique_pk));
-
       if (!only_active_tran || logtb_is_current_active (thread_p))
 	{
 	  int over = 0;
@@ -27981,6 +28000,13 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
    * must not be executed again. Mark insert_helper to know to skip this part. */
   insert_helper->is_first_try = false;
 
+  /* Determine whether this non-unique b-tree has valid (non-legacy) OID statistics.
+   * Legacy btrees created before per-index OID tracking have num_oids == -1. */
+  if (!BTREE_IS_UNIQUE (btid_int->unique_pk))
+    {
+      insert_helper->nonunique_oid_stats_valid = (root_header->num_oids >= 0);
+    }
+
   /* Set complete domain for MIDXKEYS. */
   if (key != NULL && DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
     {
@@ -28072,6 +28098,54 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 		  ASSERT_ERROR ();
 		  goto error;
 		}
+	    }
+	}
+    }
+  else if (insert_helper->nonunique_oid_stats_valid
+	   && !btree_is_online_index_loading (insert_helper->purpose)
+	   && (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
+	       || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED
+	       || (btree_is_insert_object_purpose (insert_helper->purpose) && insert_helper->is_null)))
+    {
+      btree_unique_stats incr;
+
+      if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
+	  || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED)
+	{
+	  /* Non-unique indexes track one OID per visible row; logical delete removes a row, not always a key. */
+	  if (insert_helper->is_null)
+	    {
+	      incr.delete_null_and_row ();
+	    }
+	  else
+	    {
+	      incr.delete_row ();
+	    }
+	}
+      else
+	{
+	  /* NULL row being inserted: btree key will not be created (is_null early-exit below),
+	   * so track it here ??mirroring the unique-index path. */
+	  incr.insert_null_and_row ();
+	}
+
+      if (BTREE_IS_MULTI_ROW_OP (insert_helper->op_type))
+	{
+	  if (insert_helper->unique_stats_info == NULL)
+	    {
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto error;
+	    }
+	  (*insert_helper->unique_stats_info) += incr;
+	}
+      else
+	{
+	  error_code = logtb_tran_update_unique_stats (thread_p, *btid, incr, true);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error;
 	    }
 	}
     }
@@ -29274,6 +29348,17 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   (void) btree_verify_node (thread_p, btid_int, leaf_page);
 #endif
 
+  if (!BTREE_IS_UNIQUE (btid_int->unique_pk) && !btree_is_online_index_loading (insert_helper->purpose)
+      && insert_helper->nonunique_oid_stats_valid)
+    {
+      error_code = logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1LL, 1LL, 0LL, true);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+
   return NO_ERROR;
 
 error:
@@ -29770,6 +29855,17 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 			BTREE_INSERT_MODIFY_ARGS (thread_p, insert_helper, leaf, &prev_lsa, true, search_key->slotid,
 						  leaf_record->length, btid_int->sys_btid));
 
+      if (!BTREE_IS_UNIQUE (btid_int->unique_pk) && !btree_is_online_index_loading (insert_helper->purpose)
+	  && insert_helper->nonunique_oid_stats_valid)
+	{
+	  error_code = logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0LL, 1LL, 0LL, true);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
+
       return NO_ERROR;
     }
 
@@ -29784,6 +29880,17 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int
     {
       ASSERT_ERROR ();
       return error_code;
+    }
+
+  if (!BTREE_IS_UNIQUE (btid_int->unique_pk) && !btree_is_online_index_loading (insert_helper->purpose)
+      && insert_helper->nonunique_oid_stats_valid)
+    {
+      error_code = logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0LL, 1LL, 0LL, true);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
     }
 
   /* Success. */
@@ -35533,7 +35640,7 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
     }
 
 end:
-  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+  if (error_code == NO_ERROR)
     {
       logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
     }
@@ -35741,7 +35848,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						&helper->insert_helper);
-	  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	  if (error_code == NO_ERROR)
 	    {
 	      // Append a single object.
 	      logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0, 1, 0, false);
@@ -35754,7 +35861,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
     {
       /* Key was not found, we must insert it. */
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
-      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+      if (error_code == NO_ERROR)
 	{
 	  /* Insert a key with an object. */
 	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1, 1, 0, false);
@@ -35983,7 +36090,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
 					 offset_to_object);
 
-	      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	      if (error_code == NO_ERROR)
 		{
 		  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
 		}
@@ -36068,7 +36175,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
       n_oids = 1;
 
-      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+      if (error_code == NO_ERROR)
 	{
 	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
 	}
@@ -36272,7 +36379,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
 					 offset_to_object);
 
-	      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	      if (error_code == NO_ERROR)
 		{
 		  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
 		}
@@ -36346,7 +36453,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						&helper->insert_helper);
 
-	  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	  if (error_code == NO_ERROR)
 	    {
 	      logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0, 1, 0, false);
 	    }
@@ -36360,7 +36467,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
       btree_online_index_set_delete_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);
 
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
-      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+      if (error_code == NO_ERROR)
 	{
 	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1, 1, 0, false);
 	}
