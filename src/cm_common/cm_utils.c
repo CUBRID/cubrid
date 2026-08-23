@@ -761,7 +761,7 @@ make_temp_filename (char *tempfile, const char *prefix, int size)
 int
 make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, int size)
 {
-  static std::atomic<long> seq_counter (0);
+  static std::atomic < long > seq_counter (0);
   long seq;
   long pid;
   time_t now;
