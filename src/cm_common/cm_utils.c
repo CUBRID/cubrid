@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <time.h>
+#include <atomic>
 
 #if defined(WINDOWS)
 #include <process.h>
@@ -758,20 +759,25 @@ int
 make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, int size)
 {
   struct timeval current_time;
+  static std::atomic<long> seq_counter (0);
+  long seq;
+  long pid;
 
   if (tempfile == NULL || tempdir == NULL || size < 1)
     {
       return -1;
     }
 
-  srand (time (NULL));
   if (gettimeofday (&current_time, NULL) < 0)
     {
       return -1;
     }
 
-  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%ld_%d", tempdir, prefix ? prefix : "", task_code,
-	    current_time.tv_sec, current_time.tv_usec, rand () % 997);
+  seq = seq_counter.fetch_add (1, std::memory_order_relaxed);
+  pid = (long) getpid ();
+
+  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%ld_%ld_%ld", tempdir, prefix ? prefix : "", task_code,
+	    current_time.tv_sec, current_time.tv_usec, pid, seq);
 
   return 0;
 }
