@@ -8038,15 +8038,22 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        */
       /*TODO: We need to review a method to record replication logs only when the replication key (RK) has already been determined, instead of checking all RK candidates and handling the replicated flag. 
          Also, a comprehensive refactoring of replication-related operations and variables, including need_replication, is required(EPIC CBRD-26096). */
-      if (need_replication && heap_is_replication_class (thread_p, class_oid) && !replicated
-	  && or_is_replication_candidate_key (index) && error_code == NO_ERROR
+      if (error_code == NO_ERROR && need_replication && !replicated
+	  && or_is_replication_candidate_key (index)
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
-			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
-			     REPL_INFO_TYPE_RBR_NORMAL);
-	  replicated = true;
+	  bool repl_on = false;
+
+	  error_code = heap_get_class_repl_on (thread_p, class_oid, &repl_on);
+	  if (error_code == NO_ERROR && repl_on)
+	    {
+	      error_code =
+		repl_log_insert (thread_p, class_oid, inst_oid,
+				 datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
+				 is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
+				 REPL_INFO_TYPE_RBR_NORMAL);
+	      replicated = true;
+	    }
 	}
       if (error_code != NO_ERROR)
 	{
