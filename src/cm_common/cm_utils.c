@@ -776,7 +776,7 @@ make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, 
   pid = (long) getpid ();
 
   snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%ld_%ld", tempdir, prefix ? prefix : "", task_code,
-           (long) now, pid, seq);
+	    (long) now, pid, seq);
 
   return 0;
 }
