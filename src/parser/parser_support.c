@@ -12063,8 +12063,8 @@ pt_dblink_delete_where_is_inscope (PT_NODE * node)
 }
 
 /* true when the DELETE WHERE tree still holds a spec carrying a remote server name that nothing rewrote
- * into a dblink derived table. Cheap enough to call at each decision point rather than caching the answer
- * across them. */
+ * into a dblink derived table.  Called again at each decision point rather than cached: the answer changes
+ * across the same-server conversion below, so one cached value would be wrong on one side of it. */
 static bool
 pt_dblink_delete_where_has_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node)
 {
@@ -12077,8 +12077,10 @@ pt_dblink_delete_where_has_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node)
 
 /* Counts the remote servers named inside the WHERE subquery alone, as a delta on snl->server_cnt, feeding
  * the same sub_sel_server_cnt the INSERT SELECT branch uses. Scoped to the WHERE predicate's subquery arm;
- * the broader upd_spec walk in the caller re-walks the whole statement and adds to the same counters,
- * harmlessly (they are never relied on for an exact count). */
+ * the broader upd_spec walk in the caller re-walks the whole statement and adds to the same counters.  That
+ * double counting changes no decision: server_cnt is only tested for having changed at all, local_cnt only
+ * for being nonzero, and distinct_cnt cannot be inflated -- pt_get_server_name_list compares the name against
+ * the ones already stored and skips the increment on a match. */
 static int
 pt_dblink_delete_subquery_server_delta (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl,
 					int server_cnt_before)
@@ -12138,7 +12140,7 @@ pt_dblink_delete_convert_same_server_specs (PARSER_CONTEXT * parser, PT_NODE * n
     }
 }
 
-/* Two shapes that can only be diagnosed once the sink form is confirmed: a same-server all-remote statement
+/* Shapes that can only be diagnosed once the sink form is confirmed: a same-server all-remote statement
  * reaches the same place and keeps working through full pushdown, so rejecting these at the shape gate would
  * break it.
  *   return: true when an error was raised (caller returns immediately) */
@@ -12178,7 +12180,7 @@ pt_dblink_delete_diagnose_confirmed_sink (PARSER_CONTEXT * parser, PT_NODE * nod
   return false;
 }
 
-/* Two specific reasons the carve-out declined a statement it otherwise recognises, diagnosed ahead of the
+/* Reasons the carve-out declined a statement it otherwise recognises, diagnosed ahead of the
  * generic catch-all. local_cnt > 0 is required by the caller on both, so a fully-remote statement that
  * already works through full pushdown is never misdiagnosed here.
  *   return: true when an error was raised (caller returns immediately) */
@@ -12437,6 +12439,17 @@ pt_setup_dblink_sink_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * sp
   pt_resolve_server_names (parser, spec);
 }
 
+/*
+ * pt_convert_dblink_dml_query () - Decide how a DML that touches a remote table runs.  A statement leaves
+ *   here as exactly one of three things: an ordinary local statement, a value-push sink (the local half runs
+ *   on this server and its values are pushed to the remote one at a time), or a single remote statement
+ *   printed into qstr for the remote server to run whole.  A statement that fits none of the three is
+ *   rejected.  Each check below ends the function once it applies; why a given rejection sits where it does
+ *   is explained at that check.
+ *
+ *   Note: local_upd/remote_upd count the DML's local/remote targets -- 0/1 for INSERT and MERGE (a single
+ *     target), an actual count for DELETE/UPDATE, hence the checks against 1 rather than > 0.
+ */
 static void
 pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl)
@@ -12575,7 +12588,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
 
-  /* Diagnose two specific reasons the DELETE carve-out declined this statement, ahead of the generic
+  /* Diagnose the specific reasons the DELETE carve-out declined this statement, ahead of the generic
    * catch-all below -- local_cnt > 0 is required so a fully-remote statement that already works through full
    * pushdown is never misdiagnosed here. */
   if (node->node_type == PT_DELETE && remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
