@@ -507,6 +507,9 @@ au_auth_accessor::delete_all_auth (void)
 	}
     }
 
+  /* an empty class also yields NULL, so er_errid () below must not pick up an unrelated pending error */
+  er_clear ();
+
   list = sm_fetch_all_objects (m_au_class_mop, DB_FETCH_CLREAD_INSTREAD);
   if (list == NULL)
     {
@@ -523,10 +526,7 @@ au_auth_accessor::delete_all_auth (void)
 	}
     }
 
-  if (list != NULL)
-    {
-      ml_ext_free (list);
-    }
+  ml_ext_free (list);
 
   return error;
 }
