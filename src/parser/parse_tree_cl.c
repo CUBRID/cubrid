@@ -150,7 +150,7 @@ PARSER_CONTEXT *parent_parser = NULL;
 
 static void pt_print_buffer_disable (PT_PRINT_BUFFER * print_buf);
 static void pt_print_buffer_append_bytes (PARSER_CONTEXT * parser, PT_PRINT_BUFFER * print_buf, const char *tail,
-					   int tail_length);
+					  int tail_length);
 static void pt_print_buffer_append_varchar (PARSER_CONTEXT * parser, PT_PRINT_BUFFER * print_buf,
 					    const PARSER_VARCHAR * value);
 static void pt_print_buffer_append_nulstring (PARSER_CONTEXT * parser, PT_PRINT_BUFFER * print_buf, const char *tail);
