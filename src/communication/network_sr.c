@@ -709,15 +709,15 @@ net_server_init (void)
 
   /* shared client->server byte-stream transport (COPY, internal-LOB, ...) */
   req_p = &net_Requests[NET_SERVER_STREAM_INIT];
-  req_p->action_attribute = IN_TRANSACTION;
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sstream_from_init;
 
   req_p = &net_Requests[NET_SERVER_STREAM_SEND_DATA];
-  req_p->action_attribute = IN_TRANSACTION;
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sstream_send_data;
 
   req_p = &net_Requests[NET_SERVER_STREAM_END];
-  req_p->action_attribute = IN_TRANSACTION;
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sstream_end;
 
   /* checksumdb replication */

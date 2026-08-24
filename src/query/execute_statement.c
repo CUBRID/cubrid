@@ -22674,6 +22674,9 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
   int ncols = 0;
   PT_NODE *entity_spec;
   PT_NODE *entity;
+  int is_partitioned = 0;
+
+  CHECK_MODIFICATION_ERROR ();
 
   /* table_name is stored as a PT_SPEC from class_spec_without_server_name */
   entity_spec = statement->info.copy.table_name;
@@ -22703,6 +22706,33 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       error = er_errid ();
       return (error != NO_ERROR) ? error : ER_FAILED;
+    }
+
+  /* COPY inserts instances directly into the target heap, so the target must be
+   * an ordinary instance class: a view has no heap, and a partitioned class
+   * needs pruning that the server-side session does not perform. */
+  if (db_is_class (class_obj) <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, table_name);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  /* returns 1 for a partition sub-class, and sets is_partitioned for a parent */
+  if (do_is_partitioned_subclass (&is_partitioned, table_name, NULL) != 0 || is_partitioned)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, table_name);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  /* Server-side insertion carries no authorization of its own, so the INSERT
+   * privilege has to be checked here, as loaddb does. */
+  error = au_check_class_authorization (class_obj, AU_INSERT);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      /* promote from warning to error severity, as loaddb does */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
     }
 
   if (statement->info.copy.column_list != NULL)
