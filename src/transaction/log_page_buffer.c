@@ -8379,6 +8379,17 @@ loop:
       goto error;
     }
 
+  /* The log content of this backup is frozen at this instant, so this is its end time - not the moment the
+   * archive transfer happens to finish. restoredb -d backuptime stops at this timestamp, so a transaction that
+   * commits later has to carry a strictly later one, or the restore would ask for log the backup does not have.
+   * The wait is what makes "later" strict at second resolution, and it has to happen here, while nothing can
+   * commit yet. */
+  session.bkup.bkuphdr->end_time = (INT64) time (NULL);
+  while (session.bkup.bkuphdr->end_time >= time (NULL))
+    {
+      thread_sleep (1000);
+    }
+
   /* The log is captured: the archive set is frozen and pinned, and the active log image carries the header that
    * names it. Everything below only reads files that cannot change, so release the critical section here and let
    * transactions run while the archives are transferred. */
