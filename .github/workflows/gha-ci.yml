@@ -80,12 +80,32 @@ on:
 # shard is 50 privileged pods running testcase code; it holds no token at all.
 permissions: {} # jobs opt-in below
 
-# One group per pull request, so different PRs run in parallel. A global group
-# would cancel someone else's run once anyone can trigger by comment.
-# The dispatch fallback is the SHA, not run_id: two force_build dispatches for one
-# SHA would race the republish and pull the overlay lowerdir from a running shard.
+# One group per kind of request, so unrelated ones never cancel each other. Every
+# comment starts this workflow, so a comment that asks for nothing must land alone or
+# it cancels a running suite. push is keyed on the SHA and not the ref: one group per
+# ref holds every develop merge, and with one run pending per group the third merge
+# drops the second. dispatch is keyed on the SHA because two force_build dispatches for
+# one SHA would race the republish and pull the overlay lowerdir from a running shard.
+# The run group is per pull request because a comment carries no head SHA, and it tests
+# issue.pull_request the way the gate does -- issues share the PR number space.
 concurrency:
-  group: gha-ci-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr || inputs.sha || github.ref }}
+  group: >-
+    gha-ci-${{ github.event_name == 'push'
+    && format('push-{0}', github.sha)
+    || github.event_name == 'pull_request'
+    && format('pr-{0}-build', github.event.pull_request.number)
+    || github.event_name == 'workflow_dispatch'
+    && format('dispatch-{0}', inputs.sha)
+    || github.event.issue.pull_request != null
+    && startsWith(github.event.comment.body, '/run')
+    && contains(github.event.comment.body, 'rerun')
+    && format('pr-{0}-rerun-{1}', github.event.issue.number, github.event.comment.id)
+    || github.event.issue.pull_request != null
+    && startsWith(github.event.comment.body, '/run')
+    && (contains(github.event.comment.body, 'shell')
+    || contains(github.event.comment.body, 'all'))
+    && format('pr-{0}-run', github.event.issue.number)
+    || github.run_id }}
   # A develop push publishes the preserved artifact and refreshes the ccache, so the
   # next merge must not cancel it. Everything else supersedes its own predecessor.
   cancel-in-progress: ${{ github.event_name != 'push' }}
