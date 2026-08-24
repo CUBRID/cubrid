@@ -8841,11 +8841,9 @@ fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, 
   /* Backup Thread is reading data/log pages slowly to avoid IO burst */
   if (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID || session_p->dbfile.volid == LOG_DBLOG_ARCHIVE_VOLID)
     {
-      /* Log volumes are never paced. The archive arm used to also require LOG_CS_OWN_WRITE_MODE (), which stood
-       * for "the log subsystem is stopped while we copy this, so do not linger". CBRD-27166 moved the archive
-       * transfer out of the log critical section, so that no longer holds there - and pacing archives would only
-       * trade a shorter commit stall for a longer window in which archives cannot be reclaimed. The intent is
-       * stated as "this is a log volume" now, instead of being inferred from who owns the critical section. */
+      /* Log volumes are never paced. The archive arm also required LOG_CS_OWN_WRITE_MODE (), which meant "the log
+       * subsystem is stopped while we copy this". CBRD-27166 moved the archive transfer out of that critical
+       * section, and pacing it there would only stretch the window where archives cannot be removed. */
       ;				/* go ahead */
     }
   else
