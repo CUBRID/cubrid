@@ -36,13 +36,13 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public abstract class Unit extends AstNode {
 
     public final boolean connectionRequired;
-    public final String revision;
+    public final String compileSeqNo;
 
-    public Unit(ParserRuleContext ctx, boolean connectionRequired, String revision) {
+    public Unit(ParserRuleContext ctx, boolean connectionRequired, String compileSeqNo) {
         super(ctx);
 
         this.connectionRequired = connectionRequired;
-        this.revision = revision;
+        this.compileSeqNo = compileSeqNo;
     }
 
     public abstract String getClassName();

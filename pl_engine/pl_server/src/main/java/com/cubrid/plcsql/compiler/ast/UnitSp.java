@@ -46,9 +46,9 @@ public class UnitSp extends Unit {
     public UnitSp(
             ParserRuleContext ctx,
             boolean connectionRequired,
-            String revision,
+            String compileSeqNo,
             DeclRoutine routine) {
-        super(ctx, connectionRequired, revision);
+        super(ctx, connectionRequired, compileSeqNo);
 
         assert routine.scope.level == 1;
 
@@ -66,7 +66,7 @@ public class UnitSp extends Unit {
             className =
                     String.format(
                             "%s_%s_%s_%d",
-                            kindStr, routine.name, revision, new java.util.Date().getTime());
+                            kindStr, routine.name, compileSeqNo, new java.util.Date().getTime());
         }
 
         return className;
