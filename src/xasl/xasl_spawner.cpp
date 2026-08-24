@@ -788,7 +788,6 @@ namespace cubxasl
 	return nullptr;
       }
 
-    /* TODO: unsupported */
     dest->sig = spawn (src->sig);
 
     dest->args = spawn (src->args);
@@ -800,9 +799,133 @@ namespace cubxasl
   PL_SIGNATURE_TYPE *
   spawner::spawn (const PL_SIGNATURE_TYPE *src)
   {
-    /* TODO: unsupported */
-    assert_release_error (src == nullptr);
-    return nullptr;
+    PL_SIGNATURE_TYPE *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
+    if (dest == nullptr)
+      {
+	return nullptr;
+      }
+
+    /* every member is allocated on the current (worker) thread's private heap; the cached
+     * entry deleter runs ~pl_signature () on the same thread when the spawner is torn down */
+    dest->type = src->type;
+    dest->result_type = src->result_type;
+
+    if (src->name != nullptr)
+      {
+	dest->name = db_private_strdup (NULL, src->name);
+	if (dest->name == nullptr)
+	  {
+	    assert_release_error (er_errid () != NO_ERROR);
+	    return nullptr;
+	  }
+      }
+
+    if (src->auth != nullptr)
+      {
+	dest->auth = db_private_strdup (NULL, src->auth);
+	if (dest->auth == nullptr)
+	  {
+	    assert_release_error (er_errid () != NO_ERROR);
+	    return nullptr;
+	  }
+      }
+
+    /* the worker's copy must carry the declaration: the callback guard reads it per SP */
+    dest->is_parallel_enabled = src->is_parallel_enabled;
+#if defined (CS_MODE)
+    dest->is_deterministic = src->is_deterministic;
+#endif
+
+    if (src->arg.arg_size > 0)
+      {
+	dest->arg.set_arg_size (src->arg.arg_size);
+	if (dest->arg.arg_mode == nullptr || dest->arg.arg_type == nullptr
+	    || dest->arg.arg_default_value_size == nullptr || dest->arg.arg_default_value == nullptr)
+	  {
+	    assert_release_error (er_errid () != NO_ERROR);
+	    return nullptr;
+	  }
+
+	memcpy (dest->arg.arg_mode, src->arg.arg_mode, src->arg.arg_size * sizeof (int));
+	memcpy (dest->arg.arg_type, src->arg.arg_type, src->arg.arg_size * sizeof (int));
+
+	if (src->arg.arg_default_value_size != nullptr)
+	  {
+	    for (int i = 0; i < src->arg.arg_size; i++)
+	      {
+		dest->arg.arg_default_value_size[i] = src->arg.arg_default_value_size[i];
+		if (src->arg.arg_default_value_size[i] > 0 && src->arg.arg_default_value[i] != nullptr)
+		  {
+		    dest->arg.arg_default_value[i] =
+			    db_private_strndup (NULL, src->arg.arg_default_value[i],
+						src->arg.arg_default_value_size[i]);
+		    if (dest->arg.arg_default_value[i] == nullptr)
+		      {
+			assert_release_error (er_errid () != NO_ERROR);
+			return nullptr;
+		      }
+		  }
+	      }
+	  }
+      }
+
+    if (PL_TYPE_IS_METHOD (src->type))
+      {
+	if (src->ext.method.class_name != nullptr)
+	  {
+	    dest->ext.method.class_name = db_private_strdup (NULL, src->ext.method.class_name);
+	    if (dest->ext.method.class_name == nullptr)
+	      {
+		assert_release_error (er_errid () != NO_ERROR);
+		return nullptr;
+	      }
+	  }
+
+	if (src->ext.method.arg_pos != nullptr && src->arg.arg_size > 0)
+	  {
+	    dest->ext.method.arg_pos = (int *) db_private_alloc (NULL, src->arg.arg_size * sizeof (int));
+	    if (dest->ext.method.arg_pos == nullptr)
+	      {
+		assert_release_error (er_errid () != NO_ERROR);
+		return nullptr;
+	      }
+	    memcpy (dest->ext.method.arg_pos, src->ext.method.arg_pos, src->arg.arg_size * sizeof (int));
+	  }
+      }
+    else
+      {
+	if (src->ext.sp.target_class_name != nullptr)
+	  {
+	    dest->ext.sp.target_class_name = db_private_strdup (NULL, src->ext.sp.target_class_name);
+	    if (dest->ext.sp.target_class_name == nullptr)
+	      {
+		assert_release_error (er_errid () != NO_ERROR);
+		return nullptr;
+	      }
+	  }
+
+	if (src->ext.sp.target_method_name != nullptr)
+	  {
+	    dest->ext.sp.target_method_name = db_private_strdup (NULL, src->ext.sp.target_method_name);
+	    if (dest->ext.sp.target_method_name == nullptr)
+	      {
+		assert_release_error (er_errid () != NO_ERROR);
+		return nullptr;
+	      }
+	  }
+
+	dest->ext.sp.code_oid = src->ext.sp.code_oid;
+      }
+
+    return dest;
   }
 
   VAL_LIST *
