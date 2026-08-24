@@ -326,6 +326,7 @@ session_state_init (void *st)
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
   session_p->pl_session_p = NULL;
+  session_p->stream_session_p = NULL;
 
   return NO_ERROR;
 }
@@ -3382,14 +3383,10 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
       session->load_session_p->interrupt ();
     }
 
-  // on uninit abort and delete the active stream session (COPY / LOB / ...)
-  if (session->stream_session_p != NULL)
-    {
-      session->stream_session_p->abort (thread_p);
-
-      delete session->stream_session_p;
-      session->stream_session_p = NULL;
-    }
+  /* The stream session (COPY / LOB / ...) is left alone here for the same reason
+   * as the load session: a worker may still be inside receive_chunk. It is
+   * aborted and freed by session_destroy_load_session, once the workers have
+   * drained. */
 
   if (session->pl_session_p)
     {
@@ -3411,13 +3408,21 @@ session_destroy_load_session (THREAD_ENTRY * thread_p, void *session_arg)
   assert (session != NULL);
 
   /* Must be called only after the connection workers have drained, otherwise an
-   * in-flight sloaddb_* request may still be using the load session. */
+   * in-flight sloaddb_* or sstream_* request may still be using the session. */
   if (session->load_session_p != NULL)
     {
       session->load_session_p->wait_for_completion ();
 
       delete session->load_session_p;
       session->load_session_p = NULL;
+    }
+
+  if (session->stream_session_p != NULL)
+    {
+      session->stream_session_p->abort (thread_p);
+
+      delete session->stream_session_p;
+      session->stream_session_p = NULL;
     }
 #endif
 }
