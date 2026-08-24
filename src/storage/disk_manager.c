@@ -3230,7 +3230,8 @@ disk_get_volheader_internal (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_M
   vpid_volheader.volid = volid;
   vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
 
-  /* the volume header is a structural page; a no-wait transaction must still wait for it */
+  /* this fix has no conditional variant and the caller cannot act on a refusal; a no-wait
+   * transaction must still wait for the volume header */
   save_force_latch_wait = pgbuf_set_force_latch_wait (thread_p, true);
   *page_volheader_out = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
   (void) pgbuf_set_force_latch_wait (thread_p, save_force_latch_wait);
@@ -3507,7 +3508,8 @@ disk_stab_cursor_fix (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, PGBUF_
   /* Fix page. */
   vpid.volid = cursor->volheader->volid;
   vpid.pageid = cursor->pageid;
-  /* the sector table is a structural page; a no-wait transaction must still wait for it */
+  /* same as the volume header: a no-wait transaction must still wait for the sector allocation
+   * table page */
   save_force_latch_wait = pgbuf_set_force_latch_wait (thread_p, true);
   cursor->page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
   (void) pgbuf_set_force_latch_wait (thread_p, save_force_latch_wait);

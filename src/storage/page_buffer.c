@@ -5359,12 +5359,13 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
  *   thread_p(in): thread entry
  *   force(in): new value
  *
- * Note: The scope must be kept to the fix of a structural page, whose latch is internal and held for
- *       microseconds: honoring no-wait there gains nothing and only turns an unconditional fix into
- *       ER_LK_PAGE_TIMEOUT, which callers that assume an unconditional latch cannot fail report as an
- *       unexpected error. The flag lives in the thread entry rather than in LOG_TDES because parallel scan
- *       workers share their parent's tran_index: a save/restore on tdes->wait_msecs would race between
- *       sibling workers and could drop the user's lock_timeout.
+ * Note: Keep the scope to a fix whose caller cannot act on a refusal - the disk manager's volume header and
+ *       sector allocation table. Those two pass PGBUF_UNCONDITIONAL_LATCH and offer no conditional variant,
+ *       and disk_reserve_sectors treats anything but an interrupt or an IO error as a disk cache
+ *       inconsistency.
+ *       The flag lives in the thread entry rather than in LOG_TDES because parallel scan workers share their
+ *       parent's tran_index: a save/restore on tdes->wait_msecs would race between sibling workers and could
+ *       drop the user's lock_timeout.
  */
 bool
 pgbuf_set_force_latch_wait (THREAD_ENTRY * thread_p, bool force)
@@ -5375,6 +5376,7 @@ pgbuf_set_force_latch_wait (THREAD_ENTRY * thread_p, bool force)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
     }
 
   old_val = thread_p->force_latch_wait;
