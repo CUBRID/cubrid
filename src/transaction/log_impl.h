@@ -880,6 +880,11 @@ typedef struct cdc_global
   LOG_LSA first_loginfo_queue_lsa;
   LOG_LSA last_loginfo_queue_lsa;
 
+  /* First LSA of the last log info bundle handed to a client. Unlike consumer.start_lsa it outlives the
+   * session: ending a session does not release the protection, and archive removal can still resolve the
+   * exact volume once the client is gone. */
+  LOG_LSA arv_keep_lsa;
+
 } CDC_GLOBAL;
 
 /* will be moved to new file for CDC */

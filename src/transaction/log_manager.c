@@ -344,6 +344,8 @@ static int cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time,
 static bool cdc_is_filtered_class (OID classoid);
 static bool cdc_is_filtered_user (char *user);
 
+static void cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_start_lsa);
+
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
 static void log_abort_task_execute (cubthread::entry &thread_ref, LOG_TDES &tdes);
@@ -14119,7 +14121,75 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 LOG_PAGEID
 cdc_min_log_pageid_to_keep ()
 {
-  return cdc_Gl.consumer.start_lsa.pageid;
+  return cdc_Gl.arv_keep_lsa.pageid;
+}
+
+/*
+ * cdc_update_arv_num_to_keep - Remember the archive volume that holds the start of the bundle handed to a client
+ *
+ * return: nothing
+ *
+ *   bundle_start_lsa(in): LSA of the first log record of the bundle
+ *
+ * NOTE: cdc_Gl dies with the server, so the volume goes into the active log header. It keeps archive removal off
+ *       the logs cdc has yet to re-read while the client has not reconnected.
+ */
+static void
+cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_start_lsa)
+{
+  int arv_num;
+
+  if (LSA_ISNULL (bundle_start_lsa))
+    {
+      return;
+    }
+
+  /* Archive removal narrows the header down from cdc_Gl.arv_keep_lsa under LOG_CS, so deciding and writing here
+   * has to be one unit: a removal round slipping in between would re-raise the header from the stale position,
+   * undoing a backward seek. LOG_CS also keeps nxarv_num and last_deleted_arv_num stable, and costs one
+   * write-mode acquisition per extract request. */
+  LOG_CS_ENTER (thread_p);
+
+  if (!logpb_is_page_in_archive (bundle_start_lsa->pageid))
+    {
+      /* A page still in the active log ends up in the volume created next; no earlier one can hold it. */
+      arv_num = log_Gl.hdr.nxarv_num;
+    }
+  else if (LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr)
+	   && !LSA_ISNULL (&cdc_Gl.arv_keep_lsa) && LSA_GE (bundle_start_lsa, &cdc_Gl.arv_keep_lsa))
+    {
+      /* The header was computed for a page at or before this one, so it already keeps enough. */
+      LSA_COPY (&cdc_Gl.arv_keep_lsa, bundle_start_lsa);
+      LOG_CS_EXIT (thread_p);
+      return;
+    }
+  else
+    {
+      /* A session is starting, or it was pointed backwards. Resolving the exact volume here would read the
+       * archive through logpb_fetch_from_archive(), whose cached descriptor makes that fatal from a request
+       * thread. Keep every volume left and let logpb_remove_archive_logs* narrow it down. */
+      arv_num = log_Gl.hdr.last_deleted_arv_num + 1;
+    }
+
+  LSA_COPY (&cdc_Gl.arv_keep_lsa, bundle_start_lsa);
+
+  if (LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr) && LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr) == arv_num)
+    {
+      LOG_CS_EXIT (thread_p);
+      return;
+    }
+
+  cdc_log ("cdc_update_arv_num_to_keep : the bundle starting at (%lld|%d) has to keep archive %d",
+	   LSA_AS_ARGS (bundle_start_lsa), arv_num);
+
+  /* The log header is not a logged page, so nothing redoes a change to it: an in-memory only update would be
+   * lost on a kill and the database would come back unprotected. Flush every change - the value tracks
+   * nxarv_num, which only moves when an archive is created, so this costs one write per archive, not per
+   * bundle. */
+  LOG_HDR_CDC_ARV_NUM_SET (&log_Gl.hdr, arv_num);
+  logpb_flush_header (thread_p);
+
+  LOG_CS_EXIT (thread_p);
 }
 
 #if defined (SERVER_MODE)
@@ -15045,6 +15115,8 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 	}
     }
 
+  cdc_update_arv_num_to_keep (thread_p, start_lsa);	/* also advances cdc_Gl.arv_keep_lsa */
+
   LSA_COPY (&cdc_Gl.consumer.start_lsa, start_lsa);	/* stores start lsa to consume */
   log_infos = cdc_Gl.consumer.log_info;
   memset (log_infos, 0, cdc_Gl.consumer.log_info_size);
@@ -15155,6 +15227,7 @@ cdc_initialize ()
 
   LSA_SET_NULL (&cdc_Gl.first_loginfo_queue_lsa);
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
+  LSA_SET_NULL (&cdc_Gl.arv_keep_lsa);
 
   cdc_Gl.producer.temp_logbuf[0].log_page_p =
     (LOG_PAGE *) PTR_ALIGN (cdc_Gl.producer.temp_logbuf[0].log_page, MAX_ALIGNMENT);
