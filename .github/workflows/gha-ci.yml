@@ -1081,7 +1081,8 @@ jobs:
           left=$(find "$TC_DIR/shell" -path '*/cases/*.sh' 2>/dev/null | grep -Pc '/([^/]+)/cases/\1\.sh$' || echo 0)
           echo "cases left: $left (expected: ${{ steps.mine.outputs.n }})"
           # Both are tmpfs and charged to this container's memory cgroup, with no
-          # swap to reclaim to. Read these numbers before changing either sizeLimit.
+          # swap to reclaim to. This is the baseline before any test has run;
+          # "Publish results for collect" reports the cgroup high-water mark.
           echo "/rw       : $(df -h /rw | tail -1 | awk '{print $3" used of "$2}')"
           echo "/build-rw : $(df -h /build-rw | tail -1 | awk '{print $3" used of "$2}')"
 
@@ -1124,6 +1125,22 @@ jobs:
           echo "published: $out"
           ls -la "$out"
           [ -f "$out/test_status.data" ] && cat "$out/test_status.data" || echo "(no status file)"
+
+          # df is an instant reading, so these are what survived CTP teardown, NOT
+          # the maximum -- measured 2026-08-24, the residue runs 9-13x under the peak.
+          # always() so a tmpfs that filled up still reports its size.
+          echo "/rw       (after CTP): $(df -h /rw | tail -1 | awk '{print $3" used of "$2}')"
+          echo "/build-rw (after CTP): $(df -h /build-rw | tail -1 | awk '{print $3" used of "$2}')"
+          # The one real high-water mark available without sampling, and the number
+          # a sizeLimit change must clear: tmpfs pages are charged to this cgroup,
+          # so it covers both mounts plus RSS and page cache -- which is what a node
+          # OOM is decided on. Compare it against the job pod's memory limit.
+          for f in /sys/fs/cgroup/memory.peak \
+                   /sys/fs/cgroup/memory/memory.max_usage_in_bytes; do
+            [ -r "$f" ] || continue
+            awk '{printf "container memory peak: %.1f GiB\n", $1 / 1073741824}' "$f"
+            break
+          done
 
       - name: Verdict
         if: always()
