@@ -39,7 +39,7 @@ namespace cubpl
   struct invoke_java : public cubpacking::packable_object
   {
     invoke_java () = delete;
-    invoke_java (int tran_id, pl_signature *sig, bool tc);
+    invoke_java (int tran_id, pl_signature *sig, bool tc, bool no_sql);
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -56,6 +56,11 @@ namespace cubpl
     int result_type;
 
     bool transaction_control; // TODO: wrap it with proper structs
+    /* This invocation may not use the server-side default connection. Told to the PL server so it
+     * refuses jdbc:default:connection outright, before a Connection object exists: that object is
+     * cached per session (Context), so concurrent px workers would otherwise share one and
+     * corrupt its state. The server-side callback guard remains the backstop. */
+    bool no_server_side_sql;
   };
 
   class executor

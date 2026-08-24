@@ -50,12 +50,6 @@ namespace cubpl
     m_java_header.id = sess->get_id ();
   }
 
-  bool
-  execution_stack::is_client_callback_forbidden () const
-  {
-    return m_is_parallel_enabled_sp || is_px_worker_stack ();
-  }
-
   int
   execution_stack::reject_client_callback ()
   {

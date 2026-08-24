@@ -101,6 +101,18 @@ public class ExecuteThread extends Thread {
      */
     private final LinkedBlockingQueue<ByteBuffer> inBound = new LinkedBlockingQueue<ByteBuffer>();
 
+    /*
+     * Whether the invocation currently running on this thread may use the server-side default
+     * connection. Set from the invoke payload on every invocation. Per thread, not per Context:
+     * the Context is shared by every px worker of a session, and two workers of one query can
+     * carry different answers (one declared PARALLEL_ENABLE, one not).
+     */
+    private boolean serverSideSqlForbidden = false;
+
+    public boolean isServerSideSqlForbidden() {
+        return serverSideSqlForbidden;
+    }
+
     private StoredProcedure storedProcedure = null;
     private PrepareArgs prepareArgs = null;
 
@@ -486,6 +498,8 @@ public class ExecuteThread extends Thread {
 
         boolean transactionControl = unpacker.unpackBool();
         getCurrentContext().setTransactionControl(transactionControl);
+
+        serverSideSqlForbidden = unpacker.unpackBool();
 
         storedProcedure = new StoredProcedure(methodSig, lang, authUser, arguments, returnType);
         return storedProcedure;

@@ -90,7 +90,6 @@ namespace cubpl
        * SQLException it was handed. */
       bool m_client_callback_rejected;
 
-      bool is_client_callback_forbidden () const;
       int reject_client_callback ();
 
       int interrupt_handler ();
@@ -145,6 +144,14 @@ namespace cubpl
 	return m_is_px_worker;
       }
 
+      /* One predicate, enforced at both ends: the server refuses the callback, and the PL server
+       * is told up front so it refuses jdbc:default:connection before a Connection object is
+       * created (that object is cached per session, so concurrent px workers would share one). */
+      bool is_server_side_sql_forbidden () const
+      {
+	return m_is_parallel_enabled_sp || m_is_px_worker;
+      }
+
       void set_parallel_enabled_sp (bool is_parallel_enabled)
       {
 	m_is_parallel_enabled_sp = is_parallel_enabled;
@@ -177,7 +184,7 @@ namespace cubpl
       template <typename ... Args>
       int send_data_to_client_recv (const xs_callback_func &func, Args &&... args)
       {
-	if (is_client_callback_forbidden ())
+	if (is_server_side_sql_forbidden ())
 	  {
 	    return reject_client_callback ();
 	  }

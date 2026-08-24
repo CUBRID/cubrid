@@ -42,7 +42,7 @@ namespace cubpl
 {
   using namespace cubmethod;
 
-  invoke_java::invoke_java (int tid, pl_signature *sig, bool tc)
+  invoke_java::invoke_java (int tid, pl_signature *sig, bool tc, bool no_sql)
     : tran_id (tid)
   {
     signature.assign (sig->ext.sp.target_class_name).append (".").append (sig->ext.sp.target_method_name);
@@ -62,6 +62,7 @@ namespace cubpl
       }
 
     transaction_control = (lang == SP_LANG_PLCSQL) ? true : tc;
+    no_server_side_sql = no_sql;
   }
 
   void
@@ -81,6 +82,7 @@ namespace cubpl
 
     serializator.pack_int (result_type);
     serializator.pack_bool (transaction_control);
+    serializator.pack_bool (no_server_side_sql);
   }
 
   void
@@ -107,6 +109,7 @@ namespace cubpl
 
     size += serializator.get_packed_int_size (size); // return_type
     size += serializator.get_packed_bool_size (size); // transaction_control
+    size += serializator.get_packed_bool_size (size); // no_server_side_sql
     return size;
   }
 
@@ -388,7 +391,7 @@ exit:
     const bool transaction_control = m_sig.is_parallel_enabled
 				     ? false
 				     : ((m_sig.type == PL_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
-    invoke_java invoke_arg (tid, &m_sig, transaction_control);
+    invoke_java invoke_arg (tid, &m_sig, transaction_control, m_stack->is_server_side_sql_forbidden ());
 
     error = m_stack->send_data_to_java (session_params, prepare_arg, invoke_arg);
     return error;
