@@ -8920,16 +8920,19 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
 		      if (to_volid == LOG_DBLOG_ACTIVE_VOLID)
 			{
-			  /* Take back the database lock given up just above. Archives are restored after the active
-			   * log, and a server started in that gap would come up on a half restored log directory. */
+			  /* Hold the database lock on the active log we just put in place. Archives are restored after
+			   * it, and a server started in that gap would come up on a half restored log directory. Best
+			   * effort only: fileio_mount () also reports failure when it merely cannot write the lock
+			   * information file, and losing an advisory lock must not fail a restore that is otherwise
+			   * fine - that is what happened before this lock was taken at all. */
 			  lgat_vdes =
-			    fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
+			    fileio_mount (thread_p, db_fullname, to_volname, LOG_DBLOG_ACTIVE_VOLID, true, false);
 			  if (lgat_vdes == NULL_VOLDES)
 			    {
-			      success = ER_FAILED;
-			      error_code = ER_FAILED;
-			      LOG_CS_EXIT (thread_p);
-			      goto error;
+			      er_log_debug (ARG_FILE_LINE,
+					    "logpb_restore: could not lock %s; restore continues unlocked\n",
+					    to_volname);
+			      er_clear ();
 			    }
 			}
 		    }
@@ -9047,6 +9050,12 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
     }
 
   LOG_CS_EXIT (thread_p);
+
+  if (lgat_vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, lgat_vdes);
+      lgat_vdes = NULL_VOLDES;
+    }
 
   fileio_page_bitmap_list_destroy (&page_bitmap_list);
 
