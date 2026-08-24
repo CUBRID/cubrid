@@ -536,9 +536,9 @@ is_valid_ipv4 (const char *ip_addr)
 
 
 /*
-* is_valid_hostname () - Check the host name is valid format.
+* is_valid_label () - Check the label name is valid format.
 *
-* return   : true if host name is valid format, false otherwise
+* return   : true if label name is valid format, false otherwise
 */
 static int
 is_valid_label (const char *label)
@@ -556,14 +556,14 @@ is_valid_label (const char *label)
       return 0;
     }
 
-  if (!isalpha (label[0]) || !isalnum (label[length - 1]))
+  if (!isalnum ((unsigned char) label[0]) || !isalnum ((unsigned char) label[length - 1]))
     {
       return 0;
     }
 
   for (int i = 0; i < length; i++)
     {
-      if (!isalnum (label[i]) && label[i] != '-')
+      if (!isalnum ((unsigned char) label[i]) && label[i] != '-')
 	{
 	  return 0;
 	}
@@ -598,6 +598,12 @@ is_valid_fqdn (const char *fqdn)
   length = strlen (fqdn);
 
   if (length > MAX_FQDN_LEN)
+    {
+      return 0;
+    }
+
+  /* reject dotted-decimal strings so they can't collide with IP keys in user_host_Map */
+  if (is_valid_ipv4 (fqdn))
     {
       return 0;
     }
@@ -757,7 +763,7 @@ handle_uhost_conf (int action_type)
 		{
 		  fprintf (stderr,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS,
-					   PRM_ERR_INVALID_HOSTNAME), hostname, line_number, hosts_conf_dir);
+					   PRM_ERR_INVALID_HOSTNAME), token, line_number, hosts_conf_dir);
 		  has_invalid_entries = true;
 		  goto end;
 		}
