@@ -1554,7 +1554,9 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [c].[class_of] FROM " CT_CLASS_NAME "[c] WHERE [unique_name] = ?");
+      sprintf (obj_fetch_query, sql_query, "SELECT [c].[class_of] FROM " CT_CLASS_NAME "[c]"
+	       " WHERE IF ([c].[is_system_class] = 0,"
+	       " CONCAT (LOWER ([c].[owner].[name]), '.', [c].[class_name]), [c].[class_name]) = ?");
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
