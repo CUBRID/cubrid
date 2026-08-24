@@ -61,7 +61,7 @@ namespace cubpl
 
     cubmem::block blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_PARALLEL_ENABLE_NO_SQL,
 				   std::string ("cannot execute SQL on the server-side connection: the stored procedure is"
-						" declared PARALLEL_ENABLE, or it is running in a parallel worker"),
+				       " declared PARALLEL_ENABLE, or it is running in a parallel worker"),
 				   ARG_FILE_LINE));
     int error = send_data_to_java (blk);
     blk.freemem ();

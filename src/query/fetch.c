@@ -4237,7 +4237,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	  {
 	    /* the stack can be null when the executor refused to start (interrupt, expired session) */
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1,
-		    executor.get_stack () ? executor.get_stack ()->get_error_message ().c_str () : "");
+		    executor.get_stack ()? executor.get_stack ()->get_error_message ().c_str () : "");
 	    goto exit_on_error;
 	  }
 
@@ -4245,7 +4245,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	if (error != NO_ERROR || er_errid () != NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1,
-		    executor.get_stack () ? executor.get_stack ()->get_error_message ().c_str () : "");
+		    executor.get_stack ()? executor.get_stack ()->get_error_message ().c_str () : "");
 	    goto exit_on_error;
 	  }
 

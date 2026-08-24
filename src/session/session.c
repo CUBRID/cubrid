@@ -3331,8 +3331,7 @@ session_clear_pl_session_interrupt (THREAD_ENTRY * thread_p)
 {
   SESSION_STATE *state_p = session_get_session_state (thread_p);
 
-  if (state_p != NULL && state_p->pl_session_p != NULL
-      && state_p->pl_session_p->get_interrupt_id () == ER_INTERRUPTED)
+  if (state_p != NULL && state_p->pl_session_p != NULL && state_p->pl_session_p->get_interrupt_id () == ER_INTERRUPTED)
     {
       state_p->pl_session_p->clear_interrupt ();
     }

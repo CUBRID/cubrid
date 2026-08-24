@@ -93,7 +93,8 @@ public class CUBRIDServerSideDriver implements Driver {
         }
 
         Thread current = Thread.currentThread();
-        if (current instanceof ExecuteThread && ((ExecuteThread) current).isServerSideSqlForbidden()) {
+        if (current instanceof ExecuteThread
+                && ((ExecuteThread) current).isServerSideSqlForbidden()) {
             /*
              * A PARALLEL_ENABLE stored procedure, or any procedure running on a parallel worker,
              * must not open the server-side default connection: that Connection is cached on the
