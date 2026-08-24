@@ -12558,9 +12558,9 @@ sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char
  *   error_code(out): NO_ERROR or the failure code
  *   return: opened copy_session on success, NULL on error
  *
- * COPY config encoding (unchanged): table_name (string), num_cols (int),
- * format (int), delimiter (int), quote (int), header (int), bulk (int),
- * col_types (int[num_cols]).
+ * COPY config encoding: table_name (string), num_cols (int), format (int),
+ * delimiter (int), quote (int), header (int), bulk (int),
+ * col_types (int[num_cols]), attr_ids (int[num_cols]).
  */
 static stream_session *
 create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int config_len, int *error_code)
@@ -12576,6 +12576,7 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
   int header = 0;
   int bulk = 0;
   DB_TYPE *col_types = NULL;
+  int *attr_ids = NULL;
   copy_session *session = NULL;
 
   *error_code = NO_ERROR;
@@ -12612,13 +12613,14 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
   ptr = or_unpack_int (ptr, &header);
   ptr = or_unpack_int (ptr, &bulk);
 
-  if (num_cols <= 0 || (config_end - ptr) / OR_INT_SIZE < num_cols)
+  if (num_cols <= 0 || (config_end - ptr) / OR_INT_SIZE / 2 < num_cols)
     {
       goto invalid_config;
     }
 
   col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
-  if (col_types == NULL)
+  attr_ids = (int *) db_private_alloc (thread_p, num_cols * sizeof (int));
+  if (col_types == NULL || attr_ids == NULL)
     {
       *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit;
@@ -12629,6 +12631,11 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
       int type_val;
       ptr = or_unpack_int (ptr, &type_val);
       col_types[i] = (DB_TYPE) type_val;
+    }
+
+  for (int i = 0; i < num_cols; i++)
+    {
+      ptr = or_unpack_int (ptr, &attr_ids[i]);
     }
 
   {
@@ -12652,7 +12659,8 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
 	goto exit;
       }
 
-    *error_code = session->init (thread_p, &class_oid, col_types, num_cols, format, delimiter, quote, header, bulk);
+    *error_code = session->init (thread_p, &class_oid, col_types, attr_ids, num_cols, format, delimiter, quote,
+				 header, bulk);
     if (*error_code != NO_ERROR)
       {
 	delete session;
@@ -12671,6 +12679,10 @@ exit:
   if (col_types != NULL)
     {
       db_private_free (thread_p, col_types);
+    }
+  if (attr_ids != NULL)
+    {
+      db_private_free (thread_p, attr_ids);
     }
 
   return session;

@@ -38,7 +38,6 @@
 #include "object_representation_sr.h"
 #include "record_descriptor.hpp"
 
-#include <algorithm>
 #include <cstring>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -74,8 +73,8 @@ copy_session::~copy_session ()
 }
 
 int
-copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols, int format,
-		    int delimiter, int quote, int header, int bulk)
+copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, const int *attr_ids,
+		    int num_cols, int format, int delimiter, int quote, int header, int bulk)
 {
   int error = NO_ERROR;
   HEAP_CACHE_ATTRINFO attrinfo;
@@ -107,37 +106,51 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
     }
   attrinfo_started = true;
 
-  /* build m_attr_ids: map column index (def_order) to attribute repr ID.
-   * When no explicit column list is given, columns arrive in def_order.
-   * The last_classrepr->attributes[] array is in storage order, so we
-   * need to sort by def_order to get the correct column-to-attr mapping. */
+  /* The client resolved the target columns (an explicit column list, or every
+   * instance attribute in schema order) and sent their attribute ids, so the
+   * mapping is taken from the request rather than re-derived here. Each id is
+   * still checked against the class representation this session will insert
+   * through, which may have changed since the client resolved it. */
   {
     int n_attrs = attrinfo.last_classrepr->n_attributes;
     OR_ATTRIBUTE *attrs = attrinfo.last_classrepr->attributes;
 
-    std::vector<int> order (n_attrs);
-    for (int i = 0; i < n_attrs; i++)
+    if (num_cols > n_attrs)
       {
-	order[i] = i;
+	error = ER_COPY_NOT_SUPPORTED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "more COPY columns than the table has attributes");
+	goto exit;
       }
-    std::sort (order.begin (), order.end (), [&attrs] (int a, int b)
-    {
-      return attrs[a].def_order < attrs[b].def_order;
-    });
 
     m_attr_ids.resize (num_cols);
-    for (int i = 0; i < num_cols && i < n_attrs; i++)
+    for (int i = 0; i < num_cols; i++)
       {
-	m_attr_ids[i] = attrs[order[i]].id;
+	int j;
+
+	for (j = 0; j < n_attrs; j++)
+	  {
+	    if (attrs[j].id == attr_ids[i])
+	      {
+		break;
+	      }
+	  }
+	if (j == n_attrs)
+	  {
+	    error = ER_COPY_NOT_SUPPORTED;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "a COPY target column no longer exists");
+	    goto exit;
+	  }
+	m_attr_ids[i] = attr_ids[i];
       }
   }
 
+exit:
   if (attrinfo_started)
     {
       heap_attrinfo_end (thread_p, &attrinfo);
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 int

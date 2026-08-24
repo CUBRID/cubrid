@@ -44,8 +44,8 @@ class copy_session : public stream_session
     ~copy_session () override;
 
     /* binding-specific open (not part of the stream_session seam) */
-    int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols, int format,
-	      int delimiter, int quote, int header, int bulk);
+    int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, const int *attr_ids,
+	      int num_cols, int format, int delimiter, int quote, int header, int bulk);
 
     /* stream_session seam */
     int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) override;

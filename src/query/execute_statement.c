@@ -22671,6 +22671,7 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_ATTRIBUTE *attr;
   PT_NODE *col;
   DB_TYPE *col_types = NULL;
+  int *col_ids = NULL;
   int ncols = 0;
   PT_NODE *entity_spec;
   PT_NODE *entity;
@@ -22735,54 +22736,94 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
+  /* Count the target columns first: an explicit list as given, otherwise every
+   * instance attribute in schema order. Shared attributes have no per-instance
+   * slot in the heap record, so they are not COPY targets. */
   if (statement->info.copy.column_list != NULL)
     {
       for (col = statement->info.copy.column_list; col != NULL; col = col->next)
 	{
 	  ncols++;
 	}
-
-      col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
-      if (col_types == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (ncols * sizeof (DB_TYPE)));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      int i = 0;
-      for (col = statement->info.copy.column_list; col != NULL; col = col->next)
-	{
-	  attr = db_get_attribute (class_obj, col->info.name.original);
-	  if (attr == NULL)
-	    {
-	      error = er_errid ();
-	      free_and_init (col_types);
-	      return (error != NO_ERROR) ? error : ER_FAILED;
-	    }
-	  col_types[i++] = db_attribute_type (attr);
-	}
     }
   else
     {
-      /* no column list: use all columns in schema order */
       for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
 	{
-	  ncols++;
-	}
-
-      col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
-      if (col_types == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (ncols * sizeof (DB_TYPE)));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      int i = 0;
-      for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
-	{
-	  col_types[i++] = db_attribute_type (attr);
+	  if (!db_attribute_is_shared (attr))
+	    {
+	      ncols++;
+	    }
 	}
     }
+
+  if (ncols <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, table_name);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
+  col_ids = (int *) malloc (ncols * sizeof (int));
+  if (col_types == NULL || col_ids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (ncols * (sizeof (DB_TYPE) + sizeof (int))));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+
+  {
+    int i = 0;
+
+    if (statement->info.copy.column_list != NULL)
+      {
+	for (col = statement->info.copy.column_list; col != NULL; col = col->next)
+	  {
+	    attr = db_get_attribute (class_obj, col->info.name.original);
+	    if (attr == NULL)
+	      {
+		error = er_errid ();
+		error = (error != NO_ERROR) ? error : ER_FAILED;
+		goto end;
+	      }
+	    if (db_attribute_is_shared (attr))
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, db_attribute_name (attr));
+		error = ER_COPY_NOT_SUPPORTED;
+		goto end;
+	      }
+	    col_types[i] = db_attribute_type (attr);
+	    col_ids[i] = db_attribute_id (attr);
+
+	    for (int j = 0; j < i; j++)
+	      {
+		if (col_ids[j] == col_ids[i])
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, db_attribute_name (attr));
+		    error = ER_COPY_NOT_SUPPORTED;
+		    goto end;
+		  }
+	      }
+	    i++;
+	  }
+      }
+    else
+      {
+	for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	  {
+	    if (db_attribute_is_shared (attr))
+	      {
+		continue;
+	      }
+	    col_types[i] = db_attribute_type (attr);
+	    col_ids[i] = db_attribute_id (attr);
+	    i++;
+	  }
+      }
+
+    assert (i == ncols);
+  }
 
   /* CSV-only options are rejected for the BINARY format (DDL-time error). */
   if (statement->info.copy.format != 1
@@ -22791,8 +22832,8 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
 	      "DELIMITER/QUOTE/HEADER are only valid with FORMAT CSV");
-      free_and_init (col_types);
-      return ER_COPY_NOT_SUPPORTED;
+      error = ER_COPY_NOT_SUPPORTED;
+      goto end;
     }
 
   /* The grammar marks a DELIMITER / QUOTE literal that is not exactly one character as -1. */
@@ -22800,15 +22841,23 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
 	      "DELIMITER and QUOTE must be exactly one character");
-      free_and_init (col_types);
-      return ER_COPY_NOT_SUPPORTED;
+      error = ER_COPY_NOT_SUPPORTED;
+      goto end;
     }
 
-  error = copy_from_init (table_name, col_types, ncols, statement->info.copy.format,
+  error = copy_from_init (table_name, col_types, col_ids, ncols, statement->info.copy.format,
 			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
 			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk);
 
-  free_and_init (col_types);
+end:
+  if (col_types != NULL)
+    {
+      free_and_init (col_types);
+    }
+  if (col_ids != NULL)
+    {
+      free_and_init (col_ids);
+    }
 
   return error;
 }

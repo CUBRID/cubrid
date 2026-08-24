@@ -12022,8 +12022,8 @@ stream_from_init (int stream_kind, const char *config, int config_len)
  * name + options + col_types, unchanged encoding) and opens with STREAM_KIND_COPY.
  */
 int
-copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, int format, int delimiter, int quote,
-		int header, int bulk)
+copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_ids, int ncols, int format,
+		int delimiter, int quote, int header, int bulk)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -12031,8 +12031,10 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
   char *config = NULL;
   char *ptr;
 
-  /* COPY config blob: string + ncols + format + delimiter + quote + header + bulk + ncols * int */
-  config_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE);
+  /* COPY config blob: string + ncols + format + delimiter + quote + header + bulk
+   * + ncols * col_type + ncols * attribute id. The attribute ids carry the user's
+   * column list, which the column types alone cannot express. */
+  config_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE * 2);
 
   config = (char *) malloc (config_size);
   if (config == NULL)
@@ -12052,6 +12054,10 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
     {
       ptr = or_pack_int (ptr, (int) col_types[i]);
     }
+  for (int i = 0; i < ncols; i++)
+    {
+      ptr = or_pack_int (ptr, col_ids[i]);
+    }
 
   rc = stream_from_init (STREAM_KIND_COPY, config, config_size);
 
@@ -12059,7 +12065,10 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
 
   return rc;
 #else /* CS_MODE */
-  return NO_ERROR;
+  /* The stream transport is a client->server network path; standalone mode has
+   * no server to stream to, so report it instead of silently loading nothing. */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, "COPY FROM STDIN in standalone mode");
+  return ER_COPY_NOT_SUPPORTED;
 #endif /* !CS_MODE */
 }
 
