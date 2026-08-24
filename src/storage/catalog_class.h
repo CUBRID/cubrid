@@ -33,7 +33,7 @@
 extern bool catcls_Enable;
 
 int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
-int catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record);
+int catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record, OID * class_oid_p);
 int catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name, OID * class_oid);
 int catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name, RECDES * record, OID * class_oid_p,
 				   UPDATE_INPLACE_STYLE force_in_place);

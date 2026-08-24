@@ -6054,7 +6054,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 #endif
 	}
 
-      if (catcls_Enable == true && catcls_insert_catalog_classes (thread_p, recdes) != NO_ERROR)
+      if (catcls_Enable == true && catcls_insert_catalog_classes (thread_p, recdes, oid) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
@@ -6553,7 +6553,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	  if (catcls_Enable == true)
 	    {
-	      error_code = catcls_insert_catalog_classes (thread_p, recdes);
+	      error_code = catcls_insert_catalog_classes (thread_p, recdes, oid);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
