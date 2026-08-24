@@ -214,6 +214,15 @@ namespace parallel_query_execute
 	trace_context_p->m_stats.push_back ((trace_context::stat)
 	{ {0, 0}, fetches, ioreads, fetch_time
 	});
+	/* a job worker runs a whole subquery block, so it evaluates that block's SPs itself */
+	trace_context_p->m_sp_calls +=
+		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_NUM_CALL_EVALS].start_offset];
+	trace_context_p->m_sp_time +=
+		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_EVAL_TIME_10USEC].start_offset];
+	trace_context_p->m_sp_fetches +=
+		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_NUM_FETCHES].start_offset];
+	trace_context_p->m_sp_ioreads +=
+		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_NUM_IOREADS].start_offset];
 	perfmon_destroy_parallel_stats (cur_thread_p);
 	cur_thread_p->m_px_stats = px_stats;
 	pthread_mutex_unlock (&cur_thread_p->m_px_stats_mutex);

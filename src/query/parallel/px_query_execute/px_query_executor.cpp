@@ -254,6 +254,23 @@ namespace parallel_query_execute
 	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
 					      stats.fetch_time);
 	    }
+	  /* Hand the job workers' SP evaluation back to the leader, so its closing read in
+	   * qexec_execute_query () sees the whole statement's SP work and not just its own share.
+	   * m_uses_px_stats is still true here, so this lands in the root's own px_stats array and
+	   * is carried the last hop to the transaction's counters by the root's drain loop below -
+	   * which is why that loop has to cover these offsets too. Zeroed after folding: this runs
+	   * once per executor. */
+	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_CALL_EVALS].start_offset,
+					  m_trace_context.m_sp_calls);
+	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_EVAL_TIME_10USEC].start_offset,
+					  m_trace_context.m_sp_time);
+	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_FETCHES].start_offset,
+					  m_trace_context.m_sp_fetches);
+	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_IOREADS].start_offset,
+					  m_trace_context.m_sp_ioreads);
+	  m_trace_context.m_sp_calls = m_trace_context.m_sp_time = 0;
+	  m_trace_context.m_sp_fetches = m_trace_context.m_sp_ioreads = 0;
+
 	  pthread_mutex_unlock (&thread_p->m_px_stats_mutex);
 	  m_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
 	  m_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
@@ -261,13 +278,14 @@ namespace parallel_query_execute
 				PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC)/1000 - old_fetch_time;
 	  if (m_is_root_executor)
 	    {
+	      int merged_cnt = 0;
+	      const int *merged_offsets = perfmon_get_parallel_merged_offsets (&merged_cnt);
+
 	      thread_p->m_uses_px_stats = false;
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
-					      thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset]);
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
-					      thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset]);
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
-					      thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset]);
+	      for (int i = 0; i < merged_cnt; i++)
+		{
+		  perfmon_add_at_offset_to_local (thread_p, merged_offsets[i], thread_p->m_px_stats[merged_offsets[i]]);
+		}
 	      perfmon_destroy_parallel_stats (thread_p);
 	    }
 	}

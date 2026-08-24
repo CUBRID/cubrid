@@ -1167,6 +1167,36 @@ perfmon_set_at_offset_to_global (int offset, int statval)
 }
 
 /*
+ * perfmon_get_parallel_merged_offsets () - the statistics a parallel worker accumulates in its own
+ *                                          px_stats array and that must be merged back
+ *
+ * return    : the offset array; *count receives its length
+ *
+ * Note: the page-buffer counters, plus the regu-call counters that feed xasl->func_stats and the
+ *       trace's FUNC line. The latter are bumped only for a stored procedure / method call
+ *       (fetch.c, case TYPE_SP), which a worker can evaluate now; leaving them out silently
+ *       under-reports every SP a worker ran. One list, because it used to be copied at each
+ *       merge point and the copies drifted.
+ */
+STATIC_INLINE const int *
+perfmon_get_parallel_merged_offsets (int *count)
+{
+  /* immutable */
+  static const int offsets[] = {
+    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
+    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
+    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
+    pstat_Metadata[PSTAT_REGU_NUM_CALL_EVALS].start_offset,
+    pstat_Metadata[PSTAT_REGU_EVAL_TIME_10USEC].start_offset,
+    pstat_Metadata[PSTAT_REGU_NUM_FETCHES].start_offset,
+    pstat_Metadata[PSTAT_REGU_NUM_IOREADS].start_offset
+  };
+
+  *count = (int) (sizeof (offsets) / sizeof (offsets[0]));
+  return offsets;
+}
+
+/*
  * perfmon_merge_child_stats_to_parent_stats () - Merge child statistics to parent statistics.
  *
  * return	 : Void.
@@ -1201,14 +1231,8 @@ perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p)
       perfmon_initialize_parallel_stats (main_thread_p);
     }
 
-  /* immutable */
-  static const int offsets[] = {
-    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
-    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
-    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset
-  };
-
-  const int stats_cnt = sizeof (offsets) / sizeof (offsets[0]);
+  int stats_cnt = 0;
+  const int *offsets = perfmon_get_parallel_merged_offsets (&stats_cnt);
 
   pthread_mutex_lock (&(main_thread_p->m_px_stats_mutex));
   for (int stats_index = 0; stats_index < stats_cnt; stats_index++)
@@ -1252,14 +1276,8 @@ perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p)
       return;
     }
 
-  /* immutable */
-  static const int offsets[] = {
-    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
-    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
-    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset
-  };
-
-  const int stats_cnt = sizeof (offsets) / sizeof (offsets[0]);
+  int stats_cnt = 0;
+  const int *offsets = perfmon_get_parallel_merged_offsets (&stats_cnt);
 
   for (int stats_index = 0; stats_index < stats_cnt; stats_index++)
     {
