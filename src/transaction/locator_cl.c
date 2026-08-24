@@ -6239,9 +6239,14 @@ locator_retry_unreported_names (int num_classes, const char **many_classnames, L
       one_subclasses = need_subclasses[i];
       one_flag = flags[i];
 
-      /* One name cannot be merged into anything, so the reply accounts for it exactly. */
+      /* One name cannot be merged into anything, so the reply accounts for it exactly.
+       * Whatever this leaves behind must not outlive the call: the name not resolving is
+       * not this caller's error to report, and the optimizer asserts on a stray er_errid. */
+      er_stack_push ();
       (void) locator_lockhint_classes (1, &one_name, &one_lock, &one_subclasses, &one_flag, false, NULL_LOCK,
 				       &one_resolved);
+      er_stack_pop ();
+
       resolved_names[i] = one_resolved;
     }
 }
