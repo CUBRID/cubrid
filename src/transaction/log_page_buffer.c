@@ -1366,6 +1366,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   loghdr->nxarv_num = 0;
   loghdr->last_arv_num_for_syscrashes = -1;
   loghdr->last_deleted_arv_num = -1;
+  LOG_HDR_CDC_ARV_NUM_RESET (loghdr);
   loghdr->has_logging_been_skipped = false;
   LSA_SET_NULL (&loghdr->bkup_level0_lsa);
   LSA_SET_NULL (&loghdr->bkup_level1_lsa);
