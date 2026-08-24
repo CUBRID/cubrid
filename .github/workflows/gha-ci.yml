@@ -285,7 +285,7 @@ jobs:
           - mode: debug
             args: "-m optdebug"
     container:
-      image: cubridci/cubridci:rl8.10
+      image: cubridci/cubridci:build_rl8.10
     defaults:
       run:
         shell: bash
@@ -557,7 +557,7 @@ jobs:
     runs-on: cubrid-arc
     timeout-minutes: 30
     container:
-      image: cubridci/cubridci:test_shell
+      image: cubridci/cubridci:test_rl8.10
     defaults:
       run:
         shell: bash
@@ -669,7 +669,7 @@ jobs:
           mount -t overlay overlay -o lowerdir=/ro,upperdir=/rw/upper,workdir=/rw/work "$TC_DIR"
           echo "seed HEAD : $(git -C "$TC_DIR" log -1 --format='%h %ci' 2>/dev/null)"
 
-          # Same settings as entrypoint's configure(); ls-remote needs them first.
+          # ls-remote needs the token first. The entrypoint sets its own and drops it.
           git config --global url."https://x-access-token:${GHI_TOKEN}@github.com/".insteadof https://github.com/
 
           # The sync bot creates tc/pr-<N> when the PR opens. Same rule as CircleCI.
@@ -693,7 +693,7 @@ jobs:
           # Same command the CircleCI test_shell runs on every node.
           export BRANCH_TESTCASES="$TC_BRANCH"
           rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
-          /entrypoint.sh checkout
+          /entrypoint.sh checkout shell
           rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
           echo "refresh WAN: $(( (rx1 - rx0) / 1048576 )) MB"
 
@@ -782,7 +782,7 @@ jobs:
           echo "default seconds for an unseen case: $dflt"
 
           # LPT: longest first onto the lightest shard. Durations span 1.5s to 301s.
-          # In awk, because the test_shell image has no python.
+          # In awk, because the test image has no python.
           mkdir -p /tmp/shards
           awk -v dflt="$dflt" -v tf="$TIMINGS" '
             BEGIN {
@@ -941,7 +941,7 @@ jobs:
       matrix:
         i: ${{ fromJson(needs.plan.outputs.matrix) }}
     container:
-      image: cubridci/cubridci:test_shell
+      image: cubridci/cubridci:test_rl8.10
     defaults:
       run:
         shell: bash
@@ -1077,11 +1077,14 @@ jobs:
 
           export BRANCH_TESTCASES="$TC_BRANCH"
           rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
-          /entrypoint.sh checkout
+          /entrypoint.sh checkout shell
 
           # Pin to the commit plan saw. checkout aligns to the tip; undo that here.
           cd "$TC_DIR"
-          git fetch -q --depth 1 --no-tags origin "$WANT_TC_SHA"
+          # The entrypoint drops its git credential on exit, so carry the token
+          # inline here. `-c` keeps it out of the on-disk config.
+          git -c "url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof=https://github.com/" \
+            fetch -q --depth 1 --no-tags origin "$WANT_TC_SHA"
           git reset -q --hard "$WANT_TC_SHA"
           rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
 
@@ -1214,7 +1217,7 @@ jobs:
     runs-on: cubrid-arc
     timeout-minutes: 30
     container:
-      image: cubridci/cubridci:test_shell
+      image: cubridci/cubridci:test_rl8.10
     defaults:
       run:
         shell: bash
