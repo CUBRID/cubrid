@@ -1523,6 +1523,7 @@ typedef struct _ha_config
 #define CSQL_QUERY_COLUMN_ENCLOSURE_L		"enclosure"
 #define CSQL_LOADDB_OUTPUT_S			'd'
 #define CSQL_LOADDB_OUTPUT_L			"loaddb-output"
+/* 12020: CSQL_SYSADM_REBUILD_CATALOG_S (obsolete) */
 #define CSQL_NOPRINT_TITLE_S			12021
 #define CSQL_NOPRINT_TITLE_L			"skip-title"
 

@@ -45,6 +45,7 @@ enum db_client_type
   DB_CLIENT_TYPE_SKIP_VACUUM_CSQL = 15,
   DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL = 16,
   DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS = 17, /* admin compactdb that can run on standby */
+  /* 18: DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG (obsolete) */
 
   /*
    * loaddb with --no-user-specified-name:
