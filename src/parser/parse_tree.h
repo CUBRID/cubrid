@@ -3883,7 +3883,6 @@ struct parser_context
   PT_CASECMP_FUN casecmp;	/* for case insensitive comparisons */
 
   int id;			/* internal parser id */
-  PARSER_STRING_BLOCK *string_blocks;	/* this parser's string block list (private to parse_tree.c) */
   int statement_number;		/* user-initialized, incremented by parser */
 
   const char *original_buffer;	/* pointer to the original parse buffer */
@@ -3893,6 +3892,7 @@ struct parser_context
   int stack_size;		/* total number of slots in node_stack */
   PT_NODE **node_stack;		/* the parser stack */
   PT_NODE *orphans;		/* list of parse tree fragments freed later */
+  PARSER_STRING_BLOCK *string_blocks;	/* this parser's string block list (private to parse_tree.c) */
 
   char *error_buffer;		/* for parse error messages */
 
