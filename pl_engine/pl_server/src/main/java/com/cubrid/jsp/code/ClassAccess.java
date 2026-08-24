@@ -52,10 +52,7 @@ public class ClassAccess {
         CompiledCodeSet code = null;
 
         try {
-            Context ctx = ContextManager.getContextofCurrentThread();
-            Connection conn = ctx.getConnection();
-
-            byte[] jarCode = getObjectCodeBytes(conn);
+            byte[] jarCode = getObjectCodeBytes();
             if (jarCode != null) {
                 code = CompiledCodeSet.loadFromJar(jarCode);
                 // mainClassName, and compileId will be set later
@@ -76,12 +73,9 @@ public class ClassAccess {
         CompiledCodeSet code = null;
 
         try {
-            Context ctx = ContextManager.getContextofCurrentThread();
-            Connection conn = ctx.getConnection();
-
             String[] compileIdRef = new String[1];
             byte[] jarCode =
-                    getObjectCodeBytesWithNameAndId(mainClassName, null, conn, compileIdRef);
+                    getObjectCodeBytesWithNameAndId(mainClassName, null, compileIdRef);
             if (jarCode == null) {
                 return null;
             } else {
@@ -109,13 +103,10 @@ public class ClassAccess {
         CompiledCodeSet code = null;
 
         try {
-            Context ctx = ContextManager.getContextofCurrentThread();
-            Connection conn = ctx.getConnection();
-
             String[] compileIdRef = new String[1];
             byte[] jarCode =
                     getObjectCodeBytesWithNameAndId(
-                            codeSet.mainClassName, codeSet.compileId, conn, compileIdRef);
+                            codeSet.mainClassName, codeSet.compileId, compileIdRef);
             if (jarCode == null) {
                 return null;
             } else if (jarCode.length == 0) {
@@ -138,22 +129,59 @@ public class ClassAccess {
 
     private static byte[] EMPTY_BYTES = new byte[0];
 
-    private static byte[] getObjectCodeBytesWithNameAndId(
-            String mainClassName, String compileId, Connection conn, String[] compileIdRef) {
-        // return null if no ocode found in _db_stored_procedure_code or _db_package_code with
-        // mainClassName.
-        // return EMPTY_BYTES if compileId is not null and the compile_id column in
-        // _db_stored_procedure_code or
-        // _db_package_code with mainClassName is the same as compileId.
-        // otherwise, update the 0-th item of compileIdRef with the new compile_id and return the
-        // bytes of ocode found with mainClassName.
-        //
-        // TODO: claude help
+    // status codes shared with the server (see SP_CODE_FETCH_STATUS in sp_code.hpp)
+    private static final int STATUS_NOT_FOUND = 0;
+    private static final int STATUS_UNCHANGED = 1;
+    private static final int STATUS_CHANGED = 2;
 
-        return null;
+    private static byte[] getObjectCodeBytesWithNameAndId(
+            String mainClassName, String compileId, String[] compileIdRef) {
+        // Ask the server (via a dedicated protocol) for the ocode of the SP/package whose generated
+        // class name is mainClassName. The server reads the catalog with authorization disabled, so
+        // this works even when the referenced unit is owned by another user.
+        // The result of this method can be one of the following three:
+        //   - null        : no such SP/package (e.g. dropped)
+        //   - EMPTY_BYTES : compileId is given and equals the stored compile_id (caller is
+        // up-to-date)
+        //   - otherwise   : compileIdRef[0] is set to the stored compile_id and the ocode bytes are
+        //                    returned (the ocode column is a base64-encoded jar)
+        try {
+            CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+            packer.packInt(RequestCode.REQUEST_CODE_BY_NAME);
+            packer.packString(mainClassName);
+            packer.packString(compileId == null ? "" : compileId);
+            Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
+
+            ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+            CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+
+            Header header = new Header(unpacker);
+            ByteBuffer payload = unpacker.unpackBuffer();
+            unpacker.setBuffer(payload);
+
+            int error = unpacker.unpackInt();
+            if (error != 0) {
+                return null;
+            }
+
+            int status = unpacker.unpackInt();
+            if (status == STATUS_NOT_FOUND) {
+                return null;
+            } else if (status == STATUS_UNCHANGED) {
+                return EMPTY_BYTES;
+            } else {
+                String newCompileId = unpacker.unpackCString();
+                String base64Str = unpacker.unpackCString();
+                compileIdRef[0] = newCompileId;
+                return Base64.getDecoder().decode(base64Str);
+            }
+        } catch (Exception e) {
+            Server.log(e);
+            return null;
+        }
     }
 
-    private static byte[] getObjectCodeBytes(Connection conn)
+    private static byte[] getObjectCodeBytes()
             throws IOException, TypeMismatchException {
         byte[] jar = null;
 

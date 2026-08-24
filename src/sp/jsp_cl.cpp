@@ -3783,6 +3783,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       }
 
       code_info.name = sp_info.target_class;
+      code_info.compile_id = pl_sp_compile_response.compile_id;
       code_info.created_time = stm.str ();
       code_info.stype = SPSC_PLCSQL;
       code_info.scode.assign (rewritten_code, strlen (rewritten_code));
@@ -4394,6 +4395,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   }
 
   code_info.name = sp_info.target_class;
+  code_info.compile_id = pl_sp_compile_response.compile_id;
   code_info.ocode = pl_sp_compile_response.compiled_code;
 
   if (sp_recompile == 1)

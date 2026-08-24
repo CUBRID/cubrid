@@ -154,26 +154,4 @@ public class CatalogClassLoaderRelay extends ClassLoader {
 
         return className.substring(JavaCodeWriter.JAVA_PKG_OF_GENERATED.length() + 1);
     }
-
-    private static String getInvariantPartOfMainClassName(String mainClassName) {
-
-        // mainClassName should be of the form <invariant-part>_<seqno>_<creation-time>
-        // where <invariant-part> starts with 'Proc_' or 'Func_'.
-
-        if (!mainClassName.startsWith("Proc_") && !mainClassName.startsWith("Func_")) {
-            return null;
-        }
-
-        int lastIndex = mainClassName.lastIndexOf('_');
-        if (lastIndex == -1) {
-            return null;
-        }
-
-        lastIndex = mainClassName.lastIndexOf('_', lastIndex - 1);
-        if (lastIndex == -1) {
-            return null;
-        }
-
-        return mainClassName.substring(0, lastIndex);
-    }
 }

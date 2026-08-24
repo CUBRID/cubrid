@@ -960,6 +960,7 @@ namespace cubschema
 		   // columns
     {
       {SP_CODE_ATTR_NAME, format_varchar (PLCSQL_TARGET_CLASS_LEN)}, // generated Java class name (= _db_stored_procedure.target_class)
+      {SP_CODE_ATTR_COMPILE_ID, format_varchar (PLCSQL_COMPILE_ID_LEN)},
       {SP_CODE_ATTR_CREATED_TIME, format_varchar (16)},
       {SP_CODE_ATTR_OWNER, AU_USER_CLASS_NAME},
       {SP_CODE_ATTR_IS_STATIC, "integer"},
@@ -1332,7 +1333,8 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_ATTR_UNIQUE_NAME, nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_ATTR_UNIQUE_NAME, nullptr}, false},
+      {DB_CONSTRAINT_UNIQUE, "u__db_package_target_class", {PKG_ATTR_TARGET_CLASS, nullptr}, false}
     },
 // authorization
     {

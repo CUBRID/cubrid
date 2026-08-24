@@ -53,7 +53,7 @@ public class UnitPkg extends Unit {
     public String getClassName() {
 
         if (className == null) {
-            className = String.format("Pckg_%s_%s", owner, pkg.name);
+            className = encodeClassName("Pckg", owner, pkg.name);
         }
 
         return className;

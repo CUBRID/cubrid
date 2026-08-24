@@ -265,6 +265,7 @@ enum index_sp_arg_attr
 
 #define SP_CODE_ATTR_LIST    \
     MAP_LIST_ITEM(NAME) \
+    MAP_LIST_ITEM(COMPILE_ID) \
     MAP_LIST_ITEM(CREATED_TIME) \
     MAP_LIST_ITEM(OWNER) \
     MAP_LIST_ITEM(IS_STATIC) \
@@ -275,6 +276,7 @@ enum index_sp_arg_attr
     MAP_LIST_ITEM(OCODE)
 
 #define SP_CODE_ATTR_NAME                   "name"
+#define SP_CODE_ATTR_COMPILE_ID             "compile_id"
 #define SP_CODE_ATTR_CREATED_TIME           "created_time"
 #define SP_CODE_ATTR_OWNER                  "owner"
 #define SP_CODE_ATTR_IS_STATIC              "is_static"
@@ -411,7 +413,17 @@ enum METHOD_CALLBACK_RESPONSE
   METHOD_CALLBACK_CHANGE_RIGHTS = 200,
 
   // CLASS ACCESS
-  METHOD_CALLBACK_GET_CODE_ATTR = 201
+  METHOD_CALLBACK_GET_CODE_ATTR = 201,
+  METHOD_CALLBACK_GET_CODE_BY_NAME = 202
+};
+
+// result of looking up object code by (generated) class name (shared by the CAS handler that
+// answers METHOD_CALLBACK_GET_CODE_BY_NAME and the PL server that consumes the reply)
+enum SP_CODE_FETCH_STATUS
+{
+  SP_CODE_FETCH_NOT_FOUND = 0,	// no SP/package with the given class name (e.g. dropped)
+  SP_CODE_FETCH_UNCHANGED = 1,	// stored compile_id equals the requested one
+  SP_CODE_FETCH_CHANGED = 2	// object code returned along with its compile_id
 };
 
 enum METHOD_ARG_MODE

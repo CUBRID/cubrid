@@ -580,6 +580,10 @@ exit:
 	error_code = callback_get_code_attr (thread_ref, unpacker);
 	break;
 
+      case METHOD_CALLBACK_GET_CODE_BY_NAME:
+	error_code = callback_get_code_by_name (thread_ref, unpacker);
+	break;
+
       case METHOD_CALLBACK_SET_PL_SESSION_PARAM:
 	error_code = callback_set_pl_session_param (thread_ref, unpacker);
 	break;
@@ -1038,6 +1042,25 @@ exit:
     blk.freemem ();
 
     return error;
+  }
+
+  int
+  executor::callback_get_code_by_name (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int code = METHOD_CALLBACK_GET_CODE_BY_NAME;
+
+    std::string class_name;
+    std::string req_compile_id;
+    unpacker.unpack_all (class_name, req_compile_id);
+
+    // The object code lives in the catalog, which is read on the client (CAS) side. Forward the
+    // by-name lookup to the CAS - the same way static SQL is - and relay its reply to the PL server.
+    auto relay_result = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    return m_stack->send_data_to_client_recv (relay_result, code, class_name, req_compile_id);
   }
 
   int

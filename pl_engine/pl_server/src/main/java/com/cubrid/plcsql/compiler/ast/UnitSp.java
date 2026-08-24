@@ -60,7 +60,7 @@ public class UnitSp extends Unit {
 
         if (className == null) {
             String kindStr = routine.isProcedure() ? "Proc" : "Func";
-            className = String.format("%s_%s_%s", kindStr, owner, routine.name);
+            className = encodeClassName(kindStr, owner, routine.name);
         }
 
         return className;

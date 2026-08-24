@@ -42,6 +42,7 @@
 #include "execute_statement.h"
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
+#include "schema_system_catalog_constants.h"
 #include "sp_catalog.hpp"
 #include "sp_constants.hpp"
 
@@ -131,6 +132,9 @@ namespace cubmethod
 	break;
       case METHOD_CALLBACK_GET_GLOBAL_SEMANTICS:
 	error = get_global_semantics (unpacker);
+	break;
+      case METHOD_CALLBACK_GET_CODE_BY_NAME:
+	error = get_code_by_name (unpacker);
 	break;
       case METHOD_CALLBACK_CHANGE_RIGHTS:
 	error = change_rights (unpacker);
@@ -1274,6 +1278,130 @@ exit:
     // no response
 
     return error;
+  }
+
+  int
+  callback_handler::get_code_by_name (packing_unpacker &unpacker)
+  {
+    // Look up the object code (ocode) of a stored procedure or package by its generated Java class
+    // name (Proc_/Func_/Pckg_...), so a PL/CSQL unit can resolve another unit it calls directly.
+    // The lookup runs on the client where the catalog objects live; it mirrors the server-side
+    // logic sp_get_code_by_name used to perform, but with plain client object APIs.
+    std::string class_name;
+    std::string req_compile_id;
+    unpacker.unpack_all (class_name, req_compile_id);
+
+    int status = SP_CODE_FETCH_NOT_FOUND;
+    std::string compile_id;
+    std::string ocode;
+
+    // a referenced unit's code must be loadable regardless of the caller's privileges
+    int save;
+    AU_SAVE_AND_DISABLE (save);
+
+    // generated package class names start with "Pckg_"; SP/function classes do not
+    bool is_pkg = (class_name.compare (0, 5, "Pckg_") == 0);
+
+    DB_VALUE key;
+    MOP code_mop = NULL;
+
+    if (!is_pkg)
+      {
+	// stored procedure / function: _db_stored_procedure_code keyed by name (= class name)
+	db_make_string (&key, class_name.c_str ());
+	code_mop = db_find_unique (db_find_class (CT_STORED_PROC_CODE_NAME), SP_CODE_ATTR_NAME, &key);
+	pr_clear_value (&key);
+	if (code_mop != NULL)
+	  {
+	    DB_VALUE v;
+	    if (db_get (code_mop, SP_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
+	      {
+		const char *s = db_get_string (&v);
+		if (s != NULL)
+		  {
+		    compile_id.assign (s);
+		  }
+		pr_clear_value (&v);
+	      }
+	  }
+      }
+    else
+      {
+	// package: _db_package (target_class -> unique_name, compile_id), _db_package_code (ocode)
+	db_make_string (&key, class_name.c_str ());
+	MOP pkg_mop = db_find_unique (db_find_class (CT_PACKAGE_NAME), PKG_ATTR_TARGET_CLASS, &key);
+	pr_clear_value (&key);
+	if (pkg_mop != NULL)
+	  {
+	    std::string unique_name;
+	    DB_VALUE v;
+	    if (db_get (pkg_mop, PKG_ATTR_UNIQUE_NAME, &v) == NO_ERROR)
+	      {
+		const char *s = db_get_string (&v);
+		if (s != NULL)
+		  {
+		    unique_name.assign (s);
+		  }
+		pr_clear_value (&v);
+	      }
+	    if (db_get (pkg_mop, PKG_ATTR_COMPILE_ID, &v) == NO_ERROR)
+	      {
+		const char *s = db_get_string (&v);
+		if (s != NULL)
+		  {
+		    compile_id.assign (s);
+		  }
+		pr_clear_value (&v);
+	      }
+	    if (!unique_name.empty ())
+	      {
+		db_make_string (&key, unique_name.c_str ());
+		code_mop = db_find_unique (db_find_class (CT_PACKAGE_CODE_NAME), PKG_CODE_ATTR_PKG_UNIQUE_NAME, &key);
+		pr_clear_value (&key);
+	      }
+	  }
+      }
+
+    // db_find_unique sets ER_OBJ_OBJECT_NOT_FOUND when the key is absent; that is a normal
+    // "not found" here, not an error to report back
+    if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+      {
+	er_clear ();
+      }
+
+    if (code_mop == NULL)
+      {
+	status = SP_CODE_FETCH_NOT_FOUND;
+      }
+    else if (!req_compile_id.empty () && req_compile_id == compile_id)
+      {
+	// the caller already has the current version: skip shipping the (large) ocode
+	status = SP_CODE_FETCH_UNCHANGED;
+      }
+    else
+      {
+	DB_VALUE v;
+	if (db_get (code_mop, is_pkg ? PKG_CODE_ATTR_OCODE : SP_CODE_ATTR_OCODE, &v) == NO_ERROR)
+	  {
+	    const char *s = db_get_string (&v);
+	    if (s != NULL)
+	      {
+		ocode.assign (s);
+	      }
+	    pr_clear_value (&v);
+	  }
+	status = SP_CODE_FETCH_CHANGED;
+      }
+
+    AU_RESTORE (save);
+
+    // reply framing the PL server (ClassAccess) expects: error, status, then compile_id + ocode
+    // only when the code actually changed
+    if (status == SP_CODE_FETCH_CHANGED)
+      {
+	return xs_pack_and_queue (NO_ERROR, status, compile_id, ocode);
+      }
+    return xs_pack_and_queue (NO_ERROR, status);
   }
 
 //////////////////////////////////////////////////////////////////////////
