@@ -8425,11 +8425,26 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   for (i = 0; i < num_btids; i++)
     {
       index = &(new_attrinfo->last_classrepr->indexes[i]);
+      /* TODO: The replication condition is checked here inside the loop, but the actual
+       *       replication log is generated after the loop. This split is worth cleaning up
+       *       in a future refactoring. */
       if (rk_btid_index == -1 && repl_info != NULL && repl_info->need_replication == true
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && or_is_replication_candidate_key (index)
-	  && heap_is_replication_class (thread_p, class_oid) && log_does_allow_replication () == true)
+	  && log_does_allow_replication () == true)
 	{
-	  rk_btid_index = i;
+	  bool repl_on = false;
+
+	  /* A class-record fetch failure here can carry a real error such as ER_INTERRUPTED
+	   * (e.g. the transaction was killed); propagate it instead of dropping it. */
+	  error_code = heap_get_class_repl_on (thread_p, class_oid, &repl_on);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  if (repl_on)
+	    {
+	      rk_btid_index = i;
+	    }
 	}
 
       /* check for specified update attributes */
