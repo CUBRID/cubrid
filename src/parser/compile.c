@@ -69,7 +69,8 @@ struct pt_class_locks
   LOCK *locks;
   LC_PREFETCH_FLAGS *flags;
   /* Where request i landed, when the owner was left out and the class turned out to live
-   * in another schema. NULL means unchanged. */
+   * in another schema. NULL means unchanged; non-NULL entries are heap copies this
+   * structure owns. */
   const char **resolved_names;
 };
 
@@ -693,6 +694,15 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 cleanup:
   if (lcks.resolved_names)
     {
+      int i;
+
+      for (i = 0; i < lcks.num_classes; i++)
+	{
+	  if (lcks.resolved_names[i] != NULL)
+	    {
+	      free_and_init (lcks.resolved_names[i]);
+	    }
+	}
       free_and_init (lcks.resolved_names);
     }
 
