@@ -6888,9 +6888,14 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db, int line_num, in
 	}
     }
 
-  /* get the list of immediate subclasses of db (may be NULL) */
+  /* get the list of immediate subclasses of db (may be NULL); read it directly instead of through
+   * db_get_subclasses (), which leaves an ER_OBJ_NO_COMPONENTS warning in the error state for the
+   * common no-subclasses case */
   dbl = NULL;
-  dbl = db_get_subclasses (db);
+  if (au_fetch_class (db, &smclass, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
+    {
+      dbl = smclass->users;
+    }
 
   /*
    * Build a hash table for all class and subclass names.  This

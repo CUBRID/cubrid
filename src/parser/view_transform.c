@@ -669,6 +669,10 @@ mq_compute_authorization (DB_OBJECT * class_object)
 {
   DB_AUTH auth = (DB_AUTH) 0;
 
+  /* speculative probes: a refusal is an expected outcome (e.g. system classes refuse
+   * DML even to the DBA), so keep their er_set noise out of the error state */
+  er_stack_push ();
+
   if (db_check_authorization (class_object, DB_AUTH_SELECT) == NO_ERROR)
     {
       auth = (DB_AUTH) (auth + DB_AUTH_SELECT);
@@ -685,6 +689,8 @@ mq_compute_authorization (DB_OBJECT * class_object)
     {
       auth = (DB_AUTH) (auth + DB_AUTH_DELETE);
     }
+
+  er_stack_pop ();
 
   return auth;
 }
