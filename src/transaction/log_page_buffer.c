@@ -8235,6 +8235,11 @@ loop:
       goto error;
     }
 
+  /* The log content of this backup is frozen at this instant, so this is its end time - not the moment the
+   * archive transfer happens to finish. restoredb -d backuptime stops at this timestamp, so it has to name the
+   * point the backup can actually reach, or the restore would ask for log the backup does not have. */
+  session.bkup.bkuphdr->end_time = (INT64) time (NULL);
+
   /* The log is captured: the archive set is frozen and pinned, and the active log image carries the header that
    * names it. Everything below only reads files that cannot change, so release the critical section here and let
    * transactions run while the archives are transferred. */

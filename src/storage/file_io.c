@@ -7290,7 +7290,13 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
   char io_time_val[CTIME_MAX];
   INT64 end_time;
 
-  end_time = (INT64) time (NULL);
+  /* The caller stamps this when the log content of the backup is frozen, which is what a point in time restore
+   * has to compare commit timestamps against. Only fall back to "now" if nobody did. */
+  end_time = session_p->bkup.bkuphdr->end_time;
+  if (end_time == -1)
+    {
+      end_time = (INT64) time (NULL);
+    }
 
   /*
    * Indicate end of backup and flush any buffered data.
