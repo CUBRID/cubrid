@@ -16284,7 +16284,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      xasl->executed_parallelism = 0;
 			    }
 			}
-		      if (xasl->px_executor)
+		      /* a subquery flagged XASL_NO_PARALLEL_SUBQUERY on its own node contains an
+		       * SP/method call somewhere in its subtree: run it inline on the main thread
+		       * while unflagged siblings still go to px workers */
+		      if (xasl->px_executor && !XASL_IS_FLAGED (xptr2, XASL_NO_PARALLEL_SUBQUERY))
 			{
 			  if (!xasl->px_executor->add_job (thread_p, xptr2, xasl_state))
 			    {

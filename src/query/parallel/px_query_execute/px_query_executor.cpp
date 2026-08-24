@@ -317,7 +317,11 @@ extern "C" {
 	    {
 	      for (xasl_node *aptr = xptr->aptr_list; aptr != NULL; aptr = aptr->next)
 		{
-		  estimated_jobs_local++;
+		  /* SP/method-containing subqueries run inline, not as px jobs */
+		  if (!XASL_IS_FLAGED (aptr, XASL_NO_PARALLEL_SUBQUERY))
+		    {
+		      estimated_jobs_local++;
+		    }
 		}
 	    }
 	}
@@ -340,7 +344,8 @@ extern "C" {
 	    {
 	      for (xasl_node *aptr = xptr->aptr_list; aptr != NULL; aptr = aptr->next)
 		{
-		  if (!XASL_IS_FLAGED (aptr, XASL_LINK_TO_REGU_VARIABLE))
+		  if (!XASL_IS_FLAGED (aptr, XASL_LINK_TO_REGU_VARIABLE)
+		      && !XASL_IS_FLAGED (aptr, XASL_NO_PARALLEL_SUBQUERY))
 		    {
 		      aptr_cnts++;
 		      if (aptr_cnts > 1)
