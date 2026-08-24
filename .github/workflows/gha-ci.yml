@@ -548,11 +548,15 @@ jobs:
     # Builds run on every trigger; the split and the suite only on a comment or a
     # dispatch. gate is the one place that decides.
     #
-    # always(), because needs.build is the whole matrix: a failed release build would
-    # otherwise block the shell suite, which CircleCI does not do either -- there
-    # test_shell hangs off build_debug alone. The debug artifact is checked below on
-    # its sentinel and its meta, so a missing one still fails loudly.
-    if: always() && needs.gate.outputs.test == 'true'
+    # Not success(), because needs.build is the whole matrix: a failed release build
+    # would otherwise block the shell suite, which CircleCI does not do either --
+    # there test_shell hangs off build_debug alone. The debug artifact is checked
+    # below on its sentinel and its meta, so a missing one still fails loudly.
+    #
+    # !cancelled() rather than always(): the two differ only for a run this run's
+    # concurrency group superseded, and there this job has nothing left to plan. A
+    # shard cut by timeout-minutes is not cancelled() -- measured -- so it still runs.
+    if: ${{ !cancelled() && needs.gate.outputs.test == 'true' }}
     permissions: {} # testcases come from the App token; GITHUB_TOKEN is unused
     runs-on: cubrid-arc
     timeout-minutes: 30
@@ -1205,9 +1209,11 @@ jobs:
   collect:
     name: collect
     needs: [gate, build, plan, shard]
-    # always() alone would also run for comments the gate turned away, and for the
-    # build-only triggers where there is nothing to collect.
-    if: always() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true'
+    # The gate outputs alone would not do: a comment the gate turned away, and the
+    # build-only triggers, have nothing to collect. !cancelled() rather than
+    # always() so a superseded run stops here instead of posting a summary of a
+    # suite that never ran. A shard cut by timeout-minutes still reports.
+    if: ${{ !cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' }}
     permissions:
       # The wall-clock step reads the run start time. Public repos need no scope --
       # stated so it does not fail silently if this repository ever becomes private.
