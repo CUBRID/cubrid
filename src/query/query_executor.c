@@ -1630,6 +1630,15 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	qexec_clear_regu_value_list (thread_p, xasl_p, regu_var->value.reguval_list, is_final, for_parallel_aptr);
       break;
     case TYPE_DBVAL:
+      /* An inline constant's value - including any decompression buffer - is allocated by the
+       * thread that unpacked the XASL, like a pl_signature's strings (see TYPE_SP above). A
+       * parallel-aptr clear runs on the job's thread, so clearing here would free across mspaces
+       * and corrupt both heaps; leave it to the owning thread's final qexec_clear_xasl pass,
+       * which revisits every aptr with for_parallel_aptr off. */
+      if (for_parallel_aptr)
+	{
+	  break;
+	}
       if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 	{
 	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
