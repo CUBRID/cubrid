@@ -1485,7 +1485,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1379 PL/CSQL Stored procedure/function does not support PARALLEL_ENABLE.
 
-1380 Last Error
+1380 Stored procedure/function "%1$s" is declared PARALLEL_ENABLE and cannot execute SQL on the server-side connection.
+
+1381 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

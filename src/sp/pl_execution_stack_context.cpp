@@ -25,6 +25,7 @@
 #include "pl_query_cursor.hpp"
 
 #include "log_impl.h"
+#include "thread_entry.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -39,8 +40,38 @@ namespace cubpl
   {
     m_tid = logtb_find_current_tranid (thread_p);
     m_is_running = false;
+    m_is_parallel_enabled_sp = false;
+    /* m_px_orig_thread_entry points at the query's leader thread; the leader sets it to itself
+     * while it runs a job inline, so "set and not me" is exactly "I am a px worker". */
+    m_is_px_worker = (thread_p != nullptr && thread_p->m_px_orig_thread_entry != nullptr
+		      && thread_p->m_px_orig_thread_entry != thread_p);
+    m_client_callback_rejected = false;
     m_client_header.id = sess->get_id ();
     m_java_header.id = sess->get_id ();
+  }
+
+  bool
+  execution_stack::is_client_callback_forbidden () const
+  {
+    return m_is_parallel_enabled_sp || is_px_worker_stack ();
+  }
+
+  int
+  execution_stack::reject_client_callback ()
+  {
+    /* Answer the callback ourselves with METHOD_RESPONSE_ERROR instead of going out to CAS. Java
+     * is waiting for a reply to this very request, so replying keeps the protocol in sync and the
+     * SP sees a plain SQLException. The sticky flag then fails the whole call once the result
+     * arrives, so an SP that catches that exception cannot swallow the violation. */
+    m_client_callback_rejected = true;
+
+    cubmem::block blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_PARALLEL_ENABLE_NO_SQL,
+				   std::string ("a PARALLEL_ENABLE stored procedure cannot execute SQL on the server-side connection"),
+				   ARG_FILE_LINE));
+    int error = send_data_to_java (blk);
+    blk.freemem ();
+
+    return error;
   }
 
   execution_stack::~execution_stack ()

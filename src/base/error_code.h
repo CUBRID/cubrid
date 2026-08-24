@@ -1775,7 +1775,9 @@
 
 #define ER_SP_PARALLEL_ENABLE_NOT_SUPPORTED         -1379
 
-#define ER_LAST_ERROR                               -1380
+#define ER_SP_PARALLEL_ENABLE_NO_SQL                -1380
+
+#define ER_LAST_ERROR                               -1381
 
 
 

@@ -1484,7 +1484,9 @@ $ LOADDB
 
 1379 PL/CSQL 저장 프로시저/함수는 PARALLEL_ENABLE을 지원하지 않습니다.
 
-1380 마지막 에러
+1380 저장 프로시저/함수 "%1$s"는 PARALLEL_ENABLE로 선언되어 서버측 연결로 SQL을 실행할 수 없습니다.
+
+1381 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

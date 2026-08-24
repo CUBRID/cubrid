@@ -119,6 +119,10 @@ namespace cubpl
     if (sess)
       {
 	m_stack = sess->create_and_push_stack (nullptr);
+	if (m_stack != nullptr)
+	  {
+	    m_stack->set_parallel_enabled_sp (sig.is_parallel_enabled);
+	  }
       }
   }
 
@@ -379,8 +383,12 @@ exit:
     // handling 'else' is not required because send_data_to_java will handle the case when sess is not found
 
     prepare_args prepare_arg ((std::uint64_t) this, tid, METHOD_TYPE_PLCSQL, m_args);
-    invoke_java invoke_arg (tid, &m_sig,
-			    (m_sig.type == PL_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
+    /* A PARALLEL_ENABLE SP cannot reach CAS, and transaction control is a CAS round trip; saying
+     * so up front makes Java reject it with a clearer message than a refused callback would. */
+    const bool transaction_control = m_sig.is_parallel_enabled
+				     ? false
+				     : ((m_sig.type == PL_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
+    invoke_java invoke_arg (tid, &m_sig, transaction_control);
 
     error = m_stack->send_data_to_java (session_params, prepare_arg, invoke_arg);
     return error;
@@ -457,6 +465,15 @@ exit:
   int
   executor::response_result (int code, DB_VALUE &returnval)
   {
+    if (m_stack->was_client_callback_rejected ())
+      {
+	/* The SP tried the server-side connection; it was handed an SQLException per callback, but
+	 * the call as a whole fails here whether or not the SP caught it. */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PARALLEL_ENABLE_NO_SQL, 1, m_sig.name);
+	m_stack->set_error_message (std::string (er_msg ()));
+	return ER_SP_PARALLEL_ENABLE_NO_SQL;
+      }
+
     // check queue
     if (m_stack->get_data_queue().empty() == true)
       {
