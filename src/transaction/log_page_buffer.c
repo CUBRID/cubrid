@@ -11331,6 +11331,9 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tlast archive number deleted : %d\n", log_Gl.hdr.last_deleted_arv_num);
 
+  fprintf (outfp, "\tarchive number to keep for cdc : %d\n",
+	   LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr) ? LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr) : -1);
+
   fprintf (outfp, "\tbackup level 0 lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.bkup_level0_lsa));
 
   fprintf (outfp, "\tbackup level 1 lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.bkup_level1_lsa));
