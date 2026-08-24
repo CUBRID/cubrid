@@ -21,6 +21,7 @@
  */
 
 #include "px_query_checker.hpp"
+#include "px_sp_eligibility.hpp"
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include <set>
@@ -179,8 +180,16 @@ namespace parallel_query_execute
 	check_regu_var (regu_var->value.arithptr->thirdptr);
 	break;
       case TYPE_SP:
-	/* exclude only the owning block from parallel execution, not the whole statement */
-	if (m_owner)
+	if (px_sp_is_parallel_eligible (regu_var->value.sp_ptr->sig))
+	  {
+	    /* declared PARALLEL_ENABLE: the SP may run inside a px worker, so it does not dirty
+	     * its owning block. Its arguments are evaluated in the worker too, so they are
+	     * still checked. */
+	    check_regu_var_list (regu_var->value.sp_ptr->args);
+	  }
+	/* ineligible: exclude only the owning block from parallel execution, not the whole
+	 * statement (a block mixing eligible and ineligible SPs stays blocked — conservative AND) */
+	else if (m_owner)
 	  {
 	    m_sp_dirty_set.insert (m_owner);
 	  }
