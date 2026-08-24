@@ -683,6 +683,10 @@ struct log_global
 
 #if defined(SERVER_MODE)
   bool backup_in_progress;
+  /* First archive the running backup still has to read. Archive removal keeps everything from this number on
+   * until the backup clears it. -1 when no backup is reading archives. Kept in memory on purpose:
+   * a crash must not leave a pin behind that blocks archive removal forever. */
+  int backup_first_arv_num_needed;
 #else				/* SERVER_MODE */
   LOG_LSA final_restored_lsa;
 #endif				/* SERVER_MODE */

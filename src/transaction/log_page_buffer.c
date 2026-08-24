@@ -6150,6 +6150,18 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	    }
 	}
 
+#if defined(SERVER_MODE)
+      if (log_Gl.backup_first_arv_num_needed >= 0 && last_arv_num_to_delete > log_Gl.backup_first_arv_num_needed)
+	{
+	  /* A backup still has to read these archives; keep them until it clears the pin. */
+	  _er_log_debug (ARG_FILE_LINE,
+			 "Archive removal capped at %d (was %d): backup still needs archives from %d on",
+			 log_Gl.backup_first_arv_num_needed, last_arv_num_to_delete,
+			 log_Gl.backup_first_arv_num_needed);
+	  last_arv_num_to_delete = log_Gl.backup_first_arv_num_needed;
+	}
+#endif /* SERVER_MODE */
+
       if (max_count > 0)
 	{
 	  /* check max count for deletion */
@@ -6318,6 +6330,16 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 	    }
 	}
     }
+
+#if defined(SERVER_MODE)
+  if (log_Gl.backup_first_arv_num_needed >= 0 && last_deleted_arv_num > log_Gl.backup_first_arv_num_needed - 1)
+    {
+      /* A backup still has to read these archives; keep them until it clears the pin. */
+      _er_log_debug (ARG_FILE_LINE, "Archive removal capped at %d (was %d): backup still needs archives from %d on",
+		     log_Gl.backup_first_arv_num_needed - 1, last_deleted_arv_num, log_Gl.backup_first_arv_num_needed);
+      last_deleted_arv_num = log_Gl.backup_first_arv_num_needed - 1;
+    }
+#endif /* SERVER_MODE */
 
   if (log_Gl.hdr.last_deleted_arv_num + 1 > last_deleted_arv_num)
     {
@@ -8121,7 +8143,14 @@ loop:
 
   if (first_arv_needed < log_Gl.hdr.nxarv_num)
     {
+      /* Keep the archives this backup is about to read out of reach of archive removal. Under the log critical
+       * section nothing can remove them anyway, but the pin is what will hold once the transfer runs outside it. */
+      log_Gl.backup_first_arv_num_needed = first_arv_needed;
+
       error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, log_Gl.hdr.nxarv_num - 1);
+
+      log_Gl.backup_first_arv_num_needed = -1;
+
       if (error_code != NO_ERROR)
 	{
 	  LOG_CS_EXIT (thread_p);
@@ -8257,6 +8286,7 @@ loop:
   LOG_CS_ENTER (thread_p);
   log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
   log_Gl.backup_in_progress = false;
+  log_Gl.backup_first_arv_num_needed = -1;
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
@@ -8289,6 +8319,7 @@ error:
       log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
     }
   log_Gl.backup_in_progress = false;
+  log_Gl.backup_first_arv_num_needed = -1;
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
