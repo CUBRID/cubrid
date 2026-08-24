@@ -411,8 +411,7 @@ static int parser_count_prefix_columns (PT_NODE * list, int * arg_count);
 
 static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
 static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
-static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p,
-				   const char *str, const int str_size);
+static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str);
 static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 						const PT_TYPE_ENUM char_type,
 						const char *str,
@@ -583,6 +582,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> opt_class
 %type <number> isolation_level_name
 %type <number> opt_status
+%type <number> opt_login_capability
 %type <number> trigger_status
 %type <number> trigger_time
 %type <number> opt_trigger_action_time
@@ -593,8 +593,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> datetime_field
 %type <boolean> opt_invisible
 %type <number> opt_paren_plus
-%type <number> opt_with_fullscan
-%type <number> opt_with_n_buckets
+%type <number> opt_stats_options
+%type <number> stats_option_list
+%type <number> stats_option
 %type <number> online_parallel
 %type <number> comp_op
 %type <number> opt_of_all_some_any
@@ -675,11 +676,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> rename_class_list
 %type <node> rename_class_pair
 %type <node> drop_stmt
-%type <node> drop_histogram_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
 %type <node> update_statistics_stmt
-%type <node> update_histogram_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
 %type <node> char_string_literal_list
@@ -906,7 +905,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> constant_set
 %type <node> file_path_name
 %type <node> identifier_list
-%type <node> opt_with_column_list
 %type <node> opt_bracketed_identifier_list
 %type <node> index_column_identifier_list
 %type <node> identifier_without_dot
@@ -973,7 +971,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
 %type <node> show_stmt
-%type <node> show_histogram_stmt
 %type <node> session_variable;
 %type <node> session_variable_assignment_list
 %type <node> session_variable_assignment
@@ -1623,6 +1620,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> LEAD
 %token <cptr> LOCK_
 %token <cptr> LOG
+%token <cptr> LOGIN
 %token <cptr> MATCHED
 %token <cptr> MAXIMUM
 %token <cptr> MAXVALUE
@@ -1633,6 +1631,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> NESTED
 %token <cptr> NOCYCLE
 %token <cptr> NOCACHE
+%token <cptr> NOLOGIN
 %token <cptr> NOMAXVALUE
 %token <cptr> NOMINVALUE
 %token <cptr> NONE
@@ -1665,6 +1664,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> PUBLIC
 %token <cptr> QUARTER
 %token <cptr> QUEUES
+%token <cptr> RANDOM_
 %token <cptr> RANGE_
 %token <cptr> RANK
 %token <cptr> REBUILD
@@ -1686,6 +1686,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
+%token <cptr> SEED_
 %token <cptr> SEMICOLON
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
@@ -1938,12 +1939,6 @@ stmt_
 	| rename_stmt
 		{ $$ = $1; }
 	| update_statistics_stmt
-		{ $$ = $1; }
-	| update_histogram_stmt
-		{ $$ = $1; }
-        | show_histogram_stmt
-                { $$ = $1; }
-	| drop_histogram_stmt
 		{ $$ = $1; }
 	| drop_stmt
 		{ $$ = $1; }
@@ -2856,9 +2851,10 @@ create_stmt
                 }	                /* 3 */
 	  identifier_without_dot	/* 4 */
 	  opt_password			/* 5 */
-	  opt_groups			/* 6 */
-	  opt_members			/* 7 */
-	  opt_comment_spec		/* 8 */
+	  opt_login_capability		/* 6 */
+	  opt_groups			/* 7 */
+	  opt_members			/* 8 */
+	  opt_comment_spec		/* 9 */
 		{ pop_msg(); }
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_USER);
@@ -2867,9 +2863,10 @@ create_stmt
 			  {
 			    node->info.create_user.user_name = $4;
 			    node->info.create_user.password = $5;
-			    node->info.create_user.groups = $6;
-			    node->info.create_user.members = $7;
-			    node->info.create_user.comment = $8;
+			    node->info.create_user.login_capability = $6;
+			    node->info.create_user.groups = $7;
+			    node->info.create_user.members = $8;
+			    node->info.create_user.comment = $9;
 			  }
 
 			$$ = node;
@@ -3666,7 +3663,8 @@ alter_stmt
 	  USER				/* 2 */
 	  identifier	        	/* 3 */
 	  opt_password  	        /* 4 */
-	  opt_comment_spec              /* 5 */
+	  opt_login_capability		/* 5 */
+	  opt_comment_spec              /* 6 */
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
 
@@ -3674,8 +3672,10 @@ alter_stmt
 			  {
 			    node->info.alter_user.user_name = $3;
 			    node->info.alter_user.password = $4;
-			    node->info.alter_user.comment = $5;
+			    node->info.alter_user.login_capability = $5;
+			    node->info.alter_user.comment = $6;
 			    if (node->info.alter_user.password == NULL
+				&& node->info.alter_user.login_capability == PT_MISC_DUMMY
 				&& node->info.alter_user.comment == NULL)
 			      {
 			        PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
@@ -4738,112 +4738,69 @@ index_column_name_list
 		}}
 	;
 
-opt_with_column_list
-        : /* empty */
-        {{ $$ = NULL; }}
-
-        | ON_ identifier_list
-        {{ $$ = $2; }}
-        ;
-
 update_statistics_stmt
-	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
+	: UPDATE STATISTICS ON_ only_class_name_list opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = $4;
 			    ups->info.update_stats.all_classes = 0;
-			    ups->info.update_stats.with_fullscan = $5;
+			    ups->info.update_stats.with_fullscan = (($5 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($5 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($5 & 0x04) != 0);
+			    ups->info.update_stats.drop_histogram = (($5 & 0x08) != 0);
+			    ups->info.update_stats.bucket_count = ($5 >> 8);
+			    if (($5 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| UPDATE STATISTICS ON_ ALL CLASSES opt_with_fullscan
+	| UPDATE STATISTICS ON_ ALL CLASSES opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = 1;
-			    ups->info.update_stats.with_fullscan = $6;
+			    ups->info.update_stats.with_fullscan = (($6 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($6 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($6 & 0x04) != 0);
+			    ups->info.update_stats.drop_histogram = (($6 & 0x08) != 0);
+			    ups->info.update_stats.bucket_count = ($6 >> 8);
+			    if (($6 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| UPDATE STATISTICS ON_ CATALOG CLASSES opt_with_fullscan
+	| UPDATE STATISTICS ON_ CATALOG CLASSES opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = -1;
-			    ups->info.update_stats.with_fullscan = $6;
+			    ups->info.update_stats.with_fullscan = (($6 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($6 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($6 & 0x04) != 0);
+			    ups->info.update_stats.drop_histogram = (($6 & 0x08) != 0);
+			    ups->info.update_stats.bucket_count = ($6 >> 8);
+			    if (($6 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	;
 
-show_histogram_stmt
-        : SHOW HISTOGRAM only_class_name opt_with_column_list
-                {{
-                        PT_NODE *uhs = parser_new_node (this_parser, PT_SHOW_HISTOGRAM);
-                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
-
-                        if (uhs && target_t)
-                        {
-                            target_t->info.spec.entity_name = $3;
-                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
-                            target_t->info.spec.meta_class = PT_CLASS;
-                            uhs->info.histogram.target_table_spec = target_t;
-                            uhs->info.histogram.target_columns = $4;
-                        }
-
-                        $$ = uhs;
-                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                }}
-        ;
-
-update_histogram_stmt
-        : ANALYZE TABLE only_class_name UPDATE HISTOGRAM opt_with_column_list opt_with_n_buckets opt_with_fullscan
-                {{
-                        PT_NODE *uhs = parser_new_node (this_parser, PT_UPDATE_HISTOGRAM);
-                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
-                        if (uhs && target_t)
-                        {
-                            target_t->info.spec.entity_name = $3;
-                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
-                            target_t->info.spec.meta_class = PT_CLASS;
-                            uhs->info.histogram.target_table_spec = target_t;
-
-                            uhs->info.histogram.target_columns = $6;
-                            uhs->info.histogram.bucket_count = $7;
-                            uhs->info.histogram.with_fullscan = $8;             
-                        }
-
-                        $$ = uhs;
-                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                }}
-        ;
-
-drop_histogram_stmt
-        : ANALYZE TABLE only_class_name DROP HISTOGRAM opt_with_column_list
-                {{
-                        PT_NODE *dhs = parser_new_node (this_parser, PT_DROP_HISTOGRAM);
-                        PT_NODE *target_t = parser_new_node (this_parser, PT_SPEC);
-                        if (dhs && target_t)
-                        {
-                            target_t->info.spec.entity_name = $3;
-                            PARSER_SAVE_ERR_CONTEXT (target_t, @3.buffer_pos)
-                            target_t->info.spec.meta_class = PT_CLASS;
-                            dhs->info.histogram.target_table_spec = target_t;
-                            dhs->info.histogram.target_columns = $6;
-                        }
-                        $$ = dhs;
-                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                }}
-        ;
 
 only_class_name_list
 	: only_class_name_list ',' only_class_name
@@ -4874,28 +4831,83 @@ opt_invisible
 	;
 
 
-opt_with_fullscan
+opt_stats_options
         : /* empty */
                 {{
                         $$ = 0;
                 }}
-        | WITH FULLSCAN
+        | WITH stats_option_list
                 {{
-                        $$ = 1;
+                        $$ = $2;
                 }}
         ;
 
-
-opt_with_n_buckets
-        : /* empty */
+stats_option_list
+        : stats_option
                 {{
-                        $$ = 0;
+                        $$ = $1;
                 }}
-        | WITH unsigned_integer BUCKETS
+        | stats_option_list ',' stats_option
                 {{
-                        $$ = $2->info.value.data_value.i;
+                        /* stats_option value layout (see the stats_option rule below):
+                         *   0x01 FULLSCAN | 0x02 RANDOM SEED | 0x04 NO HISTOGRAM | 0x08 DROP HISTOGRAM
+                         *   0x10 poison flag: the combined list is invalid (set here, tested in the
+                         *        UPDATE STATISTICS statement rules, where a parse node exists to
+                         *        attach the error to)
+                         *   bits 8.. : the BUCKETS count, shifted left by 8
+                         *
+                         * A repeated option kind or a contradictory pair must not OR-merge silently
+                         * (WITH 3 BUCKETS, 5 BUCKETS would become 7 buckets), so poison the value when
+                         *   1. ((($1 & $3) & 0x0F) != 0)   -- the same flag option appears on both
+                         *      sides (e.g. WITH FULLSCAN, FULLSCAN);
+                         *   2. (($1 & ~0xFF) != 0 && ($3 & ~0xFF) != 0)   -- both sides carry a
+                         *      BUCKETS count (two BUCKETS clauses; their shifted counts would OR);
+                         *   3. ((merged & 0x0C) == 0x0C)   -- NO HISTOGRAM and DROP HISTOGRAM are
+                         *      both present, which is a contradiction (skip vs remove). */
+                        int merged = $1 | $3;
+                        if ((($1 & $3) & 0x0F) != 0
+                            || (($1 & ~0xFF) != 0 && ($3 & ~0xFF) != 0)
+                            || ((merged & 0x0C) == 0x0C))
+                          {
+                            merged |= 0x10;
+                          }
+                        $$ = merged;
                 }}
         ;
+
+stats_option
+        : FULLSCAN
+                {{
+                        $$ = 0x01;
+                }}
+        | RANDOM_ SEED_
+                {{
+                        $$ = 0x02;
+                }}
+        | NO HISTOGRAM
+                {{
+                        $$ = 0x04;
+                }}
+        | DROP HISTOGRAM
+                {{
+                        $$ = 0x08;
+                }}
+        | unsigned_integer BUCKETS
+                {{
+                        int bcnt = $1->info.value.data_value.i;
+
+                        if (bcnt < 1)
+                          {
+                            bcnt = 1;
+                          }
+                        else if (bcnt > 0x7FFFFF)
+                          {
+                            bcnt = 0x7FFFFF;
+                          }
+                        $$ = (bcnt << 8);
+                }}
+        ;
+
 
 opt_of_to_eq
 	: /* empty */
@@ -8679,6 +8691,21 @@ opt_password
                         pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, false, en_none_password);
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+opt_login_capability
+	: /* empty */
+		{{
+			$$ = PT_MISC_DUMMY;
+		}}
+	| LOGIN
+		{{
+			$$ = PT_LOGIN;
+		}}
+	| NOLOGIN
+		{{
+			$$ = PT_NOLOGIN;
 		}}
 	;
 
@@ -20484,15 +20511,11 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
-
-			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
                             PARSER_SET_LINE_COL (p, @1)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
@@ -20502,15 +20525,11 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
-
-			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
                             PARSER_SET_LINE_COL (p, @1)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
@@ -20520,15 +20539,11 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
-
-			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
                             PARSER_SET_LINE_COL (p, @1)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
@@ -20538,15 +20553,11 @@ identifier
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 			if (p)
 			  {
-			    int size_in;
 			    char *str_name = $1;
-
-			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
                             PARSER_SET_LINE_COL (p, @1)
-			    str_name = pt_check_identifier (this_parser, p,
-							    str_name, size_in);
+			    str_name = pt_check_identifier (this_parser, p, str_name);
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
@@ -20663,6 +20674,7 @@ identifier
 	| LEAD                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| LOCK_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| LOG                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}        
+	| LOGIN                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| MATCHED                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| MAXIMUM                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| MAXVALUE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20673,6 +20685,7 @@ identifier
 	| NESTED                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| NOCACHE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| NOCYCLE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NOLOGIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| NOMAXVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| NOMINVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| NTH_VALUE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20703,6 +20716,7 @@ identifier
 	| PUBLIC                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| QUARTER                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| QUEUES                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RANDOM_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANGE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANK                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REBUILD                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20722,6 +20736,7 @@ identifier
 	| REVERSE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ROW_NUMBER             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SECTIONS               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SEED_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SEPARATOR              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SERIAL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SERVER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -22085,9 +22100,9 @@ connect_item
                container_2 ctn;
                PT_NODE *val = $3;
                val->type_enum = PT_TYPE_VARCHAR;
-               if (val->info.value.data_value.str->length > 254)
+               if (val->info.value.data_value.str->length >= DB_MAX_IDENTIFIER_LENGTH)
 		 {
-		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_DBNAME_LEN, 254);
+		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_DBNAME_LEN, (DB_MAX_IDENTIFIER_LENGTH - 1));
 		 }
 		 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_DBNAME), val);
@@ -22104,9 +22119,9 @@ connect_item
                container_2 ctn;
                PT_NODE *val = $3;
                val->type_enum = PT_TYPE_VARCHAR;
-               if (val->info.value.data_value.str->length > 254)
+               if (val->info.value.data_value.str->length >= DB_MAX_IDENTIFIER_LENGTH)
 		 {
-		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_USER_LEN, 254);
+		    PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_MAX_SERVER_USER_LEN, (DB_MAX_IDENTIFIER_LENGTH - 1));
 		 }
 	       PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_USER), val);
@@ -23956,6 +23971,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_USE_HASH", PT_HINT_NO_USE_HASH),
   INIT_PT_HINT("INLINE", PT_HINT_INLINE_CTE),
   INIT_PT_HINT("MATERIALIZE", PT_HINT_MATERIALIZE_CTE),
+  INIT_PT_HINT("BIND_SENSITIVE", PT_HINT_BIND_SENSITIVE),
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
 
@@ -23997,6 +24013,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_UTC_DATE:
     case PT_VERSION:
     case PT_UTC_TIMESTAMP:
+    case PT_SCHEMA:
       if (c != 0)
 	{
 	  return NULL;
@@ -25157,29 +25174,54 @@ resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list)
 }
 
 static char *
-pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
-		     const int str_size)
+pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str)
 {
   char *invalid_pos = NULL;
   int composed_size;
+  const int str_size = strlen (str);
+  static const int check_base_size = ((DB_MAX_IDENTIFIER_LENGTH / 3) * 2);
 
   if (strchr (str, '[') || strchr (str, ']'))
     {
       PT_ERRORf (this_parser, p,
 		 "Identifier name \"%s\" not allowed. It cannot contain '[' or ']'.",
 		 str);
+      return (char*) "";
+    }
+
+  if(str_size >= DB_MAX_IDENTIFIER_LENGTH)
+    {
+      intl_identifier_fix ((char *) str, -1, true);
+      PT_ERRORf2 (this_parser, p,
+                 "Identifier name \"%s\" is too long. Maximum length is %d.",
+                 str, DB_MAX_IDENTIFIER_LENGTH - 1);
+      return (char*) "";
     }
 
   if (intl_check_string ((char *) str, str_size, &invalid_pos, LANG_SYS_CODESET) == INTL_UTF8_INVALID)
     {
       PT_ERRORmf (parser, NULL, MSGCAT_SET_ERROR, -(ER_INVALID_CHAR),
 		  (invalid_pos != NULL) ? invalid_pos - str : 0);
-      return NULL;
+      return (char*) "";
     }
-  else if (intl_identifier_fix ((char *) str, -1, true) != NO_ERROR)
+
+  /*
+   * The byte size may increase when changing the case.
+   * Usernames must be converted to uppercase, while all other cases should be converted to lowercase.
+   * Since the maximum length of a username is smaller than DB_MAX_IDENTIFIER_LENGTH, it does not need to be checked here.
+   * Therefore, we only check for cases where text is converted to lowercase
+   */
+  if (str_size >= check_base_size)
     {
-      PT_ERRORf (parser, p, "invalid identifier : %s", str);
-      return NULL;
+      int lower_length = intl_identifier_lower_string_size (str);
+      if (lower_length > DB_MAX_IDENTIFIER_LENGTH)
+	{
+	  PT_ERRORf4 (this_parser, p,
+		      "Identifier name \"%s\" is too long. Maximum length is %d.\n"
+                      "The current length is %d, but it becomes %d when converted to lowercase.",
+                      str, DB_MAX_IDENTIFIER_LENGTH - 1, str_size, lower_length);
+	  return (char *) "";
+	}
     }
 
   if (LANG_SYS_CODESET == INTL_CODESET_UTF8
@@ -25194,7 +25236,7 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
       if (composed == NULL)
 	{
 	  PT_ERRORf (parser, p, "cannot alloc %d bytes", composed_size + 1);
-	  return NULL;
+	  return (char*) "";
 	}
 
       unicode_compose_string (str, str_size, composed, &composed_size,
