@@ -12159,9 +12159,12 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 	      if (num_cand > 1)
 		{
 		  /* Two owners already settle it; the rest cannot change the answer. Name both
-		   * so the user can qualify. */
+		   * so the user can qualify, ordering the pair for a stable message. With more
+		   * than two owners, which two are named can still vary between boots. */
+		  int first = (strcmp (candidates[0]->e_name, candidates[1]->e_name) <= 0) ? 0 : 1;
+
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_AMBIGUOUS_CLASSNAME, 3, bare_name,
-			  candidates[0]->e_name, candidates[1]->e_name);
+			  candidates[first]->e_name, candidates[1 - first]->e_name);
 		  allfind = find = LC_CLASSNAME_ERROR;
 		}
 	      else if (num_cand == 1 && (entry = locator_chase_synonym_entry (candidates[0])) != NULL)
