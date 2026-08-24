@@ -1077,9 +1077,12 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   if (dot)
     {
       size_t bare_size = strlen (dot + 1);
+      int bare_length = 0;
 
+      /* db_string_truncate () takes a length in characters, not bytes */
+      intl_char_count ((unsigned char *) (dot + 1), (int) bare_size, db_get_string_codeset (attr_val_p), &bare_length);
       memmove ((char *) class_name, dot + 1, bare_size + 1);
-      db_string_truncate (attr_val_p, (int) bare_size);
+      db_string_truncate (attr_val_p, bare_length);
     }
 
   /* loader_commands */
