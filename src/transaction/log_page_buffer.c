@@ -7767,6 +7767,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   int keys_vdes = NULL_VOLDES;
 #if defined(SERVER_MODE)
   int first_arv_needed = -1;	/* for self contained, consistent */
+  int last_arv_needed = -1;	/* last archive of the set frozen under the log critical section */
 
   int rv;
   time_t wait_checkpoint_begin_time;
@@ -8287,20 +8288,11 @@ loop:
 
   if (first_arv_needed < log_Gl.hdr.nxarv_num)
     {
-      /* Keep the archives this backup is about to read out of reach of archive removal. Under the log critical
-       * section nothing can remove them anyway, but the pin is what will hold once the transfer runs outside it. */
+      /* Freeze the archive set here and keep it out of reach of archive removal. The archives themselves are
+       * transferred further below, after the log critical section has been released: they are complete and never
+       * written again once nxarv_num moved past them, and the pin is what keeps them on disk until then. */
+      last_arv_needed = log_Gl.hdr.nxarv_num - 1;
       log_Gl.backup_first_arv_num_needed = first_arv_needed;
-
-      error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, log_Gl.hdr.nxarv_num - 1);
-
-      log_Gl.backup_first_arv_num_needed = -1;
-
-      if (error_code != NO_ERROR)
-	{
-	  LOG_CS_EXIT (thread_p);
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
-	  goto error;
-	}
     }
 #endif
 
@@ -8371,10 +8363,36 @@ loop:
       goto error;
     }
 
+  /* The log is captured: the archive set is frozen and pinned, and the active log image was taken with the log
+   * header that names it. Everything below only reads files that cannot change any more, so the log critical
+   * section is released here and user transactions resume while the archives are still being transferred. */
+  LOG_CS_EXIT (thread_p);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
+
+#if defined(SERVER_MODE)
+  if (first_arv_needed >= 0 && first_arv_needed <= last_arv_needed)
+    {
+      _er_log_debug (ARG_FILE_LINE, "Backup of log archives %d to %d started outside the log critical section",
+		     first_arv_needed, last_arv_needed);
+
+      error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, last_arv_needed);
+
+      LOG_CS_ENTER (thread_p);
+      log_Gl.backup_first_arv_num_needed = -1;
+      LOG_CS_EXIT (thread_p);
+
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      _er_log_debug (ARG_FILE_LINE, "Backup of log archives %d to %d finished", first_arv_needed, last_arv_needed);
+    }
+#endif
+
   if (fileio_finish_backup (thread_p, &session) == NULL)
     {
-      LOG_CS_EXIT (thread_p);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
       error_code = ER_FAILED;
       goto error;
     }
@@ -8388,13 +8406,11 @@ loop:
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN);
       if (catmsg)
 	{
+	  LOG_CS_ENTER (thread_p);
 	  logpb_remove_archive_logs (thread_p, catmsg);
+	  LOG_CS_EXIT (thread_p);
 	}
     }
-
-  LOG_CS_EXIT (thread_p);
-
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 
   error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
   if (error_code != NO_ERROR)
