@@ -526,9 +526,9 @@ is_valid_ipv4 (const char *ip_addr)
 
 
 /*
-* is_valid_hostname () - Check the host name is valid format.
+* is_valid_label () - Check the label name is valid format.
 *
-* return   : true if host name is valid format, false otherwise
+* return   : true if label name is valid format, false otherwise
 */
 static int
 is_valid_label (const char *label)
@@ -546,7 +546,7 @@ is_valid_label (const char *label)
       return 0;
     }
 
-  if (!isalpha (label[0]) || !isalnum (label[length - 1]))
+  if (!isalnum (label[0]) || !isalnum ((unsigned char) label[length - 1]))
     {
       return 0;
     }
