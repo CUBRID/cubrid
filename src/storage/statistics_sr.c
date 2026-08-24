@@ -74,7 +74,7 @@ static int stats_compare_utime (DB_UTIME * utime1, DB_UTIME * utime2);
 static int stats_compare_datetime (DB_DATETIME * datetime1_p, DB_DATETIME * datetime2_p);
 static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
 #endif
-static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_oid, const char *class_name,
+static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_oid,
 						OID * partitions, int count, bool with_fullscan,
 						CLASS_ATTR_NDV * class_attr_ndv);
 static int stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_fullscan,
@@ -239,8 +239,7 @@ stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, boo
       assert (partitions != NULL);
       catalog_free_class_info_and_init (cls_info_p);
       error_code =
-	stats_update_partitioned_statistics (thread_p, class_id_p, class_name, partitions, count, with_fullscan,
-					     class_attr_ndv);
+	stats_update_partitioned_statistics (thread_p, class_id_p, partitions, count, with_fullscan, class_attr_ndv);
       db_private_free (thread_p, partitions);
       if (error_code != NO_ERROR)
 	{
@@ -440,7 +439,7 @@ stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, boo
 
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error_code);
 
-  error_code = catcls_update_class_stats (thread_p, class_name, cls_info_p->ci_time_stamp, with_fullscan);
+  error_code = catcls_update_class_stats (thread_p, class_id_p, cls_info_p->ci_time_stamp, with_fullscan);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1185,7 +1184,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
  * will be used in the query.
  */
 static int
-stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, const char *class_name,
+stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 				     OID * partitions, int partitions_count, bool with_fullscan,
 				     CLASS_ATTR_NDV * class_attr_ndv)
 {
@@ -1583,7 +1582,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error);
 
-  error = catcls_update_class_stats (thread_p, class_name, cls_info_p->ci_time_stamp, with_fullscan);
+  error = catcls_update_class_stats (thread_p, class_id_p, cls_info_p->ci_time_stamp, with_fullscan);
 
 cleanup:
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error);

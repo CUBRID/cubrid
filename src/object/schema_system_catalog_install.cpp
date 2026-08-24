@@ -434,8 +434,9 @@ namespace cubschema
 // constraints
     {
       /*
-      *  Define the index name so that it always has the same name as the macro variable (CATCLS_INDEX_NAME)
-      *  in src/storage/catalog_class.c.
+      *  Keep the index names in step with the literals catcls_compile_catalog_classes () passes to
+      *  catcls_find_btid_of_index () in src/storage/catalog_class.c. The (class_name, owner) index gets
+      *  its auto-generated name, i__db_class_class_name_owner.
       *
       *  _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
       *  in src/storage/btree.c, it becomes assert (false) in the code below.
