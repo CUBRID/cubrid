@@ -25,6 +25,7 @@
 
 #include "dbtype_def.h"
 #include "heap_file.h"
+#include "log_lsa.hpp"
 #include "oid.h"
 #include "record_descriptor.hpp"
 #include "thread_compat.hpp"
@@ -70,6 +71,10 @@ class copy_session : public stream_session
     bool m_skip_header;			/* CSV: a leading header line is still to be skipped */
     bool m_bulk;			/* bulk-load mode requested (BU_LOCK acquired at open) */
     int m_rows_loaded;
+
+    /* savepoint taken at open, so that a failure part-way through the stream
+     * undoes every batch already flushed instead of leaving them committable */
+    LOG_LSA m_savepoint_lsa;
 
     /* rows packed and queued for batch insert (flushed every COPY_FLUSH_BATCH_ROWS) */
     std::vector<record_descriptor> m_recdes_collected;

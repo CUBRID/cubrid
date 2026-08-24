@@ -37,6 +37,7 @@
 #include "object_representation.h"
 #include "object_representation_sr.h"
 #include "record_descriptor.hpp"
+#include "xserver_interface.h"
 
 #include <cstring>
 
@@ -52,6 +53,10 @@ static const std::size_t COPY_FLUSH_BATCH_ROWS = 4096;
  * field length) would otherwise buffer without limit. */
 static const std::size_t COPY_MAX_ROW_BYTES = 64 * 1024 * 1024;
 
+/* savepoint taken when the session opens; the whole COPY is undone to it when the
+ * stream fails, so a failed COPY leaves no rows behind */
+static const char COPY_SAVEPOINT_NAME[] = "cOPYfROMsTDIN";
+
 copy_session::copy_session ()
   : m_class_oid (OID_INITIALIZER)
   , m_hfid (HFID_INITIALIZER)
@@ -64,6 +69,7 @@ copy_session::copy_session ()
   , m_skip_header (false)
   , m_bulk (false)
   , m_rows_loaded (0)
+  , m_savepoint_lsa (NULL_LSA)
   , m_recdes_collected ()
 {
 }
@@ -143,6 +149,18 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
 	m_attr_ids[i] = attr_ids[i];
       }
   }
+
+  /* Rows are attached to the outer transaction as each batch is flushed, so a
+   * failure part-way through the stream cannot be undone by dropping the
+   * in-memory batch alone. Mark the transaction here and roll back to this
+   * point in abort (). */
+  error = xtran_server_savepoint (thread_p, COPY_SAVEPOINT_NAME, &m_savepoint_lsa);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      LSA_SET_NULL (&m_savepoint_lsa);
+      goto exit;
+    }
 
 exit:
   if (attrinfo_started)
@@ -416,4 +434,12 @@ copy_session::abort (THREAD_ENTRY *thread_p)
 {
   m_recdes_collected.clear ();
   m_rows_loaded = 0;
+
+  /* Undo the batches already flushed, so a COPY that fails part-way leaves the
+   * transaction as it was when the session opened. */
+  if (!LSA_ISNULL (&m_savepoint_lsa))
+    {
+      (void) xtran_server_partial_abort (thread_p, COPY_SAVEPOINT_NAME, &m_savepoint_lsa);
+      LSA_SET_NULL (&m_savepoint_lsa);
+    }
 }
