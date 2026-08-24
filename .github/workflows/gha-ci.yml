@@ -8,7 +8,11 @@
 #   pull_request opened, synchronize   build only
 #   issue_comment  /run shell | all    build, then the shell suite on the debug build
 #   push develop, feature/**           build only. develop also writes the ccache
-#   workflow_dispatch                  build; tests follow the inputs
+#   workflow_dispatch                  build; tests always run
+#
+# All four read this file from the DEFAULT BRANCH, not from a PR head, so none of
+# them work until this is merged -- /run on this PR does nothing. workflow_dispatch
+# needs the file on the default branch before it appears in the UI at all.
 #
 # Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
 # them; its README.md carries the full contract table for this file.
@@ -695,8 +699,10 @@ jobs:
           # _25_unstable must be removed after checkout: `reset --hard` restores it.
           rm -rf "$TC_DIR/shell/_25_unstable"     # same exclusion as CircleCI
 
+          # No match is grep exit 1, and pipefail would kill the step here -- taking
+          # the "no cases at all" diagnostic below out of reach. Let it through empty.
           find "$TC_DIR/shell" -path '*/cases/*.sh' 2>/dev/null \
-            | grep -P '/([^/]+)/cases/\1\.sh$' \
+            | { grep -P '/([^/]+)/cases/\1\.sh$' || :; } \
             | sed "s#^$TC_DIR/#cubrid-testcases-private-ex/#" \
             | sort > /tmp/all.list
           # Re-run only failures. failed.list is <shard>\t<shell/...>; align the prefix.
@@ -728,6 +734,13 @@ jobs:
               echo "::error::no cases at all: the glob matched nothing. Check the testcase tree"
             fi
             exit 1
+          fi
+          # More shards than cases would leave the tail empty and trip the guard
+          # below. Clamp instead of starting pods only to throw them away; the
+          # guard then only fires when the split is genuinely wrong.
+          if [ "$PAR" -gt "$total" ]; then
+            echo "::notice::parallelism $PAR exceeds the $total selected cases; using $total shards"
+            PAR="$total"
           fi
 
           # Format: <case path>\t<seconds>.
@@ -1074,8 +1087,10 @@ jobs:
             | xargs -n1 dirname | sort -u > /tmp/keep_dirs.list
           echo "directories kept: $(wc -l < /tmp/keep_dirs.list)"
 
+          # Keeping every directory is grep -v exit 1, not an error: parallelism 1
+          # with no limit does exactly that. pipefail would kill the step.
           find "$TC_DIR/shell" -name cases -type d \
-            | grep -v -F -f /tmp/keep_dirs.list \
+            | { grep -v -F -f /tmp/keep_dirs.list || :; } \
             | xargs -r rm -rf
 
           left=$(find "$TC_DIR/shell" -path '*/cases/*.sh' 2>/dev/null | grep -Pc '/([^/]+)/cases/\1\.sh$' || echo 0)
@@ -1338,7 +1353,9 @@ jobs:
           : > /tmp/new_timings.tsv
           for f in "$RUNDIR"/results/*/feedback.log; do
             [ -f "$f" ] || continue
-            grep -E '^\[(OK|NOK)\]' "$f" 2>/dev/null | awk '
+            # A feedback.log with no verdict line is grep exit 1. This step has no
+            # always(), so pipefail here would also drop Wall clock and Guard 3.
+            { grep -E '^\[(OK|NOK)\]' "$f" 2>/dev/null || :; } | awk '
               {
                 # Scan back for the number before EnvId=; assumes no spaces in the path.
                 for (i = NF; i > 1; i--) {
