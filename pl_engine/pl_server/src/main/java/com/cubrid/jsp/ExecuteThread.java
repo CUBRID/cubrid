@@ -68,6 +68,7 @@ import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
 
@@ -89,6 +90,16 @@ public class ExecuteThread extends Thread {
 
     private CUBRIDUnpacker unpacker = new CUBRIDUnpacker();
     private CUBRIDPacker packer;
+
+    /*
+     * Hand-off of the request payload from listenCommand() to the process*() method that consumes
+     * it - both run on this thread, reading this thread's socket. It used to live on the session
+     * Context, which is shared: with a session executing on several ExecuteThreads at once (one
+     * per px worker running a stored procedure), the threads stole each other's payloads. The
+     * callback responses are read straight off the own socket (receiveBuffer()), so nothing else
+     * ever needed the queue to be shared.
+     */
+    private final LinkedBlockingQueue<ByteBuffer> inBound = new LinkedBlockingQueue<ByteBuffer>();
 
     private StoredProcedure storedProcedure = null;
     private PrepareArgs prepareArgs = null;
@@ -274,7 +285,7 @@ public class ExecuteThread extends Thread {
             ByteBuffer payloadBuffer =
                     ByteBuffer.wrap(inputBuffer.array(), startOffset, payloadSize);
 
-            ctx.getInboundQueue().add(payloadBuffer);
+            inBound.add(payloadBuffer);
         }
 
         return header;
@@ -313,7 +324,7 @@ public class ExecuteThread extends Thread {
     }
 
     private void processStoredProcedure() throws Exception {
-        unpacker.setBuffer(ctx.getInboundQueue().take());
+        unpacker.setBuffer(inBound.take());
 
         // session parameters
         readSessionParameter(unpacker);
@@ -364,7 +375,7 @@ public class ExecuteThread extends Thread {
     }
 
     private void processBootstrap() throws Exception {
-        unpacker.setBuffer(ctx.getInboundQueue().take());
+        unpacker.setBuffer(inBound.take());
 
         int result = 1; // failed
         try {
@@ -384,7 +395,7 @@ public class ExecuteThread extends Thread {
     }
 
     private void processCompile() throws Exception {
-        unpacker.setBuffer(ctx.getInboundQueue().take());
+        unpacker.setBuffer(inBound.take());
 
         // session parameters
         readSessionParameter(unpacker);

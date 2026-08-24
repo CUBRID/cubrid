@@ -91,7 +91,7 @@ namespace cubpl
 	    sess->release_connection (m_connection); // release connection to session
 	  }
 
-	sess->pop_and_destroy_stack (get_id ());
+	sess->pop_and_destroy_stack (get_id (), is_px_worker_stack ());
       }
   }
 
