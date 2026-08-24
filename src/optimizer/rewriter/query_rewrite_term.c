@@ -4588,6 +4588,7 @@ qo_or_extract_is_cheap_restriction (PT_NODE * conjunct)
     case PT_BETWEEN:
     case PT_NOT_BETWEEN:
     case PT_LIKE:
+    case PT_IS_IN:
     case PT_IS_NULL:
     case PT_IS_NOT_NULL:
       break;
@@ -4616,6 +4617,22 @@ qo_or_extract_is_cheap_restriction (PT_NODE * conjunct)
 	{
 	  if (item->node_type != PT_EXPR || !qo_or_extract_is_constant_side (item->info.expr.arg1)
 	      || !qo_or_extract_is_constant_side (item->info.expr.arg2))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+    }
+
+  if (conjunct->info.expr.op == PT_IS_IN)
+    {
+      /* the IN list: every element must be constant-like.  qo_rewrite_terms () then folds the
+       * derived copy into a RANGE term an index can adopt, exactly like a hand-written IN */
+      PT_NODE *item;
+
+      for (item = other; item != NULL; item = item->next)
+	{
+	  if (!qo_or_extract_is_constant_side (item))
 	    {
 	      return false;
 	    }
@@ -4784,12 +4801,15 @@ qo_or_extract_build_for_spec (PARSER_CONTEXT * parser, PT_NODE * disjunct, UINTP
  *	 part table gets no filter at all from the brand/container/size branches and every plan
  *	 has to carry the full table through the join.
  *
- *	 Because the derived factor is implied by the original one, it must not be counted a
- *	 second time in the row-count selectivity, and keeping it as a plain data filter only
- *	 pays off when it is no costlier than column-vs-constant compares.  Each derived factor
- *	 is therefore marked PT_EXPR_INFO_OR_DERIVED (plus _EXPENSIVE by shape); the marks reach
- *	 the plan as QO_TERM flags, where qo_node_add_sarg () skips the double count and
- *	 make_pred_from_plan () drops a costly copy that no index adopted.
+ *	 The derived factor's selectivity is counted at the node scan (qo_node_add_sarg ()), so
+ *	 the scan cardinality reflects the filter and the join order can react to it; to keep the
+ *	 join output estimate unchanged, the origin factor's join selectivity is discounted by
+ *	 the same share in qo_or_derived_compensate () -- the approach of PostgreSQL's
+ *	 consider_new_or_clause ().  Keeping the copy as a plain data filter only pays off when
+ *	 it is no costlier than column-vs-constant compares.  Each derived factor is therefore
+ *	 marked PT_EXPR_INFO_OR_DERIVED (plus _EXPENSIVE by shape) and linked to its origin
+ *	 factor; the marks reach the plan as QO_TERM flags, where make_pred_from_plan () drops a
+ *	 costly copy that no index adopted.
  */
 void
 qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE ** wherep)
@@ -4953,9 +4973,9 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
       qo_rewrite_terms (parser, spec_list, &new_terms);
 
       /* mark what survived the rewrites: qo_analyze_term () carries the marks into the term
-       * flags, so the row-count selectivity skips these implied duplicates and
-       * make_pred_from_plan () drops the costly ones no index adopted.  Classify on the
-       * rewritten shape -- that is what a scan would actually evaluate */
+       * flags, so qo_or_derived_compensate () can pay the node-counted share back to the origin
+       * factor and make_pred_from_plan () can drop the costly ones no index adopted.  Classify
+       * on the rewritten shape -- that is what a scan would actually evaluate */
       for (derived = new_terms; derived != NULL; derived = derived->next)
 	{
 	  if (derived->node_type != PT_EXPR)
