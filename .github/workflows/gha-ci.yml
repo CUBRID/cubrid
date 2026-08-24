@@ -10,7 +10,8 @@
 #   push develop, feature/**           build only. develop also writes the ccache
 #   workflow_dispatch                  build; tests follow the inputs
 #
-# Prerequisites in the runner, not here. Apply ARC-1526-* per RUNBOOK-1526.
+# Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
+# them; its README.md carries the full contract table for this file.
 #   pod template   shareProcessNamespace, or the shell tests hang instead of
 #                  failing; privileged, or the overlay mount fails;
 #                  imagePullPolicy Always, or nodes keep a stale image
