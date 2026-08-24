@@ -12554,7 +12554,7 @@ sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char
  * create_copy_session_from_config () - Decode the COPY config blob and build a
  *                                      copy_session.
  *   config_ptr(in): pointer to the COPY config bytes (table/ncols/options/col_types)
- *   config_len(in): length of the config blob (unused; the encoding is self-describing)
+ *   config_len(in): length of the config blob; every read below is bounded by it
  *   error_code(out): NO_ERROR or the failure code
  *   return: opened copy_session on success, NULL on error
  *
@@ -12566,7 +12566,9 @@ static stream_session *
 create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int config_len, int *error_code)
 {
   char *ptr = config_ptr;
+  const char *config_end = config_ptr + config_len;
   char *table_name = NULL;
+  int name_len = 0;
   int num_cols = 0;
   int format = 0;
   int delimiter = 0;
@@ -12578,7 +12580,30 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
 
   *error_code = NO_ERROR;
 
+  /* The blob comes straight off the wire, so bound every read by config_len
+   * before trusting a length taken from it. */
+  if (config_len < OR_INT_SIZE)
+    {
+      goto invalid_config;
+    }
+
+  name_len = OR_GET_INT (ptr);
+  if (name_len <= 0 || name_len > config_end - ptr - OR_INT_SIZE)
+    {
+      goto invalid_config;
+    }
+
   ptr = or_unpack_string_nocopy (ptr, &table_name);
+  if (table_name == NULL || table_name[name_len - 1] != '\0')
+    {
+      goto invalid_config;
+    }
+
+  if (config_end - ptr < 6 * OR_INT_SIZE)
+    {
+      goto invalid_config;
+    }
+
   ptr = or_unpack_int (ptr, &num_cols);
   /* format: 0 = BINARY, 1 = CSV */
   ptr = or_unpack_int (ptr, &format);
@@ -12586,6 +12611,11 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
   ptr = or_unpack_int (ptr, &quote);
   ptr = or_unpack_int (ptr, &header);
   ptr = or_unpack_int (ptr, &bulk);
+
+  if (num_cols <= 0 || (config_end - ptr) / OR_INT_SIZE < num_cols)
+    {
+      goto invalid_config;
+    }
 
   col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
   if (col_types == NULL)
@@ -12630,6 +12660,12 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
 	goto exit;
       }
   }
+
+  goto exit;
+
+invalid_config:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "malformed COPY session configuration");
+  *error_code = ER_STREAM_SESSION_ERROR;
 
 exit:
   if (col_types != NULL)
@@ -12677,10 +12713,18 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   char *ptr = request;
   int stream_kind = 0;
   int error_code = NO_ERROR;
+  stream_session *session = NULL;
+
+  if (reqlen < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "truncated stream session request");
+      error_code = ER_STREAM_SESSION_ERROR;
+      goto send_reply;
+    }
 
   ptr = or_unpack_int (ptr, &stream_kind);
 
-  stream_session *session = create_stream_session (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
+  session = create_stream_session (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
   if (session != NULL)
     {
       error_code = session_set_stream_session (thread_p, session);
@@ -12691,6 +12735,7 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	}
     }
 
+send_reply:
   /* On error, stage the error (code + message) so it travels with the reply;
    * the reply itself is always sent (the request/reply protocol requires it). */
   if (error_code != NO_ERROR)
@@ -12698,11 +12743,13 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       (void) return_error_to_client (thread_p, rid);
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  {
+    OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_pack_int (reply, error_code);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+    or_pack_int (reply, error_code);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
 }
 
 /*
