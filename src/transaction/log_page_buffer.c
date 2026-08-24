@@ -7756,6 +7756,11 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   const char *bk_vol;		/* ptr to old bkup volume name */
   int unit_num;
   FILEIO_BACKUP_RECORD_INFO all_bkup_info[FILEIO_BACKUP_UNDEFINED_LEVEL];
+  /* Log header backup bookkeeping as it was before this backup touched it, so that a backup which fails
+   * after the header has been flushed does not leave the header advertising a backup that was removed. */
+  LOG_HDR_BKUP_LEVEL_INFO saved_bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
+  LOG_LSA saved_bkup_level_lsa[FILEIO_BACKUP_UNDEFINED_LEVEL];
+  bool bkup_hdr_info_saved = false;
   bool beenwarned;
   bool isincremental = false;	/* Assume full backups */
   bool bkup_in_progress = false;
@@ -8323,6 +8328,15 @@ loop:
       goto error;
     }
 
+  /* Remember what the header said before this backup overwrites it. From here on the header no longer describes
+   * a backup that exists on the destination: the record becomes true only when this backup completes, and the
+   * archives are transferred after the header is flushed below. */
+  memcpy (saved_bkinfo, log_Gl.hdr.bkinfo, sizeof (saved_bkinfo));
+  LSA_COPY (&saved_bkup_level_lsa[FILEIO_BACKUP_FULL_LEVEL], &log_Gl.hdr.bkup_level0_lsa);
+  LSA_COPY (&saved_bkup_level_lsa[FILEIO_BACKUP_BIG_INCREMENT_LEVEL], &log_Gl.hdr.bkup_level1_lsa);
+  LSA_COPY (&saved_bkup_level_lsa[FILEIO_BACKUP_SMALL_INCREMENT_LEVEL], &log_Gl.hdr.bkup_level2_lsa);
+  bkup_hdr_info_saved = true;
+
   /* Clear log header information regarding previous backups */
   logpb_initialize_backup_info (&log_Gl.hdr);
 
@@ -8480,6 +8494,17 @@ error:
     }
   log_Gl.backup_in_progress = false;
   log_Gl.backup_first_arv_num_needed = -1;
+  if (bkup_hdr_info_saved)
+    {
+      /* fileio_abort_backup () above removed what this backup had written, so the header must stop claiming it.
+       * Leaving the claim behind would let the next incremental backup pass the "lower level exists" gate and
+       * build on a backup that is gone - a gap that only shows up at restore time. */
+      memcpy (log_Gl.hdr.bkinfo, saved_bkinfo, sizeof (saved_bkinfo));
+      LSA_COPY (&log_Gl.hdr.bkup_level0_lsa, &saved_bkup_level_lsa[FILEIO_BACKUP_FULL_LEVEL]);
+      LSA_COPY (&log_Gl.hdr.bkup_level1_lsa, &saved_bkup_level_lsa[FILEIO_BACKUP_BIG_INCREMENT_LEVEL]);
+      LSA_COPY (&log_Gl.hdr.bkup_level2_lsa, &saved_bkup_level_lsa[FILEIO_BACKUP_SMALL_INCREMENT_LEVEL]);
+      logpb_flush_header (thread_p);
+    }
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
