@@ -16923,31 +16923,31 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
-
-#if defined (SERVER_MODE)
-  /* A structural page must not inherit the transaction's no-wait setting; see pgbuf_set_force_latch_wait ().
-   * Resolve NULL the way that function does, so the flag is read from the entry it was written to. Do not
-   * assign to thread_p - LOG_FIND_THREAD_TRAN_INDEX below relies on its own NULL handling. */
-  {
-    THREAD_ENTRY *flag_owner_p = (thread_p != NULL) ? thread_p : thread_get_thread_entry_info ();
-
-    if (flag_owner_p != NULL && flag_owner_p->force_latch_wait)
-      {
-	return LK_INFINITE_WAIT;
-      }
-  }
-#endif /* SERVER_MODE */
+  int wait_msecs;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL)
+  wait_msecs = (tdes != NULL) ? tdes->wait_msecs : 0;
+
+#if defined (SERVER_MODE)
+  /* The two disk manager fixes must not inherit the transaction's no-wait setting; see
+   * pgbuf_set_force_latch_wait ().
+   * Lift only that setting: a finite or an already infinite policy is left as the transaction set it, because
+   * pgbuf_timed_sleep () classifies a watchdog expiry by this very value and would otherwise report a plain
+   * timeout as a unilateral abort. Resolve NULL the way pgbuf_set_force_latch_wait () does, so the flag is read
+   * from the entry it was written to. */
+  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
     {
-      return tdes->wait_msecs;
+      THREAD_ENTRY *flag_owner_p = (thread_p != NULL) ? thread_p : thread_get_thread_entry_info ();
+
+      if (flag_owner_p != NULL && flag_owner_p->force_latch_wait)
+	{
+	  return LK_INFINITE_WAIT;
+	}
     }
-  else
-    {
-      return 0;
-    }
+#endif /* SERVER_MODE */
+
+  return wait_msecs;
 }
 
 /*
