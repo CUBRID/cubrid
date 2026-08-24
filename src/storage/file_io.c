@@ -7354,8 +7354,16 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
   char *msg_area = NULL;
   char io_time_val[CTIME_MAX];
   INT64 end_time;
+  bool make_end_time_strict = false;
 
-  end_time = (INT64) time (NULL);
+  /* The caller stamps this when the log content of the backup is frozen, which is what a point in time restore
+   * has to compare commit timestamps against. Only fall back to "now" if nobody did. */
+  end_time = session_p->bkup.bkuphdr->end_time;
+  if (end_time == -1)
+    {
+      end_time = (INT64) time (NULL);
+      make_end_time_strict = true;
+    }
 
   /*
    * Indicate end of backup and flush any buffered data.
@@ -7473,11 +7481,16 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
    *   accurately separate concurrent transactions.
    * -------------------------------------------------------------------------
    */
-  do
+  if (make_end_time_strict)
     {
-      thread_sleep (1000);
+      /* Only needed when the end time was stamped here. A caller that stamps it does so while transactions are
+       * still held off, and waits there. */
+      do
+	{
+	  thread_sleep (1000);
+	}
+      while (end_time >= time (NULL));
     }
-  while (end_time >= time (NULL));
 
   return session_p;
 }
