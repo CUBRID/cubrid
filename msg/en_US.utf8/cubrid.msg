@@ -142,7 +142,7 @@ $set 5 MSGCAT_SET_ERROR
 70 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in classname hash table.
 71 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in its heap.
 72 Your transaction (index %1$d, %2$s@%3$s|%4$d) has been unilaterally aborted by the system.
-73 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d. You are waiting for user(s) %9$s to finish.
+73 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on %6$s. You are waiting for user(s) %7$s to finish.
 74 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s. You are waiting for user(s) %7$s to finish.
 75 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s. You are waiting for user(s) %10$s to finish.
 76 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s on page %6$d|%7$d. You are waiting for user(s) %8$s to release the page lock.
@@ -1036,7 +1036,7 @@ $ LOADDB
 963 Broker error.
 964 The result set handle is closed.
 965 Cannot use duplicate attribute names in index key list. Attribute name '%1$s' listed more than once.
-966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d because of deadlock. You are waiting for user(s) %9$s to finish.
+966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
 967 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
 968 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s because of deadlock. You are waiting for user(s) %10$s to finish.
 969 Server bit platform (%1$d) is different from client bit platform (%2$d).
@@ -1112,7 +1112,7 @@ $ LOADDB
 1039 log writer: log writer started. mode: %1$d.
 1040 HA generic: %1$s. 
 1041 A string was truncated in context of "%1$s".
-1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
+1042 Trying to create a string requiring %1$zu bytes of memory, while the maximum allowed is %2$d bytes.
 1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
 1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
 1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
@@ -1481,16 +1481,17 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1377 The no-logging index build exceeded its vacuum notification memory limit (%1$d bytes). Retry the loaddb while no concurrent transactions are active, or rebuild the index without the no-logging option.
 
-1378 COPY FROM is not supported for "%1$s".
+1378 Cannot change the login capability of user "%1$s".
 
-1379 COPY binary format error: %1$s.
+1379 COPY FROM is not supported for "%1$s".
 
-1380 stream session error: %1$s.
+1380 COPY binary format error: %1$s.
 
-1381 COPY CSV format error: %1$s.
+1381 stream session error: %1$s.
 
-1382 Last Error
+1382 COPY CSV format error: %1$s.
 
+1383 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -2003,7 +2004,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 336 Numeric scale specifier is out of range -84 to 127
 337 The partition name is too long.
 
-337 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 
 
 
@@ -2183,6 +2184,10 @@ $set 14 MSGCAT_SET_LOCK
 44 Index name: %1$s\n
 45 Object type: Generic object for Repeatable Read consistency.\n
 46 MVCC info: insert ID = %1$s, delete ID = %2$s.\n
+47 object %1$d|%2$d|%3$d
+48 class %1$s
+49 instance %1$d|%2$d|%3$d of class %4$s
+50 transaction MVCCID %1$llu
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n

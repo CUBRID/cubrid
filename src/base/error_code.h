@@ -1771,12 +1771,14 @@
 
 #define ER_BT_LOAD_NOTIFY_VACUUM_LIMIT              -1377
 
-#define ER_COPY_NOT_SUPPORTED                       -1378
-#define ER_COPY_BINARY_FORMAT_ERROR                 -1379
-#define ER_STREAM_SESSION_ERROR                     -1380
-#define ER_COPY_CSV_FORMAT_ERROR                    -1381
+#define ER_AU_CANT_ALTER_LOGIN                      -1378
 
-#define ER_LAST_ERROR                               -1382
+#define ER_COPY_NOT_SUPPORTED                       -1379
+#define ER_COPY_BINARY_FORMAT_ERROR                 -1380
+#define ER_STREAM_SESSION_ERROR                     -1381
+#define ER_COPY_CSV_FORMAT_ERROR                    -1382
+
+#define ER_LAST_ERROR                               -1383
 
 
 
