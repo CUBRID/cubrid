@@ -11891,6 +11891,12 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   return;
 }
 
+/* ==========================================================================================================
+ * remote DELETE + local subquery carve-out -- shape gate, same-server conversion, diagnostics.
+ * Entry points into the surrounding code: pt_dblink_delete_where_is_inscope (called from
+ * pt_convert_dblink_delete_query) and pt_dblink_delete_settle_sink (called from pt_convert_dblink_dml_query).
+ * ========================================================================================================== */
+
 /* true iff cond is a predicate the sink can push over a subquery: col IN (subquery), col {= | <> | < | > | <= |
  * >=} ANY (subquery), or a scalar comparison. Every admitted shape is satisfied by pushing the local
  * values one at a time and letting the remote compare each; ALL shapes are not, because they need the
@@ -12202,6 +12208,65 @@ pt_dblink_delete_diagnose_declined (PARSER_CONTEXT * parser, PT_NODE * node, PT_
 
   return false;
 }
+
+/* Settle the remote-DELETE-with-local-subquery carve-out for this statement: convert a same-server mixed
+ * WHERE subquery, keep the sink only when nothing remote is left unconverted, and raise the reason-specific
+ * rejections.  Called from pt_convert_dblink_dml_query once the walks above have filled snl's counters --
+ * this cannot run earlier, and it must run before the generic local-mixed-remote rejection so a DELETE gets
+ * its own message rather than the catch-all.
+ *   return: true when an error was raised (caller returns immediately)
+ */
+static bool
+pt_dblink_delete_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, PT_NODE * upd_spec,
+			      int sub_sel_server_cnt, int local_upd, int remote_upd)
+{
+  /* Same-server mixed WHERE subquery: the DELETE counterpart of the INSERT SELECT conversion in the caller. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ && sub_sel_server_cnt > 0)
+    {
+      pt_dblink_delete_convert_same_server_specs (parser, node, snl);
+    }
+
+  /* Keep the carve-out only when no remote spec is left unconverted (the step above only converts same-server
+   * ones). Otherwise clear it: same-server all-remote falls through to full pushdown, multi-remote/dblink()
+   * forms are rejected.
+   *
+   * local_cnt > 0 and distinct_cnt == 1 don't establish this alone -- both hold whether or not the same-server
+   * remote spec got converted. Walk the WHERE for a surviving (cross-server) spec instead: nothing rewrites
+   * those, and left in place they'd reach the optimizer half-built. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+    {
+      /* Single FROM spec is a precondition of this sink, established at the only site that sets the flag
+       * (pt_convert_dblink_delete_query). Asserted rather than re-checked so a future second set site -- the
+       * UPDATE extension this enum leaves room for -- fails loudly here instead of silently dropping a spec. */
+      assert (node->info.delete_.spec->next == NULL);
+
+      if (!pt_dblink_delete_where_has_remote_spec (parser, node) && snl->local_cnt > 0 && snl->distinct_cnt == 1
+	  && !snl->has_dblink_query)
+	{
+	  if (pt_dblink_delete_diagnose_confirmed_sink (parser, node, upd_spec))
+	    {
+	      return true;
+	    }
+	}
+      else
+	{
+	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
+	}
+    }
+
+  /* Diagnose the specific reasons the carve-out declined this statement, ahead of the caller's generic
+   * catch-all -- local_cnt > 0 is required so a fully-remote statement that already works through full
+   * pushdown is never misdiagnosed here. */
+  if (node->node_type == PT_DELETE && remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
+      && pt_dblink_delete_where_is_inscope (node) && pt_dblink_delete_diagnose_declined (parser, node, upd_spec))
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/* ===== end of the remote DELETE carve-out helpers ===== */
 
 static void
 pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
@@ -12554,45 +12619,9 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
 
-  /* Same-server mixed WHERE subquery: the DELETE counterpart of the conversion just above. */
-  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ && sub_sel_server_cnt > 0)
-    {
-      pt_dblink_delete_convert_same_server_specs (parser, node, snl);
-    }
-
-  /* remote DELETE + local subquery: keep the carve-out only when no remote spec is left unconverted (the
-   * block above only converts same-server ones). Otherwise clear it: same-server all-remote falls through to
-   * full pushdown, multi-remote/dblink() forms are rejected.
-   *
-   * local_cnt > 0 and distinct_cnt == 1 don't establish this alone -- both hold whether or not the same-server
-   * remote spec got converted. Walk the WHERE for a surviving (cross-server) spec instead: nothing rewrites
-   * those, and left in place they'd reach the optimizer half-built. */
-  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
-    {
-      /* Single FROM spec is a precondition of this sink, established at the only site that sets the flag
-       * (pt_convert_dblink_delete_query). Asserted rather than re-checked so a future second set site -- the
-       * UPDATE extension this enum leaves room for -- fails loudly here instead of silently dropping a spec. */
-      assert (node->info.delete_.spec->next == NULL);
-
-      if (!pt_dblink_delete_where_has_remote_spec (parser, node) && snl->local_cnt > 0 && snl->distinct_cnt == 1
-	  && !snl->has_dblink_query)
-	{
-	  if (pt_dblink_delete_diagnose_confirmed_sink (parser, node, upd_spec))
-	    {
-	      return;
-	    }
-	}
-      else
-	{
-	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
-	}
-    }
-
-  /* Diagnose the specific reasons the DELETE carve-out declined this statement, ahead of the generic
-   * catch-all below -- local_cnt > 0 is required so a fully-remote statement that already works through full
-   * pushdown is never misdiagnosed here. */
-  if (node->node_type == PT_DELETE && remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
-      && pt_dblink_delete_where_is_inscope (node) && pt_dblink_delete_diagnose_declined (parser, node, upd_spec))
+  /* Settle the remote DELETE carve-out -- convert, keep or clear, and diagnose -- in one place, before the
+   * generic rejections below. */
+  if (pt_dblink_delete_settle_sink (parser, node, snl, upd_spec, sub_sel_server_cnt, local_upd, remote_upd))
     {
       return;
     }
