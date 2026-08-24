@@ -6,6 +6,13 @@ public class RequestCode {
     public static final int ERROR = 0x04;
     public static final int INTERNAL_JDBC = 0x08;
 
+    /*
+     * The server-side connection was refused for this invocation. Distinct from ERROR so the
+     * server raises its own error code instead of trusting a message string, and so a stored
+     * procedure that caught the SQLException still fails the query.
+     */
+    public static final int ERROR_NO_SERVER_SQL = 0x20;
+
     public static final int DESTROY = 0x10;
 
     public static final int COMPILE = 0x80;

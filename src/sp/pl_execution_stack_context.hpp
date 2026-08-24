@@ -162,6 +162,14 @@ namespace cubpl
 	return m_client_callback_rejected;
       }
 
+      /* The PL server refused the connection before any callback was attempted, so the guard in
+       * send_data_to_client_recv () never ran. Arm the same sticky flag from that report, so the
+       * invocation fails in response_result () whatever the SP did with its exception. */
+      void mark_client_callback_rejected ()
+      {
+	m_client_callback_rejected = true;
+      }
+
       /* The two entry points below are the single chokepoint for everything this stack sends to
        * CAS; guarding them covers today's callbacks and any added later, with no way around. */
 

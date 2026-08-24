@@ -441,8 +441,14 @@ exit:
 	  {
 	    error_code = response_callback_command ();
 	  }
-	else if (start_code == SP_CODE_RESULT || start_code == SP_CODE_ERROR)
+	else if (start_code == SP_CODE_RESULT || start_code == SP_CODE_ERROR
+		 || start_code == SP_CODE_ERROR_NO_SERVER_SQL)
 	  {
+	    if (start_code == SP_CODE_ERROR_NO_SERVER_SQL)
+	      {
+		m_stack->mark_client_callback_rejected ();
+		start_code = SP_CODE_ERROR;
+	      }
 	    error_code = response_result (start_code, value);
 	  }
 	else

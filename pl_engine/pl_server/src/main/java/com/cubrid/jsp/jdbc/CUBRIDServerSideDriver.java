@@ -102,8 +102,8 @@ public class CUBRIDServerSideDriver implements Driver {
              * (jdbc:cubrid://...) is a separate session and is not affected - this driver only
              * accepts jdbc:default:connection.
              */
-            throw new SQLException(
-                    "a PARALLEL_ENABLE stored procedure cannot execute SQL on the server-side connection");
+            ((ExecuteThread) current).markServerSideSqlRefused();
+            throw new SQLException(ExecuteThread.SERVER_SIDE_SQL_REFUSED_MSG);
         }
 
         setDefaultProperties(info);
