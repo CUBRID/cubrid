@@ -8936,6 +8936,24 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 			}
 
 		      os_rename_file (tmp_logfiles_from_backup, to_volname);
+
+		      if (to_volid == LOG_DBLOG_ACTIVE_VOLID)
+			{
+			  /* The mount at the top of this function is what keeps anything else from opening the database
+			   * while it is being restored, and it had to be given up to replace the file it was holding.
+			   * Take it again on the restored active log: volumes are still being extracted below - archives
+			   * now come after the active log in the backup stream - and a server started in that gap would
+			   * come up on a log directory that is only half restored. */
+			  lgat_vdes =
+			    fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
+			  if (lgat_vdes == NULL_VOLDES)
+			    {
+			      success = ER_FAILED;
+			      error_code = ER_FAILED;
+			      LOG_CS_EXIT (thread_p);
+			      goto error;
+			    }
+			}
 		    }
 		  else
 		    {
