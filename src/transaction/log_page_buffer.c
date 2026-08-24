@@ -337,6 +337,8 @@ static void logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p);
 static int logpb_add_archive_page_info (THREAD_ENTRY * thread_p, int arv_num, LOG_PAGEID start_page,
 					LOG_PAGEID end_page);
 static int logpb_get_archive_num_from_info_table (THREAD_ENTRY * thread_p, LOG_PAGEID page_id);
+static int logpb_get_cdc_arv_num_to_keep (THREAD_ENTRY * thread_p);
+static int logpb_get_cdc_arv_num_for_pageid (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 
 static int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
@@ -5037,6 +5039,74 @@ logpb_get_archive_number (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
 }
 
 /*
+ * logpb_get_cdc_arv_num_for_pageid - Archive volume holding a page CDC still needs
+ *
+ * return: archive number, or -1 when it could not be worked out
+ *
+ *   pageid(in): the page to look up
+ *
+ * NOTE: This reads the archive volume through logpb_fetch_from_archive(), whose cached descriptor other paths can
+ *       close under it, so it should run as little as possible. A page never changes volume and the position CDC
+ *       holds only moves when a bundle is handed over, while removal runs far more often - so reuse the last
+ *       answer.
+ */
+static int
+logpb_get_cdc_arv_num_for_pageid (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
+{
+  static LOG_PAGEID last_pageid = NULL_PAGEID;
+  static int last_arv_num = -1;
+
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  if (pageid == last_pageid)
+    {
+      return last_arv_num;
+    }
+
+  last_arv_num = logpb_get_archive_number (thread_p, pageid);
+  last_pageid = (last_arv_num >= 0) ? pageid : NULL_PAGEID;
+
+  return last_arv_num;
+}
+
+/*
+ * logpb_get_cdc_arv_num_to_keep - Oldest archive volume that CDC may still need
+ *
+ * return: archive number, or -1 when nothing has to be kept for CDC
+ *
+ * NOTE: The value outlives the server process, so it may no longer fit the log it is read back against - the
+ *       volume can have been deleted while CDC was not protecting it, or the log can have been recreated. Such
+ *       a value protects nothing and is dropped instead of holding archives back forever.
+ */
+static int
+logpb_get_cdc_arv_num_to_keep (THREAD_ENTRY * thread_p)
+{
+  int arv_num;
+
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  if (!LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr))
+    {
+      return -1;
+    }
+
+  arv_num = LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr);
+
+  if (arv_num <= log_Gl.hdr.last_deleted_arv_num || arv_num > log_Gl.hdr.nxarv_num)
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "The archive number to keep for cdc (%d) does not fit the current log "
+		     "(last deleted %d, next to archive %d). Giving up the protection.", arv_num,
+		     log_Gl.hdr.last_deleted_arv_num, log_Gl.hdr.nxarv_num);
+
+      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
+      return -1;
+    }
+
+  return arv_num;
+}
+
+/*
  * logpb_set_unavailable_archive - Cache that given archive is unavailable
  *
  * return: nothing
@@ -6010,6 +6080,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   LOG_PAGEID cdc_first_pageid = NULL_PAGEID;
   int min_arv_required_for_cdc;
+  int cdc_arv_num_to_keep;
 
   LOG_PAGEID flashback_first_pageid = NULL_LOG_PAGEID;
   int min_arv_required_for_flashback;
@@ -6107,7 +6178,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	  _er_log_debug (ARG_FILE_LINE, "First log pageid in cdc data is %lld", cdc_first_pageid);
 	  if (cdc_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (cdc_first_pageid))
 	    {
-	      min_arv_required_for_cdc = logpb_get_archive_number (thread_p, cdc_first_pageid);
+	      min_arv_required_for_cdc = logpb_get_cdc_arv_num_for_pageid (thread_p, cdc_first_pageid);
 
 	      _er_log_debug (ARG_FILE_LINE,
 			     "First archive number used for cdc is %d , for vacuum is %d, last_arv_num_for_syscrashes : %d",
@@ -6117,12 +6188,24 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	      if (min_arv_required_for_cdc >= 0)
 		{
 		  last_arv_num_to_delete = MIN (last_arv_num_to_delete, min_arv_required_for_cdc);
+
+		  /* Record the exact volume the session needs so it survives the restart. This only gives
+		   * up volumes, so the next header flush is soon enough - a crash restores the wider value. */
+		  LOG_HDR_CDC_ARV_NUM_SET (&log_Gl.hdr, min_arv_required_for_cdc);
 		}
 	      else
 		{
 		  /* Page should be in archive. */
 		  assert (false);
 		}
+	    }
+
+	  /* Keep what the last cdc session was handed, even while it has not reconnected yet after a restart. */
+	  cdc_arv_num_to_keep = logpb_get_cdc_arv_num_to_keep (thread_p);
+	  if (cdc_arv_num_to_keep >= 0)
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "Archive number to keep for cdc is %d", cdc_arv_num_to_keep);
+	      last_arv_num_to_delete = MIN (last_arv_num_to_delete, cdc_arv_num_to_keep);
 	    }
 
 	  /* check flashback */
@@ -6239,6 +6322,7 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 
   int min_arv_required_for_cdc;
   LOG_PAGEID cdc_first_pageid;
+  int cdc_arv_num_to_keep;
 
   int min_arv_required_for_flashback;
   LOG_PAGEID flashback_first_pageid;
@@ -6309,9 +6393,25 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
       cdc_first_pageid = cdc_min_log_pageid_to_keep ();
       if (cdc_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (cdc_first_pageid))
 	{
-	  min_arv_required_for_cdc = logpb_get_archive_number (thread_p, cdc_first_pageid);
+	  min_arv_required_for_cdc = logpb_get_cdc_arv_num_for_pageid (thread_p, cdc_first_pageid);
+
+	  /* Record the exact volume the session needs so it survives the restart. This only gives up
+	   * volumes, so the next header flush is soon enough - a crash restores the wider value. */
+	  if (min_arv_required_for_cdc >= 0)
+	    {
+	      LOG_HDR_CDC_ARV_NUM_SET (&log_Gl.hdr, min_arv_required_for_cdc);
+	    }
+
 	  min_arv_required_for_cdc--;
 	  last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_cdc);
+	}
+
+      /* Keep what the last cdc session was handed, even while it has not reconnected yet after a restart. */
+      cdc_arv_num_to_keep = logpb_get_cdc_arv_num_to_keep (thread_p);
+      if (cdc_arv_num_to_keep >= 0)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Archive number to keep for cdc is %d", cdc_arv_num_to_keep);
+	  last_deleted_arv_num = MIN (last_deleted_arv_num, cdc_arv_num_to_keep - 1);
 	}
 
       /* flashback */
