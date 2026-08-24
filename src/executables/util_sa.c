@@ -70,6 +70,7 @@
 #include "thread_manager.hpp"
 #include "log_volids.hpp"
 #include "schema_system_catalog.hpp"
+#include "schema_system_catalog_constants.h"
 #include "catalog_class.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -3532,7 +3533,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	"SELECT "
 	  "[a].[class_of].[class_type] AS [class_type], "
 	  "[a].[class_of].[is_system_class] AS [is_system_class], "
-	  "IF ([a].[class_of].[is_system_class] = 0, CONCAT (LOWER ([a].[class_of].[owner].[name]), '.', [a].[class_of].[class_name]), [a].[class_of].[class_name]) AS [unique_name], "
+	  CT_CLASS_UNIQUE_NAME_EXPR ("[a].[class_of].") " AS [unique_name], "
 	  "[a].[class_of].[class_name] AS [class_name], "
 	  "LOWER ([a].[class_of].[owner].[name]) AS [owner_name], "
 	  "[a].[attr_name] AS [attr_name], "

@@ -245,8 +245,7 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
 	}
 
       sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
-	       " WHERE IF ([cl].[is_system_class] = 0,"
-	       " CONCAT (LOWER ([cl].[owner].[name]), '.', [cl].[class_name]), [cl].[class_name]) = ?");
+	       " WHERE " CT_CLASS_UNIQUE_NAME_EXPR ("[cl].") " = ?");
       break;
     case DB_OBJECT_PROCEDURE:
       sp_unique_name[0] = '\0';
@@ -593,8 +592,7 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
     {
     case DB_OBJECT_CLASS:
       sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
-	       " WHERE IF ([cl].[is_system_class] = 0,"
-	       " CONCAT (LOWER ([cl].[owner].[name]), '.', [cl].[class_name]), [cl].[class_name]) = ?");
+	       " WHERE " CT_CLASS_UNIQUE_NAME_EXPR ("[cl].") " = ?");
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
@@ -768,8 +766,7 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
     {
     case DB_OBJECT_CLASS:
       sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
-	       " WHERE IF ([cl].[is_system_class] = 0,"
-	       " CONCAT (LOWER ([cl].[owner].[name]), '.', [cl].[class_name]), [cl].[class_name]) = ?");
+	       " WHERE " CT_CLASS_UNIQUE_NAME_EXPR ("[cl].") " = ?");
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
@@ -1290,8 +1287,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
     {
     case DB_OBJECT_CLASS:
       sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
-	       " WHERE IF ([cl].[is_system_class] = 0,"
-	       " CONCAT (LOWER ([cl].[owner].[name]), '.', [cl].[class_name]), [cl].[class_name]) = ?");
+	       " WHERE " CT_CLASS_UNIQUE_NAME_EXPR ("[cl].") " = ?");
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
@@ -1555,8 +1551,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
     {
     case DB_OBJECT_CLASS:
       sprintf (obj_fetch_query, sql_query, "SELECT [c].[class_of] FROM " CT_CLASS_NAME "[c]"
-	       " WHERE IF ([c].[is_system_class] = 0,"
-	       " CONCAT (LOWER ([c].[owner].[name]), '.', [c].[class_name]), [c].[class_name]) = ?");
+	       " WHERE " CT_CLASS_UNIQUE_NAME_EXPR ("[c].") " = ?");
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");

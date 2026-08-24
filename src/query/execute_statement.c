@@ -20746,8 +20746,8 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
     }
 
   class_name = sm_remove_qualifier_name (name);
-  query = "SELECT IF ([is_system_class] = 0, CONCAT (LOWER ([owner].[name]), '.', [class_name]), [class_name]) "
-    "FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  query = "SELECT " CT_CLASS_UNIQUE_NAME_EXPR ("")
+    " FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, qualifier_name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, qualifier_name);
   assert (query_buf[0] != '\0');
