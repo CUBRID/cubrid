@@ -99,6 +99,10 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 
+#if defined(SA_MODE)
+#include "work_space.h"
+#endif /* SA_MODE */
+
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
@@ -2863,6 +2867,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
    *
    *  Initialize allocations areas for things we need
    *  Initialize the type/doain module (also sets up an area)
+   *  Initialize the workspace; recovery steps may swizzle class OIDs into MOPs
    */
 
   area_init ();
@@ -2871,6 +2876,13 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
     {
       return NULL_TRAN_INDEX;
     }
+
+#if defined(SA_MODE)
+  if (ws_init () != NO_ERROR)
+    {
+      return NULL_TRAN_INDEX;
+    }
+#endif /* SA_MODE */
 
   if (boot_restart_server (thread_p, print_restart, db_name, true, &check_coll_and_timezone, r_args, false) != NO_ERROR)
     {
@@ -5568,6 +5580,15 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
     {
       goto error_exit;
     }
+
+#if defined(SA_MODE)
+  /* recovery steps may swizzle class OIDs into MOPs */
+  error_code = ws_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+#endif /* SA_MODE */
 
   if (recreate_log == false)
     {
