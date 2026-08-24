@@ -48,6 +48,11 @@
  * and enables the bulk multi-insert fast path) */
 static const std::size_t COPY_FLUSH_BATCH_ROWS = 4096;
 
+/* upper bound on the bytes of a single row carried across chunk boundaries. A
+ * stream that never completes a row (an unbalanced CSV quote, a corrupt binary
+ * field length) would otherwise buffer without limit. */
+static const std::size_t COPY_MAX_ROW_BYTES = 64 * 1024 * 1024;
+
 copy_session::copy_session ()
   : m_class_oid (OID_INITIALIZER)
   , m_hfid (HFID_INITIALIZER)
@@ -143,6 +148,13 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
   HEAP_CACHE_ATTRINFO attrinfo;
   bool attrinfo_started = false;
 
+  if (data_len < 0 || m_leftover.size () + (std::size_t) data_len > COPY_MAX_ROW_BYTES)
+    {
+      int format_error = (m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR : ER_COPY_BINARY_FORMAT_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, format_error, 1, "a single row exceeds the maximum buffered size");
+      return format_error;
+    }
+
   /* If a previous chunk ended mid-row, prepend the leftover bytes so the
    * combined buffer starts at a row boundary. */
   std::vector<char> combined;
@@ -166,6 +178,8 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
   DB_VALUE *vals = (DB_VALUE *) db_private_alloc (thread_p, m_num_cols * sizeof (DB_VALUE));
   if (vals == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (m_num_cols * sizeof (DB_VALUE)));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
