@@ -100,7 +100,6 @@ struct locator_classname_entry
 {
   char *e_name;			/* Full name; "qualifier.name" except unqualified system classes */
   const char *e_bare_name;	/* Portion of e_name after the qualifier dot; e_name itself when unqualified */
-  int e_qualifier_len;		/* Length of the qualifier part of e_name; 0 when unqualified */
   int e_tran_index;		/* Transaction of entry */
   LOCATOR_CLASSNAME_ACTION e_current;	/* The most current action */
 };
@@ -134,7 +133,7 @@ static const INT32 locator_Pseudo_pageid_last = -0x7FFF;
 static INT32 locator_Pseudo_pageid_crt = -2;
 
 static int locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
-static void locator_split_classname (const char *name, const char **bare_name, int *qualifier_len);
+static const char *locator_bare_name (const char *name);
 static LOCATOR_CLASSNAME_ENTRY *locator_get_classname_entry (const char *classname);
 static int locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static void locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
@@ -266,28 +265,18 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 static int locator_lob_make_dir_path (char *buf, const HFID * hfid, int attrid);
 
 /*
- * locator_split_classname () - Split a possibly qualified name into qualifier and bare name
+ * locator_bare_name () - The part of a name that follows its qualifier
+ *
+ * return: Portion after the qualifier dot; the name itself when unqualified
  *
  *   name(in): Full name; "qualifier.name" or an unqualified system class name
- *   bare_name(out): Portion after the qualifier dot; name itself when unqualified
- *   qualifier_len(out): Length of the qualifier; 0 when unqualified
  */
-static void
-locator_split_classname (const char *name, const char **bare_name, int *qualifier_len)
+static const char *
+locator_bare_name (const char *name)
 {
-  const char *dot;
+  const char *dot = strchr (name, '.');
 
-  dot = strchr (name, '.');
-  if (dot != NULL)
-    {
-      *bare_name = dot + 1;
-      *qualifier_len = (int) (dot - name);
-    }
-  else
-    {
-      *bare_name = name;
-      *qualifier_len = 0;
-    }
+  return (dot != NULL) ? dot + 1 : name;
 }
 
 /*
@@ -310,7 +299,7 @@ locator_get_classname_entry (const char *classname)
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- *   entry(in/out): Entry to insert; e_bare_name and e_qualifier_len are set here
+ *   entry(in/out): Entry to insert; e_bare_name is set here
  *
  * Note: The caller must be inside CSECT_LOCATOR_SR_CLASSNAME_TABLE and must have
  *       checked that no entry with the same full name exists.
@@ -318,7 +307,7 @@ locator_get_classname_entry (const char *classname)
 static int
 locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 {
-  locator_split_classname (entry->e_name, &entry->e_bare_name, &entry->e_qualifier_len);
+  entry->e_bare_name = locator_bare_name (entry->e_name);
 
   if (mht_put (locator_Mht_classnames, entry->e_name, entry) == NULL)
     {
@@ -466,11 +455,9 @@ locator_resolve_in_other_schemas (THREAD_ENTRY * thread_p, const char *name, LC_
 {
   LOCATOR_CLASSNAME_ENTRY *candidates[2];
   LOCATOR_CLASSNAME_ENTRY *target;
-  const char *bare_name;
-  int qualifier_len;
+  const char *bare_name = locator_bare_name (name);
   int num_cand;
 
-  locator_split_classname (name, &bare_name, &qualifier_len);
   num_cand =
     locator_find_bare_name_candidates (thread_p, bare_name, name, candidates,
 				       sizeof (candidates) / sizeof (candidates[0]));
