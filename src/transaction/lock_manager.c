@@ -6086,7 +6086,8 @@ lock_initialize (void)
  *     mutexes move. That is safe only because the expanding thread is the sole
  *     user of the lock manager during recovery - client workers and most daemons
  *     do not exist yet, and the two that do self-gate while the server boots.
- *     Nothing else states that premise, so the assert below records it.
+ *     The assert below pins the phase this rests on. lock_expand_tran_lock_slots()
+ *     states the same premise where it moves the slots.
  */
 int
 lock_expand_tran_lock_table (int total_indices)
