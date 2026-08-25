@@ -38,6 +38,7 @@
 #include "object_primitive.h"
 #include "memory_alloc.h"
 #include "intl_support.h"
+#include "language_support.h"
 #include "memory_hash.h"
 #include "system_parameter.h"
 #include "object_print.h"
@@ -5015,7 +5016,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 #define DBLINK_ATTR_PRECISION (4)
 #define DBLINK_ATTR_CLASS_NAME (11)
 
-PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
+static PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   PT_TYPE_NULL,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
@@ -5134,7 +5135,21 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
       dt->info.data_type.dec_precision = attr->dec_precision;
       dt->info.data_type.precision = attr->precision;
-      dt->info.data_type.units = attr->charset;
+      if (PT_HAS_COLLATION (attr_def_node->type_enum))
+	{
+	  /* DBLink converts the remote string to the LOCAL DB codeset at run time
+	   * (the codeset conversion in dblink_scan.c). Declare the column with that
+	   * local codeset/collation so compile-time type/collation checks match the
+	   * run-time value; attr->charset (remote) diverges and breaks UNION/IN. */
+	  dt->info.data_type.units = LANG_SYS_CODESET;
+	  dt->info.data_type.collation_id = LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET);
+	}
+      else
+	{
+	  /* non-string (BIT/VARBIT/NUMERIC/...): codeset/collation are not semantically
+	   * used; keep the prior assignment. */
+	  dt->info.data_type.units = attr->charset;
+	}
     }
 
   attr_def_node->data_type = dt;

@@ -845,7 +845,7 @@ authenticate_cache::print_cache (int cache, FILE *fp)
 
   if (cache < 0)
     {
-      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_INVALID_CACHE));
+      fprintf (fp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_INVALID_CACHE));
     }
   else
     {

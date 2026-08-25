@@ -73,6 +73,12 @@ namespace cubmethod
       void free_query_handle (int id, bool is_free);
       void free_query_handle_all (bool is_free);
       void free_deferred_query_handler ();
+      bool has_deferred_query_handler () const
+      {
+	return !m_deferred_query_free_handler.empty ();
+      }
+
+      void clear_all_query_handlers ();
 
       /* find query handler */
       query_handler *get_query_handler_by_id (const int id);
@@ -131,5 +137,8 @@ namespace cubmethod
   EXPORT_IMPORT callback_handler *get_callback_handler (void);
 
 } // namespace cubmethod
+
+// C declarations
+extern void method_callback_final (void);
 
 #endif // _METHOD_CALLBACK_HPP_

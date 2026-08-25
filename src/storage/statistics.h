@@ -36,6 +36,7 @@
 
 #define STATS_SAMPLING_THRESHOLD 5000	/* sampling trial count */
 #define STATS_SAMPLING_LEAFS_MAX 5000	/* sampling leaf pages */
+#define STATS_SAMPLING_RETRY_MAX 5	/* max retry count of sampling when no non-NULL leading column was sampled */
 #define NUMBER_OF_SAMPLING_PAGES 5000
 #define EXPECTED_ROWS_PER_PAGE 20
 

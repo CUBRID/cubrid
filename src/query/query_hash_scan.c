@@ -1776,9 +1776,8 @@ fhs_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *
       return ER_FAILED;
     }
   dir_record_p = (FHS_DIR_RECORD *) ((char *) dir_page_p + location);
-  pgbuf_unfix_and_init (thread_p, dir_page_p);
-
   *out_vpid_p = dir_record_p->bucket_vpid;
+  pgbuf_unfix_and_init (thread_p, dir_page_p);
 
   return NO_ERROR;
 }

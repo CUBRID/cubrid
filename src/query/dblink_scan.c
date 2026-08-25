@@ -54,7 +54,7 @@
 #define  DATETIME_DECODE(date, dt, m, d, y, hour, min, sec, msec) \
   do \
     {  \
-      db_datetime_decode (&(dt), &d, &y, &m, &hour, &min, &sec, &msec); \
+      db_datetime_decode (&(dt), &m, &d, &y, &hour, &min, &sec, &msec); \
       date.hh = hour; \
       date.mm = min;  \
       date.ss = sec; \
@@ -410,7 +410,16 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
     {
       i = host_vars->index[n];
       value = &vd->dbval_ptr[i].data;
-      type = vd->dbval_ptr[i].domain.general_info.type;
+      /* A typed NULL (e.g. NUMERIC/DATE domain with the null flag set) must be bound as NULL,
+       * not decoded through its type branch; otherwise it yields a precision-0 error or a zero date. */
+      if (DB_IS_NULL (&vd->dbval_ptr[i]))
+	{
+	  type = DB_TYPE_NULL;
+	}
+      else
+	{
+	  type = vd->dbval_ptr[i].domain.general_info.type;
+	}
       switch (type)
 	{
 	case DB_TYPE_BIT:
@@ -449,8 +458,11 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 	  u_type = CCI_U_TYPE_NUMERIC;
 	  value = (void *) numeric_db_value_print (&vd->dbval_ptr[i], num_str);
 	  break;
-	case DB_TYPE_DOUBLE:
 	case DB_TYPE_FLOAT:
+	  a_type = CCI_A_TYPE_FLOAT;
+	  u_type = CCI_U_TYPE_FLOAT;
+	  break;
+	case DB_TYPE_DOUBLE:
 	  a_type = CCI_A_TYPE_DOUBLE;
 	  u_type = CCI_U_TYPE_DOUBLE;
 	  break;
@@ -1012,6 +1024,14 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	}
       else
 	{
+	  /* DBLINK CODESET CONVERSION (remote -> local):
+	   * cci_value holds the value in the REMOTE codeset (it was built with
+	   * col_info[].charset above). The cast below coerces it into the output
+	   * slot's domain, which carries the LOCAL DB codeset -- so the run-time
+	   * value's codeset is CHANGED here from remote to local.
+	   * INVARIANT: the parse-tree column type (pt_dblink_table_fill_attr_def in
+	   * name_resolution.c) must be declared with this SAME local codeset/collation,
+	   * or compile-time type/collation checks diverge from this run-time value. */
 	  TP_DOMAIN dom;
 	  TP_DOMAIN_STATUS status;
 

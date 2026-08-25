@@ -3419,7 +3419,7 @@ start:
  *
  * return   : Error code.
  * thread_p (in): The thread entry.
- * all_sync (out): True, if everything synchronized.
+ * all_sync (out): True, if DWB synchronized all permanent volumes.
  */
 int
 dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
@@ -3462,9 +3462,9 @@ start:
     {
       if (!DWB_IS_CREATED (initial_position_with_flags))
 	{
-	  /* Nothing to do. Everything flushed. */
+	  /* DWB is not created. Let the caller synchronize permanent volumes. */
 	  assert (dwb_Global.file_sync_helper_block == NULL);
-	  dwb_log ("dwb_flush_force: Everything flushed\n");
+	  dwb_log ("dwb_flush_force: DWB is not created\n");
 	  goto end;
 	}
 
@@ -3494,7 +3494,7 @@ start:
       if (initial_block == NULL)
 	{
 	  /* Nothing to flush. */
-	  goto end;
+	  goto end_all_sync;
 	}
 
       goto wait_for_file_sync_helper_block;
@@ -3565,9 +3565,9 @@ check_flushed_blocks:
     {
       if (!DWB_IS_CREATED (current_position_with_flags))
 	{
-	  /* Nothing to do. Everything flushed. */
+	  /* DWB was disabled. Let the caller synchronize permanent volumes. */
 	  assert (dwb_Global.file_sync_helper_block == NULL);
-	  dwb_log ("dwb_flush_force: Everything flushed\n");
+	  dwb_log ("dwb_flush_force: DWB was disabled\n");
 	  goto end;
 	}
 
@@ -3622,7 +3622,7 @@ check_flushed_blocks:
 	}
       else if (dwb_slot == NULL)
 	{
-	  /* DWB disabled meanwhile, everything flushed. */
+	  /* DWB was disabled meanwhile. Let the caller synchronize permanent volumes. */
 	  assert (dwb_Global.file_sync_helper_block == NULL);
 	  assert (!DWB_IS_CREATED (ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL)));
 	  dwb_log ("dwb_flush_force: DWB disabled = %lld\n", ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
@@ -3647,9 +3647,10 @@ wait_for_file_sync_helper_block:
     }
 #endif
 
-end:
+end_all_sync:
   *all_sync = true;
 
+end:
   dwb_log ("dwb_flush_force: Ended with position = %lld\n", ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_track, PSTAT_DWB_FLUSH_FORCE_TIME_COUNTERS);
 

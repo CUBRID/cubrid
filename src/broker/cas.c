@@ -1357,8 +1357,8 @@ cas_main (void)
 			      err_info.err_number, db_err_msg);
 		  }
 #endif /* CAS_FOR_CGW */
-		cas_log_write_and_end (0, false, msg_buf);
-		cas_slow_log_write_and_end (NULL, 0, msg_buf);
+		cas_log_write_and_end (0, false, "%s", msg_buf);
+		cas_slow_log_write_and_end (NULL, 0, "%s", msg_buf);
 
 		if (ssl_client)
 		  {

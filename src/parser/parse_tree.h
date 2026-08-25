@@ -1161,6 +1161,12 @@ enum pt_type_enum
 
   PT_TYPE_TABLE_COLUMN,		/* not a real type but a type specification of the form <table>.<column>%TYPE */
   /* which can be used only in SP parameter and return types */
+
+  PT_TYPE_SYS_REFCURSOR,	/* SYS_REFCURSOR — used only in PL/CSQL SP return types.
+				   It does not appear in the statements processing logic after parsing because
+				   it is replaced by PT_TYPE_RESULTSET after some checks during parsing.
+				 */
+
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
 
@@ -3949,8 +3955,14 @@ typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 typedef struct
 {
   int local_cnt;
-  int server_cnt;
-  int server_node_cnt;
+  int server_cnt;		/* raw count of dblink spec nodes walked so far (no dedup); unrelated to
+				 * stored_cnt/distinct_cnt below, used only to detect whether a sub-walk
+				 * encountered any new dblink spec (before/after diff) */
+  /* invariant: 0 <= stored_cnt <= 2; server[i] (0 <= i < stored_cnt) is always non-NULL */
+  int stored_cnt;		/* # entries actually stored in server[]/len[]/server_full_name[];
+				 * the only bound used for indexing/iterating those arrays */
+  int distinct_cnt;		/* # distinct remote servers found so far; multi-remote decision only,
+				 * may exceed 2 (array capacity) on overflow */
   int len[2];
   char *server_full_name[2];
   PT_NODE *server[2];

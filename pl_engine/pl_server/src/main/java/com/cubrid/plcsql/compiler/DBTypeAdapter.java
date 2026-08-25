@@ -53,6 +53,7 @@ public class DBTypeAdapter {
             case DBType.DB_TIME:
             case DBType.DB_DATETIME:
             case DBType.DB_TIMESTAMP:
+            case DBType.DB_RESULTSET:
                 return true;
         }
 
@@ -193,6 +194,8 @@ public class DBTypeAdapter {
                 return Type.DATETIME;
             case DBType.DB_TIMESTAMP:
                 return Type.TIMESTAMP;
+            case DBType.DB_RESULTSET:
+                return Type.SYS_REFCURSOR;
             default:
                 assert false : "unreachable";
                 throw new RuntimeException("unreachable");

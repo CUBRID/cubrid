@@ -7127,6 +7127,8 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
   BTREE_SCAN *BTS;
   int n, i;
   int key_cnt;
+  int leafs_max = STATS_SAMPLING_LEAFS_MAX;
+  int retry_cnt = 0;
   double exp_ratio;
   int ret = NO_ERROR;
 #if !defined(NDEBUG)
@@ -7139,9 +7141,10 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
   BTS = &(env->btree_scan);
   BTS->use_desc_index = 0;	/* init */
 
+resample:
   for (n = 0; n < STATS_SAMPLING_THRESHOLD; n++)
     {
-      if (env->stat_info->leafs >= STATS_SAMPLING_LEAFS_MAX)
+      if (env->stat_info->leafs >= leafs_max)
 	{
 	  break;		/* found all samples */
 	}
@@ -7199,6 +7202,17 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  pgbuf_unfix_and_init (thread_p, BTS->C_page);
 	}
     }				/* for (n = 0; ... ) */
+
+  /* Some keys were sampled but none of them has a non-NULL leading column (pkeys[0] == 0):
+   * the NDV of every key column will be estimated as 1 even though non-NULL values may exist
+   * in the leaf pages that were not sampled. Retry sampling to get a chance to read them. */
+  if (retry_cnt < STATS_SAMPLING_RETRY_MAX && env->pkeys_val_num > 0 && env->stat_info->keys > 0
+      && env->stat_info->pkeys[0] == 0)
+    {
+      retry_cnt++;
+      leafs_max += STATS_SAMPLING_LEAFS_MAX;
+      goto resample;
+    }
 
   /* apply distributed expension */
   if (env->stat_info->leafs > 0)
@@ -15311,7 +15325,12 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
 	  goto error;
 	}
 
-      slot_id = (int) (drand48 () * key_cnt);
+      /* Child pointers are stored in slots [1, key_cnt] (slot 0 is the node header).
+       * Since drand48() returns [0.0, 1.0), (int) (drand48 () * key_cnt) is [0, key_cnt - 1];
+       * add 1 to map it to [1, key_cnt] so that every child, including the rightmost one (slot key_cnt),
+       * can be selected. Without the "+ 1", the rightmost child is never sampled at any level,
+       * so the rightmost leaves become unreachable. */
+      slot_id = (int) (drand48 () * key_cnt) + 1;
       slot_id = MAX (slot_id, 1);
 
       assert (slot_id > 0);

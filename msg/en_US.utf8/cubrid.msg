@@ -1112,7 +1112,7 @@ $ LOADDB
 1039 log writer: log writer started. mode: %1$d.
 1040 HA generic: %1$s. 
 1041 A string was truncated in context of "%1$s".
-1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
+1042 Trying to create a string requiring %1$zu bytes of memory, while the maximum allowed is %2$d bytes.
 1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
 1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
 1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
@@ -1463,7 +1463,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1368 Invalid cursor
 
-1369 Last Error
+1369 Error occurred while handling a callback. code(%1$d), msg(%2$s)
+
+1370 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

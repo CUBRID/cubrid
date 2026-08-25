@@ -43,9 +43,6 @@
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
 
-extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
-    DB_QUERY_TYPE *column_info, bool is_holdable);
-
 using namespace cubpl;
 
 namespace cubmethod
@@ -554,6 +551,10 @@ namespace cubmethod
 	    PT_NODE *stmt = db_get_statement (db_session, 0);
 
 	    parser->custom_print |= PT_CONVERT_RANGE;
+	    /* select-list aliases (e.g. "AS col1") must survive into rewritten_query: this text is
+	     * embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime by Query.open(),
+	     * so a client reading column labels off that cursor needs them to still be there */
+	    parser->custom_print |= PT_PRINT_ALIAS;
 	    semantics.rewritten_query = parser_print_tree (parser, stmt);
 
 	    const std::vector<column_info> &column_infos = info.column_infos;
@@ -1131,6 +1132,30 @@ exit:
     m_deferred_query_free_handler.clear();
   }
 
+  void
+  callback_handler::clear_all_query_handlers ()
+  {
+    /* must run before ws_final(); query_handler dtor walks ws_heap-allocated host_variables */
+    for (auto it = m_deferred_query_free_handler.begin (); it != m_deferred_query_free_handler.end (); it++)
+      {
+	delete *it;
+      }
+    m_deferred_query_free_handler.clear ();
+
+    for (size_t i = 0; i < m_query_handlers.size (); i++)
+      {
+	if (m_query_handlers[i] != nullptr)
+	  {
+	    delete m_query_handlers[i];
+	    m_query_handlers[i] = nullptr;
+	  }
+      }
+    m_query_handlers.clear ();
+
+    m_sql_handler_map.clear ();
+    m_qid_handler_map.clear ();
+  }
+
   query_handler *
   callback_handler::get_query_handler_by_query_id (const uint64_t qid)
   {
@@ -1177,4 +1202,15 @@ exit:
   {
     return &handler;
   }
+}
+
+/* called from boot_client_all_finalize() before ws_final() */
+void
+method_callback_final (void)
+{
+  cubmethod::callback_handler *h = cubmethod::get_callback_handler ();
+  if (h != NULL)
+    {
+      h->clear_all_query_handlers ();
+    }
 }

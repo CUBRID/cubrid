@@ -530,6 +530,7 @@ static KEYWORD_RECORD keywords[] = {
   {SUPERSETEQ, "SUPERSETEQ", 0},
   {SYNONYM, "SYNONYM", 1},
   {SYS_CONNECT_BY_PATH, "SYS_CONNECT_BY_PATH", 0},
+  {SYS_REFCURSOR, "SYS_REFCURSOR", 0},
   {SYSTEM, "SYSTEM", 1},
   {SYSTEM_USER, "SYSTEM_USER", 0},
   {SYS_DATE, "SYS_DATE", 0},
@@ -1097,7 +1098,7 @@ pt_find_function_name (const char *text)
 #endif
     }
 
-  char temp[MAX_KEYWORD_SIZE];
+  char temp[DB_MAX_IDENTIFIER_LENGTH];
 
   dummy.keyword = temp;
   return (FUNCTION_MAP *) find_keyword_tables (functions, dummy, finfo, keyword_hash_comparator < FUNCTION_MAP >, text);
