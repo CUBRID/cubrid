@@ -121,9 +121,8 @@ extern void dblink_2pc_completion_ref (DBLINK_2PC_COMPLETION * completion);
 extern void dblink_2pc_completion_unref (DBLINK_2PC_COMPLETION * completion);
 
 /*
- * Settle one entry - see the three cases above.  Signals the completion when none are left, then consumes
- * that entry's reference, so the caller must not touch the completion afterwards.  Not called on a
- * failed delivery: that entry is retried and stays counted.
+ * Settle one entry - the Ownership rule above says when it is called.  Signals the completion when none
+ * are left, then consumes that entry's reference, so the caller must not touch the completion afterwards.
  */
 extern void dblink_2pc_completion_settle (DBLINK_2PC_COMPLETION * completion);
 

@@ -99,9 +99,6 @@ static dblink_2pc_daemon_context_manager * dblink_2pc_Daemon_context_manager = N
  * dblink_2pc_completion_create - Create a completion for num_participants decisions.
  *
  * return: the completion, or NULL if it could not be created
- *
- * Note: NULL is a usable outcome, not an error - the caller then skips the wait and the daemon
- *       delivers the decision as it does today.  Every other completion function accepts NULL.
  */
 DBLINK_2PC_COMPLETION *
 dblink_2pc_completion_create (int num_participants)
@@ -181,10 +178,7 @@ dblink_2pc_completion_unref (DBLINK_2PC_COMPLETION * completion)
 /*
  * dblink_2pc_completion_settle - Settle one entry and consume its reference.
  *
- * Note: called when a decision was delivered, and when an entry that took a reference never made it
- *       into the queue - so remaining is never left counting an entry that no longer exists.  It is
- *       deliberately not called on a failed delivery: that entry is re-enqueued and keeps its slot.
- *       The signal is sent while the mutex is held; the completion cannot be freed underneath us
+ * Note: the signal is sent while the mutex is held; the completion cannot be freed underneath us
  *       because this call still owns a reference until it releases one at the end.
  */
 void
@@ -214,10 +208,8 @@ dblink_2pc_completion_settle (DBLINK_2PC_COMPLETION * completion)
  *
  * return: true if all were settled, false on timeout
  *
- * Note: false is not an error.  The decisions stay queued and the daemon keeps delivering them,
- *       which is the pre-existing asynchronous behaviour.  A timeout_msec of 0 or less yields a
- *       deadline in the past, which polls rather than blocks - that is a usable meaning, so it is
- *       documented instead of rejected.
+ * Note: a timeout_msec of 0 or less yields a deadline in the past, so the loop below polls once
+ *       rather than blocking.
  */
 bool
 dblink_2pc_completion_wait (DBLINK_2PC_COMPLETION * completion, int timeout_msec)
@@ -232,8 +224,7 @@ dblink_2pc_completion_wait (DBLINK_2PC_COMPLETION * completion, int timeout_msec
 
   /* pthread_cond_timedwait takes an absolute CLOCK_REALTIME deadline, so compute it once and let
    * the loop below re-check it on every wakeup - that absorbs spurious wakeups and keeps the total
-   * wait at the bound however many times we wake, which recomputing a relative timeout would not.
-   * The existing waits in the tree take the same approach - see broker.c. */
+   * wait at the bound however many times we wake, which recomputing a relative timeout would not. */
   clock_gettime (CLOCK_REALTIME, &deadline);
   deadline.tv_sec += timeout_msec / 1000;
   deadline.tv_nsec += (long) (timeout_msec % 1000) * 1000000L;
