@@ -235,9 +235,23 @@ jobs:
                 emit run false
                 exit 0
               fi
-              # Pin the head commit. A branch name is a moving target.
-              sha=$(gh api "repos/${REPO}/pulls/${pr}" --jq '.head.sha') || {
-                echo "::error::could not read the head SHA of PR ${pr}"; exit 1; }
+              # Pin the head commit. A branch name is a moving target. The base ref
+              # comes along in the same call: issue_comment takes no branches: filter,
+              # so the base branch range is enforced here or nowhere.
+              pull=$(gh api "repos/${REPO}/pulls/${pr}" --jq '[.head.sha, .base.ref] | @tsv') || {
+                echo "::error::could not read PR ${pr}"; exit 1; }
+              sha=$(printf '%s' "$pull" | cut -f1)
+              base=$(printf '%s' "$pull" | cut -f2)
+              echo "comment: base branch ${base}"
+              # Same range as the pull_request trigger's branches: filter. release/11.x
+              # builds against a different toolchain, so this image cannot test it.
+              case "$base" in
+                develop|feature/*) ;;
+                *)
+                  echo "[info] base branch is out of scope, ignoring: $base"
+                  emit run false
+                  exit 0 ;;
+              esac
               ;;
 
             *)
@@ -367,21 +381,22 @@ jobs:
           set -eo pipefail
           # No `step halt` in GHA: emit an output and gate later steps on it.
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
+          # Named reuse, not mode: this job already calls the matrix leg MODE.
           if [ "$INPUT_FORCE" = 'true' ]; then
             echo "force_build=true, rebuilding even though an artifact exists"
-            mode=built
+            reuse=built
           elif [ -f "$dir/$BUILD_SENTINEL" ]; then
             echo "already published: $dir"
-            mode=reused
+            reuse=reused
           else
             echo "nothing published, building"
-            mode=built
+            reuse=built
           fi
-          echo "mode=$mode"
-          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "reuse=$reuse"
+          echo "reuse=$reuse" >> "$GITHUB_OUTPUT"
 
       - name: 2. Source, borrowed from the mirror with only the delta fetched
-        if: steps.reuse.outputs.mode != 'reused'
+        if: steps.reuse.outputs.reuse != 'reused'
         run: |
           set -eo pipefail
           cd "$GITHUB_WORKSPACE"
@@ -415,7 +430,7 @@ jobs:
           echo "build serial: $(git rev-list --count HEAD)"
 
       - name: 3. Build, from the source root
-        if: steps.reuse.outputs.mode != 'reused'
+        if: steps.reuse.outputs.reuse != 'reused'
         run: |
           set -eo pipefail
           # entrypoint's run_build writes build.log to cwd but checks $CUBRID_SRCDIR.
@@ -449,26 +464,47 @@ jobs:
         run: |
           set -eo pipefail
           swept=0
-          for pat in "$CI_BUILD_ROOT"/*/*/*.tmp.* "$CI_BUILD_ROOT"/*/*/*.old.* \
-                     "$CI_ROOT"/runs/*/testtools "$CI_ROOT"/runs/*/testtools.tmp.* ; do
-            # An unmatched glob arrives as the pattern itself; -e filters it out.
-            [ -e "$pat" ] || continue
-            # Leave this run's own files alone.
-            case "$pat" in *".${GITHUB_RUN_ID}"|*"/${GITHUB_RUN_ID}/"*) continue ;; esac
-            [ -n "$(find "$pat" -maxdepth 0 -mtime +0 2>/dev/null)" ] || continue
-            echo "removing: $pat ($(du -sh "$pat" 2>/dev/null | cut -f1))"
-            rm -rf "$pat" && swept=$((swept + 1))
-          done
+          sweep() {
+            local age="$1" pat
+            shift
+            for pat in "$@"; do
+              # An unmatched glob arrives as the pattern itself; -e filters it out.
+              [ -e "$pat" ] || continue
+              # Leave this run's own files alone.
+              case "$pat" in *".${GITHUB_RUN_ID}"|*"/${GITHUB_RUN_ID}/"*) continue ;; esac
+              [ -n "$(find "$pat" -maxdepth 0 -mtime "+$age" 2>/dev/null)" ] || continue
+              echo "removing: $pat ($(du -sh "$pat" 2>/dev/null | cut -f1))"
+              rm -rf "$pat" && swept=$((swept + 1))
+            done
+          }
+          # Staging is dead the moment its run ended, so a day is generous.
+          sweep 0 "$CI_BUILD_ROOT"/*/*/*.tmp.* "$CI_BUILD_ROOT"/*/*/*.old.* \
+                  "$CI_ROOT"/runs/*/testtools.tmp.*
+          # The CTP seed is what a native "Re-run failed jobs" reads: plan does not run
+          # again, so deleting the seed makes every re-run shard die at "no CTP seed".
+          # GitHub keeps that button for 30 days; this window is 7 (59MB per run).
+          sweep 7 "$CI_ROOT"/runs/*/testtools
           echo "swept: $swept"
 
       - name: 4. Publish, staged then moved in with one rename
         id: publish
         env:
-          # Not MODE: the job already uses that name for the matrix mode.
-          REUSE: ${{ steps.reuse.outputs.mode }}
+          INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
+          REUSE: ${{ steps.reuse.outputs.reuse }}
         run: |
           set -eo pipefail
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
+
+          # The reuse decision is 8 to 40 minutes old by now, and a duplicate run on
+          # the same SHA -- push feature/** and pull_request synchronize both fire on
+          # one commit -- publishes into this very path. Reading the sentinel again
+          # saves the 700MB staging copy when the other run is already done. It does
+          # NOT decide the race: see the rename below.
+          if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] \
+             && [ -f "$dir/$BUILD_SENTINEL" ]; then
+            echo "another run published this build first, keeping theirs: $dir"
+            REUSE=reused
+          fi
 
           if [ "$REUSE" = 'reused' ]; then
             echo "reused, not publishing: $dir"
@@ -488,22 +524,40 @@ jobs:
             # Sentinel created inside staging, so the rename never exposes a partial tree.
             touch "$tmp/$BUILD_SENTINEL"
 
-            # rename(2) cannot replace a non-empty directory, so force_build needs two
-            # renames. $dir is briefly absent -- plan's sentinel check catches that.
-            old="${dir}.old.${GITHUB_RUN_ID}"
-            rm -rf "$old"
-            if [ -e "$dir" ]; then
-              mv -T "$dir" "$old" || {
-                rm -rf "$tmp"
-                echo "::error::could not move the old artifact aside: $dir"; exit 1; }
-            fi
-            if ! mv -T "$tmp" "$dir"; then
-              # Roll back. The old build surviving beats nothing surviving.
-              [ -e "$old" ] && mv -T "$old" "$dir"
+            # rename(2) refuses to replace a non-empty directory, and on a shared
+            # filesystem that refusal is the only atomic arbiter there is. Checking
+            # first and acting after loses a race whose window is the staging copy
+            # above: measured in the fork, runs 32835135072 and 32835140419 built the
+            # same SHA, the second read the sentinel one second before the first wrote
+            # it, and replaced a tree that had just been published. So try the plain
+            # rename and let the loser find out from the kernel.
+            if mv -T "$tmp" "$dir" 2>/dev/null; then
+              echo "published: $dir"
+            elif [ -f "$dir/$BUILD_SENTINEL" ] && [ "$INPUT_FORCE" != 'true' ]; then
+              # Lost. Their tree is finished and a shard may already have it mounted
+              # as its overlay lowerdir, so it stays and ours goes -- the same choice
+              # the CircleCI baseline makes (config.yml 430-436).
+              echo "another run published this build first, keeping theirs: $dir"
               rm -rf "$tmp"
-              echo "::error::could not move the new artifact in: $dir"; exit 1
+            else
+              # force_build, or a tree with no sentinel: published before this
+              # workflow, or left behind by a run that died mid-publish. Replacing it
+              # takes two renames, and $dir is briefly absent -- plan's sentinel check
+              # catches that.
+              old="${dir}.old.${GITHUB_RUN_ID}"
+              rm -rf "$old"
+              if [ -e "$dir" ] && ! mv -T "$dir" "$old"; then
+                rm -rf "$tmp"
+                echo "::error::could not move the old artifact aside: $dir"; exit 1
+              fi
+              if ! mv -T "$tmp" "$dir"; then
+                # Roll back. The old build surviving beats nothing surviving.
+                [ -e "$old" ] && mv -T "$old" "$dir"
+                rm -rf "$tmp"
+                echo "::error::could not move the new artifact in: $dir"; exit 1
+              fi
+              rm -rf "$old"
             fi
-            rm -rf "$old"
           fi
 
           # plan and shard assume these three exist. Better to die here.
@@ -567,6 +621,9 @@ jobs:
       run:
         shell: bash
     env:
+      # Stated, not inherited from the image's ENV: both tags are mutable, so an
+      # upstream rebuild that moves WORKDIR would break the CTP publish silently.
+      WORKDIR: /home
       TC_DIR: /home/cubrid-testcases-private-ex
       # The suite always runs against the debug build, in the namespace gate chose.
       BUILD_NS: ${{ needs.gate.outputs.build_ns }}
@@ -688,11 +745,35 @@ jobs:
             TC_BRANCH=develop
           fi
 
-          # May not exist, e.g. a PR opened before the sync bot. Falls back to develop.
-          if ! git ls-remote --exit-code --heads "$TC_REPO" "$TC_BRANCH" >/dev/null 2>&1; then
-            echo "::warning::$TC_BRANCH does not exist, falling back to develop"
-            TC_BRANCH=develop
-          fi
+          # The branch may not exist, e.g. a PR opened before the sync bot ran, and
+          # then develop is right. A network error is not that. ls-remote exits 2 for
+          # "no such ref" and non-zero otherwise, so retry like the baseline's
+          # resolve_sha (config.yml 168-179) and only fall back on a real absence --
+          # a transient failure silently testing develop's cases misattributes results.
+          tc_probe() {
+            local i rc
+            for i in 1 2 3 4 5; do
+              rc=0
+              git ls-remote --exit-code --heads "$TC_REPO" "$1" >/dev/null 2>&1 || rc=$?
+              [ "$rc" -eq 0 ] && return 0
+              [ "$rc" -eq 2 ] && return 2
+              echo "::warning::ls-remote '$1' failed (attempt $i, exit $rc); retrying"
+              sleep $((i * 3))
+            done
+            return 1
+          }
+          probe_rc=0
+          tc_probe "$TC_BRANCH" || probe_rc=$?
+          case "$probe_rc" in
+            0) ;;
+            2)
+              echo "::warning::$TC_BRANCH does not exist, falling back to develop"
+              TC_BRANCH=develop ;;
+            *)
+              echo "::error::could not reach $TC_REPO after 5 attempts. Not falling back"
+              echo "  to develop: the run would report failures against the wrong cases."
+              exit 1 ;;
+          esac
           echo "tc branch  : $TC_BRANCH"
 
           # Same command the CircleCI test_shell runs on every node.
@@ -1108,6 +1189,8 @@ jobs:
           printf 'tc_sha=%s\ntc_branch=%s\n' "$got" "$TC_BRANCH" > "$out/tc.read"
 
       - name: Keep only my share
+        env:
+          MINE_N: ${{ steps.mine.outputs.n }}
         run: |
           set -eo pipefail
           rm -rf "$TC_DIR/shell/_25_unstable"
@@ -1124,7 +1207,7 @@ jobs:
             | xargs -r rm -rf
 
           left=$(find "$TC_DIR/shell" -path '*/cases/*.sh' 2>/dev/null | grep -Pc '/([^/]+)/cases/\1\.sh$' || echo 0)
-          echo "cases left: $left (expected: ${{ steps.mine.outputs.n }})"
+          echo "cases left: $left (expected: $MINE_N)"
           # Both are tmpfs and charged to this container's memory cgroup, with no
           # swap to reclaim to. This is the baseline before any test has run;
           # "Publish results for collect" reports the cgroup high-water mark.
@@ -1149,6 +1232,9 @@ jobs:
 
       - name: Publish results for collect
         if: always()
+        env:
+          MINE_N: ${{ steps.mine.outputs.n }}
+          CTP_RC: ${{ steps.ctp.outputs.rc }}
         run: |
           set -eo pipefail
           out="$RUNDIR/results/${IDX}"
@@ -1161,9 +1247,56 @@ jobs:
             done
           fi
 
+          # Those three files say a case failed, never why. The pod and its overlay are
+          # gone seconds after this step, so the evidence has to leave now -- on failure
+          # only, because a green 50-shard run would write 50 archives nobody reads.
+          # The baseline uploaded the same three things (config.yml 323-336).
+          #
+          # "Failed" is not ctp's exit code. Measured in the fork, run 32834158935:
+          # shard 00 reported `ctp exit: 0` with 8 of its 10 cases failed. ctp.sh
+          # returns 0 for a completed suite whatever the cases did, which is why the
+          # Verdict step below reads the status file instead. Read the same file here,
+          # and treat a missing one as a failure: then the tests never ran at all.
+          fail_n=0
+          if [ -f "$out/test_status.data" ]; then
+            fail_n=$(awk -F= '/total_fail_case_count/ {print $2+0}' "$out/test_status.data")
+          fi
+          if [ "${CTP_RC:-1}" != '0' ] || [ "$fail_n" -gt 0 ] \
+             || [ ! -f "$out/test_status.data" ]; then
+            echo "=== ctp_rc=${CTP_RC:-(step did not run)} failed_cases=$fail_n:"
+            echo "=== keeping the failure evidence ==="
+
+            if [ -d "$logs" ]; then
+              real=$(readlink -f "$logs")
+              tar czf "$out/ctp_log.tgz" -C "$(dirname "$real")" "$(basename "$real")" \
+                || echo "::warning::could not archive $logs"
+            fi
+
+            # The cases this shard owned. plan's copy is the same list, but a reader of
+            # a failed shard should not have to go looking for it.
+            cp -f "$RUNDIR/shards/${IDX}.list" "$out/tc.list" \
+              || echo "::warning::no case list for shard ${IDX}"
+
+            # 1 GiB per file (decision 36). A debug core runs several GiB and 50 shards
+            # share one GlusterFS volume, so an oversized core is recorded, not copied.
+            cores="$CUBRID_DIR/log/coredump"
+            if [ -d "$cores" ]; then
+              mkdir -p "$out/coredump"
+              find "$cores" -maxdepth 1 -type f -print | while read -r c; do
+                sz=$(stat -c '%s' "$c")
+                if [ "$sz" -le 1073741824 ]; then
+                  cp -f "$c" "$out/coredump/"
+                else
+                  echo "::warning::core $(basename "$c") is $((sz / 1048576)) MB, over the 1 GiB cap: not copied"
+                  printf '%s\t%s\n' "$(basename "$c")" "$sz" >> "$out/coredump/oversized.tsv"
+                fi
+              done
+            fi
+          fi
+
           # Marks that the shard got this far. Without it collect counts it as dead.
           printf 'idx=%s\nassigned=%s\nctp_rc=%s\n' \
-            "$IDX" "${{ steps.mine.outputs.n }}" "${{ steps.ctp.outputs.rc }}" > "$out/shard.done"
+            "$IDX" "$MINE_N" "${CTP_RC}" > "$out/shard.done"
 
           printf 'end\t%s\n' "$(date -u +%s)" >> "$STAMPS/shard-${IDX}.tsv"
 
@@ -1189,6 +1322,8 @@ jobs:
 
       - name: Verdict
         if: always()
+        env:
+          MINE_N: ${{ steps.mine.outputs.n }}
         run: |
           set -eo pipefail
           out="$RUNDIR/results/${IDX}"
@@ -1198,7 +1333,7 @@ jobs:
           exec_n=$(awk -F= '/total_executed_case_count/ {print $2+0}' "$st")
           fail_n=$(awk -F= '/total_fail_case_count/ {print $2+0}' "$st")
           skip_n=$(awk -F= '/total_skip_case_count/ {print $2+0}' "$st")
-          want="${{ steps.mine.outputs.n }}"
+          want="$MINE_N"
           echo "assigned $want / run $exec_n / failed $fail_n / skipped $skip_n"
 
           # run + skipped must equal what was assigned; fewer means silent loss.
