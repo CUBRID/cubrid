@@ -528,15 +528,10 @@ namespace cubschema
 	DB_QUERY_RESULT *result = NULL;
 	STATEMENT_ID stmt_id;
 	DB_VALUE value;
+	DB_VALUE host_var;
 	char select_query[DB_MAX_IDENTIFIER_LENGTH + 256] = { 0 };
 	DB_BIGINT cnt_refers = CNT_CATCLS_OBJECTS + 1;
 	int au_save;
-
-	const char *class_name = db_get_class_name (m_mop);
-	if (class_name == NULL)
-	  {
-	    return ER_FAILED;
-	  }
 
 	/*
 	 * !!CAUTION!!
@@ -556,9 +551,9 @@ namespace cubschema
 	AU_SAVE_AND_DISABLE (au_save);
 
 	(void) snprintf (select_query, sizeof (select_query),
-			 "SELECT COUNT(*) FROM [_db_domain] WHERE [data_type]=%d AND ("
-			 CT_CLASS_UNIQUE_NAME_EXPR ("[class_of].") " = '%s' OR [class_of] IS NULL) AND ROWNUM <= %d",
-			 DB_TYPE_OBJECT, class_name, CNT_CATCLS_OBJECTS + 1);
+			 "SELECT COUNT(*) FROM [_db_domain] WHERE [data_type]=%d AND "
+			 "([class_of].[class_of] = ? OR [class_of] IS NULL) AND ROWNUM <= %d",
+			 DB_TYPE_OBJECT, CNT_CATCLS_OBJECTS + 1);
 
 	session = db_open_buffer (select_query);
 	if (session == NULL)
@@ -574,6 +569,15 @@ namespace cubschema
 	  {
 	    assert (er_errid () != NO_ERROR);
 	    error = er_errid ();
+	    db_close_session (session);
+	    AU_RESTORE (au_save);
+	    return error;
+	  }
+
+	db_make_object (&host_var, m_mop);
+	error = db_push_values (session, 1, &host_var);
+	if (error != NO_ERROR)
+	  {
 	    db_close_session (session);
 	    AU_RESTORE (au_save);
 	    return error;
