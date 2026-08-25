@@ -17,7 +17,7 @@
  */
 
 //
-// log_inflight_ring - the bounded, LSA-keyed ring behind the in-flight window
+// log_prior_inflight_ring - the bounded, LSA-keyed ring behind the in-flight window
 //
 //    Storage and cursor discipline only. Which nodes are worth staging, how a retired node stays alive
 //    while a reader is on it, and what to do when the ring and the prior list disagree all stay with the
@@ -61,11 +61,11 @@
 //
 //    The size is a template parameter so a test can run the same protocol on a ring small enough for slot
 //    reuse to race the scan, which at the size the window uses would take a reader stalling for a whole
-//    lap. log_inflight_ring below is the one the window instantiates.
+//    lap. The ring does not pick a size; the window does, where it declares its own.
 //
 
-#ifndef _LOG_INFLIGHT_RING_HPP_
-#define _LOG_INFLIGHT_RING_HPP_
+#ifndef _LOG_PRIOR_INFLIGHT_RING_HPP_
+#define _LOG_PRIOR_INFLIGHT_RING_HPP_
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Wrong module
@@ -81,7 +81,7 @@
 struct log_prior_node;
 
 template <std::uint64_t Capacity, std::uint64_t ScanLimit>
-class log_inflight_ring_t
+class log_prior_inflight_ring
 {
   public:
     static constexpr std::uint64_t CAPACITY = Capacity;
@@ -255,15 +255,4 @@ class log_inflight_ring_t
     std::atomic<std::uint64_t> m_tail { 0 };	/* advanced by the producer */
 };
 
-/*
- * The window's ring. 64Ki slots = 1 MiB, far fewer than the prior list allows - logpb_get_memsize () is
- * 64M-256M - so a flush that falls behind fills it. The owner then stops staging and readers drain, as
- * they did before the window existed.
- *
- * The scan limit is how far back a reader walks before giving up. Past that depth the walk costs more than
- * the drain it is avoiding, and a window that deep means the flush is behind - which is when the wanted
- * version is least likely to still be staged.
- */
-using log_inflight_ring = log_inflight_ring_t<1 << 16, 1 << 12>;
-
-#endif // !_LOG_INFLIGHT_RING_HPP_
+#endif // !_LOG_PRIOR_INFLIGHT_RING_HPP_

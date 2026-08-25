@@ -16,14 +16,14 @@
  */
 
 /*
- * test_inflight_ring.cpp - functional testing for log_inflight_ring
+ * test_inflight_ring.cpp - functional testing for log_prior_inflight_ring
  */
 
 #include "test_inflight_ring.hpp"
 
 #include "test_output.hpp"
 
-#include "log_inflight_ring.hpp"
+#include "log_prior_inflight_ring.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -341,13 +341,13 @@ namespace test_lockfree
   test_inflight_ring_functional (void)
   {
     /* 1 MiB of slots - too big for the stack */
-    static log_inflight_ring window_ring;
+    static log_prior_inflight_ring<1 << 16, 1 << 12> window_ring;
 
     /* The same protocol on a ring the producer laps in 16 pushes. At the window's size a slot is reused
      * only after a whole lap, so the recheck in find () - the guard against reading a recycled slot -
      * never actually races there. Here the scan covers the whole ring, so the deepest probe lands on a
      * slot the producer is about to overwrite. */
-    static log_inflight_ring_t<16, 16> lapping_ring;
+    static log_prior_inflight_ring<16, 16> lapping_ring;
 
     const std::uint64_t op_count = 200000;
     /* the lapping round is where the recheck is on trial, and a hit that proves it is rare - give it

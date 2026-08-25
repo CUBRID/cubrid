@@ -21,7 +21,7 @@
 //
 
 /*
- * Who fills the three roles log_inflight_ring.hpp lays out, and what serializes each:
+ * Who fills the three roles log_prior_inflight_ring.hpp lays out, and what serializes each:
  *   push          register (), append path, under prior_lsa_mutex - one writer, in LSA order
  *   pop_if_head   retire (), drain, in that same order, so always the node at the ring head
  *   find          pin_lookup (), reader, wait-free
@@ -38,7 +38,7 @@
 #include "lockfree_transaction_system.hpp"
 #include "lockfree_transaction_table.hpp"
 #include "log_impl.h"
-#include "log_inflight_ring.hpp"
+#include "log_prior_inflight_ring.hpp"
 #include "thread_entry.hpp"
 #include "thread_lockfree_hash_map.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -46,7 +46,17 @@
 
 namespace
 {
-  log_inflight_ring log_Inflight_ring;
+  /* 64Ki slots = 1 MiB, far fewer than the prior list allows - logpb_get_memsize () is 64M-256M - so a
+   * flush that falls behind fills the ring. Registration then stops and readers drain, as they did before
+   * the window existed. */
+  constexpr uint64_t LOG_INFLIGHT_CAPACITY = 1 << 16;
+
+  /* How far back a reader walks before giving up and draining instead. Past this depth the walk costs more
+   * than the drain it is avoiding, and a window this deep means the flush is behind - which is when the
+   * wanted version is least likely to still be staged. */
+  constexpr uint64_t LOG_INFLIGHT_SCAN_LIMIT = 1 << 12;
+
+  log_prior_inflight_ring<LOG_INFLIGHT_CAPACITY, LOG_INFLIGHT_SCAN_LIMIT> log_Inflight_ring;
 
   /* Owned by the log page buffer pool so it is destroyed before lf_destroy_transaction_systems () takes
    * the system it refers to, as every lockfree_hashmap does. NULL while the pool is down; atomic because
