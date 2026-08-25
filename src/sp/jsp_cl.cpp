@@ -4805,25 +4805,23 @@ jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p)
       if (last_dot != NULL)
 	{
 	  int len = (int) (last_dot - uname);
-	  if (len > 0 && len <= DB_MAX_IDENTIFIER_LENGTH)
-	    {
-	      char pkg_unique[DB_MAX_IDENTIFIER_LENGTH + 1];
-	      memcpy (pkg_unique, uname, len);
-	      pkg_unique[len] = '\0';
+	  assert (len > 0 && len <= DB_MAX_IDENTIFIER_LENGTH);
+	  char pkg_unique[DB_MAX_IDENTIFIER_LENGTH + 1];
+	  memcpy (pkg_unique, uname, len);
+	  pkg_unique[len] = '\0';
 
-	      DB_VALUE v;
-	      db_make_string (&v, pkg_unique);
-	      pkg_mop = db_find_unique (db_find_class (CT_PACKAGE_NAME), PKG_ATTR_UNIQUE_NAME, &v);
-	      if (pkg_mop == NULL)
+	  DB_VALUE v;
+	  db_make_string (&v, pkg_unique);
+	  pkg_mop = db_find_unique (db_find_class (CT_PACKAGE_NAME), PKG_ATTR_UNIQUE_NAME, &v);
+	  if (pkg_mop == NULL)
+	    {
+	      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
 		{
-		  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
-		    {
-		      er_clear ();
-		    }
-		  else
-		    {
-		      error = er_errid ();
-		    }
+		  er_clear ();
+		}
+	      else
+		{
+		  error = er_errid ();
 		}
 	    }
 	}
