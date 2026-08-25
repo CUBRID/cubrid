@@ -1470,9 +1470,7 @@ sql_build_error:
 }
 
 /*
- * Restoring the pushed value's declared type -- the whole policy in one place. The other sites carry a
- * pointer here instead of a copy: DELETE_PROC_NODE::remote_src_type (xasl.h),
- * pt_to_delete_xasl_remote_subquery() (xasl_generation.c), and the helpers and call sites below.
+ * Restoring the pushed value's declared type -- the whole policy in one place.
  *
  * The sink pushes the local subquery's value as a bare placeholder -- the marker, in the CCI terms the code
  * below uses -- so the remote resolves its domain from the target column and reshapes the value into it.
@@ -1488,13 +1486,9 @@ sql_build_error:
  *   anything else      | --                             | bare "?"
  *
  * Both rows are gated on the remote being CUBRID: CAST is CUBRID syntax that Oracle and MySQL reject.
- *
- * Why the two rows are decided at different times: for VARCHAR the marker would add nothing -- casting is
- * right for every target measured (CHAR, VARCHAR, INT, NUMERIC, DATE, BIT) and keeps the remote index (a
- * CHAR column against CAST(? AS VARCHAR) still reads one key) -- so it rides the first prepare and the
- * statement is never prepared twice. Date/time has to ask, because there an unnecessary cast costs the
- * remote index and the sink pays that once per pushed row; asking buys the ability to leave the bare
- * placeholder alone when the domains already agree.
+ * VARCHAR rides the first prepare -- measured against CHAR, VARCHAR, INT, NUMERIC, DATE, BIT, and
+ * CAST(? AS VARCHAR) still uses a CHAR index. Date/time asks so an agreeing domain keeps "?" -- an extra
+ * CAST costs the remote index once per pushed row.
  *
  * A zone-qualified *source* is a separate problem no cast can reach: cci_bind_param rejects those types, so
  * the statement errors before any comparison happens.
@@ -1505,8 +1499,8 @@ sql_build_error:
  *   return: true only for a direct or proxied CUBRID connection
  *   conn_handle(in): open CCI connection
  *
- * Free to ask: cci_get_dbms_type() returns broker_info[BROKER_INFO_DBMS_TYPE], which the connection
- * handshake already filled in, so this is a memory read rather than a round-trip.
+ * Free to ask: cci_get_dbms_type() reads broker_info[BROKER_INFO_DBMS_TYPE], which the connection
+ * handshake already filled in -- no round-trip, so this needs no caching.
  */
 static bool
 dblink_dml_delete_remote_is_cubrid (int conn_handle)
@@ -1607,8 +1601,7 @@ dblink_dml_delete_marker_cast_type (int stmt_handle, int src_type)
  *   op(in)         : comparison operator SQL text ("=", "<", ">", "<=", ">=")
  *   cast_type(in)  : CUBRID type name to restore on the pushed value ("... <op> CAST(? AS <cast_type>)"), or
  *                    NULL to push the bare placeholder. Decided by dblink_dml_delete_precast_type() or
- *                    dblink_dml_delete_marker_cast_type(); see the policy comment above
- *                    dblink_dml_delete_remote_is_cubrid()
+ *                    dblink_dml_delete_marker_cast_type().
  *   sql_out(out)   : set to the built SQL text on success
  */
 static int
