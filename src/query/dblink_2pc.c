@@ -391,11 +391,11 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
    * report success so every caller (daemon loop, daemon recovery, SA-mode inline delivery)
    * deletes the row instead of retrying forever.
    *
-   * A commit decision is deliberately excluded.  A _db_global_tran row only reaches the 'C'
-   * state after every participant has XA-prepared, so an endpoint answering "not implemented"
-   * to a commit is not an XA-incapable participant of this transaction but a prepared branch
-   * whose endpoint has changed.  Deleting its row would strand that branch in-doubt, holding
-   * locks forever, so keep reporting failure and let the caller retry.
+   * A commit decision is deliberately excluded.  A 'C' row exists only after every participant
+   * XA-prepared (same premise as the COMMIT case above), so an endpoint answering "not implemented"
+   * to a commit is not an XA-incapable participant of this transaction but a prepared branch whose
+   * endpoint has changed.  Deleting its row would strand that branch in-doubt, holding locks
+   * forever, so keep reporting failure and let the caller retry.
    *
    * Both the return value and the error buffer are checked: the server error normally
    * arrives in err_buf while cci_xa_end_tran returns a generic CCI failure, but the code is
