@@ -1686,7 +1686,6 @@ error:
  *   op(in): Which DDL statement is being mirrored
  *   name(in): Synonym unique name (the old name for RENAME)
  *   arg(in): Target unique name (ADD, ALTER) or the new synonym name (RENAME); NULL for DROP
- *   synonym_oid(in): OID of the already-flushed _db_synonym row (ADD only)
  *
  * Note: Synonym entries follow the same transient lifecycle as class names: they
  *       become permanent at commit and are reverted at (partial) rollback. The
@@ -1694,8 +1693,7 @@ error:
  *       resolvers wait for the outcome of this transaction.
  */
 int
-xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char *name, const char *arg,
-		      OID * synonym_oid)
+xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char *name, const char *arg)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME status;

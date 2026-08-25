@@ -1077,22 +1077,10 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char
  *   op(in): Synonym DDL operation to mirror into the server classname table
  *   name(in): Synonym unique name (the old name for RENAME)
  *   arg(in): Target unique name (ADD, ALTER) or the new name (RENAME); NULL for DROP
- *   synonym_oid(in): OID of the flushed _db_synonym row (ADD only; NULL otherwise)
  */
 int
-locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg, OID * synonym_oid)
+locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg)
 {
-  OID oid;
-
-  if (synonym_oid != NULL)
-    {
-      COPY_OID (&oid, synonym_oid);
-    }
-  else
-    {
-      OID_SET_NULL (&oid);
-    }
-
 #if defined(CS_MODE)
   int success = ER_FAILED;
   int req_error;
@@ -1104,7 +1092,7 @@ locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg, OI
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_INT_SIZE + length_const_string (name, NULL) + length_const_string (arg, NULL) + OR_OID_SIZE;
+  request_size = OR_INT_SIZE + length_const_string (name, NULL) + length_const_string (arg, NULL);
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -1115,7 +1103,6 @@ locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg, OI
   ptr = or_pack_int (request, (int) op);
   ptr = pack_const_string (ptr, name);
   ptr = pack_const_string (ptr, arg);
-  ptr = or_pack_oid (ptr, &oid);
 
   req_error = net_client_request (NET_SERVER_LC_SYNONYM_DDL, request, request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
@@ -1132,7 +1119,7 @@ locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg, OI
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_synonym_ddl (thread_p, op, name, arg, &oid);
+  success = xlocator_synonym_ddl (thread_p, op, name, arg);
 
   exit_server (*thread_p);
 

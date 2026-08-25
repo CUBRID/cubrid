@@ -19221,7 +19221,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
   if (error == NO_ERROR && target_name != NULL && intl_identifier_casecmp (old_target_name, target_name) != 0)
     {
       /* mirror the target change into the server classname table */
-      error = locator_synonym_ddl (LC_SYNONYM_DDL_ALTER, synonym_name, target_name, NULL);
+      error = locator_synonym_ddl (LC_SYNONYM_DDL_ALTER, synonym_name, target_name);
     }
 
   if (old_target_obj_id != NULL)
@@ -19531,7 +19531,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   if (error == NO_ERROR)
     {
       /* mirror the new synonym into the server classname table */
-      error = locator_synonym_ddl (LC_SYNONYM_DDL_ADD, synonym_name, target_name, ws_identifier (instance_obj));
+      error = locator_synonym_ddl (LC_SYNONYM_DDL_ADD, synonym_name, target_name);
     }
 
 end:
@@ -19677,7 +19677,7 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
   if (error == NO_ERROR)
     {
       /* mirror the drop into the server classname table */
-      error = locator_synonym_ddl (LC_SYNONYM_DDL_DROP, synonym_name, NULL, NULL);
+      error = locator_synonym_ddl (LC_SYNONYM_DDL_DROP, synonym_name, NULL);
     }
 
   if (old_target_obj_id != NULL)
@@ -19878,7 +19878,7 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   if (error == NO_ERROR)
     {
       /* mirror the rename into the server classname table */
-      error = locator_synonym_ddl (LC_SYNONYM_DDL_RENAME, old_synonym_name, new_synonym_name, NULL);
+      error = locator_synonym_ddl (LC_SYNONYM_DDL_RENAME, old_synonym_name, new_synonym_name);
     }
 
   if (old_target_obj_id != NULL)
