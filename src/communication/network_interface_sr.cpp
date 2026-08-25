@@ -1821,9 +1821,8 @@ slocator_find_class_oid (THREAD_ENTRY *thread_p, unsigned int rid, char *request
   LOCK lock;
   int xresolve_synonym;
   char synonym_target[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  bool is_synonym = false;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_OID_SIZE + DB_MAX_IDENTIFIER_LENGTH + MAX_ALIGNMENT * 2) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_OID_SIZE + DB_MAX_IDENTIFIER_LENGTH + MAX_ALIGNMENT * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_unpack_string_nocopy (request, &classname);
@@ -1831,14 +1830,8 @@ slocator_find_class_oid (THREAD_ENTRY *thread_p, unsigned int rid, char *request
   ptr = or_unpack_lock (ptr, &lock);
   ptr = or_unpack_int (ptr, &xresolve_synonym);
 
-  if (xresolve_synonym)
-    {
-      found = xlocator_find_class_oid_ex (thread_p, classname, &class_oid, lock, synonym_target, &is_synonym);
-    }
-  else
-    {
-      found = xlocator_find_class_oid (thread_p, classname, &class_oid, lock);
-    }
+  found = xlocator_find_class_oid_ex (thread_p, classname, &class_oid, lock,
+				      xresolve_synonym ? synonym_target : NULL);
 
   if (found == LC_CLASSNAME_ERROR)
     {
@@ -1849,8 +1842,7 @@ slocator_find_class_oid (THREAD_ENTRY *thread_p, unsigned int rid, char *request
   memset (reply, 0, OR_ALIGNED_BUF_SIZE (a_reply));
   ptr = or_pack_int (reply, found);
   ptr = or_pack_oid (ptr, &class_oid);
-  ptr = or_pack_int (ptr, is_synonym ? 1 : 0);
-  ptr = or_pack_string (ptr, is_synonym ? synonym_target : NULL);
+  ptr = or_pack_string (ptr, (synonym_target[0] != '\0') ? synonym_target : NULL);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 

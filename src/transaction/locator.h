@@ -87,7 +87,7 @@
    LC_CLASS_OF_REQOBJ_PACKED_SIZE * req->max_reqobjs + \
    LC_REQOBJ_PACKED_SIZE * req->max_reqobjs)
 
-#define LC_LOCKHINT_CLASS_PACKED_SIZE (OR_OID_SIZE + OR_INT_SIZE * 3)
+#define LC_LOCKHINT_CLASS_PACKED_SIZE (OR_OID_SIZE + OR_INT_SIZE * 4)
 
 #define LC_LOCKHINT_PACKED_SIZE(lockhint) \
   (OR_INT_SIZE * 4 + \
@@ -324,6 +324,7 @@ struct lc_lockhint_class
   int chn;			/* Cache coherence of class */
   LOCK lock;			/* The desired lock */
   int need_subclasses;		/* Are subclasses needed ? */
+  int resolved_elsewhere;	/* Was the requested name found under another owner ? */
 };
 
 typedef struct lc_lock_hint LC_LOCKHINT;

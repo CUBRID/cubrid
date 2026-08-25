@@ -1006,25 +1006,22 @@ locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_oid, int cl
  * NOTE:
  */
 LC_FIND_CLASSNAME
-locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char *synonym_target, bool * is_synonym)
+locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char *synonym_target)
 {
 #if defined(CS_MODE)
   LC_FIND_CLASSNAME found = LC_CLASSNAME_ERROR;
   int xfound;
-  int xis_synonym = 0;
   char *xtarget = NULL;
   int req_error;
   char *ptr;
   int request_size, strlen;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_OID_SIZE + DB_MAX_IDENTIFIER_LENGTH + MAX_ALIGNMENT * 2) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_OID_SIZE + DB_MAX_IDENTIFIER_LENGTH + MAX_ALIGNMENT * 2) a_reply;
   char *reply;
 
-  assert ((synonym_target == NULL) == (is_synonym == NULL));
-
-  if (is_synonym != NULL)
+  if (synonym_target != NULL)
     {
-      *is_synonym = false;
+      synonym_target[0] = '\0';
     }
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -1040,7 +1037,7 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char
   ptr = pack_const_string_with_length (request, class_name, strlen);
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_lock (ptr, lock);
-  ptr = or_pack_int (ptr, (is_synonym != NULL) ? 1 : 0);
+  ptr = or_pack_int (ptr, (synonym_target != NULL) ? 1 : 0);
 
   req_error = net_client_request (NET_SERVER_LC_FIND_CLASSOID, request, request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
@@ -1049,11 +1046,9 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char
       ptr = or_unpack_int (reply, &xfound);
       found = (LC_FIND_CLASSNAME) xfound;
       ptr = or_unpack_oid (ptr, class_oid);
-      ptr = or_unpack_int (ptr, &xis_synonym);
       ptr = or_unpack_string_nocopy (ptr, &xtarget);
-      if (is_synonym != NULL && xis_synonym && xtarget != NULL)
+      if (synonym_target != NULL && xtarget != NULL)
 	{
-	  *is_synonym = true;
 	  strncpy (synonym_target, xtarget, DB_MAX_IDENTIFIER_LENGTH - 1);
 	  synonym_target[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';
 	}
@@ -1066,14 +1061,7 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  if (is_synonym != NULL)
-    {
-      found = xlocator_find_class_oid_ex (thread_p, class_name, class_oid, lock, synonym_target, is_synonym);
-    }
-  else
-    {
-      found = xlocator_find_class_oid (thread_p, class_name, class_oid, lock);
-    }
+  found = xlocator_find_class_oid_ex (thread_p, class_name, class_oid, lock, synonym_target);
 
   exit_server (*thread_p);
 

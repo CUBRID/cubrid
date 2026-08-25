@@ -90,7 +90,7 @@ extern LC_FIND_CLASSNAME xlocator_rename_class_name (THREAD_ENTRY * thread_p, co
 extern LC_FIND_CLASSNAME xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid,
 						  LOCK lock);
 extern LC_FIND_CLASSNAME xlocator_find_class_oid_ex (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid,
-						     LOCK lock, char *synonym_target, bool * is_synonym);
+						     LOCK lock, char *synonym_target);
 extern int xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char *name, const char *arg,
 				 OID * synonym_oid);
 extern int xlocator_assign_oid (THREAD_ENTRY * thread_p, const HFID * hfid, OID * perm_oid, int expected_length,

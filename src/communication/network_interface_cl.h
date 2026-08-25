@@ -108,7 +108,7 @@ extern int locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_
 						int quit_on_errors, int prune_level, LC_LOCKSET ** lockset,
 						LC_COPYAREA ** fetch_copyarea);
 extern LC_FIND_CLASSNAME locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock,
-						 char *synonym_target, bool * is_synonym);
+						 char *synonym_target);
 extern int locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg, OID * synonym_oid);
 extern LC_FIND_CLASSNAME locator_reserve_class_names (const int num_classes, const char **class_names,
 						      OID * class_oids);

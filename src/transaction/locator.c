@@ -1972,6 +1972,7 @@ locator_pack_lockhint_classes (char *packed, LC_LOCKHINT * lockhint)
       packed = or_pack_int (packed, class_lockhint->chn);
       packed = or_pack_lock (packed, class_lockhint->lock);
       packed = or_pack_int (packed, class_lockhint->need_subclasses);
+      packed = or_pack_int (packed, class_lockhint->resolved_elsewhere);
     }
 
   return packed;
@@ -2091,6 +2092,7 @@ locator_unpack_lockhint_classes (char *unpacked, LC_LOCKHINT * lockhint)
       unpacked = or_unpack_int (unpacked, &class_lockhint->chn);
       unpacked = or_unpack_lock (unpacked, &class_lockhint->lock);
       unpacked = or_unpack_int (unpacked, &class_lockhint->need_subclasses);
+      unpacked = or_unpack_int (unpacked, &class_lockhint->resolved_elsewhere);
     }
 
   return unpacked;

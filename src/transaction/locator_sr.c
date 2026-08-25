@@ -149,6 +149,8 @@ static LOCATOR_CLASSNAME_ENTRY *locator_chase_synonym_entry (LOCATOR_CLASSNAME_E
 static int locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_name,
 					      const char *skip_name, LOCATOR_CLASSNAME_ENTRY ** candidates,
 					      int max_cand);
+static LC_FIND_CLASSNAME locator_resolve_in_other_schemas (THREAD_ENTRY * thread_p, const char *name,
+							   LC_LOCKHINT_CLASS * slot);
 static void locator_free_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static int locator_classname_action_push (LOCATOR_CLASSNAME_ENTRY * entry);
 static void locator_classname_action_restore (LOCATOR_CLASSNAME_ENTRY * entry);
@@ -429,6 +431,60 @@ locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_nam
     }
 
   return num_cand;
+}
+
+/*
+ * locator_resolve_in_other_schemas () - Resolve an owner-omitted name that the connecting
+ *                                       user's own schema does not have
+ *
+ * return: LC_CLASSNAME_EXIST when exactly one other schema has the name (class_oid is set),
+ *         LC_CLASSNAME_DELETED when none does,
+ *         LC_CLASSNAME_ERROR when two or more do (ER_LC_AMBIGUOUS_CLASSNAME is set)
+ *
+ *   thread_p(in):
+ *   name(in): Name as requested, qualified with the connecting user
+ *   slot(in/out): Slot to describe the resolved class in; untouched unless EXIST is returned
+ *
+ * Note: The caller must be inside CSECT_LOCATOR_SR_CLASSNAME_TABLE.
+ *
+ *       Before 11.2 a class name was unique database-wide, so a query carried no owner;
+ *       after the upgrade the old objects sit in one user's schema and every other user's
+ *       queries would fail. Look for the name in the remaining schemas.
+ */
+static LC_FIND_CLASSNAME
+locator_resolve_in_other_schemas (THREAD_ENTRY * thread_p, const char *name, LC_LOCKHINT_CLASS * slot)
+{
+  LOCATOR_CLASSNAME_ENTRY *candidates[2];
+  LOCATOR_CLASSNAME_ENTRY *target;
+  const char *bare_name;
+  int qualifier_len;
+  int num_cand;
+
+  locator_split_classname (name, &bare_name, &qualifier_len);
+  num_cand =
+    locator_find_bare_name_candidates (thread_p, bare_name, name, candidates,
+				       sizeof (candidates) / sizeof (candidates[0]));
+
+  if (num_cand > 1)
+    {
+      /* Two owners already settle it; the rest cannot change the answer. Name both so the
+       * user can qualify, ordering the pair for a stable message. With more than two
+       * owners, which two are named can still vary between boots. */
+      int first = (strcmp (candidates[0]->e_name, candidates[1]->e_name) <= 0) ? 0 : 1;
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_AMBIGUOUS_CLASSNAME, 3, bare_name,
+	      candidates[first]->e_name, candidates[1 - first]->e_name);
+      return LC_CLASSNAME_ERROR;
+    }
+
+  if (num_cand == 1 && (target = locator_chase_synonym_entry (candidates[0])) != NULL)
+    {
+      COPY_OID (&slot->oid, &target->e_current.oid);
+      slot->resolved_elsewhere = 1;
+      return LC_CLASSNAME_EXIST;
+    }
+
+  return LC_CLASSNAME_DELETED;
 }
 
 /*
@@ -1817,7 +1873,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 LC_FIND_CLASSNAME
 xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid, LOCK lock)
 {
-  return xlocator_find_class_oid_ex (thread_p, classname, class_oid, lock, NULL, NULL);
+  return xlocator_find_class_oid_ex (thread_p, classname, class_oid, lock, NULL);
 }
 
 /*
@@ -1828,11 +1884,10 @@ xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname, OID * c
  *   classname(in): Name to find
  *   class_oid(out): Set as a side effect
  *   lock(in): Lock to acquire for the class
- *   synonym_target(out): Buffer of DB_MAX_IDENTIFIER_LENGTH bytes receiving the
- *                        target unique name when the given name is a synonym;
- *                        NULL when the caller must not see synonyms
- *   is_synonym(out): Set to true when the given name resolved through a synonym;
- *                    NULL when the caller must not see synonyms
+ *   synonym_target(in/out): Buffer of DB_MAX_IDENTIFIER_LENGTH bytes; left empty
+ *                           unless the given name resolved through a synonym, in
+ *                           which case it receives the target unique name.
+ *                           NULL when the caller must not see synonyms
  *
  * Note: When the name matches a visible synonym entry, the target name is copied
  *       to the caller and the lookup chases the target once; the returned OID and
@@ -1842,18 +1897,17 @@ xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname, OID * c
  */
 LC_FIND_CLASSNAME
 xlocator_find_class_oid_ex (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid, LOCK lock,
-			    char *synonym_target, bool * is_synonym)
+			    char *synonym_target)
 {
   int tran_index;
   LOCATOR_CLASSNAME_ENTRY *entry;
   LOCK tmp_lock;
   LC_FIND_CLASSNAME find = LC_CLASSNAME_EXIST;
+  bool hopped = false;
 
-  assert ((synonym_target == NULL) == (is_synonym == NULL));
-
-  if (is_synonym != NULL)
+  if (synonym_target != NULL)
     {
-      *is_synonym = false;
+      synonym_target[0] = '\0';
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -1871,7 +1925,7 @@ start:
 
   if (entry != NULL && entry->e_type == LC_ENTRY_SYNONYM)
     {
-      if (is_synonym == NULL || *is_synonym)
+      if (synonym_target == NULL || hopped)
 	{
 	  /* synonyms are invisible to this caller, or the target of the resolved synonym is itself a synonym
 	   * (chains do not resolve) */
@@ -1885,7 +1939,7 @@ start:
 	  assert (entry->e_current.synonym_target != NULL);
 	  strncpy (synonym_target, entry->e_current.synonym_target, DB_MAX_IDENTIFIER_LENGTH - 1);
 	  synonym_target[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';
-	  *is_synonym = true;
+	  hopped = true;
 
 	  classname = synonym_target;
 
@@ -11849,6 +11903,7 @@ locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subc
 		  lockhint->classes[lockhint->num_classes].chn = CHN_UNKNOWN_ATCLIENT;
 		  lockhint->classes[lockhint->num_classes].lock = lockhint->classes[ref_num].lock;
 		  lockhint->classes[lockhint->num_classes].need_subclasses = 1;
+		  lockhint->classes[lockhint->num_classes].resolved_elsewhere = 0;
 		  lockhint->num_classes++;
 
 		}
@@ -12041,6 +12096,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 	  (*hlock)->classes[n].chn = CHN_UNKNOWN_ATCLIENT;
 	  (*hlock)->classes[n].lock = many_locks[i];
 	  (*hlock)->classes[n].need_subclasses = many_need_subclasses[i];
+	  (*hlock)->classes[n].resolved_elsewhere = 0;
 
 	  if (csect_enter_as_reader (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
 	    {
@@ -12139,43 +12195,9 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 	    }
 	  else if (many_flags[i] & LC_PREF_FLAG_OWNER_OMITTED)
 	    {
-	      /* The connecting user owns nothing by this name. Before 11.2 a class name was
-	       * unique database-wide, so a query carried no owner; after the upgrade the old
-	       * objects sit in one user's schema and every other user's queries would fail
-	       * here. Look for the name in the remaining schemas.
-	       *
-	       * Reached only when the name was not found under the user's own schema, so a
-	       * query that resolves the way it always did never pays for this. */
-	      LOCATOR_CLASSNAME_ENTRY *candidates[2];
-	      const char *bare_name;
-	      int qualifier_len;
-	      int num_cand;
-
-	      locator_split_classname (classname, &bare_name, &qualifier_len);
-	      num_cand =
-		locator_find_bare_name_candidates (thread_p, bare_name, classname, candidates,
-						   sizeof (candidates) / sizeof (candidates[0]));
-
-	      if (num_cand > 1)
-		{
-		  /* Two owners already settle it; the rest cannot change the answer. Name both
-		   * so the user can qualify, ordering the pair for a stable message. With more
-		   * than two owners, which two are named can still vary between boots. */
-		  int first = (strcmp (candidates[0]->e_name, candidates[1]->e_name) <= 0) ? 0 : 1;
-
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_AMBIGUOUS_CLASSNAME, 3, bare_name,
-			  candidates[first]->e_name, candidates[1 - first]->e_name);
-		  allfind = find = LC_CLASSNAME_ERROR;
-		}
-	      else if (num_cand == 1 && (entry = locator_chase_synonym_entry (candidates[0])) != NULL)
-		{
-		  COPY_OID (&(*hlock)->classes[n].oid, &entry->e_current.oid);
-		  assert (find == LC_CLASSNAME_EXIST);
-		}
-	      else
-		{
-		  find = LC_CLASSNAME_DELETED;
-		}
+	      /* Reached only when the name was not found under the connecting user's own
+	       * schema, so a query that resolves the way it always did never pays for this. */
+	      find = locator_resolve_in_other_schemas (thread_p, classname, &(*hlock)->classes[n]);
 	    }
 	  else
 	    {
@@ -12223,6 +12245,10 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
   /*
    * Eliminate any duplicates. Note that we did not want to do above since
    * we did not want to modify the original arrays.
+   *
+   * A slot resolved under another owner keeps its own entry even when it duplicates
+   * one: the client reads the name it resolved to off that slot, and an emptied slot
+   * would leave the statement pointing at a class name that does not exist.
    */
 
   for (i = 0; i < (*hlock)->num_classes; i++)
@@ -12236,7 +12262,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
        */
       for (j = i + 1; j < (*hlock)->num_classes; j++)
 	{
-	  if (OID_EQ (&(*hlock)->classes[i].oid, &(*hlock)->classes[j].oid))
+	  if (OID_EQ (&(*hlock)->classes[i].oid, &(*hlock)->classes[j].oid) && !(*hlock)->classes[j].resolved_elsewhere)
 	    {
 	      /* Duplicate class, merge the lock and the subclass entry */
 	      assert ((*hlock)->classes[i].lock >= NULL_LOCK && (*hlock)->classes[j].lock >= NULL_LOCK);

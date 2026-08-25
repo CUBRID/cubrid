@@ -2987,14 +2987,13 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
   LC_FIND_CLASSNAME found;
   int error_code;
   char synonym_target[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  bool is_synonym = false;
 
   assert (classname != NULL);
 
   /* Need to check the classname to oid in the server */
   *class_mop = NULL;
-  found = locator_find_class_oid (classname, class_oid, lock, synonym_target, &is_synonym);
-  if (is_synonym)
+  found = locator_find_class_oid (classname, class_oid, lock, synonym_target);
+  if (synonym_target[0] != '\0')
     {
       /* the name resolved through a synonym; continue with its target class */
       classname = synonym_target;
@@ -6087,46 +6086,6 @@ locator_lockhint_class_name (LC_LOCKHINT * lockhint, int slot)
 }
 
 /*
- * locator_lockhint_find_bare_name () - Find a locked class by the bare part of a name
- *
- * return: The full name of the match, or NULL
- *
- *   lockhint(in): Reply describing the classes that were locked and prefetched
- *   name(in): Name whose bare part to look for
- */
-static const char *
-locator_lockhint_find_bare_name (LC_LOCKHINT * lockhint, const char *name)
-{
-  const char *dot = strchr (name, '.');
-  const char *bare = (dot != NULL) ? dot + 1 : name;
-  int i;
-
-  for (i = 0; i < lockhint->num_classes; i++)
-    {
-      const char *found;
-
-      if (OID_ISNULL (&lockhint->classes[i].oid))
-	{
-	  continue;
-	}
-
-      found = locator_lockhint_class_name (lockhint, i);
-      if (found == NULL)
-	{
-	  continue;
-	}
-
-      dot = strchr (found, '.');
-      if (intl_identifier_casecmp ((dot != NULL) ? dot + 1 : found, bare) == 0)
-	{
-	  return found;
-	}
-    }
-
-  return NULL;
-}
-
-/*
  * locator_report_resolved_names () - Report back which name each owner-omitted request
  *                                   actually resolved to
  *
@@ -6135,29 +6094,24 @@ locator_lockhint_find_bare_name (LC_LOCKHINT * lockhint, const char *name)
  *   lockhint(in): Reply describing the classes that were locked and prefetched
  *   num_classes(in): Number of requested names
  *   many_classnames(in): Requested names, qualified with the connecting user
- *   many_locks(in): Per-request lock
- *   need_subclasses(in): Per-request subclass flag
  *   flags(in): Per-request prefetch flags
  *   resolved_names(out): Slot i receives the resolved name when request i named a class
  *                        in a schema other than the one it asked for, NULL otherwise.
  *                        Every non-NULL name is a heap copy the caller must free.
  *
- * return: false when a retry hit a unilateral abort, true otherwise
- *
  * Note: The reply is the authority on what each name resolved to. The workspace must not
  *       decide: it can still hold a class another transaction has dropped, which is the
  *       moment the name starts resolving elsewhere.
  *
- *       Costs no extra server request in the common case: the reply describes the classes
- *       in request order, and a class object carries its own name.
+ *       Costs no extra server request: the reply describes the classes in request order,
+ *       and a class object carries its own name.
  *
  *       Call only when every request was found. A request that failed occupies no slot in
  *       the reply, which would shift everything after it.
  */
-static bool
+static void
 locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const char **many_classnames,
-			       LOCK * many_locks, int *need_subclasses, LC_PREFETCH_FLAGS * flags,
-			       const char **resolved_names)
+			       LC_PREFETCH_FLAGS * flags, const char **resolved_names)
 {
   int i;
   int slot = 0;
@@ -6165,7 +6119,7 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
   for (i = 0; i < num_classes; i++)
     {
       const char *requested = many_classnames[i];
-      const char *found = NULL;
+      const char *found;
       int my_slot;
 
       resolved_names[i] = NULL;
@@ -6178,80 +6132,25 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
 
       my_slot = slot++;
 
-      if (!(flags[i] & LC_PREF_FLAG_OWNER_OMITTED))
+      if (!(flags[i] & LC_PREF_FLAG_OWNER_OMITTED) || my_slot >= lockhint->num_classes)
 	{
 	  continue;
 	}
 
-      /* The slot can be gone: the server merges a request naming a class an earlier one
-       * already named. The bare name finds it back, and cannot find the wrong class -- a
-       * second owner of that name would have failed the statement as ambiguous. It does
-       * come up empty for a synonym, whose bare name is not its target's; those are asked
-       * again one at a time below. */
-      if (my_slot < lockhint->num_classes && !OID_ISNULL (&lockhint->classes[my_slot].oid))
+      /* An emptied slot is one the server merged into an earlier request naming the same
+       * class, which it does only for a name that needed no resolving. */
+      if (OID_ISNULL (&lockhint->classes[my_slot].oid))
 	{
-	  found = locator_lockhint_class_name (lockhint, my_slot);
-	}
-      else
-	{
-	  found = locator_lockhint_find_bare_name (lockhint, requested);
-	}
-
-      if (found != NULL)
-	{
-	  if (intl_identifier_casecmp (found, requested) != 0)
-	    {
-	      /* Copy now: found points into the workspace, and a later request's retry can
-	       * recache the class it names. */
-	      resolved_names[i] = strdup (found);
-	    }
 	  continue;
 	}
 
-      if (num_classes > 1)
+      found = locator_lockhint_class_name (lockhint, my_slot);
+      if (found != NULL && intl_identifier_casecmp (found, requested) != 0)
 	{
-	  /* The batched reply cannot account for this name; ask for it by itself. One name
-	   * cannot be merged into anything, so that reply accounts for it exactly. A lone
-	   * request never reaches here, which is what ends the recursion.
-	   *
-	   * Whatever the retry leaves behind must not outlive it -- the name not resolving is
-	   * not this caller's error to report, and the optimizer asserts on a stray er_errid --
-	   * except a unilateral abort, which the whole compilation has to see. */
-	  const char *retry_name = NULL;
-	  LOCK one_lock = many_locks[i];
-	  int one_subclasses = need_subclasses[i];
-	  LC_PREFETCH_FLAGS one_flag = flags[i];
-
-	  er_stack_push ();
-	  (void) locator_lockhint_classes (1, &requested, &one_lock, &one_subclasses, &one_flag, false, NULL_LOCK,
-					   &retry_name);
-	  if (er_errid () == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
-	    {
-	      er_stack_pop_and_keep_error ();
-	      if (retry_name != NULL)
-		{
-		  free_and_init (retry_name);
-		}
-	      return false;
-	    }
-	  er_stack_pop ();
-
-	  if (retry_name != NULL)
-	    {
-	      if (intl_identifier_casecmp (retry_name, requested) != 0)
-		{
-		  /* already a heap copy owned by this call */
-		  resolved_names[i] = retry_name;
-		}
-	      else
-		{
-		  free_and_init (retry_name);
-		}
-	    }
+	  /* Copy now: found points into the workspace, which a later fetch can recache. */
+	  resolved_names[i] = strdup (found);
 	}
     }
-
-  return true;
 }
 
 /*
@@ -6550,12 +6449,9 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
       locator_cache_lock_lockhint_classes (lockhint);
     }
 
-  if (lockhint != NULL && resolved_names != NULL && all_found == LC_CLASSNAME_EXIST
-      && !locator_report_resolved_names (lockhint, num_classes, many_classnames, many_locks, need_subclasses, flags,
-					 resolved_names))
+  if (lockhint != NULL && resolved_names != NULL && all_found == LC_CLASSNAME_EXIST)
     {
-      /* a retry hit a unilateral abort; the caller must stop compiling */
-      all_found = LC_CLASSNAME_ERROR;
+      locator_report_resolved_names (lockhint, num_classes, many_classnames, flags, resolved_names);
     }
 
   if (lockhint != NULL)
