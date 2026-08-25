@@ -613,6 +613,21 @@ namespace parallel_scan
 
     m_scan_id = &m_xasl->spec_list->s_id;
 
+    /* Level-0 non-linked dptrs (correlated subqueries the serial qexec_intprt_fnc runs per row via
+     * qexec_execute_mainblock) will run on this worker's private clone: the full tree above is
+     * unpacked/cloned per worker, so each dptr subtree's list_id/single_tuple/status are worker-local
+     * and correlation regu vars resolve into this clone's val_list. scan_ptr-level dptrs need no
+     * extra handling; qexec_execute_scan already runs them on the clone.
+     * DORMANT: the checker still flags such plans CANNOT_PARALLEL_SCAN, so this stays false. */
+    for (xasl_node *dptr = m_xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
+      {
+	if (!XASL_IS_FLAGED (dptr, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    m_run_nonlinked_dptr = true;
+	    break;
+	  }
+      }
+
     m_xasl_state = (xasl_state *) db_private_alloc (&thread_ref, sizeof (xasl_state));
     if (m_xasl_state == nullptr)
       {
@@ -642,6 +657,28 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
+  /* Per-row mirror of qexec_intprt_fnc's "evaluate dptr list" for the level-0 node: clear each dptr
+   * head with truncate, skip regu-linked ones (they run lazily via EXECUTE_REGU_VARIABLE_XASL), and
+   * run the rest on this worker's clone. Reached only when m_run_nonlinked_dptr is set, which the
+   * checker gate still prevents. */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  SCAN_CODE task<result_type, ST>::execute_nonlinked_dptr_list (cubthread::entry &thread_ref)
+  {
+    for (xasl_node *xptr = m_xasl->dptr_list; xptr != nullptr; xptr = xptr->next)
+      {
+	qexec_clear_head_lists_with_truncate (&thread_ref, xptr);
+	if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    continue;
+	  }
+	if (qexec_execute_mainblock (&thread_ref, xptr, m_xasl_state, NULL) != NO_ERROR)
+	  {
+	    return S_ERROR;
+	  }
+      }
+    return S_SUCCESS;
+  }
+
   /* Shared OID-drain helper: leaf-path + late-joiner. Returns S_END on completion, S_ERROR with stop=true on terminal failure. */
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
   SCAN_CODE task<result_type, ST>::drain_slot_oids (cubthread::entry &thread_ref, bool &stop)
@@ -664,6 +701,19 @@ namespace parallel_scan
 	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    stop = true;
 	    return S_ERROR;
+	  }
+
+	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	  {
+	    /* serial order: dptr execution before after_join_pred/if_pred (qexec_intprt_fnc). DORMANT until
+	     * the checker's non-linked-dptr gate is lifted. */
+	    if (m_run_nonlinked_dptr && execute_nonlinked_dptr_list (thread_ref) != S_SUCCESS)
+	      {
+		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		stop = true;
+		return S_ERROR;
+	      }
 	  }
 
 	if (m_xasl->after_join_pred)

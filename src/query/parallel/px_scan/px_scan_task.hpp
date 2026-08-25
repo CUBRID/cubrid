@@ -76,6 +76,7 @@ namespace parallel_scan
       m_is_grouped (is_grouped),
       m_is_cached_scan (is_cached_scan),
       m_uses_xasl_clone (uses_xasl_clone),
+      m_run_nonlinked_dptr (false),
       m_worker_manager (worker_manager)
       {
       }
@@ -111,6 +112,9 @@ namespace parallel_scan
       bool m_is_grouped;
       bool m_is_cached_scan;	/* from manager, propagated to scan_open_heap_scan */
       bool m_uses_xasl_clone;
+      /* level-0 node has non-regu-linked dptrs to run per row; today the checker rejects such
+       * plans (CANNOT_PARALLEL_SCAN), so this stays false until that gate is lifted. */
+      bool m_run_nonlinked_dptr;
       TSC_TICKS m_start_tick;
 
       worker_manager *m_worker_manager;
@@ -120,6 +124,8 @@ namespace parallel_scan
       int clone_xasl (cubthread::entry &thread_ref);
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
+      /* per-row mirror of qexec_intprt_fnc's "evaluate dptr list" for the level-0 node */
+      SCAN_CODE execute_nonlinked_dptr_list (cubthread::entry &thread_ref);
       /* INDEX-only: after leaf supply exhausted, help drain remaining shared overflow chains. No-op otherwise. */
       void drain_late_joiner_chains (cubthread::entry &thread_ref, bool &stop);
   };
