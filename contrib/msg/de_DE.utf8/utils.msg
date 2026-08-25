@@ -54,7 +54,6 @@ $       27      restartevnt
 $       28      prestartldb
 $       29      shutdownldb
 $       30      mqueueldb
-$       31      migrate_v73 (obsolete)
 $       32      load_audit_trail
 $       33      alterdbhost
 $       37      plandump
