@@ -6980,7 +6980,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   trigger->name = new_name;
 
 end:
-  if (error != NO_ERROR && new_name != NULL)
+  if (new_name != NULL && trigger->name != new_name)
     {
       free_and_init (new_name);
     }
