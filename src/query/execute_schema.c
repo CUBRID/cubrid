@@ -8147,12 +8147,14 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   error = check_default_on_update_clause (parser, attribute);
   if (error != NO_ERROR)
     {
+      tp_domain_free (attr_db_domain);
       goto error_exit;
     }
 
   error = get_att_order_from_def (attribute, &add_first, &add_after_attr);
   if (error != NO_ERROR)
     {
+      tp_domain_free (attr_db_domain);
       goto error_exit;
     }
 
