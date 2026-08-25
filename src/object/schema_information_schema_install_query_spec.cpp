@@ -147,9 +147,10 @@
 /* CUBRID does not currently support column privilege.
  * This view returns empty results until column privilege support is implemented.
  */
-const char *sm_define_view_column_privileges_spec (void)
+std::string
+sm_define_view_column_privileges_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -173,9 +174,10 @@ const char *sm_define_view_column_privileges_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_columns_spec (void)
+std::string
+sm_define_view_columns_spec (void)
 {
-  static char stmt [8192];
+  char stmt [8192];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -308,9 +310,10 @@ const char *sm_define_view_columns_spec (void)
 /* CUBRID does not currently support domains.
  * This view returns empty results until domain support is implemented.
  */
-const char *sm_define_view_domains_spec (void)
+std::string
+sm_define_view_domains_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -349,9 +352,10 @@ const char *sm_define_view_domains_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_foreign_servers_spec (void)
+std::string
+sm_define_view_foreign_servers_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -383,9 +387,10 @@ const char *sm_define_view_foreign_servers_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_key_column_usage_spec (void)
+std::string
+sm_define_view_key_column_usage_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -422,9 +427,10 @@ const char *sm_define_view_key_column_usage_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_parameters_spec (void)
+std::string
+sm_define_view_parameters_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -477,9 +483,10 @@ const char *sm_define_view_parameters_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_partitions_spec (void)
+std::string
+sm_define_view_partitions_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -528,9 +535,10 @@ const char *sm_define_view_partitions_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_referential_constraints_spec (void)
+std::string
+sm_define_view_referential_constraints_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -572,9 +580,10 @@ const char *sm_define_view_referential_constraints_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_routine_privileges_spec (void)
+std::string
+sm_define_view_routine_privileges_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -607,9 +616,10 @@ const char *sm_define_view_routine_privileges_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_routines_spec (void)
+std::string
+sm_define_view_routines_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -707,9 +717,10 @@ const char *sm_define_view_routines_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_schemata_spec (void)
+std::string
+sm_define_view_schemata_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -742,9 +753,10 @@ const char *sm_define_view_schemata_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_sequences_spec (void)
+std::string
+sm_define_view_sequences_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -782,9 +794,10 @@ const char *sm_define_view_sequences_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_statistics_spec (void)
+std::string
+sm_define_view_statistics_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -843,9 +856,10 @@ const char *sm_define_view_statistics_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_synonyms_spec (void)
+std::string
+sm_define_view_synonyms_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -872,9 +886,10 @@ const char *sm_define_view_synonyms_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_table_constraints_spec (void)
+std::string
+sm_define_view_table_constraints_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -907,9 +922,10 @@ const char *sm_define_view_table_constraints_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_table_privileges_spec (void)
+std::string
+sm_define_view_table_privileges_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -939,9 +955,10 @@ const char *sm_define_view_table_privileges_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_tables_spec (void)
+std::string
+sm_define_view_tables_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -1010,9 +1027,10 @@ const char *sm_define_view_tables_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_triggers_spec (void)
+std::string
+sm_define_view_triggers_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -1074,9 +1092,10 @@ const char *sm_define_view_triggers_spec (void)
   return stmt;
 }
 
-const char *sm_define_view_views_spec (void)
+std::string
+sm_define_view_views_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
