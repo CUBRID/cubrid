@@ -58,6 +58,56 @@ static int au_add_member_internal (MOP group, MOP member, int new_user);
  *       case insensitive, it is set to upper case in the query.  This forces
  *       user names to be set to upper case when users are added.
  */
+/*
+ * au_find_owner_oid_of_name () - The owner a qualified name names, as an OID
+ *   return: void
+ *   name(in): Name, qualified or not
+ *   owner_oid(out): OID of the owner the qualifier names; NULL OID when the name has no
+ *                   qualifier, or when no user goes by it
+ *
+ * Note: A name with no qualifier gets no owner. That is how a system class names itself,
+ *       and it is what the server keys such an entry by.
+ */
+void
+au_find_owner_oid_of_name (const char *name, OID *owner_oid)
+{
+  const char *dot;
+  char owner_name[DB_MAX_USER_LENGTH];
+  MOP owner_mop;
+  size_t len;
+
+  OID_SET_NULL (owner_oid);
+
+  if (name == NULL)
+    {
+      return;
+    }
+
+  dot = strchr (name, '.');
+  if (dot == NULL)
+    {
+      return;
+    }
+
+  len = (size_t) (dot - name);
+  if (len == 0 || len >= sizeof (owner_name))
+    {
+      return;
+    }
+  memcpy (owner_name, name, len);
+  owner_name[len] = '\0';
+
+  owner_mop = au_find_user (owner_name);
+  if (owner_mop == NULL)
+    {
+      /* whatever names this is going to fail on its own; leave the owner unknown */
+      er_clear ();
+      return;
+    }
+
+  COPY_OID (owner_oid, ws_oid (owner_mop));
+}
+
 MOP
 au_find_user (const char *user_name)
 {

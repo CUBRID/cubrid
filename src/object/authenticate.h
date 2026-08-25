@@ -149,6 +149,7 @@ extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
  * USER OPERATIONS (authenticate_access_user.cpp)
  */
 extern MOP au_find_user (const char *user_name);
+extern void au_find_owner_oid_of_name (const char *name, OID * owner_oid);
 extern int au_find_user_to_drop (const char *user_name, MOP * user);
 extern MOP au_add_user (const char *name, int *exists);
 

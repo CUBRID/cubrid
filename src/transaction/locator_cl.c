@@ -175,7 +175,11 @@ static bool locator_can_skip_fetch_from_server (MOP mop, LOCK * lock, LC_FETCH_V
 LC_FIND_CLASSNAME
 locator_reserve_class_name (const char *class_name, OID * class_oid)
 {
-  return locator_reserve_class_names (1, &class_name, class_oid);
+  OID owner_oid;
+
+  au_find_owner_oid_of_name (class_name, &owner_oid);
+
+  return locator_reserve_class_names (1, &class_name, &owner_oid, class_oid);
 }
 
 /*

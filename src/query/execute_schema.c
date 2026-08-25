@@ -2927,6 +2927,7 @@ acquire_locks_for_multiple_rename (const PT_NODE * statement)
   int num_names = 0;
   char **name_set = NULL;
   OID *oid_set = NULL;
+  OID *owner_set = NULL;
   MOBJ fetch_result = NULL;
   LC_FIND_CLASSNAME reserve_result = LC_CLASSNAME_ERROR;
   int i = 0;
@@ -3025,14 +3026,23 @@ acquire_locks_for_multiple_rename (const PT_NODE * statement)
       goto error_exit;
     }
 
+  owner_set = (OID *) malloc (num_names * sizeof (OID));
+  if (owner_set == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, num_names * sizeof (OID));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error_exit;
+    }
+
   for (i = 0; i < num_names; ++i)
     {
       /* Each reserved name will point to the OID of the first class to be renamed. This is ok as the associated
        * transient table entries will only be used for the multiple rename operation. */
       COPY_OID (&oid_set[i], ws_oid (mop_set[0]));
+      au_find_owner_oid_of_name (name_set[i], &owner_set[i]);
     }
 
-  reserve_result = locator_reserve_class_names (num_names, (const char **) name_set, oid_set);
+  reserve_result = locator_reserve_class_names (num_names, (const char **) name_set, owner_set, oid_set);
   if (reserve_result != LC_CLASSNAME_RESERVED)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
@@ -3046,6 +3056,10 @@ error_exit:
     {
       assert (num_names > 0);
       free_and_init (oid_set);
+    }
+  if (owner_set != NULL)
+    {
+      free_and_init (owner_set);
     }
   if (name_set != NULL)
     {

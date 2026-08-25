@@ -95,11 +95,22 @@ struct locator_classname_action
   LOCATOR_CLASSNAME_ACTION *prev;	/* To previous top action */
 };
 
+/* What the primary index is keyed by: the owner a name names, and the part of the name
+ * after the qualifier. The owner is NULL when the name carries no qualifier, which is how
+ * a system class names itself. */
+typedef struct locator_classname_key LOCATOR_CLASSNAME_KEY;
+struct locator_classname_key
+{
+  OID owner_oid;
+  const char *bare_name;	/* Points into the entry's e_name */
+};
+
 typedef struct locator_classname_entry LOCATOR_CLASSNAME_ENTRY;
 struct locator_classname_entry
 {
   char *e_name;			/* Full name; "qualifier.name" except unqualified system classes */
   const char *e_bare_name;	/* Portion of e_name after the qualifier dot; e_name itself when unqualified */
+  LOCATOR_CLASSNAME_KEY e_key;	/* Key of the primary index; bare_name aliases e_bare_name */
   OID e_owner_oid;		/* Owner of the named object; NULL until a class record says who */
   int e_tran_index;		/* Transaction of entry */
   LOCATOR_CLASSNAME_ACTION e_current;	/* The most current action */
@@ -125,6 +136,9 @@ bool locator_Dont_check_foreign_key = false;
  * neither index allocates or frees a key. */
 static MHT_TABLE *locator_Mht_classnames = NULL;
 static MHT_TABLE *locator_Mht_classnames_bare = NULL;
+/* Same entries again, keyed by (owner, bare name) so an exact lookup stays a single
+ * probe once every caller says which owner it means. */
+static MHT_TABLE *locator_Mht_classnames_owned = NULL;
 
 static const HFID NULL_HFID = { {-1, -1}, -1 };
 
@@ -145,9 +159,12 @@ static int locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const cha
 					      int max_cand);
 static LC_FIND_CLASSNAME locator_resolve_in_other_schemas (THREAD_ENTRY * thread_p, const char *name,
 							   LC_LOCKHINT_CLASS * slot);
+static unsigned int locator_classname_key_hash (const void *key, const unsigned int ht_size);
+static int locator_classname_key_compare (const void *key1, const void *key2);
 static void locator_free_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static int locator_classname_action_push (LOCATOR_CLASSNAME_ENTRY * entry);
 static void locator_classname_action_restore (LOCATOR_CLASSNAME_ENTRY * entry);
+static void locator_classname_entry_set_owner (LOCATOR_CLASSNAME_ENTRY * entry, const OID * owner_oid);
 static int locator_classname_entry_set_target (LOCATOR_CLASSNAME_ENTRY * entry, const char *target);
 static int locator_initialize_synonym_entries (THREAD_ENTRY * thread_p);
 static int locator_force_drop_one_entry (THREAD_ENTRY * thread_p, LOCATOR_CLASSNAME_ENTRY * entry);
@@ -220,11 +237,12 @@ static DISK_ISVALID locator_check_unique_btree_entries (THREAD_ENTRY * thread_p,
 static int locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * or_pred, OID * class_oid,
 					  OID ** inst_oids, int num_insts, RECDES ** recs, DB_LOGICAL * results);
 static bool locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo, BTID * btid, int pos);
-static LC_FIND_CLASSNAME xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid);
+static LC_FIND_CLASSNAME xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname,
+						      OID * owner_oid, OID * class_oid);
 static LC_FIND_CLASSNAME xlocator_reserve_name_internal (THREAD_ENTRY * thread_p, const char *classname,
-							 OID * class_oid, const char *synonym_target);
+							 OID * owner_oid, OID * class_oid, const char *synonym_target);
 static LC_FIND_CLASSNAME xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname,
-							const char *newname, OID * class_oid,
+							const char *newname, OID * owner_oid, OID * class_oid,
 							const char *synonym_target);
 
 static int locator_filter_errid (THREAD_ENTRY * thread_p, int num_ignore_error_count, int *ignore_error_list);
@@ -296,11 +314,51 @@ locator_get_classname_entry (const char *classname)
 }
 
 /*
+ * locator_classname_key_hash () - Hash a (owner, bare name) key
+ *
+ * return: Slot in a table of ht_size
+ *
+ *   key(in): LOCATOR_CLASSNAME_KEY to hash
+ *   ht_size(in): Size of the table
+ */
+static unsigned int
+locator_classname_key_hash (const void *key, const unsigned int ht_size)
+{
+  const LOCATOR_CLASSNAME_KEY *key_p = (const LOCATOR_CLASSNAME_KEY *) key;
+  unsigned int hash;
+
+  hash = mht_1strhash (key_p->bare_name, ht_size);
+
+  /* two users differ in the page and slot they live at */
+  hash += (unsigned int) key_p->owner_oid.pageid * 31 + (unsigned int) key_p->owner_oid.slotid;
+
+  return hash % ht_size;
+}
+
+/*
+ * locator_classname_key_compare () - Are two (owner, bare name) keys the same ?
+ *
+ * return: Non-zero when equal, as the hash table expects
+ *
+ *   key1(in), key2(in): Keys to compare
+ */
+static int
+locator_classname_key_compare (const void *key1, const void *key2)
+{
+  const LOCATOR_CLASSNAME_KEY *key1_p = (const LOCATOR_CLASSNAME_KEY *) key1;
+  const LOCATOR_CLASSNAME_KEY *key2_p = (const LOCATOR_CLASSNAME_KEY *) key2;
+
+  return (OID_EQ (&key1_p->owner_oid, &key2_p->owner_oid)
+	  && strcmp (key1_p->bare_name, key2_p->bare_name) == 0) ? 1 : 0;
+}
+
+/*
  * locator_insert_classname_entry () - Publish an entry in both name indexes
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- *   entry(in/out): Entry to insert; e_bare_name is set here
+ *   entry(in/out): Entry to insert; e_bare_name and e_key are derived here from e_name
+ *                  and e_owner_oid, which the caller must have set
  *
  * Note: The caller must be inside CSECT_LOCATOR_SR_CLASSNAME_TABLE and must have
  *       checked that no entry with the same full name exists.
@@ -309,6 +367,17 @@ static int
 locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 {
   entry->e_bare_name = locator_bare_name (entry->e_name);
+  entry->e_key.bare_name = entry->e_bare_name;
+
+  if (entry->e_bare_name == entry->e_name)
+    {
+      /* no qualifier, so no owner to key on: this is how a system class names itself */
+      OID_SET_NULL (&entry->e_key.owner_oid);
+    }
+  else
+    {
+      COPY_OID (&entry->e_key.owner_oid, &entry->e_owner_oid);
+    }
 
   if (mht_put (locator_Mht_classnames, entry->e_name, entry) == NULL)
     {
@@ -317,6 +386,16 @@ locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 
   if (mht_put2_new (locator_Mht_classnames_bare, entry->e_bare_name, entry) == NULL)
     {
+      (void) mht_rem (locator_Mht_classnames, entry->e_name, NULL, NULL);
+      return ER_FAILED;
+    }
+
+  /* the primary index is about to be keyed by this pair, so it has to be unique */
+  assert (mht_get (locator_Mht_classnames_owned, &entry->e_key) == NULL);
+
+  if (mht_put (locator_Mht_classnames_owned, &entry->e_key, entry) == NULL)
+    {
+      (void) mht_rem2 (locator_Mht_classnames_bare, entry->e_bare_name, entry, NULL, NULL);
       (void) mht_rem (locator_Mht_classnames, entry->e_name, NULL, NULL);
       return ER_FAILED;
     }
@@ -339,6 +418,8 @@ locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
   /* mht_rem drops whichever entry with this bare name comes first; only mht_rem2 takes
    * the one we mean. */
   (void) mht_rem2 (locator_Mht_classnames_bare, entry->e_bare_name, entry, NULL, NULL);
+
+  (void) mht_rem (locator_Mht_classnames_owned, &entry->e_key, NULL, NULL);
 }
 
 /*
@@ -572,6 +653,25 @@ locator_classname_action_restore (LOCATOR_CLASSNAME_ENTRY * entry)
 }
 
 /*
+ * locator_classname_entry_set_owner () - Record whose object the entry names
+ *
+ *   entry(in/out): Entry to set
+ *   owner_oid(in): Owner the name refers to; NULL leaves the owner unknown
+ */
+static void
+locator_classname_entry_set_owner (LOCATOR_CLASSNAME_ENTRY * entry, const OID * owner_oid)
+{
+  if (owner_oid != NULL)
+    {
+      COPY_OID (&entry->e_owner_oid, owner_oid);
+    }
+  else
+    {
+      OID_SET_NULL (&entry->e_owner_oid);
+    }
+}
+
+/*
  * locator_classname_entry_set_target () - Replace the current action's synonym target
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -643,9 +743,12 @@ locator_initialize (THREAD_ENTRY * thread_p)
       locator_Mht_classnames_bare =
 	mht_create ("Memory hash bare Classname to OID", CLASSNAME_CACHE_SIZE, mht_1strhash,
 		    mht_compare_strings_are_equal);
+      locator_Mht_classnames_owned =
+	mht_create ("Memory hash owned Classname to OID", CLASSNAME_CACHE_SIZE, locator_classname_key_hash,
+		    locator_classname_key_compare);
     }
 
-  if (locator_Mht_classnames == NULL || locator_Mht_classnames_bare == NULL)
+  if (locator_Mht_classnames == NULL || locator_Mht_classnames_bare == NULL || locator_Mht_classnames_owned == NULL)
     {
       /* Leave them both created or both absent: locator_finalize () decides by the first. */
       if (locator_Mht_classnames != NULL)
@@ -657,6 +760,11 @@ locator_initialize (THREAD_ENTRY * thread_p)
 	{
 	  mht_destroy (locator_Mht_classnames_bare);
 	  locator_Mht_classnames_bare = NULL;
+	}
+      if (locator_Mht_classnames_owned != NULL)
+	{
+	  mht_destroy (locator_Mht_classnames_owned);
+	  locator_Mht_classnames_owned = NULL;
 	}
       assert (false);
       goto error;
@@ -770,6 +878,8 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   ATTR_ID name_att_id = NULL_ATTRID;
   ATTR_ID target_att_id = NULL_ATTRID;
+  ATTR_ID owner_att_id = NULL_ATTRID;
+  OID owner_oid;
   DB_VALUE *value;
   int i;
   int error = NO_ERROR;
@@ -827,6 +937,10 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	{
 	  target_att_id = i;
 	}
+      else if (strcmp ("owner", rec_attr_name_p) == 0)
+	{
+	  owner_att_id = i;
+	}
 
       if (alloced_string == 1)
 	{
@@ -834,7 +948,7 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	}
     }
 
-  if (name_att_id == NULL_ATTRID || target_att_id == NULL_ATTRID)
+  if (name_att_id == NULL_ATTRID || target_att_id == NULL_ATTRID || owner_att_id == NULL_ATTRID)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_FAILED;
@@ -908,6 +1022,13 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	  target = db_get_string (value);
 	}
 
+      OID_SET_NULL (&owner_oid);
+      value = heap_attrinfo_access (owner_att_id, &attr_info);
+      if (value != NULL && !DB_IS_NULL (value) && DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_OID)
+	{
+	  COPY_OID (&owner_oid, db_get_oid (value));
+	}
+
       if (unique_name == NULL || target == NULL)
 	{
 	  assert (false);
@@ -937,7 +1058,7 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	  goto exit;
 	}
 
-      OID_SET_NULL (&entry->e_owner_oid);
+      COPY_OID (&entry->e_owner_oid, &owner_oid);
       entry->e_tran_index = NULL_TRAN_INDEX;
 
       entry->e_current.action = LC_CLASSNAME_EXIST;
@@ -1013,6 +1134,8 @@ locator_finalize (THREAD_ENTRY * thread_p)
 
   mht_destroy (locator_Mht_classnames_bare);
   locator_Mht_classnames_bare = NULL;
+  mht_destroy (locator_Mht_classnames_owned);
+  locator_Mht_classnames_owned = NULL;
 
   csect_exit (thread_p, CSECT_CT_OID_TABLE);
 
@@ -1029,10 +1152,12 @@ locator_finalize (THREAD_ENTRY * thread_p)
  *
  *   num_classes(in): Number of classes
  *   classnames(in): Names of the classes
+ *   owner_oids(in): Owner each name refers to; NULL OID when the name has no qualifier
  *   class_oids(in/out): Object identifiers of the classes
  */
 LC_FIND_CLASSNAME
-xlocator_reserve_class_names (THREAD_ENTRY * thread_p, const int num_classes, const char **classnames, OID * class_oids)
+xlocator_reserve_class_names (THREAD_ENTRY * thread_p, const int num_classes, const char **classnames,
+			      OID * owner_oids, OID * class_oids)
 {
   int i = 0;
   LC_FIND_CLASSNAME result = LC_CLASSNAME_RESERVED;
@@ -1042,7 +1167,7 @@ xlocator_reserve_class_names (THREAD_ENTRY * thread_p, const int num_classes, co
       assert (classnames[i] != NULL);
       assert (strlen (classnames[i]) < DB_MAX_IDENTIFIER_LENGTH);
 
-      result = xlocator_reserve_class_name (thread_p, classnames[i], &class_oids[i]);
+      result = xlocator_reserve_class_name (thread_p, classnames[i], &owner_oids[i], &class_oids[i]);
       if (result != LC_CLASSNAME_RESERVED)
 	{
 	  /* We could potentially revert the reservation but the transient entries should be properly cleaned up by the
@@ -1077,9 +1202,9 @@ xlocator_reserve_class_names (THREAD_ENTRY * thread_p, const int num_classes, co
  *              the classname is reserved or an error is returned.
  */
 static LC_FIND_CLASSNAME
-xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid)
+xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname, OID * owner_oid, OID * class_oid)
 {
-  return xlocator_reserve_name_internal (thread_p, classname, class_oid, NULL);
+  return xlocator_reserve_name_internal (thread_p, classname, owner_oid, class_oid, NULL);
 }
 
 /*
@@ -1088,11 +1213,12 @@ xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname, OID
  * return: LC_FIND_CLASSNAME (see xlocator_reserve_class_name)
  *
  *   classname(in): Name to reserve
+ *   owner_oid(in): Owner the name refers to; NULL OID when the name has no qualifier
  *   class_oid(in/out): Object identifier; a pseudo OID is generated when NULL
  *   synonym_target(in): Target unique name for a synonym; NULL reserves a class name
  */
 static LC_FIND_CLASSNAME
-xlocator_reserve_name_internal (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid,
+xlocator_reserve_name_internal (THREAD_ENTRY * thread_p, const char *classname, OID * owner_oid, OID * class_oid,
 				const char *synonym_target)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
@@ -1167,6 +1293,7 @@ start:
 		}
 
 	      entry->e_current.action = LC_CLASSNAME_RESERVED;
+	      locator_classname_entry_set_owner (entry, owner_oid);
 	      if (locator_classname_entry_set_target (entry, synonym_target) != NO_ERROR)
 		{
 		  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
@@ -1243,7 +1370,7 @@ start:
 	  return LC_CLASSNAME_ERROR;
 	}
 
-      OID_SET_NULL (&entry->e_owner_oid);
+      locator_classname_entry_set_owner (entry, owner_oid);
       entry->e_tran_index = tran_index;
 
       entry->e_current.action = LC_CLASSNAME_RESERVED;
@@ -1555,9 +1682,10 @@ error:
  * Note: Rename a class in transient form.
  */
 LC_FIND_CLASSNAME
-xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const char *newname, OID * class_oid)
+xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const char *newname, OID * owner_oid,
+			    OID * class_oid)
 {
-  return xlocator_rename_name_internal (thread_p, oldname, newname, class_oid, NULL);
+  return xlocator_rename_name_internal (thread_p, oldname, newname, owner_oid, class_oid, NULL);
 }
 
 /*
@@ -1567,12 +1695,13 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const 
  *
  *   oldname(in): Old name
  *   newname(in): New name
+ *   owner_oid(in): Owner the new name refers to; NULL OID when it has no qualifier
  *   class_oid(in/out): Object identifier
  *   synonym_target(in): Target unique name carried over to the new synonym entry; NULL for classes
  */
 static LC_FIND_CLASSNAME
-xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, const char *newname, OID * class_oid,
-			       const char *synonym_target)
+xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, const char *newname, OID * owner_oid,
+			       OID * class_oid, const char *synonym_target)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME renamed;
@@ -1591,7 +1720,7 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  renamed = xlocator_reserve_name_internal (thread_p, newname, class_oid, synonym_target);
+  renamed = xlocator_reserve_name_internal (thread_p, newname, owner_oid, class_oid, synonym_target);
   if (renamed != LC_CLASSNAME_RESERVED)
     {
       return renamed;
@@ -1685,7 +1814,7 @@ error:
  *       resolvers wait for the outcome of this transaction.
  */
 int
-xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char *name, const char *arg)
+xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char *name, const char *arg, OID * owner_oid)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME status;
@@ -1708,7 +1837,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
        * root class, so it must never point at a real (non-class) object. */
       OID_SET_NULL (&oid);
 
-      status = xlocator_reserve_name_internal (thread_p, name, &oid, arg);
+      status = xlocator_reserve_name_internal (thread_p, name, owner_oid, &oid, arg);
       if (status != LC_CLASSNAME_RESERVED)
 	{
 	  if (status != LC_CLASSNAME_ERROR)
@@ -1778,7 +1907,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 
 	csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
-	status = xlocator_rename_name_internal (thread_p, name, arg, &oid, target_copy);
+	status = xlocator_rename_name_internal (thread_p, name, arg, owner_oid, &oid, target_copy);
 	return (status == LC_CLASSNAME_RESERVED_RENAME) ? NO_ERROR : ER_FAILED;
       }
 

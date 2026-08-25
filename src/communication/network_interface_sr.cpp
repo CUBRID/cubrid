@@ -1862,6 +1862,7 @@ slocator_synonym_ddl (THREAD_ENTRY *thread_p, unsigned int rid, char *request, i
   int op;
   char *name;
   char *arg;
+  OID owner_oid;
   int success;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -1870,8 +1871,9 @@ slocator_synonym_ddl (THREAD_ENTRY *thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int (request, &op);
   ptr = or_unpack_string_nocopy (ptr, &name);
   ptr = or_unpack_string_nocopy (ptr, &arg);
+  ptr = or_unpack_oid (ptr, &owner_oid);
 
-  success = xlocator_synonym_ddl (thread_p, (LC_SYNONYM_DDL_OP) op, name, arg);
+  success = xlocator_synonym_ddl (thread_p, (LC_SYNONYM_DDL_OP) op, name, arg, &owner_oid);
 
   if (success != NO_ERROR)
     {
@@ -1899,6 +1901,7 @@ slocator_reserve_classnames (THREAD_ENTRY *thread_p, unsigned int rid, char *req
   LC_FIND_CLASSNAME reserved = LC_CLASSNAME_ERROR;
   int num_classes;
   char **classnames;
+  OID *owner_oids;
   OID *class_oids;
   char *ptr;
   int i;
@@ -1909,18 +1912,21 @@ slocator_reserve_classnames (THREAD_ENTRY *thread_p, unsigned int rid, char *req
 
   ptr = or_unpack_int (request, &num_classes);
 
-  malloc_size = ((sizeof (char *) + sizeof (OID)) * num_classes);
+  malloc_size = ((sizeof (char *) + sizeof (OID) + sizeof (OID)) * num_classes);
   malloc_area = (char *) db_private_alloc (thread_p, malloc_size);
   if (malloc_area != NULL)
     {
       classnames = (char **) malloc_area;
-      class_oids = (OID *) ((char *) malloc_area + (sizeof (char *) * num_classes));
+      owner_oids = (OID *) ((char *) malloc_area + (sizeof (char *) * num_classes));
+      class_oids = (OID *) ((char *) owner_oids + (sizeof (OID) * num_classes));
       for (i = 0; i < num_classes; i++)
 	{
 	  ptr = or_unpack_string_nocopy (ptr, &classnames[i]);
+	  ptr = or_unpack_oid (ptr, &owner_oids[i]);
 	  ptr = or_unpack_oid (ptr, &class_oids[i]);
 	}
-      reserved = xlocator_reserve_class_names (thread_p, num_classes, (const char **) classnames, class_oids);
+      reserved =
+	      xlocator_reserve_class_names (thread_p, num_classes, (const char **) classnames, owner_oids, class_oids);
     }
 
   if (reserved == LC_CLASSNAME_ERROR)
@@ -2019,6 +2025,7 @@ void
 slocator_rename_class_name (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *oldname, *newname;
+  OID owner_oid;
   OID class_oid;
   LC_FIND_CLASSNAME renamed;
   char *ptr;
@@ -2027,9 +2034,10 @@ slocator_rename_class_name (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 
   ptr = or_unpack_string_nocopy (request, &oldname);
   ptr = or_unpack_string_nocopy (ptr, &newname);
+  ptr = or_unpack_oid (ptr, &owner_oid);
   ptr = or_unpack_oid (ptr, &class_oid);
 
-  renamed = xlocator_rename_class_name (thread_p, oldname, newname, &class_oid);
+  renamed = xlocator_rename_class_name (thread_p, oldname, newname, &owner_oid, &class_oid);
   if (renamed == LC_CLASSNAME_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

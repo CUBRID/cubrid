@@ -966,47 +966,15 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
 static void
 pt_set_lock_owner (PT_CLASS_LOCKS * lcks, PT_NODE * spec, const char *realname)
 {
-  const char *dot = strchr (realname, '.');
-  char owner_name[DB_MAX_USER_LENGTH];
-  MOP owner_mop = NULL;
-  size_t len;
-
-  OID_SET_NULL (&lcks->owner_oids[lcks->num_classes]);
-
-  if (dot == NULL)
+  if (spec->info.spec.entity_name != NULL && spec->info.spec.entity_name->node_type == PT_NAME
+      && spec->info.spec.entity_name->info.name.owner_defaulted && Au_user != NULL)
     {
+      /* the name was completed with the connecting user, so no lookup is needed */
+      COPY_OID (&lcks->owner_oids[lcks->num_classes], ws_oid (Au_user));
       return;
     }
 
-  if (spec->info.spec.entity_name != NULL && spec->info.spec.entity_name->node_type == PT_NAME
-      && spec->info.spec.entity_name->info.name.owner_defaulted)
-    {
-      /* the connecting user is the one the name was completed with */
-      owner_mop = Au_user;
-    }
-  else
-    {
-      len = (size_t) (dot - realname);
-      if (len >= sizeof (owner_name))
-	{
-	  return;
-	}
-      memcpy (owner_name, realname, len);
-      owner_name[len] = '\0';
-
-      owner_mop = au_find_user (owner_name);
-      if (owner_mop == NULL)
-	{
-	  /* the statement will fail on this name anyway; leave the owner unknown */
-	  er_clear ();
-	  return;
-	}
-    }
-
-  if (owner_mop != NULL)
-    {
-      COPY_OID (&lcks->owner_oids[lcks->num_classes], ws_oid (owner_mop));
-    }
+  au_find_owner_oid_of_name (realname, &lcks->owner_oids[lcks->num_classes]);
 }
 
 /*
