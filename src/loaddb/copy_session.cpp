@@ -386,8 +386,7 @@ copy_session::flush_batch (THREAD_ENTRY *thread_p)
   else
     {
       /* normal path: per-row insert (MVCC, per-row lock) grouped under one
-       * scancache. The BU_LOCK is only taken when the fast path is usable
-       * (sstream_from_init settles that), so has_BU_lock is false here. */
+       * scancache. has_BU_lock is false here unless HA is enabled in bulk mode. */
       for (std::size_t i = 0; i < m_recdes_collected.size (); ++i)
 	{
 	  log_sysop_start (thread_p);

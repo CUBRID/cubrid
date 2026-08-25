@@ -50,7 +50,6 @@
 #include "object_representation.h"
 #include "network.h"
 #include "log_comm.h"
-#include "connection_defs.h"	/* HA_DISABLED */
 #include "network_interface_sr.h"
 #include "page_buffer.h"
 #include "file_manager.h"
@@ -12637,19 +12636,6 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
   for (int i = 0; i < num_cols; i++)
     {
       ptr = or_unpack_int (ptr, &attr_ids[i]);
-    }
-
-  /* The bulk fast path emits page-image redo, which carries no per-row LSA for
-   * replication, so it is only usable with HA off. Settle that here rather than
-   * per batch: a COPY that cannot take the fast path must not take the BU_LOCK
-   * either - the lock would block every other writer on the table for the whole
-   * load and buy nothing in return. */
-  if (bulk && !HA_DISABLED ())
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "COPY: WITH (BULK) ignored for \"%s\": bulk loading needs HA disabled;"
-		    " loading through the ordinary insert path\n", table_name);
-      bulk = 0;
     }
 
   {
