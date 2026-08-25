@@ -6274,10 +6274,10 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   int parallel_num = 1;
 
-  /* A px worker running a dptr clone (CBRD-27205) must not nest another parallel sort: the
-   * reservation would only steal workers from the pool per outer row. The coordinator marks
-   * itself with its own entry, workers with the parent's. */
-  if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_orig_thread_entry != thread_p)
+  /* A px scan worker running a dptr clone (CBRD-27205) must not nest another parallel sort: the
+   * reservation would only steal workers from the pool per outer row. Scoped to scan workers
+   * only; px_query workers (e.g. parallel MERGELIST inputs) keep their parallel sorts. */
+  if (thread_p->m_px_is_scan_worker)
     {
       return 1;
     }

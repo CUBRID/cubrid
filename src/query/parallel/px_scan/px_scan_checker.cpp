@@ -595,6 +595,14 @@ namespace parallel_scan
 	flags |= check<false> (arg->outptr_list->valptrp);
       }
 
+    /* worker-evaluated too: rownum/orderby_num predicates and LIMIT expressions of the dptr
+     * subtree (check<XASL_NODE> skips their contents - they are coordinator-side in the main
+     * tree). An SP/serial expression here must force the serial fallback. */
+    flags |= check<false> (arg->instnum_pred);
+    flags |= check<false> (arg->ordbynum_pred);
+    flags |= check<false> (arg->limit_offset);
+    flags |= check<false> (arg->limit_row_count);
+
     switch (arg->type)
       {
       case BUILDLIST_PROC:
@@ -622,6 +630,14 @@ namespace parallel_scan
 	  {
 	    flags |= check<false> (aggp->operands);
 	  }
+	break;
+      case HASHJOIN_PROC:
+	/* build/probe inputs and their during-join key regus run on the worker; check<XASL_NODE>
+	 * does not descend into them. */
+	flags |= check<false> (arg->proc.hashjoin.outer.regu_list_pred);
+	flags |= check<false> (arg->proc.hashjoin.inner.regu_list_pred);
+	safe = safe && dptr_subtree_worker_safe (arg->proc.hashjoin.outer.xasl, false)
+	       && dptr_subtree_worker_safe (arg->proc.hashjoin.inner.xasl, false);
 	break;
       case UNION_PROC:
       case DIFFERENCE_PROC:

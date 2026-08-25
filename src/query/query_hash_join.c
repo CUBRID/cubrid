@@ -2005,8 +2005,9 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   UINT32 degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN, max_page_cnt,
 							   manager->num_parallel_threads);
 
-  /* a px worker running a dptr clone (CBRD-27205) must not nest another parallel hash join */
-  if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_orig_thread_entry != thread_p)
+  /* a px scan worker running a dptr clone (CBRD-27205) must not nest another parallel hash join;
+   * scoped to scan workers only so px_query workers keep theirs */
+  if (thread_p->m_px_is_scan_worker)
     {
       degree = 0;
     }
@@ -2122,8 +2123,9 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
 							   single_context->probe->list_id->page_cnt,
 							   manager->num_parallel_threads);
 
-  /* a px worker running a dptr clone (CBRD-27205) must not nest another parallel hash join */
-  if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_orig_thread_entry != thread_p)
+  /* a px scan worker running a dptr clone (CBRD-27205) must not nest another parallel hash join;
+   * scoped to scan workers only so px_query workers keep theirs */
+  if (thread_p->m_px_is_scan_worker)
     {
       degree = 0;
     }

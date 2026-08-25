@@ -53,6 +53,13 @@ namespace parallel_scan
 	  m_result_handler->signal_worker_done ();
 	}
     });
+    /* marks this pool thread as a px scan worker for the whole task so nested parallel sort /
+     * hash join stay serial (dptr clones run per outer row); px_query workers keep nesting. */
+    thread_ref.m_px_is_scan_worker = true;
+    auto scan_worker_flag_guard = make_scope_exit ([&thread_ref] ()
+    {
+      thread_ref.m_px_is_scan_worker = false;
+    });
     err_code = initialize (thread_ref);
     if (err_code != NO_ERROR)
       {
