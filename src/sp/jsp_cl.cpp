@@ -1078,10 +1078,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
-  // check PL/CSQL's PARALLEL_ENABLE
+  // check PL/CSQL's PARALLEL_ENABLE: functions are allowed (a body that needs the server-side
+  // connection is refused at run time, like a Java SP), but procedures are not - they cannot
+  // appear in a query expression, so the declaration would never take effect
   if (PT_NODE_SP_PARALLEL_ENABLE (statement))
     {
-      if (sp_info.lang == SP_LANG_PLCSQL)
+      if (sp_info.lang == SP_LANG_PLCSQL && PT_NODE_SP_TYPE (statement) == PT_SP_PROCEDURE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PARALLEL_ENABLE_NOT_SUPPORTED, 0);
 	  return er_errid ();

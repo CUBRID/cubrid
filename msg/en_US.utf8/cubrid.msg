@@ -1483,9 +1483,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1378 Cannot change the login capability of user "%1$s".
 
-1379 PL/CSQL Stored procedure/function does not support PARALLEL_ENABLE.
+1379 PL/CSQL stored procedures do not support PARALLEL_ENABLE.
 
-1380 Stored procedure/function "%1$s" cannot execute SQL on the server-side connection: it is declared PARALLEL_ENABLE, or it is running in a parallel worker.
+1380 Stored procedure/function "%1$s" cannot execute SQL on the server-side connection or use DBMS_OUTPUT: it is declared PARALLEL_ENABLE, or it is running in a parallel worker.
 
 1381 Last Error
 

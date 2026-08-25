@@ -31,6 +31,7 @@
 
 package com.cubrid.plcsql.builtin;
 
+import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
@@ -46,7 +47,25 @@ public class DBMS_OUTPUT {
         return ContextManager.getContextofCurrentThread();
     }
 
+    /*
+     * DBMS_OUTPUT does not travel the server-side connection, but it reaches the session-shared
+     * MessageBuffer, which parallel workers must not touch concurrently. Refuse it under the same
+     * contract as server-side SQL: sticky, so the invocation fails even if the procedure catches
+     * this exception.
+     */
+    private static void refuseIfServerSideSqlForbidden() {
+        Thread current = Thread.currentThread();
+        if (current instanceof ExecuteThread
+                && ((ExecuteThread) current).isServerSideSqlForbidden()) {
+            ((ExecuteThread) current).markServerSideSqlRefused();
+            throw new RuntimeException(
+                    "cannot use DBMS_OUTPUT: the stored procedure is declared PARALLEL_ENABLE,"
+                            + " or it is running in a parallel worker");
+        }
+    }
+
     public static void enable(int size) throws Exception {
+        refuseIfServerSideSqlForbidden();
         Context c = getContext();
         c.getMessageBuffer().enable(size);
 
@@ -62,6 +81,7 @@ public class DBMS_OUTPUT {
     }
 
     public static void disable() throws Exception {
+        refuseIfServerSideSqlForbidden();
         Context c = getContext();
         c.getMessageBuffer().disable();
 
@@ -77,6 +97,7 @@ public class DBMS_OUTPUT {
     }
 
     public static void getLine(String[] line, int[] status) {
+        refuseIfServerSideSqlForbidden();
         Context c = getContext();
         if (Context.getSystemParam(SysParam.DBMS_OUTPUT) != null
                 && Context.getSystemParameterBool(SysParam.DBMS_OUTPUT)) {
@@ -88,6 +109,7 @@ public class DBMS_OUTPUT {
     }
 
     public static void getLines(String[] line, int[] cnt) {
+        refuseIfServerSideSqlForbidden();
         Context c = getContext();
         if (Context.getSystemParam(SysParam.DBMS_OUTPUT) != null
                 && Context.getSystemParameterBool(SysParam.DBMS_OUTPUT)) {
@@ -112,6 +134,7 @@ public class DBMS_OUTPUT {
     }
 
     public static void putLine(String line) {
+        refuseIfServerSideSqlForbidden();
         Context c = getContext();
         if (Context.getSystemParam(SysParam.DBMS_OUTPUT) != null
                 && Context.getSystemParameterBool(SysParam.DBMS_OUTPUT)) {
@@ -121,6 +144,7 @@ public class DBMS_OUTPUT {
     }
 
     public static void put(String str) {
+        refuseIfServerSideSqlForbidden();
         Context c = getContext();
         if (Context.getSystemParam(SysParam.DBMS_OUTPUT) != null
                 && Context.getSystemParameterBool(SysParam.DBMS_OUTPUT)) {
@@ -130,6 +154,7 @@ public class DBMS_OUTPUT {
     }
 
     public static void newLine() {
+        refuseIfServerSideSqlForbidden();
         Context c = getContext();
         if (Context.getSystemParam(SysParam.DBMS_OUTPUT) != null
                 && Context.getSystemParameterBool(SysParam.DBMS_OUTPUT)) {

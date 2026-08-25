@@ -2885,10 +2885,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             Misc.getLineColumnOf(ctx.LANGUAGE()), // s083
                             "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
                 }
-                if (ctx.authid_spec() != null) {
+                if (!ctx.authid_spec().isEmpty()) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.LANGUAGE()), // s084
+                            Misc.getLineColumnOf(ctx.authid_spec().get(0)), // s084
                             "illegal keyword AUTHID for a local procedure/function");
+                }
+                if (!ctx.parallel_enable_spec().isEmpty()) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.parallel_enable_spec().get(0)), // s440
+                            "illegal keyword PARALLEL_ENABLE for a local procedure/function");
                 }
                 if (ctx.routine_uniq_name().owner != null) {
                     throw new SemanticError(
