@@ -7340,7 +7340,7 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       bool px_merge_executed = false;
 
 #if SERVER_MODE && !WINDOWS
-      /* dormant by default (development force-on switch inside); falls through to the serial merge */
+      /* enabled by the parallel_merge_join system parameter (default off); falls through to the serial merge */
       if (parallel_query::merge_join::try_parallel_merge (thread_p, outer_xasl->list_id, inner_xasl->list_id,
 							  merge_infop, ls_flag, &list_id,
 							  px_merge_executed) != NO_ERROR)

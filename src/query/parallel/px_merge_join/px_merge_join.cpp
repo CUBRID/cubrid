@@ -33,9 +33,9 @@
 #include "error_manager.h"
 #include "list_file.h"
 #include "memory_alloc.h"
+#include "system_parameter.h"	/* prm_get_bool_value, PRM_ID_PARALLEL_MERGE_JOIN */
 #include "thread_entry.hpp"		/* thread_get_main_thread */
 
-#include <cstdlib>
 #include <vector>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -47,21 +47,6 @@ namespace parallel_query
   {
     namespace
     {
-      /* temporary force-on switch for development; the parallel merge stays dormant until the
-       * checker/optimizer live-enable step of CBRD-27307 */
-      bool
-      is_force_enabled ()
-      {
-	// *INDENT-OFF*
-	static const bool enabled = []
-	{
-	  const char *env = std::getenv ("CUBRID_PX_MERGE_JOIN_FORCE");
-	  return env != NULL && env[0] == '1';
-	} ();
-	// *INDENT-ON*
-	return enabled;
-      }
-
       void
       destroy_lists (THREAD_ENTRY *thread_p, std::vector<QFILE_LIST_ID *> &lists)
       {
@@ -97,7 +82,7 @@ namespace parallel_query
 
       assert (merge_infop->join_type == JOIN_INNER);
 
-      if (!is_force_enabled () || !is_applicable (*merge_infop, outer_list_id, inner_list_id))
+      if (!prm_get_bool_value (PRM_ID_PARALLEL_MERGE_JOIN) || !is_applicable (*merge_infop, outer_list_id, inner_list_id))
 	{
 	  return NO_ERROR;
 	}
