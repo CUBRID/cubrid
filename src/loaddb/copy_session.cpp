@@ -35,6 +35,8 @@
 #include "lock_manager.h"	/* lock_has_lock_on_object */
 #include "log_manager.h"
 #include "object_representation.h"
+#include "language_support.h"
+#include "object_domain.h"
 #include "object_representation_sr.h"
 #include "record_descriptor.hpp"
 #include "xserver_interface.h"
@@ -61,6 +63,7 @@ copy_session::copy_session ()
   : m_class_oid (OID_INITIALIZER)
   , m_hfid (HFID_INITIALIZER)
   , m_col_types ()
+  , m_col_domains ()
   , m_attr_ids ()
   , m_num_cols (0)
   , m_format (COPY_FORMAT_BINARY)
@@ -129,6 +132,7 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
       }
 
     m_attr_ids.resize (num_cols);
+    m_col_domains.resize (num_cols);
     for (int i = 0; i < num_cols; i++)
       {
 	int j;
@@ -147,6 +151,13 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
 	    goto exit;
 	  }
 	m_attr_ids[i] = attr_ids[i];
+
+	/* The representation is released before the first row arrives, so copy
+	 * the domain out rather than keeping the pointer. */
+	TP_DOMAIN *dom = attrs[j].domain;
+	m_col_domains[i].precision = (dom != NULL) ? dom->precision : 0;
+	m_col_domains[i].codeset = (dom != NULL) ? (int) dom->codeset : (int) LANG_SYS_CODESET;
+	m_col_domains[i].collation_id = (dom != NULL) ? dom->collation_id : LANG_SYS_COLLATION;
       }
   }
 
@@ -235,8 +246,8 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	{
 	  /* skip a leading header line (HEADER option) before decoding data rows */
 	  bool skip_only = m_skip_header;
-	  error = decode_csv_row (buf + pos, buf_len - pos, m_col_types.data (), m_num_cols, vals,
-				  m_csv_fields, m_csv_quoted, m_delimiter, m_quote, skip_only, &bytes_consumed);
+	  error = decode_csv_row (buf + pos, buf_len - pos, m_col_types.data (), m_col_domains.data (), m_num_cols,
+				  vals, m_csv_fields, m_csv_quoted, m_delimiter, m_quote, skip_only, &bytes_consumed);
 	  if (skip_only && error == NO_ERROR)
 	    {
 	      m_skip_header = false;
@@ -246,7 +257,8 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	}
       else
 	{
-	  error = decode_binary_row (buf + pos, buf_len - pos, m_col_types.data (), m_num_cols, vals, &bytes_consumed);
+	  error = decode_binary_row (buf + pos, buf_len - pos, m_col_types.data (), m_col_domains.data (),
+				     m_num_cols, vals, &bytes_consumed);
 	}
 
       if (error == COPY_DECODE_FOOTER)

@@ -26,6 +26,7 @@
 #ifndef _COPY_CSV_DECODER_HPP_
 #define _COPY_CSV_DECODER_HPP_
 
+#include "copy_binary_decoder.hpp"	/* COPY_COL_DOMAIN */
 #include "dbtype_def.h"
 
 #include <string>
@@ -37,13 +38,14 @@
  *           ER_COPY_CSV_FORMAT_ERROR.
  *   buf/buf_len(in): remaining text
  *   types/ncols(in): expected column types
+ *   domains(in): per-column target domain (precision / codeset / collation)
  *   out_vals(out): decoded DB_VALUE array (caller-allocated, size >= ncols)
  *   field_storage/quoted(in/out): caller-owned scratch reused per row. VARCHAR
  *     out_vals point into field_storage, so it must outlive the row's insert.
  *   bytes_consumed(out): bytes consumed (including the line terminator)
  */
-extern int decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols,
-			   DB_VALUE *out_vals, std::vector<std::string> &field_storage,
+extern int decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_COL_DOMAIN *domains,
+			   int ncols, DB_VALUE *out_vals, std::vector<std::string> &field_storage,
 			   std::vector<char> &quoted, char delimiter, char quote, bool skip_only,
 			   int *bytes_consumed);
 

@@ -40,7 +40,7 @@
  * outlives the row insert, so VARCHAR may point into it.
  */
 static int
-csv_coerce_field (const std::string &s, DB_TYPE type, DB_VALUE *val)
+csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom, DB_VALUE *val)
 {
   char *endp = NULL;
 
@@ -97,11 +97,22 @@ csv_coerce_field (const std::string &s, DB_TYPE type, DB_VALUE *val)
       break;
     }
     case DB_TYPE_VARCHAR:
-      db_make_varchar (val, (int) s.size (), s.data (), (int) s.size (), INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
-      break;
     case DB_TYPE_CHAR:
-      db_make_char (val, (int) s.size (), s.data (), (int) s.size (), INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+    {
+      /* Build against the column's own domain, as the binary decoder does. */
+      int fitted = (int) s.size ();
+      int rc = copy_fit_char_precision (type, s.data (), (int) s.size (), dom, &fitted);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      if (db_value_domain_init (val, type, dom->precision, 0) != NO_ERROR
+	  || db_make_db_char (val, (INTL_CODESET) dom->codeset, dom->collation_id, s.data (), fitted) != NO_ERROR)
+	{
+	  goto bad_value;
+	}
       break;
+    }
     case DB_TYPE_DATE:
     {
       DB_DATE d;
@@ -155,7 +166,7 @@ bad_value:
 }
 
 int
-decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols,
+decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_COL_DOMAIN *domains, int ncols,
 		DB_VALUE *out_vals, std::vector<std::string> &field_storage,
 		std::vector<char> &quoted, char delimiter, char quote, bool skip_only, int *bytes_consumed)
 {
@@ -279,7 +290,7 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols,
 	  continue;
 	}
 
-      int error = csv_coerce_field (field_storage[j], types[j], &out_vals[j]);
+      int error = csv_coerce_field (field_storage[j], types[j], &domains[j], &out_vals[j]);
       if (error != NO_ERROR)
 	{
 	  return error;

@@ -23,6 +23,7 @@
 #ifndef _COPY_SESSION_HPP_
 #define _COPY_SESSION_HPP_
 
+#include "copy_binary_decoder.hpp"	/* COPY_COL_DOMAIN */
 #include "dbtype_def.h"
 #include "heap_file.h"
 #include "log_lsa.hpp"
@@ -60,6 +61,8 @@ class copy_session : public stream_session
     HFID m_hfid;
 
     std::vector<DB_TYPE> m_col_types;
+    /* per-column target domain, captured at open (see COPY_COL_DOMAIN) */
+    std::vector<COPY_COL_DOMAIN> m_col_domains;
     std::vector<ATTR_ID> m_attr_ids;	/* attribute repr IDs in column order */
     std::vector<char> m_leftover;		/* bytes at the tail of a receive_data
 					   call that form a partial row and need
