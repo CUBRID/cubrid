@@ -4111,6 +4111,28 @@ pt_is_signed_numeric_literal (const PT_NODE * node)
 }
 
 /*
+ * pt_default_expr_unclassified_name () - display name of the node that made a
+ *	DEFAULT expression's volatility unclassified, for error reporting
+ *   return: the name to print
+ *   parser(in): parser context
+ *   node(in): the unclassified node recorded by pt_get_expr_tree_volatility
+ */
+static const char *
+pt_default_expr_unclassified_name (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  switch (node->node_type)
+    {
+    case PT_EXPR:
+      return pt_show_binopcode (node->info.expr.op);
+    case PT_FUNCTION:
+      return fcode_get_lowercase_name (node->info.function.function_type);
+    default:
+      /* names (column refs), host vars, sub-queries: print the node itself */
+      return parser_print_tree (parser, node);
+    }
+}
+
+/*
  * pt_check_data_default () - checks data_default for semantic errors
  *
  * result	    	 : modified data_default
@@ -4174,7 +4196,8 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  && default_value != NULL && (PT_IS_EXPR_NODE (default_value) || default_value->node_type == PT_FUNCTION)
 	  && !pt_is_signed_numeric_literal (default_value))
 	{
-	  PT_VOLATILITY vol = pt_get_expr_tree_volatility (parser, default_value);
+	  PT_NODE *unclassified_node = NULL;
+	  PT_VOLATILITY vol = pt_get_expr_tree_volatility (default_value, &unclassified_node);
 
 	  if (vol == PT_VOLATILITY_IMMUTABLE || vol == PT_VOLATILITY_STABLE)
 	    {
@@ -4201,10 +4224,18 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	    }
 	  else if (vol == PT_VOLATILITY_UNSET)
 	    {
-	      /* the expression contains an operator or function whose volatility
-	       * is not classified; reject it so an unclassified DEFAULT expression
-	       * does not silently bypass the checks below (each offending node was
-	       * already reported by pt_get_expr_tree_volatility) */
+	      /* the expression contains an operator, function, or sub-tree whose
+	       * volatility is not classified; reject it so an unclassified DEFAULT
+	       * expression does not silently freeze to a DDL-time constant */
+	      if (unclassified_node == NULL)
+		{
+		  /* an UNSET result always records the node that caused it */
+		  assert (false);
+		  unclassified_node = default_value;
+		}
+	      PT_ERRORmf (parser, unclassified_node, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+			  pt_default_expr_unclassified_name (parser, unclassified_node));
 	      goto end;
 	    }
 	}

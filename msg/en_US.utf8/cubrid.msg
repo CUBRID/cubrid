@@ -1994,8 +1994,6 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 337 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 
-339 Invalid DEFAULT clause: '%1$s' has unclassified volatility.
-
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
