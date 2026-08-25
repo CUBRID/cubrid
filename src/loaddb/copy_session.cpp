@@ -32,6 +32,7 @@
 #include "heap_file.h"
 #include "locator_sr.h"
 #include "lock_manager.h"	/* lock_has_lock_on_object */
+#include "log_impl.h"
 #include "log_manager.h"
 #include "object_representation.h"
 #include "language_support.h"
@@ -410,6 +411,30 @@ done:
   m_recdes_collected.clear ();
   if (scancache_started)
     {
+      /* MULTI_ROW_INSERT does not apply a unique index's key/oid delta per row;
+       * it accumulates it in the scancache and leaves the caller to hand it to
+       * the transaction. Nothing else does that here, so without this a COPY
+       * into a table carrying a unique index leaves the global statistics at
+       * whatever they were - and SELECT COUNT(*) is answered from them, so the
+       * table reads as empty. loaddb does the same in stop_scancache (). */
+      if (error == NO_ERROR && scancache.m_index_stats != NULL)
+	{
+	  for (const auto &it : scancache.m_index_stats->get_map ())
+	    {
+	      if (!it.second.is_unique ())
+		{
+		  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, &m_class_oid, &it.first, NULL);
+		  error = ER_BTREE_UNIQUE_FAILED;
+		  break;
+		}
+	      error = logtb_tran_update_unique_stats (thread_p, it.first, it.second, true);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  break;
+		}
+	    }
+	}
       heap_scancache_end_modify (thread_p, &scancache);
     }
   return error;
