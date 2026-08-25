@@ -29,7 +29,6 @@
 #include "btree.h"
 #include "dbtype.h"
 #include "error_manager.h"
-#include "connection_defs.h"	/* HA_DISABLED */
 #include "heap_file.h"
 #include "locator_sr.h"
 #include "lock_manager.h"	/* lock_has_lock_on_object */
@@ -365,11 +364,13 @@ copy_session::flush_batch (THREAD_ENTRY *thread_p)
     }
   scancache_started = true;
 
-  if (has_BU_lock && HA_DISABLED ())
+  if (has_BU_lock)
     {
-      /* bulk fast path: one multi-row insert emits page-image redo (no per-row
-       * undo / MVCC insert-id / per-row class lock). Requires HA disabled, since
-       * the page-based log record has no accurate per-row LSA for replication. */
+      /* Bulk path: one multi-row insert, batching page allocation and skipping
+       * the per-row MVCC insert-id and per-row class lock. It logs one page
+       * image where replication is not watching, and a record per row where it
+       * is - locator_multi_insert_force settles that itself, so this caller no
+       * longer has to ask whether HA is on. */
       log_sysop_start (thread_p);
       error = locator_multi_insert_force (thread_p, &m_hfid, &m_class_oid, m_recdes_collected, true,
 					  MULTI_ROW_INSERT, &scancache, &force_count, DB_NOT_PARTITIONED_CLASS,
@@ -385,8 +386,8 @@ copy_session::flush_batch (THREAD_ENTRY *thread_p)
     }
   else
     {
-      /* normal path: per-row insert (MVCC, per-row lock) grouped under one
-       * scancache. has_BU_lock is false here unless HA is enabled in bulk mode. */
+      /* normal path: per-row insert with the full MVCC treatment, grouped under
+       * one scancache. Reached when COPY was not given WITH (BULK). */
       for (std::size_t i = 0; i < m_recdes_collected.size (); ++i)
 	{
 	  log_sysop_start (thread_p);
