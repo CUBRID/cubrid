@@ -3951,8 +3951,15 @@ pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * at
     {
       /* residual DEFAULT expression: rehydrate it so the reference evaluates at execution time; the
        * rehydrated nodes carry do_not_fold, keeping generic constant folding from freezing it */
-      return pt_compact_default_tree_from_stream (parser, default_expr->default_expr_tree_stream,
+      node = pt_compact_default_tree_from_stream (parser, default_expr->default_expr_tree_stream,
 						  default_expr->default_expr_tree_stream_size);
+      if (node == NULL && !pt_has_error (parser))
+	{
+	  /* a stored stream this build cannot interpret (version mismatch or corruption), not an
+	   * allocation failure -- diagnose it so the caller does not misreport out-of-memory */
+	  PT_INTERNAL_ERROR (parser, "invalid Compact DEFAULT Tree stream");
+	}
+      return node;
     }
 
   if (default_expr->default_expr_type != DB_DEFAULT_NONE)
@@ -4017,7 +4024,12 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
   name->info.name.default_value = pt_make_attribute_default_value_node (parser, att);
   if (name->info.name.default_value == NULL)
     {
-      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      /* a rehydration failure reports its own cause; allocation failure is the
+       * remaining undiagnosed one */
+      if (!pt_has_error (parser))
+	{
+	  PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	}
       return ER_FAILED;
     }
 
@@ -4101,7 +4113,10 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	  attr->info.name.default_value = pt_make_attribute_default_value_node (parser, att);
 	  if (attr->info.name.default_value == NULL)
 	    {
-	      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      if (!pt_has_error (parser))
+		{
+		  PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		}
 	      return 0;
 	    }
 	}
