@@ -4148,8 +4148,7 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
       assert (PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec));
       col = pt_is_on_list (parser, name, spec->info.spec.as_attr_list);
 
-      if (col != NULL && col->flag.is_remote_invisible_column
-	  && (spec->info.spec.flag & PT_SPEC_FLAG_DUMMY_REMOVED))
+      if (col != NULL && col->flag.is_remote_invisible_column && (spec->info.spec.flag & PT_SPEC_FLAG_DUMMY_REMOVED))
 	{
 	  /* dummy spec from subquery cannot see invisible columns - the subquery projected
 	   * "SELECT *", so only the visible columns were ever in scope there.  The native path
