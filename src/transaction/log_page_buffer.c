@@ -8283,9 +8283,18 @@ loop:
   logpb_destroy_backup_read_worker_pool ();
 #endif
 
-  /* The backup exists now, so record it. This is the only place the header learns about it, which is what makes
-   * the outcome atomic: a backup that fails or is killed anywhere above leaves the previous record untouched,
-   * with nothing to undo.
+  error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* The backup exists and its volume names are on disk, and this is the last point that can still fail: the error
+   * path from here up would have called fileio_abort_backup (), which destroys every backup volume of this level.
+   * So the header learns about the backup only now, and it is the only place it does. That makes the outcome
+   * atomic with nothing to undo - a backup that fails or is killed anywhere above leaves the previous record
+   * exactly as it was, and a recorded backup is one that exists. Deleting archives, which cannot be undone
+   * either, waits for the same point.
    *
    * The active log image copied above was taken before this, so it carries whatever record the previous backup
    * left rather than this one's. A database restored from this backup therefore reports that older backup as its
@@ -8306,12 +8315,6 @@ loop:
 	  logpb_remove_archive_logs (thread_p, catmsg);
 	  LOG_CS_EXIT (thread_p);
 	}
-    }
-
-  error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
     }
 
   if (session.verbose_fp)
