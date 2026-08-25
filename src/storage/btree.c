@@ -1426,8 +1426,8 @@ static int btree_ovf_dir_create_page (THREAD_ENTRY * thread_p, BTID_INT * btid_i
 static int btree_ovf_dir_locate (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * dir_head_vpid,
 				 const OID * oid, PGBUF_LATCH_MODE latch_mode, PAGE_PTR * dir_page_out,
 				 int *entry_idx_out);
-static int btree_ovf_dir_find_pred (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, const VPID * dir_vpid,
-				    PGBUF_LATCH_MODE latch_mode, PAGE_PTR * pred_page);
+static int btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, const VPID * dir_vpid,
+				    PGBUF_LATCH_MODE latch_mode, PAGE_PTR * prev_page);
 static int btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
 				   const VPID * first_ovf_vpid, BTREE_OP_PURPOSE purpose,
 				   BTREE_MVCC_INFO * match_mvccinfo, PAGE_PTR * found_page, PAGE_PTR * prev_page,
@@ -12659,26 +12659,26 @@ btree_ovf_dir_locate (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID *
 }
 
 /*
- * btree_ovf_dir_find_pred () - Find the directory page preceding a given directory page (singly linked list walk
+ * btree_ovf_dir_find_prev () - Find the directory page preceding a given directory page (singly linked list walk
  *				from the head). Used by rare backward steps and page unlinks.
  *
  * return	      : Error code.
  * thread_p (in)      : Thread entry.
  * dir_head_vpid (in) : Directory head page VPID.
- * dir_vpid (in)      : Directory page whose predecessor is wanted (must not be the head).
+ * dir_vpid (in)      : Directory page whose preceding page is wanted (must not be the head).
  * latch_mode (in)    : Latch mode.
- * pred_page (out)    : Predecessor directory page, fixed.
+ * prev_page (out)    : Preceding directory page, fixed.
  */
 static int
-btree_ovf_dir_find_pred (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, const VPID * dir_vpid,
-			 PGBUF_LATCH_MODE latch_mode, PAGE_PTR * pred_page)
+btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, const VPID * dir_vpid,
+			 PGBUF_LATCH_MODE latch_mode, PAGE_PTR * prev_page)
 {
   PAGE_PTR cur_page = NULL;
   VPID next_vpid;
   int error_code;
 
   assert (!VPID_EQ (dir_head_vpid, dir_vpid));
-  assert (pred_page != NULL && *pred_page == NULL);
+  assert (prev_page != NULL && *prev_page == NULL);
 
   cur_page = pgbuf_fix (thread_p, dir_head_vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
   if (cur_page == NULL)
@@ -12704,7 +12704,7 @@ btree_ovf_dir_find_pred (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, co
 	}
       if (VPID_EQ (&next_vpid, dir_vpid))
 	{
-	  *pred_page = cur_page;
+	  *prev_page = cur_page;
 	  return NO_ERROR;
 	}
       pgbuf_unfix_and_init (thread_p, cur_page);
@@ -12842,28 +12842,28 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 	  else if (!VPID_EQ (pgbuf_get_vpid_ptr (dir_page), &dir_head_vpid))
 	    {
 	      /* Previous data page is the last entry of the preceding directory page. */
-	      PAGE_PTR pred_dir_page = NULL;
-	      RECDES pred_record;
-	      int pred_num_entries;
+	      PAGE_PTR prev_dir_page = NULL;
+	      RECDES prev_record;
+	      int prev_num_entries;
 
 	      error_code =
-		btree_ovf_dir_find_pred (thread_p, &dir_head_vpid, pgbuf_get_vpid_ptr (dir_page), PGBUF_LATCH_READ,
-					 &pred_dir_page);
+		btree_ovf_dir_find_prev (thread_p, &dir_head_vpid, pgbuf_get_vpid_ptr (dir_page), PGBUF_LATCH_READ,
+					 &prev_dir_page);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
 		  goto error;
 		}
-	      if (spage_get_record (thread_p, pred_dir_page, 1, &pred_record, PEEK) != S_SUCCESS)
+	      if (spage_get_record (thread_p, prev_dir_page, 1, &prev_record, PEEK) != S_SUCCESS)
 		{
 		  assert_release (false);
-		  pgbuf_unfix_and_init (thread_p, pred_dir_page);
+		  pgbuf_unfix_and_init (thread_p, prev_dir_page);
 		  error_code = ER_FAILED;
 		  goto error;
 		}
-	      pred_num_entries = (int) (pred_record.length / sizeof (BTREE_OVF_DIR_ENTRY));
-	      VPID_COPY (&prev_vpid, &((BTREE_OVF_DIR_ENTRY *) pred_record.data)[pred_num_entries - 1].vpid);
-	      pgbuf_unfix_and_init (thread_p, pred_dir_page);
+	      prev_num_entries = (int) (prev_record.length / sizeof (BTREE_OVF_DIR_ENTRY));
+	      VPID_COPY (&prev_vpid, &((BTREE_OVF_DIR_ENTRY *) prev_record.data)[prev_num_entries - 1].vpid);
+	      pgbuf_unfix_and_init (thread_p, prev_dir_page);
 	    }
 
 	  if (!VPID_ISNULL (&prev_vpid))
@@ -12947,18 +12947,18 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 	}
       else
 	{
-	  PAGE_PTR pred_dir_page = NULL;
+	  PAGE_PTR prev_dir_page = NULL;
 
 	  error_code =
-	    btree_ovf_dir_find_pred (thread_p, &dir_head_vpid, pgbuf_get_vpid_ptr (dir_page), PGBUF_LATCH_READ,
-				     &pred_dir_page);
+	    btree_ovf_dir_find_prev (thread_p, &dir_head_vpid, pgbuf_get_vpid_ptr (dir_page), PGBUF_LATCH_READ,
+				     &prev_dir_page);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto error;
 	    }
 	  pgbuf_unfix_and_init (thread_p, dir_page);
-	  dir_page = pred_dir_page;
+	  dir_page = prev_dir_page;
 	  if (spage_get_record (thread_p, dir_page, 1, &dir_record, PEEK) != S_SUCCESS)
 	    {
 	      assert_release (false);
