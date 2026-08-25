@@ -34,7 +34,8 @@
 
 #include "jsp_cl.h"
 
-static int update_authorization_for_new_owner (MOP old_owner_mop, MOP new_owner_mop, MOP object_mop, int *row_count);
+static int update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop,
+    MOP object_mop, int *row_count);
 static int update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop,
 				      MOP object_mop);
 
@@ -1134,7 +1135,7 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP 
   assert (object_mop != NULL && old_owner_mop != NULL && new_owner_mop != NULL);
 
   /* modify _db_authorization catalog */
-  error = update_authorization_for_new_owner (old_owner_mop, new_owner_mop, object_mop,
+  error = update_authorization_for_new_owner (obj_type, old_owner_mop, new_owner_mop, object_mop,
 	  &update_count_db_authorization);
   if (error != NO_ERROR)
     {

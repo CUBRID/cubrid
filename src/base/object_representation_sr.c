@@ -767,6 +767,27 @@ or_class_hfid (RECDES * record, HFID * hfid)
 }
 
 /*
+ * or_class_owner () - Extracts just the owner OID from the disk representation
+ *                     of a class
+ *   return: void
+ *   record(in): packed disk record containing class
+ *   owner_oid(out): pointer to OID structure to be filled in
+ *
+ * Note: The owner sits in the fixed part, so the server can tell whose class a
+ *       record describes without reading the catalog.
+ */
+void
+or_class_owner (RECDES * record, OID * owner_oid)
+{
+  char *ptr;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  OR_GET_OID (ptr + ORC_CLASS_OWNER_OFFSET, owner_oid);
+}
+
+/*
  * or_class_tde_algorithm, () - Extracts the tde algorithm from the disk representation of a class
  *   return: void
  *   record(in): packed disk record containing class

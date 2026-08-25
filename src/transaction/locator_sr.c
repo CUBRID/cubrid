@@ -100,6 +100,7 @@ struct locator_classname_entry
 {
   char *e_name;			/* Full name; "qualifier.name" except unqualified system classes */
   const char *e_bare_name;	/* Portion of e_name after the qualifier dot; e_name itself when unqualified */
+  OID e_owner_oid;		/* Owner of the named object; NULL until a class record says who */
   int e_tran_index;		/* Transaction of entry */
   LOCATOR_CLASSNAME_ACTION e_current;	/* The most current action */
 };
@@ -690,6 +691,8 @@ locator_initialize (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
+      or_class_owner (&peek, &entry->e_owner_oid);
+
       entry->e_name = strdup ((char *) classname);
       if (entry->e_name == NULL)
 	{
@@ -934,6 +937,7 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	  goto exit;
 	}
 
+      OID_SET_NULL (&entry->e_owner_oid);
       entry->e_tran_index = NULL_TRAN_INDEX;
 
       entry->e_current.action = LC_CLASSNAME_EXIST;
@@ -1239,6 +1243,7 @@ start:
 	  return LC_CLASSNAME_ERROR;
 	}
 
+      OID_SET_NULL (&entry->e_owner_oid);
       entry->e_tran_index = tran_index;
 
       entry->e_current.action = LC_CLASSNAME_RESERVED;
