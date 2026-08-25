@@ -112,8 +112,9 @@ namespace parallel_scan
       bool m_is_grouped;
       bool m_is_cached_scan;	/* from manager, propagated to scan_open_heap_scan */
       bool m_uses_xasl_clone;
-      /* level-0 node has non-regu-linked dptrs to run per row; today the checker rejects such
-       * plans (CANNOT_PARALLEL_SCAN), so this stays false until that gate is lifted. */
+      /* set true when the level-0 node has non-regu-linked dptrs to run per row; the checker
+       * (dptr_subtree_worker_safe) admits such a plan only when every dptr subtree passes the
+       * strong check, otherwise it is CANNOT_PARALLEL_SCAN and this stays false. */
       bool m_run_nonlinked_dptr;
       TSC_TICKS m_start_tick;
 
