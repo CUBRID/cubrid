@@ -13799,19 +13799,28 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
  *   return: true when nothing reads the per-row records
  *
  * The page image is the cheaper record by a wide margin, but it is the wrong
- * shape for logical replication: the applier navigates to a row by the LSA of
- * that row's own heap record, and a page image leaves no such record behind.
- * So the page image is only usable when this transaction's inserts are not
- * being replicated - the same condition the log manager uses when it decides
- * whether to remember an insert's LSA for the replication record at all.
+ * shape for anything that reads a row through the LSA of that row's own heap
+ * record, because a page image leaves no such record behind. Two readers do:
+ * logical replication, whose applier navigates by exactly that LSA, and
+ * supplemental logging, which stores the same LSA for the change feed. Each is
+ * turned on independently of the other, so both have to be asked.
  *
- * When it is not usable the loop still batches page allocation and still skips
- * the per-row MVCC id and per-row lock; only the logging shape changes.
+ * When the page image is not usable the loop still batches page allocation and
+ * still skips the per-row MVCC id and per-row lock; only the logging shape
+ * changes.
  */
 static bool
-locator_bulk_use_page_logging (THREAD_ENTRY * thread_p)
+locator_bulk_use_page_logging (THREAD_ENTRY * thread_p, OID * class_oid)
 {
-  return !log_does_allow_replication ();
+  if (log_does_allow_replication ())
+    {
+      return false;
+    }
+  if (heap_is_supplemental_log_needed (thread_p, class_oid))
+    {
+      return false;
+    }
+  return true;
 }
 
 // *INDENT-OFF*
@@ -13821,7 +13830,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 			    HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
 			    FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk)
 {
-  const bool use_page_logging = locator_bulk_use_page_logging (thread_p);
+  const bool use_page_logging = locator_bulk_use_page_logging (thread_p, class_oid);
   int error_code = NO_ERROR;
   size_t accumulated_records_size = 0;
   size_t heap_max_page_size;
