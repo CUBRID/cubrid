@@ -13965,7 +13965,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   save_user = Au_user;
   if (AU_SET_USER (owner) == NO_ERROR)
     {
-      error = au_object_revoke_all_privileges (DB_OBJECT_CLASS, owner, table_name);
+      error = au_object_revoke_all_privileges (DB_OBJECT_CLASS, owner, op);
       if (error != NO_ERROR)
 	{
 	  AU_SET_USER (save_user);
@@ -13976,7 +13976,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   AU_SET_USER (save_user);
 
   /* now delete _db_auth tuples refers to the table */
-  error = au_delete_auth_of_dropping_database_object (DB_OBJECT_CLASS, table_name);
+  error = au_delete_auth_of_dropping_database_object (op);
   if (error != NO_ERROR)
     {
       goto end;

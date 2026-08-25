@@ -34,11 +34,9 @@
 
 #include "jsp_cl.h"
 
-static int update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop,
-    const char *unique_name,
-    int *row_count);
+static int update_authorization_for_new_owner (MOP old_owner_mop, MOP new_owner_mop, MOP object_mop, int *row_count);
 static int update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop,
-				      const char *unique_name);
+				      MOP object_mop);
 
 using AuthorizationKey = std::tuple<MOP, MOP, MOP>;
 using AuthKey = std::tuple<MOP, MOP, MOP, DB_AUTH>;
@@ -216,10 +214,7 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
   const char *sql_query =
 	  "SELECT [au].object FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?"
-	  " AND [au].[object_of] = (%s) AND [au].[auth_type] = ?";
-  char obj_fetch_query[512];
-  const char *class_unique_name = NULL;
-  char sp_unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+	  " AND [au].[object_of] = ? AND [au].[auth_type] = ?";
   char error_msg[ERR_MSG_SIZE];
 
   for (i = 0; i < COUNT_FOR_VARIABLES; i++)
@@ -235,29 +230,7 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      class_unique_name = sm_get_ch_name (obj_mop);
-      if (class_unique_name == NULL)
-	{
-	  assert (false);
-	  error = ER_UNEXPECTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get class name of mop.");
-	  goto exit;
-	}
-
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
-	       " WHERE " CT_CLASS_UNIQUE_NAME_EXPR ("[cl].") " = ?");
-      break;
     case DB_OBJECT_PROCEDURE:
-      sp_unique_name[0] = '\0';
-      if (jsp_get_unique_name (obj_mop, sp_unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
-	{
-	  assert (false);
-	  error = ER_UNEXPECTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get stored procedure name of mop.");
-	  goto exit;
-	}
-
-      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
       break;
     default:
       assert (false);
@@ -268,7 +241,7 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
       goto exit;
     }
 
-  session = db_open_buffer_local (obj_fetch_query);
+  session = db_open_buffer_local (sql_query);
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -313,19 +286,7 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
       goto release;
     }
 
-  switch (obj_type)
-    {
-    case DB_OBJECT_CLASS:
-      db_make_string (&val[INDEX_FOR_OBJECT_NAME], class_unique_name);
-      break;
-    case DB_OBJECT_PROCEDURE:
-      db_make_string (&val[INDEX_FOR_OBJECT_NAME], sp_unique_name);
-      break;
-    default:
-      assert (false);
-      error = ER_FAILED;
-      goto release;
-    }
+  db_make_object (&val[INDEX_FOR_OBJECT], obj_mop);
 
   i = 0;
   for (DB_AUTH type = DB_AUTH_SELECT; type != auth_type; type = (DB_AUTH) (type << 1))
@@ -567,43 +528,26 @@ exit:
 /*
  * au_delete_auth_of_dropping_database_object - delete _db_auth records refers to the given database object.
  *   return: error code
- *   obj_type(in): the object type
- *   name(in): the object name to be dropped
+ *   obj_mop(in): the object being dropped
  */
 int
-au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char *name)
+au_delete_auth_of_dropping_database_object (MOP obj_mop)
 {
   int error = NO_ERROR, save;
-  const char *sql_query = "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[object_of] IN (%s);";
+  const char *sql_query = "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[object_of] = ?;";
   DB_VALUE val;
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   int stmt_id;
-  char obj_fetch_query[512];
 
   db_make_null (&val);
 
   /* Disable the checking for internal authorization object access */
   AU_SAVE_AND_DISABLE (save);
 
-  assert (name != NULL);
+  assert (obj_mop != NULL);
 
-  switch (obj_type)
-    {
-    case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
-	       " WHERE " CT_CLASS_UNIQUE_NAME_EXPR ("[cl].") " = ?");
-      break;
-    case DB_OBJECT_PROCEDURE:
-      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
-      break;
-    default:
-      assert (false);
-      error = ER_FAILED;
-      goto exit;
-    }
-
-  session = db_open_buffer_local (obj_fetch_query);
+  session = db_open_buffer_local (sql_query);
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -623,7 +567,7 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
       goto release;
     }
 
-  db_make_string (&val, name);
+  db_make_object (&val, obj_mop);
   error = db_push_values (session, 1, &val);
   if (error != NO_ERROR)
     {
@@ -731,7 +675,7 @@ exit:
  *   unique_name(in): class/stored procedure unique_name
  */
 int
-au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const char *unique_name)
+au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, MOP obj_mop)
 {
   int error = NO_ERROR, save, i = 0;
   const char *auth_type_char;
@@ -743,12 +687,11 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
   DB_SESSION *session = NULL;
   int stmt_id;
   int row_count = -1;
-  char obj_fetch_query[512];
   const char *sql_query =
 	  "SELECT [au].grantee, [au].object_of, [au].auth_type FROM [" CT_CLASSAUTH_NAME "] [au]"
-	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = (%s);";
+	  " WHERE [au].[grantor].[name] = ? AND [au].[object_of] = ?;";
 
-  assert (grantor_mop != NULL && unique_name != NULL);
+  assert (grantor_mop != NULL && obj_mop != NULL);
 
   for (i = 0; i < 2; i++)
     {
@@ -762,22 +705,7 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
   /* Disable the checking for internal authorization object access */
   AU_SAVE_AND_DISABLE (save);
 
-  switch (obj_type)
-    {
-    case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
-	       " WHERE " CT_CLASS_UNIQUE_NAME_EXPR ("[cl].") " = ?");
-      break;
-    case DB_OBJECT_PROCEDURE:
-      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
-      break;
-    default:
-      assert (false);
-      error = ER_FAILED;
-      goto exit;
-    }
-
-  session = db_open_buffer_local (obj_fetch_query);
+  session = db_open_buffer_local (sql_query);
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -811,7 +739,7 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
       goto exit;
     }
 
-  db_make_string (&val[1], unique_name);
+  db_make_object (&val[1], obj_mop);
 
   error = db_push_values (session, 2, val);
   if (error != NO_ERROR)
@@ -1188,9 +1116,9 @@ exit:
  * au_object_owner_change_privileges
  *   return: error code
  *   obj_type(in): the object type
+ *   object_mop(in): the class/stored procedure whose owner changes
  *   old_owner_mop(in): class/stored procedure old owner
  *   new_owner_mop(in): class/stored procedure new owner
- *   unique_name(in):
  * NOTE
  * When the owner of a class, virtual class, or procedure is changed, the previous owner's privileges are transferred to the new owner.
  *
@@ -1198,16 +1126,15 @@ exit:
  * Reason: The REVOKE statement cannot revoke privileges from the owner.
  */
 int
-au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP old_owner_mop, MOP new_owner_mop,
-				   const char *unique_name)
+au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP old_owner_mop, MOP new_owner_mop)
 {
   int error = NO_ERROR;
   int update_count_db_authorization = 0;
 
-  assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
+  assert (object_mop != NULL && old_owner_mop != NULL && new_owner_mop != NULL);
 
   /* modify _db_authorization catalog */
-  error = update_authorization_for_new_owner (obj_type, old_owner_mop, new_owner_mop, unique_name,
+  error = update_authorization_for_new_owner (old_owner_mop, new_owner_mop, object_mop,
 	  &update_count_db_authorization);
   if (error != NO_ERROR)
     {
@@ -1219,7 +1146,7 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP 
   if (update_count_db_authorization)
     {
       /* modify _db_auth catalog */
-      error = update_auth_for_new_owner (obj_type, old_owner_mop, new_owner_mop, unique_name);
+      error = update_auth_for_new_owner (obj_type, old_owner_mop, new_owner_mop, object_mop);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -1253,13 +1180,12 @@ exit:
 
 static int
 update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop,
-				    const char *unique_name, int *row_count)
+				    MOP object_mop, int *row_count)
 {
   int error = NO_ERROR, save, current_cache;
-  char obj_fetch_query[512];
   const char *sql_query =
 	  "SELECT [au].grantee, [au].object_of FROM [" CT_CLASSAUTH_NAME "] [au]"
-	  " WHERE [au].[object_of] = (%s)"
+	  " WHERE [au].[object_of] = ?"
 	  " GROUP BY [au].grantee";
   DB_VALUE val, element, grantee_value, object_of_value;
   DB_SESSION *session = NULL;
@@ -1274,7 +1200,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 
   *row_count = -1;
 
-  assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
+  assert (old_owner_mop != NULL && new_owner_mop != NULL && object_mop != NULL);
 
   AU_SAVE_AND_DISABLE (save);
 
@@ -1283,22 +1209,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
   db_make_null (&grantee_value);
   db_make_null (&object_of_value);
 
-  switch (obj_type)
-    {
-    case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl]"
-	       " WHERE " CT_CLASS_UNIQUE_NAME_EXPR ("[cl].") " = ?");
-      break;
-    case DB_OBJECT_PROCEDURE:
-      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
-      break;
-    default:
-      error = ER_FAILED;
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  session = db_open_buffer_local (obj_fetch_query);
+  session = db_open_buffer_local (sql_query);
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -1319,7 +1230,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
     }
 
   /* Prepare DB_VALUEs for host variables */
-  db_make_string (&val, unique_name);
+  db_make_object (&val, object_mop);
 
   error = db_push_values (session, 1, &val);
   if (error != NO_ERROR)
@@ -1513,14 +1424,13 @@ exit:
 }
 
 static int
-update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop, const char *unique_name)
+update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop, MOP object_mop)
 {
   int error = NO_ERROR, save;
-  char obj_fetch_query[512];
   const char *sql_query =
 	  "SELECT [au].object, [au].grantor, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable FROM ["
 	  CT_CLASSAUTH_NAME "] [au]"
-	  " WHERE [au].[object_of] = (%s)";
+	  " WHERE [au].[object_of] = ?";
   DB_SESSION *session = NULL;
   int stmt_id;
   DB_QUERY_RESULT *result = NULL;
@@ -1535,7 +1445,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
   std::unordered_map<AuthKey, int, tuple_hash<AuthKey>, tuple_equal<AuthKey>> auth_unordered_map;
   AuthKey key;
 
-  assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
+  assert (old_owner_mop != NULL && new_owner_mop != NULL && object_mop != NULL);
 
   AU_SAVE_AND_DISABLE (save);
 
@@ -1547,22 +1457,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
   db_make_null (&auth_type_value);
   db_make_null (&is_grantable_value);
 
-  switch (obj_type)
-    {
-    case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [c].[class_of] FROM " CT_CLASS_NAME "[c]"
-	       " WHERE " CT_CLASS_UNIQUE_NAME_EXPR ("[c].") " = ?");
-      break;
-    case DB_OBJECT_PROCEDURE:
-      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
-      break;
-    default:
-      error = ER_FAILED;
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  session = db_open_buffer_local (obj_fetch_query);
+  session = db_open_buffer_local (sql_query);
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -1583,7 +1478,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
     }
 
   /* Prepare DB_VALUEs for host variables */
-  db_make_string (&val, unique_name);
+  db_make_object (&val, object_mop);
 
   error = db_push_values (session, 1, &val);
   if (error != NO_ERROR)

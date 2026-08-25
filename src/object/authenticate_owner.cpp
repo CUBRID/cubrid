@@ -504,7 +504,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 	      goto end;
 	    }
 
-	  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, sub_partitions[i], owner, owner_mop, table_name);
+	  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, sub_partitions[i], owner, owner_mop);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
@@ -535,7 +535,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
       goto end;
     }
 
-  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, class_mop, owner, owner_mop, table_name);
+  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, class_mop, owner, owner_mop);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -709,7 +709,7 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
       goto end;
     }
 
-  error = au_object_owner_change_privileges (DB_OBJECT_PROCEDURE, sp_mop, owner, new_owner_mop, unique_name);
+  error = au_object_owner_change_privileges (DB_OBJECT_PROCEDURE, sp_mop, owner, new_owner_mop);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);

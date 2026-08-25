@@ -54,7 +54,7 @@ class au_auth_accessor
     {
       INDEX_FOR_GRANTEE_NAME = 0,
       INDEX_FOR_GRANTOR_NAME = 1,
-      INDEX_FOR_OBJECT_NAME = 2,
+      INDEX_FOR_OBJECT = 2,
       INDEX_FOR_AUTH_TYPE = 3,
       /* Total count for the above */
       COUNT_FOR_VARIABLES
@@ -94,12 +94,12 @@ extern int au_delete_auth_of_dropping_user (MOP user);
 extern int au_delete_authorizartion_of_dropping_user (MOP user);
 
 // delete _db_auth records refers to the given table
-extern int au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char *name);
+extern int au_delete_auth_of_dropping_database_object (MOP obj_mop);
 
 /*
 * drop a class, virtual class and procedure all privileges are revoked.
 */
-extern int au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const char *unique_name);
+extern int au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, MOP obj_mop);
 
 /*
 * when a user is deleted, all of their privileges are revoked.
@@ -110,6 +110,6 @@ extern int au_user_revoke_all_privileges (MOP user_mop);
 * when the owner of a class, virtual class, or procedure is changed, the previous owner's privileges are transferred to the new owner.
 */
 extern int au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP old_owner_mop,
-    MOP new_owner_mop, const char *unique_name);
+    MOP new_owner_mop);
 
 #endif // _authenticate_access_auth_HPP_

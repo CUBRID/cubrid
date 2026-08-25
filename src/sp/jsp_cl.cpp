@@ -1677,7 +1677,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   save_user = Au_user;
   if (AU_SET_USER (owner) == NO_ERROR)
     {
-      err = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner, unique_name);
+      err = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner, sp_mop);
       if (err != NO_ERROR)
 	{
 	  AU_SET_USER (save_user);
@@ -1687,7 +1687,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 
   AU_SET_USER (save_user);
 
-  err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PROCEDURE, name);
+  err = au_delete_auth_of_dropping_database_object (sp_mop);
   if (err != NO_ERROR)
     {
       goto error;
