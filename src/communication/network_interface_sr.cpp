@@ -82,6 +82,7 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "compile_context.h"
 #include "load_session.hpp"
+#include "copy_session.hpp"
 #include "session.h"
 #include "xasl.h"
 #include "xasl_cache.h"
@@ -12548,3 +12549,307 @@ sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 #endif
+
+/*
+ * create_copy_session_from_config () - Decode the COPY config blob and build a
+ *                                      copy_session.
+ *   config_ptr(in): pointer to the COPY config bytes (table/ncols/options/col_types)
+ *   config_len(in): length of the config blob; every read below is bounded by it
+ *   error_code(out): NO_ERROR or the failure code
+ *   return: opened copy_session on success, NULL on error
+ *
+ * COPY config encoding: table_name (string), num_cols (int), format (int),
+ * delimiter (int), quote (int), header (int), bulk (int),
+ * col_types (int[num_cols]), attr_ids (int[num_cols]).
+ */
+static stream_session *
+create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int config_len, int *error_code)
+{
+  char *ptr = config_ptr;
+  const char *config_end = config_ptr + config_len;
+  char *table_name = NULL;
+  int name_len = 0;
+  int num_cols = 0;
+  int format = 0;
+  int delimiter = 0;
+  int quote = 0;
+  int header = 0;
+  int bulk = 0;
+  DB_TYPE *col_types = NULL;
+  int *attr_ids = NULL;
+  copy_session *session = NULL;
+
+  *error_code = NO_ERROR;
+
+  /* The blob comes straight off the wire, so bound every read by config_len
+   * before trusting a length taken from it. */
+  if (config_len < OR_INT_SIZE)
+    {
+      goto invalid_config;
+    }
+
+  name_len = OR_GET_INT (ptr);
+  if (name_len <= 0 || name_len > config_end - ptr - OR_INT_SIZE)
+    {
+      goto invalid_config;
+    }
+
+  ptr = or_unpack_string_nocopy (ptr, &table_name);
+  if (table_name == NULL || table_name[name_len - 1] != '\0')
+    {
+      goto invalid_config;
+    }
+
+  if (config_end - ptr < 6 * OR_INT_SIZE)
+    {
+      goto invalid_config;
+    }
+
+  ptr = or_unpack_int (ptr, &num_cols);
+  /* format: 0 = BINARY, 1 = CSV */
+  ptr = or_unpack_int (ptr, &format);
+  ptr = or_unpack_int (ptr, &delimiter);
+  ptr = or_unpack_int (ptr, &quote);
+  ptr = or_unpack_int (ptr, &header);
+  ptr = or_unpack_int (ptr, &bulk);
+
+  if (num_cols <= 0 || (config_end - ptr) / OR_INT_SIZE / 2 < num_cols)
+    {
+      goto invalid_config;
+    }
+
+  col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
+  attr_ids = (int *) db_private_alloc (thread_p, num_cols * sizeof (int));
+  if (col_types == NULL || attr_ids == NULL)
+    {
+      *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+
+  for (int i = 0; i < num_cols; i++)
+    {
+      int type_val;
+      ptr = or_unpack_int (ptr, &type_val);
+      col_types[i] = (DB_TYPE) type_val;
+    }
+
+  for (int i = 0; i < num_cols; i++)
+    {
+      ptr = or_unpack_int (ptr, &attr_ids[i]);
+    }
+
+  {
+    OID class_oid;
+    LC_FIND_CLASSNAME status;
+
+    /* bulk mode pre-acquires a class-level BU_LOCK (like loaddb) so the batch
+     * insert can skip per-row MVCC-id and per-row class/btree locks. */
+    status = xlocator_find_class_oid (thread_p, table_name, &class_oid, (bulk ? BU_LOCK : NULL_LOCK));
+    if (status != LC_CLASSNAME_EXIST)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_name);
+	*error_code = ER_LC_UNKNOWN_CLASSNAME;
+	goto exit;
+      }
+
+    session = new copy_session ();
+    if (session == NULL)
+      {
+	*error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	goto exit;
+      }
+
+    *error_code = session->init (thread_p, &class_oid, col_types, attr_ids, num_cols, format, delimiter, quote,
+				 header, bulk);
+    if (*error_code != NO_ERROR)
+      {
+	delete session;
+	session = NULL;
+	goto exit;
+      }
+  }
+
+  goto exit;
+
+invalid_config:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "malformed COPY session configuration");
+  *error_code = ER_STREAM_SESSION_ERROR;
+
+exit:
+  if (col_types != NULL)
+    {
+      db_private_free (thread_p, col_types);
+    }
+  if (attr_ids != NULL)
+    {
+      db_private_free (thread_p, attr_ids);
+    }
+
+  return session;
+}
+
+/*
+ * create_stream_session () - Factory: build the stream_session for a stream_kind.
+ *   stream_kind(in): STREAM_KIND_* consumer tag
+ *   config_ptr(in): consumer-specific config blob
+ *   config_len(in): length of the config blob
+ *   error_code(out): NO_ERROR or the failure code
+ *   return: opened stream_session on success, NULL on error
+ *
+ * Add a new consumer by appending a case here (and a STREAM_KIND_* value);
+ * the transport and the SEND_DATA / END handlers stay unchanged.
+ */
+static stream_session *
+create_stream_session (THREAD_ENTRY *thread_p, int stream_kind, char *config_ptr, int config_len, int *error_code)
+{
+  switch (stream_kind)
+    {
+    case STREAM_KIND_COPY:
+      return create_copy_session_from_config (thread_p, config_ptr, config_len, error_code);
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream kind");
+      *error_code = ER_STREAM_SESSION_ERROR;
+      return NULL;
+    }
+}
+
+/*
+ * sstream_from_init () - Open a client->server byte-stream session
+ *   request format: stream_kind (int), consumer config blob
+ *   reply format: error_code (int)
+ */
+void
+sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr = request;
+  int stream_kind = 0;
+  int error_code = NO_ERROR;
+  stream_session *session = NULL;
+
+  if (reqlen < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "truncated stream session request");
+      error_code = ER_STREAM_SESSION_ERROR;
+      goto send_reply;
+    }
+
+  ptr = or_unpack_int (ptr, &stream_kind);
+
+  session = create_stream_session (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
+  if (session != NULL)
+    {
+      error_code = session_set_stream_session (thread_p, session);
+      if (error_code != NO_ERROR)
+	{
+	  session->abort (thread_p);
+	  delete session;
+	}
+    }
+
+send_reply:
+  /* On error, stage the error (code + message) so it travels with the reply;
+   * the reply itself is always sent (the request/reply protocol requires it). */
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  {
+    OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+    or_pack_int (reply, error_code);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
+}
+
+/*
+ * sstream_send_data () - Receive binary data chunk for COPY session
+ *   request format: raw binary data
+ *   reply format: error_code (int)
+ */
+void
+sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+
+  stream_session *session = NULL;
+  error_code = session_get_stream_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+  else
+    {
+      error_code = session->receive_chunk (thread_p, request, reqlen);
+      if (error_code != NO_ERROR)
+	{
+	  session->abort (thread_p);
+	  delete session;
+	  session_set_stream_session (thread_p, NULL);
+	}
+    }
+
+  /* On error, stage the error (code + message) so it travels with the reply;
+   * the reply itself is always sent (the request/reply protocol requires it). */
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sstream_end () - Finalize COPY session and return row count
+ *   request format: (empty)
+ *   reply format: error_code (int), rows_loaded (int)
+ */
+void
+sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  int rows_loaded = 0;
+
+  stream_session *session = NULL;
+  error_code = session_get_stream_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+  else
+    {
+      stream_result result;
+      result.count = 0;
+      error_code = session->finish (thread_p, &result);	/* may flush a trailing CSV record */
+      rows_loaded = (int) result.count;
+
+      if (error_code != NO_ERROR)
+	{
+	  session->abort (thread_p);
+	}
+      delete session;
+      session_set_stream_session (thread_p, NULL);
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  {
+    OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+    char *ptr;
+
+    ptr = or_pack_int (reply, error_code);
+    ptr = or_pack_int (ptr, rows_loaded);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
+}

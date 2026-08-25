@@ -136,7 +136,9 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_PREPARE_AND_EXECUTE */
   fn_not_supported,		/* CAS_FC_CURSOR_CLOSE */
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_STREAM_SEND_DATA */
+  fn_not_supported		/* CAS_FC_STREAM_END */
 };
 
 static const char *server_func_name[] = {
@@ -183,7 +185,9 @@ static const char *server_func_name[] = {
   "prepare_and_execute",
   "cursor_close",
   "get_shard_info",
-  "set_cas_change_mode"
+  "set_cas_change_mode",
+  "stream_send_data",
+  "stream_end"
 };
 
 static int cgw_cas_main (void);

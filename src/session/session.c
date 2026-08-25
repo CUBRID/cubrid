@@ -32,6 +32,7 @@
 
 #include "system.h"
 #include "session.h"
+#include "stream_session.hpp"
 
 #include "boot_sr.h"
 #include "jansson.h"
@@ -141,6 +142,7 @@ struct session_state
   int private_lru_index;
 
   load_session *load_session_p;
+  stream_session *stream_session_p;
   PL_SESSION *pl_session_p;
 
   // *INDENT-OFF*
@@ -324,6 +326,7 @@ session_state_init (void *st)
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
   session_p->pl_session_p = NULL;
+  session_p->stream_session_p = NULL;
 
   return NO_ERROR;
 }
@@ -3273,6 +3276,46 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
   return NO_ERROR;
 }
 
+int
+session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* one stream session per connection (the invariant the transport seam depends on) */
+  if (stream_session_p != NULL && state_p->stream_session_p != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a stream session is already active on this connection");
+      return ER_STREAM_SESSION_ERROR;
+    }
+
+  state_p->stream_session_p = stream_session_p;
+
+  return NO_ERROR;
+}
+
+int
+session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr))
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  stream_session_ref_ptr = state_p->stream_session_p;
+
+  return NO_ERROR;
+}
+
 bool
 session_is_pl_session_running (THREAD_ENTRY * thread_p)
 {
@@ -3340,6 +3383,11 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
       session->load_session_p->interrupt ();
     }
 
+  /* The stream session (COPY / LOB / ...) is left alone here for the same reason
+   * as the load session: a worker may still be inside receive_chunk. It is
+   * aborted and freed by session_destroy_load_session, once the workers have
+   * drained. */
+
   if (session->pl_session_p)
     {
       if (thread_p && thread_p->type == TT_WORKER)
@@ -3360,13 +3408,21 @@ session_destroy_load_session (THREAD_ENTRY * thread_p, void *session_arg)
   assert (session != NULL);
 
   /* Must be called only after the connection workers have drained, otherwise an
-   * in-flight sloaddb_* request may still be using the load session. */
+   * in-flight sloaddb_* or sstream_* request may still be using the session. */
   if (session->load_session_p != NULL)
     {
       session->load_session_p->wait_for_completion ();
 
       delete session->load_session_p;
       session->load_session_p = NULL;
+    }
+
+  if (session->stream_session_p != NULL)
+    {
+      session->stream_session_p->abort (thread_p);
+
+      delete session->stream_session_p;
+      session->stream_session_p = NULL;
     }
 #endif
 }

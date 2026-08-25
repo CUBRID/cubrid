@@ -967,6 +967,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> limit_options
 %type <node> opt_upd_del_limit_clause
 %type <node> truncate_stmt
+%type <node> copy_stmt
+%type <number> copy_format
+%type <c4> opt_copy_csv_option_list
+%type <c4> copy_csv_option_list
+%type <c4> copy_csv_option
 %type <node> do_stmt
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
@@ -1523,6 +1528,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> BIT_OR
 %token <cptr> BIT_XOR
 %token <cptr> BUFFER
+%token <cptr> BULK_
 %token <cptr> CALLER
 %token <cptr> CACHE
 %token <cptr> CAPACITY
@@ -1536,8 +1542,10 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> COMMENT
 %token <cptr> COMMITTED
 %token <cptr> COMPILE
+%token <cptr> COPY_
 %token <cptr> COST
 %token <cptr> CRITICAL
+%token <cptr> CSV_
 %token <cptr> CUME_DIST
 %token <cptr> DATE_ADD
 %token <cptr> DATE_SUB
@@ -1546,6 +1554,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> DBNAME
 %token <cptr> DECREMENT
 %token <cptr> DEFINER
+%token <cptr> DELIMITER_
 %token <cptr> DENSE_RANK
 %token <cptr> DETERMINISTIC
 %token <cptr> DONT_REUSE_OID
@@ -1555,6 +1564,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ERROR_
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
+%token <cptr> FORMAT_
 %token <cptr> FORCE
 %token <cptr> FULLSCAN
 %token <cptr> GE_INF_
@@ -1664,6 +1674,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> PUBLIC
 %token <cptr> QUARTER
 %token <cptr> QUEUES
+%token <cptr> QUOTE_
 %token <cptr> RANDOM_
 %token <cptr> RANGE_
 %token <cptr> RANK
@@ -1702,6 +1713,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> STDDEV
 %token <cptr> STDDEV_POP
 %token <cptr> STDDEV_SAMP
+%token <cptr> STDIN_
 %token <cptr> STR_TO_DATE
 %token <cptr> SUBDATE
 %token <cptr> SYNONYM
@@ -1994,6 +2006,8 @@ stmt_
 	| transaction_stmt
 		{ $$ = $1; }
 	| truncate_stmt
+		{ $$ = $1; }
+	| copy_stmt
 		{ $$ = $1; }
 	| merge_stmt
 		{ $$ = $1; }
@@ -4392,6 +4406,121 @@ opt_owner_clause
 as_or_to
 	: AS
 	| TO
+	;
+
+copy_stmt
+	: COPY_ class_spec_without_server_name opt_attr_list FROM STDIN_ WITH '(' FORMAT_ copy_format opt_copy_csv_option_list ')'
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_COPY);
+			if (node)
+			  {
+			    container_4 opt = $10;
+			    PT_NODE *delim = CONTAINER_AT_0 (opt);
+			    PT_NODE *quote = CONTAINER_AT_1 (opt);
+			    PT_NODE *bulk = CONTAINER_AT_2 (opt);
+			    PT_NODE *hdr = CONTAINER_AT_3 (opt);
+
+			    node->info.copy.table_name = $2;
+			    node->info.copy.column_list = $3;
+			    node->info.copy.direction = 0;	/* FROM */
+			    node->info.copy.format = $9;	/* 0 = BINARY, 1 = CSV */
+			    node->info.copy.fmt.csv.delimiter = 0;
+			    node->info.copy.fmt.csv.quote = 0;
+			    node->info.copy.fmt.csv.header = 0;
+			    node->info.copy.bulk = 0;
+			    if (bulk != NULL)
+			      {
+				node->info.copy.bulk = 1;
+			      }
+
+			    /* DELIMITER / QUOTE take exactly one character. Anything else is
+			     * marked -1 here and rejected by do_copy, so that a two-character
+			     * delimiter is not silently truncated to its first byte. */
+			    if (delim != NULL && delim->info.value.data_value.str != NULL)
+			      {
+				node->info.copy.fmt.csv.delimiter =
+				  (delim->info.value.data_value.str->length == 1)
+				  ? delim->info.value.data_value.str->bytes[0] : -1;
+			      }
+			    if (quote != NULL && quote->info.value.data_value.str != NULL)
+			      {
+				node->info.copy.fmt.csv.quote =
+				  (quote->info.value.data_value.str->length == 1)
+				  ? quote->info.value.data_value.str->bytes[0] : -1;
+			      }
+			    if (hdr != NULL)
+			      {
+				node->info.copy.fmt.csv.header = 1;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+copy_format
+	: BINARY
+		{{ $$ = 0; }}
+	| CSV_
+		{{ $$ = 1; }}
+	;
+
+opt_copy_csv_option_list
+	: /* empty */
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, NULL, NULL, NULL);
+			$$ = ctn;
+		}}
+	| ',' copy_csv_option_list
+		{{
+			$$ = $2;
+		}}
+	;
+
+copy_csv_option_list
+	: copy_csv_option
+		{{
+			$$ = $1;
+		}}
+	| copy_csv_option_list ',' copy_csv_option
+		{{
+			container_4 a = $1;
+			container_4 b = $3;
+			if (CONTAINER_AT_0 (b) != NULL) a.c1 = CONTAINER_AT_0 (b);
+			if (CONTAINER_AT_1 (b) != NULL) a.c2 = CONTAINER_AT_1 (b);
+			if (CONTAINER_AT_2 (b) != NULL) a.c3 = CONTAINER_AT_2 (b);
+			if (CONTAINER_AT_3 (b) != NULL) a.c4 = CONTAINER_AT_3 (b);
+			$$ = a;
+		}}
+	;
+
+copy_csv_option
+	: DELIMITER_ char_string_literal
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, $2, NULL, NULL, NULL);
+			$$ = ctn;
+		}}
+	| BULK_		/* applies to all formats (not CSV-specific) — enables bulk-load mode */
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, NULL, FROM_NUMBER (1), NULL);
+			$$ = ctn;
+		}}
+	| QUOTE_ char_string_literal
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, $2, NULL, NULL);
+			$$ = ctn;
+		}}
+	| HEADER
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, NULL, NULL, FROM_NUMBER (1));	/* flag */
+			$$ = ctn;
+		}}
 	;
 
 truncate_stmt
@@ -20576,6 +20705,7 @@ identifier
 	| BIT_OR                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| BIT_XOR                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| BUFFER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BULK_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CALLER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CACHE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CAPACITY               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20589,8 +20719,10 @@ identifier
 	| COMMENT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMMITTED              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMPILE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COPY_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COST                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CRITICAL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CSV_                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CUME_DIST              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| DATE_ADD               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| DATE_SUB               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20599,6 +20731,7 @@ identifier
 	| DBNAME                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| DECREMENT              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 
 	| DEFINER                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 
+	| DELIMITER_             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
        	| DEDUPLICATE_           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 	
         | DENSE_RANK             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
         | DETERMINISTIC          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20610,6 +20743,7 @@ identifier
 	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FORMAT_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20716,6 +20850,7 @@ identifier
 	| PUBLIC                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| QUARTER                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| QUEUES                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| QUOTE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANDOM_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANGE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANK                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20751,6 +20886,7 @@ identifier
 	| STDDEV                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STDDEV_POP             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STDDEV_SAMP            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STDIN_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STR_TO_DATE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SUBDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SYNONYM                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}

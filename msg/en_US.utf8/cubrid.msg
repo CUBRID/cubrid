@@ -1483,7 +1483,15 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1378 Cannot change the login capability of user "%1$s".
 
-1379 Last Error
+1379 COPY FROM is not supported for "%1$s".
+
+1380 COPY binary format error: %1$s.
+
+1381 stream session error: %1$s.
+
+1382 COPY CSV format error: %1$s.
+
+1383 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

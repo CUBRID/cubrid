@@ -642,6 +642,7 @@ extern int heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEA
 extern int heap_rv_redo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern bool heap_is_big_length (int length);
+extern bool heap_is_supplemental_log_needed (THREAD_ENTRY * thread_p, OID * class_oid);
 extern int xheap_get_maxslotted_reclength (int &maxslotted_reclength);
 
 extern int heap_get_class_oid_from_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, OID * class_oid);

@@ -96,6 +96,9 @@
 #include "method_callback.hpp"
 #include "network.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -3557,6 +3560,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_DROP_SERVER:
 	case PT_RENAME_SERVER:
 	case PT_ALTER_SERVER:
+	case PT_COPY:
 
 	  /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
 	  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
@@ -3810,6 +3814,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_ALTER_SERVER:
 	  error = do_alter_server (parser, statement);
+	  break;
+
+	case PT_COPY:
+	  error = do_copy (parser, statement);
 	  break;
 
 	default:
@@ -4273,6 +4281,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_SYNONYM:
     case PT_DROP_SYNONYM:
     case PT_RENAME_SYNONYM:
+    case PT_COPY:
       /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
       db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
       break;
@@ -4501,6 +4510,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_RENAME_SYNONYM:
       err = do_rename_synonym (parser, statement);
+      break;
+    case PT_COPY:
+      err = do_copy (parser, statement);
       break;
 
     default:
@@ -22638,4 +22650,214 @@ pt_is_allowed_result_cache ()
     }
 
   return true;
+}
+
+/*
+ * do_copy () - Execute a COPY statement
+ *   return: Error code or number of rows loaded
+ *   parser(in): Parser context
+ *   statement(in): Parse tree node for COPY statement
+ *
+ * Resolves the table and column types, then calls copy_from_init(). Actual
+ * binary data transfer is handled by the CAS broker via stream_from_send_data()
+ * and stream_from_end().
+ */
+int
+do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  const char *table_name;
+  DB_OBJECT *class_obj;
+  DB_ATTRIBUTE *attr;
+  PT_NODE *col;
+  DB_TYPE *col_types = NULL;
+  int *col_ids = NULL;
+  int ncols = 0;
+  PT_NODE *entity_spec;
+  PT_NODE *entity;
+  int is_partitioned = 0;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  /* table_name is stored as a PT_SPEC from class_spec_without_server_name */
+  entity_spec = statement->info.copy.table_name;
+  if (entity_spec == NULL || entity_spec->node_type != PT_SPEC || entity_spec->info.spec.entity_name == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  entity = entity_spec->info.spec.flat_entity_list;
+  if (entity != NULL)
+    {
+      table_name = entity->info.name.original;
+    }
+  else
+    {
+      /* flat_entity_list may not be populated; use entity_name directly */
+      table_name = entity_spec->info.spec.entity_name->info.name.resolved;
+      if (table_name == NULL)
+	{
+	  table_name = entity_spec->info.spec.entity_name->info.name.original;
+	}
+    }
+
+  class_obj = db_find_class (table_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      return (error != NO_ERROR) ? error : ER_FAILED;
+    }
+
+  /* COPY inserts instances directly into the target heap, so the target must be
+   * an ordinary instance class: a view has no heap, and a partitioned class
+   * needs pruning that the server-side session does not perform. */
+  if (db_is_class (class_obj) <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, table_name);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  /* returns 1 for a partition sub-class, and sets is_partitioned for a parent */
+  if (do_is_partitioned_subclass (&is_partitioned, table_name, NULL) != 0 || is_partitioned)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, table_name);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  /* Server-side insertion carries no authorization of its own, so the INSERT
+   * privilege has to be checked here, as loaddb does. */
+  error = au_check_class_authorization (class_obj, AU_INSERT);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      /* promote from warning to error severity, as loaddb does */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  /* Count the target columns first: an explicit list as given, otherwise every
+   * instance attribute in schema order. Shared attributes have no per-instance
+   * slot in the heap record, so they are not COPY targets. */
+  if (statement->info.copy.column_list != NULL)
+    {
+      for (col = statement->info.copy.column_list; col != NULL; col = col->next)
+	{
+	  ncols++;
+	}
+    }
+  else
+    {
+      for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	{
+	  if (!db_attribute_is_shared (attr))
+	    {
+	      ncols++;
+	    }
+	}
+    }
+
+  if (ncols <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, table_name);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
+  col_ids = (int *) malloc (ncols * sizeof (int));
+  if (col_types == NULL || col_ids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (ncols * (sizeof (DB_TYPE) + sizeof (int))));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+
+  {
+    int i = 0;
+
+    if (statement->info.copy.column_list != NULL)
+      {
+	for (col = statement->info.copy.column_list; col != NULL; col = col->next)
+	  {
+	    attr = db_get_attribute (class_obj, col->info.name.original);
+	    if (attr == NULL)
+	      {
+		error = er_errid ();
+		error = (error != NO_ERROR) ? error : ER_FAILED;
+		goto end;
+	      }
+	    if (db_attribute_is_shared (attr))
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, db_attribute_name (attr));
+		error = ER_COPY_NOT_SUPPORTED;
+		goto end;
+	      }
+	    col_types[i] = db_attribute_type (attr);
+	    col_ids[i] = db_attribute_id (attr);
+
+	    for (int j = 0; j < i; j++)
+	      {
+		if (col_ids[j] == col_ids[i])
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, db_attribute_name (attr));
+		    error = ER_COPY_NOT_SUPPORTED;
+		    goto end;
+		  }
+	      }
+	    i++;
+	  }
+      }
+    else
+      {
+	for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	  {
+	    if (db_attribute_is_shared (attr))
+	      {
+		continue;
+	      }
+	    col_types[i] = db_attribute_type (attr);
+	    col_ids[i] = db_attribute_id (attr);
+	    i++;
+	  }
+      }
+
+    assert (i == ncols);
+  }
+
+  /* CSV-only options are rejected for the BINARY format (DDL-time error). */
+  if (statement->info.copy.format != 1
+      && (statement->info.copy.fmt.csv.delimiter != 0 || statement->info.copy.fmt.csv.quote != 0
+	  || statement->info.copy.fmt.csv.header != 0))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
+	      "DELIMITER/QUOTE/HEADER are only valid with FORMAT CSV");
+      error = ER_COPY_NOT_SUPPORTED;
+      goto end;
+    }
+
+  /* The grammar marks a DELIMITER / QUOTE literal that is not exactly one character as -1. */
+  if (statement->info.copy.fmt.csv.delimiter < 0 || statement->info.copy.fmt.csv.quote < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
+	      "DELIMITER and QUOTE must be exactly one character");
+      error = ER_COPY_NOT_SUPPORTED;
+      goto end;
+    }
+
+  error = copy_from_init (table_name, col_types, col_ids, ncols, statement->info.copy.format,
+			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
+			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk);
+
+end:
+  if (col_types != NULL)
+    {
+      free_and_init (col_types);
+    }
+  if (col_ids != NULL)
+    {
+      free_and_init (col_ids);
+    }
+
+  return error;
 }

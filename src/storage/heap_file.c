@@ -2819,6 +2819,19 @@ check_supplemental_log (THREAD_ENTRY * thread_p, OID * classoid)
 }
 
 /*
+ * heap_is_supplemental_log_needed () - Will an insert into this class append a
+ *   supplemental log record? Exposed so that callers which can suppress the
+ *   per-row heap record know whether anything downstream still reads it.
+ *
+ * return       : true when supplemental logging applies to class_oid
+ */
+bool
+heap_is_supplemental_log_needed (THREAD_ENTRY * thread_p, OID * class_oid)
+{
+  return check_supplemental_log (thread_p, class_oid);
+}
+
+/*
  * heap_vpid_init_new () - FILE_INIT_PAGE_FUNC for heap non-header pages
  *
  * return	 : Error code

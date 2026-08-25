@@ -89,6 +89,10 @@
 #include "locator_cl.h"
 #include "execute_schema.h"
 #include "authenticate.h"
+#include "stream_session.hpp"	/* STREAM_KIND_* */
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -11954,6 +11958,121 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
 }
 
 /*
+ * stream_from_init () - Open a client->server byte-stream session on the server
+ *   return: error code
+ *   stream_kind(in): STREAM_KIND_* consumer tag (e.g. STREAM_KIND_COPY)
+ *   config(in): consumer-specific config blob (already or_pack_*'d by the caller)
+ *   config_len(in): length of config in bytes
+ *
+ * Sends [int stream_kind][config bytes] to NET_SERVER_STREAM_INIT. The server
+ * factory dispatches on stream_kind to build the matching session. This entry is
+ * consumer-agnostic; the config blob is opaque here.
+ */
+int
+stream_from_init (int stream_kind, const char *config, int config_len)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  int request_size;
+  char *request = NULL;
+  char *ptr;
+
+  /* size: stream_kind (int) + config blob */
+  request_size = OR_INT_SIZE + config_len;
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_int (request, stream_kind);
+  if (config_len > 0)
+    {
+      memcpy (ptr, config, config_len);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_INIT, request, request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  free_and_init (request);
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/*
+ * copy_from_init () - Initialize a COPY FROM STDIN session on the server
+ *   return: error code
+ *   table_name(in): target table name
+ *   col_types(in): array of column DB_TYPE values
+ *   ncols(in): number of columns
+ *
+ * Thin COPY binding over stream_from_init(): packs the COPY config blob (table
+ * name + options + col_types, unchanged encoding) and opens with STREAM_KIND_COPY.
+ */
+int
+copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_ids, int ncols, int format,
+		int delimiter, int quote, int header, int bulk)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  int config_size;
+  char *config = NULL;
+  char *ptr;
+
+  /* COPY config blob: string + ncols + format + delimiter + quote + header + bulk
+   * + ncols * col_type + ncols * attribute id. The attribute ids carry the user's
+   * column list, which the column types alone cannot express. */
+  config_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE * 2);
+
+  config = (char *) malloc (config_size);
+  if (config == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) config_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_string (config, table_name);
+  ptr = or_pack_int (ptr, ncols);
+  ptr = or_pack_int (ptr, format);
+  ptr = or_pack_int (ptr, delimiter);
+  ptr = or_pack_int (ptr, quote);
+  ptr = or_pack_int (ptr, header);
+  ptr = or_pack_int (ptr, bulk);
+  for (int i = 0; i < ncols; i++)
+    {
+      ptr = or_pack_int (ptr, (int) col_types[i]);
+    }
+  for (int i = 0; i < ncols; i++)
+    {
+      ptr = or_pack_int (ptr, col_ids[i]);
+    }
+
+  rc = stream_from_init (STREAM_KIND_COPY, config, config_size);
+
+  free_and_init (config);
+
+  return rc;
+#else /* CS_MODE */
+  /* The stream transport is a client->server network path; standalone mode has
+   * no server to stream to, so report it instead of silently loading nothing. */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, "COPY FROM STDIN in standalone mode");
+  return ER_COPY_NOT_SUPPORTED;
+#endif /* !CS_MODE */
+}
+
+/*
  * file_clean_invalid_file -
  *
  * return:
@@ -12050,3 +12169,79 @@ file_delete_target_file (const char *target_vfid_str)
 #endif /* !CS_MODE */
 }
 #endif
+
+/*
+ * stream_from_send_data () - Send a chunk of binary data to the COPY session
+ *   return: error code
+ *   data(in): binary data buffer
+ *   data_len(in): length of data in bytes
+ */
+int
+stream_from_send_data (const char *data, int data_len)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_SEND_DATA, (char *) data, data_len, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+  else
+    {
+      /* server returned a standard error reply; propagate its code (and the
+       * message net_client_request placed in the error stack) to the caller */
+      rc = er_errid ();
+      if (rc == NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	}
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_end () - Finalize COPY session and retrieve row count
+ *   return: error code
+ *   rows_loaded(out): number of rows successfully loaded
+ */
+int
+stream_from_end (int *rows_loaded)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_END, NULL, 0, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      char *ptr;
+      ptr = or_unpack_int (reply, &rc);
+      ptr = or_unpack_int (ptr, rows_loaded);
+    }
+  else
+    {
+      rc = er_errid ();
+      if (rc == NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	}
+    }
+
+  return rc;
+#else /* CS_MODE */
+  *rows_loaded = 0;
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
