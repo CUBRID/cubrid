@@ -192,8 +192,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       /* set the distinct list file domain for finalize; a *variable* readval
        * is a no-op and would silently drop all values. */
-      if (func_p->option == Q_DISTINCT && func_p->list_id != NULL && func_p->list_id->type_list.type_cnt > 0
-	  && TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
+      if (func_p->option == Q_DISTINCT && TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
 	{
 	  /* values are written after coercion to func_p->domain. */
 	  func_p->list_id->type_list.domp[0] = func_p->domain;
@@ -222,8 +221,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
     {
       /* later rows may have different types because only the first row is coerced.
        * coerce all values to the list domain for consistent duplicate elimination and finalize. */
-      if (func_p->list_id != NULL && func_p->list_id->type_list.type_cnt > 0
-	  && TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) != DB_TYPE_VARIABLE
+      if (TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) != DB_TYPE_VARIABLE
 	  && DB_VALUE_DOMAIN_TYPE (&dbval) != TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]))
 	{
 	  if (tp_value_coerce (&dbval, &dbval, func_p->list_id->type_list.domp[0]) != DOMAIN_COMPATIBLE)
