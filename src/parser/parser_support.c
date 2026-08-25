@@ -12005,7 +12005,8 @@ pt_dblink_delete_check_qualifier (PT_NODE * node, const char **bad_qualifier)
 
   /* The gate established a single pushable predicate, always a PT_EXPR. A mismatch means the gate and this
    * check have drifted -- DBLINK_REMOTE_SINK_* leaves room for an UPDATE extension that would set the flag
-   * from a second site. Fail closed: an unverified qualifier deletes remote rows the statement never named. */
+   * from a second site. Reject rather than skip: an unverified qualifier deletes remote rows the
+   * statement never named. */
   assert (cond != NULL && cond->node_type == PT_EXPR);
   if (cond == NULL || cond->node_type != PT_EXPR)
     {
@@ -12566,7 +12567,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (snl->server_cnt == tmp_server_cnt || (local_upd > 0 && remote_upd == 0))
     {
-      /* local update only */
+      /* local only -- reached after the mixed rejection above, which requires remote_upd > 0 */
       return;
     }
 
