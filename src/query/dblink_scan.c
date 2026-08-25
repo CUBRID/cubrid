@@ -1793,7 +1793,8 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
       ret = dblink_dml_build_insert_sql (thread_p, table_name, attr_names, num_attrs, num_bind, &sql);
       break;
     case DBLINK_DML_DELETE:
-      /* VARCHAR row of the policy table, decided here so the cast rides this first prepare. */
+      /* A CUBRID remote gates both policy rows; the VARCHAR row is decided here so the cast rides
+       * this first prepare. */
       restore_type = (key_col != NULL && dblink_dml_delete_remote_is_cubrid (state->conn_handle));
       cast_type = restore_type ? dblink_dml_delete_precast_type (src_type) : NULL;
       ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, cast_type, &sql);

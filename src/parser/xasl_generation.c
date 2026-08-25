@@ -19874,8 +19874,8 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   del->remote_op = pt_append_string (parser, NULL, op_sql);
 
   /* Source column type of the local subquery -- learnable only here, while the select list is still
-   * available; by then only the value itself is left. What the sink does with it: see the policy comment
-   * above dblink_dml_delete_remote_is_cubrid() in dblink_scan.c.
+   * available; at execution time only the value itself is left. What the sink does with it: see the
+   * policy comment above dblink_dml_delete_remote_is_cubrid() in dblink_scan.c.
    *
    * The leading select-list node, deliberately not "first non-hidden": the executor binds
    * s_id->val_list->valp, which is also the leading one (qexec_collect_remote_delete_key). Both rest on the
