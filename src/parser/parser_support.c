@@ -12219,7 +12219,7 @@ static bool
 pt_dblink_delete_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, PT_NODE * upd_spec,
 			      int sub_sel_server_cnt, int local_upd, int remote_upd)
 {
-  /* Same-server mixed WHERE subquery: the DELETE counterpart of the INSERT SELECT conversion in the caller. */
+  /* Same-server mixed WHERE subquery: convert the embedded remote specs first. */
   if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ && sub_sel_server_cnt > 0)
     {
       pt_dblink_delete_convert_specs (parser, node, snl);
@@ -12254,8 +12254,7 @@ pt_dblink_delete_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NA
     }
 
   /* Diagnose the specific reasons the carve-out declined this statement, ahead of the caller's generic
-   * catch-all -- local_cnt > 0 is required so a fully-remote statement that already works through full
-   * pushdown is never misdiagnosed here. */
+   * catch-all. */
   if (node->node_type == PT_DELETE && remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
       && pt_dblink_delete_where_is_inscope (node) && pt_dblink_delete_reject_declined (parser, node, upd_spec))
     {
