@@ -10,9 +10,10 @@
 #   push develop, feature/**           build only. develop also writes the ccache
 #   workflow_dispatch                  build; tests always run
 #
-# All four read this file from the DEFAULT BRANCH, not from a PR head, so none of
-# them work until this is merged -- /run on this PR does nothing. workflow_dispatch
-# needs the file on the default branch before it appears in the UI at all.
+# issue_comment, push and workflow_dispatch read this file from the DEFAULT BRANCH,
+# so none of them work until this is merged -- /run on this PR does nothing, and
+# workflow_dispatch does not appear in the UI. pull_request runs the PR's own copy,
+# which is why it may build and never test.
 #
 # Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
 # them; its README.md carries the full contract table for this file.
@@ -22,8 +23,8 @@
 #   job hook       ALLOWED_EVENTS must list pull_request, issue_comment, push
 #                  and workflow_dispatch
 #
-# Decisions, measurements and the ccache/path contract:
-# SPEC-1526-triggers-and-cache.md, and CUBRIDQA-1526.
+# Decisions, measurements and the ccache/path contract: CUBRIDQA-1526, and
+# roles/arc/README.md in circleci-k8s-ansible.
 
 name: gha-ci
 
@@ -182,7 +183,7 @@ jobs:
           # rerun_from is set, so both rerun paths land on one shard.
           par=50; limit=0; force=false; rerun=''; sab=none
           # Builds only, PR namespace, ccache read-only. Each branch below narrows this.
-          test_run=false; pr=''; ns=pr; cache_write=false
+          test_run=false; pr=''; ns='pr'; cache_write=false
 
           case "$EV" in
             pull_request)
@@ -780,7 +781,7 @@ jobs:
             # A silent regression, so say it out loud.
             echo "::warning::timing data is empty, so LPT degrades to name order --"
             echo "::warning::  the longest shard roughly doubles. Check $TIMINGS."
-            echo "::warning::  If the path moved, copy it from the old one (see RUNBOOK)."
+            echo "::warning::  If the path moved, copy the timings from the old path."
             dflt=10
           fi
           echo "default seconds for an unseen case: $dflt"
@@ -876,10 +877,12 @@ jobs:
 
           # --- matrix ---
           matrix=$(seq 0 $((PAR - 1)) | awk '{printf "%02d\n", $1}' | jq -R . | jq -sc .)
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          echo "total=$total" >> "$GITHUB_OUTPUT"
-          echo "timed=$timed" >> "$GITHUB_OUTPUT"
-          echo "rundir=$rundir" >> "$GITHUB_OUTPUT"
+          {
+            echo "matrix=$matrix"
+            echo "total=$total"
+            echo "timed=$timed"
+            echo "rundir=$rundir"
+          } >> "$GITHUB_OUTPUT"
           echo
           echo "published: $rundir"
 
@@ -1532,27 +1535,27 @@ jobs:
         run: |
           set -eo pipefail
           covered=$((EXEC_SUM + SKIP_SUM))
-          v_cov="✅"; [ "$covered" -ge "$TOTAL" ] || v_cov="❌"
-          v_shard="✅"; [ "$DONE_N" -eq "$PLANNED" ] || v_shard="❌"
+          v_cov="OK"; [ "$covered" -ge "$TOTAL" ] || v_cov="FAIL"
+          v_shard="OK"; [ "$DONE_N" -eq "$PLANNED" ] || v_shard="FAIL"
           # How many recorded and whether they agree are separate faults.
-          v_read="✅"; [ "$READ_N" -eq "$PLANNED" ] || v_read="❌"
+          v_read="OK"; [ "$READ_N" -eq "$PLANNED" ] || v_read="FAIL"
           case "$PROV_REASON" in
-            ok)       v_same="✅ all the same" ;;
-            mixed)    v_same="❌ shards differ ($PROV_UNIQ distinct)" ;;
-            mismatch) v_same="❌ all the same, but not the build plan verified" ;;
-            *)        v_same="❌ nobody recorded a provenance" ;;
+            ok)       v_same="OK all the same" ;;
+            mixed)    v_same="FAIL shards differ ($PROV_UNIQ distinct)" ;;
+            mismatch) v_same="FAIL all the same, but not the build plan verified" ;;
+            *)        v_same="FAIL nobody recorded a provenance" ;;
           esac
-          v_this="✅"; [ "$PROV_THIS" = 'yes' ] || v_this="reused"
-          v_tcread="✅"; [ "$TCREAD_N" -eq "$PLANNED" ] || v_tcread="❌"
+          v_this="OK"; [ "$PROV_THIS" = 'yes' ] || v_this="reused"
+          v_tcread="OK"; [ "$TCREAD_N" -eq "$PLANNED" ] || v_tcread="FAIL"
           case "$TC_REASON" in
-            ok)       v_tcsame="✅ all the same" ;;
-            mixed)    v_tcsame="❌ shards differ ($TC_UNIQ distinct)" ;;
-            mismatch) v_tcsame="❌ all the same, but not what plan chose" ;;
-            *)        v_tcsame="❌ nobody recorded a tc provenance" ;;
+            ok)       v_tcsame="OK all the same" ;;
+            mixed)    v_tcsame="FAIL shards differ ($TC_UNIQ distinct)" ;;
+            mismatch) v_tcsame="FAIL all the same, but not what plan chose" ;;
+            *)        v_tcsame="FAIL nobody recorded a tc provenance" ;;
           esac
 
           {
-            echo "## CUBRIDQA-1526 -- build, publish, shell suite"
+            echo "## gha-ci: shell suite"
             echo
             # Name the source run at the top: results land under the new run id.
             if [ -n "$RERUN_FROM" ]; then
@@ -1561,7 +1564,7 @@ jobs:
               echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
               echo
             fi
-            echo "### AC 1 -- one run carries it end to end"
+            echo "### Coverage"
             echo
             echo "| item | value |"
             echo "|---|---|"
@@ -1574,7 +1577,7 @@ jobs:
             echo "| **failed** | **$FAIL_SUM** |"
             echo "| cases split by measured timings | $TIMED |"
             echo
-            echo "### AC 2 -- did the tests read the build this run made"
+            echo "### Build provenance"
             echo
             echo "| item | value |"
             echo "|---|---|"
@@ -1586,7 +1589,7 @@ jobs:
             echo
             echo "Provenance is read through the overlay the shard actually mounted, not through hostPath."
             echo
-            echo "### Testcases -- did every shard see the same commit"
+            echo "### Testcase provenance"
             echo
             echo "| item | value |"
             echo "|---|---|"
@@ -1595,7 +1598,7 @@ jobs:
             echo "| shards that recorded a tc provenance | $TCREAD_N / $PLANNED $v_tcread |"
             echo "| same commit across shards | $v_tcsame |"
             echo
-            echo "### AC 3 -- pipeline wall clock"
+            echo "### Shards and wall clock"
             echo
             echo "| stage | time |"
             echo "|---|---|"
@@ -1691,7 +1694,7 @@ jobs:
             echo "::error::pr must be an integer"; exit 1
           fi
           if [ ! -f /tmp/summary.md ]; then
-            printf '## CUBRIDQA-1526\n\nCould not build a summary. Check the run.\n' > /tmp/summary.md
+            printf '## gha-ci: shell suite\n\nCould not build a summary. Check the run.\n' > /tmp/summary.md
           fi
 
           {
@@ -1722,7 +1725,7 @@ jobs:
 
       # 59MB per run, nothing worth keeping, and the cleanup CronJob does not see it.
       #
-      # ⚠ Keep it when anything failed. "Re-run failed jobs" does not re-run plan,
+      # Keep it when anything failed. "Re-run failed jobs" does not re-run plan,
       # so the re-run shards read this seed; deleting it here made every one of them
       # die at "no CTP seed" and the whole re-run path unusable.
       #
