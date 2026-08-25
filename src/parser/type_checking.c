@@ -2994,10 +2994,21 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_INDEX_CARDINALITY:
       num = 0;
 
-      /* one overload */
+      /* two overloads */
 
       sig.arg1_type.type = pt_arg_type::GENERIC;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      sig.arg2_type.type = pt_arg_type::GENERIC;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      sig.arg3_type.type = pt_arg_type::NORMAL;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      /* naming the class costs a name lookup; the catalog views hand over the class itself */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_OBJECT;
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
       sig.arg3_type.type = pt_arg_type::NORMAL;
@@ -3015,10 +3026,17 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_ESTIMATED_DATA_FREE:
       num = 0;
 
-      /* one overload */
+      /* two overloads */
 
       sig.arg1_type.type = pt_arg_type::GENERIC;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BIGINT;
+      def->overloads[num++] = sig;
+
+      /* naming the table costs a name lookup; the catalog views hand over the table itself */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_OBJECT;
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_BIGINT;
       def->overloads[num++] = sig;

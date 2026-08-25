@@ -5605,15 +5605,9 @@ int
 catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p, const char *class_name, const char *index_name,
 				 const int key_pos, int *cardinality)
 {
-  int error = NO_ERROR;
-  BTID found_btid;
-  BTID curr_bitd;
   OID class_oid;
   char cls_lower[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
   LC_FIND_CLASSNAME status;
-
-  BTID_SET_NULL (&found_btid);
-  BTID_SET_NULL (&curr_bitd);
 
   assert (class_name != NULL);
   assert (index_name != NULL);
@@ -5634,31 +5628,63 @@ catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p, const char *class_name
   if (status == LC_CLASSNAME_DELETED || OID_ISNULL (&class_oid))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, class_name);
-      goto exit;
+      return NO_ERROR;
     }
 
-  if (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+  return catalog_get_cardinality_by_oid (thread_p, &class_oid, index_name, key_pos, cardinality);
+}
+
+/*
+ * catalog_get_cardinality_by_oid () - gets the cardinality of an index using the
+ *                                     class OID and partial key count
+ *   return: NO_ERROR, or error code
+ *   thread_p(in)  : thread context
+ *   class_oid(in) : OID of the class owning the index
+ *   index_name(in): name of index
+ *   key_pos(in)   : partial key (i-th column from index definition)
+ *   cardinality(out): number of distinct values
+ */
+int
+catalog_get_cardinality_by_oid (THREAD_ENTRY * thread_p, const OID * class_oid, const char *index_name,
+				const int key_pos, int *cardinality)
+{
+  int error = NO_ERROR;
+  BTID found_btid;
+  OID oid;
+
+  BTID_SET_NULL (&found_btid);
+
+  assert (class_oid != NULL);
+  assert (index_name != NULL);
+  assert (cardinality != NULL);
+
+  *cardinality = -1;
+
+  if (OID_ISNULL (class_oid))
     {
-      error = ER_FAILED;
-      goto exit;
+      return NO_ERROR;
     }
 
-  error = heap_get_btid_from_index_name (thread_p, &class_oid, index_name, &found_btid);
+  COPY_OID (&oid, class_oid);
+
+  if (lock_object (thread_p, &oid, oid_Root_class_oid, SCH_S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      return ER_FAILED;
+    }
+
+  error = heap_get_btid_from_index_name (thread_p, &oid, index_name, &found_btid);
   if (error != NO_ERROR)
     {
-      goto exit;
+      return error;
     }
 
   if (BTID_IS_NULL (&found_btid))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INDEX_NOT_FOUND, 0);
-      goto exit;
+      return NO_ERROR;
     }
 
-  return catalog_get_cardinality (thread_p, &class_oid, NULL, &found_btid, key_pos, cardinality);
-
-exit:
-  return error;
+  return catalog_get_cardinality (thread_p, &oid, NULL, &found_btid, key_pos, cardinality);
 }
 
 /*

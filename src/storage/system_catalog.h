@@ -184,6 +184,8 @@ extern int catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DI
 				    const int key_pos, int *cardinality);
 extern int catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p, const char *class_name, const char *index_name,
 					    const int key_pos, int *cardinality);
+extern int catalog_get_cardinality_by_oid (THREAD_ENTRY * thread_p, const OID * class_oid, const char *index_name,
+					   const int key_pos, int *cardinality);
 
 /* Checkdb consistency check routines */
 extern DISK_ISVALID catalog_check_consistency (THREAD_ENTRY * thread_p);

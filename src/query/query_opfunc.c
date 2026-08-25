@@ -8804,7 +8804,7 @@ exit:
  *			      and partial key count
  *   return: NO_ERROR, or error code
  *   thread_p(in)   : thread context
- *   db_class_name(in): string DB_VALUE holding name of class
+ *   db_class_name(in): the class, either as an object or as a string holding its name
  *   db_index_name(in): string DB_VALUE holding name of index (as it appears
  *			in '_db_index' system catalog table
  *   db_key_position(in): integer DB_VALUE holding the partial key index
@@ -8836,16 +8836,12 @@ qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VAL
       goto exit;
     }
 
-  if (!QSTR_IS_CHAR (cl_name_arg_type) || !QSTR_IS_CHAR (idx_name_arg_type) || key_pos_arg_type != DB_TYPE_INTEGER)
+  if (!QSTR_IS_CHAR (idx_name_arg_type) || key_pos_arg_type != DB_TYPE_INTEGER)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1, "Arguments type mismatching.");
       error = ER_UNEXPECTED;
       goto exit;
     }
-
-  str_class_name_len = MIN (SM_MAX_IDENTIFIER_LENGTH - 1, db_get_string_size (db_class_name));
-  strncpy (class_name, db_get_string (db_class_name), str_class_name_len);
-  class_name[str_class_name_len] = '\0';
 
   str_index_name_len = MIN (SM_MAX_IDENTIFIER_LENGTH - 1, db_get_string_size (db_index_name));
   strncpy (index_name, db_get_string (db_index_name), str_index_name_len);
@@ -8853,7 +8849,24 @@ qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VAL
 
   key_pos = db_get_int (db_key_position);
 
-  error = catalog_get_cardinality_by_name (thread_p, class_name, index_name, key_pos, &cardinality);
+  if (cl_name_arg_type == DB_TYPE_OID)
+    {
+      error = catalog_get_cardinality_by_oid (thread_p, db_get_oid (db_class_name), index_name, key_pos, &cardinality);
+    }
+  else if (QSTR_IS_CHAR (cl_name_arg_type))
+    {
+      str_class_name_len = MIN (SM_MAX_IDENTIFIER_LENGTH - 1, db_get_string_size (db_class_name));
+      strncpy (class_name, db_get_string (db_class_name), str_class_name_len);
+      class_name[str_class_name_len] = '\0';
+
+      error = catalog_get_cardinality_by_name (thread_p, class_name, index_name, key_pos, &cardinality);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1, "Arguments type mismatching.");
+      error = ER_UNEXPECTED;
+      goto exit;
+    }
   if (error == NO_ERROR)
     {
       if (cardinality < 0)
@@ -8875,7 +8888,7 @@ exit:
  *				      of a table using its name
  *   return: NO_ERROR, or error code
  *   thread_p(in)      : thread context
- *   db_table_name(in) : string DB_VALUE holding the unique_name of the table
+ *   db_table_name(in) : the table, either as an object or as a string holding its name
  *   result_p(out)     : estimated statistic (bigint or NULL DB_VALUE)
  *   op(in)            : which statistic to return
  *
@@ -8905,30 +8918,40 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
       goto exit;
     }
 
-  if (!QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (db_table_name)))
+  if (DB_VALUE_DOMAIN_TYPE (db_table_name) == DB_TYPE_OID)
+    {
+      COPY_OID (&class_oid, db_get_oid (db_table_name));
+      if (OID_ISNULL (&class_oid))
+	{
+	  goto exit;
+	}
+    }
+  else if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (db_table_name)))
+    {
+      str_len = db_get_string_size (db_table_name);
+      if (str_len < 0 || str_len >= SM_MAX_IDENTIFIER_LENGTH)
+	{
+	  goto exit;
+	}
+
+      unique_name_str = db_get_string (db_table_name);
+      if (unique_name_str == NULL)
+	{
+	  goto exit;
+	}
+
+      intl_identifier_lower (unique_name_str, lower_name);
+
+      if (xlocator_find_class_oid (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+	{
+	  er_clear ();
+	  goto exit;
+	}
+    }
+  else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1, "Arguments type mismatching.");
       error = ER_UNEXPECTED;
-      goto exit;
-    }
-
-  str_len = db_get_string_size (db_table_name);
-  if (str_len < 0 || str_len >= SM_MAX_IDENTIFIER_LENGTH)
-    {
-      goto exit;
-    }
-
-  unique_name_str = db_get_string (db_table_name);
-  if (unique_name_str == NULL)
-    {
-      goto exit;
-    }
-
-  intl_identifier_lower (unique_name_str, lower_name);
-
-  if (xlocator_find_class_oid (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
-    {
-      er_clear ();
       goto exit;
     }
 
