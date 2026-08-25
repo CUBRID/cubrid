@@ -1674,6 +1674,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  TP_DOMAIN *double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
 	  /* compute AVG(X) = SUM(X)/COUNT(X) */
+	  (void) pr_clear_value (&dbval);
 	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
 	  error = qdata_divide_dbval (agg_p->accumulator.value, &dbval, &xavgval, double_domain_ptr);
 	  if (error != NO_ERROR)
@@ -1684,6 +1685,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  if (agg_p->function == PT_AVG)
 	    {
+	      (void) pr_clear_value (agg_p->accumulator.value);
 	      if (tp_value_coerce (&xavgval, agg_p->accumulator.value, double_domain_ptr) != DOMAIN_COMPATIBLE)
 		{
 		  ASSERT_ERROR_AND_SET (error);

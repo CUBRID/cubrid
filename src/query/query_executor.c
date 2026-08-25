@@ -21178,12 +21178,10 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
 	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 
-	  /* count(distinct) still collects values into its list file; expose the resolved
-	   * type there as well (see the distinct/sort block below), or the *variable* cmpdisk
-	   * returns DB_UNK and duplicate elimination silently fails. */
-	  if (agg_p->option == Q_DISTINCT && agg_p->list_id != NULL
-	      && agg_p->list_id->type_list.type_cnt > 0
-	      && TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
+	  /* COUNT skips the distinct/sort block below, so handle count(distinct) here. Fetch the
+	   * operand even when the list file does not exist yet: fetch_peek_dbval resolves its regu
+	   * domain, which GROUP BY uses when it re-creates the list file for every group. */
+	  if (agg_p->option == Q_DISTINCT)
 	    {
 	      /* count(*) cannot take DISTINCT */
 	      assert (agg_p->function == PT_COUNT);
@@ -21191,13 +21189,14 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		{
 		  return ER_FAILED;
 		}
-	      if (dbval != NULL && !DB_IS_NULL (dbval))
-		{
-		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
-		}
-	      else
+	      if (dbval == NULL || DB_IS_NULL (dbval))
 		{
 		  *resolved = 0;
+		}
+	      else if (agg_p->list_id != NULL && agg_p->list_id->type_list.type_cnt > 0
+		       && TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
+		{
+		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
 		}
 	    }
 
@@ -21408,20 +21407,19 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	      break;
 	    }
 
-	  /* Expose the resolved type on the distinct/sort list file.
-	   * the *variable* readval is a no-op, so finalize would silently drop every value. */
+	  /* set the distinct/sort list file domain before finalize; a *variable* readval
+	   * is a no-op and would silently drop all values. */
 	  if ((agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL) && agg_p->list_id != NULL
 	      && agg_p->list_id->type_list.type_cnt > 0
 	      && TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
 	    {
 	      if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
 		{
-		  /* interpolation funcs write values coerced to agg_p->domain */
+		  /* values are written after coercion to agg_p->domain. */
 		  agg_p->list_id->type_list.domp[0] = agg_p->domain;
 		}
 	      else
 		{
-		  /* the fetched value is written as is */
 		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
 		}
 	    }

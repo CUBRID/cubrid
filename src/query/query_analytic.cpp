@@ -190,12 +190,12 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       func_p->opr_dbtype = TP_DOMAIN_TYPE (func_p->domain);
       db_value_domain_init (func_p->value, func_p->opr_dbtype, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-      /* Expose the resolved domain on the distinct list file.
-       * the *variable* readval is a no-op, so the finalize would silently drop every value. */
+      /* set the distinct list file domain for finalize; a *variable* readval
+       * is a no-op and would silently drop all values. */
       if (func_p->option == Q_DISTINCT && func_p->list_id != NULL && func_p->list_id->type_list.type_cnt > 0
 	  && TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
 	{
-	  /* written values are coerced to func_p->domain above */
+	  /* values are written after coercion to func_p->domain. */
 	  func_p->list_id->type_list.domp[0] = func_p->domain;
 	}
     }
@@ -220,9 +220,8 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
   if (func_p->option == Q_DISTINCT)
     {
-      /* Only the first row is coerced by the HV late-binding block above; later rows are fetched
-       * with their raw types. Coerce all values to the list domain to avoid mixed types during
-       * duplicate elimination and finalize. */
+      /* later rows may have different types because only the first row is coerced.
+       * coerce all values to the list domain for consistent duplicate elimination and finalize. */
       if (func_p->list_id != NULL && func_p->list_id->type_list.type_cnt > 0
 	  && TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) != DB_TYPE_VARIABLE
 	  && DB_VALUE_DOMAIN_TYPE (&dbval) != TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]))
