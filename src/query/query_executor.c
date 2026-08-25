@@ -21520,7 +21520,16 @@ qexec_mark_aggregate_operand_expressions (xasl_node * xasl)
 
 	  for (agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
 	    {
-	      if (agg_p->operands != NULL && agg_p->operands->value.type == TYPE_CONSTANT
+	      if (agg_p->function != PT_SUM && agg_p->function != PT_AVG)
+		{
+		  continue;
+		}
+	      if (agg_p->option == Q_DISTINCT || agg_p->operands == NULL)
+		{
+		  continue;
+		}
+
+	      if (agg_p->operands->value.type == TYPE_CONSTANT
 		  && agg_p->operands->value.value.dbvalptr == regu_p->value.vfetch_to)
 		{
 		  if (fetch_is_agg_expr_shape (&regu_p->value, budget))
