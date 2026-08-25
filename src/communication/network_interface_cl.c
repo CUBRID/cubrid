@@ -1526,9 +1526,9 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
  */
 LC_FIND_CLASSNAME
 locator_find_lockhint_class_oids (int num_classes, const char **many_classnames, LOCK * many_locks,
-				  int *many_need_subclasses, LC_PREFETCH_FLAGS * many_flags, OID * guessed_class_oids,
-				  int *guessed_class_chns, int quit_on_errors, LOCK lock_rr_tran,
-				  LC_LOCKHINT ** lockhint, LC_COPYAREA ** fetch_copyarea)
+				  int *many_need_subclasses, LC_PREFETCH_FLAGS * many_flags, OID * many_owner_oids,
+				  OID * guessed_class_oids, int *guessed_class_chns, int quit_on_errors,
+				  LOCK lock_rr_tran, LC_LOCKHINT ** lockhint, LC_COPYAREA ** fetch_copyarea)
 {
 #if defined(CS_MODE)
   LC_FIND_CLASSNAME allfind = LC_CLASSNAME_ERROR;
@@ -1551,7 +1551,7 @@ locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
   for (i = 0; i < num_classes; i++)
     {
       request_size += (length_const_string (many_classnames[i], NULL) + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE
-		       + OR_OID_SIZE + OR_INT_SIZE);
+		       + OR_OID_SIZE + OR_OID_SIZE + OR_INT_SIZE);
     }
 
   request = (char *) malloc (request_size);
@@ -1560,6 +1560,10 @@ locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
       return allfind;
     }
+
+  OID null_owner_oid;
+
+  OID_SET_NULL (&null_owner_oid);
 
   ptr = or_pack_int (request, num_classes);
   ptr = or_pack_int (ptr, quit_on_errors);
@@ -1570,6 +1574,7 @@ locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
       ptr = or_pack_lock (ptr, many_locks[i]);
       ptr = or_pack_int (ptr, many_need_subclasses[i]);
       ptr = or_pack_int (ptr, (int) many_flags[i]);
+      ptr = or_pack_oid (ptr, (many_owner_oids != NULL) ? &many_owner_oids[i] : &null_owner_oid);
       ptr = or_pack_oid (ptr, &guessed_class_oids[i]);
       ptr = or_pack_int (ptr, guessed_class_chns[i]);
     }
@@ -1620,8 +1625,8 @@ locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
 
   allfind =
     xlocator_find_lockhint_class_oids (thread_p, num_classes, many_classnames, many_locks, many_need_subclasses,
-				       many_flags, guessed_class_oids, guessed_class_chns, quit_on_errors, lockhint,
-				       fetch_copyarea);
+				       many_flags, many_owner_oids, guessed_class_oids, guessed_class_chns,
+				       quit_on_errors, lockhint, fetch_copyarea);
 
   exit_server (*thread_p);
 

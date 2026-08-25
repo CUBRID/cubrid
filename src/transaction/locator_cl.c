@@ -6175,7 +6175,8 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
  */
 LC_FIND_CLASSNAME
 locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * many_locks, int *need_subclasses,
-			  LC_PREFETCH_FLAGS * flags, int quit_on_errors, LOCK lock_rr_tran, const char **resolved_names)
+			  LC_PREFETCH_FLAGS * flags, OID * owner_oids, int quit_on_errors, LOCK lock_rr_tran,
+			  const char **resolved_names)
 {
   MOP class_mop = NULL;		/* The mop of a class */
   MOBJ class_obj = NULL;	/* The class object of above mop */
@@ -6330,7 +6331,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
     }
 
   all_found =
-    locator_find_lockhint_class_oids (num_classes, many_classnames, many_locks, need_subclasses, flags,
+    locator_find_lockhint_class_oids (num_classes, many_classnames, many_locks, need_subclasses, flags, owner_oids,
 				      guessmany_class_oids, guessmany_class_chns, quit_on_errors, lock_rr_tran,
 				      &lockhint, &fetch_area);
 

@@ -68,6 +68,9 @@ struct pt_class_locks
   int *only_all;
   LOCK *locks;
   LC_PREFETCH_FLAGS *flags;
+  /* Owner named in request i, as an OID. NULL OID for an unqualified name, which is how a
+   * system class is named. */
+  OID *owner_oids;
   /* Where request i landed, when the owner was left out and the class turned out to live
    * in another schema. NULL means unchanged; non-NULL entries are heap copies this
    * structure owns. */
@@ -83,6 +86,7 @@ enum pt_order_by_adjustment
 static PT_NODE *pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement, VIEW_HANDLING how);
 static PT_NODE *pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spec, LC_PREFETCH_FLAGS flags);
+static void pt_set_lock_owner (PT_CLASS_LOCKS * lcks, PT_NODE * spec, const char *realname);
 static void pt_rewrite_resolved_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_CLASS_LOCKS * lcks);
 static PT_NODE *pt_rewrite_resolved_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void pt_apply_resolved_names (PARSER_CONTEXT * parser, PT_NODE * statement, PT_CLASS_LOCKS * lcks);
@@ -536,6 +540,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   lcks.only_all = NULL;
   lcks.locks = NULL;
   lcks.flags = NULL;
+  lcks.owner_oids = NULL;
   lcks.resolved_names = NULL;
 
   /* we don't pre fetch for non query statements */
@@ -642,6 +647,15 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   memset (lcks.flags, 0, lcks.num_classes * sizeof (LC_PREFETCH_FLAGS));
 
+  lcks.owner_oids = (OID *) malloc (lcks.num_classes * sizeof (OID));
+  if (lcks.owner_oids == NULL)
+    {
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
+		  lcks.num_classes * sizeof (OID));
+      goto cleanup;
+    }
+  memset (lcks.owner_oids, 0, lcks.num_classes * sizeof (OID));
+
   lcks.resolved_names = (const char **) malloc (lcks.num_classes * sizeof (const char *));
   if (lcks.resolved_names == NULL)
     {
@@ -659,7 +673,8 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (!pt_has_error (parser)
       && (find_result =
 	  locator_lockhint_classes (lcks.num_classes, (const char **) lcks.classes, lcks.locks, lcks.only_all,
-				    lcks.flags, true, lock_rr_tran, lcks.resolved_names)) != LC_CLASSNAME_EXIST)
+				    lcks.flags, lcks.owner_oids, true, lock_rr_tran,
+				    lcks.resolved_names)) != LC_CLASSNAME_EXIST)
     {
       if (find_result == LC_CLASSNAME_ERROR
 	  && (er_errid () == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED))
@@ -692,6 +707,11 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   (void) parser_walk_tree (parser, statement, pt_set_class_chn, NULL, NULL, NULL);
 
 cleanup:
+  if (lcks.owner_oids)
+    {
+      free_and_init (lcks.owner_oids);
+    }
+
   if (lcks.resolved_names)
     {
       int i;
@@ -860,6 +880,27 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
 	}
       lcks->flags = realloc_ptr_flags;
 
+      /* expand owner_oids */
+      OID *const realloc_ptr_owner_oids = (OID *) realloc (lcks->owner_oids, new_size * sizeof (OID));
+      if (realloc_ptr_owner_oids == NULL)
+	{
+	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (OID));
+	  return ER_FAILED;
+	}
+      lcks->owner_oids = realloc_ptr_owner_oids;
+
+      /* expand resolved_names */
+      const char **const realloc_ptr_resolved = (const char **) realloc (lcks->resolved_names,
+									 new_size * sizeof (const char *));
+      if (realloc_ptr_resolved == NULL)
+	{
+	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
+		      new_size * sizeof (const char *));
+	  return ER_FAILED;
+	}
+      lcks->resolved_names = realloc_ptr_resolved;
+      lcks->resolved_names[lcks->allocated_count] = NULL;
+
       lcks->allocated_count++;
     }
 
@@ -905,9 +946,67 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
 
   lcks->flags[lcks->num_classes] = flags;
 
+  pt_set_lock_owner (lcks, spec, realname);
+
   lcks->num_classes++;
 
   return NO_ERROR;
+}
+
+/*
+ * pt_set_lock_owner () - Record, as an OID, the owner the request names
+ *   return: void
+ *   lcks (in/out) : prefetch structure; slot num_classes is filled in
+ *   spec (in)     : spec the request came from
+ *   realname (in) : the name being requested, qualified unless it is a system class
+ *
+ * Note: An unqualified name gets a NULL OID: that is how a system class is named, and
+ *       the name carries no owner to resolve.
+ */
+static void
+pt_set_lock_owner (PT_CLASS_LOCKS * lcks, PT_NODE * spec, const char *realname)
+{
+  const char *dot = strchr (realname, '.');
+  char owner_name[DB_MAX_USER_LENGTH];
+  MOP owner_mop = NULL;
+  size_t len;
+
+  OID_SET_NULL (&lcks->owner_oids[lcks->num_classes]);
+
+  if (dot == NULL)
+    {
+      return;
+    }
+
+  if (spec->info.spec.entity_name != NULL && spec->info.spec.entity_name->node_type == PT_NAME
+      && spec->info.spec.entity_name->info.name.owner_defaulted)
+    {
+      /* the connecting user is the one the name was completed with */
+      owner_mop = Au_user;
+    }
+  else
+    {
+      len = (size_t) (dot - realname);
+      if (len >= sizeof (owner_name))
+	{
+	  return;
+	}
+      memcpy (owner_name, realname, len);
+      owner_name[len] = '\0';
+
+      owner_mop = au_find_user (owner_name);
+      if (owner_mop == NULL)
+	{
+	  /* the statement will fail on this name anyway; leave the owner unknown */
+	  er_clear ();
+	  return;
+	}
+    }
+
+  if (owner_mop != NULL)
+    {
+      COPY_OID (&lcks->owner_oids[lcks->num_classes], ws_oid (owner_mop));
+    }
 }
 
 /*

@@ -7354,6 +7354,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY *thread_p, unsigned int rid, cha
   OID *guessed_class_oids = NULL;
   int *guessed_class_chns = NULL;
   LC_PREFETCH_FLAGS *many_flags = NULL;
+  OID *many_owner_oids = NULL;
   int quit_on_errors, lock_rr_tran;
   LC_FIND_CLASSNAME allfind = LC_CLASSNAME_ERROR;
   LC_LOCKHINT *found_lockhint;
@@ -7380,8 +7381,8 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY *thread_p, unsigned int rid, cha
   ptr = or_unpack_int (ptr, &quit_on_errors);
   ptr = or_unpack_int (ptr, &lock_rr_tran);
 
-  malloc_size = ((sizeof (char *) + sizeof (LOCK) + sizeof (int) + sizeof (int) + sizeof (OID) + sizeof (int))
-		 * num_classes);
+  malloc_size = ((sizeof (char *) + sizeof (LOCK) + sizeof (int) + sizeof (int) + sizeof (OID) + sizeof (OID)
+		  + sizeof (int)) * num_classes);
 
   malloc_area = (char *) db_private_alloc (thread_p, malloc_size);
   if (malloc_area != NULL)
@@ -7390,7 +7391,8 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY *thread_p, unsigned int rid, cha
       many_locks = (LOCK *) ((char *) malloc_area + (sizeof (char *) * num_classes));
       many_need_subclasses = (int *) ((char *) many_locks + (sizeof (LOCK) * num_classes));
       many_flags = (LC_PREFETCH_FLAGS *) ((char *) many_need_subclasses + (sizeof (int) * num_classes));
-      guessed_class_oids = (OID *) ((char *) many_flags + (sizeof (int) * num_classes));
+      many_owner_oids = (OID *) ((char *) many_flags + (sizeof (int) * num_classes));
+      guessed_class_oids = (OID *) ((char *) many_owner_oids + (sizeof (OID) * num_classes));
       guessed_class_chns = (int *) ((char *) guessed_class_oids + (sizeof (OID) * num_classes));
 
       for (i = 0; i < num_classes; i++)
@@ -7399,14 +7401,15 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY *thread_p, unsigned int rid, cha
 	  ptr = or_unpack_lock (ptr, &many_locks[i]);
 	  ptr = or_unpack_int (ptr, &many_need_subclasses[i]);
 	  ptr = or_unpack_int (ptr, (int *) &many_flags[i]);
+	  ptr = or_unpack_oid (ptr, &many_owner_oids[i]);
 	  ptr = or_unpack_oid (ptr, &guessed_class_oids[i]);
 	  ptr = or_unpack_int (ptr, &guessed_class_chns[i]);
 	}
 
       allfind =
 	      xlocator_find_lockhint_class_oids (thread_p, num_classes, (const char **) many_classnames, many_locks,
-		  many_need_subclasses, many_flags, guessed_class_oids, guessed_class_chns,
-		  quit_on_errors, &found_lockhint, &copy_area);
+		  many_need_subclasses, many_flags, many_owner_oids, guessed_class_oids,
+		  guessed_class_chns, quit_on_errors, &found_lockhint, &copy_area);
     }
   if (allfind != LC_CLASSNAME_EXIST)
     {

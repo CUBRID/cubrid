@@ -120,10 +120,10 @@ extern int locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_l
 extern int locator_assign_oid_batch (LC_OIDSET * oidset);
 extern LC_FIND_CLASSNAME locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
 							   LOCK * many_locks, int *many_need_subclasses,
-							   LC_PREFETCH_FLAGS * many_flags, OID * guessed_class_oids,
-							   int *guessed_class_chns, int quit_on_errors,
-							   LOCK lock_rr_tran, LC_LOCKHINT ** lockhint,
-							   LC_COPYAREA ** fetch_copyarea);
+							   LC_PREFETCH_FLAGS * many_flags, OID * many_owner_oids,
+							   OID * guessed_class_oids, int *guessed_class_chns,
+							   int quit_on_errors, LOCK lock_rr_tran,
+							   LC_LOCKHINT ** lockhint, LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_area);
 extern int locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type, int n_attrs, int *attr_ids,
 				      OID * pk_cls_oid, BTID * pk_btid, char *fk_name);

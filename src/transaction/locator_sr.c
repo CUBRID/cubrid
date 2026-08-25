@@ -12025,8 +12025,8 @@ error:
 LC_FIND_CLASSNAME
 xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, const char **many_classnames,
 				   LOCK * many_locks, int *many_need_subclasses, LC_PREFETCH_FLAGS * many_flags,
-				   OID * guessed_class_oids, int *guessed_class_chns, bool quit_on_errors,
-				   LC_LOCKHINT ** hlock, LC_COPYAREA ** fetch_area)
+				   OID * many_owner_oids, OID * guessed_class_oids, int *guessed_class_chns,
+				   bool quit_on_errors, LC_LOCKHINT ** hlock, LC_COPYAREA ** fetch_area)
 {
   int tran_index;
   LOCATOR_CLASSNAME_ENTRY *entry;
@@ -12098,6 +12098,16 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 	    }
 
 	  entry = locator_get_classname_entry (classname);
+
+#if !defined(NDEBUG)
+	  /* Probe for the coming composite key: when the request names an owner and the
+	   * entry knows one, they have to be the same object. */
+	  if (many_owner_oids != NULL && entry != NULL && !OID_ISNULL (&many_owner_oids[i])
+	      && !OID_ISNULL (&entry->e_owner_oid) && !locator_entry_is_synonym (entry))
+	    {
+	      assert (OID_EQ (&many_owner_oids[i], &entry->e_owner_oid));
+	    }
+#endif
 
 	  if (locator_entry_is_synonym (entry))
 	    {

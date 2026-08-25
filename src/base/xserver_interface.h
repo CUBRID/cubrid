@@ -113,9 +113,9 @@ extern int xlocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p, OID * 
 extern LC_FIND_CLASSNAME xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes,
 							    const char **many_classnames, LOCK * many_locks,
 							    int *many_need_subclasses, LC_PREFETCH_FLAGS * many_flags,
-							    OID * guessed_class_oids, int *guessed_class_chns,
-							    bool quit_on_errors, LC_LOCKHINT ** hlock,
-							    LC_COPYAREA ** fetch_area);
+							    OID * many_owner_oids, OID * guessed_class_oids,
+							    int *guessed_class_chns, bool quit_on_errors,
+							    LC_LOCKHINT ** hlock, LC_COPYAREA ** fetch_area);
 extern int xlocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_area);
 extern int xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 				LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oid, int class_chn,
