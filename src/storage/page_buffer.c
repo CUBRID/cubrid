@@ -11575,11 +11575,15 @@ pgbuf_wakeup_page_flush_daemon (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_has_perm_pages_fixed () -
+ * pgbuf_has_perm_pages_fixed () - does the thread still hold a page other than a query result page?
  *
- * return	       : The number of pages fixed by the thread.
+ * return	       : true if any page whose type is not PAGE_QRESULT is fixed by the thread.
  * thread_p (in)       : Thread entry.
  *
+ * Note: PAGE_QRESULT is the single exemption, because a query result page belongs to the thread's own list file
+ *       scan and no other thread fixes it. Callers use this to check that a thread is not holding a latch another
+ *       thread needs before it blocks - see lock_suspend and pgbuf_ordered_callback. Widening the exemption to the
+ *       other temporary page types would loosen those asserts, so weigh those callers before changing it.
  */
 bool
 pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
@@ -12935,38 +12939,6 @@ exit:
   return er_status;
 }
 
-#if !defined(NDEBUG)
-/*
- * pgbuf_only_qresult_pages_fixed () - is every page still fixed by this thread a query result page?
- *   return: true if no other page type is fixed
- *   thrd_idx (in): thread index
- *
- * Note: pgbuf_ordered_callback used to require that the thread holds no page at all. It unfixes ordered pages only,
- *       so a fix without a watcher may now remain - in practice the query result page of the thread's own list file
- *       scan, which no other thread fixes. This is deliberately narrower than "not an ordered page", so that any
- *       other type surfaces in testing: the shard allocator the callback waits for fixes PAGE_FTAB and
- *       PAGE_VOLHEADER itself, and keeping one of those across the wait would deadlock against it.
- *
- * TODO: if this fires, decide whether the reported page type must be unfixed across the callback too, rather than
- *       allowing it here.
- */
-static bool
-pgbuf_only_qresult_pages_fixed (int thrd_idx)
-{
-  PGBUF_HOLDER *holder;
-
-  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
-    {
-      if (holder->bufptr->iopage_buffer->iopage.prv.ptype != PAGE_QRESULT)
-	{
-	  return false;
-	}
-    }
-
-  return true;
-}
-#endif /* NDEBUG */
-
 /*
  * pgbuf_ordered_callback () - Temporarily unfix all ordered pages while executing a callback.
  *   return: error code
@@ -12975,7 +12947,8 @@ pgbuf_only_qresult_pages_fixed (int thrd_idx)
  *   callback_args (in): callback arguments
  *
  * Note: Only ordered pages are unfixed, because only they carry a watcher through which the fix can be restored. Any
- *       other fix is left in place - see pgbuf_only_qresult_pages_fixed. The callback must not fix a page of its own.
+ *       other fix is left in place - see the assert before the callback. The callback must not fix a page of its
+ *       own.
  *       Unfixed pages are re-fixed in page order even when the callback returns an error. If re-fixing fails, some
  *       watchers may remain without a fixed page and callers must check watcher page pointers before using them.
  */
@@ -13160,7 +13133,14 @@ pgbuf_ordered_callback_release (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_
 	}
     }
 
-  assert (pgbuf_only_qresult_pages_fixed (thrd_idx));
+  /* pgbuf_ordered_callback used to require that the thread holds no page at all. It unfixes ordered pages only, so a
+   * fix without a watcher may now remain - in practice the query result page of the thread's own list file scan,
+   * which no other thread fixes. Any other type must surface here: the shard allocator the callback waits for fixes
+   * PAGE_FTAB and PAGE_VOLHEADER itself, and keeping one of those across the wait would deadlock against it.
+   *
+   * TODO: if this fires, decide whether the reported page type must be unfixed across the callback too, rather than
+   * allowing it here. */
+  assert (!pgbuf_has_perm_pages_fixed (thread_p));
 
   callback_status = callback_func (thread_p, callback_args);
 
