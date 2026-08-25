@@ -392,10 +392,22 @@ extern "C" {
     if (!executor_p)
       {
 	worker_manager_p->release_workers ();
+	/* The px-stats routing armed above (m_px_orig_thread_entry + perfmon_initialize_parallel_stats)
+	 * is normally torn down by the root executor's run_jobs (); on this no-executor fallback nobody
+	 * runs it, and a leaked m_uses_px_stats makes every later perfmon read/write of this thread hit
+	 * the orphaned px_stats array instead of the transaction's counters - the next statement's
+	 * old/new trace snapshots then straddle two different counter sets and go negative. Nothing has
+	 * executed yet, so there is nothing to drain: just disarm. */
+	perfmon_destroy_parallel_stats (thread_p);
+	thread_p->m_px_orig_thread_entry = nullptr;
 	return false;
       }
     if (executor_p->m_xasl_state == nullptr)
       {
+	/* same disarm as above - the executor is torn down later through xasl->px_executor, but its
+	 * run_jobs () never runs on this path either */
+	perfmon_destroy_parallel_stats (thread_p);
+	thread_p->m_px_orig_thread_entry = nullptr;
 	return false;
       }
     return true;
