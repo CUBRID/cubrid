@@ -17744,6 +17744,10 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_evaluate_statement_default_expr (parser, flat);
       if (err != NO_ERROR)
 	{
+	  if (old_wait_msecs >= -1)
+	    {
+	      (void) tran_reset_wait_times (old_wait_msecs);
+	    }
 	  goto exit;
 	}
 
@@ -18590,6 +18594,10 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  err = do_evaluate_statement_default_expr (parser, flat);
 	  if (err != NO_ERROR)
 	    {
+	      if (old_wait_msecs >= -1)
+		{
+		  (void) tran_reset_wait_times (old_wait_msecs);
+		}
 	      goto exit;
 	    }
 
