@@ -5529,6 +5529,18 @@ error_exit:
 #define MAX_LEN_CONNECTION_URL	512
 #define SQL_MAX_TEXT_LEN DB_MAX_IDENTIFIER_LENGTH * 2 + 16
 
+/* why cci_schema_info could not describe the table.  The caller needs the reason: a
+ * remote that is too old to answer is a compatibility matter, while a name the remote
+ * does not resolve is not, and the two must not be treated the same. */
+enum
+{
+  PT_DBLINK_SCHEMA_OK = 0,
+  PT_DBLINK_SCHEMA_REJECTED,	/* the request itself was refused */
+  PT_DBLINK_SCHEMA_PRE_V13,	/* no IS_INVISIBLE / EXT_DOMAIN / CODESET column */
+  PT_DBLINK_SCHEMA_NO_ROW,	/* the remote resolves the name to no class */
+  PT_DBLINK_SCHEMA_AMBIGUOUS	/* the name matched classes of more than one owner */
+};
+
 /*
  * pt_dblink_table_get_column_defs_by_schema_info () - remote table schema via cci_schema_info
  *   return: NO_ERROR on success (rmt_tbl_cols filled); ER_FAILED to fall back to the
@@ -5550,8 +5562,8 @@ error_exit:
  *   that does not send them falls back to the "SELECT *" prepare.
  */
 static int
-pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name, const char *user,
-						S_REMOTE_TBL_COLS * rmt_tbl_cols, bool * ambiguous)
+pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_TYPE sch_type, char *table_name,
+						const char *user, S_REMOTE_TBL_COLS * rmt_tbl_cols, int *reason)
 {
   T_CCI_ERROR cci_error;
   T_CCI_CUBRID_STMT stmt_type;
@@ -5563,20 +5575,24 @@ pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name, cons
   int req, err, ind, ext_domain, codeset, scale, precision, invisible, res_col_cnt = 0;
 
   /* the remote resolves an unqualified name in the connected user's schema only, so a
-   * grant-visible class of another owner is one the statement can never reach */
-  if (user != NULL && strchr (table_name, '.') == NULL)
+   * grant-visible class of another owner is one the statement can never reach.  A synonym
+   * request is exempt: it answers with the target's class name, which is another owner's
+   * by design, and sch_attr_with_synonym_info () has already resolved the synonym in the
+   * connected user's schema. */
+  if (sch_type == CCI_SCH_ATTRIBUTE && user != NULL && strchr (table_name, '.') == NULL)
     {
       filter_owner = (snprintf (own_class, sizeof (own_class), "%s.%s", user, table_name) < (int) sizeof (own_class));
     }
 
   /* exact class-name match; CCI_ATTR_NAME_PATTERN_MATCH with a NULL attribute name
    * skips the attribute filter (an exact match against NULL matches nothing) */
-  req = cci_schema_info (conn, CCI_SCH_ATTRIBUTE, table_name, NULL, CCI_ATTR_NAME_PATTERN_MATCH, &cci_error);
+  *reason = PT_DBLINK_SCHEMA_REJECTED;
+
+  req = cci_schema_info (conn, sch_type, table_name, NULL, CCI_ATTR_NAME_PATTERN_MATCH, &cci_error);
   if (req < 0)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "dblink: schema_info for [%s] was rejected (%d: %s); using the \"SELECT *\" prepare instead - "
-		    "remote invisible columns cannot be referenced\n", table_name, cci_error.err_code,
+		    "dblink: schema_info for [%s] was rejected (%d: %s)\n", table_name, cci_error.err_code,
 		    cci_error.err_msg);
       return ER_FAILED;
     }
@@ -5591,12 +5607,14 @@ pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name, cons
 
   if (res_col_cnt < 17)
     {
+      *reason = PT_DBLINK_SCHEMA_PRE_V13;
+
       /* pre-V13 remote, or a V13 remote without the type columns: the "SELECT *"
        * prepare describes the visible set exactly and carries the full ext type */
       er_log_debug (ARG_FILE_LINE,
 		    "dblink: the remote answered schema_info for [%s] with %d columns, fewer than the 17 that carry "
 		    "IS_INVISIBLE / EXT_DOMAIN / CODESET (PROTOCOL_V13); using the \"SELECT *\" prepare instead - "
-		    "remote invisible columns cannot be referenced\n", table_name, res_col_cnt);
+		    "an older remote cannot report invisible columns\n", table_name, res_col_cnt);
       cci_close_req_handle (req);
       return ER_FAILED;
     }
@@ -5653,10 +5671,7 @@ pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name, cons
 	  er_log_debug (ARG_FILE_LINE,
 			"dblink: schema_info for [%s] matched more than one class ([%s] and [%s]), so it describes no "
 			"single table; asking again with the name qualified\n", table_name, first_class, class_name);
-	  if (ambiguous != NULL)
-	    {
-	      *ambiguous = true;
-	    }
+	  *reason = PT_DBLINK_SCHEMA_AMBIGUOUS;
 	  err = ER_FAILED;
 	  break;
 	}
@@ -5706,30 +5721,29 @@ pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name, cons
 
   if (err != CCI_ER_NO_MORE_DATA || rmt_tbl_cols->get_attr_size () == 0)
     {
-      /* fetch failure, or an unknown table (zero rows): drop what was collected and
-       * let the "SELECT *" prepare produce the legacy behavior and error message */
-      if (ambiguous != NULL && *ambiguous)
+      /* fetch failure, or a name the remote resolves to no class: drop what was collected */
+      if (*reason == PT_DBLINK_SCHEMA_AMBIGUOUS)
 	{
 	  /* already reported, and the caller asks again with a qualified name */
 	}
       else if (rmt_tbl_cols->get_attr_size () == 0 && err == CCI_ER_NO_MORE_DATA)
 	{
+	  *reason = PT_DBLINK_SCHEMA_NO_ROW;
 	  er_log_debug (ARG_FILE_LINE,
 			"dblink: schema_info found no column of [%s] - the remote does not resolve that name the way "
-			"the statement wrote it; using the \"SELECT *\" prepare instead, which reports the remote's "
-			"own error\n", table_name);
+			"the statement wrote it\n", table_name);
 	}
       else
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"dblink: reading schema_info for [%s] failed (%d: %s); using the \"SELECT *\" prepare "
-			"instead - remote invisible columns cannot be referenced\n", table_name, cci_error.err_code,
+			"dblink: reading schema_info for [%s] failed (%d: %s)\n", table_name, cci_error.err_code,
 			cci_error.err_msg);
 	}
       rmt_tbl_cols->reset_attrs ();
       return ER_FAILED;
     }
 
+  *reason = PT_DBLINK_SCHEMA_OK;
   return NO_ERROR;
 }
 
@@ -5744,6 +5758,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   PT_DBLINK_INFO *dblink_table = &dblink->info.dblink_table;
   char *find;
   char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
+  bool schema_info_required = false;
 
   char *table_name = dblink_table->remote_table_name;
   char *url = (char *) dblink_table->url->info.value.data_value.str->bytes;
@@ -5807,13 +5822,12 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
     }
 
   /* "SELECT *" prepare metadata cannot get invisible columns, so take the schema from
-   * cci_schema_info; star expansion needs IS_INVISIBLE (PROTOCOL_V13).
-   * Else do legacy fallback; SELECT * prepare. */
+   * cci_schema_info; star expansion needs IS_INVISIBLE (PROTOCOL_V13). */
   if (table_name != NULL && dblink_table->sel_list != NULL)
     {
       bool has_star = (dblink_table->sel_list->node_type == PT_NAME
 		       && dblink_table->sel_list->type_enum == PT_TYPE_STAR);
-      bool ambiguous = false;
+      int reason = PT_DBLINK_SCHEMA_OK, rc = ER_FAILED;
       char qualified_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 
       /* A lone star references no invisible column, and the "SELECT *" prepare below
@@ -5826,34 +5840,71 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 			"dblink: schema_info skipped for [%s] - the statement references no column besides the star, "
 			"and the \"SELECT *\" prepare describes exactly the list the star expands to\n", table_name);
 	}
-      /* The name goes out exactly as the statement wrote it, the way the "SELECT *"
-       * prepare below sends it: whatever the remote makes of an unqualified name - the
-       * connected user's schema on CUBRID and Oracle, the connected database on
-       * MySQL/MariaDB - both requests then describe the same table. */
-      else if (pt_dblink_table_get_column_defs_by_schema_info (conn, table_name, user, rmt_tbl_cols, &ambiguous) ==
-	       NO_ERROR)
+      else
 	{
-	  err = NO_ERROR;
-	  goto set_parser_error;
-	}
-      /* sch_attr_info () filters by owner only when the name it is given is qualified, so
-       * on a CUBRID remote an unqualified name can match classes of several owners and
-       * describe none of them.  The remote resolves it in the connected user's schema, so
-       * ask again that way and get that one class. */
-      else if (ambiguous && strchr (table_name, '.') == NULL
-	       && snprintf (qualified_name, sizeof (qualified_name), "%s.%s", user, table_name)
-	       < (int) sizeof (qualified_name)
-	       && pt_dblink_table_get_column_defs_by_schema_info (conn, qualified_name, user, rmt_tbl_cols,
-								  NULL) == NO_ERROR)
-	{
-	  err = NO_ERROR;
-	  goto set_parser_error;
+	  /* The name goes out exactly as the statement wrote it, the way the "SELECT *"
+	   * prepare below sends it: whatever the remote makes of an unqualified name - the
+	   * connected user's schema on CUBRID and Oracle, the connected database on
+	   * MySQL/MariaDB - both requests then describe the same table. */
+	  rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, table_name, user,
+							       rmt_tbl_cols, &reason);
+
+	  /* sch_attr_info () filters by owner only when the name it is given is qualified,
+	   * so on a CUBRID remote an unqualified name can match classes of several owners
+	   * and describe none of them.  The remote resolves it in the connected user's
+	   * schema, so ask again that way and get that one class. */
+	  if (rc != NO_ERROR && reason == PT_DBLINK_SCHEMA_AMBIGUOUS && strchr (table_name, '.') == NULL
+	      && snprintf (qualified_name, sizeof (qualified_name), "%s.%s", user, table_name)
+	      < (int) sizeof (qualified_name))
+	    {
+	      rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, qualified_name, user,
+								   rmt_tbl_cols, &reason);
+	    }
+
+	  /* CCI_SCH_ATTRIBUTE describes a class and never a synonym, so a name the remote
+	   * resolves through one is answered with no row.  CCI_SCH_ATTR_WITH_SYNONYM
+	   * (CBRD-24835) reads db_synonym and describes the target with the very same 17
+	   * columns, and it resolves an unqualified name in the connected user's schema -
+	   * the schema the statement reaches.  It is synonym-only, so it is a second
+	   * attempt rather than a replacement; a gateway refuses the type outright, so the
+	   * attempt costs nothing there. */
+	  if (rc != NO_ERROR && reason == PT_DBLINK_SCHEMA_NO_ROW)
+	    {
+	      rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTR_WITH_SYNONYM, table_name, user,
+								   rmt_tbl_cols, &reason);
+	    }
+
+	  if (rc == NO_ERROR)
+	    {
+	      err = NO_ERROR;
+	      goto set_parser_error;
+	    }
+
+	  /* Serving the "SELECT *" describe instead would answer this statement with a
+	   * smaller column list, so whether a valid invisible reference compiles would
+	   * depend on state the statement cannot see.  Do not: keep the prepare below only
+	   * to report the remote's own error, and refuse if it succeeds.  Two cases stay on
+	   * the prepare because something else owns them - a remote too old to report
+	   * invisible columns at all, and a name carrying identifier quotes, which the
+	   * catalog request cannot resolve yet. */
+	  if (reason != PT_DBLINK_SCHEMA_PRE_V13 && strpbrk (table_name, "\"`[") == NULL)
+	    {
+	      schema_info_required = true;
+	    }
 	}
     }
 
   req = cci_prepare (conn, sql, 0, &cci_error);
   if (req < 0)
     {
+      goto set_parser_error;
+    }
+
+  if (schema_info_required)
+    {
+      snprintf (cci_error.err_msg, sizeof (cci_error.err_msg),
+		"the remote resolves this name but did not report its column list, so an invisible column "
+		"cannot be told from an unknown one");
       goto set_parser_error;
     }
 
