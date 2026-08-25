@@ -12344,6 +12344,175 @@ pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_dblink_delete_subq_shadows_name () - true if subq's OWN top-level FROM rebinds name (as a range
+ *   variable, or as a bare entity name when the spec has no alias).
+ *   Only a plain SELECT has a single top-level FROM to check; UNION/INTERSECTION/DIFFERENCE and CTEs are
+ *   conservatively treated as not shadowing (same as before this check existed), since a query's operands
+ *   would each need this evaluated in their own right. Checks subq's own scope only -- a further-nested
+ *   PT_SELECT (a derived table in this FROM, or any other nested subquery) may shadow the name again on
+ *   its own terms, independently of this result; the caller (pt_dblink_delete_corr_ref_pre) re-evaluates
+ *   this per scope as it descends, rather than relying on a single top-level call.
+ */
+static bool
+pt_dblink_delete_subq_shadows_name (PT_NODE * subq, const char *name)
+{
+  PT_NODE *spec;
+
+  if (name == NULL || subq == NULL || subq->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  for (spec = subq->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      const char *spec_name = (spec->info.spec.range_var != NULL)
+	? spec->info.spec.range_var->info.name.original
+	: ((spec->info.spec.entity_name != NULL) ? spec->info.spec.entity_name->info.name.original : NULL);
+
+      if (spec_name != NULL && intl_identifier_casecmp (spec_name, name) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_dblink_delete_corr_ref_pre/_post () - walk callback pair: flag a subquery correlated to the outer
+ *   remote DELETE target. A correlated reference is a qualified column (PT_DOT_) whose qualifier matches
+ *   the target's range variable or entity name. Used by pt_check_with_info's DELETE branch before the
+ *   subquery is bound stand-alone (which would otherwise fail with a confusing "Attribute <alias> was not
+ *   found").
+ *   Shadowing is re-evaluated at every PT_SELECT boundary the walk descends into (subq itself, a derived
+ *   table, or any other nested subquery) via the scope stack the pre/post pair pushes/pops -- not just
+ *   subq's own top-level FROM -- so a derived table that rebinds the name deeper in the tree is also
+ *   recognized. A scope inherits its enclosing scope's shadow state (once shadowed, always shadowed
+ *   going deeper -- see pt_dblink_delete_subq_shadows_name).
+ */
+typedef struct pt_dblink_del_corr_scope
+{
+  struct pt_dblink_del_corr_scope *up;
+  bool alias_shadowed;		/* true if this scope's own top-level FROM (or an enclosing one) rebinds `alias` */
+  bool entity_shadowed;		/* true if this scope's own top-level FROM (or an enclosing one) rebinds `entity` */
+} PT_DBLINK_DEL_CORR_SCOPE;
+
+typedef struct
+{
+  const char *alias;		/* outer target range variable (e.g. "r" in remote_t AS r), may be NULL */
+  const char *entity;		/* outer target table name (e.g. "remote_t"), may be NULL */
+  PT_DBLINK_DEL_CORR_SCOPE *top;	/* innermost pushed scope; NULL before subq's own PT_SELECT is entered */
+  bool found;
+} PT_DBLINK_DEL_CORR;
+
+static PT_NODE *
+pt_dblink_delete_corr_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_DBLINK_DEL_CORR *chk = (PT_DBLINK_DEL_CORR *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_SELECT)
+    {
+      PT_DBLINK_DEL_CORR_SCOPE *scope = (PT_DBLINK_DEL_CORR_SCOPE *) parser_alloc (parser, sizeof (*scope));
+      bool up_alias_shadowed = (chk->top != NULL) && chk->top->alias_shadowed;
+      bool up_entity_shadowed = (chk->top != NULL) && chk->top->entity_shadowed;
+
+      scope->up = chk->top;
+      scope->alias_shadowed = up_alias_shadowed || pt_dblink_delete_subq_shadows_name (node, chk->alias);
+      scope->entity_shadowed = up_entity_shadowed || pt_dblink_delete_subq_shadows_name (node, chk->entity);
+      chk->top = scope;
+    }
+  else if (node->node_type == PT_DOT_ && node->info.dot.arg1 != NULL && node->info.dot.arg1->node_type == PT_NAME)
+    {
+      const char *q = node->info.dot.arg1->info.name.original;
+      bool alias_shadowed = (chk->top != NULL) && chk->top->alias_shadowed;
+      bool entity_shadowed = (chk->top != NULL) && chk->top->entity_shadowed;
+
+      if (q != NULL
+	  && ((chk->alias != NULL && !alias_shadowed && intl_identifier_casecmp (q, chk->alias) == 0)
+	      || (chk->entity != NULL && !entity_shadowed && intl_identifier_casecmp (q, chk->entity) == 0)))
+	{
+	  chk->found = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+  return node;
+}
+
+static PT_NODE *
+pt_dblink_delete_corr_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_DBLINK_DEL_CORR *chk = (PT_DBLINK_DEL_CORR *) arg;
+
+  (void) parser;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_SELECT && chk->top != NULL)
+    {
+      chk->top = chk->top->up;
+    }
+  return node;
+}
+
+/*
+ * pt_bind_remote_dml_subq () - Bind a local subquery that a remote DML sink (INSERT SELECT / DELETE
+ *   local-subquery) evaluates stand-alone: run the same steps a top-level SELECT receives
+ *   (pt_resolve_names -> pt_check_where -> pt_mark_union_leaf_nodes -> pt_semantic_check_local ->
+ *   mq_translate), since the remote DML path breaks out of the normal query semantic check before this
+ *   subquery would otherwise be processed as one. Without this, WHERE / GROUP BY / HAVING / ORDER BY /
+ *   LIMIT / expressions / aggregates / UNION on the subquery are never handled (e.g. ORDER BY raises a
+ *   "generate order_by" system error, LIMIT is ignored).
+ *   return: the translated subquery, or NULL on failure (parser error already set)
+ *   parser(in)         : parser context
+ *   subq(in)            : the local subquery to bind (SELECT for INSERT; WHERE right-hand side for DELETE)
+ *   sc_info_ptr(in/out) : semantic check info; top_node is set to subq for the duration, then restored
+ *   fail_msg(in)        : PT_INTERNAL_ERROR message if mq_translate returns NULL without setting an error
+ *                         (its contract, like the canonical db_vdb.c caller, treats that as a failure too)
+ */
+static PT_NODE *
+pt_bind_remote_dml_subq (PARSER_CONTEXT * parser, PT_NODE * subq, SEMANTIC_CHK_INFO * sc_info_ptr, const char *fail_msg)
+{
+  PT_NODE *saved_top = sc_info_ptr->top_node;
+
+  pt_resolve_names (parser, subq, sc_info_ptr);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  sc_info_ptr->top_node = subq;
+  subq = pt_check_where (parser, subq);
+  if (subq != NULL && !pt_has_error (parser))
+    {
+      subq = parser_walk_tree (parser, subq, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
+    }
+  if (subq != NULL && !pt_has_error (parser))
+    {
+      subq = parser_walk_tree (parser, subq, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+    }
+  if (subq != NULL && !pt_has_error (parser))
+    {
+      /* The remote DML path skips the statement-level mq_translate (db_vdb.c, the whole statement is
+       * sent to the remote server). The local subquery runs stand-alone here, so translate it: this
+       * applies view expansion, dblink derived-table rewrite and set-operator operand marking
+       * (PT_IS_UNION_SUBQUERY) from the canonical code, so the operand/derived XASLs are gathered into
+       * aptr_list and executed. Runs after the local semantic check above, matching the normal
+       * semantic-check -> mq_translate order. */
+      subq = mq_translate (parser, subq);
+      if (subq == NULL && !pt_has_error (parser))
+	{
+	  /* Match the canonical mq_translate contract (db_vdb.c): a NULL result is a failure even when
+	   * no error was recorded. Without this the stale subquery would reach XASL generation. */
+	  PT_INTERNAL_ERROR (parser, fail_msg);
+	}
+    }
+
+  sc_info_ptr->top_node = saved_top;
+
+  return pt_has_error (parser) ? NULL : subq;
+}
+
+/*
  * pt_check_with_info () -  do name resolution & semantic checks on this tree
  *   return:  statement if no errors, NULL otherwise
  *   parser(in): the parser context
@@ -12462,62 +12631,87 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
 		  if (subq != NULL)
 		    {
-		      PT_NODE *saved_top = sc_info_ptr->top_node;
-
-		      pt_resolve_names (parser, subq, sc_info_ptr);
-		      if (!pt_has_error (parser))
+		      subq = pt_bind_remote_dml_subq (parser, subq, sc_info_ptr,
+						      "remote INSERT SELECT: failed to translate the SELECT subquery");
+		      if (subq != NULL)
 			{
-			  sc_info_ptr->top_node = subq;
-			  subq = pt_check_where (parser, subq);
-			  if (subq != NULL && !pt_has_error (parser))
-			    {
-			      subq =
-				parser_walk_tree (parser, subq, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
-			    }
-			  if (subq != NULL && !pt_has_error (parser))
-			    {
-			      subq = parser_walk_tree (parser, subq, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
-			    }
-			  if (subq != NULL && !pt_has_error (parser))
-			    {
-			      /* The remote DML path skips the statement-level mq_translate (db_vdb.c, the whole
-			       * statement is sent to the remote server). For a remote INSERT SELECT the SELECT
-			       * subquery runs locally, so translate it here as a stand-alone query: this applies
-			       * view expansion, dblink derived-table rewrite and set-operator operand marking
-			       * (PT_IS_UNION_SUBQUERY) from the canonical code, so the operand/derived XASLs are
-			       * gathered into aptr_list and executed. Runs after the local semantic check above,
-			       * matching the normal semantic-check -> mq_translate order. */
-			      subq = mq_translate (parser, subq);
-			      if (subq == NULL && !pt_has_error (parser))
-				{
-				  /* Match the canonical mq_translate contract (db_vdb.c): a NULL result is a
-				   * failure even when no error was recorded. Without this the stale subquery
-				   * would reach XASL generation. */
-				  PT_INTERNAL_ERROR (parser,
-						     "remote INSERT SELECT: failed to translate the SELECT subquery");
-				}
-			    }
-			  sc_info_ptr->top_node = saved_top;
-			  if (subq != NULL && !pt_has_error (parser))
-			    {
-			      node->info.insert.value_clauses->info.node_list.list = subq;
+			  node->info.insert.value_clauses->info.node_list.list = subq;
 
-			      /* The remote path also skips the INSERT-level attribute/value count check, so an
-			       * explicit column list whose size differs from the SELECT projection would reach
-			       * XASL generation and abort there. Validate it here with the same semantic error a
-			       * local INSERT uses. */
-			      if (node->info.insert.attr_list != NULL)
+			  /* The remote path also skips the INSERT-level attribute/value count check, so an
+			   * explicit column list whose size differs from the SELECT projection would reach
+			   * XASL generation and abort there. Validate it here with the same semantic error a
+			   * local INSERT uses. */
+			  if (node->info.insert.attr_list != NULL)
+			    {
+			      int ac = pt_length_of_list (node->info.insert.attr_list);
+			      int cc = pt_length_of_select_list (pt_get_select_list (parser, subq),
+								 EXCLUDE_HIDDEN_COLUMNS);
+			      if (ac != cc)
 				{
-				  int ac = pt_length_of_list (node->info.insert.attr_list);
-				  int cc = pt_length_of_select_list (pt_get_select_list (parser, subq),
-								     EXCLUDE_HIDDEN_COLUMNS);
-				  if (ac != cc)
-				    {
-				      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-						   MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE, ac, cc);
-				    }
+				  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE, ac, cc);
 				}
 			    }
+			}
+		    }
+		}
+	      else if (node->node_type == PT_DELETE)
+		{
+		  /* mirrors the remote INSERT SELECT handling above (same reason -- see that comment); here
+		   * the WHERE subquery's specs would lack range_var / spec id and XASL generation would
+		   * crash. Only the single-predicate "<col> <op> (subquery)" shape is touched; other remote
+		   * DELETEs have no subquery (or a value list) and use the qstr pushdown. */
+		  PT_NODE *remote = node->info.delete_.spec->info.spec.remote_server_name;
+		  PT_NODE *cond = node->info.delete_.search_cond;
+		  PT_NODE *subq = NULL;
+
+		  /* Only the value-push sink. pt_rewrite_for_dblink (db_vdb.c, before this semantic check) already
+		   * converted the target to PT_DBLINK_TABLE_DML: the sink leaves qstr == NULL, while a full qstr
+		   * pushdown (e.g. same-server all-remote IN (SELECT ... FROM t@srv)) sets qstr and ships the whole
+		   * DELETE as text -- its subquery must NOT be translated locally. qstr == NULL is only produced when
+		   * the parser shape gate (pt_dblink_delete_where_is_inscope) accepted the form, so this also confines
+		   * resolution to the parser-approved single-predicate shapes. */
+		  if (remote != NULL && remote->node_type == PT_DBLINK_TABLE_DML
+		      && remote->info.dblink_table.qstr == NULL && cond != NULL && cond->next == NULL
+		      && cond->node_type == PT_EXPR && cond->info.expr.arg2 != NULL
+		      && PT_IS_QUERY (cond->info.expr.arg2))
+		    {
+		      subq = cond->info.expr.arg2;
+		    }
+		  if (subq != NULL)
+		    {
+		      PT_NODE *tgt = node->info.delete_.spec;
+		      PT_DBLINK_DEL_CORR corr;
+
+		      /* reject a subquery correlated to the outer DELETE target with a clear message, before the
+		       * stand-alone bind below (which would fail with "Attribute <alias> was not found"). The
+		       * value-push sink evaluates the subquery once with no outer row, so correlation is out of
+		       * scope (extension). */
+		      corr.alias =
+			(tgt->info.spec.range_var != NULL) ? tgt->info.spec.range_var->info.name.original : NULL;
+		      corr.entity =
+			(tgt->info.spec.entity_name != NULL) ? tgt->info.spec.entity_name->info.name.original : NULL;
+		      /* an inner FROM item that reuses the outer alias/table name for its OWN range shadows it --
+		       * any qualifier by that name inside that FROM item's scope then refers to the inner item,
+		       * not the outer target. Shadowing is (re-)computed per scope by the pre/post pair itself. */
+		      corr.top = NULL;
+		      corr.found = false;
+		      parser_walk_tree (parser, subq, pt_dblink_delete_corr_ref_pre, &corr,
+					pt_dblink_delete_corr_ref_post, &corr);
+		      if (corr.found)
+			{
+			  PT_ERROR (parser, node,
+				    "dblink: correlated subquery is not supported in a remote DELETE WHERE clause");
+			  subq = NULL;
+			}
+		    }
+		  if (subq != NULL)
+		    {
+		      subq = pt_bind_remote_dml_subq (parser, subq, sc_info_ptr,
+						      "remote DELETE: failed to translate the WHERE subquery");
+		      if (subq != NULL)
+			{
+			  cond->info.expr.arg2 = subq;
 			}
 		    }
 		}

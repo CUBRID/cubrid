@@ -1719,6 +1719,10 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
 		     QO_XASL_INDEX_INFO * qo_index_infop, PT_NODE ** hash_predp)
 {
   QO_INDEX_ENTRY *index_entryp = NULL;
+  QO_TERM *termp;
+  BITSET drop_terms;
+  BITSET_ITERATOR iter;
+  int t;
 
   /* initialize output parameter */
   if (key_predp != NULL)
@@ -1755,6 +1759,26 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
       bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.kf_terms));
     }
   while (0);
+
+  /* An OR-derived restriction is implied by the multi-spec factor it was extracted from, so as a
+   * data filter it only pre-rejects rows the original factor would reject anyway.  Once no index
+   * adopted it (it survived the key-range/key-filter subtraction above), it pays its way only
+   * when it is cheap to evaluate AND rejects most rows: a conjunct costlier than a
+   * column-vs-constant compare re-pays that computation per scanned row, and a filter that lets
+   * most rows through spends its evaluation on every row while saving the original factor on
+   * few -- drop either from the predicate. */
+  bitset_init (&drop_terms, env);
+  for (t = bitset_iterate (&(plan->sarged_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (env, t);
+      if (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED_EXPENSIVE)
+	  || (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (termp) > 0.5))
+	{
+	  bitset_add (&drop_terms, t);
+	}
+    }
+  bitset_difference (&(plan->sarged_terms), &drop_terms);
+  bitset_delset (&drop_terms);
 
   /* make predicate list for hash key */
   if (hash_predp != NULL)

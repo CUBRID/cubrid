@@ -475,6 +475,11 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	}
 
       qo_rewrite_terms (parser, spec, wherep);
+
+      /* derive single-spec restrictions from multi-spec OR terms; runs after the term-level
+       * rewrites so the derived terms start from the same normalized shape */
+      qo_extract_or_restrictions (parser, spec, wherep);
+
       qo_rewrite_terms (parser, spec, havingp);
       qo_rewrite_terms (parser, spec, startwithp);
       qo_rewrite_terms (parser, spec, connectbyp);
