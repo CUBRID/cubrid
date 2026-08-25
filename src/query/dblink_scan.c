@@ -1470,13 +1470,16 @@ sql_build_error:
 }
 
 /*
- * Restoring the pushed value's declared type -- the whole policy in one place.
+ * Restoring the pushed value's declared type -- the whole policy in one place. The other sites carry a
+ * pointer here instead of a copy: DELETE_PROC_NODE::remote_src_type (xasl.h),
+ * pt_to_delete_xasl_remote_subquery() (xasl_generation.c), and the helpers and call sites below.
  *
- * The sink pushes the local subquery's value as a bare host variable, so the remote resolves the marker's
- * domain from the target column and reshapes the value into it. The comparison then stops matching what the
- * all-local form matches: a CHAR target pads a VARCHAR value, a DATE target drops the time part, a TIME
- * target drops the date part, TIMESTAMP drops the fractional second, and the zone-qualified domains
- * reinterpret the value. Wrapping the placeholder in a CAST puts the declared type back.
+ * The sink pushes the local subquery's value as a bare placeholder -- the marker, in the CCI terms the code
+ * below uses -- so the remote resolves its domain from the target column and reshapes the value into it.
+ * The comparison then stops matching what the all-local form matches: a CHAR target pads a VARCHAR value, a
+ * DATE target drops the time part, a TIME target drops the date part, TIMESTAMP drops the fractional
+ * second, and the zone-qualified domains reinterpret the value. Wrapping the placeholder in a CAST puts the
+ * declared type back.
  *
  *   source type        | decided                        | cast
  *   -------------------+--------------------------------+-------------------------------------------------
@@ -1514,7 +1517,8 @@ dblink_dml_delete_remote_is_cubrid (int conn_handle)
 }
 
 /*
- * dblink_dml_delete_precast_type () - The cast decided before the first prepare (VARCHAR row of the table).
+ * dblink_dml_delete_precast_type () - The cast decided before the first prepare (VARCHAR row of the policy
+ *   table).
  *   return: type name to wrap the placeholder in, or NULL to leave the decision to the marker
  *   src_type(in): DB_TYPE of the local subquery's source column
  */
@@ -1525,15 +1529,14 @@ dblink_dml_delete_precast_type (int src_type)
 }
 
 /*
- * dblink_dml_delete_marker_cast_type () - The cast decided from the remote's marker domain (date/time row of
- *   the table). Asks the remote what domain it resolved the marker to and compares that with the source type.
+ * dblink_dml_delete_marker_cast_type () - The cast decided from the remote's marker domain (date/time row
+ *   of the policy table).
  *   return: type name to wrap the placeholder in, or NULL to keep the bare placeholder
  *   stmt_handle(in): prepared DELETE whose single marker is being asked about
  *   src_type(in)   : DB_TYPE of the local subquery's source column
  *
- * Only DATETIME/TIMESTAMP sources are asked about -- for anything else the answer could not change the
- * decision. The marker is the sink's only way to see the target type: a DML prepare carries no column
- * information (CAS ships that only for SELECT).
+ * The marker is the sink's only way to see the target type: a DML prepare carries no column information
+ * (CAS ships that only for SELECT).
  *
  * Within date/time the rule is the family, not a pair table -- cast whenever the marker's domain differs
  * from the source type, because every measured pair whose domain differs lost information. With a TIME
@@ -1603,8 +1606,9 @@ dblink_dml_delete_marker_cast_type (int stmt_handle, int src_type)
  *   key_col(in)    : remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)         : comparison operator SQL text ("=", "<", ">", "<=", ">=")
  *   cast_type(in)  : CUBRID type name to restore on the pushed value ("... <op> CAST(? AS <cast_type>)"), or
- *                    NULL to push the bare placeholder. Decided by dblink_dml_delete_cast_*(); see the policy
- *                    table above those functions
+ *                    NULL to push the bare placeholder. Decided by dblink_dml_delete_precast_type() or
+ *                    dblink_dml_delete_marker_cast_type(); see the policy comment above
+ *                    dblink_dml_delete_remote_is_cubrid()
  *   sql_out(out)   : set to the built SQL text on success
  */
 static int
@@ -1662,8 +1666,8 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 
 /*
  * dblink_dml_delete_reprepare_with_cast () - Replace the prepared DELETE with one whose placeholder carries
- *   the restored type. Used when the marker's domain turned out to differ from the source type, which is only
- *   knowable after the first prepare.
+ *   the restored type. Used when the marker's domain turned out to differ from the source type, which is
+ *   only knowable after the first prepare.
  *   return: NO_ERROR, or an error code with state->stmt_handle left pointing at the original statement
  *   state(in/out) : sink state; stmt_handle is swapped only after the new prepare succeeds
  *   cast_type(in) : type name from dblink_dml_delete_marker_cast_type()
@@ -1718,8 +1722,8 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
  *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<", ">", "<=", ">=")
  *   src_type(in)    : DELETE only -- DB_TYPE of the local subquery's source column (DB_TYPE_NULL when
- *                     unknown). Used to restore the pushed value's declared type; see the policy table above
- *                     dblink_dml_delete_remote_is_cubrid()
+ *                     unknown). Used to restore the pushed value's declared type; see the policy comment
+ *                     above dblink_dml_delete_remote_is_cubrid()
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
  * Note: To prevent partial writes, both kinds ALWAYS:
@@ -1789,8 +1793,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
       ret = dblink_dml_build_insert_sql (thread_p, table_name, attr_names, num_attrs, num_bind, &sql);
       break;
     case DBLINK_DML_DELETE:
-      /* the value's declared type is restored only against a CUBRID remote (CAST is CUBRID syntax); the
-       * VARCHAR row of the policy table is decided here so the cast rides this first prepare. */
+      /* VARCHAR row of the policy table, decided here so the cast rides this first prepare. */
       restore_type = (key_col != NULL && dblink_dml_delete_remote_is_cubrid (state->conn_handle));
       cast_type = restore_type ? dblink_dml_delete_precast_type (src_type) : NULL;
       ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, cast_type, &sql);
@@ -1817,8 +1820,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
       return ER_DBLINK;
     }
 
-  /* date/time row of the policy table: the marker's domain is only knowable once the statement is prepared,
-   * so a cast decided here costs a re-prepare. Skipped when the VARCHAR row already settled the cast. */
+  /* date/time row of the policy table. Skipped when the VARCHAR row already settled the cast. */
   if (restore_type && cast_type == NULL)
     {
       cast_type = dblink_dml_delete_marker_cast_type (state->stmt_handle, src_type);
