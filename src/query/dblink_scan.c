@@ -1726,11 +1726,9 @@ dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VA
  *   thread_p(in) : thread entry
  *   state(in)    : statement state
  *
- * Note: Called from the success path of qexec_execute_remote_dml_sink(), which mirrors where the
- *   remote DML push marks its connection (dblink_execute_query, after the statement succeeded). From
- *   here on the connection carries uncommitted work of this transaction, so a later statement that has
- *   to roll the whole remote transaction back knows it is discarding work the transaction still
- *   expects to commit.
+ * Note: Called from the success path of qexec_execute_remote_dml_sink().  From here on the connection
+ *   carries uncommitted work of this transaction, so a later statement that has to roll the whole
+ *   remote transaction back knows it is discarding work the transaction still expects to commit.
  */
 void
 dblink_dml_stmt_done (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state)
