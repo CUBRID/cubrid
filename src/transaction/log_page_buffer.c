@@ -320,9 +320,6 @@ static bool logpb_check_if_exists (const char *fname, char *first_vol);
 #if defined(SERVER_MODE)
 static void logpb_set_backup_info_in_header (LOG_HEADER * log_hdr, FILEIO_BACKUP_LEVEL backup_level,
 					     INT64 bkup_attime, const LOG_LSA * chkpt_lsa);
-static void logpb_restore_backup_info_in_header (LOG_HEADER * log_hdr,
-						 const LOG_HDR_BKUP_LEVEL_INFO * saved_bkinfo,
-						 const LOG_LSA * saved_bkup_level_lsa);
 static int logpb_backup_needed_archive_logs (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session,
 					     int first_arv_num, int last_arv_num);
 #endif /* SERVER_MODE */
@@ -7634,25 +7631,6 @@ logpb_set_backup_info_in_header (LOG_HEADER * log_hdr, FILEIO_BACKUP_LEVEL backu
 }
 
 /*
- * logpb_restore_backup_info_in_header - Put previously saved backup bookkeeping back into the log header
- *
- * return: nothing
- *
- *   log_hdr(in/out): log header to restore into
- *   saved_bkinfo(in): bkinfo array as it was before this backup touched it
- *   saved_bkup_level_lsa(in): the three backup level LSAs as they were
- */
-static void
-logpb_restore_backup_info_in_header (LOG_HEADER * log_hdr, const LOG_HDR_BKUP_LEVEL_INFO * saved_bkinfo,
-				     const LOG_LSA * saved_bkup_level_lsa)
-{
-  memcpy (log_hdr->bkinfo, saved_bkinfo, sizeof (log_hdr->bkinfo));
-  LSA_COPY (&log_hdr->bkup_level0_lsa, &saved_bkup_level_lsa[FILEIO_BACKUP_FULL_LEVEL]);
-  LSA_COPY (&log_hdr->bkup_level1_lsa, &saved_bkup_level_lsa[FILEIO_BACKUP_BIG_INCREMENT_LEVEL]);
-  LSA_COPY (&log_hdr->bkup_level2_lsa, &saved_bkup_level_lsa[FILEIO_BACKUP_SMALL_INCREMENT_LEVEL]);
-}
-
-/*
  * logpb_backup - Execute a level backup for the given database volume
  *
  * return: NO_ERROR if all OK, ER status otherwise
@@ -7702,9 +7680,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   const char *bk_vol;		/* ptr to old bkup volume name */
   int unit_num;
   FILEIO_BACKUP_RECORD_INFO all_bkup_info[FILEIO_BACKUP_UNDEFINED_LEVEL];
-  /* Header backup bookkeeping as it was before this backup, put back while the backup is still in flight. */
-  LOG_HDR_BKUP_LEVEL_INFO saved_bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
-  LOG_LSA saved_bkup_level_lsa[FILEIO_BACKUP_UNDEFINED_LEVEL];
   bool beenwarned;
   bool isincremental = false;	/* Assume full backups */
   bool bkup_in_progress = false;
@@ -8253,14 +8228,9 @@ loop:
       goto error;
     }
 
-  /* Remember what the header said, to put back before the critical section is released. */
-  memcpy (saved_bkinfo, log_Gl.hdr.bkinfo, sizeof (saved_bkinfo));
-  LSA_COPY (&saved_bkup_level_lsa[FILEIO_BACKUP_FULL_LEVEL], &log_Gl.hdr.bkup_level0_lsa);
-  LSA_COPY (&saved_bkup_level_lsa[FILEIO_BACKUP_BIG_INCREMENT_LEVEL], &log_Gl.hdr.bkup_level1_lsa);
-  LSA_COPY (&saved_bkup_level_lsa[FILEIO_BACKUP_SMALL_INCREMENT_LEVEL], &log_Gl.hdr.bkup_level2_lsa);
-
-  /* Put this backup in the header so the active log image copied below carries it. */
-  logpb_set_backup_info_in_header (&log_Gl.hdr, backup_level, session.bkup.bkuphdr->start_time, &chkpt_lsa);
+  /* Get the header on disk in step with the log pages flushed above, so the active log image copied below is
+   * self consistent. This backup is not recorded in it: a backup is recorded only once it exists, which is after
+   * the archives have been transferred. */
   logpb_flush_header (thread_p);
 
   /* Include active log always. Skipping log active is obsolete. */
@@ -8277,15 +8247,9 @@ loop:
    * point the backup can actually reach, or the restore would ask for log the backup does not have. */
   session.bkup.bkuphdr->end_time = (INT64) time (NULL);
 
-  /* The image in the backup keeps the record; the live header must not. From here the backup can still fail or
-   * the server can be killed, and neither leaves anything able to undo a durable claim. The record goes back in
-   * only once the backup is complete, below. */
-  logpb_restore_backup_info_in_header (&log_Gl.hdr, saved_bkinfo, saved_bkup_level_lsa);
-  logpb_flush_header (thread_p);
-
-  /* The log is captured: the archive set is frozen and pinned, and the active log image carries the header that
-   * names it. Everything below only reads files that cannot change, so release the critical section here and let
-   * transactions run while the archives are transferred. */
+  /* The log is captured: the archive set is frozen and pinned, and the active log image goes with it. Everything
+   * below only reads files that cannot change, so release the critical section here and let transactions run
+   * while the archives are transferred. */
   LOG_CS_EXIT (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
@@ -8319,8 +8283,15 @@ loop:
   logpb_destroy_backup_read_worker_pool ();
 #endif
 
-  /* The backup exists now, so record it. Doing it here rather than before the transfer is what keeps a failed or
-   * killed backup from leaving the header pointing at something that is not there. */
+  /* The backup exists now, so record it. This is the only place the header learns about it, which is what makes
+   * the outcome atomic: a backup that fails or is killed anywhere above leaves the previous record untouched,
+   * with nothing to undo.
+   *
+   * The active log image copied above was taken before this, so it carries whatever record the previous backup
+   * left rather than this one's. A database restored from this backup therefore reports that older backup as its
+   * last one, and an incremental taken on it chains onto that older backup instead of the one it was restored
+   * from. Restoring from a backup and then taking an incremental against it is not a supported flow - take a
+   * full backup on the restored database first. */
   LOG_CS_ENTER (thread_p);
   logpb_set_backup_info_in_header (&log_Gl.hdr, backup_level, session.bkup.bkuphdr->start_time, &chkpt_lsa);
   logpb_flush_header (thread_p);
