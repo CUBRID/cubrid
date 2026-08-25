@@ -95,6 +95,7 @@ jobs:
                       name: Test
                       environment:
                         BRANCH_TESTCASES: "${TC_BRANCH}"
+                        BRANCH_TESTTOOLS: "add-replication-option"
                       shell: /bin/bash
                       no_output_timeout: 45m
                       command: |
