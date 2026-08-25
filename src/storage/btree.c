@@ -9700,9 +9700,11 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
 	  if (!VPID_ISNULL (&ovfl_vpid))
 	    {			/* overflow pages exist */
 	      int free_space_ovfl, oid_cnt_ovfl, pg_cnt_per_key;
+	      VPID dir_vpid;
 
 	      oid_cnt_ovfl = 0;
 	      pg_cnt_per_key = 0;
+	      VPID_SET_NULL (&dir_vpid);
 	      cpc->ovfl_oid_pg.dis_key_cnt += 1;
 	      do
 		{
@@ -9715,6 +9717,18 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
 #if !defined (NDEBUG)
 		  (void) pgbuf_check_page_ptype (thread_p, ovfp, PAGE_BTREE);
 #endif /* !NDEBUG */
+
+		  if (pg_cnt_per_key == 0 && !BTREE_IS_UNIQUE (env->btree_scan.btid_int.unique_pk))
+		    {
+		      /* CBRD-24094: the directory pages of this chain hang off the first data page header, not the
+		       * next_vpid chain. Remember the directory head so they are counted as overflow pages too. */
+		      BTREE_OVF_DIR_HEADER *dir_hdr = btree_ovf_dir_get_header (thread_p, ovfp);
+
+		      if (dir_hdr != NULL)
+			{
+			  VPID_COPY (&dir_vpid, &dir_hdr->dir_vpid);
+			}
+		    }
 
 		  free_space_ovfl = spage_get_free_space (thread_p, ovfp);
 
@@ -9737,6 +9751,32 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
 		  pg_cnt_per_key++;
 		}
 	      while (!VPID_ISNULL (&ovfl_vpid));
+
+	      /* Directory pages: same accounting as data pages. Space is space, and check_index_ovfps.sh relies on
+	       * these counters to find overflow-heavy indexes, so under-reporting is the worst direction. */
+	      while (!VPID_ISNULL (&dir_vpid))
+		{
+		  ovfp = pgbuf_fix (thread_p, &dir_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+		  if (ovfp == NULL)
+		    {
+		      goto exit_on_error;
+		    }
+
+#if !defined (NDEBUG)
+		  (void) pgbuf_check_page_ptype (thread_p, ovfp, PAGE_BTREE);
+#endif /* !NDEBUG */
+
+		  free_space_ovfl = spage_get_free_space (thread_p, ovfp);
+		  btree_get_next_overflow_vpid (thread_p, ovfp, &dir_vpid);
+		  pgbuf_unfix_and_init (thread_p, ovfp);
+
+		  cpc->ovfl_oid_pg.tot_free_space += free_space_ovfl;
+		  cpc->ovfl_oid_pg.tot_space += DB_PAGESIZE;
+		  cpc->ovfl_oid_pg.tot_used_space = (cpc->ovfl_oid_pg.tot_space - cpc->ovfl_oid_pg.tot_free_space);
+
+		  cpc->ovfl_oid_pg.tot_pg_cnt += 1;
+		  pg_cnt_per_key++;
+		}
 
 	      if (cpc->ovfl_oid_pg.max_pg_cnt_per_key < pg_cnt_per_key)
 		{
@@ -12295,11 +12335,13 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VP
 /*
  * CBRD-24094: OID-ordered overflow chains with a separator directory.
  *
- * Non-unique indexes create overflow OID pages with an extended header (BTREE_OVF_DIR_HEADER, detected by the
- * header record length). Objects are kept globally OID-ordered across the chain and a directory of separator
- * entries (one per data page, stored in directory pages reachable through the data page headers) routes any OID
- * lookup to its data page directly. This turns the per-object O(chain length) linear scans of
- * btree_find_oid_and_its_page () and btree_find_free_overflow_oids_page () into logarithmic lookups.
+ * Non-unique indexes create overflow OID pages with an extended header (BTREE_OVF_DIR_HEADER); the format is a
+ * function of the index type (unique indexes keep the legacy header), so no header sniffing is needed. Objects are
+ * kept globally OID-ordered across the chain and a directory of separator entries (one per data page, stored in
+ * directory pages reachable through the data page headers) routes any OID lookup to its data page directly. This
+ * turns the per-object O(chain length) linear scans of btree_find_oid_and_its_page () and
+ * btree_find_free_overflow_oids_page () into O(D + log E) lookups, D being the directory pages walked (1 for
+ * chains of up to ~1000 data pages) and E the entries of the directory page searched.
  *
  * Invariants:
  * - A data page owns the OID range [its separator, next separator); the first page also catches anything below its
@@ -12556,7 +12598,14 @@ btree_ovf_dir_locate (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID *
 	  pgbuf_unfix_and_init (thread_p, dir_page);
 	  return ER_FAILED;
 	}
-      assert (next_record.length >= (int) sizeof (BTREE_OVF_DIR_ENTRY));
+      if (next_record.length < (int) sizeof (BTREE_OVF_DIR_ENTRY))
+	{
+	  /* Page content comes from disk: never read entries[0] past a short record, release builds included. */
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, next_page);
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  return ER_FAILED;
+	}
       if (!OID_GT (&((BTREE_OVF_DIR_ENTRY *) next_record.data)[0].sep_oid, (OID *) oid))
 	{
 	  pgbuf_unfix_and_init (thread_p, dir_page);
