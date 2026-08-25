@@ -68,6 +68,26 @@ namespace parallel_query
       std::vector<partition_start> m_inner_starts;
     };
 
+    /* join-key layout of one input list: column positions (borrowed from the merge info) + domains */
+    struct key_spec
+    {
+      const int *columns;
+      std::vector<TP_DOMAIN *> domains;
+      int cnt;
+    };
+
+    int make_key_spec (const QFILE_LIST_ID *list_id, const int *columns, int cnt, key_spec &spec);
+
+    /* reads the join-key columns of tpl into vals; copy must be true when vals outlive the page */
+    int read_key (QFILE_TUPLE tpl, const key_spec &spec, bool copy, DB_VALUE *vals);
+    void clear_key (DB_VALUE *vals, int cnt);
+
+    /* Total order matching the inputs' ASC / NULLS FIRST sort. Unlike qexec_cmp_tpl_vals_merge,
+     * NULL == NULL here: partitioning only needs "first tuple with key > boundary", and treating
+     * the NULL prefix as one equal group keeps it whole in range 0. DB_UNK means an incomparable
+     * pair (e.g. collections containing NULL) — callers must fall back to the serial merge. */
+    DB_VALUE_COMPARE_RESULT cmp_keys (const DB_VALUE *left, const DB_VALUE *right, int cnt);
+
     /* phase-1 gate: inner join, no single-fetch, both inputs large enough */
     bool is_applicable (const QFILE_LIST_MERGE_INFO &merge_info, const QFILE_LIST_ID *outer_list_id,
 			const QFILE_LIST_ID *inner_list_id);

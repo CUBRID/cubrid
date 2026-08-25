@@ -68,7 +68,8 @@ namespace parallel_query
 	  return m_main_thread_ref;
 	}
 
-	void push_task (base_task *task);
+	/* takes any entry_task (the merge join tasks reuse this manager) */
+	void push_task (cubthread::entry_task *task);
 	void end_task ();
 	void join ();
 

@@ -363,10 +363,14 @@ set(PARALLEL_HASH_JOIN_HEADERS
 
 set(PARALLEL_MERGE_JOIN_SOURCES
   ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_partition.cpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_task.cpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join.cpp
 )
 
 set(PARALLEL_MERGE_JOIN_HEADERS
   ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_partition.hpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_task.hpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join.hpp
 )
 
 set(PARALLEL_SCAN_SOURCES

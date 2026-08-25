@@ -60,7 +60,7 @@ namespace parallel_query
     }
 
     void
-    task_manager::push_task (base_task *task)
+    task_manager::push_task (cubthread::entry_task *task)
     {
       assert (task != nullptr);
       {

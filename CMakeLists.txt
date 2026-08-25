@@ -450,6 +450,7 @@ include_directories(
   src/transaction
   src/xasl
   src/query/parallel/px_hash_join
+  src/query/parallel/px_merge_join
   src/query/parallel/px_scan
   src/query/parallel/px_scan/index
   src/query/parallel

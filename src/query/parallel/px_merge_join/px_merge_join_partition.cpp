@@ -24,8 +24,6 @@
  * serial merge, so the split below is consistent with both the sort and the merge.
  *
  * TODO (next increments):
- * - spawn/task managers mirroring px_hash_join: per-range merge loop bounded by the boundary key
- * - gather: page-relink worker outputs in range order (byte-identical to the serial merge result)
  * - fold boundary sampling into the positioning pass; walk page headers instead of scanning tuples
  * - derive boundaries/start positions from the px_sort final merge for free
  * - outer joins (phase 2)
@@ -48,104 +46,94 @@ namespace parallel_query
   {
     namespace
     {
-      /* TODO: wire to compute_parallel_degree + a system parameter */
       constexpr INT64 MIN_TUPLES_PER_SIDE = 1000;
+    }
 
-      struct key_spec
-      {
-	const int *columns;	/* join column positions in the list tuple */
-	std::vector<TP_DOMAIN *> domains;	/* per join column, from the list's type_list */
-	int cnt;
-      };
+    int
+    make_key_spec (const QFILE_LIST_ID *list_id, const int *columns, int cnt, key_spec &spec)
+    {
+      spec.columns = columns;
+      spec.cnt = cnt;
+      spec.domains.resize (cnt);
+      for (int i = 0; i < cnt; i++)
+	{
+	  if (columns[i] < 0 || columns[i] >= list_id->type_list.type_cnt)
+	    {
+	      assert (false);
+	      return ER_FAILED;
+	    }
+	  spec.domains[i] = list_id->type_list.domp[columns[i]];
+	}
+      return NO_ERROR;
+    }
 
-      int
-      make_key_spec (const QFILE_LIST_ID *list_id, const int *columns, int cnt, key_spec &spec)
-      {
-	spec.columns = columns;
-	spec.cnt = cnt;
-	spec.domains.resize (cnt);
-	for (int i = 0; i < cnt; i++)
-	  {
-	    if (columns[i] < 0 || columns[i] >= list_id->type_list.type_cnt)
-	      {
-		assert (false);
-		return ER_FAILED;
-	      }
-	    spec.domains[i] = list_id->type_list.domp[columns[i]];
-	  }
-	return NO_ERROR;
-      }
+    void
+    clear_key (DB_VALUE *vals, int cnt)
+    {
+      for (int i = 0; i < cnt; i++)
+	{
+	  pr_clear_value (&vals[i]);
+	}
+    }
 
-      void
-      clear_key (DB_VALUE *vals, int cnt)
-      {
-	for (int i = 0; i < cnt; i++)
-	  {
-	    pr_clear_value (&vals[i]);
-	  }
-      }
+    int
+    read_key (QFILE_TUPLE tpl, const key_spec &spec, bool copy, DB_VALUE *vals)
+    {
+      for (int i = 0; i < spec.cnt; i++)
+	{
+	  char *valhp;
+	  TP_DOMAIN *dom = spec.domains[i];
+	  OR_BUF buf;
 
-      /* reads the join-key columns of tpl into vals; copy must be true when vals outlive the page */
-      int
-      read_key (QFILE_TUPLE tpl, const key_spec &spec, bool copy, DB_VALUE *vals)
-      {
-	for (int i = 0; i < spec.cnt; i++)
-	  {
-	    char *valhp;
-	    TP_DOMAIN *dom = spec.domains[i];
-	    OR_BUF buf;
+	  db_make_null (&vals[i]);
+	  QFILE_GET_TUPLE_VALUE_HEADER_POSITION (tpl, spec.columns[i], valhp);
+	  int len = QFILE_GET_TUPLE_VALUE_LENGTH (valhp);
+	  if (len == 0)
+	    {
+	      continue;	/* NULL */
+	    }
+	  or_init (&buf, valhp + QFILE_TUPLE_VALUE_HEADER_SIZE, len);
+	  bool is_set = pr_is_set_type (TP_DOMAIN_TYPE (dom)) ? true : false;
+	  if (dom->type->data_readval (&buf, &vals[i], dom, -1, (copy || is_set), NULL, 0) != NO_ERROR)
+	    {
+	      clear_key (vals, i);
+	      return ER_FAILED;
+	    }
+	}
+      return NO_ERROR;
+    }
 
-	    db_make_null (&vals[i]);
-	    QFILE_GET_TUPLE_VALUE_HEADER_POSITION (tpl, spec.columns[i], valhp);
-	    int len = QFILE_GET_TUPLE_VALUE_LENGTH (valhp);
-	    if (len == 0)
-	      {
-		continue;	/* NULL */
-	      }
-	    or_init (&buf, valhp + QFILE_TUPLE_VALUE_HEADER_SIZE, len);
-	    bool is_set = pr_is_set_type (TP_DOMAIN_TYPE (dom)) ? true : false;
-	    if (dom->type->data_readval (&buf, &vals[i], dom, -1, (copy || is_set), NULL, 0) != NO_ERROR)
-	      {
-		clear_key (vals, i);
-		return ER_FAILED;
-	      }
-	  }
-	return NO_ERROR;
-      }
+    DB_VALUE_COMPARE_RESULT
+    cmp_keys (const DB_VALUE *left, const DB_VALUE *right, int cnt)
+    {
+      for (int i = 0; i < cnt; i++)
+	{
+	  bool left_null = DB_IS_NULL (&left[i]);
+	  bool right_null = DB_IS_NULL (&right[i]);
+	  if (left_null || right_null)
+	    {
+	      if (left_null && right_null)
+		{
+		  continue;
+		}
+	      return left_null ? DB_LT : DB_GT;
+	    }
+	  DB_VALUE_COMPARE_RESULT c = tp_value_compare (&left[i], &right[i], 1, 0);
+	  if (c == DB_EQ)
+	    {
+	      continue;
+	    }
+	  if (c != DB_LT && c != DB_GT)
+	    {
+	      return DB_UNK;
+	    }
+	  return c;
+	}
+      return DB_EQ;
+    }
 
-      /* Total order matching the inputs' ASC / NULLS FIRST sort. Unlike qexec_cmp_tpl_vals_merge,
-       * NULL == NULL here: partitioning only needs "first tuple with key > boundary", and treating
-       * the NULL prefix as one equal group keeps it whole in range 0. DB_UNK means an incomparable
-       * pair (e.g. collections containing NULL) — the caller must fall back to the serial merge. */
-      DB_VALUE_COMPARE_RESULT
-      cmp_keys (const DB_VALUE *left, const DB_VALUE *right, int cnt)
-      {
-	for (int i = 0; i < cnt; i++)
-	  {
-	    bool left_null = DB_IS_NULL (&left[i]);
-	    bool right_null = DB_IS_NULL (&right[i]);
-	    if (left_null || right_null)
-	      {
-		if (left_null && right_null)
-		  {
-		    continue;
-		  }
-		return left_null ? DB_LT : DB_GT;
-	      }
-	    DB_VALUE_COMPARE_RESULT c = tp_value_compare (&left[i], &right[i], 1, 0);
-	    if (c == DB_EQ)
-	      {
-		continue;
-	      }
-	    if (c != DB_LT && c != DB_GT)
-	      {
-		return DB_UNK;
-	      }
-	    return c;
-	  }
-	return DB_EQ;
-      }
-
+    namespace
+    {
       /* Samples degree - 1 boundary keys at tuple indices j * n / degree of one list.
        * Equal consecutive samples are dropped (heavy skew: fewer ranges, still correct). */
       int
