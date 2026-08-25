@@ -2076,8 +2076,10 @@ cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** 
   char first_schem[COL_NAME_LEN + 1] = { '\0' };
   char qualifier[COL_NAME_LEN + 1];
   char *lookup_name, *lookup_qualifier, *dot;
+  const char *qual_try[2];
+  int n_try = 0, t;
   SQLUSMALLINT id_case = SQL_IC_MIXED;
-  bool qual_is_catalog;
+  bool qual_is_catalog, qual_derived = false;
 
   /* An owner-qualified name arrives as one string ("scott.emp", built by
    * pt_convert_dblink_select_query ()), but the catalog functions take the owner in
@@ -2110,6 +2112,7 @@ cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** 
 	  && qualifier[0] != '\0')
 	{
 	  lookup_qualifier = qualifier;
+	  qual_derived = true;
 	}
       else
 	{
@@ -2145,140 +2148,158 @@ cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** 
       return ER_FAILED;
     }
 
-  if (lookup_qualifier != NULL
-      && cgw_escape_search_pattern (hdbc, lookup_qualifier, qual_pattern, sizeof (qual_pattern)) < 0)
+  /* The remote resolves an unqualified name in the session schema first and, on Oracle,
+   * through a PUBLIC synonym last - so search in that order.  Only a qualifier derived
+   * here may be replaced: one the statement wrote is the owner the remote would use.
+   * A catalog-based driver has no PUBLIC namespace and needs none of this. */
+  qual_try[n_try++] = lookup_qualifier;
+  if (qual_derived)
     {
-      return ER_FAILED;
+      qual_try[n_try++] = "PUBLIC";
     }
 
-  if (!SQL_SUCCEEDED (SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &hstmt)))
+  for (t = 0; t < n_try && count == 0; t++)
     {
-      goto end;
-    }
+      lookup_qualifier = CONST_CAST (char *, qual_try[t]);
+      first_schem[0] = '\0';
 
-  if (qual_is_catalog)
-    {
-      rc = SQLColumns (hstmt, (SQLCHAR *) (lookup_qualifier ? qual_pattern : NULL), lookup_qualifier ? SQL_NTS : 0,
-		       NULL, 0, (SQLCHAR *) name_pattern, SQL_NTS, NULL, 0);
-    }
-  else
-    {
-      rc = SQLColumns (hstmt, NULL, 0, (SQLCHAR *) (lookup_qualifier ? qual_pattern : NULL),
-		       lookup_qualifier ? SQL_NTS : 0, (SQLCHAR *) name_pattern, SQL_NTS, NULL, 0);
-    }
-
-  if (!SQL_SUCCEEDED (rc))
-    {
-      goto end;
-    }
-
-  while (SQL_SUCCEEDED (rc = SQLFetch (hstmt)))
-    {
-      /* SQLColumns result: 2 TABLE_SCHEM, 3 TABLE_NAME, 4 COLUMN_NAME, 5 DATA_TYPE,
-       * 7 COLUMN_SIZE, 9 DECIMAL_DIGITS.  The columns are read in ascending order: a
-       * driver only has to support out-of-order SQLGetData when it reports
-       * SQL_GD_ANY_ORDER. */
-      if (!SQL_SUCCEEDED (SQLGetData (hstmt, 2, SQL_C_CHAR, schem_buf, sizeof (schem_buf), &ind)))
-	{
-	  /* the owner cannot be verified, so a same-named table of another owner cannot
-	   * be told apart: give up rather than describe the wrong table */
-	  goto end;
-	}
-      if (ind == SQL_NULL_DATA)
-	{
-	  schem_buf[0] = '\0';
-	}
-
-      if (!SQL_SUCCEEDED (SQLGetData (hstmt, 3, SQL_C_CHAR, tbl_buf, sizeof (tbl_buf), &ind)) || ind == SQL_NULL_DATA)
+      if (lookup_qualifier != NULL
+	  && cgw_escape_search_pattern (hdbc, lookup_qualifier, qual_pattern, sizeof (qual_pattern)) < 0)
 	{
 	  goto end;
 	}
 
-      if (strcasecmp (tbl_buf, lookup_name) != 0)
+      if (!SQL_SUCCEEDED (SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &hstmt)))
 	{
-	  /* a driver that ignored the escape returned another table's columns */
-	  continue;
+	  goto end;
 	}
 
-      /* With a qualifier the search already covers one owner.  Without one, rows of a
-       * same-named table of another owner can arrive; they are absent from the "SELECT *"
-       * describe below and would be served as invisible columns, so keep the first
-       * owner only. */
-      if (lookup_qualifier != NULL)
+      if (qual_is_catalog)
 	{
-	  if (schem_buf[0] != '\0' && strcasecmp (schem_buf, lookup_qualifier) != 0)
-	    {
-	      continue;
-	    }
+	  rc = SQLColumns (hstmt, (SQLCHAR *) (lookup_qualifier ? qual_pattern : NULL), lookup_qualifier ? SQL_NTS : 0,
+			   NULL, 0, (SQLCHAR *) name_pattern, SQL_NTS, NULL, 0);
 	}
-      else if (schem_buf[0] != '\0')
+      else
 	{
-	  if (first_schem[0] == '\0')
-	    {
-	      snprintf (first_schem, sizeof (first_schem), "%s", schem_buf);
-	    }
-	  else if (strcasecmp (schem_buf, first_schem) != 0)
-	    {
-	      continue;
-	    }
+	  rc = SQLColumns (hstmt, NULL, 0, (SQLCHAR *) (lookup_qualifier ? qual_pattern : NULL),
+			   lookup_qualifier ? SQL_NTS : 0, (SQLCHAR *) name_pattern, SQL_NTS, NULL, 0);
 	}
 
-      if (count >= alloced)
+      if (!SQL_SUCCEEDED (rc))
 	{
-	  alloced = alloced ? alloced * 2 : 16;
-	  tmp_attrs = (T_CGW_SCHEMA_ATTR *) REALLOC (attrs, sizeof (T_CGW_SCHEMA_ATTR) * alloced);
-	  if (tmp_attrs == NULL)
+	  goto end;
+	}
+
+      while (SQL_SUCCEEDED (rc = SQLFetch (hstmt)))
+	{
+	  /* SQLColumns result: 2 TABLE_SCHEM, 3 TABLE_NAME, 4 COLUMN_NAME, 5 DATA_TYPE,
+	   * 7 COLUMN_SIZE, 9 DECIMAL_DIGITS.  The columns are read in ascending order: a
+	   * driver only has to support out-of-order SQLGetData when it reports
+	   * SQL_GD_ANY_ORDER. */
+	  if (!SQL_SUCCEEDED (SQLGetData (hstmt, 2, SQL_C_CHAR, schem_buf, sizeof (schem_buf), &ind)))
+	    {
+	      /* the owner cannot be verified, so a same-named table of another owner cannot
+	       * be told apart: give up rather than describe the wrong table */
+	      goto end;
+	    }
+	  if (ind == SQL_NULL_DATA)
+	    {
+	      schem_buf[0] = '\0';
+	    }
+
+	  if (!SQL_SUCCEEDED (SQLGetData (hstmt, 3, SQL_C_CHAR, tbl_buf, sizeof (tbl_buf), &ind))
+	      || ind == SQL_NULL_DATA)
 	    {
 	      goto end;
 	    }
-	  attrs = tmp_attrs;
+
+	  if (strcasecmp (tbl_buf, lookup_name) != 0)
+	    {
+	      /* a driver that ignored the escape returned another table's columns */
+	      continue;
+	    }
+
+	  /* With a qualifier the search already covers one owner.  Without one, rows of a
+	   * same-named table of another owner can arrive; they are absent from the "SELECT *"
+	   * describe below and would be served as invisible columns, so keep the first
+	   * owner only. */
+	  if (lookup_qualifier != NULL)
+	    {
+	      if (schem_buf[0] != '\0' && strcasecmp (schem_buf, lookup_qualifier) != 0)
+		{
+		  continue;
+		}
+	    }
+	  else if (schem_buf[0] != '\0')
+	    {
+	      if (first_schem[0] == '\0')
+		{
+		  snprintf (first_schem, sizeof (first_schem), "%s", schem_buf);
+		}
+	      else if (strcasecmp (schem_buf, first_schem) != 0)
+		{
+		  continue;
+		}
+	    }
+
+	  if (count >= alloced)
+	    {
+	      alloced = alloced ? alloced * 2 : 16;
+	      tmp_attrs = (T_CGW_SCHEMA_ATTR *) REALLOC (attrs, sizeof (T_CGW_SCHEMA_ATTR) * alloced);
+	      if (tmp_attrs == NULL)
+		{
+		  goto end;
+		}
+	      attrs = tmp_attrs;
+	    }
+
+	  memset (&attrs[count], 0, sizeof (T_CGW_SCHEMA_ATTR));
+
+	  if (SQLGetData (hstmt, 4, SQL_C_CHAR, attrs[count].attr_name, sizeof (attrs[count].attr_name), &ind) < 0
+	      || ind == SQL_NULL_DATA)
+	    {
+	      goto end;
+	    }
+	  data_type = 0;
+	  SQLGetData (hstmt, 5, SQL_C_SSHORT, &data_type, 0, &ind);
+	  col_size = 0;
+	  SQLGetData (hstmt, 7, SQL_C_SLONG, &col_size, 0, &ind);
+	  if (ind == SQL_NULL_DATA)
+	    {
+	      col_size = 0;
+	    }
+	  scale = 0;
+	  SQLGetData (hstmt, 9, SQL_C_SSHORT, &scale, 0, &ind);
+	  if (ind == SQL_NULL_DATA)
+	    {
+	      scale = 0;
+	    }
+
+	  attrs[count].cci_type = cgw_odbc_type_to_cci_u_type ((SQLLEN) data_type, 0);
+	  attrs[count].precision = (int) col_size;
+	  attrs[count].scale = scale;
+	  attrs[count].charset = cgw_odbc_type_to_charset ((SQLLEN) data_type, 0);
+	  attrs[count].is_invisible = 1;	/* until proven visible below */
+	  attrs[count].attr_order = count + 1;
+	  count++;
 	}
 
-      memset (&attrs[count], 0, sizeof (T_CGW_SCHEMA_ATTR));
-
-      if (SQLGetData (hstmt, 4, SQL_C_CHAR, attrs[count].attr_name, sizeof (attrs[count].attr_name), &ind) < 0
-	  || ind == SQL_NULL_DATA)
+      if (rc != SQL_NO_DATA)
 	{
+	  /* the loop ended on an error, not at the end of the result: whatever was collected
+	   * is a partial column list, and serving it would report existing columns as
+	   * unknown */
 	  goto end;
 	}
-      data_type = 0;
-      SQLGetData (hstmt, 5, SQL_C_SSHORT, &data_type, 0, &ind);
-      col_size = 0;
-      SQLGetData (hstmt, 7, SQL_C_SLONG, &col_size, 0, &ind);
-      if (ind == SQL_NULL_DATA)
-	{
-	  col_size = 0;
-	}
-      scale = 0;
-      SQLGetData (hstmt, 9, SQL_C_SSHORT, &scale, 0, &ind);
-      if (ind == SQL_NULL_DATA)
-	{
-	  scale = 0;
-	}
 
-      attrs[count].cci_type = cgw_odbc_type_to_cci_u_type ((SQLLEN) data_type, 0);
-      attrs[count].precision = (int) col_size;
-      attrs[count].scale = scale;
-      attrs[count].charset = cgw_odbc_type_to_charset ((SQLLEN) data_type, 0);
-      attrs[count].is_invisible = 1;	/* until proven visible below */
-      attrs[count].attr_order = count + 1;
-      count++;
+      SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
+      hstmt = SQL_NULL_HSTMT;
     }
-
-  if (rc != SQL_NO_DATA)
-    {
-      /* the loop ended on an error, not at the end of the result: whatever was collected
-       * is a partial column list, and serving it would report existing columns as
-       * unknown */
-      goto end;
-    }
-
-  SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
-  hstmt = SQL_NULL_HSTMT;
 
   if (count == 0)
     {
-      /* unknown table: let the caller fall back to the prepare for the legacy error */
+      /* the remote resolves this name to no table we can describe: let the caller decide,
+       * it reports the remote's own error from the prepare */
       goto end;
     }
 
