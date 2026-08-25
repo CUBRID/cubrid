@@ -31,7 +31,6 @@
 
 package com.cubrid.jsp;
 
-import com.cubrid.jsp.classloader.ClassPathHelper;
 import com.cubrid.jsp.code.CompiledCode;
 import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.SourceCode;

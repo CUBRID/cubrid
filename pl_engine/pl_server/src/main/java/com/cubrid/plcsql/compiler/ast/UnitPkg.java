@@ -44,7 +44,10 @@ public class UnitPkg extends Unit {
     public final DeclPackage pkg;
 
     public UnitPkg(
-            ParserRuleContext ctx, boolean connectionRequired, String compileSeqNo, DeclPackage pkg) {
+            ParserRuleContext ctx,
+            boolean connectionRequired,
+            String compileSeqNo,
+            DeclPackage pkg) {
         super(ctx, connectionRequired, compileSeqNo);
 
         this.pkg = pkg;
