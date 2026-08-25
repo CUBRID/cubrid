@@ -2044,7 +2044,7 @@ do_grant_or_revoke_single_obj (DB_OBJECT * user_obj, DB_OBJECT_TYPE obj_type, MO
 
   if (obj_mop == NULL)
     {
-      assert (er_errid () != NO_ERROR);	// error from db_find_class, jsp_find_stored_procedure, or jsp_find_package
+      assert_release (er_errid () != NO_ERROR);	// error from db_find_class, jsp_find_stored_procedure, or jsp_find_package
       return er_errid ();
     }
 
