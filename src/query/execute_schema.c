@@ -83,8 +83,7 @@
 #define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
 #define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
 #define UNIQUE_SAVEPOINT_ALTER_USER_ENTITY "aLTERuSEReNTITY"
-#define UNIQUE_SAVEPOINT_GRANT_USER "gRANTuSER"
-#define UNIQUE_SAVEPOINT_REVOKE_USER "rEVOKEuSER"
+#define UNIQUE_SAVEPOINT_GRANT_OR_REVOKE_USER "gRANToRrEVOKEuSER"
 #define UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM "uPDATEhISTOGRAM"
 
 #define QUERY_MAX_SIZE	1024 * 1024
@@ -2105,6 +2104,10 @@ do_grant_or_revoke_obj_list (DB_OBJECT * user_obj, DB_OBJECT_TYPE obj_type, PT_N
 
 	  error = do_grant_or_revoke_single_obj (user_obj, obj_type, obj_mop, granting, db_auth, grant_option);
 	}
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
     }
 
 end:
@@ -2116,11 +2119,10 @@ do_grant_or_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement, bo
 {
   int error = NO_ERROR;
   PT_NODE *user, *user_list;
-  DB_OBJECT *user_obj, *class_mop;
+  DB_OBJECT *user_obj;
   PT_NODE *auth_cmd_list, *auth_list, *auth;
   DB_AUTH db_auth;
   PT_NODE *spec_list;
-  PT_NODE *entity_list, *entity;
   int grant_option = 0;
   bool set_savepoint = false;
 
@@ -2142,7 +2144,7 @@ do_grant_or_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement, bo
 	}
     }
 
-  error = tran_system_savepoint (UNIQUE_SAVEPOINT_GRANT_USER);
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_GRANT_OR_REVOKE_USER);
   if (error != NO_ERROR)
     {
       return error;
@@ -2189,7 +2191,7 @@ do_grant_or_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement, bo
 end:
   if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
     {
-      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_GRANT_USER);
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_GRANT_OR_REVOKE_USER);
     }
 
   return error;
