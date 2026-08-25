@@ -183,6 +183,7 @@ static int check_domain_dependencies (DB_DOMAIN * domain, DB_OBJECT * this_class
 				      DB_OBJLIST * ordered);
 static int has_dependencies (DB_OBJECT * class_, DB_OBJLIST * unordered, DB_OBJLIST * ordered, int conservative);
 static int order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, int conservative);
+static void sort_classes_by_name (DB_OBJLIST ** class_list);
 static void emit_cycle_warning (print_output & output_ctx);
 static void force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
 static DB_OBJLIST *get_ordered_classes (print_output & output_ctx, MOP * class_table);
@@ -539,6 +540,72 @@ order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, int conservat
 
 
 /*
+ * compare_classes_by_name - qsort comparator for DB_OBJLIST nodes, by class name
+ *    return: strcmp order of the class names
+ *    a(in): pointer to a DB_OBJLIST node pointer
+ *    b(in): pointer to a DB_OBJLIST node pointer
+ */
+static int
+compare_classes_by_name (const void *a, const void *b)
+{
+  const char *name_a = db_get_class_name ((*(DB_OBJLIST * const *) a)->op);
+  const char *name_b = db_get_class_name ((*(DB_OBJLIST * const *) b)->op);
+
+  return strcmp ((name_a != NULL) ? name_a : "", (name_b != NULL) ? name_b : "");
+}
+
+/*
+ * sort_classes_by_name - order a class list by class name
+ *    return: void
+ *    class_list(in/out): list to sort in place
+ * Note:
+ *    The list arrives in the physical order of the class heap, which shifts with
+ *    any change in page allocation. Sorting makes a schema dump comparable across
+ *    databases holding the same schema; order_classes () then reorders only what
+ *    dependencies demand, and preserves this order among independent classes.
+ */
+static void
+sort_classes_by_name (DB_OBJLIST ** class_list)
+{
+  DB_OBJLIST **nodes;
+  DB_OBJLIST *cl;
+  int count, i;
+
+  for (cl = *class_list, count = 0; cl != NULL; cl = cl->next)
+    {
+      count++;
+    }
+
+  if (count < 2)
+    {
+      return;
+    }
+
+  nodes = (DB_OBJLIST **) malloc (count * sizeof (DB_OBJLIST *));
+  if (nodes == NULL)
+    {
+      /* leave the list as it is; the dump stays correct, only unordered */
+      return;
+    }
+
+  for (cl = *class_list, i = 0; cl != NULL; cl = cl->next)
+    {
+      nodes[i++] = cl;
+    }
+
+  qsort (nodes, count, sizeof (DB_OBJLIST *), compare_classes_by_name);
+
+  for (i = 0; i < count - 1; i++)
+    {
+      nodes[i]->next = nodes[i + 1];
+    }
+  nodes[count - 1]->next = NULL;
+  *class_list = nodes[0];
+
+  free_and_init (nodes);
+}
+
+/*
  * emit_cycle_warning - emit cyclic dependency warning
  *    return: void
  * Note:
@@ -638,6 +705,9 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
 	{
 	  filter_unrequired_classes (&classes);
 	}
+
+      /* the fetch order above is the class heap's physical order; make the dump deterministic */
+      sort_classes_by_name (&classes);
     }
   else
     {
