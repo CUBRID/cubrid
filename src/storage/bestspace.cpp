@@ -25,6 +25,7 @@
 #include "heap_file.h"
 #include "slotted_page.h"
 #include "error_manager.h"
+#include "system_parameter.h"
 
 #include <mutex>
 #include <utility>
@@ -597,6 +598,11 @@ namespace cubstorage
 
     // first, check the recorded free space
     expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
+    old_vpid = expected.get_vpid ();
+    if (VPID_ISNULL (&old_vpid))
+      {
+	return status::NOT_FOUND;
+      }
     if (!force_check && expected.get_freespace () < needed_size)
       {
 	// there is no enough space
@@ -604,8 +610,6 @@ namespace cubstorage
       }
 
     // now, fix a page to check the actual free space
-    old_vpid = expected.get_vpid ();
-
     error = L1_fix (l2_index, l1_index, expected, old_vpid, page_watcher);
     if (error != status::SUCCESS)
       {
@@ -613,8 +617,9 @@ namespace cubstorage
       }
 
     // is this page still belongs to the class (class_oid) ?
-    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP ||
-	heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
+    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
+	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
+	|| heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
 	|| !OID_EQ (&page_class_oid, class_oid))
       {
 	L1_remove (l2_index, l1_index, expected);
@@ -898,7 +903,8 @@ namespace cubstorage
 	return status::FAILURE;
       }
 
-    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP)
+    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
+	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr))
       {
 	valid = false;
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
@@ -1274,6 +1280,7 @@ namespace cubstorage
   bestspace::bestspace (std::size_t shard_count, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
 			std::uint16_t unfill_space)
     : m_shards ()
+    , m_distributed_insert (prm_get_bool_value (PRM_ID_BESTSPACE_DISTRIBUTED_INSERT))
     , m_unfill_space (unfill_space)
     , m_num_pages (num_pages)
     , m_recs_num (recs_num)
@@ -1407,8 +1414,16 @@ namespace cubstorage
       {
 	needed_size = consume_size;
       }
-    shard = 0;
-    bias = 0;
+    if (m_distributed_insert)
+      {
+	shard = static_cast<std::size_t> (thread_ref.index) % m_shards.size ();
+	bias = static_cast<std::size_t> (thread_ref.tran_index) % BITS_PER_BYTE;
+      }
+    else
+      {
+	shard = 0;
+	bias = 0;
+      }
 
     num_checked_candidates = 0;
     while (num_checked_candidates < MAX_CANDIDATES_QUEUE_SIZE && m_candidates.pop (candidate, needed_size))
@@ -1621,6 +1636,7 @@ namespace cubstorage
 
   bestspace_registry::bestspace_registry ()
     : m_head (nullptr)
+    , m_cache_count (0)
     , m_mutex ()
     , m_generation (1)
   {
@@ -1656,6 +1672,12 @@ namespace cubstorage
     node->entry->push_candidates (candidates, num_candidates);
 
     std::lock_guard<std::mutex> lock (m_mutex);
+
+    if (m_cache_count == 0)
+      {
+	m_cache_count = MAX (static_cast<std::size_t> (prm_get_integer_value (PRM_ID_BESTSPACE_CACHE_COUNT)),
+			     static_cast<std::size_t> (1));
+      }
 
     assert (!find_entry (m_head, hfid));
     insert_entry (m_head, node);
@@ -1764,6 +1786,7 @@ namespace cubstorage
   {
     registry_entry *cache;
     bestspace *entry;
+    std::size_t cache_count;
 
     std::unique_lock<std::mutex> ulock (m_mutex);
 
@@ -1774,11 +1797,14 @@ namespace cubstorage
 	return nullptr;
       }
     entry = (pair->second)->entry;
+    cache_count = m_cache_count;
 
     ulock.unlock ();
 
-    // register in TLS list
-    if (TLS_cache.size < TLS_MAX_SIZE)
+    // register in TLS list.
+    // the entries are recycled, never freed, so TLS_cache.size always matches the number of nodes in the list. once
+    // the size reaches the count the list cannot be empty, hence get_tail_from_list () cannot return null here.
+    if (TLS_cache.size < cache_count)
       {
 	cache = new registry_entry;
 	TLS_cache.size++;
@@ -1787,6 +1813,7 @@ namespace cubstorage
       {
 	cache = get_tail_from_list (TLS_cache.head);
       }
+    assert (cache != nullptr);
     cache->hfid = *hfid;
     cache->entry = entry;
 

@@ -56,6 +56,7 @@
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "porting.h"
+#include "porting_inline.hpp"
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
@@ -102,6 +103,9 @@
 
 /* is younger transaction ? */
 #define LK_ISYOUNGER(young_tranid, old_tranid) (young_tranid > old_tranid)
+
+/* Room for the longest resource phrase of a lock-timeout message: "instance v|p|s of class <name>". */
+#define LK_RES_DESC_MAX (SM_MAX_IDENTIFIER_LENGTH + 128)
 
 /* Defines for printing lock activity messages */
 #define LK_MSG_LOCK_HELPER(entry, msgnum) \
@@ -276,7 +280,11 @@ typedef enum
 #define MSGCAT_LK_INDEXNAME                     44
 #define MSGCAT_LK_RES_RR_TYPE			45
 #define MSGCAT_LK_MVCC_INFO			46
-#define MSGCAT_LK_LASTONE                       47
+#define MSGCAT_LK_RES_DESC_OBJECT               47
+#define MSGCAT_LK_RES_DESC_CLASS                48
+#define MSGCAT_LK_RES_DESC_INSTANCE             49
+#define MSGCAT_LK_RES_DESC_TRANSACTION          50
+#define MSGCAT_LK_LASTONE                       51
 
 #if defined(SERVER_MODE)
 
@@ -477,7 +485,7 @@ static const int SIZEOF_LK_TRAN_LOCK = sizeof (LK_TRAN_LOCK);
 static const int SIZEOF_LK_RES = sizeof (LK_RES);
 static const int SIZEOF_LK_ENTRY_BLOCK = sizeof (LK_ENTRY_BLOCK);
 static const int SIZEOF_LK_RES_BLOCK = sizeof (LK_RES_BLOCK);
-static const int SIZEOF_LK_ACQOBJ_LOCK = sizeof (LK_ACQOBJ_LOCK);
+static const int SIZEOF_LK_ACQ_LOCK = sizeof (LK_ACQ_LOCK);
 
 /* miscellaneous constants */
 static const int LK_SLEEP_MAX_COUNT = 3;
@@ -537,6 +545,8 @@ static void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
 static bool lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation);
 static LK_ENTRY *lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
+static const char *lock_res_desc_format (int msgnum);
+static bool lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *desc, size_t desc_size);
 static void lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
 static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr);
 static void lock_set_tran_abort_reason (int tran_index, TRAN_ABORT_REASON abort_reason);
@@ -1990,6 +2000,124 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 
 #if defined(SERVER_MODE)
 /*
+ * lock_res_desc_format - Format string of a resource-description phrase, never NULL
+ *
+ * return: the phrase from MSGCAT_SET_LOCK, or "" if the message catalog cannot be opened
+ *
+ *   msgnum(in): one of MSGCAT_LK_RES_DESC_*
+ *
+ * Note: msgcat_message () returns NULL when the catalog cannot be opened, and a NULL format is undefined behavior
+ *	 in snprintf (). An empty phrase loses nothing there: the message that embeds it comes from the same
+ *	 catalog, so it cannot be rendered either.
+ */
+static const char *
+lock_res_desc_format (int msgnum)
+{
+  const char *format = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, msgnum);
+
+  return (format != NULL) ? format : "";
+}
+
+/*
+ * lock_describe_resource - Render a lock resource as the phrase the lock-timeout messages embed
+ *
+ * return: true if the resource kind has a description, false otherwise (caller then reports nothing)
+ *
+ *   thread_p(in):
+ *   res_ptr(in): the resource being waited on
+ *   desc(out): buffer receiving the phrase, e.g. "instance 1|641|1 of class dba.t"
+ *   desc_size(in): size of desc in bytes
+ *
+ * Note: one phrase per resource kind keeps one pair of timeout error codes for all kinds. Per-kind codes would
+ *	 have to be added to every place that enumerates them (ER_IS_LOCK_TIMEOUT_ERROR, LA_RETRY_ON_ERROR,
+ *	 qexec_execute_selupd_list), and a kind missing from one of them changes behavior silently. A new kind adds
+ *	 a MSGCAT_SET_LOCK phrase and a case here. The phrases sit in the catalog so locales can reorder them.
+ */
+static bool
+lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *desc, size_t desc_size)
+{
+  const OID *oid = &res_ptr->key.oid;
+  const OID *name_oid = NULL;	/* OID to resolve a class name from; NULL when the kind carries no class */
+  char *classname = NULL;
+  bool is_classname_alloced = false;
+  bool is_instance = false;
+  OID real_class_oid;
+  OID *oid_rr;
+
+  assert (res_ptr != NULL && desc != NULL && desc_size > 0);
+
+  switch (res_ptr->key.type)
+    {
+    case LOCK_RESOURCE_TRANSACTION:
+      /* The resource is the inserter's MVCCID; key.oid would be those same bytes reinterpreted (LK_RES_KEY). */
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_TRANSACTION),
+		(unsigned long long) res_ptr->key.mvccid);
+      return true;
+
+    case LOCK_RESOURCE_ROOT_CLASS:
+    case LOCK_RESOURCE_CLASS:
+      oid_rr = oid_get_rep_read_tran_oid ();
+      if (oid_rr != NULL && OID_EQ (oid, oid_rr))
+	{
+	  classname = (char *) "Generic object for Repeatable Read consistency";
+	}
+      else
+	{
+	  name_oid = oid;
+	}
+      break;
+
+    case LOCK_RESOURCE_INSTANCE:
+      name_oid = &res_ptr->key.class_oid;
+      is_instance = true;
+      break;
+
+    default:
+      return false;
+    }
+
+  if (name_oid != NULL && !OID_ISTEMP (name_oid))
+    {
+      if (res_ptr->key.type != LOCK_RESOURCE_ROOT_CLASS && OID_IS_VIRTUAL_CLASS_OF_DIR_OID (name_oid))
+	{
+	  OID_GET_REAL_CLASS_OF_DIR_OID (name_oid, &real_class_oid);
+	}
+      else
+	{
+	  COPY_OID (&real_class_oid, name_oid);
+	}
+      if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
+	{
+	  /* ignore: the object phrase names it by OID instead */
+	  er_clear ();
+	}
+      is_classname_alloced = (classname != NULL);
+    }
+
+  if (classname == NULL)
+    {
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_OBJECT), oid->volid, oid->pageid,
+		oid->slotid);
+    }
+  else if (is_instance)
+    {
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_INSTANCE), oid->volid, oid->pageid,
+		oid->slotid, classname);
+    }
+  else
+    {
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_CLASS), classname);
+    }
+
+  if (is_classname_alloced)
+    {
+      free_and_init (classname);
+    }
+
+  return true;
+}
+
+/*
  * lock_set_error_for_timeout - Set error for lock timeout
  *
  * return:
@@ -2007,7 +2135,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   int client_pid;		/* Client process id for transaction */
   char *waitfor_client_users_default = (char *) "";
   char *waitfor_client_users;	/* Waitfor users */
-  char *classname;		/* Name of the class */
+  char resource_desc[LK_RES_DESC_MAX];	/* Phrase naming the resource being waited on */
   int n, i, nwaits, max_waits = DEFAULT_WAIT_USERS;
   int wait_for_buf[DEFAULT_WAIT_USERS];
   int *wait_for = wait_for_buf, *t;
@@ -2016,11 +2144,9 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   int unit_size = LOG_USERNAME_MAX + CUB_MAXHOSTNAMELEN + PATH_MAX + 20 + 4;
   char *ptr;
   int rv;
-  bool is_classname_alloced = false;
   bool free_mutex_flag = false;
   bool isdeadlock_timeout = false;
   int compat1, compat2;
-  OID *oid_rr;
 
   /* Find the users that transaction is waiting for */
   waitfor_client_users = waitfor_client_users_default;
@@ -2110,119 +2236,12 @@ set_error:
       isdeadlock_timeout = true;
     }
 
-  switch (entry_ptr->res_head->key.type)
+  if (lock_describe_resource (thread_p, entry_ptr->res_head, resource_desc, sizeof (resource_desc)))
     {
-    case LOCK_RESOURCE_ROOT_CLASS:
-    case LOCK_RESOURCE_CLASS:
-      oid_rr = oid_get_rep_read_tran_oid ();
-      if (oid_rr != NULL && OID_EQ (&entry_ptr->res_head->key.oid, oid_rr))
-	{
-	  classname = (char *) "Generic object for Repeatable Read consistency";
-	  is_classname_alloced = false;
-	}
-      else if (OID_ISTEMP (&entry_ptr->res_head->key.oid))
-	{
-	  classname = NULL;
-	}
-      else
-	{
-	  OID real_class_oid;
-
-	  if (entry_ptr->res_head->key.type == LOCK_RESOURCE_CLASS
-	      && OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&entry_ptr->res_head->key.oid))
-	    {
-	      OID_GET_REAL_CLASS_OF_DIR_OID (&entry_ptr->res_head->key.oid, &real_class_oid);
-	    }
-	  else
-	    {
-	      COPY_OID (&real_class_oid, &entry_ptr->res_head->key.oid);
-	    }
-	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
-	    {
-	      /* ignore */
-	      er_clear ();
-	    }
-	  else if (classname != NULL)
-	    {
-	      is_classname_alloced = true;
-	    }
-	}
-
-      if (classname != NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG : ER_LK_OBJECT_TIMEOUT_CLASS_MSG), 7,
-		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  lock_to_lockmode_string (entry_ptr->blocked_mode), classname, waitfor_client_users);
-	  if (is_classname_alloced)
-	    {
-	      free_and_init (classname);
-	    }
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 9,
-		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
-		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, waitfor_client_users);
-	}
-      break;
-
-    case LOCK_RESOURCE_INSTANCE:
-      if (OID_ISTEMP (&entry_ptr->res_head->key.class_oid))
-	{
-	  classname = NULL;
-	}
-      else
-	{
-	  OID real_class_oid;
-	  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&entry_ptr->res_head->key.class_oid))
-	    {
-	      OID_GET_REAL_CLASS_OF_DIR_OID (&entry_ptr->res_head->key.class_oid, &real_class_oid);
-	    }
-	  else
-	    {
-	      COPY_OID (&real_class_oid, &entry_ptr->res_head->key.class_oid);
-	    }
-	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
-	    {
-	      /* ignore */
-	      er_clear ();
-	    }
-	}
-
-      if (classname != NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG : ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG), 10,
-		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
-		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, classname,
-		  waitfor_client_users);
-	  free_and_init (classname);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 9,
-		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
-		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, waitfor_client_users);
-	}
-      break;
-
-    case LOCK_RESOURCE_TRANSACTION:
-      /* No class to name; emit the simple message like the INSTANCE branch with a NULL classname. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 9,
+	      ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 7,
 	      entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-	      lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
-	      entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, waitfor_client_users);
-      break;
-
-    default:
-      break;
+	      lock_to_lockmode_string (entry_ptr->blocked_mode), resource_desc, waitfor_client_users);
     }
 
   if (waitfor_client_users && waitfor_client_users != waitfor_client_users_default)
@@ -4484,7 +4503,7 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
     }
 
   // to_be_lock mode should be weaker than the current lock.
-  assert (NULL_LOCK < to_be_lock && to_be_lock != U_LOCK && to_be_lock < holder->granted_mode);
+  assert (NULL_LOCK < to_be_lock && to_be_lock < holder->granted_mode);
 
 #if defined(LK_DUMP)
   if (lk_Gl.config.dump_level >= 1)
@@ -7712,8 +7731,7 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
 
   /*
    * Exclusive locks in this context mean IX_LOCK, SIX_LOCK, X_LOCK and
-   * SCH_M_LOCK. NOTE that U_LOCK are excluded from exclusive locks.
-   * Because U_LOCK is currently for reading the object.
+   * SCH_M_LOCK.
    */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
@@ -8759,16 +8777,15 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
     }
 
   /* reacquire given exclusive locks on behalf of the transaction */
-  for (i = 0; i < acqlocks->nobj_locks; i++)
+  for (i = 0; i < acqlocks->nlocks; i++)
     {
       /*
        * lock wait duration       : LK_INFINITE_WAIT
        * conditional lock request : false
        */
-      const OID *class_oidp = OID_IS_ROOTOID (&acqlocks->obj[i].oid) ? NULL : &acqlocks->obj[i].class_oid;
-      LK_RES_KEY obj_key = lock_create_search_key (&acqlocks->obj[i].oid, class_oidp);
-      r = lock_internal_perform_lock_object (thread_p, tran_index, obj_key, acqlocks->obj[i].lock, LK_INFINITE_WAIT,
-					     &dummy_ptr, NULL);
+      /* The stored key carries its type, so object locks and self-locks re-acquire through the same call. */
+      r = lock_internal_perform_lock_object (thread_p, tran_index, acqlocks->locks[i].key, acqlocks->locks[i].lock,
+					     LK_INFINITE_WAIT, &dummy_ptr, NULL);
       if (r != LK_GRANTED)
 	{
 	  er_log_debug (ARG_FILE_LINE, "lk_reacquire_crash_locks: The lock cannot be reacquired...");
@@ -8779,6 +8796,33 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
   return granted;
 #endif /* !SERVER_MODE */
 }
+
+#if defined (SERVER_MODE)
+/*
+ * lock_copy_key_for_log - Copy a lock resource key into an entry bound for the 2PC prepare record
+ *
+ * return: nothing
+ *
+ *   dest(out): key of the gathered entry
+ *   src(in): key of the lock resource the entry was gathered from
+ *
+ * Note: The assignment carries the source's whole object representation, padding included, and the entry
+ *       goes into the log verbatim. An LK_RES comes from malloc and lock_res_key_copy fills only the
+ *       members the key's type selects, so the four bytes after `type` -- and, for a transaction
+ *       self-lock, the eight bytes of `reserved` -- hold whatever the recycled resource left, and they
+ *       reach the log too. Every reader dispatches on key.type and never looks at them, so this costs
+ *       only the record's determinism: the same lock set can produce differing bytes.
+ *
+ *       This stays a named seam rather than three open-coded assignments so that trade can be revisited
+ *       in one place. Filling the key member by member here instead would make the record a function of
+ *       the lock set alone, at the cost of a per-type switch on the gather path.
+ */
+STATIC_INLINE void
+lock_copy_key_for_log (LK_RES_KEY * dest, const LK_RES_KEY * src)
+{
+  *dest = *src;
+}
+#endif /* SERVER_MODE */
 
 /*
  * lock_unlock_all_shared_get_all_exclusive - Release all shared type locks and
@@ -8802,8 +8846,8 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
   /* No locks in standalone */
   if (acqlocks != NULL)
     {
-      acqlocks->nobj_locks = 0;
-      acqlocks->obj = NULL;
+      acqlocks->nlocks = 0;
+      acqlocks->locks = NULL;
     }
 #else /* !SERVER_MODE */
   int tran_index;
@@ -8833,25 +8877,30 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
       /* hold transction lock hold mutex */
       rv = pthread_mutex_lock (&tran_lock->hold_mutex);
 
-      /* get nobj_locks */
-      acqlocks->nobj_locks = (unsigned int) (tran_lock->class_hold_count + tran_lock->inst_hold_count);
+      /* get nlocks */
+      acqlocks->nlocks = (unsigned int) (tran_lock->class_hold_count + tran_lock->inst_hold_count);
       if (tran_lock->root_class_hold != NULL)
 	{
-	  acqlocks->nobj_locks += 1;
+	  acqlocks->nlocks += 1;
 	}
 
       /* allocate momory space for saving exclusive lock information */
-      acqlocks->obj = (LK_ACQOBJ_LOCK *) malloc (SIZEOF_LK_ACQOBJ_LOCK * acqlocks->nobj_locks);
-      if (acqlocks->obj == NULL)
+      acqlocks->locks = (LK_ACQ_LOCK *) malloc (SIZEOF_LK_ACQ_LOCK * acqlocks->nlocks);
+      if (acqlocks->locks == NULL)
 	{
 	  pthread_mutex_unlock (&tran_lock->hold_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (size_t) (SIZEOF_LK_ACQOBJ_LOCK * acqlocks->nobj_locks));
-	  acqlocks->nobj_locks = 0;
+		  (size_t) (SIZEOF_LK_ACQ_LOCK * acqlocks->nlocks));
+	  acqlocks->nlocks = 0;
 	  return;
 	}
 
-      /* initialize idx in acqlocks->obj array */
+      /* This buffer is written verbatim into the 2PC prepare record. Zero it so the padding that follows each
+       * entry's lock member carries no uninitialized heap bytes. The key's own padding is not covered -- it
+       * comes from the source resource, see lock_copy_key_for_log below. */
+      memset (acqlocks->locks, 0, SIZEOF_LK_ACQ_LOCK * acqlocks->nlocks);
+
+      /* initialize idx in acqlocks->locks array */
       idx = 0;
 
       /* collect root class lock information */
@@ -8860,9 +8909,8 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
-	  COPY_OID (&acqlocks->obj[idx].oid, oid_Root_class_oid);
-	  OID_SET_NULL (&acqlocks->obj[idx].class_oid);
-	  acqlocks->obj[idx].lock = entry_ptr->granted_mode;
+	  lock_copy_key_for_log (&acqlocks->locks[idx].key, &entry_ptr->res_head->key);
+	  acqlocks->locks[idx].lock = entry_ptr->granted_mode;
 	  idx += 1;
 	}
 
@@ -8871,33 +8919,23 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
-	  COPY_OID (&acqlocks->obj[idx].oid, &entry_ptr->res_head->key.oid);
-	  COPY_OID (&acqlocks->obj[idx].class_oid, oid_Root_class_oid);
-	  acqlocks->obj[idx].lock = entry_ptr->granted_mode;
+	  lock_copy_key_for_log (&acqlocks->locks[idx].key, &entry_ptr->res_head->key);
+	  acqlocks->locks[idx].lock = entry_ptr->granted_mode;
 	  idx += 1;
 	}
 
-      /* collect instance lock information */
+      /* collect instance lock information. Transaction self-locks share inst_hold_list, keyed by MVCCID instead of
+       * OID; they are carried too so an in-doubt inserter's self-lock is re-acquired at restart. */
       for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL; entry_ptr = entry_ptr->tran_next)
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
-	  /* Transaction self-locks share inst_hold_list but are keyed by MVCCID, not OID; never serialize them as
-	   * object locks for 2PC. They are inert after restart (recovery de-activates the MVCCID), so there is
-	   * nothing to reacquire -- saving one would only restore a bogus OID lock from the key's union overlay. */
-	  if (entry_ptr->res_head->key.type != LOCK_RESOURCE_INSTANCE)
-	    {
-	      continue;
-	    }
-
-	  COPY_OID (&acqlocks->obj[idx].oid, &entry_ptr->res_head->key.oid);
-	  COPY_OID (&acqlocks->obj[idx].class_oid, &entry_ptr->res_head->key.class_oid);
-	  acqlocks->obj[idx].lock = entry_ptr->granted_mode;
+	  lock_copy_key_for_log (&acqlocks->locks[idx].key, &entry_ptr->res_head->key);
+	  acqlocks->locks[idx].lock = entry_ptr->granted_mode;
 	  idx += 1;
 	}
 
-      /* skipped transaction self-locks mean idx may be < the precomputed count; store the actual count. */
-      acqlocks->nobj_locks = idx;
+      acqlocks->nlocks = idx;
 
       /* release transaction lock hold mutex */
       pthread_mutex_unlock (&tran_lock->hold_mutex);
@@ -8922,14 +8960,22 @@ lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks)
 #else /* !SERVER_MODE */
   unsigned int i;
 
-  /* Dump object locks */
-  if (acqlocks->obj != NULL && acqlocks->nobj_locks > 0)
+  if (acqlocks->locks != NULL && acqlocks->nlocks > 0)
     {
-      fprintf (fp, "Object_locks: count = %d\n", acqlocks->nobj_locks);
-      for (i = 0; i < acqlocks->nobj_locks; i++)
+      fprintf (fp, "Acquired_locks: count = %d\n", acqlocks->nlocks);
+      for (i = 0; i < acqlocks->nlocks; i++)
 	{
-	  fprintf (fp, "   |%d|%d|%d| %s\n", acqlocks->obj[i].oid.volid, acqlocks->obj[i].oid.pageid,
-		   acqlocks->obj[i].oid.slotid, lock_to_lockmode_string (acqlocks->obj[i].lock));
+	  const LK_RES_KEY *key = &acqlocks->locks[i].key;
+	  const char *mode = lock_to_lockmode_string (acqlocks->locks[i].lock);
+
+	  if (key->type == LOCK_RESOURCE_TRANSACTION)
+	    {
+	      fprintf (fp, "   tran_mvccid|%llu| %s\n", (unsigned long long) key->mvccid, mode);
+	    }
+	  else
+	    {
+	      fprintf (fp, "   |%d|%d|%d| %s\n", OID_AS_ARGS (&key->oid), mode);
+	    }
 	}
     }
 #endif /* !SERVER_MODE */

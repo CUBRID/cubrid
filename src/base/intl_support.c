@@ -3248,6 +3248,7 @@ intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow
   int truncated_size = 0, original_size = 0, char_size = 0;
   const unsigned char *cname = (unsigned char *) name;
   INTL_CODESET codeset = lang_charset ();
+  int codeset_bytes = INTL_CODESET_MULT (codeset);
 
   assert (name != NULL);
 
@@ -3259,7 +3260,7 @@ intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow
   assert (ident_max_size > 0 && ident_max_size < DB_MAX_IDENTIFIER_LENGTH);
 
   original_size = strlen (name);
-  if (INTL_CODESET_MULT (codeset) == 1)
+  if (codeset_bytes == 1)
     {
       if (original_size > ident_max_size)
 	{
@@ -3268,14 +3269,14 @@ intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow
       return NO_ERROR;
     }
 
-  assert (INTL_CODESET_MULT (codeset) > 1);
+  assert (codeset_bytes > 1);
 
   /* we do not check contents of non-ASCII if codeset is UTF-8 or EUC; valid codeset sequences are checked with
    * 'intl_check_string' when enabled */
 
 check_truncation:
   /* check if last char of identifier may have been truncated */
-  if (original_size + INTL_CODESET_MULT (codeset) > ident_max_size)
+  if (original_size + codeset_bytes > ident_max_size)
     {
       if (ident_max_size < original_size)
 	{
@@ -3294,7 +3295,7 @@ check_truncation:
        * otherwise assume the last character was truncated */
       if (truncated_size > original_size)
 	{
-	  assert (truncated_size < original_size + INTL_CODESET_MULT (codeset));
+	  assert (truncated_size < original_size + codeset_bytes);
 	  assert ((unsigned char) *(cname - char_size) > 0x80);
 	  /* truncate after the last full character */
 	  truncated_size -= char_size;
@@ -3316,8 +3317,8 @@ check_truncation:
       else
 	{
 	  /* decrease the initial allowed size and try again */
-	  ident_max_size -= INTL_CODESET_MULT (codeset);
-	  if (ident_max_size <= INTL_CODESET_MULT (codeset))
+	  ident_max_size -= codeset_bytes;
+	  if (ident_max_size <= codeset_bytes)
 	    {
 	      /* we make sure we have room for at least one character */
 	      return ER_GENERIC_ERROR;

@@ -218,6 +218,7 @@ struct heap_hdr_stats
 
 /* Define heap page flags. */
 #define HEAP_PAGE_FLAG_BESTSPACE		  0x00000001
+#define HEAP_PAGE_FLAG_NOT_IN_HEAP		  0x00000002
 #define HEAP_PAGE_FLAG_VACUUM_STATUS_MASK	  0xC0000000
 #define HEAP_PAGE_FLAG_VACUUM_ONCE		  0x80000000
 #define HEAP_PAGE_FLAG_VACUUM_UNKNOWN		  0x40000000
@@ -227,6 +228,15 @@ struct heap_hdr_stats
 
 #define HEAP_PAGE_SET_BESTSPACE(chain) \
   ((chain)->flags |= HEAP_PAGE_FLAG_BESTSPACE)
+
+#define HEAP_PAGE_IS_NOT_IN_HEAP(chain) \
+  (((chain)->flags & HEAP_PAGE_FLAG_NOT_IN_HEAP) != 0)
+
+#define HEAP_PAGE_SET_NOT_IN_HEAP(chain) \
+  ((chain)->flags |= HEAP_PAGE_FLAG_NOT_IN_HEAP)
+
+#define HEAP_PAGE_CLEAR_NOT_IN_HEAP(chain) \
+  ((chain)->flags &= ~HEAP_PAGE_FLAG_NOT_IN_HEAP)
 
 #define HEAP_BESTSPACE_ENTRIES_SLOTID (HEAP_HEADER_AND_CHAIN_SLOTID + 1)
 
@@ -887,9 +897,15 @@ static const cubmem::block_allocator HEAP_SCANCACHE_BLOCK_ALLOCATOR =
 // *INDENT-ON*
 
 static int heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID * page_vpid, PGBUF_WATCHER * pg_watcher);
+// *INDENT-OFF*
+static int heap_unpack_append_pages_log_data (const LOG_RCV * recv, HFID * hfid, OID * class_oid,
+					      std::vector<VPID> &heap_pages_array);
+// *INDENT-ON*
 static int heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, const VPID * next_link,
 				 const VPID * prev_link, PGBUF_WATCHER * page_watcher, bool keep_page_fixed,
 				 bool is_page_watcher_inited);
+static int heap_mark_page_in_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid,
+				   PGBUF_WATCHER * page_watcher);
 
 static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid,
 				       const PGBUF_WATCHER heap_header_watcher, HEAP_HDR_STATS * heap_hdr,
@@ -2751,6 +2767,33 @@ heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
       return false;
     }
   return HEAP_PAGE_IS_BESTSPACE ((HEAP_CHAIN *) recdes.data);
+}
+
+/*
+ * heap_page_is_not_in_heap () - Check whether a normal heap page is not linked to its heap yet.
+ *
+ * return	  : true if page must not be exposed through bestspace yet
+ * page_heap (in) : Heap page
+ */
+bool
+heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
+{
+  RECDES recdes;
+
+  if (spage_get_record (thread_p, page_heap, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return true;
+    }
+
+  if (recdes.length != sizeof (HEAP_CHAIN))
+    {
+      /* HEAP_HDR_STATS::unfill_space overlaps HEAP_CHAIN::flags at the same offset, so the flag bits are meaningless
+       * on a heap header page. A heap header page is always part of its own heap. */
+      return false;
+    }
+
+  return HEAP_PAGE_IS_NOT_IN_HEAP ((HEAP_CHAIN *) recdes.data);
 }
 
 /*
@@ -4629,6 +4672,11 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
   /* promotes the page to a higher free-space tier. */
   if (prev_freespace != 0
       && cubstorage::bestspace::size_to_tier (freespace) <= cubstorage::bestspace::size_to_tier (prev_freespace))
+    {
+      return;
+    }
+
+  if (heap_page_is_not_in_heap (thread_p, pgptr))
     {
       return;
     }
@@ -9645,6 +9693,11 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
   OID_SET_NULL (&attr_info->inst_oid);
   attr_info->inst_chn = NULL_CHN;
   attr_info->values = NULL;
+  attr_info->lazy_recdes = NULL;	/* not in lazy mode by default */
+  attr_info->lazy_rows = 0;	/* lazy calibration counters start fresh with the cache */
+  attr_info->lazy_deferred = 0;
+  attr_info->lazy_decoded = 0;
+  attr_info->lazy_disabled = false;
   attr_info->num_values = -1;	/* initialize attr_info */
 
   /*
@@ -9733,6 +9786,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
       value->do_increment = 0;
       value->last_attrepr = NULL;
       value->read_attrepr = NULL;
+      value->lazy_always_eager = false;
     }
 
   /*
@@ -10124,6 +10178,7 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
       db_private_free_and_init (thread_p, attr_info->values);
     }
   OID_SET_NULL (&attr_info->class_oid);
+  attr_info->lazy_recdes = NULL;	/* borrowed from a caller's frame - leave no dangling record armed */
 
   /*
    * Bash this so that we ensure that heap_attrinfo_end is idempotent.
@@ -10179,6 +10234,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
     }
   OID_SET_NULL (&attr_info->inst_oid);
   attr_info->inst_chn = NULL_CHN;
+  attr_info->lazy_recdes = NULL;	/* borrowed record the cleared values were read from - reset with them */
 
   return ret;
 }
@@ -10531,6 +10587,129 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+#define HEAP_LAZY_CALIBRATE_ROWS 10000	/* rows measured before judging whether the lazy read pays off */
+#define HEAP_LAZY_ROWS_PER_SAVED_COL 2	/* keep lazy only when it saves at least one column read per this
+					 * many rows (i.e. half a column per row) */
+
+/*
+ * heap_attrinfo_read_dbvalues_lazy () - Defer reading of predicate columns
+ *   return: NO_ERROR
+ *   inst_oid(in): The instance oid (may be NULL)
+ *   recdes(in): The instance Record descriptor
+ *   attr_info(in/out): The attribute information structure
+ *
+ * Note: Same purpose as heap_attrinfo_read_dbvalues (), but instead of reading every attribute value now,
+ *   it stashes the record descriptor and marks the deferred values HEAP_LAZY_ATTRVALUE so heap_attrvalue_peek_lazy ()
+ *   reads each on first access. Used by eval_data_filter () so the dbvalues of predicate columns skipped by
+ *   short-circuit evaluation are never read. Slots flagged lazy_always_eager (the first-evaluated predicate
+ *   term's column(s); see eval_mark_first_term_attrs ()) are read now instead of deferred, since they are
+ *   touched on nearly every row.
+ *
+ *   When recdes is NULL (class attribute / index info scans that read shared, class attributes and default
+ *   values) there is no record to defer the reads from, so everything is read now, exactly as before.
+ *
+ *   Deferring only pays off while short-circuit evaluation keeps skipping the deferred reads, so the first
+ *   HEAP_LAZY_CALIBRATE_ROWS rows are measured: saving less than half a column read per row makes this scan
+ *   give up on lazy (attr_info->lazy_disabled) for its remaining rows.
+ */
+int
+heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
+				  HEAP_CACHE_ATTRINFO * attr_info)
+{
+  int i, deferred = 0;
+  REPR_ID reprid;		/* The disk representation of the object */
+  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
+  int ret = NO_ERROR;
+
+  /* check to make sure the attr_info has been used */
+  if (unlikely (attr_info->num_values == -1))
+    {
+      return NO_ERROR;
+    }
+
+  if (attr_info->lazy_disabled)
+    {
+      /* nothing worth deferring: read everything now, leaving no record armed for a deferred read */
+      attr_info->lazy_recdes = NULL;
+      return heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, attr_info);
+    }
+
+  if (recdes == NULL || recdes->data == NULL)
+    {
+      /* no record to defer the reads from - read everything now, exactly as before */
+      attr_info->lazy_recdes = NULL;	/* defensive: leave no stale record armed */
+      return heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, attr_info);
+    }
+
+  /* out of lazy mode until the values are prepared below, so an error midway cannot leave a stale
+   * lazy_recdes from the previous row; it is re-armed after the loop */
+  attr_info->lazy_recdes = NULL;
+
+  /* Make sure that we have the needed cached representation. */
+  reprid = or_rep_id (recdes);
+  if (unlikely (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid))
+    {
+      ret = heap_attrinfo_recache (thread_p, reprid, attr_info);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  /* Read now the slots flagged lazy_always_eager (first-evaluated predicate term's column(s), touched on
+   * nearly every row) so their per-row first reference stays on the inline fast path; mark every other value
+   * HEAP_LAZY_ATTRVALUE (clearing any previously read value first to avoid leaks) so heap_attrvalue_peek_lazy ()
+   * reads it on demand using lazy_recdes. */
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      value = &attr_info->values[i];
+
+      if (value->lazy_always_eager)
+	{
+	  /* first-term-eager: read now (column of the first-evaluated predicate term) rather than defer */
+	  ret = heap_attrvalue_read (recdes, value, attr_info);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  continue;
+	}
+
+      if (value->state != HEAP_UNINIT_ATTRVALUE)
+	{
+	  (void) pr_clear_value (&value->dbvalue);
+	}
+      value->state = HEAP_LAZY_ATTRVALUE;
+      deferred++;
+    }
+
+  /* arm lazy mode: heap_attrvalue_peek_lazy () will read from this record */
+  attr_info->lazy_recdes = recdes;
+
+  /* account this row, then judge once the sample is in: saving less than half a column read per row means
+   * the marking above does not earn its cost */
+  attr_info->lazy_rows++;
+  attr_info->lazy_deferred += deferred;
+  if (attr_info->lazy_rows == HEAP_LAZY_CALIBRATE_ROWS
+      && (attr_info->lazy_deferred - attr_info->lazy_decoded) * HEAP_LAZY_ROWS_PER_SAVED_COL < attr_info->lazy_rows)
+    {
+      attr_info->lazy_disabled = true;
+    }
+
+  /* Cache the information of the instance */
+  if (inst_oid != NULL)
+    {
+      attr_info->inst_chn = or_chn (recdes);
+      attr_info->inst_oid = *inst_oid;
+    }
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
 int
 heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 {
@@ -10782,6 +10961,30 @@ heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info)
     }
 
   return NULL;
+}
+
+/*
+ * heap_attrvalue_peek_lazy () - peek a deferred predicate column, reading it on demand
+ *   return: pointer to the slot's DB_VALUE, or NULL on read error
+ *   slot(in/out): the value slot the caller already holds (located by heap_attrvalue_locate () in
+ *                 fetch.c's slow path, or the cached cache_slot in the inline fetch_peek_dbval ())
+ *   attr_info(in): the attribute cache holding the stashed record (lazy_recdes)
+ *
+ * Note: the caller passes the slot, so no heap_attrvalue_locate () search happens here. A slot still flagged
+ *   HEAP_LAZY_ATTRVALUE is read now and flipped to HEAP_READ_ATTRVALUE, so later references reuse the value.
+ */
+DB_VALUE *
+heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  if (slot->state == HEAP_LAZY_ATTRVALUE)
+    {
+      attr_info->lazy_decoded++;	/* measured: a deferred read that was not skipped */
+      if (heap_attrvalue_read (attr_info->lazy_recdes, slot, attr_info) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+  return &slot->dbvalue;
 }
 
 /*
@@ -12453,6 +12656,11 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
       attr_info->read_classrepr = NULL;
       OID_SET_NULL (&attr_info->inst_oid);
       attr_info->inst_chn = NULL_CHN;
+      attr_info->lazy_recdes = NULL;	/* index-key cache never uses lazy mode; keep the fields defined */
+      attr_info->lazy_rows = 0;
+      attr_info->lazy_deferred = 0;
+      attr_info->lazy_decoded = 0;
+      attr_info->lazy_disabled = false;
       attr_info->num_values = num_found_attrs;
 
       if (num_found_attrs <= 0)
@@ -12484,6 +12692,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	  value->state = HEAP_UNINIT_ATTRVALUE;
 	  value->last_attrepr = NULL;
 	  value->read_attrepr = NULL;
+	  value->lazy_always_eager = false;
 	}
 
       /*
@@ -16041,6 +16250,7 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   MVCC_REC_HEADER mvcc_rec_header;
   INT16 record_type;
   bool vacuum_status_change = false;
+  char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
 
   assert (rcv->pgptr != NULL);
   assert (MVCCID_IS_NORMAL (rcv->mvcc_id));
@@ -16062,7 +16272,6 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
   else
     {
-      char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
       int repid_and_flags, offset, mvcc_flag, offset_size;
 
       offset = sizeof (record_type);
@@ -17066,12 +17275,32 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	    }
 	}
 
+      /* Resolve the serial's cache block size once and cache it on the attribute rep, so the
+       * value-generation calls below take the cached driver branch. cached_num <= 1 keeps the
+       * uncached, per-row-write behavior. */
+      int ai_cached_num = att->auto_increment.cached_num.load ();
+      if (ai_cached_num < 0)
+	{
+	  OID ai_serial_oid = att->auto_increment.serial_obj.load ().oid;
+
+	  ai_cached_num = 0;
+	  if (!OID_ISNULL (&ai_serial_oid)
+	      && xserial_get_cached_num (thread_p, &ai_cached_num, &ai_serial_oid) != NO_ERROR)
+	    {
+	      /* keep the uncached behavior, and do not leave the failure on the error stack */
+	      er_clear ();
+	      ai_cached_num = 0;
+	    }
+
+	  att->auto_increment.cached_num.store (ai_cached_num);
+	}
+
       thread_p->no_supplemental_log = true;
 
       if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER) || (att->type == DB_TYPE_BIGINT))
 	{
 	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	  if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, 0,	/* no cache */
+	  if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, ai_cached_num,	/* cached block */
 				      1,	/* generate one value */
 				      GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 	    {
@@ -17088,7 +17317,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
       else if (att->type == DB_TYPE_NUMERIC)
 	{
 	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	  if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, 0,	/* no cache */
+	  if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, ai_cached_num,	/* cached block */
 				      1,	/* generate one value */
 				      GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 	    {
@@ -20565,16 +20794,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
        * after locking. Non-MVCC classes take no self-lock and still need the per-row X-lock below. */
       if (!mvcc_is_mvcc_disabled_class (&context->class_oid))
 	{
-#if defined (SERVER_MODE)
-	  /* CBRD-27079 fallback: track the row for 2PC prepare's per-row lock materialization; on failure take
-	   * the per-row lock below instead. */
-	  if (logtb_track_lockless_insert (thread_p, &context->res_oid, &context->class_oid) == NO_ERROR)
-	    {
-	      return NO_ERROR;
-	    }
-#else /* !SERVER_MODE */
 	  return NO_ERROR;
-#endif /* !SERVER_MODE */
 	}
 
       /* lock the object to be inserted conditionally */
@@ -25891,6 +26111,7 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_
   VPID_SET_NULL (&new_page_chain.next_vpid);
   new_page_chain.max_mvccid = MVCCID_NULL;
   new_page_chain.flags = 0;
+  HEAP_PAGE_SET_NOT_IN_HEAP (&new_page_chain);
   HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
 
   VPID_SET_NULL (new_page_vpid);
@@ -26099,6 +26320,76 @@ heap_nonheader_page_capacity ()
   return spage_max_record_size () - sizeof (HEAP_CHAIN);
 }
 
+// *INDENT-OFF*
+static int
+heap_unpack_append_pages_log_data (const LOG_RCV * recv, HFID * hfid, OID * class_oid,
+				   std::vector<VPID> &heap_pages_array)
+// *INDENT-ON*
+{
+  size_t offset = 0;
+  size_t array_size;
+  size_t recv_length;
+  int unpack_int;
+
+  assert (recv != NULL);
+  assert (hfid != NULL);
+  assert (class_oid != NULL);
+
+  if (recv->data == NULL || recv->length < 0)
+    {
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+  recv_length = (size_t) recv->length;
+
+  offset = DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT);
+  offset = DB_ALIGN (offset + OR_OID_SIZE, PTR_ALIGNMENT);
+  if (recv_length < offset + OR_INT_SIZE)
+    {
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
+  HFID_SET_NULL (hfid);
+  OID_SET_NULL (class_oid);
+
+  OR_GET_HFID (recv->data, hfid);
+  OR_GET_OID (recv->data + DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT), class_oid);
+
+  unpack_int = OR_GET_INT (recv->data + offset);
+  offset += OR_INT_SIZE;
+  if (unpack_int < 0)
+    {
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
+  array_size = (size_t) unpack_int;
+  if (array_size > (recv_length - offset) / DISK_VPID_ALIGNED_SIZE
+      || offset + array_size * DISK_VPID_ALIGNED_SIZE != recv_length)
+    {
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
+  heap_pages_array.reserve (array_size);
+  for (size_t i = 0; i < array_size; i++)
+    {
+      VPID vpid;
+
+      OR_GET_VPID (recv->data + offset, &vpid);
+      offset += DISK_VPID_ALIGNED_SIZE;
+      heap_pages_array.push_back (vpid);
+    }
+
+  assert (offset == recv_length);
+  return NO_ERROR;
+}
+
 /*
  * heap_rv_postpone_append_pages_to_heap () - Append a list of pages to the given heap
  *    return                  : Error_code
@@ -26123,41 +26414,18 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   HEAP_HDR_STATS *heap_hdr = NULL;
   bool skip_last_page_links = false;
   VPID heap_header_next_vpid;
-  size_t offset = 0;
-  size_t array_size = 0;
-  std::vector <VPID> heap_pages_array;
+  // *INDENT-OFF*
+  std::vector<VPID> heap_pages_array;
+  // *INDENT-ON*
   OID class_oid;
   HFID hfid;
 
-  /* recovery data: HFID, OID, array_size (int), array_of_VPID(array_size) */
-  HFID_SET_NULL (&hfid);
-  OID_SET_NULL (&class_oid);
-
-  OR_GET_HFID ((recv->data + offset), &hfid);
-  offset += DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT);
-
-  OR_GET_OID ((recv->data + offset), &class_oid);
-  offset += OR_OID_SIZE;
-
-  int unpack_int = OR_GET_INT ((recv->data + offset));
-  assert (unpack_int >= 0);
-  array_size = (size_t) unpack_int;
-  offset += OR_INT_SIZE;
-
-  for (size_t i = 0; i < array_size; i++)
+  error_code = heap_unpack_append_pages_log_data (recv, &hfid, &class_oid, heap_pages_array);
+  if (error_code != NO_ERROR)
     {
-      VPID vpid;
-
-      VPID_SET_NULL (&vpid);
-
-      OR_GET_VPID ((recv->data + offset), &vpid);
-      offset += DISK_VPID_ALIGNED_SIZE;
-
-      heap_pages_array.push_back (vpid);
+      return error_code;
     }
-
-  assert (recv->length >= 0 && offset == (size_t) recv->length);
-  assert (array_size == heap_pages_array.size ());
+  const size_t array_size = heap_pages_array.size ();
 
   VPID_SET_NULL (&null_vpid);
   VPID_SET_NULL (&heap_hdr_vpid);
@@ -26170,7 +26438,10 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   // Early out
   if (array_size == 0)
     {
-      // Nothing to append.
+      /* nothing to append. heap_log_postpone_heap_append_pages () never logs an empty array, so this cannot happen. */
+      /* returning here also skips log_sysop_end_logical_run_postpone (), which would leave the postpone action */
+      /* unrecorded. */
+      assert (false);
       return error_code;
     }
 
@@ -26313,7 +26584,7 @@ cleanup:
       log_sysop_end_logical_run_postpone (thread_p, &recv->reference_lsa);
     }
 
-   if (page_watcher.pgptr)
+  if (page_watcher.pgptr)
     {
       pgbuf_ordered_unfix_and_init (thread_p, page_watcher.pgptr, &page_watcher);
     }
@@ -26331,49 +26602,145 @@ cleanup:
   return error_code;
 }
 
+/*
+ * heap_rv_postpone_mark_pages_in_heap () - Publish appended pages to bestspace.
+ *
+ * return       : Error code
+ * thread_p(in) : Thread context
+ * recv(in)     : Recovery data containing the heap and appended page identifiers
+ *
+ * Note: This is logged after RVHF_APPEND_PAGES_TO_HEAP. Therefore, every page is already reachable from the heap
+ * header before HEAP_PAGE_FLAG_NOT_IN_HEAP is cleared. If this operation is interrupted and rolled back, pages remain
+ * linked to the heap and are merely hidden from bestspace until recovery retries this postpone action.
+ */
+int
+heap_rv_postpone_mark_pages_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+{
+  int error_code;
+  PGBUF_WATCHER page_watcher;
+  // *INDENT-OFF*
+  std::vector<VPID> heap_pages_array;
+  // *INDENT-ON*
+  OID class_oid;
+  HFID hfid;
+
+  error_code = heap_unpack_append_pages_log_data (recv, &hfid, &class_oid, heap_pages_array);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  if (heap_pages_array.empty ())
+    {
+      /* heap_log_postpone_heap_append_pages () never logs an empty array, so this cannot happen. Returning here also
+       * skips log_sysop_end_logical_run_postpone (), which would leave the postpone action unrecorded. */
+      assert (false);
+      return NO_ERROR;
+    }
+
+  // Safe-guards
+  assert (!HFID_IS_NULL (&hfid));
+
+  // Check every page is allocated. Bail out before starting the system operation, as in the append action.
+  for (size_t i = 0; i < heap_pages_array.size (); i++)
+    {
+      if (pgbuf_is_valid_page (thread_p, &heap_pages_array[i], false) != DISK_VALID)
+	{
+	  /* The append action already linked these pages, so they must still be allocated. */
+	  assert (false);
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+    }
+
+  PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
+
+  log_sysop_start_atomic (thread_p);
+
+  for (size_t i = 0; i < heap_pages_array.size (); i++)
+    {
+      error_code = heap_mark_page_in_heap (thread_p, &hfid, &heap_pages_array[i], &page_watcher);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto cleanup;
+	}
+    }
+
+cleanup:
+  if (error_code != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+    }
+  else
+    {
+      log_sysop_end_logical_run_postpone (thread_p, &recv->reference_lsa);
+    }
+
+  if (page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix_and_init (thread_p, page_watcher.pgptr, &page_watcher);
+    }
+
+  return error_code;
+}
+
 void
 heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data)
 {
   // *INDENT-OFF*
   string_buffer strbuf;
-  // *INDENT-OFF*
-
-  const char *ptr = (const char *) data;
+  // *INDENT-ON*
 
   HFID hfid;
   OID class_oid;
+  size_t data_length;
+  size_t offset;
+  int count;
 
-  OR_GET_HFID (ptr, &hfid);
-  ptr += OR_HFID_SIZE;
+  offset = DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT);
+  offset = DB_ALIGN (offset + OR_OID_SIZE, PTR_ALIGNMENT);
+  if (data == NULL || length < 0 || (size_t) length < offset + OR_INT_SIZE)
+    {
+      fprintf (fp, "Invalid append-pages recovery data.\n");
+      return;
+    }
+  data_length = (size_t) length;
 
-  OR_GET_OID (ptr, &class_oid);
-  ptr += OR_OID_SIZE;
+  OR_GET_HFID ((char *) data, &hfid);
+  OR_GET_OID ((char *) data + DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT), &class_oid);
 
   strbuf ("CLASS = %d|%d|%d / HFID = %d, %d|%d\n", OID_AS_ARGS (&class_oid), HFID_AS_ARGS (&hfid));
 
-  int count = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
+  count = OR_GET_INT ((char *) data + offset);
+  offset += OR_INT_SIZE;
+  if (count < 0 || (size_t) count > (data_length - offset) / DISK_VPID_ALIGNED_SIZE
+      || offset + (size_t) count * DISK_VPID_ALIGNED_SIZE != data_length)
+    {
+      fprintf (fp, "Invalid append-pages recovery data.\n");
+      return;
+    }
 
   for (int i = 0; i < count; i++)
     {
       // print VPIDs, 8 on each line
 
       VPID vpid;
-      OR_GET_VPID (ptr, &vpid);
-      ptr += OR_VPID_SIZE;
+      OR_GET_VPID ((char *) data + offset, &vpid);
+      offset += DISK_VPID_ALIGNED_SIZE;
       strbuf ("%d|%d ", VPID_AS_ARGS (&vpid));
       if (i % 8 == 7)
-        {
-          strbuf ("\n");
-        }
+	{
+	  strbuf ("\n");
+	}
     }
   strbuf ("\n");
 
+  assert (offset == data_length);
   fprintf (fp, "%s", strbuf.get_buffer ());
 }
 
 static int
-heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID *page_vpid, PGBUF_WATCHER * pg_watcher)
+heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID * page_vpid, PGBUF_WATCHER * pg_watcher)
 {
   int error_code = NO_ERROR;
 
@@ -26388,7 +26755,7 @@ heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID *page_vpid, PGBU
       return error_code;
     }
 
-   return error_code;
+  return error_code;
 }
 
 static int
@@ -26450,8 +26817,7 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
   addr.pgptr = page_watcher->pgptr;
 
   // Log the changes.
-  log_append_undoredo_data (thread_p, RVHF_CHAIN, &addr, sizeof (HEAP_CHAIN), sizeof (HEAP_CHAIN), &chain_prev,
-			    chain);
+  log_append_undoredo_data (thread_p, RVHF_CHAIN, &addr, sizeof (HEAP_CHAIN), sizeof (HEAP_CHAIN), &chain_prev, chain);
 
   // Now set the page dirty.
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
@@ -26466,6 +26832,108 @@ heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * v
     }
 
   return NO_ERROR;
+}
+
+/*
+ * heap_mark_page_in_heap () - Clear HEAP_PAGE_FLAG_NOT_IN_HEAP so the page becomes visible to bestspace.
+ *
+ * return	     : Error code
+ * thread_p (in)     : Thread entry
+ * hfid (in)	     : Heap file identifier the page belongs to
+ * vpid (in)	     : Page to publish
+ * page_watcher (in) : Scratch watcher. It is re-initialized here and left unfixed on return.
+ *
+ * Note: The caller must have linked the page into the heap before calling this. Clearing the flag publishes the page
+ *       to every transaction through bestspace, so a page that is not yet reachable from the heap header must keep the
+ *       flag. See heap_rv_postpone_mark_pages_in_heap () for the ordering this relies on. The update is skipped when
+ *       the flag is already clear, which keeps a retried postpone action idempotent.
+ */
+static int
+heap_mark_page_in_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, PGBUF_WATCHER * page_watcher)
+{
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  HEAP_CHAIN *chain;
+  int error_code;
+
+  PGBUF_INIT_WATCHER (page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
+  error_code = heap_get_page_with_watcher (thread_p, vpid, page_watcher);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  chain = heap_get_chain_ptr (thread_p, page_watcher->pgptr);
+  if (chain == NULL)
+    {
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error_code = ER_FAILED;
+      goto cleanup;
+    }
+
+  if (!HEAP_PAGE_IS_NOT_IN_HEAP (chain))
+    {
+      /* Keep the flag update idempotent for recovery. */
+      goto cleanup;
+    }
+
+  HEAP_PAGE_CLEAR_NOT_IN_HEAP (chain);
+
+  addr.vfid = &hfid->vfid;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+  addr.pgptr = page_watcher->pgptr;
+  log_append_undoredo_data (thread_p, RVHF_UPDATE_PAGE_IN_HEAP_FLAG, &addr, 0, 0, NULL, NULL);
+  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+
+cleanup:
+  pgbuf_ordered_unfix_and_init (thread_p, page_watcher->pgptr, page_watcher);
+  return error_code;
+}
+
+static int
+heap_rv_update_page_in_heap_flag (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_in_heap)
+{
+  RECDES recdes;
+  HEAP_CHAIN *chain;
+
+  assert (rcv != NULL);
+  assert (rcv->pgptr != NULL);
+  assert (rcv->offset == HEAP_HEADER_AND_CHAIN_SLOTID);
+
+  if (spage_get_record (thread_p, rcv->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS
+      || recdes.length != sizeof (HEAP_CHAIN))
+    {
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
+  chain = (HEAP_CHAIN *) recdes.data;
+  if (is_in_heap)
+    {
+      HEAP_PAGE_CLEAR_NOT_IN_HEAP (chain);
+    }
+  else
+    {
+      HEAP_PAGE_SET_NOT_IN_HEAP (chain);
+    }
+
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+int
+heap_rv_undo_mark_page_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return heap_rv_update_page_in_heap_flag (thread_p, rcv, false);
+}
+
+int
+heap_rv_redo_mark_page_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return heap_rv_update_page_in_heap_flag (thread_p, rcv, true);
 }
 
 static int
@@ -26501,9 +26969,10 @@ heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid, const PG
   return NO_ERROR;
 }
 
+// *INDENT-OFF*
 void
 heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
-                                     const std::vector<VPID> &heap_pages_array)
+				     const std::vector<VPID> &heap_pages_array)
 {
   if (heap_pages_array.empty ())
     {
@@ -26513,38 +26982,37 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
   // This append needs to be run on postpone after the commit.
   // First create the log data required.
   size_t array_size = heap_pages_array.size ();
-  int log_data_size = (DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT) + OR_OID_SIZE + sizeof (int)
-                       + array_size * DISK_VPID_ALIGNED_SIZE);
+  int log_data_size = (DB_ALIGN (DB_ALIGN (OR_HFID_SIZE, PTR_ALIGNMENT) + OR_OID_SIZE, PTR_ALIGNMENT) + OR_INT_SIZE
+		       + array_size * DISK_VPID_ALIGNED_SIZE);
   char *log_data = (char *) db_private_alloc (NULL, log_data_size + MAX_ALIGNMENT);
   LOG_DATA_ADDR log_addr = LOG_DATA_ADDR_INITIALIZER;
-  char *ptr = log_data;
+  size_t offset = 0;
 
   // Now populate the log data needed.
 
   // HFID
-  OR_PUT_HFID (ptr, hfid);
-  ptr += OR_HFID_SIZE;
-  ptr = PTR_ALIGN (ptr, PTR_ALIGNMENT);
+  OR_PUT_HFID (log_data + offset, hfid);
+  offset = DB_ALIGN (offset + OR_HFID_SIZE, PTR_ALIGNMENT);
 
   // class_oid
-  OR_PUT_OID (ptr, class_oid);
-  ptr += OR_OID_SIZE;
-  ptr = PTR_ALIGN (ptr, PTR_ALIGNMENT);
+  OR_PUT_OID (log_data + offset, class_oid);
+  offset = DB_ALIGN (offset + OR_OID_SIZE, PTR_ALIGNMENT);
 
   // array_size
-  OR_PUT_INT (ptr, (int) array_size);
-  ptr += OR_INT_SIZE;
+  OR_PUT_INT (log_data + offset, (int) array_size);
+  offset += OR_INT_SIZE;
 
   // The array of VPID.
   for (size_t i = 0; i < array_size; i++)
     {
-      OR_PUT_VPID_ALIGNED (ptr, &heap_pages_array[i]);
-      ptr += DISK_VPID_ALIGNED_SIZE;
+      OR_PUT_VPID_ALIGNED (log_data + offset, &heap_pages_array[i]);
+      offset += DISK_VPID_ALIGNED_SIZE;
     }
 
-  assert ((ptr - log_data) ==  log_data_size);
+  assert (offset == (size_t) log_data_size);
 
   log_append_postpone (thread_p, RVHF_APPEND_PAGES_TO_HEAP, &log_addr, log_data_size, log_data);
+  log_append_postpone (thread_p, RVHF_MARK_PAGES_IN_HEAP, &log_addr, log_data_size, log_data);
 
   if (log_data)
     {

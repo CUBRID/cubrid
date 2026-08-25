@@ -137,6 +137,7 @@ extern "C"
   extern const unsigned char *pt_get_varchar_bytes (const PARSER_VARCHAR * string);
   extern int pt_get_varchar_length (const PARSER_VARCHAR * string);
 
+  extern const char *pt_print_quoted_value_text (PARSER_CONTEXT * parser, const char *str, int length);
   extern PARSER_VARCHAR *pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_bytes_spec_list (PARSER_CONTEXT * parser, const PT_NODE * node);
@@ -371,6 +372,7 @@ extern "C"
   extern PT_NODE *pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where);
   extern PT_NODE *pt_where_type_keep_true (PARSER_CONTEXT * parser, PT_NODE * where);
   extern bool pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * statement);
+  extern bool pt_true_search_condition (PARSER_CONTEXT * parser, const PT_NODE * statement);
   extern const char *mq_generate_name (PARSER_CONTEXT * parser, const char *root, int *version);
   extern int mq_is_real_class_of_vclass (PARSER_CONTEXT * parser, const PT_NODE * s_class, const PT_NODE * d_class);
   extern void pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt);

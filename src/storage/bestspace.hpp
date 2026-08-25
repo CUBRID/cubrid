@@ -388,6 +388,7 @@ namespace cubstorage
       candidate_queue m_candidates;
 
       // parameter
+      const bool m_distributed_insert;
       std::uint16_t m_unfill_space;
 
       // statistics
@@ -462,11 +463,11 @@ namespace cubstorage
 
     private:
       registry_entry *m_head;
+      std::size_t m_cache_count;
       std::mutex m_mutex;
 
       alignas (64) std::atomic<uint64_t> m_generation;
 
-      static constexpr std::size_t TLS_MAX_SIZE = 40;
       inline static thread_local registry_cache TLS_cache;
 
       bestspace *find_from_cache (HFID *hfid);
