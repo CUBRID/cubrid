@@ -4798,13 +4798,10 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 static int
 qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
 {
-  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
-  volatile short s1, stmp;
+  short s1 = db_get_short (short_val_p);
+  short stmp;
 
-  s1 = db_get_short (short_val_p);
-  stmp = s1 * s2;
-
-  if (OR_CHECK_MULT_OVERFLOW (s1, s2, stmp))
+  if (OR_MULT_OVERFLOW (s1, s2, &stmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -4818,13 +4815,10 @@ qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
 static int
 qdata_multiply_int (DB_VALUE * int_val_p, int i2, DB_VALUE * result_p)
 {
-  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
-  volatile int i1, itmp;
+  int i1 = db_get_int (int_val_p);
+  int itmp;
 
-  i1 = db_get_int (int_val_p);
-  itmp = i1 * i2;
-
-  if (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp))
+  if (OR_MULT_OVERFLOW (i1, i2, &itmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -4837,13 +4831,10 @@ qdata_multiply_int (DB_VALUE * int_val_p, int i2, DB_VALUE * result_p)
 static int
 qdata_multiply_bigint (DB_VALUE * bigint_val_p, DB_BIGINT bi2, DB_VALUE * result_p)
 {
-  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
-  volatile DB_BIGINT bi1, bitmp;
+  DB_BIGINT bi1 = db_get_bigint (bigint_val_p);
+  DB_BIGINT bitmp;
 
-  bi1 = db_get_bigint (bigint_val_p);
-  bitmp = bi1 * bi2;
-
-  if (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp))
+  if (OR_MULT_OVERFLOW (bi1, bi2, &bitmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -5417,6 +5408,12 @@ qdata_divide_short (short s1, short s2, DB_VALUE * result_p)
 {
   short stmp;
 
+  if (OR_CHECK_SHORT_DIV_OVERFLOW (s1, s2))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+      return ER_FAILED;
+    }
+
   stmp = s1 / s2;
   db_make_short (result_p, stmp);
 
@@ -5428,6 +5425,12 @@ qdata_divide_int (int i1, int i2, DB_VALUE * result_p)
 {
   int itmp;
 
+  if (OR_CHECK_INT_DIV_OVERFLOW (i1, i2))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+      return ER_FAILED;
+    }
+
   itmp = i1 / i2;
   db_make_int (result_p, itmp);
 
@@ -5438,6 +5441,12 @@ static int
 qdata_divide_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
 {
   DB_BIGINT bitmp;
+
+  if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi1, bi2))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+      return ER_FAILED;
+    }
 
   bitmp = bi1 / bi2;
   db_make_bigint (result_p, bitmp);
@@ -8194,8 +8203,8 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE op, 
 		{
 		  if (OR_CHECK_INT_DIV_OVERFLOW (bi[0], bi[1]))
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
-		      return ER_QPROC_OVERFLOW_ADDITION;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+		      return ER_QPROC_OVERFLOW_DIVISION;
 		    }
 		  db_make_int (result_p, (INT32) (bi[0] / bi[1]));
 		}
@@ -8203,8 +8212,8 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE op, 
 		{
 		  if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi[0], bi[1]))
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
-		      return ER_QPROC_OVERFLOW_ADDITION;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+		      return ER_QPROC_OVERFLOW_DIVISION;
 		    }
 		  db_make_bigint (result_p, bi[0] / bi[1]);
 		}
@@ -8212,10 +8221,26 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE op, 
 		{
 		  if (OR_CHECK_SHORT_DIV_OVERFLOW (bi[0], bi[1]))
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
-		      return ER_QPROC_OVERFLOW_ADDITION;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+		      return ER_QPROC_OVERFLOW_DIVISION;
 		    }
 		  db_make_short (result_p, (INT16) (bi[0] / bi[1]));
+		}
+	    }
+	  else if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi[0], bi[1]))
+	    {
+	      /* MIN % -1 is 0; computing it would trap on the machine divide instruction */
+	      if (type[0] == DB_TYPE_INTEGER)
+		{
+		  db_make_int (result_p, 0);
+		}
+	      else if (type[0] == DB_TYPE_BIGINT)
+		{
+		  db_make_bigint (result_p, 0);
+		}
+	      else
+		{
+		  db_make_short (result_p, 0);
 		}
 	    }
 	  else
