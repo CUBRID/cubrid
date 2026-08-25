@@ -95,19 +95,12 @@ struct locator_classname_action
   LOCATOR_CLASSNAME_ACTION *prev;	/* To previous top action */
 };
 
-typedef enum
-{
-  LC_ENTRY_CLASS,		/* Entry names a class (table, vclass) */
-  LC_ENTRY_SYNONYM		/* Entry names a synonym; resolution must follow e_current.synonym_target */
-} LC_ENTRY_TYPE;
-
 typedef struct locator_classname_entry LOCATOR_CLASSNAME_ENTRY;
 struct locator_classname_entry
 {
   char *e_name;			/* Full name; "qualifier.name" except unqualified system classes */
   const char *e_bare_name;	/* Portion of e_name after the qualifier dot; e_name itself when unqualified */
   int e_qualifier_len;		/* Length of the qualifier part of e_name; 0 when unqualified */
-  LC_ENTRY_TYPE e_type;		/* Class or synonym */
   int e_tran_index;		/* Transaction of entry */
   LOCATOR_CLASSNAME_ACTION e_current;	/* The most current action */
 };
@@ -145,6 +138,7 @@ static void locator_split_classname (const char *name, const char **bare_name, i
 static LOCATOR_CLASSNAME_ENTRY *locator_get_classname_entry (const char *classname);
 static int locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static void locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
+static bool locator_entry_is_synonym (LOCATOR_CLASSNAME_ENTRY * entry);
 static LOCATOR_CLASSNAME_ENTRY *locator_chase_synonym_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static int locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_name,
 					      const char *skip_name, LOCATOR_CLASSNAME_ENTRY ** candidates,
@@ -228,10 +222,9 @@ static int locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, 
 static bool locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo, BTID * btid, int pos);
 static LC_FIND_CLASSNAME xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid);
 static LC_FIND_CLASSNAME xlocator_reserve_name_internal (THREAD_ENTRY * thread_p, const char *classname,
-							 OID * class_oid, LC_ENTRY_TYPE type,
-							 const char *synonym_target);
+							 OID * class_oid, const char *synonym_target);
 static LC_FIND_CLASSNAME xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname,
-							const char *newname, OID * class_oid, LC_ENTRY_TYPE type,
+							const char *newname, OID * class_oid,
 							const char *synonym_target);
 
 static int locator_filter_errid (THREAD_ENTRY * thread_p, int num_ignore_error_count, int *ignore_error_list);
@@ -359,6 +352,23 @@ locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 }
 
 /*
+ * locator_entry_is_synonym () - Does this entry name a synonym ?
+ *
+ * return: true when it does; false for a class entry and for no entry at all
+ *
+ *   entry(in): Entry to test
+ *
+ * Note: A target is what makes an entry a synonym, and the target lives in the action
+ *       history. So a rollback that restores an earlier action restores what the name
+ *       is, which a separate type field on the entry would not follow.
+ */
+static bool
+locator_entry_is_synonym (LOCATOR_CLASSNAME_ENTRY * entry)
+{
+  return entry != NULL && entry->e_current.synonym_target != NULL;
+}
+
+/*
  * locator_chase_synonym_entry () - Follow a synonym entry to the entry it names
  *
  * return: The target entry, or entry itself when it is not a synonym, or NULL when the
@@ -373,7 +383,7 @@ locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 static LOCATOR_CLASSNAME_ENTRY *
 locator_chase_synonym_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 {
-  if (entry == NULL || entry->e_type != LC_ENTRY_SYNONYM)
+  if (!locator_entry_is_synonym (entry))
     {
       return entry;
     }
@@ -382,7 +392,7 @@ locator_chase_synonym_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 
   entry = locator_get_classname_entry (entry->e_current.synonym_target);
 
-  return (entry != NULL && entry->e_type == LC_ENTRY_SYNONYM) ? NULL : entry;
+  return locator_entry_is_synonym (entry) ? NULL : entry;
 }
 
 /*
@@ -701,7 +711,6 @@ locator_initialize (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      entry->e_type = LC_ENTRY_CLASS;
       entry->e_tran_index = NULL_TRAN_INDEX;
 
       entry->e_current.action = LC_CLASSNAME_EXIST;
@@ -750,7 +759,7 @@ error:
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- * Note: Scans the _db_synonym catalog class and inserts one LC_ENTRY_SYNONYM entry
+ * Note: Scans the _db_synonym catalog class and inserts one synonym entry
  *       per row so that name resolution identifies synonyms and their targets in
  *       the same probe as classes. Quietly skips when the catalog class does not
  *       exist yet (database creation).
@@ -938,7 +947,6 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	  goto exit;
 	}
 
-      entry->e_type = LC_ENTRY_SYNONYM;
       entry->e_tran_index = NULL_TRAN_INDEX;
 
       entry->e_current.action = LC_CLASSNAME_EXIST;
@@ -1080,7 +1088,7 @@ xlocator_reserve_class_names (THREAD_ENTRY * thread_p, const int num_classes, co
 static LC_FIND_CLASSNAME
 xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid)
 {
-  return xlocator_reserve_name_internal (thread_p, classname, class_oid, LC_ENTRY_CLASS, NULL);
+  return xlocator_reserve_name_internal (thread_p, classname, class_oid, NULL);
 }
 
 /*
@@ -1090,11 +1098,10 @@ xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname, OID
  *
  *   classname(in): Name to reserve
  *   class_oid(in/out): Object identifier; a pseudo OID is generated when NULL
- *   type(in): Entry type the reserved name will have
- *   synonym_target(in): Target unique name for synonym entries; NULL for classes
+ *   synonym_target(in): Target unique name for a synonym; NULL reserves a class name
  */
 static LC_FIND_CLASSNAME
-xlocator_reserve_name_internal (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid, LC_ENTRY_TYPE type,
+xlocator_reserve_name_internal (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid,
 				const char *synonym_target)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
@@ -1169,7 +1176,6 @@ start:
 		}
 
 	      entry->e_current.action = LC_CLASSNAME_RESERVED;
-	      entry->e_type = type;
 	      if (locator_classname_entry_set_target (entry, synonym_target) != NO_ERROR)
 		{
 		  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
@@ -1246,7 +1252,6 @@ start:
 	  return LC_CLASSNAME_ERROR;
 	}
 
-      entry->e_type = type;
       entry->e_tran_index = tran_index;
 
       entry->e_current.action = LC_CLASSNAME_RESERVED;
@@ -1560,7 +1565,7 @@ error:
 LC_FIND_CLASSNAME
 xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const char *newname, OID * class_oid)
 {
-  return xlocator_rename_name_internal (thread_p, oldname, newname, class_oid, LC_ENTRY_CLASS, NULL);
+  return xlocator_rename_name_internal (thread_p, oldname, newname, class_oid, NULL);
 }
 
 /*
@@ -1571,12 +1576,11 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const 
  *   oldname(in): Old name
  *   newname(in): New name
  *   class_oid(in/out): Object identifier
- *   type(in): Entry type of the renamed name
  *   synonym_target(in): Target unique name carried over to the new synonym entry; NULL for classes
  */
 static LC_FIND_CLASSNAME
 xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, const char *newname, OID * class_oid,
-			       LC_ENTRY_TYPE type, const char *synonym_target)
+			       const char *synonym_target)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME renamed;
@@ -1595,7 +1599,7 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  renamed = xlocator_reserve_name_internal (thread_p, newname, class_oid, type, synonym_target);
+  renamed = xlocator_reserve_name_internal (thread_p, newname, class_oid, synonym_target);
   if (renamed != LC_CLASSNAME_RESERVED)
     {
       return renamed;
@@ -1624,7 +1628,7 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
 	  /* Add new name to modified list, to correctly restore in case of abort. Synonym entries carry pseudo
 	   * OIDs which the modified class list rejects; their transient cleanup is covered by the defence scan
 	   * in locator_drop_transient_class_name_entries. */
-	  if (type == LC_ENTRY_CLASS && log_add_to_modified_class_list (thread_p, newname, class_oid) != NO_ERROR)
+	  if (synonym_target == NULL && log_add_to_modified_class_list (thread_p, newname, class_oid) != NO_ERROR)
 	    {
 	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 	      return LC_CLASSNAME_ERROR;
@@ -1714,7 +1718,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
        * root class, so it must never point at a real (non-class) object. */
       OID_SET_NULL (&oid);
 
-      status = xlocator_reserve_name_internal (thread_p, name, &oid, LC_ENTRY_SYNONYM, arg);
+      status = xlocator_reserve_name_internal (thread_p, name, &oid, arg);
       if (status != LC_CLASSNAME_RESERVED)
 	{
 	  if (status != LC_CLASSNAME_ERROR)
@@ -1738,7 +1742,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
     }
 
   entry = locator_get_classname_entry (name);
-  if (entry == NULL || entry->e_type != LC_ENTRY_SYNONYM)
+  if (!locator_entry_is_synonym (entry))
     {
       csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SYNONYM_NOT_EXIST, 1, name);
@@ -1771,7 +1775,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 	  }
 
 	entry = locator_get_classname_entry (name);
-	if (entry == NULL || entry->e_type != LC_ENTRY_SYNONYM || entry->e_current.synonym_target == NULL
+	if (!locator_entry_is_synonym (entry)
 	    || (entry->e_tran_index != NULL_TRAN_INDEX && entry->e_tran_index != tran_index))
 	  {
 	    csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
@@ -1784,7 +1788,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 
 	csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
-	status = xlocator_rename_name_internal (thread_p, name, arg, &oid, LC_ENTRY_SYNONYM, target_copy);
+	status = xlocator_rename_name_internal (thread_p, name, arg, &oid, target_copy);
 	return (status == LC_CLASSNAME_RESERVED_RENAME) ? NO_ERROR : ER_FAILED;
       }
 
@@ -1796,7 +1800,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 	}
 
       entry = locator_get_classname_entry (name);
-      if (entry == NULL || entry->e_type != LC_ENTRY_SYNONYM)
+      if (!locator_entry_is_synonym (entry))
 	{
 	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SYNONYM_NOT_EXIST, 1, name);
@@ -1923,7 +1927,7 @@ start:
 
   entry = locator_get_classname_entry (classname);
 
-  if (entry != NULL && entry->e_type == LC_ENTRY_SYNONYM)
+  if (locator_entry_is_synonym (entry))
     {
       if (synonym_target == NULL || hopped)
 	{
@@ -2374,7 +2378,7 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, L
 	      else if (entry->e_current.action == LC_CLASSNAME_EXIST)
 		{
 		  /* e.g. rollback of ALTER SYNONYM restored the pushed pre-alter permanent state */
-		  assert (entry->e_type == LC_ENTRY_SYNONYM);
+		  assert (locator_entry_is_synonym (entry));
 
 		  entry->e_tran_index = NULL_TRAN_INDEX;
 		  LSA_SET_NULL (&entry->e_current.savep_lsa);
@@ -2395,7 +2399,7 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, L
 
 #if !defined(NDEBUG)
   /* check iff permanent entry; synonym entries hold pseudo OIDs and have no on-disk class */
-  if (locator_is_exist_class_name_entry (thread_p, entry) && entry->e_type == LC_ENTRY_CLASS)
+  if (locator_is_exist_class_name_entry (thread_p, entry) && !locator_entry_is_synonym (entry))
     {
       OID class_oid;
 
@@ -2445,7 +2449,7 @@ locator_defence_drop_class_name_entry (const void *name, void *ent, void *args)
   assert (tran_index != NULL_TRAN_INDEX);
 
 #if !defined(NDEBUG)
-  if (locator_is_exist_class_name_entry (thread_p, entry) && entry->e_type == LC_ENTRY_CLASS)
+  if (locator_is_exist_class_name_entry (thread_p, entry) && !locator_entry_is_synonym (entry))
     {
       OID class_oid;
 
@@ -2672,8 +2676,7 @@ locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key
 
   assert (class_no_p != NULL);
 
-  fprintf (outfp, "   %2d   %s%s   ", *class_no_p, entry->e_name,
-	   (entry->e_type == LC_ENTRY_SYNONYM) ? " (synonym)" : "");
+  fprintf (outfp, "   %2d   %s%s   ", *class_no_p, entry->e_name, locator_entry_is_synonym (entry) ? " (synonym)" : "");
   (*class_no_p)++;
   key_size = strlen (entry->e_name);
   for (i = 0; i < (29 - key_size); i++)
@@ -2813,7 +2816,7 @@ locator_check_class_on_heap (const void *name, void *ent, void *args)
       return NO_ERROR;
     }
 
-  if (entry->e_type != LC_ENTRY_CLASS)
+  if (locator_entry_is_synonym (entry))
     {
       /* synonym entries have no counterpart in the heap of classes */
       return NO_ERROR;
@@ -12106,7 +12109,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 
 	  entry = locator_get_classname_entry (classname);
 
-	  if (entry != NULL && entry->e_type == LC_ENTRY_SYNONYM)
+	  if (locator_entry_is_synonym (entry))
 	    {
 	      if (locator_is_exist_class_name_entry (thread_p, entry)
 		  || (entry->e_tran_index == tran_index && entry->e_current.action != LC_CLASSNAME_DELETED
@@ -13570,7 +13573,8 @@ locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p, LOCATOR_CLASSNAME_EN
       assert (entry->e_tran_index == NULL_TRAN_INDEX);
 
       assert (!OID_ISNULL (&entry->e_current.oid));
-      assert (entry->e_type != LC_ENTRY_CLASS || heap_does_exist (thread_p, oid_Root_class_oid, &entry->e_current.oid));
+      assert (locator_entry_is_synonym (entry)
+	      || heap_does_exist (thread_p, oid_Root_class_oid, &entry->e_current.oid));
 
 
       assert (LSA_ISNULL (&entry->e_current.savep_lsa));
