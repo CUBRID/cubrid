@@ -344,6 +344,8 @@ static int cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time,
 static bool cdc_is_filtered_class (OID classoid);
 static bool cdc_is_filtered_user (char *user);
 
+static void cdc_release_arv_num_to_keep (THREAD_ENTRY * thread_p);
+
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
 static void log_abort_task_execute (cubthread::entry &thread_ref, LOG_TDES &tdes);
@@ -1134,6 +1136,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   log_Gl.run_nxchkpt_atpageid = NULL_PAGEID;	/* Don't run the checkpoint */
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
+  /* cdc_initialize() only runs in SERVER_MODE, so in SA mode this would keep the zero the global was loaded with.
+   * Zero is a valid pageid, so archive removal would take it for a position cdc still needs, hold on to the volume
+   * that contains it and write that volume into the log header, where it outlives the utility. */
+  LSA_SET_NULL (&cdc_Gl.arv_keep_lsa);
+
   log_Gl.loghdr_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
   if (log_Gl.loghdr_pgptr == NULL)
     {
@@ -1189,6 +1196,24 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   else
     {
       logpb_fetch_header (thread_p, &log_Gl.hdr);
+    }
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
+    {
+      /* With cdc off the gate that reads this value never runs, so the volumes it names are going to
+       * be deleted anyway. Give it up here rather than leave the header pointing at a volume that is
+       * about to go - turning cdc off is the operator saying the protection is no longer wanted. */
+      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
+    }
+
+  if (ismedia_crash != false)
+    {
+      /* The header that was just read came out of a backup image, so the volume it names was chosen
+       * by whatever cdc session the source database had. The database being restored into has no
+       * such session to hand the position back to, and only a partial restore reaches the reset in
+       * log_recovery_resetlog(). A client that does come back records what it needs again on its
+       * first bundle, so give the protection up here rather than pin volumes for good. */
+      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
     }
 
   if (ismedia_crash != false && (r_args) && r_args->restore_slave)
@@ -6255,10 +6280,11 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
   fprintf (out_fp,
 	   "     Next_archive_pageid = %lld at active_phy_pageid = %d,\n"
 	   "     Next_archive_num = %d, Last_archiv_num_for_syscrashes = %d,\n"
-	   "     Last_deleted_arv_num = %d, has_logging_been_skipped = %d,\n"
+	   "     Last_deleted_arv_num = %d, Cdc_arv_num_to_keep = %d, has_logging_been_skipped = %d,\n"
 	   "     bkup_lsa: level0 = %lld|%d, level1 = %lld|%d, level2 = %lld|%d,\n     Log_prefix = %s\n",
 	   (long long int) log_header_p->nxarv_pageid, log_header_p->nxarv_phy_pageid, log_header_p->nxarv_num,
 	   log_header_p->last_arv_num_for_syscrashes, log_header_p->last_deleted_arv_num,
+	   LOG_HDR_CDC_ARV_NUM_IS_SET (log_header_p) ? LOG_HDR_CDC_ARV_NUM_GET (log_header_p) : -1,
 	   log_header_p->has_logging_been_skipped, LSA_AS_ARGS (&log_header_p->bkup_level0_lsa),
 	   LSA_AS_ARGS (&log_header_p->bkup_level1_lsa), LSA_AS_ARGS (&log_header_p->bkup_level2_lsa),
 	   log_header_p->prefix_name);
@@ -14119,7 +14145,151 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 LOG_PAGEID
 cdc_min_log_pageid_to_keep ()
 {
-  return cdc_Gl.consumer.start_lsa.pageid;
+#if defined (SERVER_MODE)
+  return cdc_Gl.arv_keep_lsa.pageid;
+#else
+  /* cdc only runs inside the server, so a stand-alone utility has no position of its own to protect
+   * and cdc_Gl is never initialized there. It reads the volume the log header names, and never picks
+   * one - page id 0 out of a zeroed global would otherwise look like a real position. */
+  return NULL_PAGEID;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * cdc_update_arv_num_to_keep - Remember the archive volume that holds the start of the bundle handed to a client
+ *
+ * return: nothing
+ *
+ *   bundle_start_lsa(in): LSA of the first log record of the bundle
+ *
+ * NOTE: cdc_Gl dies with the server, so the volume goes into the active log header. It keeps archive removal off
+ *       the logs cdc has yet to re-read while the client has not reconnected.
+ */
+void
+cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_start_lsa)
+{
+  int arv_num;
+
+  if (LSA_ISNULL (bundle_start_lsa))
+    {
+      return;
+    }
+
+  /* A session that is keeping up changes nothing here: the position is still in the active log and the header
+   * already names the volume it will land in. Settle that in read mode so that the log flush daemon, which
+   * takes LOG_CS in write mode for every group commit, is not queued behind an extract request. Read mode
+   * still shuts out archive removal, the only other writer of these fields. */
+  LOG_CS_ENTER_READ_MODE (thread_p);
+  if (!logpb_is_page_in_archive (bundle_start_lsa->pageid)
+      && LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr) && LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr) == log_Gl.hdr.nxarv_num
+      && !LSA_ISNULL (&cdc_Gl.arv_keep_lsa) && LSA_GE (bundle_start_lsa, &cdc_Gl.arv_keep_lsa))
+    {
+      LSA_COPY (&cdc_Gl.arv_keep_lsa, bundle_start_lsa);
+
+      cdc_log ("cdc_update_arv_num_to_keep : the bundle starting at (%lld|%d) keeps archive %d",
+	       LSA_AS_ARGS (bundle_start_lsa), log_Gl.hdr.nxarv_num);
+
+      LOG_CS_EXIT (thread_p);
+      return;
+    }
+  LOG_CS_EXIT (thread_p);
+
+  /* Archive removal narrows the header down from cdc_Gl.arv_keep_lsa under LOG_CS, so deciding and writing here
+   * has to be one unit: a removal round slipping in between would re-raise the header from the stale position,
+   * undoing a backward seek. LOG_CS also keeps nxarv_num and last_deleted_arv_num stable. */
+  LOG_CS_ENTER (thread_p);
+
+  if (!logpb_is_page_in_archive (bundle_start_lsa->pageid))
+    {
+      /* A page still in the active log ends up in the volume created next; no earlier one can hold it. */
+      arv_num = log_Gl.hdr.nxarv_num;
+    }
+  else if (LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr)
+	   && !LSA_ISNULL (&cdc_Gl.arv_keep_lsa) && LSA_GE (bundle_start_lsa, &cdc_Gl.arv_keep_lsa))
+    {
+      /* The header was computed for a page at or before this one, so it already keeps enough. */
+      arv_num = LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr);
+    }
+  else
+    {
+      /* A session is starting, or it was pointed backwards. Read which volume holds the page: this is the same
+       * call archive removal has always made, and logpb_fetch_from_archive() wants LOG_CS - held here - and guards
+       * the archive descriptor with LOG_ARCHIVE_CS. Keeping every volume that is left would also be correct, but
+       * nothing can narrow that down before a client reconnects, so a restart in between would leave the header
+       * naming the oldest volume alive and stop archive removal altogether. */
+      arv_num = logpb_get_archive_number (thread_p, bundle_start_lsa->pageid);
+      if (arv_num < 0)
+	{
+	  /* Could not be read. Keep every volume that is left rather than give one up. */
+	  arv_num = log_Gl.hdr.last_deleted_arv_num + 1;
+	}
+    }
+
+  LSA_COPY (&cdc_Gl.arv_keep_lsa, bundle_start_lsa);
+
+  /* Ahead of the check below, so that a session which is not moving the volume still shows up. */
+  cdc_log ("cdc_update_arv_num_to_keep : the bundle starting at (%lld|%d) keeps archive %d",
+	   LSA_AS_ARGS (bundle_start_lsa), arv_num);
+
+  if (LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr) && LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr) == arv_num)
+    {
+      LOG_CS_EXIT (thread_p);
+      return;
+    }
+
+  /* Which archive is being held back, and the position that asked for it, is what an operator needs after a
+   * failure, so it does not sit behind a debug parameter. The volume only moves when an archive is created. */
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ARCHIVE_KEPT, 3,
+	  (long long int) bundle_start_lsa->pageid, bundle_start_lsa->offset, arv_num);
+
+  /* The log header is not a logged page, so nothing redoes a change to it: an in-memory only update would be
+   * lost on a kill and the database would come back unprotected. Flush every change - the value tracks
+   * nxarv_num, which only moves when an archive is created, so this costs one write per archive, not per
+   * bundle. */
+  LOG_HDR_CDC_ARV_NUM_SET (&log_Gl.hdr, arv_num);
+  logpb_flush_header (thread_p);
+
+  /* logpb_flush_header() only writes, and the active log is not mounted for synchronous io, so an os
+   * crash can still lose this. Every other header field can be worked out again from the log or the
+   * archives; this one is the only record of a decision, so a lost write means no protection at all -
+   * exactly the failure this is meant to prevent. The value tracks archive creation, so the cost is
+   * one sync per archive. */
+  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+    {
+      /* fileio_synchronize () has already set the error. There is nothing to undo - the value is written,
+       * it is just not known to be on the medium yet - but it must not look durable when it is not. */
+      _er_log_debug (ARG_FILE_LINE,
+		     "The archive number to keep for cdc (%d) was written but could not be synced to disk.", arv_num);
+    }
+
+  LOG_CS_EXIT (thread_p);
+}
+
+/*
+ * cdc_release_arv_num_to_keep - Give up the archive volume that was being kept for cdc
+ *
+ * return: nothing
+ *
+ * NOTE: A client that ends its session is done with what it was handed, so the protection goes with it - that is what
+ *       archive removal did before the volume was recorded at all. Only a client that goes away without ending the
+ *       session leaves it in place, which is the case a restart has to be able to resume from.
+ */
+static void
+cdc_release_arv_num_to_keep (THREAD_ENTRY * thread_p)
+{
+  LOG_CS_ENTER (thread_p);
+
+  LSA_SET_NULL (&cdc_Gl.arv_keep_lsa);
+
+  if (LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr))
+    {
+      cdc_log ("cdc_release_arv_num_to_keep : giving up archive %d", LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr));
+
+      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
+      logpb_flush_header (thread_p);
+    }
+
+  LOG_CS_EXIT (thread_p);
 }
 
 #if defined (SERVER_MODE)
@@ -15045,6 +15215,8 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 	}
     }
 
+  cdc_update_arv_num_to_keep (thread_p, start_lsa);	/* also advances cdc_Gl.arv_keep_lsa */
+
   LSA_COPY (&cdc_Gl.consumer.start_lsa, start_lsa);	/* stores start lsa to consume */
   log_infos = cdc_Gl.consumer.log_info;
   memset (log_infos, 0, cdc_Gl.consumer.log_info_size);
@@ -15155,6 +15327,7 @@ cdc_initialize ()
 
   LSA_SET_NULL (&cdc_Gl.first_loginfo_queue_lsa);
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
+  LSA_SET_NULL (&cdc_Gl.arv_keep_lsa);
 
   cdc_Gl.producer.temp_logbuf[0].log_page_p =
     (LOG_PAGE *) PTR_ALIGN (cdc_Gl.producer.temp_logbuf[0].log_page, MAX_ALIGNMENT);
@@ -15205,9 +15378,11 @@ cdc_free_extraction_filter ()
 
 /* if client request for session end, it clean up all data structure */
 int
-cdc_cleanup ()
+cdc_cleanup (THREAD_ENTRY * thread_p)
 {
   cdc_log ("cdc_cleanup () : cleanup start");
+
+  cdc_release_arv_num_to_keep (thread_p);
 
   if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
     {

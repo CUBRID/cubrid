@@ -10913,6 +10913,12 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
 
       cdc_set_extraction_lsa (&start_lsa);
 
+      /* The client is about to be told to resume from here, so the volume holding that position has to be
+       * kept from now on. Waiting for the first bundle leaves a window: extraction can come back as
+       * ER_CDC_EXTRACTION_TIMEOUT before the volume is ever recorded, and archive removal is free to run
+       * in between. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
+
       cdc_reinitialize_queue (&start_lsa);
 
       cdc_wakeup_producer ();
@@ -10976,6 +10982,9 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 	}
 
       cdc_set_extraction_lsa (&start_lsa);
+
+      /* Same window as in scdc_find_lsa(): record the volume before the first bundle is attempted. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
 
       cdc_reinitialize_queue (&start_lsa);
 
@@ -11053,7 +11062,7 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-  error_code = cdc_cleanup ();
+  error_code = cdc_cleanup (thread_p);
 
   cdc_log ("%s : clean up for cdc thread has done.", __func__);
 

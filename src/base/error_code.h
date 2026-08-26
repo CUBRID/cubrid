@@ -1755,7 +1755,9 @@
 
 #define ER_METHOD_CALLBACK                          -1369
 
-#define ER_LAST_ERROR                               -1370
+#define ER_CDC_ARCHIVE_KEPT                         -1370
+
+#define ER_LAST_ERROR                               -1371
 
 
 /*

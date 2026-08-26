@@ -5295,6 +5295,11 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
       log_Gl.hdr.last_arv_num_for_syscrashes = -1;
       log_Gl.hdr.last_deleted_arv_num = -1;
 
+      /* The archive numbering starts over here, so the volume cdc was told to keep does not mean
+       * anything any more, and a database that has just been recovered has no cdc session to hand
+       * the position back. Leaving it set pins volumes that nothing is able to release. */
+      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
+
       if (log_Gl.append.vdes == NULL_VOLDES)
 	{
 	  /* Create the log active since we do not have one */
