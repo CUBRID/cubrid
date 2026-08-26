@@ -6164,8 +6164,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	}
 
 #if defined(SERVER_MODE)
-      /* Live path: the removal daemon and logpb_archive_active_log () both run while a backup is streaming
-       * archives. The bound is exclusive here - last_arv_num_to_delete is decremented below. */
+      /* Keep what a running backup still reads. Bound is exclusive: last_arv_num_to_delete is decremented below. */
       if (log_Gl.backup_first_arv_num_needed >= 0 && last_arv_num_to_delete > log_Gl.backup_first_arv_num_needed)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Archive removal capped at %d (was %d): a backup still needs %d and up\n",
@@ -6356,9 +6355,8 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
     }
 
 #if defined(SERVER_MODE)
-  /* Defensive. logpb_backup (), the only caller, has no pin left by the time it gets here - that is what the
-   * assert states. The clamp stays because this is the general "remove what is no longer needed" entry point:
-   * a future caller reached during a backup would delete archives it is still reading. Bound is inclusive here. */
+  /* Defensive: the only caller, logpb_backup (), has already dropped the pin. Kept for a future caller that could
+   * reach here during a backup. Bound is inclusive. */
   assert_release (log_Gl.backup_first_arv_num_needed == -1);
   if (log_Gl.backup_first_arv_num_needed >= 0 && last_deleted_arv_num > log_Gl.backup_first_arv_num_needed - 1)
     {
@@ -7817,7 +7815,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   int keys_vdes = NULL_VOLDES;
 #if defined(SERVER_MODE)
   int first_arv_needed = -1;	/* for self contained, consistent */
-  int last_arv_needed = -1;	/* last archive of the set frozen under the log critical section */
+  int last_arv_needed = -1;	/* last archive of the frozen set */
 
   int rv;
   time_t wait_checkpoint_begin_time;
@@ -8339,9 +8337,8 @@ loop:
 
   if (first_arv_needed < log_Gl.hdr.nxarv_num)
     {
-      /* Freeze the archive set and pin it against removal. The archives are transferred below, after the log
-       * critical section is released; they never change once nxarv_num has passed them, so the pin is all they
-       * need. logpb_backup_needed_archive_logs () releases each one as it copies it. */
+      /* Freeze the archive set and pin it against removal. It is transferred after the critical section is
+       * released; an archive never changes once nxarv_num has passed it, so the pin is all it needs. */
       last_arv_needed = log_Gl.hdr.nxarv_num - 1;
       log_Gl.backup_first_arv_num_needed = first_arv_needed;
     }
@@ -8359,10 +8356,8 @@ loop:
     }
 
   /*
-   * Write what is known so far, so a backup that dies from here on still leaves most of its unit names behind.
-   * This is no longer the last word on the file: the archive transfer below can add units, and the write after
-   * the backup completes is the complete one. If any unit is missing from it, restore asks the user for the
-   * subsequent backup unit num.
+   * Write what is known so far, so a backup that dies below still leaves most of its unit names behind. The
+   * write after the transfer is the complete one. If a unit is missing from it, restore asks the user for it.
    */
   error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
   if (error_code != NO_ERROR)
@@ -8392,9 +8387,8 @@ loop:
       thread_sleep (1000);
     }
 
-  /* The log is captured: the archive set is frozen and pinned, and the active log image goes with it. Everything
-   * below only reads files that cannot change, so release the critical section here and let transactions run
-   * while the archives are transferred. */
+  /* The log is captured and the archive set is pinned. Everything below only reads files that cannot change, so
+   * let transactions run while the archives are transferred. */
   LOG_CS_EXIT (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
@@ -8402,12 +8396,11 @@ loop:
 #if defined(SERVER_MODE)
   if (first_arv_needed >= 0 && first_arv_needed <= last_arv_needed)
     {
-      /* Left ungated on purpose: once per backup, and the only trace of a phase that ER_LOG_BACKUP_CS_ENTER and
-       * ER_LOG_BACKUP_CS_EXIT no longer bracket. The removal clamp messages are gated, they repeat. */
+      /* Once per backup: the only trace of a phase that ER_LOG_BACKUP_CS_ENTER and _EXIT no longer bracket. */
       _er_log_debug (ARG_FILE_LINE, "Backup of log archives %d to %d started outside the log critical section",
 		     first_arv_needed, last_arv_needed);
 
-      /* Clears the pin on the way out; the error path below clears it too if the transfer stopped early. */
+      /* Clears the pin as it goes; the error path clears it too. */
       error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, last_arv_needed);
       if (error_code != NO_ERROR)
 	{
@@ -8434,18 +8427,13 @@ loop:
       goto error;
     }
 
-  /* The backup exists and its volume names are on disk, and this is the last point that can still fail: the error
-   * path from here up would have called fileio_abort_backup (), which destroys every backup volume of this level.
-   * So the header learns about the backup only now, and it is the only place it does. That makes the outcome
-   * atomic with nothing to undo - a backup that fails or is killed anywhere above leaves the previous record
-   * exactly as it was, and a recorded backup is one that exists. Deleting archives, which cannot be undone
-   * either, waits for the same point.
+  /* Past the last point that can destroy the backup: every error path above calls fileio_abort_backup (), which
+   * removes all backup volumes of this level. Recording only here makes the outcome atomic with nothing to undo -
+   * a backup that fails or is killed leaves the previous record untouched. Archive deletion waits for the same
+   * point.
    *
-   * The active log image copied above was taken before this, so it carries whatever record the previous backup
-   * left rather than this one's. A database restored from this backup therefore reports that older backup as its
-   * last one, and an incremental taken on it chains onto that older backup instead of the one it was restored
-   * from. Restoring from a backup and then taking an incremental against it is not a supported flow - take a
-   * full backup on the restored database first. */
+   * The active log image was copied before this, so it carries the previous backup's record. Taking an
+   * incremental on a database restored from this backup is therefore not supported; take a full backup first. */
   LOG_CS_ENTER (thread_p);
   logpb_set_backup_info_in_header (&log_Gl.hdr, backup_level, session.bkup.bkuphdr->start_time, &chkpt_lsa);
   logpb_flush_header (thread_p);
@@ -9086,11 +9074,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
 		      if (to_volid == LOG_DBLOG_ACTIVE_VOLID)
 			{
-			  /* Hold the database lock on the active log we just put in place. Archives are restored after
-			   * it, and a server started in that gap would come up on a half restored log directory. Best
-			   * effort only: fileio_mount () also reports failure when it merely cannot write the lock
-			   * information file, and losing an advisory lock must not fail a restore that is otherwise
-			   * fine - that is what happened before this lock was taken at all. */
+			  /* Re-lock the active log: archives are restored after it, and a server started in that gap
+			   * would come up on a half restored log directory. Best effort - fileio_mount () also fails
+			   * when it merely cannot write the lock information file, which must not fail the restore. */
 			  lgat_vdes =
 			    fileio_mount (thread_p, db_fullname, to_volname, LOG_DBLOG_ACTIVE_VOLID, true, false);
 			  if (lgat_vdes == NULL_VOLDES)
@@ -11022,10 +11008,8 @@ logpb_backup_needed_archive_logs (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	  break;
 	}
 
-      /* Archive i is in the backup, so stop keeping it; after the last one nothing needs keeping. The pin has to
-       * move as we go: the log keeps making archives while we stream to a destination that may be slow, and
-       * holding the whole range would stop removal long enough to fill the log volume - and a full log volume
-       * takes the server down in logpb_archive_active_log (). */
+      /* Archive i is in the backup now. The pin must move as we go: holding the whole range while streaming to a
+       * slow destination stops removal long enough to fill the log volume, which takes the server down. */
       LOG_CS_ENTER (thread_p);
       log_Gl.backup_first_arv_num_needed = (i == last_arv_num) ? -1 : i + 1;
       LOG_CS_EXIT (thread_p);
