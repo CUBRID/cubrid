@@ -6168,9 +6168,9 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
        * archives. The bound is exclusive here - last_arv_num_to_delete is decremented below. */
       if (log_Gl.backup_first_arv_num_needed >= 0 && last_arv_num_to_delete > log_Gl.backup_first_arv_num_needed)
 	{
-	  log_archive_er_log ("Archive removal capped at %d (was %d): a backup still needs %d and up\n",
-			      log_Gl.backup_first_arv_num_needed - 1, last_arv_num_to_delete - 1,
-			      log_Gl.backup_first_arv_num_needed);
+	  _er_log_debug (ARG_FILE_LINE, "Archive removal capped at %d (was %d): a backup still needs %d and up\n",
+			 log_Gl.backup_first_arv_num_needed - 1, last_arv_num_to_delete - 1,
+			 log_Gl.backup_first_arv_num_needed);
 	  last_arv_num_to_delete = log_Gl.backup_first_arv_num_needed;
 	}
 #endif /* SERVER_MODE */
@@ -6362,9 +6362,8 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   assert_release (log_Gl.backup_first_arv_num_needed == -1);
   if (log_Gl.backup_first_arv_num_needed >= 0 && last_deleted_arv_num > log_Gl.backup_first_arv_num_needed - 1)
     {
-      log_archive_er_log ("Archive removal capped at %d (was %d): a backup still needs %d and up\n",
-			  log_Gl.backup_first_arv_num_needed - 1, last_deleted_arv_num,
-			  log_Gl.backup_first_arv_num_needed);
+      _er_log_debug (ARG_FILE_LINE, "Archive removal capped at %d (was %d): a backup still needs %d and up\n",
+		     log_Gl.backup_first_arv_num_needed - 1, last_deleted_arv_num, log_Gl.backup_first_arv_num_needed);
       last_deleted_arv_num = log_Gl.backup_first_arv_num_needed - 1;
     }
 #endif /* SERVER_MODE */
