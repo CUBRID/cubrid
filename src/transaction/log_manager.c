@@ -1136,6 +1136,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   log_Gl.run_nxchkpt_atpageid = NULL_PAGEID;	/* Don't run the checkpoint */
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
+  /* cdc_initialize() only runs in SERVER_MODE, so in SA mode this would keep the zero the global was loaded with.
+   * Zero is a valid pageid, so archive removal would take it for a position cdc still needs, hold on to the volume
+   * that contains it and write that volume into the log header, where it outlives the utility. */
+  LSA_SET_NULL (&cdc_Gl.arv_keep_lsa);
+
   log_Gl.loghdr_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
   if (log_Gl.loghdr_pgptr == NULL)
     {
