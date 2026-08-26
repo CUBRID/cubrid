@@ -1001,7 +1001,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 {
   OID rootclass_oid;		/* Oid of root class */
   HFID rootclass_hfid;		/* Heap for classes */
-  int tran_index = NULL_TRAN_INDEX;	/* Assigned transaction index */
+  int tran_index;		/* Assigned transaction index */
   TRAN_ISOLATION tran_isolation;	/* Desired client Isolation level */
   int tran_lock_wait_msecs;	/* Default lock waiting */
   int error_code = NO_ERROR;
@@ -1169,7 +1169,7 @@ error_exit:
 int
 boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
-  int tran_index;
+  int tran_index = NULL_TRAN_INDEX;
   TRAN_ISOLATION tran_isolation;
   int tran_lock_wait_msecs;
   TRAN_STATE transtate;
