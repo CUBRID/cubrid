@@ -34,6 +34,15 @@ if [ $# -eq 0 ]; then
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class"
 fi
 
+# This script restarts cub_master (see below), which would take down every
+# other database on the host — refuse to run if any server is active.
+active="$(cubrid server status 2>/dev/null | grep -c '^ Server' || true)"
+if [ "$active" -gt 0 ]; then
+  echo "ABORT: other CUBRID servers are running on this host; smoke.sh restarts cub_master and would stop them." >&2
+  cubrid server status >&2 || true
+  exit 2
+fi
+
 fail=0
 for sql in "$@"; do
   out="$(pwd)/m0_smoke.$$.out"
@@ -47,8 +56,10 @@ for sql in "$@"; do
   # to force a fresh master that inherits this iteration's env.
   cubrid service stop >/dev/null 2>&1 || true
 
+  # `|| true`: a failed start must fall through to the poll below and be
+  # reported as FAIL, not abort the whole run via set -e
   CUBRID_M0_TRACER_SQL="$sql" CUBRID_M0_TRACER_OUT="$out" \
-    cubrid server start "$DB" >/dev/null 2>&1
+    cubrid server start "$DB" >/dev/null 2>&1 || true
 
   ok=0
   for _ in $(seq 1 60); do
