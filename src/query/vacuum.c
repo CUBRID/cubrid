@@ -711,7 +711,8 @@ static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfi
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+			       VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages_out);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					    bool update_best_space_stat, bool unlatch_page);
@@ -1613,6 +1614,13 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   int error_code = NO_ERROR;	/* Error code. */
   int obj_index = 0;		/* Index used to iterate the object array. */
 
+  /* OOS pages emptied by this page's committed record removals (duplicates allowed — the batch
+   * reclaim dedupes). Accumulated across the whole record loop and reclaimed ONCE at `end`,
+   * after the home page is unfixed (R3): the reclaim work — an OOS stats header WRITE latch and
+   * a dealloc sysop per emptied page — must not extend the home page WRITE latch hold time, and
+   * page-batch scope makes the dedupe effective for adjacent records sharing OOS pages. */
+  VACUUM_OOS_TOUCHED_PAGES oos_touched_pages;
+
   /* Assert expected arguments. */
   assert (heap_objects != NULL);
   assert (n_heap_objects > 0);
@@ -1774,7 +1782,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (helper.can_vacuum == VACUUM_RECORD_REMOVE)
 	    {
 	      /* Record has been deleted and it can be removed. */
-	      error_code = vacuum_heap_record (thread_p, &helper);
+	      error_code = vacuum_heap_record (thread_p, &helper, &oos_touched_pages);
 	    }
 	  else if (helper.can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
 	    {
@@ -1792,9 +1800,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (error_code == ER_INTERRUPTED)
 	    {
 	      /* Not a vacuum failure: an interrupt (shutdown) was noticed while vacuuming the
-	       * record or during the post-vacuum OOS empty-page reclaim, which stops immediately
-	       * and propagates it. Stop this job too instead of pushing through the remaining
-	       * objects. */
+	       * record. Stop this job instead of pushing through the remaining objects. */
 	      vacuum_check_shutdown_interruption (thread_p, error_code);
 	      goto end;
 	    }
@@ -1939,6 +1945,26 @@ end:
   if (helper.home_page != NULL)
     {
       vacuum_heap_page_log_and_reset (thread_p, &helper, true, true);
+    }
+
+  /* The home page is now unfixed: reclaim the OOS pages this batch emptied, once per heap-page
+   * batch (R3) — transactions touching the heap page never wait behind the reclaim's header
+   * latch and dealloc sysops. If the batch ended with an error (interrupt included), the
+   * candidate list is simply dropped; the sysop-abort paths already truncated their own entries,
+   * so a surviving list holds committed work only. Dropping is safe: reclaim is idempotent and
+   * the pages stay allocated and empty on disk, where the growth-gate sweep planned for
+   * CBRD-26786 (the guarantee backstop) rediscovers them — until it lands, a dropped page is a
+   * bounded leak, matching the pre-R3 contract. */
+  if (error_code == NO_ERROR && !oos_touched_pages.empty ())
+    {
+      assert (!VFID_ISNULL (&helper.oos_vfid));
+      /* Only an interrupt comes back as an error (and stops the reclaim loop immediately);
+       * other reclaim failures are absorbed inside, leaving the pages for a later cycle. */
+      error_code = vacuum_oos_reclaim_empty_pages (thread_p, &helper.oos_vfid, &oos_touched_pages);
+      if (error_code != NO_ERROR)
+	{
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+	}
     }
 
   return error_code;
@@ -2425,18 +2451,24 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 /*
  * vacuum_heap_record () - Vacuum heap record.
  *
- * return	 : Error code.
- * thread_p (in) : Thread entry.
- * helper (in)	 : Vacuum heap helper.
+ * return			: Error code.
+ * thread_p (in)		: Thread entry.
+ * helper (in)			: Vacuum heap helper.
+ * oos_touched_pages_out (out)	: OOS pages emptied by this record's committed deletes are
+ *				  appended here (duplicates allowed). The caller reclaims them
+ *				  once per heap-page batch, AFTER the home page is unfixed (R3) —
+ *				  never here, where the home page WRITE latch is still held.
  */
 static int
-vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
+vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+		    VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages_out)
 {
   /* Assert expected arguments. */
   assert (helper != NULL);
   assert (helper->can_vacuum == VACUUM_RECORD_REMOVE);
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
+  assert (oos_touched_pages_out != NULL);
 
   /* Does removing this record touch more than the home page?  Two independent axes decide:
    *
@@ -2464,14 +2496,6 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   bool has_oos = (!VFID_ISNULL (&helper->oos_vfid)
 		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
 		  && heap_recdes_contains_oos (&helper->record));
-
-  /* OOS pages emptied by this record's deletes; reclaimed right after the sysop commits. */
-  VACUUM_OOS_TOUCHED_PAGES oos_touched_pages;
-
-  /* Set when the post-commit empty-page reclaim is interrupted. The record itself is already
-   * vacuumed and committed at that point, so the error is returned only after the record's
-   * bookkeeping below completes. */
-  int oos_reclaim_err = NO_ERROR;
 
   if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE || has_oos)
     {
@@ -2533,27 +2557,25 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
-      /* Delete OOS records (if any) before committing the sysop. */
+      /* Delete OOS records (if any) before committing the sysop. Emptied pages accumulate in
+       * oos_touched_pages_out; the caller reclaims them once per heap-page batch, after the home
+       * page is unfixed (R3). */
       if (has_oos)
 	{
+	  size_t n_touched_before = oos_touched_pages_out->size ();
 	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
-							     &oos_touched_pages);
+							     oos_touched_pages_out);
 	  if (oos_err != NO_ERROR)
 	    {
+	      /* The abort below restores this record's chunk deletes, so the pages it appended
+	       * are not empty after all — drop them, keeping the batch list committed-only. */
+	      oos_touched_pages_out->resize (n_touched_before);
 	      log_sysop_abort (thread_p);
 	      return oos_err;
 	    }
 	}
 
       log_sysop_commit (thread_p);
-
-      if (has_oos)
-	{
-	  /* Deletes are committed; return the pages this record emptied to the file manager. Only
-	   * an interrupt comes back as an error (and stops the reclaim loop immediately); other
-	   * reclaim failures are absorbed inside, leaving the pages for a later cycle. */
-	  oos_reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, &helper->oos_vfid, &oos_touched_pages);
-	}
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
@@ -2620,20 +2642,22 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
 					     helper->reusable);
 
+	  size_t n_touched_before = oos_touched_pages_out->size ();
 	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
-							     &oos_touched_pages);
+							     oos_touched_pages_out);
 	  if (oos_err != NO_ERROR)
 	    {
+	      /* The abort below restores this record's chunk deletes, so the pages it appended
+	       * are not empty after all — drop them, keeping the batch list committed-only. */
+	      oos_touched_pages_out->resize (n_touched_before);
 	      log_sysop_abort (thread_p);
 	      return oos_err;
 	    }
 
 	  log_sysop_commit (thread_p);
 
-	  /* Deletes are committed; return the pages this record emptied to the file manager. Only
-	   * an interrupt comes back as an error (and stops the reclaim loop immediately); other
-	   * reclaim failures are absorbed inside, leaving the pages for a later cycle. */
-	  oos_reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, &helper->oos_vfid, &oos_touched_pages);
+	  /* Deletes are committed. The emptied pages sit in oos_touched_pages_out; the caller
+	   * reclaims them once per heap-page batch, after the home page is unfixed (R3). */
 	}
       else
 	{
@@ -2654,13 +2678,6 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   assert (helper->forward_page == NULL);
 
   VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
-
-  if (oos_reclaim_err != NO_ERROR)
-    {
-      /* The record is fully vacuumed and counted; only the post-commit OOS empty-page reclaim
-       * was interrupted. Propagate so the worker can wind down. */
-      return oos_reclaim_err;
-    }
 
   return NO_ERROR;
 }
