@@ -14170,10 +14170,17 @@ cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_star
     }
   else
     {
-      /* A session is starting, or it was pointed backwards. Resolving the exact volume here would read the
-       * archive through logpb_fetch_from_archive(), whose cached descriptor makes that fatal from a request
-       * thread. Keep every volume left and let logpb_remove_archive_logs* narrow it down. */
-      arv_num = log_Gl.hdr.last_deleted_arv_num + 1;
+      /* A session is starting, or it was pointed backwards. Read which volume holds the page: this is the same
+       * call archive removal has always made, and logpb_fetch_from_archive() wants LOG_CS - held here - and guards
+       * the archive descriptor with LOG_ARCHIVE_CS. Keeping every volume that is left would also be correct, but
+       * nothing can narrow that down before a client reconnects, so a restart in between would leave the header
+       * naming the oldest volume alive and stop archive removal altogether. */
+      arv_num = logpb_get_archive_number (thread_p, bundle_start_lsa->pageid);
+      if (arv_num < 0)
+	{
+	  /* Could not be read. Keep every volume that is left rather than give one up. */
+	  arv_num = log_Gl.hdr.last_deleted_arv_num + 1;
+	}
     }
 
   LSA_COPY (&cdc_Gl.arv_keep_lsa, bundle_start_lsa);
