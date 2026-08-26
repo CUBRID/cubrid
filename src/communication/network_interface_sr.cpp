@@ -1862,8 +1862,8 @@ slocator_synonym_ddl (THREAD_ENTRY *thread_p, unsigned int rid, char *request, i
   int op;
   char *name;
   char *arg;
-  OID owner_oid;
-  OID target_owner_oid;
+  OID name_owner_oid;
+  OID arg_owner_oid;
   int success;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -1872,10 +1872,10 @@ slocator_synonym_ddl (THREAD_ENTRY *thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int (request, &op);
   ptr = or_unpack_string_nocopy (ptr, &name);
   ptr = or_unpack_string_nocopy (ptr, &arg);
-  ptr = or_unpack_oid (ptr, &owner_oid);
-  ptr = or_unpack_oid (ptr, &target_owner_oid);
+  ptr = or_unpack_oid (ptr, &name_owner_oid);
+  ptr = or_unpack_oid (ptr, &arg_owner_oid);
 
-  success = xlocator_synonym_ddl (thread_p, (LC_SYNONYM_DDL_OP) op, name, arg, &owner_oid, &target_owner_oid);
+  success = xlocator_synonym_ddl (thread_p, (LC_SYNONYM_DDL_OP) op, name, arg, &name_owner_oid, &arg_owner_oid);
 
   if (success != NO_ERROR)
     {
@@ -2027,7 +2027,8 @@ void
 slocator_rename_class_name (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *oldname, *newname;
-  OID owner_oid;
+  OID old_owner_oid;
+  OID new_owner_oid;
   OID class_oid;
   LC_FIND_CLASSNAME renamed;
   char *ptr;
@@ -2036,10 +2037,11 @@ slocator_rename_class_name (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 
   ptr = or_unpack_string_nocopy (request, &oldname);
   ptr = or_unpack_string_nocopy (ptr, &newname);
-  ptr = or_unpack_oid (ptr, &owner_oid);
+  ptr = or_unpack_oid (ptr, &old_owner_oid);
+  ptr = or_unpack_oid (ptr, &new_owner_oid);
   ptr = or_unpack_oid (ptr, &class_oid);
 
-  renamed = xlocator_rename_class_name (thread_p, oldname, newname, &owner_oid, &class_oid);
+  renamed = xlocator_rename_class_name (thread_p, oldname, newname, &old_owner_oid, &new_owner_oid, &class_oid);
   if (renamed == LC_CLASSNAME_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

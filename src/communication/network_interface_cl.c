@@ -1081,21 +1081,13 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char
 int
 locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg)
 {
-  OID owner_oid;
-  OID target_owner_oid;
+  OID name_owner_oid;
+  OID arg_owner_oid;
 
-  /* RENAME keys the entry by its new name; the other operations key it by the given one */
-  au_find_owner_oid_of_name ((op == LC_SYNONYM_DDL_RENAME) ? arg : name, &owner_oid);
-
-  /* ADD and ALTER take arg as the target the synonym points at */
-  if (op == LC_SYNONYM_DDL_ADD || op == LC_SYNONYM_DDL_ALTER)
-    {
-      au_find_owner_oid_of_name (arg, &target_owner_oid);
-    }
-  else
-    {
-      OID_SET_NULL (&target_owner_oid);
-    }
+  /* one owner per name the request carries: arg is the target for ADD and ALTER, and the
+   * new name for RENAME */
+  au_find_owner_oid_of_name (name, &name_owner_oid);
+  au_find_owner_oid_of_name (arg, &arg_owner_oid);
 
 #if defined(CS_MODE)
   int success = ER_FAILED;
@@ -1120,8 +1112,8 @@ locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg)
   ptr = or_pack_int (request, (int) op);
   ptr = pack_const_string (ptr, name);
   ptr = pack_const_string (ptr, arg);
-  ptr = or_pack_oid (ptr, &owner_oid);
-  ptr = or_pack_oid (ptr, &target_owner_oid);
+  ptr = or_pack_oid (ptr, &name_owner_oid);
+  ptr = or_pack_oid (ptr, &arg_owner_oid);
 
   req_error = net_client_request (NET_SERVER_LC_SYNONYM_DDL, request, request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
@@ -1138,7 +1130,7 @@ locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_synonym_ddl (thread_p, op, name, arg, &owner_oid, &target_owner_oid);
+  success = xlocator_synonym_ddl (thread_p, op, name, arg, &name_owner_oid, &arg_owner_oid);
 
   exit_server (*thread_p);
 
@@ -1345,9 +1337,11 @@ locator_delete_class_name (const char *class_name)
 LC_FIND_CLASSNAME
 locator_rename_class_name (const char *old_name, const char *new_name, OID * class_oid)
 {
-  OID owner_oid;
+  OID old_owner_oid;
+  OID new_owner_oid;
 
-  au_find_owner_oid_of_name (new_name, &owner_oid);
+  au_find_owner_oid_of_name (old_name, &old_owner_oid);
+  au_find_owner_oid_of_name (new_name, &new_owner_oid);
 
 #if defined(CS_MODE)
   LC_FIND_CLASSNAME renamed = LC_CLASSNAME_ERROR;
@@ -1361,7 +1355,7 @@ locator_rename_class_name (const char *old_name, const char *new_name, OID * cla
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   request_size = (length_const_string (old_name, &strlen1) + length_const_string (new_name, &strlen2) + OR_OID_SIZE
-		  + OR_OID_SIZE);
+		  + OR_OID_SIZE + OR_OID_SIZE);
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -1371,7 +1365,8 @@ locator_rename_class_name (const char *old_name, const char *new_name, OID * cla
 
   ptr = pack_const_string_with_length (request, old_name, strlen1);
   ptr = pack_const_string_with_length (ptr, new_name, strlen2);
-  ptr = or_pack_oid (ptr, &owner_oid);
+  ptr = or_pack_oid (ptr, &old_owner_oid);
+  ptr = or_pack_oid (ptr, &new_owner_oid);
   ptr = or_pack_oid (ptr, class_oid);
 
   req_error = net_client_request (NET_SERVER_LC_RENAME_CLASSNAME, request, request_size, reply,
@@ -1389,7 +1384,7 @@ locator_rename_class_name (const char *old_name, const char *new_name, OID * cla
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  renamed = xlocator_rename_class_name (thread_p, old_name, new_name, &owner_oid, class_oid);
+  renamed = xlocator_rename_class_name (thread_p, old_name, new_name, &old_owner_oid, &new_owner_oid, class_oid);
 
   exit_server (*thread_p);
 

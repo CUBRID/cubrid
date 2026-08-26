@@ -248,8 +248,9 @@ static LC_FIND_CLASSNAME xlocator_reserve_name_internal (THREAD_ENTRY * thread_p
 							 OID * owner_oid, OID * class_oid, const char *synonym_target,
 							 const OID * synonym_target_owner);
 static LC_FIND_CLASSNAME xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname,
-							const char *newname, OID * owner_oid, OID * class_oid,
-							const char *synonym_target, const OID * synonym_target_owner);
+							const char *newname, OID * old_owner_oid, OID * new_owner_oid,
+							OID * class_oid, const char *synonym_target,
+							const OID * synonym_target_owner);
 
 static int locator_filter_errid (THREAD_ENTRY * thread_p, int num_ignore_error_count, int *ignore_error_list);
 static int locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op);
@@ -1736,10 +1737,11 @@ error:
  * Note: Rename a class in transient form.
  */
 LC_FIND_CLASSNAME
-xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const char *newname, OID * owner_oid,
-			    OID * class_oid)
+xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const char *newname, OID * old_owner_oid,
+			    OID * new_owner_oid, OID * class_oid)
 {
-  return xlocator_rename_name_internal (thread_p, oldname, newname, owner_oid, class_oid, NULL, NULL);
+  return xlocator_rename_name_internal (thread_p, oldname, newname, old_owner_oid, new_owner_oid, class_oid, NULL,
+					NULL);
 }
 
 /*
@@ -1754,8 +1756,9 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const 
  *   synonym_target(in): Target unique name carried over to the new synonym entry; NULL for classes
  */
 static LC_FIND_CLASSNAME
-xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, const char *newname, OID * owner_oid,
-			       OID * class_oid, const char *synonym_target, const OID * synonym_target_owner)
+xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, const char *newname,
+			       OID * old_owner_oid, OID * new_owner_oid, OID * class_oid,
+			       const char *synonym_target, const OID * synonym_target_owner)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME renamed;
@@ -1774,7 +1777,7 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  renamed = xlocator_reserve_name_internal (thread_p, newname, owner_oid, class_oid, synonym_target,
+  renamed = xlocator_reserve_name_internal (thread_p, newname, new_owner_oid, class_oid, synonym_target,
 					    synonym_target_owner);
   if (renamed != LC_CLASSNAME_RESERVED)
     {
@@ -1788,14 +1791,14 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
       return LC_CLASSNAME_ERROR;
     }
 
-  entry = locator_get_classname_entry (newname);
+  entry = locator_get_entry (new_owner_oid, newname);
   if (entry != NULL)
     {
       assert (entry->e_current.action == LC_CLASSNAME_RESERVED);
 
       entry->e_current.action = LC_CLASSNAME_RESERVED_RENAME;
       renamed = xlocator_delete_class_name (thread_p, oldname);
-      entry = locator_get_classname_entry (oldname);
+      entry = locator_get_entry (old_owner_oid, oldname);
       if (renamed == LC_CLASSNAME_DELETED && entry != NULL)
 	{
 	  entry->e_current.action = LC_CLASSNAME_DELETED_RENAME;
@@ -1805,7 +1808,7 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
 	   * OIDs which the modified class list rejects; their transient cleanup is covered by the defence scan
 	   * in locator_drop_transient_class_name_entries. */
 	  if (synonym_target == NULL
-	      && log_add_to_modified_class_list (thread_p, newname, class_oid, owner_oid) != NO_ERROR)
+	      && log_add_to_modified_class_list (thread_p, newname, class_oid, new_owner_oid) != NO_ERROR)
 	    {
 	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 	      return LC_CLASSNAME_ERROR;
@@ -1820,7 +1823,7 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
 	}
       else
 	{
-	  entry = locator_get_classname_entry (newname);
+	  entry = locator_get_entry (new_owner_oid, newname);
 	  if (entry == NULL)
 	    {
 	      renamed = LC_CLASSNAME_ERROR;
@@ -1837,7 +1840,7 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
 	      goto error;
 	    }
 
-	  if (locator_drop_class_name_entry (thread_p, newname, owner_oid, NULL) != NO_ERROR)
+	  if (locator_drop_class_name_entry (thread_p, newname, new_owner_oid, NULL) != NO_ERROR)
 	    {
 	      csect_exit (thread_p, CSECT_CT_OID_TABLE);
 	      renamed = LC_CLASSNAME_ERROR;
@@ -1871,7 +1874,7 @@ error:
  */
 int
 xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char *name, const char *arg,
-		      OID * owner_oid, OID * target_owner_oid)
+		      OID * name_owner_oid, OID * arg_owner_oid)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME status;
@@ -1894,7 +1897,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
        * root class, so it must never point at a real (non-class) object. */
       OID_SET_NULL (&oid);
 
-      status = xlocator_reserve_name_internal (thread_p, name, owner_oid, &oid, arg, target_owner_oid);
+      status = xlocator_reserve_name_internal (thread_p, name, name_owner_oid, &oid, arg, arg_owner_oid);
       if (status != LC_CLASSNAME_RESERVED)
 	{
 	  if (status != LC_CLASSNAME_ERROR)
@@ -1917,7 +1920,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
       return ER_FAILED;
     }
 
-  entry = locator_get_classname_entry (name);
+  entry = locator_get_entry (name_owner_oid, name);
   if (!locator_entry_is_synonym (entry))
     {
       csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
@@ -1951,7 +1954,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 	    return ER_FAILED;
 	  }
 
-	entry = locator_get_classname_entry (name);
+	entry = locator_get_entry (name_owner_oid, name);
 	if (!locator_entry_is_synonym (entry)
 	    || (entry->e_tran_index != NULL_TRAN_INDEX && entry->e_tran_index != tran_index))
 	  {
@@ -1966,7 +1969,8 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 
 	csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
-	status = xlocator_rename_name_internal (thread_p, name, arg, owner_oid, &oid, target_copy, &target_owner_copy);
+	status = xlocator_rename_name_internal (thread_p, name, arg, name_owner_oid, arg_owner_oid, &oid, target_copy,
+						&target_owner_copy);
 	return (status == LC_CLASSNAME_RESERVED_RENAME) ? NO_ERROR : ER_FAILED;
       }
 
@@ -1977,7 +1981,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 	  return ER_FAILED;
 	}
 
-      entry = locator_get_classname_entry (name);
+      entry = locator_get_entry (name_owner_oid, name);
       if (!locator_entry_is_synonym (entry))
 	{
 	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
@@ -1993,7 +1997,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 	    {
 	      entry->e_current.action = LC_CLASSNAME_RESERVED;
 	      entry->e_tran_index = tran_index;
-	      error = locator_classname_entry_set_target (entry, arg, target_owner_oid);
+	      error = locator_classname_entry_set_target (entry, arg, arg_owner_oid);
 	      locator_incr_num_transient_classnames (tran_index);
 
 	      log_append_redo_data2 (thread_p, RVLOC_CLASSNAME_DUMMY, NULL, NULL, 0, 0, NULL);
@@ -2010,7 +2014,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 	    }
 	  if (error == NO_ERROR)
 	    {
-	      error = locator_classname_entry_set_target (entry, arg, target_owner_oid);
+	      error = locator_classname_entry_set_target (entry, arg, arg_owner_oid);
 	    }
 	}
       else
