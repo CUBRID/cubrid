@@ -31,7 +31,10 @@ set -eu
 DB="${1:?usage: smoke.sh <dbname> [sql...]}"
 shift
 if [ $# -eq 0 ]; then
-  set -- "SELECT 1" "SELECT COUNT(*) FROM db_class"
+  # the third case joins on an OID-typed catalog attribute so the server-side
+  # OID comparison path (mr_cmpval_object and its per-value assert) is exercised
+  set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
+    "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of"
 fi
 
 # This script restarts cub_master (see below), which would take down every
