@@ -802,6 +802,9 @@ extern "C"
 
 #if defined (SERVER_MODE)
   extern int sysprm_session_init_session_parameters (SESSION_PARAM ** session_params, int *found_session_parameters);
+  /* wf119: builds the in-process client's session-parameter array from the
+   * live process values (no network handshake to deliver them) */
+  extern SESSION_PARAM *sysprm_alloc_session_parameters_from_defaults (void);
 #endif				/* SERVER_MODE */
 
 #if defined (CS_MODE)

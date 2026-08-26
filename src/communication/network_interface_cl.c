@@ -4706,6 +4706,35 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   db_Session_id = id;
   *session_id = db_Session_id;
 
+#if defined (SERVER_MODE)
+  /* wf119: a real CS client hands its session-parameter array to the server
+   * in this request and the server stores it on the session state
+   * (network_interface_sr -> sysprm_session_init_session_parameters).  The
+   * in-process client must do the same, or session_parameters stays NULL and
+   * the first prm_get_*_value on the compile path reads through it
+   * (round-19 core: session_get_session_parameter, session.c:2828). */
+  if (result != ER_FAILED)
+    {
+      SESSION_PARAM *session_params = sysprm_alloc_session_parameters_from_defaults ();
+
+      if (session_params == NULL)
+	{
+	  result = ER_FAILED;
+	}
+      else
+	{
+	  int found_session_params = 0;
+
+	  /* ownership: stored on the session state, or replaced by the
+	   * session's existing array (which frees ours) — never freed here */
+	  if (sysprm_session_init_session_parameters (&session_params, &found_session_params) != NO_ERROR)
+	    {
+	      result = ER_FAILED;
+	    }
+	}
+    }
+#endif /* SERVER_MODE */
+
   /* get row count */
   if (result != ER_FAILED)
     {
@@ -7565,9 +7594,50 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
     }
 
   /* call the server routine of query execute */
+#if defined (SERVER_MODE)
+  /* wf119: the SERVER_MODE build of xqmgr_execute_query treats dbval_p as a
+   * PACKED buffer (a real CS server unpacks it off the wire), while the SA
+   * build casts it to a DB_VALUE array — handing it the raw array made
+   * unpack_domain read a garbage type tag (round-23 core, type_id=44).
+   * Pack here exactly like the CS client does.  Milestone-0 expedient: the
+   * final 0-hop design should pass values natively (#123/#124). */
+  {
+    char *senddata = NULL, *ptr;
+    int senddata_size = 0;
+
+    for (i = 0; i < dbval_cnt; i++)
+      {
+	senddata_size += OR_VALUE_ALIGNED_SIZE (&server_db_values[i]);
+      }
+    if (senddata_size > 0)
+      {
+	senddata = (char *) malloc (senddata_size);
+	if (senddata == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) senddata_size);
+	    goto cleanup;
+	  }
+	ptr = senddata;
+	for (i = 0; i < dbval_cnt; i++)
+	  {
+	    ptr = or_pack_db_value (ptr, &server_db_values[i]);
+	  }
+      }
+
+    list_id =
+      xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, senddata, &flag, clt_cache_time, srv_cache_time,
+			   query_timeout, NULL);
+
+    if (senddata != NULL)
+      {
+	free (senddata);
+      }
+  }
+#else /* !SERVER_MODE */
   list_id =
     xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
 			 srv_cache_time, query_timeout, NULL);
+#endif /* !SERVER_MODE */
 
 cleanup:
   if (server_db_values != NULL)
@@ -7689,9 +7759,48 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
 
   THREAD_ENTRY *thread_p = enter_server ();
 
+#if defined (SERVER_MODE)
+  /* wf119: same dual interpretation as xqmgr_execute_query — the SERVER_MODE
+   * build expects a PACKED value buffer, the SA build a DB_VALUE array; pack
+   * like the CS client does (see qmgr_execute_query, round-23 core) */
+  {
+    char *senddata = NULL, *ptr;
+    int i, senddata_size = 0;
+
+    for (i = 0; i < dbval_cnt; i++)
+      {
+	senddata_size += OR_VALUE_ALIGNED_SIZE (&dbval_ptr[i]);
+      }
+    if (senddata_size > 0)
+      {
+	senddata = (char *) malloc (senddata_size);
+	if (senddata == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) senddata_size);
+	    exit_server (*thread_p);
+	    return NULL;
+	  }
+	ptr = senddata;
+	for (i = 0; i < dbval_cnt; i++)
+	  {
+	    ptr = or_pack_db_value (ptr, &dbval_ptr[i]);
+	  }
+      }
+
+    regu_result =
+      xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, senddata, &flag,
+				       query_timeout);
+
+    if (senddata != NULL)
+      {
+	free (senddata);
+      }
+  }
+#else /* !SERVER_MODE */
   regu_result =
     xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, dbval_ptr, &flag,
 				     query_timeout);
+#endif /* !SERVER_MODE */
 
   exit_server (*thread_p);
 

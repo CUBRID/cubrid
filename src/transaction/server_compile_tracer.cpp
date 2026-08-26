@@ -128,6 +128,10 @@ tracer_main (char *server_name, char *sql, char *out_path)
       tracer_log (fp, "M0_TRACER: FAIL css_make_conn");
       goto retire;
     }
+  /* the session layer's debug invariant (session_state_verify_ref_count)
+   * counts references by walking css_Active_conn_anchor, so this conn must be
+   * discoverable there like any real client's (round-16 core) */
+  css_insert_into_active_conn_list (conn);
   entry_p->conn_entry = conn;
 
   /* this thread now acts as the in-process client: start in client context;

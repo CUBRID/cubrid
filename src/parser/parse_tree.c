@@ -1187,9 +1187,11 @@ parser_create_parser (void)
 
   INIT_HIDE_PASSWORD_INFO (&parser->hide_pwd_info);
 
-#if !defined (SERVER_MODE)
+  /* wf119: un-gated — the in-process client creates PARSER_CONTEXTs in the
+   * SERVER_MODE binary too, and pt_init_f/pt_apply_f stay NULL without this
+   * one-time table setup (round-17 core).  The assignment is an idempotent
+   * constant-table fill; concurrent parser creation is #123/#124 scope. */
   parser_init_func_vectors ();
-#endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
   rv = pthread_mutex_lock (&parser_id_lock);

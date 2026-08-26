@@ -40,6 +40,11 @@
 #include "object_representation.h"
 #include "set_object.h"
 
+/* wf119: WS_OID/OBJECT_HAS_TEMP_OID users are un-gated below, so the
+ * workspace header is needed in SERVER_MODE too (it only arrived
+ * transitively through the client-only includes) */
+#include "work_space.h"
+
 #if !defined(SERVER_MODE)
 #include "locator_cl.h"
 #include "object_accessor.h"
@@ -57,13 +62,11 @@
  * ws_pin appears in lots of places and its easier to define a stub.
  */
 
-#if !defined(SERVER_MODE)
 #if defined (SERVER_MODE)
 extern thread_local unsigned int db_on_server;	/* wf119 */
 #else
 extern unsigned int db_on_server;
 #endif
-#endif /* !SERVER_MODE */
 
 /*
  * COL_ARRAY_SIZE
@@ -1167,7 +1170,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	   * can be performed reliably.
 	   *
 	   */
-#if !defined(SERVER_MODE)
+	  /* wf119: un-gated — OBJECT values only come from client-context threads */
 	  if (col->sorted && col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	    {
 
@@ -1178,7 +1181,6 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 		  col->sorted = 0;
 		}
 	    }
-#endif
 
 	  /*
 	   * Unsorted sets were introduced to deal with temporary/permanent
@@ -1315,16 +1317,13 @@ col_put (COL * col, long colindex, DB_VALUE * val)
       /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
       if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
-#if defined (SERVER_MODE)
-	  assert_release (false);
-	  return ER_FAILED;
-#else /* !defined (SERVER_MODE) */
+	  /* wf119: client body kept (crash-5 family) — OBJECT values only come
+	   * from client-context threads; the old SERVER_MODE branch hard-failed */
 	  DB_OBJECT *obj = db_get_object (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {
 	      col->may_have_temporary_oids = 1;
 	    }
-#endif /* !defined (SERVER_MODE) */
 	}
 
       /* If this should be cloned, the caller should do it. This primitive just allows the assignment to the right
@@ -1455,16 +1454,14 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
       /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
       if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
-#if defined (SERVER_MODE)
-	  assert_release (false);
-	  return ER_FAILED;
-#else /* !defined (SERVER_MODE) */
+	  /* wf119: client body kept (crash 5, round-15 core) — OBJECT values
+	   * only come from client-context threads; the old SERVER_MODE branch
+	   * hard-failed with assert_release */
 	  DB_OBJECT *obj = db_get_object (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {
 	      col->may_have_temporary_oids = 1;
 	    }
-#endif /* !defined (SERVER_MODE)s */
 	}
 
       /* If this should be cloned, the caller should do it. This primitive just allows the assignment to the right
