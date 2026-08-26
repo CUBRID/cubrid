@@ -164,7 +164,9 @@ static int boot_Process_id = -1;
 
 static int boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation);
 static int install_system_metadata (void);
+#if !defined (SERVER_MODE)
 static void boot_shutdown_client_at_exit (void);
+#endif
 #if defined(CS_MODE)
 static int boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabilities, int opt_cap,
 				       bool discriminative, int connect_order, bool is_preferred_host);
@@ -215,7 +217,15 @@ boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
 
   boot_Set_client_at_exit = true;
   boot_Process_id = getpid ();
+#if !defined (SERVER_MODE)
+  /* wf119: the in-process client must not plant the CS client's exit-time
+   * shutdown inside cub_server — the client context is deliberately never
+   * shut down (see server_compile_tracer.cpp), and this handler would free
+   * client state after the thread manager's own teardown (tl_Entry_p
+   * already NULL -> assert in thread_get_thread_entry_info at exit). The
+   * server process's exit is owned by boot_shutdown_server_at_exit. */
   atexit (boot_shutdown_client_at_exit);
+#endif
 
   return NO_ERROR;
 }
@@ -1449,6 +1459,7 @@ boot_shutdown_client (bool is_er_final)
   return NO_ERROR;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * boot_shutdown_client_at_exit () - make sure that the client is shutdown at exit
  *
@@ -1476,6 +1487,7 @@ boot_shutdown_client_at_exit (void)
       (void) boot_shutdown_client (true);
     }
 }
+#endif /* !SERVER_MODE */
 
 /*
  * boot_donot_shutdown_client_at_exit: do not shutdown client at exist.

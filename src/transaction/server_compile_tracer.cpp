@@ -249,10 +249,12 @@ retire:
        * shutdown makes log_abort_all_active_transaction push its abort task
        * inline onto the main thread, whose execute() stamps Main_entry_p
        * with TS_FREE — the shutdown checkpoint's DWB wait then asserts
-       * (caught by instrumentation, see PR #181). The client-half globals
-       * (tm_Tran_index etc.) stay stale afterwards — acceptable, this
-       * context is never reused (milestone-0 file-header limitation). */
+       * (caught by instrumentation, see PR #181). */
       (void) boot_unregister_client (tm_Tran_index);
+      /* leave the client globals describing a logged-out context, so any
+       * exit-path BOOT_IS_CLIENT_RESTARTED() check stays a no-op; the rest
+       * of the context is never reused (milestone-0 file-header limitation) */
+      tm_Tran_index = NULL_TRAN_INDEX;
     }
   if (conn != NULL)
     {
