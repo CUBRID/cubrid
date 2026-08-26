@@ -14176,10 +14176,28 @@ cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_star
       return;
     }
 
+  /* A session that is keeping up changes nothing here: the position is still in the active log and the header
+   * already names the volume it will land in. Settle that in read mode so that the log flush daemon, which
+   * takes LOG_CS in write mode for every group commit, is not queued behind an extract request. Read mode
+   * still shuts out archive removal, the only other writer of these fields. */
+  LOG_CS_ENTER_READ_MODE (thread_p);
+  if (!logpb_is_page_in_archive (bundle_start_lsa->pageid)
+      && LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr) && LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr) == log_Gl.hdr.nxarv_num
+      && !LSA_ISNULL (&cdc_Gl.arv_keep_lsa) && LSA_GE (bundle_start_lsa, &cdc_Gl.arv_keep_lsa))
+    {
+      LSA_COPY (&cdc_Gl.arv_keep_lsa, bundle_start_lsa);
+
+      cdc_log ("cdc_update_arv_num_to_keep : the bundle starting at (%lld|%d) keeps archive %d",
+	       LSA_AS_ARGS (bundle_start_lsa), log_Gl.hdr.nxarv_num);
+
+      LOG_CS_EXIT (thread_p);
+      return;
+    }
+  LOG_CS_EXIT (thread_p);
+
   /* Archive removal narrows the header down from cdc_Gl.arv_keep_lsa under LOG_CS, so deciding and writing here
    * has to be one unit: a removal round slipping in between would re-raise the header from the stale position,
-   * undoing a backward seek. LOG_CS also keeps nxarv_num and last_deleted_arv_num stable, and costs one
-   * write-mode acquisition per extract request. */
+   * undoing a backward seek. LOG_CS also keeps nxarv_num and last_deleted_arv_num stable. */
   LOG_CS_ENTER (thread_p);
 
   if (!logpb_is_page_in_archive (bundle_start_lsa->pageid))
