@@ -5914,6 +5914,8 @@ locator_update_tree_classes (MOP * classes_mop_set, int num_classes)
 OID *
 locator_assign_permanent_oid (MOP mop)
 {
+  OID owner_oid;
+
   MOBJ object;			/* The object */
   int expected_length;		/* Expected length of disk object */
   OID perm_oid;			/* Permanent OID of object. Assigned as a side effect */
@@ -5974,7 +5976,9 @@ locator_assign_permanent_oid (MOP mop)
 
   /* Assign an address */
 
-  if (locator_assign_oid (hfid, &perm_oid, expected_length, ws_oid (class_mop), name) != NO_ERROR)
+  au_find_owner_oid_of_name (name, &owner_oid);
+
+  if (locator_assign_oid (hfid, &perm_oid, expected_length, ws_oid (class_mop), name, &owner_oid) != NO_ERROR)
     {
       if (er_errid () == ER_LK_UNILATERALLY_ABORTED)
 	{

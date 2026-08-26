@@ -2066,6 +2066,7 @@ slocator_assign_oid (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   HFID hfid;
   int expected_length;
   OID class_oid, perm_oid;
+  OID owner_oid;
   char *classname;
   int success;
   char *ptr;
@@ -2076,8 +2077,10 @@ slocator_assign_oid (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_int (ptr, &expected_length);
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_string_nocopy (ptr, &classname);
+  ptr = or_unpack_oid (ptr, &owner_oid);
 
-  success = ((xlocator_assign_oid (thread_p, &hfid, &perm_oid, expected_length, &class_oid, classname) == NO_ERROR)
+  success = ((xlocator_assign_oid (thread_p, &hfid, &perm_oid, expected_length, &class_oid, classname, &owner_oid)
+	      == NO_ERROR)
 	     ? NO_ERROR : ER_FAILED);
   if (success != NO_ERROR)
     {

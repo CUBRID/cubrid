@@ -1411,7 +1411,8 @@ locator_rename_class_name (const char *old_name, const char *new_name, OID * cla
  * NOTE:
  */
 int
-locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length, OID * class_oid, const char *class_name)
+locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length, OID * class_oid, const char *class_name,
+		    const OID * owner_oid)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
@@ -1423,7 +1424,7 @@ locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length, OID 
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_HFID_SIZE + OR_INT_SIZE + OR_OID_SIZE + length_const_string (class_name, &strlen);
+  request_size = (OR_HFID_SIZE + OR_INT_SIZE + OR_OID_SIZE + length_const_string (class_name, &strlen) + OR_OID_SIZE);
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -1435,6 +1436,7 @@ locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length, OID 
   ptr = or_pack_int (ptr, expected_length);
   ptr = or_pack_oid (ptr, class_oid);
   ptr = pack_const_string_with_length (ptr, class_name, strlen);
+  ptr = or_pack_oid (ptr, (OID *) owner_oid);
 
   req_error = net_client_request (NET_SERVER_LC_ASSIGN_OID, request, request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
@@ -1451,7 +1453,7 @@ locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length, OID 
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_assign_oid (thread_p, hfid, perm_oid, expected_length, class_oid, class_name);
+  success = xlocator_assign_oid (thread_p, hfid, perm_oid, expected_length, class_oid, class_name, owner_oid);
 
   exit_server (*thread_p);
 

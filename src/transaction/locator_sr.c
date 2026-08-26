@@ -148,7 +148,8 @@ static const INT32 locator_Pseudo_pageid_first = -2;
 static const INT32 locator_Pseudo_pageid_last = -0x7FFF;
 static INT32 locator_Pseudo_pageid_crt = -2;
 
-static int locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
+static int locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * owner_oid,
+				       const OID * class_oid);
 static const char *locator_bare_name (const char *name);
 static LOCATOR_CLASSNAME_ENTRY *locator_get_classname_entry (const char *classname);
 static LOCATOR_CLASSNAME_ENTRY *locator_get_entry (const OID * owner_oid, const char *classname);
@@ -2275,7 +2276,8 @@ start:
  *              current transaction.
  */
 static int
-locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid)
+locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * owner_oid,
+			    const OID * class_oid)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   int error_code = NO_ERROR;
@@ -2287,7 +2289,7 @@ locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, cons
       return ER_FAILED;
     }
 
-  entry = locator_get_classname_entry (classname);
+  entry = locator_get_entry (owner_oid, classname);
   if (entry == NULL || entry->e_tran_index != LOG_FIND_THREAD_TRAN_INDEX (thread_p))
     {
       assert (false);
@@ -3170,7 +3172,7 @@ error:
  */
 int
 xlocator_assign_oid (THREAD_ENTRY * thread_p, const HFID * hfid, OID * perm_oid, int expected_length, OID * class_oid,
-		     const char *classname)
+		     const char *classname, const OID * owner_oid)
 {
   int error_code = NO_ERROR;
 
@@ -3181,7 +3183,7 @@ xlocator_assign_oid (THREAD_ENTRY * thread_p, const HFID * hfid, OID * perm_oid,
 
   if (classname != NULL)
     {
-      error_code = locator_permoid_class_name (thread_p, classname, perm_oid);
+      error_code = locator_permoid_class_name (thread_p, classname, owner_oid, perm_oid);
       assert (error_code == NO_ERROR);
     }
 
@@ -6074,6 +6076,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 #endif
   bool isold_object;		/* Make sure that this is an old object */
+  OID record_owner;
   RECDES new_recdes;
   bool is_cached = false;
   LC_COPYAREA *cache_attr_copyarea = NULL;
@@ -6224,7 +6227,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       assert (strlen (classname) < 255);
 
       /* Indicate new oid to classname table */
-      if (locator_permoid_class_name (thread_p, classname, oid) != NO_ERROR)
+      or_class_owner (recdes, &record_owner);
+      if (locator_permoid_class_name (thread_p, classname, &record_owner, oid) != NO_ERROR)
 	{
 	  assert (false);	/* should be impossible */
 	  goto error1;
@@ -12744,7 +12748,7 @@ xlocator_assign_oid_batch (THREAD_ENTRY * thread_p, LC_OIDSET * oidset)
 	{
 	  error_code =
 	    xlocator_assign_oid (thread_p, &class_oidset->hfid, &oid->oid, oid->est_size, &class_oidset->class_oid,
-				 NULL);
+				 NULL, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
