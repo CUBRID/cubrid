@@ -73,7 +73,6 @@ au_find_owner_oid_of_name (const char *name, OID *owner_oid)
 {
   const char *dot;
   char owner_name[DB_MAX_USER_LENGTH];
-  MOP owner_mop;
   size_t len;
 
   OID_SET_NULL (owner_oid);
@@ -96,6 +95,29 @@ au_find_owner_oid_of_name (const char *name, OID *owner_oid)
     }
   memcpy (owner_name, name, len);
   owner_name[len] = '\0';
+
+  au_find_owner_oid (owner_name, owner_oid);
+}
+
+/*
+ * au_find_owner_oid () - Find the OID of the user of a given name
+ *
+ * return: void
+ *
+ *   owner_name(in): The user's name; NULL leaves the OID null
+ *   owner_oid(out): The user's OID, or null when there is no such user
+ */
+void
+au_find_owner_oid (const char *owner_name, OID *owner_oid)
+{
+  MOP owner_mop;
+
+  OID_SET_NULL (owner_oid);
+
+  if (owner_name == NULL || owner_name[0] == '\0')
+    {
+      return;
+    }
 
   owner_mop = au_find_user (owner_name);
   if (owner_mop == NULL)

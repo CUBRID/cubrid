@@ -438,8 +438,20 @@ pt_rewrite_resolved_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_CLASS_LOCK
       /* Match on the name that was sent, which is what this node still carries. */
       if (lcks->resolved_names[i] != NULL && intl_identifier_casecmp (lcks->classes[i], name->info.name.original) == 0)
 	{
+	  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
+
 	  name->info.name.original = pt_append_string (parser, NULL, lcks->resolved_names[i]);
 	  name->info.name.owner_defaulted = 0;
+
+	  /* it is another schema's class now, so the owner field has to say so too */
+	  if (sm_qualifier_name (name->info.name.original, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+	    {
+	      name->info.name.owner_name = pt_append_string (parser, NULL, qualifier_name);
+	    }
+	  else
+	    {
+	      name->info.name.owner_name = NULL;
+	    }
 	  break;
 	}
     }
@@ -966,15 +978,24 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
 static void
 pt_set_lock_owner (PT_CLASS_LOCKS * lcks, PT_NODE * spec, const char *realname)
 {
-  if (spec->info.spec.entity_name != NULL && spec->info.spec.entity_name->node_type == PT_NAME
-      && spec->info.spec.entity_name->info.name.owner_defaulted && Au_user != NULL)
+  PT_NODE *entity_name = spec->info.spec.entity_name;
+  OID *owner_oid = &lcks->owner_oids[lcks->num_classes];
+
+  if (entity_name == NULL || entity_name->node_type != PT_NAME)
     {
-      /* the name was completed with the connecting user, so no lookup is needed */
-      COPY_OID (&lcks->owner_oids[lcks->num_classes], ws_oid (Au_user));
+      au_find_owner_oid_of_name (realname, owner_oid);
       return;
     }
 
-  au_find_owner_oid_of_name (realname, &lcks->owner_oids[lcks->num_classes]);
+  if (entity_name->info.name.owner_defaulted && Au_user != NULL)
+    {
+      /* the name was completed with the connecting user, so no lookup is needed */
+      COPY_OID (owner_oid, ws_oid (Au_user));
+      return;
+    }
+
+  /* the name says who owns it, so the name does not have to be taken apart again */
+  au_find_owner_oid (PT_NAME_OWNER_NAME (entity_name), owner_oid);
 }
 
 /*
