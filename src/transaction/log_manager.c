@@ -6263,10 +6263,11 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
   fprintf (out_fp,
 	   "     Next_archive_pageid = %lld at active_phy_pageid = %d,\n"
 	   "     Next_archive_num = %d, Last_archiv_num_for_syscrashes = %d,\n"
-	   "     Last_deleted_arv_num = %d, has_logging_been_skipped = %d,\n"
+	   "     Last_deleted_arv_num = %d, Cdc_arv_num_to_keep = %d, has_logging_been_skipped = %d,\n"
 	   "     bkup_lsa: level0 = %lld|%d, level1 = %lld|%d, level2 = %lld|%d,\n     Log_prefix = %s\n",
 	   (long long int) log_header_p->nxarv_pageid, log_header_p->nxarv_phy_pageid, log_header_p->nxarv_num,
 	   log_header_p->last_arv_num_for_syscrashes, log_header_p->last_deleted_arv_num,
+	   LOG_HDR_CDC_ARV_NUM_IS_SET (log_header_p) ? LOG_HDR_CDC_ARV_NUM_GET (log_header_p) : -1,
 	   log_header_p->has_logging_been_skipped, LSA_AS_ARGS (&log_header_p->bkup_level0_lsa),
 	   LSA_AS_ARGS (&log_header_p->bkup_level1_lsa), LSA_AS_ARGS (&log_header_p->bkup_level2_lsa),
 	   log_header_p->prefix_name);
