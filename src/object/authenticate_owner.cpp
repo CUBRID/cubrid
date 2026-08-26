@@ -239,17 +239,6 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
       goto end;
     }
 
-  /* unique_name */
-  db_value_clear (&value);
-  db_make_string (&value, serial_new_name);
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_UNIQUE_NAME, &value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      is_abort = true;
-      goto end;
-    }
-
   /* owner */
   db_value_clear (&value);
   db_make_object (&value, owner_mop);

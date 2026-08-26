@@ -692,6 +692,8 @@ static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE
 				   HEAP_CACHE_ATTRINFO * attr_info);
 static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 
+static DB_MIDXKEY *heap_midxkey_key_from_values (OR_INDEX * index, DB_VALUE ** values, DB_MIDXKEY * midxkey,
+						 TP_DOMAIN ** key_domain);
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
 					 TP_DOMAIN ** key_domain,
@@ -12972,6 +12974,101 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
 #endif
 
 /*
+ * heap_midxkey_key_from_values () - Build an index key out of given values
+ *
+ * return: midxkey, or NULL on failure
+ *
+ *   index(in): the index the key belongs to
+ *   values(in): one value per indexed attribute, in the index's own order
+ *   midxkey(in/out): buffer-backed key to fill in
+ *   key_domain(out): the key's domain
+ *
+ * Note: heap_midxkey_key_get () makes a key out of a row. A search has values and no row
+ *       to read them from, and the client's builder is not linked into the server.
+ */
+static DB_MIDXKEY *
+heap_midxkey_key_from_values (OR_INDEX * index, DB_VALUE ** values, DB_MIDXKEY * midxkey, TP_DOMAIN ** key_domain)
+{
+  char *nullmap_ptr;
+  OR_BUF buf;
+  TP_DOMAIN *set_domain = NULL;
+  TP_DOMAIN *next_domain = NULL;
+  TP_DOMAIN *td, *next;
+  int num_atts, i;
+
+  assert (index != NULL && index->func_index_info == NULL);
+  assert (PTR_ALIGN (midxkey->buf, INT_ALIGNMENT) == midxkey->buf);
+
+  num_atts = index->n_atts;
+
+  or_init (&buf, midxkey->buf, -1);
+
+  nullmap_ptr = midxkey->buf;
+  or_multi_clear_header (nullmap_ptr, num_atts);
+  or_advance (&buf, or_multi_header_size (num_atts));
+
+  for (i = 0; i < num_atts; i++)
+    {
+      or_multi_put_element_offset (nullmap_ptr, num_atts, CAST_BUFLEN (buf.ptr - buf.buffer), i);
+
+      if (!DB_IS_NULL (values[i]))
+	{
+	  index->atts[i]->domain->type->index_writeval (&buf, values[i]);
+	  or_multi_set_not_null (nullmap_ptr, i);
+	}
+
+      if (i == 0)
+	{
+	  set_domain = tp_domain_copy (index->atts[i]->domain, 0);
+	  next_domain = set_domain;
+	}
+      else
+	{
+	  next_domain->next = tp_domain_copy (index->atts[i]->domain, 0);
+	  next_domain = next_domain->next;
+	}
+
+      if (next_domain == NULL)
+	{
+	  assert (false);
+	  goto error;
+	}
+
+      if (index->asc_desc[i] != 0)
+	{
+	  next_domain->is_desc = 1;
+	}
+    }
+
+  or_multi_put_size_offset (nullmap_ptr, num_atts, CAST_BUFLEN (buf.ptr - buf.buffer));
+
+  midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
+  midxkey->ncolumns = num_atts;
+  midxkey->domain = NULL;
+
+  *key_domain = tp_domain_construct (DB_TYPE_MIDXKEY, (DB_OBJECT *) 0, num_atts, 0, set_domain);
+  if (*key_domain == NULL)
+    {
+      assert (false);
+      goto error;
+    }
+
+  *key_domain = tp_domain_cache (*key_domain);
+  midxkey->domain = *key_domain;
+
+  return midxkey;
+
+error:
+  for (td = set_domain, next = NULL; td != NULL; td = next)
+    {
+      next = td->next;
+      tp_domain_free (td);
+    }
+
+  return NULL;
+}
+
+/*
  * heap_midxkey_key_get () -
  *   return:
  *   recdes(in):
@@ -17158,9 +17255,12 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 {
   int idx_in_cache;
   HEAP_ATTRVALUE *value;
-  DB_VALUE dbvalue_numeric, *dbvalue, key_val;
+  DB_VALUE dbvalue_numeric, *dbvalue, key_val, name_val, owner_val;
   OR_ATTRIBUTE *att;
   OID serial_class_oid;
+  OID serial_owner_oid = OID_INITIALIZER;
+  RECDES class_recdes = RECDES_INITIALIZER;
+  const char *serial_bare_name;
   LC_FIND_CLASSNAME status;
   OR_CLASSREP *classrep;
   BTID serial_btid;
@@ -17228,12 +17328,25 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	      goto exit_on_error;
 	    }
 
-	  if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, cached_serial_name,
-			       (int) strlen (cached_serial_name), LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
+	  /* The serial is named by its owner and its own name together, which is what its
+	   * index is keyed by, so the two go into the key separately. */
+	  if (heap_get_class_record (thread_p, &(attr_info->class_oid), &class_recdes, scan_cache, PEEK) != S_SUCCESS)
 	    {
 	      ret = ER_FAILED;
 	      goto exit_on_error;
 	    }
+	  or_class_owner (&class_recdes, &serial_owner_oid);
+
+	  serial_bare_name = strchr (cached_serial_name, '.');
+	  serial_bare_name = (serial_bare_name != NULL) ? serial_bare_name + 1 : cached_serial_name;
+
+	  if (db_make_varchar (&name_val, DB_MAX_IDENTIFIER_LENGTH, serial_bare_name,
+			       (int) strlen (serial_bare_name), LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+	  db_make_oid (&owner_val, &serial_owner_oid);
 
 	  status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, NULL, &serial_class_oid, NULL_LOCK);
 	  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
@@ -17253,6 +17366,20 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	    {
 	      BTREE_SEARCH search_result;
 	      OID serial_oid;
+	      DB_VALUE *key_values[2] = { &name_val, &owner_val };
+	      DB_MIDXKEY midxkey;
+	      TP_DOMAIN *key_domain = NULL;
+	      char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT];
+
+	      midxkey.buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
+
+	      if (heap_midxkey_key_from_values (&classrep->indexes[0], key_values, &midxkey, &key_domain) == NULL)
+		{
+		  heap_classrepr_free_and_init (classrep, &idx_in_cache);
+		  ret = ER_FAILED;
+		  goto exit_on_error;
+		}
+	      db_make_midxkey (&key_val, &midxkey);
 
 	      BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
 	      search_result =

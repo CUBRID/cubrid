@@ -993,7 +993,6 @@ namespace cubschema
 		   CT_SERIAL_NAME,
 		   // columns
     {
-      {"unique_name", "string"},
       {"name", "string"},
       {"owner", AU_USER_CLASS_NAME},
       {"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
@@ -1013,8 +1012,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_unique_name", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_UNIQUE, "", {"name", "owner", nullptr}, false},
+      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_name_owner", {"name", "owner", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"current_val", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"increment_val", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"max_val", nullptr}, false},
@@ -1926,8 +1924,6 @@ namespace cubschema
 		   CTV_SERIAL_NAME,
 		   // columns
     {
-      /* kept for compatibility */
-      {"unique_name", format_varchar (255)},
       {"name", format_varchar (255)},
       {"owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},

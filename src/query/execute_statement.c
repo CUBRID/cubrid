@@ -890,14 +890,6 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
       goto end;
     }
 
-  /* unique_name */
-  db_make_string (&value, serial_name);
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_UNIQUE_NAME, &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
 
   /* name */
   db_make_string (&value, sm_remove_qualifier_name (serial_name));
@@ -1117,14 +1109,6 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
       goto update_auto_increment_error;
     }
 
-  /* unique_name */
-  db_make_string (&value, serial_name);
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_UNIQUE_NAME, &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      goto update_auto_increment_error;
-    }
 
   /* name */
   db_make_string (&value, sm_remove_qualifier_name (serial_name));
@@ -1526,12 +1510,74 @@ do_get_obj_id (DB_IDENTIFIER * obj_id, DB_OBJECT * class_mop, const char *name, 
  *
  * Note:
  */
+/*
+ * do_find_serial_of_owner () - Find a serial by its owner and its own name
+ *   return: MOP, or NULL when no serial of that name belongs to that owner
+ *   serial_obj_id(out): the serial's OID, set when one is found
+ *   serial_class_mop(in): the serial catalog class
+ *   unique_name(in): the name a user goes by, owner and all
+ */
+static MOP
+do_find_serial_of_owner (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *unique_name)
+{
+  const char *attr_names[2] = { SERIAL_ATTR_NAME, SERIAL_ATTR_OWNER };
+  DB_VALUE values[2];
+  DB_VALUE *value_ptrs[2] = { &values[0], &values[1] };
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char lower_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  DB_IDENTIFIER *db_id;
+  MOP owner_mop, mop;
+  int save;
+
+  OID_SET_NULL (serial_obj_id);
+
+  if (serial_class_mop == NULL || unique_name == NULL
+      || intl_identifier_lower_string_size (unique_name) >= DB_MAX_IDENTIFIER_LENGTH)
+    {
+      return NULL;
+    }
+
+  intl_identifier_lower (unique_name, lower_name);
+
+  if (sm_qualifier_name (lower_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      return NULL;
+    }
+
+  owner_mop = au_find_user (owner_name);
+  if (owner_mop == NULL)
+    {
+      er_clear ();
+      return NULL;
+    }
+
+  db_make_string (&values[0], sm_remove_qualifier_name (lower_name));
+  db_make_object (&values[1], owner_mop);
+
+  AU_SAVE_AND_DISABLE (save);
+  mop = db_find_multi_unique (serial_class_mop, 2, (char **) attr_names, value_ptrs, DB_FETCH_READ);
+  AU_RESTORE (save);
+
+  if (mop == NULL)
+    {
+      return NULL;
+    }
+
+  db_id = ws_identifier (mop);
+  if (db_id != NULL)
+    {
+      *serial_obj_id = *db_id;
+    }
+
+  return mop;
+}
+
 MOP
 do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *serial_name)
 {
   MOP serial_mop = NULL;
 
-  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, serial_name, SERIAL_ATTR_UNIQUE_NAME);
+  serial_mop = do_find_serial_of_owner (serial_obj_id, serial_class_mop, serial_name);
   if (serial_mop)
     {
       return serial_mop;
@@ -1552,7 +1598,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
 	      return NULL;
 	    }
 
-	  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, other_serial_name, SERIAL_ATTR_UNIQUE_NAME);
+	  serial_mop = do_find_serial_of_owner (serial_obj_id, serial_class_mop, other_serial_name);
 	  if (serial_mop)
 	    {
 	      return serial_mop;

@@ -419,7 +419,9 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 
       string_buffer serial_name_strbuf;
 
-      sl_print_att_value (serial_name_strbuf, SERIAL_ATTR_UNIQUE_NAME, inst_tp->assignments, inst_tp->nassigns);
+      /* the row names its owner in a column of its own, which this statement cannot spell,
+       * so the serial is named on its own here */
+      sl_print_att_value (serial_name_strbuf, SERIAL_ATTR_NAME, inst_tp->assignments, inst_tp->nassigns);
       char *serial_name = trim_single_quote ((char *) serial_name_strbuf.get_buffer (), serial_name_strbuf.len ());
 
       string_buffer alter_strbuf;
