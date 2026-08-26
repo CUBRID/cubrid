@@ -4465,12 +4465,8 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 	       * it will already be marked as deleted as part of the normal transaction cleanup
 	       */
 	      error = db_drop (trigger->object);
-	      if (error == ER_HEAP_UNKNOWN_OBJECT)
-		{
-		  error = NO_ERROR;
-		}
-
-	      if (error == NO_ERROR)
+	      /* if the object has been deleted, just ignore the error */
+	      if (error == NO_ERROR || error == ER_HEAP_UNKNOWN_OBJECT)
 		{
 		  /*
 		   * flush, decache object; no need to check if the object was indeed deleted;
