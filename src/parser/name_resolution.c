@@ -7040,7 +7040,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
       SM_CLASS *class_;
 
       class_name = name->info.name.original;
-      classop = db_find_class_with_purpose (class_name, for_update);
+      classop = db_find_class_with_purpose (name->info.name.owner_name, class_name, for_update);
       if (classop != NULL)
 	{
 	  if (for_update)
@@ -8165,7 +8165,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 	  if (range && entity
 	      && (pt_user_specified_name_compare (range->info.name.original, index->info.name.resolved) == 0))
 	    {
-	      classop = db_find_class (entity->info.name.original);
+	      classop = db_find_class_of_owner (entity->info.name.owner_name, entity->info.name.original);
 	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -8222,7 +8222,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
       entity = spec->info.spec.entity_name;
       if (range != NULL && entity != NULL && entity->info.name.original != NULL)
 	{
-	  classop = db_find_class (entity->info.name.original);
+	  classop = db_find_class_of_owner (entity->info.name.owner_name, entity->info.name.original);
 	  if (classop == NULL)
 	    {
 	      continue;
@@ -11065,7 +11065,7 @@ pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * sp
     }
 
   /* Verify if current spec is a partition of the saved entity name */
-  root_op = db_find_class_with_purpose (root_name, for_update);
+  root_op = db_find_class_with_purpose (NULL, root_name, for_update);
   if (root_op == NULL)
     {
       PT_ERRORc (parser, spec, er_msg ());

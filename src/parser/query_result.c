@@ -198,7 +198,7 @@ pt_set_domain_class (SM_DOMAIN * dom, const PT_NODE * nam, const DB_OBJECT * vir
 	}
       else
 	{
-	  dom->class_mop = db_find_class (nam->info.name.original);
+	  dom->class_mop = db_find_class_of_owner (nam->info.name.owner_name, nam->info.name.original);
 	  if (dom->class_mop != NULL)
 	    {
 	      COPY_OID (&dom->class_oid, &(dom->class_mop->oid_info.oid));
@@ -1456,7 +1456,7 @@ pt_find_users_class (PARSER_CONTEXT * parser, PT_NODE * name)
 {
   DB_OBJECT *object;
 
-  object = db_find_class (name->info.name.original);
+  object = db_find_class_of_owner (name->info.name.owner_name, name->info.name.original);
 
   if (!object)
     {

@@ -2094,7 +2094,9 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
 
       if (dt->info.data_type.entity && dt->info.data_type.entity->node_type == PT_NAME)
 	{
-	  class_obj = (DB_OBJECT *) db_find_class (dt->info.data_type.entity->info.name.original);
+	  class_obj =
+	    (DB_OBJECT *) db_find_class_of_owner (dt->info.data_type.entity->info.name.owner_name,
+						  dt->info.data_type.entity->info.name.original);
 	  if (!class_obj)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_DOMAIN_NOT_A_CLASS, 1,

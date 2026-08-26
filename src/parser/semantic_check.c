@@ -2037,7 +2037,8 @@ pt_type_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_type, const PT_NO
   /* If the destination isn't resolved, resolve it. */
   if (!dest_type->info.name.db_object)
     {
-      dest_type->info.name.db_object = db_find_class (dest_type->info.name.original);
+      dest_type->info.name.db_object =
+	db_find_class_of_owner (dest_type->info.name.owner_name, dest_type->info.name.original);
       dest_type->info.name.meta_class = PT_CLASS;
     }
 
@@ -8864,7 +8865,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  db_obj = db_find_class (name->info.name.original);
+  db_obj = db_find_class_of_owner (name->info.name.owner_name, name->info.name.original);
   if (db_obj == NULL)
     {
       PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A_CLASS, name->info.name.original);
@@ -9411,7 +9412,7 @@ pt_is_defined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
       PT_NODE *name = data_type->info.data_type.entity;
       if (name && name->node_type == PT_NAME)
 	{
-	  if (!db_find_class (name->info.name.original))
+	  if (!db_find_class_of_owner (name->info.name.owner_name, name->info.name.original))
 	    {
 	      PT_ERRORmf (parser, data_type, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED,
 			  name->info.name.original);
@@ -9775,7 +9776,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		      return;
 		    }
 
-		  if ((db_obj = db_find_class_with_purpose (entity_name, true)) != NULL)
+		  if ((db_obj = db_find_class_with_purpose (NULL, entity_name, true)) != NULL)
 		    {
 		      prev_node = free_node;
 		      free_node = free_node->next;
@@ -9828,8 +9829,8 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		      cls_name1 = name1->info.name.original;
 		      cls_name2 = name2->info.name.original;
 
-		      db_obj1 = db_find_class_with_purpose (cls_name1, true);
-		      db_obj2 = db_find_class_with_purpose (cls_name2, true);
+		      db_obj1 = db_find_class_with_purpose (name1->info.name.owner_name, cls_name1, true);
+		      db_obj2 = db_find_class_with_purpose (name2->info.name.owner_name, cls_name2, true);
 
 		      if ((db_obj1 == db_obj2)
 			  || ((tmp2->info.spec.only_all == PT_ALL) && db_is_subclass (db_obj1, db_obj2)))
@@ -12489,7 +12490,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      if (node->info.index.indexed_class)
 		{
 		  name = node->info.index.indexed_class->info.spec.entity_name;
-		  db_obj = db_find_class (name->info.name.original);
+		  db_obj = db_find_class_of_owner (name->info.name.owner_name, name->info.name.original);
 
 		  if (db_obj == NULL)
 		    {
@@ -12796,7 +12797,7 @@ pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p, bool for_update)
   if (p->node_type != PT_NAME)
     return 0;
 
-  return db_find_class_with_purpose (p->info.name.original, for_update);
+  return db_find_class_with_purpose (p->info.name.owner_name, p->info.name.original, for_update);
 }
 
 

@@ -1000,17 +1000,26 @@ locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_oid, int cl
  * return:
  *
  *   class_name(in):
+ *   owner_name(in): Owner the name belongs to; NULL to take it from the name itself
  *   class_oid(in):
  *   lock(in):
  *
  * NOTE:
  */
 LC_FIND_CLASSNAME
-locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char *synonym_target)
+locator_find_class_oid (const char *class_name, const char *owner_name, OID * class_oid, LOCK lock,
+			char *synonym_target)
 {
   OID owner_oid;
 
-  au_find_owner_oid_of_name (class_name, &owner_oid);
+  if (owner_name != NULL)
+    {
+      au_find_owner_oid (owner_name, &owner_oid);
+    }
+  else
+    {
+      au_find_owner_oid_of_name (class_name, &owner_oid);
+    }
 
 #if defined(CS_MODE)
   LC_FIND_CLASSNAME found = LC_CLASSNAME_ERROR;

@@ -4831,7 +4831,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       // fetch classes and check authorization
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
 	{
-	  class_mop = db_find_class (cls->info.name.original);
+	  class_mop = db_find_class_of_owner (cls->info.name.owner_name, cls->info.name.original);
 	  if (class_mop != NULL)
 	    {
 	      cls->info.name.db_object = class_mop;
@@ -5287,7 +5287,7 @@ do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  obj = db_find_class (cls->info.name.original);
+  obj = db_find_class_of_owner (cls->info.name.owner_name, cls->info.name.original);
   if (!obj)
     {
       return ER_OBJ_INVALID_ARGUMENTS;
@@ -6412,7 +6412,9 @@ convert_speclist_to_objlist (DB_OBJLIST ** triglist, PT_NODE * specnode)
 	      if (espec->event_target != NULL)
 		{
 		  target = &(espec->event_target->info.event_target);
-		  class_ = db_find_class (target->class_name->info.name.original);
+		  class_ =
+		    db_find_class_of_owner (target->class_name->info.name.owner_name,
+					    target->class_name->info.name.original);
 		  if (class_ == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
@@ -19191,7 +19193,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 	  goto end;
 	}
 
-      old_target_obj = locator_find_class_with_purpose (old_target_name, false);
+      old_target_obj = locator_find_class_with_purpose (NULL, old_target_name, false);
       old_target_obj_id = ws_identifier (old_target_obj);
     }
 
@@ -19676,7 +19678,7 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
-  old_target_obj = locator_find_class_with_purpose (old_target_name, false);
+  old_target_obj = locator_find_class_with_purpose (NULL, old_target_name, false);
   old_target_obj_id = ws_identifier (old_target_obj);
 
   error = db_drop (instance_obj);
@@ -19876,7 +19878,7 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
-  old_target_obj = locator_find_class_with_purpose (old_target_name, false);
+  old_target_obj = locator_find_class_with_purpose (NULL, old_target_name, false);
   old_target_obj_id = ws_identifier (old_target_obj);
 
   instance_obj = dbt_finish_object (obj_tmpl);

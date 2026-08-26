@@ -140,7 +140,8 @@ static int locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * rec
 				      MOBJ * hint_class_p, bool * call_fun, LC_COPYAREA_ONEOBJ * obj);
 static int locator_cache (LC_COPYAREA * copy_area, MOP hint_class_mop, MOBJ hint_class,
 			  void (*fun) (MOP mop, MOBJ object, void *args), void *args);
-static LC_FIND_CLASSNAME locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop);
+static LC_FIND_CLASSNAME locator_find_class_by_name (const char *owner_name, const char *classname, LOCK lock,
+						     MOP * class_mop);
 static int locator_mflush (MOP mop, void *mf);
 static int locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop, MOBJ clazz, HFID * hfid,
 				      bool decache, bool isone_mflush);
@@ -157,7 +158,8 @@ static void locator_mflush_set_dirty (MOP mop, MOBJ ignore_object, void *ignore_
 static void locator_keep_mops (MOP mop, MOBJ object, void *kmops);
 static int locator_instance_decache (MOP mop, void *ignore);
 static int locator_save_nested_mops (LC_LOCKSET * lockset, void *save_mops);
-static LC_FIND_CLASSNAME locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_oid, LOCK lock);
+static LC_FIND_CLASSNAME locator_find_class_by_oid (MOP * class_mop, const char *owner_name, const char *classname,
+						    OID * class_oid, LOCK lock);
 static LIST_MOPS *locator_fun_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose, int (*fun) (MOBJ class_obj),
 					    LC_FETCH_VERSION_TYPE * force_fetch_version_type);
 static int locator_internal_flush_instance (MOP inst_mop, bool decache);
@@ -2986,7 +2988,7 @@ locator_free_list_mops (LIST_MOPS * mops)
 }
 
 static LC_FIND_CLASSNAME
-locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_oid, LOCK lock)
+locator_find_class_by_oid (MOP * class_mop, const char *owner_name, const char *classname, OID * class_oid, LOCK lock)
 {
   LC_FIND_CLASSNAME found;
   int error_code;
@@ -2996,7 +2998,7 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
 
   /* Need to check the classname to oid in the server */
   *class_mop = NULL;
-  found = locator_find_class_oid (classname, class_oid, lock, synonym_target);
+  found = locator_find_class_oid (classname, owner_name, class_oid, lock, synonym_target);
   if (synonym_target[0] != '\0')
     {
       /* the name resolved through a synonym; continue with its target class */
@@ -3075,7 +3077,7 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
  *              should be check for an error.
  */
 static LC_FIND_CLASSNAME
-locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop)
+locator_find_class_by_name (const char *owner_name, const char *classname, LOCK lock, MOP * class_mop)
 {
   OID class_oid;		/* Class object identifier */
   LOCK current_lock;
@@ -3096,14 +3098,14 @@ locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop)
   *class_mop = ws_find_class (classname);
   if (*class_mop == NULL)
     {
-      found = locator_find_class_by_oid (class_mop, classname, &class_oid, lock);
+      found = locator_find_class_by_oid (class_mop, owner_name, classname, &class_oid, lock);
       return found;
     }
 
   current_lock = ws_get_lock (*class_mop);
   if (current_lock == NULL_LOCK)
     {
-      found = locator_find_class_by_oid (class_mop, classname, &class_oid, lock);
+      found = locator_find_class_by_oid (class_mop, owner_name, classname, &class_oid, lock);
       return found;
     }
 
@@ -3139,7 +3141,7 @@ locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop)
 MOP
 locator_find_class (const char *classname)
 {
-  return locator_find_class_with_purpose (classname, false);
+  return locator_find_class_with_purpose (NULL, classname, false);
 }
 
 /*
@@ -3147,6 +3149,7 @@ locator_find_class (const char *classname)
  *
  * return: MOP
  *
+ *   owner_name(in): Owner the name belongs to; NULL to take it from the name itself
  *   classname(in): Name of class to search
  *   for_update: true, if search the class for update purpose
  *
@@ -3154,7 +3157,7 @@ locator_find_class (const char *classname)
  *              object may be brought to the client for future references.
  */
 MOP
-locator_find_class_with_purpose (const char *classname, bool for_update)
+locator_find_class_with_purpose (const char *owner_name, const char *classname, bool for_update)
 {
   MOP class_mop = NULL;
   LOCK lock = SCH_S_LOCK;	/* This is done to avoid some deadlocks caused by our parsing */
@@ -3162,7 +3165,7 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
 
   lock = for_update ? SCH_M_LOCK : SCH_S_LOCK;
 
-  found = locator_find_class_by_name (classname, lock, &class_mop);
+  found = locator_find_class_by_name (owner_name, classname, lock, &class_mop);
   if (found == LC_CLASSNAME_EXIST)
     {
       return class_mop;
@@ -3187,7 +3190,7 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
 	      return NULL;
 	    }
 
-	  found = locator_find_class_by_name (other_class_name, lock, &class_mop);
+	  found = locator_find_class_by_name (NULL, other_class_name, lock, &class_mop);
 	  if (found == LC_CLASSNAME_EXIST)
 	    {
 	      return class_mop;
@@ -3229,7 +3232,7 @@ locator_find_query_class (const char *classname, DB_FETCH_MODE purpose, MOP * cl
 
   lock = locator_fetch_mode_to_lock (purpose, LC_CLASS);
 
-  return locator_find_class_by_name (classname, lock, class_mop);
+  return locator_find_class_by_name (NULL, classname, lock, class_mop);
 }
 #endif
 

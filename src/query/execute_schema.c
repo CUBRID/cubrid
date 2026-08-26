@@ -897,7 +897,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
       while (super_node)
 	{
-	  super_class = db_find_class (super_node->info.name.original);
+	  super_class = db_find_class_of_owner (super_node->info.name.owner_name, super_node->info.name.original);
 
 	  if (super_class == NULL)
 	    {
@@ -929,7 +929,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_DROP_SUPCLASS:
       for (p = alter->info.alter.super.sup_class_list; p && p->node_type == PT_NAME; p = p->next)
 	{
-	  sup_class = db_find_class (p->info.name.original);
+	  sup_class = db_find_class_of_owner (p->info.name.owner_name, p->info.name.original);
 	  if (sup_class == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -950,7 +950,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_DROP_RESOLUTION:
       for (p = alter->info.alter.super.resolution_list; p && p->node_type == PT_RESOLUTION; p = p->next)
 	{
-	  sup_class = db_find_class (p->info.resolution.of_sup_class_name->info.name.original);
+	  sup_class =
+	    db_find_class_of_owner (p->info.resolution.of_sup_class_name->info.name.owner_name,
+				    p->info.resolution.of_sup_class_name->info.name.original);
 	  attr_mthd_name = p->info.resolution.attr_mthd_name->info.name.original;
 	  error = dbt_drop_resolution (ctemplate, sup_class, attr_mthd_name);
 	  if (error != NO_ERROR)
@@ -1697,7 +1699,9 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
     get_reverse_unique_index_type (alter->info.alter.alter_clause.index.reverse,
 				   alter->info.alter.alter_clause.index.unique);
 
-  obj = db_find_class (alter->info.alter.entity_name->info.name.original);
+  obj =
+    db_find_class_of_owner (alter->info.alter.entity_name->info.name.owner_name,
+			    alter->info.alter.entity_name->info.name.original);
   if (obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2126,7 +2130,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  entity_list = spec->info.spec.flat_entity_list;
 		  for (entity = entity_list; entity != NULL; entity = entity->next)
 		    {
-		      class_mop = db_find_class (entity->info.name.original);
+		      class_mop = db_find_class_of_owner (entity->info.name.owner_name, entity->info.name.original);
 		      if (class_mop == NULL)
 			{
 			  assert (er_errid () != NO_ERROR);
@@ -2235,7 +2239,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  entity_list = spec->info.spec.flat_entity_list;
 		  for (entity = entity_list; entity != NULL; entity = entity->next)
 		    {
-		      class_mop = db_find_class (entity->info.name.original);
+		      class_mop = db_find_class_of_owner (entity->info.name.owner_name, entity->info.name.original);
 		      if (class_mop == NULL)
 			{
 			  assert (er_errid () != NO_ERROR);
@@ -3538,7 +3542,7 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   cls = statement->info.index.indexed_class->info.spec.entity_name;
 
-  obj = db_find_class (cls->info.name.original);
+  obj = db_find_class_of_owner (cls->info.name.owner_name, cls->info.name.original);
   if (obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -9223,7 +9227,7 @@ do_add_supers (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const PT_NOD
 
   while (supers && (error == NO_ERROR))
     {
-      super_class = db_find_class (supers->info.name.original);
+      super_class = db_find_class_of_owner (supers->info.name.owner_name, supers->info.name.original);
       if (super_class == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -9260,7 +9264,9 @@ do_add_resolutions (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const P
 
   while (resolution && (error == NO_ERROR))
     {
-      resolution_super_mop = db_find_class (resolution->info.resolution.of_sup_class_name->info.name.original);
+      resolution_super_mop =
+	db_find_class_of_owner (resolution->info.resolution.of_sup_class_name->info.name.owner_name,
+				resolution->info.resolution.of_sup_class_name->info.name.original);
 
       if (resolution_super_mop == NULL)
 	{
@@ -9800,7 +9806,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
       while (super_node)
 	{
-	  super_class = db_find_class (super_node->info.name.original);
+	  super_class = db_find_class_of_owner (super_node->info.name.owner_name, super_node->info.name.original);
 
 	  if (super_class == NULL)
 	    {
@@ -11082,7 +11088,7 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
   user = alter->info.alter.alter_clause.user.user_name;
   assert (user != NULL);
 
-  class_mop = sm_find_class (class_->info.name.original);
+  class_mop = sm_find_class_of_owner (class_->info.name.owner_name, class_->info.name.original);
   if (class_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (error);

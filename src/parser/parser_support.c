@@ -7197,7 +7197,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string
   int is_class = 0;
 
   /* look up class in all schema's */
-  class_op = sm_find_class (table_name->info.name.original);
+  class_op = sm_find_class_of_owner (table_name->info.name.owner_name, table_name->info.name.original);
   if (class_op == NULL)
     {
       if (er_errid () != NO_ERROR)

@@ -18295,7 +18295,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 			has_error = true;
 			goto end;
 		      }
-		    entity->info.name.db_object = db_find_class (entity->info.name.original);
+		    entity->info.name.db_object =
+		      db_find_class_of_owner (entity->info.name.owner_name, entity->info.name.original);
 		  }
 
 		if (entity == NULL || entity->info.name.db_object == NULL)

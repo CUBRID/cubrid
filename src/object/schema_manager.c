@@ -5502,7 +5502,20 @@ sm_class_constraints (MOP classop)
 MOP
 sm_find_class (const char *name)
 {
-  return sm_find_class_with_purpose (name, false);
+  return sm_find_class_with_purpose (NULL, name, false);
+}
+
+/*
+ * sm_find_class_of_owner() - Given an owner and a class name, return the class object
+ *   return: class object
+ *   owner_name(in): owner the name belongs to; NULL to take it from the name itself
+ *   name(in): class name
+ */
+
+MOP
+sm_find_class_of_owner (const char *owner_name, const char *name)
+{
+  return sm_find_class_with_purpose (owner_name, name, false);
 }
 
 /*
@@ -5510,12 +5523,13 @@ sm_find_class (const char *name)
  *    All this really does is call locator_find_class but it makes sure
  *    the search is case insensitive.
  *   return: class object
+ *   owner_name(in): owner the name belongs to; NULL to take it from the name itself
  *   name(in): class name
  *   for_update(in): true, if search the class for update purpose
  */
 
 MOP
-sm_find_class_with_purpose (const char *name, bool for_update)
+sm_find_class_with_purpose (const char *owner_name, const char *name, bool for_update)
 {
   char realname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   MOP class_mop = NULL;
@@ -5529,8 +5543,21 @@ sm_find_class_with_purpose (const char *name, bool for_update)
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
+#if !defined(NDEBUG)
+  if (owner_name != NULL)
+    {
+      char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
+
+      /* while the owner is in the name as well as passed alongside it, the two have to agree */
+      if (sm_qualifier_name (realname, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+	{
+	  assert (intl_identifier_casecmp (owner_name, qualifier_name) == 0);
+	}
+    }
+#endif
+
   /* the locator resolves synonyms to their target class within the same server probe */
-  class_mop = locator_find_class_with_purpose (realname, for_update);
+  class_mop = locator_find_class_with_purpose (owner_name, realname, for_update);
 
   return class_mop;
 }
@@ -5562,7 +5589,7 @@ sm_find_synonym (const char *name)
       return NULL;
     }
 
-  synonym_class_obj = locator_find_class_with_purpose (CT_SYNONYM_NAME, false);
+  synonym_class_obj = locator_find_class_with_purpose (NULL, CT_SYNONYM_NAME, false);
   if (synonym_class_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
