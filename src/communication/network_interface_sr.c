@@ -11053,7 +11053,7 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-  error_code = cdc_cleanup ();
+  error_code = cdc_cleanup (thread_p);
 
   cdc_log ("%s : clean up for cdc thread has done.", __func__);
 

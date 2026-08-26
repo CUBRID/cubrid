@@ -242,7 +242,7 @@ extern int cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, i
 extern int cdc_initialize ();
 extern int cdc_finalize ();
 extern int cdc_free_extraction_filter ();
-extern int cdc_cleanup ();
+extern int cdc_cleanup (THREAD_ENTRY * thread_p);
 extern void cdc_cleanup_consumer ();
 extern int cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa);
 extern int cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info);

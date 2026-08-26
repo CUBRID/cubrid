@@ -345,6 +345,7 @@ static bool cdc_is_filtered_class (OID classoid);
 static bool cdc_is_filtered_user (char *user);
 
 static void cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_start_lsa);
+static void cdc_release_arv_num_to_keep (THREAD_ENTRY * thread_p);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -14204,6 +14205,33 @@ cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_star
   LOG_CS_EXIT (thread_p);
 }
 
+/*
+ * cdc_release_arv_num_to_keep - Give up the archive volume that was being kept for cdc
+ *
+ * return: nothing
+ *
+ * NOTE: A client that ends its session is done with what it was handed, so the protection goes with it - that is what
+ *       archive removal did before the volume was recorded at all. Only a client that goes away without ending the
+ *       session leaves it in place, which is the case a restart has to be able to resume from.
+ */
+static void
+cdc_release_arv_num_to_keep (THREAD_ENTRY * thread_p)
+{
+  LOG_CS_ENTER (thread_p);
+
+  LSA_SET_NULL (&cdc_Gl.arv_keep_lsa);
+
+  if (LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr))
+    {
+      cdc_log ("cdc_release_arv_num_to_keep : giving up archive %d", LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr));
+
+      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
+      logpb_flush_header (thread_p);
+    }
+
+  LOG_CS_EXIT (thread_p);
+}
+
 #if defined (SERVER_MODE)
 void
 cdc_loginfo_producer_daemon_init ()
@@ -15290,9 +15318,11 @@ cdc_free_extraction_filter ()
 
 /* if client request for session end, it clean up all data structure */
 int
-cdc_cleanup ()
+cdc_cleanup (THREAD_ENTRY * thread_p)
 {
   cdc_log ("cdc_cleanup () : cleanup start");
+
+  cdc_release_arv_num_to_keep (thread_p);
 
   if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
     {
