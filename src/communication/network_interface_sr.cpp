@@ -11858,10 +11858,12 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   for (int i = 0; i < context.num_class; i++)
     {
       OID classoid = OID_INITIALIZER;
+      OID owner_oid;
 
       ptr = or_unpack_string_nocopy (ptr, &classname);
+      ptr = or_unpack_oid (ptr, &owner_oid);
 
-      status = xlocator_find_class_oid (thread_p, classname, NULL, &classoid, NULL_LOCK);
+      status = xlocator_find_class_oid (thread_p, classname, &owner_oid, &classoid, NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_CLASS, 1, classname);

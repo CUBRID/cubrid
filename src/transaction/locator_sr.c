@@ -346,14 +346,6 @@ locator_get_entry (const OID * owner_oid, const char *classname)
   LOCATOR_CLASSNAME_KEY key;
   LOCATOR_CLASSNAME_ENTRY *entry;
 
-  if (owner_oid == NULL && locator_bare_name (classname) != classname)
-    {
-      /* A qualified name whose owner the caller could not supply. What is left of these:
-       * SHOW HEAP and SHOW INDEX, cubrid dumpheap, flashback, and the loaddb server loader.
-       * They resolve through the joined name index, and it goes away with the last of them. */
-      return locator_get_classname_entry (classname);
-    }
-
   locator_classname_key_set (&key, classname, owner_oid);
 
   entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames_owned, &key);

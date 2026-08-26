@@ -11459,7 +11459,7 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
 
   num_class = da_size (class_list);
 
-  /* request : num class | class name list | user | start_time | end_time */
+  /* request : num class | (class name, owner) list | user | start_time | end_time */
   request_size = OR_INT_SIZE + or_packed_string_length (user, NULL) + OR_INT64_SIZE + OR_INT64_SIZE;
 
   for (int i = 0; i < num_class; i++)
@@ -11469,7 +11469,7 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
 	  /* TODO : er_set() */
 	  return ER_FAILED;
 	}
-      request_size += or_packed_string_length (classname, NULL);
+      request_size += or_packed_string_length (classname, NULL) + OR_OID_SIZE;
     }
 
   request = (char *) malloc (request_size + MAX_ALIGNMENT);
@@ -11484,12 +11484,16 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
   ptr = or_pack_int (ptr, num_class);
   for (int i = 0; i < num_class; i++)
     {
+      OID owner_oid;
+
       if (da_get (class_list, i, classname) != NO_ERROR)
 	{
 	  free_and_init (request);
 	  return ER_FAILED;
 	}
+      au_find_owner_oid_of_name (classname, &owner_oid);
       ptr = or_pack_string (ptr, classname);
+      ptr = or_pack_oid (ptr, &owner_oid);
     }
   ptr = or_pack_string (ptr, user);
   ptr = or_pack_int64 (ptr, start_time);

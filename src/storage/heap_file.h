@@ -559,7 +559,8 @@ extern int heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 
 extern void heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records);
 #if defined (SA_MODE)
-extern int heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name);
+extern int heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name,
+				const OID * owner_oid);
 #endif
 extern void heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp, HEAP_CACHE_ATTRINFO * attr_info, bool dump_schema);
 #if defined (CUBRID_DEBUG)

@@ -1728,6 +1728,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP)
     {
       bool dump_records;
+      OID owner_oid;
+
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
 
       if (class_name != NULL)
@@ -1739,7 +1741,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		  goto error_exit;
 		}
 	    }
-	  error_code = heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
+	  au_find_owner_oid_of_name (class_name, &owner_oid);
+	  error_code = heap_dump_heap_file (thread_p, outfp, dump_records, class_name, &owner_oid);
 	  if (error_code != NO_ERROR)
 	    {
 	      if (error_code == ER_LC_UNKNOWN_CLASSNAME)
@@ -1780,7 +1783,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		    }
 		}
 
-	      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, input_class);
+	      au_find_owner_oid_of_name (input_class, &owner_oid);
+	      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, input_class, &owner_oid);
 
 	      if (error_code != NO_ERROR)
 		{

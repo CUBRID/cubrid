@@ -41,6 +41,8 @@
 #include "schema_system_catalog_constants.h"
 
 #include <cstring>
+#include <functional>
+#include <string>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -115,16 +117,170 @@ namespace cubload
     register_class_with_attributes (class_name->val, cmd_spec);
   }
 
+  /*
+   * scan_users () - Run fn for every user, stopping as soon as it returns false
+   *
+   * return: NO_ERROR, or an error raised by the scan
+   *
+   * Note: The class names in a load file are read here on the server, which has no user
+   *       name to OID map of its own, so the one place that needs one reads _db_user.
+   */
+  static int
+  scan_users (cubthread::entry &thread_ref, const std::function<bool (const OID &, const char *)> &fn)
+  {
+#define CATCLS_USER_ATTR_IDX_NAME 11
+    HEAP_CACHE_ATTRINFO attr_info;
+    HEAP_SCANCACHE scan_cache;
+    MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+    RECDES recdes = RECDES_INITIALIZER;
+    HFID hfid = HFID_INITIALIZER;
+    OID inst_oid = OID_INITIALIZER;
+    int error = NO_ERROR;
+
+    error = heap_attrinfo_start (&thread_ref, oid_User_class_oid, -1, NULL, &attr_info);
+    assert (attr_info.num_values != -1);
+    if (error != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return error;
+      }
+
+    error = heap_get_class_info (&thread_ref, oid_User_class_oid, &hfid, NULL, NULL);
+    if (error == NO_ERROR)
+      {
+	mvcc_snapshot = logtb_get_mvcc_snapshot (&thread_ref);
+	if (mvcc_snapshot == NULL)
+	  {
+	    ASSERT_ERROR_AND_SET (error);
+	  }
+      }
+
+    if (error != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	heap_attrinfo_end (&thread_ref, &attr_info);
+	return error;
+      }
+
+    error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, mvcc_snapshot);
+    if (error != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	heap_attrinfo_end (&thread_ref, &attr_info);
+	return error;
+      }
+
+    while (error == NO_ERROR)
+      {
+	HEAP_ATTRVALUE *heap_value = NULL;
+	SCAN_CODE scan_code;
+	int i;
+
+	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
+	if (scan_code == S_END)
+	  {
+	    break;
+	  }
+	if (scan_code != S_SUCCESS)
+	  {
+	    ASSERT_ERROR_AND_SET (error);
+	    break;
+	  }
+
+	scan_code =
+		heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache, PEEK,
+					  NULL_CHN);
+	if (scan_code == S_SNAPSHOT_NOT_SATISFIED || scan_code == S_DOESNT_EXIST)
+	  {
+	    continue;
+	  }
+	if (scan_code != S_SUCCESS)
+	  {
+	    ASSERT_ERROR_AND_SET (error);
+	    break;
+	  }
+
+	error = heap_attrinfo_read_dbvalues (&thread_ref, &inst_oid, &recdes, &attr_info);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    break;
+	  }
+
+	for (i = 0, heap_value = attr_info.values; i < attr_info.num_values; i++, heap_value++)
+	  {
+	    if (heap_value->attrid == CATCLS_USER_ATTR_IDX_NAME)
+	      {
+		break;
+	      }
+	  }
+
+	if (i != attr_info.num_values && !fn (inst_oid, db_get_string (&heap_value->dbvalue)))
+	  {
+	    break;
+	  }
+      }
+
+    heap_scancache_end (&thread_ref, &scan_cache);
+    heap_attrinfo_end (&thread_ref, &attr_info);
+
+    return error;
+#undef CATCLS_USER_ATTR_IDX_NAME
+  }
+
+  /*
+   * find_user_oid () - Find the user of a given name
+   *
+   * return: NO_ERROR, or an error raised by the scan; a name that matches nobody leaves
+   *         user_oid null rather than raising
+   */
+  static int
+  find_user_oid (cubthread::entry &thread_ref, const char *user_name, OID &user_oid)
+  {
+    char downcase_name[DB_MAX_USER_LENGTH] = { '\0' };
+
+    OID_SET_NULL (&user_oid);
+
+    if (user_name == NULL || user_name[0] == '\0')
+      {
+	return NO_ERROR;
+      }
+
+    intl_identifier_lower (user_name, downcase_name);
+
+    return scan_users (thread_ref, [&] (const OID &oid, const char *name) -> bool
+    {
+      char downcase_other[DB_MAX_USER_LENGTH] = { '\0' };
+
+      intl_identifier_lower (name, downcase_other);
+      if (strcmp (downcase_name, downcase_other) != 0)
+	{
+	  return true;
+	}
+      COPY_OID (&user_oid, &oid);
+      return false;
+    });
+  }
+
   LC_FIND_CLASSNAME
   server_class_installer::locate_class (const char *class_name, OID &class_oid)
   {
     cubthread::entry &thread_ref = cubthread::get_entry ();
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
+    const char *dot = strchr (class_name, '.');
+    OID owner_oid = OID_INITIALIZER;
 
-    if (strchr (class_name, '.'))
+    if (dot != NULL)
       {
-	found = xlocator_find_class_oid (&thread_ref, class_name, NULL, &class_oid, BU_LOCK);
+	std::string qualifier (class_name, dot - class_name);
+
+	if (find_user_oid (thread_ref, qualifier.c_str (), owner_oid) != NO_ERROR)
+	  {
+	    return LC_CLASSNAME_ERROR;
+	  }
+
+	found = xlocator_find_class_oid (&thread_ref, class_name, &owner_oid, &class_oid, BU_LOCK);
 
 	/* maybe unloaded from version 11.2+ or later */
 	if (m_session.get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
@@ -145,18 +301,22 @@ namespace cubload
 	 * So, if the schema name is not specified, the schema name of the current session must be specified.
 	 */
 
+	const char *user_name = m_session.get_args ().user_name.c_str ();
 	char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 	char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-	const char *user_name = m_session.get_args ().user_name.c_str ();
 	assert (user_name != NULL && user_name[0] != '\0');
+	assert (intl_identifier_lower_string_size (user_name) < DB_MAX_USER_LENGTH);
 
 	snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", user_name, class_name);
-
-	assert (intl_identifier_lower_string_size (user_name) < DB_MAX_USER_LENGTH);
 	intl_identifier_lower (user_specified_name, realname);
 
-	found = xlocator_find_class_oid (&thread_ref, realname, NULL, &class_oid, BU_LOCK);
+	if (find_user_oid (thread_ref, user_name, owner_oid) != NO_ERROR)
+	  {
+	    return LC_CLASSNAME_ERROR;
+	  }
+
+	found = xlocator_find_class_oid (&thread_ref, realname, &owner_oid, &class_oid, BU_LOCK);
 	if (found == LC_CLASSNAME_EXIST)
 	  {
 	    return found;
@@ -173,157 +333,54 @@ namespace cubload
 	  }
       }
 
-    if (found == LC_CLASSNAME_EXIST)
-      {
-	return found;
-      }
-
     return found;
   }
 
   LC_FIND_CLASSNAME
   server_class_installer::locate_class_for_all_users (const char *class_name, OID &class_oid)
   {
-#define CATCLS_USER_ATTR_IDX_NAME 11
     cubthread::entry &thread_ref = cubthread::get_entry ();
-    LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
-    HEAP_CACHE_ATTRINFO attr_info;
-    HEAP_SCANCACHE scan_cache;
-    MVCC_SNAPSHOT *mvcc_snapshot = NULL;
-    SCAN_CODE scan_code = S_SUCCESS;
-    RECDES recdes = RECDES_INITIALIZER;
-    HFID hfid = HFID_INITIALIZER;
-    OID inst_oid = OID_INITIALIZER;
-    HEAP_ATTRVALUE *heap_value = NULL;
-    const char *dot = NULL;
-    const char *class_name_only = NULL;
-    int error = NO_ERROR;
-    int i = 0;
-    bool already_found = false;
+    const char *dot = strchr (class_name, '.');
+    const char *class_name_only = dot ? dot + 1 : class_name;
+    OID found_oid = OID_INITIALIZER;
+    bool ambiguous = false;
 
-    error = heap_attrinfo_start (&thread_ref, oid_User_class_oid, -1, NULL, &attr_info);
-    assert (attr_info.num_values != -1);
+    int error = scan_users (thread_ref, [&] (const OID &user_oid, const char *user_name) -> bool
+    {
+      char downcase_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+      char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+      OID class_oid_of_user;
+
+      intl_identifier_lower (user_name, downcase_user_name);
+      snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_user_name, class_name_only);
+
+      if (xlocator_find_class_oid (&thread_ref, user_specified_name, &user_oid, &class_oid_of_user,
+				   BU_LOCK) != LC_CLASSNAME_EXIST)
+	{
+	  return true;
+	}
+
+      if (!OID_ISNULL (&found_oid))
+	{
+	  ambiguous = true;
+	  return false;
+	}
+
+      COPY_OID (&found_oid, &class_oid_of_user);
+      return true;
+    });
+
     if (error != NO_ERROR)
       {
-	ASSERT_ERROR ();
 	return LC_CLASSNAME_ERROR;
       }
-
-    error = heap_get_class_info (&thread_ref, oid_User_class_oid, &hfid, NULL, NULL);
-    if (error != NO_ERROR)
-      {
-	ASSERT_ERROR ();
-	heap_attrinfo_end (&thread_ref, &attr_info);
-	return LC_CLASSNAME_ERROR;
-      }
-
-    mvcc_snapshot = logtb_get_mvcc_snapshot (&thread_ref);
-    if (mvcc_snapshot == NULL)
-      {
-	ASSERT_ERROR ();
-	heap_attrinfo_end (&thread_ref, &attr_info);
-	return LC_CLASSNAME_ERROR;
-      }
-
-    error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, mvcc_snapshot);
-    if (error != NO_ERROR)
-      {
-	ASSERT_ERROR ();
-	heap_attrinfo_end (&thread_ref, &attr_info);
-	return LC_CLASSNAME_ERROR;
-      }
-
-    /* If it is user_specified_name, remove user_name. */
-    dot = strchr (class_name, '.');
-    class_name_only = dot ? dot + 1 : class_name;
-
-    while (true)
-      {
-	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
-	if (scan_code == S_SUCCESS)
-	  {
-	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache, PEEK, NULL_CHN);
-	    if (scan_code == S_SNAPSHOT_NOT_SATISFIED || scan_code == S_DOESNT_EXIST)
-	      {
-		continue;
-	      }
-	    else if (scan_code != S_SUCCESS)
-	      {
-		ASSERT_ERROR ();
-		heap_scancache_end (&thread_ref, &scan_cache);
-		heap_attrinfo_end (&thread_ref, &attr_info);
-		return LC_CLASSNAME_ERROR;
-	      }
-
-	    error = heap_attrinfo_read_dbvalues (&thread_ref, &inst_oid, &recdes, &attr_info);
-	    if (error != NO_ERROR)
-	      {
-		ASSERT_ERROR ();
-		heap_scancache_end (&thread_ref, &scan_cache);
-		heap_attrinfo_end (&thread_ref, &attr_info);
-		return LC_CLASSNAME_ERROR;
-	      }
-
-	    for (i = 0, heap_value = attr_info.values; i < attr_info.num_values; i++, heap_value++)
-	      {
-		if (heap_value->attrid == CATCLS_USER_ATTR_IDX_NAME)
-		  {
-		    break;
-		  }
-	      }
-
-	    if (i != attr_info.num_values)
-	      {
-		const char *user_name = NULL;
-		char downcase_user_name[DB_MAX_USER_LENGTH] = { '\0' };
-		char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-
-		user_name = db_get_string (&heap_value->dbvalue);
-		intl_identifier_lower (user_name, downcase_user_name);
-		snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_user_name, class_name_only);
-
-		found = xlocator_find_class_oid (&thread_ref, user_specified_name, NULL, &class_oid, BU_LOCK);
-		if (found == LC_CLASSNAME_EXIST)
-		  {
-		    if (already_found)
-		      {
-			heap_scancache_end (&thread_ref, &scan_cache);
-			heap_attrinfo_end (&thread_ref, &attr_info);
-			return LC_CLASSNAME_DELETED;
-		      }
-		    else
-		      {
-			already_found = true;
-			continue;
-		      }
-		  }
-	      }
-	  }
-	else if (scan_code == S_END)
-	  {
-	    break;
-	  }
-	else
-	  {
-	    ASSERT_ERROR ();
-	    heap_scancache_end (&thread_ref, &scan_cache);
-	    heap_attrinfo_end (&thread_ref, &attr_info);
-	    return LC_CLASSNAME_ERROR;
-	  }
-      }
-
-    heap_scancache_end (&thread_ref, &scan_cache);
-    heap_attrinfo_end (&thread_ref, &attr_info);
-
-    if (already_found)
-      {
-	return LC_CLASSNAME_EXIST;
-      }
-    else
+    if (ambiguous || OID_ISNULL (&found_oid))
       {
 	return LC_CLASSNAME_DELETED;
       }
-#undef CATCLS_USER_ATTR_IDX_NAME
+
+    COPY_OID (&class_oid, &found_oid);
+    return LC_CLASSNAME_EXIST;
   }
 
   void

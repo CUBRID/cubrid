@@ -14886,9 +14886,11 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
  * fp (in)           : output file
  * dump_records (in) : true to dump records
  * class_name (in)   : name of class to dump
+ * owner_oid (in)    : owner of that name
  */
 int
-heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name)
+heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, const char *class_name,
+		     const OID * owner_oid)
 {
   int error_code = NO_ERROR;
   OID class_oid;
@@ -14897,7 +14899,7 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   OR_PARTITION *parts = NULL;
   int parts_count = 0;
 
-  status = xlocator_find_class_oid (thread_p, class_name, NULL, &class_oid, S_LOCK);
+  status = xlocator_find_class_oid (thread_p, class_name, owner_oid, &class_oid, S_LOCK);
   if (status != LC_CLASSNAME_EXIST)
     {
       error_code = ER_LC_UNKNOWN_CLASSNAME;
