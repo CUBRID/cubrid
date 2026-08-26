@@ -1960,14 +1960,17 @@ void
 slocator_get_reserved_class_name_oid (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *classname;
+  OID owner_oid;
   OID class_oid = OID_INITIALIZER;
   OR_ALIGNED_BUF (OR_OID_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
   int error = NO_ERROR;
 
-  (void) or_unpack_string_nocopy (request, &classname);
+  ptr = or_unpack_string_nocopy (request, &classname);
+  ptr = or_unpack_oid (ptr, &owner_oid);
 
-  error = xlocator_get_reserved_class_name_oid (thread_p, classname, &class_oid);
+  error = xlocator_get_reserved_class_name_oid (thread_p, classname, &owner_oid, &class_oid);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1996,13 +1999,16 @@ void
 slocator_delete_class_name (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *classname;
+  OID owner_oid;
   LC_FIND_CLASSNAME deleted;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
 
-  (void) or_unpack_string_nocopy (request, &classname);
+  ptr = or_unpack_string_nocopy (request, &classname);
+  ptr = or_unpack_oid (ptr, &owner_oid);
 
-  deleted = xlocator_delete_class_name (thread_p, classname);
+  deleted = xlocator_delete_class_name (thread_p, classname, &owner_oid);
   if (deleted == LC_CLASSNAME_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

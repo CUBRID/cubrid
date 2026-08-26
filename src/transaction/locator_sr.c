@@ -306,6 +306,31 @@ locator_bare_name (const char *name)
 }
 
 /*
+ * locator_classname_key_set () - Build the primary index key of a name
+ *
+ * return: void
+ *
+ *   key(out): Receives the key; its bare_name points into name
+ *   name(in): Full name; "qualifier.name" except for unqualified system classes
+ *   owner_oid(in): Owner the name belongs to; ignored for an unqualified name
+ */
+static void
+locator_classname_key_set (LOCATOR_CLASSNAME_KEY * key, const char *name, const OID * owner_oid)
+{
+  key->bare_name = locator_bare_name (name);
+
+  if (key->bare_name == name || owner_oid == NULL)
+    {
+      /* no qualifier, so no owner to key on: this is how a system class names itself */
+      OID_SET_NULL (&key->owner_oid);
+    }
+  else
+    {
+      COPY_OID (&key->owner_oid, owner_oid);
+    }
+}
+
+/*
  * locator_get_entry () - Find the entry a name refers to under a given owner
  *
  * return: The entry, or NULL when no such name belongs to that owner
@@ -321,8 +346,7 @@ locator_get_entry (const OID * owner_oid, const char *classname)
   LOCATOR_CLASSNAME_KEY key;
   LOCATOR_CLASSNAME_ENTRY *entry;
 
-  COPY_OID (&key.owner_oid, (owner_oid != NULL) ? owner_oid : &oid_Null_oid);
-  key.bare_name = locator_bare_name (classname);
+  locator_classname_key_set (&key, classname, owner_oid);
 
   entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames_owned, &key);
 
@@ -403,17 +427,7 @@ static int
 locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 {
   entry->e_bare_name = locator_bare_name (entry->e_name);
-  entry->e_key.bare_name = entry->e_bare_name;
-
-  if (entry->e_bare_name == entry->e_name)
-    {
-      /* no qualifier, so no owner to key on: this is how a system class names itself */
-      OID_SET_NULL (&entry->e_key.owner_oid);
-    }
-  else
-    {
-      COPY_OID (&entry->e_key.owner_oid, &entry->e_owner_oid);
-    }
+  locator_classname_key_set (&entry->e_key, entry->e_name, &entry->e_owner_oid);
 
   if (mht_put (locator_Mht_classnames, entry->e_name, entry) == NULL)
     {
@@ -1514,10 +1528,12 @@ start:
  * return          : Error code.
  * thread_p (in)   : Thread entry.
  * classname (in)  : Class name.
+ * owner_oid (in)  : Owner of the name.
  * class_oid (out) : Class OID.
  */
 int
-xlocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid)
+xlocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p, const char *classname, const OID * owner_oid,
+				      OID * class_oid)
 {
   int tran_index;
   LOCATOR_CLASSNAME_ENTRY *entry;
@@ -1529,7 +1545,7 @@ xlocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p, const char *class
       assert (false);
       return ER_FAILED;
     }
-  entry = locator_get_classname_entry (classname);
+  entry = locator_get_entry (owner_oid, classname);
   if (entry == NULL)
     {
       assert (false);
@@ -1567,6 +1583,7 @@ error:
  *                                      LC_CLASSNAME_ERROR)
  *
  *   classname(in): Name of the class to delete
+ *   owner_oid(in): Owner of the name
  *
  * Note: Indicate that a classname has been deleted.
  *              A classname to OID entry is created in memory to indicate the
@@ -1583,7 +1600,7 @@ error:
  *              of the deletion.
  */
 LC_FIND_CLASSNAME
-xlocator_delete_class_name (THREAD_ENTRY * thread_p, const char *classname)
+xlocator_delete_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * owner_oid)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME classname_delete = LC_CLASSNAME_DELETED;
@@ -1610,7 +1627,7 @@ start:
       return LC_CLASSNAME_ERROR;
     }
 
-  entry = locator_get_classname_entry (classname);
+  entry = locator_get_entry (owner_oid, classname);
   if (entry != NULL)
     {
       assert (entry->e_tran_index == NULL_TRAN_INDEX || entry->e_tran_index == tran_index);
@@ -1797,7 +1814,7 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
       assert (entry->e_current.action == LC_CLASSNAME_RESERVED);
 
       entry->e_current.action = LC_CLASSNAME_RESERVED_RENAME;
-      renamed = xlocator_delete_class_name (thread_p, oldname);
+      renamed = xlocator_delete_class_name (thread_p, oldname, old_owner_oid);
       entry = locator_get_entry (old_owner_oid, oldname);
       if (renamed == LC_CLASSNAME_DELETED && entry != NULL)
 	{
@@ -1940,7 +1957,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
   switch (op)
     {
     case LC_SYNONYM_DDL_DROP:
-      status = xlocator_delete_class_name (thread_p, name);
+      status = xlocator_delete_class_name (thread_p, name, name_owner_oid);
       return (status == LC_CLASSNAME_DELETED) ? NO_ERROR : ER_FAILED;
 
     case LC_SYNONYM_DDL_RENAME:
@@ -7408,6 +7425,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
   if (isold_object == true && OID_IS_ROOTOID (&class_oid))
     {
+      OID owner_oid;
+
       /*
        * A CLASS: Remove class from catalog and
        *          remove any indices on that class
@@ -7423,7 +7442,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
        * sure it has been marked properly.  Note that we would normally want to check the return code, but we must not
        * check the return code for this one function in its current form, because we cannot distinguish between a class
        * that has already been marked deleted and a real error. */
-      (void) xlocator_delete_class_name (thread_p, classname);
+      or_class_owner (&copy_recdes, &owner_oid);
+      (void) xlocator_delete_class_name (thread_p, classname, &owner_oid);
       /* remove from the catalog... when is not the root */
       if (!OID_IS_ROOTOID (oid))
 	{

@@ -83,8 +83,10 @@ extern VOLID xboot_find_last_temp (THREAD_ENTRY * thread_p);
 
 extern LC_FIND_CLASSNAME xlocator_reserve_class_names (THREAD_ENTRY * thread_p, const int num_classes,
 						       const char **classname, OID * owner_oids, OID * class_oid);
-extern int xlocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid);
-extern LC_FIND_CLASSNAME xlocator_delete_class_name (THREAD_ENTRY * thread_p, const char *classname);
+extern int xlocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p, const char *classname,
+						 const OID * owner_oid, OID * class_oid);
+extern LC_FIND_CLASSNAME xlocator_delete_class_name (THREAD_ENTRY * thread_p, const char *classname,
+						     const OID * owner_oid);
 extern LC_FIND_CLASSNAME xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const char *newname,
 						     OID * old_owner_oid, OID * new_owner_oid, OID * class_oid);
 extern LC_FIND_CLASSNAME xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid,

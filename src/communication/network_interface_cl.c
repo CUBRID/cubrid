@@ -1218,10 +1218,15 @@ locator_reserve_class_names (const int num_classes, const char **class_names, OI
 int
 locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
 {
+  OID owner_oid;
+
+  au_find_owner_oid_of_name (classname, &owner_oid);
+
 #if defined(CS_MODE)
   int request_size;
   int request_error = NO_ERROR;
   char *request = NULL;
+  char *ptr;
   OR_ALIGNED_BUF (OR_OID_SIZE) a_reply;
   char *reply = NULL;
 
@@ -1232,7 +1237,7 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (classname, NULL);
+  request_size = length_const_string (classname, NULL) + OR_OID_SIZE;
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -1240,7 +1245,8 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  (void) pack_const_string (request, classname);
+  ptr = pack_const_string (request, classname);
+  ptr = or_pack_oid (ptr, &owner_oid);
 
   request_error =
     net_client_request (NET_SERVER_LC_RESERVE_CLASSNAME_GET_OID, request, request_size, reply,
@@ -1260,7 +1266,7 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  is_reserved = xlocator_get_reserved_class_name_oid (thread_p, classname, class_oid);
+  is_reserved = xlocator_get_reserved_class_name_oid (thread_p, classname, &owner_oid, class_oid);
 
   exit_server (*thread_p);
 
@@ -1280,17 +1286,21 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
 LC_FIND_CLASSNAME
 locator_delete_class_name (const char *class_name)
 {
+  OID owner_oid;
+
+  au_find_owner_oid_of_name (class_name, &owner_oid);
+
 #if defined(CS_MODE)
   LC_FIND_CLASSNAME deleted = LC_CLASSNAME_ERROR;
   int xdeleted;
   int req_error, request_size, strlen;
-  char *request;
+  char *request, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (class_name, &strlen);
+  request_size = length_const_string (class_name, &strlen) + OR_OID_SIZE;
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -1298,7 +1308,8 @@ locator_delete_class_name (const char *class_name)
       return LC_CLASSNAME_ERROR;
     }
 
-  (void) pack_const_string_with_length (request, class_name, strlen);
+  ptr = pack_const_string_with_length (request, class_name, strlen);
+  ptr = or_pack_oid (ptr, &owner_oid);
   req_error = net_client_request (NET_SERVER_LC_DELETE_CLASSNAME, request, request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
@@ -1315,7 +1326,7 @@ locator_delete_class_name (const char *class_name)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  deleted = xlocator_delete_class_name (thread_p, class_name);
+  deleted = xlocator_delete_class_name (thread_p, class_name, &owner_oid);
 
   exit_server (*thread_p);
 
