@@ -7781,7 +7781,9 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
                         "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
                         "[a].[object_type] AS [object_type], "
-                        "[s].[unique_name] AS [unique_name], "
+                        "LOWER([s].[owner].[name]) || '.' "
+                        "|| CASE WHEN [s].[pkg_name] = '' THEN '' ELSE [s].[pkg_name] || '.' END "
+                        "|| [s].[sp_name] AS [unique_name], "
                         "[a].[auth_type] AS [auth_type], "
                         "[a].[is_grantable] AS [is_grantable] "
                 "FROM "

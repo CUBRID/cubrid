@@ -1173,11 +1173,9 @@ namespace cubschema
 		   CT_SYNONYM_NAME,
 		   // columns
     {
-      {"unique_name", format_varchar (255)},
       {"name", format_varchar (255)},
       {"owner", AU_USER_CLASS_NAME},
       {"is_public", "integer", make_int_value_fn (0)},
-      {"target_unique_name", format_varchar (255)},
       {"target_name", format_varchar (255)},
       {"target_owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (2048)},
@@ -1186,12 +1184,10 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"name", "owner", "is_public", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"name", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"owner", nullptr}, false},
+      /* the key already leads with the name, so a lookup by name alone still uses it,
+       * and it is what makes those two columns not null */
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"name", "owner", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"is_public", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"target_unique_name", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"target_name", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"target_owner", nullptr}, false}
     },

@@ -912,7 +912,7 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 
   COPY_OID (&class_oid, &class_entry->e_current.oid);
 
-  /* find the attribute ids of unique_name and target_unique_name */
+  /* find the attribute ids of the columns a synonym is named by */
   error = heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info);
   if (error != NO_ERROR)
     {
@@ -946,11 +946,11 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	  goto exit;
 	}
 
-      if (strcmp ("unique_name", rec_attr_name_p) == 0)
+      if (strcmp ("name", rec_attr_name_p) == 0)
 	{
 	  name_att_id = i;
 	}
-      else if (strcmp ("target_unique_name", rec_attr_name_p) == 0)
+      else if (strcmp ("target_name", rec_attr_name_p) == 0)
 	{
 	  target_att_id = i;
 	}

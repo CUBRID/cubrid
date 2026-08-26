@@ -5597,10 +5597,9 @@ sm_find_synonym (const char *name)
     }
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
-  db_make_string (&value, realname);
 
   AU_SAVE_AND_DISABLE (save);
-  synonym_obj = db_find_unique (synonym_class_obj, "unique_name", &value);
+  synonym_obj = sm_find_synonym_of_owner (synonym_class_obj, realname);
   AU_RESTORE (save);
 
   if (synonym_obj == NULL)
@@ -5618,6 +5617,53 @@ sm_find_synonym (const char *name)
 }
 
 /*
+ * sm_find_synonym_of_owner () - Find a synonym by its owner and its own name
+ *   return: synonym object, or NULL when no synonym of that name belongs to that owner
+ *   synonym_class_obj(in): the synonym catalog class
+ *   unique_name(in): the name a user goes by, owner and all
+ */
+MOP
+sm_find_synonym_of_owner (MOP synonym_class_obj, const char *unique_name)
+{
+  const char *attr_names[2] = { "name", "owner" };
+  DB_VALUE values[2];
+  DB_VALUE *value_ptrs[2] = { &values[0], &values[1] };
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  MOP owner_mop;
+  MOP synonym_obj = NULL;
+
+  if (synonym_class_obj == NULL || unique_name == NULL)
+    {
+      return NULL;
+    }
+
+  if (sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      owner_mop = au_find_user (owner_name);
+      if (owner_mop == NULL)
+	{
+	  er_clear ();
+	}
+      else
+	{
+	  db_make_string (&values[0], sm_remove_qualifier_name (unique_name));
+	  db_make_object (&values[1], owner_mop);
+
+	  synonym_obj = db_find_multi_unique (synonym_class_obj, 2, (char **) attr_names, value_ptrs, DB_FETCH_READ);
+	}
+    }
+
+  if (synonym_obj == NULL && er_errid () == NO_ERROR)
+    {
+      /* db_find_multi_unique () clears the not-found warning, and callers here read it to
+       * tell "no such synonym" from a real failure */
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
+    }
+
+  return synonym_obj;
+}
+
+/*
  * sm_get_synonym_target_name() - get target_name.
  *   return: output buffer pointer or NULL on error
  *   synonym(in): synonym object
@@ -5629,6 +5675,8 @@ sm_get_synonym_target_name (MOP synonym, char *buf, int buf_size)
 {
   DB_VALUE value;
   const char *target_name = NULL;
+  char *owner_name = NULL;
+  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   int len = 0;
   int save = 0;
   int error = NO_ERROR;
@@ -5642,19 +5690,41 @@ sm_get_synonym_target_name (MOP synonym, char *buf, int buf_size)
   assert (buf != NULL);
   assert (buf_size > 0);
 
+  /* The row keeps the target's owner and its own name apart, so the name the target goes
+   * by is put back together here. */
   AU_SAVE_AND_DISABLE (save);
-  db_get (synonym, "target_unique_name", &value);
+  error = db_get (synonym, "target_owner", &value);
+  if (error == NO_ERROR)
+    {
+      owner_name = au_get_user_name (db_get_object (&value));
+      pr_clear_value (&value);
+    }
+  if (owner_name == NULL)
+    {
+      AU_RESTORE (save);
+      ASSERT_ERROR_AND_SET (error);
+      return NULL;
+    }
+  sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
+  db_ws_free_and_init (owner_name);
+
+  error = db_get (synonym, "target_name", &value);
   AU_RESTORE (save);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
 
   target_name = db_get_string (&value);
-  len = db_get_string_size (&value);
 
   assert (target_name && target_name[0] != '\0');
+
+  len = snprintf (buf, buf_size, "%s.%s", downcase_owner_name, target_name);
+  pr_clear_value (&value);
+
   assert (len < buf_size);
   assert (len < SM_MAX_IDENTIFIER_LENGTH);
-
-  memcpy (buf, target_name, len);
-  buf[len] = '\0';
 
   return buf;
 }

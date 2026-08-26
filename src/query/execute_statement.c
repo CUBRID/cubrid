@@ -19159,8 +19159,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
       goto end;
     }
 
-  db_make_string (&value, synonym_name);
-  instance_obj = db_find_unique (class_obj, "unique_name", &value);
+  instance_obj = sm_find_synonym_of_owner (class_obj, synonym_name);
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -19201,16 +19200,6 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
   else if (intl_identifier_casecmp (old_target_name, target_name) != 0)
     {
       /* target_name != NULL */
-
-      /* target_unique_name */
-      db_make_string (&value, target_name);
-      error = dbt_put_internal (obj_tmpl, "target_unique_name", &value);
-      db_value_clear (&value);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto end;
-	}
 
       /* target_name */
       if (is_dblinked)
@@ -19418,8 +19407,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
       goto end;
     }
 
-  db_make_string (&value, synonym_name);
-  instance_obj = db_find_unique (class_obj, "unique_name", &value);
+  instance_obj = sm_find_synonym_of_owner (class_obj, synonym_name);
   if (instance_obj != NULL)
     {
       if (or_replace == FALSE)
@@ -19483,16 +19471,6 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
       goto end;
     }
 
-  /* unique_name */
-  db_make_string (&value, synonym_name);
-  error = dbt_put_internal (obj_tmpl, "unique_name", &value);
-  db_value_clear (&value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto end;
-    }
-
   /* synonym_name */
   db_make_string (&value, sm_remove_qualifier_name (synonym_name));
   error = dbt_put_internal (obj_tmpl, "name", &value);
@@ -19516,16 +19494,6 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   /* is_public_synonym */
   db_make_int (&value, is_public_synonym);
   error = dbt_put_internal (obj_tmpl, "is_public", &value);
-  db_value_clear (&value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto end;
-    }
-
-  /* target_unique_name */
-  db_make_string (&value, target_name);
-  error = dbt_put_internal (obj_tmpl, "target_unique_name", &value);
   db_value_clear (&value);
   if (error != NO_ERROR)
     {
@@ -19694,8 +19662,7 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
   else
     {
       /* synonym_obj == NULL */
-      db_make_string (&value, synonym_name);
-      instance_obj = db_find_unique (class_obj, "unique_name", &value);
+      instance_obj = sm_find_synonym_of_owner (class_obj, synonym_name);
       if (instance_obj == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -19824,8 +19791,7 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
       goto end;
     }
 
-  db_make_string (&value, old_synonym_name);
-  instance_obj = db_find_unique (class_obj, "unique_name", &value);
+  instance_obj = sm_find_synonym_of_owner (class_obj, old_synonym_name);
   if (instance_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -19840,8 +19806,7 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
     }
 
   /* instance_obj != NULL */
-  db_make_string (&value, new_synonym_name);
-  new_instance_obj = db_find_unique (class_obj, "unique_name", &value);
+  new_instance_obj = sm_find_synonym_of_owner (class_obj, new_synonym_name);
   if (new_instance_obj != NULL)
     {
       ERROR_SET_ERROR_1ARG (error, ER_SYNONYM_ALREADY_EXIST, new_synonym_name);
@@ -19889,16 +19854,6 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   if (obj_tmpl == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  /* unique_name */
-  db_make_string (&value, new_synonym_name);
-  error = dbt_put_internal (obj_tmpl, "unique_name", &value);
-  db_value_clear (&value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
       goto end;
     }
 
@@ -20919,7 +20874,8 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
     }
 
   serial_name = sm_remove_qualifier_name (name);
-  query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  query = "SELECT " "LOWER([owner].[name]) || '.' || " "[name] FROM [%s] "
+    "WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, qualifier_name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SERIAL_NAME, serial_name, qualifier_name);
   assert (query_buf[0] != '\0');
@@ -21031,7 +20987,8 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
     }
 
   trigger_name = sm_remove_qualifier_name (name);
-  query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  query = "SELECT " "LOWER([owner].[name]) || '.' || " "[name] FROM [%s] "
+    "WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, qualifier_name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_TRIGGER_NAME, trigger_name, qualifier_name);
   assert (query_buf[0] != '\0');
@@ -21118,7 +21075,8 @@ do_find_synonym_by_query (const char *name, char *buf, int buf_size)
 
   assert (buf != NULL);
 
-  query = "SELECT [target_unique_name] FROM [%s] WHERE [unique_name] = '%s'";
+  query = "SELECT LOWER([target_owner].[name]) || '.' || [target_name] FROM [%s] "
+    "WHERE " "LOWER([owner].[name]) || '.' || " "[name] = '%s'";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SYNONYM_NAME, name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SYNONYM_NAME, name);
 
@@ -21223,7 +21181,9 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
     }
 
   sp_name = sm_remove_qualifier_name (name);
-  query = "SELECT [unique_name] FROM [%s] WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  query = "SELECT " "LOWER([owner].[name]) || '.' || "
+    "CASE WHEN [pkg_name] = '' THEN '' ELSE [pkg_name] || '.' END || [sp_name] FROM [%s] "
+    "WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, qualifier_name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, qualifier_name);
   assert (query_buf[0] != '\0');

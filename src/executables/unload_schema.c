@@ -774,12 +774,14 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
    * when changing the following query. Notice the order of the result.
    */
   const char *query_all =
-    "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
+    "select " "LOWER([owner].[name]) || '.' || " "[name], [name], [owner].[name], "
+    "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
     "from [_db_serial] where [class_name] is null and [attr_name] is null";
 
   const char *query_user =
-    "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
+    "select " "LOWER([owner].[name]) || '.' || " "[name], [name], [owner].[name], "
+    "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
     "from [_db_serial] where [class_name] is null and [attr_name] is null and owner.name='%s'";
 
@@ -983,12 +985,14 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
    * when changing the following query. Notice the order of the result.
    */
   const char *query_all =
-    "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
+    "select " "LOWER([owner].[name]) || '.' || " "[name], [name], [owner].[name], "
+    "[current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
     "from [_db_serial] where [class_name] is not null and [attr_name] is not null";
 
   const char *query_user =
-    "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
+    "select " "LOWER([owner].[name]) || '.' || " "[name], [name], [owner].[name], "
+    "[current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
     "from [_db_serial] where [class_name] is not null and [attr_name] is not null and owner.name='%s'";
 
@@ -1230,7 +1234,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   char temp_schema[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   // *INDENT-OFF*
-  const char *query_all = "SELECT [unique_name], "
+  const char *query_all = "SELECT LOWER([owner].[name]) || '.' || [name] AS [unique_name], "
                              "[owner], "
 			     "[is_public], "
 			     "[target_name], "
@@ -1238,7 +1242,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 			     "[comment] "
 			  "FROM [_db_synonym]";
 
-  const char *query_user = "SELECT [unique_name], "
+  const char *query_user = "SELECT LOWER([owner].[name]) || '.' || [name] AS [unique_name], "
                              "[owner], "
 			     "[is_public], "
 			     "[target_name], "
