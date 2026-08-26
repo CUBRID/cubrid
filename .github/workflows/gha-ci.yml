@@ -10,10 +10,12 @@
 #   push develop, feature/**           build only. develop also writes the ccache
 #   workflow_dispatch                  build; tests always run
 #
-# issue_comment, push and workflow_dispatch read this file from the DEFAULT BRANCH,
-# so none of them work until this is merged -- /run on this PR does nothing, and
-# workflow_dispatch does not appear in the UI. pull_request runs the PR's own copy,
-# which is why it may build and never test.
+# Which copy of this file runs differs by trigger. issue_comment has no ref of its
+# own and always reads the DEFAULT BRANCH, so /run does nothing until this is merged.
+# workflow_dispatch runs the copy in the ref it is given, and appears in the UI only
+# once the default branch carries the file. push runs the pushed commit's copy, and
+# pull_request the copy the pull request proposes -- which is why it may build and
+# never test.
 #
 # Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
 # them; its README.md carries the full contract table for this file.
@@ -326,7 +328,6 @@ jobs:
 
     steps:
       - name: 0. Environment check
-        id: args
         env:
           # Inputs via env, never interpolated into the body.
           INPUT_SHA: ${{ needs.gate.outputs.sha }}
@@ -344,7 +345,6 @@ jobs:
             exit 1
           fi
           echo "SHA: $INPUT_SHA"
-          echo "sha=$INPUT_SHA" >> "$GITHUB_OUTPUT"
           echo "SHA=$INPUT_SHA" >> "$GITHUB_ENV"
 
           echo "=== mounts ==="
@@ -487,7 +487,6 @@ jobs:
           echo "swept: $swept"
 
       - name: 4. Publish, staged then moved in with one rename
-        id: publish
         env:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
           REUSE: ${{ steps.reuse.outputs.reuse }}
@@ -1130,6 +1129,11 @@ jobs:
           cp -a "$seed" "$WORKDIR/cubrid-testtools"
           rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
           echo "CTP copy WAN: $(( (rx1 - rx0) / 1048576 )) MB (must be 0)"
+          # Deliberately the image's CTP_HOME, not a stated one: this line is the
+          # cross-check that where we just put CTP is where the image expects it.
+          # Stating it here would only compare the copy against itself, and would
+          # not move init_path or PATH, which the image derives from CTP_HOME and
+          # every shell case reads (". $init_path/init.sh").
           ls "$CTP_HOME/bin/ctp.sh" "$CTP_HOME/conf/shell_ci.conf"
 
           sudo /usr/sbin/sshd || /usr/sbin/sshd || true
