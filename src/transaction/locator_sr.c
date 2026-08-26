@@ -348,10 +348,9 @@ locator_get_entry (const OID * owner_oid, const char *classname)
 
   if (owner_oid == NULL && locator_bare_name (classname) != classname)
     {
-      /* A qualified name whose owner the caller could not supply. What is left of these are
-       * names a user typed as a runtime string: the argument of estimated_table_rows and of
-       * the other statistics functions. They resolve through the joined name index until that
-       * argument carries the class itself, and the index goes away with the last of them. */
+      /* A qualified name whose owner the caller could not supply. What is left of these:
+       * SHOW HEAP and SHOW INDEX, cubrid dumpheap, flashback, and the loaddb server loader.
+       * They resolve through the joined name index, and it goes away with the last of them. */
       return locator_get_classname_entry (classname);
     }
 
@@ -533,7 +532,7 @@ locator_chase_synonym_entry (LOCATOR_CLASSNAME_ENTRY * entry)
  *
  *   thread_p(in):
  *   bare_name(in): Bare name to look for
- *   skip_name(in): Full name already probed; its entry is not a candidate
+ *   skip_name(in): Full name already probed; its entry is not a candidate. NULL probes none
  *   candidates(out): Array receiving the candidates
  *   max_cand(in): Capacity of candidates; collection stops once reached
  *
@@ -555,7 +554,7 @@ locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_nam
        entry != NULL && num_cand < max_cand;
        entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get2 (locator_Mht_classnames_bare, bare_name, &last))
     {
-      if (strcmp (entry->e_name, skip_name) == 0)
+      if (skip_name != NULL && strcmp (entry->e_name, skip_name) == 0)
 	{
 	  continue;
 	}
@@ -2087,6 +2086,69 @@ xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname, const O
 			 LOCK lock)
 {
   return xlocator_find_class_oid_ex (thread_p, classname, owner_oid, class_oid, lock, NULL);
+}
+
+/*
+ * locator_find_class_oid_by_bare_name () - Find the class a bare name refers to, whoever owns it
+ *
+ * return: LC_FIND_CLASSNAME (LC_CLASSNAME_EXIST, LC_CLASSNAME_DELETED, LC_CLASSNAME_ERROR)
+ *
+ *   name(in): Name to look for; a qualifier on it is not honored
+ *   class_oid(out): Set as a side effect
+ *   lock(in): Lock to acquire for the class
+ *
+ * Note: The statistics functions take their table as a value, so a name that is not a
+ *       constant reaches the server unresolved. It has to match exactly one class here:
+ *       two owners make it ambiguous even if the caller owns one of them, because the
+ *       server is not told which user is asking.
+ */
+LC_FIND_CLASSNAME
+locator_find_class_oid_by_bare_name (THREAD_ENTRY * thread_p, const char *name, OID * class_oid, LOCK lock)
+{
+  LOCATOR_CLASSNAME_ENTRY *candidates[2];
+  LOCATOR_CLASSNAME_ENTRY *target;
+  const char *bare_name = locator_bare_name (name);
+  LC_FIND_CLASSNAME find = LC_CLASSNAME_DELETED;
+  int num_cand;
+
+  OID_SET_NULL (class_oid);
+
+  if (csect_enter_as_reader (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      return LC_CLASSNAME_ERROR;
+    }
+
+  num_cand =
+    locator_find_bare_name_candidates (thread_p, bare_name, NULL, candidates,
+				       sizeof (candidates) / sizeof (candidates[0]));
+
+  if (num_cand > 1)
+    {
+      int first = (strcmp (candidates[0]->e_name, candidates[1]->e_name) <= 0) ? 0 : 1;
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_AMBIGUOUS_CLASSNAME, 3, bare_name,
+	      candidates[first]->e_name, candidates[1 - first]->e_name);
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      return LC_CLASSNAME_ERROR;
+    }
+
+  if (num_cand == 1 && (target = locator_chase_synonym_entry (candidates[0])) != NULL)
+    {
+      COPY_OID (class_oid, &target->e_current.oid);
+      find = LC_CLASSNAME_EXIST;
+    }
+
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+
+  if (find == LC_CLASSNAME_EXIST && lock != NULL_LOCK
+      && lock_object (thread_p, class_oid, oid_Root_class_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      OID_SET_NULL (class_oid);
+      find = LC_CLASSNAME_ERROR;
+    }
+
+  return find;
 }
 
 /*

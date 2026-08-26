@@ -459,6 +459,12 @@ struct json_t;
 #define PT_IS_SERIAL(op) \
         ( (op) == PT_CURRENT_VALUE || (op) == PT_NEXT_VALUE )
 
+/* takes a table as its first argument, either named or handed over as the object itself */
+#define PT_IS_STATISTICS_OP(op) \
+        ( (op) == PT_INDEX_CARDINALITY || (op) == PT_ESTIMATED_TABLE_ROWS \
+          || (op) == PT_ESTIMATED_AVG_ROW_LENGTH || (op) == PT_ESTIMATED_DATA_LENGTH \
+          || (op) == PT_ESTIMATED_DATA_FREE )
+
 #define PT_IS_EXPR_NODE_WITH_OPERATOR(n, op_type) \
         ( (PT_IS_EXPR_NODE (n)) && ((n)->info.expr.op == (op_type)) )
 

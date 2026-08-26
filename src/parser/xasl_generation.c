@@ -459,8 +459,8 @@ static PT_NODE *parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * nod
 static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp,
 					   int **lock_listp, int **tcard_listp, int *nump, int *sizep,
 					   int includes_tde_class);
-static int pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * serial, OID ** oid_listp,
-					     int **lock_listp, int **tcard_listp, int *nump, int *sizep);
+static int pt_add_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const OID * oid, int tcard, OID ** oid_listp,
+					  int **lock_listp, int **tcard_listp, int *nump, int *sizep);
 static PT_NODE *parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static XASL_NODE *pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type);
 static int pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * spec, PT_NODE * non_null_attrs,
@@ -18989,23 +18989,25 @@ error:
 
 
 /*
- * pt_serial_to_xasl_class_oid_list () - get serial OID list
- *                                     from the node
+ * pt_add_to_xasl_class_oid_list () - add one OID the XASL depends on to its list
+ *
  *   return:
  *   parser(in):
- *   serial(in):
+ *   oid(in): OID of a class or serial the plan resolved at compile time
+ *   tcard(in): XASL_CLASS_NO_TCARD, or XASL_SERIAL_OID_TCARD for a serial
  *   oid_listp(out):
  *   lock_listp(out):
  *   tcard_listp(out):
  *   nump(out):
  *   sizep(out):
+ *
+ * Note: The list is what the cached plan is invalidated by, so anything the plan resolved
+ *       to an OID instead of leaving as a name has to be in it.
  */
 static int
-pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * serial, OID ** oid_listp, int **lock_listp,
-				  int **tcard_listp, int *nump, int *sizep)
+pt_add_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const OID * oid, int tcard, OID ** oid_listp,
+			       int **lock_listp, int **tcard_listp, int *nump, int *sizep)
 {
-  MOP serial_mop;
-  OID *serial_oid_p;
   OID *o_list = NULL;
   int *lck_list = NULL;
   int *t_list = NULL;
@@ -19016,19 +19018,7 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * seria
   size_t o_num, o_size, prev_o_num;
 #endif
 
-  assert (PT_IS_EXPR_NODE (serial) && PT_IS_SERIAL (serial->info.expr.op));
-
-  /* get the OID of the serial object which is fetched before */
-  serial_mop = pt_resolve_serial (parser, serial->info.expr.arg1);
-  if (serial_mop == NULL)
-    {
-      goto error;
-    }
-  serial_oid_p = db_identifier (serial_mop);
-  if (serial_oid_p == NULL)
-    {
-      goto error;
-    }
+  assert (oid != NULL && !OID_ISNULL (oid));
 
   if (*oid_listp == NULL || *tcard_listp == NULL)
     {
@@ -19067,10 +19057,10 @@ pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * seria
   t_list = *tcard_listp;
 
   prev_o_num = o_num;
-  (void) lsearch (serial_oid_p, o_list, &o_num, sizeof (OID), oid_compare);
+  (void) lsearch (oid, o_list, &o_num, sizeof (OID), oid_compare);
   if (o_num > prev_o_num && o_num > (size_t) * nump)
     {
-      *(t_list + o_num - 1) = XASL_SERIAL_OID_TCARD;	/* init #pages */
+      *(t_list + o_num - 1) = tcard;	/* init #pages */
       *(lck_list + o_num - 1) = (int) NULL_LOCK;
     }
 
@@ -23490,19 +23480,40 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
   switch (node->node_type)
     {
     case PT_EXPR:
-      if (PT_IS_SERIAL (node->info.expr.op))
-	{
-	  /* fill in XASL cache related information; serial OID used in this XASL */
-	  if (pt_serial_to_xasl_class_oid_list (parser, node, &info->class_oid_list, &info->class_locks,
-						&info->tcard_list, &info->n_oid_list, &info->oid_list_size) < 0)
-	    {
-	      if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
-		{
-		  PT_INTERNAL_ERROR (parser, "generate xasl");
-		}
-	      xasl = NULL;
-	    }
-	}
+      {
+	const OID *dep_oid = NULL;
+	int dep_tcard = XASL_CLASS_NO_TCARD;
+
+	if (PT_IS_SERIAL (node->info.expr.op))
+	  {
+	    /* fill in XASL cache related information; serial OID used in this XASL */
+	    MOP serial_mop = pt_resolve_serial (parser, node->info.expr.arg1);
+
+	    dep_oid = (serial_mop != NULL) ? db_identifier (serial_mop) : NULL;
+	    dep_tcard = XASL_SERIAL_OID_TCARD;
+	  }
+	else if (PT_IS_STATISTICS_OP (node->info.expr.op) && PT_IS_VALUE_NODE (node->info.expr.arg1)
+		 && node->info.expr.arg1->type_enum == PT_TYPE_OBJECT)
+	  {
+	    /* the table name was a constant, so the plan holds the table itself */
+	    dep_oid = ws_identifier (node->info.expr.arg1->info.value.data_value.op);
+	  }
+	else
+	  {
+	    break;
+	  }
+
+	if (dep_oid == NULL
+	    || pt_add_to_xasl_class_oid_list (parser, dep_oid, dep_tcard, &info->class_oid_list, &info->class_locks,
+					      &info->tcard_list, &info->n_oid_list, &info->oid_list_size) < 0)
+	  {
+	    if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
+	      {
+		PT_INTERNAL_ERROR (parser, "generate xasl");
+	      }
+	    xasl = NULL;
+	  }
+      }
       break;
 
     case PT_SELECT:

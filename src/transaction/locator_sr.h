@@ -63,6 +63,8 @@ extern bool locator_Dont_check_foreign_key;
 
 extern int locator_initialize (THREAD_ENTRY * thread_p);
 extern void locator_finalize (THREAD_ENTRY * thread_p);
+extern LC_FIND_CLASSNAME locator_find_class_oid_by_bare_name (THREAD_ENTRY * thread_p, const char *name,
+							      OID * class_oid, LOCK lock);
 extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa);
 extern int locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa);
 extern DISK_ISVALID locator_check_class_names (THREAD_ENTRY * thread_p);
