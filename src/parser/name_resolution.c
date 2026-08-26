@@ -5829,6 +5829,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 		       && dblink_table->sel_list->type_enum == PT_TYPE_STAR);
       int reason = PT_DBLINK_SCHEMA_OK, rc = ER_FAILED;
       char qualified_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+      char *lookup_name = table_name;
 
       /* A lone star references no invisible column, and the "SELECT *" prepare below
        * describes exactly the visible set the star must expand to - the same list this
@@ -5842,22 +5843,34 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 	}
       else
 	{
-	  /* The name goes out exactly as the statement wrote it, the way the "SELECT *"
-	   * prepare below sends it: whatever the remote makes of an unqualified name - the
-	   * connected user's schema on CUBRID and Oracle, the connected database on
-	   * MySQL/MariaDB - both requests then describe the same table. */
-	  rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, table_name, user,
-							       rmt_tbl_cols, &reason);
-
-	  /* sch_attr_info () filters by owner only when the name it is given is qualified,
-	   * so on a CUBRID remote an unqualified name can match classes of several owners
-	   * and describe none of them.  The remote resolves it in the connected user's
-	   * schema, so ask again that way and get that one class. */
-	  if (rc != NO_ERROR && reason == PT_DBLINK_SCHEMA_AMBIGUOUS && strchr (table_name, '.') == NULL
+	  /* sch_attr_info () filters by owner only when the name it is given is qualified:
+	   * an unqualified name matches every accessible class of that name, and the rows of
+	   * all of them cross the wire to be dropped here.  The remote resolves the name in
+	   * the connected user's schema - the one CREATE SERVER named - so say so and let the
+	   * remote filter instead.  A gateway keeps the name as the statement wrote it: it
+	   * derives the session schema itself and may look through PUBLIC, which an explicit
+	   * owner would rule out. */
+	  if (user != NULL && user[0] != '\0' && strchr (table_name, '.') == NULL
+	      && cci_get_dbms_type (conn) == CAS_DBMS_CUBRID
 	      && snprintf (qualified_name, sizeof (qualified_name), "%s.%s", user, table_name)
 	      < (int) sizeof (qualified_name))
 	    {
-	      rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, qualified_name, user,
+	      lookup_name = qualified_name;
+	    }
+
+	  rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, lookup_name, user,
+							       rmt_tbl_cols, &reason);
+
+	  /* the name could not be qualified above - no user to qualify it with - so the rows
+	   * of several owners can arrive and describe no single class.  Ask again the way the
+	   * remote resolves it. */
+	  if (rc != NO_ERROR && reason == PT_DBLINK_SCHEMA_AMBIGUOUS && lookup_name == table_name
+	      && strchr (table_name, '.') == NULL
+	      && snprintf (qualified_name, sizeof (qualified_name), "%s.%s", user, table_name)
+	      < (int) sizeof (qualified_name))
+	    {
+	      lookup_name = qualified_name;
+	      rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, lookup_name, user,
 								   rmt_tbl_cols, &reason);
 	    }
 
@@ -5870,7 +5883,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 	   * attempt costs nothing there. */
 	  if (rc != NO_ERROR && reason == PT_DBLINK_SCHEMA_NO_ROW)
 	    {
-	      rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTR_WITH_SYNONYM, table_name, user,
+	      rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTR_WITH_SYNONYM, lookup_name, user,
 								   rmt_tbl_cols, &reason);
 	    }
 
