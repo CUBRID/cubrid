@@ -48,7 +48,9 @@
 
 #include "connection_defs.h"
 #include "connection_sr.h"
+#include "network_interface_cl.h"	// boot_unregister_client
 #include "storage_common.h"	// NULL_TRAN_INDEX
+#include "transaction_cl.h"	// tm_Tran_index
 #include "db.h"
 #include "db_client_type.hpp"
 #include "dbtype.h"
@@ -129,6 +131,7 @@ tracer_main (char *server_name, char *sql, char *out_path)
 
   int err;
   bool succeeded = false;
+  bool registered = false;
 
   // register this foreign thread with the thread manager (same ritual as
   // connection_worker.cpp)
@@ -177,6 +180,7 @@ tracer_main (char *server_name, char *sql, char *out_path)
       tracer_log (fp, "M0_TRACER: FAIL db_restart_ex err=%d msg=[%s]", err, er_msg () ? er_msg () : "");
       goto retire;
     }
+  registered = true;
   tracer_log (fp, "M0_TRACER: in-process client registered (0-hop)");
 
   {
@@ -237,6 +241,19 @@ retire:
   //   (thread_entry.cpp:564; see PR #181 shutdown-SIGABRT diagnosis)
   // - retire_entry() returns the entry to the pool as-is, so scrub the fields
   //   this tracer stamped before another thread reuses it
+  if (registered)
+    {
+      /* log the tran out the way a real disconnect does (frees the tdes /
+       * tran index). Committing is not enough: the committed tdes goes back
+       * to ACTIVE for the next transaction, and a tran left ACTIVE at
+       * shutdown makes log_abort_all_active_transaction push its abort task
+       * inline onto the main thread, whose execute() stamps Main_entry_p
+       * with TS_FREE — the shutdown checkpoint's DWB wait then asserts
+       * (caught by instrumentation, see PR #181). The client-half globals
+       * (tm_Tran_index etc.) stay stale afterwards — acceptable, this
+       * context is never reused (milestone-0 file-header limitation). */
+      (void) boot_unregister_client (tm_Tran_index);
+    }
   if (conn != NULL)
     {
       entry_p->conn_entry = NULL;
