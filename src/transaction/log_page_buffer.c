@@ -8289,6 +8289,7 @@ loop:
 
   /* Flush before selecting archive logs. This may create a new archive and advance nxarv_num. */
   logpb_flush_pages_direct (thread_p);
+  logpb_flush_header (thread_p);
 
 #if defined(SERVER_MODE)
   /*
@@ -8370,11 +8371,6 @@ loop:
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
       goto error;
     }
-
-  /* Get the header on disk in step with the log pages flushed above, so the active log image copied below is
-   * self consistent. This backup is not recorded in it: a backup is recorded only once it exists, which is after
-   * the archives have been transferred. */
-  logpb_flush_header (thread_p);
 
   /* Include active log always. Skipping log active is obsolete. */
   error_code = fileio_backup_volume (thread_p, &session, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, -1, false);
