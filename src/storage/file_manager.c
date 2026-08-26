@@ -4157,22 +4157,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
        * reach disk after the sectors are reused; pages that are not buffered are not even touched. */
       pgbuf_unfix_and_init (thread_p, page_fhead);
 
-#if defined (FILE_DESTROY_DISCARD_BY_PROBE)
-      /* probe each page of the destroyed sectors in the buffer hash. cost is proportional to the file size.
-       * kept switchable against the pool-scan below for performance comparison. */
-      for (iter_sects = 0; iter_sects < vsid_collector.n_vsids; iter_sects++)
-	{
-	  vpid_ftab.volid = vsid_collector.vsids[iter_sects].volid;
-	  for (offset = 0, vpid_ftab.pageid = SECTOR_FIRST_PAGEID (vsid_collector.vsids[iter_sects].sectid);
-	       offset < DISK_SECTOR_NPAGES; offset++, vpid_ftab.pageid++)
-	    {
-	      pgbuf_discard_page (thread_p, &vpid_ftab);
-	    }
-	}
-#else
       /* scan the buffer pool once for pages of the destroyed sectors. cost is proportional to the pool size. */
       pgbuf_discard_pages_of_sectors (thread_p, vsid_collector.vsids, vsid_collector.n_vsids);
-#endif
     }
   else
     {

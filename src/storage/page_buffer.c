@@ -1115,6 +1115,7 @@ static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID *
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
 static int pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
+static void pgbuf_discard_page (THREAD_ENTRY * thread_p, const VPID * vpid);
 static int pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous);
 static int pgbuf_bcb_safe_flush_force_unlock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous);
 static PGBUF_BCB *pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p);
@@ -3482,7 +3483,7 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
  * note: the caller must guarantee the page cannot be fixed concurrently (the destroyed file is unregistered from
  *       tracker and exclusively locked).
  */
-void
+static void
 pgbuf_discard_page (THREAD_ENTRY * thread_p, const VPID * vpid)
 {
   PGBUF_BUFFER_HASH *hash_anchor;
@@ -3596,8 +3597,7 @@ pgbuf_compare_vsids_for_discard (const void *first, const void *second)
  *                 file_destroy already sorts them)
  * nsects (in)   : number of sectors
  *
- * note: cost is proportional to the buffer pool size, not to the file size. see pgbuf_discard_page () for a variant
- *       whose cost is proportional to the file size.
+ * note: cost is proportional to the buffer pool size, not to the file size.
  * note: the caller must guarantee that no page of these sectors can be fixed concurrently (the destroyed file is
  *       unregistered from tracker and exclusively locked).
  */
