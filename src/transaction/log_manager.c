@@ -1199,6 +1199,14 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       logpb_fetch_header (thread_p, &log_Gl.hdr);
     }
 
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
+    {
+      /* With cdc off the gate that reads this value never runs, so the volumes it names are going to
+       * be deleted anyway. Give it up here rather than leave the header pointing at a volume that is
+       * about to go - turning cdc off is the operator saying the protection is no longer wanted. */
+      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
+    }
+
   if (ismedia_crash != false)
     {
       /* The header that was just read came out of a backup image, so the volume it names was chosen
