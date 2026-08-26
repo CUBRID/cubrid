@@ -8235,9 +8235,18 @@ loop:
       goto error;
     }
 
-  /* The log content of this backup is frozen at this instant, so this is its end time - not the moment the
-   * archive transfer happens to finish. restoredb -d backuptime stops at this timestamp, so it has to name the
-   * point the backup can actually reach, or the restore would ask for log the backup does not have. */
+  /* Stamp the end time here, right after the active log image has been taken.
+   *
+   * |--------------- LOG_CS ----------------|
+   * flush > pin archives > copy active log  |  archive transfer  |  backup done
+   *                                     (1)                  (2)
+   *
+   * (1) is where the log content of the backup is frozen. (2) is where the transfer ends.
+   *
+   * end_time has one reader: restoredb -d backuptime recovers up to it. This backup can restore up to (1), so
+   * end_time has to be (1). Stamping it at (2), where fileio_finish_backup () used to, would name a time this
+   * backup cannot reach - transactions commit and are acknowledged during the transfer, but their log is not in
+   * the backup, so the restore would stop at (1) and report nothing. */
   session.bkup.bkuphdr->end_time = (INT64) time (NULL);
 
   /* The log is captured and the archive set is pinned. Everything below only reads files that cannot change, so
