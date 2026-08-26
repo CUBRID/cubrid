@@ -344,7 +344,6 @@ static int cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time,
 static bool cdc_is_filtered_class (OID classoid);
 static bool cdc_is_filtered_user (char *user);
 
-static void cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_start_lsa);
 static void cdc_release_arv_num_to_keep (THREAD_ENTRY * thread_p);
 
 #if defined(SERVER_MODE)
@@ -14166,7 +14165,7 @@ cdc_min_log_pageid_to_keep ()
  * NOTE: cdc_Gl dies with the server, so the volume goes into the active log header. It keeps archive removal off
  *       the logs cdc has yet to re-read while the client has not reconnected.
  */
-static void
+void
 cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_start_lsa)
 {
   int arv_num;
