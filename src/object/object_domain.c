@@ -1166,6 +1166,7 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
 	  if (class_obj)
 	    {
 	      /* wf119: un-gated — reached only with a real MOP (client context) */
+	      assert (!db_on_server);
 	      new_dm->class_oid = class_obj->oid_info.oid;
 	    }
 	}
@@ -2742,7 +2743,9 @@ tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_m
 	}
       else
 	{
-	  /* wf119: un-gated — class_mop is only non-NULL in client context.
+	  /* wf119: un-gated — class_mop is only non-NULL in client context. */
+	  assert (!db_on_server);
+	  /*
 	   * We have a mixture of OID & MOPS, it probably isn't necessary to be
 	   * this general but try to avoid assuming the class OIDs have been set
 	   * when there is a MOP present.
@@ -3237,6 +3240,8 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	  {
 	    /* wf119: client body kept (crash 10, round-22 assert) — an OBJECT value only exists on client-context threads */
 	    DB_OBJECT *mop;
+
+	    assert (!db_on_server);
 
 	    domain = &tp_Object_domain;
 	    mop = db_get_object (val);
@@ -10469,6 +10474,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	   * client-context thread; genuine server threads never build one */
 	  if (vtype1 == DB_TYPE_OBJECT)
 	    {
+	      assert (!db_on_server);
 	      if (vtype2 == DB_TYPE_OID)
 		{
 		  mop = db_get_object (v1);
@@ -10486,6 +10492,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	    }
 	  else if (vtype2 == DB_TYPE_OBJECT)
 	    {
+	      assert (!db_on_server);
 	      if (vtype1 == DB_TYPE_OID)
 		{
 		  oid1 = db_get_oid (v1);

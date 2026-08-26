@@ -1173,6 +1173,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	  /* wf119: un-gated — OBJECT values only come from client-context threads */
 	  if (col->sorted && col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	    {
+	      assert (!db_on_server);
 
 	      DB_OBJECT *obj = db_get_object (val);
 	      if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
@@ -1319,6 +1320,7 @@ col_put (COL * col, long colindex, DB_VALUE * val)
 	{
 	  /* wf119: client body kept (crash-5 family) — OBJECT values only come
 	   * from client-context threads; the old SERVER_MODE branch hard-failed */
+	  assert (!db_on_server);
 	  DB_OBJECT *obj = db_get_object (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {
@@ -1457,6 +1459,7 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
 	  /* wf119: client body kept (crash 5, round-15 core) — OBJECT values
 	   * only come from client-context threads; the old SERVER_MODE branch
 	   * hard-failed with assert_release */
+	  assert (!db_on_server);
 	  DB_OBJECT *obj = db_get_object (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {

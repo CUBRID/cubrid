@@ -5156,6 +5156,7 @@ mr_index_writeval_object (OR_BUF * buf, DB_VALUE * value)
   if (DB_VALUE_TYPE (value) == DB_TYPE_OBJECT)
     {
       /* wf119: un-gated (SERVER_MODE used to leave oidp NULL here) */
+      assert (!db_on_server);
       obj = db_get_object (value);
       oidp = WS_OID (obj);
     }
