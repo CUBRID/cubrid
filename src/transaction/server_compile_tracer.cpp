@@ -45,6 +45,8 @@
 #include <cstring>
 #include <thread>
 
+#include "connection_defs.h"
+#include "connection_sr.h"
 #include "db.h"
 #include "db_client_type.hpp"
 #include "dbtype.h"
@@ -100,6 +102,8 @@ tracer_main (char *server_name, char *sql, char *out_path)
     }
   tracer_log (fp, "M0_TRACER: start db=%s sql=[%s]", server_name, sql);
 
+  int err;
+
   // register this foreign thread with the thread manager (same ritual as
   // connection_worker.cpp)
   cubthread::entry *entry_p = cubthread::get_manager ()->claim_entry ();
@@ -115,11 +119,22 @@ tracer_main (char *server_name, char *sql, char *out_path)
   entry_p->shutdown = false;
   entry_p->get_error_context ().register_thread_local ();
 
+  /* the server half anchors connection state and (eventually) the session on
+   * thread_p->conn_entry; give this in-process client a socketless entry from
+   * the server's own pool (status = CONN_OPEN, fd = INVALID_SOCKET) */
+  CSS_CONN_ENTRY *conn = css_make_conn (INVALID_SOCKET);
+  if (conn == NULL)
+    {
+      tracer_log (fp, "M0_TRACER: FAIL css_make_conn");
+      goto retire;
+    }
+  entry_p->conn_entry = conn;
+
   /* this thread now acts as the in-process client: start in client context;
    * enter_server/exit_server (network_interface_cl.c) toggle it per x-call */
   db_on_server = 0;
 
-  int err = db_restart_ex ("m0_tracer", server_name, "DBA", "", NULL, DB_CLIENT_TYPE_DEFAULT);
+  err = db_restart_ex ("m0_tracer", server_name, "DBA", "", NULL, DB_CLIENT_TYPE_DEFAULT);
   if (err != NO_ERROR)
     {
       tracer_log (fp, "M0_TRACER: FAIL db_restart_ex err=%d msg=[%s]", err, er_msg () ? er_msg () : "");

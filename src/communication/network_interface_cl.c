@@ -4040,11 +4040,22 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 #else /* CS_MODE */
   int tran_index = NULL_TRAN_INDEX;
 
+#if defined (SERVER_MODE)
+  /* wf119: in-process client — the server half needs the real thread entry
+   * (conn_entry carries connection state); NULL was an SA-only assumption */
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  tran_index =
+    xboot_register_client (thread_p, client_credential, client_lock_wait, client_isolation, tran_state,
+			   server_credential);
+  exit_server (*thread_p);
+#else /* SA_MODE */
   enter_server_no_thread_entry ();
 
   tran_index =
     xboot_register_client (NULL, client_credential, client_lock_wait, client_isolation, tran_state, server_credential);
   exit_server_no_thread_entry ();
+#endif
 
   return tran_index;
 #endif /* !CS_MODE */

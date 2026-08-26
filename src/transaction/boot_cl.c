@@ -334,13 +334,20 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
     }
 #endif
 
-/* initialize system parameters */
+/* initialize system parameters.
+ * wf119: skipped for the in-process client (SERVER_MODE) — the server's
+ * already-loaded parameter state is authoritative; re-loading here would
+ * both clobber live server parameters and hit prm_set_default's
+ * session-parameter path on a thread that has no session yet. */
+#if !defined (SERVER_MODE)
   if (sysprm_load_and_init_client (client_credential->get_db_name (), conf_file) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       return ER_BO_CANT_LOAD_SYSPRM;
     }
+#endif
 
+#if !defined (SERVER_MODE)
   if (!is_createdb)
     {
       // reload with update file name
@@ -358,6 +365,7 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
 	}
 #endif
     }
+#endif /* !SERVER_MODE — wf119: keep the server's er state */
 
   /* initialize the "areas" memory manager, requires prm_ */
   area_init ();
