@@ -14209,9 +14209,7 @@ cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_star
 	   && !LSA_ISNULL (&cdc_Gl.arv_keep_lsa) && LSA_GE (bundle_start_lsa, &cdc_Gl.arv_keep_lsa))
     {
       /* The header was computed for a page at or before this one, so it already keeps enough. */
-      LSA_COPY (&cdc_Gl.arv_keep_lsa, bundle_start_lsa);
-      LOG_CS_EXIT (thread_p);
-      return;
+      arv_num = LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr);
     }
   else
     {
@@ -14230,14 +14228,20 @@ cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_star
 
   LSA_COPY (&cdc_Gl.arv_keep_lsa, bundle_start_lsa);
 
+  /* Ahead of the check below, so that a session which is not moving the volume still shows up. */
+  cdc_log ("cdc_update_arv_num_to_keep : the bundle starting at (%lld|%d) keeps archive %d",
+	   LSA_AS_ARGS (bundle_start_lsa), arv_num);
+
   if (LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr) && LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr) == arv_num)
     {
       LOG_CS_EXIT (thread_p);
       return;
     }
 
-  cdc_log ("cdc_update_arv_num_to_keep : the bundle starting at (%lld|%d) has to keep archive %d",
-	   LSA_AS_ARGS (bundle_start_lsa), arv_num);
+  /* Which archive is being held back, and the position that asked for it, is what an operator needs after a
+   * failure, so it does not sit behind a debug parameter. The volume only moves when an archive is created. */
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ARCHIVE_KEPT, 3,
+	  (long long int) bundle_start_lsa->pageid, bundle_start_lsa->offset, arv_num);
 
   /* The log header is not a logged page, so nothing redoes a change to it: an in-memory only update would be
    * lost on a kill and the database would come back unprotected. Flush every change - the value tracks
