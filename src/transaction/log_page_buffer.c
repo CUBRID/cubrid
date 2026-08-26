@@ -6196,7 +6196,14 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 		}
 	      else
 		{
-		  /* Page should be in archive. */
+		  /* Same as in logpb_remove_archive_logs(): the volume is gone, so the value protects
+		   * nothing and is given up. The page being in an archive that cannot be read is not
+		   * something the engine does on its own, hence the assertion. */
+		  _er_log_debug (ARG_FILE_LINE,
+				 "The archive holding the first log pageid for cdc (%lld) could not be read. "
+				 "Giving up the protection.", (long long int) cdc_first_pageid);
+
+		  LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
 		  assert (false);
 		}
 	    }
@@ -6401,10 +6408,21 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 	  if (min_arv_required_for_cdc >= 0)
 	    {
 	      LOG_HDR_CDC_ARV_NUM_SET (&log_Gl.hdr, min_arv_required_for_cdc);
-	    }
 
-	  min_arv_required_for_cdc--;
-	  last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_cdc);
+	      min_arv_required_for_cdc--;
+	      last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_cdc);
+	    }
+	  else
+	    {
+	      /* The volume that holds the position cdc needs could not be read - it is gone. Clamping
+	       * against it would take last_deleted_arv_num to -2 and stop removal for good, and the
+	       * value protects nothing any more, so give it up. */
+	      _er_log_debug (ARG_FILE_LINE,
+			     "The archive holding the first log pageid for cdc (%lld) could not be read. "
+			     "Giving up the protection.", (long long int) cdc_first_pageid);
+
+	      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
+	    }
 	}
 
       /* Keep what the last cdc session was handed, even while it has not reconnected yet after a restart. */
