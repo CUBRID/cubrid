@@ -21783,7 +21783,8 @@ btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
   class_name = db_get_string (arg_values[0]);
 
   // if you want consitent results, S_LOCK is required.
-  status = xlocator_find_class_oid (thread_p, class_name, NULL, &oid, ctx->is_all ? S_LOCK : SCH_S_LOCK);
+  status = xlocator_find_class_oid (thread_p, class_name, db_get_oid (arg_values[arg_cnt - 1]), &oid,
+				    ctx->is_all ? S_LOCK : SCH_S_LOCK);
   if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
     {
       error = ER_LC_UNKNOWN_CLASSNAME;
@@ -21800,14 +21801,14 @@ btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
 
   if (ctx->is_all)
     {
-      assert (arg_cnt == 2);
+      assert (arg_cnt == 3);
 
       partition_type = (DB_CLASS_PARTITION_TYPE) db_get_int (arg_values[1]);
       ctx->indexes_count = classrep->n_indexes;
     }
   else
     {
-      assert (arg_cnt == 3);
+      assert (arg_cnt == 4);
 
       /* get index name which user specified */
       ctx->index_name = db_private_strdup (thread_p, db_get_string (arg_values[1]));

@@ -420,6 +420,7 @@ extern "C"
   extern PT_NODE *pt_make_string_value (PARSER_CONTEXT * parser, const char *value_string);
 
   extern PT_NODE *pt_make_integer_value (PARSER_CONTEXT * parser, const int value_int);
+  extern PT_NODE *pt_make_owner_value (PARSER_CONTEXT * parser, DB_OBJECT * class_mop);
 
   extern PT_NODE *pt_and (PARSER_CONTEXT * parser_ptr, const PT_NODE * expression1, const PT_NODE * expression2);
   extern PT_NODE *pt_union (PARSER_CONTEXT * parser_ptr, PT_NODE * expression1, PT_NODE * expression2);

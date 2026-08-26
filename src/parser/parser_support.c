@@ -195,6 +195,41 @@ pt_make_integer_value (PARSER_CONTEXT * parser, const int value_int)
 }
 
 /*
+ * pt_make_owner_value () -
+ *   return:  return a PT_NODE holding the owner of a class, NULL on error
+ *   parser(in): parser context
+ *   class_mop(in): the class whose owner to name
+ *
+ * Note: A server that is handed a name has no way of its own to tell which owner the name
+ *       belongs to, so whoever writes the name in a statement sends the owner with it.
+ */
+PT_NODE *
+pt_make_owner_value (PARSER_CONTEXT * parser, DB_OBJECT * class_mop)
+{
+  PT_NODE *node;
+  MOP owner_mop = au_get_class_owner (class_mop);
+
+  if (owner_mop == NULL)
+    {
+      ASSERT_ERROR ();
+      PT_ERRORc (parser, NULL, er_msg ());
+      return NULL;
+    }
+
+  node = parser_new_node (parser, PT_VALUE);
+  if (node == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
+  node->type_enum = PT_TYPE_OBJECT;
+  node->info.value.data_value.op = owner_mop;
+
+  return node;
+}
+
+/*
  * pt_make_string_value () -
  *   return:  return a PT_NODE for the string value
  *   parser(in): parser context
