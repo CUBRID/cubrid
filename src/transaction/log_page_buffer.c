@@ -5121,6 +5121,17 @@ logpb_get_archive_num_for_pageid (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
       fileio_close (vdes);
 
       arv_hdr = (LOG_ARV_HEADER *) log_pgptr->area;
+
+      if (log_Gl.append.vdes != NULL_VOLDES
+	  && difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
+	{
+	  /* Not an archive of this database - a leftover, or another database's file sitting under the name
+	   * this one would use. Its page range says nothing about where the page is, so it must neither be
+	   * matched against nor end the walk. logpb_fetch_from_archive () makes the same check before it
+	   * trusts an archive header. */
+	  continue;
+	}
+
       if (arv_hdr->fpageid <= pageid && pageid < arv_hdr->fpageid + arv_hdr->npages)
 	{
 	  found = arv_num;
