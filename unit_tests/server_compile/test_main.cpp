@@ -27,8 +27,56 @@
 
 #include <cstdio>
 
+#include "authenticate.h"
+#include "client_session_context.hpp"
 #include "language_support.h"
 #include "parser.h"
+
+/* wf122/A1: au lives in the session-scoped client context installed by the
+ * thread's activation bracket, not in a process singleton */
+static int
+test_au_context_bracket (void)
+{
+  client_session_context ctx_a;
+  client_session_context ctx_b;
+
+  csc_activate (&ctx_a);
+  if (au_ctx () != &ctx_a.au_context)
+    {
+      fprintf (stderr, "FAIL: au_ctx did not resolve to the activated context\n");
+      return 1;
+    }
+
+  /* a fresh context defaults to disable_auth_check == true; start from false
+   * so the macro round trip below actually transitions the flag */
+  ctx_a.au_context.disable_auth_check = false;
+  int save;
+  AU_SAVE_AND_DISABLE (save);
+  if (!ctx_a.au_context.disable_auth_check)
+    {
+      fprintf (stderr, "FAIL: AU_SAVE_AND_DISABLE missed the activated context\n");
+      return 1;
+    }
+  AU_RESTORE (save);
+  if (ctx_a.au_context.disable_auth_check)
+    {
+      fprintf (stderr, "FAIL: AU_RESTORE missed the activated context\n");
+      return 1;
+    }
+  csc_deactivate ();
+
+  /* rebinding the bracket must rebind au wholesale: ctx_b still carries the
+   * fresh-context default (disable_auth_check == true), not ctx_a's false */
+  csc_activate (&ctx_b);
+  if (au_ctx () != &ctx_b.au_context || !Au_disable)
+    {
+      fprintf (stderr, "FAIL: second bracket leaked state from the first\n");
+      return 1;
+    }
+  csc_deactivate ();
+
+  return 0;
+}
 
 int
 main (int, char **)
@@ -67,5 +115,11 @@ main (int, char **)
 
   parser_free_parser (parser);
   printf ("PASS: SERVER_MODE binary parsed 'SELECT 1' (PT_SELECT)\n");
+
+  if (test_au_context_bracket () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: au resolves through the session client context bracket\n");
   return 0;
 }

@@ -650,6 +650,7 @@ set(CLIENT_HALF_SOURCES
   ${OBJECT_DIR}/authenticate_password.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
+  ${OBJECT_DIR}/client_session_context.cpp
   ${OBJECT_DIR}/object_accessor.c
   ${OBJECT_DIR}/object_description.cpp
   ${OBJECT_DIR}/object_print.c

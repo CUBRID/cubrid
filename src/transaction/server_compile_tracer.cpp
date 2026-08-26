@@ -46,6 +46,7 @@
 #include <system_error>
 #include <thread>
 
+#include "client_session_context.hpp"
 #include "connection_defs.h"
 #include "connection_sr.h"
 #include "memory_alloc.h"	// free_and_init
@@ -157,6 +158,11 @@ tracer_main (char *server_name, char *sql, char *out_path)
   entry_p->m_status = cubthread::entry::status::TS_RUN;
   entry_p->shutdown = false;
   entry_p->get_error_context ().register_thread_local ();
+
+  /* the session-scoped client context — au is the first tenant (wf122/A1).
+   * Milestone-0 keeps this single tracer context alive for the process
+   * lifetime, like the process singleton it replaces (see file header) */
+  csc_activate (new client_session_context ());
 
   /* the server half anchors connection state and (eventually) the session on
    * thread_p->conn_entry; give this in-process client a socketless entry from
@@ -287,6 +293,7 @@ retire:
     }
   entry_p->tran_index = NULL_TRAN_INDEX;
   entry_p->m_status = cubthread::entry::status::TS_DEAD;
+  csc_deactivate ();
   entry_p->get_error_context ().deregister_thread_local ();
   entry_p->unregister_id ();
   cubthread::get_manager ()->retire_entry (*entry_p);
