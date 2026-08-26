@@ -251,6 +251,7 @@ static void qo_free_index (QO_ENV * env, QO_INDEX *);
 static QO_INDEX *qo_alloc_index (QO_ENV * env, int);
 static void qo_free_node_index_info (QO_ENV * env, QO_NODE_INDEX * node_indexp);
 static void qo_free_attr_info (QO_ENV * env, QO_ATTR_INFO * info);
+static DB_VALUE *qo_copy_histogram_value (PARSER_CONTEXT * parser, DB_VALUE * src);
 static QO_ATTR_INFO *qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg);
 static QO_ATTR_INFO *qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_str);
 static void qo_free_class_info (QO_ENV * env, QO_CLASS_INFO *);
@@ -2057,6 +2058,24 @@ qo_analyze_term (QO_TERM * term, int term_type)
       QO_TERM_SET_FLAG (term, QO_TERM_LIKE_DERIVED_RANGE);
     }
 
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE))
+    {
+      /* the LIKE the range above was derived from */
+      QO_TERM_SET_FLAG (term, QO_TERM_LIKE_HAS_DERIVED_RANGE);
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_OR_DERIVED))
+    {
+      /* keep real selectivity for index-access cost; flag so row-count skips it */
+      QO_TERM_SET_FLAG (term, QO_TERM_OR_DERIVED);
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_OR_DERIVED_EXPENSIVE))
+    {
+      /* make_pred_from_plan () drops it from the data filter unless an index adopted it */
+      QO_TERM_SET_FLAG (term, QO_TERM_OR_DERIVED_EXPENSIVE);
+    }
+
   /* only interesting in one predicate term; if 'term' has 'or_next', it was derived from OR term */
   /* also cases that are too complicated and unusual to consider here: (cond and/or cond) is true/false (cond and/or
    * cond) =/!= (cond and/or cond).
@@ -2820,6 +2839,17 @@ wrapup:
       QO_TERM_SELECTIVITY (term) = -1.0;
       break;
     }				/* switch (term_type) */
+
+  /* an OR-derived implied duplicate earns its keep only when it rejects most rows: when it does
+   * not, keep it out of key ranges/filters as well -- an index scan repeated per outer row over
+   * most of the index costs more than it saves, and an implied duplicate must never steer the
+   * plan by itself (make_pred_from_plan () applies the same bound to the data filter it may
+   * remain as) */
+  if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (term) > 0.5)
+    {
+      QO_TERM_SET_FLAG (term, QO_TERM_NON_IDX_SARG_COLL);
+      QO_TERM_CAN_USE_INDEX (term) = 0;
+    }
 
   bitset_delset (&lhs_segs);
   bitset_delset (&rhs_segs);
@@ -5216,6 +5246,71 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 }
 
 /*
+ * qo_copy_histogram_value () - parser-arena copy of a cached histogram blob
+ *   return: the copy, or NULL when there is nothing usable to copy
+ *   parser(in):
+ *   src(in): DB_VALUE owned by the workspace class cache (smclass->histogram)
+ *
+ * Note: PT_NAME.histogram used to alias the cache-owned blob directly, but the cache frees the
+ *	 blob on any statistics refresh or class decache (sm_get_class_with_statistics () when
+ *	 the server reports newer statistics, sm_get_statistics_force (),
+ *	 sm_update_statistics (), install_new_representation (), classobj_free_class ()) while
+ *	 the annotation is consumed only later, by the term analysis.  A self-join's later FROM
+ *	 entities re-fetch the very class the earlier entities annotated, so term selectivity
+ *	 read freed memory: usually a silently wrong join selectivity, and a crash when the
+ *	 block had been reused.  Copy the blob into the parser arena, whose lifetime covers the
+ *	 whole optimization, so the annotation owns what it points to.  The buffer is arena
+ *	 memory, so the copy carries no need_clear and is freed with the parser.
+ */
+static DB_VALUE *
+qo_copy_histogram_value (PARSER_CONTEXT * parser, DB_VALUE * src)
+{
+  DB_VALUE *copy;
+  const char *src_buf;
+  char *buf;
+  int bit_len = 0, size;
+  DB_TYPE src_type;
+
+  if (src == NULL || DB_IS_NULL (src))
+    {
+      return NULL;
+    }
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src);
+  if (src_type != DB_TYPE_BIT && src_type != DB_TYPE_VARBIT)
+    {
+      /* not a histogram blob shape; annotating nothing beats annotating a guess */
+      return NULL;
+    }
+
+  src_buf = db_get_bit (src, &bit_len);
+  if (src_buf == NULL || bit_len <= 0)
+    {
+      return NULL;
+    }
+  size = (bit_len + 7) / 8;
+
+  copy = (DB_VALUE *) parser_alloc (parser, (int) sizeof (DB_VALUE));
+  buf = (char *) parser_alloc (parser, size);
+  if (copy == NULL || buf == NULL)
+    {
+      return NULL;		/* same effect as having no histogram */
+    }
+
+  memcpy (buf, src_buf, size);
+  if (src_type == DB_TYPE_BIT)
+    {
+      db_make_bit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+  else
+    {
+      db_make_varbit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+
+  return copy;
+}
+
+/*
  * qo_get_attr_info () - Find the ATTR_STATS information about each actual
  *			 attribute that underlies this segment
  *   return: QO_ATTR_INFO *
@@ -5363,7 +5458,10 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	    {
 	      if (hist_stats->attr_ids[h] == attr_id)
 		{
-		  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[h];
+		  /* own a copy: the cache-owned blob can be freed before the term analysis
+		   * consumes this annotation (see qo_copy_histogram_value ()) */
+		  QO_SEG_PT_NODE (seg)->info.name.histogram =
+		    qo_copy_histogram_value (QO_ENV_PARSER (env), hist_stats->histogram[h]);
 		  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[h];
 		  break;
 		}
@@ -8004,6 +8102,19 @@ qo_discover_partitions (QO_ENV * env)
        */
       if (bitset_cardinality (&(QO_PARTITION_NODES (part))) > _WORDSIZE - 2 - LOG2_SIZEOF_POINTER)
 	{
+	  /* The join_info vector is indexed by a subset bitmask of the partition's nodes, so it holds
+	   * 2**nodes entries and its byte size stops fitting in a signed int past this many nodes.
+	   * Optimization gives up on the whole query here and the statement runs with the syntactic
+	   * join order, which is a legitimate fallback -- but it used to happen without a word to the
+	   * user, so a 28-table query silently lost cost-based join ordering and index selection while
+	   * a 27-table one kept it. Report it: the warning lands in the error log, and the plan dump
+	   * (SET OPTIMIZATION LEVEL) says the plan was not generated instead of printing nothing. */
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QO_SET_SIZE_EXCEEDED, 0);
+	  er_log_debug (ARG_FILE_LINE,
+			"cost-based optimization skipped: a join partition has %d tables, "
+			"more than the %d the join_info vector can index\n",
+			bitset_cardinality (&(QO_PARTITION_NODES (part))), _WORDSIZE - 2 - LOG2_SIZEOF_POINTER);
+
 	  if (buddy)
 	    {
 	      free_and_init (buddy);
@@ -8690,9 +8801,11 @@ qo_node_add_sarg (QO_NODE * node, QO_TERM * sarg)
   double sel_limit;
 
   bitset_add (&(QO_NODE_SARGS (node)), QO_TERM_IDX (sarg));
-  /* Skip LIKE-derived range in row-count: subset-correlated with the retained
-   * LIKE. Still kept in QO_NODE_SARGS for index key-range use. */
-  if (!QO_TERM_IS_FLAGED (sarg, QO_TERM_LIKE_DERIVED_RANGE))
+  /* Skip derived duplicates in row-count: a LIKE-derived range is subset-correlated with the
+   * retained LIKE, and an OR-derived restriction is implied by the multi-spec factor it was
+   * extracted from, so counting either would double count the same constraint.  Both stay in
+   * QO_NODE_SARGS for index key-range use. */
+  if (!QO_TERM_IS_FLAGED (sarg, QO_TERM_LIKE_DERIVED_RANGE | QO_TERM_OR_DERIVED))
     {
       QO_NODE_SELECTIVITY (node) *= QO_TERM_SELECTIVITY (sarg);
     }

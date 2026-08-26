@@ -213,7 +213,6 @@ static PT_NODE *pt_apply_commit_work (PARSER_CONTEXT * parser, PT_NODE * p, void
 static PT_NODE *pt_apply_constraint (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_create_entity (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
-static PT_NODE *pt_apply_update_histogram (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_create_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -342,8 +341,6 @@ static PARSER_VARCHAR *pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p
 static PARSER_VARCHAR *pt_print_col_def_constraint (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p);
-static PARSER_VARCHAR *pt_print_analyze_histogram (PARSER_CONTEXT * parser, PT_NODE * p);
-static PARSER_VARCHAR *pt_print_show_histogram (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_serial (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -2717,17 +2714,13 @@ pt_print_alias (PARSER_CONTEXT * parser, const PT_NODE * node)
 
 
 static PARSER_VARCHAR *
-pt_conv_server_2_hash_text (PARSER_CONTEXT * parser)
+pt_conv_text_2_hash_text (PARSER_CONTEXT * parser, const unsigned char *ps)
 {
   unsigned int hash1 = 5381;
   unsigned int hash2 = 5381;
-  unsigned char *s, *ps;
+  const unsigned char *s;
   char buf[64];
 
-  assert (parser->dblink_server_text != NULL);
-  assert (parser->dblink_server_text->bytes != NULL);
-
-  ps = parser->dblink_server_text->bytes;
   if (!ps || *ps == '\0')
     {
       return NULL;
@@ -2739,7 +2732,7 @@ pt_conv_server_2_hash_text (PARSER_CONTEXT * parser)
       hash1 = ((hash1 << 5) + hash1) + *s;	/* hash * 33 + c */
     }
 
-  // reverse 
+  // reverse
   for (s--; s >= ps; s--)
     {
       hash2 = ((hash2 << 5) - hash2) + *s;	/* hash * 31 + c */
@@ -2748,6 +2741,137 @@ pt_conv_server_2_hash_text (PARSER_CONTEXT * parser)
   sprintf (buf, "%u,%u", hash1, hash2);
 
   return pt_append_nulstring (parser, NULL, buf);
+}
+
+static PARSER_VARCHAR *
+pt_conv_server_2_hash_text (PARSER_CONTEXT * parser)
+{
+  assert (parser->dblink_server_text != NULL);
+  assert (parser->dblink_server_text->bytes != NULL);
+
+  return pt_conv_text_2_hash_text (parser, parser->dblink_server_text->bytes);
+}
+
+/*
+ * pt_print_auto_param_value () - print the bound value of an auto-parameterized marker only
+ *   return: value text, or NULL for a real host variable (the caller falls back to printing '?')
+ *   parser(in):
+ *   val(in):
+ *
+ * Note: auto-parameterization replaces a literal with a host variable whose index sits at or above
+ *   parser->host_var_count. Such a value is fixed for the statement, so the cache key must depend on
+ *   it. A real host variable (index below host_var_count) is bound per execution and has to stay
+ *   opaque, otherwise statements that are meant to share one plan would take one entry per value.
+ */
+static PARSER_VARCHAR *
+pt_print_auto_param_value (PARSER_CONTEXT * parser, const PT_NODE * val)
+{
+  if (val->node_type == PT_HOST_VAR && val->info.host_var.index < parser->host_var_count)
+    {
+      return NULL;
+    }
+
+  return pt_print_node_value (parser, val);
+}
+
+/*
+ * pt_is_dblink_dml_target () - check whether the statement writes into a DBLink DML target
+ *   return: true if the INSERT/MERGE target spec was converted to PT_DBLINK_TABLE_DML
+ *   node(in):
+ */
+static bool
+pt_is_dblink_dml_target (const PT_NODE * node)
+{
+  PT_NODE *spec = NULL;
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      spec = node->info.insert.spec;
+      break;
+    case PT_MERGE:
+      spec = node->info.merge.into;
+      break;
+    default:
+      return false;
+    }
+
+  return (spec != NULL && spec->node_type == PT_SPEC && spec->info.spec.remote_server_name != NULL
+	  && spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+}
+
+/*
+ * pt_conv_values_2_hash_text () - hash the values of a statement writing into a DBLink DML target
+ *   return: hash text, or NULL when there is nothing to hash
+ *   parser(in):
+ *   node(in): INSERT or MERGE statement
+ *
+ * Note: the values of an INSERT are replaced with host variables by auto-parameterization before the
+ *   cache key text is printed, so two INSERTs differing only in their values print the same text.
+ *   That is safe for a local table because the values are bound at execution, but the statement sent
+ *   to the remote server carries them as a literal string fixed at compile time - sharing one cache
+ *   entry would then execute another statement's values. Hashing the values restores the distinction
+ *   and keeps the key text short regardless of how large the values are.
+ */
+static PARSER_VARCHAR *
+pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  PT_NODE *values_list = NULL;
+  PARSER_VARCHAR *values_str = NULL;
+  PT_PRINT_VALUE_FUNC saved_print_db_value;
+  unsigned int saved_dont_prt_long_string;
+
+  if (parser->auto_param_count <= 0)
+    {
+      /* nothing was auto-parameterized: the values are still visible in the printed text */
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      values_list = node->info.insert.value_clauses;
+      break;
+    case PT_MERGE:
+      values_list = node->info.merge.insert.value_clauses;
+      break;
+    default:
+      return NULL;
+    }
+
+  if (values_list == NULL || values_list->node_type != PT_NODE_LIST)
+    {
+      return NULL;
+    }
+
+  if (values_list->info.node_list.list_type != PT_IS_VALUE)
+    {
+      /* The rows come from a subquery, so the statement sent to the remote server is a template
+       * bound row by row and carries no value of its own: such statements may share one plan.
+       * Verified on the pre-fix build - the two statements share one entry and insert their own
+       * rows. Leaving them out also keeps the query out of the key computation. */
+      return NULL;
+    }
+
+  saved_print_db_value = parser->print_db_value;
+  saved_dont_prt_long_string = parser->flag.dont_prt_long_string;
+
+  /* The guard that skips long strings must not apply here: a value left out of the hash input would
+   * let two different values collide again. Hashing keeps the key short whatever the value size. */
+  parser->print_db_value = pt_print_auto_param_value;
+  parser->flag.dont_prt_long_string = 0;
+
+  values_str = pt_print_bytes_l (parser, values_list);
+
+  parser->print_db_value = saved_print_db_value;
+  parser->flag.dont_prt_long_string = saved_dont_prt_long_string;
+
+  if (values_str == NULL || values_str->bytes == NULL || values_str->length <= 0)
+    {
+      return NULL;
+    }
+
+  return pt_conv_text_2_hash_text (parser, values_str->bytes);
 }
 
 /*
@@ -2818,6 +2942,25 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  string = pt_append_varchar (parser, string, pt_conv_server_2_hash_text (parser));
 	  string = pt_append_bytes (parser, string, "}", 1);
 	  parser->dblink_server_text = NULL;
+
+	  /* Sitting inside this block ties the values to dblink_server_text being filled, which holds
+	   * for every statement that can reach execution: name resolution fills url/user/pwd or the
+	   * statement fails, and XASL generation refuses a DML target that is missing any of them.
+	   *
+	   * Only a DBLink DML target needs its values in the key: this block also runs when just the
+	   * source is remote (a local INSERT ... SELECT from a DBLink table), and those values are
+	   * bound at execution, so hashing them would take one cache entry per value for nothing. */
+	  if (pt_is_dblink_dml_target (node))
+	    {
+	      PARSER_VARCHAR *values_hash = pt_conv_values_2_hash_text (parser, node);
+
+	      if (values_hash != NULL)
+		{
+		  string = pt_append_nulstring (parser, string, ";values={");
+		  string = pt_append_varchar (parser, string, values_hash);
+		  string = pt_append_bytes (parser, string, "}", 1);
+		}
+	    }
 	}
 
       return (char *) string->bytes;
@@ -3093,12 +3236,6 @@ pt_show_node_type (PT_NODE * node)
       return "CREATE_ENTITY";
     case PT_CREATE_INDEX:
       return "CREATE_INDEX";
-    case PT_UPDATE_HISTOGRAM:
-      return "update_histogram";
-    case PT_SHOW_HISTOGRAM:
-      return "show histogram";
-    case PT_DROP_HISTOGRAM:
-      return "DROP_HISTOGRAM";
     case PT_CREATE_USER:
       return "CREATE_USER";
     case PT_CREATE_TRIGGER:
@@ -5066,9 +5203,6 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_COMMIT_WORK] = pt_apply_commit_work;
   pt_apply_func_array[PT_CREATE_ENTITY] = pt_apply_create_entity;
   pt_apply_func_array[PT_CREATE_INDEX] = pt_apply_create_index;
-  pt_apply_func_array[PT_UPDATE_HISTOGRAM] = pt_apply_update_histogram;
-  pt_apply_func_array[PT_DROP_HISTOGRAM] = pt_apply_update_histogram;
-  pt_apply_func_array[PT_SHOW_HISTOGRAM] = pt_apply_update_histogram;
   pt_apply_func_array[PT_CREATE_USER] = pt_apply_create_user;
   pt_apply_func_array[PT_CREATE_TRIGGER] = pt_apply_create_trigger;
   pt_apply_func_array[PT_CREATE_SERIAL] = pt_apply_create_serial;
@@ -5203,9 +5337,6 @@ pt_init_init_f (void)
   pt_init_func_array[PT_COMMIT_WORK] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_ENTITY] = pt_init_create_entity;
   pt_init_func_array[PT_CREATE_INDEX] = pt_init_create_index;
-  pt_init_func_array[PT_UPDATE_HISTOGRAM] = pt_init_func_null_function;
-  pt_init_func_array[PT_DROP_HISTOGRAM] = pt_init_func_null_function;
-  pt_init_func_array[PT_SHOW_HISTOGRAM] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_USER] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_TRIGGER] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_SERIAL] = pt_init_func_null_function;
@@ -5336,9 +5467,6 @@ pt_init_print_f (void)
   pt_print_func_array[PT_COMMIT_WORK] = pt_print_commit_work;
   pt_print_func_array[PT_CREATE_ENTITY] = pt_print_create_entity;
   pt_print_func_array[PT_CREATE_INDEX] = pt_print_create_index;
-  pt_print_func_array[PT_UPDATE_HISTOGRAM] = pt_print_analyze_histogram;
-  pt_print_func_array[PT_DROP_HISTOGRAM] = pt_print_analyze_histogram;
-  pt_print_func_array[PT_SHOW_HISTOGRAM] = pt_print_show_histogram;
   pt_print_func_array[PT_CREATE_USER] = pt_print_create_user;
   pt_print_func_array[PT_CREATE_TRIGGER] = pt_print_create_trigger;
   pt_print_func_array[PT_CREATE_SERIAL] = pt_print_create_serial;
@@ -6579,6 +6707,15 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 
+  if (p->info.alter_user.login_capability == PT_LOGIN)
+    {
+      b = pt_append_nulstring (parser, b, " login");
+    }
+  else if (p->info.alter_user.login_capability == PT_NOLOGIN)
+    {
+      b = pt_append_nulstring (parser, b, " nologin");
+    }
+
   if (p->info.alter_user.comment != NULL)
     {
       r1 = pt_print_bytes (parser, p->info.alter_user.comment);
@@ -7369,111 +7506,8 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-/*
- * pt_apply_update_histogram () -
- *   return:
- *   parser(in):
- *   p(in):
- *   g(in):
- *   arg(in):
- */
-static PT_NODE *
-pt_apply_update_histogram (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
-{
-  PT_APPLY_WALK (parser, p->info.histogram.target_table_spec, arg);
-  PT_APPLY_WALK (parser, p->info.histogram.target_columns, arg);
-  return p;
-}
-
-/*
- * pt_print_update_histogram () -
- *   return:
- *   parser(in):
- *   p(in):
- *   g(in):
- *   arg(in):
- */
-static PARSER_VARCHAR *
-pt_print_analyze_histogram (PARSER_CONTEXT * parser, PT_NODE * p)
-{
-  PARSER_VARCHAR *b = 0, *tbl = 0, *cl = 0;
-  unsigned int saved_cp = parser->custom_print;
-  PT_NODE *target_columns;
 
 
-  b = pt_append_nulstring (parser, b, "analyze table ");
-  if (p->info.histogram.target_table_spec)
-    {
-      tbl = pt_print_bytes (parser, p->info.histogram.target_table_spec);
-    }
-
-  b = pt_append_varchar (parser, b, tbl);
-
-  if (p->node_type == PT_UPDATE_HISTOGRAM)
-    {
-      b = pt_append_nulstring (parser, b, " update histogram");
-    }
-  else if (p->node_type == PT_DROP_HISTOGRAM)
-    {
-      b = pt_append_nulstring (parser, b, " drop histogram");
-    }
-
-  b = pt_append_nulstring (parser, b, " on ");
-
-  if (p->info.histogram.target_columns)
-    {
-      target_columns = p->info.histogram.target_columns;
-      cl = pt_print_bytes_l (parser, target_columns);
-    }
-
-  b = pt_append_nulstring (parser, b, " (");
-  b = pt_append_varchar (parser, b, cl);
-  b = pt_append_nulstring (parser, b, ") ");
-
-  parser->custom_print = saved_cp;
-
-  return b;
-}
-
-/*
- * pt_print_show_histogram () -
- *   return:
- *   parser(in):
- *   p(in):
- *   g(in):
- *   arg(in):
- */
-static PARSER_VARCHAR *
-pt_print_show_histogram (PARSER_CONTEXT * parser, PT_NODE * p)
-{
-  PARSER_VARCHAR *b = 0, *tbl = 0, *cl = 0;
-  unsigned int saved_cp = parser->custom_print;
-  PT_NODE *target_columns;
-
-  b = pt_append_nulstring (parser, b, "show histogram ");
-  if (p->info.histogram.target_table_spec)
-    {
-      tbl = pt_print_bytes (parser, p->info.histogram.target_table_spec);
-    }
-
-  b = pt_append_varchar (parser, b, tbl);
-
-  b = pt_append_nulstring (parser, b, " on ");
-
-  if (p->info.histogram.target_columns)
-    {
-      target_columns = p->info.histogram.target_columns;
-      cl = pt_print_bytes_l (parser, target_columns);
-    }
-
-  b = pt_append_nulstring (parser, b, " (");
-  b = pt_append_varchar (parser, b, cl);
-  b = pt_append_nulstring (parser, b, ") ");
-
-  parser->custom_print = saved_cp;
-
-  return b;
-}
 
 /* CREATE_INDEX */
 /*
@@ -7681,6 +7715,11 @@ pt_print_create_user (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.create_user.password);
       b = pt_append_nulstring (parser, b, " password ");
       b = pt_append_varchar (parser, b, r1);
+    }
+  /* "login" is the default, so the output stays the same as before the clause existed. */
+  if (p->info.create_user.login_capability == PT_NOLOGIN)
+    {
+      b = pt_append_nulstring (parser, b, " nologin");
     }
   if (p->info.create_user.groups)
     {
@@ -9025,6 +9064,11 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, " NO_LOGGING");
 	}
 
+      if (p->info.delete_.hint & PT_HINT_BIND_SENSITIVE)
+	{
+	  /* replan when the bound values change histogram bucket */
+	  q = pt_append_nulstring (parser, q, " BIND_SENSITIVE");
+	}
       if (p->info.delete_.hint & PT_HINT_ORDERED)
 	{
 	  /* force join left-to-right */
@@ -12705,6 +12749,16 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
   FUNC_CODE code;
   PARSER_VARCHAR *q = 0, *r1;
   PT_NODE *order_by = NULL;
+  unsigned int save_custom = parser->custom_print;
+
+  /* a function argument is never followed by "AS alias" in SQL syntax; an arg_list member's own
+   * alias_print may be set for unrelated bookkeeping (e.g. carried over from view/subquery
+   * merging), so it must not leak into the printed text here -- restored below, right before
+   * this call's own alias (if any) is appended. */
+  if (parser->flag.is_parsing_static_sql)
+    {
+      parser->custom_print &= ~PT_PRINT_ALIAS;
+    }
 
   code = p->info.function.function_type;
   if (code == PT_GENERIC)
@@ -12938,6 +12992,11 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	}
       q = pt_append_nulstring (parser, q, ")");
+    }
+
+  if (parser->flag.is_parsing_static_sql)
+    {
+      parser->custom_print = save_custom;
     }
 
   if ((parser->custom_print & PT_PRINT_ALIAS) && p->alias_print != NULL)
@@ -14719,6 +14778,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 		  q = pt_append_nulstring (parser, q, " ");
 		}
 	    }
+	  if (p->info.query.hint & PT_HINT_BIND_SENSITIVE)
+	    {
+	      /* replan when the bound values change histogram bucket */
+	      q = pt_append_nulstring (parser, q, "BIND_SENSITIVE ");
+	    }
 	  if (p->info.query.q.select.hint & PT_HINT_ORDERED)
 	    {
 	      /* force join left-to-right */
@@ -16018,6 +16082,11 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_nulstring (parser, b, " NO_LOGGING");
 	}
 
+      if (p->info.update.hint & PT_HINT_BIND_SENSITIVE)
+	{
+	  /* replan when the bound values change histogram bucket */
+	  b = pt_append_nulstring (parser, b, " BIND_SENSITIVE");
+	}
       if (p->info.update.hint & PT_HINT_ORDERED)
 	{
 	  /* force join left-to-right */
@@ -16280,6 +16349,8 @@ static PARSER_VARCHAR *
 pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1;
+  const char *sep = " with ";
+  char buf[32];
 
   b = pt_append_nulstring (parser, b, "update statistics on ");
   if (p->info.update_stats.all_classes > 0)
@@ -16296,10 +16367,38 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r1);
     }
 
+  /* each option guards its own print; sep flips to ", " after the first one, so nothing is
+   * emitted when no option is set */
   if (p->info.update_stats.with_fullscan > 0)
     {
       assert (p->info.update_stats.with_fullscan == STATS_WITH_FULLSCAN);
-      b = pt_append_nulstring (parser, b, " with fullscan");
+      b = pt_append_nulstring (parser, b, sep);
+      b = pt_append_nulstring (parser, b, "fullscan");
+      sep = ", ";
+    }
+  if (p->info.update_stats.random_seed > 0)
+    {
+      b = pt_append_nulstring (parser, b, sep);
+      b = pt_append_nulstring (parser, b, "random seed");
+      sep = ", ";
+    }
+  if (p->info.update_stats.no_histogram > 0)
+    {
+      b = pt_append_nulstring (parser, b, sep);
+      b = pt_append_nulstring (parser, b, "no histogram");
+      sep = ", ";
+    }
+  if (p->info.update_stats.drop_histogram > 0)
+    {
+      b = pt_append_nulstring (parser, b, sep);
+      b = pt_append_nulstring (parser, b, "drop histogram");
+      sep = ", ";
+    }
+  if (p->info.update_stats.bucket_count > 0)
+    {
+      snprintf (buf, sizeof (buf), "%d buckets", p->info.update_stats.bucket_count);
+      b = pt_append_nulstring (parser, b, sep);
+      b = pt_append_nulstring (parser, b, buf);
     }
 
   return b;
