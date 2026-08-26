@@ -43,8 +43,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <system_error>
 #include <thread>
+
+#include <pthread.h>
 
 #include "connection_defs.h"
 #include "connection_sr.h"
@@ -61,6 +62,25 @@
 #include "thread_manager.hpp"
 
 static void tracer_main (char *server_name, char *sql, char *out_path);
+
+struct tracer_args
+{
+  char *server_name;
+  char *sql;
+  char *out_path;
+};
+
+/* pthread trampoline — the engine's C error model forbids exceptions, so the
+ * thread is created with pthread_create (std::thread's constructor throws) */
+static void *
+tracer_thread_start (void *arg)
+{
+  tracer_args *args = (tracer_args *) arg;
+
+  tracer_main (args->server_name, args->sql, args->out_path);
+  free_and_init (arg);
+  return NULL;
+}
 
 /* thread-local server/client boundary flag (see network_interface_sr.cpp) */
 extern thread_local unsigned int db_on_server;
@@ -79,30 +99,35 @@ boot_tracer_start_if_requested (const char *server_name)
       out = "m0_tracer.out";
     }
 
+  tracer_args *args = (tracer_args *) malloc (sizeof (tracer_args));
   char *server_name_dup = strdup (server_name);
   char *sql_dup = strdup (sql);
   char *out_dup = strdup (out);
-  if (server_name_dup == NULL || sql_dup == NULL || out_dup == NULL)
+  if (args == NULL || server_name_dup == NULL || sql_dup == NULL || out_dup == NULL)
     {
       fprintf (stderr, "M0_TRACER: FAIL argument allocation\n");
+      free_and_init (args);
       free_and_init (server_name_dup);
       free_and_init (sql_dup);
       free_and_init (out_dup);
       return;
     }
+  args->server_name = server_name_dup;
+  args->sql = sql_dup;
+  args->out_path = out_dup;
 
-  try
-    {
-      std::thread (tracer_main, server_name_dup, sql_dup, out_dup).detach ();
-    }
-  catch (const std::system_error &)
+  pthread_t tid;
+  if (pthread_create (&tid, NULL, tracer_thread_start, args) != 0)
     {
       /* resource exhaustion must fail the tracer, not take down cub_server */
       fprintf (stderr, "M0_TRACER: FAIL thread creation\n");
+      free_and_init (args);
       free_and_init (server_name_dup);
       free_and_init (sql_dup);
       free_and_init (out_dup);
+      return;
     }
+  pthread_detach (tid);
 }
 
 static void

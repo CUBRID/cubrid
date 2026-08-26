@@ -77,7 +77,7 @@
 #include "thread_manager.hpp"
 #include "pl_compile_handler.hpp"
 #include "pl_executor.hpp"
-#endif // !CS_MODE
+#endif /* !CS_MODE */
 
 #include "xasl.h"
 #include "lob_locator.hpp"
@@ -125,16 +125,16 @@ static void enter_server_no_thread_entry (void);
 static THREAD_ENTRY *enter_server (void);
 static void exit_server_no_thread_entry (void);
 static void exit_server (const THREAD_ENTRY & thread_ref);
-#endif // !CS_MODE
+#endif /* !CS_MODE */
 static int is_top_level_class (MOBJ mobj);
 
 #if !defined (CS_MODE)
 //
 // enter_server_no_thread_entry () - enter server mode without getting a thread entry (e.g. when "starting" server).
 //
-// SERVER_MODE (wf119 tracer): the calling thread is already a server worker
-// with its own private heap; only the boundary flag and error stack change.
-//
+/* SERVER_MODE (wf119 tracer): the calling thread is already a server worker
+ * with its own private heap; only the boundary flag and error stack change.
+ */
 static void
 enter_server_no_thread_entry (void)
 {
@@ -190,7 +190,7 @@ exit_server (const THREAD_ENTRY & thread_ref)
 
   exit_server_no_thread_entry ();
 }
-#endif // !CS_MODE
+#endif /* !CS_MODE */
 
 #if defined(CS_MODE)
 /*
@@ -7632,7 +7632,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 
     if (senddata != NULL)
       {
-	free (senddata);
+	free_and_init (senddata);
       }
   }
 #else /* !SERVER_MODE */
@@ -7795,7 +7795,7 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
 
     if (senddata != NULL)
       {
-	free (senddata);
+	free_and_init (senddata);
       }
   }
 #else /* !SERVER_MODE */

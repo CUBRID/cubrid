@@ -46,7 +46,11 @@ if [ "$active" -gt 0 ]; then
   cubrid server status >&2 || true
   exit 2
 fi
-services="$(cubrid service status 2>/dev/null | grep -i 'is running' | grep -viE 'master|server' || true)"
+# name-based, not "is running"-based: manager reports as "cubrid manager
+# server is running" (a server-word filter misses it) and active heartbeat
+# prints node info without an "is running" line. '@'-prefixed section
+# headers are skipped.
+services="$(cubrid service status 2>/dev/null | grep -v '^@' | grep -iE '(broker|gateway|manager|heartbeat)' | grep -viE 'not running|stopped' || true)"
 if [ -n "$services" ]; then
   echo "ABORT: non-server CUBRID services are running; 'cubrid service stop' would take them down:" >&2
   echo "$services" >&2
@@ -93,9 +97,14 @@ for sql in "$@"; do
 
   cubrid server stop "$DB" >/dev/null 2>&1 || true
   # a PASS with the server still up is not a pass — shutdown health is part
-  # of the gate (this is exactly where the wf119 shutdown crashes hid)
+  # of the gate (this is exactly where the wf119 shutdown crashes hid).
+  # fail-closed: an unanswerable status check is itself a failure.
   stopped=1
-  if cubrid server status 2>/dev/null | grep -q "^ Server ${DB} "; then
+  stop_note="server still running after stop"
+  if ! status_out="$(cubrid server status 2>/dev/null)"; then
+    stopped=0
+    stop_note="server status check failed after stop"
+  elif printf '%s\n' "$status_out" | grep -q "^ Server ${DB} "; then
     stopped=0
   fi
 
@@ -107,15 +116,20 @@ for sql in "$@"; do
     echo "FAIL: $sql (no SUCCESS in tracer output)"
     fail=1
   else
-    echo "FAIL: $sql (server still running after stop)"
+    echo "FAIL: $sql ($stop_note)"
     fail=1
   fi
   rm -f "$out"
 done
 
 # don't leave a master whose environment still carries the last tracer SQL —
-# the next ordinary `cubrid server start` would silently re-run the tracer
+# the next ordinary `cubrid server start` would silently re-run the tracer.
+# Verified, not fire-and-forget: a surviving master fails the run.
 cubrid service stop >/dev/null 2>&1 || true
+if cubrid service status 2>/dev/null | grep -qi 'master is running'; then
+  echo "FAIL: cub_master still running (with tracer env) after final service stop" >&2
+  fail=1
+fi
 trap - EXIT INT TERM
 
 exit $fail

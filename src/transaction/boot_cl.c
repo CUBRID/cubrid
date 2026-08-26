@@ -686,6 +686,12 @@ boot_restart_failure_cleanup (DB_INFO * db,
     }
   else
     {
+#if !defined (SERVER_MODE)
+      /* wf119: not for the in-process boot — direct registration aliases
+       * these to the server's static boot_Db_full_name/boot_Host_name
+       * (boot_sr.c xboot_register_client), so freeing them would hand static
+       * storage to the private heap. The memset below still clears the
+       * aliases. */
       if (boot_Server_credential.db_full_name)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
@@ -694,6 +700,7 @@ boot_restart_failure_cleanup (DB_INFO * db,
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
 	}
+#endif /* !SERVER_MODE */
 
 #if !defined (SERVER_MODE)
       /* wf119: never finalize these for an in-process boot — they are shared
