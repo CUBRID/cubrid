@@ -21,6 +21,7 @@
  */
 
 #include "authenticate.h"
+#include "schema_system_catalog.hpp"
 #include "authenticate_cache.hpp"
 #include "authenticate_access_auth.hpp"
 
@@ -79,6 +80,12 @@ au_find_owner_oid_of_name (const char *name, OID *owner_oid)
 
   if (name == NULL)
     {
+      return;
+    }
+
+  if (sm_check_system_class_by_name (name))
+    {
+      /* a system class is keyed on no owner; see locator_classname_key_set () */
       return;
     }
 

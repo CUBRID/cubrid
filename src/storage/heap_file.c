@@ -17348,7 +17348,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	    }
 	  db_make_oid (&owner_val, &serial_owner_oid);
 
-	  status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, NULL, &serial_class_oid, NULL_LOCK);
+	  status = xlocator_find_system_class_oid (thread_p, CT_SERIAL_NAME, &serial_class_oid, NULL_LOCK);
 	  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
 	    {
 	      ret = ER_FAILED;

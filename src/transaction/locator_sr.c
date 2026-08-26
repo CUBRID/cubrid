@@ -53,6 +53,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "object_representation_sr.h"
+#include "schema_system_catalog.hpp"
 #include "query_executor.h"
 #include "query_manager.h"
 #include "query_reevaluation.hpp"
@@ -307,17 +308,21 @@ locator_bare_name (const char *name)
  * return: void
  *
  *   key(out): Receives the key; its bare_name points into name
- *   name(in): Full name; "qualifier.name" except for unqualified system classes
- *   owner_oid(in): Owner the name belongs to; ignored for an unqualified name
+ *   name(in): The name; only the part after a qualifier is keyed on
+ *   owner_oid(in): Owner the name belongs to; not honored for a system class
+ *
+ * Note: A system class is keyed on no owner at all. Auth is itself brought up by looking
+ *       those classes up, so at that point there is no user to name yet -- not even the
+ *       DBA who owns them. Which names those are is a fixed list, so asking the list is
+ *       what decides it here rather than the shape of the name.
  */
 static void
 locator_classname_key_set (LOCATOR_CLASSNAME_KEY * key, const char *name, const OID * owner_oid)
 {
   key->bare_name = locator_bare_name (name);
 
-  if (key->bare_name == name || owner_oid == NULL)
+  if (owner_oid == NULL || sm_check_system_class_by_name (name))
     {
-      /* no qualifier, so no owner to key on: this is how a system class names itself */
       OID_SET_NULL (&key->owner_oid);
     }
   else
@@ -2095,6 +2100,23 @@ locator_find_class_oid_by_bare_name (THREAD_ENTRY * thread_p, const char *name, 
     }
 
   return find;
+}
+
+/*
+ * xlocator_find_system_class_oid () - Find the oid of a system class
+ *
+ * return: LC_FIND_CLASSNAME (see xlocator_find_class_oid)
+ *
+ *   classname(in): Name of a system class
+ *   class_oid(out): Set as a side effect
+ *   lock(in): Lock to acquire for the class
+ *
+ * Note: A system class is keyed on no owner, so naming one is saying that much.
+ */
+LC_FIND_CLASSNAME
+xlocator_find_system_class_oid (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid, LOCK lock)
+{
+  return xlocator_find_class_oid (thread_p, classname, NULL, class_oid, lock);
 }
 
 /*

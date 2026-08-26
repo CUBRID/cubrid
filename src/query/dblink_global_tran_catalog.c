@@ -88,7 +88,7 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
       return error;
     }
 
-  if (xlocator_find_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, NULL, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+  if (xlocator_find_system_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
     {
       return ER_LC_UNKNOWN_CLASSNAME;
     }
@@ -263,7 +263,7 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
 
   char state_str[2] = { new_state, '\0' };
 
-  if (xlocator_find_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, NULL, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+  if (xlocator_find_system_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
     {
       return ER_LC_UNKNOWN_CLASSNAME;
     }
@@ -342,7 +342,7 @@ dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, int bqual)
   bool scan_cache_inited = false;
   bool attr_inited = false;
 
-  if (xlocator_find_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, NULL, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+  if (xlocator_find_system_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
     {
       return ER_LC_UNKNOWN_CLASSNAME;
     }
@@ -414,7 +414,7 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
       return ER_FAILED;
     }
 
-  if (xlocator_find_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, NULL, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+  if (xlocator_find_system_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
     {
       return ER_LC_UNKNOWN_CLASSNAME;
     }

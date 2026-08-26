@@ -291,7 +291,7 @@ namespace cubload
       }
     else if (sm_check_system_class_by_name (class_name))
       {
-	found = xlocator_find_class_oid (&thread_ref, class_name, NULL, &class_oid, BU_LOCK);
+	found = xlocator_find_system_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
       }
     else
       {

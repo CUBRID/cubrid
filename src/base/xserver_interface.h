@@ -91,6 +91,8 @@ extern LC_FIND_CLASSNAME xlocator_rename_class_name (THREAD_ENTRY * thread_p, co
 						     OID * old_owner_oid, OID * new_owner_oid, OID * class_oid);
 extern LC_FIND_CLASSNAME xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname,
 						  const OID * owner_oid, OID * class_oid, LOCK lock);
+extern LC_FIND_CLASSNAME xlocator_find_system_class_oid (THREAD_ENTRY * thread_p, const char *classname,
+							 OID * class_oid, LOCK lock);
 extern LC_FIND_CLASSNAME xlocator_find_class_oid_ex (THREAD_ENTRY * thread_p, const char *classname,
 						     const OID * owner_oid, OID * class_oid, LOCK lock,
 						     char *synonym_target);

@@ -994,8 +994,16 @@ pt_set_lock_owner (PT_CLASS_LOCKS * lcks, PT_NODE * spec, const char *realname)
       return;
     }
 
-  /* the name says who owns it, so the name does not have to be taken apart again */
-  au_find_owner_oid (PT_NAME_OWNER_NAME (entity_name), owner_oid);
+  if (PT_NAME_OWNER_NAME (entity_name) != NULL)
+    {
+      /* the name says who owns it, so the name does not have to be taken apart again */
+      au_find_owner_oid (PT_NAME_OWNER_NAME (entity_name), owner_oid);
+    }
+  else
+    {
+      /* a system class names no owner */
+      au_find_owner_oid_of_name (realname, owner_oid);
+    }
 }
 
 /*
