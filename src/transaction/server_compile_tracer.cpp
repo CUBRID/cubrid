@@ -48,6 +48,7 @@
 
 #include "connection_defs.h"
 #include "connection_sr.h"
+#include "memory_alloc.h"	// free_and_init
 #include "network_interface_cl.h"	// boot_unregister_client
 #include "storage_common.h"	// NULL_TRAN_INDEX
 #include "transaction_cl.h"	// tm_Tran_index
@@ -84,9 +85,9 @@ boot_tracer_start_if_requested (const char *server_name)
   if (server_name_dup == NULL || sql_dup == NULL || out_dup == NULL)
     {
       fprintf (stderr, "M0_TRACER: FAIL argument allocation\n");
-      free (server_name_dup);
-      free (sql_dup);
-      free (out_dup);
+      free_and_init (server_name_dup);
+      free_and_init (sql_dup);
+      free_and_init (out_dup);
       return;
     }
 
@@ -98,9 +99,9 @@ boot_tracer_start_if_requested (const char *server_name)
     {
       /* resource exhaustion must fail the tracer, not take down cub_server */
       fprintf (stderr, "M0_TRACER: FAIL thread creation\n");
-      free (server_name_dup);
-      free (sql_dup);
-      free (out_dup);
+      free_and_init (server_name_dup);
+      free_and_init (sql_dup);
+      free_and_init (out_dup);
     }
 }
 
@@ -143,9 +144,9 @@ tracer_main (char *server_name, char *sql, char *out_path)
 	{
 	  fclose (fp);
 	}
-      free (server_name);
-      free (sql);
-      free (out_path);
+      free_and_init (server_name);
+      free_and_init (sql);
+      free_and_init (out_path);
       return;
     }
   entry_p->register_id ();
@@ -300,9 +301,9 @@ retire:
     {
       fclose (fp);
     }
-  free (server_name);
-  free (sql);
-  free (out_path);
+  free_and_init (server_name);
+  free_and_init (sql);
+  free_and_init (out_path);
 }
 
 #endif /* SERVER_MODE */

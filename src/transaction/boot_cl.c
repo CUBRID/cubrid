@@ -695,6 +695,10 @@ boot_restart_failure_cleanup (DB_INFO * db,
 	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
 	}
 
+#if !defined (SERVER_MODE)
+      /* wf119: never finalize these for an in-process boot — they are shared
+       * with (and owned by) the running server. Same contract as
+       * boot_shutdown_client's SERVER_MODE branch. */
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
       set_final ();
@@ -727,6 +731,7 @@ boot_restart_failure_cleanup (DB_INFO * db,
 #if defined(WINDOWS)
       pc_final ();
 #endif /* WINDOWS */
+#endif /* !SERVER_MODE */
 
       memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
       memset (boot_Server_credential.server_session_key, 0xFF, SERVER_SESSION_KEY_SIZE);
@@ -996,7 +1001,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 {
   OID rootclass_oid;		/* Oid of root class */
   HFID rootclass_hfid;		/* Heap for classes */
-  int tran_index;		/* Assigned transaction index */
+  int tran_index = NULL_TRAN_INDEX;	/* Assigned transaction index */
   TRAN_ISOLATION tran_isolation;	/* Desired client Isolation level */
   int tran_lock_wait_msecs;	/* Default lock waiting */
   int error_code = NO_ERROR;
@@ -1385,6 +1390,18 @@ error:
       error_code = ER_GENERIC_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
     }
+
+#if defined (SERVER_MODE)
+  /* wf119: a failure between boot_register_client and boot_client leaves the
+   * transaction registered server-side while tm_Tran_index is still unset —
+   * unregister it here by the local index, or it stays ACTIVE and shutdown's
+   * log_abort_all_active_transaction corrupts Main_entry_p (the SIGABRT
+   * mechanism documented on PR #181). */
+  if (tran_index != NULL_TRAN_INDEX && !BOOT_IS_CLIENT_RESTARTED ())
+    {
+      (void) boot_unregister_client (tran_index);
+    }
+#endif
 
 #if !defined(WINDOWS)
   boot_restart_failure_cleanup (db, dl_initialized, false);

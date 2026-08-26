@@ -37,14 +37,30 @@ if [ $# -eq 0 ]; then
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of"
 fi
 
-# This script restarts cub_master (see below), which would take down every
-# other database on the host — refuse to run if any server is active.
+# This script restarts cub_master via `cubrid service stop` (see below), which
+# also stops brokers/gateways/manager/heartbeat of this installation — refuse
+# to run if any server OR any other service is active.
 active="$(cubrid server status 2>/dev/null | grep -c '^ Server' || true)"
 if [ "$active" -gt 0 ]; then
   echo "ABORT: other CUBRID servers are running on this host; smoke.sh restarts cub_master and would stop them." >&2
   cubrid server status >&2 || true
   exit 2
 fi
+services="$(cubrid service status 2>/dev/null | grep -i 'is running' | grep -viE 'master|server' || true)"
+if [ -n "$services" ]; then
+  echo "ABORT: non-server CUBRID services are running; 'cubrid service stop' would take them down:" >&2
+  echo "$services" >&2
+  exit 2
+fi
+
+# Interruption must not leave the server (or a master carrying tracer env)
+# behind, nor the current output artifact.
+cleanup() {
+  cubrid server stop "$DB" >/dev/null 2>&1 || true
+  cubrid service stop >/dev/null 2>&1 || true
+  [ -n "${out:-}" ] && rm -f "$out"
+}
+trap cleanup EXIT INT TERM
 
 fail=0
 for sql in "$@"; do
@@ -66,7 +82,9 @@ for sql in "$@"; do
 
   ok=0
   for _ in $(seq 1 60); do
-    if [ -f "$out" ] && grep -q "M0_TRACER: SUCCESS" "$out"; then
+    # line-anchored: the start line echoes the SQL, so an unanchored match
+    # would accept a query whose text contains the SUCCESS string
+    if [ -f "$out" ] && grep -q "^M0_TRACER: SUCCESS$" "$out"; then
       ok=1
       break
     fi
@@ -74,16 +92,30 @@ for sql in "$@"; do
   done
 
   cubrid server stop "$DB" >/dev/null 2>&1 || true
+  # a PASS with the server still up is not a pass — shutdown health is part
+  # of the gate (this is exactly where the wf119 shutdown crashes hid)
+  stopped=1
+  if cubrid server status 2>/dev/null | grep -q "^ Server ${DB} "; then
+    stopped=0
+  fi
 
   echo "--- [$sql]"
   [ -f "$out" ] && cat "$out"
-  if [ $ok -eq 1 ]; then
+  if [ $ok -eq 1 ] && [ $stopped -eq 1 ]; then
     echo "PASS: $sql"
-  else
+  elif [ $ok -eq 0 ]; then
     echo "FAIL: $sql (no SUCCESS in tracer output)"
+    fail=1
+  else
+    echo "FAIL: $sql (server still running after stop)"
     fail=1
   fi
   rm -f "$out"
 done
+
+# don't leave a master whose environment still carries the last tracer SQL —
+# the next ordinary `cubrid server start` would silently re-run the tracer
+cubrid service stop >/dev/null 2>&1 || true
+trap - EXIT INT TERM
 
 exit $fail
