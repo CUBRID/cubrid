@@ -61,11 +61,7 @@
 #if defined (SA_MODE)
 int method_Num_method_jsp_calls = 0;
 
-#if defined (SERVER_MODE)
-extern thread_local unsigned int db_on_server;	/* wf119 */
-#else
 extern unsigned int db_on_server;
-#endif
 
 #define ENTER_SERVER_IN_METHOD_CALL(save_pri_heap_id_) \
   do { \

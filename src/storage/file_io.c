@@ -11454,11 +11454,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
   thread_p->release_packet (remote_data_p);
   return NO_ERROR;
 #else /* SERVER_MODE */
-#if defined (SERVER_MODE)
-  extern thread_local unsigned int db_on_server;	/* wf119 */
-#else
   extern unsigned int db_on_server;
-#endif
 
   char new_vol_name[FILEIO_MAX_USER_RESPONSE_SIZE];
   char *user_response_p = new_vol_name;

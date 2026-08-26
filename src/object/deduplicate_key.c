@@ -373,7 +373,12 @@ dk_deduplicate_key_attribute_initialized ()
   dk_or_attribute_initialized ();
 #endif
 
-  dk_sm_attribute_initialized ();	/* wf119: unguarded */
+  /* wf119: deliberately unguarded — st_sm_atts is process-global state the
+   * compiled-in client half needs (index DDL compilation resolves reserved
+   * deduplicate-key attributes through it), and tp_init runs once at server
+   * boot, so this is the only chance to build it.  Cost: a handful of small
+   * one-time allocations on a pure server boot. */
+  dk_sm_attribute_initialized ();
 }
 
 void

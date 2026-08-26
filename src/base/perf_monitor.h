@@ -1488,7 +1488,6 @@ perfmon_is_perf_tracking_force (bool always_collect)
 
 #endif /* __cplusplus */
 /* wf119: unguarded — client half now compiled into server */
-/* wf119: unguarded — client half now compiled into server */
 /* Client execution statistic structure */
 typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;
 struct perfmon_client_stat_info
