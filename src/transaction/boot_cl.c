@@ -257,7 +257,9 @@ install_system_metadata (void)
 static int
 boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb)
 {
+#if !defined (SERVER_MODE)
   int error_code;
+#endif
   const char *conf_file = NULL;
 
   /* If the client is restarted, shutdown the client */
@@ -371,6 +373,11 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
   area_init ();
   locator_initialize_areas ();
 
+#if !defined (SERVER_MODE)
+  /* wf119: in-process boot must not re-run perfmon_initialize — the server
+   * already initialized pstat_Global for MAX_NTRANS at boot, and re-running
+   * it would leak those arrays and reallocate tran_stats for 1 transaction
+   * while server workers keep indexing by their real tran_index (OOB). */
   if (is_createdb)
     {
       error_code = perfmon_initialize (MAX_NTRANS);
@@ -388,6 +395,7 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
       ASSERT_ERROR ();
       return error_code;
     }
+#endif /* !SERVER_MODE */
 
   /* Initialize tsc-timer */
   tsc_init ();
