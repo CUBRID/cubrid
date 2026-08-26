@@ -1952,9 +1952,8 @@ end:
    * latch and dealloc sysops. If the batch ended with an error (interrupt included), the
    * candidate list is simply dropped; the sysop-abort paths already truncated their own entries,
    * so a surviving list holds committed work only. Dropping is safe: reclaim is idempotent and
-   * the pages stay allocated and empty on disk, where the growth-gate sweep planned for
-   * CBRD-26786 (the guarantee backstop) rediscovers them — until it lands, a dropped page is a
-   * bounded leak, matching the pre-R3 contract. */
+   * the pages stay allocated and empty on disk, where the growth-gate sweep (the guarantee
+   * backstop that runs before the OOS file grows) rediscovers them. */
   if (error_code == NO_ERROR && !oos_touched_pages.empty ())
     {
       assert (!VFID_ISNULL (&helper.oos_vfid));

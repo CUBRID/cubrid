@@ -112,8 +112,8 @@ extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
  * primitive in oos_file.cpp). Stops at the first error — notably ER_INTERRUPTED — and
  * propagates it; skipped,
  * deferred, or unprocessed candidates simply stay allocated, recorded on disk (sector bitmap +
- * page emptiness) for a future reclaim pass (the CBRD-26786 growth-gate sweep; until it lands,
- * a bounded leak matching the pre-change contract). Call only AFTER the deletes that emptied
+ * page emptiness) for a future reclaim pass (ultimately the growth-gate sweep that runs before
+ * the file grows). Call only AFTER the deletes that emptied
  * the pages are committed (a live undo could otherwise restore chunks onto a deallocated
  * page). */
 extern int oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vector<VPID> &candidates);
@@ -180,6 +180,10 @@ struct oos_debug_counters
 extern void oos_test_fail_insert_many_after_publications (int publication_count);
 extern void oos_test_throw_bad_alloc_on_next_oid_publication ();
 extern void oos_test_disarm_insert_publication_failures ();
+/* Simulates a process restart for the growth-gate reclaim bookkeeping: drops every file's
+ * pending-delete counter, sweep cursor, and swept-this-boot flag, so each file's next growth
+ * falls under the boot rule (one unconditional sweep lap). */
+extern void oos_test_reclaim_reset_side_map ();
 #endif
 
 #endif /* _OOS_FILE_HPP_ */
