@@ -1113,26 +1113,24 @@ xvacuum (THREAD_ENTRY * thread_p)
 #endif /* SA_MODE */
 }
 
+#if defined (CUBRID_UNIT_TEST_ENABLED)
 /*
- * vacuum_wakeup_master_daemon () - Wake the vacuum master daemon to force
- *   an immediate vacuum pass (dev/debug helper for csql ;vacuum).
- *   Returns NO_ERROR on success, ER_FAILED if the master daemon is not
- *   currently running (boot transition or after shutdown). Always
- *   returns NO_ERROR in SA_MODE (no daemon to wake).
+ * vacuum_wakeup_master_daemon () - Wake the vacuum master daemon for OOS tests.
  */
 int
 vacuum_wakeup_master_daemon (void)
 {
-#if defined(SERVER_MODE)
+#if defined (SERVER_MODE)
   if (vacuum_Master_daemon == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE, 0);
-      return ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
     }
   vacuum_Master_daemon->wakeup ();
 #endif /* SERVER_MODE */
   return NO_ERROR;
 }
+#endif /* CUBRID_UNIT_TEST_ENABLED */
 
 /*
  * xvacuum_dump - Dump the contents of vacuum
@@ -1572,15 +1570,11 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 #if defined (NDEBUG)
 	  if (!thread_p->shutdown)
 	    {
-	      // TEMP (ovf+oos spec change): mirror the debug-build crash in release too.
-	      // Debug aborts at vacuum_check_shutdown_interruption()'s assert above; release
-	      // normally swallows the error and skips the page, which hides failing TCs.
-	      // abort() (not assert, which is compiled out under NDEBUG) forces a core dump
-	      // so we can see exactly which heap page / error_code fails. REVERT BEFORE MERGE.
-	      fprintf (stderr, "VACUUM ABORT: heap page %d|%d, error_code=%d\n",
-		       page_ptr->oid.volid, page_ptr->oid.pageid, error_code);
-	      fflush (stderr);
-	      abort ();
+	      // unexpected case
+	      // debug crashes; but can release do about it? just try to clean as much as possible
+	      er_clear ();
+	      error_code = NO_ERROR;
+	      continue;
 	    }
 #endif // not DEBUG
 
@@ -2309,23 +2303,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
     case REC_BIGONE:
       /* First overflow page is required. */
       assert (helper->forward_page != NULL);
-      /* Invariant: OOS does not coexist with REC_BIGONE. See matching guard in vacuum_heap_record.
-       * helper->record is NOT populated for REC_BIGONE (the record body lives on overflow pages, and
-       * vacuum_heap_prepare_record only reads the MVCC header from there), so the OOS flag must be
-       * checked on helper->mvcc_header rather than by dereferencing the uninitialized helper->record. */
-      if (RECORD_HEADER_HAS_OOS (&helper->mvcc_header))
-	{
-	  /* TEMP (CBRD-26668, ovf+oos spec change): hard-fail in BOTH debug and release. assert() is
-	   * compiled out under NDEBUG and assert_release() only logs an ER_NOTIFICATION, so neither halts
-	   * a release server -- the OOS chunks referenced from the overflow body would silently leak.
-	   * abort() forces a core dump so CI surfaces exactly which TC violates the invariant.
-	   * REVERT BEFORE MERGE. */
-	  fprintf (stderr, "VACUUM ABORT (OOS+REC_BIGONE insid): home %d|%d slot %d mvcc_flag=%d\n",
-		   helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid,
-		   (int) MVCC_GET_FLAG (&helper->mvcc_header));
-	  fflush (stderr);
-	  abort ();
-	}
+      assert (!RECORD_HEADER_HAS_OOS (&helper->mvcc_header));
 
       /* Replace current insert MVCCID with MVCCID_ALL_VISIBLE. Header must remain the same size. */
       MVCC_SET_INSID (&helper->mvcc_header, MVCCID_ALL_VISIBLE);
@@ -2538,23 +2516,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       assert (helper->forward_page != NULL);
       /* Overflow first page is required. */
       assert (!VFID_ISNULL (&helper->overflow_vfid));
-      /* Invariant: OOS does not coexist with REC_BIGONE. If this ever fires, the REMOVE path
-       * needs to reclaim the OOS records attached to the overflow record — add an oos_delete
-       * loop here. Until then, fail loud in BOTH debug and release so the regression is visible.
-       * helper->record is NOT populated for REC_BIGONE (the body lives on overflow pages — note
-       * this case logs helper->forward_recdes below, never helper->record), so the OOS flag must
-       * be checked on helper->mvcc_header rather than by dereferencing the uninitialized helper->record. */
-      if (RECORD_HEADER_HAS_OOS (&helper->mvcc_header))
-	{
-	  /* TEMP (CBRD-26668, ovf+oos spec change): assert() is compiled out under NDEBUG and
-	   * assert_release() only logs an ER_NOTIFICATION, so neither halts a release server. abort()
-	   * crashes in BOTH builds so CI surfaces the violation as a core dump. REVERT BEFORE MERGE. */
-	  fprintf (stderr, "VACUUM ABORT (OOS+REC_BIGONE remove): home %d|%d slot %d mvcc_flag=%d\n",
-		   helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid,
-		   (int) MVCC_GET_FLAG (&helper->mvcc_header));
-	  fflush (stderr);
-	  abort ();
-	}
+      assert (!RECORD_HEADER_HAS_OOS (&helper->mvcc_header));
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 

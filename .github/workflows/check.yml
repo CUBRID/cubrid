@@ -21,7 +21,6 @@ on:
       - develop
       - 'release/11.**'
       - 'feature/**'
-      - 'feat/oos'
 jobs:
   license:
     name: license

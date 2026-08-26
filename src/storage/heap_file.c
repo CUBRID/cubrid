@@ -683,7 +683,7 @@ static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_
 					    HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
 
-// *INDENT-OFF*
+/* *INDENT-OFF* */
 static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, std::vector<int> * column_size);
 static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
 						 size_t * offset_size_ptr);
@@ -697,7 +697,7 @@ static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info,
 						size_t * offset_size_ptr,
 						std::vector<heap_oos_column_plan> * oos_plan,
 						bool * has_oos, size_t * inline_size_after_oos_ptr);
-// *INDENT-ON*
+/* *INDENT-ON* */
 
 static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					RECDES * raw);
@@ -10761,9 +10761,9 @@ heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES *
       return heap_attrinfo_read_dbvalues_individually (recdes, attr_info);
     }
 
-// *INDENT-OFF*
+/* *INDENT-OFF* */
   std::vector <RECDES> oos_payloads;	/* grouped-prefetched OOS payloads; not a cardinality signal */
-// *INDENT-ON*
+/* *INDENT-ON* */
   bool grouped_applied = false;
   int ret;
 
@@ -12225,10 +12225,10 @@ exit_on_error:
  *   return: size of the payload size of record
  *   attr_info(in/out): the attribute information structure
  */
-// *INDENT-OFF*
+/* *INDENT-OFF* */
 static int
 heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, std::vector<int> * column_size)
-// *INDENT-ON*
+/* *INDENT-ON* */
 {
   HEAP_ATTRVALUE *value;
   int size;
@@ -12305,16 +12305,16 @@ heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int paylo
  * Note: Choose the OOS layout and compute the inline heap record size. This size is not the logical
  * record size before OOS demotion.
  */
-// *INDENT-OFF*
+/* *INDENT-OFF* */
 static int
 heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr,
 					     std::vector<heap_oos_column_plan> * oos_plan, bool * has_oos,
 					     size_t * inline_size_after_oos_ptr)
-// *INDENT-ON*
+/* *INDENT-ON* */
 {
-// *INDENT-OFF*
+/* *INDENT-OFF* */
   std::vector<int> column_size (attr_info->num_values);
-// *INDENT-ON*
+/* *INDENT-ON* */
   int payload_size, header_size;
   int mvcc_extra;
   int i;
@@ -12349,9 +12349,9 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
    * DB_PAGESIZE/4 (PG TOAST style), instead of pushing every eligible column. */
   if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 4)
     {
-      // *INDENT-OFF*
+      /* *INDENT-OFF* */
       std::vector<heap_oos_demote_candidate> oos_candidates;
-      // *INDENT-ON*
+      /* *INDENT-ON* */
 
       for (i = 0; i < attr_info->num_values; i++)
 	{
@@ -12360,25 +12360,25 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	  if (!(*oos_plan)[i].selected && !attr_info->values[i].last_attrepr->is_fixed
 	      && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
-	      // *INDENT-OFF*
+	      /* *INDENT-OFF* */
 	      heap_oos_demote_priority priority =
 		heap_oos_get_demote_priority (attr_info->values[i].last_attrepr->oos_storage
 					      == OR_ATTRIBUTE_OOS_STORAGE_PREFER_INLINE);
 	      oos_candidates.push_back ({ priority, column_size[i], i });
-	      // *INDENT-ON*
+	      /* *INDENT-ON* */
 	    }
 	}
 
-      // *INDENT-OFF*
+      /* *INDENT-OFF* */
       /* Demote order: columns flagged STORAGE PREFER_INLINE sink to the tail and are externalized
        * only as a last resort; within each priority class, largest first. The idx-descending
        * tiebreak preserves the legacy std::greater<std::pair> order for the no-hint (DEFAULT) case. */
       std::sort (oos_candidates.begin (), oos_candidates.end (), heap_oos_demote_candidate_precedes);
-      // *INDENT-ON*
+      /* *INDENT-ON* */
 
-      // *INDENT-OFF*
+      /* *INDENT-OFF* */
       for (auto& cand : oos_candidates)
-	// *INDENT-ON*
+	/* *INDENT-ON* */
       {
 	if (header_size + payload_size + mvcc_extra <= DB_PAGESIZE / 4)
 	  {
@@ -12658,12 +12658,12 @@ heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_A
 static void
 heap_attrinfo_free_oos_payloads (std::vector < RECDES > *payloads)
 {
-  // *INDENT-OFF*
+  /* *INDENT-OFF* */
   for (RECDES &payload : *payloads)
     {
       free_and_init (payload.data);
     }
-  // *INDENT-ON*
+  /* *INDENT-ON* */
   payloads->clear ();
 }
 
@@ -12681,14 +12681,14 @@ static std::atomic<bool> heap_Test_fail_after_oos_publication_reset { false };
  * begins OOS insert publication before any fallible preparation; heap_oos.cpp owns the paired-reset
  * internals, OOS file lookup, and the batched OOS insert call.
  */
-// *INDENT-OFF*
+/* *INDENT-OFF* */
 static SCAN_CODE
 heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, int lob_create_flag,
 			     std::vector<heap_oos_column_plan> * oos_plan)
-// *INDENT-ON*
+/* *INDENT-ON* */
 
 {
-  // *INDENT-OFF*
+  /* *INDENT-OFF* */
   std::vector < RECDES > payloads;
   std::vector < oos_insert_request > requests;
   SCAN_CODE scan_code = S_ERROR;
@@ -12736,7 +12736,7 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 cleanup:
   heap_attrinfo_free_oos_payloads (&payloads);
   return scan_code;
-  // *INDENT-ON*
+  /* *INDENT-ON* */
 }
 
 /*
@@ -21462,18 +21462,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
-      if (has_oos)
-	{
-	  /* TEMP (CBRD-26668, ovf+oos spec change): OOS and REC_BIGONE are mutually exclusive overflow
-	   * strategies -- a record carrying OOS attributes must never also spill its whole body to overflow
-	   * pages, because vacuum's REC_BIGONE path deletes the overflow chain without reclaiming the OOS
-	   * chunks it references (silent data loss). assert() is compiled out under NDEBUG and assert_release()
-	   * only logs an ER_NOTIFICATION, so neither halts a release server; abort() hard-fails in BOTH builds
-	   * so CI surfaces the violation as a core dump at creation time. REVERT BEFORE MERGE. */
-	  fprintf (stderr, "HEAP ABORT (OOS+REC_BIGONE insert): record_size=%d\n", record_size);
-	  fflush (stderr);
-	  abort ();
-	}
+      assert (!has_oos);
       /* for multipage records, set MVCC header size to maximum size */
       HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
     }
@@ -21681,18 +21670,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
-      if (has_oos)
-	{
-	  /* TEMP (CBRD-26668, ovf+oos spec change): OOS and REC_BIGONE are mutually exclusive overflow
-	   * strategies -- a record carrying OOS attributes must never also spill its whole body to overflow
-	   * pages, because vacuum's REC_BIGONE path deletes the overflow chain without reclaiming the OOS
-	   * chunks it references (silent data loss). assert() is compiled out under NDEBUG and assert_release()
-	   * only logs an ER_NOTIFICATION, so neither halts a release server; abort() hard-fails in BOTH builds
-	   * so CI surfaces the violation as a core dump at creation time. REVERT BEFORE MERGE. */
-	  fprintf (stderr, "HEAP ABORT (OOS+REC_BIGONE update): record_size=%d\n", record_size);
-	  fflush (stderr);
-	  abort ();
-	}
+      assert (!has_oos);
       /* for multipage records, set MVCC header size to maximum size */
       HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
     }
@@ -28402,9 +28380,9 @@ SCAN_CODE
 bridge_heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   HEAP_CACHE_ATTRINFO attr_info = { };
-  // *INDENT-OFF*
+  /* *INDENT-OFF* */
   std::vector<heap_oos_column_plan> oos_plan;
-  // *INDENT-ON*
+  /* *INDENT-ON* */
 
   COPY_OID (&attr_info.class_oid, class_oid);
   attr_info.num_values = 0;

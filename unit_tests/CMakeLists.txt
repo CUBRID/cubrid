@@ -21,7 +21,6 @@
 # - some: cmake -DUNIT_TEST_ABC=ON -DUNIT_TEST_XYZ=ON <path>
 
 project(Test)
-enable_testing()
 
 set(TEST_COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/common)
 
@@ -59,13 +58,6 @@ externalproject_add(${CATCH2_TARGET}
 set (CATCH2_DIR ${CMAKE_BINARY_DIR}/unit_tests/catch2-prefix/src/catch2)
 include_directories(${CATCH2_DIR}/single_include)
 list(APPEND TESTS_EXTERNAL_TARGETS ${CATCH2_TARGET})
-
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/52eb8108c5bdec04579160ae17225d66034bd723.zip
-)
-FetchContent_MakeAvailable(googletest)
 
 message("   common")
 add_subdirectory(common)

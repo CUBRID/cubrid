@@ -225,7 +225,9 @@ extern void vacuum_stop_workers (THREAD_ENTRY * thread_p);
 extern void vacuum_stop_master (THREAD_ENTRY * thread_p);
 extern int xvacuum (THREAD_ENTRY * thread_p);
 extern void xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp);
+#if defined (CUBRID_UNIT_TEST_ENABLED)
 extern int vacuum_wakeup_master_daemon (void);
+#endif /* CUBRID_UNIT_TEST_ENABLED */
 
 extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid);
 extern int vacuum_data_load_and_recover (THREAD_ENTRY * thread_p);

@@ -2440,11 +2440,10 @@ oos_get_length (THREAD_ENTRY *thread_p, const OID &oid)
   return header.total_data_length;
 }
 
-
-// ****************************************************************************
-// OOS stats for session-command verification (dev/debug)
-// ****************************************************************************
-
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+/*
+ * xoos_get_stats_by_class_oid () - Resolve a class OID to its OOS file for SQL unit tests.
+ */
 int
 xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_STATS_INFO *out)
 {
@@ -2466,7 +2465,6 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
     }
   if (HFID_IS_NULL (&hfid))
     {
-      /* Class has no heap file yet (empty). Treat as "no OOS file". */
       return NO_ERROR;
     }
 
@@ -2474,15 +2472,8 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
   VFID_SET_NULL (&oos_vfid);
   if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false))
     {
-      /* false return is overloaded: real read errors set er_errid; the
-       * legitimate "no OOS file" path (docreate=false, NULL in heap header)
-       * does not. Propagate if set, else treat as no-OOS. */
       int errid = er_errid ();
-      if (errid != NO_ERROR)
-	{
-	  return errid;
-	}
-      return NO_ERROR;
+      return errid == NO_ERROR ? NO_ERROR : errid;
     }
   if (VFID_ISNULL (&oos_vfid))
     {
@@ -2491,11 +2482,12 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
 
   return oos_get_stats_by_vfid (thread_p, oos_vfid, out);
 }
+#endif /* CUBRID_UNIT_TEST_ENABLED */
+
 
 /*
  * oos_get_stats_by_vfid () - Collect live-record statistics for an OOS file.
- *   Core of xoos_get_stats_by_class_oid; also usable for OOS files that are
- *   not attached to a catalogued class (e.g. unit-test heaps).
+ *   Used by SHOW HEAP OOS and by unit-test heaps.
  */
 int
 oos_get_stats_by_vfid (THREAD_ENTRY *thread_p, const VFID &oos_vfid, OOS_STATS_INFO *out)

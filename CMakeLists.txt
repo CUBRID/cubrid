@@ -30,6 +30,9 @@ function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
   endforeach()
 endfunction(with_unit_tests)
 
+with_unit_tests(AT_LEAST_ONE_UNIT_TEST)
+message("    ==== with_unit_tests() = ${AT_LEAST_ONE_UNIT_TEST}")
+
 #also searches for modules onto cubrid/cmake
 # add other Find[LIBRARY].cmake scripts in cubrid/cmake
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
@@ -71,11 +74,7 @@ option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
-option(UNIT_TEST_OOS "Unit testing: oos" ON)
 option(WITH_CCI "Build with CCI driver" ON)
-
-with_unit_tests(AT_LEAST_ONE_UNIT_TEST)
-message("    ==== with_unit_tests() = ${AT_LEAST_ONE_UNIT_TEST}")
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
