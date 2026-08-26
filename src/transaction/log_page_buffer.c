@@ -8222,8 +8222,9 @@ loop:
       goto error;
     }
 
-  /* Get the header on disk before the active log image is copied below. This backup is not recorded in it: a
-   * backup is recorded only once it exists, which is after the archives have been transferred. */
+  /* The active log image copied below has to carry the header the server is running with, which is why this
+   * flush stays here. Before this change it also carried the record of this backup, written just above; that
+   * record moved to the end, because a backup is recorded only once it exists. */
   logpb_flush_header (thread_p);
 
   /* Include active log always. Skipping log active is obsolete. */
