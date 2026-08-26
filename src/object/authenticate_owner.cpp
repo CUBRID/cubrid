@@ -307,7 +307,8 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   SM_CLASS *target_class = NULL;
 #endif
   DB_VALUE value;
-  const char *trigger_old_name = NULL;
+  char *trigger_old_name = NULL;
+  char trigger_bare_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char trigger_new_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *owner_name = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
@@ -328,23 +329,24 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 
   AU_SAVE_AND_DISABLE (save);
 
-  /*
-   * class, serial, and trigger distinguish user schema by unique_name (user_specified_name).
-   * so if the owner of class, serial, trigger changes, the unique_name must also change.
-   */
+  /* The trigger goes by its owner and its own name together, so a change of owner
+   * changes the name it goes by. */
 
-  error = obj_get (trigger_mop, TR_ATT_UNIQUE_NAME, &value);
+  error = obj_get (trigger_mop, TR_ATT_NAME, &value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto end;
     }
 
-  if (!DB_IS_STRING (&value) || (trigger_old_name = db_get_string (&value)) == NULL)
+  if (!DB_IS_STRING (&value) || db_get_string (&value) == NULL)
     {
       ERROR_SET_WARNING_1ARG (error, ER_TR_TRIGGER_NOT_FOUND, "");
       goto end;
     }
+
+  strncpy (trigger_bare_name, db_get_string (&value), sizeof (trigger_bare_name) - 1);
+  db_value_clear (&value);
 
   /* Check if the owner to be changed is the same. */
   error = obj_get (trigger_mop, TR_ATT_OWNER, &value);
@@ -392,8 +394,15 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
   db_ws_free_and_init (owner_name);
 
-  snprintf (trigger_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
-	    sm_remove_qualifier_name (trigger_old_name));
+  snprintf (trigger_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, trigger_bare_name);
+
+  /* the name to put back if the owner does not take */
+  trigger_old_name = tr_qualified_name (trigger_owner_obj, trigger_bare_name);
+  if (trigger_old_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
 
   error = tr_rename_trigger (trigger_mop, trigger_new_name, false, true);
   if (error != NO_ERROR)
@@ -417,6 +426,11 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
     }
 
 end:
+  if (trigger_old_name != NULL)
+    {
+      free (trigger_old_name);
+    }
+
   AU_RESTORE (save);
 
   return error;

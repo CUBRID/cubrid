@@ -785,7 +785,6 @@ namespace cubschema
 		   CT_TRIGGER_NAME,
 		   // columns
     {
-      {TR_ATT_UNIQUE_NAME, "string"},
       {TR_ATT_OWNER, AU_USER_CLASS_NAME},
       {TR_ATT_NAME, "string"},
       {TR_ATT_STATUS, "integer", make_int_value_fn (TR_STATUS_ACTIVE)},

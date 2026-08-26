@@ -118,7 +118,6 @@ const char *EVAL_PREFIX = "EVALUATE ( ";
 const char *EVAL_SUFFIX = " ) ";
 
 const char *TR_CLASS_NAME = CT_TRIGGER_NAME;
-const char *TR_ATT_UNIQUE_NAME = "unique_name";
 const char *TR_ATT_NAME = "name";
 const char *TR_ATT_OWNER = "owner";
 const char *TR_ATT_EVENT = "event";
@@ -1025,12 +1024,6 @@ trigger_to_object (TR_TRIGGER * trigger)
       goto error;
     }
 
-  db_make_string (&value, trigger->name);
-  if (dbt_put_internal (obt_p, TR_ATT_UNIQUE_NAME, &value) != NO_ERROR)
-    {
-      goto error;
-    }
-
   db_make_string (&value, sm_remove_qualifier_name (trigger->name));
   if (dbt_put_internal (obt_p, TR_ATT_NAME, &value) != NO_ERROR)
     {
@@ -1225,8 +1218,9 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 	}
     }
 
-  /* NAME */
-  if (db_get (object, TR_ATT_UNIQUE_NAME, &value))
+  /* NAME. The row keeps the trigger's own name and its owner apart, so put them back
+   * together for the name this trigger goes by. */
+  if (db_get (object, TR_ATT_NAME, &value))
     {
       goto error;
     }
@@ -1236,7 +1230,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
       tmp = db_get_string (&value);
       if (tmp)
 	{
-	  trigger->name = strdup (tmp);
+	  trigger->name = tr_qualified_name (trigger->owner, tmp);
 	}
     }
   db_value_clear (&value);
@@ -6946,16 +6940,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
 
   /* might need to abort the transaction here */
-  db_make_string (&value, new_name);
-  error = db_put_internal (trigger_object, TR_ATT_UNIQUE_NAME, &value);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      is_abort = true;
-      goto end;
-    }
-  pr_clear_value (&value);
-
   db_make_string (&value, sm_remove_qualifier_name (new_name));
   error = db_put_internal (trigger_object, TR_ATT_NAME, &value);
   if (error != NO_ERROR)
@@ -7156,6 +7140,47 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api
   AU_RESTORE (save);
 
   return error;
+}
+
+/*
+ * tr_qualified_name () - Build the name a trigger goes by out of its parts
+ *
+ * return: a copy of "owner.name" the caller frees, or NULL when out of memory
+ *
+ *   owner(in): the trigger's owner; NULL gives back the bare name
+ *   name(in): the trigger's own name
+ *
+ * Note: The row keeps the two apart. Only the name a user sees or types puts them together.
+ */
+char *
+tr_qualified_name (DB_OBJECT * owner, const char *name)
+{
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char *owner_name;
+
+  if (name == NULL)
+    {
+      return NULL;
+    }
+
+  if (owner == NULL)
+    {
+      return strdup (name);
+    }
+
+  owner_name = au_get_user_name (owner);
+  if (owner_name == NULL)
+    {
+      return NULL;
+    }
+
+  sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
+  db_ws_free_and_init (owner_name);
+
+  snprintf (qualified_name, sizeof (qualified_name), "%s.%s", downcase_owner_name, name);
+
+  return strdup (qualified_name);
 }
 
 /*
