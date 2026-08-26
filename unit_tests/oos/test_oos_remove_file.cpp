@@ -214,6 +214,66 @@ TEST (OosFileDestroyTest, OosPageReclaimBasic)
 }
 
 // ===========================================================================
+// TEST: OosPageReclaimLsaGateDefersUncommitted
+//
+// The LSA gate: a page emptied by a NOT-yet-committed delete must not be
+// deallocated — this transaction's abort would have to undo the chunk deletes
+// back into the page. After the commit ends the undo source, the next reclaim
+// call deallocates the page.
+// ===========================================================================
+TEST (OosFileDestroyTest, OosPageReclaimLsaGateDefersUncommitted)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  RECDES rec_in{};
+  err = test_oos_utils::from_string_into_recdes ("LSA gate test data", rec_in);
+  ASSERT_EQ (err, NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
+
+  OID oid = OID_INITIALIZER;
+  err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  VPID vpid = {oid.pageid, oid.volid};
+
+  // Empty the page but do NOT commit: this transaction is a live undo source, so the gate
+  // must classify the page deferred instead of deallocating it.
+  err = oos_delete (thread_p, oos_vfid, oid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  std::vector<VPID> candidates {vpid};
+  err = oos_reclaim_empty_pages (thread_p, oos_vfid, candidates);
+  ASSERT_EQ (err, NO_ERROR);
+
+  PAGE_PTR page_ptr = NULL;
+  err = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_NE (page_ptr, nullptr);	// still allocated — deferred, not reclaimed
+  pgbuf_unfix (thread_p, page_ptr);
+
+  // Commit ends the undo source; the next reclaim call deallocates the page.
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  candidates = {vpid};
+  err = oos_reclaim_empty_pages (thread_p, oos_vfid, candidates);
+  ASSERT_EQ (err, NO_ERROR);
+
+  err = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ (page_ptr, nullptr);	// now really deallocated
+
+  // Leave no committed orphan file behind (see OosPageReclaimBasic).
+  err = oos_remove_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+}
+
+// ===========================================================================
 // TEST: OosPageReclaimStickyFirstPage
 //
 // The sticky first page (OOS_HDR_STATS) must never be deallocated: a forced

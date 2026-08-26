@@ -38,6 +38,7 @@
 #include "page_buffer_util.hpp"
 #include "log_comm.h"
 #include "log_impl.h"
+#include "log_system_tran.hpp"
 #include "xserver_interface.h"
 
 #include "oos_file.hpp"
@@ -1205,59 +1206,59 @@ oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 }
 
 /* Per-page verdict of oos_try_reclaim_page_internal, for batch/sweep callers that must tell
- * "done" from "retry later" from "not a candidate". OOS_RECLAIM_DEFERRED is reserved for the
- * LSA reclaim gate (CBRD-26786): an empty page whose last write may belong to a still-active
- * transaction must not be deallocated yet — that transaction's abort would undo its chunk
- * deletes back into the page. The verdict is defined ahead of the gate itself so callers can
- * already distinguish the outcomes. */
+ * "done" from "retry later" from "not a candidate". OOS_RECLAIM_DEFERRED comes from the LSA
+ * reclaim gate: an empty page whose last write may belong to a still-active transaction (or an
+ * active system-worker sysop) must not be deallocated yet — that writer's abort would undo its
+ * chunk deletes back into the page. Deferred pages become reclaimable once the writer finishes;
+ * a later reclaim call picks them up. */
 typedef enum
 {
   OOS_RECLAIM_RECLAIMED = 0,	/* page deallocated back to the file manager */
-  OOS_RECLAIM_DEFERRED,		/* empty, but gated from deallocation for now */
+  OOS_RECLAIM_DEFERRED,		/* empty, but LSA-gated from deallocation for now */
   OOS_RECLAIM_SKIPPED		/* busy, re-filled, already deallocated, or not an OOS data page */
 } OOS_RECLAIM_RESULT;
 
 /*
- * oos_try_reclaim_page_internal () - Try to return one fully emptied OOS data page to the file
- *   manager's partial sector table so file_alloc can reuse it, no matter what state the (capped,
- *   non-persistent) bestspace cache is in. Two-phase check: phase 1 pre-qualifies the candidate
- *   under a zero-wait READ fix and rejects non-candidates WITHOUT touching the OOS stats header
- *   latch — the serialization point of every insert's page discovery; phase 2 takes the header
- *   WRITE latch, re-validates under a zero-wait WRITE fix, and deallocates in its own
- *   immediately-committed sysop. Per-file invariants (sticky first page lookup, legacy-numerable
- *   skip) are the batch caller's job; this primitive only compares against the hdr_vpid it is
- *   handed.
+ * oos_reclaim_sample_horizon () - Sample the reclaim gate horizon: the smallest head LSA over
+ *   every live undo source. Two scans are combined, the same pairing recovery undo uses
+ *   (logtb_rv_read_only_map_undo_tdes): active regular transactions via
+ *   logtb_find_smallest_lsa, plus active system-worker sysops via log_system_tdes::map_all_tdes
+ *   — a vacuum worker's sysop abort also replays RVOOS_DELETE undo, and the regular scan does
+ *   not visit system tdes (a system tdes' head_lsa is non-NULL exactly while a sysop sequence is
+ *   active). The result is clamped to the append LSA sampled BEFORE the scans (and degenerates
+ *   to it when neither scan finds a source): head_lsa assignment (prior_lsa_start_append) is
+ *   not synchronized with these scans, so a transaction whose first-ever append lands mid-scan
+ *   can be missed while a later, higher head is returned — but every such late starter's head
+ *   is at or above the pre-scan sample, so the clamp keeps the horizon at or below the head of
+ *   every live undo source. The clamp can only lower the horizon: toward deferring, never
+ *   toward an unsafe dealloc. (The sample itself is a plain single-word read of the append LSA
+ *   without the log CS — the codebase's established idiom for LSA snapshots.)
  *
- *   Idempotent and zero-wait: every "cannot reclaim right now" outcome — page busy, already
- *   deallocated, re-filled — reports OOS_RECLAIM_SKIPPED with NO_ERROR. A skipped page is not
- *   corrupted state, only postponed work: it stays allocated and the truth stays on disk
- *   (sector bitmap + page emptiness), so a future reclaim pass — the growth-gate sweep planned
- *   for CBRD-26786 — can rediscover it. Until that sweep lands, a skipped page that no later
- *   delete touches again is a bounded leak, matching the pre-change contract.
- *
- *   return: NO_ERROR or error code (ER_INTERRUPTED propagates so reclaim loops stop immediately)
- *   thread_p(in): thread entry
- *   oos_vfid(in): OOS file identifier
- *   vpid(in): candidate page (typically a deduped touched_vpids entry from oos_delete)
- *   hdr_vpid(in): the file's sticky first page (holds OOS_HDR_STATS), resolved once by the caller
- *   result(out): per-page verdict; meaningful only when NO_ERROR is returned
- *
- * Safety argument (why the emptiness check cannot race a writer):
- *   1. The OOS stats header page (sticky first page) is WRITE-latched for all of phase 2, from
- *      before the binding emptiness re-validation until after the deallocation. Every
- *      insert-side page discovery — hash cache, best[] hints, sync scan retry, and the alloc
- *      fallback — starts under that latch in oos_find_best_page, so no NEW writer can be handed
- *      this page while we hold it. (Phase 1 is advisory only: every rejection it makes cheaply,
- *      a hypothetical phase 2 would have re-made under the latch.)
- *   2. A writer that already claimed the page keeps it continuously WRITE-latched from
- *      validation/allocation until its write completes (see oos_find_best_page and
- *      oos_file_alloc_new), so our conditional fix simply fails and we skip.
- *   3. file_dealloc registers an RVFL_DEALLOC postpone in our own sysop; the actual
- *      deallocation runs at log_sysop_commit below, still under the header latch. The page must
- *      be unfixed before that commit (pgbuf_dealloc_page requires a single fixer); read-only
- *      sync sampling may slip into that gap, which is why the hint eviction happens after the
- *      commit and why lookups tolerate deallocated hints (OLD_PAGE_MAYBE_DEALLOCATED).
+ *   The horizon is monotonically non-decreasing, so a stale sample errs only toward deferring:
+ *   sample once per reclaim call, before any page is examined, and reuse it for every candidate.
  */
+static void
+oos_reclaim_sample_horizon (THREAD_ENTRY *thread_p, LOG_LSA &horizon_out)
+{
+  const LOG_LSA append_lsa_at_sample = *log_get_append_lsa ();
+
+  LSA_SET_NULL (&horizon_out);
+  logtb_find_smallest_lsa (thread_p, &horizon_out);
+
+  log_system_tdes::map_all_tdes ([&horizon_out] (log_tdes &tdes)
+  {
+    if (!LSA_ISNULL (&tdes.head_lsa) && (LSA_ISNULL (&horizon_out) || LSA_LT (&tdes.head_lsa, &horizon_out)))
+      {
+	horizon_out = tdes.head_lsa;
+      }
+  });
+
+  if (LSA_ISNULL (&horizon_out) || LSA_LT (&append_lsa_at_sample, &horizon_out))
+    {
+      horizon_out = append_lsa_at_sample;
+    }
+}
+
 /*
  * oos_reclaim_fix_candidate () - Zero-wait, dealloc-tolerant fix of a reclaim candidate, shared
  *   by both phases of oos_try_reclaim_page_internal. Busy means a writer holds the page, and
@@ -1290,9 +1291,63 @@ oos_page_is_reclaimable_empty (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr)
   return pgbuf_get_page_ptype (thread_p, page_ptr) == PAGE_OOS && spage_number_of_records (page_ptr) == 0;
 }
 
+/*
+ * oos_try_reclaim_page_internal () - Try to return one fully emptied OOS data page to the file
+ *   manager's partial sector table so file_alloc can reuse it, no matter what state the (capped,
+ *   non-persistent) bestspace cache is in. Two-phase check: phase 1 pre-qualifies the candidate
+ *   under a zero-wait READ fix and rejects non-candidates WITHOUT touching the OOS stats header
+ *   latch — the serialization point of every insert's page discovery; phase 2 takes the header
+ *   WRITE latch, re-validates under a zero-wait WRITE fix, and deallocates in its own
+ *   immediately-committed sysop. Per-file invariants (sticky first page lookup, legacy-numerable
+ *   skip) are the batch caller's job; this primitive only compares against the hdr_vpid it is
+ *   handed.
+ *
+ *   Idempotent and zero-wait: every "cannot reclaim right now" outcome — page busy, already
+ *   deallocated, re-filled — reports OOS_RECLAIM_SKIPPED with NO_ERROR, and an empty page whose
+ *   last writer may still be active reports OOS_RECLAIM_DEFERRED (LSA gate, safety item 4). A
+ *   skipped or deferred page is not corrupted state, only postponed work: it stays allocated
+ *   and the truth stays on disk (sector bitmap + page emptiness), so a future reclaim pass —
+ *   the growth-gate sweep planned for CBRD-26786 — can rediscover it. Until that sweep lands, a
+ *   skipped page that no later delete touches again is a bounded leak, matching the pre-change
+ *   contract.
+ *
+ *   return: NO_ERROR or error code (ER_INTERRUPTED propagates so reclaim loops stop immediately)
+ *   thread_p(in): thread entry
+ *   oos_vfid(in): OOS file identifier
+ *   vpid(in): candidate page (typically a deduped touched_vpids entry from oos_delete)
+ *   hdr_vpid(in): the file's sticky first page (holds OOS_HDR_STATS), resolved once by the caller
+ *   horizon(in): LSA gate horizon, sampled once by the caller BEFORE examining any page
+ *		  (oos_reclaim_sample_horizon)
+ *   result(out): per-page verdict; meaningful only when NO_ERROR is returned
+ *
+ * Safety argument (why the emptiness check cannot race a writer, and why undo can never reach a
+ * deallocated page):
+ *   1. The OOS stats header page (sticky first page) is WRITE-latched for all of phase 2, from
+ *      before the binding re-validation until after the deallocation. Every insert-side page
+ *      discovery — hash cache, best[] hints, sync scan retry, and the alloc fallback — starts
+ *      under that latch in oos_find_best_page, so no NEW writer can be handed this page while we
+ *      hold it. (Phase 1 is advisory only: every rejection it makes cheaply, a hypothetical
+ *      phase 2 would have re-made under the latch.)
+ *   2. A writer that already claimed the page keeps it continuously WRITE-latched from
+ *      validation/allocation until its write completes (see oos_find_best_page and
+ *      oos_file_alloc_new), so our conditional fix simply fails and we skip.
+ *   3. file_dealloc registers an RVFL_DEALLOC postpone in our own sysop; the actual
+ *      deallocation runs at log_sysop_commit below, still under the header latch. The page must
+ *      be unfixed before that commit (pgbuf_dealloc_page requires a single fixer); read-only
+ *      sync sampling may slip into that gap, which is why the hint eviction happens after the
+ *      commit and why lookups tolerate deallocated hints (OLD_PAGE_MAYBE_DEALLOCATED).
+ *   4. The LSA gate: the page is deallocated only when its page LSA is older than the horizon —
+ *      the smallest head LSA of any active transaction or active system-worker sysop, sampled
+ *      before any page was examined. Emptiness alone cannot tell "emptied by committed deletes"
+ *      from "emptied by a still-active deleter", and the latter's abort replays RVOOS_DELETE
+ *      undo (re-inserting the chunks) into the page. Every write a live undo source made
+ *      carries a page LSA at or above that source's head LSA, so a page passing the gate cannot
+ *      be an undo target of anyone still running. Gated pages are classified deferred and become
+ *      reclaimable once the writer commits or aborts.
+ */
 static int
 oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid,
-			       const VPID &hdr_vpid, OOS_RECLAIM_RESULT &result)
+			       const VPID &hdr_vpid, const LOG_LSA &horizon, OOS_RECLAIM_RESULT &result)
 {
   int err = NO_ERROR;
 
@@ -1320,12 +1375,21 @@ oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, con
       return NO_ERROR;
     }
 
-  bool qualifies = oos_page_is_reclaimable_empty (thread_p, page_ptr);
+  bool is_empty = oos_page_is_reclaimable_empty (thread_p, page_ptr);
+  bool lsa_gate_passes = is_empty && LSA_LT (pgbuf_get_lsa (page_ptr), &horizon);
   pgbuf_unfix_and_init (thread_p, page_ptr);
-  if (!qualifies)
+  if (!is_empty)
     {
       /* Not an OOS data page, or a concurrent insert already reused it — normal, leave it
        * alone. */
+      return NO_ERROR;
+    }
+  if (!lsa_gate_passes)
+    {
+      /* Empty, but the LSA gate pre-check failed: the last writer may still be active, and its
+       * abort would undo chunk deletes back into this page. Classify deferred without touching
+       * the header latch; a later call retries after the writer finishes. */
+      result = OOS_RECLAIM_DEFERRED;
       return NO_ERROR;
     }
 
@@ -1360,6 +1424,15 @@ oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, con
        * insert that had already been handed the page refilled it). Phase 2's verdict, made
        * under the header latch, is the binding one. */
       pgbuf_unfix_and_init (thread_p, page_ptr);
+      return NO_ERROR;
+    }
+
+  if (!LSA_LT (pgbuf_get_lsa (page_ptr), &horizon))
+    {
+      /* Binding LSA-gate verdict (safety item 4), right after the emptiness re-validation and
+       * under the header latch: the last writer may still be active — defer, do not dealloc. */
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      result = OOS_RECLAIM_DEFERRED;
       return NO_ERROR;
     }
 
@@ -1420,12 +1493,16 @@ oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, con
  * oos_reclaim_empty_pages () - Offer an explicit list of candidate pages — typically the pages a
  *   committed delete batch touched — to the per-page reclaim primitive, which deallocates the
  *   fully emptied ones back to the file manager's partial sector table. The per-file invariant
- *   checks (sticky first page lookup, legacy-numerable skip) and the candidate dedupe run once
- *   per batch, and non-empty candidates are rejected without touching the OOS stats header
- *   latch, so a batch never serializes against inserts on the header.
+ *   checks (sticky first page lookup, legacy-numerable skip), the candidate dedupe, and the LSA
+ *   gate horizon sample run once per batch, and non-empty candidates are rejected without
+ *   touching the OOS stats header latch, so a batch never serializes against inserts on the
+ *   header.
  *
  *   Call only AFTER the deletes that emptied the pages are committed: a live undo could
- *   otherwise restore chunks onto a deallocated page.
+ *   otherwise restore chunks onto a deallocated page. Pages emptied by a deleter that is STILL
+ *   active when the batch runs are handled by the LSA gate — they are deferred, not
+ *   deallocated, and a later call reclaims them once that deleter commits or aborts (see
+ *   oos_try_reclaim_page_internal, safety item 4).
  *
  *   Stops at the first error — notably ER_INTERRUPTED, so a shutdown request is never delayed
  *   by the rest of the candidate list — and propagates it. Dropping unprocessed candidates is
@@ -1488,11 +1565,17 @@ oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vect
     return VPID_EQ (&a, &b);
   }), candidates.end ());
 
+  /* LSA gate horizon, sampled once per batch and BEFORE any page is examined (it only ever
+   * moves forward, so a stale sample errs toward deferring, never toward unsafe dealloc). */
+  LOG_LSA horizon;
+  oos_reclaim_sample_horizon (thread_p, horizon);
+
   int n_reclaimed = 0;
+  int n_deferred = 0;
   for (const VPID &vpid : candidates)
     {
       OOS_RECLAIM_RESULT result;
-      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, result);
+      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, horizon, result);
       if (err != NO_ERROR)
 	{
 	  /* Stop immediately — an interrupt must not wait out the rest of the list — and let
@@ -1503,10 +1586,14 @@ oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vect
 	{
 	  n_reclaimed++;
 	}
+      else if (result == OOS_RECLAIM_DEFERRED)
+	{
+	  n_deferred++;
+	}
     }
 
-  oos_trace ("reclaim batch on file %d|%d: %d of %d candidate(s) reclaimed",
-	     VFID_AS_ARGS (&oos_vfid), n_reclaimed, (int) candidates.size ());
+  oos_trace ("reclaim batch on file %d|%d: %d reclaimed, %d deferred of %d candidate(s)",
+	     VFID_AS_ARGS (&oos_vfid), n_reclaimed, n_deferred, (int) candidates.size ());
 
   return NO_ERROR;
 }
