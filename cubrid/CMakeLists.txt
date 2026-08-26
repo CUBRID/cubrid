@@ -619,6 +619,7 @@ set_source_files_properties(${FLEX_csql_lexer_OUTPUTS} PROPERTIES GENERATED true
 # File list mirrors sa/CMakeLists.txt minus standalone-utility and network-transport files.
 set(CLIENT_HALF_SOURCES
   ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/dynamic_load.c
   ${BASE_DIR}/hide_password.cpp
   ${COMMUNICATION_DIR}/network_callback_cl.cpp
   ${COMMUNICATION_DIR}/network_histogram.cpp
@@ -633,6 +634,7 @@ set(CLIENT_HALF_SOURCES
   ${COMPAT_DIR}/db_temp.c
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
+  ${COMPAT_DIR}/dbtype_function.c
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_oid_handler.cpp
   ${METHOD_DIR}/method_query_handler.cpp
@@ -656,7 +658,15 @@ set(CLIENT_HALF_SOURCES
   ${OBJECT_DIR}/object_template.c
   ${OBJECT_DIR}/quick_fit.c
   ${OBJECT_DIR}/schema_class_truncator.cpp
+  ${OBJECT_DIR}/schema_information_schema_builder.cpp
+  ${OBJECT_DIR}/schema_information_schema_definition.cpp
+  ${OBJECT_DIR}/schema_information_schema_install.cpp
+  ${OBJECT_DIR}/schema_information_schema_install_query_spec.cpp
   ${OBJECT_DIR}/schema_manager.c
+  ${OBJECT_DIR}/schema_system_catalog_builder.cpp
+  ${OBJECT_DIR}/schema_system_catalog_definition.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install_query_spec.cpp
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/transform_cl.c
   ${OBJECT_DIR}/trigger_description.cpp
@@ -668,6 +678,8 @@ set(CLIENT_HALF_SOURCES
   ${OPTIMIZER_DIR}/query_graph.c
   ${OPTIMIZER_DIR}/query_planner.c
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_checker.cpp
   ${PARSER_DIR}/cnf.c
   ${PARSER_DIR}/compile.c
   ${PARSER_DIR}/double_byte_support.c

@@ -3232,7 +3232,7 @@ set_ismember (DB_COLLECTION * set, DB_VALUE * value)
   return (ismember);
 }
 
-#if !defined (SERVER_MODE)
+/* wf119: unguarded — client half now compiled into server */
 /*
  * set_issome() -
  *      return: int
@@ -3266,7 +3266,7 @@ set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercio
   (void) ws_pin (set->owner, pin);
   return (issome);
 }
-#endif /* !defined (SERVER_MODE) */
+/* wf119: end of former !SERVER_MODE region */
 
 /*
  * set_convert_oids_to_objects() -
@@ -5556,7 +5556,7 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
   return error;
 }
 
-#if !defined (SERVER_MODE)
+/* wf119: unguarded — client half now compiled into server */
 /*
  * setobj_issome()
  *      return: 1 if value compares successfully using op to some element
@@ -5641,7 +5641,7 @@ setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion)
       return 0;
     }
 }
-#endif /* !defined (SERVER_MODE) */
+/* wf119: end of former !SERVER_MODE region */
 
 /*
  * setobj_convert_oids_to_objects() - This will convert all OID and VOBJ

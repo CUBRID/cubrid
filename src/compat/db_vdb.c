@@ -4736,7 +4736,6 @@ db_check_single_query (DB_SESSION * session)
   return NO_ERROR;
 }
 
-#if !defined (SERVER_MODE)
 /*
  * db_get_parser() - This function returns session's parser
  * returns: session->parser
@@ -4749,7 +4748,6 @@ db_get_parser (DB_SESSION * session)
 {
   return session->parser;
 }
-#endif /* !defined (SERVER_MODE) */
 
 /*
  * db_get_statement() - This function returns session's statement for id

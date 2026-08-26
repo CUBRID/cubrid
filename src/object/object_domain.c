@@ -3631,7 +3631,7 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
   return error;
 }
 
-#if !defined (SERVER_MODE)
+/* wf119: unguarded — client half now compiled into server */
 /*
  * tp_domain_attach - concatenate two domains
  *    return: concatenated domain
@@ -3770,7 +3770,7 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 
   return dropped;
 }
-#endif /* !SERVER_MODE */
+/* wf119: end of former !SERVER_MODE region */
 
 
 /*

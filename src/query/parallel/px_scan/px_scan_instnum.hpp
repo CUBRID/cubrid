@@ -128,11 +128,10 @@ namespace parallel_scan
       }
   };
 
-  /* Eligibility, decided while the XASL is built. The server never calls these. */
-#if !defined (SERVER_MODE)
+  /* Eligibility, decided while the XASL is built.  wf119: the compiler now
+   * lives inside the server, so these are visible in all modes. */
   bool is_renumberable_instnum (XASL_NODE *x);
   bool is_atomic_instnum_eligible (XASL_NODE *x);
-#endif /* !SERVER_MODE */
 
   /* Numbering, run while the scan executes. Guarded because these reach into the server query
    * engine (qfile_*, fetch_peek_dbval), which the client library does not link. */
