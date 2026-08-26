@@ -7356,8 +7356,9 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
   INT64 end_time;
   bool make_end_time_strict = false;
 
-  /* The caller stamps this when the log content of the backup is frozen, which is what a point in time restore
-   * has to compare commit timestamps against. Only fall back to "now" if nobody did. */
+  /* logpb_backup () stamps this when the log content of the backup is frozen - the point a restore can actually
+   * reach - and does the strictness wait there, while transactions are still held off. Fall back to "now" only
+   * if nobody stamped it. */
   end_time = session_p->bkup.bkuphdr->end_time;
   if (end_time == -1)
     {
@@ -7483,8 +7484,8 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
    */
   if (make_end_time_strict)
     {
-      /* Only needed when the end time was stamped here. A caller that stamps it does so while transactions are
-       * still held off, and waits there. */
+      /* Only when the end time was stamped here. Waiting after the caller stamped it would guarantee nothing:
+       * transactions are already running again by now. */
       do
 	{
 	  thread_sleep (1000);
