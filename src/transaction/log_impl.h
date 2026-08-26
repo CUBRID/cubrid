@@ -881,8 +881,9 @@ typedef struct cdc_global
   LOG_LSA last_loginfo_queue_lsa;
 
   /* First LSA of the last log info bundle handed to a client. Unlike consumer.start_lsa it outlives the
-   * session: ending a session does not release the protection, and archive removal can still resolve the
-   * exact volume once the client is gone. */
+   * connection, so archive removal can still resolve the exact volume after a client has gone without
+   * ending its session - the case a restart has to be able to resume from. Ending the session does give
+   * the protection up; that is cdc_release_arv_num_to_keep()'s job. */
   LOG_LSA arv_keep_lsa;
 
 } CDC_GLOBAL;
