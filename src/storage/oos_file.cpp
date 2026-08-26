@@ -1235,6 +1235,34 @@ oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
   return NO_ERROR;
 }
 
+// ****************************************************************************
+// OOS empty-page reclaim
+//
+// Contract (an invariant, not a best-effort optimization): an OOS file reserves a new sector
+// only when no safely reclaimable empty page exists right now — so a file with unreclaimed
+// deletes reuses its emptied pages, one per allocation, instead of growing. A file that never
+// allocates again simply keeps its empty pages: deallocated sectors return to the volume only
+// at file destruction, so reclaiming them early would benefit no one (idle-file shrink is out
+// of scope). Two cooperating paths deliver the invariant: the vacuum fast path
+// (oos_reclaim_empty_pages) reclaims the pages a committed delete batch touched, and the
+// growth-gate sweep (oos_reclaim_sweep_step, run by the single growth point
+// oos_alloc_page_with_reclaim) is the guarantee backstop — it rediscovers on the sector bitmap
+// whatever the fast path missed (SA mode has no vacuum daemon; candidates are dropped on
+// error; non-MVCC deletes have no candidate list). The truth is always on disk (sector bitmap
+// + page emptiness); the in-memory counter/cursor are hints whose loss costs one extra lap,
+// never a page. Why a reclaimed page can never be resurrected by a concurrent writer or an
+// abort's undo is the four-item safety argument on oos_try_reclaim_page_internal.
+//
+// Bounded deferrals within the invariant: a page emptied by a still-active deleter is LSA-gated
+// until that deleter finishes; a grower arriving while another sweep runs on the same file
+// allocates without waiting (see oos_reclaim_sweep_step, "Concurrency"); a sweep failure is
+// absorbed so reclaim never fails an INSERT (see oos_alloc_page_with_reclaim); a page emptied
+// by a path that does not pass oos_delete (an INSERT rollback's RVOOS_INSERT undo, a failure
+// midway through deleting an OOS value chain) raises no counter hint — the boot rule after a
+// restart or the file's next OOS value chain delete re-arms the gate, and the next growth's
+// sweep recovers the page.
+// ****************************************************************************
+
 /* Per-page verdict of oos_try_reclaim_page_internal, for batch/sweep callers that must tell
  * "done" from "retry later" from "not a candidate". OOS_RECLAIM_DEFERRED comes from the LSA
  * reclaim gate: an empty page whose last write may belong to a still-active transaction (or an

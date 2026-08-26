@@ -202,16 +202,18 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
        * re-insert into a deallocated page. Only an interrupt comes back as an error; it has
        * already stopped the reclaim loop. Handle it here rather than through this function's
        * error return: the caller's diagnostics describe rolled-back deletes, while these deletes
-       * ARE committed — the emptied pages merely stay allocated (bounded, logged leak), and the
-       * caller's block-completion contract forbids failing the block anyway. The worker notices
-       * the interrupt again at its own next check. */
+       * ARE committed — the emptied pages merely stay allocated until the growth-gate sweep
+       * returns them (one per allocation) instead of letting the OOS file grow, and the caller's
+       * block-completion contract forbids failing the block anyway. The worker notices the
+       * interrupt again at its own next check. */
       int reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, oos_vfid, &touched_pages);
       if (reclaim_err != NO_ERROR)
 	{
 	  assert (reclaim_err == ER_INTERRUPTED);
 	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
 				 "OOS empty-page reclaim interrupted (file %d|%d); deletes stay committed, "
-				 "emptied pages stay allocated.", VFID_AS_ARGS (oos_vfid));
+				 "emptied pages stay allocated until the growth-gate sweep reclaims them.",
+				 VFID_AS_ARGS (oos_vfid));
 	  er_clear ();
 	}
     }
