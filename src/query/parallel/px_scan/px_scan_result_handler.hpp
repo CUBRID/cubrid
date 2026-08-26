@@ -28,6 +28,7 @@
 #include "thread_entry.hpp"
 #include "px_interrupt.hpp"
 #include "xasl.h"
+#include "px_scan_instnum.hpp"
 #include "px_scan_result_type.hpp"
 #include <atomic>
 #include <condition_variable>
@@ -97,6 +98,9 @@ namespace parallel_scan
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
       trace_handler *trace_handler_p;
+      parallel_scan::instnum_mode instnum_mode = parallel_scan::instnum_mode::NONE;
+      std::vector<int> rownum_col_indices;	/* RENUMBER: ROWNUM positions in the valptr list */
+      parallel_scan::atomic_instnum instnum_draw;	/* ATOMIC_DRAW */
   };
 
   class xasl_snapshot_variables
@@ -134,6 +138,8 @@ namespace parallel_scan
       int g_agg_domains_resolved;
       /* per-worker mirror of (xasl->topn_items != nullptr); avoids hot-path pointer chase on every row. */
       bool is_topn;
+      /* once this worker has seen the atomic-draw quota exhausted, stop touching the shared counter. */
+      bool instnum_quota_done = false;
   };
 
   class xasl_snapshot_tls
