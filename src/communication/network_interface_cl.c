@@ -4726,9 +4726,11 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	  int found_session_params = 0;
 
 	  /* ownership: stored on the session state, or replaced by the
-	   * session's existing array (which frees ours) — never freed here */
+	   * session's existing array (which frees ours) — but its error
+	   * paths return without taking the array, so free it there */
 	  if (sysprm_session_init_session_parameters (&session_params, &found_session_params) != NO_ERROR)
 	    {
+	      sysprm_free_session_parameters (&session_params);
 	      result = ER_FAILED;
 	    }
 	}

@@ -11079,6 +11079,13 @@ sysprm_alloc_session_parameters_from_defaults (void)
 	       * to the system timezone, the same special case the parameter
 	       * dump code applies (round-20 core) */
 	      sprm->value.str = strdup (tz_get_system_timezone ());
+	      if (sprm->value.str == NULL)
+		{
+		  /* leaving it NULL reintroduces the strlen crash; fail the
+		   * whole allocation instead */
+		  sysprm_free_session_parameters (&prms);
+		  return NULL;
+		}
 	    }
 	  sysprm_update_session_prm_flag_allocated (sprm);
 	}

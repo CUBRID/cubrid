@@ -110,6 +110,13 @@ tracer_main (char *server_name, char *sql, char *out_path)
   if (entry_p == NULL)
     {
       tracer_log (fp, "M0_TRACER: FAIL claim_entry");
+      if (fp != stderr)
+	{
+	  fclose (fp);
+	}
+      free (server_name);
+      free (sql);
+      free (out_path);
       return;
     }
   entry_p->register_id ();
