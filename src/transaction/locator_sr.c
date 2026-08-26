@@ -91,6 +91,7 @@ struct locator_classname_action
   OID oid;			/* The class identifier of classname */
   char *synonym_target;		/* Target unique name for synonym entries; NULL for class entries. Owned by this
 				 * action node so that partial/full rollback restores the previous target. */
+  OID synonym_target_owner;	/* Owner the target name refers to; travels with the target */
   LOG_LSA savep_lsa;		/* A top action LSA address (likely a savepoint) for return NULL is for current */
   LOCATOR_CLASSNAME_ACTION *prev;	/* To previous top action */
 };
@@ -166,7 +167,8 @@ static void locator_free_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static int locator_classname_action_push (LOCATOR_CLASSNAME_ENTRY * entry);
 static void locator_classname_action_restore (LOCATOR_CLASSNAME_ENTRY * entry);
 static void locator_classname_entry_set_owner (LOCATOR_CLASSNAME_ENTRY * entry, const OID * owner_oid);
-static int locator_classname_entry_set_target (LOCATOR_CLASSNAME_ENTRY * entry, const char *target);
+static int locator_classname_entry_set_target (LOCATOR_CLASSNAME_ENTRY * entry, const char *target,
+					       const OID * target_owner);
 static int locator_initialize_synonym_entries (THREAD_ENTRY * thread_p);
 static int locator_force_drop_one_entry (THREAD_ENTRY * thread_p, LOCATOR_CLASSNAME_ENTRY * entry);
 static int locator_defence_drop_class_name_entry (const void *name, void *ent, void *args);
@@ -241,10 +243,11 @@ static bool locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attri
 static LC_FIND_CLASSNAME xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname,
 						      OID * owner_oid, OID * class_oid);
 static LC_FIND_CLASSNAME xlocator_reserve_name_internal (THREAD_ENTRY * thread_p, const char *classname,
-							 OID * owner_oid, OID * class_oid, const char *synonym_target);
+							 OID * owner_oid, OID * class_oid, const char *synonym_target,
+							 const OID * synonym_target_owner);
 static LC_FIND_CLASSNAME xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname,
 							const char *newname, OID * owner_oid, OID * class_oid,
-							const char *synonym_target);
+							const char *synonym_target, const OID * synonym_target_owner);
 
 static int locator_filter_errid (THREAD_ENTRY * thread_p, int num_ignore_error_count, int *ignore_error_list);
 static int locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op);
@@ -491,7 +494,7 @@ locator_chase_synonym_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 
   assert (entry->e_current.synonym_target != NULL);
 
-  entry = locator_get_classname_entry (entry->e_current.synonym_target);
+  entry = locator_get_entry (&entry->e_current.synonym_target_owner, entry->e_current.synonym_target);
 
   return locator_entry_is_synonym (entry) ? NULL : entry;
 }
@@ -708,14 +711,17 @@ locator_classname_entry_set_owner (LOCATOR_CLASSNAME_ENTRY * entry, const OID * 
  *
  *   entry(in/out):
  *   target(in): New target unique name; NULL for class entries
+ *   target_owner(in): Owner the target refers to; NULL leaves it unknown
  */
 static int
-locator_classname_entry_set_target (LOCATOR_CLASSNAME_ENTRY * entry, const char *target)
+locator_classname_entry_set_target (LOCATOR_CLASSNAME_ENTRY * entry, const char *target, const OID * target_owner)
 {
   if (entry->e_current.synonym_target != NULL)
     {
       free_and_init (entry->e_current.synonym_target);
     }
+
+  COPY_OID (&entry->e_current.synonym_target_owner, (target_owner != NULL) ? target_owner : &oid_Null_oid);
 
   if (target != NULL)
     {
@@ -909,7 +915,9 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
   ATTR_ID name_att_id = NULL_ATTRID;
   ATTR_ID target_att_id = NULL_ATTRID;
   ATTR_ID owner_att_id = NULL_ATTRID;
+  ATTR_ID target_owner_att_id = NULL_ATTRID;
   OID owner_oid;
+  OID target_owner_oid;
   DB_VALUE *value;
   int i;
   int error = NO_ERROR;
@@ -971,6 +979,10 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	{
 	  owner_att_id = i;
 	}
+      else if (strcmp ("target_owner", rec_attr_name_p) == 0)
+	{
+	  target_owner_att_id = i;
+	}
 
       if (alloced_string == 1)
 	{
@@ -978,7 +990,8 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	}
     }
 
-  if (name_att_id == NULL_ATTRID || target_att_id == NULL_ATTRID || owner_att_id == NULL_ATTRID)
+  if (name_att_id == NULL_ATTRID || target_att_id == NULL_ATTRID || owner_att_id == NULL_ATTRID
+      || target_owner_att_id == NULL_ATTRID)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_FAILED;
@@ -1059,6 +1072,13 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	  COPY_OID (&owner_oid, db_get_oid (value));
 	}
 
+      OID_SET_NULL (&target_owner_oid);
+      value = heap_attrinfo_access (target_owner_att_id, &attr_info);
+      if (value != NULL && !DB_IS_NULL (value) && DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_OID)
+	{
+	  COPY_OID (&target_owner_oid, db_get_oid (value));
+	}
+
       if (unique_name == NULL || target == NULL)
 	{
 	  assert (false);
@@ -1092,6 +1112,7 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
       entry->e_tran_index = NULL_TRAN_INDEX;
 
       entry->e_current.action = LC_CLASSNAME_EXIST;
+      COPY_OID (&entry->e_current.synonym_target_owner, &target_owner_oid);
       entry->e_current.synonym_target = strdup (target);
       if (entry->e_current.synonym_target == NULL)
 	{
@@ -1234,7 +1255,7 @@ xlocator_reserve_class_names (THREAD_ENTRY * thread_p, const int num_classes, co
 static LC_FIND_CLASSNAME
 xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname, OID * owner_oid, OID * class_oid)
 {
-  return xlocator_reserve_name_internal (thread_p, classname, owner_oid, class_oid, NULL);
+  return xlocator_reserve_name_internal (thread_p, classname, owner_oid, class_oid, NULL, NULL);
 }
 
 /*
@@ -1246,10 +1267,11 @@ xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname, OID
  *   owner_oid(in): Owner the name refers to; NULL OID when the name has no qualifier
  *   class_oid(in/out): Object identifier; a pseudo OID is generated when NULL
  *   synonym_target(in): Target unique name for a synonym; NULL reserves a class name
+ *   synonym_target_owner(in): Owner the target refers to
  */
 static LC_FIND_CLASSNAME
 xlocator_reserve_name_internal (THREAD_ENTRY * thread_p, const char *classname, OID * owner_oid, OID * class_oid,
-				const char *synonym_target)
+				const char *synonym_target, const OID * synonym_target_owner)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME reserve = LC_CLASSNAME_RESERVED;
@@ -1324,7 +1346,7 @@ start:
 
 	      entry->e_current.action = LC_CLASSNAME_RESERVED;
 	      locator_classname_entry_set_owner (entry, owner_oid);
-	      if (locator_classname_entry_set_target (entry, synonym_target) != NO_ERROR)
+	      if (locator_classname_entry_set_target (entry, synonym_target, synonym_target_owner) != NO_ERROR)
 		{
 		  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 		  return LC_CLASSNAME_ERROR;
@@ -1405,7 +1427,7 @@ start:
 
       entry->e_current.action = LC_CLASSNAME_RESERVED;
       entry->e_current.synonym_target = NULL;
-      if (locator_classname_entry_set_target (entry, synonym_target) != NO_ERROR)
+      if (locator_classname_entry_set_target (entry, synonym_target, synonym_target_owner) != NO_ERROR)
 	{
 	  free_and_init (entry->e_name);
 	  free_and_init (entry);
@@ -1715,7 +1737,7 @@ LC_FIND_CLASSNAME
 xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const char *newname, OID * owner_oid,
 			    OID * class_oid)
 {
-  return xlocator_rename_name_internal (thread_p, oldname, newname, owner_oid, class_oid, NULL);
+  return xlocator_rename_name_internal (thread_p, oldname, newname, owner_oid, class_oid, NULL, NULL);
 }
 
 /*
@@ -1731,7 +1753,7 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const 
  */
 static LC_FIND_CLASSNAME
 xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, const char *newname, OID * owner_oid,
-			       OID * class_oid, const char *synonym_target)
+			       OID * class_oid, const char *synonym_target, const OID * synonym_target_owner)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME renamed;
@@ -1750,7 +1772,8 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  renamed = xlocator_reserve_name_internal (thread_p, newname, owner_oid, class_oid, synonym_target);
+  renamed = xlocator_reserve_name_internal (thread_p, newname, owner_oid, class_oid, synonym_target,
+					    synonym_target_owner);
   if (renamed != LC_CLASSNAME_RESERVED)
     {
       return renamed;
@@ -1844,7 +1867,8 @@ error:
  *       resolvers wait for the outcome of this transaction.
  */
 int
-xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char *name, const char *arg, OID * owner_oid)
+xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char *name, const char *arg,
+		      OID * owner_oid, OID * target_owner_oid)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
   LC_FIND_CLASSNAME status;
@@ -1867,7 +1891,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
        * root class, so it must never point at a real (non-class) object. */
       OID_SET_NULL (&oid);
 
-      status = xlocator_reserve_name_internal (thread_p, name, owner_oid, &oid, arg);
+      status = xlocator_reserve_name_internal (thread_p, name, owner_oid, &oid, arg, target_owner_oid);
       if (status != LC_CLASSNAME_RESERVED)
 	{
 	  if (status != LC_CLASSNAME_ERROR)
@@ -1916,6 +1940,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
     case LC_SYNONYM_DDL_RENAME:
       {
 	char target_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	OID target_owner_copy;
 
 	if (csect_enter_as_reader (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
 	  {
@@ -1933,11 +1958,12 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 	  }
 
 	strncpy (target_copy, entry->e_current.synonym_target, DB_MAX_IDENTIFIER_LENGTH - 1);
+	COPY_OID (&target_owner_copy, &entry->e_current.synonym_target_owner);
 	COPY_OID (&oid, &entry->e_current.oid);
 
 	csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
-	status = xlocator_rename_name_internal (thread_p, name, arg, owner_oid, &oid, target_copy);
+	status = xlocator_rename_name_internal (thread_p, name, arg, owner_oid, &oid, target_copy, &target_owner_copy);
 	return (status == LC_CLASSNAME_RESERVED_RENAME) ? NO_ERROR : ER_FAILED;
       }
 
@@ -1964,7 +1990,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 	    {
 	      entry->e_current.action = LC_CLASSNAME_RESERVED;
 	      entry->e_tran_index = tran_index;
-	      error = locator_classname_entry_set_target (entry, arg);
+	      error = locator_classname_entry_set_target (entry, arg, target_owner_oid);
 	      locator_incr_num_transient_classnames (tran_index);
 
 	      log_append_redo_data2 (thread_p, RVLOC_CLASSNAME_DUMMY, NULL, NULL, 0, 0, NULL);
@@ -1981,7 +2007,7 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
 	    }
 	  if (error == NO_ERROR)
 	    {
-	      error = locator_classname_entry_set_target (entry, arg);
+	      error = locator_classname_entry_set_target (entry, arg, target_owner_oid);
 	    }
 	}
       else

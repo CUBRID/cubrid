@@ -1082,9 +1082,20 @@ int
 locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg)
 {
   OID owner_oid;
+  OID target_owner_oid;
 
   /* RENAME keys the entry by its new name; the other operations key it by the given one */
   au_find_owner_oid_of_name ((op == LC_SYNONYM_DDL_RENAME) ? arg : name, &owner_oid);
+
+  /* ADD and ALTER take arg as the target the synonym points at */
+  if (op == LC_SYNONYM_DDL_ADD || op == LC_SYNONYM_DDL_ALTER)
+    {
+      au_find_owner_oid_of_name (arg, &target_owner_oid);
+    }
+  else
+    {
+      OID_SET_NULL (&target_owner_oid);
+    }
 
 #if defined(CS_MODE)
   int success = ER_FAILED;
@@ -1097,7 +1108,8 @@ locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg)
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_INT_SIZE + length_const_string (name, NULL) + length_const_string (arg, NULL) + OR_OID_SIZE;
+  request_size = (OR_INT_SIZE + length_const_string (name, NULL) + length_const_string (arg, NULL) + OR_OID_SIZE
+		  + OR_OID_SIZE);
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -1109,6 +1121,7 @@ locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg)
   ptr = pack_const_string (ptr, name);
   ptr = pack_const_string (ptr, arg);
   ptr = or_pack_oid (ptr, &owner_oid);
+  ptr = or_pack_oid (ptr, &target_owner_oid);
 
   req_error = net_client_request (NET_SERVER_LC_SYNONYM_DDL, request, request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
@@ -1125,7 +1138,7 @@ locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_synonym_ddl (thread_p, op, name, arg, &owner_oid);
+  success = xlocator_synonym_ddl (thread_p, op, name, arg, &owner_oid, &target_owner_oid);
 
   exit_server (*thread_p);
 

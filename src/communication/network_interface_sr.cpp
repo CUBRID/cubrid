@@ -1863,6 +1863,7 @@ slocator_synonym_ddl (THREAD_ENTRY *thread_p, unsigned int rid, char *request, i
   char *name;
   char *arg;
   OID owner_oid;
+  OID target_owner_oid;
   int success;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -1872,8 +1873,9 @@ slocator_synonym_ddl (THREAD_ENTRY *thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_string_nocopy (ptr, &name);
   ptr = or_unpack_string_nocopy (ptr, &arg);
   ptr = or_unpack_oid (ptr, &owner_oid);
+  ptr = or_unpack_oid (ptr, &target_owner_oid);
 
-  success = xlocator_synonym_ddl (thread_p, (LC_SYNONYM_DDL_OP) op, name, arg, &owner_oid);
+  success = xlocator_synonym_ddl (thread_p, (LC_SYNONYM_DDL_OP) op, name, arg, &owner_oid, &target_owner_oid);
 
   if (success != NO_ERROR)
     {
