@@ -784,6 +784,7 @@ struct json_t;
 #define PT_NAME_SPEC_ID(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.spec_id)
 #define PT_NAME_ORIGINAL(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.original)
 #define PT_NAME_RESOLVED(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.resolved)
+#define PT_NAME_OWNER_NAME(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.owner_name)
 #define PT_NAME_DB_OBJECT(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.db_object)
 
 /* PT_CREATE_ENTITY */
@@ -2693,6 +2694,10 @@ struct pt_name_info
   UINTPTR spec_id;		/* unique identifier for entity specs */
   const char *original;		/* the string of the original name */
   const char *resolved;		/* the string of the resolved name */
+  /* The owner this name belongs to, downcased. Filled in by pt_set_user_specified_name (),
+   * whether the statement named the owner or the current schema supplied it. This is what
+   * carries the owner; a prefix on original is on its way out. */
+  const char *owner_name;
   DB_OBJECT *db_object;		/* the object, if this is a class or instance */
   int db_object_chn;
   DB_OBJECT *virt_object;	/* the top level view this this class is being viewed through. */

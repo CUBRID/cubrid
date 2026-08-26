@@ -10791,6 +10791,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   const char *resolved_name = NULL;
   char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *user_specified_name = NULL;
+  const char *owner_name = NULL;
 
   assert (continue_walk != NULL);
 
@@ -11075,6 +11076,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     }
 
   intl_identifier_lower (resolved_name, downcase_resolved_name);
+  owner_name = pt_append_string (parser, NULL, downcase_resolved_name);
 
   /* In case 1, 2, 3 */
   user_specified_name = pt_append_string (parser, downcase_resolved_name, ".");
@@ -11086,26 +11088,30 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
     {
       node->info.name.original = user_specified_name;
       node->info.name.resolved = NULL;
+      node->info.name.owner_name = owner_name;
     }
   else
     {
+      PT_NODE *named;
+
       assert (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op));
 
       if (PT_IS_DOT_NODE (node->info.expr.arg1))
 	{
-	  node->info.expr.arg1->info.dot.arg2->info.name.original = user_specified_name;
-	  node->info.expr.arg1->info.dot.arg2->info.name.resolved = NULL;
+	  named = node->info.expr.arg1->info.dot.arg2;
 
 	  parser_free_tree (parser, node->info.expr.arg1->info.dot.arg1);
-	  node->info.expr.arg1 = node->info.expr.arg1->info.dot.arg2;
+	  node->info.expr.arg1 = named;
 	}
       else
 	{
 	  assert (PT_IS_NAME_NODE (node->info.expr.arg1));
-
-	  node->info.expr.arg1->info.name.original = user_specified_name;
-	  node->info.expr.arg1->info.name.resolved = NULL;
+	  named = node->info.expr.arg1;
 	}
+
+      named->info.name.original = user_specified_name;
+      named->info.name.resolved = NULL;
+      named->info.name.owner_name = owner_name;
     }
 
   return node;
@@ -11140,7 +11146,18 @@ pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (sm_qualifier_name (PT_NAME_ORIGINAL (node), qualifier_name, DB_MAX_USER_LENGTH) == NULL)
     {
+      /* The owner is not in the name yet: either the statement kept it in resolved, or
+       * this is a system class that has none. */
+      assert (PT_NAME_OWNER_NAME (node) == NULL);
       return PT_NAME_RESOLVED (node);
+    }
+
+  /* while the owner is in the name as well as in its own field, the two have to agree */
+  assert (PT_NAME_OWNER_NAME (node) == NULL || strcmp (PT_NAME_OWNER_NAME (node), qualifier_name) == 0);
+
+  if (PT_NAME_OWNER_NAME (node) != NULL)
+    {
+      return PT_NAME_OWNER_NAME (node);
     }
 
   return pt_append_string (parser, NULL, qualifier_name);
