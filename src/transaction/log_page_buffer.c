@@ -6227,14 +6227,14 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	      else
 		{
 		  /* Same as in logpb_remove_archive_logs(): the volume is gone, so the value protects
-		   * nothing and is given up. The page being in an archive that cannot be read is not
-		   * something the engine does on its own, hence the assertion. */
+		   * nothing and is given up. The engine does not delete a volume it is holding back, so
+		   * this needs the file to have gone missing underneath the server - an operator action,
+		   * not a broken invariant, so it is reported rather than asserted. */
 		  _er_log_debug (ARG_FILE_LINE,
 				 "The archive holding the first log pageid for cdc (%lld) could not be read. "
 				 "Giving up the protection.", (long long int) cdc_first_pageid);
 
 		  LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
-		  assert (false);
 		}
 	    }
 
