@@ -28,6 +28,7 @@
 #include "db_json.hpp"
 #include "db_value_printer.hpp"
 #include "dbi.h"
+#include "deduplicate_key.h"
 #include "dbtype.h"
 #include "misc_string.h"
 #include "object_domain.h"

@@ -73,11 +73,11 @@
 #include "dbtype.h"
 #include "compile_context.h"
 
-#if defined (SA_MODE)
+#if !defined (CS_MODE)
 #include "thread_manager.hpp"
 #include "pl_compile_handler.hpp"
 #include "pl_executor.hpp"
-#endif // SA_MODE
+#endif /* !CS_MODE */
 
 #include "xasl.h"
 #include "lob_locator.hpp"
@@ -107,7 +107,12 @@ static int net_Deferred_end_queries_count = 0;
  * Flag to indicate whether we've crossed the client/server boundary.
  * It really only comes into play in standalone.
  */
+#if defined (SERVER_MODE)
+/* wf119: defined thread_local in network_interface_sr.cpp */
+extern thread_local unsigned int db_on_server;
+#else
 unsigned int db_on_server = 0;
+#endif
 
 #if defined(CS_MODE)
 static char *pack_const_string (char *buffer, const char *cstring);
@@ -115,29 +120,34 @@ static char *pack_string_with_null_padding (char *buffer, const char *stream, in
 static int length_const_string (const char *cstring, int *strlen);
 static int length_string_with_null_padding (int len);
 #endif /* CS_MODE */
-#if defined (SA_MODE)
+#if !defined (CS_MODE)
 static void enter_server_no_thread_entry (void);
 static THREAD_ENTRY *enter_server (void);
 static void exit_server_no_thread_entry (void);
 static void exit_server (const THREAD_ENTRY & thread_ref);
-#endif // SERVER_MODE
+#endif /* !CS_MODE */
 static int is_top_level_class (MOBJ mobj);
 
-#if defined (SA_MODE)
+#if !defined (CS_MODE)
 //
 // enter_server_no_thread_entry () - enter server mode without getting a thread entry (e.g. when "starting" server).
 //
+/* SERVER_MODE (wf119 tracer): the calling thread is already a server worker
+ * with its own private heap; only the boundary flag and error stack change.
+ */
 static void
 enter_server_no_thread_entry (void)
 {
   db_on_server++;
   er_stack_push_if_exists ();
 
+#if defined (SA_MODE)
   if (private_heap_id == 0)
     {
       assert (db_on_server == 1);
       private_heap_id = db_create_private_heap ();
     }
+#endif
 }
 
 //
@@ -158,10 +168,12 @@ enter_server ()
 static void
 exit_server_no_thread_entry (void)
 {
+#if defined (SA_MODE)
   if ((db_on_server - 1) == 0 && private_heap_id != 0)
     {
       db_clear_private_heap (NULL, private_heap_id);
     }
+#endif
   er_restore_last_error ();
   db_on_server--;
 }
@@ -178,7 +190,7 @@ exit_server (const THREAD_ENTRY & thread_ref)
 
   exit_server_no_thread_entry ();
 }
-#endif // SA_MODE
+#endif /* !CS_MODE */
 
 #if defined(CS_MODE)
 /*
@@ -4028,11 +4040,22 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 #else /* CS_MODE */
   int tran_index = NULL_TRAN_INDEX;
 
+#if defined (SERVER_MODE)
+  /* wf119: in-process client — the server half needs the real thread entry
+   * (conn_entry carries connection state); NULL was an SA-only assumption */
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  tran_index =
+    xboot_register_client (thread_p, client_credential, client_lock_wait, client_isolation, tran_state,
+			   server_credential);
+  exit_server (*thread_p);
+#else /* SA_MODE */
   enter_server_no_thread_entry ();
 
   tran_index =
     xboot_register_client (NULL, client_credential, client_lock_wait, client_isolation, tran_state, server_credential);
   exit_server_no_thread_entry ();
+#endif
 
   return tran_index;
 #endif /* !CS_MODE */
@@ -4682,6 +4705,37 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 
   db_Session_id = id;
   *session_id = db_Session_id;
+
+#if defined (SERVER_MODE)
+  /* wf119: a real CS client hands its session-parameter array to the server
+   * in this request and the server stores it on the session state
+   * (network_interface_sr -> sysprm_session_init_session_parameters).  The
+   * in-process client must do the same, or session_parameters stays NULL and
+   * the first prm_get_*_value on the compile path reads through it
+   * (round-19 core: session_get_session_parameter, session.c:2828). */
+  if (result != ER_FAILED)
+    {
+      SESSION_PARAM *session_params = sysprm_alloc_session_parameters_from_defaults ();
+
+      if (session_params == NULL)
+	{
+	  result = ER_FAILED;
+	}
+      else
+	{
+	  int found_session_params = 0;
+
+	  /* ownership: stored on the session state, or replaced by the
+	   * session's existing array (which frees ours) — but its error
+	   * paths return without taking the array, so free it there */
+	  if (sysprm_session_init_session_parameters (&session_params, &found_session_params) != NO_ERROR)
+	    {
+	      sysprm_free_session_parameters (&session_params);
+	      result = ER_FAILED;
+	    }
+	}
+    }
+#endif /* SERVER_MODE */
 
   /* get row count */
   if (result != ER_FAILED)
@@ -7542,9 +7596,50 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
     }
 
   /* call the server routine of query execute */
+#if defined (SERVER_MODE)
+  /* wf119: the SERVER_MODE build of xqmgr_execute_query treats dbval_p as a
+   * PACKED buffer (a real CS server unpacks it off the wire), while the SA
+   * build casts it to a DB_VALUE array — handing it the raw array made
+   * unpack_domain read a garbage type tag (round-23 core, type_id=44).
+   * Pack here exactly like the CS client does.  Milestone-0 expedient: the
+   * final 0-hop design should pass values natively (#123/#124). */
+  {
+    char *senddata = NULL, *ptr;
+    int senddata_size = 0;
+
+    for (i = 0; i < dbval_cnt; i++)
+      {
+	senddata_size += OR_VALUE_ALIGNED_SIZE (&server_db_values[i]);
+      }
+    if (senddata_size > 0)
+      {
+	senddata = (char *) malloc (senddata_size);
+	if (senddata == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) senddata_size);
+	    goto cleanup;
+	  }
+	ptr = senddata;
+	for (i = 0; i < dbval_cnt; i++)
+	  {
+	    ptr = or_pack_db_value (ptr, &server_db_values[i]);
+	  }
+      }
+
+    list_id =
+      xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, senddata, &flag, clt_cache_time, srv_cache_time,
+			   query_timeout, NULL);
+
+    if (senddata != NULL)
+      {
+	free_and_init (senddata);
+      }
+  }
+#else /* !SERVER_MODE */
   list_id =
     xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
 			 srv_cache_time, query_timeout, NULL);
+#endif /* !SERVER_MODE */
 
 cleanup:
   if (server_db_values != NULL)
@@ -7666,9 +7761,48 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
 
   THREAD_ENTRY *thread_p = enter_server ();
 
+#if defined (SERVER_MODE)
+  /* wf119: same dual interpretation as xqmgr_execute_query — the SERVER_MODE
+   * build expects a PACKED value buffer, the SA build a DB_VALUE array; pack
+   * like the CS client does (see qmgr_execute_query, round-23 core) */
+  {
+    char *senddata = NULL, *ptr;
+    int i, senddata_size = 0;
+
+    for (i = 0; i < dbval_cnt; i++)
+      {
+	senddata_size += OR_VALUE_ALIGNED_SIZE (&dbval_ptr[i]);
+      }
+    if (senddata_size > 0)
+      {
+	senddata = (char *) malloc (senddata_size);
+	if (senddata == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) senddata_size);
+	    exit_server (*thread_p);
+	    return NULL;
+	  }
+	ptr = senddata;
+	for (i = 0; i < dbval_cnt; i++)
+	  {
+	    ptr = or_pack_db_value (ptr, &dbval_ptr[i]);
+	  }
+      }
+
+    regu_result =
+      xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, senddata, &flag,
+				       query_timeout);
+
+    if (senddata != NULL)
+      {
+	free_and_init (senddata);
+      }
+  }
+#else /* !SERVER_MODE */
   regu_result =
     xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, dbval_ptr, &flag,
 				     query_timeout);
+#endif /* !SERVER_MODE */
 
   exit_server (*thread_p);
 

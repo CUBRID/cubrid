@@ -39,6 +39,7 @@ option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
+option (UNIT_TEST_SERVER_COMPILE "Unit testing: wf119 client parser inside SERVER_MODE binary")
 
 message("  unit_tests/...")
 
@@ -108,6 +109,11 @@ if (UNIT_TESTS OR UNIT_TEST_DOUBLE_WRITE_BUFFER)
   message("    double_write_buffer")
   add_subdirectory(double_write_buffer)
 endif(UNIT_TESTS OR UNIT_TEST_DOUBLE_WRITE_BUFFER)
+
+if (UNIT_TESTS OR UNIT_TEST_SERVER_COMPILE)
+  message("    server_compile")
+  add_subdirectory(server_compile)
+endif(UNIT_TESTS OR UNIT_TEST_SERVER_COMPILE)
 
 #[[
 TODO compilation fails

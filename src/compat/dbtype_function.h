@@ -321,7 +321,12 @@ extern "C"
   extern int db_get_enum_string_size (const DB_VALUE * value);
   extern DB_C_CHAR db_get_method_error_msg (void);
   extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
+#if !defined (_DBTYPE_FUNCTION_SELF_)
+  /* the implementation in dbtype_function.i returns INTL_CODESET; this int
+   * alias is for API consumers only (wf119: C++ rejects the mismatch when
+   * dbtype_function.c compiles both together) */
   extern int db_get_string_codeset (const DB_VALUE * value);
+#endif
   extern int db_get_string_collation (const DB_VALUE * value);
   extern int db_get_enum_codeset (const DB_VALUE * value);
   extern int db_get_enum_collation (const DB_VALUE * value);

@@ -25,6 +25,7 @@
 #include "authenticate.h"
 #include "authenticate_grant.hpp" /* apply_grants */
 #include "dbtype_function.h"
+#include "message_catalog.h"
 #include "schema_manager.h"
 #include "set_object.h"
 

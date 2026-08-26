@@ -7302,7 +7302,7 @@ prm_check_environment (void)
     }
 }
 
-#if !defined (SERVER_MODE)
+/* wf119: was #if !SERVER_MODE — client half now compiled into server */
 /*
  * sysprm_validate_escape_char_parameters () - validate escape char setting
  *
@@ -7570,7 +7570,7 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
 
   return err;
 }
-#endif /* !SERVER_MODE */
+/* wf119: end of former !SERVER_MODE region */
 
 /*
  * sysprm_change_parameter_values () - update system parameter values
@@ -11037,6 +11037,64 @@ sysprm_alloc_session_parameters (void)
   return result;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * sysprm_alloc_session_parameters_from_defaults () - allocates a session
+ *		parameter array filled from this process's current parameter
+ *		values (same fill as the CS_MODE cached_session_parameters
+ *		block in sysprm_load_and_init_internal).
+ *
+ * return : NULL or pointer to array of session parameters
+ *
+ * wf119: the in-process client has no network handshake to deliver its
+ * session parameters, so it builds them from the live (server) values.
+ */
+SESSION_PARAM *
+sysprm_alloc_session_parameters_from_defaults (void)
+{
+  SESSION_PARAM *prms;
+  SESSION_PARAM *sprm;
+  int i, n = 0;
+
+  prms = sysprm_alloc_session_parameters ();
+  if (prms == NULL)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
+    {
+      if (PRM_IS_FOR_SESSION (GET_PRM (i)))
+	{
+	  assert (prm_Def_session_idx[i] == n);
+	  sprm = &prms[n++];
+	  sprm->prm_id = (PARAM_ID) i;
+	  sprm->flag = (GET_PRM (i)->dynamic_flag);
+	  sprm->datatype = GET_PRM (i)->datatype;
+	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
+	  if (i == PRM_ID_TIMEZONE && sprm->value.str == NULL)
+	    {
+	      /* the timezone parameter's stored default is a NULL string and
+	       * update_session_state_from_sys_params strlen()s it; fall back
+	       * to the system timezone, the same special case the parameter
+	       * dump code applies (round-20 core) */
+	      sprm->value.str = strdup (tz_get_system_timezone ());
+	      if (sprm->value.str == NULL)
+		{
+		  /* leaving it NULL reintroduces the strlen crash; fail the
+		   * whole allocation instead */
+		  sysprm_free_session_parameters (&prms);
+		  return NULL;
+		}
+	    }
+	  sysprm_update_session_prm_flag_allocated (sprm);
+	}
+    }
+
+  return prms;
+}
+#endif /* SERVER_MODE */
+
 /*
  * sysprm_free_session_parameters () - free session parameter array
  *
@@ -12013,7 +12071,7 @@ sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int 
   return (int) (ptr - buffer);
 }
 
-#if !defined (SERVER_MODE)
+/* wf119: was #if !SERVER_MODE — client half now compiled into server */
 /*
  * sysprm_print_parameters_for_qry_string () - print parameters for query
  *					       string
@@ -12213,7 +12271,7 @@ sysprm_init_intl_param (void)
 
   return error;
 }
-#endif /* !SERVER_MODE */
+/* wf119: end of former !SERVER_MODE region */
 
 /*
  * sysprm_set_error () - sets an error for system parameter errors

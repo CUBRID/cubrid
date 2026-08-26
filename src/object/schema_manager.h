@@ -26,9 +26,6 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
 
 #include "language_support.h"	/* for international string functions */
 #include "storage_common.h"	/* for HFID */

@@ -50,12 +50,12 @@
 
 #include <utility>
 
-#if !defined (SERVER_MODE)
+/* wf119: workspace/object client semantics are compiled in SERVER_MODE too
+ * (merged binary); runtime discrimination is db_on_server (thread_local, D5) */
 #include "work_space.h"
 #include "virtual_object.h"
 #include "transform_cl.h"
 #include "dbi.h"
-#endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
 #include "memory_private_allocator.hpp"
@@ -66,7 +66,9 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-#if !defined(SERVER_MODE)
+#if defined (SERVER_MODE)
+extern thread_local unsigned int db_on_server;	/* wf119 */
+#else
 extern unsigned int db_on_server;
 #endif
 
@@ -79,13 +81,11 @@ extern unsigned int db_on_server;
 /*
  * MR_OID_SIZE
  * Hack so we don't have to conditionalize the type vector.
- * On the server we don't have the structure definition for this.
+ * wf119: the merged SERVER_MODE binary links the workspace, so WS_MEMOID is
+ * always available; tp_Object.size = 0 tripped get_mem_size_of_mem's assert
+ * while the in-process client loaded _db_authorization (round-14 core).
  */
-#if !defined (SERVER_MODE)
 #define MR_OID_SIZE sizeof(WS_MEMOID)
-#else
-#define MR_OID_SIZE 0
-#endif
 
 #define VALUE_AREA_COUNT 1024
 
@@ -106,11 +106,9 @@ extern unsigned int db_on_server;
  * and oid promotion cannot be controlled there.
  *
  */
-#if defined (SERVER_MODE)
-#define PR_INHIBIT_OID_PROMOTION_DEFAULT 1
-#else
+/* wf119: client default; server threads are covered at runtime by
+ * db_on_server == 1 in every "db_on_server || pr_Inhibit_oid_promotion" test */
 #define PR_INHIBIT_OID_PROMOTION_DEFAULT 0
-#endif
 
 /*
  * NUMERIC_HEADER_SIZE
@@ -4870,13 +4868,11 @@ mr_null_oid (OID * oid)
 static void
 mr_initmem_object (void *memptr, TP_DOMAIN * domain)
 {
-  /* there is no use for initmem on the server */
-#if !defined (SERVER_MODE)
+  /* wf119: reached only from client-context threads (workspace layout) */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
 
   mr_null_oid (&mem->oid);
   mem->pointer = NULL;
-#endif
 }
 
 /*
@@ -4889,7 +4885,8 @@ mr_initval_object (DB_VALUE * value, int precision, int scale)
 {
   OID oid;
 
-#if !defined (SERVER_MODE)
+  /* wf119: db_on_server (thread_local) keeps the old SERVER_MODE behavior for
+   * server worker threads */
   if (db_on_server)
     {
       db_value_domain_init (value, DB_TYPE_OID, precision, scale);
@@ -4901,18 +4898,12 @@ mr_initval_object (DB_VALUE * value, int precision, int scale)
       db_value_domain_init (value, DB_TYPE_OBJECT, precision, scale);
       db_make_object (value, NULL);
     }
-#else /* SERVER_MODE */
-  db_value_domain_init (value, DB_TYPE_OID, precision, scale);
-  OID_SET_NULL (&oid);
-  db_make_oid (value, &oid);
-#endif /* !SERVER_MODE */
 }
 
 static int
 mr_setmem_object (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
-  /* there is no need for setmem on the server */
-#if !defined (SERVER_MODE)
+  /* wf119: reached only from client-context threads (workspace layout) */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
   OID *oid;
   MOP op;
@@ -4945,7 +4936,6 @@ mr_setmem_object (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	    }
 	}
     }
-#endif /* !SERVER_MODE */
   return NO_ERROR;
 }
 
@@ -4954,8 +4944,7 @@ mr_getmem_object (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
   int error = NO_ERROR;
 
-  /* there is no need for getmem on the server */
-#if !defined (SERVER_MODE)
+  /* wf119: reached only from client-context threads (workspace layout) */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
   MOP op;
 
@@ -4980,7 +4969,6 @@ mr_getmem_object (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
   else
     error = db_make_object (value, op);
-#endif /* !SERVER_MODE */
 
   return error;
 }
@@ -4992,7 +4980,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int error = NO_ERROR;
   OID *oid;
 
-#if !defined (SERVER_MODE)
+  /* wf119: client body kept; db_on_server covers server-thread dispatch */
   if (DB_IS_NULL (src))
     {
       db_make_null (dest);
@@ -5024,21 +5012,6 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  error = db_make_object (dest, db_get_object (src));
 	}
     }
-#else /* SERVER_MODE */
-  /*
-   * If we're really on the server, we can only get here when dispatching
-   * through set element domains.  The value must contain an OID.
-   */
-  if (DB_IS_NULL (src) || DB_VALUE_TYPE (src) != DB_TYPE_OID)
-    {
-      db_make_null (dest);
-    }
-  else
-    {
-      oid = (OID *) db_get_oid (src);
-      error = db_make_oid (dest, oid);
-    }
-#endif /* !SERVER_MODE */
 
   return error;
 }
@@ -5062,9 +5035,7 @@ mr_index_lengthval_object (DB_VALUE * value)
 static int
 mr_data_lengthval_object (DB_VALUE * value, int disk)
 {
-#if !defined (SERVER_MODE)
-  MOP mop;
-#endif
+  MOP mop;			/* wf119: un-gated */
   int size;
 
   if (disk)
@@ -5076,7 +5047,6 @@ mr_data_lengthval_object (DB_VALUE * value, int disk)
       size = MR_OID_SIZE;
     }
 
-#if !defined (SERVER_MODE)
   if (DB_VALUE_TYPE (value) == DB_TYPE_OBJECT && disk)
     {
       mop = db_get_object (value);
@@ -5097,7 +5067,6 @@ mr_data_lengthval_object (DB_VALUE * value, int disk)
 	    }
 	}
     }
-#endif
 
   return size;
 }
@@ -5105,7 +5074,7 @@ mr_data_lengthval_object (DB_VALUE * value, int disk)
 static void
 mr_data_writemem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
-#if !defined (SERVER_MODE)	/* there is no need for writemem on the server */
+  /* wf119: reached only from client-context threads (workspace layout) */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
   OID *oidp;
 
@@ -5155,19 +5124,13 @@ mr_data_writemem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
     }
 
   or_put_oid (buf, oidp);
-
-#else /* SERVER_MODE */
-  /* should never get here but in case we do, dump a NULL OID into the buffer. */
-  printf ("mr_writemem_object: called on the server !\n");
-  or_put_oid (buf, (OID *) (&oid_Null_oid));
-#endif /* !SERVER_MODE */
 }
 
 
 static void
 mr_data_readmem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-#if !defined (SERVER_MODE)	/* there is no need for readmem on the server ??? */
+  /* wf119: reached only from client-context threads (workspace layout) */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
 
   if (mem != NULL)
@@ -5179,12 +5142,6 @@ mr_data_readmem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
     {
       or_advance (buf, tp_Object.disksize);
     }
-#else
-  /* shouldn't get here but if we do, just skip over it */
-  printf ("mr_readmem_object: called on the server !\n");
-  or_advance (buf, tp_Object.disksize);
-#endif
-
 }
 
 static int
@@ -5198,10 +5155,14 @@ mr_index_writeval_object (OR_BUF * buf, DB_VALUE * value)
 
   if (DB_VALUE_TYPE (value) == DB_TYPE_OBJECT)
     {
-#if !defined (SERVER_MODE)
+      /* wf119: un-gated (SERVER_MODE used to leave oidp NULL here) */
+#if defined (SERVER_MODE)
+      /* SA executes these client bodies with db_on_server toggled; the
+       * context-discipline invariant only holds in the merged server binary */
+      assert (!db_on_server);
+#endif
       obj = db_get_object (value);
       oidp = WS_OID (obj);
-#endif
     }
   else
     {
@@ -5224,13 +5185,10 @@ mr_index_writeval_object (OR_BUF * buf, DB_VALUE * value)
 static int
 mr_data_writeval_object (OR_BUF * buf, DB_VALUE * value)
 {
-#if !defined (SERVER_MODE)
-  MOP mop;
-#endif
+  MOP mop;			/* wf119: un-gated */
   OID *oidp = NULL;
   int rc = NO_ERROR;
 
-#if !defined (SERVER_MODE)
   if (db_on_server || pr_Inhibit_oid_promotion)
     {
       if (DB_VALUE_TYPE (value) == DB_TYPE_OID)
@@ -5294,11 +5252,6 @@ mr_data_writeval_object (OR_BUF * buf, DB_VALUE * value)
       /* should never get here ! */
       rc = or_put_oid (buf, (OID *) (&oid_Null_oid));
     }
-#else /* SERVER_MODE */
-  /* on the server, the value must contain an OID */
-  oidp = db_get_oid (value);
-  rc = or_put_oid (buf, oidp);
-#endif /* !SERVER_MODE */
   return rc;
 }
 
@@ -5318,7 +5271,7 @@ mr_data_readval_object (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
   OID oid;
   int rc = NO_ERROR;
 
-#if !defined (SERVER_MODE)
+  /* wf119: client body kept; server threads take the db_on_server branch */
   if (value == NULL)
     {
       rc = or_advance (buf, tp_Object.disksize);
@@ -5352,20 +5305,6 @@ mr_data_readval_object (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
 	    }
 	}
     }
-#else /* SERVER_MODE */
-  /* on the server, we only read OIDs */
-  if (value == NULL)
-    {
-      rc = or_advance (buf, tp_Object.disksize);
-    }
-  else
-    {
-      db_value_domain_init (value, DB_TYPE_OID, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-      rc = or_get_oid (buf, &oid);
-      /* should we be checking for the NULL OID here ? */
-      db_make_oid (value, &oid);
-    }
-#endif /* !SERVER_MODE */
   return rc;
 }
 
@@ -5398,38 +5337,14 @@ static DB_VALUE_COMPARE_RESULT
 mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
+  /* wf119: client variant kept — its DB_TYPE_OID fast path is identical to the
+   * old SERVER_MODE-only body, and it must also handle virtual db_object types
+   * for client-context threads */
 #if defined (SERVER_MODE)
-  const OID *o1, *o2;
-  int oidc;
-
-  /*
-   * we need to be careful here because even though the domain may
-   * say object, it may really be an OID (especially on the server).
-   */
-  if (DB_VALUE_DOMAIN_TYPE (value1) == DB_TYPE_OID)
-    {
-      o1 = db_get_oid (value1);
-    }
-  else
-    {
-      assert (false);
-      o1 = &oid_Null_oid;
-    }
-
-  if (DB_VALUE_DOMAIN_TYPE (value2) == DB_TYPE_OID)
-    {
-      o2 = db_get_oid (value2);
-    }
-  else
-    {
-      assert (false);
-      o2 = &oid_Null_oid;
-    }
-
-  oidc = oid_compare (o1, o2);
-  return MR_CMP_RETURN_CODE (oidc);
-#else /* !SERVER_MODE */
-  /* on the client, we must also handle virtual db_object types */
+  /* a genuine server thread only ever compares OID-tagged values */
+  assert (!db_on_server
+	  || (DB_VALUE_DOMAIN_TYPE (value1) == DB_TYPE_OID && DB_VALUE_DOMAIN_TYPE (value2) == DB_TYPE_OID));
+#endif
   DB_VALUE_COMPARE_RESULT c;
   OID *o1 = NULL, *o2 = NULL;
   DB_OBJECT *mop1 = NULL, *mop2 = NULL, *class1, *class2;
@@ -5589,7 +5504,6 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   vid_get_keys (mop1, &keys1);
   vid_get_keys (mop2, &keys2);
   return tp_value_compare (&keys1, &keys2, do_coercion, total_order);
-#endif /* SERVER_MODE */
 }
 
 
@@ -6990,9 +6904,7 @@ mr_data_lengthval_set (DB_VALUE * value, int disk)
   SETREF *ref;
   SETOBJ *set;
   int size;
-#if !defined (SERVER_MODE)
-  int pin;
-#endif
+  int pin;			/* wf119: un-gated; ws_pin is a no-op when db_on_server */
 
   size = 0;
 
@@ -7015,13 +6927,9 @@ mr_data_lengthval_set (DB_VALUE * value, int disk)
 	      if (set != NULL)
 		{
 		  /* probably no need to pin here but it can't hurt */
-#if !defined (SERVER_MODE)
 		  pin = ws_pin (ref->owner, 1);
-#endif
 		  size = or_packed_set_length (set, 1);
-#if !defined (SERVER_MODE)
 		  (void) ws_pin (ref->owner, pin);
-#endif
 		}
 	    }
 	}
@@ -7047,9 +6955,7 @@ mr_data_writeval_set (OR_BUF * buf, DB_VALUE * value)
   SETREF *ref;
   SETOBJ *set;
   int size;
-#if !defined (SERVER_MODE)
-  int pin;
-#endif
+  int pin;			/* wf119: un-gated; ws_pin is a no-op when db_on_server */
   int rc = NO_ERROR;
 
   ref = db_get_set (value);
@@ -7081,17 +6987,13 @@ mr_data_writeval_set (OR_BUF * buf, DB_VALUE * value)
 		}
 	      else
 		{
-#if !defined (SERVER_MODE)
 		  pin = ws_pin (ref->owner, 1);
-#endif
 		  size = or_packed_set_length (set, 1);
 		  /* remember the Windows pointer problem ! */
 		  if (((ptrdiff_t) (buf->endptr - buf->ptr)) < (ptrdiff_t) size)
 		    {
 		      /* unpin the owner before we abort ! */
-#if !defined (SERVER_MODE)
 		      (void) ws_pin (ref->owner, pin);
-#endif
 		      return ER_TF_BUFFER_OVERFLOW;
 		    }
 		  else
@@ -7099,9 +7001,7 @@ mr_data_writeval_set (OR_BUF * buf, DB_VALUE * value)
 		      /* the buffer is ok, do the transformation */
 		      or_put_set (buf, set, 1);
 		    }
-#if !defined (SERVER_MODE)
 		  (void) ws_pin (ref->owner, pin);
-#endif
 		}
 	    }
 	}

@@ -26,11 +26,9 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
 
 #include "dbi.h"
+#include "parse_tree.h"
 #include "schema_manager.h"
 
 #define UNIQUE_PARTITION_SAVEPOINT_GRANT "pARTITIONgRANT"

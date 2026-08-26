@@ -26,10 +26,8 @@
 
 #ident "$Id$"
 
-#if !defined(SERVER_MODE)
 #include "parse_tree.h"
 #include "oid.h"
-#endif
 
 #include "dbtype_def.h"
 
@@ -89,7 +87,6 @@ extern void *dk_find_or_deduplicate_key_attribute (int att_id);
 extern int dk_get_deduplicate_key_position (int n_attrs, int *attr_ids, int func_attr_index_start);
 #endif
 
-#if !defined(SERVER_MODE)
 // SM_ATTRIBUTE and DB_ATTRIBUTE are the same thing
 extern SM_ATTRIBUTE *dk_find_sm_deduplicate_key_attribute (int att_id, const char *att_name);
 extern void dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
@@ -97,7 +94,6 @@ extern void dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char *
 					  bool is_reverse);
 extern char *dk_print_deduplicate_key_info (char *buf, int buf_size, int deduplicate_level);
 extern int dk_sm_deduplicate_key_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index);
-#endif
 
 extern char *dk_get_deduplicate_key_attr_name (int level);
 extern void dk_deduplicate_key_attribute_initialized ();

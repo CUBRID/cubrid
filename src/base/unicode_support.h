@@ -46,7 +46,6 @@ extern "C"
   extern int string_to_int_array (char *s, uint32 * cp_list, const int cp_list_size, const char *delims);
 #endif
 
-#if !defined (SERVER_MODE)
   extern bool unicode_string_need_compose (const char *str_in, const int size_in, int *size_out,
 					   const UNICODE_NORMALIZATION * norm);
   extern void unicode_compose_string (const char *str_in, const int size_in, char *str_out, int *size_out,
@@ -55,7 +54,6 @@ extern "C"
 					     const UNICODE_NORMALIZATION * norm);
   extern void unicode_decompose_string (const char *str_in, const int size_in, char *str_out, int *size_out,
 					const UNICODE_NORMALIZATION * norm);
-#endif
 
 #ifdef __cplusplus
 }

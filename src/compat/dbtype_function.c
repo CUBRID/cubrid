@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #define API_ACTIVE_CHECKS
+#define _DBTYPE_FUNCTION_SELF_	/* wf119: suppress int-typed alias decl */
 
 #include "db.h"			// must be before dbtype_function.h for bool definition
 #include "dbtype_function.h"
@@ -34,8 +35,17 @@
 #include "system_parameter.h"
 
 // hidden functions (suppress -Wmissing-prototypes and -Wimplicit-function-declaration)
-int db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str,
-		     const int size);
-DB_TYPE setobj_type (struct setobj *set);
+/* wf119: C linkage — the definitions (db_macro.c, set_object.c) declare these
+ * extern "C" via their headers; this TU now also builds as C++ in SERVER_MODE */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  int db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str,
+		       const int size);
+  DB_TYPE setobj_type (struct setobj *set);
+#ifdef __cplusplus
+}
+#endif
 
 #include "dbtype_function.i"

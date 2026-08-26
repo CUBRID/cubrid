@@ -34,10 +34,6 @@
 #include "locator.h"
 #include "dbtype_def.h"
 
-#if defined (SERVER_MODE)
-// cppcheck-suppress preprocessorErrorDirective
-#error does not belong to server
-#endif // SERVER_MODE
 
 /*
  * VID_INFO

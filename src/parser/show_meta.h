@@ -30,7 +30,6 @@
 #include "dbtype_def.h"
 #include "parse_tree.h"
 
-#if !defined(SERVER_MODE)
 typedef struct showstmt_column SHOWSTMT_COLUMN;
 struct showstmt_column
 {
@@ -82,6 +81,5 @@ extern int showstmt_metadata_init (void);
 extern void showstmt_metadata_final (void);
 extern const SHOWSTMT_METADATA *showstmt_get_metadata (SHOWSTMT_TYPE show_type);
 extern DB_ATTRIBUTE *showstmt_get_attributes (SHOWSTMT_TYPE show_type);
-#endif
 
 #endif /* _SHOW_META_H_ */

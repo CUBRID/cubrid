@@ -116,8 +116,11 @@
 // To have the safe area is just a safe guard to avoid potential issues of bad size calculation.
 #define QEWC_MAX_DATA_SIZE  (DB_PAGESIZE - QEWC_SAFE_GUARD_SIZE)
 
-/* This file is only included in the server.  So set the on_server flag on */
-unsigned int db_on_server = 1;
+/* This file is only included in the server.  So set the on_server flag on.
+ * wf119: thread_local — server workers stay 1; a thread hosting the in-process
+ * client half (tracer) sets 0 and lets enter_server/exit_server toggle it,
+ * preserving SA semantics per thread. */
+thread_local unsigned int db_on_server = 1;
 
 STATIC_INLINE TRAN_STATE stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool retain_lock,
     bool *should_conn_reset) __attribute__ ((ALWAYS_INLINE));

@@ -40,6 +40,11 @@
 #include "object_representation.h"
 #include "set_object.h"
 
+/* wf119: WS_OID/OBJECT_HAS_TEMP_OID users are un-gated below, so the
+ * workspace header is needed in SERVER_MODE too (it only arrived
+ * transitively through the client-only includes) */
+#include "work_space.h"
+
 #if !defined(SERVER_MODE)
 #include "locator_cl.h"
 #include "object_accessor.h"
@@ -57,9 +62,11 @@
  * ws_pin appears in lots of places and its easier to define a stub.
  */
 
-#if !defined(SERVER_MODE)
+#if defined (SERVER_MODE)
+extern thread_local unsigned int db_on_server;	/* wf119 */
+#else
 extern unsigned int db_on_server;
-#endif /* !SERVER_MODE */
+#endif
 
 /*
  * COL_ARRAY_SIZE
@@ -1163,9 +1170,14 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	   * can be performed reliably.
 	   *
 	   */
-#if !defined(SERVER_MODE)
+	  /* wf119: un-gated — OBJECT values only come from client-context threads */
 	  if (col->sorted && col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	    {
+#if defined (SERVER_MODE)
+	      /* SA executes these client bodies with db_on_server toggled; the
+	       * context-discipline invariant only holds in the merged server binary */
+	      assert (!db_on_server);
+#endif
 
 	      DB_OBJECT *obj = db_get_object (val);
 	      if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
@@ -1174,7 +1186,6 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 		  col->sorted = 0;
 		}
 	    }
-#endif
 
 	  /*
 	   * Unsorted sets were introduced to deal with temporary/permanent
@@ -1311,16 +1322,18 @@ col_put (COL * col, long colindex, DB_VALUE * val)
       /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
       if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
+	  /* wf119: client body kept (crash-5 family) — OBJECT values only come
+	   * from client-context threads; the old SERVER_MODE branch hard-failed */
 #if defined (SERVER_MODE)
-	  assert_release (false);
-	  return ER_FAILED;
-#else /* !defined (SERVER_MODE) */
+	  /* SA executes these client bodies with db_on_server toggled; the
+	   * context-discipline invariant only holds in the merged server binary */
+	  assert (!db_on_server);
+#endif
 	  DB_OBJECT *obj = db_get_object (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {
 	      col->may_have_temporary_oids = 1;
 	    }
-#endif /* !defined (SERVER_MODE) */
 	}
 
       /* If this should be cloned, the caller should do it. This primitive just allows the assignment to the right
@@ -1451,16 +1464,19 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
       /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
       if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
+	  /* wf119: client body kept (crash 5, round-15 core) — OBJECT values
+	   * only come from client-context threads; the old SERVER_MODE branch
+	   * hard-failed with assert_release */
 #if defined (SERVER_MODE)
-	  assert_release (false);
-	  return ER_FAILED;
-#else /* !defined (SERVER_MODE) */
+	  /* SA executes these client bodies with db_on_server toggled; the
+	   * context-discipline invariant only holds in the merged server binary */
+	  assert (!db_on_server);
+#endif
 	  DB_OBJECT *obj = db_get_object (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {
 	      col->may_have_temporary_oids = 1;
 	    }
-#endif /* !defined (SERVER_MODE)s */
 	}
 
       /* If this should be cloned, the caller should do it. This primitive just allows the assignment to the right
@@ -3228,7 +3244,7 @@ set_ismember (DB_COLLECTION * set, DB_VALUE * value)
   return (ismember);
 }
 
-#if !defined (SERVER_MODE)
+/* wf119: unguarded — client half now compiled into server */
 /*
  * set_issome() -
  *      return: int
@@ -3262,7 +3278,7 @@ set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercio
   (void) ws_pin (set->owner, pin);
   return (issome);
 }
-#endif /* !defined (SERVER_MODE) */
+/* wf119: end of former !SERVER_MODE region */
 
 /*
  * set_convert_oids_to_objects() -
@@ -5552,7 +5568,7 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
   return error;
 }
 
-#if !defined (SERVER_MODE)
+/* wf119: unguarded — client half now compiled into server */
 /*
  * setobj_issome()
  *      return: 1 if value compares successfully using op to some element
@@ -5637,7 +5653,7 @@ setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion)
       return 0;
     }
 }
-#endif /* !defined (SERVER_MODE) */
+/* wf119: end of former !SERVER_MODE region */
 
 /*
  * setobj_convert_oids_to_objects() - This will convert all OID and VOBJ
