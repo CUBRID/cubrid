@@ -76,10 +76,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public final Set<Dependency> dependenciesOfStaticSql = new HashSet<>();
     public int dataAccessLevel = ServerConstants.SP_SQL_TYPE_NO_SQL;
 
-    public ParseTreeConverter(InstanceStore iStore, String spOwner, String spRevision) {
+    public ParseTreeConverter(InstanceStore iStore, String spOwner, String compileSeqNo) {
         this.iStore = iStore;
         this.spOwner = Misc.getNormalizedText(spOwner);
-        this.spRevision = spRevision;
+        this.compileSeqNo = compileSeqNo;
         this.sqlSerialNo = 1;
     }
 
@@ -253,7 +253,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public Unit visitCreate_routine(Create_routineContext ctx) {
         previsitRoutine_definition(ctx.routine_definition(), null);
         DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
-        return new Unit(ctx, connectionRequired, decl, spRevision);
+        return new Unit(ctx, connectionRequired, decl, spOwner, compileSeqNo);
     }
 
     @Override
@@ -2742,7 +2742,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             new LinkedHashMap<>();
 
     private final String spOwner;
-    private final String spRevision;
+    private final String compileSeqNo;
 
     private StmtLoop.LoopOptimizables loopOptimizables = null;
 
