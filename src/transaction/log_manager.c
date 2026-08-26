@@ -593,16 +593,18 @@ log_get_crash_point_lsa (void)
 }
 
 /*
- * log_find_find_lsa -
+ * log_get_append_lsa -
  *
- * return:
+ * return: a snapshot of log_Gl.hdr.append_lsa
  *
- * NOTE:
+ * NOTE: the append lsa is advanced without a lock shared with its readers,
+ *       so it is copied with one atomic load;
+ *       a piecewise copy could observe a concurrent update halfway.
  */
-LOG_LSA *
+LOG_LSA
 log_get_append_lsa (void)
 {
-  return (&log_Gl.hdr.append_lsa);
+  return ATOMIC_LOAD_64_ACQUIRE (&log_Gl.hdr.append_lsa);
 }
 
 /*
@@ -9829,7 +9831,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   bool area_was_mallocated = false;
 
   /* assert log record is not in prior list */
-  oldest_prior_lsa = *log_get_append_lsa ();
+  oldest_prior_lsa = log_get_append_lsa ();
   assert (LSA_LT (&process_lsa, &oldest_prior_lsa));
 
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
