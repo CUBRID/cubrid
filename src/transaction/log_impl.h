@@ -1037,6 +1037,7 @@ extern LOG_PHY_PAGEID logpb_to_physical_pageid (LOG_PAGEID logical_pageid);
 extern bool logpb_is_page_in_archive (LOG_PAGEID pageid);
 extern bool logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p);
 extern int logpb_get_archive_number (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
+extern int logpb_get_archive_num_for_pageid (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 extern void logpb_decache_archive_info (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr,
 					   int *ret_arv_num, LOG_ARV_HEADER * arv_hdr, bool is_fatal);

@@ -5073,6 +5073,74 @@ logpb_strip_cdc_arv_num_from_header_page (void *page_ptr)
 }
 
 /*
+ * logpb_get_archive_num_for_pageid - Archive volume that holds a page, without going through the
+ *                                    shared archive descriptor
+ *
+ * return: archive number, or -1 when no surviving volume holds the page
+ *
+ *   pageid(in): the page to look for
+ *
+ * NOTE: logpb_get_archive_number () answers the same question through logpb_fetch_from_archive (),
+ *       which works from log_Gl.archive.vdes - a descriptor other paths mount and dismount under it.
+ *       Asking from a client request thread has been seen to read through a descriptor another thread
+ *       had already closed: a FATAL ER_LOG_READ against volume "(null)", and the volume left marked
+ *       unavailable for the rest of the server's life. Only the archive header is needed to answer
+ *       this, so each candidate is opened with its own read-only descriptor and closed again, and no
+ *       shared state is involved. logpb_fetch_header_from_active_log () reads a backup the same way.
+ */
+int
+logpb_get_archive_num_for_pageid (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
+{
+  char arv_name[PATH_MAX];
+  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_pgptr;
+  LOG_ARV_HEADER *arv_hdr;
+  int arv_num, vdes, found = -1;
+
+  log_pgptr = (LOG_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+
+  for (arv_num = log_Gl.hdr.last_deleted_arv_num + 1; arv_num < log_Gl.hdr.nxarv_num; arv_num++)
+    {
+      fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, arv_num);
+      if (fileio_is_volume_exist (arv_name) == false)
+	{
+	  continue;
+	}
+
+      vdes = fileio_open (arv_name, O_RDONLY, 0);
+      if (vdes == NULL_VOLDES)
+	{
+	  continue;
+	}
+
+      if (fileio_read (thread_p, vdes, log_pgptr, 0, LOG_PAGESIZE) == NULL)
+	{
+	  /* One unreadable candidate is not a reason to give up on the others, and it is not fatal:
+	   * the caller falls back to keeping every volume that is left. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, 0LL, 0LL, arv_name);
+	  fileio_close (vdes);
+	  continue;
+	}
+
+      fileio_close (vdes);
+
+      arv_hdr = (LOG_ARV_HEADER *) log_pgptr->area;
+      if (arv_hdr->fpageid <= pageid && pageid < arv_hdr->fpageid + arv_hdr->npages)
+	{
+	  found = arv_num;
+	  break;
+	}
+      if (arv_hdr->fpageid > pageid)
+	{
+	  /* volumes are numbered in page order, so nothing further along can hold it either */
+	  break;
+	}
+    }
+
+  return found;
+}
+
+/*
  * logpb_get_cdc_arv_num_for_pageid - Archive volume holding a page CDC still needs
  *
  * return: archive number, or -1 when it could not be worked out
@@ -5097,7 +5165,7 @@ logpb_get_cdc_arv_num_for_pageid (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
       return last_arv_num;
     }
 
-  last_arv_num = logpb_get_archive_number (thread_p, pageid);
+  last_arv_num = logpb_get_archive_num_for_pageid (thread_p, pageid);
   last_pageid = (last_arv_num >= 0) ? pageid : NULL_PAGEID;
 
   return last_arv_num;

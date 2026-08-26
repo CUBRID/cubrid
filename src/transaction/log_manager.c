@@ -14233,7 +14233,7 @@ cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_star
        * the archive descriptor with LOG_ARCHIVE_CS. Keeping every volume that is left would also be correct, but
        * nothing can narrow that down before a client reconnects, so a restart in between would leave the header
        * naming the oldest volume alive and stop archive removal altogether. */
-      arv_num = logpb_get_archive_number (thread_p, bundle_start_lsa->pageid);
+      arv_num = logpb_get_archive_num_for_pageid (thread_p, bundle_start_lsa->pageid);
       if (arv_num < 0)
 	{
 	  /* Could not be read. Keep every volume that is left rather than give one up. */
