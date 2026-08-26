@@ -14146,7 +14146,14 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 LOG_PAGEID
 cdc_min_log_pageid_to_keep ()
 {
+#if defined (SERVER_MODE)
   return cdc_Gl.arv_keep_lsa.pageid;
+#else
+  /* cdc only runs inside the server, so a stand-alone utility has no position of its own to protect
+   * and cdc_Gl is never initialized there. It reads the volume the log header names, and never picks
+   * one - page id 0 out of a zeroed global would otherwise look like a real position. */
+  return NULL_PAGEID;
+#endif /* SERVER_MODE */
 }
 
 /*
