@@ -132,14 +132,11 @@ struct locator_return_nxobj
 
 bool locator_Dont_check_foreign_key = false;
 
-/* Two indexes over one set of entries: full name for a qualified lookup, bare name to
- * answer "who owns something called X?". Both keys point into the entry's own e_name, so
- * neither index allocates or frees a key. */
-static MHT_TABLE *locator_Mht_classnames = NULL;
-static MHT_TABLE *locator_Mht_classnames_bare = NULL;
-/* Same entries again, keyed by (owner, bare name) so an exact lookup stays a single
- * probe once every caller says which owner it means. */
+/* Two indexes over one set of entries: (owner, bare name) is what a lookup asks for, and
+ * bare name alone answers "who owns something called X?". Both keys point into the entry
+ * itself, so neither index allocates or frees a key. */
 static MHT_TABLE *locator_Mht_classnames_owned = NULL;
+static MHT_TABLE *locator_Mht_classnames_bare = NULL;
 
 static const HFID NULL_HFID = { {-1, -1}, -1 };
 
@@ -151,7 +148,6 @@ static INT32 locator_Pseudo_pageid_crt = -2;
 static int locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * owner_oid,
 				       const OID * class_oid);
 static const char *locator_bare_name (const char *name);
-static LOCATOR_CLASSNAME_ENTRY *locator_get_classname_entry (const char *classname);
 static LOCATOR_CLASSNAME_ENTRY *locator_get_entry (const OID * owner_oid, const char *classname);
 static int locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static void locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
@@ -344,33 +340,10 @@ static LOCATOR_CLASSNAME_ENTRY *
 locator_get_entry (const OID * owner_oid, const char *classname)
 {
   LOCATOR_CLASSNAME_KEY key;
-  LOCATOR_CLASSNAME_ENTRY *entry;
 
   locator_classname_key_set (&key, classname, owner_oid);
 
-  entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames_owned, &key);
-
-#if !defined(NDEBUG)
-  /* the name index is still live; while it is, the two have to agree */
-  assert (entry == locator_get_classname_entry (classname));
-#endif
-
-  return entry;
-}
-
-/*
- * locator_get_classname_entry () - Find the entry matching the given full name
- *
- * return: The matching entry or NULL
- *
- *   classname(in): Full name; "qualifier.name" except for unqualified system classes
- *
- * Note: The caller must be inside CSECT_LOCATOR_SR_CLASSNAME_TABLE.
- */
-static LOCATOR_CLASSNAME_ENTRY *
-locator_get_classname_entry (const char *classname)
-{
-  return (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
+  return (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames_owned, &key);
 }
 
 /*
@@ -429,14 +402,8 @@ locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
   entry->e_bare_name = locator_bare_name (entry->e_name);
   locator_classname_key_set (&entry->e_key, entry->e_name, &entry->e_owner_oid);
 
-  if (mht_put (locator_Mht_classnames, entry->e_name, entry) == NULL)
-    {
-      return ER_FAILED;
-    }
-
   if (mht_put2_new (locator_Mht_classnames_bare, entry->e_bare_name, entry) == NULL)
     {
-      (void) mht_rem (locator_Mht_classnames, entry->e_name, NULL, NULL);
       return ER_FAILED;
     }
 
@@ -446,7 +413,6 @@ locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
   if (mht_put (locator_Mht_classnames_owned, &entry->e_key, entry) == NULL)
     {
       (void) mht_rem2 (locator_Mht_classnames_bare, entry->e_bare_name, entry, NULL, NULL);
-      (void) mht_rem (locator_Mht_classnames, entry->e_name, NULL, NULL);
       return ER_FAILED;
     }
 
@@ -463,8 +429,6 @@ locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 static void
 locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry)
 {
-  (void) mht_rem (locator_Mht_classnames, entry->e_name, NULL, NULL);
-
   /* mht_rem drops whichever entry with this bare name comes first; only mht_rem2 takes
    * the one we mean. */
   (void) mht_rem2 (locator_Mht_classnames_bare, entry->e_bare_name, entry, NULL, NULL);
@@ -785,14 +749,12 @@ locator_initialize (THREAD_ENTRY * thread_p)
       return DISK_ERROR;
     }
 
-  if (locator_Mht_classnames != NULL)
+  if (locator_Mht_classnames_owned != NULL)
     {
-      (void) mht_map (locator_Mht_classnames, locator_force_drop_class_name_entry, NULL);
+      (void) mht_map (locator_Mht_classnames_owned, locator_force_drop_class_name_entry, NULL);
     }
   else
     {
-      locator_Mht_classnames =
-	mht_create ("Memory hash Classname to OID", CLASSNAME_CACHE_SIZE, mht_1strhash, mht_compare_strings_are_equal);
       locator_Mht_classnames_bare =
 	mht_create ("Memory hash bare Classname to OID", CLASSNAME_CACHE_SIZE, mht_1strhash,
 		    mht_compare_strings_are_equal);
@@ -801,14 +763,9 @@ locator_initialize (THREAD_ENTRY * thread_p)
 		    locator_classname_key_compare);
     }
 
-  if (locator_Mht_classnames == NULL || locator_Mht_classnames_bare == NULL || locator_Mht_classnames_owned == NULL)
+  if (locator_Mht_classnames_bare == NULL || locator_Mht_classnames_owned == NULL)
     {
-      /* Leave them both created or both absent: locator_finalize () decides by the first. */
-      if (locator_Mht_classnames != NULL)
-	{
-	  mht_destroy (locator_Mht_classnames);
-	  locator_Mht_classnames = NULL;
-	}
+      /* Leave them both created or both absent: locator_finalize () decides by the owned one. */
       if (locator_Mht_classnames_bare != NULL)
 	{
 	  mht_destroy (locator_Mht_classnames_bare);
@@ -1182,7 +1139,7 @@ locator_finalize (THREAD_ENTRY * thread_p)
       return;
     }
 
-  if (locator_Mht_classnames == NULL)
+  if (locator_Mht_classnames_owned == NULL)
     {
       csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       return;
@@ -1195,10 +1152,7 @@ locator_finalize (THREAD_ENTRY * thread_p)
       return;
     }
 
-  (void) mht_map (locator_Mht_classnames, locator_force_drop_class_name_entry, NULL);
-
-  mht_destroy (locator_Mht_classnames);
-  locator_Mht_classnames = NULL;
+  (void) mht_map (locator_Mht_classnames_owned, locator_force_drop_class_name_entry, NULL);
 
   mht_destroy (locator_Mht_classnames_bare);
   locator_Mht_classnames_bare = NULL;
@@ -2497,7 +2451,7 @@ locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * sa
     {
       if (locator_get_num_transient_classnames (tran_index) > 0)
 	{
-	  (void) mht_map (locator_Mht_classnames, locator_defence_drop_class_name_entry, savep_lsa);
+	  (void) mht_map (locator_Mht_classnames_owned, locator_defence_drop_class_name_entry, savep_lsa);
 	}
     }
 
@@ -3011,7 +2965,7 @@ locator_dump_class_names (THREAD_ENTRY * thread_p, FILE * out_fp)
 #endif
 
   class_no = 1;			/* init */
-  (void) mht_dump (thread_p, out_fp, locator_Mht_classnames, false, locator_print_class_name, &class_no);
+  (void) mht_dump (thread_p, out_fp, locator_Mht_classnames_owned, false, locator_print_class_name, &class_no);
 
 #if defined(NDEBUG)		/* skip at debug build */
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
@@ -3230,7 +3184,7 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
   /*
    * CHECK 2: Same that check1 but from classname_to_OID to existance of class
    */
-  (void) mht_map (locator_Mht_classnames, locator_check_class_on_heap, &isvalid);
+  (void) mht_map (locator_Mht_classnames_owned, locator_check_class_on_heap, &isvalid);
 
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 
