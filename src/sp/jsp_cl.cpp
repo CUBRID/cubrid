@@ -135,6 +135,7 @@ static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid);
 static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_dtrm_type (PT_MISC_TYPE pt_dtrm_type, SP_DIRECTIVE_ENUM directive);
 
 static char *jsp_check_stored_procedure_name (const char *str);
+static char *jsp_check_package_name (const char *str);
 static int jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, int num_args);
 static int jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode);
 static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
@@ -142,6 +143,7 @@ static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 static int jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
 static int jsp_drop_stored_procedure_code (const char *name);
 
+static int jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p);
 static int jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
 
 extern bool ssl_client;
@@ -186,7 +188,7 @@ jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
 }
 
 /*
- * jsp_is_exist_stored_procedure
+ * jsp_is_existing_stored_procedure
  *   return: name is exist then return true
  *                         else return false
  *   name(in): find java stored procedure name
@@ -195,9 +197,17 @@ jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
  */
 
 int
-jsp_is_exist_stored_procedure (const char *name)
+jsp_is_existing_stored_procedure (const char *name)
 {
   MOP mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  er_clear ();
+  return mop != NULL;
+}
+
+int
+jsp_is_existing_package (const char *name)
+{
+  MOP mop = jsp_find_package (name, DB_AUTH_NONE);
   er_clear ();
   return mop != NULL;
 }
@@ -258,6 +268,38 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
 
   free_and_init (checked_name);
   AU_RESTORE (save);
+
+  return mop;
+}
+
+/*
+ * jsp_find_package
+ *   return: MOP
+ *   name(in): package name (with or without owner prefix)
+ *   purpose(in): DB_AUTH_NONE or DB_AUTH_EXECUTE
+ *
+ * Note: normalizes the name (owner prefix + downcase) like jsp_find_stored_procedure,
+ *       then looks up the package object in _db_package.
+ */
+MOP
+jsp_find_package (const char *name, DB_AUTH purpose)
+{
+  if (!name)
+    {
+      return NULL;
+    }
+
+  char *checked_name = jsp_check_package_name (name);
+  MOP mop = jsp_find_pkg (checked_name, purpose);
+  if (!mop)
+    {
+      if (er_errid() == NO_ERROR)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PKG_NOT_EXIST, 1, checked_name);
+	}
+    }
+
+  free_and_init (checked_name);
 
   return mop;
 }
@@ -588,7 +630,7 @@ jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
   AU_SAVE_AND_DISABLE (save);
 
   /* check type */
-  err = db_get (mop_p, SP_ATTR_UNIQUE_NAME, &value);
+  err = db_get (mop_p, CT_COMMON_ATTR_UNIQUE_NAME, &value);
   if (err != NO_ERROR)
     {
       AU_RESTORE (save);
@@ -3299,7 +3341,7 @@ jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 int
 jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  int err = NO_ERROR;
+  int err = NO_ERROR, save;
   char owner_name[DB_MAX_USER_LENGTH];
   MOP owner_mop, pkg_mop;
 
@@ -3354,7 +3396,9 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 	{
 	  DB_VALUE value;
 
+	  AU_SAVE_AND_DISABLE (save);
 	  err = db_get (pkg_mop, PKG_ATTR_FLAGS, &value);
+	  AU_RESTORE (save);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -3611,7 +3655,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   sp_info.updated_time = *db_get_datetime (&current_datetime);
 
   /* check already exists */
-  if (jsp_is_exist_stored_procedure (sp_info.unique_name.data ()))
+  if (jsp_is_existing_stored_procedure (sp_info.unique_name.data ()))
     {
       if (statement->info.sp.or_replace)
 	{
@@ -3967,6 +4011,15 @@ jsp_check_stored_procedure_name (const char *str)
   name = strdup (buffer);
 
   return name;
+}
+
+static char *
+jsp_check_package_name (const char *str)
+{
+  char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
+
+  sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
+  return strdup (buffer);
 }
 
 /*
@@ -4726,13 +4779,63 @@ exit_on_error:
   return error;
 }
 
+// If sp_obj is a package member, return its owning package through *pkg_mop_p; otherwise set it to NULL.
+// A package member's unique_name is "<owner>.<package>.<member>", so the package's unique_name is the
+// prefix up to the last dot. Membership is confirmed by that prefix actually resolving to a package
+// (so standalone SPs and package objects yield a NULL *pkg_mop_p).
+static int
+jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p)
+{
+  int save, error = NO_ERROR;
+  DB_VALUE uname_val;
+  MOP pkg_mop = NULL;
+
+  assert (pkg_mop_p != NULL);
+  *pkg_mop_p = NULL;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  error = db_get (sp_obj, SP_ATTR_UNIQUE_NAME, &uname_val);
+  if (error == NO_ERROR)
+    {
+      assert (!DB_IS_NULL (&uname_val));
+
+      const char *uname = db_get_string (&uname_val);
+      const char *last_dot = (uname != NULL) ? strrchr (uname, '.') : NULL;
+      if (last_dot != NULL)
+	{
+	  int len = (int) (last_dot - uname);
+	  assert (len > 0 && len <= DB_MAX_IDENTIFIER_LENGTH);
+	  char pkg_unique[DB_MAX_IDENTIFIER_LENGTH + 1];
+	  memcpy (pkg_unique, uname, len);
+	  pkg_unique[len] = '\0';
+
+	  DB_VALUE v;
+	  db_make_string (&v, pkg_unique);
+	  pkg_mop = db_find_unique (db_find_class (CT_PACKAGE_NAME), PKG_ATTR_UNIQUE_NAME, &v);
+	  if (pkg_mop == NULL)
+	    {
+	      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+		{
+		  er_clear ();
+		}
+	      else
+		{
+		  error = er_errid ();
+		}
+	    }
+	}
+      pr_clear_value (&uname_val);
+    }
+
+  AU_RESTORE (save);
+  *pkg_mop_p = pkg_mop;
+  return error;
+}
+
 static int
 jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 {
-  int error = NO_ERROR;
-  MOP owner_mop = NULL;
-  DB_VALUE owner;
-
   if (au_type != DB_AUTH_EXECUTE)
     {
       return NO_ERROR;
@@ -4743,7 +4846,20 @@ jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
       return NO_ERROR;
     }
 
-// check execute authorization (Au_user is granted by owner)
+  // EXECUTE on a package member is governed by the grant on its owning package, because a
+  // privilege cannot be granted on an individual member.
+  MOP pkg_mop = NULL;
+  int error = jsp_get_package_of_member (sp_obj, &pkg_mop);
+  if (pkg_mop != NULL)
+    {
+      return (au_check_package_authorization (pkg_mop) == NO_ERROR) ? NO_ERROR : ER_FAILED;
+    }
+  else if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  // check execute authorization (Au_user is granted by owner)
   if (au_check_procedure_authorization (sp_obj) == NO_ERROR)
     {
       return NO_ERROR;

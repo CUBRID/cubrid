@@ -83,8 +83,7 @@
 #define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
 #define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
 #define UNIQUE_SAVEPOINT_ALTER_USER_ENTITY "aLTERuSEReNTITY"
-#define UNIQUE_SAVEPOINT_GRANT_USER "gRANTuSER"
-#define UNIQUE_SAVEPOINT_REVOKE_USER "rEVOKEuSER"
+#define UNIQUE_SAVEPOINT_GRANT_OR_REVOKE_USER "gRANToRrEVOKEuSER"
 #define UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM "uPDATEhISTOGRAM"
 
 #define QUERY_MAX_SIZE	1024 * 1024
@@ -2037,23 +2036,94 @@ error_exit:
 #define GET_NAME(n)     ((char *) (n)->info.name.original)
 #define GET_STRING(n)   ((char *) (n)->info.value.data_value.str->bytes)
 
-/*
- * do_grant() - Grants priviledges
- *   return: Error code if grant fails
- *   parser(in): Parser context
- *   statement(in): Parse tree of a grant statement
- */
-int
-do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
+static int
+do_grant_or_revoke_single_obj (DB_OBJECT * user_obj, DB_OBJECT_TYPE obj_type, MOP obj_mop, bool granting,
+			       DB_AUTH db_auth, int grant_option)
+{
+  int error;
+
+  if (obj_mop == NULL)
+    {
+      assert_release (er_errid () != NO_ERROR);	// error from db_find_class, jsp_find_stored_procedure, or jsp_find_package
+      return er_errid ();
+    }
+
+  if (granting)
+    {
+      error = db_grant_object (obj_type, user_obj, obj_mop, db_auth, grant_option);
+    }
+  else
+    {
+      error = db_revoke_object (obj_type, user_obj, obj_mop, db_auth);
+    }
+
+  return error;
+}
+
+static int
+do_grant_or_revoke_obj_list (DB_OBJECT * user_obj, DB_OBJECT_TYPE obj_type, PT_NODE * obj_list, bool granting,
+			     DB_AUTH db_auth, int grant_option)
+{
+
+  int error = NO_ERROR;
+
+  for (PT_NODE * obj = obj_list; obj != NULL; obj = obj->next)
+    {
+      MOP obj_mop = NULL;
+
+      if (obj_type == DB_OBJECT_CLASS)
+	{
+
+	  PT_NODE *entity_list = obj->info.spec.flat_entity_list;
+	  for (PT_NODE * entity = entity_list; entity != NULL; entity = entity->next)
+	    {
+	      obj_mop = db_find_class (entity->info.name.original);
+	      error =
+		do_grant_or_revoke_single_obj (user_obj, DB_OBJECT_CLASS, obj_mop, granting, db_auth, grant_option);
+	      if (error != NO_ERROR)
+		{
+		  break;
+		}
+	    }
+	}
+      else
+	{
+
+	  const char *obj_name = obj->info.name.original;
+	  switch (obj_type)
+	    {
+	    case DB_OBJECT_PROCEDURE:
+	      obj_mop = jsp_find_stored_procedure (obj_name, DB_AUTH_NONE);
+	      break;
+	    case DB_OBJECT_PACKAGE:
+	      obj_mop = jsp_find_package (obj_name, DB_AUTH_NONE);
+	      break;
+	    default:
+	      assert (false);
+	    }
+
+	  error = do_grant_or_revoke_single_obj (user_obj, obj_type, obj_mop, granting, db_auth, grant_option);
+	}
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+    }
+
+end:
+  return error;
+}
+
+static int
+do_grant_or_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement, bool granting)
 {
   int error = NO_ERROR;
   PT_NODE *user, *user_list;
-  DB_OBJECT *user_obj, *class_mop;
+  DB_OBJECT *user_obj;
   PT_NODE *auth_cmd_list, *auth_list, *auth;
   DB_AUTH db_auth;
   PT_NODE *spec_list;
-  PT_NODE *entity_list, *entity;
-  int grant_option;
+  int grant_option = 0;
   bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2062,16 +2132,19 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   auth_cmd_list = statement->info.grant.auth_cmd_list;
   spec_list = statement->info.grant.spec_list;
 
-  if (statement->info.grant.grant_option == PT_GRANT_OPTION)
+  if (granting)
     {
-      grant_option = true;
-    }
-  else
-    {
-      grant_option = false;
+      if (statement->info.grant.grant_option == PT_GRANT_OPTION)
+	{
+	  grant_option = true;
+	}
+      else
+	{
+	  grant_option = false;
+	}
     }
 
-  error = tran_system_savepoint (UNIQUE_SAVEPOINT_GRANT_USER);
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_GRANT_OR_REVOKE_USER);
   if (error != NO_ERROR)
     {
       return error;
@@ -2093,54 +2166,24 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
+	  DB_OBJECT_TYPE obj_type;
+	  switch (auth->info.auth_cmd.auth_cmd)
 	    {
-	      // NOTE: db_auth is always DB_AUTH_EXECUTE
+	    case PT_EXECUTE_PROCEDURE_PRIV:
 	      assert (db_auth == DB_AUTH_EXECUTE);
-
-	      PT_NODE *p_list = spec_list;
-	      for (PT_NODE * procs = p_list; procs != NULL; procs = procs->next)
-		{
-		  // [TODO] Resovle user schema name, built-in package name
-		  const char *proc_name = procs->info.name.original;
-
-		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
-		  if (proc_mop == NULL)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		      goto end;
-		    }
-
-		  error = db_grant_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth, grant_option);
-		  if (error != NO_ERROR)
-		    {
-		      goto end;
-		    }
-		}
+	      obj_type = DB_OBJECT_PROCEDURE;
+	      break;
+	    case PT_EXECUTE_PACKAGE_PRIV:
+	      assert (db_auth == DB_AUTH_EXECUTE);
+	      obj_type = DB_OBJECT_PACKAGE;
+	      break;
+	    default:
+	      obj_type = DB_OBJECT_CLASS;
 	    }
-	  else
+	  error = do_grant_or_revoke_obj_list (user_obj, obj_type, spec_list, granting, db_auth, grant_option);
+	  if (error != NO_ERROR)
 	    {
-	      for (PT_NODE * spec = spec_list; spec != NULL; spec = spec->next)
-		{
-		  entity_list = spec->info.spec.flat_entity_list;
-		  for (entity = entity_list; entity != NULL; entity = entity->next)
-		    {
-		      class_mop = db_find_class (entity->info.name.original);
-		      if (class_mop == NULL)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			  goto end;
-			}
-
-		      error = db_grant_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth, grant_option);
-		      if (error != NO_ERROR)
-			{
-			  goto end;
-			}
-		    }
-		}
+	      goto end;
 	    }
 	}
     }
@@ -2148,10 +2191,23 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 end:
   if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
     {
-      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_GRANT_USER);
+      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_GRANT_OR_REVOKE_USER);
     }
 
   return error;
+}
+
+/*
+ * do_grant() - Grants priviledges
+ *   return: Error code if grant fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a grant statement
+ */
+
+int
+do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
+{
+  return do_grant_or_revoke (parser, statement, true);
 }
 
 /*
@@ -2163,104 +2219,7 @@ end:
 int
 do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
-  int error = NO_ERROR;
-
-  PT_NODE *user, *user_list;
-  DB_OBJECT *user_obj, *class_mop;
-  PT_NODE *auth_cmd_list, *auth_list, *auth;
-  DB_AUTH db_auth;
-  PT_NODE *spec_list, *s_list, *spec;
-  PT_NODE *entity_list, *entity;
-  bool set_savepoint = false;
-
-  CHECK_MODIFICATION_ERROR ();
-
-  user_list = statement->info.revoke.user_list;
-  auth_cmd_list = statement->info.revoke.auth_cmd_list;
-  spec_list = statement->info.revoke.spec_list;
-
-  error = tran_system_savepoint (UNIQUE_SAVEPOINT_REVOKE_USER);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  set_savepoint = true;
-
-  for (user = user_list; user != NULL; user = user->next)
-    {
-      user_obj = db_find_user (user->info.name.original);
-      if (user_obj == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  goto end;
-	}
-
-      auth_list = auth_cmd_list;
-      for (auth = auth_list; auth != NULL; auth = auth->next)
-	{
-	  db_auth = pt_auth_to_db_auth (auth);
-
-	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
-	    {
-	      // NOTE: db_auth is always DB_AUTH_EXECUTE
-	      assert (db_auth == DB_AUTH_EXECUTE);
-
-	      PT_NODE *p_list = spec_list;
-	      for (PT_NODE * procs = p_list; procs != NULL; procs = procs->next)
-		{
-		  // [TODO] Resovle user schema name, built-in package name
-		  const char *proc_name = procs->info.name.original;
-
-		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
-		  if (proc_mop == NULL)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		      goto end;
-		    }
-
-		  // TODO: In CBRD-24912, GRANT/REVOKE for stored procedure is implemented, the following will be processed properly
-		  error = db_revoke_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth);
-		  if (error != NO_ERROR)
-		    {
-		      goto end;
-		    }
-		}
-	    }
-	  else
-	    {
-	      for (PT_NODE * spec = spec_list; spec != NULL; spec = spec->next)
-		{
-		  entity_list = spec->info.spec.flat_entity_list;
-		  for (entity = entity_list; entity != NULL; entity = entity->next)
-		    {
-		      class_mop = db_find_class (entity->info.name.original);
-		      if (class_mop == NULL)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			  goto end;
-			}
-
-		      error = db_revoke_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth);
-		      if (error != NO_ERROR)
-			{
-			  goto end;
-			}
-		    }
-		}
-	    }
-	}
-    }
-
-end:
-  if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
-    {
-      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_REVOKE_USER);
-    }
-
-  return error;
+  return do_grant_or_revoke (parser, statement, false);
 }
 
 /*

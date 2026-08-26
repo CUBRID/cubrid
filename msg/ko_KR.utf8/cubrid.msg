@@ -215,7 +215,7 @@ $set 5 MSGCAT_SET_ERROR
 143 소유자가 없는 클래스가 발생하였습니다.
 144 사용자 오브젝트를 액세스할 수 없습니다.
 145 자기 자신에 대해 GRANT/REVOKE 명령할 수 없습니다. 
-146 %1$s 소유자에 대해 GRANT/REVOKE 명령할 수 없습니다.
+146 %1$s 소유자에 대해 GRANT 명령할 수 없습니다.
 147 GRANT 옵션이 없습니다.
 148 권한 부여 오브젝트에 대해 쓰기 락을 얻을 수 없습니다.
 149 권한 부여 오브젝트의 인스턴스를 생성할 수 없습니다.
@@ -2006,6 +2006,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 338 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
 
+339 패키지 "%1$s"이(가) 존재하지 않습니다.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -2304,3 +2305,4 @@ $set 17 MSGCAT_SET_GLOSSARY
 4 서버
 5 동의어
 6 프로시저
+7 패키지

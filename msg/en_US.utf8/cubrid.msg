@@ -215,7 +215,7 @@ $set 5 MSGCAT_SET_ERROR
 143 Encountered a class with no owner.
 144 Unable to access user object.
 145 Cannot issue grant/revoke commands to yourself.
-146 Cannot issue GRANT/REVOKE to owner of a %1$s.
+146 Cannot issue GRANT to owner of a %1$s.
 147 No GRANT option.
 148 Cannot obtain write lock on authorization object.
 149 Cannot create instance of authorization object.
@@ -2008,6 +2008,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 
+339 Package "%1$s" does not exist.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -2306,3 +2307,4 @@ $set 17 MSGCAT_SET_GLOSSARY
 4 server
 5 synonym
 6 procedure
+7 package

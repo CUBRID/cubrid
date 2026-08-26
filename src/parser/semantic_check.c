@@ -10042,13 +10042,15 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_FLAT_SPEC_INFO info;
 
   bool is_for_spec = true;
+  bool is_package = false;
   PT_NODE *auth_cmd_list = node->info.grant.auth_cmd_list;
   while (auth_cmd_list)
     {
       PT_PRIV_TYPE pt_auth = auth_cmd_list->info.auth_cmd.auth_cmd;
-      if (pt_auth == PT_EXECUTE_PROCEDURE_PRIV)
+      if (pt_auth == PT_EXECUTE_PROCEDURE_PRIV || pt_auth == PT_EXECUTE_PACKAGE_PRIV)
 	{
 	  is_for_spec = false;
+	  is_package = (pt_auth == PT_EXECUTE_PACKAGE_PRIV);
 	  break;
 	}
 
@@ -10068,17 +10070,21 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
       if (node->info.grant.grant_option == PT_GRANT_OPTION)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AU_GRANT_OPTION_NOT_ALLOWED,
+		      is_package ? MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PACKAGE) :
 		      MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
 	}
 
-      /* check spec_list (procedures/functions) exists */
+      /* check spec_list (procedures/functions or packages) exists */
       for (PT_NODE * procs = node->info.grant.spec_list; procs != NULL; procs = procs->next)
 	{
 	  // [TODO] Resovle user schema name, built-in package name
-	  const char *proc_name = procs->info.name.original;
-	  if (jsp_is_exist_stored_procedure (proc_name) == false)
+	  const char *obj_name = procs->info.name.original;
+	  bool exists = is_package ? (jsp_is_existing_package (obj_name) != 0)
+	    : (jsp_is_existing_stored_procedure (obj_name) != 0);
+	  if (!exists)
 	    {
-	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_NOT_EXIST, proc_name);
+	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC,
+			  is_package ? MSGCAT_SEMANTIC_PKG_NOT_EXIST : MSGCAT_SEMANTIC_SP_NOT_EXIST, obj_name);
 	      break;
 	    }
 	}
@@ -10130,7 +10136,7 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
   target = node->info.method_call.on_call_target;
   if (target == NULL)
     {
-      if (jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
+      if (jsp_is_existing_stored_procedure (node->info.method_call.method_name->info.name.original))
 	{
 	  return;
 	}
