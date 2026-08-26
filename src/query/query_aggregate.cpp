@@ -935,8 +935,8 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		    case DB_TYPE_TIME:
 		      break;
 		    default:
-		      assert (agg_p->operands->value.type == TYPE_CONSTANT ||
-			      agg_p->operands->value.type == TYPE_DBVAL);
+		      assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
+			      || agg_p->operands->value.type == TYPE_POS_VALUE);
 
 		      /* try to cast dbval to double, datetime then time */
 		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);

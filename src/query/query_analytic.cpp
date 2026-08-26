@@ -169,6 +169,18 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    }
 	  break;
 
+	case PT_MEDIAN:
+	case PT_PERCENTILE_CONT:
+	  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&dbval)))
+	    {
+	      func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	    }
+	  else
+	    {
+	      func_p->domain = tp_domain_resolve_value (&dbval, NULL);
+	    }
+	  break;
+
 	default:
 	  func_p->domain = tp_domain_resolve_value (&dbval, NULL);
 	  break;
