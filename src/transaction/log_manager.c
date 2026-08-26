@@ -5064,13 +5064,15 @@ log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name
  *
  *   classname(in):
  *   class_oid(in):
+ *   owner_oid(in): owner the name refers to; NULL when the name has no qualifier
  *
  * NOTE: Function for LOG_TDES.modified_class_list
  *       This list keeps the following information:
  *        {name, OID} of modified class and LSA for the last modification
  */
 int
-log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid)
+log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid,
+				const OID * owner_oid)
 {
   LOG_TDES *tdes;
   int tran_index;
@@ -5087,7 +5089,7 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, 
       return ER_FAILED;
     }
 
-  tdes->m_modified_classes.add (classname, *class_oid, tdes->tail_lsa);
+  tdes->m_modified_classes.add (classname, *class_oid, (owner_oid != NULL) ? *owner_oid : oid_Null_oid, tdes->tail_lsa);
   return NO_ERROR;
 }
 

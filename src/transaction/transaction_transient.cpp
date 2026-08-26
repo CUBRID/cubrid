@@ -39,11 +39,19 @@
 // Modified classes
 //
 
-tx_transient_class_entry::tx_transient_class_entry (const char *class_name, const OID &class_oid, const LOG_LSA &lsa)
+tx_transient_class_entry::tx_transient_class_entry (const char *class_name, const OID &class_oid,
+    const OID &owner_oid, const LOG_LSA &lsa)
   : m_class_oid (class_oid)
+  , m_owner_oid (owner_oid)
   , m_last_modified_lsa (lsa)
   , m_class_name (class_name)
 {
+}
+
+const OID *
+tx_transient_class_entry::get_owner_oid () const
+{
+  return &m_owner_oid;
 }
 
 const char *
@@ -53,7 +61,8 @@ tx_transient_class_entry::get_classname () const
 }
 
 void
-tx_transient_class_registry::add (const char *classname, const OID &class_oid, const LOG_LSA &lsa)
+tx_transient_class_registry::add (const char *classname, const OID &class_oid, const OID &owner_oid,
+				  const LOG_LSA &lsa)
 {
   assert (classname != NULL);
   assert (!OID_ISNULL (&class_oid));
@@ -67,7 +76,7 @@ tx_transient_class_registry::add (const char *classname, const OID &class_oid, c
 	  return;
 	}
     }
-  m_list.emplace_front (classname, class_oid, lsa);
+  m_list.emplace_front (classname, class_oid, owner_oid, lsa);
 }
 
 bool

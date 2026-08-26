@@ -174,8 +174,9 @@ static int locator_initialize_synonym_entries (THREAD_ENTRY * thread_p);
 static int locator_force_drop_one_entry (THREAD_ENTRY * thread_p, LOCATOR_CLASSNAME_ENTRY * entry);
 static int locator_defence_drop_class_name_entry (const void *name, void *ent, void *args);
 static int locator_force_drop_class_name_entry (const void *name, void *ent, void *args);
-static int locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, LOG_LSA * savep_lsa);
-static int locator_savepoint_class_name_entry (const char *classname, LOG_LSA * savep_lsa);
+static int locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, const OID * owner_oid,
+					  LOG_LSA * savep_lsa);
+static int locator_savepoint_class_name_entry (const char *classname, const OID * owner_oid, LOG_LSA * savep_lsa);
 static int locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key, void *ent, void *args);
 static int locator_check_class_on_heap (const void *name, void *ent, void *args);
 static SCAN_CODE locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * assign,
@@ -1803,7 +1804,8 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
 	  /* Add new name to modified list, to correctly restore in case of abort. Synonym entries carry pseudo
 	   * OIDs which the modified class list rejects; their transient cleanup is covered by the defence scan
 	   * in locator_drop_transient_class_name_entries. */
-	  if (synonym_target == NULL && log_add_to_modified_class_list (thread_p, newname, class_oid) != NO_ERROR)
+	  if (synonym_target == NULL
+	      && log_add_to_modified_class_list (thread_p, newname, class_oid, owner_oid) != NO_ERROR)
 	    {
 	      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 	      return LC_CLASSNAME_ERROR;
@@ -1835,7 +1837,7 @@ xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, con
 	      goto error;
 	    }
 
-	  if (locator_drop_class_name_entry (thread_p, newname, NULL) != NO_ERROR)
+	  if (locator_drop_class_name_entry (thread_p, newname, owner_oid, NULL) != NO_ERROR)
 	    {
 	      csect_exit (thread_p, CSECT_CT_OID_TABLE);
 	      renamed = LC_CLASSNAME_ERROR;
@@ -2390,7 +2392,7 @@ locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * sa
   // *INDENT-OFF*
   const auto lambda_func = [&error_code, &thread_p, &savep_lsa] (const tx_transient_class_entry & t, bool & stop)
     {
-      error_code = locator_drop_class_name_entry (thread_p, t.get_classname (), savep_lsa);
+      error_code = locator_drop_class_name_entry (thread_p, t.get_classname (), t.get_owner_oid (), savep_lsa);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
@@ -2442,7 +2444,8 @@ locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * sa
  * Note: Remove transient entry if it belongs to current transaction.
  */
 static int
-locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, LOG_LSA * savep_lsa)
+locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, const OID * owner_oid,
+			       LOG_LSA * savep_lsa)
 {
   int tran_index;
   LOG_TDES *tdes;		/* Transaction descriptor */
@@ -2456,7 +2459,7 @@ locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, L
   assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 1);
   assert (csect_check_own (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE) == 1);
 
-  entry = locator_get_classname_entry (classname);
+  entry = locator_get_entry (owner_oid, classname);
   if (entry == NULL)
     {
       /* table is dropped by myself; not exist */
@@ -2653,7 +2656,7 @@ locator_defence_drop_class_name_entry (const void *name, void *ent, void *args)
     {
       assert (entry->e_tran_index != NULL_TRAN_INDEX);
 
-      (void) locator_drop_class_name_entry (thread_p, entry->e_name, savep_lsa);
+      (void) locator_drop_class_name_entry (thread_p, entry->e_name, &entry->e_key.owner_oid, savep_lsa);
     }
 
   return NO_ERROR;
@@ -2759,7 +2762,7 @@ locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA
   // *INDENT-OFF*
   const auto lambda_func = [&error_code, &savep_lsa] (const tx_transient_class_entry & t, bool & stop)
     {
-      error_code = locator_savepoint_class_name_entry (t.get_classname (), savep_lsa);
+      error_code = locator_savepoint_class_name_entry (t.get_classname (), t.get_owner_oid (), savep_lsa);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
@@ -2787,7 +2790,7 @@ locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA
  *              modified point.
  */
 static int
-locator_savepoint_class_name_entry (const char *classname, LOG_LSA * savep_lsa)
+locator_savepoint_class_name_entry (const char *classname, const OID * owner_oid, LOG_LSA * savep_lsa)
 {
   THREAD_ENTRY *thread_p;
   int tran_index;
@@ -2799,7 +2802,7 @@ locator_savepoint_class_name_entry (const char *classname, LOG_LSA * savep_lsa)
 
   assert (csect_check_own (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE) == 1);
 
-  entry = locator_get_classname_entry (classname);
+  entry = locator_get_entry (owner_oid, classname);
   if (entry == NULL)
     {
       /* table is dropped by myself; not exist */
@@ -6608,8 +6611,21 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  assert (old_classname != NULL);
 	  assert (strlen (old_classname) < DB_MAX_IDENTIFIER_LENGTH);
 
-	  /* Different names, the class was renamed. */
-	  error_code = log_add_to_modified_class_list (thread_p, old_classname, oid);
+	  /* Different names, the class was renamed. The stored record still describes the
+	   * class under its old name, so it is what says who owned it then. */
+	  {
+	    RECDES stored_record;
+	    OID old_owner_oid;
+
+	    stored_record.data = NULL;
+	    OID_SET_NULL (&old_owner_oid);
+	    if (heap_get_class_record (thread_p, oid, &stored_record, scan_cache, PEEK) == S_SUCCESS)
+	      {
+		or_class_owner (&stored_record, &old_owner_oid);
+	      }
+
+	    error_code = log_add_to_modified_class_list (thread_p, old_classname, oid, &old_owner_oid);
+	  }
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;

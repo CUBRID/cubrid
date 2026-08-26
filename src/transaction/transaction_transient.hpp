@@ -44,13 +44,15 @@ namespace cubthread
 struct tx_transient_class_entry
 {
   OID m_class_oid;
+  OID m_owner_oid;		// owner the name refers to; NULL when the name has no qualifier
   LOG_LSA m_last_modified_lsa;
   std::string m_class_name;
 
   tx_transient_class_entry () = default;
-  tx_transient_class_entry (const char *class_name, const OID &class_oid, const LOG_LSA &lsa);
+  tx_transient_class_entry (const char *class_name, const OID &class_oid, const OID &owner_oid, const LOG_LSA &lsa);
 
   const char *get_classname () const;
+  const OID *get_owner_oid () const;
 };
 
 class tx_transient_class_registry
@@ -76,7 +78,7 @@ class tx_transient_class_registry
     char *to_string () const;   // private allocated
 
     // manipulation functions
-    void add (const char *classname, const OID &class_oid, const LOG_LSA &lsa);
+    void add (const char *classname, const OID &class_oid, const OID &owner_oid, const LOG_LSA &lsa);
     void decache_heap_repr (const LOG_LSA &downto_lsa);
     void clear ();
 };

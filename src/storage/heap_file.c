@@ -20107,11 +20107,27 @@ heap_mark_class_as_modified (THREAD_ENTRY * thread_p, OID * oid_p, int chn, bool
       ASSERT_ERROR ();
       return ER_FAILED;
     }
-  if (log_add_to_modified_class_list (thread_p, classname, oid_p) != NO_ERROR)
-    {
-      free_and_init (classname);
-      return ER_FAILED;
-    }
+  {
+    HEAP_SCANCACHE scan_cache;
+    RECDES class_record;
+    OID owner_oid;
+
+    class_record.data = NULL;
+    OID_SET_NULL (&owner_oid);
+
+    (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+    if (heap_get_class_record (thread_p, oid_p, &class_record, &scan_cache, PEEK) == S_SUCCESS)
+      {
+	or_class_owner (&class_record, &owner_oid);
+      }
+    (void) heap_scancache_end (thread_p, &scan_cache);
+
+    if (log_add_to_modified_class_list (thread_p, classname, oid_p, &owner_oid) != NO_ERROR)
+      {
+	free_and_init (classname);
+	return ER_FAILED;
+      }
+  }
 
   free_and_init (classname);
 
