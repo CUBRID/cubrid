@@ -157,7 +157,11 @@ static int db_type_rank_order[DB_TYPE_LAST + 1] = { 0, };
 AREA *tp_Domain_area = NULL;
 static bool tp_Initialized = false;
 
+#if defined (SERVER_MODE)
+extern thread_local unsigned int db_on_server;	/* wf119 */
+#else
 extern unsigned int db_on_server;
+#endif
 
 
 /*

@@ -57,7 +57,11 @@
 #include "execute_statement.h"
 
 
+#if defined (SERVER_MODE)
+extern thread_local unsigned int db_on_server;	/* wf119 */
+#else
 extern unsigned int db_on_server;
+#endif
 
 /*
  * need these to get the allocation areas initialized, avoid including

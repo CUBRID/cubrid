@@ -53,7 +53,11 @@
 #define DEFAULT_OBSTACK_CHUNK_SIZE      32768	/* 1024 x 32 */
 
 #if !defined (SERVER_MODE)
+#if defined (SERVER_MODE)
+extern thread_local unsigned int db_on_server;	/* wf119 */
+#else
 extern unsigned int db_on_server;
+#endif
 HL_HEAPID private_heap_id = 0;
 #endif /* SERVER_MODE */
 

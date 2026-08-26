@@ -152,7 +152,9 @@ VOLID boot_User_volid = 0;	/* todo: boot_User_volid looks deprecated */
 /* Server host connected */
 char boot_Host_connected[CUB_MAXHOSTNAMELEN] = "";
 #endif /* CS_MODE */
-char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";
+#if !defined (SERVER_MODE)
+char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";	/* wf119: server build uses boot_sr.c's */
+#endif
 char boot_Ip_address[16] = { 0 };
 
 static char boot_Volume_label[PATH_MAX] = " ";

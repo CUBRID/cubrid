@@ -107,7 +107,12 @@ static int net_Deferred_end_queries_count = 0;
  * Flag to indicate whether we've crossed the client/server boundary.
  * It really only comes into play in standalone.
  */
+#if defined (SERVER_MODE)
+/* wf119: defined thread_local in network_interface_sr.cpp */
+extern thread_local unsigned int db_on_server;
+#else
 unsigned int db_on_server = 0;
+#endif
 
 #if defined(CS_MODE)
 static char *pack_const_string (char *buffer, const char *cstring);

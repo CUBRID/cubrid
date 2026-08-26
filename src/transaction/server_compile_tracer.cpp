@@ -55,6 +55,9 @@
 
 static void tracer_main (char *server_name, char *sql, char *out_path);
 
+/* thread-local server/client boundary flag (see network_interface_sr.cpp) */
+extern thread_local unsigned int db_on_server;
+
 void
 boot_tracer_start_if_requested (const char *server_name)
 {
@@ -111,6 +114,10 @@ tracer_main (char *server_name, char *sql, char *out_path)
   entry_p->m_status = cubthread::entry::status::TS_RUN;
   entry_p->shutdown = false;
   entry_p->get_error_context ().register_thread_local ();
+
+  /* this thread now acts as the in-process client: start in client context;
+   * enter_server/exit_server (network_interface_cl.c) toggle it per x-call */
+  db_on_server = 0;
 
   int err = db_restart_ex ("m0_tracer", server_name, "DBA", "", NULL, DB_CLIENT_TYPE_DEFAULT);
   if (err != NO_ERROR)
