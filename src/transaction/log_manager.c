@@ -1199,6 +1199,16 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       logpb_fetch_header (thread_p, &log_Gl.hdr);
     }
 
+  if (ismedia_crash != false)
+    {
+      /* The header that was just read came out of a backup image, so the volume it names was chosen
+       * by whatever cdc session the source database had. The database being restored into has no
+       * such session to hand the position back to, and only a partial restore reaches the reset in
+       * log_recovery_resetlog(). A client that does come back records what it needs again on its
+       * first bundle, so give the protection up here rather than pin volumes for good. */
+      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
+    }
+
   if (ismedia_crash != false && (r_args) && r_args->restore_slave)
     {
       r_args->db_creation = log_Gl.hdr.db_creation;

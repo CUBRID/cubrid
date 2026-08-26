@@ -10184,6 +10184,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
   log_Gl.hdr.nxarv_num = 0;
   log_Gl.hdr.last_arv_num_for_syscrashes = -1;
   log_Gl.hdr.last_deleted_arv_num = -1;
+  LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
   LSA_SET_NULL (&log_Gl.hdr.bkup_level0_lsa);
   LSA_SET_NULL (&log_Gl.hdr.bkup_level1_lsa);
   LSA_SET_NULL (&log_Gl.hdr.bkup_level2_lsa);
