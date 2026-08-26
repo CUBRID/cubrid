@@ -39,22 +39,34 @@ fi
 
 # This script restarts cub_master via `cubrid service stop` (see below), which
 # also stops brokers/gateways/manager/heartbeat of this installation — refuse
-# to run if any server OR any other service is active.
-active="$(cubrid server status 2>/dev/null | grep -c '^ Server' || true)"
-if [ "$active" -gt 0 ]; then
-  echo "ABORT: other CUBRID servers are running on this host; smoke.sh restarts cub_master and would stop them." >&2
-  cubrid server status >&2 || true
+# to run if any server OR any other service is active. Fail-closed: an
+# unreadable service state is a reason to refuse, not to proceed. One
+# `cubrid service status` output covers every section (master, server,
+# broker, manager, heartbeat).
+svc_rc=0
+svc_out="$(cubrid service status 2>&1)" || svc_rc=$?
+if printf '%s' "$svc_out" | grep -qiE 'master.*not running'; then
+  : # no master -> nothing of ours can be running; safe to proceed
+elif [ $svc_rc -ne 0 ]; then
+  echo "ABORT: cannot determine CUBRID service state (fail-closed):" >&2
+  printf '%s\n' "$svc_out" >&2
   exit 2
-fi
-# name-based, not "is running"-based: manager reports as "cubrid manager
-# server is running" (a server-word filter misses it) and active heartbeat
-# prints node info without an "is running" line. '@'-prefixed section
-# headers are skipped.
-services="$(cubrid service status 2>/dev/null | grep -v '^@' | grep -iE '(broker|gateway|manager|heartbeat)' | grep -viE 'not running|stopped' || true)"
-if [ -n "$services" ]; then
-  echo "ABORT: non-server CUBRID services are running; 'cubrid service stop' would take them down:" >&2
-  echo "$services" >&2
-  exit 2
+else
+  if printf '%s\n' "$svc_out" | grep -q '^ Server '; then
+    echo "ABORT: other CUBRID servers are running on this host; smoke.sh restarts cub_master and would stop them." >&2
+    printf '%s\n' "$svc_out" >&2
+    exit 2
+  fi
+  # name-based: manager reports as "cubrid manager server is running" (a
+  # server-word filter misses it), and active heartbeat prints HA-Node
+  # Info/HA-Process Info lines that never say "heartbeat" or "is running".
+  # '@'-prefixed section headers are skipped.
+  services="$(printf '%s\n' "$svc_out" | grep -v '^@' | grep -iE '(broker|gateway|manager|heartbeat|HA-Node|HA-Process)' | grep -viE 'not running|stopped' || true)"
+  if [ -n "$services" ]; then
+    echo "ABORT: non-server CUBRID services are running; 'cubrid service stop' would take them down:" >&2
+    echo "$services" >&2
+    exit 2
+  fi
 fi
 
 # Interruption must not leave the server (or a master carrying tracer env)
@@ -124,10 +136,15 @@ done
 
 # don't leave a master whose environment still carries the last tracer SQL —
 # the next ordinary `cubrid server start` would silently re-run the tracer.
-# Verified, not fire-and-forget: a surviving master fails the run.
+# Verified fail-closed: PASS requires positive evidence the master is gone.
 cubrid service stop >/dev/null 2>&1 || true
-if cubrid service status 2>/dev/null | grep -qi 'master is running'; then
+final_out="$(cubrid service status 2>&1)" || true
+if printf '%s' "$final_out" | grep -qi 'master is running'; then
   echo "FAIL: cub_master still running (with tracer env) after final service stop" >&2
+  fail=1
+elif ! printf '%s' "$final_out" | grep -qiE 'master.*not running'; then
+  echo "FAIL: cannot verify master shutdown after final service stop:" >&2
+  printf '%s\n' "$final_out" >&2
   fail=1
 fi
 trap - EXIT INT TERM
