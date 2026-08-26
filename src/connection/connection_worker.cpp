@@ -395,7 +395,6 @@ namespace cubconn::connection
     m_exhausted.reserve (128);
 
     /* notifier */
-    m_eventfd_contexts[0] = m_eventfd_contexts[1] = NULL;
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (m_eventfd < 0 || m_timerfd < 0)
@@ -459,14 +458,26 @@ namespace cubconn::connection
      */
     for (int i = 0; i < DIM (m_eventfd_contexts); i++)
       {
-	(void) m_events.remove_descriptor (m_eventfd_contexts[i]->m_conn->fd);
-	/* m_conn is not a real connection entry. see eventfd_register (). */
-	delete reinterpret_cast<int *> (m_eventfd_contexts[i]->m_conn);
-	delete m_eventfd_contexts[i];
+	if (m_eventfd_contexts[i])
+	  {
+	    (void) m_events.remove_descriptor ((i == 0) ? m_eventfd : m_timerfd);
+	    /* m_conn is not a real connection entry. see eventfd_register (). */
+	    if (m_eventfd_contexts[i]->m_conn)
+	      {
+		delete reinterpret_cast<int *> (m_eventfd_contexts[i]->m_conn);
+	      }
+	    delete m_eventfd_contexts[i];
+	  }
       }
 
-    ::close (m_eventfd);
-    ::close (m_timerfd);
+    if (m_eventfd != -1)
+      {
+	::close (m_eventfd);
+      }
+    if (m_timerfd != -1)
+      {
+	::close (m_timerfd);
+      }
 
     assert (m_context.size () == 0);
   }
@@ -1031,8 +1042,8 @@ retry:
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_register: add_descriptor failed\n");
 
+	delete reinterpret_cast<int *> (conn);
 	delete ctx;
-	delete conn;
 	return false;
       }
 
