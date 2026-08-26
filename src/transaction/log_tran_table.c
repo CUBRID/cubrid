@@ -4491,72 +4491,37 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 }
 
 /*
- * logtb_tran_prepare_count_optim_classes - prepare classes for count
- *					    optimization (for unique statistics
- *					    loading)
+ * logtb_tran_prepare_count_optim_class - prepare a class for count
+ *					  optimization (for unique statistics
+ *					  loading)
  *
  * return: error code
  *
  * thread_p(in): thread entry
- * classes(in): classes names list
- * flags(in): flags associated with class names
- * n_classes(in): number of classes names
+ * class_oid(in): the class
  *
- * Note: This function is called at prefetch request. It receives a list of
- *	 classes and for each class the COS_TO_LOAD flag will be set if the
- *	 statistics were not already loaded. The statistics will be loaded at
- *	 snapshot.
+ * Note: This function is called at prefetch request. The COS_TO_LOAD flag will
+ *	 be set if the statistics were not already loaded. The statistics will
+ *	 be loaded at snapshot.
  */
 int
-logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p, const char **classes, LC_PREFETCH_FLAGS * flags,
-					int n_classes)
+logtb_tran_prepare_count_optim_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
-  int idx;
-  OID class_oid;
-  LC_FIND_CLASSNAME find;
-  LOG_TRAN_CLASS_COS *class_cos = NULL;
+  LOG_TRAN_CLASS_COS *class_cos;
 
-  for (idx = n_classes - 1; idx >= 0; idx--)
+  assert (!OID_ISNULL (class_oid));
+
+  /* search for class statistics (create if not exist). */
+  class_cos = logtb_tran_find_class_cos (thread_p, class_oid, true);
+  if (class_cos == NULL)
     {
-      if (!(flags[idx] & LC_PREF_FLAG_COUNT_OPTIM))
-	{
-	  continue;
-	}
+      return ER_FAILED;
+    }
 
-      /* get class OID from class name */
-      find = xlocator_find_class_oid (thread_p, classes[idx], &class_oid, NULL_LOCK);
-      switch (find)
-	{
-	case LC_CLASSNAME_ERROR:
-	  return ER_FAILED;
-
-	case LC_CLASSNAME_EXIST:
-	  if (OID_ISNULL (&class_oid))
-	    {
-	      /* The class OID could not be retrieved. Return error. */
-	      return ER_FAILED;
-	    }
-	  else
-	    {
-	      /* search for class statistics (create if not exist). */
-	      class_cos = logtb_tran_find_class_cos (thread_p, &class_oid, true);
-	      if (class_cos == NULL)
-		{
-		  /* something wrong happened. Just return error */
-		  return ER_FAILED;
-		}
-
-	      /* Mark class for unique statistics loading. The statistics will be loaded when snapshot will be taken */
-	      if (class_cos->count_state != COS_LOADED)
-		{
-		  class_cos->count_state = COS_TO_LOAD;
-		}
-	    }
-	  break;
-
-	default:
-	  break;
-	}
+  /* Mark class for unique statistics loading. The statistics will be loaded when snapshot will be taken */
+  if (class_cos->count_state != COS_LOADED)
+    {
+      class_cos->count_state = COS_TO_LOAD;
     }
 
   return NO_ERROR;

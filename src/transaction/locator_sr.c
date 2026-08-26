@@ -12450,6 +12450,13 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 	      (*hlock)->classes[n].chn = guessed_class_chns[i];
 	    }
 
+	  /* the class is resolved right here, so count optimization does not have to look the name up again */
+	  if ((many_flags[i] & LC_PREF_FLAG_COUNT_OPTIM)
+	      && logtb_tran_prepare_count_optim_class (thread_p, &(*hlock)->classes[n].oid) != NO_ERROR)
+	    {
+	      allfind = LC_CLASSNAME_ERROR;
+	    }
+
 	  n++;
 	  (*hlock)->num_classes = n;
 	}
@@ -12531,11 +12538,6 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
     {
       locator_free_lockhint ((*hlock));
       *hlock = NULL;
-    }
-
-  if (logtb_tran_prepare_count_optim_classes (thread_p, many_classnames, many_flags, num_classes) != NO_ERROR)
-    {
-      allfind = LC_CLASSNAME_ERROR;
     }
 
   return allfind;
