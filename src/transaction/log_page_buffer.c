@@ -5039,6 +5039,36 @@ logpb_get_archive_number (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
 }
 
 /*
+ * logpb_strip_cdc_arv_num_from_header_page - Take the cdc archive watermark out of a log header page image
+ *
+ * return: nothing
+ *
+ *   page_ptr(in/out): image of a log page, expected to be the active log header page
+ *
+ * NOTE: Which archive cdc still needs is a decision about this database's own log and the session that was
+ *       attached to it. A backup is restored into a database that has neither, so the value would only hold
+ *       archives back there for nothing. logwr_pack_log_pages() takes it out of the copy the standby keeps for
+ *       the same reason. Only the image on its way out is changed - the log on disk keeps its value, so there is
+ *       no window where the running database is left unprotected.
+ */
+void
+logpb_strip_cdc_arv_num_from_header_page (void *page_ptr)
+{
+  LOG_PAGE *log_pgptr = (LOG_PAGE *) page_ptr;
+
+  assert (page_ptr != NULL);
+
+  if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID)
+    {
+      /* The caller picks the page by its number in the file, and a backup page can be bigger than a log page,
+       * so make sure this really is the header before writing into it. */
+      return;
+    }
+
+  LOG_HDR_CDC_ARV_NUM_RESET ((LOG_HEADER *) log_pgptr->area);
+}
+
+/*
  * logpb_get_cdc_arv_num_for_pageid - Archive volume holding a page CDC still needs
  *
  * return: archive number, or -1 when it could not be worked out
