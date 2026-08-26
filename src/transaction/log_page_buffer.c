@@ -5074,9 +5074,10 @@ logpb_get_cdc_arv_num_for_pageid (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
  *
  * return: archive number, or -1 when nothing has to be kept for CDC
  *
- * NOTE: The value outlives the server process, so it may no longer fit the log it is read back against - the
- *       volume can have been deleted while CDC was not protecting it, or the log can have been recreated. Such
- *       a value protects nothing and is dropped instead of holding archives back forever.
+ * NOTE: The value outlives the server process, so it may no longer fit the log it is read back against: archives
+ *       can have been deleted while supplemental_log was off, or a restore can leave the header and the archive set
+ *       out of step. Only a value the current log cannot place is dropped here - one that is still in range keeps
+ *       its volume, and giving that up on purpose is cdc_release_arv_num_to_keep()'s job.
  */
 static int
 logpb_get_cdc_arv_num_to_keep (THREAD_ENTRY * thread_p)
