@@ -8942,7 +8942,7 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
 
       intl_identifier_lower (unique_name_str, lower_name);
 
-      if (xlocator_find_class_oid (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+      if (xlocator_find_class_oid (thread_p, lower_name, NULL, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
 	{
 	  er_clear ();
 	  goto exit;

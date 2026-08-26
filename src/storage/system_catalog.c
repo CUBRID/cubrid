@@ -5618,7 +5618,7 @@ catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p, const char *class_name
   /* get class OID from class name */
   intl_identifier_lower (class_name, cls_lower);
 
-  status = xlocator_find_class_oid (thread_p, cls_lower, &class_oid, NULL_LOCK);
+  status = xlocator_find_class_oid (thread_p, cls_lower, NULL, &class_oid, NULL_LOCK);
   if (status == LC_CLASSNAME_ERROR)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, cls_lower);

@@ -600,7 +600,7 @@ catcls_find_class_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p
 {
   LC_FIND_CLASSNAME status;
 
-  status = xlocator_find_class_oid (thread_p, name_p, class_oid_p, NULL_LOCK);
+  status = xlocator_find_class_oid (thread_p, name_p, NULL, class_oid_p, NULL_LOCK);
 
   if (status == LC_CLASSNAME_ERROR)
     {
@@ -5826,7 +5826,7 @@ catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p)
   /* skip OID for root class, is already set with 'boot_get_db_parm' */
   for (i = OID_CACHE_CLASS_CLASS_ID; i < OID_CACHE_SIZE; i++)
     {
-      status = xlocator_find_class_oid (thread_p, oid_get_cached_class_name (i), &class_oid, NULL_LOCK);
+      status = xlocator_find_class_oid (thread_p, oid_get_cached_class_name (i), NULL, &class_oid, NULL_LOCK);
       if (status == LC_CLASSNAME_ERROR)
 	{
 	  return ER_FAILED;

@@ -1817,6 +1817,7 @@ slocator_find_class_oid (THREAD_ENTRY *thread_p, unsigned int rid, char *request
 {
   LC_FIND_CLASSNAME found;
   char *classname;
+  OID owner_oid;
   OID class_oid;
   LOCK lock;
   int xresolve_synonym;
@@ -1826,11 +1827,12 @@ slocator_find_class_oid (THREAD_ENTRY *thread_p, unsigned int rid, char *request
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_unpack_string_nocopy (request, &classname);
+  ptr = or_unpack_oid (ptr, &owner_oid);
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_lock (ptr, &lock);
   ptr = or_unpack_int (ptr, &xresolve_synonym);
 
-  found = xlocator_find_class_oid_ex (thread_p, classname, &class_oid, lock,
+  found = xlocator_find_class_oid_ex (thread_p, classname, &owner_oid, &class_oid, lock,
 				      xresolve_synonym ? synonym_target : NULL);
 
   if (found == LC_CLASSNAME_ERROR)
@@ -11859,7 +11861,7 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
       ptr = or_unpack_string_nocopy (ptr, &classname);
 
-      status = xlocator_find_class_oid (thread_p, classname, &classoid, NULL_LOCK);
+      status = xlocator_find_class_oid (thread_p, classname, NULL, &classoid, NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_CLASS, 1, classname);

@@ -14897,7 +14897,7 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   OR_PARTITION *parts = NULL;
   int parts_count = 0;
 
-  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, S_LOCK);
+  status = xlocator_find_class_oid (thread_p, class_name, NULL, &class_oid, S_LOCK);
   if (status != LC_CLASSNAME_EXIST)
     {
       error_code = ER_LC_UNKNOWN_CLASSNAME;
@@ -17233,7 +17233,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	      goto exit_on_error;
 	    }
 
-	  status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, &serial_class_oid, NULL_LOCK);
+	  status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, NULL, &serial_class_oid, NULL_LOCK);
 	  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
 	    {
 	      ret = ER_FAILED;
@@ -18391,7 +18391,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
   memset (ctx, 0, sizeof (HEAP_SHOW_SCAN_CTX));
 
   /* use IS_LOCK so that DML (IX_LOCK) can run concurrently with SHOW HEAP HEADER/CAPACITY */
-  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, IS_LOCK);
+  status = xlocator_find_class_oid (thread_p, class_name, NULL, &class_oid, IS_LOCK);
   if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
     {
       error = ER_LC_UNKNOWN_CLASSNAME;

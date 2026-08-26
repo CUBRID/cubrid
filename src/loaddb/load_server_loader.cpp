@@ -124,7 +124,7 @@ namespace cubload
 
     if (strchr (class_name, '.'))
       {
-	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+	found = xlocator_find_class_oid (&thread_ref, class_name, NULL, &class_oid, BU_LOCK);
 
 	/* maybe unloaded from version 11.2+ or later */
 	if (m_session.get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
@@ -135,7 +135,7 @@ namespace cubload
       }
     else if (sm_check_system_class_by_name (class_name))
       {
-	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+	found = xlocator_find_class_oid (&thread_ref, class_name, NULL, &class_oid, BU_LOCK);
       }
     else
       {
@@ -156,7 +156,7 @@ namespace cubload
 	assert (intl_identifier_lower_string_size (user_name) < DB_MAX_USER_LENGTH);
 	intl_identifier_lower (user_specified_name, realname);
 
-	found = xlocator_find_class_oid (&thread_ref, realname, &class_oid, BU_LOCK);
+	found = xlocator_find_class_oid (&thread_ref, realname, NULL, &class_oid, BU_LOCK);
 	if (found == LC_CLASSNAME_EXIST)
 	  {
 	    return found;
@@ -282,7 +282,7 @@ namespace cubload
 		intl_identifier_lower (user_name, downcase_user_name);
 		snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_user_name, class_name_only);
 
-		found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
+		found = xlocator_find_class_oid (&thread_ref, user_specified_name, NULL, &class_oid, BU_LOCK);
 		if (found == LC_CLASSNAME_EXIST)
 		  {
 		    if (already_found)

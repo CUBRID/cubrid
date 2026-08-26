@@ -1008,6 +1008,10 @@ locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_oid, int cl
 LC_FIND_CLASSNAME
 locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char *synonym_target)
 {
+  OID owner_oid;
+
+  au_find_owner_oid_of_name (class_name, &owner_oid);
+
 #if defined(CS_MODE)
   LC_FIND_CLASSNAME found = LC_CLASSNAME_ERROR;
   int xfound;
@@ -1026,7 +1030,7 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (class_name, &strlen) + OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE;
+  request_size = length_const_string (class_name, &strlen) + OR_OID_SIZE + OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE;
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -1035,6 +1039,7 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char
     }
 
   ptr = pack_const_string_with_length (request, class_name, strlen);
+  ptr = or_pack_oid (ptr, &owner_oid);
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_lock (ptr, lock);
   ptr = or_pack_int (ptr, (synonym_target != NULL) ? 1 : 0);
@@ -1061,7 +1066,7 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock, char
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  found = xlocator_find_class_oid_ex (thread_p, class_name, class_oid, lock, synonym_target);
+  found = xlocator_find_class_oid_ex (thread_p, class_name, &owner_oid, class_oid, lock, synonym_target);
 
   exit_server (*thread_p);
 

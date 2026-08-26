@@ -346,6 +346,15 @@ locator_get_entry (const OID * owner_oid, const char *classname)
   LOCATOR_CLASSNAME_KEY key;
   LOCATOR_CLASSNAME_ENTRY *entry;
 
+  if (owner_oid == NULL && locator_bare_name (classname) != classname)
+    {
+      /* A qualified name whose owner the caller could not supply. What is left of these are
+       * names a user typed as a runtime string: the argument of estimated_table_rows and of
+       * the other statistics functions. They resolve through the joined name index until that
+       * argument carries the class itself, and the index goes away with the last of them. */
+      return locator_get_classname_entry (classname);
+    }
+
   locator_classname_key_set (&key, classname, owner_oid);
 
   entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames_owned, &key);
@@ -2074,9 +2083,10 @@ xlocator_synonym_ddl (THREAD_ENTRY * thread_p, LC_SYNONYM_DDL_OP op, const char 
  *              xlocator_find_class_oid_ex to resolve names through synonyms.
  */
 LC_FIND_CLASSNAME
-xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid, LOCK lock)
+xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname, const OID * owner_oid, OID * class_oid,
+			 LOCK lock)
 {
-  return xlocator_find_class_oid_ex (thread_p, classname, class_oid, lock, NULL);
+  return xlocator_find_class_oid_ex (thread_p, classname, owner_oid, class_oid, lock, NULL);
 }
 
 /*
@@ -2085,6 +2095,7 @@ xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname, OID * c
  * return: LC_FIND_CLASSNAME (see xlocator_find_class_oid)
  *
  *   classname(in): Name to find
+ *   owner_oid(in): Owner of the name; NULL when the caller does not know it
  *   class_oid(out): Set as a side effect
  *   lock(in): Lock to acquire for the class
  *   synonym_target(in/out): Buffer of DB_MAX_IDENTIFIER_LENGTH bytes; left empty
@@ -2099,14 +2110,15 @@ xlocator_find_class_oid (THREAD_ENTRY * thread_p, const char *classname, OID * c
  *       resolving at most one synonym hop).
  */
 LC_FIND_CLASSNAME
-xlocator_find_class_oid_ex (THREAD_ENTRY * thread_p, const char *classname, OID * class_oid, LOCK lock,
-			    char *synonym_target)
+xlocator_find_class_oid_ex (THREAD_ENTRY * thread_p, const char *classname, const OID * owner_oid, OID * class_oid,
+			    LOCK lock, char *synonym_target)
 {
   int tran_index;
   LOCATOR_CLASSNAME_ENTRY *entry;
   LOCK tmp_lock;
   LC_FIND_CLASSNAME find = LC_CLASSNAME_EXIST;
   bool hopped = false;
+  OID target_owner_oid;
 
   if (synonym_target != NULL)
     {
@@ -2124,7 +2136,7 @@ start:
       return LC_CLASSNAME_ERROR;
     }
 
-  entry = locator_get_classname_entry (classname);
+  entry = locator_get_entry (owner_oid, classname);
 
   if (locator_entry_is_synonym (entry))
     {
@@ -2144,7 +2156,9 @@ start:
 	  synonym_target[DB_MAX_IDENTIFIER_LENGTH - 1] = '\0';
 	  hopped = true;
 
+	  COPY_OID (&target_owner_oid, &entry->e_current.synonym_target_owner);
 	  classname = synonym_target;
+	  owner_oid = &target_owner_oid;
 
 	  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 	  goto start;
