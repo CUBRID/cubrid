@@ -45,28 +45,32 @@ fi
 # broker, manager, heartbeat).
 svc_rc=0
 svc_out="$(cubrid service status 2>&1)" || svc_rc=$?
+master_down=0
 if printf '%s' "$svc_out" | grep -qiE 'master.*not running'; then
-  : # no master -> nothing of ours can be running; safe to proceed
-elif [ $svc_rc -ne 0 ]; then
+  master_down=1
+fi
+if [ $svc_rc -ne 0 ] && [ $master_down -eq 0 ]; then
   echo "ABORT: cannot determine CUBRID service state (fail-closed):" >&2
   printf '%s\n' "$svc_out" >&2
   exit 2
-else
-  if printf '%s\n' "$svc_out" | grep -q '^ Server '; then
-    echo "ABORT: other CUBRID servers are running on this host; smoke.sh restarts cub_master and would stop them." >&2
-    printf '%s\n' "$svc_out" >&2
-    exit 2
-  fi
-  # name-based: manager reports as "cubrid manager server is running" (a
-  # server-word filter misses it), and active heartbeat prints HA-Node
-  # Info/HA-Process Info lines that never say "heartbeat" or "is running".
-  # '@'-prefixed section headers are skipped.
-  services="$(printf '%s\n' "$svc_out" | grep -v '^@' | grep -iE '(broker|gateway|manager|heartbeat|HA-Node|HA-Process)' | grep -viE 'not running|stopped' || true)"
-  if [ -n "$services" ]; then
-    echo "ABORT: non-server CUBRID services are running; 'cubrid service stop' would take them down:" >&2
-    echo "$services" >&2
-    exit 2
-  fi
+fi
+# DB servers need a master; the check is only meaningful when one is up
+if [ $master_down -eq 0 ] && printf '%s\n' "$svc_out" | grep -q '^ Server '; then
+  echo "ABORT: other CUBRID servers are running on this host; smoke.sh restarts cub_master and would stop them." >&2
+  printf '%s\n' "$svc_out" >&2
+  exit 2
+fi
+# brokers/gateways/manager run WITHOUT a master, so this check must not be
+# short-circuited by master-down. name-based: manager reports as "cubrid
+# manager server is running" (a server-word filter misses it), and active
+# heartbeat prints HA-Node Info/HA-Process Info lines that never say
+# "heartbeat" or "is running". '@'-prefixed section headers are skipped;
+# "not installed" (optional manager) is not "active".
+services="$(printf '%s\n' "$svc_out" | grep -v '^@' | grep -iE '(broker|gateway|manager|heartbeat|HA-Node|HA-Process)' | grep -viE 'not running|stopped|not installed' || true)"
+if [ -n "$services" ]; then
+  echo "ABORT: non-server CUBRID services are running; 'cubrid service stop' would take them down:" >&2
+  echo "$services" >&2
+  exit 2
 fi
 
 # Interruption must not leave the server (or a master carrying tracer env)
