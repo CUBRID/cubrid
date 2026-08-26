@@ -437,7 +437,7 @@ static void pt_value_set_collation_info (PARSER_CONTEXT *parser,
 					 PT_NODE *node,
 					 PT_NODE *coll_node);
 static void pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
-                   const char *str, const char *txt, DB_CURRENCY type);
+                   const char *str, const char *txt, pt_currency_types type);
 static PT_NODE * pt_create_paren_expr_list (PT_NODE * exp);
 static PT_MISC_TYPE parser_attr_type;
 
@@ -25520,7 +25520,7 @@ pt_value_set_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
 
 static void
 pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
-                   const char *currency_str, const char *value, DB_CURRENCY type)
+                   const char *currency_str, const char *value, pt_currency_types type)
 {
   double dval;
 

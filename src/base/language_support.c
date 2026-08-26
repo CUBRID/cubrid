@@ -45,10 +45,10 @@
 #include "db_date.h"
 #include "string_opfunc.h"
 
-#if !defined (SERVER_MODE)
+/* wf119: unguarded — client half now compiled into server */
 #include "authenticate.h"
 #include "db.h"
-#endif /* !defined (SERVER_MODE) */
+/* wf119 */
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -2680,7 +2680,7 @@ lang_get_charset_env_string (char *buf, int buf_size, const char *lang_name, con
   return NO_ERROR;
 }
 
-#if !defined (SERVER_MODE)
+/* wf119: unguarded — client half now compiled into server */
 /* client side charset and collation */
 static bool lang_Parser_use_client_charset = true;
 
@@ -2815,7 +2815,7 @@ lang_get_parser_use_client_charset (void)
   return lang_Parser_use_client_charset;
 }
 
-#endif /* !SERVER_MODE */
+/* wf119: end of former !SERVER_MODE region */
 
 /*
  * lang_charset_cubrid_name_to_id - Returns the INTL_CODESET of the charset

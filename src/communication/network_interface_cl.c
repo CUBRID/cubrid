@@ -73,11 +73,11 @@
 #include "dbtype.h"
 #include "compile_context.h"
 
-#if defined (SA_MODE)
+#if !defined (CS_MODE)
 #include "thread_manager.hpp"
 #include "pl_compile_handler.hpp"
 #include "pl_executor.hpp"
-#endif // SA_MODE
+#endif // !CS_MODE
 
 #include "xasl.h"
 #include "lob_locator.hpp"
@@ -115,17 +115,20 @@ static char *pack_string_with_null_padding (char *buffer, const char *stream, in
 static int length_const_string (const char *cstring, int *strlen);
 static int length_string_with_null_padding (int len);
 #endif /* CS_MODE */
-#if defined (SA_MODE)
+#if !defined (CS_MODE)
 static void enter_server_no_thread_entry (void);
 static THREAD_ENTRY *enter_server (void);
 static void exit_server_no_thread_entry (void);
 static void exit_server (const THREAD_ENTRY & thread_ref);
-#endif // SERVER_MODE
+#endif // !CS_MODE
 static int is_top_level_class (MOBJ mobj);
 
-#if defined (SA_MODE)
+#if !defined (CS_MODE)
 //
 // enter_server_no_thread_entry () - enter server mode without getting a thread entry (e.g. when "starting" server).
+//
+// SERVER_MODE (wf119 tracer): the calling thread is already a server worker
+// with its own private heap; only the boundary flag and error stack change.
 //
 static void
 enter_server_no_thread_entry (void)
@@ -133,11 +136,13 @@ enter_server_no_thread_entry (void)
   db_on_server++;
   er_stack_push_if_exists ();
 
+#if defined (SA_MODE)
   if (private_heap_id == 0)
     {
       assert (db_on_server == 1);
       private_heap_id = db_create_private_heap ();
     }
+#endif
 }
 
 //
@@ -158,10 +163,12 @@ enter_server ()
 static void
 exit_server_no_thread_entry (void)
 {
+#if defined (SA_MODE)
   if ((db_on_server - 1) == 0 && private_heap_id != 0)
     {
       db_clear_private_heap (NULL, private_heap_id);
     }
+#endif
   er_restore_last_error ();
   db_on_server--;
 }
@@ -178,7 +185,7 @@ exit_server (const THREAD_ENTRY & thread_ref)
 
   exit_server_no_thread_entry ();
 }
-#endif // SA_MODE
+#endif // !CS_MODE
 
 #if defined(CS_MODE)
 /*

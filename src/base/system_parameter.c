@@ -7302,7 +7302,7 @@ prm_check_environment (void)
     }
 }
 
-#if !defined (SERVER_MODE)
+/* wf119: was #if !SERVER_MODE — client half now compiled into server */
 /*
  * sysprm_validate_escape_char_parameters () - validate escape char setting
  *
@@ -7570,7 +7570,7 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
 
   return err;
 }
-#endif /* !SERVER_MODE */
+/* wf119: end of former !SERVER_MODE region */
 
 /*
  * sysprm_change_parameter_values () - update system parameter values
@@ -12013,7 +12013,7 @@ sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int 
   return (int) (ptr - buffer);
 }
 
-#if !defined (SERVER_MODE)
+/* wf119: was #if !SERVER_MODE — client half now compiled into server */
 /*
  * sysprm_print_parameters_for_qry_string () - print parameters for query
  *					       string
@@ -12213,7 +12213,7 @@ sysprm_init_intl_param (void)
 
   return error;
 }
-#endif /* !SERVER_MODE */
+/* wf119: end of former !SERVER_MODE region */
 
 /*
  * sysprm_set_error () - sets an error for system parameter errors

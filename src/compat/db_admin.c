@@ -34,7 +34,9 @@
 #include <signal.h>
 
 #include "authenticate.h"
+#if !defined (SERVER_MODE)
 #include "client_support.h"
+#endif
 #include "porting.h"
 #include "system_parameter.h"
 #include "storage_common.h"

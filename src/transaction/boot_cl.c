@@ -78,7 +78,9 @@
 #include "transform.h"
 #include "jansson.h"
 #include "jsp_cl.h"
+#if !defined (SERVER_MODE)
 #include "client_support.h"
+#endif
 #include "es.h"
 #include "tsc_timer.h"
 #include "show_meta.h"

@@ -611,6 +611,104 @@ endif(UNIX)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
+set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES GENERATED true)
+set_source_files_properties(${FLEX_csql_lexer_OUTPUTS} PROPERTIES GENERATED true)
+
+# wf119 milestone-0 tracer: compile the client half (parser/optimizer/schema/workspace)
+# into the server library under SERVER_MODE so a worker thread can compile SQL in-process.
+# File list mirrors sa/CMakeLists.txt minus standalone-utility and network-transport files.
+set(CLIENT_HALF_SOURCES
+  ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/hide_password.cpp
+  ${COMMUNICATION_DIR}/network_callback_cl.cpp
+  ${COMMUNICATION_DIR}/network_histogram.cpp
+  ${COMMUNICATION_DIR}/network_interface_cl.c
+  ${COMPAT_DIR}/db_admin.c
+  ${COMPAT_DIR}/db_class.c
+  ${COMPAT_DIR}/db_info.c
+  ${COMPAT_DIR}/db_method_static.cpp
+  ${COMPAT_DIR}/db_obj.c
+  ${COMPAT_DIR}/db_old.c
+  ${COMPAT_DIR}/db_query.c
+  ${COMPAT_DIR}/db_temp.c
+  ${COMPAT_DIR}/db_vdb.c
+  ${COMPAT_DIR}/db_virt.c
+  ${METHOD_DIR}/method_callback.cpp
+  ${METHOD_DIR}/method_oid_handler.cpp
+  ${METHOD_DIR}/method_query_handler.cpp
+  ${OBJECT_DIR}/authenticate.c
+  ${OBJECT_DIR}/authenticate_access_auth.cpp
+  ${OBJECT_DIR}/authenticate_access_class.cpp
+  ${OBJECT_DIR}/authenticate_access_user.cpp
+  ${OBJECT_DIR}/authenticate_cache.cpp
+  ${OBJECT_DIR}/authenticate_context.cpp
+  ${OBJECT_DIR}/authenticate_grant.cpp
+  ${OBJECT_DIR}/authenticate_migration.cpp
+  ${OBJECT_DIR}/authenticate_owner.cpp
+  ${OBJECT_DIR}/authenticate_password.cpp
+  ${OBJECT_DIR}/class_description.cpp
+  ${OBJECT_DIR}/class_object.c
+  ${OBJECT_DIR}/object_accessor.c
+  ${OBJECT_DIR}/object_description.cpp
+  ${OBJECT_DIR}/object_print.c
+  ${OBJECT_DIR}/object_print_util.cpp
+  ${OBJECT_DIR}/object_printer.cpp
+  ${OBJECT_DIR}/object_template.c
+  ${OBJECT_DIR}/quick_fit.c
+  ${OBJECT_DIR}/schema_class_truncator.cpp
+  ${OBJECT_DIR}/schema_manager.c
+  ${OBJECT_DIR}/schema_template.c
+  ${OBJECT_DIR}/transform_cl.c
+  ${OBJECT_DIR}/trigger_description.cpp
+  ${OBJECT_DIR}/trigger_manager.c
+  ${OBJECT_DIR}/virtual_object.c
+  ${OBJECT_DIR}/work_space.c
+  ${OPTIMIZER_DIR}/plan_generation.c
+  ${OPTIMIZER_DIR}/query_bitset.c
+  ${OPTIMIZER_DIR}/query_graph.c
+  ${OPTIMIZER_DIR}/query_planner.c
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
+  ${PARSER_DIR}/cnf.c
+  ${PARSER_DIR}/compile.c
+  ${PARSER_DIR}/double_byte_support.c
+  ${PARSER_DIR}/func_type.cpp
+  ${PARSER_DIR}/keyword.c
+  ${PARSER_DIR}/method_transform.c
+  ${PARSER_DIR}/name_resolution.c
+  ${PARSER_DIR}/parse_dbi.c
+  ${PARSER_DIR}/parse_evaluate.c
+  ${PARSER_DIR}/parse_tree.c
+  ${PARSER_DIR}/parse_tree_cl.c
+  ${PARSER_DIR}/parse_type.cpp
+  ${PARSER_DIR}/parser_allocator.cpp
+  ${PARSER_DIR}/parser_support.c
+  ${PARSER_DIR}/query_result.c
+  ${PARSER_DIR}/scanner_support.c
+  ${PARSER_DIR}/semantic_check.c
+  ${PARSER_DIR}/show_meta.c
+  ${PARSER_DIR}/type_checking.c
+  ${PARSER_DIR}/view_transform.c
+  ${PARSER_DIR}/xasl_generation.c
+  ${PARSER_DIR}/xasl_regu_alloc.cpp
+  ${QUERY_DIR}/cursor.c
+  ${QUERY_DIR}/execute_schema.c
+  ${QUERY_DIR}/execute_statement.c
+  ${QUERY_DIR}/query_cl.c
+  ${QUERY_DIR}/xasl_to_stream.c
+  ${REWRITER_DIR}/query_rewrite.c
+  ${REWRITER_DIR}/query_rewrite_auto_parameterize.c
+  ${REWRITER_DIR}/query_rewrite_select.c
+  ${REWRITER_DIR}/query_rewrite_set.c
+  ${REWRITER_DIR}/query_rewrite_subquery.c
+  ${REWRITER_DIR}/query_rewrite_term.c
+  ${SP_DIR}/jsp_cl.cpp
+  ${SP_DIR}/sp_catalog.cpp
+  ${STORAGE_DIR}/statistics_cl.c
+  ${TRANSACTION_DIR}/boot_cl.c
+  ${TRANSACTION_DIR}/locator_cl.c
+  ${TRANSACTION_DIR}/server_compile_tracer.cpp
+  ${TRANSACTION_DIR}/transaction_cl.c
+  )
 
 if(UNIX)
   set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -642,7 +740,17 @@ SET_SOURCE_FILES_PROPERTIES(
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
+  ${CLIENT_HALF_SOURCES}
   PROPERTIES LANGUAGE CXX
+  )
+
+# grammar/lexer output must build as C++ here: under SERVER_MODE their include
+# chain reaches C++-only headers (thread_compat.hpp -> <thread>).  The generated
+# C code needs -fpermissive for C-style int<->enum and void* conversions.
+SET_SOURCE_FILES_PROPERTIES(
+  ${BISON_csql_grammar_OUTPUTS}
+  ${FLEX_csql_lexer_OUTPUTS}
+  PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-fpermissive -Wno-narrowing -Wno-write-strings"
   )
 
 set (CUBRID_LIB_SOURCES
@@ -670,6 +778,9 @@ set (CUBRID_LIB_SOURCES
   ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
+  ${CLIENT_HALF_SOURCES}
+  ${BISON_csql_grammar_OUTPUTS}
+  ${FLEX_csql_lexer_OUTPUTS}
   )
 
 list(APPEND CUBRID_LIB_SOURCES
@@ -737,7 +848,7 @@ endif(UNIX)
 # for dblink
 target_link_libraries(cubrid PUBLIC cascci)
 
-add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer)
+add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer gen_csql_grammar gen_csql_lexer)
 
 if(AT_LEAST_ONE_UNIT_TEST)
   if (WIN32)

@@ -2880,7 +2880,6 @@ valcnv_convert_collection_value_to_string_all_elements (DB_VALUE * value_p)
   return error;
 }
 
-#if !defined(SERVER_MODE)
 int
 db_get_connect_status (void)
 {
@@ -2892,7 +2891,6 @@ db_set_connect_status (int status)
 {
   db_Connect_status = status;
 }
-#endif
 
 /*
  * db_default_expression_string() -

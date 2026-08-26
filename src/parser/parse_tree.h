@@ -23,9 +23,6 @@
 #ifndef _PARSE_TREE_H_
 #define _PARSE_TREE_H_
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
 
 #ident "$Id$"
 
@@ -541,7 +538,6 @@ struct json_t;
 	&& (n->info.dot.arg2->info.function.function_type == PT_GENERIC) \
         && (strchr (n->info.dot.arg2->info.function.generic_name, '.') == NULL))
 
-#if !defined (SERVER_MODE)
 /* the following defines support host variable binding for internal statements.
    internal statements can be generated on TEXT handling, and these statements
    can include host variables derived from original statement. so, to look up
@@ -572,8 +568,6 @@ struct json_t;
              parser_->host_variables = NULL; parser_->host_var_count = 0; \
 	     parser_->host_var_expected_domains = NULL; \
              parser_->auto_param_count = 0; parser_->flag.set_host_var = 0; } } while (0)
-
-#endif /* !SERVER_MODE */
 
 /* NODE FUNCTION DECLARATIONS */
 #define IS_UPDATE_OBJ(node) (node->node_type == PT_UPDATE && node->info.update.object_parameter)
@@ -4123,7 +4117,6 @@ extern "C"
 }
 #endif
 
-#if !defined (SERVER_MODE)
 #ifdef __cplusplus
 extern "C"
 {
@@ -4131,7 +4124,6 @@ extern "C"
   extern PARSER_CONTEXT *parent_parser;
 #ifdef __cplusplus
 }
-#endif
 #endif
 
 #endif				/* _PARSE_TREE_H_ */

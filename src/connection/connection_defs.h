@@ -34,6 +34,23 @@
 #include "connection_list_sr.h"
 #include "critical_section.h"
 #endif
+
+/* the order to connect to db-hosts in databases.txt
+ * (moved from connection_cl.h — wf119: used by db_admin.c under SERVER_MODE) */
+#define DB_CONNECT_ORDER_SEQ         0
+#define DB_CONNECT_ORDER_RANDOM      1
+
+/* abnormal DB host status */
+#define DB_HS_NORMAL                    0x00000000
+#define DB_HS_CONN_TIMEOUT              0x00000001
+#define DB_HS_CONN_FAILURE              0x00000002
+#define DB_HS_MISMATCHED_RW_MODE        0x00000004
+#define DB_HS_HA_DELAYED                0x00000008
+#define DB_HS_NON_PREFFERED_HOSTS       0x00000010
+#define DB_HS_UNUSABLE_DATABASES        0x00000020
+
+#define DB_HS_RECONNECT_INDICATOR \
+  (DB_HS_MISMATCHED_RW_MODE | DB_HS_HA_DELAYED | DB_HS_NON_PREFFERED_HOSTS)
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "porting.h"

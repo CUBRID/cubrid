@@ -56,9 +56,6 @@
 #include "dbtype.h"
 #include "execute_statement.h"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif
 
 extern unsigned int db_on_server;
 

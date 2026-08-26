@@ -29,6 +29,7 @@
 #include "object_print.h"
 #include "object_printer.hpp"
 #include "object_print_util.hpp"
+#include "parser.h"
 #include "printer.hpp"
 #include "set_object.h"
 #include "schema_manager.h"
