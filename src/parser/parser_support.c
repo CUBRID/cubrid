@@ -11016,7 +11016,19 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
   if (strchr (original_name, '.'))
     {
-      /* It is already user_specified_name. */
+      /* Already qualified. This walk runs more than once over a statement, so most of
+       * these have their owner field from the earlier pass; a name built pre-joined does
+       * not, and the field has to hold for every qualified name. */
+      if (PT_IS_NAME_NODE (node) && node->info.name.owner_name == NULL)
+	{
+	  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
+
+	  if (sm_qualifier_name (original_name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+	    {
+	      node->info.name.owner_name = pt_append_string (parser, NULL, qualifier_name);
+	    }
+	}
+
       return node;
     }
 
@@ -11144,23 +11156,26 @@ pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
     }
 
+#if !defined(NDEBUG)
+  /* while the owner is in the name as well as in its own field, the two have to agree */
   if (sm_qualifier_name (PT_NAME_ORIGINAL (node), qualifier_name, DB_MAX_USER_LENGTH) == NULL)
     {
-      /* The owner is not in the name yet: either the statement kept it in resolved, or
-       * this is a system class that has none. */
       assert (PT_NAME_OWNER_NAME (node) == NULL);
-      return PT_NAME_RESOLVED (node);
     }
-
-  /* while the owner is in the name as well as in its own field, the two have to agree */
-  assert (PT_NAME_OWNER_NAME (node) == NULL || strcmp (PT_NAME_OWNER_NAME (node), qualifier_name) == 0);
+  else
+    {
+      assert (PT_NAME_OWNER_NAME (node) != NULL && strcmp (PT_NAME_OWNER_NAME (node), qualifier_name) == 0);
+    }
+#endif
 
   if (PT_NAME_OWNER_NAME (node) != NULL)
     {
       return PT_NAME_OWNER_NAME (node);
     }
 
-  return pt_append_string (parser, NULL, qualifier_name);
+  /* No owner of its own: either the statement kept it in resolved, or this is a system
+   * class that has none. */
+  return PT_NAME_RESOLVED (node);
 }
 
 /*
