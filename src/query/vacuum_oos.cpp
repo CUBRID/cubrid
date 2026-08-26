@@ -199,8 +199,21 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
 
       /* Deletes are committed; pages this batch emptied can now be returned to the file manager.
        * Must run after the commit — an aborted sysop would restore the chunks, and undo cannot
-       * re-insert into a deallocated page. */
-      vacuum_oos_reclaim_empty_pages (thread_p, oos_vfid, &touched_pages);
+       * re-insert into a deallocated page. Only an interrupt comes back as an error; it has
+       * already stopped the reclaim loop. Handle it here rather than through this function's
+       * error return: the caller's diagnostics describe rolled-back deletes, while these deletes
+       * ARE committed — the emptied pages merely stay allocated (bounded, logged leak), and the
+       * caller's block-completion contract forbids failing the block anyway. The worker notices
+       * the interrupt again at its own next check. */
+      int reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, oos_vfid, &touched_pages);
+      if (reclaim_err != NO_ERROR)
+	{
+	  assert (reclaim_err == ER_INTERRUPTED);
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "OOS empty-page reclaim interrupted (file %d|%d); deletes stay committed, "
+				 "emptied pages stay allocated.", VFID_AS_ARGS (oos_vfid));
+	  er_clear ();
+	}
     }
   else
     {
@@ -210,53 +223,40 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
 }
 
 /*
- * vacuum_oos_reclaim_empty_pages () - Offer every page touched by a committed OOS delete batch to
- *   oos_try_reclaim_empty_page, which deallocates the fully emptied ones back to the file
- *   manager's partial sector table. Best-effort by design: a page we fail to reclaim (busy,
- *   transient error) simply stays allocated and becomes a candidate for the next vacuum cycle,
- *   so failures are logged as warnings and never fail the caller. Clears *touched_pages.
+ * vacuum_oos_reclaim_empty_pages () - Hand the pages touched by a committed OOS delete batch to
+ *   oos_reclaim_empty_pages, which deallocates the fully emptied ones back to the file manager's
+ *   partial sector table (per-file checks and dedupe live there). Vacuum error policy: an
+ *   interrupt stops the reclaim loop immediately and is propagated so the caller can wind down;
+ *   any other failure is logged as a warning and absorbed — the affected pages simply stay
+ *   allocated and become candidates for a later cycle. Clears *touched_pages.
  *
+ * return                 : NO_ERROR or ER_INTERRUPTED.
  * thread_p (in)          : Thread entry.
  * oos_vfid (in)          : OOS file the pages belong to.
  * touched_pages (in/out) : Pages the delete batch touched (duplicates allowed); cleared on return.
  */
-void
+int
 vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
 				VACUUM_OOS_TOUCHED_PAGES *touched_pages)
 {
   assert (oos_vfid != NULL && !VFID_ISNULL (oos_vfid));
   assert (touched_pages != NULL);
 
-  if (touched_pages->empty ())
-    {
-      return;
-    }
-
-  /* Dedupe: a chain usually deletes several chunks from the same page (JIRA Q3 — vector +
-   * sort/unique beats a set for the single-digit sizes seen here). */
-  std::sort (touched_pages->begin (), touched_pages->end (),
-	     [] (const VPID &a, const VPID &b)
-  {
-    return a.volid < b.volid || (a.volid == b.volid && a.pageid < b.pageid);
-  });
-  touched_pages->erase (std::unique (touched_pages->begin (), touched_pages->end (),
-				     [] (const VPID &a, const VPID &b)
-  {
-    return VPID_EQ (&a, &b);
-  }), touched_pages->end ());
-
-  for (const VPID &vpid : *touched_pages)
-    {
-      if (oos_try_reclaim_empty_page (thread_p, *oos_vfid, vpid) != NO_ERROR)
-	{
-	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
-				 "Could not reclaim empty OOS page %d|%d (file %d|%d); leaving it for a later cycle.",
-				 VPID_AS_ARGS (&vpid), VFID_AS_ARGS (oos_vfid));
-	  er_clear ();
-	}
-    }
-
+  int error_code = oos_reclaim_empty_pages (thread_p, *oos_vfid, *touched_pages);
   touched_pages->clear ();
+
+  if (error_code == ER_INTERRUPTED)
+    {
+      return error_code;
+    }
+  if (error_code != NO_ERROR)
+    {
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not reclaim empty OOS pages of file %d|%d (error %d); leaving them for a later cycle.",
+			     VFID_AS_ARGS (oos_vfid), error_code);
+      er_clear ();
+    }
+  return NO_ERROR;
 }
 
 /*

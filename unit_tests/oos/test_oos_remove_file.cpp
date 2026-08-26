@@ -19,6 +19,7 @@
 #include "gtest/gtest.h"
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 #include "file_manager.h"
 #include "page_buffer.h"
@@ -147,9 +148,10 @@ TEST (OosFileDestroyTest, OosFileDestroyCacheCleared)
 // ===========================================================================
 // TEST: OosPageReclaimBasic
 //
-// Create file, insert to allocate a page, then exercise oos_try_reclaim_empty_page:
-// a non-empty page is skipped (record survives), an emptied page is deallocated,
-// and a second reclaim call is an idempotent no-op.
+// Create file, insert to allocate a page, then exercise oos_reclaim_empty_pages:
+// a non-empty candidate is skipped (record survives), an emptied page is
+// deallocated (duplicate candidates are deduped), and reclaiming an
+// already-deallocated page again is an idempotent no-op.
 // ===========================================================================
 TEST (OosFileDestroyTest, OosPageReclaimBasic)
 {
@@ -171,8 +173,9 @@ TEST (OosFileDestroyTest, OosPageReclaimBasic)
   // Get the VPID of the page where the record was inserted
   VPID vpid = {oid.pageid, oid.volid};
 
-  // Non-empty page: reclaim is skipped with NO_ERROR and the record survives
-  err = oos_try_reclaim_empty_page (thread_p, oos_vfid, vpid);
+  // Non-empty page: the candidate is skipped with NO_ERROR and the record survives
+  std::vector<VPID> candidates {vpid};
+  err = oos_reclaim_empty_pages (thread_p, oos_vfid, candidates);
   ASSERT_EQ (err, NO_ERROR);
 
   bool exists = false;
@@ -180,15 +183,17 @@ TEST (OosFileDestroyTest, OosPageReclaimBasic)
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_TRUE (exists);
 
-  // Empty the page, then reclaim deallocates it. Commit first: reclaim's contract is
-  // "only after the deletes are committed" — otherwise this transaction's rollback at
-  // teardown would replay the RVOOS_DELETE undo onto a deallocated page.
+  // Empty the page, then reclaim deallocates it. The duplicate candidate exercises the
+  // batch dedupe. Commit first: reclaim's contract is "only after the deletes are
+  // committed" — otherwise this transaction's rollback at teardown would replay the
+  // RVOOS_DELETE undo onto a deallocated page.
   err = oos_delete (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
 
   test_oos_debug ("Reclaiming empty page vpid={vol=%d,page=%d}", vpid.volid, vpid.pageid);
-  err = oos_try_reclaim_empty_page (thread_p, oos_vfid, vpid);
+  candidates = {vpid, vpid};
+  err = oos_reclaim_empty_pages (thread_p, oos_vfid, candidates);
   ASSERT_EQ (err, NO_ERROR);
 
   PAGE_PTR page_ptr = NULL;
@@ -197,7 +202,8 @@ TEST (OosFileDestroyTest, OosPageReclaimBasic)
   ASSERT_EQ (page_ptr, nullptr);	// page really deallocated
 
   // Idempotent: reclaiming an already-deallocated page is a NO_ERROR no-op
-  err = oos_try_reclaim_empty_page (thread_p, oos_vfid, vpid);
+  candidates = {vpid};
+  err = oos_reclaim_empty_pages (thread_p, oos_vfid, candidates);
   ASSERT_EQ (err, NO_ERROR);
 
   // Leave no committed orphan file behind: a later binary's file-tracker dump would try to
@@ -226,7 +232,8 @@ TEST (OosFileDestroyTest, OosPageReclaimStickyFirstPage)
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_FALSE (VPID_ISNULL (&hdr_vpid));
 
-  err = oos_try_reclaim_empty_page (thread_p, oos_vfid, hdr_vpid);
+  std::vector<VPID> candidates {hdr_vpid};
+  err = oos_reclaim_empty_pages (thread_p, oos_vfid, candidates);
   ASSERT_EQ (err, NO_ERROR);
 
   PAGE_PTR page_ptr = NULL;

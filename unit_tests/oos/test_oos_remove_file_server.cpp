@@ -27,6 +27,8 @@
 
 #include "test_oos_server_common.hpp"
 
+#include <vector>
+
 /* bridge functions defined in oos_file.cpp */
 int bridge_oos_get_max_chunk_size_within_page ();
 
@@ -145,8 +147,9 @@ TEST (OosFileDestroyServerTest, OosPageReclaimBasic)
 
   VPID vpid = {oid.pageid, oid.volid};
 
-  // Non-empty page: reclaim is skipped with NO_ERROR and the record survives
-  err = oos_try_reclaim_empty_page (thread_p, oos_vfid, vpid);
+  // Non-empty page: the candidate is skipped with NO_ERROR and the record survives
+  std::vector<VPID> candidates {vpid};
+  err = oos_reclaim_empty_pages (thread_p, oos_vfid, candidates);
   ASSERT_EQ (err, NO_ERROR);
 
   bool exists = false;
@@ -154,14 +157,16 @@ TEST (OosFileDestroyServerTest, OosPageReclaimBasic)
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_TRUE (exists);
 
-  // Empty the page, then reclaim deallocates it. Commit first: reclaim's contract is
-  // "only after the deletes are committed" — otherwise this transaction's rollback at
-  // teardown would replay the RVOOS_DELETE undo onto a deallocated page.
+  // Empty the page, then reclaim deallocates it. The duplicate candidate exercises the
+  // batch dedupe. Commit first: reclaim's contract is "only after the deletes are
+  // committed" — otherwise this transaction's rollback at teardown would replay the
+  // RVOOS_DELETE undo onto a deallocated page.
   err = oos_delete (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
 
-  err = oos_try_reclaim_empty_page (thread_p, oos_vfid, vpid);
+  candidates = {vpid, vpid};
+  err = oos_reclaim_empty_pages (thread_p, oos_vfid, candidates);
   ASSERT_EQ (err, NO_ERROR);
 
   PAGE_PTR page_ptr = NULL;
@@ -170,7 +175,8 @@ TEST (OosFileDestroyServerTest, OosPageReclaimBasic)
   ASSERT_EQ (page_ptr, nullptr);	// page really deallocated
 
   // Idempotent: reclaiming an already-deallocated page is a NO_ERROR no-op
-  err = oos_try_reclaim_empty_page (thread_p, oos_vfid, vpid);
+  candidates = {vpid};
+  err = oos_reclaim_empty_pages (thread_p, oos_vfid, candidates);
   ASSERT_EQ (err, NO_ERROR);
 
   // Leave no committed orphan file behind: a later binary's file-tracker dump would try to

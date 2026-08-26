@@ -1789,6 +1789,15 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	    {
 	      pgbuf_unfix_and_init (thread_p, helper.forward_page);
 	    }
+	  if (error_code == ER_INTERRUPTED)
+	    {
+	      /* Not a vacuum failure: an interrupt (shutdown) was noticed while vacuuming the
+	       * record or during the post-vacuum OOS empty-page reclaim, which stops immediately
+	       * and propagates it. Stop this job too instead of pushing through the remaining
+	       * objects. */
+	      vacuum_check_shutdown_interruption (thread_p, error_code);
+	      goto end;
+	    }
 	  if (error_code != NO_ERROR)
 	    {
 	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
@@ -2459,6 +2468,11 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   /* OOS pages emptied by this record's deletes; reclaimed right after the sysop commits. */
   VACUUM_OOS_TOUCHED_PAGES oos_touched_pages;
 
+  /* Set when the post-commit empty-page reclaim is interrupted. The record itself is already
+   * vacuumed and committed at that point, so the error is returned only after the record's
+   * bookkeeping below completes. */
+  int oos_reclaim_err = NO_ERROR;
+
   if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE || has_oos)
     {
       /* Multi-page operations (rel/big/oos) are performed as a single operation: flush all existing
@@ -2535,8 +2549,10 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       if (has_oos)
 	{
-	  /* Deletes are committed; return the pages this record emptied to the file manager. */
-	  vacuum_oos_reclaim_empty_pages (thread_p, &helper->oos_vfid, &oos_touched_pages);
+	  /* Deletes are committed; return the pages this record emptied to the file manager. Only
+	   * an interrupt comes back as an error (and stops the reclaim loop immediately); other
+	   * reclaim failures are absorbed inside, leaving the pages for a later cycle. */
+	  oos_reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, &helper->oos_vfid, &oos_touched_pages);
 	}
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
@@ -2614,8 +2630,10 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
 	  log_sysop_commit (thread_p);
 
-	  /* Deletes are committed; return the pages this record emptied to the file manager. */
-	  vacuum_oos_reclaim_empty_pages (thread_p, &helper->oos_vfid, &oos_touched_pages);
+	  /* Deletes are committed; return the pages this record emptied to the file manager. Only
+	   * an interrupt comes back as an error (and stops the reclaim loop immediately); other
+	   * reclaim failures are absorbed inside, leaving the pages for a later cycle. */
+	  oos_reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, &helper->oos_vfid, &oos_touched_pages);
 	}
       else
 	{
@@ -2636,6 +2654,13 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   assert (helper->forward_page == NULL);
 
   VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
+
+  if (oos_reclaim_err != NO_ERROR)
+    {
+      /* The record is fully vacuumed and counted; only the post-commit OOS empty-page reclaim
+       * was interrupted. Propagate so the worker can wind down. */
+      return oos_reclaim_err;
+    }
 
   return NO_ERROR;
 }

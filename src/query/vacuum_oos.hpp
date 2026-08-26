@@ -61,7 +61,7 @@ extern int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const H
     PGSLOTID slotid, INT16 record_type, VFID *oos_vfid);
 extern int vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
     VACUUM_OOS_TOUCHED_PAGES *touched_pages_out = NULL);
-extern void vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
+extern int vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
     VACUUM_OOS_TOUCHED_PAGES *touched_pages);
 
 #endif /* _VACUUM_OOS_HPP_ */

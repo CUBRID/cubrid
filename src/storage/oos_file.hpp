@@ -101,12 +101,18 @@ extern int oos_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
 #endif /* CUBRID_UNIT_TEST_ENABLED */
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
-/* Deallocates vpid back to the file manager's partial sector table iff it is a fully empty OOS
- * data page. Idempotent, zero-wait, best-effort: busy / already-deallocated / re-filled /
- * sticky-first-page candidates are skipped with NO_ERROR. Call only AFTER the deletes that
- * emptied the page are committed (a live undo could otherwise restore chunks onto a
- * deallocated page). */
-extern int oos_try_reclaim_empty_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
+/* Batch empty-page reclaim for an explicit candidate list (vacuum's fast path): deallocates the
+ * fully emptied candidates back to the file manager's partial sector table. Per-file checks
+ * (sticky first page lookup, legacy-numerable batch skip) and candidate dedupe (sorted and
+ * uniqued in place) run once per batch; non-empty candidates are rejected without touching the
+ * OOS stats header latch. Idempotent and zero-wait per page: busy / already-deallocated /
+ * re-filled / sticky-first-page candidates are skipped. Stops at the first error — notably
+ * ER_INTERRUPTED — and propagates it; skipped or unprocessed candidates simply stay allocated,
+ * recorded on disk (sector bitmap + page emptiness) for a future reclaim pass (the CBRD-26786
+ * growth-gate sweep; until it lands, a bounded leak matching the pre-change contract). Call
+ * only AFTER the deletes that emptied the pages are committed (a live undo could otherwise
+ * restore chunks onto a deallocated page). */
+extern int oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vector<VPID> &candidates);
 /* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. */
 extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid);
 /* Inserts requests in logical order; each request receives its head OOS OID. */
@@ -116,7 +122,7 @@ extern int oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbas
 extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest);
 extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests);
 /* touched_vpids (optional): pages that lost a chunk are appended (with duplicates) so
- * batch-boundary callers can feed oos_try_reclaim_empty_page after committing. */
+ * batch-boundary callers can feed oos_reclaim_empty_pages after committing. */
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
 		       std::vector<VPID> *touched_vpids = NULL);
 /* Idempotency probe: *out_exists is true iff the chunk's slot is still present. A deallocated page

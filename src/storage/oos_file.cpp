@@ -19,6 +19,7 @@
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 #include <atomic>
 #endif
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <new>
@@ -607,7 +608,7 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	}
 
       /* Phase C: Try to fix the candidate page with conditional latch. A hint may point to a
-       * page that vacuum reclaimed (oos_try_reclaim_empty_page) after the hint was recorded, so
+       * page that vacuum reclaimed (oos_reclaim_empty_pages) after the hint was recorded, so
        * tolerate deallocated pages and self-evict the stale hint instead of tripping the
        * dead-page assert. */
       *out_pgptr = pgbuf_fix (thread_p, &candidate_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
@@ -1203,23 +1204,51 @@ oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
   return NO_ERROR;
 }
 
+/* Per-page verdict of oos_try_reclaim_page_internal, for batch/sweep callers that must tell
+ * "done" from "retry later" from "not a candidate". OOS_RECLAIM_DEFERRED is reserved for the
+ * LSA reclaim gate (CBRD-26786): an empty page whose last write may belong to a still-active
+ * transaction must not be deallocated yet — that transaction's abort would undo its chunk
+ * deletes back into the page. The verdict is defined ahead of the gate itself so callers can
+ * already distinguish the outcomes. */
+typedef enum
+{
+  OOS_RECLAIM_RECLAIMED = 0,	/* page deallocated back to the file manager */
+  OOS_RECLAIM_DEFERRED,		/* empty, but gated from deallocation for now */
+  OOS_RECLAIM_SKIPPED		/* busy, re-filled, already deallocated, or not an OOS data page */
+} OOS_RECLAIM_RESULT;
+
 /*
- * oos_try_reclaim_empty_page () - Return a fully emptied OOS data page to the file manager's
- *   partial sector table so file_alloc can reuse it, no matter what state the (capped,
- *   non-persistent) bestspace cache is in. Idempotent and best-effort: every "cannot reclaim
- *   right now" outcome — page busy, already deallocated, re-filled, or the sticky first page —
- *   returns NO_ERROR, leaving the page as a candidate for the next vacuum cycle.
+ * oos_try_reclaim_page_internal () - Try to return one fully emptied OOS data page to the file
+ *   manager's partial sector table so file_alloc can reuse it, no matter what state the (capped,
+ *   non-persistent) bestspace cache is in. Two-phase check: phase 1 pre-qualifies the candidate
+ *   under a zero-wait READ fix and rejects non-candidates WITHOUT touching the OOS stats header
+ *   latch — the serialization point of every insert's page discovery; phase 2 takes the header
+ *   WRITE latch, re-validates under a zero-wait WRITE fix, and deallocates in its own
+ *   immediately-committed sysop. Per-file invariants (sticky first page lookup, legacy-numerable
+ *   skip) are the batch caller's job; this primitive only compares against the hdr_vpid it is
+ *   handed.
  *
- *   return: NO_ERROR or error code
+ *   Idempotent and zero-wait: every "cannot reclaim right now" outcome — page busy, already
+ *   deallocated, re-filled — reports OOS_RECLAIM_SKIPPED with NO_ERROR. A skipped page is not
+ *   corrupted state, only postponed work: it stays allocated and the truth stays on disk
+ *   (sector bitmap + page emptiness), so a future reclaim pass — the growth-gate sweep planned
+ *   for CBRD-26786 — can rediscover it. Until that sweep lands, a skipped page that no later
+ *   delete touches again is a bounded leak, matching the pre-change contract.
+ *
+ *   return: NO_ERROR or error code (ER_INTERRUPTED propagates so reclaim loops stop immediately)
  *   thread_p(in): thread entry
  *   oos_vfid(in): OOS file identifier
- *   vpid(in): candidate page (typically a touched_vpids entry from oos_delete)
+ *   vpid(in): candidate page (typically a deduped touched_vpids entry from oos_delete)
+ *   hdr_vpid(in): the file's sticky first page (holds OOS_HDR_STATS), resolved once by the caller
+ *   result(out): per-page verdict; meaningful only when NO_ERROR is returned
  *
  * Safety argument (why the emptiness check cannot race a writer):
- *   1. The OOS stats header page (sticky first page) is WRITE-latched for the whole operation.
- *      Every insert-side page discovery — hash cache, best[] hints, sync scan retry, and the
- *      alloc fallback — starts under that latch in oos_find_best_page, so no NEW writer can be
- *      handed this page while we hold it.
+ *   1. The OOS stats header page (sticky first page) is WRITE-latched for all of phase 2, from
+ *      before the binding emptiness re-validation until after the deallocation. Every
+ *      insert-side page discovery — hash cache, best[] hints, sync scan retry, and the alloc
+ *      fallback — starts under that latch in oos_find_best_page, so no NEW writer can be handed
+ *      this page while we hold it. (Phase 1 is advisory only: every rejection it makes cheaply,
+ *      a hypothetical phase 2 would have re-made under the latch.)
  *   2. A writer that already claimed the page keeps it continuously WRITE-latched from
  *      validation/allocation until its write completes (see oos_find_best_page and
  *      oos_file_alloc_new), so our conditional fix simply fails and we skip.
@@ -1229,44 +1258,79 @@ oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
  *      sync sampling may slip into that gap, which is why the hint eviction happens after the
  *      commit and why lookups tolerate deallocated hints (OLD_PAGE_MAYBE_DEALLOCATED).
  */
-int
-oos_try_reclaim_empty_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid)
+/*
+ * oos_reclaim_fix_candidate () - Zero-wait, dealloc-tolerant fix of a reclaim candidate, shared
+ *   by both phases of oos_try_reclaim_page_internal. Busy means a writer holds the page, and
+ *   ER_PB_BAD_PAGEID means a previous call (or a retried vacuum block) already reclaimed it —
+ *   both report page_out == NULL with NO_ERROR so the caller skips (idempotent). ER_INTERRUPTED
+ *   propagates so reclaim loops stop immediately.
+ */
+static int
+oos_reclaim_fix_candidate (THREAD_ENTRY *thread_p, const VPID &vpid, PGBUF_LATCH_MODE latch_mode,
+			   PAGE_PTR &page_out)
+{
+  page_out = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, PGBUF_CONDITIONAL_LATCH);
+  if (page_out == NULL)
+    {
+      int err = er_errid ();
+      if (err == ER_INTERRUPTED)
+	{
+	  return err;
+	}
+      er_clear ();
+    }
+  return NO_ERROR;
+}
+
+/* A page qualifies for reclaim iff it is an OOS data page (type check is snapshot-staleness
+ * paranoia — candidates come from delete-touched lists) with no record left. */
+static bool
+oos_page_is_reclaimable_empty (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr)
+{
+  return pgbuf_get_page_ptype (thread_p, page_ptr) == PAGE_OOS && spage_number_of_records (page_ptr) == 0;
+}
+
+static int
+oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid,
+			       const VPID &hdr_vpid, OOS_RECLAIM_RESULT &result)
 {
   int err = NO_ERROR;
 
-  VPID hdr_vpid;
-  err = file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid);
-  if (err != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return err;
-    }
+  result = OOS_RECLAIM_SKIPPED;
 
   if (VPID_EQ (&vpid, &hdr_vpid))
     {
       /* The sticky first page holds OOS_HDR_STATS and must never be deallocated. file_dealloc
-       * only asserts this in debug builds, so guard it here for release builds too. */
+       * only asserts this in debug builds, so guard it here — in the one function that
+       * deallocates — for release builds too. */
       return NO_ERROR;
     }
 
-  /* Legacy guard: OOS files created before ADR-0001 are numerable. file_dealloc's numerable
-   * branch is gated by FILE_TYPE_CAN_BE_NUMERABLE (which excludes FILE_OOS), so deallocating a
-   * page from a legacy numerable OOS file would clear its bitmap bit while leaving the user
-   * page table entry alive — corrupted numerable bookkeeping. Skip reclaim for such files. */
-  bool is_numerable = false;
-  err = file_is_numerable (thread_p, &oos_vfid, &is_numerable);
+  /* Phase 1: pre-qualify the candidate under a zero-wait READ fix, header latch NOT held.
+   * Every rejection decided here — busy, already deallocated, re-filled — costs no header
+   * latch, so a batch of non-empty candidates never serializes against inserts. */
+  PAGE_PTR page_ptr = NULL;
+  err = oos_reclaim_fix_candidate (thread_p, vpid, PGBUF_LATCH_READ, page_ptr);
   if (err != NO_ERROR)
     {
-      ASSERT_ERROR ();
       return err;
     }
-  if (is_numerable)
+  if (page_ptr == NULL)
     {
-      oos_trace ("skip reclaim of page {volid=%d, pageid=%d}: legacy numerable OOS file %d|%d",
-		 vpid.volid, vpid.pageid, VFID_AS_ARGS (&oos_vfid));
       return NO_ERROR;
     }
 
+  bool qualifies = oos_page_is_reclaimable_empty (thread_p, page_ptr);
+  pgbuf_unfix_and_init (thread_p, page_ptr);
+  if (!qualifies)
+    {
+      /* Not an OOS data page, or a concurrent insert already reused it — normal, leave it
+       * alone. */
+      return NO_ERROR;
+    }
+
+  /* Phase 2: the page looked reclaimable; serialize against insert-side page discovery via the
+   * stats header latch, then re-validate and deallocate. */
   PAGE_PTR hdr_page = pgbuf_fix (thread_p, &hdr_vpid, OLD_PAGE,
 				 PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (hdr_page == NULL)
@@ -1280,26 +1344,21 @@ oos_try_reclaim_empty_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const 
     pgbuf_unfix_and_init_after_check (thread_p, hdr_page);
   });
 
-  /* Zero-wait, dealloc-tolerant fix: busy means a writer holds it (skip), ER_PB_BAD_PAGEID
-   * means a previous call (or a retried vacuum block) already reclaimed it (skip, idempotent). */
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED,
-				 PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+  err = oos_reclaim_fix_candidate (thread_p, vpid, PGBUF_LATCH_WRITE, page_ptr);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
   if (page_ptr == NULL)
     {
-      err = er_errid ();
-      if (err == ER_INTERRUPTED)
-	{
-	  return err;
-	}
-      er_clear ();
       return NO_ERROR;
     }
 
-  if (pgbuf_get_page_ptype (thread_p, page_ptr) != PAGE_OOS
-      || spage_number_of_records (page_ptr) > 0)
+  if (!oos_page_is_reclaimable_empty (thread_p, page_ptr))
     {
-      /* Not an OOS data page (snapshot staleness paranoia), or a concurrent insert already
-       * reused it — normal, leave it alone. */
+      /* Phase 1 passed, but the page changed in the unlatched window between the phases (an
+       * insert that had already been handed the page refilled it). Phase 2's verdict, made
+       * under the header latch, is the binding one. */
       pgbuf_unfix_and_init (thread_p, page_ptr);
       return NO_ERROR;
     }
@@ -1352,6 +1411,102 @@ oos_try_reclaim_empty_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const 
 
   oos_trace ("reclaimed empty page {volid=%d, pageid=%d} in file %d|%d",
 	     vpid.volid, vpid.pageid, VFID_AS_ARGS (&oos_vfid));
+
+  result = OOS_RECLAIM_RECLAIMED;
+  return NO_ERROR;
+}
+
+/*
+ * oos_reclaim_empty_pages () - Offer an explicit list of candidate pages — typically the pages a
+ *   committed delete batch touched — to the per-page reclaim primitive, which deallocates the
+ *   fully emptied ones back to the file manager's partial sector table. The per-file invariant
+ *   checks (sticky first page lookup, legacy-numerable skip) and the candidate dedupe run once
+ *   per batch, and non-empty candidates are rejected without touching the OOS stats header
+ *   latch, so a batch never serializes against inserts on the header.
+ *
+ *   Call only AFTER the deletes that emptied the pages are committed: a live undo could
+ *   otherwise restore chunks onto a deallocated page.
+ *
+ *   Stops at the first error — notably ER_INTERRUPTED, so a shutdown request is never delayed
+ *   by the rest of the candidate list — and propagates it. Dropping unprocessed candidates is
+ *   safe: an unreclaimed empty page stays allocated and recorded on disk (sector bitmap + page
+ *   emptiness), reclaimable by a future pass — the growth-gate sweep planned for CBRD-26786.
+ *   Until that sweep lands, such a page is a bounded leak, matching the pre-change contract.
+ *
+ *   return: NO_ERROR or error code
+ *   thread_p(in): thread entry
+ *   oos_vfid(in): OOS file identifier
+ *   candidates(in/out): candidate pages, duplicates allowed; sorted and deduped in place
+ */
+int
+oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vector<VPID> &candidates)
+{
+  int err = NO_ERROR;
+
+  if (candidates.empty ())
+    {
+      return NO_ERROR;
+    }
+
+  /* Per-file invariants, resolved once per batch instead of once per candidate. */
+  VPID hdr_vpid;
+  err = file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
+
+  /* Legacy guard: OOS files created before ADR-0001 are numerable. file_dealloc's numerable
+   * branch is gated by FILE_TYPE_CAN_BE_NUMERABLE (which excludes FILE_OOS), so deallocating a
+   * page from a legacy numerable OOS file would clear its bitmap bit while leaving the user
+   * page table entry alive — corrupted numerable bookkeeping. Skip the whole batch. */
+  bool is_numerable = false;
+  err = file_is_numerable (thread_p, &oos_vfid, &is_numerable);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
+  if (is_numerable)
+    {
+      oos_trace ("skip reclaim batch of %d candidate(s): legacy numerable OOS file %d|%d",
+		 (int) candidates.size (), VFID_AS_ARGS (&oos_vfid));
+      return NO_ERROR;
+    }
+
+  /* Dedupe: a value chain usually deletes several chunks from the same page (vector +
+   * sort/unique beats a set for the single-digit sizes seen here). */
+  std::sort (candidates.begin (), candidates.end (),
+	     [] (const VPID &a, const VPID &b)
+  {
+    return a.volid < b.volid || (a.volid == b.volid && a.pageid < b.pageid);
+  });
+  candidates.erase (std::unique (candidates.begin (), candidates.end (),
+				 [] (const VPID &a, const VPID &b)
+  {
+    return VPID_EQ (&a, &b);
+  }), candidates.end ());
+
+  int n_reclaimed = 0;
+  for (const VPID &vpid : candidates)
+    {
+      OOS_RECLAIM_RESULT result;
+      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, result);
+      if (err != NO_ERROR)
+	{
+	  /* Stop immediately — an interrupt must not wait out the rest of the list — and let
+	   * the caller decide; the unprocessed candidates stay discoverable on disk. */
+	  return err;
+	}
+      if (result == OOS_RECLAIM_RECLAIMED)
+	{
+	  n_reclaimed++;
+	}
+    }
+
+  oos_trace ("reclaim batch on file %d|%d: %d of %d candidate(s) reclaimed",
+	     VFID_AS_ARGS (&oos_vfid), n_reclaimed, (int) candidates.size ());
 
   return NO_ERROR;
 }
@@ -2144,8 +2299,8 @@ oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
   log_sysop_commit (thread_p);
 
   /* Keep the WRITE latch acquired at allocation instead of unfixing and re-fixing. A latch-free
-   * gap here would let oos_try_reclaim_empty_page see a freshly allocated (still empty) page and
-   * deallocate it out from under the inserter. */
+   * gap here would let oos_try_reclaim_page_internal see a freshly allocated (still empty) page
+   * and deallocate it out from under the inserter. */
   return auto_unfix_page_ptr (page, page_auto_unfix {thread_p});
 }
 
@@ -2279,7 +2434,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
       /* Adopt the WRITE latch acquired at validation (Phase C) instead of unfixing and
        * re-fixing. Besides removing the old fill-in-the-gap TOCTOU fallback, the continuous
        * latch is a safety invariant for empty-page reclaim: a page an inserter has claimed is
-       * never latch-free, so oos_try_reclaim_empty_page's conditional fix fails instead of
+       * never latch-free, so oos_try_reclaim_page_internal's conditional fix fails instead of
        * deallocating a page someone is about to fill. */
       return auto_unfix_page_ptr (found_page, page_auto_unfix {thread_p});
     }
@@ -2370,8 +2525,8 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  *   oos_vfid(in): OOS file identifier
  *   oid(in): head OID of the OOS record chain
  *   touched_vpids(out): optional; every page a chunk was deleted from is appended (duplicates
- *			 allowed — the reclaim caller dedupes). Lets batch-boundary callers feed
- *			 oos_try_reclaim_empty_page without knowing the chain layout.
+ *			 allowed — the reclaim batch dedupes). Lets batch-boundary callers feed
+ *			 oos_reclaim_empty_pages without knowing the chain layout.
  *
  * NOTE: This is the inner workhorse called by oos_delete(). Each chunk
  *       deletion is logged individually with undo data, so transaction
@@ -2545,7 +2700,7 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *       layer errors always propagate up and result in transaction abort.
  *
  *       Page deallocation is NOT done here. Vacuum reclaims emptied pages
- *       via oos_try_reclaim_empty_page after its deletes are committed;
+ *       via oos_reclaim_empty_pages after its deletes are committed;
  *       touched_vpids feeds that step.
  */
 int
@@ -2647,7 +2802,7 @@ oos_get_length (THREAD_ENTRY *thread_p, const OID &oid)
   auto vpid = VPID{pageid, volid};
 
   /* Tolerate a deallocated page: vacuum may have reclaimed the emptied page
-   * (oos_try_reclaim_empty_page), so probing a vacuumed OID must report "gone",
+   * (oos_reclaim_empty_pages), so probing a vacuumed OID must report "gone",
    * not trip the dead-page assert. */
   PAGE_PTR page_ptr = NULL;
   int err = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr);
