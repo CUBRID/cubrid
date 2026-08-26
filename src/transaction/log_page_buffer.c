@@ -318,6 +318,8 @@ static int logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const c
 			      LOG_LSA * vol_chkpt_lsa);
 static bool logpb_check_if_exists (const char *fname, char *first_vol);
 #if defined(SERVER_MODE)
+static void logpb_set_backup_info_in_header (LOG_HEADER * log_hdr, FILEIO_BACKUP_LEVEL backup_level,
+					     INT64 bkup_attime, const LOG_LSA * chkpt_lsa);
 static int logpb_backup_needed_archive_logs (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session,
 					     int first_arv_num, int last_arv_num);
 #endif /* SERVER_MODE */
@@ -6150,6 +6152,17 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 	    }
 	}
 
+#if defined(SERVER_MODE)
+      /* Keep what a running backup still reads. Bound is exclusive: last_arv_num_to_delete is decremented below. */
+      if (log_Gl.backup_first_arv_num_needed >= 0 && last_arv_num_to_delete > log_Gl.backup_first_arv_num_needed)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Archive removal capped at %d (was %d): a backup still needs %d and up\n",
+			 log_Gl.backup_first_arv_num_needed - 1, last_arv_num_to_delete - 1,
+			 log_Gl.backup_first_arv_num_needed);
+	  last_arv_num_to_delete = log_Gl.backup_first_arv_num_needed;
+	}
+#endif /* SERVER_MODE */
+
       if (max_count > 0)
 	{
 	  /* check max count for deletion */
@@ -6318,6 +6331,18 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 	    }
 	}
     }
+
+#if defined(SERVER_MODE)
+  /* Defensive: the only caller, logpb_backup (), has already dropped the pin. Kept for a future caller that could
+   * reach here during a backup. Bound is inclusive. */
+  assert_release (log_Gl.backup_first_arv_num_needed == -1);
+  if (log_Gl.backup_first_arv_num_needed >= 0 && last_deleted_arv_num > log_Gl.backup_first_arv_num_needed - 1)
+    {
+      _er_log_debug (ARG_FILE_LINE, "Archive removal capped at %d (was %d): a backup still needs %d and up\n",
+		     log_Gl.backup_first_arv_num_needed - 1, last_deleted_arv_num, log_Gl.backup_first_arv_num_needed);
+      last_deleted_arv_num = log_Gl.backup_first_arv_num_needed - 1;
+    }
+#endif /* SERVER_MODE */
 
   if (log_Gl.hdr.last_deleted_arv_num + 1 > last_deleted_arv_num)
     {
@@ -7558,6 +7583,51 @@ logpb_destroy_backup_read_worker_pool ()
 }
 
 /*
+ * logpb_set_backup_info_in_header - Record a backup in the log header
+ *
+ * return: nothing
+ *
+ *   log_hdr(in/out): log header to record into
+ *   backup_level(in): level of the backup being recorded
+ *   bkup_attime(in): time the backup started
+ *   chkpt_lsa(in): checkpoint the backup starts from
+ *
+ * NOTE: A backup of one level invalidates the levels above it, so those are cleared here as well.
+ */
+static void
+logpb_set_backup_info_in_header (LOG_HEADER * log_hdr, FILEIO_BACKUP_LEVEL backup_level, INT64 bkup_attime,
+				 const LOG_LSA * chkpt_lsa)
+{
+  /* Clear log header information regarding previous backups */
+  logpb_initialize_backup_info (log_hdr);
+
+  /* Save additional info and metrics from this backup */
+  log_hdr->bkinfo[backup_level].bkup_attime = bkup_attime;
+
+  switch (backup_level)
+    {
+    case FILEIO_BACKUP_FULL_LEVEL:
+    default:
+      LSA_COPY (&log_hdr->bkup_level0_lsa, chkpt_lsa);
+      LSA_SET_NULL (&log_hdr->bkup_level1_lsa);
+      LSA_SET_NULL (&log_hdr->bkup_level2_lsa);
+      log_hdr->bkinfo[FILEIO_BACKUP_BIG_INCREMENT_LEVEL].bkup_attime = 0;
+      log_hdr->bkinfo[FILEIO_BACKUP_SMALL_INCREMENT_LEVEL].bkup_attime = 0;
+      break;
+
+    case FILEIO_BACKUP_BIG_INCREMENT_LEVEL:
+      LSA_COPY (&log_hdr->bkup_level1_lsa, chkpt_lsa);
+      LSA_SET_NULL (&log_hdr->bkup_level2_lsa);
+      log_hdr->bkinfo[FILEIO_BACKUP_SMALL_INCREMENT_LEVEL].bkup_attime = 0;
+      break;
+
+    case FILEIO_BACKUP_SMALL_INCREMENT_LEVEL:
+      LSA_COPY (&log_hdr->bkup_level2_lsa, chkpt_lsa);
+      break;
+    }
+}
+
+/*
  * logpb_backup - Execute a level backup for the given database volume
  *
  * return: NO_ERROR if all OK, ER status otherwise
@@ -7618,6 +7688,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   int keys_vdes = NULL_VOLDES;
 #if defined(SERVER_MODE)
   int first_arv_needed = -1;	/* for self contained, consistent */
+  int last_arv_needed = -1;	/* last archive of the frozen set */
 
   int rv;
   time_t wait_checkpoint_begin_time;
@@ -8121,13 +8192,10 @@ loop:
 
   if (first_arv_needed < log_Gl.hdr.nxarv_num)
     {
-      error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, log_Gl.hdr.nxarv_num - 1);
-      if (error_code != NO_ERROR)
-	{
-	  LOG_CS_EXIT (thread_p);
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
-	  goto error;
-	}
+      /* Freeze the archive set and pin it against removal. It is transferred after the critical section is
+       * released; an archive never changes once nxarv_num has passed it, so the pin is all it needs. */
+      last_arv_needed = log_Gl.hdr.nxarv_num - 1;
+      log_Gl.backup_first_arv_num_needed = first_arv_needed;
     }
 #endif
 
@@ -8143,12 +8211,8 @@ loop:
     }
 
   /*
-   * We must store the final bkvinf file at the very end of the backup
-   * to have the best chance of having all of the information in it.
-   * Note: that there is a window that the last bkvinf entry still not being
-   * there if a new backup volume is needed while writing this volume.
-   * However, in this case, then restore will ask the user for the
-   * subsequent backup unit num.
+   * Write what is known so far, so a backup that dies below still leaves most of its unit names behind. The
+   * write after the transfer is the complete one. If a unit is missing from it, restore asks the user for it.
    */
   error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
   if (error_code != NO_ERROR)
@@ -8158,35 +8222,9 @@ loop:
       goto error;
     }
 
-  /* Clear log header information regarding previous backups */
-  logpb_initialize_backup_info (&log_Gl.hdr);
-
-  /* Save additional info and metrics from this backup */
-  log_Gl.hdr.bkinfo[backup_level].bkup_attime = session.bkup.bkuphdr->start_time;
-
-  switch (backup_level)
-    {
-    case FILEIO_BACKUP_FULL_LEVEL:
-    default:
-      LSA_COPY (&log_Gl.hdr.bkup_level0_lsa, &chkpt_lsa);
-      LSA_SET_NULL (&log_Gl.hdr.bkup_level1_lsa);
-      LSA_SET_NULL (&log_Gl.hdr.bkup_level2_lsa);
-      log_Gl.hdr.bkinfo[FILEIO_BACKUP_BIG_INCREMENT_LEVEL].bkup_attime = 0;
-      log_Gl.hdr.bkinfo[FILEIO_BACKUP_SMALL_INCREMENT_LEVEL].bkup_attime = 0;
-      break;
-
-    case FILEIO_BACKUP_BIG_INCREMENT_LEVEL:
-      LSA_COPY (&log_Gl.hdr.bkup_level1_lsa, &chkpt_lsa);
-      LSA_SET_NULL (&log_Gl.hdr.bkup_level2_lsa);
-      log_Gl.hdr.bkinfo[FILEIO_BACKUP_SMALL_INCREMENT_LEVEL].bkup_attime = 0;
-      break;
-
-    case FILEIO_BACKUP_SMALL_INCREMENT_LEVEL:
-      LSA_COPY (&log_Gl.hdr.bkup_level2_lsa, &chkpt_lsa);
-      break;
-    }
-
-  /* Now indicate how many volumes were backed up */
+  /* The active log image copied below has to carry the header the server is running with, which is why this
+   * flush stays here. Before this change it also carried the record of this backup, written just above; that
+   * record moved to the end, because a backup is recorded only once it exists. */
   logpb_flush_header (thread_p);
 
   /* Include active log always. Skipping log active is obsolete. */
@@ -8198,10 +8236,46 @@ loop:
       goto error;
     }
 
+  /* Stamp the end time here, right after the active log image has been taken.
+   *
+   * |--------------- LOG_CS ----------------|
+   * flush > pin archives > copy active log  |  archive transfer  |  backup done
+   *                                     (1)                  (2)
+   *
+   * (1) is where the log content of the backup is frozen. (2) is where the transfer ends.
+   *
+   * end_time has one reader: restoredb -d backuptime recovers up to it. This backup can restore up to (1), so
+   * end_time has to be (1). Stamping it at (2), where fileio_finish_backup () used to, would name a time this
+   * backup cannot reach - transactions commit and are acknowledged during the transfer, but their log is not in
+   * the backup, so the restore would stop at (1) and report nothing. */
+  session.bkup.bkuphdr->end_time = (INT64) time (NULL);
+
+  /* The log is captured and the archive set is pinned. Everything below only reads files that cannot change, so
+   * let transactions run while the archives are transferred. */
+  LOG_CS_EXIT (thread_p);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
+
+#if defined(SERVER_MODE)
+  if (first_arv_needed >= 0 && first_arv_needed <= last_arv_needed)
+    {
+      /* Once per backup: the only trace of a phase that ER_LOG_BACKUP_CS_ENTER and _EXIT no longer bracket. */
+      _er_log_debug (ARG_FILE_LINE, "Backup of log archives %d to %d started outside the log critical section",
+		     first_arv_needed, last_arv_needed);
+
+      /* Clears the pin as it goes; the error path clears it too. */
+      error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, last_arv_needed);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      _er_log_debug (ARG_FILE_LINE, "Backup of log archives %d to %d finished", first_arv_needed, last_arv_needed);
+    }
+#endif
+
   if (fileio_finish_backup (thread_p, &session) == NULL)
     {
-      LOG_CS_EXIT (thread_p);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
       error_code = ER_FAILED;
       goto error;
     }
@@ -8210,23 +8284,33 @@ loop:
   logpb_destroy_backup_read_worker_pool ();
 #endif
 
+  error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* Past the last point that can destroy the backup: every error path above calls fileio_abort_backup (), which
+   * removes all backup volumes of this level. Recording only here makes the outcome atomic with nothing to undo -
+   * a backup that fails or is killed leaves the previous record untouched. Archive deletion waits for the same
+   * point.
+   *
+   * The active log image was copied before this, so it carries the previous backup's record. Taking an
+   * incremental on a database restored from this backup is therefore not supported; take a full backup first. */
+  LOG_CS_ENTER (thread_p);
+  logpb_set_backup_info_in_header (&log_Gl.hdr, backup_level, session.bkup.bkuphdr->start_time, &chkpt_lsa);
+  logpb_flush_header (thread_p);
+  LOG_CS_EXIT (thread_p);
+
   if (delete_unneeded_logarchives != false)
     {
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN);
       if (catmsg)
 	{
+	  LOG_CS_ENTER (thread_p);
 	  logpb_remove_archive_logs (thread_p, catmsg);
+	  LOG_CS_EXIT (thread_p);
 	}
-    }
-
-  LOG_CS_EXIT (thread_p);
-
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
-
-  error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
     }
 
   if (session.verbose_fp)
@@ -8257,6 +8341,7 @@ loop:
   LOG_CS_ENTER (thread_p);
   log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
   log_Gl.backup_in_progress = false;
+  log_Gl.backup_first_arv_num_needed = -1;
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
@@ -8289,6 +8374,7 @@ error:
       log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
     }
   log_Gl.backup_in_progress = false;
+  log_Gl.backup_first_arv_num_needed = -1;
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
@@ -8848,6 +8934,22 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 			}
 
 		      os_rename_file (tmp_logfiles_from_backup, to_volname);
+
+		      if (to_volid == LOG_DBLOG_ACTIVE_VOLID)
+			{
+			  /* Re-lock the active log: archives are restored after it, and a server started in that gap
+			   * would come up on a half restored log directory. Best effort - fileio_mount () also fails
+			   * when it merely cannot write the lock information file, which must not fail the restore. */
+			  lgat_vdes =
+			    fileio_mount (thread_p, db_fullname, to_volname, LOG_DBLOG_ACTIVE_VOLID, true, false);
+			  if (lgat_vdes == NULL_VOLDES)
+			    {
+			      er_log_debug (ARG_FILE_LINE,
+					    "logpb_restore: could not lock %s; restore continues unlocked\n",
+					    to_volname);
+			      er_clear ();
+			    }
+			}
 		    }
 		  else
 		    {
@@ -8963,6 +9065,12 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
     }
 
   LOG_CS_EXIT (thread_p);
+
+  if (lgat_vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, lgat_vdes);
+      lgat_vdes = NULL_VOLDES;
+    }
 
   fileio_page_bitmap_list_destroy (&page_bitmap_list);
 
@@ -10763,6 +10871,12 @@ logpb_backup_needed_archive_logs (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	{
 	  break;
 	}
+
+      /* Archive i is in the backup now. The pin must move as we go: holding the whole range while streaming to a
+       * slow destination stops removal long enough to fill the log volume, which takes the server down. */
+      LOG_CS_ENTER (thread_p);
+      log_Gl.backup_first_arv_num_needed = (i == last_arv_num) ? -1 : i + 1;
+      LOG_CS_EXIT (thread_p);
     }
 
   return error_code;
