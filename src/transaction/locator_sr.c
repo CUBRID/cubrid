@@ -1303,21 +1303,20 @@ start:
 	      || (entry->e_current.action == LC_CLASSNAME_RESERVED && LSA_ISNULL (&entry->e_current.savep_lsa)))
 	    {
 	      /*
-	       * The entry can be changed.
-	       * Do we need to save the old action...just in case we do a
-	       * partial rollback ?
+	       * The entry can be changed. Keep what it says now, so that a rollback has
+	       * something to put back.
+	       *
+	       * Saving only when a savepoint could be returned to loses the DELETED that says
+	       * this name was committed before this transaction dropped it. A rollback then
+	       * reads the name as merely reserved and drops the entry outright instead of
+	       * restoring it. A class lives through that because recovering its record puts
+	       * the name back; a synonym has no record to recover, so it would simply go
+	       * missing until the next restart rebuilt the entries.
 	       */
-	      if (!LSA_ISNULL (&entry->e_current.savep_lsa))
+	      if (locator_classname_action_push (entry) != NO_ERROR)
 		{
-		  /*
-		   * There is a possibility of returning to this top LSA
-		   * (savepoint). Save the action.. just in case
-		   */
-		  if (locator_classname_action_push (entry) != NO_ERROR)
-		    {
-		      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-		      return LC_CLASSNAME_ERROR;
-		    }
+		  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+		  return LC_CLASSNAME_ERROR;
 		}
 
 	      entry->e_current.action = LC_CLASSNAME_RESERVED;
