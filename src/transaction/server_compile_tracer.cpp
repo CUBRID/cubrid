@@ -43,10 +43,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <system_error>
 #include <thread>
 
 #include "connection_defs.h"
 #include "connection_sr.h"
+#include "storage_common.h"	// NULL_TRAN_INDEX
 #include "db.h"
 #include "db_client_type.hpp"
 #include "dbtype.h"
@@ -74,7 +76,30 @@ boot_tracer_start_if_requested (const char *server_name)
       out = "m0_tracer.out";
     }
 
-  std::thread (tracer_main, strdup (server_name), strdup (sql), strdup (out)).detach ();
+  char *server_name_dup = strdup (server_name);
+  char *sql_dup = strdup (sql);
+  char *out_dup = strdup (out);
+  if (server_name_dup == NULL || sql_dup == NULL || out_dup == NULL)
+    {
+      fprintf (stderr, "M0_TRACER: FAIL argument allocation\n");
+      free (server_name_dup);
+      free (sql_dup);
+      free (out_dup);
+      return;
+    }
+
+  try
+    {
+      std::thread (tracer_main, server_name_dup, sql_dup, out_dup).detach ();
+    }
+  catch (const std::system_error &)
+    {
+      /* resource exhaustion must fail the tracer, not take down cub_server */
+      fprintf (stderr, "M0_TRACER: FAIL thread creation\n");
+      free (server_name_dup);
+      free (sql_dup);
+      free (out_dup);
+    }
 }
 
 static void
@@ -202,8 +227,22 @@ tracer_main (char *server_name, char *sql, char *out_path)
   }
 
 retire:
-  // milestone-0: leave the client context alive (see file header); just retire
-  // the thread entry
+  // milestone-0: the client context stays alive (see file header), but the
+  // conn and the entry must not outlive this thread dirty:
+  // - the socketless conn left in css_Active_conn_anchor makes the shutdown
+  //   path "close" an orphan client on the main thread, stamping Main_entry_p
+  //   with the tracer's tran_index and TS_FREE — the next suspend on the main
+  //   entry (shutdown checkpoint's DWB wait) then assert-aborts
+  //   (thread_entry.cpp:564; see PR #181 shutdown-SIGABRT diagnosis)
+  // - retire_entry() returns the entry to the pool as-is, so scrub the fields
+  //   this tracer stamped before another thread reuses it
+  if (conn != NULL)
+    {
+      entry_p->conn_entry = NULL;
+      css_free_conn (conn);
+    }
+  entry_p->tran_index = NULL_TRAN_INDEX;
+  entry_p->m_status = cubthread::entry::status::TS_DEAD;
   entry_p->get_error_context ().deregister_thread_local ();
   entry_p->unregister_id ();
   cubthread::get_manager ()->retire_entry (*entry_p);
