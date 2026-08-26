@@ -343,6 +343,7 @@ static driver *ldr_Driver;
  */
 #define LDR_LOCKHINT_COUNT 1
 static LOCK ldr_Hint_locks[LDR_LOCKHINT_COUNT];
+static OID ldr_Hint_owners[LDR_LOCKHINT_COUNT];
 static const char *ldr_Hint_class_names[LDR_LOCKHINT_COUNT];
 static int ldr_Hint_subclasses[LDR_LOCKHINT_COUNT];
 static LC_PREFETCH_FLAGS ldr_Hint_flags[LDR_LOCKHINT_COUNT];
@@ -1434,8 +1435,9 @@ ldr_find_class (const char *class_name)
 
   ldr_Hint_class_names[0] = realname;
 
-  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, NULL,
-				    1, NULL_LOCK, NULL);
+  au_find_owner_oid_of_name (ldr_Hint_class_names[0], &ldr_Hint_owners[0]);
+  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags,
+				    ldr_Hint_owners, 1, NULL_LOCK, NULL);
   if (found == LC_CLASSNAME_EXIST)
     {
       class_ = db_find_class (class_name);
@@ -1458,8 +1460,9 @@ ldr_find_class (const char *class_name)
 	{
 	  ldr_Hint_class_names[0] = other_class_name;
 
+	  au_find_owner_oid_of_name (ldr_Hint_class_names[0], &ldr_Hint_owners[0]);
 	  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags,
-					    NULL, 1, NULL_LOCK, NULL);
+					    ldr_Hint_owners, 1, NULL_LOCK, NULL);
 	  if (found == LC_CLASSNAME_EXIST)
 	    {
 	      class_ = db_find_class (other_class_name);

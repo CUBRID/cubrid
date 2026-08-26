@@ -150,6 +150,7 @@ static INT32 locator_Pseudo_pageid_crt = -2;
 static int locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
 static const char *locator_bare_name (const char *name);
 static LOCATOR_CLASSNAME_ENTRY *locator_get_classname_entry (const char *classname);
+static LOCATOR_CLASSNAME_ENTRY *locator_get_entry (const OID * owner_oid, const char *classname);
 static int locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static void locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static bool locator_entry_is_synonym (LOCATOR_CLASSNAME_ENTRY * entry);
@@ -296,6 +297,35 @@ locator_bare_name (const char *name)
   const char *dot = strchr (name, '.');
 
   return (dot != NULL) ? dot + 1 : name;
+}
+
+/*
+ * locator_get_entry () - Find the entry a name refers to under a given owner
+ *
+ * return: The entry, or NULL when no such name belongs to that owner
+ *
+ *   owner_oid(in): Owner the name refers to; NULL for a name with no qualifier
+ *   classname(in): The name; only the part after the qualifier is keyed on
+ *
+ * Note: The caller must be inside CSECT_LOCATOR_SR_CLASSNAME_TABLE.
+ */
+static LOCATOR_CLASSNAME_ENTRY *
+locator_get_entry (const OID * owner_oid, const char *classname)
+{
+  LOCATOR_CLASSNAME_KEY key;
+  LOCATOR_CLASSNAME_ENTRY *entry;
+
+  COPY_OID (&key.owner_oid, (owner_oid != NULL) ? owner_oid : &oid_Null_oid);
+  key.bare_name = locator_bare_name (classname);
+
+  entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames_owned, &key);
+
+#if !defined(NDEBUG)
+  /* the name index is still live; while it is, the two have to agree */
+  assert (entry == locator_get_classname_entry (classname));
+#endif
+
+  return entry;
 }
 
 /*
@@ -886,7 +916,7 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
   bool attr_info_inited = false;
   bool scan_cache_inited = false;
 
-  class_entry = locator_get_classname_entry (CT_SYNONYM_NAME);
+  class_entry = locator_get_entry (NULL, CT_SYNONYM_NAME);
   if (class_entry == NULL || class_entry->e_current.action != LC_CLASSNAME_EXIST)
     {
       /* bootstrap: the synonym catalog class does not exist yet */
@@ -1035,7 +1065,7 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	  continue;
 	}
 
-      if (locator_get_classname_entry (unique_name) != NULL)
+      if (locator_get_entry (&owner_oid, unique_name) != NULL)
 	{
 	  /* an old row version scanned without a snapshot, or a name clash; first one wins */
 	  continue;
@@ -1247,7 +1277,7 @@ start:
     }
 
   /* Is there any entries on the classname hash table ? */
-  entry = locator_get_classname_entry (classname);
+  entry = locator_get_entry (owner_oid, classname);
 
   if (locator_is_exist_class_name_entry (thread_p, entry))
     {
@@ -2997,6 +3027,7 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
   RECDES peek = RECDES_INITIALIZER;	/* Record descriptor for peeking object */
   HFID root_hfid;
   OID class_oid;
+  OID record_owner_oid;
   char *classname = NULL;
   HEAP_SCANCACHE scan_cache;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
@@ -3049,7 +3080,8 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
        * Make sure that this class exists in classname_to_OID table and that
        * the OIDS matches
        */
-      entry = locator_get_classname_entry (classname);
+      or_class_owner (&peek, &record_owner_oid);
+      entry = locator_get_entry (&record_owner_oid, classname);
       if (entry == NULL)
 	{
 	  isvalid = DISK_INVALID;
@@ -12226,17 +12258,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 	      return LC_CLASSNAME_ERROR;
 	    }
 
-	  entry = locator_get_classname_entry (classname);
-
-#if !defined(NDEBUG)
-	  /* Probe for the coming composite key: when the request names an owner and the
-	   * entry knows one, they have to be the same object. */
-	  if (many_owner_oids != NULL && entry != NULL && !OID_ISNULL (&many_owner_oids[i])
-	      && !OID_ISNULL (&entry->e_owner_oid) && !locator_entry_is_synonym (entry))
-	    {
-	      assert (OID_EQ (&many_owner_oids[i], &entry->e_owner_oid));
-	    }
-#endif
+	  entry = locator_get_entry ((many_owner_oids != NULL) ? &many_owner_oids[i] : NULL, classname);
 
 	  if (locator_entry_is_synonym (entry))
 	    {

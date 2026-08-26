@@ -6730,6 +6730,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
   int error = NO_ERROR, num_classes = 0, idx, partition_type = 0;
   PT_NODE *node = statement->info.delete_.del_stmt_list, *flat = NULL;
   char **classes_names = NULL;
+  OID *owner_oids = NULL;
   LOCK *locks = NULL;
   int *need_subclasses = NULL, au_save = 0;
   MOP *partitions = NULL;
@@ -6745,6 +6746,13 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* allocate classes_names array */
+  owner_oids = (OID *) db_private_alloc (NULL, num_classes * sizeof (OID));
+  if (owner_oids == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+
   classes_names = (char **) db_private_alloc (NULL, num_classes * sizeof (char *));
   if (classes_names == NULL)
     {
@@ -6800,9 +6808,14 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
       flags[idx] = LC_PREF_FLAG_LOCK;
     }
 
+  for (idx = 0; idx < num_classes; idx++)
+    {
+      au_find_owner_oid_of_name (classes_names[idx], &owner_oids[idx]);
+    }
+
   /* lock splitted classes with X_LOCK */
   if (locator_lockhint_classes
-      (num_classes, (const char **) classes_names, locks, need_subclasses, flags, NULL, 1, NULL_LOCK,
+      (num_classes, (const char **) classes_names, locks, need_subclasses, flags, owner_oids, 1, NULL_LOCK,
        NULL) != LC_CLASSNAME_EXIST)
     {
       assert (er_errid () != NO_ERROR);
@@ -6904,6 +6917,11 @@ cleanup:
 	  db_private_free_and_init (NULL, classes_names[idx]);
 	}
       db_private_free_and_init (NULL, classes_names);
+    }
+
+  if (owner_oids != NULL)
+    {
+      db_private_free_and_init (NULL, owner_oids);
     }
 
   if (locks != NULL)
