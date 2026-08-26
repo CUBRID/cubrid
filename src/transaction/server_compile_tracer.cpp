@@ -128,6 +128,7 @@ tracer_main (char *server_name, char *sql, char *out_path)
   tracer_log (fp, "M0_TRACER: start db=%s sql=[%s]", server_name, sql);
 
   int err;
+  bool succeeded = false;
 
   // register this foreign thread with the thread manager (same ritual as
   // connection_worker.cpp)
@@ -223,7 +224,7 @@ tracer_main (char *server_name, char *sql, char *out_path)
       }
     db_close_session (session);
     (void) db_commit_transaction ();
-    tracer_log (fp, "M0_TRACER: SUCCESS");
+    succeeded = true;
   }
 
 retire:
@@ -246,6 +247,15 @@ retire:
   entry_p->get_error_context ().deregister_thread_local ();
   entry_p->unregister_id ();
   cubthread::get_manager ()->retire_entry (*entry_p);
+  // SUCCESS is the harness's cue to stop the server, so it must be the very
+  // last act — logging it before css_free_conn re-opens the shutdown race
+  // this teardown exists to close (the orphan conn corrupting Main_entry_p).
+  // A stop racing a still-running tracer remains a documented milestone-0
+  // limitation; the harness never does that (it only stops after SUCCESS).
+  if (succeeded)
+    {
+      tracer_log (fp, "M0_TRACER: SUCCESS");
+    }
   if (fp != stderr)
     {
       fclose (fp);
