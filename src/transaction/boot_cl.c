@@ -278,10 +278,14 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
       (void) boot_shutdown_client (true);
     }
 
+#if !defined (SERVER_MODE)
+  /* wf119: same contract as boot_shutdown_client — an in-process (re)boot
+   * must never finalize the client modules shared with the running server */
   if (!boot_Is_client_all_final)
     {
       boot_client_all_finalize (ALL_FINALIZATION);
     }
+#endif
 
 #if defined(WINDOWS)
 /* set up the WINDOWS stream emulations */
@@ -1453,7 +1457,17 @@ boot_shutdown_client (bool is_er_final)
 #endif /* !CS_MODE */
 	}
 
+#if defined (SERVER_MODE)
+      /* wf119: for the in-process client, shutdown may only reclaim the
+       * transaction/registration (done above). The client modules
+       * (parser/ws/tp/sysprm/perfmon/...) are shared with — and owned by —
+       * the running server, so boot_client_all_finalize must never run
+       * here. Reachable via boot_restart_failure_cleanup when an in-process
+       * boot fails after client registration (e.g. au_start/es_init). */
+      tm_Tran_index = NULL_TRAN_INDEX;
+#else
       boot_client_all_finalize (is_er_final ? ALL_FINALIZATION : EXCEPT_ER_FINALIZATION);
+#endif
     }
 
   return NO_ERROR;

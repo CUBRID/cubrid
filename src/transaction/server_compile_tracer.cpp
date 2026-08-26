@@ -210,24 +210,45 @@ tracer_main (char *server_name, char *sql, char *out_path)
       }
     tracer_log (fp, "M0_TRACER: executed, row_count=%d", err);
 
-    if (result != NULL)
+    /* the gate contract is connect→prepare→execute→fetch→commit: every stage
+     * must fail loudly, or a fetch/commit regression sails through as SUCCESS */
+    if (result == NULL)
       {
-	if (db_query_first_tuple (result) == DB_CURSOR_SUCCESS)
-	  {
-	    DB_VALUE value;
-	    if (db_query_get_tuple_value (result, 0, &value) == NO_ERROR)
-	      {
-		fprintf (fp, "M0_TRACER: first value = ");
-		db_fprint_value (fp, &value);
-		fputc ('\n', fp);
-		fflush (fp);
-		db_value_clear (&value);
-	      }
-	  }
-	db_query_end (result);
+	tracer_log (fp, "M0_TRACER: FAIL no result to fetch");
+	db_close_session (session);
+	goto retire;
       }
+    err = db_query_first_tuple (result);
+    if (err != DB_CURSOR_SUCCESS)
+      {
+	tracer_log (fp, "M0_TRACER: FAIL db_query_first_tuple err=%d msg=[%s]", err, er_msg () ? er_msg () : "");
+	db_query_end (result);
+	db_close_session (session);
+	goto retire;
+      }
+    DB_VALUE value;
+    err = db_query_get_tuple_value (result, 0, &value);
+    if (err != NO_ERROR)
+      {
+	tracer_log (fp, "M0_TRACER: FAIL db_query_get_tuple_value err=%d msg=[%s]", err, er_msg () ? er_msg () : "");
+	db_query_end (result);
+	db_close_session (session);
+	goto retire;
+      }
+    fprintf (fp, "M0_TRACER: first value = ");
+    db_fprint_value (fp, &value);
+    fputc ('\n', fp);
+    fflush (fp);
+    db_value_clear (&value);
+    db_query_end (result);
     db_close_session (session);
-    (void) db_commit_transaction ();
+
+    err = db_commit_transaction ();
+    if (err != NO_ERROR)
+      {
+	tracer_log (fp, "M0_TRACER: FAIL db_commit_transaction err=%d msg=[%s]", err, er_msg () ? er_msg () : "");
+	goto retire;
+      }
     succeeded = true;
   }
 
