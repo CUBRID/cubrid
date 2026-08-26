@@ -14221,6 +14221,13 @@ cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_star
   LOG_HDR_CDC_ARV_NUM_SET (&log_Gl.hdr, arv_num);
   logpb_flush_header (thread_p);
 
+  /* logpb_flush_header() only writes, and the active log is not mounted for synchronous io, so an os
+   * crash can still lose this. Every other header field can be worked out again from the log or the
+   * archives; this one is the only record of a decision, so a lost write means no protection at all -
+   * exactly the failure this is meant to prevent. The value tracks archive creation, so the cost is
+   * one sync per archive. */
+  (void) fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, FILEIO_SYNC_ONLY);
+
   LOG_CS_EXIT (thread_p);
 }
 
