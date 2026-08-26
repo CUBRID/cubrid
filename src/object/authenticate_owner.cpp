@@ -589,11 +589,7 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
 {
   int error = NO_ERROR;
   int save, lang;
-  const char *name_str = NULL, *owner_str = NULL, *target_cls = NULL;
-  char new_name_str[DB_MAX_IDENTIFIER_LENGTH];
-  new_name_str[0]= '\0';
-  char downcase_owner_name[DB_MAX_USER_LENGTH];
-  downcase_owner_name[0] = '\0';
+  const char *owner_str = NULL, *target_cls = NULL;
   DB_VALUE value, name_value, owner_value, sp_lang_val, target_cls_val;
 
   db_make_null (&value);
@@ -607,30 +603,13 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
   AU_SAVE_AND_DISABLE (save);
 
   /* change _db_stored_procedure */
-  error = obj_get (sp, SP_ATTR_SP_NAME, &name_value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
   error = obj_get (owner, "name", &owner_value);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
-  name_str = db_get_string (&name_value);
   owner_str = db_get_string (&owner_value);
-
-  sm_downcase_name (owner_str, downcase_owner_name, DB_MAX_USER_LENGTH);
-  sprintf (new_name_str, "%s.%s", downcase_owner_name, name_str);
-
-  /* change the unique_name */
-  db_make_string (&value, new_name_str);
-  error = obj_set (sp, SP_ATTR_UNIQUE_NAME, &value);
-  if (error < 0)
-    {
-      goto end;
-    }
 
   /* change the owner */
   db_make_object (&value, owner);

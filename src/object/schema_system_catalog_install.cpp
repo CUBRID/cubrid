@@ -48,6 +48,15 @@ make_int_value_fn (int num)
 }
 
 static std::function<int (DB_VALUE *)>
+make_string_value_fn (const char *str)
+{
+  return [str] (DB_VALUE* val)
+  {
+    return db_make_string (val, str);
+  };
+}
+
+static std::function<int (DB_VALUE *)>
 make_double_value_fn (double num)
 {
   return [num] (DB_VALUE* val)
@@ -878,14 +887,13 @@ namespace cubschema
 		   CT_STORED_PROC_NAME,
 		   // columns
     {
-      {SP_ATTR_UNIQUE_NAME, format_varchar (255)},
       {SP_ATTR_SP_NAME, format_varchar (255)},
       {SP_ATTR_SP_TYPE, "integer"},
       {SP_ATTR_RETURN_TYPE, "integer"},
       {SP_ATTR_ARG_COUNT, "integer"},
       {SP_ATTR_ARGS, format_sequence (CT_STORED_PROC_ARGS_NAME)},
       {SP_ATTR_LANG, "integer"},
-      {SP_ATTR_PKG_NAME, format_varchar (255)},
+      {SP_ATTR_PKG_NAME, format_varchar (255), make_string_value_fn ("")},
       {SP_ATTR_IS_SYSTEM_GENERATED, "integer"},
       {SP_ATTR_DIRECTIVE, "integer"},
       {SP_ATTR_TARGET_CLASS, format_varchar (1024)},
@@ -898,7 +906,10 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {"unique_name", nullptr}, false}
+      {
+	DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_sp_name_pkg_name_owner",
+	{"sp_name", "pkg_name", "owner", nullptr}, false
+      }
     },
 // authorization
     {
