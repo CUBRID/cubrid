@@ -50,6 +50,9 @@
 #include "class_object.h"
 #include "schema_manager.h"
 #include "authenticate.h"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
 #include "object_accessor.h"
 #include "encryption.h"
 #include "crypt_opfunc.h"
@@ -84,7 +87,9 @@
  *
  * 
  */
+#if !defined (SERVER_MODE)
 static authenticate_context *au_ctx_obj = nullptr;
+#endif
 
 int
 au_login (const char *name, const char *password, bool ignore_dba_privilege)
@@ -95,11 +100,18 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
 authenticate_context *
 au_ctx (void)
 {
+#if defined (SERVER_MODE)
+  /* wf122/A1: the embedded client half has no process-wide singleton — au
+   * lives in the session-scoped client context the calling thread's
+   * activation bracket installed (see client_session_context.hpp) */
+  return &csc_current ()->au_context;
+#else
   if (au_ctx_obj == nullptr)
     {
       au_ctx_obj = new authenticate_context ();
     }
   return au_ctx_obj;
+#endif
 }
 
 /*
