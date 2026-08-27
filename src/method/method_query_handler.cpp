@@ -929,6 +929,7 @@ namespace cubmethod
   void
   query_handler::set_prepare_column_list_info (std::vector<column_info> &infos)
   {
+    char col_class_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
     m_query_result.include_oid = false;
 
     if (!m_query_result.null_type_column.empty())
@@ -985,7 +986,7 @@ namespace cubmethod
 		    col_name = (char *) db_query_format_name (col);
 		  }
 	      }
-	    class_name = (char *) db_query_format_class_name (col);
+	    class_name = (char *) db_query_format_class_name (col, col_class_name, sizeof (col_class_name));
 	    attr_name = (char *) db_query_format_attr_name (col);
 
 	    // TODO: related to updatable flag

@@ -1827,9 +1827,8 @@ db_query_format_free (DB_QUERY_TYPE * query_type)
  * query_type(in): Pointer to the current type list node
  */
 const char *
-db_query_format_class_name (DB_QUERY_TYPE * query_type)
+db_query_format_class_name (DB_QUERY_TYPE * query_type, char *buf, int buf_size)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_DOMAIN *src_domain = NULL;
 
   CHECK_1ARG_NULL (query_type);
@@ -1844,7 +1843,7 @@ db_query_format_class_name (DB_QUERY_TYPE * query_type)
       return NULL;
     }
 
-  return db_get_class_qualified_name (src_domain->class_mop, qualified_name, sizeof (qualified_name));
+  return db_get_class_qualified_name (src_domain->class_mop, buf, buf_size);
 }
 
 /*

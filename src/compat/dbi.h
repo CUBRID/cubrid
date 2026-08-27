@@ -562,7 +562,7 @@ extern "C"
   extern char *db_query_format_attr_name (DB_QUERY_TYPE * query_type);
   extern char *db_query_format_spec_name (DB_QUERY_TYPE * query_type);
   extern char *db_query_format_original_name (DB_QUERY_TYPE * query_type);
-  extern const char *db_query_format_class_name (DB_QUERY_TYPE * query_type);
+  extern const char *db_query_format_class_name (DB_QUERY_TYPE * query_type, char *buf, int buf_size);
   extern int db_query_format_is_non_null (DB_QUERY_TYPE * query_type);
 
 /* query processing functions */

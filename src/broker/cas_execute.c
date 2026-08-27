@@ -154,7 +154,11 @@ struct t_attr_table
 {
   const char *class_name;
   const char *attr_name;
+  /* source_class points at source_class_buf when there is a source class. The name is
+   * written out rather than borrowed from the class, so it needs storage that outlives
+   * the call that fills this table in. */
   const char *source_class;
+  char source_class_buf[SM_MAX_IDENTIFIER_LENGTH];
   int precision;
   short scale;
   short attr_order;
@@ -6607,6 +6611,7 @@ static int
 prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_RESULT * q_result, T_NET_BUF * net_buf,
 			      T_BROKER_VERSION client_version)
 {
+  char col_class_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_QUERY_TYPE *column_info = NULL, *col;
   DB_DOMAIN *domain;
   int num_cols;
@@ -6687,7 +6692,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 		  col_name = (char *) db_query_format_name (col);
 		}
 	    }
-	  class_name = (char *) db_query_format_class_name (col);
+	  class_name = (char *) db_query_format_class_name (col, col_class_name, sizeof (col_class_name));
 	  attr_name = (char *) db_query_format_attr_name (col);
 
 	  if (updatable_flag)
@@ -8253,7 +8258,8 @@ class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern
     }
   else
     {
-      attr_table->source_class = db_get_class_qualified_name (class_obj, qualified_name, sizeof (qualified_name));
+      attr_table->source_class =
+	db_get_class_qualified_name (class_obj, attr_table->source_class_buf, sizeof (attr_table->source_class_buf));
     }
 
   attr_table->attr_order = db_attribute_order (attr) + 1;
@@ -9502,6 +9508,7 @@ ux_get_generated_keys_error:
 int
 ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
+  char col_class_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   T_SRV_HANDLE *srv_handle;
   int err_code;
   T_QUERY_RESULT *q_result;
@@ -9623,7 +9630,7 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	      col_name = db_query_format_name (col);
 	    }
 	}
-      class_name = db_query_format_class_name (col);
+      class_name = db_query_format_class_name (col, col_class_name, sizeof (col_class_name));
       attr_name = "";
 
       domain = db_query_format_domain (col);
