@@ -7355,7 +7355,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
       return NULL;
     }
 
-  intl_identifier_lower (view_identifier->info.name.original, lower_view_name);
+  intl_identifier_lower (pt_name_qualified (parser, view_identifier), lower_view_name);
 
   sm_qualifier_name (lower_view_name, owner_name, DB_MAX_USER_LENGTH);
   intl_identifier_upper (owner_name, upper_owner_name);
