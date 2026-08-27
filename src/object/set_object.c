@@ -2237,6 +2237,13 @@ set_connect (DB_COLLECTION * ref, MOP owner, int attid, TP_DOMAIN * domain)
 {
   DB_COLLECTION *r;
 
+  /* the single choke point where a collection becomes workspace-owned: every
+   * un-gated owner branch downstream (set shells, set_get_setobj reload,
+   * col_permanent_oids) trusts that owned sets exist only in client contexts */
+#if defined (SERVER_MODE)
+  assert (owner == NULL || !db_on_server);
+#endif
+
   if (ref == NULL)
     {
       return NO_ERROR;

@@ -4209,6 +4209,13 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
        */
       DB_OTMPL *val_tmpl;
 
+      /* POINTER values wrap client object templates, which only exist on
+       * client-context threads — unlike the OID/OBJECT cases above there is
+       * no server-side meaning to fall back to */
+#if defined (SERVER_MODE)
+      assert (!db_on_server);
+#endif
+
       val_tmpl = (DB_OTMPL *) db_get_pointer (value);
       if (val_tmpl)
 	{
