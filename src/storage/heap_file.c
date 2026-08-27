@@ -765,7 +765,6 @@ static int heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * c
 static int heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATTR_ID * type_id,
 					  ATTR_ID * values_id);
 static int heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *count, OID ** subclasses);
-static int heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **name_out);
 
 static SCAN_CODE heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, RECDES forward_recdes,
 				       PGBUF_WATCHER * page_watcher, HEAP_SCANCACHE * scan_cache, bool ispeeking,
@@ -9553,14 +9552,11 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
  *
  * Note: Classname pointer must be released by the caller using free_and_init
  *
- * Note: The name comes with its owner in front of it, the way a user writes it: every
- *       reader of this shows the name to someone. heap_get_class_name_alloc_if_diff ()
- *       is the one that keeps to the name the record holds on its own.
  */
 int
 heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **class_name)
 {
-  return heap_get_class_qualified_name (thread_p, class_oid, class_name);
+  return heap_get_class_name_alloc_if_diff (thread_p, class_oid, NULL, class_name);
 }
 
 /*
@@ -9687,10 +9683,11 @@ end:
  *   name_out(out): malloc'ed "owner.name", or the name alone for a system class;
  *                  must be released by the caller using free_and_init
  *
- * Note: The record keeps the name and the owner apart, so anything the server shows
- *       to a user has to put them back together.
+ * Note: The record keeps the name and the owner apart, so anything shown to a user has
+ *       to put them back together. Reading the owner name fixes a page in another heap,
+ *       so call this with no page held: pgbuf_ordered_fix () will not have it otherwise.
  */
-static int
+int
 heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **name_out)
 {
   char bare_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };

@@ -24766,6 +24766,14 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   assert (xasl_state != NULL);
   class_oid = &(xasl->spec_list->s.cls_node.cls_oid);
 
+  /* This column has always named the table by its owner too. Ask before anything below
+   * holds a page: the owner name comes out of another heap. */
+  if (heap_get_class_qualified_name (thread_p, class_oid, &class_name) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      GOTO_EXIT_ON_ERROR;
+    }
+
   /* get class disk representation */
   if (catalog_get_dir_oid_from_cache (thread_p, class_oid, &dir_oid) != NO_ERROR)
     {
@@ -24873,13 +24881,6 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  db_private_free_and_init (thread_p, string);
 	}
-    }
-
-  /* this column has always named the table by its owner too */
-  if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      GOTO_EXIT_ON_ERROR;
     }
 
   for (i = 0; i < rep->n_indexes; i++)
