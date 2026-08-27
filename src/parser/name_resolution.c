@@ -5796,15 +5796,22 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 			"dblink: schema_info skipped for [%s] - the statement references no column besides the star, "
 			"and the \"SELECT *\" prepare describes exactly the list the star expands to\n", table_name);
 	}
+      /* The catalog request compares its argument as a value, so a name written with
+       * identifier quotes can only answer for a class literally spelled that way - never
+       * the one the prepare resolves to.  Do not ask: read the "SELECT *" describe, which
+       * is the remote's own reading of the same characters. */
+      else if (strpbrk (table_name, "\"`[") != NULL)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"dblink: schema_info skipped for [%s] - a quoted name is not the stored name, so the catalog "
+			"cannot answer for it; using the \"SELECT *\" prepare, which the remote parses\n", table_name);
+	}
       else
 	{
-	  /* sch_attr_info () filters by owner only when the name it is given is qualified:
-	   * an unqualified name matches every accessible class of that name, and the rows of
-	   * all of them cross the wire to be dropped here.  The remote resolves the name in
-	   * the connected user's schema - the one CREATE SERVER named - so say so and let the
-	   * remote filter instead.  A gateway keeps the name as the statement wrote it: it
-	   * derives the session schema itself and may look through PUBLIC, which an explicit
-	   * owner would rule out. */
+	  /* sch_attr_info () filters by owner only for a qualified name, so name the schema
+	   * the remote resolves in - the one CREATE SERVER gave - and let it filter.  A
+	   * gateway keeps the name as written: it picks the schema itself and may look
+	   * through PUBLIC, which an explicit owner would rule out. */
 	  if (user != NULL && user[0] != '\0' && strchr (table_name, '.') == NULL
 	      && cci_get_dbms_type (conn) == CAS_DBMS_CUBRID
 	      && snprintf (qualified_name, sizeof (qualified_name), "%s.%s", user, table_name)
@@ -5816,13 +5823,10 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 	  rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, lookup_name, user,
 							       rmt_tbl_cols, &reason);
 
-	  /* CCI_SCH_ATTRIBUTE describes a class and never a synonym, so a name the remote
-	   * resolves through one is answered with no row.  CCI_SCH_ATTR_WITH_SYNONYM
-	   * (CBRD-24835) reads db_synonym and describes the target with the very same 17
-	   * columns, and it resolves an unqualified name in the connected user's schema -
-	   * the schema the statement reaches.  It is synonym-only, so it is a second
-	   * attempt rather than a replacement; a gateway refuses the type outright, so the
-	   * attempt costs nothing there. */
+	  /* CCI_SCH_ATTRIBUTE describes a class and never a synonym, so a synonym is answered
+	   * with no row.  CCI_SCH_ATTR_WITH_SYNONYM describes the target with the same 17
+	   * columns, and is synonym-only - a second attempt, not a replacement.  A gateway
+	   * refuses the type outright, so the attempt costs nothing there. */
 	  if (rc != NO_ERROR && reason == PT_DBLINK_SCHEMA_NO_ROW)
 	    {
 	      rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTR_WITH_SYNONYM, lookup_name, user,
@@ -5835,14 +5839,11 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 	      goto set_parser_error;
 	    }
 
-	  /* Serving the "SELECT *" describe instead would answer this statement with a
-	   * smaller column list, so whether a valid invisible reference compiles would
-	   * depend on state the statement cannot see.  Do not: keep the prepare below only
-	   * to report the remote's own error, and refuse if it succeeds.  Two cases stay on
-	   * the prepare because something else owns them - a remote too old to report
-	   * invisible columns at all, and a name carrying identifier quotes, which the
-	   * catalog request cannot resolve yet. */
-	  if (reason != PT_DBLINK_SCHEMA_PRE_V13 && strpbrk (table_name, "\"`[") == NULL)
+	  /* The "SELECT *" describe is a smaller column list, not a degraded form of the same
+	   * one, so serving it here would compile the statement against a different table
+	   * shape.  Keep the prepare below only to report the remote's own error, and refuse
+	   * if it succeeds.  A remote too old to report invisible columns still falls back. */
+	  if (reason != PT_DBLINK_SCHEMA_PRE_V13)
 	    {
 	      schema_info_required = true;
 	    }
@@ -7822,10 +7823,8 @@ pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from)
  *   attr_list(in/out): a copy of the spec's as_attr_list
  *
  * Note: an invisible column keeps its slot in the spec's tuple and stays resolvable by
- *   name; only a star must not expand to it. 
- *   The native path never has to mark anything - it filters when it
- *   builds the list (pt_get_all_attributes_and_types ()) because the schema is at hand.
- *   Here the mark travels on the name node (pt_dblink_table_gather_attribs (),
+ *   name; only a star must not expand to it.  The mark travels on the name node
+ *   (pt_dblink_table_gather_attribs (),
  *   and pt_get_attr_list_of_derived_table () for a derived table wrapped around it), so
  *   nothing here has to be kept in step with a second list.
  */

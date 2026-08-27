@@ -2357,11 +2357,9 @@ cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** 
    * flag and the per-driver precision fixups) */
   if (cgw_describe_invisible_attrs (hdbc, table_name, attrs, count) < 0)
     {
-      /* the SQLColumns-only metadata left on the invisible columns has no unsigned
-       * flag and none of the per-driver precision fixups, so serving it would compile
-       * those columns with the wrong type.  Fail instead - the client falls back to
-       * the "SELECT *" prepare, where an invisible reference is a clear compile error
-       * rather than a silently mistyped column. */
+      /* SQLColumns metadata carries no unsigned flag and none of the per-driver precision
+       * fixups, so serving it would compile those columns with the wrong type.  Fail
+       * instead and let the client decide. */
       goto end;
     }
 
