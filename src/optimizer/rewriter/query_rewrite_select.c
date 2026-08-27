@@ -44,10 +44,8 @@ static bool qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, 
 						       QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
-static int qo_count_constraint_attributes (SM_CLASS_CONSTRAINT * cons);
-static bool qo_is_constraint_attribute (SM_CLASS_CONSTRAINT * cons, const char *name);
 static bool qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons);
-static bool qo_groupby_has_key (PT_NODE * group_by, PT_NODE * end, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
+static bool qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
 static void qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query);
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_rewrite_oid_equality (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * pred, int *seqno);
@@ -1260,46 +1258,6 @@ exit_on_error:
 }
 
 /*
- * qo_count_constraint_attributes () - count the columns of a constraint
- *   return: number of columns the constraint is built on
- *   cons(in): class constraint
- */
-static int
-qo_count_constraint_attributes (SM_CLASS_CONSTRAINT * cons)
-{
-  int i;
-
-  for (i = 0; cons->attributes[i] != NULL; i++)
-    {
-      ;
-    }
-
-  return i;
-}
-
-/*
- * qo_is_constraint_attribute () - check whether a name is one of the constraint columns
- *   return: true, if the name is a column of the constraint
- *   cons(in): class constraint
- *   name(in): attribute name
- */
-static bool
-qo_is_constraint_attribute (SM_CLASS_CONSTRAINT * cons, const char *name)
-{
-  int i;
-
-  for (i = 0; cons->attributes[i] != NULL; i++)
-    {
-      if (intl_identifier_casecmp (name, cons->attributes[i]->header.name) == 0)
-	{
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
  * qo_is_row_identifying_key () - check whether a constraint picks out a single row, and so
  *				  determines every other column of its table
  *   return: true, if the constraint may be used to drop redundant GROUP BY columns
@@ -1309,10 +1267,6 @@ qo_is_constraint_attribute (SM_CLASS_CONSTRAINT * cons, const char *name)
  *   A UNIQUE constraint accepts NULL more than once while GROUP BY treats NULLs as equal, so
  *   two rows could share such a key and still differ in the other columns. Every column of a
  *   unique key must therefore be NOT NULL as well. A primary key is NOT NULL by definition.
- *
- *   A filtered index is unique only among the rows that pass its filter, and a function index
- *   is unique on the result of its expression rather than on the columns it is built from.
- *   Neither one determines the other columns of the table.
  *
  *   Only SM_NORMAL_INDEX is trusted: an invisible index or one that is still being built
  *   online does not guarantee uniqueness yet.
@@ -1327,12 +1281,7 @@ qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons)
       return false;
     }
 
-  if (cons->attributes == NULL || cons->attributes[0] == NULL)
-    {
-      return false;
-    }
-
-  if (cons->filter_predicate != NULL || cons->func_index_info != NULL)
+  if (cons->attributes == NULL)
     {
       return false;
     }
@@ -1360,14 +1309,13 @@ qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons)
 
 /*
  * qo_groupby_has_key () - check whether the GROUP BY clause groups on every column of a key
- *   return: true, if the whole key is written before end
+ *   return: true, if every column of the key is in the clause
  *   group_by(in): GROUP BY clause, a list of PT_SORT_SPEC
- *   end(in): node of group_by to end the search at, exclusive; NULL searches it whole
  *   spec_id(in): id of the spec that owns the key
  *   cons(in): class constraint holding the key columns
  */
 static bool
-qo_groupby_has_key (PT_NODE * group_by, PT_NODE * end, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons)
+qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons)
 {
   PT_NODE *group, *col;
   const char *name;
@@ -1377,19 +1325,18 @@ qo_groupby_has_key (PT_NODE * group_by, PT_NODE * end, UINTPTR spec_id, SM_CLASS
     {
       name = cons->attributes[i]->header.name;
 
-      for (group = group_by; group != end; group = group->next)
+      for (group = group_by; group != NULL; group = group->next)
 	{
 	  col = group->info.sort_spec.expr;
-	  CAST_POINTER_TO_NODE (col);
 
-	  if (col != NULL && col->node_type == PT_NAME && col->info.name.spec_id == spec_id
+	  if (col->node_type == PT_NAME && col->info.name.spec_id == spec_id
 	      && intl_identifier_casecmp (col->info.name.original, name) == 0)
 	    {
 	      break;
 	    }
 	}
 
-      if (group == end)
+      if (group == NULL)
 	{
 	  /* ran out of clause without meeting this key column */
 	  return false;
@@ -1427,23 +1374,23 @@ qo_groupby_has_key (PT_NODE * group_by, PT_NODE * end, UINTPTR spec_id, SM_CLASS
  *   ORDER BY only when the GROUP BY that will actually run still covers it.
  *
  *   When more than one key of the table is covered, the one with the fewest columns wins,
- *   because everything outside the chosen key is removed.
+ *   because everything outside the chosen key is removed. A key column written twice keeps
+ *   only its first occurrence.
  */
 static void
 qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query)
 {
-  PT_NODE *group_by, *group, *prev, *next, *spec, *col;
+  PT_NODE *group, *next, *spec, *col, *dup;
   DB_OBJECT *classop;
   SM_CLASS_CONSTRAINT *cons, *best_cons;
-  int size, best_size;
+  int i, size, best_size;
 
   if (query->node_type != PT_SELECT)
     {
       return;
     }
 
-  group_by = query->info.query.q.select.group_by;
-  if (group_by == NULL || group_by->flag.with_rollup)
+  if (query->info.query.q.select.group_by == NULL || query->info.query.q.select.group_by->flag.with_rollup)
     {
       /* ROLLUP builds a partial group for every prefix of the grouping key, so none of its
        * columns may be dropped */
@@ -1460,20 +1407,22 @@ qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	  continue;
 	}
 
-      /* an earlier spec may have shortened the clause */
-      group_by = query->info.query.q.select.group_by;
-
       best_cons = NULL;
       best_size = 0;
 
       for (cons = sm_class_constraints (classop); cons != NULL; cons = cons->next)
 	{
-	  if (!qo_is_row_identifying_key (cons) || !qo_groupby_has_key (group_by, NULL, spec->info.spec.id, cons))
+	  if (!qo_is_row_identifying_key (cons)
+	      || !qo_groupby_has_key (query->info.query.q.select.group_by, spec->info.spec.id, cons))
 	    {
 	      continue;
 	    }
 
-	  size = qo_count_constraint_attributes (cons);
+	  for (size = 0; cons->attributes[size]; size++)
+	    {
+	      ;
+	    }
+
 	  if (best_cons == NULL || size < best_size)
 	    {
 	      best_cons = cons;
@@ -1486,34 +1435,38 @@ qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	  continue;
 	}
 
-      prev = NULL;
-
-      for (group = group_by; group != NULL; group = next)
+      for (group = query->info.query.q.select.group_by; group != NULL; group = next)
 	{
 	  next = group->next;
 
 	  col = group->info.sort_spec.expr;
-	  CAST_POINTER_TO_NODE (col);
-
-	  if (col == NULL || col->node_type != PT_NAME || col->info.name.spec_id != spec->info.spec.id
-	      || qo_is_constraint_attribute (best_cons, col->info.name.original))
+	  if (col->node_type != PT_NAME || col->info.name.spec_id != spec->info.spec.id)
 	    {
-	      prev = group;
 	      continue;
 	    }
 
-	  /* unlink the column from the GROUP BY clause */
-	  if (prev == NULL)
+	  for (i = 0; best_cons->attributes[i]; i++)
 	    {
-	      query->info.query.q.select.group_by = next;
-	    }
-	  else
-	    {
-	      prev->next = next;
+	      if (intl_identifier_casecmp (col->info.name.original, best_cons->attributes[i]->header.name) == 0)
+		{
+		  break;
+		}
 	    }
 
-	  group->next = NULL;
-	  parser_free_tree (parser, group);
+	  if (best_cons->attributes[i] != NULL)
+	    {
+	      /* a key column stays; a repeat of it further on orders nothing, so only the first one is kept */
+	      while ((dup = pt_find_order_value_in_list (parser, col, group->next)) != NULL)
+		{
+		  group->next = pt_remove_from_list (parser, dup, group->next);
+		}
+
+	      next = group->next;
+	      continue;
+	    }
+
+	  query->info.query.q.select.group_by =
+	    pt_remove_from_list (parser, group, query->info.query.q.select.group_by);
 	}
     }
 }
