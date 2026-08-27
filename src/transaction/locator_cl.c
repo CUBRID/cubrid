@@ -5381,7 +5381,8 @@ locator_add_root (OID * root_oid, MOBJ class_root)
  * return: MOP
  *
  *   class(in): Class object to add onto the database
- *   classname(in): Name of the class
+ *   owner_oid(in): Owner the class belongs to; NULL for one that belongs to no one
+ *   classname(in): Name of the class, on its own
  *
  * Note: Add a class onto the database. Neither the permanent OID for
  *              the newly created class nor a lock on the class are assigned
@@ -5390,10 +5391,9 @@ locator_add_root (OID * root_oid, MOBJ class_root)
  *              Only an IX lock is acquired on the root class.
  */
 MOP
-locator_add_class (MOBJ class_obj, const char *classname)
+locator_add_class (MOBJ class_obj, const OID * owner_oid, const char *classname)
 {
   OID class_temp_oid;		/* A temporarily OID for the newly created class */
-  OID name_owner_oid;
   MOP class_mop;		/* The Mop of the newly created class */
   LOCK lock;
 
@@ -5402,14 +5402,16 @@ locator_add_class (MOBJ class_obj, const char *classname)
       return NULL;
     }
 
-  au_find_owner_oid_of_name (classname, &name_owner_oid);
-  class_mop = ws_find_class (&name_owner_oid, sm_remove_qualifier_name (classname));
+  class_mop = ws_find_class (owner_oid, classname);
   if (class_mop != NULL && ws_get_lock (class_mop) != NULL_LOCK)
     {
       if (!WS_IS_DELETED (class_mop))
 	{
+	  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
 	  /* The class already exist.. since it is cached */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_CLASSNAME_EXIST, 1, classname);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_CLASSNAME_EXIST, 1,
+		  sm_ch_qualified_name (class_obj, qualified_name, sizeof (qualified_name)));
 	  return NULL;
 	}
 
@@ -5428,7 +5430,7 @@ locator_add_class (MOBJ class_obj, const char *classname)
    * for it. Get the OID.
    */
 
-  if (locator_get_reserved_class_name_oid (classname, &class_temp_oid) != NO_ERROR)
+  if (locator_get_reserved_class_name_oid (owner_oid, classname, &class_temp_oid) != NO_ERROR)
     {
       return NULL;
     }
@@ -5459,7 +5461,7 @@ locator_add_class (MOBJ class_obj, const char *classname)
       if (locator_lock (sm_Root_class_mop, LC_CLASS, IX_LOCK, LC_FETCH_CURRENT_VERSION) != NO_ERROR)
 	{
 	  /* Unable to lock the Rootclass. Undo the reserve of classname */
-	  (void) locator_delete_class_name (classname);
+	  (void) locator_delete_class_name (owner_oid, classname);
 	  return NULL;
 	}
     }
@@ -5674,6 +5676,7 @@ locator_remove_class (MOP class_mop)
   SM_ATTRIBUTE *attr;		/* attribute info for checking LOB attributes */
   bool lob_attr_exist = false;
   const char *classname;	/* The classname */
+  MOP class_owner;		/* The user that owns it */
   int attrid_arr[1];
   int error_code = NO_ERROR;
 
@@ -5688,6 +5691,7 @@ locator_remove_class (MOP class_mop)
   (void) ws_map_class (class_mop, locator_instance_decache, NULL);
 
   classname = sm_ch_name (class_obj);
+  class_owner = sm_ch_owner (class_obj);
 
   /* What should happen to the heap */
   insts_hfid = sm_ch_heap (class_obj);
@@ -5724,7 +5728,8 @@ locator_remove_class (MOP class_mop)
     }
 
   /* Delete the class name */
-  if (locator_delete_class_name (classname) == LC_CLASSNAME_DELETED || BOOT_IS_CLIENT_RESTARTED ())
+  if (locator_delete_class_name (class_owner != NULL ? ws_oid (class_owner) : NULL, classname) == LC_CLASSNAME_DELETED
+      || BOOT_IS_CLIENT_RESTARTED ())
     {
       ws_dirty (class_mop);
       ws_mark_deleted (class_mop);
@@ -5969,13 +5974,21 @@ locator_assign_permanent_oid (MOP mop)
   /* Find the heap where the object will be stored */
 
   name = NULL;
+  OID_SET_NULL (&owner_oid);
   if (locator_is_root (class_mop))
     {
       /* Object is a class */
       hfid = sm_Root_class_hfid;
       if (object != NULL)
 	{
+	  MOP owner = sm_ch_owner (object);
+
+	  /* the class says who owns it; the name it carries no longer does */
 	  name = sm_ch_name (object);
+	  if (owner != NULL)
+	    {
+	      COPY_OID (&owner_oid, ws_oid (owner));
+	    }
 	}
     }
   else
@@ -5984,8 +5997,6 @@ locator_assign_permanent_oid (MOP mop)
     }
 
   /* Assign an address */
-
-  au_find_owner_oid_of_name (name, &owner_oid);
 
   if (locator_assign_oid (hfid, &perm_oid, expected_length, ws_oid (class_mop), name, &owner_oid) != NO_ERROR)
     {
@@ -6088,7 +6099,7 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
  *   slot(in): Slot to read
  */
 static const char *
-locator_lockhint_class_name (LC_LOCKHINT * lockhint, int slot)
+locator_lockhint_class_name (LC_LOCKHINT * lockhint, int slot, char *buf, int buf_size)
 {
   MOP class_mop;
   MOBJ class_obj = NULL;
@@ -6099,7 +6110,8 @@ locator_lockhint_class_name (LC_LOCKHINT * lockhint, int slot)
       return NULL;
     }
 
-  return sm_ch_name (class_obj);
+  /* the caller compares this against the name as requested, which says who owns it */
+  return sm_ch_qualified_name (class_obj, buf, buf_size);
 }
 
 /*
@@ -6132,6 +6144,7 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
 {
   int i;
   int slot = 0;
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   for (i = 0; i < num_classes; i++)
     {
@@ -6161,7 +6174,7 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
 	  continue;
 	}
 
-      found = locator_lockhint_class_name (lockhint, my_slot);
+      found = locator_lockhint_class_name (lockhint, my_slot, qualified_name, sizeof (qualified_name));
       if (found != NULL && intl_identifier_casecmp (found, requested) != 0)
 	{
 	  /* Copy now: found points into the workspace, which a later fetch can recache. */

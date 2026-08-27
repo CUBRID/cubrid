@@ -1057,8 +1057,6 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   OR_VARINFO *vars = NULL;
   int size;
   OR_VALUE *resolution_p = NULL;
-  const char *dot = NULL;
-  const char *class_name = NULL;
   int error = NO_ERROR;
   int flags;
 
@@ -1125,28 +1123,13 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 
   /* variable */
 
-  /* class_name: the record name ("owner.name") is read first; the qualifier is stripped in place below */
+  /* class_name: the record carries the name on its own, and the owner in its own field */
   attr_val_p = &attrs[CT_CLASS_CLASS_NAME_INDEX].value;
   tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* (class_of) */
   db_make_oid (&attrs[CT_CLASS_CLASS_OF_INDEX].value, class_oid_p);
-
-  /* strip the owner qualifier from class_name in place */
-  class_name = db_get_string (attr_val_p);
-  assert (class_name != NULL);
-  dot = strchr (class_name, '.');
-  if (dot)
-    {
-      size_t bare_size = strlen (dot + 1);
-      int bare_length = 0;
-
-      /* db_string_truncate () takes a length in characters, not bytes */
-      intl_char_count ((unsigned char *) (dot + 1), (int) bare_size, db_get_string_codeset (attr_val_p), &bare_length);
-      memmove ((char *) class_name, dot + 1, bare_size + 1);
-      db_string_truncate (attr_val_p, bare_length);
-    }
 
   /* loader_commands */
   or_advance (buf_p, vars[ORC_LOADER_COMMANDS_INDEX].length);

@@ -307,8 +307,8 @@ static int sm_link_methods (SM_CLASS * class_);
 
 
 static int check_resolution_target (SM_TEMPLATE * template_, SM_RESOLUTION * res, int *valid_ptr);
-static const char *template_classname (SM_TEMPLATE * template_);
-static const char *candidate_source_name (SM_TEMPLATE * template_, SM_CANDIDATE * candidate);
+static const char *template_classname (SM_TEMPLATE * template_, char *buf, int buf_size);
+static const char *candidate_source_name (SM_TEMPLATE * template_, SM_CANDIDATE * candidate, char *buf, int buf_size);
 static int find_superclass (DB_OBJECT * classop, SM_TEMPLATE * temp, DB_OBJECT * super);
 static DOMAIN_COMP compare_domains (TP_DOMAIN * d1, TP_DOMAIN * d2);
 static SM_METHOD_ARGUMENT *find_argument (SM_METHOD_SIGNATURE * sig, int argnum);
@@ -2958,9 +2958,17 @@ sm_rename_class (MOP class_mop, const char *new_name)
       return error;
     }
 
-  /* We need to go ahead and copy the string since prepare_rename uses the address of the string in the hash table. */
-  class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_));
-  assert (class_old_name != NULL);
+  /* The server has this class under the name the way SQL writes it, so that is what the
+   * rename has to name. The class itself only carries the name on its own. */
+  sm_ch_qualified_name ((MOBJ) class_, buf, SM_MAX_IDENTIFIER_LENGTH);
+  class_old_name = db_private_strdup (NULL, buf);
+  if (class_old_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  need_free_old_name = true;
 
   /* make sure this gets into the server table with no capitalization */
   sm_user_specified_name (new_name, buf, SM_MAX_IDENTIFIER_LENGTH);
@@ -2968,7 +2976,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
   if (class_new_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   need_free_new_name = true;
@@ -2980,10 +2988,13 @@ sm_rename_class (MOP class_mop, const char *new_name)
       goto end;
     }
 
-  class_->header.ch_name = class_new_name;
-
-  need_free_old_name = true;
-  need_free_new_name = false;
+  ws_free_string_and_init (class_->header.ch_name);
+  class_->header.ch_name = ws_copy_string (sm_remove_qualifier_name (class_new_name));
+  if (class_->header.ch_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
 
   error = sm_flush_objects (class_mop);
   if (error != NO_ERROR)
@@ -5290,8 +5301,9 @@ sm_print (MOP classmop)
 
 /* LOCATOR SUPPORT FUNCTIONS */
 /*
- * sm_ch_name() - Given a pointer to a class object in memory,
- *    return the name. Used by the transaction locator.
+ * sm_ch_name() - Given a pointer to a class object in memory, return the name it
+ *    carries: the name on its own, with no owner in front of it. Used by the
+ *    transaction locator. sm_ch_owner () says who it belongs to.
  *   return: class name
  *   classobj(in): class structure
  */
@@ -5317,19 +5329,6 @@ sm_ch_name (const MOBJ clobj)
     }
 
   return ch_name;
-}
-
-/*
- * sm_ch_bare_name() - Given a pointer to a class object in memory, return the
- *    name on its own, with no owner in front of it.
- *   return: class name with no qualifier
- *   clobj(in): class structure
- */
-
-const char *
-sm_ch_bare_name (const MOBJ clobj)
-{
-  return sm_remove_qualifier_name (sm_ch_name (clobj));
 }
 
 /*
@@ -5370,7 +5369,7 @@ sm_ch_owner (const MOBJ clobj)
 const char *
 sm_ch_qualified_name (const MOBJ clobj, char *buf, int buf_size)
 {
-  const char *bare_name = sm_ch_bare_name (clobj);
+  const char *bare_name = sm_ch_name (clobj);
   MOP owner = sm_ch_owner (clobj);
   char *owner_name = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
@@ -7680,17 +7679,19 @@ sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all)
  */
 
 static const char *
-template_classname (SM_TEMPLATE * template_)
+template_classname (SM_TEMPLATE * template_, char *buf, int buf_size)
 {
-  const char *name;
-
-  name = template_->name;
-  if (name == NULL && template_->op != NULL)
+  if (template_->name != NULL)
     {
-      name = sm_get_ch_name (template_->op);
+      return template_->name;
     }
 
-  return name;
+  if (template_->op != NULL)
+    {
+      return sm_get_ch_qualified_name (template_->op, buf, buf_size);
+    }
+
+  return NULL;
 }
 
 /*
@@ -7702,27 +7703,14 @@ template_classname (SM_TEMPLATE * template_)
  */
 
 static const char *
-candidate_source_name (SM_TEMPLATE * template_, SM_CANDIDATE * candidate)
+candidate_source_name (SM_TEMPLATE * template_, SM_CANDIDATE * candidate, char *buf, int buf_size)
 {
-  const char *name = NULL;
-
   if (candidate->source != NULL)
     {
-      name = sm_get_ch_name (candidate->source);
-    }
-  else
-    {
-      if (template_->name != NULL)
-	{
-	  name = template_->name;
-	}
-      else if (template_->op != NULL)
-	{
-	  name = sm_get_ch_name (template_->op);
-	}
+      return sm_get_ch_qualified_name (candidate->source, buf, buf_size);
     }
 
-  return name;
+  return template_classname (template_, buf, buf_size);
 }
 
 /* DOMAIN COMPARISON */
@@ -8444,6 +8432,8 @@ get_candidates (SM_TEMPLATE * def, SM_TEMPLATE * flat, SM_NAME_SPACE name_space)
 static int
 check_attribute_method_overlap (SM_TEMPLATE * template_, SM_CANDIDATE * candidates)
 {
+  char qname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qname2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_CANDIDATE *att_cand, *meth_cand, *c;
 
@@ -8456,8 +8446,9 @@ check_attribute_method_overlap (SM_TEMPLATE * template_, SM_CANDIDATE * candidat
 	  meth_cand = c;
 	  if (att_cand != NULL)
 	    {
-	      ERROR3 (error, ER_SM_INCOMPATIBLE_COMPONENTS, c->name, candidate_source_name (template_, att_cand),
-		      candidate_source_name (template_, c));
+	      ERROR3 (error, ER_SM_INCOMPATIBLE_COMPONENTS, c->name,
+		      candidate_source_name (template_, att_cand, qname, sizeof (qname)),
+		      candidate_source_name (template_, c, qname2, sizeof (qname2)));
 	    }
 	}
       else
@@ -8465,8 +8456,12 @@ check_attribute_method_overlap (SM_TEMPLATE * template_, SM_CANDIDATE * candidat
 	  att_cand = c;
 	  if (meth_cand != NULL)
 	    {
-	      ERROR3 (error, ER_SM_INCOMPATIBLE_COMPONENTS, c->name, candidate_source_name (template_, c),
-		      candidate_source_name (template_, meth_cand));
+	      ERROR3 (error, ER_SM_INCOMPATIBLE_COMPONENTS, c->name,
+		      candidate_source_name (template_, c, qname, sizeof (qname)), candidate_source_name (template_,
+													  meth_cand,
+													  qname2,
+													  sizeof
+													  (qname2)));
 	    }
 	}
     }
@@ -8488,6 +8483,8 @@ check_attribute_method_overlap (SM_TEMPLATE * template_, SM_CANDIDATE * candidat
 static int
 check_alias_conflict (SM_TEMPLATE * template_, SM_CANDIDATE * candidates)
 {
+  char qname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qname2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_CANDIDATE *c, *normal, *alias;
 
@@ -8534,7 +8531,11 @@ check_alias_conflict (SM_TEMPLATE * template_, SM_CANDIDATE * candidates)
 	  /* Can't use `%1$s' as an alias for `%2$s' of `%3$s'. A component with that name is already inherited from
 	   * `%4s'. */
 	  ERROR4 (error, ER_SM_ALIAS_COMPONENT_INHERITED, alias->name, alias->obj->name,
-		  candidate_source_name (template_, alias), candidate_source_name (template_, normal));
+		  candidate_source_name (template_, alias, qname, sizeof (qname)), candidate_source_name (template_,
+													  normal,
+													  qname2,
+													  sizeof
+													  (qname2)));
 	}
     }
 
@@ -8562,6 +8563,9 @@ check_alias_conflict (SM_TEMPLATE * template_, SM_CANDIDATE * candidates)
 static int
 check_alias_domains (SM_TEMPLATE * template_, SM_CANDIDATE * candidates, SM_CANDIDATE ** most_specific)
 {
+  char qname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qname2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qname3[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_CANDIDATE *c, *most;
   DOMAIN_COMP dstate;
@@ -8581,8 +8585,12 @@ check_alias_domains (SM_TEMPLATE * template_, SM_CANDIDATE * candidates, SM_CAND
 	      switch (dstate)
 		{
 		case DC_INCOMPATIBLE:
-		  ERROR4 (error, ER_SM_INCOMPATIBLE_DOMAINS, c->name, candidate_source_name (template_, most),
-			  candidate_source_name (template_, c), template_classname (template_));
+		  ERROR4 (error, ER_SM_INCOMPATIBLE_DOMAINS, c->name,
+			  candidate_source_name (template_, most, qname, sizeof (qname)),
+			  candidate_source_name (template_, c, qname2, sizeof (qname2)), template_classname (template_,
+													     qname3,
+													     sizeof
+													     (qname3)));
 		  break;
 
 		case DC_MORE_SPECIFIC:
@@ -8661,6 +8669,9 @@ auto_resolve_conflict (SM_CANDIDATE * candidate, SM_RESOLUTION ** resolutions, S
 static int
 resolve_candidates (SM_TEMPLATE * template_, SM_CANDIDATE * candidates, int auto_resolve, SM_CANDIDATE ** winner_return)
 {
+  char qname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qname2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qname3[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_CANDIDATE *winner, *c, *requested, *conflict, *local, *alias;
   SM_NAME_SPACE resspace;
@@ -8736,21 +8747,25 @@ resolve_candidates (SM_TEMPLATE * template_, SM_CANDIDATE * candidates, int auto
 		case DC_INCOMPATIBLE:
 		  if (local == NULL)
 		    /* incompatibility between two inherited things */
-		    ERROR4 (error, ER_SM_INCOMPATIBLE_DOMAINS, winner->name, candidate_source_name (template_, winner),
-			    candidate_source_name (template_, c), template_classname (template_));
+		    ERROR4 (error, ER_SM_INCOMPATIBLE_DOMAINS, winner->name,
+			    candidate_source_name (template_, winner, qname, sizeof (qname)),
+			    candidate_source_name (template_, c, qname2, sizeof (qname2)),
+			    template_classname (template_, qname3, sizeof (qname3)));
 		  else
 		    {
 		      /* incompatiblity between inherited thing and a locally defined thing */
-		      ERROR3 (error, ER_SM_INCOMPATIBLE_SHADOW, winner->name, candidate_source_name (template_, c),
-			      template_classname (template_));
+		      ERROR3 (error, ER_SM_INCOMPATIBLE_SHADOW, winner->name,
+			      candidate_source_name (template_, c, qname, sizeof (qname)),
+			      template_classname (template_, qname2, sizeof (qname2)));
 		    }
 		  break;
 		case DC_MORE_SPECIFIC:
 		  if (local != NULL)
 		    {
 		      /* trying to shadow an inherited attribute with a more specific domain */
-		      ERROR3 (error, ER_SM_INCOMPATIBLE_SHADOW, winner->name, candidate_source_name (template_, c),
-			      template_classname (template_));
+		      ERROR3 (error, ER_SM_INCOMPATIBLE_SHADOW, winner->name,
+			      candidate_source_name (template_, c, qname, sizeof (qname)),
+			      template_classname (template_, qname2, sizeof (qname2)));
 		    }
 		  else
 		    {
@@ -8766,8 +8781,9 @@ resolve_candidates (SM_TEMPLATE * template_, SM_CANDIDATE * candidates, int auto
 			  /* can't override resolution on <attname> of <classname> with required attribute from
 			   * <classname2> */
 			  ERROR4 (error, ER_SM_RESOLUTION_OVERRIDE, winner->name,
-				  candidate_source_name (template_, winner), candidate_source_name (template_, c),
-				  template_classname (template_));
+				  candidate_source_name (template_, winner, qname, sizeof (qname)),
+				  candidate_source_name (template_, c, qname2, sizeof (qname2)),
+				  template_classname (template_, qname3, sizeof (qname3)));
 			}
 		    }
 		  break;
@@ -8790,8 +8806,11 @@ resolve_candidates (SM_TEMPLATE * template_, SM_CANDIDATE * candidates, int auto
     {
       if (winner == NULL)
 	{
-	  ERROR3 (error, ER_SM_MISSING_ALIAS_SUBSTITUTE, alias->name, candidate_source_name (template_, alias),
-		  template_classname (template_));
+	  ERROR3 (error, ER_SM_MISSING_ALIAS_SUBSTITUTE, alias->name,
+		  candidate_source_name (template_, alias, qname, sizeof (qname)), template_classname (template_,
+												       qname2,
+												       sizeof
+												       (qname2)));
 	}
       else
 	{
@@ -8803,20 +8822,26 @@ resolve_candidates (SM_TEMPLATE * template_, SM_CANDIDATE * candidates, int auto
 	      if (local == winner)
 		{
 		  ERROR3 (error, ER_SM_INCOMPATIBLE_ALIAS_LOCAL_SUB, winner->name,
-			  candidate_source_name (template_, alias), template_classname (template_));
+			  candidate_source_name (template_, alias, qname, sizeof (qname)),
+			  template_classname (template_, qname2, sizeof (qname2)));
 		}
 	      else
 		{
 		  ERROR4 (error, ER_SM_INCOMPATIBLE_ALIAS_SUBSTITUTE, winner->name,
-			  candidate_source_name (template_, winner), candidate_source_name (template_, alias),
-			  template_classname (template_));
+			  candidate_source_name (template_, winner, qname, sizeof (qname)),
+			  candidate_source_name (template_, alias, qname2, sizeof (qname2)),
+			  template_classname (template_, qname3, sizeof (qname3)));
 		}
 	    }
 	  else if (dstate == DC_LESS_SPECIFIC)
 	    {
 	      ERROR4 (error, ER_SM_LESS_SPECIFIC_ALIAS_SUBSTITUTE, winner->name,
-		      candidate_source_name (template_, alias), candidate_source_name (template_, winner),
-		      template_classname (template_));
+		      candidate_source_name (template_, alias, qname, sizeof (qname)), candidate_source_name (template_,
+													      winner,
+													      qname2,
+													      sizeof
+													      (qname2)),
+		      template_classname (template_, qname3, sizeof (qname3)));
 	    }
 	}
     }
@@ -8831,8 +8856,12 @@ resolve_candidates (SM_TEMPLATE * template_, SM_CANDIDATE * candidates, int auto
 	}
       else
 	{
-	  ERROR3 (error, ER_SM_ATTRIBUTE_NAME_CONFLICT, winner->name, candidate_source_name (template_, winner),
-		  candidate_source_name (template_, conflict));
+	  ERROR3 (error, ER_SM_ATTRIBUTE_NAME_CONFLICT, winner->name,
+		  candidate_source_name (template_, winner, qname, sizeof (qname)), candidate_source_name (template_,
+													   conflict,
+													   qname2,
+													   sizeof
+													   (qname2)));
 	}
     }
 
@@ -9313,6 +9342,7 @@ check_resolution_target (SM_TEMPLATE * template_, SM_RESOLUTION * res, int *vali
 static int
 check_invalid_resolutions (SM_TEMPLATE * template_, SM_RESOLUTION ** resolutions, SM_RESOLUTION * original_list)
 {
+  char qname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_RESOLUTION *res, *prev, *next, *original;
@@ -9366,8 +9396,9 @@ check_invalid_resolutions (SM_TEMPLATE * template_, SM_RESOLUTION ** resolutions
 	      else
 		{
 		  /* a new resolution that is not valid, signal an error */
-		  ERROR3 (error, ER_SM_INVALID_RESOLUTION, template_classname (template_), res->name,
-			  sm_get_ch_qualified_name (res->class_mop, qualified_name, sizeof (qualified_name)));
+		  ERROR3 (error, ER_SM_INVALID_RESOLUTION, template_classname (template_, qname, sizeof (qname)),
+			  res->name, sm_get_ch_qualified_name (res->class_mop, qualified_name,
+							       sizeof (qualified_name)));
 		}
 	    }
 	}
@@ -13165,6 +13196,7 @@ sm_check_catalog_rep_dir (MOP classmop, SM_CLASS * class_)
 static int
 flatten_subclasses (DB_OBJLIST * subclasses, MOP deleted_class)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   DB_OBJLIST *sub;
   SM_CLASS *class_;
@@ -13181,7 +13213,9 @@ flatten_subclasses (DB_OBJLIST * subclasses, MOP deleted_class)
 	  if (error == NO_ERROR)
 	    {
 	      /* create a template */
-	      utemplate = classobj_make_template (sm_ch_name ((MOBJ) class_), sub->op, class_);
+	      utemplate =
+		classobj_make_template (sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)),
+					sub->op, class_);
 	      if (utemplate == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -13353,7 +13387,14 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
       locks[0] = locator_fetch_mode_to_lock (DB_FETCH_WRITE, LC_CLASS, LC_FETCH_CURRENT_VERSION);
       subs[0] = 1;
       flags[0] = LC_PREF_FLAG_LOCK;
-      au_find_owner_oid_of_name (names[0], &owners[0]);
+      if (sm_ch_owner ((MOBJ) class_) != NULL)
+	{
+	  COPY_OID (&owners[0], ws_oid (sm_ch_owner ((MOBJ) class_)));
+	}
+      else
+	{
+	  OID_SET_NULL (&owners[0]);
+	}
       if (locator_lockhint_classes (1, names, locks, subs, flags, owners, 1, NULL_LOCK, NULL) == LC_CLASSNAME_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -13424,6 +13465,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
 static int
 update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth, bool needs_hierarchy_lock)
 {
+  OID name_owner_oid;
   int error = NO_ERROR;
   int num_indexes;
   SM_CLASS *class_;
@@ -13552,7 +13594,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   /* are we creating a new class ? */
   if (class_ == NULL)
     {
-      class_ = classobj_make_class (template_->name);
+      class_ = classobj_make_class (sm_remove_qualifier_name (template_->name));
       if (class_ == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -13595,7 +13637,12 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	   * have roots elsewhere.  Currently, this is the case since we are simply caching a newly created empty class
 	   * structure which will later be populated with install_new_representation.  The template that holds the new
 	   * class contents IS already a GC root. */
-	  template_->op = locator_add_class ((MOBJ) class_, (char *) sm_ch_name ((MOBJ) class_));
+	  /* The name was reserved under whatever owner the template's name named, which is
+	   * no one at all when that name carries no owner -- an information_schema vclass is
+	   * created that way, and only afterwards belongs to someone. Key the lookup the same
+	   * way the reservation was keyed, or it will not find it. */
+	  au_find_owner_oid_of_name (template_->name, &name_owner_oid);
+	  template_->op = locator_add_class ((MOBJ) class_, &name_owner_oid, sm_ch_name ((MOBJ) class_));
 	  if (template_->op == NULL)
 	    {
 	      /* return locator error code */
@@ -14021,7 +14068,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	  if (error == NO_ERROR)
 	    {
 	      class_name = db_get_string (&name_val);
-	      if (class_name != NULL && (strcmp (sm_ch_bare_name ((MOBJ) class_), class_name) == 0))
+	      if (class_name != NULL && (strcmp (sm_ch_name ((MOBJ) class_), class_name) == 0))
 		{
 		  int save;
 		  OID *oidp, serial_obj_id;
@@ -14890,7 +14937,9 @@ char *
 sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl, DB_CONSTRAINT_TYPE constraint_type, const char **att_names,
 				 const int *asc_desc, const char *given_name)
 {
-  return sm_produce_constraint_name (template_classname (tmpl), constraint_type, att_names, asc_desc, given_name);
+  char qname[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  return sm_produce_constraint_name (template_classname (tmpl, qname, sizeof (qname)), constraint_type, att_names,
+				     asc_desc, given_name);
 }
 
 #if 0				// defined(UNCALLED_FUNCTION)

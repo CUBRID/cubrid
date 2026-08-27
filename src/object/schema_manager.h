@@ -215,7 +215,6 @@ extern SM_CLASS_CONSTRAINT *sm_class_constraints (MOP classop);
 
 /* Locator support functions */
 extern const char *sm_ch_name (const MOBJ clobj);
-extern const char *sm_ch_bare_name (const MOBJ clobj);
 extern MOP sm_ch_owner (const MOBJ clobj);
 extern const char *sm_ch_qualified_name (const MOBJ clobj, char *buf, int buf_size);
 extern HFID *sm_ch_heap (MOBJ clobj);

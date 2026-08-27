@@ -1226,16 +1226,13 @@ locator_reserve_class_names (const int num_classes, const char **class_names, OI
  * locator_get_reserved_class_name_oid () - Get OID of reserved class.
  *
  * return	   : Error code.
+ * owner_oid (in)  : Owner the name belongs to; NULL for a name that belongs to no one.
  * classname (in)  : Class name.
  * class_oid (out) : Class OID.
  */
 int
-locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
+locator_get_reserved_class_name_oid (const OID * owner_oid, const char *classname, OID * class_oid)
 {
-  OID owner_oid;
-
-  au_find_owner_oid_of_name (classname, &owner_oid);
-
 #if defined(CS_MODE)
   int request_size;
   int request_error = NO_ERROR;
@@ -1260,7 +1257,7 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
     }
 
   ptr = pack_const_string (request, classname);
-  ptr = or_pack_oid (ptr, &owner_oid);
+  ptr = or_pack_oid (ptr, owner_oid);
 
   request_error =
     net_client_request (NET_SERVER_LC_RESERVE_CLASSNAME_GET_OID, request, request_size, reply,
@@ -1280,7 +1277,7 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  is_reserved = xlocator_get_reserved_class_name_oid (thread_p, classname, &owner_oid, class_oid);
+  is_reserved = xlocator_get_reserved_class_name_oid (thread_p, classname, owner_oid, class_oid);
 
   exit_server (*thread_p);
 
@@ -1298,12 +1295,8 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
  * NOTE:
  */
 LC_FIND_CLASSNAME
-locator_delete_class_name (const char *class_name)
+locator_delete_class_name (const OID * owner_oid, const char *class_name)
 {
-  OID owner_oid;
-
-  au_find_owner_oid_of_name (class_name, &owner_oid);
-
 #if defined(CS_MODE)
   LC_FIND_CLASSNAME deleted = LC_CLASSNAME_ERROR;
   int xdeleted;
@@ -1323,7 +1316,7 @@ locator_delete_class_name (const char *class_name)
     }
 
   ptr = pack_const_string_with_length (request, class_name, strlen);
-  ptr = or_pack_oid (ptr, &owner_oid);
+  ptr = or_pack_oid (ptr, owner_oid);
   req_error = net_client_request (NET_SERVER_LC_DELETE_CLASSNAME, request, request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
@@ -1340,7 +1333,7 @@ locator_delete_class_name (const char *class_name)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  deleted = xlocator_delete_class_name (thread_p, class_name, &owner_oid);
+  deleted = xlocator_delete_class_name (thread_p, class_name, owner_oid);
 
   exit_server (*thread_p);
 

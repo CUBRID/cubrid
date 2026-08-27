@@ -60,14 +60,20 @@ static int au_add_member_internal (MOP group, MOP member, int new_user);
  *       user names to be set to upper case when users are added.
  */
 /*
- * au_find_owner_oid_of_name () - The owner a qualified name names, as an OID
+ * au_find_owner_oid_of_name () - The owner a name belongs to, as an OID
  *   return: void
  *   name(in): Name, qualified or not
- *   owner_oid(out): OID of the owner the qualifier names; NULL OID when the name has no
- *                   qualifier, or when no user goes by it
+ *   owner_oid(out): OID of the owner; NULL OID for a system class, and when no user goes
+ *                   by the name the qualifier gives
  *
- * Note: A name with no qualifier gets no owner. That is how a system class names itself,
- *       and it is what the server keys such an entry by.
+ * Note: Only a system class belongs to no one. Auth is itself brought up by looking those
+ *       classes up, so at that point there is no user to name -- not even the DBA who owns
+ *       them; see locator_classname_key_set ().
+ *
+ *       A name with no qualifier belongs to whoever is creating it. An information_schema
+ *       vclass is made that way: it is named without an owner and handed to
+ *       INFORMATION_SCHEMA afterwards, and the name has to be found under someone both
+ *       before and after that.
  */
 void
 au_find_owner_oid_of_name (const char *name, OID *owner_oid)
@@ -83,15 +89,21 @@ au_find_owner_oid_of_name (const char *name, OID *owner_oid)
       return;
     }
 
-  if (sm_check_system_class_by_name (name))
+  dot = strchr (name, '.');
+
+  if (sm_check_system_class_by_name (dot != NULL ? dot + 1 : name))
     {
-      /* a system class is keyed on no owner; see locator_classname_key_set () */
+      /* a catalog class is keyed on no owner; see locator_classname_key_set () */
       return;
     }
 
-  dot = strchr (name, '.');
   if (dot == NULL)
     {
+      /* the same fallback sm_finish_class () uses when a template name carries no owner */
+      if (Au_user != NULL)
+	{
+	  COPY_OID (owner_oid, ws_oid (Au_user));
+	}
       return;
     }
 

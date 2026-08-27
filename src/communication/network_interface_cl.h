@@ -112,8 +112,8 @@ extern LC_FIND_CLASSNAME locator_find_class_oid (const char *class_name, const c
 extern int locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg);
 extern LC_FIND_CLASSNAME locator_reserve_class_names (const int num_classes, const char **class_names,
 						      OID * owner_oids, OID * class_oids);
-extern int locator_get_reserved_class_name_oid (const char *classname, OID * class_oid);
-extern LC_FIND_CLASSNAME locator_delete_class_name (const char *class_name);
+extern int locator_get_reserved_class_name_oid (const OID * owner_oid, const char *classname, OID * class_oid);
+extern LC_FIND_CLASSNAME locator_delete_class_name (const OID * owner_oid, const char *class_name);
 extern LC_FIND_CLASSNAME locator_rename_class_name (const char *old_name, const char *new_name, OID * class_oid);
 /* owner_oid: the owner the created or renamed-to name refers to */
 extern int locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length, OID * class_oid,

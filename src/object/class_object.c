@@ -3772,20 +3772,19 @@ classobj_cache_class_constraints (SM_CLASS * class_)
       return error;
     }
 
-  error =
-    classobj_cache_not_null_constraints (sm_ch_bare_name ((MOBJ) class_), class_->attributes, &(class_->constraints));
+  error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->attributes, &(class_->constraints));
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  error = classobj_cache_not_null_constraints (sm_ch_bare_name ((MOBJ) class_), class_->shared, &(class_->constraints));
+  error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->shared, &(class_->constraints));
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  return classobj_cache_not_null_constraints (sm_ch_bare_name ((MOBJ) class_), class_->class_attributes,
+  return classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->class_attributes,
 					      &(class_->constraints));
 }
 

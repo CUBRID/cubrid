@@ -378,7 +378,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
   int result;
 
-  if (strcmp (sm_ch_bare_name ((MOBJ) (inst_tp->class_)), CT_SERIAL_NAME) != 0)
+  if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), CT_SERIAL_NAME) != 0)
     {
       /* ordinary tables */
       string_buffer update_strbuf;

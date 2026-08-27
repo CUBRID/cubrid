@@ -2364,7 +2364,7 @@ ws_drop_classname (MOBJ classobj)
       return;
     }
 
-  bare_name = sm_ch_bare_name (classobj);
+  bare_name = sm_ch_name (classobj);
   if (bare_name == NULL)
     {
       return;			// ignore
@@ -2739,7 +2739,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 	  {
 	    MOP owner = sm_ch_owner (obj);
 
-	    ws_add_classname (obj, mop, owner != NULL ? ws_oid (owner) : NULL, sm_ch_bare_name (obj));
+	    ws_add_classname (obj, mop, owner != NULL ? ws_oid (owner) : NULL, sm_ch_name (obj));
 	  }
 	}
 

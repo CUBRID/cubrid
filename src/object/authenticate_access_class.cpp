@@ -76,6 +76,7 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   char *class_new_name = NULL;
   char *owner_name = NULL;
   const char *classname_only = NULL;
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   bool has_savepoint = true;
   int save = 0, alloc_sz;
@@ -130,14 +131,21 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
 	}
     }
 
+  /* The server has this class under a name that says who owns it, so read that out before
+   * the owner changes under us. The class itself only carries the name on its own. */
+  class_old_name = db_private_strdup (NULL, sm_ch_qualified_name ((MOBJ) class_, qualified_name,
+				      sizeof (qualified_name)));
+  if (class_old_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
   /* Change the owner of the class. */
   class_->owner = owner_mop;
 
-  /* unique_name contains owner_name. if owner of class is changed, unique_name must be changed as well. */
-  class_old_name = CONST_CAST (char *, sm_ch_name ((MOBJ) class_));
-
-  /* unique_name of system class does not contain owner_name. unique_name does not need to be changed. */
-  if (sm_check_system_class_by_name (class_old_name))
+  /* a system class is named with no owner, so no name of it has to change */
+  if (sm_check_system_class_by_name (sm_ch_name ((MOBJ) class_)))
     {
       error = locator_flush_class (class_mop);
       if (error != NO_ERROR)
@@ -158,7 +166,7 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
   db_ws_free_and_init (owner_name);
 
-  classname_only = sm_remove_qualifier_name (class_old_name);
+  classname_only = sm_ch_name ((MOBJ) class_);
   alloc_sz = snprintf (NULL, 0, "%s.%s", downcase_owner_name, classname_only) + 1;
   class_new_name = (char *) db_private_alloc (NULL, alloc_sz);
   if (class_new_name == NULL)
@@ -176,7 +184,7 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
       goto end;
     }
 
-  class_->header.ch_name = class_new_name;
+  /* the name on its own did not change; only who it belongs to did */
 
   if (class_->class_type == SM_CLASS_CT && class_->constraints != NULL)
     {
@@ -285,15 +293,13 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
       goto end;
     }
 
+end:
+  AU_RESTORE (save);
+
   if (class_old_name)
     {
       db_private_free_and_init (NULL, class_old_name);
     }
-
-  class_new_name = NULL;
-
-end:
-  AU_RESTORE (save);
 
   if (class_new_name)
     {
@@ -958,7 +964,7 @@ is_protected_class (MOP classmop, SM_CLASS *sm_class, DB_AUTH auth)
 {
   int illegal = 0;
 
-  if (classmop == Au_root_class || IS_CATALOG_CLASS (sm_ch_bare_name ((MOBJ) sm_class)))
+  if (classmop == Au_root_class || IS_CATALOG_CLASS (sm_ch_name ((MOBJ) sm_class)))
     {
       illegal = auth & (AU_ALTER | AU_DELETE | AU_INSERT | AU_UPDATE | AU_INDEX);
     }

@@ -154,11 +154,10 @@ static int locator_insert_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static void locator_unlink_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
 static bool locator_entry_is_synonym (LOCATOR_CLASSNAME_ENTRY * entry);
 static LOCATOR_CLASSNAME_ENTRY *locator_chase_synonym_entry (LOCATOR_CLASSNAME_ENTRY * entry);
-static int locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_name,
-					      const char *skip_name, LOCATOR_CLASSNAME_ENTRY ** candidates,
-					      int max_cand);
+static int locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_name, const OID * skip_owner,
+					      LOCATOR_CLASSNAME_ENTRY ** candidates, int max_cand);
 static LC_FIND_CLASSNAME locator_resolve_in_other_schemas (THREAD_ENTRY * thread_p, const char *name,
-							   LC_LOCKHINT_CLASS * slot);
+							   const OID * owner_oid, LC_LOCKHINT_CLASS * slot);
 static unsigned int locator_classname_key_hash (const void *key, const unsigned int ht_size);
 static int locator_classname_key_compare (const void *key1, const void *key2);
 static void locator_free_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry);
@@ -309,19 +308,25 @@ locator_bare_name (const char *name)
  *
  *   key(out): Receives the key; its bare_name points into name
  *   name(in): The name; only the part after a qualifier is keyed on
- *   owner_oid(in): Owner the name belongs to; not honored for a system class
+ *   owner_oid(in): Owner the name belongs to; not honored for a catalog class
  *
- * Note: A system class is keyed on no owner at all. Auth is itself brought up by looking
+ * Note: A catalog class is keyed on no owner at all. Auth is itself brought up by looking
  *       those classes up, so at that point there is no user to name yet -- not even the
  *       DBA who owns them. Which names those are is a fixed list, so asking the list is
  *       what decides it here rather than the shape of the name.
+ *
+ *       The list is asked about the bare name, because that is the only form both sides
+ *       of this table have: an entry built from a class record carries the name on its
+ *       own, while a lookup arrives with the owner still written in front of it. An
+ *       information_schema vclass is listed under its qualified name and so is not one
+ *       of these -- it belongs to INFORMATION_SCHEMA and is keyed under it.
  */
 static void
 locator_classname_key_set (LOCATOR_CLASSNAME_KEY * key, const char *name, const OID * owner_oid)
 {
   key->bare_name = locator_bare_name (name);
 
-  if (owner_oid == NULL || sm_check_system_class_by_name (name))
+  if (owner_oid == NULL || sm_check_system_class_by_name (key->bare_name))
     {
       OID_SET_NULL (&key->owner_oid);
     }
@@ -493,7 +498,7 @@ locator_chase_synonym_entry (LOCATOR_CLASSNAME_ENTRY * entry)
  *
  *   thread_p(in):
  *   bare_name(in): Bare name to look for
- *   skip_name(in): Full name already probed; its entry is not a candidate. NULL probes none
+ *   skip_owner(in): Owner already probed; entries under it are not candidates. NULL probes none
  *   candidates(out): Array receiving the candidates
  *   max_cand(in): Capacity of candidates; collection stops once reached
  *
@@ -504,7 +509,7 @@ locator_chase_synonym_entry (LOCATOR_CLASSNAME_ENTRY * entry)
  *       how many users own something by this bare name -- in the field, one per tenant.
  */
 static int
-locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_name, const char *skip_name,
+locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_name, const OID * skip_owner,
 				   LOCATOR_CLASSNAME_ENTRY ** candidates, int max_cand)
 {
   LOCATOR_CLASSNAME_ENTRY *entry;
@@ -515,7 +520,7 @@ locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_nam
        entry != NULL && num_cand < max_cand;
        entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get2 (locator_Mht_classnames_bare, bare_name, &last))
     {
-      if (skip_name != NULL && strcmp (entry->e_name, skip_name) == 0)
+      if (skip_owner != NULL && OID_EQ (&entry->e_key.owner_oid, skip_owner))
 	{
 	  continue;
 	}
@@ -543,6 +548,7 @@ locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_nam
  *
  *   thread_p(in):
  *   name(in): Name as requested, qualified with the connecting user
+ *   owner_oid(in): Owner already probed under that name
  *   slot(in/out): Slot to describe the resolved class in; untouched unless EXIST is returned
  *
  * Note: The caller must be inside CSECT_LOCATOR_SR_CLASSNAME_TABLE.
@@ -552,15 +558,19 @@ locator_find_bare_name_candidates (THREAD_ENTRY * thread_p, const char *bare_nam
  *       queries would fail. Look for the name in the remaining schemas.
  */
 static LC_FIND_CLASSNAME
-locator_resolve_in_other_schemas (THREAD_ENTRY * thread_p, const char *name, LC_LOCKHINT_CLASS * slot)
+locator_resolve_in_other_schemas (THREAD_ENTRY * thread_p, const char *name, const OID * owner_oid,
+				  LC_LOCKHINT_CLASS * slot)
 {
   LOCATOR_CLASSNAME_ENTRY *candidates[2];
   LOCATOR_CLASSNAME_ENTRY *target;
+  LOCATOR_CLASSNAME_KEY probed;
   const char *bare_name = locator_bare_name (name);
   int num_cand;
 
+  locator_classname_key_set (&probed, name, owner_oid);
+
   num_cand =
-    locator_find_bare_name_candidates (thread_p, bare_name, name, candidates,
+    locator_find_bare_name_candidates (thread_p, bare_name, &probed.owner_oid, candidates,
 				       sizeof (candidates) / sizeof (candidates[0]));
 
   if (num_cand > 1)
@@ -12464,7 +12474,9 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 	    {
 	      /* Reached only when the name was not found under the connecting user's own
 	       * schema, so a query that resolves the way it always did never pays for this. */
-	      find = locator_resolve_in_other_schemas (thread_p, classname, &(*hlock)->classes[n]);
+	      find =
+		locator_resolve_in_other_schemas (thread_p, classname,
+						  many_owner_oids ? &many_owner_oids[i] : NULL, &(*hlock)->classes[n]);
 	    }
 	  else
 	    {

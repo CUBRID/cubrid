@@ -886,7 +886,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 
       for (cptr = prohibited_classes; *cptr; ++cptr)
 	{
-	  if (strcmp (*cptr, sm_ch_bare_name ((MOBJ) class_ptr)) == 0)
+	  if (strcmp (*cptr, sm_ch_name ((MOBJ) class_ptr)) == 0)
 	    {
 	      break;
 	    }

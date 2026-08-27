@@ -669,10 +669,12 @@ set_auto_increment_serial_name (char *serial_name, const char *class_name, const
   int attr_length, class_only_length;
   const char *dot = strchr (class_name, '.');
 
-  assert (dot != NULL);		// class_name must be in the form of 'user.class'
-  assert (dot - class_name < DB_MAX_USER_LENGTH);	// the part before dot must be less than DB_MAX_USER_LENGTH
+  /* The owner may or may not be written in front of the class name: on the server the class
+   * record carries the name on its own, while the client still names it the way SQL does.
+   * Either way the length that matters is the name's own. */
+  assert (dot == NULL || dot - class_name < DB_MAX_USER_LENGTH);
 
-  class_only_length = strlen (dot + 1);
+  class_only_length = (dot != NULL) ? strlen (dot + 1) : strlen (class_name);
   attr_length = strlen (attr_name);
 
   if ((class_only_length + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + attr_length) < DB_MAX_SERIAL_NAME_LENGTH)
