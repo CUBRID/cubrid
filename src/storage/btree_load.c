@@ -353,9 +353,6 @@ static int bt_load_write_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 				 BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
 static int btree_get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_ptr,
 					   int slot_id, DB_VALUE * key, bool * clear_key);
-#if defined(CUBRID_DEBUG)
-static int btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args);
-#endif /* defined(CUBRID_DEBUG) */
 static int btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, BTSORT_PUT_FUNC * out_func,
 			     void *out_args);
 static BTSORT_STATUS btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
@@ -1141,8 +1138,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
    * per-worker temp files); if the main thread already holds the rmutex from here, every worker blocks
    * on it while the main thread blocks on BTSORT_WAIT_PARALLEL waiting for those same workers -- deadlock.
    * The real build sysop for logged paths is opened deeper -- either by btree_sort()'s
-   * single-process branch or by sort_merge_run_for_parallel_index_leaf_build()'s legacy branch -- always
-   * after the parallel wait has already returned, and is picked up below via
+   * single-process branch or by btsort_merge_run_for_parallel_index_leaf_build()'s legacy branch
+   * -- always after the parallel wait has already returned, and is picked up below via
    * log_check_system_op_is_started() once btree_index_sort() completes. */
 #else
   load_args->no_redo = false;
@@ -1345,7 +1342,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 #if defined (SERVER_MODE) && !defined (NDEBUG)
   /* no-redo builds are restricted to genuinely parallel construction, so no_redo can never be true together
    * with px_outcome == BT_PX_NOT_ATTEMPTED -- both demotion points (btree_sort()'s single-process branch
-   * and sort_px_construct_index_leaf()'s n_shards < 2 fallback) clear no_redo before returning
+   * and btsort_px_construct_index_leaf()'s n_shards < 2 fallback) clear no_redo before returning
    * BT_PX_NOT_ATTEMPTED. Whenever no_redo is (still) true here, the build sysop was already committed or
    * aborted deep inside the parallel path, so no open sysop should remain at this level. */
   assert (!load_args->no_redo || load_args->px_outcome != BT_PX_NOT_ATTEMPTED);
@@ -1449,8 +1446,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       /* no-redo builds are restricted to genuinely parallel construction. An empty build (no leaves at all)
        * can only reach here via the serial/legacy path -- btree_sort()'s single-process branch or
-       * sort_px_construct_index_leaf()'s n_shards < 2 fallback -- both of which demote load_args->no_redo to
-       * false before any content page (or lack thereof) is decided here. */
+       * btsort_px_construct_index_leaf()'s n_shards < 2 fallback -- both of which demote
+       * load_args->no_redo to false before any content page (or lack thereof) is decided here. */
       assert (!load_args->no_redo);
       if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	{
@@ -4699,7 +4696,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	  goto error;
 	}
 
-      if (VPID_ISNULL (&(load_args->leaf.vpid)))	/* Find out if this is the first call to this function */
+      if (VPID_ISNULL (&(load_args->leaf.vpid)))	/* Find out if this is the first call */
 	{
 	  /* This is the first call to this function; so, initialize some fields in the LOAD_ARGS structure */
 	  if ((ret = bt_load_get_first_leaf_page_and_init_args (thread_p, load_args, &sparam)) != NO_ERROR)
@@ -5122,11 +5119,12 @@ bt_load_worker_close_shard (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   int error;
   if (load_args->leaf.pgptr == NULL)
     {
-      /* Unreachable.  Shard 0 always holds the first candidate group, because sort_px_select_splitters ()'s
-       * boundary-emission loop starts at group 1 and so never emits the minimum as a splitter; and every emitted
-       * splitter is a key that really exists in some run, which the cut (key >= splitter,
-       * sort_px_run_lower_bound ()) leaves in the shard that starts there.  Hence no shard can be empty.  Kept as a
-       * backstop, with an error set so that a future splitter change does not surface as a silent ER_FAILED. */
+      /* Unreachable.  Shard 0 always holds the first candidate group, because
+       * btsort_px_select_splitters ()'s boundary-emission loop starts at group 1 and so never emits
+       * the minimum as a splitter; and every emitted splitter is a key that really exists in some
+       * run, which the cut (key >= splitter, btsort_px_run_lower_bound ()) leaves in the shard that
+       * starts there.  Hence no shard can be empty.  Kept as a backstop, with an error set so that
+       * a future splitter change does not surface as a silent ER_FAILED. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
       return ER_FAILED;
     }
@@ -5350,68 +5348,6 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
 			     main_load_args->sort_args->n_oids, n_keys);
 }
 
-#if defined(CUBRID_DEBUG)
-/*
- * btree_dump_sort_output () - Sample output function for index sorting
- *   return: NO_ERROR
- *   recdes(in):
- *   load_args(in):
- *
- * Note: This function is a debugging function. It is passed by the
- * btree_index_sort function to the btree_sort function to print
- * out the contents of the sort items once they are obtained in
- * the requested sorting order.
- *
- */
-static int
-btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args)
-{
-  OID this_oid;
-  DB_VALUE this_key;
-  OR_BUF buf;
-  bool copy = false;
-  int key_size = -1;
-  int ret = NO_ERROR;
-
-  /* First decompose the input record into the key and oid components */
-  or_init (&buf, recdes->data, recdes->length);
-
-  if (or_get_oid (&buf, &this_oid) != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-  buf.ptr = PTR_ALIGN (buf.ptr, MAX_ALIGNMENT);
-
-  /* Do not copy the string--just use the pointer.  The pr_ routines for strings and sets have different semantics for
-   * length. */
-  if (TP_DOMAIN_TYPE (load_args->btid->key_type) == DB_TYPE_MIDXKEY)
-    {
-      key_size = buf.endptr - buf.ptr;
-    }
-
-  if ((*(load_args->btid->key_type->type->readval)) (&buf, &this_key, load_args->btid->key_type, key_size, copy, NULL,
-						     0) != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  printf ("Attribute: ");
-  btree_dump_key (stdout, &this_key);
-  printf ("   Volid: %d", this_oid.volid);
-  printf ("   Pageid: %d", this_oid.pageid);
-  printf ("   Slotid: %d\n", this_oid.slotid);
-
-end:
-
-  copy = btree_clear_key_value (copy, &this_key);
-
-  return ret;
-
-exit_on_error:
-
-  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
-}
-#endif /* CUBRID_DEBUG */
 
 /*
  * btree_index_sort () - Sort for the index file creation
@@ -6512,7 +6448,6 @@ list_print (const BTREE_NODE * this_list)
 void
 btree_load_foo_debug (void)
 {
-  (void) btree_dump_sort_output (NULL, NULL);
   list_print (NULL);
 }
 #endif /* CUBRID_DEBUG */

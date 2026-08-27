@@ -33,9 +33,6 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
-/* returned by the output function to stop the sort early */
-#define BTSORT_PUT_STOP     2
-
 /* Every in-memory sort record is preceded by its length; the prefix is 8 bytes wide to keep records
  * MAX_ALIGNMENT-aligned. */
 #define BTSORT_RECORD_LENGTH_SIZE (sizeof(INT64))	/* for 8byte align */

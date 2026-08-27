@@ -70,16 +70,13 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* Estimate on the number of pages of the multipage (long record) temporary file */
-#define BTSORT_MULTIPAGE_FILE_SIZE_ESTIMATE  20
-
 /* Upper limit on the half of the total number of the temporary files.
  * The exact upper limit on total number of temp files is twice this number.
  * (i.e., this number specifies the upper limit on the number of total input
  * or total output files at each stage of the merging process.
  */
 #define BTSORT_MAX_HALF_FILES      4
-#define BTSORT_MAX_TOT_FILES      BTSORT_MAX_HALF_FILES * 2
+#define BTSORT_MAX_TOT_FILES      (BTSORT_MAX_HALF_FILES * 2)
 
 /* Lower limit on the half of the total number of the temporary files.
  * The exact lower limit on total number of temp files is twice this number.
@@ -94,14 +91,16 @@
 /* Expansion Ratio of the dynamic array that keeps the file contents list */
 #define BTSORT_EXPAND_DYN_ARRAY_RATIO 1.5
 
+/* Largest record an empty run page accepts: the aligned offset past the header that
+ * btsort_spage_initialize leaves, less the slot and the alignment waste find_free charges. */
 #define BTSORT_MAXREC_LENGTH             \
-        ((ssize_t)(DB_PAGESIZE - sizeof(BTSORT_SPAGE_HEADER) - sizeof(BTSORT_SLOT)))
+        ((ssize_t) DB_ALIGN_BELOW (DB_PAGESIZE - DB_ALIGN ((int) sizeof (BTSORT_SPAGE_HEADER), \
+                                                          (int) MAX_ALIGNMENT) \
+                                   - (int) sizeof (BTSORT_PAGE_SLOT), (int) MAX_ALIGNMENT))
 
-/* Smallest record area worth offering to the input function; below this the sort buffer is treated as full.
- * Kept equal to the former sizeof (BTSORT_REC) so run boundaries do not move relative to external_sort.c. */
+/* Smallest record area worth offering to the input function; below this the sort buffer is treated as full
+ * (an OID plus a short key needs less, this only keeps a sliver at the end of the buffer from being offered). */
 #define BTSORT_MIN_REC_AREA  ((ssize_t) (3 * sizeof (INT64)))
-
-#define BTSORT_SWAP_PTR(a,b) { char **temp; temp = a; a = b; b = temp; }
 
 /* Index build always keeps duplicate keys: equal-key records are chained onto the first one and the freed
  * slot is compacted away (see btsort_run_find / btsort_run_merge). */
@@ -198,7 +197,6 @@ struct btsort_file_contents
   int num_slots;		/* Total number of elements the array has */
   int first_run;		/* The index of the array element keeping the size of the first run of the file. */
   int last_run;			/* The index of the array element keeping the size of the last run of the file. */
-  int start_index;		/* Used when splitting a run in parallel processing. */
 };
 
 typedef struct btsort_index_shard BTSORT_INDEX_SHARD;
@@ -284,7 +282,6 @@ struct btsort_rec_list
 {
   struct btsort_rec_list *next;	/* next sorted record item */
   int rec_pos;			/* record position */
-  bool is_duplicated;		/* duplicated sort_key record flag */
 };				/* Sort record list */
 
 typedef struct btsort_spage_header BTSORT_SPAGE_HEADER;
@@ -292,28 +289,17 @@ struct btsort_spage_header
 {
   INT16 nslots;			/* Number of allocated slots for the page */
   INT16 nrecs;			/* Number of records on page */
-  INT16 anchor_flag;		/* Valid ANCHORED, ANCHORED_DONT_REUSE_SLOTS UNANCHORED_ANY_SEQUENCE,
-				 * UNANCHORED_KEEP_SEQUENCE */
   INT16 alignment;		/* Alignment for records. */
-  INT16 waste_align;		/* Number of bytes waste because of alignment */
   INT16 tfree;			/* Total free space on page */
-  INT16 cfree;			/* Contiguous free space on page */
   INT16 foffset;		/* Byte offset from the beginning of the page to the first free byte area on the page. */
 };
 
-typedef struct btsort_slot BTSORT_SLOT;
-struct btsort_slot
+typedef struct btsort_page_slot BTSORT_PAGE_SLOT;
+struct btsort_page_slot
 {
   INT16 roffset;		/* Byte Offset from the beginning of the page to the beginning of the record */
   INT16 rlength;		/* Length of record */
   INT16 rtype;			/* Record type described by slot. */
-};
-
-typedef struct btsort_run BTSORT_RUN;
-struct btsort_run
-{
-  long start;
-  long stop;
 };
 
 typedef struct btsort_srun BTSORT_SRUN;
@@ -336,11 +322,9 @@ struct btsort_stack
 typedef struct btsort_merge_queue_ctx BTSORT_MERGE_QUEUE_CTX;
 
 /* engine phases */
-static void btsort_spage_initialize (PAGE_PTR pgptr, INT16 slots_type, INT16 alignment);
+static void btsort_spage_initialize (PAGE_PTR pgptr);
 static INT16 btsort_spage_get_numrecs (PAGE_PTR pgptr);
-static int btsort_spage_offsetcmp (const void *sp1, const void *sp2);
-static int btsort_spage_compact (PAGE_PTR pgptr);
-static INT16 btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_SLOT ** sptr, INT16 length, INT16 type, INT16 * space);
+static INT16 btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_PAGE_SLOT ** sptr, INT16 length, INT16 type, INT16 * space);
 static INT16 btsort_spage_insert (PAGE_PTR pgptr, RECDES * recdes);
 static SCAN_CODE btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_p);
 static void btsort_run_flip (char **start, char **stop);
@@ -367,24 +351,17 @@ static int btsort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NT
 			      INT32 num_pages, char *area_start, bool tde_encrypted);
 static int btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor, int first_page,
 			     INT32 num_pages, char *area_start);
-static int btsort_get_num_half_tmpfiles (int tot_buffers, int input_pages);
+static int btsort_get_num_half_tmpfiles (int tot_buffers);
 static int btsort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
 static int btsort_get_numpages_of_active_infiles (const BTSORT_PARAM * sort_param);
 static int btsort_find_inbuf_size (int tot_buffers, int in_sections);
 static int btsort_run_add_new (BTSORT_FILE_CONTENTS * file_contents, int num_pages);
 static void btsort_run_remove_first (BTSORT_FILE_CONTENTS * file_contents);
 static int btsort_get_num_file_contents (BTSORT_FILE_CONTENTS * file_contents);
-#if !defined(NDEBUG)
-static int btsort_validate (char **vector, long size, BTSORT_CMP_FUNC * compare, void *comp_arg);
-#endif /* !NDEBUG */
-#if defined(CUBRID_DEBUG)
-static INT16 btsort_spage_dump_sptr (BTSORT_SLOT * sptr, INT16 nslots, INT16 alignment);
-static void btsort_spage_dump_hdr (BTSORT_SPAGE_HEADER * sphdr);
-static void btsort_spage_dump (PAGE_PTR pgptr, int rec_p);
-static void btsort_print_file_contents (const BTSORT_FILE_CONTENTS * file_contents);
-#endif /* CUBRID_DEBUG */
 #if defined(SERVER_MODE)
 static int btsort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int start_pagenum);
+static int btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, BTSORT_PARAM * sort_param,
+				   int parallel_num);
 static int btsort_index_page_decode_key (THREAD_ENTRY * thread_p, char *pgbuf, int slot, LOAD_ARGS * load_args,
 					 DB_VALUE * key);
 static int btsort_index_run_decode_key_at (THREAD_ENTRY * thread_p, VFID * temp, char *iomem, LOAD_ARGS * load_args,
@@ -416,8 +393,8 @@ static void btsort_merge_queue_setup_ctx (int pool_idx, BTSORT_MERGE_QUEUE_CTX *
 static void btsort_merge_queue_ctx_init (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_PARAM * sort_param,
 					 BTSORT_PARAM * px_sort_param, int parallel_num);
 static void btsort_merge_queue_ctx_destroy (BTSORT_MERGE_QUEUE_CTX * qctx);
-static int btsort_merge_queue_enqueue_initial_runs (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_PARAM * px_sort_param,
-						    int parallel_num);
+static void btsort_merge_queue_enqueue_initial_runs (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_PARAM * px_sort_param,
+						     int parallel_num);
 static int btsort_merge_queue_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_QUEUE_CTX * qctx);
 static void btsort_merge_queue_stage_final_run (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_PARAM * dst);
 static void btsort_merge_queue_try_dispatch (BTSORT_MERGE_QUEUE_CTX * qctx);
@@ -435,59 +412,29 @@ static int btsort_end_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_so
 #endif /* SERVER_MODE */
 
 /*
- * btsort_spage_initialize () - Initialize a slotted page
+ * btsort_spage_initialize () - Initialize a run page
  *   return: void
- *   pgptr(in): Pointer to slotted page
- *   slots_type(in): Flag which indicates the type of slots
- *   alignment(in): Type of alignment
+ *   pgptr(in): Pointer to the page
  *
- * Note: A slotted page must be initialized before records are inserted on the
- *       page. The alignment indicates the valid offset where the records
- *       should be stored. This is a requirment for peeking records on pages
- *       according to their alignmnet restrictions.
+ * Note: A run page must be initialized before records are inserted on it. Every run page appends its records
+ *       in order and keeps them MAX_ALIGNMENT-aligned; no slot is ever freed or reused.
  */
 static void
-btsort_spage_initialize (PAGE_PTR pgptr, INT16 slots_type, INT16 alignment)
+btsort_spage_initialize (PAGE_PTR pgptr)
 {
   BTSORT_SPAGE_HEADER *sphdr;
+  INT16 waste;
 
   sphdr = (BTSORT_SPAGE_HEADER *) pgptr;
 
   sphdr->nslots = 0;
   sphdr->nrecs = 0;
+  sphdr->alignment = MAX_ALIGNMENT;
 
-#if defined(CUBRID_DEBUG)
-  if (!spage_is_valid_anchor_type (slots_type))
-    {
-      (void) fprintf (stderr,
-		      "btsort_spage_initialize: **INTERFACE SYSTEM ERROR BAD value for slots_type = %d.\n"
-		      " UNANCHORED_KEEP_SEQUENCE was assumed **\n", slots_type);
-      slots_type = UNANCHORED_KEEP_SEQUENCE;
-    }
-  if (!(alignment == CHAR_ALIGNMENT || alignment == SHORT_ALIGNMENT || alignment == INT_ALIGNMENT
-	|| alignment == LONG_ALIGNMENT || alignment == FLOAT_ALIGNMENT || alignment == DOUBLE_ALIGNMENT))
-    {
-      (void) fprintf (stderr,
-		      "btsort_spage_initialize: **INTERFACE SYSTEM ERROR BAD value = %d"
-		      " for alignment. %d was assumed\n. Alignment must be"
-		      " either SIZEOF char, short, int, long, float, or double", alignment, MAX_ALIGNMENT);
-      alignment = MAX_ALIGNMENT;
-    }
-#endif /* CUBRID_DEBUG */
-
-  sphdr->anchor_flag = slots_type;
-  sphdr->tfree = DB_PAGESIZE - sizeof (BTSORT_SPAGE_HEADER);
-  sphdr->cfree = sphdr->tfree;
-  sphdr->foffset = sizeof (BTSORT_SPAGE_HEADER);
-  sphdr->alignment = alignment;
-  sphdr->waste_align = DB_WASTED_ALIGN (sphdr->foffset, alignment);
-
-  if (sphdr->waste_align != 0)
-    {
-      sphdr->foffset += sphdr->waste_align;
-      sphdr->cfree -= sphdr->waste_align;
-      sphdr->tfree -= sphdr->waste_align;
-    }
+  /* the first record starts at the first aligned offset past the header */
+  waste = DB_WASTED_ALIGN (sizeof (BTSORT_SPAGE_HEADER), MAX_ALIGNMENT);
+  sphdr->foffset = sizeof (BTSORT_SPAGE_HEADER) + waste;
+  sphdr->tfree = DB_PAGESIZE - sphdr->foffset;
 }
 
 /*
@@ -506,96 +453,6 @@ btsort_spage_get_numrecs (PAGE_PTR pgptr)
 }
 
 /*
- * btsort_spage_offsetcmp () - Compare the location (offset) of slots
- *   return: sp1 - sp2
- *   sp1(in): slot 1
- *   sp2(in): slot 2
- */
-static int
-btsort_spage_offsetcmp (const void *sp1, const void *sp2)
-{
-  BTSORT_SLOT *s1, *s2;
-  INT16 l1, l2;
-
-  s1 = *(BTSORT_SLOT **) sp1;
-  s2 = *(BTSORT_SLOT **) sp2;
-
-  l1 = s1->roffset;
-  l2 = s2->roffset;
-
-  return (l1 < l2) ? -1 : (l1 == l2) ? 0 : 1;
-}
-
-/*
- * btsort_spage_compact () - Compact an slotted page
- *   return: NO_ERROR
- *   pgptr(in): Pointer to slotted page
- *
- * Note: Only the records are compacted, the slots are not compacted.
- */
-static int
-btsort_spage_compact (PAGE_PTR pgptr)
-{
-  int i, j;
-  BTSORT_SPAGE_HEADER *sphdr;
-  BTSORT_SLOT *sptr;
-  BTSORT_SLOT **sortptr;
-  INT16 to_offset;
-  int ret = NO_ERROR;
-
-  sphdr = (BTSORT_SPAGE_HEADER *) pgptr;
-
-  sortptr = (BTSORT_SLOT **) calloc ((unsigned) sphdr->nrecs, sizeof (BTSORT_SLOT *));
-  if (sortptr == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sphdr->nrecs * sizeof (BTSORT_SLOT *));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  /* Populate the array to sort and then sort it */
-  sptr = (BTSORT_SLOT *) ((char *) pgptr + DB_PAGESIZE - sizeof (BTSORT_SLOT));
-  for (j = 0, i = 0; i < sphdr->nslots; sptr--, i++)
-    {
-      if (sptr->roffset != NULL_OFFSET)
-	{
-	  sortptr[j++] = sptr;
-	}
-    }
-
-  qsort ((void *) sortptr, (size_t) sphdr->nrecs, (size_t) sizeof (BTSORT_SLOT *), btsort_spage_offsetcmp);
-
-  to_offset = sizeof (BTSORT_SPAGE_HEADER);
-  for (i = 0; i < sphdr->nrecs; i++)
-    {
-      /* Make sure that the offset is aligned */
-      to_offset = DB_ALIGN (to_offset, sphdr->alignment);
-      if (to_offset == sortptr[i]->roffset)
-	{
-	  /* Record slot is already in place */
-	  to_offset += sortptr[i]->rlength;
-	}
-      else
-	{
-	  /* Move the record */
-	  memmove ((char *) pgptr + to_offset, (char *) pgptr + sortptr[i]->roffset, sortptr[i]->rlength);
-	  sortptr[i]->roffset = to_offset;
-	  to_offset += sortptr[i]->rlength;
-	}
-    }
-
-  /* Make sure that the next inserted record will be aligned */
-  to_offset = DB_ALIGN (to_offset, sphdr->alignment);
-
-  sphdr->cfree = sphdr->tfree = (DB_PAGESIZE - to_offset - sphdr->nslots * sizeof (BTSORT_SLOT));
-  sphdr->foffset = to_offset;
-  free_and_init (sortptr);
-
-  /* The page is set dirty somewhere else */
-
-  return ret;
-}
-
-/*
  * btsort_spage_find_free () - Find a free area/slot where a record of the given length
  *                  can be inserted onto the given slotted page
  *   return: A slot identifier or NULL_SLOTID
@@ -609,7 +466,7 @@ btsort_spage_compact (PAGE_PTR pgptr)
  *       indicated and NULLSLOTID is returned.
  */
 static INT16
-btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_SLOT ** sptr, INT16 length, INT16 type, INT16 * space)
+btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_PAGE_SLOT ** sptr, INT16 length, INT16 type, INT16 * space)
 {
   BTSORT_SPAGE_HEADER *sphdr;
   INT16 slotid;
@@ -622,7 +479,9 @@ btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_SLOT ** sptr, INT16 length, INT16
   waste = DB_WASTED_ALIGN (length, sphdr->alignment);
   *space = length + waste;
 
-  /* Quickly check for available space. We may need to check again if a slot is created (instead of reused) */
+  /* Runs are append-only: the record always takes a new slot at the end of the slot array. Make
+   * sure the record and its slot both fit. */
+  *space += sizeof (BTSORT_PAGE_SLOT);
   if (*space > sphdr->tfree)
     {
       *sptr = NULL;
@@ -630,64 +489,9 @@ btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_SLOT ** sptr, INT16 length, INT16
       return NULL_SLOTID;
     }
 
-  /* Find a free slot. Try to reuse an unused slotid, instead of allocating a new one */
-
-  *sptr = (BTSORT_SLOT *) ((char *) pgptr + DB_PAGESIZE - sizeof (BTSORT_SLOT));
-
-  if (sphdr->nslots == sphdr->nrecs)
-    {
-      slotid = sphdr->nslots;
-      *sptr -= slotid;
-    }
-  else
-    {
-      for (slotid = 0; slotid < sphdr->nslots; (*sptr)--, slotid++)
-	{
-	  if ((*sptr)->rtype == REC_HOME || (*sptr)->rtype == REC_BIGONE)
-	    {
-	      ;			/* go ahead */
-	    }
-	  else
-	    {			/* impossible case */
-	      assert (false);
-	      break;
-	    }
-	}
-    }
-
-  /* Make sure that there is enough space for the record and the slot */
-
-  assert (slotid <= sphdr->nslots);
-
-  if (slotid >= sphdr->nslots)
-    {
-      *space += sizeof (BTSORT_SLOT);
-      /* We are allocating a new slotid. Check for available space again */
-      if (*space > sphdr->tfree)
-	{
-	  *sptr = NULL;
-	  *space = 0;
-	  return NULL_SLOTID;
-	}
-      else if (*space > sphdr->cfree && btsort_spage_compact (pgptr) != NO_ERROR)
-	{
-	  *sptr = NULL;
-	  *space = 0;
-	  return NULL_SLOTID;
-	}
-      /* Adjust the number of slots */
-      sphdr->nslots++;
-    }
-  else
-    {
-      /* We already know that there is total space available since the slot is reused and the space was check above */
-      if (*space > sphdr->cfree && btsort_spage_compact (pgptr) != NO_ERROR)
-	{
-	  *sptr = NULL;
-	  *space = 0;
-	  return NULL_SLOTID;
-	}
-    }
+  slotid = sphdr->nslots;
+  *sptr = (BTSORT_PAGE_SLOT *) ((char *) pgptr + DB_PAGESIZE - sizeof (BTSORT_PAGE_SLOT)) - slotid;
+  sphdr->nslots++;
 
   /* Now separate an empty area for the record */
   (*sptr)->roffset = sphdr->foffset;
@@ -697,9 +501,7 @@ btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_SLOT ** sptr, INT16 length, INT16
   /* Adjust the header */
   sphdr->nrecs++;
   sphdr->tfree -= *space;
-  sphdr->cfree -= *space;
   sphdr->foffset += length + waste;
-  sphdr->waste_align += waste;
 
   /* The page is set dirty somewhere else */
 
@@ -718,8 +520,7 @@ btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_SLOT ** sptr, INT16 length, INT16
 static INT16
 btsort_spage_insert (PAGE_PTR pgptr, RECDES * recdes)
 {
-  BTSORT_SPAGE_HEADER *sphdr;
-  BTSORT_SLOT *sptr;
+  BTSORT_PAGE_SLOT *sptr;
   INT16 slotid;
   INT16 used_space;
 
@@ -735,9 +536,6 @@ btsort_spage_insert (PAGE_PTR pgptr, RECDES * recdes)
     {
       /* Find the free slot and insert the record */
       memcpy (((char *) pgptr + sptr->roffset), recdes->data, recdes->length);
-
-      /* Indicate that we are spending our savings */
-      sphdr = (BTSORT_SPAGE_HEADER *) pgptr;
     }
 
   return slotid;
@@ -771,15 +569,16 @@ static SCAN_CODE
 btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_p)
 {
   BTSORT_SPAGE_HEADER *sphdr;
-  BTSORT_SLOT *sptr;
+  BTSORT_PAGE_SLOT *sptr;
 
   sphdr = (BTSORT_SPAGE_HEADER *) pgptr;
 
-  sptr = (BTSORT_SLOT *) ((char *) pgptr + DB_PAGESIZE - sizeof (BTSORT_SLOT));
+  sptr = (BTSORT_PAGE_SLOT *) ((char *) pgptr + DB_PAGESIZE - sizeof (BTSORT_PAGE_SLOT));
 
   sptr -= slotid;
 
-  if (slotid < 0 || slotid >= sphdr->nslots || sptr->roffset == NULL_OFFSET)
+  /* runs are append-only: a slot is never freed, so a live slotid always has a record */
+  if (slotid < 0 || slotid >= sphdr->nslots)
     {
       recdes->length = 0;
       return S_DOESNT_EXIST;
@@ -818,139 +617,6 @@ btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool pee
 
   return S_SUCCESS;
 }
-
-#if defined(CUBRID_DEBUG)
-/*
- * btsort_spage_dump_sptr () - Dump the slotted page array
- *   return: Total length of records
- *   sptr(in): Pointer to slotted page pointer array
- *   nslots(in): Number of slots
- *   alignment(in): Alignment for records
- *
- * Note: The content of the record is not dumped by this function.
- *       This function is used for debugging purposes.
- */
-static INT16
-btsort_spage_dump_sptr (BTSORT_SLOT * sptr, INT16 nslots, INT16 alignment)
-{
-  int i;
-  INT16 waste;
-  INT16 total_length_records = 0;
-
-  for (i = 0; i < nslots; sptr--, i++)
-    {
-      assert (sptr->rtype == REC_HOME || sptr->rtype == REC_BIGONE);
-      (void) fprintf (stdout, "\nSlot-id = %2d, offset = %4d, type = %s", i, sptr->roffset,
-		      ((sptr->rtype == REC_HOME) ? "HOME" : (sptr->rtype ==
-							     REC_BIGONE) ? "BIGONE" : "UNKNOWN-BY-CURRENT-MODULE"));
-
-      if (sptr->roffset != NULL_OFFSET)
-	{
-	  total_length_records += sptr->rlength;
-	  waste = DB_WASTED_ALIGN (sptr->rlength, alignment);
-	  (void) fprintf (stdout, ", length = %4d, waste = %d", sptr->rlength, waste);
-	}
-      (void) fprintf (stdout, "\n");
-    }
-
-  return total_length_records;
-}
-
-/*
- * btsort_spage_dump_hdr () - Dump an slotted page header
- *   return: void
- *   sphdr(in): Pointer to header of slotted page
- *
- * Note:  This function is used for debugging purposes.
- */
-static void
-btsort_spage_dump_hdr (BTSORT_SPAGE_HEADER * sphdr)
-{
-  (void) fprintf (stdout, "NUM SLOTS = %d, NUM RECS = %d, TYPE OF SLOTS = %s,\n", sphdr->nslots, sphdr->nrecs,
-		  spage_anchor_flag_string (sphdr->anchor_flag));
-
-  (void) fprintf (stdout, "ALIGNMENT-TO = %s, WASTED AREA FOR ALIGNMENT = %d,\n",
-		  spage_alignment_string (sphdr->alignment), spage_waste_align);
-
-  (void) fprintf (stdout, "TOTAL FREE AREA = %d, CONTIGUOUS FREE AREA = %d, FREE SPACE OFFSET = %d,\n", sphdr->tfree,
-		  sphdr->cfree, sphdr->foffset);
-}
-
-/*
- * btsort_spage_dump () - Dump an slotted page
- *   return: void
- *   pgptr(in): Pointer to slotted page
- *   rec_p(in): If true, records are printed in ascii format, otherwise, the
- *              records are not printed
- *
- * Note: The records are printed only when the value of rec_p is true.
- *       This function is used for debugging purposes.
- */
-static void
-btsort_spage_dump (PAGE_PTR pgptr, int rec_p)
-{
-  int i, j;
-  BTSORT_SPAGE_HEADER *sphdr;
-  BTSORT_SLOT *sptr;
-  char *rec;
-  int used_length = 0;
-
-  sphdr = (BTSORT_SPAGE_HEADER *) pgptr;
-
-  btsort_spage_dump_hdr (sphdr);
-
-  sptr = (BTSORT_SLOT *) ((char *) pgptr + DB_PAGESIZE - sizeof (BTSORT_SLOT));
-
-  used_length = (sizeof (BTSORT_SPAGE_HEADER) + sphdr->waste_align + sizeof (BTSORT_SLOT) * sphdr->nslots);
-  used_length += btsort_spage_dump_sptr (sptr, sphdr->nslots, sphdr->alignment);
-
-  if (rec_p)
-    {
-      (void) fprintf (stdout, "\nRecords in ascii follow ...\n");
-      for (i = 0; i < sphdr->nslots; sptr--, i++)
-	{
-	  if (sptr->roffset != NULL_OFFSET)
-	    {
-	      (void) fprintf (stdout, "\nSlot-id = %2d\n", i);
-	      rec = (char *) pgptr + sptr->roffset;
-
-	      for (j = 0; j < sptr->rlength; j++)
-		{
-		  (void) fputc (*rec++, stdout);
-		}
-
-	      (void) fprintf (stdout, "\n");
-	    }
-	  else
-	    {
-	      (void) fprintf (stdout, "\nSlot-id = %2d has been deleted\n", i);
-	    }
-	}
-    }
-
-  if (used_length + sphdr->tfree > DB_PAGESIZE)
-    {
-      (void) fprintf (stdout,
-		      "btsort_spage_dump: Inconsistent page \n (Used_space + tfree > DB_PAGESIZE\n (%d + %d) > %d \n "
-		      " %d > %d\n", used_length, sphdr->tfree, DB_PAGESIZE, used_length + sphdr->tfree, DB_PAGESIZE);
-    }
-
-  if ((sphdr->cfree + sphdr->foffset + sizeof (BTSORT_SLOT) * sphdr->nslots) > DB_PAGESIZE)
-    {
-      (void) fprintf (stdout,
-		      "btsort_spage_dump: Inconsistent page\n (cfree + foffset + SIZEOF(BTSORT_SLOT) * nslots) > "
-		      " DB_PAGESIZE\n (%d + %d + (%d * %d)) > %d\n %d > %d\n", sphdr->cfree, sphdr->foffset,
-		      sizeof (BTSORT_SLOT), sphdr->nslots, DB_PAGESIZE,
-		      (sphdr->cfree + sphdr->foffset + sizeof (BTSORT_SLOT) * sphdr->nslots), DB_PAGESIZE);
-    }
-
-  if (sphdr->cfree <= -(sphdr->alignment - 1))
-    {
-      (void) fprintf (stdout, "btsort_spage_dump: Cfree %d is inconsistent in page. Cannot be < -%d\n", sphdr->cfree,
-		      sphdr->alignment);
-    }
-}
-#endif /* CUBRID_DEBUG */
 
 /*
  * btsort_run_flip () - Flip a run in place
@@ -1010,7 +676,7 @@ btsort_append (const void *pk0, const void *pk1)
  *   compare(in):
  *   comp_arg(in):
  *
- * Note: Flip descending run, and assign BTSORT_RUN start and stop
+ * Note: Flip descending run, and assign RUN start and stop
  */
 static void
 btsort_run_find (char **source, long *top, BTSORT_STACK * st_p, long limit, BTSORT_CMP_FUNC * compare, void *comp_arg)
@@ -1344,13 +1010,6 @@ btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, char **base
     }
   while (src_top < limit);
 
-#if defined(CUBRID_DEBUG)
-  if (limit != src_top)
-    {
-      printf ("Inconsistent sort test d), %ld %ld\n", limit, src_top);
-    }
-#endif /* CUBRID_DEBUG */
-
   /* save limit of non-duplicated value slot */
   *srun_limit = limit - st_p->srun[0].start;
 
@@ -1364,25 +1023,7 @@ btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, char **base
 
   assert (result != NULL);
 
-#if defined(CUBRID_DEBUG)
-  src_top = 0;
-  src = result;
-  btsort_run_find (src, &src_top, st_p, *srun_limit, compare, comp_arg);
-  if (st_p->srun[st_p->top].stop != *srun_limit - 1)
-    {
-      printf ("Inconsistent sort, %ld %ld %ld\n", st_p->srun[st_p->top].start, st_p->srun[st_p->top].stop, *srun_limit);
-      result = NULL;
-    }
-#endif /* CUBRID_DEBUG */
-
   db_private_free_and_init (NULL, st_p->srun);
-
-#if !defined(NDEBUG)
-  if (btsort_validate (result, *srun_limit, compare, comp_arg) != NO_ERROR)
-    {
-      result = NULL;
-    }
-#endif
 
   return result;
 }
@@ -1409,7 +1050,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
   int error = NO_ERROR;
   BTSORT_PARAM ori_sort_param;
   BTSORT_PARAM *sort_param = &ori_sort_param;
-  INT32 input_pages;
+  INT32 buffer_pages;		/* sort buffer size in pages */
   int i;
 
   /* for parallel sort */
@@ -1418,8 +1059,6 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
   pthread_mutex_t px_mtx;	/* px_status mutex */
   pthread_cond_t complete_cond;	/* complete condition */
 #endif
-
-  thread_set_sort_stats_active (thread_p, true);
 
 #if defined(SERVER_MODE)
   if (pthread_mutex_init (&px_mtx, NULL) != 0)
@@ -1432,6 +1071,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
     {
       error = ER_CSS_PTHREAD_COND_INIT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      pthread_mutex_destroy (&px_mtx);
       return error;
     }
   sort_param->px_mtx = &px_mtx;
@@ -1463,11 +1103,9 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
   sort_param->multipage_file.volid = NULL_VOLID;
   sort_param->multipage_file.fileid = NULL_FILEID;
 
-  /* The loader gives no input page estimate; the sort buffer is bounded by the sort buffer parameter. */
-  input_pages = prm_get_integer_value (PRM_ID_SR_NBUFFERS);
-
-  sort_param->tot_buffers = MIN (prm_get_integer_value (PRM_ID_SR_NBUFFERS), input_pages);
-  sort_param->tot_buffers = MAX (4, sort_param->tot_buffers);
+  /* The sort buffer is sized from the sort buffer parameter; the loader gives no input size estimate. */
+  buffer_pages = prm_get_integer_value (PRM_ID_SR_NBUFFERS);
+  sort_param->tot_buffers = MAX (4, buffer_pages);
 
   sort_param->internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
   if (sort_param->internal_memory == NULL)
@@ -1483,7 +1121,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
 	}
     }
 
-  sort_param->half_files = btsort_get_num_half_tmpfiles (sort_param->tot_buffers, input_pages);
+  sort_param->half_files = btsort_get_num_half_tmpfiles (sort_param->tot_buffers);
   sort_param->tot_tempfiles = sort_param->half_files << 1;
   sort_param->in_half = 0;
 
@@ -1508,9 +1146,9 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
       sort_param->file_contents[i].last_run = -1;
     }
 
-  /* Create only input temporary files make file and temporary volume page count estimates */
-  sort_param->tmp_file_pgs = CEIL_PTVDIV (input_pages, sort_param->half_files);
-  sort_param->tmp_file_pgs = MAX (1, sort_param->tmp_file_pgs);
+  /* Size estimate of an input temp file: a one-run share of the buffer. The files grow as runs
+   * are flushed. */
+  sort_param->tmp_file_pgs = CEIL_PTVDIV (sort_param->tot_buffers, sort_param->half_files);
 
   sort_param->tde_encrypted = includes_tde_class;
   sort_param->px_error_published = false;
@@ -1629,8 +1267,6 @@ cleanup:
       btsort_return_used_resources (thread_p, sort_param, BTSORT_PX_SINGLE);
     }
 
-  thread_set_sort_stats_active (thread_p, false);
-
   return error;
 }
 
@@ -1660,7 +1296,6 @@ btsort_listfile_execute (cubthread::entry & thread_ref, BTSORT_PARAM * sort_para
   thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
   if (sort_param->px_orig_thread_p->on_trace)
     {
-      thread_set_sort_stats_active (thread_p, true);
       thread_ref.on_trace = true;
       perfmon_initialize_parallel_stats (&thread_ref);
     }
@@ -1714,7 +1349,6 @@ cleanup:
 
   if (sort_param->px_orig_thread_p->on_trace)
     {
-      thread_set_sort_stats_active (thread_p, false);
       perfmon_destroy_parallel_stats (&thread_ref);
     }
 
@@ -1790,45 +1424,6 @@ btsort_listfile_internal (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 
   return error;
 }
-
-#if !defined(NDEBUG)
-/*
- * btsort_validate() -
- *   return:
- *   vector(in):
- *   size(in):
- *   compare(in):
- *   comp_arg(in):
- *
- * NOTE: debugging function
- */
-static int
-btsort_validate (char **vector, long size, BTSORT_CMP_FUNC * compare, void *comp_arg)
-{
-  long k;
-  int cmp;
-
-  assert (vector != NULL);
-  assert (size >= 1);
-  assert (compare != NULL);
-
-#if 1				/* TODO - for QAF, do not delete me */
-  return NO_ERROR;
-#endif
-
-  for (k = 0; k < size - 1; k++)
-    {
-      cmp = (*compare) (&(vector[k]), &(vector[k + 1]), comp_arg);
-      if (cmp != DB_LT)
-	{
-	  assert (false);
-	  return ER_FAILED;
-	}
-    }
-
-  return NO_ERROR;
-}
-#endif
 
 /*
  * btsort_inphase_sort () - Internal sorting phase
@@ -1984,7 +1579,7 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	  /* Check if the record would fit into a single slotted page. If not, take special action for this record. */
 	  if (temp_recdes.length > BTSORT_MAXREC_LENGTH)
 	    {
-	      /* TAKE CARE OF LONG RECORD as a separate BTSORT_RUN */
+	      /* TAKE CARE OF LONG RECORD as a separate RUN */
 
 	      if (long_recdes.area_size < temp_recdes.length)
 		{
@@ -2154,10 +1749,6 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	      error = (*sort_param->put_fn) (thread_p, &temp_recdes, sort_param->put_arg);
 	      if (error != NO_ERROR)
 		{
-		  if (error == BTSORT_PUT_STOP)
-		    {
-		      error = NO_ERROR;
-		    }
 		  goto exit_on_error;
 		}
 	    }
@@ -2176,10 +1767,6 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	      error = (*sort_param->put_fn) (thread_p, &temp_recdes, sort_param->put_arg);
 	      if (error != NO_ERROR)
 		{
-		  if (error == BTSORT_PUT_STOP)
-		    {
-		      error = NO_ERROR;
-		    }
 		  goto exit_on_error;
 		}
 	    }
@@ -2271,7 +1858,7 @@ btsort_run_flush (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_fi
   out_recdes.type = rec_type;
 
   run_size = 0;
-  btsort_spage_initialize (output_buffer, UNANCHORED_KEEP_SEQUENCE, MAX_ALIGNMENT);
+  btsort_spage_initialize (output_buffer);
 
   /* Insert each record to the output buffer and flush the buffer when it is full */
   for (i = 0; i < numrecs && should_continue; i++)
@@ -2306,7 +1893,7 @@ btsort_run_flush (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_fi
 
 	      cur_page[out_file]++;
 	      run_size++;
-	      btsort_spage_initialize (output_buffer, UNANCHORED_KEEP_SEQUENCE, MAX_ALIGNMENT);
+	      btsort_spage_initialize (output_buffer);
 
 	      if (btsort_spage_insert (output_buffer, &out_recdes) == NULL_SLOTID)
 		{
@@ -2413,7 +2000,6 @@ btsort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_par
   RECDES long_record = RECDES_INITIALIZER;
   int error = NO_ERROR;
   BTSORT_REC *sort_rec;
-  int tot_rows = 0;
 
   tot_pages = sort_param->file_contents[result_file_idx].num_pages[0];
   while (tot_pages > 0)
@@ -2434,7 +2020,6 @@ btsort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_par
 	{
 	  /* read record from sort temp file */
 	  slot_num = btsort_spage_get_numrecs (cur_pgptr);
-	  tot_rows += slot_num;
 	  for (int i = 0; i < slot_num; i++)
 	    {
 	      if (btsort_spage_get_record (cur_pgptr, i, &record, PEEK) != S_SUCCESS)
@@ -2490,7 +2075,7 @@ bailout:
     {
       free_and_init (long_record.data);
     }
-  return (error == BTSORT_PUT_STOP) ? NO_ERROR : error;
+  return error;
 }
 
 /*
@@ -3351,7 +2936,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	{
 	  if (!very_last_run && (j == 1))
 	    {
-	      /* LAST BTSORT_RUN OF THIS ITERATION */
+	      /* LAST RUN OF THIS ITERATION */
 
 	      /* Last iteration of the outer loop ; some of the input files might have become empty. */
 
@@ -3454,7 +3039,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		}
 	    }
 
-	  /* PRODUCE A NEW BTSORT_RUN */
+	  /* PRODUCE A NEW RUN */
 
 	  /* INITIALIZE INPUT SECTIONS AND INPUT VARIABLES */
 	  for (i = 0; i < act_infiles; i++)
@@ -3591,7 +3176,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	  for (i = 0; i < out_sectsize; i++)
 	    {
 	      /* Initialize each buffer to contain a slotted page */
-	      btsort_spage_initialize (out_sectaddr + (i * DB_PAGESIZE), UNANCHORED_KEEP_SEQUENCE, MAX_ALIGNMENT);
+	      btsort_spage_initialize (out_sectaddr + (i * DB_PAGESIZE));
 	    }
 
 	  /* Initialize the size of next run to zero */
@@ -3682,8 +3267,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 			  for (i = 0; i < out_sectsize; i++)
 			    {
 			      /* Initialize each buffer to contain a slotted page */
-			      btsort_spage_initialize (out_sectaddr + (i * DB_PAGESIZE), UNANCHORED_KEEP_SEQUENCE,
-						       MAX_ALIGNMENT);
+			      btsort_spage_initialize (out_sectaddr + (i * DB_PAGESIZE));
 			    }
 
 			  if (btsort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
@@ -3897,7 +3481,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	      out_runsize += out_act_bufno;
 	    }
 
-	  /* END UP THIS BTSORT_RUN */
+	  /* END UP THIS RUN */
 
 	  /* Remove previous first_run nodes of the file_contents lists of the input files */
 	  for (i = sort_param->in_half; i < sort_param->in_half + sort_param->half_files; i++)
@@ -3912,7 +3496,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	      goto bailout;
 	    }
 
-	  /* PRODUCE A NEW BTSORT_RUN */
+	  /* PRODUCE A NEW RUN */
 
 	  /* Switch to the next out file */
 	  if (++cur_outfile >= sort_param->half_files + out_half)
@@ -3942,7 +3526,7 @@ bailout:
       free_and_init (last_long_recdes.data);
     }
 
-  return (error == BTSORT_PUT_STOP) ? NO_ERROR : error;
+  return error;
 }
 
 /*
@@ -4117,7 +3701,7 @@ btsort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR 
  *   src_param(in):
  *   parallel_num(in):
  */
-int
+static int
 btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, BTSORT_PARAM * sort_param,
 			int parallel_num)
 {
@@ -4344,10 +3928,10 @@ btsort_merge_queue_ctx_destroy (BTSORT_MERGE_QUEUE_CTX * qctx)
   pthread_cond_destroy (&qctx->done_cond);
 }
 
-static int
+static void
 btsort_merge_queue_enqueue_initial_runs (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_PARAM * px_sort_param, int parallel_num)
 {
-  int i, enqueued = 0;
+  int i;
   for (i = 0; i < parallel_num; i++)
     {
       int npages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
@@ -4357,10 +3941,8 @@ btsort_merge_queue_enqueue_initial_runs (BTSORT_MERGE_QUEUE_CTX * qctx, BTSORT_P
 	  run.temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
 	  run.num_pages = npages;
 	  btsort_merge_queue_enqueue (qctx, run);
-	  enqueued++;
 	}
     }
-  return enqueued;
 }
 
 /*
@@ -4485,7 +4067,6 @@ btsort_merge_nruns_queue_cb (cubthread::entry & thread_ref, BTSORT_PARAM * ctx, 
 
   if (thread_is_on_trace (ctx->px_orig_thread_p))
     {
-      thread_set_sort_stats_active (thread_p, true);
       thread_ref.on_trace = true;
       perfmon_initialize_parallel_stats (&thread_ref);
     }
@@ -4494,7 +4075,6 @@ btsort_merge_nruns_queue_cb (cubthread::entry & thread_ref, BTSORT_PARAM * ctx, 
 
   if (thread_is_on_trace (ctx->px_orig_thread_p))
     {
-      thread_set_sort_stats_active (thread_p, false);
       perfmon_destroy_parallel_stats (&thread_ref);
     }
   thread_p->pop_resource_tracks ();
@@ -5099,30 +4679,25 @@ btsort_check_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 {
   int parallel_num = 1;
   SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
-  int n_data_pages = 0, n_sects = 0, tmp_pages = 0, tmp_sects = 0, error_code = NO_ERROR;
+  int n_data_pages = 0, n_sects = 0, error_code = NO_ERROR;
   bool no_logging_build = bt_load_parallel_enabled ((const LOAD_ARGS *) sort_param->put_arg);
 
-  if (sort_args_p->n_classes > 1)
+  if (sort_args_p->n_classes != 1)
     {
       /* not partition, partition has own indexes, this means like this :
-       * create t1; create t2 under t1; */
+       * create t1; create t2 under t1;  Nothing to look at when there is no class either. */
       return 1;
     }
   /* get number of pages to sort and number of data sectors to scan */
-  for (int i = 0; i < sort_args_p->n_classes; i++)
+  error_code = heap_get_num_data_pages (thread_p, &sort_args_p->hfids[0], &n_data_pages);
+  if (error_code != NO_ERROR)
     {
-      error_code = heap_get_num_data_pages (thread_p, &sort_args_p->hfids[i], &tmp_pages);
-      if (error_code != NO_ERROR)
-	{
-	  return 1;
-	}
-      error_code = file_get_num_data_sectors (thread_p, &sort_args_p->hfids[i].vfid, &tmp_sects);
-      if (error_code != NO_ERROR)
-	{
-	  return 1;
-	}
-      n_data_pages += tmp_pages;
-      n_sects += tmp_sects;
+      return 1;
+    }
+  error_code = file_get_num_data_sectors (thread_p, &sort_args_p->hfids[0].vfid, &n_sects);
+  if (error_code != NO_ERROR)
+    {
+      return 1;
     }
 
   if (no_logging_build)
@@ -5382,38 +4957,18 @@ btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * c
 /*
  * btsort_get_num_half_tmpfiles () - Determines the number of temporary files to be used
  *                        during the sorting process
- *   return:
+ *   return: half of the number of temporary files (the number of input files of a merge pass)
  *   tot_buffers(in): total number of buffers in the buffer pool area
- *   input_pages(in): size of the input file in terms of number of pages it
- *                    occupies
  *
+ * Note: Half of the buffers are given to input files, within
+ *       [BTSORT_MIN_HALF_FILES, BTSORT_MAX_HALF_FILES] (too few files cannot merge the runs, too
+ *       many saturate the buffer).
  */
 static int
-btsort_get_num_half_tmpfiles (int tot_buffers, int input_pages)
+btsort_get_num_half_tmpfiles (int tot_buffers)
 {
-  int half_files = tot_buffers - 1;
-  int exp_num_runs;
+  int half_files = tot_buffers / 2;
 
-  /* If there is an estimate on number of input pages */
-  if (input_pages > 0)
-    {
-      /* Conservatively estimate number of runs that will be produced */
-      exp_num_runs = CEIL_PTVDIV (input_pages, tot_buffers) + 1;
-
-      if (exp_num_runs < half_files)
-	{
-	  if ((exp_num_runs > (tot_buffers / 2)))
-	    {
-	      half_files = exp_num_runs;
-	    }
-	  else
-	    {
-	      half_files = (tot_buffers / 2);
-	    }
-	}
-    }
-
-  /* Precaution against underestimation on exp_num_runs and having too few files to merge them */
   if (half_files < BTSORT_MIN_HALF_FILES)
     {
       return BTSORT_MIN_HALF_FILES;
@@ -5423,11 +4978,8 @@ btsort_get_num_half_tmpfiles (int tot_buffers, int input_pages)
     {
       return half_files;
     }
-  else
-    {
-      /* Precaution against saturation (i.e. having too many files) */
-      return BTSORT_MAX_HALF_FILES;
-    }
+
+  return BTSORT_MAX_HALF_FILES;
 }
 
 /*
@@ -5688,33 +5240,3 @@ btsort_get_num_file_contents (BTSORT_FILE_CONTENTS * file_contents)
       return (0);
     }
 }
-
-#if defined(CUBRID_DEBUG)
-/*
- * btsort_print_file_contents () - Prints the elements of the given file contents list
- *   return: void
- *   file_contents(in): which list to print
- *
- * Note: It is used for debugging purposes.
- */
-static void
-btsort_print_file_contents (const BTSORT_FILE_CONTENTS * file_contents)
-{
-  int j;
-
-  /* If the list is not empty */
-  j = file_contents->first_run;
-  if (j > -1)
-    {
-      fprintf (stdout, "File contents:\n");
-      for (; j <= file_contents->last_run; j++)
-	{
-	  fprintf (stdout, " Run with %3d pages\n", file_contents->num_pages[j]);
-	}
-    }
-  else
-    {
-      fprintf (stdout, "Empty file:\n");
-    }
-}
-#endif /* CUBRID_DEBUG */
