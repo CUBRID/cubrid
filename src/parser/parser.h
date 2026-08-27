@@ -78,6 +78,7 @@ extern "C"
   extern PT_NODE **parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer,
 						     const bool no_escapes_strings);
   extern PT_NODE **parser_parse_string_use_sys_charset (PARSER_CONTEXT * parser, const char *buffer);
+  extern int parser_copy_memory_input (PARSER_CONTEXT * parser, char *buffer, int max_size);
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern PT_NODE **parser_parse_binary (PARSER_CONTEXT * parser, const char *buffer, size_t size);
 #endif
