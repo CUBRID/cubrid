@@ -9267,29 +9267,19 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       if (PT_IS_VALUE_NODE (arg1) && PT_IS_CHAR_STRING_TYPE (arg1->type_enum)
 	  && arg1->info.value.data_value.str != NULL && arg1->info.value.data_value.str->length < DB_MAX_CLASS_LENGTH)
 	{
-	  DB_OBJECT *class_mop = sm_find_class ((const char *) PT_VALUE_GET_BYTES (arg1));
+	  const char *name = (const char *) PT_VALUE_GET_BYTES (arg1);
+	  char realname[DB_MAX_IDENTIFIER_LENGTH];
 
-	  if (class_mop == NULL)
+	  /* A name written out is handed to the server as a name: it is the server that reads
+	   * the statistics, and a partition answers for itself only when named. Completing an
+	   * unqualified one with the connecting user is all that is done here.
+	   * The overload that takes the table itself is for the catalog views, which have it. */
+	  if (strchr (name, '.') == NULL && sm_user_specified_name (name, realname, DB_MAX_IDENTIFIER_LENGTH) != NULL)
 	    {
-	      /* Leave the name for the server, which resolves it the only way it can: by
-	       * matching the bare name across owners. */
-	      er_clear ();
-	    }
-	  else
-	    {
-	      /* A name written as a constant is resolvable right here, qualifier and all, so
-	       * hand over the table itself and pick the overload that takes one. */
-	      arg1->type_enum = arg1_type = PT_TYPE_OBJECT;
-	      arg1->info.value.data_value.op = class_mop;
+	      arg1->info.value.data_value.str = pt_append_bytes (parser, NULL, realname, strlen (realname));
+	      /* text and db_value still hold the old name; clear so both are refreshed from the qualified one */
 	      arg1->info.value.text = NULL;
 	      arg1->info.value.db_value_is_initialized = false;
-
-	      if (arg1->data_type != NULL)
-		{
-		  parser_free_tree (parser, arg1->data_type);
-		  arg1->data_type = NULL;
-		}
-
 	      (void) pt_value_to_db (parser, arg1);
 	    }
 	}
