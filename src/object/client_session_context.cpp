@@ -82,6 +82,12 @@ csc_current (void)
   return tl_Csc_active;
 }
 
+bool
+csc_bracket_is_active (void)
+{
+  return tl_Csc_active != NULL;
+}
+
 ws_context *
 csc_ws (void)
 {
@@ -139,6 +145,13 @@ csc_teardown (client_session_context *ctx)
     }
   if (ctx->ws.mop_table != NULL)
     {
+      /* schema-manager teardown first: it clears Current_Schema and frees
+       * descriptors/virtual-query caches before ws_final frees their MOPs */
+      sm_final ();
+
+      /* remaining query results and the registry storage (db_query.c) */
+      db_final_client_query_results ();
+
       /* frees the MOP table, classname cache, resident class list and the
        * session's lea heap; shared areas are left alone (#123 D5) */
       ws_final ();

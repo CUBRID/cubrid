@@ -1327,6 +1327,46 @@ db_clear_client_query_result (int notify_server, bool end_holdable)
     }
 }
 
+#if defined (SERVER_MODE)
+/*
+ * db_final_client_query_results() - session teardown: close any result still
+ *    registered (no server round-trips — the session's server half is being
+ *    torn down with it) and release the registry storage itself.
+ * return : void
+ */
+void
+db_final_client_query_results (void)
+{
+  DB_QUERY_RESULT **qres_ptr;
+  DB_QUERY_RESULT *q_res, *next;
+  int k;
+
+  for (k = 0, qres_ptr = Qres_table.qres_list; k < Qres_table.entry_cnt; k++, qres_ptr++)
+    {
+      if (*qres_ptr != NULL)
+	{
+	  (void) db_query_end_internal (*qres_ptr, false);
+	}
+    }
+  if (Qres_table.qres_list != NULL)
+    {
+      free_and_init (Qres_table.qres_list);
+    }
+  Qres_table.entry_cnt = 0;
+  Qres_table.qres_cnt = 0;
+  Qres_table.qres_closed_cnt = 0;
+
+  for (q_res = Qres_table.alloc_res.free_qres_list; q_res != NULL; q_res = next)
+    {
+      next = q_res->next;
+      free (q_res);
+    }
+  Qres_table.alloc_res.free_qres_list = NULL;
+  Qres_table.alloc_res.free_qres_cnt = 0;
+  Qres_table.alloc_res.max_qres_cnt = 0;
+}
+#endif /* SERVER_MODE */
+
 /*
  * db_cp_query_type_helper() - Copies the given type to a newly allocated type
  * return : dest or NULL on error.

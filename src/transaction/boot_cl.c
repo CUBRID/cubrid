@@ -40,6 +40,9 @@
 #endif /* !WINDOWS */
 
 #include <assert.h>
+#if defined (SERVER_MODE)
+#include <mutex>
+#endif
 
 #include "porting.h"
 #if !defined(HPUX)
@@ -1192,6 +1195,17 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #if !defined(WINDOWS)
   bool dl_initialized = false;
 #endif /* !WINDOWS */
+
+#if defined (SERVER_MODE)
+  /* in-process client boot is not reentrant: it interleaves process-once
+   * module initialization (language/areas/domains/showstmt/...) with
+   * per-session state, and the once-guards are plain flags — serialize whole
+   * boots here (cold path; concurrent sessions overlap only in the SQL work
+   * that follows).  Unregistration needs no counterpart: it is a folded
+   * server call plus this session's own state. */
+  static std::mutex boot_Restart_mutex;
+  std::lock_guard<std::mutex> boot_restart_guard (boot_Restart_mutex);
+#endif
 
   assert (client_credential != NULL);
 
