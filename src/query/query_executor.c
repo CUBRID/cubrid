@@ -11303,10 +11303,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       /* not locked in select phase, need locking at update phase */
       need_locking = true;
 
-      /* No reevaluation class means the statement reads no row of its own specs -- pt_to_delete_xasl ()
-       * keeps the select-phase lock for a search condition it cannot replay as a scan filter -- so a
-       * version that changed after the statement snapshot is deleted, not skipped.  The skip is for the
-       * runtime case below, where a subclass turns out to carry no access spec. */
+      /* No reevaluation class means no predicate to re-check -- pt_to_delete_xasl () keeps the
+       * select-phase lock for one it cannot replay -- so a changed version is deleted, not skipped.
+       * The skip below is for the subclass that turns out to carry no access spec. */
     }
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
