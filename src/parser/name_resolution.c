@@ -7060,9 +7060,26 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 	      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
 	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 		{
-		  if (intl_identifier_casecmp (class_name, class_->header.ch_name) != 0)
+		  /* What was found may belong to someone other than the name said, and the name
+		   * is printed into whatever the statement stores, so the node takes on the
+		   * identity of the class itself -- who owns it as much as what it is called. */
+		  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+		  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+
+		  if (db_get_class_qualified_name (classop, qualified_name, sizeof (qualified_name)) != NULL)
 		    {
-		      name->info.name.original = pt_append_string (parser, NULL, class_->header.ch_name);
+		      if (sm_qualifier_name (qualified_name, owner_name, sizeof (owner_name)) != NULL
+			  && owner_name[0] != '\0')
+			{
+			  name->info.name.owner_name = pt_append_string (parser, NULL, owner_name);
+			  name->info.name.owner_defaulted = 0;
+			}
+
+		      if (intl_identifier_casecmp (class_name, sm_remove_qualifier_name (qualified_name)) != 0)
+			{
+			  name->info.name.original =
+			    pt_append_string (parser, NULL, sm_remove_qualifier_name (qualified_name));
+			}
 		    }
 		}
 
