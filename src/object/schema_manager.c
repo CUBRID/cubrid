@@ -5645,8 +5645,8 @@ sm_find_class_with_purpose (const char *owner_name, const char *name, bool for_u
       char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
       char downcase_name[SM_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH] = { '\0' };
 
-      sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
-      sm_downcase_name (name, downcase_name, SM_MAX_IDENTIFIER_LENGTH);
+      sm_downcase_name (owner_name, downcase_owner_name, sizeof (downcase_owner_name));
+      sm_downcase_name (name, downcase_name, sizeof (downcase_name));
       snprintf (realname, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, downcase_name);
     }
   else
