@@ -25,6 +25,8 @@
 #include "db_client_type.hpp"
 #include "dbtype_def.h"
 #include "error_code.h"
+#include "error_manager.h"
+#include "release_string.h"
 #include "intl_support.h"
 
 #include <fstream>
@@ -675,6 +677,111 @@ namespace cubload
     return error_code;
   }
 
+  /*
+   * gathering_binary_record () - read one record of a binary section into one_row_buffer
+   *   return: NO_ERROR, or ER_LDR_CORRUPTED_BINARY_RECORD when the section is malformed
+   *   object_file(in/out): object file positioned on a record size field
+   *   class_is_ignored(in): true when the rows of the current class are not loaded
+   *   binary_mode(out): set to false once the end of the section has been reached
+   *   one_row_buffer(out): size field and row bytes, left untouched for an ignored class
+   *
+   * Note: a section holds one length prefixed record per row and is closed by a zero length,
+   *       see the BINARY_BLOCK rules in load_lexer.l for the layout. The size field is copied
+   *       into one_row_buffer as well, since the scanner of the server needs it to frame the row.
+   */
+  static int
+  gathering_binary_record (std::ifstream &object_file, bool class_is_ignored, bool &binary_mode,
+			   std::string &one_row_buffer)
+  {
+    BIN_REC_SIZE_TYPE binary_length = 0;
+    std::streampos record_offset = object_file.tellg ();
+
+    object_file.read ((char *)&binary_length, sizeof (binary_length));
+    if (object_file.gcount() != sizeof (binary_length))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
+	return ER_LDR_CORRUPTED_BINARY_RECORD;
+      }
+
+    if (class_is_ignored)
+      {
+	object_file.seekg (binary_length, std::ios::cur);
+	if (binary_length == BIN_END_OF_RECORDS)
+	  {
+	    binary_mode = false;
+	  }
+	return NO_ERROR;
+      }
+
+    if (sizeof (binary_length) + binary_length >= LOADDB_BUFFER_SIZE_LIMIT) // TODO: 2GB?
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
+	return ER_LDR_CORRUPTED_BINARY_RECORD;
+      }
+
+    one_row_buffer.resize (sizeof (binary_length) + binary_length);
+    memcpy (&one_row_buffer[0], &binary_length, sizeof (binary_length));
+    if (binary_length == BIN_END_OF_RECORDS)
+      {
+	/*
+	 * A section is closed by the end of records marker and by the new line which follows it in
+	 * the object file. The grammar needs that new line to complete the line the rows of the
+	 * section make up, and a batch can end right here, so it is carried along in the batch
+	 * content. The one of the object file is consumed as an empty text line by the caller.
+	 */
+	one_row_buffer.resize (sizeof (binary_length) + 1);
+	one_row_buffer[sizeof (binary_length)] = '\n';
+	binary_mode = false;
+      }
+    else
+      {
+	object_file.read (&one_row_buffer[sizeof (binary_length)], binary_length);
+	if (object_file.gcount() != binary_length)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
+	    return ER_LDR_CORRUPTED_BINARY_RECORD;
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
+
+  /*
+   * prepend_format_command () - start a binary batch with the %format command line
+   *   return: void
+   *   batch_buffer(in/out): batch content, must be empty
+   *   format_string(in): the %format command line of the current class, new line included
+   *   first_binary_batch(in/out): true while the very first batch of the binary section is built
+   *   batch_start_offset(in/out): line offset the batch is reported with
+   *
+   * Note: the scanner of a batch always starts in its initial start condition, see init_driver ()
+   *       in load_session.cpp, so every batch which carries binary rows has to repeat the %format
+   *       command line of its class.
+   *
+   *       Only the first batch finds that command line at the very position it occupies in the
+   *       object file, since split () leaves batch_start_offset on it when the class begins. In
+   *       every following batch the command line is injected in front of a row, so it shifts the
+   *       rows of the batch by one line and the offset has to be pulled back to compensate.
+   */
+  static void
+  prepend_format_command (std::string &batch_buffer, const char *format_string, bool &first_binary_batch,
+			  int &batch_start_offset)
+  {
+    assert (batch_buffer.empty ());
+
+    if (first_binary_batch)
+      {
+	first_binary_batch = false;
+      }
+    else
+      {
+	batch_start_offset--;
+      }
+
+    batch_buffer.append (format_string);
+  }
+
   int
   split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler)
   {
@@ -690,6 +797,9 @@ namespace cubload
     bool class_is_ignored = false;
     short single_quote_checker = 0;
     bool  size_over = false;
+    char format_string[64] = {0 };
+    bool binary_mode = false;
+    bool first_binary_batch = true;
 #define DEFAULT_STRING_SZ (4096)
 #define DEFAULT_ONEROW_BUF_SZ (1024*1024*1) // 1MB
     size_t size_bk = DEFAULT_STRING_SZ;
@@ -714,105 +824,145 @@ namespace cubload
     one_row_buffer.reserve (DEFAULT_ONEROW_BUF_SZ);
     batch_buffer.reserve (DEFAULT_STRING_SZ);
 
-    for (std::string line; std::getline (object_file, line); ++lineno, ++one_row_lineno)
+    for (std::string line; true; ++lineno, ++one_row_lineno)
       {
-	if (single_quote_checker == 0)
+	if (binary_mode == false)
 	  {
-	    bool is_id_line = starts_with (line, "%id") || starts_with (line, "%ID");
-	    bool is_class_line = starts_with (line, "%class") || starts_with (line, "%CLASS");
-
-	    if (is_id_line || is_class_line)
+	    if (!std::getline (object_file, line))
 	      {
-		if (one_row_buffer.empty() == false)
+		break;
+	      }
+
+	    if (single_quote_checker == 0)
+	      {
+		bool is_id_line = starts_with (line, "%id") || starts_with (line, "%ID");
+		bool is_class_line = starts_with (line, "%class") || starts_with (line, "%CLASS");
+		bool is_format = starts_with (line, "%format") || starts_with (line, "%FORMAT");
+
+		if (is_id_line || is_class_line)
 		  {
-		    error_code = append_incomplete_row (batch_buffer, one_row_buffer, b_handler, clsid, batch_id,
-							lineno, one_row_lineno, batch_start_offset, batch_rows);
+		    format_string[0] = '\0';
+		    binary_mode = false;
+		    if (one_row_buffer.empty() == false)
+		      {
+			error_code = append_incomplete_row (batch_buffer, one_row_buffer, b_handler, clsid, batch_id,
+							    lineno, one_row_lineno, batch_start_offset, batch_rows);
+			if (error_code != NO_ERROR)
+			  {
+			    object_file.close ();
+			    return error_code;
+			  }
+		      }
+
+		    if (is_class_line)
+		      {
+			// in case of class line collect remaining for current class
+			// and start new batch for the new class
+
+			error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
+			if (error_code != NO_ERROR)
+			  {
+			    object_file.close ();
+			    return error_code;
+			  }
+
+			++clsid;
+			batch_buffer.reserve (DEFAULT_STRING_SZ);
+			size_bk = DEFAULT_STRING_SZ;
+		      }
+
+		    // New class so we check if the previous one was ignored.
+		    // If so, then we should empty the current batch since we do not send it to the server.
+
+		    line.append ("\n"); // feed lexer with new line
+		    batch c_batch (batch_id, clsid, line, lineno, 1);
+		    error_code = c_handler (c_batch, class_is_ignored);
 		    if (error_code != NO_ERROR)
 		      {
 			object_file.close ();
 			return error_code;
 		      }
-		  }
 
-		if (is_class_line)
+		    // Next batch should start from the following line.
+		    batch_start_offset = lineno + 1;
+		    continue;
+		  }
+		else if (is_format)
 		  {
-		    // in case of class line collect remaining for current class
-		    // and start new batch for the new class
-
-		    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
-		    if (error_code != NO_ERROR)
-		      {
-			object_file.close ();
-			return error_code;
-		      }
-
-		    ++clsid;
-		    batch_buffer.reserve (DEFAULT_STRING_SZ);
-		    size_bk = DEFAULT_STRING_SZ;
+		    rtrim (line);
+		    snprintf (format_string, sizeof (format_string), "%s\n", line.c_str());
+		    binary_mode = true;
+		    first_binary_batch = true;
+		    continue;
 		  }
+	      }
 
-		// New class so we check if the previous one was ignored.
-		// If so, then we should empty the current batch since we do not send it to the server.
-
-		line.append ("\n"); // feed lexer with new line
-		batch c_batch (batch_id, clsid, line, lineno, 1);
-		error_code = c_handler (c_batch, class_is_ignored);
-		if (error_code != NO_ERROR)
-		  {
-		    object_file.close ();
-		    return error_code;
-		  }
-
-		// Next batch should start from the following line.
-		batch_start_offset = lineno + 1;
+	    if (class_is_ignored)
+	      {
+		assert (single_quote_checker == 0);
+		// Skip the remaining lines until we find another class.
 		continue;
 	      }
-	  }
 
-	if (class_is_ignored)
-	  {
-	    assert (single_quote_checker == 0);
-	    // Skip the remaining lines until we find another class.
-	    continue;
-	  }
-
-	// check for matching single quotes
-	for (const char &c: line)
-	  {
-	    if (c == '\'')
+	    // check for matching single quotes
+	    for (const char &c: line)
 	      {
-		single_quote_checker ^= 1;
+		if (c == '\'')
+		  {
+		    single_quote_checker ^= 1;
+		  }
 	      }
-	  }
 
-	if (single_quote_checker == 0)
-	  {
-	    // strip trailing whitespace
-	    rtrim (line);
+	    if (single_quote_checker == 0)
+	      {
+		// strip trailing whitespace
+		rtrim (line);
 
-	    if (line.empty ())
+		if (line.empty ())
+		  {
+		    continue;
+		  }
+	      }
+
+	    // it is a line containing row data so append it
+	    one_row_buffer.append (line);
+
+	    // since std::getline eats end line character, add it back in order to make loaddb lexer happy
+	    one_row_buffer.append ("\n");
+
+	    // it could be that a row is wrapped on the next line,
+	    // this means that the row ends on the last line that does not end with '+' (plus) character
+	    if (ends_with (line, "+"))
+	      {
+		continue;
+	      }
+
+	    // if single_quote_checker is 1, it means that a single quote was opened but not closed
+	    if (single_quote_checker == 1)
 	      {
 		continue;
 	      }
 	  }
-
-	// it is a line containing row data so append it
-	one_row_buffer.append (line);
-
-	// since std::getline eats end line character, add it back in order to make loaddb lexer happy
-	one_row_buffer.append ("\n");
-
-	// it could be that a row is wrapped on the next line,
-	// this means that the row ends on the last line that does not end with '+' (plus) character
-	if (ends_with (line, "+"))
+	else
 	  {
-	    continue;
-	  }
+	    error_code = gathering_binary_record (object_file, class_is_ignored, binary_mode, one_row_buffer);
+	    if (error_code != NO_ERROR)
+	      {
+		object_file.close ();
+		return error_code;
+	      }
 
-	// if single_quote_checker is 1, it means that a single quote was opened but not closed
-	if (single_quote_checker == 1)
-	  {
-	    continue;
+	    // TODO:  check '\n' character to lineno?
+
+	    if (class_is_ignored)
+	      {
+		continue;
+	      }
+
+	    if (batch_buffer.empty ())
+	      {
+		prepend_format_command (batch_buffer, format_string, first_binary_batch, batch_start_offset);
+	      }
 	  }
 
 	if ((one_row_buffer.size() + batch_buffer.size()) >= LOADDB_BUFFER_SIZE_LIMIT)
@@ -852,6 +1002,11 @@ namespace cubload
 	  {
 	    if (one_row_buffer.empty() == false)
 	      {
+		if (binary_mode && batch_buffer.empty ())
+		  {
+		    prepend_format_command (batch_buffer, format_string, first_binary_batch, batch_start_offset);
+		  }
+
 		batch_buffer.append (one_row_buffer);
 		one_row_buffer.clear();
 	      }
@@ -918,3 +1073,124 @@ namespace cubload
   }
 
 } // namespace cubload
+
+
+
+int
+binary_format_compat_level (void)
+{
+  // "+ 0.5f" is a rounding operation to prevent floating-point truncation errors.
+  // ex) 8.4f = 8.39999961853..., (8.40 * 100) --> 839
+  return (int) (rel_disk_compatible () * 100.0f + 0.5f);
+}
+
+int
+binary_format_bit_platform (void)
+{
+  return rel_bit_platform ();
+}
+
+int
+binary_format_endian (void)
+{
+  const uint32_t probe = 1;
+
+  return (* (const unsigned char *) &probe == 1) ? BIN_FORMAT_ENDIAN_LITTLE : BIN_FORMAT_ENDIAN_BIG;
+}
+
+/*
+ * Variable length integer encoding used by the binary object file format.
+ *
+ * The encoders only handle non negative values. A negative value skips the loop below and is
+ * silently truncated to its lowest seven bits, so callers must guarantee the sign themselves.
+ *
+ * If you need to handle negative numbers, use zigzag encoding.
+ * encoding:  (n << 1) ^ (n >> 31)
+ * decoding:  (n >> 1) ^ -(n & 1)
+ */
+
+int
+encode_varint (int v, u_char *buf)
+{
+  int i = 0;
+  assert (v >= 0);
+
+  while (v >= 0x80)
+    {
+      buf[i++] = (u_char) (v & 0x7F) | 0x80;
+      v >>= 7;
+    }
+
+  buf[i++] = (u_char) (v & 0x7F);
+  return i;
+}
+
+int
+encode_varint64 (int64_t v, u_char *buf)
+{
+  int i = 0;
+  assert (v >= 0);
+
+  while (v >= 0x80)
+    {
+      buf[i++] = (u_char) (v & 0x7F) | 0x80;
+      v >>= 7;
+    }
+
+  buf[i++] = (u_char) (v & 0x7F);
+  return i;
+}
+
+bool
+decode_varint (u_char *buf, int buf_sz, int *val_ptr, int *consumed)
+{
+  int result = 0;
+  int shift = 0;
+
+  for (int i = 0; i < buf_sz; i++)
+    {
+      if (shift >= 32 || (shift == 28 && buf[i] > 0x0F))
+	{
+	  return false;
+	}
+
+      result |= (int) (buf[i] & 0x7F) << shift;
+      if ((buf[i] & 0x80) == 0)
+	{
+	  *val_ptr = result;
+	  *consumed = i + 1;
+	  return true;
+	}
+
+      shift += 7;
+    }
+
+  return false;
+}
+
+bool
+decode_varint64 (u_char *buf, int buf_sz, int64_t *val_ptr, int *consumed)
+{
+  int64_t result = 0;
+  int shift = 0;
+
+  for (int i = 0; i < buf_sz; i++)
+    {
+      if (shift >= 64 || (shift == 63 && buf[i] > 1))
+	{
+	  return false;
+	}
+
+      result |= (int64_t) (buf[i] & 0x7F) << shift;
+      if ((buf[i] & 0x80) == 0)
+	{
+	  *val_ptr = result;
+	  *consumed = i + 1;
+	  return true;
+	}
+
+      shift += 7;
+    }
+
+  return false;
+}

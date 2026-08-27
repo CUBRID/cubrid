@@ -880,6 +880,11 @@ desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
+      /*  Duplicate definitions of collation types are not permitted, so execution should not reach here. 
+       * It should have been handled by calling process_set() directly in process_value().
+       * So, let's add an assert() here and plan to remove fprint_special_set() in the future.
+       */
+      assert (false);
       CHECK_PRINT_ERROR (fprint_special_set (tout, db_get_set (value)));
       break;
     case DB_TYPE_BLOB:
@@ -888,6 +893,147 @@ desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
     default:
       CHECK_PRINT_ERROR (fprint_special_strings (tout, value));
+      break;
+    }
+
+exit_on_end:
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  goto exit_on_end;
+}
+
+int
+desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value)
+{
+  int error = NO_ERROR;
+  char buf[INTERNAL_BUFFER_SIZE];
+  char *ptr;
+  const char *str_ptr = NULL;
+  char *json_body = NULL;
+  DB_CONST_C_BIT bits = NULL;
+  DB_TYPE type;
+  int len = 0;
+  DB_DATETIMETZ *dt_tz;
+  DB_TIMESTAMPTZ *ts_tz;
+  type = DB_VALUE_TYPE (value);
+
+  switch (type)
+    {
+    case DB_TYPE_NULL:
+      CHECK_PRINT_ERROR (binary_print (tout, NULL, 0, type));
+      break;
+
+    case DB_TYPE_BIGINT:
+      CHECK_PRINT_ERROR (binary_print
+			 (tout, (u_char *) & (value->data.bigint), (int) sizeof (value->data.bigint), type));
+      break;
+
+    case DB_TYPE_INTEGER:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.i), (int) sizeof (value->data.i), type));
+      break;
+
+    case DB_TYPE_SMALLINT:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.sh), (int) sizeof (value->data.sh), type));
+      break;
+
+    case DB_TYPE_FLOAT:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.f), (int) sizeof (value->data.f), type));
+      break;
+
+    case DB_TYPE_DOUBLE:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.d), (int) sizeof (value->data.d), type));
+      break;
+
+    case DB_TYPE_ENUMERATION:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.enumeration.short_val),
+				       (int) sizeof (value->data.enumeration.short_val), type));
+      break;
+
+    case DB_TYPE_DATE:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.date), (int) sizeof (value->data.date), type));
+      break;
+
+    case DB_TYPE_TIME:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.time), (int) sizeof (value->data.time), type));
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.utime), (int) sizeof (value->data.utime), type));
+      break;
+
+    case DB_TYPE_TIMESTAMPTZ:
+      CHECK_PRINT_ERROR (binary_print
+			 (tout, (u_char *) & (value->data.timestamptz), (int) sizeof (value->data.timestamptz), type));
+      break;
+
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+      CHECK_PRINT_ERROR (binary_print
+			 (tout, (u_char *) & (value->data.datetime), (int) sizeof (value->data.datetime), type));
+      break;
+    case DB_TYPE_DATETIMETZ:
+      CHECK_PRINT_ERROR (binary_print
+			 (tout, (u_char *) & (value->data.datetimetz), (int) sizeof (value->data.datetimetz), type));
+      break;
+    case DB_TYPE_MONETARY:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.money), (int) sizeof (value->data.money), type));
+      break;
+
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      str_ptr = db_get_string (value);
+      len = db_get_string_size (value);
+      if (len < 0)
+	{
+	  len = (int) strlen (str_ptr);
+	}
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) str_ptr, len, type));
+      break;
+
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      bits = db_get_bit (value, &len);
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) bits, len, type));
+      break;
+
+    case DB_TYPE_NUMERIC:
+      {
+	bool is_float_numeric;
+	u_char tmp[UNLOAD_RAW_NUMERIC_SIZE];
+
+	db_get_numeric_precision_and_scale (value, (int *) tmp, (int *) (tmp + sizeof (int)), &is_float_numeric);
+	memcpy (tmp + (sizeof (int) << 1), value->data.num.d.buf, sizeof (value->data.num.d.buf));
+	tmp[UNLOAD_RAW_NUMERIC_SIZE - 1] =
+	  (value->domain.numeric_info.is_value_negative ? UNLOAD_RAW_NUMERIC_NEGATIVE : 0x00);
+	if (is_float_numeric)
+	  {
+	    tmp[UNLOAD_RAW_NUMERIC_SIZE - 1] |= UNLOAD_RAW_NUMERIC_FLOATING;
+	  }
+
+	CHECK_PRINT_ERROR (binary_print (tout, tmp, UNLOAD_RAW_NUMERIC_SIZE, type));
+      }
+      break;
+
+    case DB_TYPE_JSON:
+      json_body = db_get_json_raw_body (value);
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) json_body, strlen (json_body), type));
+      db_private_free (NULL, json_body);
+      break;
+
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+      [[fallthrough]];
+      /* other stubs */
+    case DB_TYPE_ERROR:
+    case DB_TYPE_POINTER:
+      assert (false);
+      break;
+
+    default:
+      /* the others are handled by callers or internal-use only types */
       break;
     }
 
@@ -911,6 +1057,10 @@ exit_on_error:
 void
 desc_value_print (print_output & output_ctx, DB_VALUE * value)
 {
+  /*
+   * This function is called only when outputting schema-related information in unloaddb. 
+   * It is not called during data object export.
+   */
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_SET:
@@ -928,34 +1078,14 @@ desc_value_print (print_output & output_ctx, DB_VALUE * value)
     }
 }
 
-
-/*
- * text_print - print formatted text to TEXT_OUTPUT
- *    return: NO_ERROR if successful, error code otherwise
- *    tout(out): TEXT_OUTPUT
- *    buf(in): source buffer
- *    buflen(in): length of buffer
- *    fmt(in): format string
- *    ...(in): arguments
- */
-int
-text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...)
+static int
+text_print_buffer (TEXT_OUTPUT * tout, const char *buf, int buflen)
 {
   int error = NO_ERROR;
-  int nbytes, size;
-  va_list ap;
-  assert (buflen >= 0);
-
-  if (tout->tail_ptr == NULL)
-    {
-      assert (tout->head_ptr == NULL);
-      CHECK_PRINT_ERROR (get_text_output_mem (tout, ((buflen > 0) ? buflen : -1)));
-    }
-
-  size = tout->tail_ptr->iosize - tout->tail_ptr->count;	/* free space size */
   if (buflen > 0)
     {
       int tlen = 0;
+      int size = tout->tail_ptr->iosize - tout->tail_ptr->count;	/* free space size */
       assert (buf != NULL);
 
       while (buflen >= size)
@@ -979,8 +1109,47 @@ text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ..
 	  tout->tail_ptr->count += buflen;
 	}
     }
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+
+}
+
+
+/*
+ * text_print - print formatted text to TEXT_OUTPUT
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): TEXT_OUTPUT
+ *    buf(in): source buffer
+ *    buflen(in): length of buffer
+ *    fmt(in): format string
+ *    ...(in): arguments
+ */
+int
+text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...)
+{
+  int error = NO_ERROR;
+  va_list ap;
+  assert (buflen >= 0);
+
+  if (tout->tail_ptr == NULL)
+    {
+      assert (tout->head_ptr == NULL);
+      CHECK_PRINT_ERROR (get_text_output_mem (tout, ((buflen > 0) ? buflen : -1)));
+    }
+
+  if (buflen > 0)
+    {
+      CHECK_PRINT_ERROR (text_print_buffer (tout, buf, buflen));
+    }
   else
     {
+      int nbytes, size;
+
+      size = tout->tail_ptr->iosize - tout->tail_ptr->count;	/* free space size */
+
       va_start (ap, fmt);
       nbytes = vsnprintf (tout->tail_ptr->ptr, size, fmt, ap);
       va_end (ap);
@@ -1003,6 +1172,88 @@ text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ..
       tout->tail_ptr->ptr += nbytes;
       tout->tail_ptr->count += nbytes;
     }
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+}
+
+int
+binary_reserve_row_size (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK ** rec_blk, char **rec_size_ptr)
+{
+  int error = NO_ERROR;
+  const BIN_REC_SIZE_TYPE rec_sz = BIN_END_OF_RECORDS;
+
+  /* the size field is back patched later on, it must not be split over two blocks */
+  if (tout->tail_ptr == NULL || (tout->tail_ptr->iosize - tout->tail_ptr->count) < (int) sizeof (rec_sz))
+    {
+      CHECK_PRINT_ERROR (get_text_output_mem (tout, (int) sizeof (rec_sz)));
+    }
+
+  *rec_blk = tout->tail_ptr;
+  *rec_size_ptr = tout->tail_ptr->ptr;
+
+  CHECK_PRINT_ERROR (text_print_buffer (tout, (char *) &rec_sz, (int) sizeof (rec_sz)));
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+}
+
+void
+binary_fill_row_size (TEXT_BUFFER_BLK * rec_blk, char *rec_size_ptr)
+{
+  assert (rec_size_ptr != NULL && rec_blk != NULL);
+  TEXT_BUFFER_BLK *ptr = rec_blk;
+  BIN_REC_SIZE_TYPE length = (BIN_REC_SIZE_TYPE) (rec_blk->ptr - rec_size_ptr) - sizeof (BIN_REC_SIZE_TYPE);
+  while (ptr->next)
+    {
+      ptr = ptr->next;
+      length += ptr->count;
+    }
+  // length_part(length of record_part) + record_part
+  assert (length > BIN_END_OF_RECORDS);
+  memcpy (rec_size_ptr, &length, sizeof (BIN_REC_SIZE_TYPE));
+}
+
+int
+binary_print (TEXT_OUTPUT * tout, const u_char * buf, int buf_size, DB_TYPE type)
+{
+  int error = NO_ERROR;
+  int header_bytes = 0;
+  u_char column_header[13];	// varint64(10) + type(1) + safety(2)
+
+  /*
+   * Column information consists of length + type + column_data(buf).
+   * length holds (buf_size + 1), the type byte follows it and is not counted in it 
+   * A length of 0 indicates that the data was NULL.
+   */
+
+  if (buf == NULL)
+    {
+      assert (buf_size == 0);
+      column_header[0] = 0;
+      header_bytes = 1;
+    }
+  else
+    {
+      /* The reason for adding 1 to buf_size is to distinguish between an empty string and NULL. */
+      int64_t tlen = (int64_t) buf_size + 1;
+      assert (buf_size >= 0);
+      header_bytes = encode_varint64 (tlen, column_header);
+      column_header[header_bytes++] = (u_char) type;
+    }
+
+  if (tout->tail_ptr == NULL)
+    {
+      assert (tout->head_ptr == NULL);
+      CHECK_PRINT_ERROR (get_text_output_mem (tout, buf_size + header_bytes));
+    }
+
+  CHECK_PRINT_ERROR (text_print_buffer (tout, (char *) column_header, header_bytes));
+  CHECK_PRINT_ERROR (text_print_buffer (tout, (char *) buf, buf_size));
 
   return error;
 exit_on_error:

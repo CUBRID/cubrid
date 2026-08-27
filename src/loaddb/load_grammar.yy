@@ -104,6 +104,7 @@ loader_init_yydebug (void)
 %token DATETIMETZ
 %token CMD_ID
 %token CMD_CLASS
+%token CMD_FORMAT
 %token CMD_CONSTRUCTOR
 %token REF_ELO_INT
 %token REF_ELO_EXT
@@ -117,6 +118,8 @@ loader_init_yydebug (void)
 %token END_PAREN
 %token <string> REAL_LIT
 %token <string> INT_LIT
+%token <int_val> FORMAT_ARG_LIT
+%token <string> BINARY_ROW
 %token <int_val> OID_
 %token <string> TIME_LIT4
 %token <string> TIME_LIT42
@@ -249,6 +252,53 @@ one_line :
     m_driver.get_object_loader ().finish_line ();
     m_driver.get_semantic_helper ().reset_after_line ();
   }
+  |
+  binary_rows
+  {
+  }
+  ;
+
+binary_rows :
+  binary_row
+  {
+  }
+  |
+  binary_rows binary_row
+  {
+     /* The rows of a binary section are not separated by newlines(NL); each row only contains its own length information.
+      * The entire section ends with a newline at the very end. 
+      * Therefore, grammar rules like "binary_rows binary_row" are required.
+      */
+  }
+  ;
+
+binary_row :
+  BINARY_ROW
+  {
+    /*
+     * TODO: decode the [varint (size + 1)][db type][raw bytes] attributes of $1 into db values
+     *       and load the row the way instance_line does:
+     *
+     *         m_driver.get_object_loader ().start_line (-1);
+     *         m_driver.get_object_loader ().process_binary_line ($1);
+     *         m_driver.get_object_loader ().finish_line ();
+     *
+     *       finish_line () is left out until then, calling it here would insert a row of default
+     *       values for every row of the section.
+     *
+     * TODO: an enumeration value is written by unloaddb as its index only, see
+     *       desc_value_special_fprint_binary () in src/executables/unload_object_file.c, so the
+     *       decoder resolves it through the enumeration of the attribute domain of this database.
+     *       That assumes the enumeration is defined exactly as it was when the object file was
+     *       written. Decide whether the assumption has to be verified, and against what, since
+     *       the object file carries no description of the enumeration it was written with.
+     *
+     * reset_after_line () releases the row buffer. That is safe here because the parser reduces
+     * this rule without reading a look ahead token, so the scanner has not produced the next row
+     * yet.
+     */
+    m_driver.get_semantic_helper ().reset_after_line ();
+  }
   ;
 
 command_line :
@@ -257,6 +307,10 @@ command_line :
   }
   |
   id_command
+  {
+  }
+  |
+  format_command
   {
   }
   ;
@@ -295,6 +349,14 @@ class_command :
 
     delete $3;
     $3 = NULL;
+  }
+  ;
+
+format_command :
+  CMD_FORMAT FORMAT_ARG_LIT FORMAT_ARG_LIT FORMAT_ARG_LIT FORMAT_ARG_LIT
+  {
+    /* %format <data format> <compatibility level> <bit platform> <byte order> */
+    m_driver.get_scanner ().set_ldr_data_format ($2, $3, $4, $5);
   }
   ;
 

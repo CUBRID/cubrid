@@ -10924,7 +10924,6 @@ sloaddb_load_batch (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   bool is_batch_accepted = false;
   load_session *session = NULL;
 
-  session_get_load_session (thread_p, session);
   int error_code = session_get_load_session (thread_p, session);
   if (error_code == NO_ERROR)
     {

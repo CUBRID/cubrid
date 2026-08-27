@@ -415,7 +415,7 @@ static void extractobjects_cleanup ();
 static void extractobjects_term_handler (int sig);
 static bool mark_referenced_domain (SM_CLASS * class_ptr, int *num_set);
 static void gauge_alarm_handler (int sig);
-static int process_class (extract_context & ctxt, int cl_no, int nthreads);
+static int process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format);
 static int process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_OUTPUT * obj_out);
 static int process_set (DB_SET * set, TEXT_OUTPUT * obj_out);
 static int process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out);
@@ -588,7 +588,7 @@ check_referenced_domain (DB_DOMAIN * dom_list, bool set_cls_ref, int *num_cls_re
 
 
 static bool
-check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type)
+check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type, int data_format)
 {
   DB_DOMAIN *dom;
 
@@ -604,8 +604,17 @@ check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type)
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
-	  if (check_include_object_domain (db_domain_set (dom), db_type))
+	  if (check_include_object_domain (db_domain_set (dom), db_type, data_format))
 	    {
+	      return true;
+	    }
+	  break;
+
+	case DB_TYPE_ERROR:
+	case DB_TYPE_POINTER:
+	  if (data_format != OBJECT_FORMAT_TEXT)
+	    {
+	      *db_type = TP_DOMAIN_TYPE (dom);
 	      return true;
 	    }
 	  break;
@@ -721,7 +730,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
  */
 int
 extract_objects (extract_context & ctxt, const char *output_dirname, int nthreads, int sampling_records,
-		 bool enhanced_estimates)
+		 bool enhanced_estimates, int data_format)
 {
   int i, error;
   HFID *hfid;
@@ -1219,7 +1228,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 		    }
 		}
 
-	      ret_val = process_class (ctxt, i, nthreads);
+	      ret_val = process_class (ctxt, i, nthreads, data_format);
 
 	      if (datafile_per_class && IS_CLASS_REQUESTED (i))
 		{
@@ -1797,7 +1806,7 @@ exit_on_error:
  *    cl_no(in): class object index for class_table
  */
 static int
-process_class (extract_context & ctxt, int cl_no, int nthreads)
+process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 {
   int error = NO_ERROR;
   DB_OBJECT *class_ = class_table->mops[cl_no];
@@ -1820,7 +1829,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
   UNLD_CLASS_PARAM unld_cls_info;
   pthread_t writer_tid;
-  int *retval = NULL;
+  void *retval = NULL;
   class copyarea_list c_cparea_lst_class;
 
   /*
@@ -1832,10 +1841,18 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       return NO_ERROR;		/* do nothing successfully */
     }
 
+  // reset variable
+  g_data_format = 0;
+
   if (IS_CLASS_REQUESTED (cl_no))
     {
       requested_class = 1;
     }
+  else
+    {
+      data_format = OBJECT_FORMAT_TEXT;
+    }
+
   if (IS_CLASS_REFERENCED (cl_no))
     {
       referenced_class = 1;
@@ -1861,8 +1878,27 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   TIMER_CLEAR (&wi_unload_class);
   TIMER_BEGIN ((g_sampling_records >= 0), &wi_unload_class);
 
-  if (nthreads > 0)
+  if (nthreads > 0 || data_format != OBJECT_FORMAT_TEXT)
     {
+      const char *optmsg1 = "'--thread-count' option is ignored.";
+      const char *optmsg2 = "'--data-format' option is ignored.";
+      const char *optmsg3 = "'--thread-count' and '--data-format' options are ignored.";
+      const char *optmsg = NULL;
+      bool done = false;
+
+      if (nthreads > 0 && data_format != OBJECT_FORMAT_TEXT)
+	{
+	  optmsg = optmsg3;
+	}
+      else if (nthreads > 0)
+	{
+	  optmsg = optmsg1;
+	}
+      else
+	{
+	  optmsg = optmsg2;
+	}
+
       for (i = 0; i < class_ptr->att_count; i++)
 	{
 	  DB_TYPE db_type_in;
@@ -1873,30 +1909,41 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	    case DB_TYPE_OBJECT:
 	      fprintf (stderr, "warning: %s%s%s has %s type.\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
 		       db_get_type_name (db_type));
-	      fprintf (stderr, "So for class %s%s%s, '--thread-count' option is ignored.\n",
-		       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
-	      fflush (stderr);
-	      // Notice: In this case, Do NOT use multi-threading!
 	      nthreads = 0;
+	      data_format = OBJECT_FORMAT_TEXT;
+	      done = true;
 	      break;
 
 	    case DB_TYPE_SET:
 	    case DB_TYPE_MULTISET:
 	    case DB_TYPE_SEQUENCE:
-	      if (check_include_object_domain (class_ptr->attributes[i].domain, &db_type_in))
+	      if (check_include_object_domain (class_ptr->attributes[i].domain, &db_type_in, data_format))
 		{
 		  fprintf (stderr, "warning: %s%s%s has %s type with %s type.\n",
 			   PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_get_type_name (db_type),
 			   db_get_type_name (db_type_in));
-		  fprintf (stderr, "So for class %s%s%s, '--thread-count' option is ignored.\n",
-			   PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
-		  fflush (stderr);
-		  // Notice: In this case, Do NOT use multi-threading!
 		  nthreads = 0;
+		  data_format = OBJECT_FORMAT_TEXT;
+		  done = true;
 		}
 	      break;
 
+	    case DB_TYPE_ERROR:
+	    case DB_TYPE_POINTER:
+	      fprintf (stderr, "warning: %s%s%s has %s type.\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
+		       db_get_type_name (db_type));
+	      data_format = OBJECT_FORMAT_TEXT;
+	      done = (nthreads > 0) ? false : true;
+	      break;
+
 	    default:
+	      break;
+	    }
+
+	  if (done)
+	    {
+	      fprintf (stderr, "So for class %s%s%s, %s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), optmsg);
+	      fflush (stderr);
 	      break;
 	    }
 	}
@@ -1946,7 +1993,15 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 #endif
     }
 
+  if (data_format != OBJECT_FORMAT_TEXT)
+    {
+      CHECK_PRINT_ERROR (text_print (&(g_thr_param[0].text_output), NULL, 0, "%cformat %d %d %d %d\n", '%',
+				     data_format, binary_format_compat_level (), binary_format_bit_platform (),
+				     binary_format_endian ()));
+    }
+
   error_occurred = false;
+  assert (g_multi_thread_mode == false);
   error = text_print_request_flush (&(g_thr_param[0].text_output), true);
   if (error != NO_ERROR)
     {
@@ -1977,7 +2032,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   c_cparea_lst_class.set_max_list (max_fetched_copyarea_list);
   unld_cls_info.cparea_lst_ref = &c_cparea_lst_class;
   g_uci = &unld_cls_info;
-
+  g_data_format = data_format;
 
   if (g_multi_thread_mode)
     {
@@ -2040,7 +2095,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       for (i = 0; i < nthreads; i++)
 	{
 	  int _err;
-	  void *retval;
 
 	  pthread_join (g_thr_param[i].tid, &retval);
 	  if ((_err = text_print_request_flush (&(g_thr_param[i].text_output), true)) != NO_ERROR)
@@ -2049,7 +2103,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	    }
 	}
 
-      void *retval;
       writer_thread_proc_terminate = true;
       pthread_join (writer_tid, &retval);
 
@@ -2057,6 +2110,14 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 
       pthread_cond_destroy (&unld_cls_info.cond);
       pthread_mutex_destroy (&unld_cls_info.mtx);
+    }
+
+  if (data_format != OBJECT_FORMAT_TEXT)
+    {
+      const BIN_REC_SIZE_TYPE end_of_records = BIN_END_OF_RECORDS;
+
+      write (g_fd_handle, &end_of_records, sizeof (end_of_records));	/*  end of records */
+      write (g_fd_handle, "\n", 1);
     }
 
   TIMER_END ((g_sampling_records >= 0), &wi_unload_class);
@@ -2130,12 +2191,16 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
   OID *class_oid;
   int data;
   int v = 0;
+  TEXT_BUFFER_BLK *rec_ptr = NULL;
+  char *binary_size_ptr = NULL;
 
   TIMER_BEGIN ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
   class_ptr = desc_obj->class_;
   class_oid = ws_oid (desc_obj->classop);
   if (!datafile_per_class && referenced_class)
-    {				/* need to hash OID */
+    {
+      assert (g_data_format == OBJECT_FORMAT_TEXT);
+      /* need to hash OID */
       if (g_multi_thread_mode)
 	{
 	  pthread_mutex_lock (&g_update_hash_cs_lock);
@@ -2159,15 +2224,22 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
 	}
     }
 
+  if (g_data_format != OBJECT_FORMAT_TEXT)
+    {
+      CHECK_PRINT_ERROR (binary_reserve_row_size (obj_out, &rec_ptr, &binary_size_ptr));
+    }
+
   attribute = class_ptr->ordered_attributes;
   for (attribute = class_ptr->ordered_attributes; attribute; attribute = attribute->order_link)
     {
-
       if (attribute->header.name_space != ID_ATTRIBUTE)
 	continue;
 
-      if (v)
-	CHECK_PRINT_ERROR (text_print (obj_out, " ", 1, NULL));
+      if (g_data_format == OBJECT_FORMAT_TEXT)
+	{
+	  if (v)
+	    CHECK_PRINT_ERROR (text_print (obj_out, " ", 1, NULL));
+	}
 
       value = &desc_obj->values[attribute->storage_order];
 
@@ -2179,7 +2251,15 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
 
       ++v;
     }
-  CHECK_PRINT_ERROR (text_print (obj_out, "\n", 1, NULL));
+
+  if (g_data_format == OBJECT_FORMAT_TEXT)
+    {
+      CHECK_PRINT_ERROR (text_print (obj_out, "\n", 1, NULL));
+    }
+  else
+    {
+      binary_fill_row_size (rec_ptr, binary_size_ptr);
+    }
   TIMER_END ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
 
   return text_print_request_flush (obj_out, false);
@@ -2189,7 +2269,6 @@ exit_on_error:
   TIMER_END ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
 
   return error;
-
 }
 
 /*
@@ -2208,31 +2287,51 @@ process_set (DB_SET * set, TEXT_OUTPUT * obj_out)
   DB_VALUE *element_value;
   int check_nelem = 0;
 
-  CHECK_PRINT_ERROR (text_print (obj_out, "{", 1, NULL));
-
-  it = set_iterate (set);
-  while ((element_value = set_iterator_value (it)) != NULL)
+  if (g_data_format == OBJECT_FORMAT_TEXT)
     {
+      CHECK_PRINT_ERROR (text_print (obj_out, "{", 1, NULL));
 
-      if ((error = process_value (element_value, obj_out)) != NO_ERROR)
+      it = set_iterate (set);
+      while ((element_value = set_iterator_value (it)) != NULL)
 	{
-	  if (!ignore_err_flag)
-	    goto exit_on_error;
+	  if ((error = process_value (element_value, obj_out)) != NO_ERROR)
+	    {
+	      if (!ignore_err_flag)
+		goto exit_on_error;
+	    }
+
+	  check_nelem++;
+
+	  if (set_iterator_next (it))
+	    {
+	      CHECK_PRINT_ERROR (text_print (obj_out, ", ", 2, NULL));
+
+	      if (check_nelem >= 10)
+		{		/* set New-Line for each 10th elements */
+		  CHECK_PRINT_ERROR (text_print (obj_out, "\n", 1, NULL));
+		  check_nelem -= 10;
+		}
+	    }
+	}
+      CHECK_PRINT_ERROR (text_print (obj_out, "}", 1, NULL));
+    }
+  else
+    {
+      for (it = set_iterate (set); (element_value = set_iterator_value (it)) != NULL; set_iterator_next (it))
+	{
+	  check_nelem++;
 	}
 
-      check_nelem++;
-
-      if (set_iterator_next (it))
+      CHECK_PRINT_ERROR (binary_print (obj_out, (u_char *) & check_nelem, sizeof (check_nelem), DB_TYPE_SET));
+      for (it = set_iterate (set); (element_value = set_iterator_value (it)) != NULL; set_iterator_next (it))
 	{
-	  CHECK_PRINT_ERROR (text_print (obj_out, ", ", 2, NULL));
-	  if (check_nelem >= 10)
-	    {			/* set New-Line for each 10th elements */
-	      CHECK_PRINT_ERROR (text_print (obj_out, "\n", 1, NULL));
-	      check_nelem -= 10;
+	  if ((error = process_value (element_value, obj_out)) != NO_ERROR)
+	    {
+	      if (!ignore_err_flag)
+		goto exit_on_error;
 	    }
 	}
     }
-  CHECK_PRINT_ERROR (text_print (obj_out, "}", 1, NULL));
 
 exit_on_end:
   if (it != NULL)
@@ -2269,6 +2368,8 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 	DB_OBJECT *classop;
 	SM_CLASS *class_ptr;
 	int *cls_no_ptr, cls_no;
+
+	assert (g_data_format == OBJECT_FORMAT_TEXT);
 
 	if (DB_VALUE_TYPE (value) == DB_TYPE_OID)
 	  {
@@ -2418,9 +2519,40 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 	  {
 	    if (elo->type == ELO_FBO)
 	      {
-		CHECK_PRINT_ERROR (text_print
-				   (obj_out, NULL, 0, "^E'%c%lld|%s|%s'", dts, elo->size, elo->locator,
-				    elo->meta_data != NULL ? elo->meta_data : ""));
+		if (g_data_format == OBJECT_FORMAT_TEXT)
+		  {
+		    CHECK_PRINT_ERROR (text_print
+				       (obj_out, NULL, 0, "^E'%c%" PRId64 "|%s|%s'", dts, elo->size, elo->locator,
+					elo->meta_data != NULL ? elo->meta_data : ""));
+		  }
+		else
+		  {
+		    char tmp[512];
+		    char *ptr = tmp;
+		    int len = snprintf (NULL, 0, "^E'%c%" PRId64 "|%s|%s'", dts, elo->size, elo->locator,
+					elo->meta_data != NULL ? elo->meta_data : "");
+		    if (len >= (int) sizeof (tmp))
+		      {
+			ptr = (char *) malloc (len + 1);
+			if (ptr == NULL)
+			  {
+			    goto exit_on_error;
+			  }
+		      }
+
+		    snprintf (ptr, len, "^E'%c%" PRId64 "|%s|%s'", dts, elo->size, elo->locator,
+			      elo->meta_data != NULL ? elo->meta_data : "");
+		    error = binary_print (obj_out, (u_char *) ptr, len, dt);
+		    if (ptr != tmp)
+		      {
+			free (ptr);
+		      }
+		    if (error != NO_ERROR)
+		      {
+			goto exit_on_error;
+		      }
+		  }
+
 	      }
 	    else
 	      {
@@ -2430,24 +2562,36 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 	  }
 	else
 	  {
-	    CHECK_PRINT_ERROR (text_print (obj_out, "NULL", 4, NULL));
+	    assert (false);
+	    if (g_data_format == OBJECT_FORMAT_TEXT)
+	      {
+		CHECK_PRINT_ERROR (text_print (obj_out, "NULL", 4, NULL));
+	      }
+	    else
+	      {
+		CHECK_PRINT_ERROR (binary_print (obj_out, NULL, 0, dt));
+	      }
 	  }
 	break;
       }
 
     default:
-      CHECK_PRINT_ERROR (desc_value_special_fprint (obj_out, value));
+      if (g_data_format == OBJECT_FORMAT_TEXT)
+	{
+	  CHECK_PRINT_ERROR (desc_value_special_fprint (obj_out, value));
+	}
+      else
+	{
+	  CHECK_PRINT_ERROR (desc_value_special_fprint_binary (obj_out, value));
+	}
       break;
     }
-
-exit_on_end:
 
   return error;
 
 exit_on_error:
-
   CHECK_EXIT_ERROR (error);
-  goto exit_on_end;
+  return error;
 }
 
 

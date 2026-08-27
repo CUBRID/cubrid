@@ -92,6 +92,8 @@ DB_OBJECT **req_class_table = NULL;
 char *output_prefix = NULL;
 bool ignore_err_flag = false;
 
+int g_data_format = (int) OBJECT_FORMAT_TEXT;	/* 0: plain text, 1: pure binary, 2: compressed */
+
 /*
  * unload_usage() - print an usage of the unload-utility
  *   return: void
@@ -132,6 +134,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   bool enhanced_estimates = false;
   int thread_count = 1;
   int sampling_records = -1;
+  int data_format = (int) OBJECT_FORMAT_TEXT;
 
   db_set_use_utility_thread (true);
 
@@ -224,6 +227,13 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	      goto end;
 	    }
 	}
+    }
+
+  data_format = utility_get_option_int_value (arg_map, UNLOAD_DATA_FORMAT_S);
+  if (data_format < OBJECT_FORMAT_TEXT && data_format >= OBJECT_FORMAT_LAST)
+    {
+      fprintf (stderr, "invalid '--%s' option value: %d\n", UNLOAD_DATA_FORMAT_L, data_format);
+      goto end;
     }
 
   /* depreciated */
@@ -468,7 +478,8 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	  gettimeofday (&startTime, NULL);
 	}
 
-      if (extract_objects (unload_context, output_dirname, thread_count, sampling_records, enhanced_estimates))
+      if (extract_objects
+	  (unload_context, output_dirname, thread_count, sampling_records, enhanced_estimates, data_format))
 	{
 	  status = 1;
 	}

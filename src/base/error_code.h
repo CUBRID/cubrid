@@ -1771,7 +1771,9 @@
 
 #define ER_BT_LOAD_NOTIFY_VACUUM_LIMIT              -1377
 
-#define ER_LAST_ERROR                               -1378
+#define ER_LDR_CORRUPTED_BINARY_RECORD              -1378
+
+#define ER_LAST_ERROR                               -1379
 
 
 

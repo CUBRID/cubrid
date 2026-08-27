@@ -27,6 +27,7 @@
 
 #include <atomic>
 #include <cassert>
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -437,5 +438,46 @@ using load_status = cubload::load_status;
 	 (strncasecmp ((class_name), "glo", MAX(strlen(class_name), 3)) == 0      || \
 	  strncasecmp ((class_name), "glo_name", MAX(strlen(class_name), 8)) == 0  || \
 	  strncasecmp ((class_name), "glo_holder", MAX(strlen(class_name), 10)) == 0)
+
+
+/*
+ * Binary object file format, shared by unloaddb (writer) and loaddb (reader).
+ * A binary section holds one length prefixed record per row and is closed by a zero length.
+ * The size field is written in host byte order.
+ */
+typedef uint32_t BIN_REC_SIZE_TYPE;
+#define BIN_END_OF_RECORDS  (0)
+
+#define UNLOAD_RAW_NUMERIC_SIZE  (sizeof (int) + sizeof (int) + DB_NUMERIC_BUF_SIZE + 1)
+#define UNLOAD_RAW_NUMERIC_NEGATIVE (0x02)
+#define UNLOAD_RAW_NUMERIC_FLOATING (0x01)
+
+typedef enum
+{
+  OBJECT_FORMAT_TEXT = 0,
+  OBJECT_FORMAT_BINARY,
+  //OBJECT_FORMAT_BINARY_COMPRESSED,
+  OBJECT_FORMAT_LAST
+} OBJECT_DATA_FORMAT;
+
+/*
+ * A binary section holds raw memory of the DB_VALUE payloads, so it can only be read back by a
+ * build which lays those out the very same way. The "%format" command line of a class therefore
+ * carries, next to the data format itself, the three properties which decide that:
+ *
+ *   %format <data format> <compatibility level> <bit platform> <byte order>
+ */
+#define BIN_FORMAT_ENDIAN_LITTLE (0)
+#define BIN_FORMAT_ENDIAN_BIG    (1)
+
+extern int binary_format_compat_level (void);
+extern int binary_format_bit_platform (void);
+extern int binary_format_endian (void);
+
+
+extern int encode_varint (int v, u_char *buf);
+extern int encode_varint64 (int64_t v, u_char *buf);
+extern bool decode_varint (u_char *buf, int buf_sz, int *val_ptr, int *consumed);
+extern bool decode_varint64 (u_char *buf, int buf_sz, int64_t *val_ptr, int *consumed);
 
 #endif /* _LOAD_COMMON_HPP_ */

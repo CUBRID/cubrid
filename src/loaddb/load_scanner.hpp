@@ -33,6 +33,8 @@
 #endif
 #include <istream>
 
+#include "load_common.hpp"
+
 namespace cubload
 {
 
@@ -43,6 +45,7 @@ namespace cubload
 	: yyFlexLexer ()
 	, m_semantic_helper (semantic_helper)
 	, m_error_handler (error_handler)
+	, m_data_format (OBJECT_FORMAT_TEXT)
       {
 	//
       };
@@ -59,6 +62,17 @@ namespace cubload
        * See load_lexer.l file for method declaration
        */
       virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc);
+
+
+      /* The function is defined in load_lexer.l
+       * because it requires access to yyFlexLexer member variables such as yy_start.
+       */
+      void set_ldr_data_format (int data_format, int compat_level, int bit_platform, int endian);
+
+      OBJECT_DATA_FORMAT get_ldr_data_format () const
+      {
+	return m_data_format;
+      }
 
       /*
        * Lexer error function
@@ -78,8 +92,15 @@ namespace cubload
       }
 
     private:
+      /*
+       * Copy raw bytes of a binary section out of the scanner input.
+       * See load_lexer.l file for method definition
+       */
+      std::size_t read_binary (char *buf, std::size_t len);
+
       semantic_helper &m_semantic_helper;
       error_handler &m_error_handler;
+      OBJECT_DATA_FORMAT m_data_format;
   };
 
 } // namespace cubload

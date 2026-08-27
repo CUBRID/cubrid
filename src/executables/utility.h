@@ -516,7 +516,11 @@ typedef enum
   LOADDB_MSG_COMPAT_UNDER_11_2 = 124,
   LOADDB_MSG_COMPAT_UNDER_11_4 = 125,
   LOADDB_MSG_COMPAT_OFF = 126,
-  LOADDB_MSG_USAGE = 127
+  LOADDB_MSG_USAGE = 127,
+  LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT = 128,
+  LOADDB_MSG_TRUNCATED_BINARY_SECTION = 129,
+  LOADDB_MSG_INVALID_FORMAT_COMMAND = 130,
+  LOADDB_MSG_UNSUPPORTED_DATA_FORMAT = 131
 } MSGCAT_LOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_MIGDB */
@@ -1449,7 +1453,8 @@ typedef struct _ha_config
 #define UNLOAD_SAMPLING_TEST_L                  "sampling-test"
 #define UNLOAD_ENHANCED_ESTIMATES_S             11927
 #define UNLOAD_ENHANCED_ESTIMATES_L             "enhanced-estimates"
-
+#define UNLOAD_DATA_FORMAT_S                    11928
+#define UNLOAD_DATA_FORMAT_L                    "data-format"
 
 
 /* compactdb option list */
