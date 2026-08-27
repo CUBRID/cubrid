@@ -64,6 +64,7 @@ namespace cubquery
   {
     int class_index;		/* index of class in select list */
     OID cls_oid;			/* OID of class */
+    HFID cls_hfid;		/* heap of cls_oid; resolved with the OID so reevaluation need not ask per row */
     OID *inst_oid;		/* OID of instance involved in condition */
     filter_info data_filter;	/* data filter */
     filter_info key_filter;	/* key_filter */

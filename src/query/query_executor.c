@@ -10241,6 +10241,7 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
       cond_reev_class = &cond_reev_classes[idx];
       cond_reev_class->class_index = mvcc_reev_indexes[idx];
       OID_SET_NULL (&cond_reev_class->cls_oid);
+      HFID_SET_NULL (&cond_reev_class->cls_hfid);
       cond_reev_class->inst_oid = NULL;
       cond_reev_class->rest_attrs = NULL;
       cond_reev_class->rest_regu_list = NULL;
@@ -26276,6 +26277,11 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 
   mvcc_reev_class->init (curr_spec->s_id);
   mvcc_reev_class->cls_oid = *class_oid;
+  if (heap_get_class_info (thread_p, class_oid, &mvcc_reev_class->cls_hfid, NULL, NULL) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
   *has_spec = true;
 
   return NO_ERROR;
