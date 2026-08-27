@@ -1382,6 +1382,10 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   LOG_VACUUM_INFO *vacuum_info = NULL;
   MVCCID mvccid = MVCCID_NULL;
 
+  /* Ahead of the mutex, so that all the append path holds it for is the ring push. Nothing can free the
+   * node between here and register (): the tail of this function always links it into the prior list. */
+  log_prior_inflight_prepare (node);
+
   if (with_lock == LOG_PRIOR_LSA_WITHOUT_LOCK)
     {
       log_Gl.prior_info.prior_lsa_mutex.lock ();
@@ -1523,10 +1527,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 
   /* Nothing writes into the node again, so publish it now - in start_lsa order, the order the drain
    * retires in. */
-  if (log_prior_inflight_is_registrable (node))
-    {
-      log_prior_inflight_register (start_lsa, node);
-    }
+  log_prior_inflight_register (start_lsa, node);
 
   if (log_Gl.prior_info.prior_list_tail == NULL)
     {

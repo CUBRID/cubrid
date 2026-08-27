@@ -79,8 +79,13 @@ log_prior_inflight_is_registered (const LOG_PRIOR_NODE *node)
   return node->inflight_holder != NULL;
 }
 
-/* Append path, under prior_lsa_mutex. Does nothing when the ring is full or the holder allocation fails;
- * a reader that wants an unregistered node drains. */
+/* Append path, before prior_lsa_mutex. Allocates the retirement holder a registrable node will need, so
+ * that register () under the mutex has only the ring push left to do. Leaves the node unprepared when it
+ * is not registrable, when the window is down, when the ring is already full, or on OOM - each of which
+ * register () tolerates, and a reader that wants an unregistered node drains. */
+void log_prior_inflight_prepare (LOG_PRIOR_NODE *node);
+
+/* Append path, under prior_lsa_mutex. Registers what prepare () made ready; does nothing otherwise. */
 void log_prior_inflight_register (const LOG_LSA &start_lsa, LOG_PRIOR_NODE *node);
 
 /* Drain, in the LSA order register () used. Only for a node log_prior_inflight_is_registered () holds for. */

@@ -26,6 +26,9 @@
  *   pop_if_head   retire (), drain, in that same order, so always the node at the ring head
  *   find          pin_lookup (), reader, wait-free
  *
+ * The push is all the append path holds the mutex for: prepare () runs ahead of it and allocates what
+ * register () will need, so that no allocator call sits inside the one lock every writer queues on.
+ *
  * What the ring leaves to this file is the node's lifetime: the drain does not free a registered node, it
  * unlinks the slot and hands the node to lockfree::tran epoch reclamation. Same unlink-before-retire /
  * pin-before-read discipline lockfree_hashmap uses.
@@ -151,10 +154,14 @@ log_prior_inflight_finalize ()
 }
 
 void
-log_prior_inflight_register (const LOG_LSA &start_lsa, LOG_PRIOR_NODE *node)
+log_prior_inflight_prepare (LOG_PRIOR_NODE *node)
 {
-  assert (log_prior_inflight_is_registrable (node));
   assert (!log_prior_inflight_is_registered (node));
+
+  if (!log_prior_inflight_is_registrable (node))
+    {
+      return;
+    }
 
   if (log_Inflight_table.load (std::memory_order_acquire) == NULL)
     {
@@ -172,8 +179,29 @@ log_prior_inflight_register (const LOG_LSA &start_lsa, LOG_PRIOR_NODE *node)
       return;			/* OOM degrades the same way as a full ring */
     }
 
-  /* Set before the slot is visible: the node is the drain's to retire, not to free. */
+  /* Set before the slot is visible: the node is the drain's to retire, not to free. Nothing else reads it
+   * in between - the node reaches the prior list only after register (). */
   node->inflight_holder = holder;
+}
+
+void
+log_prior_inflight_register (const LOG_LSA &start_lsa, LOG_PRIOR_NODE *node)
+{
+  if (!log_prior_inflight_is_registered (node))
+    {
+      return;			/* prepare () found nothing to stage, or could not */
+    }
+
+  assert (log_prior_inflight_is_registrable (node));
+
+  if (log_Inflight_table.load (std::memory_order_acquire) == NULL || log_Inflight_ring.is_full ())
+    {
+      /* The window went down or filled up between prepare () and here. Drop the holder rather than leave
+       * the drain a node it would go looking for a slot for. */
+      delete node->inflight_holder;
+      node->inflight_holder = NULL;
+      return;
+    }
 
   log_Inflight_ring.push (start_lsa, node);
 }
