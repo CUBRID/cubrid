@@ -209,6 +209,39 @@ tracer_main (char *server_name, char *sql, char *out_path)
       }
     tracer_log (fp, "M0_TRACER: compiled in server address space, stmt_id=%d", stmt_id);
 
+    /* wf122/A3: host variables gate the native DB_VALUE hand-off into
+     * xqmgr_execute_query (#124 D4) — bind them when the harness asks.
+     * CUBRID_M0_TRACER_BIND is a comma-separated list of integers. */
+    const char *bind_env = std::getenv ("CUBRID_M0_TRACER_BIND");
+    if (bind_env != NULL && *bind_env != '\0')
+      {
+	DB_VALUE bind_vals[16];
+	int bind_cnt = 0;
+	const char *p = bind_env;
+	char *endp = NULL;
+	while (bind_cnt < 16)
+	  {
+	    long v = strtol (p, &endp, 10);
+	    if (endp == p)
+	      {
+		break;
+	      }
+	    db_make_int (&bind_vals[bind_cnt++], (int) v);
+	    if (*endp != ',')
+	      {
+		break;
+	      }
+	    p = endp + 1;
+	  }
+	if (db_push_values (session, bind_cnt, bind_vals) != NO_ERROR)
+	  {
+	    tracer_log (fp, "M0_TRACER: FAIL db_push_values msg=[%s]", er_msg () ? er_msg () : "");
+	    db_close_session (session);
+	    goto retire;
+	  }
+	tracer_log (fp, "M0_TRACER: bound %d host variable(s)", bind_cnt);
+      }
+
     DB_QUERY_RESULT *result = NULL;
     err = db_execute_statement (session, stmt_id, &result);
     if (err < 0)
