@@ -10198,11 +10198,15 @@ int
 btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc)
 {
 #if defined (SERVER_MODE)
-  /* Every "goto fallback_serial" below declines parallelism and runs the serial implementation.
+  /* "goto fallback_serial" declines parallelism for an index this path cannot split and runs the
+   * serial implementation; "goto exit_on_error" reports a real failure to the caller.
    *
-   * The root stays READ-latched until the workers join: SHOW holds only SCH_S_LOCK, and the root
-   * latch blocks a root-child merge (needs root WRITE) -- the only way a root child could be
-   * deallocated under a worker's plain fix. Deeper levels rely on the workers' latch coupling. */
+   * The root stays READ-latched until the workers join. The class lock (SCH_S_LOCK; S_LOCK for the
+   * ALL variants) blocks only DDL, so concurrent DML and vacuum SMOs are live -- the root latch is
+   * what keeps children[] valid for a worker's plain fix. Every SMO that would change the root's
+   * records (child merge, root split) must promote the root to WRITE first, which cannot succeed
+   * while we hold READ. Below the root, btree_get_subtree_capacity couples node latches; an
+   * overflow-OID chain is covered by its leaf's latch instead. */
   VPID root_vpid;
   PAGE_PTR root_ptr = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
