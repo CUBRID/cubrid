@@ -19079,7 +19079,8 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   assert (PT_SYNONYM_ACCESS_MODIFIER (statement) != PT_PUBLIC);
 
   /* synonym_name */
-  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_NAME (statement)), synonym_name, DB_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (pt_name_qualified (parser, PT_SYNONYM_NAME (statement)), synonym_name,
+			  DB_MAX_IDENTIFIER_LENGTH);
 
   /* target_name */
   if (PT_SYNONYM_TARGET_NAME (statement) == NULL)
@@ -19098,7 +19099,7 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
+	  sm_user_specified_name (pt_name_qualified (parser, PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
 				  DB_MAX_IDENTIFIER_LENGTH);
 	  target_name = target_name_buf;
 	}
@@ -19326,7 +19327,8 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   assert (PT_SYNONYM_ACCESS_MODIFIER (statement) != PT_PUBLIC);
 
   /* synonym_name */
-  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_NAME (statement)), synonym_name, DB_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (pt_name_qualified (parser, PT_SYNONYM_NAME (statement)), synonym_name,
+			  DB_MAX_IDENTIFIER_LENGTH);
 
   /* synonym_owner */
   synonym_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_OWNER_NAME (statement)));
@@ -19346,7 +19348,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
+      sm_user_specified_name (pt_name_qualified (parser, PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
 			      DB_MAX_IDENTIFIER_LENGTH);
       target_name = target_name_buf;
     }
@@ -19605,7 +19607,8 @@ do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   assert (PT_SYNONYM_ACCESS_MODIFIER (statement) != PT_PUBLIC);
 
   /* synonym_name */
-  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_NAME (statement)), synonym_name, DB_MAX_IDENTIFIER_LENGTH);
+  sm_user_specified_name (pt_name_qualified (parser, PT_SYNONYM_NAME (statement)), synonym_name,
+			  DB_MAX_IDENTIFIER_LENGTH);
 
   /* if_exists */
   if_exists = PT_SYNONYM_IF_EXISTS (statement);
@@ -19749,11 +19752,11 @@ do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   assert (PT_SYNONYM_ACCESS_MODIFIER (statement) != PT_PUBLIC);
 
   /* old_synonym_name */
-  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_OLD_NAME (statement)), old_synonym_name,
+  sm_user_specified_name (pt_name_qualified (parser, PT_SYNONYM_OLD_NAME (statement)), old_synonym_name,
 			  DB_MAX_IDENTIFIER_LENGTH);
 
   /* new_synonym_name */
-  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_NEW_NAME (statement)), new_synonym_name,
+  sm_user_specified_name (pt_name_qualified (parser, PT_SYNONYM_NEW_NAME (statement)), new_synonym_name,
 			  DB_MAX_IDENTIFIER_LENGTH);
 
   error = do_rename_synonym_internal (old_synonym_name, new_synonym_name);
