@@ -996,7 +996,7 @@ authenticate_context::create_information_schema_user (MOP root_cls, MOP user_cls
   au_grant (DB_OBJECT_CLASS, information_schema_user, user_cls, AU_SELECT, false);
   au_grant (DB_OBJECT_CLASS, information_schema_user, auth_cls, AU_SELECT, false);
 
-  if (disable_login (information_schema_user) != NO_ERROR)
+  if (set_loginable (information_schema_user, false) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1043,20 +1043,13 @@ authenticate_context::is_system_user (MOP user)
 }
 
 int
-authenticate_context::disable_login (MOP user)
+authenticate_context::set_loginable (MOP user, bool loginable)
 {
   DB_VALUE value;
-  int error = NO_ERROR;
 
-  db_make_int (&value, false);
+  db_make_int (&value, loginable);
 
-  error = obj_set (user, AU_USER_ATTR_IS_LOGINABLE, &value);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  return NO_ERROR;
+  return obj_set (user, AU_USER_ATTR_IS_LOGINABLE, &value);
 }
 
 int authenticate_context::is_loginable_user (MOP user)
