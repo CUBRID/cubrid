@@ -334,7 +334,7 @@ commands:
           shell: /bin/bash
           no_output_timeout: 45m
           command: |
-            ulimit -c 10485760   # limit core files to 10mb
+            ulimit -c 4194304   # limit core files to 4GB (ulimit -c counts 1024-byte blocks)
             /entrypoint.sh test
       - run:
           name: Collect Logs
@@ -349,6 +349,10 @@ commands:
               mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
             fi
             [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump || true
+            # CTP shell saves a failure snapshot (AUTO_*.tar.gz: CUBRID copy, case dir,
+            # core) under $HOME/ERROR_BACKUP. The entrypoint runs CTP with HOME=/home,
+            # which is this working directory, so keep everything it left there.
+            [ -e ERROR_BACKUP ] && mv -f ERROR_BACKUP /tmp/logs/ || true
             mv -f tc.list /tmp/logs/ || true
       - store_test_results:
           path: /tmp/tests
