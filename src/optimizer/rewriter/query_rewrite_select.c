@@ -3725,7 +3725,7 @@ qo_rewrite_nonnull_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 	    {
 	      return node;
 	    }
-	  class_name = spec_node->info.spec.entity_name->info.name.original;
+	  class_name = pt_name_qualified (parser, spec_node->info.spec.entity_name);
 	  if (class_name == NULL)
 	    {
 	      return node;

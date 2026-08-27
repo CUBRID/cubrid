@@ -4817,7 +4817,7 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
 	{
 	  if (from->info.spec.entity_name)
 	    {
-	      info.class_name = from->info.spec.entity_name->info.name.original;
+	      info.class_name = pt_name_qualified (parser, from->info.spec.entity_name);
 	      info.flag_agg_optimize = true;
 	    }
 	}
@@ -11925,7 +11925,7 @@ pt_fix_first_term_func_index_for_iss (PARSER_CONTEXT * parser, QO_INDEX_ENTRY * 
   seg = QO_ENV_SEG (index_entryp->terms.env, index_entryp->seg_idxs[1]);
   head = QO_SEG_HEAD (seg);
   spec = head->entity_spec;
-  class_name = (char *) spec->info.spec.entity_name->info.name.original;
+  class_name = (char *) pt_name_qualified (parser, spec->info.spec.entity_name);
 
   query_str_len = (int) strlen (func_index->expr_str) + (int) strlen (class_name) + 7 /* strlen("SELECT ") */  +
     6 /* strlen(" FROM ") */  +
@@ -19942,7 +19942,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       return pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
     }
 
-  char *name = (char *) statement->info.insert.spec->info.spec.entity_name->info.name.original;
+  char *name = (char *) pt_name_qualified (parser, statement->info.insert.spec->info.spec.entity_name);
 
   has_uniques = statement->info.insert.has_uniques;
   non_null_attrs = statement->info.insert.non_null_attrs;

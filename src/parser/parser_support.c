@@ -11819,7 +11819,7 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
 	{
 	  if (spec->info.spec.entity_name)
 	    {
-	      tbl_name = (char *) spec->info.spec.entity_name->info.name.original;
+	      tbl_name = (char *) pt_name_qualified (parser, spec->info.spec.entity_name);
 	      if (spec->info.spec.range_var)
 		{
 		  tbl_alias = (char *) spec->info.spec.range_var->info.name.original;
@@ -11872,7 +11872,7 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
     }
 
   /* If it is a synonym name, change it to the target name. */
-  class_name = (char *) spec->info.spec.entity_name->info.name.original;
+  class_name = (char *) pt_name_qualified (parser, spec->info.spec.entity_name);
   if (class_name == NULL)
     {
       return spec;
@@ -11895,7 +11895,7 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
 	  char *synonym_name, *s;
 
 	  /* for alias */
-	  synonym_name = (char *) spec->info.spec.entity_name->info.name.original;
+	  synonym_name = (char *) pt_name_qualified (parser, spec->info.spec.entity_name);
 	  if ((s = (char *) strchr (synonym_name, '.')) != NULL)
 	    {
 	      synonym_name = s + 1;
@@ -12197,7 +12197,7 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	  else
 	    {
 	      if (spec->info.spec.entity_name && t_name
-		  && strcmp (spec->info.spec.entity_name->info.name.original, t_name) == 0)
+		  && strcmp (pt_name_qualified (parser, spec->info.spec.entity_name), t_name) == 0)
 		{
 		  if (spec->info.spec.remote_server_name)
 		    {
@@ -12671,7 +12671,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	if (s->info.spec.range_var && s->info.spec.entity_name && s->info.spec.remote_server_name)
 	  {
 	    a_name = s->info.spec.range_var->info.name.original;
-	    e_name = s->info.spec.entity_name->info.name.original;
+	    e_name = pt_name_qualified (parser, s->info.spec.entity_name);
 	    if (a_name && e_name && strcasecmp (a_name, e_name) == 0)
 	      {
 		s->info.spec.range_var = NULL;
@@ -12686,7 +12686,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	if (s->info.spec.range_var && s->info.spec.entity_name && s->info.spec.remote_server_name)
 	  {
 	    a_name = s->info.spec.range_var->info.name.original;
-	    e_name = s->info.spec.entity_name->info.name.original;
+	    e_name = pt_name_qualified (parser, s->info.spec.entity_name);
 	    if (a_name && e_name && strcasecmp (a_name, e_name) == 0)
 	      {
 		s->info.spec.range_var = NULL;

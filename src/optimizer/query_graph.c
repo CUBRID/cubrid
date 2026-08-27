@@ -1566,7 +1566,7 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node, QO_ENV * env,
   entity = QO_NODE_ENTITY_SPEC (head);
   if (pt_is_name_node (node) && PT_SPEC_IS_ENTITY (entity))
     {
-      const char *class_name = entity->info.spec.entity_name->info.name.original;
+      const char *class_name = pt_name_qualified (QO_ENV_PARSER (env), entity->info.spec.entity_name);
       int i;
       bool found = false;
       if (class_name != NULL)

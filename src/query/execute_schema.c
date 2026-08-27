@@ -448,7 +448,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   MOP super_class;
   DB_DEFAULT_EXPR default_expr;
 
-  entity_name = alter->info.alter.entity_name->info.name.original;
+  entity_name = pt_name_qualified (parser, alter->info.alter.entity_name);
   if (entity_name == NULL)
     {
       ERROR1 (error, ER_UNEXPECTED, "Expecting a class or virtual class name.");
@@ -1151,14 +1151,14 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_RENAME_ATTR_MTHD:
       if (alter->info.alter.alter_clause.rename.old_name)
 	{
-	  old_name = alter->info.alter.alter_clause.rename.old_name->info.name.original;
+	  old_name = pt_name_qualified (parser, alter->info.alter.alter_clause.rename.old_name);
 	}
       else
 	{
 	  old_name = NULL;
 	}
 
-      new_name = alter->info.alter.alter_clause.rename.new_name->info.name.original;
+      new_name = pt_name_qualified (parser, alter->info.alter.alter_clause.rename.new_name);
 
       if (alter->info.alter.alter_clause.rename.meta == PT_META_ATTR)
 	{
@@ -1299,8 +1299,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_RENAME_CONSTRAINT:
     case PT_RENAME_INDEX:
 
-      old_name = alter->info.alter.alter_clause.rename.old_name->info.name.original;
-      new_name = alter->info.alter.alter_clause.rename.new_name->info.name.original;
+      old_name = pt_name_qualified (parser, alter->info.alter.alter_clause.rename.old_name);
+      new_name = pt_name_qualified (parser, alter->info.alter.alter_clause.rename.new_name);
 
       if (alter->info.alter.alter_clause.rename.element_type == PT_CONSTRAINT_NAME)
 	{
@@ -1348,7 +1348,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   if (change_might_affect_visibility)
     {
       /* check if all of attributes are invisible. if is, abort */
-      error = smt_check_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
+      error = smt_check_attribute_all_invisible (ctemplate, pt_name_qualified (parser, alter->info.alter.entity_name));
       if (error != NO_ERROR)
 	{
 	  dbt_abort_class (ctemplate);
@@ -1586,8 +1586,8 @@ do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const al
 {
   int error_code = NO_ERROR;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
-  const char *const old_name = alter->info.alter.entity_name->info.name.original;
-  const char *const new_name = alter->info.alter.alter_clause.rename.new_name->info.name.original;
+  const char *const old_name = pt_name_qualified (parser, alter->info.alter.entity_name);
+  const char *const new_name = pt_name_qualified (parser, alter->info.alter.alter_clause.rename.new_name);
   PT_NODE *tmp_clause = NULL;
 
   assert (alter_code == PT_RENAME_ENTITY);
@@ -1701,7 +1701,7 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
 
   obj =
     db_find_class_of_owner (alter->info.alter.entity_name->info.name.owner_name,
-			    alter->info.alter.entity_name->info.name.original);
+			    pt_name_qualified (parser, alter->info.alter.entity_name));
   if (obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -1749,7 +1749,7 @@ do_alter_change_auto_increment (PARSER_CONTEXT * const parser, PT_NODE * const a
   int error = NO_ERROR;
   int au_save = 0;
 
-  entity_name = alter->info.alter.entity_name->info.name.original;
+  entity_name = pt_name_qualified (parser, alter->info.alter.entity_name);
   if (entity_name == NULL)
     {
       ERROR1 (error, ER_UNEXPECTED, "Expecting a class name.");
@@ -1938,7 +1938,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    /* Altering the column name does affect the histogram. Drop histogram before renaming the column. */
 	    if (alter->info.alter.alter_clause.rename.old_name != NULL)
 	      {
-		const char *attr_name = crt_clause->info.alter.alter_clause.rename.old_name->info.name.original;
+		const char *attr_name = pt_name_qualified (parser, crt_clause->info.alter.alter_clause.rename.old_name);
 		if (attr_name != NULL)
 		  {
 		    error_code = db_get_histogram (crt_clause->info.alter.entity_name->info.name.db_object, attr_name,
@@ -6695,7 +6695,7 @@ do_alter_partitioning_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
   CHECK_3ARGS_ERROR (parser, alter, pinfo);
   assert (pinfo->root_op != NULL && pinfo->root_tmpl != NULL);
 
-  entity_name = alter->info.alter.entity_name->info.name.original;
+  entity_name = pt_name_qualified (parser, alter->info.alter.entity_name);
   if (entity_name == NULL)
     {
       ERROR1 (error, ER_UNEXPECTED, "Expecting a class or virtual class name.");
@@ -6846,7 +6846,7 @@ do_alter_partitioning_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITI
 
   alter_op = alter->info.alter.code;
 
-  entity_name = alter->info.alter.entity_name->info.name.original;
+  entity_name = pt_name_qualified (parser, alter->info.alter.entity_name);
   if (entity_name == NULL)
     {
       ERROR1 (error, ER_UNEXPECTED, "Expecting a class or virtual class name.");
@@ -7058,7 +7058,7 @@ do_remove_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION
   /* At this point, the root class of the partitioned table has been modified not to be partitioned anymore and the all
    * the promoted partition names are stored in pinfo->promoted_names. step 1: do an INSERT ... SELECT to move all data
    * from promoted classes into the root class step 2: drop promoted classes; */
-  root_name = alter->info.alter.entity_name->info.name.original;
+  root_name = pt_name_qualified (parser, alter->info.alter.entity_name);
 
   error =
     do_redistribute_partitions_data (root_name, pinfo->keycol, pinfo->promoted_names, pinfo->promoted_count,
@@ -7277,7 +7277,7 @@ do_coalesce_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITI
   /* At this point, the root class of the partitioned table has been modified and contains only the final partitions.
    * The promoted partition names are stored in pinfo->promoted_names. step 1: redistribute data step 2: drop promoted
    * classes; */
-  root_name = alter->info.alter.entity_name->info.name.original;
+  root_name = pt_name_qualified (parser, alter->info.alter.entity_name);
 
   class_ = sm_find_class (root_name);
   if (class_ == NULL)
@@ -7381,7 +7381,7 @@ do_reorganize_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTIT
   assert (alter->node_type == PT_ALTER);
   CHECK_3ARGS_ERROR (parser, alter, pinfo);
 
-  class_name = alter->info.alter.entity_name->info.name.original;
+  class_name = pt_name_qualified (parser, alter->info.alter.entity_name);
   old_part = alter->info.alter.alter_clause.partition.name_list;
   new_part = alter->info.alter.alter_clause.partition.parts;
 
@@ -7496,7 +7496,7 @@ do_reorganize_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTI
    * have promoted some partitions and also changed other partitions to a new range or list. We have to run an INSERT
    * ... SELECT for the promoted partitions and an UPDATE for the ones that we only changed the schema (in order to
    * redistribute the data) */
-  root_name = alter->info.alter.entity_name->info.name.original;
+  root_name = pt_name_qualified (parser, alter->info.alter.entity_name);
 
   if (pinfo->promoted_names != NULL)
     {
@@ -10714,7 +10714,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
   OID_SET_NULL (&class_oid);
   reset_att_property_structure (&attr_chg_prop);
 
-  entity_name = alter->info.alter.entity_name->info.name.original;
+  entity_name = pt_name_qualified (parser, alter->info.alter.entity_name);
   if (entity_name == NULL)
     {
       error = ER_UNEXPECTED;
@@ -10841,7 +10841,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
     }
 
   /* check if all of attributes are invisible. if is, abort */
-  error = smt_check_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
+  error = smt_check_attribute_all_invisible (ctemplate, pt_name_qualified (parser, alter->info.alter.entity_name));
   if (error != NO_ERROR)
     {
       goto exit;
@@ -11461,7 +11461,7 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
 
   OID_SET_NULL (&class_oid);
 
-  entity_name = alter_node->info.alter.entity_name->info.name.original;
+  entity_name = pt_name_qualified (parser, alter_node->info.alter.entity_name);
   if (entity_name == NULL)
     {
       error = ER_UNEXPECTED;
@@ -14391,7 +14391,7 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * a
 
   n =
     snprintf (q, remaining, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ ALL [%s] SET ",
-	      alter->info.alter.entity_name->info.name.original);
+	      pt_name_qualified (parser, alter->info.alter.entity_name));
   if (n < 0)
     {
       ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
@@ -14481,7 +14481,7 @@ do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, 
   /* Using UPDATE ALL to update the current class and all its children. */
   n =
     snprintf (q, remaining, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ ALL [%s] SET ",
-	      alter->info.alter.entity_name->info.name.original);
+	      pt_name_qualified (parser, alter->info.alter.entity_name));
   if (n < 0)
     {
       ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
@@ -14603,7 +14603,7 @@ do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser, PT_NODE * a
     {
       const bool is_not_null = (attr->info.attr_def.constrain_not_null != 0);
       const bool has_default = (attr->info.attr_def.data_default != NULL);
-      const bool is_pri_key = is_attribute_primary_key (alter->info.alter.entity_name->info.name.original,
+      const bool is_pri_key = is_attribute_primary_key (pt_name_qualified (parser, alter->info.alter.entity_name),
 							attr->info.attr_def.attr_name->info.name.original);
       if (has_default)
 	{
@@ -15664,7 +15664,7 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser, SM_CONSTRAINT_INFO * con
       /* rebuilding the index due to ALTER CHANGE statement */
       if (alter->info.alter.entity_name)
 	{
-	  class_name = alter->info.alter.entity_name->info.name.original;
+	  class_name = pt_name_qualified (parser, alter->info.alter.entity_name);
 	}
     }
   else
@@ -15859,7 +15859,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       /* rebuilding the index due to ALTER CHANGE statement */
       if (alter->info.alter.entity_name)
 	{
-	  class_name = alter->info.alter.entity_name->info.name.original;
+	  class_name = pt_name_qualified (parser, alter->info.alter.entity_name);
 	}
     }
   else

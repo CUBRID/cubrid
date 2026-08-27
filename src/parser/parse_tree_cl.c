@@ -13839,9 +13839,9 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  assert (p->info.name.spec_id);
 	  original_spec = (PT_NODE *) p->info.name.spec_id;
-	  if (original_spec->info.spec.entity_name && original_spec->info.spec.entity_name->info.name.original)
+	  if (original_spec->info.spec.entity_name && pt_name_qualified (parser, original_spec->info.spec.entity_name))
 	    {
-	      const char *original_name = original_spec->info.spec.entity_name->info.name.original;
+	      const char *original_name = pt_name_qualified (parser, original_spec->info.spec.entity_name);
 	      if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 		{
 		  q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (original_name));

@@ -1038,7 +1038,8 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	  && node->info.query.q.select.where == NULL)
 	{
 	  /* only add to the array, if not there already in this lock mode. */
-	  if (!pt_in_lck_array (lcks, from->info.spec.entity_name->info.name.original, LC_PREF_FLAG_COUNT_OPTIM))
+	  if (!pt_in_lck_array
+	      (lcks, pt_name_qualified (parser, from->info.spec.entity_name), LC_PREF_FLAG_COUNT_OPTIM))
 	    {
 	      if (pt_add_lock_class (parser, lcks, from, LC_PREF_FLAG_COUNT_OPTIM) != NO_ERROR)
 		{
@@ -1079,7 +1080,7 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	}
     }
   /* only add to the array, if not there already in this lock mode. */
-  if (!pt_in_lck_array (lcks, node->info.spec.entity_name->info.name.original, LC_PREF_FLAG_LOCK))
+  if (!pt_in_lck_array (lcks, pt_name_qualified (parser, node->info.spec.entity_name), LC_PREF_FLAG_LOCK))
     {
       if (pt_add_lock_class (parser, lcks, node, LC_PREF_FLAG_LOCK) != NO_ERROR)
 	{
@@ -1111,7 +1112,7 @@ pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node, PT_CL
       return node;
     }
 
-  entity_name = node->info.spec.entity_name->info.name.original;
+  entity_name = pt_name_qualified (parser, node->info.spec.entity_name);
   partition_name = pt_partition_name (parser, entity_name, node->info.spec.partition->info.name.original);
   if (partition_name == NULL)
     {

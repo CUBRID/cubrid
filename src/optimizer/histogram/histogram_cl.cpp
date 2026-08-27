@@ -504,7 +504,7 @@ spec_class_name_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *con
   if (node != NULL && node->node_type == PT_SPEC && node->info.spec.id == ctx->spec_id
       && node->info.spec.entity_name != NULL && node->info.spec.entity_name->node_type == PT_NAME)
     {
-      ctx->class_name = node->info.spec.entity_name->info.name.original;
+      ctx->class_name = pt_name_qualified (parser, node->info.spec.entity_name);
       *continue_walk = PT_STOP_WALK;
     }
   return node;

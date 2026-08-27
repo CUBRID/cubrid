@@ -12388,7 +12388,8 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		      corr.alias =
 			(tgt->info.spec.range_var != NULL) ? tgt->info.spec.range_var->info.name.original : NULL;
 		      corr.entity =
-			(tgt->info.spec.entity_name != NULL) ? tgt->info.spec.entity_name->info.name.original : NULL;
+			(tgt->info.spec.entity_name != NULL) ? pt_name_qualified (parser,
+										  tgt->info.spec.entity_name) : NULL;
 		      /* an inner FROM item that reuses the outer alias/table name for its OWN range shadows it --
 		       * any qualifier by that name inside that FROM item's scope then refers to the inner item,
 		       * not the outer target. Shadowing is (re-)computed per scope by the pre/post pair itself. */

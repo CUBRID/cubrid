@@ -1003,7 +1003,7 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query, DB_QUERY_TYPE * l
 	    {
 	      if (want_spec_entity_name == true && spec->info.spec.entity_name)
 		{
-		  spec_name = spec->info.spec.entity_name->info.name.original;
+		  spec_name = pt_name_qualified (parser, spec->info.spec.entity_name);
 		}
 	      else if (want_spec_entity_name == false && spec->info.spec.range_var)
 		{
@@ -1025,7 +1025,7 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query, DB_QUERY_TYPE * l
 	    {
 	      if (want_spec_entity_name == true && spec->info.spec.entity_name)
 		{
-		  spec_name = spec->info.spec.entity_name->info.name.original;
+		  spec_name = pt_name_qualified (parser, spec->info.spec.entity_name);
 		}
 	      else if (want_spec_entity_name == false && spec->info.spec.range_var)
 		{

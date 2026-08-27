@@ -3974,7 +3974,7 @@ do_check_cte_or_system_class_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void
 
   if (stmt->info.spec.entity_name)
     {
-      const char *class_name = stmt->info.spec.entity_name->info.name.original;
+      const char *class_name = pt_name_qualified (parser, stmt->info.spec.entity_name);
 
       if (class_name)
 	{
@@ -6839,13 +6839,13 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
   for (idx = 0; idx < num_classes && node != NULL; idx++, node = node->next)
     {
       if (node->info.delete_.spec == NULL || node->info.delete_.spec->info.spec.entity_name == NULL
-	  || node->info.delete_.spec->info.spec.entity_name->info.name.original == NULL)
+	  || pt_name_qualified (parser, node->info.delete_.spec->info.spec.entity_name) == NULL)
 	{
 	  error = ER_GENERIC_ERROR;
 	  goto cleanup;
 	}
       classes_names[idx] = (char *) db_private_alloc (NULL, SM_MAX_IDENTIFIER_LENGTH * sizeof (char));
-      sm_downcase_name (node->info.delete_.spec->info.spec.entity_name->info.name.original, classes_names[idx],
+      sm_downcase_name (pt_name_qualified (parser, node->info.delete_.spec->info.spec.entity_name), classes_names[idx],
 			SM_MAX_IDENTIFIER_LENGTH);
       locks[idx] = X_LOCK;
       if (node->info.delete_.spec->info.spec.only_all == PT_ALL)
@@ -8446,7 +8446,7 @@ do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLAS
 	      if (cls->pruning_type == DB_PARTITION_CLASS)
 		{
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_NOT_ALLOWED_ACCESS_TO_PARTITION,
-			      node->info.spec.entity_name->info.name.original);
+			      pt_name_qualified (parser, node->info.spec.entity_name));
 		  return ER_FAILED;
 		}
 	      node = node->next;
@@ -16529,7 +16529,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
-	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
+	classname = pt_name_qualified (parser, statement->info.index.indexed_class->info.spec.entity_name);
 	objname = statement->info.index.index_name->info.name.original;
 
 	classop = sm_find_class (classname);
@@ -16552,7 +16552,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
-	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
+	classname = pt_name_qualified (parser, statement->info.index.indexed_class->info.spec.entity_name);
 	objname = statement->info.index.index_name->info.name.original;
 
 	classop = sm_find_class (classname);
@@ -16575,7 +16575,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
-	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
+	classname = pt_name_qualified (parser, statement->info.index.indexed_class->info.spec.entity_name);
 	objname = statement->info.index.index_name->info.name.original;
 
 	classop = sm_find_class (classname);
@@ -16765,7 +16765,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
     case PT_TRUNCATE:
 
       assert (statement->info.spec.entity_name);
-      classname = statement->info.spec.entity_name->info.spec.entity_name->info.name.original;
+      classname = pt_name_qualified (parser, statement->info.spec.entity_name->info.spec.entity_name);
 
       classoid = ws_oid (sm_find_class (classname));
       ddl_type = CDC_TRUNCATE;

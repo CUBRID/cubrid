@@ -3182,7 +3182,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  /* this is not an attribute of insert spec */
 		  PT_ERRORmf2 (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ATTRIBUTE_OF,
 			       attr->info.name.original,
-			       node->info.insert.spec->info.spec.entity_name->info.name.original);
+			       pt_name_qualified (parser, node->info.insert.spec->info.spec.entity_name));
 		}
 	    }
 	}
@@ -4366,7 +4366,7 @@ pt_check_unique_names (PARSER_CONTEXT * parser, const PT_NODE * p)
 	}
       else if (p->info.spec.entity_name && PT_IS_NAME_NODE (p->info.spec.entity_name))
 	{
-	  p_name = p->info.spec.entity_name->info.name.original;
+	  p_name = pt_name_qualified (parser, p->info.spec.entity_name);
 	}
       else
 	{
@@ -4388,7 +4388,7 @@ pt_check_unique_names (PARSER_CONTEXT * parser, const PT_NODE * p)
 	    }
 	  else if (q->info.spec.entity_name && PT_IS_NAME_NODE (q->info.spec.entity_name))
 	    {
-	      q_name = q->info.spec.entity_name->info.name.original;
+	      q_name = pt_name_qualified (parser, q->info.spec.entity_name);
 	    }
 	  else
 	    {
@@ -8826,7 +8826,8 @@ pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec, NATURAL_JOIN_ATTR_IN
   name->info.name.meta_class = attr->meta_class;
   if (PT_SPEC_IS_ENTITY (spec))
     {
-      name->info.name.resolved = pt_append_string (parser, NULL, spec->info.spec.entity_name->info.name.original);
+      name->info.name.resolved =
+	pt_append_string (parser, NULL, pt_name_qualified (parser, spec->info.spec.entity_name));
     }
   else if (PT_SPEC_IS_CTE (spec))
     {
@@ -9494,7 +9495,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 
       if (pt_name_equal (parser, cte_name, node->info.spec.entity_name)
 	  || pt_user_specified_name_compare (cte_name->info.name.original,
-					     node->info.spec.entity_name->info.name.original) == 0)
+					     pt_name_qualified (parser, node->info.spec.entity_name)) == 0)
 	{
 	  node->info.spec.cte_name = node->info.spec.entity_name;
 	  node->info.spec.entity_name = NULL;
@@ -10562,7 +10563,7 @@ pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser, PT_NODE * res_list, 
   for (node = flat_list; node != NULL; node = node->next)
     {
       node->info.name.spec_id = entity->info.spec.id;
-      node->info.name.resolved = entity->info.spec.entity_name->info.name.original;
+      node->info.name.resolved = pt_name_qualified (parser, entity->info.spec.entity_name);
       if (PT_IS_SPEC_REAL_TABLE (entity))
 	{
 	  PT_NAME_INFO_SET_FLAG (node, PT_NAME_DEFAULTF_ACCEPTS);
