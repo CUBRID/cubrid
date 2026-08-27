@@ -13081,7 +13081,8 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 		  for (class_spec = lambda_arg->spec_frames->extra_specs; class_spec; class_spec = class_spec->next)
 		    {
 		      entity = class_spec->info.spec.entity_name;
-		      if (!pt_user_specified_name_compare (entity->info.name.original, result->info.name.resolved))
+		      if (!pt_user_specified_name_compare
+			  (pt_name_qualified (parser, entity), result->info.name.resolved))
 			{
 			  break;	/* found */
 			}

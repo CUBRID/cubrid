@@ -9431,7 +9431,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 		  if (sm_check_system_class_by_name (entity->info.name.original))
 		    {
 		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
-				   "UPDATE", entity->info.name.original);
+				   "UPDATE", pt_name_qualified (parser, entity));
 		      return NULL;
 		    }
 		}
@@ -9450,7 +9450,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 		  if (sm_check_system_class_by_name (entity->info.name.original))
 		    {
 		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
-				   "UPDATE", entity->info.name.original);
+				   "UPDATE", pt_name_qualified (parser, entity));
 		      return NULL;
 		    }
 		}
@@ -11051,7 +11051,7 @@ pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * sp
     }
 
   entity_name = spec->info.spec.entity_name;
-  root_name = entity_name->info.name.original;
+  root_name = pt_name_qualified (parser, entity_name);
   partition_node = spec->info.spec.partition;
   partition_suffix = partition_node->info.name.original;
   partition_name = pt_partition_name (parser, root_name, partition_suffix);

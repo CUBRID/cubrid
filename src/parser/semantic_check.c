@@ -3714,7 +3714,7 @@ pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
 
   spec = insert->info.insert.spec;
   entity = (spec ? spec->info.spec.entity_name : NULL);
-  class_name = (entity ? entity->info.name.original : NULL);
+  class_name = (entity ? pt_name_qualified (parser, entity) : NULL);
   if (class_name == NULL)
     {
       return;
@@ -3835,7 +3835,7 @@ pt_resolve_update_external (PARSER_CONTEXT * parser, PT_NODE * update)
 
   spec = update->info.update.spec;
   entity = (spec ? spec->info.spec.entity_name : NULL);
-  class_name = (entity ? entity->info.name.original : NULL);
+  class_name = (entity ? pt_name_qualified (parser, entity) : NULL);
   alias = (spec ? spec->info.spec.range_var : NULL);
   alias_name = (alias ? alias->info.name.original : NULL);
 
@@ -3889,7 +3889,7 @@ pt_resolve_delete_external (PARSER_CONTEXT * parser, PT_NODE * delete)
 
   spec = delete->info.delete_.spec;
   entity = (spec ? spec->info.spec.entity_name : NULL);
-  class_name = (entity ? entity->info.name.original : NULL);
+  class_name = (entity ? pt_name_qualified (parser, entity) : NULL);
   alias = (spec ? spec->info.spec.range_var : NULL);
   alias_name = (alias ? alias->info.name.original : NULL);
 
@@ -3940,7 +3940,7 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
   data_default_list = alter->info.alter.alter_clause.ch_attr_def.data_default_list;
 
   entity_name = alter->info.alter.entity_name;
-  class_name = (entity_name ? entity_name->info.name.original : NULL);
+  class_name = (entity_name ? pt_name_qualified (parser, entity_name) : NULL);
   if (class_name && (class_ = db_find_class (class_name)) != NULL)
     {
       stmt_list = alter->info.alter.internal_stmts;
@@ -6553,7 +6553,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   db_make_null (&maxele);
   db_make_null (&null_val);
 
-  class_name = (char *) stmt->info.alter.entity_name->info.name.original;
+  class_name = (char *) pt_name_qualified (parser, stmt->info.alter.entity_name);
   cmd = stmt->info.alter.code;
   if (cmd == PT_DROP_PARTITION || cmd == PT_ANALYZE_PARTITION || cmd == PT_REORG_PARTITION
       || cmd == PT_PROMOTE_PARTITION)
@@ -8079,7 +8079,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   if (stmt->node_type == PT_CREATE_ENTITY)
     {
-      name = stmt->info.create_entity.entity_name->info.name.original;
+      name = pt_name_qualified (parser, stmt->info.create_entity.entity_name);
       qry_specs_ptr = &stmt->info.create_entity.as_query_list;
       attr_def_list_ptr = &stmt->info.create_entity.attr_def_list;
     }
