@@ -122,6 +122,19 @@ namespace test_lockfree
     return NO_ERROR;
   }
 
+  // f_uninit is where the eight consumers release what the entry owns - xcache_entry_uninit () frees
+  // related_objects and sql_hash_text, fpcache_entry_uninit () frees the clone stack, session_state_uninit ()
+  // deletes the PL session. case_uninit_runs_at_destroy () counts the calls, so a path that skips it shows up
+  // as a number rather than as a leak nobody attributes.
+  static std::atomic<size_t> g_uninit_calls;
+
+  static int
+  adv_uninit_entry_counting (void *p)
+  {
+    ++g_uninit_calls;
+    return adv_uninit_entry (p);
+  }
+
   static int
   adv_copy_key (void *src, void *dest)
   {
@@ -213,10 +226,68 @@ namespace test_lockfree
     return only == NULL || strstr (name, only) != NULL;
   }
 
+  // case_uninit_runs_at_destroy - every entry the map still holds gets f_uninit when the map is destroyed.
+  //
+  // hashmap::destroy () retires the live entries and then deletes the freelist, and deleting the freelist
+  // deletes the transaction table, whose descriptors reclaim whatever they are still holding. That last step
+  // runs while the freelist is being destroyed, so it is the one place where reclamation can reach a
+  // partially-destroyed owner: a per-node hook that lives on a virtual of the owner resolves to the base
+  // during base destruction, and the derived answer - the one that calls f_uninit - is already gone.
+  //
+  // Calibrated: with the drain removed from ~entry_freelist (), so that ~freelist () does it instead, this
+  // case reports fewer calls than entries.
+  //
+  static int
+  case_uninit_runs_at_destroy ()
+  {
+    test_common::sync_cout ("case_uninit_runs_at_destroy\n");
+
+    static const size_t HASH_SIZE = 64;
+    static const size_t LIVE = 500;
+
+    lf_entry_descriptor ed = g_adv_edesc;
+    ed.f_uninit = adv_uninit_entry_counting;
+    g_uninit_calls = 0;
+
+    tran::system transys { 1 };
+    tran::index idx = transys.assign_index ();
+
+    {
+      adv_hashmap hash;
+      if (hash.init (transys, HASH_SIZE, 2, 100, ed) != NO_ERROR)
+	{
+	  test_common::sync_cout ("  init failed\n");
+	  transys.free_index (idx);
+	  return 1;
+	}
+      for (size_t i = 0; i < LIVE; i++)
+	{
+	  adv_key k;
+	  k.m_1 = (unsigned int) i;
+	  adv_entry *e = NULL;
+	  (void) hash.find_or_insert (idx, k, e);
+	  hash.unlock (idx, e);
+	}
+      hash.destroy ();
+    }
+    transys.free_index (idx);
+
+    const size_t seen = g_uninit_calls.load ();
+    test_common::sync_cout ("  entries = " + std::to_string (LIVE) + ", f_uninit calls = "
+			    + std::to_string (seen) + "\n");
+    if (seen < LIVE)
+      {
+	test_common::sync_cout ("  BROKEN: entries were released without f_uninit\n");
+	return 1;
+      }
+    return 0;
+  }
+
   int
   test_adversarial_functional ()
   {
-    // last on purpose: case_erase_locked_liveness () may have to abandon two wedged threads rather than join them
+    //
+  // last on purpose: case_erase_locked_liveness () may have to abandon two wedged threads rather than join them
     static const adv_case CASES[] =
     {
       { "f_init_error_dropped", case_f_init_error_dropped },
@@ -231,6 +302,7 @@ namespace test_lockfree
       { "index_churn", case_index_churn },
       { "iterator_completeness", case_iterator_completeness },
       { "insert_given_promote", case_insert_given_promote },
+      { "uninit_runs_at_destroy", case_uninit_runs_at_destroy },
       { "erase_locked_liveness", case_erase_locked_liveness }
     };
 

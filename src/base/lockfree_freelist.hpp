@@ -60,6 +60,17 @@ namespace lockfree
       void reclaim_run (tran::reclaimable_node *head, tran::reclaimable_node *tail, size_t count) final override;
 
     protected:
+      // Deleting the transaction table reclaims whatever its descriptors still hold, and that reclamation
+      // goes through on_node_reclaim (). A derived override of it is gone by the time ~freelist () runs -
+      // during base destruction the dynamic type is freelist<T> - so the most-derived class must drain here,
+      // from its own destructor, while its override still answers. ~freelist () repeats the call for the
+      // classes that add nothing; it is idempotent.
+      void drain_transaction_table ()
+      {
+	delete m_trantable;
+	m_trantable = NULL;
+      }
+
       // called once per node being reclaimed, before the node rejoins the available list
       virtual void on_node_reclaim (T &t)
       {
@@ -328,7 +339,8 @@ namespace lockfree
   template <class T>
   freelist<T>::~freelist ()
   {
-    delete m_trantable;
+    // a derived class that overrides on_node_reclaim () has already done this from its own destructor
+    drain_transaction_table ();
     clear_free_nodes ();
   }
 

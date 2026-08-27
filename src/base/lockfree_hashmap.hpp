@@ -96,6 +96,13 @@ namespace lockfree
 	  {
 	  }
 
+	  ~entry_freelist ()
+	  {
+	    // drain here, not in ~freelist (): reclamation calls on_node_reclaim (), and this override is gone
+	    // once base destruction starts, which would skip f_uninit for everything still retired.
+	    this->drain_transaction_table ();
+	  }
+
 	protected:
 	  void on_node_reclaim (T &t) final override
 	  {
