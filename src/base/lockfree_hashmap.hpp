@@ -84,38 +84,21 @@ namespace lockfree
       // The entry used to be wrapped in a { T m_entry; lf_entry_descriptor *m_edesc; } so that the freelist,
       // which knows nothing of entry descriptors, could reach f_uninit through the node. That put the same
       // pointer on every node of the table - a hundred thousand copies of one address in the object lock
-      // resource table. The freelist calls on_node_reclaim () per node instead, and this subclass, which is
-      // built by the hashmap and holds the descriptor once, answers it.
-      class entry_freelist : public freelist<T>
+      // resource table. The freelist takes this as a policy instead, and holds one copy.
+      struct entry_uninit
       {
-	public:
-	  entry_freelist (tran::system &transys, size_t block_size, size_t block_count,
-			  lf_entry_descriptor &edesc)
-	    : freelist<T> (transys, block_size, block_count)
-	    , m_edesc (&edesc)
-	  {
-	  }
+	lf_entry_descriptor *m_edesc;
 
-	  ~entry_freelist ()
-	  {
-	    // drain here, not in ~freelist (): reclamation calls on_node_reclaim (), and this override is gone
-	    // once base destruction starts, which would skip f_uninit for everything still retired.
-	    this->drain_transaction_table ();
-	  }
-
-	protected:
-	  void on_node_reclaim (T &t) final override
-	  {
-	    if (m_edesc->f_uninit != NULL)
-	      {
-		(void) m_edesc->f_uninit (&t);
-	      }
-	  }
-
-	private:
-	  lf_entry_descriptor *m_edesc;
+	void operator() (T &t) const
+	{
+	  if (m_edesc->f_uninit != NULL)
+	    {
+	      (void) m_edesc->f_uninit (&t);
+	    }
+	}
       };
-      using freelist_type = entry_freelist;
+
+      using freelist_type = freelist<T, entry_uninit>;
       using free_node_type = typename freelist_type::free_node;
 
       freelist_type *m_freelist;
@@ -289,7 +272,8 @@ namespace lockfree
     // nothrow and checked, both because lf_hash_init () answered ER_OUT_OF_VIRTUAL_MEMORY for these arrays
     // (lock_free.c:1927-1946) and because a throw here unwinds through C callers - xcache_initialize (),
     // spage_boot (), catalog_initialize () - which cannot unwind, so it arrives as std::terminate.
-    m_freelist = new (std::nothrow) freelist_type (transys, freelist_block_size, freelist_block_count, edesc);
+    m_freelist = new (std::nothrow) freelist_type (transys, freelist_block_size, freelist_block_count,
+						  entry_uninit { &edesc });
     if (m_freelist == NULL)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) sizeof (freelist_type));

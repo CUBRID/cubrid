@@ -40,7 +40,19 @@ namespace lockfree
 
 namespace lockfree
 {
+  // What to do with an entry as its node is reclaimed, as a policy rather than a virtual.
+  //
+  // It has to be a member, not an override. Destroying the freelist destroys its transaction table, whose
+  // descriptors reclaim whatever they still hold - and that runs from ~freelist ()'s body, where a derived
+  // class's override is already gone but a member is still alive. A virtual here silently skipped the hook at
+  // every teardown; see 72114cc6b. A member cannot.
   template <class T>
+  struct no_node_reclaim
+  {
+    void operator() (T &) const {}
+  };
+
+  template <class T, class R = no_node_reclaim<T>>
   class freelist : public tran::reclaimable_owner
   {
     public:
@@ -50,35 +62,10 @@ namespace lockfree
       // freelist's tran::table comes back here, so the nodes need carry no dispatch of their own.
       void reclaim_run (tran::reclaimable_node *head, tran::reclaimable_node *tail, size_t count) final override;
 
-    protected:
-      // Deleting the transaction table reclaims whatever its descriptors still hold, and that reclamation
-      // goes through on_node_reclaim (). A derived override of it is gone by the time ~freelist () runs -
-      // during base destruction the dynamic type is freelist<T> - so the most-derived class must drain here,
-      // from its own destructor, while its override still answers. ~freelist () repeats the call for the
-      // classes that add nothing; it is idempotent.
-      void drain_transaction_table ()
-      {
-	delete m_trantable;
-	m_trantable = NULL;
-      }
 
-      // Called once per node being reclaimed, before the node rejoins the available list. Empty here: no
-      // entry type releases anything of its own. What the hashmap's entries need released is named by their
-      // entry descriptor, so hashmap::entry_freelist overrides this and calls f_uninit.
-      //
-      // This used to detect a T::on_reclaim () with if constexpr and call it. Nothing in the tree defined
-      // one except four empty test stubs, and the detection had a failure mode worth more than the
-      // generality: rename the member, make it private, give it a parameter, and reclamation goes quiet with
-      // no diagnostic - the same shape as the shutdown defect this file already had.
-      virtual void on_node_reclaim (T &t)
-      {
-	(void) t;
-      }
-
-    public:
 
       freelist () = delete;
-      freelist (tran::system &transys, size_t block_size, size_t initial_block_count = 1);
+      freelist (tran::system &transys, size_t block_size, size_t initial_block_count = 1, R reclaim = R ());
       ~freelist ();
 
       free_node *claim (tran::descriptor &tdes);
@@ -104,6 +91,7 @@ namespace lockfree
     private:
       tran::system &m_transys;
       tran::table *m_trantable;
+      R m_node_reclaim;                               // see no_node_reclaim above: a member, never a virtual
 
       size_t m_block_size;
 
@@ -138,8 +126,8 @@ namespace lockfree
       void check_my_pointer (free_node *node);
   };
 
-  template <class T>
-  class freelist<T>::free_node : public tran::reclaimable_node
+  template <class T, class R>
+  class freelist<T, R>::free_node : public tran::reclaimable_node
   {
     public:
       free_node ();
@@ -170,10 +158,11 @@ namespace lockfree
   //
   // freelist
   //
-  template <class T>
-  freelist<T>::freelist (tran::system &transys, size_t block_size, size_t initial_block_count)
+  template <class T, class R>
+  freelist<T, R>::freelist (tran::system &transys, size_t block_size, size_t initial_block_count, R reclaim)
     : m_transys (transys)
     , m_trantable (new tran::table (transys))
+    , m_node_reclaim (reclaim)
     , m_block_size (block_size)
     , m_available_list { NULL }
     , m_backbuffer_head { NULL }
@@ -208,9 +197,9 @@ namespace lockfree
       }
   }
 
-  template <class T>
+  template <class T, class R>
   void
-  freelist<T>::swap_backbuffer ()
+  freelist<T, R>::swap_backbuffer ()
   {
     free_node *bb_head = m_backbuffer_head;
     if (bb_head == NULL)
@@ -238,9 +227,9 @@ namespace lockfree
     alloc_backbuffer ();
   }
 
-  template <class T>
+  template <class T, class R>
   void
-  freelist<T>::alloc_backbuffer ()
+  freelist<T, R>::alloc_backbuffer ()
   {
     free_node *new_bb_head = NULL;
     free_node *new_bb_tail = NULL;
@@ -263,9 +252,9 @@ namespace lockfree
     push_to_list (*new_bb_head, *new_bb_tail, m_backbuffer_head);
   }
 
-  template <class T>
+  template <class T, class R>
   bool
-  freelist<T>::force_alloc_block ()
+  freelist<T, R>::force_alloc_block ()
   {
     free_node *new_head = NULL;
     free_node *new_tail = NULL;
@@ -282,9 +271,9 @@ namespace lockfree
     return true;
   }
 
-  template <class T>
+  template <class T, class R>
   size_t
-  freelist<T>::alloc_list (free_node *&head, free_node *&tail)
+  freelist<T, R>::alloc_list (free_node *&head, free_node *&tail)
   {
     head = tail = NULL;
     free_node *node;
@@ -311,9 +300,9 @@ namespace lockfree
     return allocated;
   }
 
-  template <class T>
+  template <class T, class R>
   size_t
-  freelist<T>::dealloc_list (free_node *head)
+  freelist<T, R>::dealloc_list (free_node *head)
   {
     // free all; returns how many, so a caller undoing a partial allocation can correct m_alloc_count
     size_t count = 0;
@@ -327,17 +316,19 @@ namespace lockfree
     return count;
   }
 
-  template <class T>
-  freelist<T>::~freelist ()
+  template <class T, class R>
+  freelist<T, R>::~freelist ()
   {
-    // a derived class that overrides on_node_reclaim () has already done this from its own destructor
-    drain_transaction_table ();
+    // Safe from ~freelist ()'s body: reclamation reaches the entry through m_node_reclaim, a member, which
+    // outlives this body. It used to reach it through a virtual, and a derived override was already gone.
+    delete m_trantable;
+    m_trantable = NULL;
     clear_free_nodes ();
   }
 
-  template <class T>
+  template <class T, class R>
   void
-  freelist<T>::clear_free_nodes ()
+  freelist<T, R>::clear_free_nodes ()
   {
     final_sanity_checks ();
 
@@ -352,16 +343,16 @@ namespace lockfree
     m_available_count = m_bb_count = m_alloc_count = 0;
   }
 
-  template<class T>
-  typename freelist<T>::free_node *
-  freelist<T>::claim (tran::index tran_index)
+  template<class T, class R>
+  typename freelist<T, R>::free_node *
+  freelist<T, R>::claim (tran::index tran_index)
   {
     return claim (m_trantable->get_descriptor (tran_index));
   }
 
-  template<class T>
-  typename freelist<T>::free_node *
-  freelist<T>::claim (tran::descriptor &tdes)
+  template<class T, class R>
+  typename freelist<T, R>::free_node *
+  freelist<T, R>::claim (tran::descriptor &tdes)
   {
     const bool is_local_tran = !tdes.is_tran_started ();
     tdes.start_tran ();
@@ -401,9 +392,9 @@ namespace lockfree
     return node;
   }
 
-  template<class T>
-  typename freelist<T>::free_node *
-  freelist<T>::pop_from_available ()
+  template<class T, class R>
+  typename freelist<T, R>::free_node *
+  freelist<T, R>::pop_from_available ()
   {
     free_node *rhead = NULL;
     free_node *rhead_copy = NULL;
@@ -430,16 +421,16 @@ namespace lockfree
     return rhead;
   }
 
-  template<class T>
+  template<class T, class R>
   void
-  freelist<T>::retire (tran::index tran_index, free_node &node)
+  freelist<T, R>::retire (tran::index tran_index, free_node &node)
   {
     retire (m_trantable->get_descriptor (tran_index), node);
   }
 
-  template<class T>
+  template<class T, class R>
   void
-  freelist<T>::retire (tran::descriptor &tdes, free_node &node)
+  freelist<T, R>::retire (tran::descriptor &tdes, free_node &node)
   {
     assert (node.get_freelist_next () == NULL);
     // The node is about to join this descriptor's retired list, and reclaim_run () will later splice that
@@ -453,9 +444,9 @@ namespace lockfree
     tdes.retire_node (node);
   }
 
-  template<class T>
+  template<class T, class R>
   void
-  freelist<T>::push_to_list (free_node &head, free_node &tail, std::atomic<free_node *> &dest)
+  freelist<T, R>::push_to_list (free_node &head, free_node &tail, std::atomic<free_node *> &dest)
   {
     free_node *rhead;
     assert (tail.get_freelist_next () == NULL);
@@ -468,51 +459,51 @@ namespace lockfree
     while (!dest.compare_exchange_weak (rhead, &head));
   }
 
-  template<class T>
+  template<class T, class R>
   void
-  freelist<T>::set_max_alloc_count (size_t max_alloc_count)
+  freelist<T, R>::set_max_alloc_count (size_t max_alloc_count)
   {
     m_max_alloc_count = max_alloc_count;
   }
 
-  template<class T>
+  template<class T, class R>
   size_t
-  freelist<T>::get_alloc_count () const
+  freelist<T, R>::get_alloc_count () const
   {
     return m_alloc_count;
   }
 
-  template<class T>
+  template<class T, class R>
   size_t
-  freelist<T>::get_available_count () const
+  freelist<T, R>::get_available_count () const
   {
     return m_available_count;
   }
 
-  template<class T>
+  template<class T, class R>
   size_t
-  freelist<T>::get_backbuffer_count () const
+  freelist<T, R>::get_backbuffer_count () const
   {
     return m_bb_count;
   }
 
-  template<class T>
+  template<class T, class R>
   size_t
-  freelist<T>::get_forced_allocation_count () const
+  freelist<T, R>::get_forced_allocation_count () const
   {
     return m_forced_alloc_count;
   }
 
-  template<class T>
+  template<class T, class R>
   size_t
-  freelist<T>::get_retired_count () const
+  freelist<T, R>::get_retired_count () const
   {
     return m_retired_count;
   }
 
-  template<class T>
+  template<class T, class R>
   size_t
-  freelist<T>::get_claimed_count () const
+  freelist<T, R>::get_claimed_count () const
   {
     size_t alloc_count = m_alloc_count;
     size_t unused_count = m_available_count + m_bb_count + m_retired_count;
@@ -526,23 +517,23 @@ namespace lockfree
       }
   }
 
-  template<class T>
+  template<class T, class R>
   tran::system &
-  freelist<T>::get_transaction_system ()
+  freelist<T, R>::get_transaction_system ()
   {
     return m_transys;
   }
 
-  template<class T>
+  template<class T, class R>
   tran::table &
-  freelist<T>::get_transaction_table ()
+  freelist<T, R>::get_transaction_table ()
   {
     return *m_trantable;
   }
 
-  template<class T>
+  template<class T, class R>
   void
-  freelist<T>::final_sanity_checks () const
+  freelist<T, R>::final_sanity_checks () const
   {
 #if !defined (NDEBUG)
     assert (m_available_count + m_bb_count == m_alloc_count);
@@ -571,9 +562,9 @@ namespace lockfree
 #endif // DEBUG
   }
 
-  template<class T>
+  template<class T, class R>
   void
-  freelist<T>::check_my_pointer (free_node *node)
+  freelist<T, R>::check_my_pointer (free_node *node)
   {
     // the node no longer carries its owner; ownership is a property of the tran::table it retires into
     assert (node != NULL);
@@ -583,37 +574,37 @@ namespace lockfree
   //
   // freelist::handle
   //
-  template<class T>
-  freelist<T>::free_node::free_node ()
+  template<class T, class R>
+  freelist<T, R>::free_node::free_node ()
     : tran::reclaimable_node ()
     , m_t {}
   {
   }
 
-  template<class T>
+  template<class T, class R>
   void
-  freelist<T>::free_node::set_freelist_next (free_node *next)
+  freelist<T, R>::free_node::set_freelist_next (free_node *next)
   {
     m_retired_next = next;
   }
 
-  template<class T>
+  template<class T, class R>
   void
-  freelist<T>::free_node::reset_freelist_next ()
+  freelist<T, R>::free_node::reset_freelist_next ()
   {
     m_retired_next = NULL;
   }
 
-  template<class T>
-  typename freelist<T>::free_node *
-  freelist<T>::free_node::get_freelist_next ()
+  template<class T, class R>
+  typename freelist<T, R>::free_node *
+  freelist<T, R>::free_node::get_freelist_next ()
   {
     return static_cast<free_node *> (m_retired_next);
   }
 
-  template<class T>
+  template<class T, class R>
   void
-  freelist<T>::reclaim_run (tran::reclaimable_node *head, tran::reclaimable_node *tail, size_t count)
+  freelist<T, R>::reclaim_run (tran::reclaimable_node *head, tran::reclaimable_node *tail, size_t count)
   {
     // splicing is sound because every node in a descriptor's retired list belongs to this freelist: each
     // freelist builds its own tran::table, so nothing else can retire into its descriptors.
@@ -628,7 +619,7 @@ namespace lockfree
     for (free_node *node = static_cast<free_node *> (head); node != NULL; node = save_next)
       {
 	save_next = (node == static_cast<free_node *> (tail)) ? NULL : node->get_freelist_next ();
-	on_node_reclaim (node->m_t);
+	m_node_reclaim (node->m_t);
 	node->reset_freelist_next ();
 
 	if (alloc_now > owner->m_max_alloc_count)
@@ -664,9 +655,9 @@ namespace lockfree
       }
   }
 
-  template<class T>
+  template<class T, class R>
   T &
-  freelist<T>::free_node::get_data ()
+  freelist<T, R>::free_node::get_data ()
   {
     return m_t;
   }
