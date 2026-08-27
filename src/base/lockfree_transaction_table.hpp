@@ -58,14 +58,15 @@ namespace lockfree
     class table
     {
       public:
-	table (system &sys);
+	table (system &sys, reclaimable_owner &owner);
 	~table ();
 
 	descriptor &get_descriptor (const index &tran_index);
 
-	// the freelist that owns every node retired into this table's descriptors; set once at construction
-	void set_reclaimable_owner (reclaimable_owner &owner);
-	reclaimable_owner *get_reclaimable_owner () const;
+	// The freelist that owns every node retired into this table's descriptors. Taken at construction and
+	// never changed: a table with no owner has no way to reclaim, and a table whose owner changes hands
+	// nodes of one freelist to another, which then serves them as its own entries.
+	reclaimable_owner &get_reclaimable_owner () const;
 
 	void start_tran (const index &tran_index);
 	void end_tran (const index &tran_index);
@@ -93,7 +94,7 @@ namespace lockfree
 	descriptor *m_all;
 	std::atomic<id> m_global_tranid;      /* global delete ID for all delete operations */
 	std::atomic<id> m_min_active_tranid;  /* minimum curr_delete_id of all used LF_DTRAN_ENTRY entries */
-	reclaimable_owner *m_owner;           /* who reclaims the nodes retired here */
+	reclaimable_owner &m_owner;           /* who reclaims the nodes retired here */
     };
   } // namespace tran
 } // namespace lockfree

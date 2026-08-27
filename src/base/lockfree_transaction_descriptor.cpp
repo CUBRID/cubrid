@@ -51,7 +51,10 @@ namespace lockfree
 	}
       if (m_saved_node != NULL)
 	{
-	  reclaim_run (m_saved_node, m_saved_node, 1);
+	  // count zero: save_reclaimable () parks a claimed node, and a claimed node was never counted as
+	  // retired. Passing one here subtracts from a counter that was never added to, which wraps
+	  // m_retired_count to SIZE_MAX whenever this is the freelist's last outstanding node.
+	  reclaim_run (m_saved_node, m_saved_node, 0);
 	  m_saved_node = NULL;
 	}
     }
@@ -204,16 +207,11 @@ namespace lockfree
     void
     descriptor::reclaim_run (reclaimable_node *head, reclaimable_node *tail, size_t count)
     {
-      // the owner carries the only vtable involved; reclaimable_node has none, so there is nothing to
-      // dispatch on the nodes themselves.
-      reclaimable_owner *owner = (m_table != NULL) ? m_table->get_reclaimable_owner () : NULL;
-      if (owner == NULL)
-	{
-	  // a table whose owner never registered has nothing that could have retired into it
-	  assert (false);
-	  return;
-	}
-      owner->reclaim_run (head, tail, count);
+      // The owner carries the only vtable involved; reclaimable_node has none, so there is nothing to
+      // dispatch on the nodes themselves. A table always has one - it is a constructor argument - so there
+      // is no owner-less case to fall through, and no way to drop a run on the floor in a release build.
+      assert (m_table != NULL);
+      m_table->get_reclaimable_owner ().reclaim_run (head, tail, count);
     }
 
     void

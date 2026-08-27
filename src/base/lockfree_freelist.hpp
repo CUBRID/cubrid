@@ -161,7 +161,7 @@ namespace lockfree
   template <class T, class R>
   freelist<T, R>::freelist (tran::system &transys, size_t block_size, size_t initial_block_count, R reclaim)
     : m_transys (transys)
-    , m_trantable (new tran::table (transys))
+    , m_trantable (new tran::table (transys, *this))
     , m_node_reclaim (reclaim)
     , m_block_size (block_size)
     , m_available_list { NULL }
@@ -185,8 +185,6 @@ namespace lockfree
       }
     assert (m_block_size > 0);
 
-    // the descriptors of this table reclaim through us; nothing else retires into them
-    m_trantable->set_reclaimable_owner (*this);
 
     // initial_block_count blocks in total, the back-buffer's included. lf_freelist_init () allocates exactly
     // that many, and lock_dump_resource () prints the count, so one block more would change cubrid lockdb.
@@ -608,12 +606,11 @@ namespace lockfree
   {
     // splicing is sound because every node in a descriptor's retired list belongs to this freelist: each
     // freelist builds its own tran::table, so nothing else can retire into its descriptors.
-    freelist *owner = this;
     free_node *run_head = NULL;
     free_node *run_tail = NULL;
     size_t reusable = 0;
     size_t freed = 0;
-    size_t alloc_now = owner->m_alloc_count.load ();
+    size_t alloc_now = m_alloc_count.load ();
     free_node *save_next = NULL;
 
     for (free_node *node = static_cast<free_node *> (head); node != NULL; node = save_next)
@@ -622,7 +619,7 @@ namespace lockfree
 	m_node_reclaim (node->m_t);
 	node->reset_freelist_next ();
 
-	if (alloc_now > owner->m_max_alloc_count)
+	if (alloc_now > m_max_alloc_count)
 	  {
 	    // over the cap: free rather than recycle, as lf_freelist_transport () does. only nodes older than
 	    // the minimum active transaction reach here, so the node is already unreachable.
@@ -642,16 +639,19 @@ namespace lockfree
 	++reusable;
       }
 
-    owner->m_retired_count -= count;
+    // count is what the caller says was retired; reusable + freed is what this walk actually reached. They
+    // agree on every path today, and if they ever stop, the counter is the thing that drifts silently.
+    assert (reusable + freed == count || count == 0);
+    m_retired_count -= count;
     if (freed != 0)
       {
-	owner->m_alloc_count -= freed;
+	m_alloc_count -= freed;
       }
     if (run_head != NULL)
       {
 	// the whole run joins with one CAS and one counter update
-	owner->m_available_count += reusable;
-	owner->push_to_list (*run_head, *run_tail, owner->m_available_list);
+	m_available_count += reusable;
+	push_to_list (*run_head, *run_tail, m_available_list);
       }
   }
 

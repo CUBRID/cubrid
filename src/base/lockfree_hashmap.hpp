@@ -699,7 +699,10 @@ namespace lockfree
   {
     ct_stat_type::autotimer stat_autotimer (m_stat_claim, m_active_stats);
     T *claimed = NULL;
-    free_node_type *fn = reinterpret_cast<free_node_type *> (tdes.pull_saved_reclaimable ());
+    // static_cast, not reinterpret_cast: this is a downcast along a real inheritance edge, so the compiler
+    // computes the offset. reinterpret_cast happened to work only because reclaimable_node is the sole
+    // non-virtual first base and the offset is zero.
+    free_node_type *fn = static_cast<free_node_type *> (tdes.pull_saved_reclaimable ());
     bool is_local_tran = false;
 
     if (!tdes.is_tran_started ())

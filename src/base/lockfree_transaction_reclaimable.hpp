@@ -19,7 +19,8 @@
 //
 // lock-free transaction reclaimable nodes
 //
-//    Lock-free data structures needs to be tagged with a reclaimable node (by either derivation or composition).
+//    Lock-free data structures needs to be tagged with a reclaimable node, by derivation. Composition no
+//    longer works: the destructor is protected, so a reclaimable_node member does not compile.
 //    When node is to be removed from structure, it is retired, collected by thread's transaction descriptor and
 //    safely reclaimed later.
 //
@@ -52,8 +53,8 @@ namespace lockfree
     // lock resource table by far the largest - while the dispatch it buys is needed once per reclaimed run,
     // not once per node. reclaimable_owner below carries it instead: one vtable for the whole freelist.
     //
-    // Deleting through a reclaimable_node * is therefore undefined. Nothing does: the only owner is
-    // lockfree::freelist, and it frees its own free_node type.
+    // Deleting through a reclaimable_node * therefore does not compile outside descriptor, which is a
+    // friend. Nothing needs to: the only owner is lockfree::freelist, and it frees its own free_node type.
     //
     class reclaimable_node
     {
@@ -94,8 +95,11 @@ namespace lockfree
     // The node carries a retire link and a retire id, and nothing else. Adding a virtual member here - or any
     // field - costs that on every node of every table; the object lock resource table alone can hold hundreds
     // of thousands. Whatever wants dispatch belongs on reclaimable_owner, which exists once per freelist.
-    static_assert (sizeof (reclaimable_node) == sizeof (reclaimable_node *) + sizeof (id),
-		   "reclaimable_node must stay exactly a retire link plus a retire id");
+    // Phrased as an upper bound rather than an equality: on an ILP32 target - build.sh still offers -t 32 -
+    // a 4-byte pointer next to an 8-byte id pads the class to 16, and an equality would fail the build over
+    // padding rather than over a member anyone added. What this guards is that nothing new appears here.
+    static_assert (sizeof (reclaimable_node) <= sizeof (reclaimable_node *) + sizeof (id) + alignof (id),
+		   "reclaimable_node must stay a retire link plus a retire id, and nothing else");
   } // namespace tran
 } // namespace lockfree
 
