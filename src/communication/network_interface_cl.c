@@ -1571,7 +1571,11 @@ locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
       allfind = LC_CLASSNAME_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
     }
-  tm_Tran_rep_read_lock = lock_rr_tran;
+  /* conditional store: this global is shared across worker threads — do not dirty the line on the RC hot path */
+  if (tm_Tran_rep_read_lock != lock_rr_tran)
+    {
+      tm_Tran_rep_read_lock = lock_rr_tran;
+    }
 #endif /* SERVER_MODE */
 
   exit_server (*thread_p);
