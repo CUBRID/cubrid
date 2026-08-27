@@ -2152,6 +2152,15 @@ parser_yyinput_multi_line (char *buff, int max_size)
   int i = 0;
 
   assert (max_size >= 1);
+
+  /* copy the in-memory input in one step; the loop below finishes EOF and non-memory inputs */
+  i = parser_copy_memory_input (this_parser, buff, max_size);
+  if (i == max_size)
+    {
+      buff[i] = 0;
+      return i;
+    }
+
   for (;;)
     {
       c = pt_nextchar ();
