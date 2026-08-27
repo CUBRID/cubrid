@@ -491,6 +491,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_prior_inflight.hpp
+  ${TRANSACTION_DIR}/log_prior_inflight_ring.hpp
   ${TRANSACTION_DIR}/log_reader.hpp
   ${TRANSACTION_DIR}/log_recovery.h
   ${TRANSACTION_DIR}/log_recovery_redo_perf.hpp
