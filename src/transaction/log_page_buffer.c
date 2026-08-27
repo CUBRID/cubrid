@@ -1756,7 +1756,11 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCES
 
   /* Read copied_lsa, not log_Gl.hdr.append_lsa, which is not atomic and can be read torn. copied_lsa
    * never runs ahead of it, so this only enters the LOG_CS block below - which re-checks append_lsa under
-   * the lock - more often than needed, never past a drain the requested page wants. */
+   * the lock - more often than needed, never past a drain the requested page wants.
+   * Conservative in the widest sense before the first publication: copied_lsa is NULL_LSA from startup
+   * until logpb_fetch_start_append_page (), and again after logpb_finalize_pool (), so every fetch in
+   * those intervals - recovery included - takes the lock and finds nothing to drain. Single-threaded
+   * there, so the cost is the enter/exit. */
   append_lsa = log_Gl.append.get_copied_lsa ();
   LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
 
