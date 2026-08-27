@@ -206,8 +206,8 @@ expr_k_add_int (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
   int i1 = db_get_int (a), i2 = db_get_int (b);
-  int result = i1 + i2;
-  if (unlikely (OR_CHECK_ADD_OVERFLOW (i1, i2, result)))
+  int result;
+  if (unlikely (OR_ADD_OVERFLOW (i1, i2, &result)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -221,8 +221,8 @@ expr_k_sub_int (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
   int i1 = db_get_int (a), i2 = db_get_int (b);
-  int itmp = i1 - i2;
-  if (unlikely (OR_CHECK_SUB_UNDERFLOW (i1, i2, itmp)))
+  int itmp;
+  if (unlikely (OR_SUB_OVERFLOW (i1, i2, &itmp)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;
@@ -235,11 +235,11 @@ static int
 expr_k_mul_int (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
-  /* NOTE: volatile prevents the compiler from rewriting the overflow test (same note as
-   * qdata_multiply_int) */
-  volatile int i1 = db_get_int (a), i2 = db_get_int (b);
-  volatile int itmp = i1 * i2;
-  if (unlikely (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp)))
+  /* OR_MULT_OVERFLOW checks via the overflow flag -- no volatile pinning of the operands,
+   * which forced a per-row store/reload round trip in the interpreted qdata_multiply_int */
+  int i1 = db_get_int (a), i2 = db_get_int (b);
+  int itmp;
+  if (unlikely (OR_MULT_OVERFLOW (i1, i2, &itmp)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -269,8 +269,8 @@ expr_k_add_bigint (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
   DB_BIGINT bi1 = db_get_bigint (a), bi2 = db_get_bigint (b);
-  DB_BIGINT result = bi1 + bi2;
-  if (unlikely (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result)))
+  DB_BIGINT result;
+  if (unlikely (OR_ADD_OVERFLOW (bi1, bi2, &result)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -284,8 +284,8 @@ expr_k_sub_bigint (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
   DB_BIGINT bi1 = db_get_bigint (a), bi2 = db_get_bigint (b);
-  DB_BIGINT bitmp = bi1 - bi2;
-  if (unlikely (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, bitmp)))
+  DB_BIGINT bitmp;
+  if (unlikely (OR_SUB_OVERFLOW (bi1, bi2, &bitmp)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;
@@ -298,9 +298,9 @@ static int
 expr_k_mul_bigint (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
-  volatile DB_BIGINT bi1 = db_get_bigint (a), bi2 = db_get_bigint (b);
-  volatile DB_BIGINT bitmp = bi1 * bi2;
-  if (unlikely (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp)))
+  DB_BIGINT bi1 = db_get_bigint (a), bi2 = db_get_bigint (b);
+  DB_BIGINT bitmp;
+  if (unlikely (OR_MULT_OVERFLOW (bi1, bi2, &bitmp)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -1394,7 +1394,13 @@ expr_scan_pred_build (const PRED_EXPR * pr)
 	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
 	/* an attribute decodes to its domain type and a plan constant keeps its type, so
 	 * only sides that can be rebound (host variables and computed operands) make the
-	 * leaf verify the runtime types per row */
+	 * leaf verify the runtime types per row.
+	 *
+	 * The attribute half of that claim holds across old-representation records too:
+	 * ALTER changes that keep the schema-only path (SM_ATTR_CHG_ONLY_SCHEMA,
+	 * execute_schema.c) are asserted to leave the DB_TYPE unchanged (precision
+	 * increases and set-compat only), and every change of the DB_TYPE itself goes
+	 * through SM_ATTR_CHG_WITH_ROW_UPDATE / BEST_EFFORT, which rewrite the rows. */
 	pred->need_type_guard = !((et->lhs->type == TYPE_ATTR_ID || et->lhs->type == TYPE_CONSTANT
 				   || et->lhs->type == TYPE_DBVAL)
 				  && (et->rhs->type == TYPE_ATTR_ID || et->rhs->type == TYPE_CONSTANT
@@ -2504,13 +2510,14 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
   prog->cells = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * MAX (1, prog->n_cells));
   prog->root_cells = (int *) malloc (sizeof (int) * MAX (1, prog->n_roots));
 
-  /* A slot is exactly one cache line wide and every row writes both its head (the domain
-   * word) and its tail (the need_clear byte), so a slot that straddles a line boundary
-   * costs two lines per write.  malloc only guarantees 16-byte alignment, which leaves
+  /* A slot is exactly one cache line wide (asserted below) and every row writes both its
+   * head (the domain word) and its tail (the need_clear byte), so a slot that straddles a
+   * line boundary costs two lines per write.  malloc only guarantees 16-byte alignment, which leaves
    * three of every four placements straddling; align the array so each slot occupies one
    * line.  This also keeps a small slot array from sharing a line with another worker's
    * (each px worker compiles its own program).  free () accepts the result, so the
    * teardown path is unchanged. */
+  static_assert (sizeof (DB_VALUE) == EXPR_CACHE_LINE, "slot alignment assumes one DB_VALUE per cache line");
   if (posix_memalign ((void **) &prog->slots, EXPR_CACHE_LINE, sizeof (DB_VALUE) * MAX (1, prog->n_slots)) != 0)
     {
       prog->slots = NULL;
@@ -2661,7 +2668,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
     }
   prog = expr_prog_compile_roots_impl (bctx, thread_p, roots, in_roots, vd, allow_fallback_roots, allow_wired_only,
 				       only_compute_roots, root_idx_out);
-  free (bctx);
+  free_and_init (bctx);
   return prog;
 }
 
