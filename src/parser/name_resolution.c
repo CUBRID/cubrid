@@ -5537,8 +5537,7 @@ enum
   PT_DBLINK_SCHEMA_OK = 0,
   PT_DBLINK_SCHEMA_REJECTED,	/* the request itself was refused */
   PT_DBLINK_SCHEMA_PRE_V13,	/* no IS_INVISIBLE / EXT_DOMAIN / CODESET column */
-  PT_DBLINK_SCHEMA_NO_ROW,	/* the remote resolves the name to no class */
-  PT_DBLINK_SCHEMA_AMBIGUOUS	/* the name matched classes of more than one owner */
+  PT_DBLINK_SCHEMA_NO_ROW	/* the remote resolves the name to no class */
 };
 
 /*
@@ -5568,21 +5567,8 @@ pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_TYPE sch_typ
   T_CCI_ERROR cci_error;
   T_CCI_CUBRID_STMT stmt_type;
   S_REMOTE_COL_ATTR *rmt_attr;
-  char *attr_name, *class_name;
-  char first_class[DB_MAX_IDENTIFIER_LENGTH + 1] = { '\0' };
-  char own_class[DB_MAX_IDENTIFIER_LENGTH + 1];
-  bool filter_owner = false;
+  char *attr_name;
   int req, err, ind, ext_domain, codeset, scale, precision, invisible, res_col_cnt = 0;
-
-  /* the remote resolves an unqualified name in the connected user's schema only, so a
-   * grant-visible class of another owner is one the statement can never reach.  A synonym
-   * request is exempt: it answers with the target's class name, which is another owner's
-   * by design, and sch_attr_with_synonym_info () has already resolved the synonym in the
-   * connected user's schema. */
-  if (sch_type == CCI_SCH_ATTRIBUTE && user != NULL && strchr (table_name, '.') == NULL)
-    {
-      filter_owner = (snprintf (own_class, sizeof (own_class), "%s.%s", user, table_name) < (int) sizeof (own_class));
-    }
 
   /* exact class-name match; CCI_ATTR_NAME_PATTERN_MATCH with a NULL attribute name
    * skips the attribute filter (an exact match against NULL matches nothing) */
@@ -5626,14 +5612,13 @@ pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_TYPE sch_typ
 	  break;
 	}
 
-      /* SCH_ATTRIBUTE result: 1 ATTR_NAME, 3 SCALE, 4 PRECISION, 11 CLASS_NAME,
-       * 15 IS_INVISIBLE, 16 EXT_DOMAIN, 17 CODESET; a NULL leaves the output variable
-       * unwritten, so the indicator is part of each required check */
+      /* SCH_ATTRIBUTE result: 1 ATTR_NAME, 3 SCALE, 4 PRECISION, 15 IS_INVISIBLE,
+       * 16 EXT_DOMAIN, 17 CODESET; a NULL leaves the output variable unwritten, so the
+       * indicator is part of each required check */
       if (cci_get_data (req, 1, CCI_A_TYPE_STR, &attr_name, &ind) < 0 || attr_name == NULL
 	  || cci_get_data (req, 3, CCI_A_TYPE_INT, &scale, &ind) < 0 || ind == -1
 	  || cci_get_data (req, 4, CCI_A_TYPE_INT, &precision, &ind) < 0 || ind == -1
-	  || cci_get_data (req, 16, CCI_A_TYPE_INT, &ext_domain, &ind) < 0 || ind == -1
-	  || cci_get_data (req, 11, CCI_A_TYPE_STR, &class_name, &ind) < 0 || class_name == NULL)
+	  || cci_get_data (req, 16, CCI_A_TYPE_INT, &ext_domain, &ind) < 0 || ind == -1)
 	{
 	  err = ER_FAILED;
 	  break;
@@ -5648,32 +5633,6 @@ pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_TYPE sch_typ
       if (ind == -1)
 	{
 	  codeset = -1;
-	}
-
-      /* a foreign owner's class: skip its rows (an owner-qualified class_name comes
-       * only from CUBRID-style remotes; a gateway echoes the requested name) */
-      if (filter_owner && strchr (class_name, '.') != NULL && intl_identifier_casecmp (own_class, class_name) != 0)
-	{
-	  continue;
-	}
-
-      /* sch_attr_info () filters by owner only when the name it was given is qualified,
-       * so an unqualified name matches every accessible class of that name and the rows
-       * of all of them arrive interleaved (ordered by class_name, def_order).  That list
-       * does not describe any single table: hand the lookup back to the "SELECT *"
-       * prepare, which resolves the name the way the remote itself would. */
-      if (first_class[0] == '\0')
-	{
-	  strncpy (first_class, class_name, sizeof (first_class) - 1);
-	}
-      else if (intl_identifier_casecmp (first_class, class_name) != 0)
-	{
-	  er_log_debug (ARG_FILE_LINE,
-			"dblink: schema_info for [%s] matched more than one class ([%s] and [%s]), so it describes no "
-			"single table; asking again with the name qualified\n", table_name, first_class, class_name);
-	  *reason = PT_DBLINK_SCHEMA_AMBIGUOUS;
-	  err = ER_FAILED;
-	  break;
 	}
 
       rmt_attr = rmt_tbl_cols->get_col_attr (attr_name);
@@ -5722,11 +5681,7 @@ pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_TYPE sch_typ
   if (err != CCI_ER_NO_MORE_DATA || rmt_tbl_cols->get_attr_size () == 0)
     {
       /* fetch failure, or a name the remote resolves to no class: drop what was collected */
-      if (*reason == PT_DBLINK_SCHEMA_AMBIGUOUS)
-	{
-	  /* already reported, and the caller asks again with a qualified name */
-	}
-      else if (rmt_tbl_cols->get_attr_size () == 0 && err == CCI_ER_NO_MORE_DATA)
+      if (rmt_tbl_cols->get_attr_size () == 0 && err == CCI_ER_NO_MORE_DATA)
 	{
 	  *reason = PT_DBLINK_SCHEMA_NO_ROW;
 	  er_log_debug (ARG_FILE_LINE,
@@ -5860,19 +5815,6 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 
 	  rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, lookup_name, user,
 							       rmt_tbl_cols, &reason);
-
-	  /* the name could not be qualified above - no user to qualify it with - so the rows
-	   * of several owners can arrive and describe no single class.  Ask again the way the
-	   * remote resolves it. */
-	  if (rc != NO_ERROR && reason == PT_DBLINK_SCHEMA_AMBIGUOUS && lookup_name == table_name
-	      && strchr (table_name, '.') == NULL
-	      && snprintf (qualified_name, sizeof (qualified_name), "%s.%s", user, table_name)
-	      < (int) sizeof (qualified_name))
-	    {
-	      lookup_name = qualified_name;
-	      rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, lookup_name, user,
-								   rmt_tbl_cols, &reason);
-	    }
 
 	  /* CCI_SCH_ATTRIBUTE describes a class and never a synonym, so a name the remote
 	   * resolves through one is answered with no row.  CCI_SCH_ATTR_WITH_SYNONYM
