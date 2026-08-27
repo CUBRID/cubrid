@@ -11133,6 +11133,44 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 }
 
 /*
+ * pt_name_qualified () - Write out a name the way it is written in SQL, with the user
+ *    that owns it in front of it
+ *   return: "owner.name" in parser memory, or the name itself when nothing goes in front
+ *   parser(in): parser context
+ *   name(in): node of type PT_NAME
+ *
+ * Note: A name that carries no owner is left alone: that is how a system class names
+ *       itself, and how a name reads before the owner has been filled in.
+ */
+const char *
+pt_name_qualified (PARSER_CONTEXT * parser, const PT_NODE * name)
+{
+  const char *original;
+  const char *owner_name;
+
+  if (name == NULL || !PT_IS_NAME_NODE (name))
+    {
+      return NULL;
+    }
+
+  original = PT_NAME_ORIGINAL (name);
+  owner_name = PT_NAME_OWNER_NAME (name);
+
+  if (original == NULL || owner_name == NULL)
+    {
+      return original;
+    }
+
+  /* while the owner is still joined into original, it is already written out */
+  if (strchr (original, '.') != NULL)
+    {
+      return original;
+    }
+
+  return pt_append_string (parser, pt_append_string (parser, owner_name, "."), original);
+}
+
+/*
  * pt_get_qualifier_name() - If the name is a user-specified name, get the user name.
  * return	: user name or NULL on error
  * parser (in)	: parser context

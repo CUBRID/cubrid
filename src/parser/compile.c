@@ -436,7 +436,8 @@ pt_rewrite_resolved_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_CLASS_LOCK
   for (i = 0; i < lcks->num_classes; i++)
     {
       /* Match on the name that was sent, which is what this node still carries. */
-      if (lcks->resolved_names[i] != NULL && intl_identifier_casecmp (lcks->classes[i], name->info.name.original) == 0)
+      if (lcks->resolved_names[i] != NULL
+	  && intl_identifier_casecmp (lcks->classes[i], pt_name_qualified (parser, name)) == 0)
 	{
 	  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
 
@@ -917,7 +918,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
     }
 
   /* Synonym names are resolved to their target class by the server inside the lockhint request. */
-  class_name = spec->info.spec.entity_name->info.name.original;
+  class_name = pt_name_qualified (parser, spec->info.spec.entity_name);
 
   sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
 
