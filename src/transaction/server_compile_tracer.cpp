@@ -192,6 +192,28 @@ tracer_main (char *server_name, char *sql, char *out_path)
   registered = true;
   tracer_log (fp, "M0_TRACER: in-process client registered (0-hop)");
 
+  /* wf122/A3: repeatable-read isolation routes compilation through the RR
+   * transaction lock (pt_class_pre_fetch -> tran_lock_rep_read /
+   * locator_find_lockhint_class_oids), which the fold must really take —
+   * let the harness opt in. */
+  if (const char *iso_env = std::getenv ("CUBRID_M0_TRACER_ISOLATION"))
+    {
+      if (strcmp (iso_env, "RR") == 0)
+	{
+	  if (db_set_isolation (TRAN_REPEATABLE_READ) != NO_ERROR)
+	    {
+	      tracer_log (fp, "M0_TRACER: FAIL db_set_isolation msg=[%s]", er_msg () ? er_msg () : "");
+	      goto retire;
+	    }
+	  tracer_log (fp, "M0_TRACER: isolation set to REPEATABLE READ");
+	}
+      else if (*iso_env != '\0')
+	{
+	  tracer_log (fp, "M0_TRACER: FAIL unknown CUBRID_M0_TRACER_ISOLATION=[%s]", iso_env);
+	  goto retire;
+	}
+    }
+
   {
     DB_SESSION *session = db_open_buffer (sql);
     if (session == NULL)

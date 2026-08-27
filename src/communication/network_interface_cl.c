@@ -1564,6 +1564,19 @@ locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
 				       many_flags, guessed_class_oids, guessed_class_chns, quit_on_errors, lockhint,
 				       fetch_copyarea);
 
+#if defined (SERVER_MODE)
+  /* wf122/A3: on the wire path the RR transaction lock rides this request —
+   * slocator_find_lockhint_class_oids applies it server-side and the client
+   * mirrors it into tm_Tran_rep_read_lock; the fold inherits both duties.
+   * SA keeps its no-op (single client, locks are moot). */
+  if (lock_rr_tran != NULL_LOCK && xtran_lock_rep_read (thread_p, lock_rr_tran) != NO_ERROR)
+    {
+      allfind = LC_CLASSNAME_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+    }
+  tm_Tran_rep_read_lock = lock_rr_tran;
+#endif /* SERVER_MODE */
+
   exit_server (*thread_p);
 
   return allfind;
@@ -10645,7 +10658,24 @@ tran_lock_rep_read (LOCK lock_rr_tran)
       tm_Tran_rep_read_lock = lock_rr_tran;
     }
   return req_error;
-#else /* CS_MODE */
+#elif defined (SERVER_MODE)
+  /* wf122/A3: the SA no-op below is a single-client assumption; a folded
+   * server session shares the lock space with every other session, so the
+   * RR lock must really be taken (same contract as the CS branch). */
+  int req_error;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  req_error = xtran_lock_rep_read (thread_p, lock_rr_tran);
+
+  exit_server (*thread_p);
+
+  if (req_error == NO_ERROR)
+    {
+      tm_Tran_rep_read_lock = lock_rr_tran;
+    }
+  return req_error;
+#else /* SA_MODE */
   return NO_ERROR;		/* No need to lock */
 #endif /* !CS_MODE */
 }
