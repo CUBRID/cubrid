@@ -9675,6 +9675,106 @@ end:
 }
 
 /*
+ * heap_find_user_oid () - Find the user of a given name
+ *
+ * return: NO_ERROR, or an error raised while reading the rows; a name that matches
+ *         nobody leaves user_oid null rather than raising
+ *
+ *   name(in): user name; matched without regard to case
+ *   user_oid(out): the row that name belongs to, or a null OID
+ *
+ * Note: The server keeps no user name to OID map, so the rows are read. Callers are
+ *       few and each asks once per statement.
+ */
+int
+heap_find_user_oid (THREAD_ENTRY * thread_p, const char *name, OID * user_oid)
+{
+#define CATCLS_USER_ATTR_IDX_NAME 11
+  HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes = RECDES_INITIALIZER;
+  ATTR_ID attr_id = CATCLS_USER_ATTR_IDX_NAME;
+  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  HFID hfid = HFID_INITIALIZER;
+  OID inst_oid = OID_INITIALIZER;
+  bool attrinfo_inited = false;
+  bool scancache_inited = false;
+  int error = NO_ERROR;
+
+  assert (name != NULL && user_oid != NULL);
+
+  OID_SET_NULL (user_oid);
+
+  error = heap_attrinfo_start (thread_p, oid_User_class_oid, 1, &attr_id, &attr_info);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+  attrinfo_inited = true;
+
+  error = heap_get_class_info (thread_p, oid_User_class_oid, &hfid, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = heap_scancache_start (thread_p, &scan_cache, &hfid, oid_User_class_oid, true, mvcc_snapshot);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+  scancache_inited = true;
+
+  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
+    {
+      DB_VALUE *db_value = NULL;
+      const char *user_name = NULL;
+
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  break;
+	}
+
+      db_value = heap_attrinfo_access (attr_id, &attr_info);
+      if (db_value == NULL || DB_IS_NULL (db_value))
+	{
+	  continue;
+	}
+
+      user_name = db_get_string (db_value);
+      if (user_name != NULL && intl_identifier_casecmp (user_name, name) == 0)
+	{
+	  COPY_OID (user_oid, &inst_oid);
+	  break;
+	}
+    }
+
+end:
+  if (scancache_inited)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+    }
+  if (attrinfo_inited)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+
+  return error;
+#undef CATCLS_USER_ATTR_IDX_NAME
+}
+
+/*
  * heap_get_class_qualified_name () - Read a class name the way a user writes it
  *
  * return: NO_ERROR, or an error raised while reading the record

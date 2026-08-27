@@ -2069,14 +2069,54 @@ locator_find_class_oid_by_bare_name (THREAD_ENTRY * thread_p, const char *name, 
   LOCATOR_CLASSNAME_ENTRY *target;
   const char *bare_name = locator_bare_name (name);
   LC_FIND_CLASSNAME find = LC_CLASSNAME_DELETED;
+  OID owner_oid = OID_INITIALIZER;
+  bool owner_given = false;
   int num_cand;
 
   OID_SET_NULL (class_oid);
+
+  if (bare_name != name)
+    {
+      /* The name says who owns it, so there is nothing to match across owners: read the
+       * owner out of _db_user and ask for that one name. Doing it before the critical
+       * section is entered keeps the heap read outside it. */
+      char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+      int len = (int) (bare_name - name - 1);
+
+      if (len <= 0 || len >= (int) sizeof (owner_name))
+	{
+	  return LC_CLASSNAME_DELETED;
+	}
+
+      memcpy (owner_name, name, len);
+      owner_name[len] = '\0';
+
+      if (heap_find_user_oid (thread_p, owner_name, &owner_oid) != NO_ERROR || OID_ISNULL (&owner_oid))
+	{
+	  er_clear ();
+	  return LC_CLASSNAME_DELETED;
+	}
+
+      owner_given = true;
+    }
 
   if (csect_enter_as_reader (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
     {
       assert (false);
       return LC_CLASSNAME_ERROR;
+    }
+
+  if (owner_given)
+    {
+      target = locator_get_entry (&owner_oid, bare_name);
+      if (target != NULL && (target = locator_chase_synonym_entry (target)) != NULL)
+	{
+	  COPY_OID (class_oid, &target->e_current.oid);
+	  find = LC_CLASSNAME_EXIST;
+	}
+
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      goto lock_it;
     }
 
   num_cand =
@@ -2100,6 +2140,8 @@ locator_find_class_oid_by_bare_name (THREAD_ENTRY * thread_p, const char *name, 
     }
 
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+
+lock_it:
 
   if (find == LC_CLASSNAME_EXIST && lock != NULL_LOCK
       && lock_object (thread_p, class_oid, oid_Root_class_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED)
