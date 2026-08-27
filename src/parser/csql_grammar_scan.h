@@ -56,11 +56,14 @@ extern "C"
             } \
         } while (0)
 
-  extern int parser_input_host_index;
-  extern int parser_output_host_index;
-  extern int parser_statement_OK;
-  extern PARSER_CONTEXT *this_parser;
-  extern PT_HINT parser_hint_table[];
+  extern CSQL_PARSER_TLS int parser_input_host_index;
+  extern CSQL_PARSER_TLS int parser_output_host_index;
+  extern CSQL_PARSER_TLS int parser_statement_OK;
+  extern CSQL_PARSER_TLS PARSER_CONTEXT *this_parser;
+  /* wf122 A2: the hint table is thread_local; an extern declaration of an
+   * unsized thread_local array breaks gcc's TLS wrapper, so cross-TU access
+   * goes through this accessor instead */
+  extern PT_HINT *pt_hint_table (void);
 
   extern int pt_nextchar (void);
   extern char *pt_makename (const char *name);
@@ -77,11 +80,11 @@ extern "C"
   extern bool pt_check_hostname (char *p);
 
 #define parser_column_position()    (yybuffer_pos - yyline_start_pos + 1)
-  extern int yybuffer_pos;
-  extern int yyline_start_pos;
-  extern int yylineno_prev;
-  extern int yytoken_start_line;
-  extern int yytoken_start_column;
+  extern CSQL_PARSER_TLS int yybuffer_pos;
+  extern CSQL_PARSER_TLS int yyline_start_pos;
+  extern CSQL_PARSER_TLS int yylineno_prev;
+  extern CSQL_PARSER_TLS int yytoken_start_line;
+  extern CSQL_PARSER_TLS int yytoken_start_column;
 
 #ifdef __cplusplus
 }

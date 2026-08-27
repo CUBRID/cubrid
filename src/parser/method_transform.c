@@ -115,8 +115,8 @@ struct meth_info7
   int check_method_calls;	/* dive into method calls to look? */
 };
 
-static int meth_table_number = 0;	/* for unique table names */
-static int meth_attr_number = 0;	/* for unique attribute names */
+static CSQL_PARSER_TLS int meth_table_number = 0;	/* for unique table names */
+static CSQL_PARSER_TLS int meth_attr_number = 0;	/* for unique attribute names */
 
 static PT_NODE *meth_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *meth_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int *continue_walk);

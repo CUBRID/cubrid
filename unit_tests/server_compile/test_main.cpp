@@ -25,7 +25,12 @@
  * compiled into the server library, not stubbed out.
  */
 
+#include <atomic>
 #include <cstdio>
+#include <cstring>
+#include <string>
+#include <thread>
+#include <vector>
 
 #include "authenticate.h"
 #include "client_session_context.hpp"
@@ -78,6 +83,96 @@ test_au_context_bracket (void)
   return 0;
 }
 
+/* wf122/A2: the parser state is per-thread - concurrent parses on distinct
+ * threads must neither corrupt each other nor diverge from a single-thread
+ * parse of the same statement.  Statements are chosen to exercise the state
+ * that used to be process-global: hint table (with arguments), the grammar's
+ * save/restore stacks (subquery, group/order by), lexer string/number
+ * buffers, and host-variable counters. */
+static const char *const concurrent_stmts[] = {
+  "SELECT 1",
+  "SELECT /*+ ORDERED USE_NL(a b) */ a.i, b.j FROM a, b WHERE a.i = b.i",
+  "SELECT x, COUNT(*) FROM t WHERE x IN (SELECT y FROM u WHERE u.k > 10) GROUP BY x ORDER BY 2",
+  "INSERT INTO t (a, b) VALUES (1, 'abc'), (2, 'def')",
+  "UPDATE t SET a = a + 1 WHERE b BETWEEN 1 AND 10",
+  "SELECT 'it''s a test', 3.14159e2 FROM t WHERE a = ? AND b = ?",
+};
+static const int concurrent_stmt_count = sizeof (concurrent_stmts) / sizeof (concurrent_stmts[0]);
+
+/* parse one statement on the calling thread; return its printed tree, or an
+ * empty string on failure */
+static std::string
+parse_to_string (const char *sql)
+{
+  PARSER_CONTEXT *parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      return std::string ();
+    }
+  PT_NODE **stmts = parser_parse_string (parser, sql);
+  std::string out;
+  if (stmts != NULL && stmts[0] != NULL && !pt_has_error (parser))
+    {
+      char *printed = parser_print_tree (parser, stmts[0]);
+      if (printed != NULL)
+	{
+	  out = printed;
+	}
+    }
+  parser_free_parser (parser);
+  return out;
+}
+
+static int
+test_concurrent_parse (void)
+{
+  const int thread_count = 8;
+  const int iterations = 40;
+
+  /* single-thread ground truth */
+  std::string expected[concurrent_stmt_count];
+  for (int s = 0; s < concurrent_stmt_count; s++)
+    {
+      expected[s] = parse_to_string (concurrent_stmts[s]);
+      if (expected[s].empty ())
+	{
+	  fprintf (stderr, "FAIL: reference parse failed: %s\n", concurrent_stmts[s]);
+	  return 1;
+	}
+    }
+
+  std::atomic<int> failures (0);
+  std::vector<std::thread> threads;
+  for (int t = 0; t < thread_count; t++)
+    {
+      threads.emplace_back ([t, &expected, &failures] ()
+      {
+	client_session_context ctx;
+	csc_activate (&ctx);
+	for (int i = 0; i < iterations && failures.load () == 0; i++)
+	  {
+	    /* offset the rotation per thread so different statements parse
+	     * concurrently, not the same one in lockstep */
+	    int s = (t + i) % concurrent_stmt_count;
+	    std::string got = parse_to_string (concurrent_stmts[s]);
+	    if (got != expected[s])
+	      {
+		fprintf (stderr, "FAIL: thread %d iter %d: parse diverged for: %s\n  expected: %s\n  got: %s\n",
+			 t, i, concurrent_stmts[s], expected[s].c_str (), got.empty () ? "(parse error)" : got.c_str ());
+		failures.fetch_add (1);
+	      }
+	  }
+	csc_deactivate ();
+      });
+    }
+  for (auto &th : threads)
+    {
+      th.join ();
+    }
+
+  return failures.load () == 0 ? 0 : 1;
+}
+
 int
 main (int, char **)
 {
@@ -121,5 +216,11 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: au resolves through the session client context bracket\n");
+
+  if (test_concurrent_parse () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: %d threads parsed concurrently with per-thread parser state\n", 8);
   return 0;
 }

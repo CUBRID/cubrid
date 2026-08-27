@@ -32,6 +32,7 @@
 #include "class_object.h"
 #include "compile_context.h"
 #include "config.h"
+#include "csql_parser_tls.h"
 #include "cursor.h"
 #include "db_function.hpp"
 #include "json_table_def.h"
@@ -4121,7 +4122,7 @@ extern "C"
 extern "C"
 {
 #endif
-  extern PARSER_CONTEXT *parent_parser;
+  extern CSQL_PARSER_TLS PARSER_CONTEXT *parent_parser;
 #ifdef __cplusplus
 }
 #endif

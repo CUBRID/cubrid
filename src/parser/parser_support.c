@@ -96,14 +96,14 @@ struct pt_host_vars
  * that info from server. */
 #define DB_ENUM_ELEMENTS_MAX_AGG_SIZE (DB_PAGESIZE / 2)
 
-int qp_Packing_er_code = NO_ERROR;
+CSQL_PARSER_TLS int qp_Packing_er_code = NO_ERROR;
 
 static const int PACKING_MMGR_CHUNK_SIZE = 1024;
 static const int PACKING_MMGR_BLOCK_SIZE = 10;
 
-static int packing_heap_num_slot = 0;
-static HL_HEAPID *packing_heap = NULL;
-static int packing_level = 0;
+static CSQL_PARSER_TLS int packing_heap_num_slot = 0;
+static CSQL_PARSER_TLS HL_HEAPID *packing_heap = NULL;
+static CSQL_PARSER_TLS int packing_level = 0;
 
 static void pt_free_packing_buf (int slot);
 
