@@ -31,8 +31,12 @@
 #   @BIND=v1,v2   comma-separated integers bound as host variables
 #                 (exported as CUBRID_M0_TRACER_BIND)
 #   @EXPECT=str   additionally require "first value = str" in the tracer output
+#                 (from every session when @SESSIONS is given)
 #   @ISOLATION=RR run the tracer transaction at REPEATABLE READ
 #                 (exported as CUBRID_M0_TRACER_ISOLATION)
+#   @SESSIONS=n   run n concurrent in-process sessions, each compiling and
+#                 executing the SQL in its own client session context
+#                 (exported as CUBRID_M0_TRACER_SESSIONS)
 
 set -eu
 
@@ -42,10 +46,12 @@ if [ $# -eq 0 ]; then
   # case 3 joins on an OID-typed catalog attribute (exercises server-side OID comparison);
   # case 4 binds host variables (native DB_VALUE array across the fold boundary);
   # case 5 runs at REPEATABLE READ (exercises the fold's RR transaction lock)
+  # case 6 runs four concurrent sessions, each with its own workspace (A4)
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
     "SELECT ? + ? @BIND=30,12 @EXPECT=42" \
-    "SELECT COUNT(*) FROM db_class @ISOLATION=RR @EXPECT=74"
+    "SELECT COUNT(*) FROM db_class @ISOLATION=RR @EXPECT=74" \
+    "SELECT COUNT(*) FROM db_class @SESSIONS=4 @EXPECT=74"
 fi
 
 # This script restarts cub_master via `cubrid service stop` (see below), which
@@ -101,12 +107,14 @@ for case_spec in "$@"; do
   bind=""
   expect=""
   isolation=""
+  sessions=""
   case "$case_spec" in
-    *"@BIND="*|*"@EXPECT="*|*"@ISOLATION="*)
-      sql="$(printf '%s' "$case_spec" | sed -e 's/ *@BIND=[^ ]*//' -e 's/ *@EXPECT=[^ ]*//' -e 's/ *@ISOLATION=[^ ]*//')"
+    *"@BIND="*|*"@EXPECT="*|*"@ISOLATION="*|*"@SESSIONS="*)
+      sql="$(printf '%s' "$case_spec" | sed -e 's/ *@BIND=[^ ]*//' -e 's/ *@EXPECT=[^ ]*//' -e 's/ *@ISOLATION=[^ ]*//' -e 's/ *@SESSIONS=[^ ]*//')"
       bind="$(printf '%s' "$case_spec" | sed -n 's/.*@BIND=\([^ ]*\).*/\1/p')"
       expect="$(printf '%s' "$case_spec" | sed -n 's/.*@EXPECT=\([^ ]*\).*/\1/p')"
       isolation="$(printf '%s' "$case_spec" | sed -n 's/.*@ISOLATION=\([^ ]*\).*/\1/p')"
+      sessions="$(printf '%s' "$case_spec" | sed -n 's/.*@SESSIONS=\([^ ]*\).*/\1/p')"
       ;;
   esac
 
@@ -124,7 +132,7 @@ for case_spec in "$@"; do
   # `|| true`: a failed start must fall through to the poll below and be
   # reported as FAIL, not abort the whole run via set -e
   CUBRID_M0_TRACER_SQL="$sql" CUBRID_M0_TRACER_OUT="$out" CUBRID_M0_TRACER_BIND="$bind" \
-    CUBRID_M0_TRACER_ISOLATION="$isolation" \
+    CUBRID_M0_TRACER_ISOLATION="$isolation" CUBRID_M0_TRACER_SESSIONS="$sessions" \
     cubrid server start "$DB" >/dev/null 2>&1 || true
 
   ok=0
@@ -138,9 +146,16 @@ for case_spec in "$@"; do
     sleep 1
   done
 
-  # @EXPECT: SUCCESS alone is not enough — the fetched value must match (fixed-string, whole-line)
-  if [ $ok -eq 1 ] && [ -n "$expect" ] && ! grep -qxF "M0_TRACER: first value = ${expect}" "$out"; then
-    ok=0
+  # @EXPECT: SUCCESS alone is not enough — every session's fetched value must
+  # match (fixed-string, exact suffix); sessions log as "S<n> first value ="
+  if [ $ok -eq 1 ] && [ -n "$expect" ]; then
+    want="${sessions:-1}"
+    got="$(awk -v want_str="first value = ${expect}" \
+      '/^M0_TRACER: S[0-9]+ first value = / { p = index($0, "first value = "); if (substr($0, p) == want_str) c++ } END { print c+0 }' \
+      "$out")"
+    if [ "$got" -ne "$want" ]; then
+      ok=0
+    fi
   fi
 
   cubrid server stop "$DB" >/dev/null 2>&1 || true
