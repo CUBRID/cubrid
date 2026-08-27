@@ -2344,6 +2344,31 @@ ws_add_classname (MOBJ classobj, MOP classmop, const OID * owner_oid, const char
 }
 
 /*
+ * ws_drop_classname_of_owner - remove one owner's classname from the workspace cache.
+ *    return: void
+ *    owner_oid(in): owner the name belongs to; NULL for a name with no owner
+ *    bare_name(in): the name on its own
+ *
+ * Note:
+ * Take this one when the class object no longer says who the entry was filed
+ * under, as it does not while an owner change is in flight.
+ */
+void
+ws_drop_classname_of_owner (const OID * owner_oid, const char *bare_name)
+{
+  WS_CLASSNAME_KEY probe;
+
+  if (bare_name == NULL)
+    {
+      return;			// ignore
+    }
+
+  ws_classname_key_set (&probe, owner_oid, bare_name);
+
+  mht_rem (Classname_cache, &probe, ws_classname_key_free, NULL);
+}
+
+/*
  * ws_drop_classname - remove a classname from the workspace cache.
  *    return: void
  *    classobj(in): pointer to class strucutre
@@ -2355,7 +2380,6 @@ ws_add_classname (MOBJ classobj, MOP classmop, const OID * owner_oid, const char
 void
 ws_drop_classname (MOBJ classobj)
 {
-  WS_CLASSNAME_KEY probe;
   const char *bare_name = NULL;
   MOP owner;
 
@@ -2371,9 +2395,7 @@ ws_drop_classname (MOBJ classobj)
     }
 
   owner = sm_ch_owner (classobj);
-  ws_classname_key_set (&probe, owner != NULL ? ws_oid (owner) : NULL, bare_name);
-
-  mht_rem (Classname_cache, &probe, ws_classname_key_free, NULL);
+  ws_drop_classname_of_owner (owner != NULL ? ws_oid (owner) : NULL, bare_name);
 }
 
 /*

@@ -5819,6 +5819,7 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname, const ch
 {
   MOBJ class_obj;
   MOP tmp_class_mop;
+  OID old_owner_oid;
   OID new_owner_oid;
   LC_FIND_CLASSNAME renamed;
 
@@ -5828,6 +5829,9 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname, const ch
       return NULL;
     }
 
+  /* An owner change reaches here with the class already handed over, so the entry to drop
+   * has to be named by the old name rather than looked up on the class. */
+  au_find_owner_oid_of_name (old_classname, &old_owner_oid);
   au_find_owner_oid_of_name (new_classname, &new_owner_oid);
   tmp_class_mop = ws_find_class (&new_owner_oid, sm_remove_qualifier_name (new_classname));
   if (new_classname != NULL && tmp_class_mop != NULL && tmp_class_mop != class_mop
@@ -5852,7 +5856,7 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname, const ch
 	}
 
       /* Invalidate old classname to MOP entry */
-      ws_drop_classname (class_obj);
+      ws_drop_classname_of_owner (&old_owner_oid, sm_remove_qualifier_name (old_classname));
       ws_add_classname (class_obj, class_mop, &new_owner_oid, sm_remove_qualifier_name (new_classname));
       ws_dirty (class_mop);
     }

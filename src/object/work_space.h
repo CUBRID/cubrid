@@ -520,6 +520,7 @@ extern void ws_decache_all_instances (MOP classmop);
 extern MOP ws_find_class (const OID * owner_oid, const char *bare_name);
 extern void ws_add_classname (MOBJ classobj, MOP classmop, const OID * owner_oid, const char *bare_name);
 extern void ws_drop_classname (MOBJ classobj);
+extern void ws_drop_classname_of_owner (const OID * owner_oid, const char *bare_name);
 
 /* MOP accessor functions */
 extern OID *ws_identifier (MOP mop);
