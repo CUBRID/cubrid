@@ -4121,7 +4121,6 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 		}
 	    }
 	}
-#if !defined (SERVER_MODE)
       else
 	{
 	  /*
@@ -4152,7 +4151,6 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 		}
 	    }
 	}
-#endif /* !SERVER_MODE */
     }
 
   /*
@@ -4180,7 +4178,6 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 	    }
 	  return best;
 	}
-#if !defined (SERVER_MODE)
       else
 	{
 	  /*
@@ -4198,10 +4195,8 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 		}
 	    }
 	}
-#endif /* !SERVER_MODE */
     }
 
-#if !defined (SERVER_MODE)
   else if (vtype == DB_TYPE_POINTER)
     {
       /*
@@ -4226,7 +4221,6 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 	    }
 	}
     }
-#endif /* !SERVER_MODE */
 
   else if (TP_IS_SET_TYPE (vtype))
     {
