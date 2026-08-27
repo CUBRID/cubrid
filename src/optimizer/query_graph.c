@@ -760,7 +760,12 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
   env->nterms = 0;
   env->neqclasses = 0;
 
-  QO_INFINITY = UTIL_infinity ();
+  /* conditional store: shared across worker threads — every store writes the
+   * same value, so only the first needs to dirty the line (COH-04) */
+  if (QO_INFINITY == 0.0)
+    {
+      QO_INFINITY = UTIL_infinity ();
+    }
 
   return env;
 

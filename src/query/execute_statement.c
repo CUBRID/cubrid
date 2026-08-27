@@ -3405,12 +3405,16 @@ end:
 #define ER_PT_UNKNOWN_STATEMENT ER_GENERIC_ERROR
 #define UNIQUE_SAVEPOINT_EXTERNAL_STATEMENT "eXTERNALsTATEMENT"
 
+#if !defined (SERVER_MODE)
 bool do_Trigger_involved;
+#endif
 
 /* do_Trigger_involved does not accurately distinguish
  * whether the corresponding query is a trigger syntax.
  * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
+#if !defined (SERVER_MODE)
 bool cdc_Trigger_involved = false;
+#endif
 
 /*
  * do_statement() -

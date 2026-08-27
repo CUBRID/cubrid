@@ -68,6 +68,15 @@ extern unsigned int db_on_server;
  * the entire file
  */
 
+#if defined (SERVER_MODE)
+/* the workspace globals and file statics live in the session's ws_context
+ * (work_space.h); the file-private ones are redirected here */
+#define Ws_dirty (csc_ws ()->dirty)
+#define Null_object (csc_ws ()->null_object)
+#define Classname_cache (csc_ws ()->classname_cache)
+#define ws_MVCC_snapshot_version (csc_ws ()->mvcc_snapshot_version)
+#else /* SERVER_MODE */
+
 /*
  * ws_Commit_mops
  *    Linked list of mops to be reset at commit/abort.
@@ -142,12 +151,17 @@ static MOP Null_object;
 
 static MHT_TABLE *Classname_cache = NULL;
 
+#endif /* !SERVER_MODE */
 
 /*
  * Objlist_area
  *    Area for allocating external object list links.
+ *    Shared across sessions in SERVER_MODE (#123 D5): areas are MT-safe and
+ *    per-session instances would just multiply the first-touch block floor.
  */
 static AREA *Objlist_area = NULL;
+
+#if !defined (SERVER_MODE)
 
 /* When MVCC is enabled, fetched objects are not locked. Which means next
  * fetch call would go to server and check if object was changed. However,
@@ -165,6 +179,8 @@ static unsigned int ws_MVCC_snapshot_version = 0;
 
 int ws_Error_ignore_list[-ER_LAST_ERROR];
 int ws_Error_ignore_count = 0;
+
+#endif /* !SERVER_MODE */
 
 #define OBJLIST_AREA_COUNT 4096
 
@@ -265,6 +281,9 @@ ws_make_mop (const OID * oid)
       op->mvcc_snapshot_version = ws_get_mvcc_snapshot_version () - 1;
 
       op->trigger_involved = 0;
+#if defined (SERVER_MODE) && !defined (NDEBUG)
+      op->owner_ws = csc_ws ();
+#endif
 
       /* this is NULL only for the Null_object hack */
       if (oid != NULL)
@@ -1629,6 +1648,8 @@ ws_release_user_instance (MOP mop)
 void
 ws_dirty (MOP op)
 {
+  WS_ASSERT_OWNED (op);
+
   /*
    * don't add the root class to any dirty list. otherwise, later traversals
    * of that dirty list will loop forever.
@@ -1694,6 +1715,8 @@ ws_dirty (MOP op)
 void
 ws_clean (MOP op)
 {
+  WS_ASSERT_OWNED (op);
+
   /*
    * because pinned objects can be in a state of direct modification, we
    * can't reset the dirty bit after a workspace panic flush because this
@@ -2361,6 +2384,18 @@ ws_init (void)
 
   /* build the MOP table */
   ws_Mop_table_size = prm_get_integer_value (PRM_ID_WS_HASHTABLE_SIZE);
+#if defined (SERVER_MODE)
+  /* server-hosted sessions pay this table per session; unless the parameter
+   * was set explicitly, start at the bottom of its range (#123 D6) */
+  if (!sysprm_param_is_set (PRM_ID_WS_HASHTABLE_SIZE))
+    {
+      int ws_table_min = 0, ws_table_max = 0;
+      if (sysprm_get_range (PRM_ID_WS_HASHTABLE_SIZE, &ws_table_min, &ws_table_max) == NO_ERROR)
+	{
+	  ws_Mop_table_size = ws_table_min;
+	}
+    }
+#endif
   allocsize = sizeof (WS_MOP_TABLE_ENTRY) * ws_Mop_table_size;
   ws_Mop_table = (WS_MOP_TABLE_ENTRY *) malloc (allocsize);
 
@@ -2445,7 +2480,11 @@ ws_final (void)
   MOP mop, next;
   unsigned int slot;
 
+#if !defined (SERVER_MODE)
+  /* process-global state (st_sm_atts); in the server ws_final retires one
+   * session's workspace while other sessions keep using it */
   dk_deduplicate_key_attribute_finalized ();
+#endif
 
   tr_final ();
 
@@ -2725,6 +2764,8 @@ ws_cache_with_oid (MOBJ obj, OID * oid, MOP class_mop)
 void
 ws_decache (MOP mop)
 {
+  WS_ASSERT_OWNED (mop);
+
   /* these should be caught before we get here, issue a warning message */
 #if 0
   if (mop->pinned)
@@ -3850,6 +3891,12 @@ ws_need_flush (void)
 int
 ws_area_init (void)
 {
+  if (Objlist_area != NULL)
+    {
+      /* process-shared area (#123 D5); later sessions reuse it */
+      return NO_ERROR;
+    }
+
   Objlist_area = area_create ("Object list links", sizeof (DB_OBJLIST), OBJLIST_AREA_COUNT);
   if (Objlist_area == NULL)
     {

@@ -826,7 +826,11 @@ db_compile_statement_local (DB_SESSION * session)
   DB_QUERY_TYPE *qtype, *q;
   CUBRID_STMT_TYPE cmd_type;
   int err;
+#if defined (SERVER_MODE)
+  static thread_local long seed = 0;
+#else
   static long seed = 0;
+#endif
 
   /* obvious error checking - invalid parameter */
   if (!session || !session->parser)

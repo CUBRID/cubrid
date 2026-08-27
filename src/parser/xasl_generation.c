@@ -370,9 +370,11 @@ typedef struct corr_info
   UINTPTR id;
 } CORR_INFO;
 
+#if !defined (SERVER_MODE)
 FILE *query_Plan_dump_fp = NULL;
 char *query_Plan_dump_filename = NULL;
 bool query_Plan_dump_fp_open = false;
+#endif
 
 static CSQL_PARSER_TLS XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0 };
 

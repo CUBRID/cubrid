@@ -25,14 +25,31 @@
 
 #include <cassert>
 #include <cstddef>
+#include <cstring>
 
 static thread_local client_session_context *tl_Csc_active = NULL;
+
+client_session_context::client_session_context ()
+{
+  /* mirror the CS build's static initializer for the pre-boot credential;
+   * boot_client_common re-initializes it at registration */
+  memset (&boot_server_credential, 0, sizeof (boot_server_credential));
+  boot_server_credential.process_id = -1;
+  OID_SET_NULL (&boot_server_credential.root_class_oid);
+  HFID_SET_NULL (&boot_server_credential.root_class_hfid);
+  boot_server_credential.page_size = -1;
+  boot_server_credential.log_page_size = -1;
+  boot_server_credential.ha_server_state = HA_SERVER_STATE_NA;
+  memset (boot_server_credential.server_session_key, 0xFF, SERVER_SESSION_KEY_SIZE);
+  boot_server_credential.db_charset = INTL_CODESET_NONE;
+}
 
 void
 csc_activate (client_session_context *ctx)
 {
   assert (ctx != NULL);
   assert (tl_Csc_active == NULL);
+  ctx->bracket_mutex.lock ();
   tl_Csc_active = ctx;
 }
 
@@ -40,7 +57,9 @@ void
 csc_deactivate (void)
 {
   assert (tl_Csc_active != NULL);
+  client_session_context *ctx = tl_Csc_active;
   tl_Csc_active = NULL;
+  ctx->bracket_mutex.unlock ();
 }
 
 client_session_context *
@@ -48,6 +67,79 @@ csc_current (void)
 {
   assert (tl_Csc_active != NULL);
   return tl_Csc_active;
+}
+
+ws_context *
+csc_ws (void)
+{
+  return &csc_current ()->ws;
+}
+
+tm_context *
+csc_tm (void)
+{
+  return &csc_current ()->tm;
+}
+
+sm_context *
+csc_sm (void)
+{
+  return &csc_current ()->sm;
+}
+
+tr_context *
+csc_tr (void)
+{
+  return &csc_current ()->tr;
+}
+
+db_cl_context *
+csc_db (void)
+{
+  return &csc_current ()->db;
+}
+
+plan_dump_context *
+csc_plan_dump (void)
+{
+  return &csc_current ()->plan_dump;
+}
+
+obt_context *
+csc_obt (void)
+{
+  return &csc_current ()->obt;
+}
+
+/* the parser owns the label table's contents (parse_evaluate.c) */
+extern "C" void pt_free_label_table (void);
+
+void
+csc_retire_and_delete (client_session_context *ctx)
+{
+  assert (ctx != NULL);
+
+  csc_activate (ctx);
+
+  if (ctx->label_table != NULL)
+    {
+      pt_free_label_table ();
+    }
+  if (ctx->ws.mop_table != NULL)
+    {
+      /* frees the MOP table, classname cache, resident class list and the
+       * session's lea heap; shared areas are left alone (#123 D5) */
+      ws_final ();
+    }
+  else if (ctx->ws.heap_id != 0)
+    {
+      /* boot failed between heap creation and table build */
+      db_destroy_workspace_heap ();
+    }
+
+  csc_deactivate ();
+
+  delete ctx;
 }
 
 #endif /* SERVER_MODE */

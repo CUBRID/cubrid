@@ -8578,6 +8578,23 @@ sysprm_get_range (PARAM_ID param_id, void *min, void *max)
 }
 
 /*
+ * sysprm_param_is_set - was the parameter explicitly set (conf or SET),
+ *                       as opposed to carrying its compiled-in default?
+ *   return: true if set
+ *   param_id (in): parameter id
+ */
+bool
+sysprm_param_is_set (PARAM_ID param_id)
+{
+  if (param_id < PRM_FIRST_ID || param_id > PRM_LAST_ID)
+    {
+      return false;
+    }
+
+  return PRM_IS_SET (GET_PRM (param_id)) != 0;
+}
+
+/*
  * sysprm_check_range -
  *   return:
  *   param_id (in): parameter id

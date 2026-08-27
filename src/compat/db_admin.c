@@ -103,9 +103,18 @@ struct db_host_status_list
  The macros for testing this variable were moved to db.h so the query
  interface functions can use them as well. */
 
+#if defined (SERVER_MODE)
+/* session identity lives in the session context (db.h db_cl_context);
+ * the file-private names are redirected here */
+#define db_Client_ip_addr (csc_db ()->client_ip_addr)
+#define db_Client_type (csc_db ()->client_type)
+#define db_Client_statement_type (csc_db ()->client_statement_type)
+#define is_doing_end_session (csc_db ()->is_doing_end_session)
+#else /* SERVER_MODE */
 char db_Database_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 char db_Program_name[PATH_MAX];
 char db_Client_ip_addr[16] = { 0 };
+#endif /* !SERVER_MODE */
 
 static char *db_Preferred_hosts = NULL;
 static int db_Connect_order = DB_CONNECT_ORDER_SEQ;
@@ -118,8 +127,10 @@ static DB_HOST_STATUS_LIST db_Host_status_list;
 static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);
 
+#if !defined (SERVER_MODE)
 static int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
 static CUBRID_STMT_TYPE db_Client_statement_type = CUBRID_STMT_NONE;
+#endif
 
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error);
@@ -1085,7 +1096,9 @@ db_enable_modification (void)
  *
  * NOTE: This function ends the session identified by 'db_Session_id'
  */
+#if !defined (SERVER_MODE)
 static int is_doing_end_session = -1;
+#endif
 int
 db_end_session (void)
 {

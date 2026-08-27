@@ -1782,6 +1782,12 @@ const PR_TYPE *tp_Type_resultset = &tp_ResultSet;
 int
 pr_area_init (void)
 {
+  if (Value_area != NULL)
+    {
+      /* process-shared area (#123 D5); later sessions reuse it */
+      return NO_ERROR;
+    }
+
   Value_area = area_create ("Value containers", sizeof (DB_VALUE), VALUE_AREA_COUNT);
   if (Value_area == NULL)
     {

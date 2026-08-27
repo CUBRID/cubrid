@@ -22,7 +22,12 @@
 #include "method_callback.hpp"
 
 // +1 (one more slot): method_error need this when ER_SP_TOO_MANY_NESTED_CALL occurs in method_dispatch
+#if defined (SERVER_MODE)
+// per-thread: a method invocation and its nesting stay on one worker thread (#120 D7)
+static thread_local unsigned int xs_method_eid [METHOD_MAX_RECURSION_DEPTH + 1];
+#else
 static unsigned int xs_method_eid [METHOD_MAX_RECURSION_DEPTH + 1];
+#endif
 
 std::queue <cubmem::extensible_block> &
 xs_get_data_queue ()

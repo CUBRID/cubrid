@@ -391,7 +391,14 @@ static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_s
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
+#if defined (SERVER_MODE)
+/* per-session: the online-index thread count of this session's running DDL
+ * (A3 audit hand-off — a shared global is rewritten by concurrent DDL) */
+#include "client_session_context.hpp"
+#define ib_thread_count (csc_current ()->ib_thread_count)
+#else
 int ib_thread_count = 0;
+#endif
 
 /*
  * Function Group :

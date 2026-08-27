@@ -81,8 +81,14 @@ static const int QP_QRES_LIST_INIT_CNT = 10;
 static const float QP_QRES_LIST_INC_RATE = 1.25f;
 			   /* query result list increment ratio */
 
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#define db_Execution_plan (csc_current ()->db_execution_plan)
+#define db_Execution_plan_length (csc_current ()->db_execution_plan_length)
+#else
 static char *db_Execution_plan = NULL;
 static int db_Execution_plan_length = -1;
+#endif
 
 static DB_QUERY_RESULT *allocate_query_result (void);
 static void free_query_result (DB_QUERY_RESULT * q_res);

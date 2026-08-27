@@ -28,6 +28,7 @@
 
 #include "config.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include "error_manager.h"
 #include "intl_support.h"
@@ -44,20 +45,55 @@
 #define DB_CONNECTION_STATUS_NOT_CONNECTED      0
 #define DB_CONNECTION_STATUS_CONNECTED          1
 #define DB_CONNECTION_STATUS_RESET              -1
+
+#if defined (SERVER_MODE)
+/* Per-session connection identity of the merged client half (#123 D2; the
+ * db_Session_id race is the A3->A4 hand-off item).  Reached through the
+ * thread's activation bracket (client_session_context.hpp). */
+// *INDENT-OFF*
+struct db_cl_context
+{
+  int connect_status = DB_CONNECTION_STATUS_CONNECTED;
+  SESSION_ID session_id = DB_EMPTY_SESSION;
+  bool keep_session = false;
+  int row_count = DB_ROW_COUNT_NOT_SET;
+  char database_name[DB_MAX_IDENTIFIER_LENGTH + 1] = {};
+  char program_name[PATH_MAX] = {};
+
+  /* file-scope state of db_admin.c */
+  char client_ip_addr[16] = {};
+  int client_type = 1;		/* DB_CLIENT_TYPE_DEFAULT (db_client_type.hpp) */
+  CUBRID_STMT_TYPE client_statement_type = CUBRID_STMT_NONE;
+  int is_doing_end_session = -1;
+};
+// *INDENT-ON*
+
+extern struct db_cl_context *csc_db (void);
+
+#define db_Connect_status (csc_db ()->connect_status)
+#define db_Session_id (csc_db ()->session_id)
+#define db_Keep_session (csc_db ()->keep_session)
+#define db_Row_count (csc_db ()->row_count)
+#define db_Database_name (csc_db ()->database_name)
+#define db_Program_name (csc_db ()->program_name)
+#else /* SERVER_MODE */
 extern int db_Connect_status;
 
 extern SESSION_ID db_Session_id;
 extern bool db_Keep_session;
 
 extern int db_Row_count;
+#endif /* !SERVER_MODE */
 
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
 #define _DB_DISABLE_MODIFICATIONS_
 extern int db_Disable_modifications;
 #endif /* _DB_DISABLE_MODIFICATIONS_ */
 
+#if !defined (SERVER_MODE)
 extern char db_Database_name[];
 extern char db_Program_name[];
+#endif
 
 /* MACROS FOR ERROR CHECKING */
 /* These should be used at the start of every db_ function so we can check

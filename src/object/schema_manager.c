@@ -92,49 +92,25 @@
 #define SM_TRUNCATE_SAVEPOINT_NAME "SmtRUnCATE"
 
 /*
- * SCHEMA_DEFINITION
- *
- * description:
- *    Maintains information about an SQL schema.
- */
-
-/*
-   NOTE: This is simple-minded implementation for now since we don't yet
-         support CREATE SCHEMA, SET SCHEMA, and associated statements.
- */
-
-typedef struct schema_def
-{
-
-  /* This is the default qualifier for class/vclass names */
-  char name[DB_MAX_SCHEMA_LENGTH * INTL_UTF8_MAX_CHAR_SIZE + 4];
-
-  /* The only user who can delete this schema. */
-  /* But, note that entry level doesn't support DROP SCHEMA anyway */
-  MOP owner;
-
-  /* The next three items are currently not used at all. They are simply a reminder of future TODOs. Although entry
-   * level SQL leaves out many schema management functions, entry level SQL does include specification of tables,
-   * views, and grants as part of CREATE SCHEMA statements. */
-
-  void *tables;			/* unused dummy */
-  void *views;			/* unused dummy */
-  void *grants;			/* unused dummy */
-
-} SCHEMA_DEF;
-
-/*
  * Current_schema
  *
  * description:
- *    This is the current schema.  The schema name in this structure is the
- *    default qualifier for any class/vclass names which are not
- *    explicitly qualified.
+ *    This is the current schema (SCHEMA_DEF moved to schema_manager.h so the
+ *    per-session context can hold it by value).  The schema name in this
+ *    structure is the default qualifier for any class/vclass names which are
+ *    not explicitly qualified.
  *    This structure should only be changed with sc_set_current_schema which
  *    currently is called only from AU_SET_USER
  */
 
+#if defined (SERVER_MODE)
+#define Current_Schema (csc_sm ()->current_schema)
+#define sm_Descriptors (csc_sm ()->descriptors)
+#define local_schema_version (csc_sm ()->local_schema_version)
+#define global_schema_version (csc_sm ()->global_schema_version)
+#else
 static SCHEMA_DEF Current_Schema = { {'\0'}, NULL, NULL, NULL, NULL };
+#endif
 
 #define WC_PERIOD L'.'
 
@@ -244,14 +220,18 @@ const char TEXT_CONSTRAINT_PREFIX[] = "#text_";
  *    doubly linked list for faster removal.
 */
 
+#if !defined (SERVER_MODE)
 SM_DESCRIPTOR *sm_Descriptors = NULL;
+#endif
 
 /* ROOT_CLASS GLOBALS */
 /* Global root class structure */
 ROOT_CLASS sm_Root_class;
 
 /* Global MOP for the root class object.  Used by the locator */
+#if !defined (SERVER_MODE)
 MOP sm_Root_class_mop = NULL;
+#endif
 
 /* Name of the root class */
 const char *sm_Root_class_name = ROOTCLASS_NAME;
@@ -259,8 +239,10 @@ const char *sm_Root_class_name = ROOTCLASS_NAME;
 /* Heap file identifier for the root class */
 HFID *sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
 
+#if !defined (SERVER_MODE)
 static unsigned int local_schema_version = 0;
 static unsigned int global_schema_version = 0;
+#endif
 
 static int domain_search (MOP dclass_mop, MOP class_mop);
 static int annotate_method_files (MOP classmop, SM_CLASS * class_);
