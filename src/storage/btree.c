@@ -71,7 +71,6 @@
 #include <functional>
 #include <stdlib.h>
 #include <string.h>
-#include <vector>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -10070,68 +10069,120 @@ btree_index_capacity_internal_parallel (THREAD_ENTRY * thread_p, const BTREE_CAP
   std::atomic < bool > failed (false);
   std::atomic < int >fail_errid (NO_ERROR);
   std::atomic < int >next_child (0);
+  BTREE_CAPACITY_ACCUM *accums = NULL;
+  BTREE_CAPACITY_WORKER_ARG *args = NULL;
+  size_t accums_size = sizeof (BTREE_CAPACITY_ACCUM) * n_workers;
+  size_t args_size = sizeof (BTREE_CAPACITY_WORKER_ARG) * n_workers;
+  BTREE_CAPACITY_WORKER_ARG *arg_p = NULL;
+  int pushed = 0;
+  int error_code = NO_ERROR;
+  int errid;
   int i;
 
-  {
-    std::vector < BTREE_CAPACITY_ACCUM > accums ((size_t) n_workers);	/* value-initialized to 0 */
-    std::vector < BTREE_CAPACITY_WORKER_ARG > args ((size_t) n_workers);
+  /* Plain arrays, not std::vector: engine code must not raise C++ exceptions, and a vector allocates
+   * through the throwing ::operator new (memory_wrapper replaces only the placement form that a
+   * new-expression uses). db_private_alloc reports OOM as an error. Both structs are PODs. */
+  accums = (BTREE_CAPACITY_ACCUM *) db_private_alloc (thread_p, accums_size);
+  args = (BTREE_CAPACITY_WORKER_ARG *) db_private_alloc (thread_p, args_size);
+  if (accums == NULL || args == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, accums_size + args_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+  memset (accums, 0, accums_size);
+  memset (args, 0, args_size);
 
-    for (i = 0; i < n_workers; i++)
-      {
-	args[i].main_thread_p = thread_p;
-	args[i].ctx = ctx;
-	args[i].accum = &accums[i];
-	args[i].next_child = &next_child;
-	args[i].failed = &failed;
-	args[i].fail_errid = &fail_errid;
+  for (i = 0; i < n_workers; i++)
+    {
+      parallel_query::callable_task * task;
 
-	parallel_query::callable_task * task =
-	  new parallel_query::callable_task (wm,
-					     std::bind (btree_capacity_parallel_worker, std::placeholders::_1,
-							&args[i]));
-	wm->push_task (task);
-      }
+      args[i].main_thread_p = thread_p;
+      args[i].ctx = ctx;
+      args[i].accum = &accums[i];
+      args[i].next_child = &next_child;
+      args[i].failed = &failed;
+      args[i].fail_errid = &fail_errid;
 
-    wm->wait_workers ();
+      /* A one-pointer lambda is trivially copyable, so std::function stores it in place. std::bind is
+       * not (libstdc++ gates the small-object buffer on is_trivially_copyable), and would allocate
+       * through the THROWING ::operator new -- the one path this function must not have. */
+      arg_p = &args[i];
+// *INDENT-OFF*
+      task = new parallel_query::callable_task (wm, [arg_p] (cubthread::entry &thread_ref)
+                                                    { btree_capacity_parallel_worker (thread_ref, arg_p); });
+// *INDENT-ON*
+      if (task == NULL)
+	{
+	  /* OOM under the non-throwing operator new: the tasks already pushed claim every remaining
+	   * child via next_child, so a partial push still completes; zero pushed is caught below. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (parallel_query::callable_task));
+	  break;
+	}
+      wm->push_task (task);
+      pushed++;
+    }
 
-    if (failed.load ())
-      {
-	/* propagate the scanner error; no serial retry (the one-shot interrupt flag is consumed).
-	 * Only ER_INTERRUPTED can be re-raised (0 args); ER_FAILED is not a settable error id. */
-	int errid = fail_errid.load ();
-	er_log_debug (ARG_FILE_LINE,
-		      "btree_index_capacity_internal_parallel: worker error errid=%d; aborting parallel\n", errid);
-	if (errid == ER_INTERRUPTED)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	    return ER_INTERRUPTED;
-	  }
-	/* the worker cleared its own thread-local context, so report something rather than
-	 * returning ER_FAILED with an empty error stack */
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	return ER_FAILED;
-      }
+  wm->wait_workers ();
 
-    if (next_child.load () < ctx->n_children)
-      {
-	/* a child was never claimed: the pool retired tasks without running them (server shutting
-	 * down). The partials are incomplete, so do not report them as a result. */
-	er_log_debug (ARG_FILE_LINE,
-		      "btree_index_capacity_internal_parallel: only %d of %d children claimed\n",
-		      next_child.load (), ctx->n_children);
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	return ER_FAILED;
-      }
+  if (failed.load ())
+    {
+      /* propagate the scanner error; no serial retry (the one-shot interrupt flag is consumed).
+       * Only ER_INTERRUPTED can be re-raised (0 args); otherwise ER_FAILED, as serial does. */
+      errid = fail_errid.load ();
+      er_log_debug (ARG_FILE_LINE,
+		    "btree_index_capacity_internal_parallel: worker error errid=%d; aborting parallel\n", errid);
+      if (errid == ER_INTERRUPTED)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error_code = ER_INTERRUPTED;
+	}
+      else
+	{
+	  /* the worker cleared its own thread-local context, so report something rather than
+	   * returning ER_FAILED with an empty error stack */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_FAILED;
+	}
+      goto cleanup;
+    }
 
-    /* merge the per-worker partials into accums[0], then derive the output (n_workers >= 2) */
-    for (i = 1; i < n_workers; i++)
-      {
-	btree_capacity_accum_merge (&accums[0], &accums[i]);
-      }
-    btree_capacity_accum_to_cpc (&accums[0], root_free, cpc);
-  }
+  if (next_child.load () < ctx->n_children)
+    {
+      /* a child was never claimed: no task could be allocated, or the pool retired tasks without
+       * running them (server shutting down). The partials are incomplete, so do not report them. */
+      er_log_debug (ARG_FILE_LINE,
+		    "btree_index_capacity_internal_parallel: only %d of %d children claimed, %d tasks pushed\n",
+		    next_child.load (), ctx->n_children, pushed);
+      if (pushed == n_workers)
+	{
+	  /* every task was pushed, so the pool retired them unexecuted and nothing reported anything;
+	   * a short push already set ER_OUT_OF_VIRTUAL_MEMORY above. Decide on what happened here, not
+	   * on er_errid (), which may still hold an unrelated error from an earlier row of SHOW ALL. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+      error_code = ER_FAILED;
+      goto cleanup;
+    }
 
-  return NO_ERROR;
+  /* merge the per-worker partials into accums[0], then derive the output (n_workers >= 2) */
+  for (i = 1; i < n_workers; i++)
+    {
+      btree_capacity_accum_merge (&accums[0], &accums[i]);
+    }
+  btree_capacity_accum_to_cpc (&accums[0], root_free, cpc);
+
+cleanup:
+  if (args != NULL)
+    {
+      db_private_free_and_init (thread_p, args);
+    }
+  if (accums != NULL)
+    {
+      db_private_free_and_init (thread_p, accums);
+    }
+  return error_code;
 }
 #endif /* SERVER_MODE */
 
