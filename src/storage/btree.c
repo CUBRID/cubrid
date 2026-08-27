@@ -24546,7 +24546,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	    {
 	      /* Key was found but we still need to re-check first object. Since page was re-fixed, it may have
 	       * changed. */
-	      break;		/* switch (satisfies_delete) */
+	      continue;
 	    }
 	  else
 	    {
@@ -24883,7 +24883,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	      was_page_refixed = false;
 	      /* Safe guard: overflow page must be unfixed. */
 	      assert (overflow_page == NULL);
-	      break;		/* switch (satisfies_delete) */
+	      continue;
 	    }
 	  else
 	    {
@@ -24904,9 +24904,8 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 
 	case DELETE_RECORD_DELETED:
 	case DELETE_RECORD_SELF_DELETED:
-	  /* This object is deleted. */
-	  /* Continue to next object. */
-	  break;
+	  /* This object is deleted; go on to the next one. */
+	  continue;
 
 	default:
 	  /* Unhandled/unexpected case. */
