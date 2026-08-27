@@ -6684,7 +6684,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	    }
 	  memcpy (px_sort_args_p, sort_param->get_arg, sizeof (SORT_ARGS));
 	  px_sort_param[i].get_arg = px_sort_args_p;
-	  px_sort_param[i].get_fn = &btree_sort_get_next_parallel;
 	  px_sort_args_p->ftab_sets = NULL;
 	  px_sort_args_p->curr_sec = FILE_PARTIAL_SECTOR_INITIALIZER;
 	  px_sort_args_p->curr_pgoffset = 0;

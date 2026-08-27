@@ -39,6 +39,7 @@
 #include "system_parameter.h"
 #include "object_domain.h"
 #include "slotted_page.h"
+#include "btree_sort.h"
 
 /* Forward declarations for filter predicate and XASL unpack types */
 typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
@@ -48,7 +49,7 @@ typedef struct xasl_unpack_info XASL_UNPACK_INFO;
 class ftab_set;
 /* *INDENT-ON* */
 
-/* Types and constants shared by the b+tree bulk load path (btree_load.c and external_sort.c) */
+/* Types and constants shared by the b+tree bulk load path (btree_load.c and btree_sort.c) */
 
 #define BT_LOAD_VACUUM_SLOT_LIMIT ((size_t) 64 * 1024 * 1024)
 
@@ -395,6 +396,7 @@ extern int bt_load_decode_sort_record_key (THREAD_ENTRY * thread_p, const RECDES
 					   LOAD_ARGS * load_args, DB_VALUE * key_out);
 extern bool bt_load_parallel_enabled (const LOAD_ARGS * load_args);
 extern void bt_load_demote_to_logged (LOAD_ARGS * load_args);
+extern BTSORT_STATUS btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
 /* Recovery routines */
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 extern void btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta,

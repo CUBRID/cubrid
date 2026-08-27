@@ -34,7 +34,7 @@
 #include "btree.h"
 
 #include "deduplicate_key.h"
-#include "external_sort.h"
+#include "btree_sort.h"
 #include "heap_file.h"
 #include "file_io.h"
 #include "file_manager.h"
@@ -356,8 +356,9 @@ static int btree_get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * b
 #if defined(CUBRID_DEBUG)
 static int btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args);
 #endif /* defined(CUBRID_DEBUG) */
-static int btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, SORT_PUT_FUNC * out_func, void *out_args);
-static SORT_STATUS btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
+static int btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, BTSORT_PUT_FUNC * out_func,
+			     void *out_args);
+static BTSORT_STATUS btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
 static int compare_driver (const void *first, const void *second, void *arg);
 static int list_add (BTREE_NODE ** list, VPID * pageid);
 static void list_remove_first (BTREE_NODE ** list);
@@ -1138,8 +1139,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
    * btree_index_sort()'s parallel in-phase sort: px workers share this transaction's tdes and briefly
    * lock_topop() it themselves (e.g. disk_reserve_sectors() -> log_sysop_start() while creating their
    * per-worker temp files); if the main thread already holds the rmutex from here, every worker blocks
-   * on it while the main thread blocks on SORT_WAIT_PARALLEL waiting for those same workers -- deadlock.
-   * The real build sysop for logged paths is opened deeper -- either by sort_listfile()'s
+   * on it while the main thread blocks on BTSORT_WAIT_PARALLEL waiting for those same workers -- deadlock.
+   * The real build sysop for logged paths is opened deeper -- either by btree_sort()'s
    * single-process branch or by sort_merge_run_for_parallel_index_leaf_build()'s legacy branch -- always
    * after the parallel wait has already returned, and is picked up below via
    * log_check_system_op_is_started() once btree_index_sort() completes. */
@@ -1343,7 +1344,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
 #if defined (SERVER_MODE) && !defined (NDEBUG)
   /* no-redo builds are restricted to genuinely parallel construction, so no_redo can never be true together
-   * with px_outcome == BT_PX_NOT_ATTEMPTED -- both demotion points (sort_listfile()'s single-process branch
+   * with px_outcome == BT_PX_NOT_ATTEMPTED -- both demotion points (btree_sort()'s single-process branch
    * and sort_px_construct_index_leaf()'s n_shards < 2 fallback) clear no_redo before returning
    * BT_PX_NOT_ATTEMPTED. Whenever no_redo is (still) true here, the build sysop was already committed or
    * aborted deep inside the parallel path, so no open sysop should remain at this level. */
@@ -1447,7 +1448,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   else
     {
       /* no-redo builds are restricted to genuinely parallel construction. An empty build (no leaves at all)
-       * can only reach here via the serial/legacy path -- sort_listfile()'s single-process branch or
+       * can only reach here via the serial/legacy path -- btree_sort()'s single-process branch or
        * sort_px_construct_index_leaf()'s n_shards < 2 fallback -- both of which demote load_args->no_redo to
        * false before any content page (or lack thereof) is decided here. */
       assert (!load_args->no_redo);
@@ -4656,7 +4657,7 @@ bt_load_append_vacuum_notifications (THREAD_ENTRY * thread_p, LOAD_ARGS * load_a
  *            the Btree.
  *
  * Note: This function creates the btree leaf nodes. It is passed
- * by the "btree_index_sort" function to the "sort_listfile" function
+ * by the "btree_index_sort" function to the "btree_sort" function
  * to use the sort items to build the records and pages of the btree.
  */
 static int
@@ -4758,7 +4759,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 
       /* move to next link */
       recdes->data = next;
-      recdes->length = SORT_RECORD_LENGTH (next);
+      recdes->length = BTSORT_RECORD_LENGTH (next);
     }				// for (;;)
 
   if (notify_vacuum_rv_data != NULL && notify_vacuum_rv_data != notify_vacuum_rv_data_bufalign)
@@ -5357,7 +5358,7 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
  *   load_args(in):
  *
  * Note: This function is a debugging function. It is passed by the
- * btree_index_sort function to the sort_listfile function to print
+ * btree_index_sort function to the btree_sort function to print
  * out the contents of the sort items once they are obtained in
  * the requested sorting order.
  *
@@ -5427,7 +5428,7 @@ exit_on_error:
  * facility provided in the "sr" module.
  */
 static int
-btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, SORT_PUT_FUNC * out_func, void *out_args)
+btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, BTSORT_PUT_FUNC * out_func, void *out_args)
 {
   int i;
   bool includes_tde_class = false;
@@ -5446,9 +5447,8 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, SORT_PUT_FUNC 
 	}
     }
 
-  return sort_listfile (thread_p, sort_args->hfids[0].vfid.volid, 0 /* TODO - support parallelism */ ,
-			&btree_sort_get_next, sort_args, out_func, out_args, compare_driver, sort_args, SORT_DUP,
-			NO_SORT_LIMIT, includes_tde_class, SORT_INDEX_LEAF);
+  return btree_sort (thread_p, &btree_sort_get_next, sort_args, out_func, out_args, compare_driver,
+		     sort_args, includes_tde_class);
 }
 
 static SCAN_CODE
@@ -5549,7 +5549,7 @@ get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * f
   return S_ERROR;
 }
 
-SORT_STATUS
+BTSORT_STATUS
 btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 {
   SCAN_CODE page_iter_scan_result, slot_iter_scan_result;
@@ -5596,7 +5596,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 		       &sort_args->hfids[sort_args->cur_class]);
       if (page_iter_scan_result == S_END)
 	{
-	  return SORT_NOMORE_RECS;
+	  return BTSORT_NOMORE_RECS;
 	}
       else if (page_iter_scan_result == S_SUCCESS)
 	{
@@ -5604,7 +5604,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	}
       else
 	{
-	  return SORT_ERROR_OCCURRED;
+	  return BTSORT_ERROR_OCCURRED;
 	}
     }
   else
@@ -5668,7 +5668,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	      }
 	    else
 	      {
-		return SORT_ERROR_OCCURRED;
+		return BTSORT_ERROR_OCCURRED;
 	      }
 
 	    /* No more objects in this heap, finish the current scan */
@@ -5685,7 +5685,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 
 	    if (sort_args->cur_class == sort_args->n_classes)
 	      {
-		return SORT_NOMORE_RECS;
+		return BTSORT_NOMORE_RECS;
 	      }
 	    else
 	      {
@@ -5700,7 +5700,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 		if (bt_load_heap_scancache_start_for_attrinfo
 		    (thread_p, sort_args, NULL, NULL, save_cache_last_fix_page) != NO_ERROR)
 		  {
-		    return SORT_ERROR_OCCURRED;
+		    return BTSORT_ERROR_OCCURRED;
 		  }
 
 		/* set the scan to the initial state for this new heap */
@@ -5728,7 +5728,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	     case S_SNAPSHOT_NOT_SATISFIED:
 	   */
 	default:
-	  return SORT_ERROR_OCCURRED;
+	  return BTSORT_ERROR_OCCURRED;
 	}
 
       /*
@@ -5738,7 +5738,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
       /* filter out dead records before any more checks */
       if (or_mvcc_get_header (&sort_args->in_recdes, &mvcc_header) != NO_ERROR)
 	{
-	  return SORT_ERROR_OCCURRED;
+	  return BTSORT_ERROR_OCCURRED;
 	}
       if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header) && MVCC_GET_DELID (&mvcc_header) < sort_args->oldest_visible_mvccid)
 	{
@@ -5758,13 +5758,13 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	  if (heap_attrinfo_read_dbvalues
 	      (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, sort_args->filter->cache_pred) != NO_ERROR)
 	    {
-	      return SORT_ERROR_OCCURRED;
+	      return BTSORT_ERROR_OCCURRED;
 	    }
 
 	  result = (*sort_args->filter_eval_func) (thread_p, sort_args->filter->pred, NULL, &sort_args->cur_oid);
 	  if (result == V_ERROR)
 	    {
-	      return SORT_ERROR_OCCURRED;
+	      return BTSORT_ERROR_OCCURRED;
 	    }
 	  else if (result != V_TRUE)
 	    {
@@ -5788,7 +5788,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 				    sort_args->func_index_info, NULL, &sort_args->cur_oid);
       if (dbvalue_ptr == NULL)
 	{
-	  return SORT_ERROR_OCCURRED;
+	  return BTSORT_ERROR_OCCURRED;
 	}
 
       value_has_null = 0;	/* init */
@@ -5802,7 +5802,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 		}
 
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE, 0);
-	      return SORT_ERROR_OCCURRED;
+	      return BTSORT_ERROR_OCCURRED;
 	    }
 
 	  value_has_null = 1;	/* found null columns */
@@ -5871,7 +5871,7 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 
       if (key_len > 0)
 	{
-	  return SORT_SUCCESS;
+	  return BTSORT_SUCCESS;
 	}
     }
   while (true);
@@ -5895,24 +5895,24 @@ nofit:
       pr_clear_value (dbvalue_ptr);
     }
 
-  return SORT_REC_DOESNT_FIT;
+  return BTSORT_REC_DOESNT_FIT;
 }
 
 
 /*
  * btree_sort_get_next () - Get_key function for index sorting
- *   return: SORT_STATUS
+ *   return: BTSORT_STATUS
  *   temp_recdes(in): temporary record descriptor; specifies where to put the
  *                    next sort item.
  *   arg(in): sort arguments; provides information about how to produce
  *            the next sort item.
  *
  * Note: This function is passed by the "btree_index_sort" function to
- * the "sort_listfile" function to obtain the value of the attribute
+ * the "btree_sort" function to obtain the value of the attribute
  * (on which the B+tree index for the class is to be created)
  * of each object successively.
  */
-static SORT_STATUS
+static BTSORT_STATUS
 btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 {
   SCAN_CODE scan_result;
@@ -5983,7 +5983,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
 	  if (sort_args->cur_class == sort_args->n_classes)
 	    {
-	      return SORT_NOMORE_RECS;
+	      return BTSORT_NOMORE_RECS;
 	    }
 	  else
 	    {
@@ -5998,7 +5998,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	      if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args, NULL, NULL, save_cache_last_fix_page)
 		  != NO_ERROR)
 		{
-		  return SORT_ERROR_OCCURRED;
+		  return BTSORT_ERROR_OCCURRED;
 		}
 
 	      /* set the scan to the initial state for this new heap */
@@ -6024,7 +6024,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	     case S_SNAPSHOT_NOT_SATISFIED:
 	   */
 	default:
-	  return SORT_ERROR_OCCURRED;
+	  return BTSORT_ERROR_OCCURRED;
 	}
 
       /*
@@ -6034,7 +6034,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
       /* filter out dead records before any more checks */
       if (or_mvcc_get_header (&sort_args->in_recdes, &mvcc_header) != NO_ERROR)
 	{
-	  return SORT_ERROR_OCCURRED;
+	  return BTSORT_ERROR_OCCURRED;
 	}
       if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header) && MVCC_GET_DELID (&mvcc_header) < sort_args->oldest_visible_mvccid)
 	{
@@ -6054,13 +6054,13 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  if (heap_attrinfo_read_dbvalues
 	      (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, sort_args->filter->cache_pred) != NO_ERROR)
 	    {
-	      return SORT_ERROR_OCCURRED;
+	      return BTSORT_ERROR_OCCURRED;
 	    }
 
 	  result = (*sort_args->filter_eval_func) (thread_p, sort_args->filter->pred, NULL, &sort_args->cur_oid);
 	  if (result == V_ERROR)
 	    {
-	      return SORT_ERROR_OCCURRED;
+	      return BTSORT_ERROR_OCCURRED;
 	    }
 	  else if (result != V_TRUE)
 	    {
@@ -6084,7 +6084,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 				    sort_args->func_index_info, NULL, &sort_args->cur_oid);
       if (dbvalue_ptr == NULL)
 	{
-	  return SORT_ERROR_OCCURRED;
+	  return BTSORT_ERROR_OCCURRED;
 	}
 
       value_has_null = 0;	/* init */
@@ -6098,7 +6098,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		}
 
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE, 0);
-	      return SORT_ERROR_OCCURRED;
+	      return BTSORT_ERROR_OCCURRED;
 	    }
 
 	  value_has_null = 1;	/* found null columns */
@@ -6167,7 +6167,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (key_len > 0)
 	{
-	  return SORT_SUCCESS;
+	  return BTSORT_SUCCESS;
 	}
     }
   while (true);
@@ -6179,7 +6179,7 @@ nofit:
       pr_clear_value (dbvalue_ptr);
     }
 
-  return SORT_REC_DOESNT_FIT;
+  return BTSORT_REC_DOESNT_FIT;
 }
 
 /*
