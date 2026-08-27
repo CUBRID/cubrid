@@ -24770,7 +24770,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
    * holds a page: the owner name comes out of another heap. */
   if (heap_get_class_qualified_name (thread_p, class_oid, &class_name) != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error);
+      /* the name is read without disturbing the error state, so there is none to pick up */
+      error = ER_FAILED;
       GOTO_EXIT_ON_ERROR;
     }
 

@@ -9686,6 +9686,9 @@ end:
  * Note: The record keeps the name and the owner apart, so anything shown to a user has
  *       to put them back together. Reading the owner name fixes a page in another heap,
  *       so call this with no page held: pgbuf_ordered_fix () will not have it otherwise.
+ *
+ * Note: The trace asks for this while the error that ended the query still stands, so
+ *       nothing raised in here is allowed to take its place.
  */
 int
 heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **name_out)
@@ -9703,6 +9706,8 @@ heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, c
   assert (name_out != NULL);
 
   *name_out = NULL;
+
+  er_stack_push ();
 
   /* read the record out first: the owner name is read from another heap, and this one
    * has no reason to stay fixed while that happens */
@@ -9723,9 +9728,9 @@ heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, c
     {
       if (error == ER_HEAP_NODATA_NEWADDRESS)
 	{
-	  er_clear ();
 	  error = NO_ERROR;
 	}
+      er_stack_pop ();
       return error;
     }
 
@@ -9737,7 +9742,6 @@ heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, c
     }
   else
     {
-      er_clear ();
       lower_owner_name[0] = '\0';
     }
 
@@ -9745,6 +9749,7 @@ heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, c
   *name_out = (char *) malloc (alloc_size);
   if (*name_out == NULL)
     {
+      er_stack_pop ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) alloc_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -9757,6 +9762,8 @@ heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, c
     {
       snprintf (*name_out, alloc_size, "%s.%s", lower_owner_name, bare_name);
     }
+
+  er_stack_pop ();
 
   return NO_ERROR;
 }
