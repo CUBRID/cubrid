@@ -3772,19 +3772,20 @@ classobj_cache_class_constraints (SM_CLASS * class_)
       return error;
     }
 
-  error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->attributes, &(class_->constraints));
+  error =
+    classobj_cache_not_null_constraints (sm_ch_bare_name ((MOBJ) class_), class_->attributes, &(class_->constraints));
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  error = classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->shared, &(class_->constraints));
+  error = classobj_cache_not_null_constraints (sm_ch_bare_name ((MOBJ) class_), class_->shared, &(class_->constraints));
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  return classobj_cache_not_null_constraints (sm_ch_name ((MOBJ) class_), class_->class_attributes,
+  return classobj_cache_not_null_constraints (sm_ch_bare_name ((MOBJ) class_), class_->class_attributes,
 					      &(class_->constraints));
 }
 
@@ -6456,13 +6457,14 @@ classobj_make_template_like (const char *name, SM_CLASS * class_)
   const char *existing_name = NULL;
   SM_ATTRIBUTE *a;
   SM_CLASS_CONSTRAINT *c;
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   assert (name != NULL);
   assert (class_ != NULL);
   assert (class_->class_type == SM_CLASS_CT);
   assert (class_->query_spec == NULL);
 
-  existing_name = sm_ch_name ((MOBJ) class_);
+  existing_name = sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name));
 
   if (class_->partition != NULL)
     {
@@ -6684,6 +6686,7 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
   int count_ref = 0;
   char *auto_cons_name = NULL;
   char *new_cons_name = NULL;
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   assert (like_class_name != NULL);
 
@@ -6775,12 +6778,14 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
 	{
 	  assert (false);
 	  error = ER_FK_REF_CLASS_HAS_NOT_PK;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sm_ch_name ((MOBJ) ref_cls));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  sm_ch_qualified_name ((MOBJ) ref_cls, qualified_name, sizeof (qualified_name)));
 	  goto error_exit;
 	}
 
       error =
-	dbt_add_foreign_key (ctemplate, new_cons_name, att_names, sm_ch_name ((MOBJ) ref_cls), ref_attrs,
+	dbt_add_foreign_key (ctemplate, new_cons_name, att_names,
+			     sm_ch_qualified_name ((MOBJ) ref_cls, qualified_name, sizeof (qualified_name)), ref_attrs,
 			     constraint->fk_info->delete_action, constraint->fk_info->update_action,
 			     constraint->comment);
       free_and_init (ref_attrs);
@@ -7695,6 +7700,7 @@ classobj_print (SM_CLASS * class_)
 {
   SM_ATTRIBUTE *att;
   SM_METHOD *meth;
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   if (class_ == NULL)
     {
@@ -7702,7 +7708,7 @@ classobj_print (SM_CLASS * class_)
     }
 
   file_print_output output_ctx (stdout);
-  output_ctx ("Class : %s\n", sm_ch_name ((MOBJ) class_));
+  output_ctx ("Class : %s\n", sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
 
   if (class_->properties != NULL)
     {

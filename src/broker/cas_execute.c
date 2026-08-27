@@ -7835,6 +7835,8 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 
       for (tmp_t = tmp_trigger; tmp_t; tmp_t = tmp_t->next)
 	{
+	  char trigger_target_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
 	  tmp_obj = tmp_t->op;
 	  assert (tmp_obj != NULL);
 
@@ -7849,7 +7851,8 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	  obj_trigger_target = trigger->class_mop;
 	  assert (obj_trigger_target != NULL);
 
-	  name_trigger_target = sm_get_ch_name (obj_trigger_target);
+	  name_trigger_target =
+	    sm_get_ch_qualified_name (obj_trigger_target, trigger_target_buf, sizeof (trigger_target_buf));
 	  if (name_trigger_target == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);

@@ -2615,6 +2615,10 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
       for (i = 0, n = QO_NODE_INFO_N (node); i < n; i++)
 	{
 	  name = QO_NODE_INFO (node)->info[i].name;
+	  if (name[0] == '\0')
+	    {
+	      name = NULL;
+	    }
 	  fprintf (f, "%s ", (name ? name : "(anon)"));
 	}
     }

@@ -4815,6 +4815,7 @@ static int make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_
 int
 do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   CHECK_MODIFICATION_ERROR ();
@@ -4950,7 +4951,8 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      /* "page sampling eligible" is the requested mode only: sampling actually runs when the
 	       * server-side gate (statistics_sampling_threshold_pages, 0 = disabled) admits the heap.
 	       * The histogram TRACE lines report the realized coverage after the collection. */
-	      fprintf (stdout, "\nTRACE update statistics: %s (%s%s%s%s)\n", sm_get_ch_name (class_mop),
+	      fprintf (stdout, "\nTRACE update statistics: %s (%s%s%s%s)\n",
+		       sm_get_ch_qualified_name (class_mop, qualified_name, sizeof (qualified_name)),
 		       statement->info.update_stats.with_fullscan ? "fullscan" : "page sampling eligible",
 		       statement->info.update_stats.random_seed ? ", random seed" : "",
 		       statement->info.update_stats.no_histogram ? ", no histogram" : "",
@@ -4969,7 +4971,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  int save;
 
 		  AU_SAVE_AND_DISABLE (save);
-		  obj = db_find_class (sm_get_ch_name (class_mop));
+		  obj = db_find_class (sm_get_ch_qualified_name (class_mop, qualified_name, sizeof (qualified_name)));
 		  if (obj == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
@@ -4997,7 +4999,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  int save;
 
 		  AU_SAVE_AND_DISABLE (save);
-		  obj = db_find_class (sm_get_ch_name (class_mop));
+		  obj = db_find_class (sm_get_ch_qualified_name (class_mop, qualified_name, sizeof (qualified_name)));
 		  if (obj == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
@@ -5051,9 +5053,10 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (trace_on)
 	    {
 	      gettimeofday (&trace_end, NULL);
-	      fprintf (stdout, "TRACE update statistics: %s done in %.1f ms\n", sm_get_ch_name (class_mop),
-		       (trace_end.tv_sec - trace_start.tv_sec) * 1000.0
-		       + (trace_end.tv_usec - trace_start.tv_usec) / 1000.0);
+	      fprintf (stdout, "TRACE update statistics: %s done in %.1f ms\n",
+		       sm_get_ch_qualified_name (class_mop, qualified_name, sizeof (qualified_name)),
+		       (trace_end.tv_sec - trace_start.tv_sec) * 1000.0 + (trace_end.tv_usec -
+									   trace_start.tv_usec) / 1000.0);
 	      fflush (stdout);
 	    }
 	}

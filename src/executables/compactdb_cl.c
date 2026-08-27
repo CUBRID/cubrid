@@ -1096,7 +1096,11 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
     }
 
   assert (*class_name == NULL);
-  *class_name = strdup (sm_ch_name ((MOBJ) class_));
+  {
+    char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+    *class_name = strdup (sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
+  }
   if (*class_name == NULL)
     {
       error_code = ER_FAILED;

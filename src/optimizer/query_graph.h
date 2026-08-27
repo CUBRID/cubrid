@@ -43,9 +43,10 @@ typedef struct qo_class_info_entry QO_CLASS_INFO_ENTRY;
 struct qo_class_info_entry
 {
   /*
-   * The name of the class.
+   * The name of the class, with its owner. Held here rather than borrowed from the
+   * class object, which only carries the name on its own.
    */
-  const char *name;
+  char name[SM_MAX_IDENTIFIER_LENGTH];
 
   /*
    * The actual oid of the class.

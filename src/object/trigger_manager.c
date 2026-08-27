@@ -3734,7 +3734,10 @@ check_target (DB_TRIGGER_EVENT event, DB_OBJECT * class_mop, const char *attribu
       /* not a class event, class and attribute must be unspecified */
       if (class_mop != NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_BAD_TARGET_CLASS, 1, sm_get_ch_name (class_mop));
+	  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_BAD_TARGET_CLASS, 1,
+		  sm_get_ch_qualified_name (class_mop, qualified_name, sizeof (qualified_name)));
 	}
       else if (attribute != NULL)
 	{

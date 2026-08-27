@@ -126,7 +126,9 @@ int trigger_description::init (struct db_object *trobj)
 
   if (trigger->class_mop != NULL)
     {
-      classname = (char *) sm_get_ch_name (trigger->class_mop);
+      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+      classname = (char *) sm_get_ch_qualified_name (trigger->class_mop, qualified_name, sizeof (qualified_name));
       if (classname != NULL)
 	{
 	  this->class_name = object_print::copy_string ((char *) classname);

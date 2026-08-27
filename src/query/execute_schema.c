@@ -6262,6 +6262,7 @@ do_get_partition_keycol (char *keycol, MOP class_)
 int
 do_drop_partition_list (MOP class_, PT_NODE * name_list, DB_CTMPL * tmpl)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *names;
   int error = NO_ERROR;
   char subclass_name[DB_MAX_IDENTIFIER_LENGTH];
@@ -6304,7 +6305,8 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list, DB_CTMPL * tmpl)
 
   for (names = name_list, i = 0; names; names = names->next, i++)
     {
-      sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", sm_ch_name ((MOBJ) smclass),
+      sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
+	       sm_ch_qualified_name ((MOBJ) smclass, qualified_name, sizeof (qualified_name)),
 	       names->info.name.original);
       assert (strlen (subclass_name) < PARTITION_VARCHAR_LEN);
 
@@ -6420,6 +6422,8 @@ static int
 do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS_CONSTRAINT * constraint,
 				SM_PARTITION_ALTER_INFO * pinfo)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR, i = 0;
   char **namep = NULL, **attrnames = NULL;
   int *asc_desc = NULL;
@@ -6530,8 +6534,11 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 		  goto cleanup;
 		}
 	      error =
-		do_recreate_func_index_constr (NULL, NULL, new_func_index_info, NULL, sm_ch_name ((MOBJ) root_class),
-					       sm_ch_name ((MOBJ) subclass));
+		do_recreate_func_index_constr (NULL, NULL, new_func_index_info, NULL,
+					       sm_ch_qualified_name ((MOBJ) root_class, qualified_name,
+								     sizeof (qualified_name)),
+					       sm_ch_qualified_name ((MOBJ) subclass, qualified_name2,
+								     sizeof (qualified_name2)));
 	      if (error != NO_ERROR)
 		{
 		  goto cleanup;
@@ -6584,8 +6591,11 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 		  goto cleanup;
 		}
 	      error =
-		do_recreate_func_index_constr (NULL, NULL, new_func_index_info, NULL, sm_ch_name ((MOBJ) root_class),
-					       sm_ch_name ((MOBJ) subclass));
+		do_recreate_func_index_constr (NULL, NULL, new_func_index_info, NULL,
+					       sm_ch_qualified_name ((MOBJ) root_class, qualified_name,
+								     sizeof (qualified_name)),
+					       sm_ch_qualified_name ((MOBJ) subclass, qualified_name2,
+								     sizeof (qualified_name2)));
 	      if (error != NO_ERROR)
 		{
 		  goto cleanup;
@@ -6907,6 +6917,7 @@ do_alter_partitioning_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITI
 static int
 do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTER_INFO * pinfo)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_CLASS *class_ = NULL, *subclass = NULL;
   DB_OBJLIST *obj = NULL, *obj_next = NULL;
   int error;
@@ -6971,11 +6982,12 @@ do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_
 	  names = buf;
 	  allocated += 10;
 	}
-      names[names_count] = strdup (sm_ch_name ((MOBJ) subclass));
+      names[names_count] = strdup (sm_ch_qualified_name ((MOBJ) subclass, qualified_name, sizeof (qualified_name)));
       if (names[names_count] == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  ((strlen (sm_ch_name ((MOBJ) subclass)) + 1) * sizeof (char)));
+		  ((strlen (sm_ch_qualified_name ((MOBJ) subclass, qualified_name, sizeof (qualified_name))) +
+		    1) * sizeof (char)));
 	  error = ER_FAILED;
 	  goto error_return;
 	}
@@ -7081,6 +7093,7 @@ do_remove_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION
 static int
 do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTER_INFO * pinfo)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_CLASS *class_ = NULL, *subclass = NULL;
   MOP subclass_op = NULL;
   int error;
@@ -7144,7 +7157,9 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
       goto error_return;
     }
 
-  new_len = strlen (sm_ch_name ((MOBJ) class_)) + PARTITIONED_SUB_CLASS_TAG_LEN + 1;
+  new_len =
+    strlen (sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name))) +
+    PARTITIONED_SUB_CLASS_TAG_LEN + 1;
   for (i = partitions_count - 1, names_count = 0; i >= partitions_count - coalesce_count; i--)
     {
       buf_size = new_len + snprintf (NULL, 0, "p%d", i);
@@ -7162,7 +7177,8 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
 	  error = ER_FAILED;
 	  goto error_return;
 	}
-      sprintf (names[names_count], "%s" PARTITIONED_SUB_CLASS_TAG "p%d", sm_ch_name ((MOBJ) class_), i);
+      sprintf (names[names_count], "%s" PARTITIONED_SUB_CLASS_TAG "p%d",
+	       sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)), i);
 
       subclass_op = sm_find_class (names[names_count]);
       if (subclass_op == NULL)
@@ -7603,6 +7619,7 @@ do_analyze_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALT
 static int
 do_promote_partition_list (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTER_INFO * pinfo)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   char subclass_name[DB_MAX_IDENTIFIER_LENGTH];
   SM_CLASS *smclass = NULL, *smsubclass = NULL;
@@ -7669,14 +7686,18 @@ do_promote_partition_list (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
   promoted_count = 0;
   for (name = name_list; name != NULL; name = name->next)
     {
-      sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", sm_ch_name ((MOBJ) smclass),
+      sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
+	       sm_ch_qualified_name ((MOBJ) smclass, qualified_name, sizeof (qualified_name)),
 	       name->info.name.original);
 
       assert (strlen (subclass_name) < PARTITION_VARCHAR_LEN);
 
       /* Before promoting, make sure to recreate filter and function indexes because the expression used in these
        * indexes depends on the partitioned class name, not on the partition name */
-      error = do_recreate_renamed_class_indexes (parser, sm_ch_name ((MOBJ) smclass), subclass_name);
+      error =
+	do_recreate_renamed_class_indexes (parser,
+					   sm_ch_qualified_name ((MOBJ) smclass, qualified_name,
+								 sizeof (qualified_name)), subclass_name);
       if (error != NO_ERROR)
 	{
 	  goto exit;
@@ -7802,6 +7823,7 @@ do_promote_partition_by_name (const char *class_name, const char *part_num, char
 static int
 do_promote_partition (SM_CLASS * class_)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   MOP subclass_mop = NULL;
   int error = NO_ERROR;
   SM_CLASS *current = NULL;
@@ -7817,7 +7839,7 @@ do_promote_partition (SM_CLASS * class_)
       return ER_PARTITION_NOT_EXIST;
     }
 
-  subclass_mop = sm_find_class (sm_ch_name ((MOBJ) class_));
+  subclass_mop = sm_find_class (sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
   if (subclass_mop == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -10271,6 +10293,7 @@ static int
 do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *const old_class_name,
 				   const char *const class_name)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *c = NULL;
   SM_CONSTRAINT_INFO *index_save_info = NULL, *saved = NULL;
@@ -10333,7 +10356,8 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
 		  /* recompile function index expression */
 		  error =
 		    do_recreate_func_index_constr ((PARSER_CONTEXT *) parser, saved, NULL, NULL, old_class_name,
-						   sm_ch_name ((MOBJ) class_));
+						   sm_ch_qualified_name ((MOBJ) class_, qualified_name,
+									 sizeof (qualified_name)));
 		  if (error != NO_ERROR)
 		    {
 		      goto error_exit;
@@ -10344,7 +10368,9 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
 		  /* recompile filter index expression */
 		  error =
 		    do_recreate_filter_index_constr ((PARSER_CONTEXT *) parser, saved->filter_predicate, NULL,
-						     old_class_name, sm_ch_name ((MOBJ) class_));
+						     old_class_name, sm_ch_qualified_name ((MOBJ) class_,
+											   qualified_name,
+											   sizeof (qualified_name)));
 		  if (error != NO_ERROR)
 		    {
 		      goto error_exit;
@@ -10418,6 +10444,8 @@ error_exit:
 static int
 do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   const char **att_names = NULL;
   SM_CLASS_CONSTRAINT *c;
@@ -10462,7 +10490,7 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 	    }
 
 	  free_constraint = 1;
-	  class_name = sm_get_ch_name (classmop);
+	  class_name = sm_get_ch_qualified_name (classmop, qualified_name2, sizeof (qualified_name2));
 	  if (class_name == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -10473,15 +10501,17 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 	  if (c->func_index_info)
 	    {
 	      error =
-		do_recreate_func_index_constr (parser, index_save_info, NULL, NULL, sm_ch_name ((MOBJ) src_class),
-					       class_name);
+		do_recreate_func_index_constr (parser, index_save_info, NULL, NULL,
+					       sm_ch_qualified_name ((MOBJ) src_class, qualified_name,
+								     sizeof (qualified_name)), class_name);
 	    }
 	  else
 	    {
 	      /* filter index predicate available */
 	      error =
 		do_recreate_filter_index_constr (parser, index_save_info->filter_predicate, NULL,
-						 sm_ch_name ((MOBJ) src_class), class_name);
+						 sm_ch_qualified_name ((MOBJ) src_class, qualified_name,
+								       sizeof (qualified_name)), class_name);
 	    }
 
 	  if (error != NO_ERROR)

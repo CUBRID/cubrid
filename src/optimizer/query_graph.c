@@ -4910,7 +4910,7 @@ qo_get_class_info (QO_ENV * env, QO_NODE * node)
 
   for (i = 0; i < n; ++i)
     {
-      info->info[i].name = NULL;
+      info->info[i].name[0] = '\0';
       info->info[i].mop = NULL;
       info->info[i].smclass = NULL;
       info->info[i].stats = NULL;
@@ -4955,7 +4955,7 @@ qo_free_class_info (QO_ENV * env, QO_CLASS_INFO * info)
   for (i = 0; i < info->n; ++i)
     {
       qo_free_index (env, info->info[i].index);
-      info->info[i].name = NULL;
+      info->info[i].name[0] = '\0';
       info->info[i].mop = NULL;
       if (info->info[i].self_allocated)
 	{
@@ -5020,7 +5020,7 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
       if (info->mop)
 	{
 	  info->oid = *WS_OID (info->mop);
-	  info->name = sm_get_ch_name (info->mop);
+	  sm_get_ch_qualified_name (info->mop, info->name, sizeof (info->name));
 	  info->smclass = sm_get_class_with_statistics (info->mop);
 	}
       else
@@ -8844,6 +8844,10 @@ qo_node_dump (QO_NODE * node, FILE * f)
       for (i = 0; i < n; i++)
 	{
 	  name = QO_NODE_INFO (node)->info[i].name;
+	  if (name[0] == '\0')
+	    {
+	      name = NULL;
+	    }
 	  /* check for class OID reference spec for example: 'class x' SELECT class_meth(class x, x.i) FROM x, class x */
 	  if (i == 0)
 	    {			/* the first entity */

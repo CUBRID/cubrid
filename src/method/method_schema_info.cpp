@@ -599,7 +599,9 @@ namespace cubmethod
 	    DB_OBJECT *obj_trigger_target = trigger->class_mop;
 	    assert (obj_trigger_target != NULL);
 
-	    const char *name_trigger_target = sm_get_ch_name (obj_trigger_target);
+	    char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	    const char *name_trigger_target =
+		    sm_get_ch_qualified_name (obj_trigger_target, qualified_name, sizeof (qualified_name));
 	    if (name_trigger_target == NULL)
 	      {
 		assert (er_errid () != NO_ERROR);

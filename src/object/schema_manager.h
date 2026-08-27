@@ -202,6 +202,7 @@ extern int sm_update_all_statistics (bool with_fullscan, int random_seed, int no
 
 /* Misc information functions */
 extern const char *sm_get_ch_name (MOP op);
+extern const char *sm_get_ch_qualified_name (MOP op, char *buf, int buf_size);
 extern HFID *sm_get_ch_heap (MOP classmop);
 #if 0				/* TODO - do not use */
 extern OID *sm_get_ch_rep_dir (MOP classmop);
@@ -214,6 +215,9 @@ extern SM_CLASS_CONSTRAINT *sm_class_constraints (MOP classop);
 
 /* Locator support functions */
 extern const char *sm_ch_name (const MOBJ clobj);
+extern const char *sm_ch_bare_name (const MOBJ clobj);
+extern MOP sm_ch_owner (const MOBJ clobj);
+extern const char *sm_ch_qualified_name (const MOBJ clobj, char *buf, int buf_size);
 extern HFID *sm_ch_heap (MOBJ clobj);
 extern OID *sm_ch_rep_dir (MOBJ clobj);
 

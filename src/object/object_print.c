@@ -496,6 +496,8 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
 {
   SM_CLASS *class_;
   char oidbuffer[64];		/* three integers, better be big enough */
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *class_name;
   int required, total;
 
   total = 0;
@@ -506,19 +508,20 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
 	  sprintf (oidbuffer, "%ld.%ld.%ld", (DB_C_LONG) WS_OID (obj)->volid, (DB_C_LONG) WS_OID (obj)->pageid,
 		   (DB_C_LONG) WS_OID (obj)->slotid);
 
-	  required = strlen (oidbuffer) + strlen (sm_ch_name ((MOBJ) class_)) + 2;
+	  class_name = sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name));
+	  required = strlen (oidbuffer) + strlen (class_name) + 2;
 	  if (locator_is_class (obj, DB_FETCH_READ) > 0)
 	    {
 	      required++;
 	      if (maxlen >= required)
 		{
-		  sprintf (buffer, "*%s:%s", sm_ch_name ((MOBJ) class_), oidbuffer);
+		  sprintf (buffer, "*%s:%s", class_name, oidbuffer);
 		  total = required;
 		}
 	    }
 	  else if (maxlen >= required)
 	    {
-	      sprintf (buffer, "%s:%s", sm_ch_name ((MOBJ) class_), oidbuffer);
+	      sprintf (buffer, "%s:%s", class_name, oidbuffer);
 	      total = required;
 	    }
 	}

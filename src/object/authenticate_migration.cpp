@@ -884,6 +884,7 @@ static void
 issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AUTH *auth, CLASS_GRANT *grant,
 		       int authbits, DB_OBJECT_TYPE obj_type)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *gtype;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
@@ -925,7 +926,8 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      SPLIT_USER_SPECIFIED_NAME (sm_get_ch_name (auth->class_mop), owner_name, class_name);
+      SPLIT_USER_SPECIFIED_NAME (sm_get_ch_qualified_name (auth->class_mop, qualified_name,
+				 sizeof (qualified_name)), owner_name, class_name);
       username = au_get_user_name (grant->user->obj);
 
       output_ctx ("GRANT %s ON ", gtype);

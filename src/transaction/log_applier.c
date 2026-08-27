@@ -4770,6 +4770,8 @@ la_flush_repl_items (bool immediate)
 	{
 	  while (true)
 	    {
+	      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
 	      flush_err = __gv_loc_repl.ws_get_repl_error_from_error_link ();
 	      if (flush_err == NULL)
 		{
@@ -4779,7 +4781,8 @@ la_flush_repl_items (bool immediate)
 	      class_mop = ws_mop (&flush_err->class_oid, sm_Root_class_mop);
 	      if (class_mop != NULL && class_mop->object != NULL)
 		{
-		  class_name = sm_ch_name ((MOBJ) (class_mop->object));
+		  class_name =
+		    sm_ch_qualified_name ((MOBJ) (class_mop->object), qualified_name, sizeof (qualified_name));
 		  assert (class_name != NULL);
 		}
 

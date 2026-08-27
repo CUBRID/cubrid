@@ -5041,6 +5041,28 @@ sm_get_ch_name (MOP op)
   return name;
 }
 
+/*
+ * sm_get_ch_qualified_name() - Write out the name of the class an object belongs to
+ *    the way it is written in SQL, with the user that owns it in front of it.
+ *   return: buf, or the bare name when nothing goes in front of it
+ *   op(in): class or instance object
+ *   buf(out): receives "owner.name"
+ *   buf_size(in): size of buf
+ */
+
+const char *
+sm_get_ch_qualified_name (MOP op, char *buf, int buf_size)
+{
+  SM_CLASS *class_;
+
+  if (op == NULL || au_fetch_class_force (op, &class_, AU_FETCH_READ) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  return sm_ch_qualified_name ((MOBJ) class_, buf, buf_size);
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sm_get_class_name_internal()
@@ -5295,6 +5317,82 @@ sm_ch_name (const MOBJ clobj)
     }
 
   return ch_name;
+}
+
+/*
+ * sm_ch_bare_name() - Given a pointer to a class object in memory, return the
+ *    name on its own, with no owner in front of it.
+ *   return: class name with no qualifier
+ *   clobj(in): class structure
+ */
+
+const char *
+sm_ch_bare_name (const MOBJ clobj)
+{
+  return sm_remove_qualifier_name (sm_ch_name (clobj));
+}
+
+/*
+ * sm_ch_owner() - Given a pointer to a class object in memory, return the user
+ *    that owns it.
+ *   return: owner, or NULL for the root class, which belongs to no one
+ *   clobj(in): class structure
+ */
+
+MOP
+sm_ch_owner (const MOBJ clobj)
+{
+  const SM_CLASS_HEADER *header = (const SM_CLASS_HEADER *) clobj;
+
+  if (clobj == NULL || header->ch_type != SM_META_CLASS)
+    {
+      return NULL;
+    }
+
+  return ((const SM_CLASS *) clobj)->owner;
+}
+
+/*
+ * sm_ch_qualified_name() - Write out a class name the way it is written in SQL,
+ *    with the user that owns it in front of it.
+ *   return: buf, or NULL when there is no name to write
+ *   clobj(in): class structure
+ *   buf(out): receives "owner.name"
+ *   buf_size(in): size of buf
+ *
+ * Note: A system class is written without an owner. The list of those names decides
+ *       it here, the same rule the server keys them on -- so the two cannot disagree.
+ *
+ *       The name is always written into buf, never borrowed from the class. Callers
+ *       that keep the result past the class fetch depend on that.
+ */
+
+const char *
+sm_ch_qualified_name (const MOBJ clobj, char *buf, int buf_size)
+{
+  const char *bare_name = sm_ch_bare_name (clobj);
+  MOP owner = sm_ch_owner (clobj);
+  char *owner_name = NULL;
+  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+
+  if (bare_name == NULL)
+    {
+      return NULL;
+    }
+
+  owner_name = (owner != NULL && !sm_check_system_class_by_name (bare_name)) ? au_get_user_name (owner) : NULL;
+  if (owner_name == NULL)
+    {
+      snprintf (buf, buf_size, "%s", bare_name);
+      return buf;
+    }
+
+  sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
+  db_ws_free_and_init (owner_name);
+
+  snprintf (buf, buf_size, "%s.%s", downcase_owner_name, bare_name);
+
+  return buf;
 }
 
 /*
@@ -9211,6 +9309,7 @@ check_resolution_target (SM_TEMPLATE * template_, SM_RESOLUTION * res, int *vali
 static int
 check_invalid_resolutions (SM_TEMPLATE * template_, SM_RESOLUTION ** resolutions, SM_RESOLUTION * original_list)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_RESOLUTION *res, *prev, *next, *original;
   int valid;
@@ -9264,7 +9363,7 @@ check_invalid_resolutions (SM_TEMPLATE * template_, SM_RESOLUTION ** resolutions
 		{
 		  /* a new resolution that is not valid, signal an error */
 		  ERROR3 (error, ER_SM_INVALID_RESOLUTION, template_classname (template_), res->name,
-			  sm_get_ch_name (res->class_mop));
+			  sm_get_ch_qualified_name (res->class_mop, qualified_name, sizeof (qualified_name)));
 		}
 	    }
 	}
@@ -11124,6 +11223,7 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
 static int
 update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_TEMPLATE *template_;
   SM_CLASS *ref_class_;
   SM_CLASS_CONSTRAINT *pk;
@@ -11146,7 +11246,8 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
       if (pk == NULL)
 	{
 	  AU_RESTORE (save);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class_));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1,
+		  sm_ch_qualified_name ((MOBJ) ref_class_, qualified_name, sizeof (qualified_name)));
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
       owner_clsop = pk->attributes[0]->class_mop;
@@ -11207,6 +11308,7 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
 int
 sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_name, const char *new_name)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_TEMPLATE *template_;
   SM_CLASS *ref_class_;
   SM_CLASS_CONSTRAINT *pk;
@@ -11229,7 +11331,8 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
       if (pk == NULL)
 	{
 	  AU_RESTORE (save);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class_));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1,
+		  sm_ch_qualified_name ((MOBJ) ref_class_, qualified_name, sizeof (qualified_name)));
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
       owner_clsop = pk->attributes[0]->class_mop;
@@ -11443,6 +11546,7 @@ end:
 static int
 allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con, DB_OBJLIST * subclasses)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_CLASS_CONSTRAINT *pk, *existing_con;
   MOP ref_clsop;
 
@@ -11453,7 +11557,8 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
       pk = classobj_find_cons_primary_key (class_->constraints);
       if (pk == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) class_));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1,
+		  sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
       con->fk_info->ref_class_pk_btid = pk->index_btid;
@@ -11512,7 +11617,8 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
       pk = classobj_find_cons_primary_key (ref_class->constraints);
       if (pk == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1,
+		  sm_ch_qualified_name ((MOBJ) ref_class, qualified_name, sizeof (qualified_name)));
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
       con->fk_info->index_catalog_of_ref_class = find_index_catalog (pk->name);
@@ -11837,6 +11943,7 @@ end:
 static int
 drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_CLASS_CONSTRAINT * cons)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int err = NO_ERROR;
   MOP ref_clsop;
   SM_TEMPLATE *refcls_template;
@@ -11885,7 +11992,8 @@ drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_
 	  if (pk == NULL)
 	    {
 	      AU_RESTORE (save);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class_));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1,
+		      sm_ch_qualified_name ((MOBJ) ref_class_, qualified_name, sizeof (qualified_name)));
 	      return ER_FK_REF_CLASS_HAS_NOT_PK;
 	    }
 	  owner_clsop = pk->attributes[0]->class_mop;
@@ -12075,6 +12183,7 @@ sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * constraint, char 
 static int
 transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *flat_constraints = NULL, *con, *new_con, *prev, *next;
   SM_ATTRIBUTE *attr = NULL;
@@ -12300,7 +12409,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		  if (num_pk != 0 && (!is_partitioned || !BTID_IS_NULL (&con->index_btid)))
 		    {
 		      error = ER_SM_PRIMARY_KEY_EXISTS;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, sm_ch_name ((MOBJ) class_), con->name);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+			      sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)), con->name);
 		      break;
 		    }
 		  ++num_pk;
@@ -12905,6 +13015,7 @@ update_supers_drop (MOP classop, DB_OBJLIST * supers)
 static int
 lock_subclasses_internal (SM_TEMPLATE * def, MOP op, DB_OBJLIST * newsupers, DB_OBJLIST ** newsubs)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   DB_OBJLIST *l, *found, *new_, *u;
   SM_CLASS *class_;
@@ -12913,7 +13024,8 @@ lock_subclasses_internal (SM_TEMPLATE * def, MOP op, DB_OBJLIST * newsupers, DB_
     {
       if (def != NULL)
 	{
-	  ERROR2 (error, ER_SM_CYCLE_DETECTED, sm_get_ch_name (op), def->name);
+	  ERROR2 (error, ER_SM_CYCLE_DETECTED, sm_get_ch_qualified_name (op, qualified_name, sizeof (qualified_name)),
+		  def->name);
 	}
       else
 	{
@@ -13905,8 +14017,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	  if (error == NO_ERROR)
 	    {
 	      class_name = db_get_string (&name_val);
-	      if (class_name != NULL
-		  && (strcmp (sm_remove_qualifier_name (sm_ch_name ((MOBJ) class_)), class_name) == 0))
+	      if (class_name != NULL && (strcmp (sm_ch_bare_name ((MOBJ) class_), class_name) == 0))
 		{
 		  int save;
 		  OID *oidp, serial_obj_id;
@@ -14797,6 +14908,7 @@ sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TY
 		      const char *constraint_name, const char **att_names, const int *asc_desc,
 		      const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * func_info)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_CLASS *class_;
 
@@ -14811,7 +14923,8 @@ sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TY
       return error;
     }
 
-  return classobj_check_index_exist (class_->constraints, out_shared_cons_name, sm_ch_name ((MOBJ) class_),
+  return classobj_check_index_exist (class_->constraints, out_shared_cons_name,
+				     sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)),
 				     constraint_type, constraint_name, att_names, asc_desc, filter_index, func_info);
 }
 #endif
@@ -14823,6 +14936,8 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 				     SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index,
 				     const char *comment, SM_INDEX_STATUS index_status, MOP * sub_partitions)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error, i;
   bool set_savept = false;
   SM_FUNCTION_INFO *new_func_index_info = NULL;
@@ -14863,7 +14978,7 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
     {
       if (sm_exist_index (sub_partitions[i], constraint_name, NULL) == NO_ERROR)
 	{
-	  class_name = sm_get_ch_name (sub_partitions[i]);
+	  class_name = sm_get_ch_qualified_name (sub_partitions[i], qualified_name, sizeof (qualified_name));
 	  if (class_name == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
@@ -14878,14 +14993,14 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 
       if (function_index != NULL)
 	{
-	  class_name = sm_get_ch_name (classop);
+	  class_name = sm_get_ch_qualified_name (classop, qualified_name2, sizeof (qualified_name2));
 	  if (class_name == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
 	      break;
 	    }
 
-	  partition_name = sm_get_ch_name (sub_partitions[i]);
+	  partition_name = sm_get_ch_qualified_name (sub_partitions[i], qualified_name, sizeof (qualified_name));
 	  if (partition_name == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
@@ -14905,14 +15020,14 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 	  /* make sure the expression is compiled using the appropriate name, the partition name */
 	  if (new_filter_index_info->num_attrs > 0)
 	    {
-	      class_name = sm_get_ch_name (classop);
+	      class_name = sm_get_ch_qualified_name (classop, qualified_name2, sizeof (qualified_name2));
 	      if (class_name == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error);
 		  break;
 		}
 
-	      partition_name = sm_get_ch_name (sub_partitions[i]);
+	      partition_name = sm_get_ch_qualified_name (sub_partitions[i], qualified_name, sizeof (qualified_name));
 	      if (partition_name == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error);
@@ -15517,6 +15632,7 @@ exit:
 int
 sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info, const SM_CLASS_CONSTRAINT * const c)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error_code = NO_ERROR;
   SM_CONSTRAINT_INFO *new_constraint = NULL;
   int num_atts = 0;
@@ -15654,11 +15770,14 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info, const SM_CLASS_CONSTRA
 	}
       assert (ref_cls->constraints != NULL);
 
-      new_constraint->ref_cls_name = strdup (sm_ch_name ((MOBJ) ref_cls));
+      new_constraint->ref_cls_name =
+	strdup (sm_ch_qualified_name ((MOBJ) ref_cls, qualified_name, sizeof (qualified_name)));
       if (new_constraint->ref_cls_name == NULL)
 	{
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, (size_t) (strlen (sm_ch_name ((MOBJ) ref_cls)) + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  (size_t) (strlen (sm_ch_qualified_name ((MOBJ) ref_cls, qualified_name, sizeof (qualified_name))) +
+			    1));
 	  goto error_exit;
 	}
 
@@ -15667,7 +15786,8 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info, const SM_CLASS_CONSTRA
 	{
 	  assert (false);
 	  error_code = ER_FK_REF_CLASS_HAS_NOT_PK;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, sm_ch_name ((MOBJ) ref_cls));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+		  sm_ch_qualified_name ((MOBJ) ref_cls, qualified_name, sizeof (qualified_name)));
 	  goto error_exit;
 	}
 
@@ -16492,6 +16612,7 @@ static int
 update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate, SM_FOREIGN_KEY_INFO * fk_info, const BTID * btid,
 				 const char *old_name, const char *new_name)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   int i, is_partition = 0;
   MOP *sub_partitions = NULL;
@@ -16554,7 +16675,8 @@ update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate, SM_FOREIGN_KEY_INFO * 
 	      assert (false);
 
 	      error = ER_FK_REF_CLASS_HAS_NOT_PK;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sm_get_ch_name (ctemplate->op));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		      sm_get_ch_qualified_name (ctemplate->op, qualified_name, sizeof (qualified_name)));
 	      goto error_exit;
 	    }
 

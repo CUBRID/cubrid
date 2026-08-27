@@ -292,8 +292,10 @@ phase2:
 
       if (verbose_flag)
 	{
+	  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
 	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CLASS),
-		  sm_ch_name (object));
+		  sm_ch_qualified_name (object, qualified_name, sizeof (qualified_name)));
 	}
       hfid = sm_ch_heap (object);
       if (hfid->vfid.fileid == NULL_FILEID)
@@ -387,8 +389,10 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
 
   if (verbose_flag)
     {
+      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CLASS),
-	      sm_ch_name ((MOBJ) class_ptr));
+	      sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name)));
     }
 
 #if defined(CUBRID_DEBUG)

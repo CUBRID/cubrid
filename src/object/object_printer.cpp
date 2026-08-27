@@ -244,7 +244,10 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	case DB_TYPE_OBJECT:
 	  if (temp_domain->class_mop != NULL)
 	    {
-	      describe_identifier (sm_get_ch_name (temp_domain->class_mop), prt_type);
+	      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+	      describe_identifier (sm_get_ch_qualified_name (temp_domain->class_mop, qualified_name,
+				   sizeof (qualified_name)), prt_type);
 	    }
 	  else
 	    {
@@ -429,8 +432,11 @@ void object_printer::describe_method (const struct db_object &op, const sm_metho
   if (method.class_mop != NULL && method.class_mop != &op)
     {
 
+      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
       m_buf ("(from ");
-      describe_identifier (sm_get_ch_name (method.class_mop), prt_type);
+      describe_identifier (sm_get_ch_qualified_name (method.class_mop, qualified_name, sizeof (qualified_name)),
+			   prt_type);
       m_buf (")");
     }
 }
@@ -618,8 +624,11 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 
   if (attribute.class_mop != NULL && attribute.class_mop != &cls)
     {
+      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
       m_buf (" /* from ");
-      describe_identifier (sm_get_ch_name (attribute.class_mop), prt_type);
+      describe_identifier (sm_get_ch_qualified_name (attribute.class_mop, qualified_name, sizeof (qualified_name)),
+			   prt_type);
       m_buf (" */");
     }
 
@@ -656,6 +665,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   const int *prefix_length;
   int k, n_attrs = 0;
   char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
@@ -684,7 +694,8 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	  break;
 	}
 
-      m_buf ("%s ON %s (", constraint.name, sm_ch_name ((MOBJ) (&cls)));
+      m_buf ("%s ON %s (", constraint.name,
+	     sm_ch_qualified_name ((MOBJ) (&cls), qualified_name, sizeof (qualified_name)));
       asc_desc = NULL;		/* init */
       if (!SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint.type))
 	{
@@ -828,7 +839,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	}
 
       m_buf (" REFERENCES ");
-      describe_identifier (sm_ch_name ((MOBJ) ref_cls), prt_type);
+      describe_identifier (sm_ch_qualified_name ((MOBJ) ref_cls, qualified_name, sizeof (qualified_name)), prt_type);
 
       if (prt_type == class_description::SHOW_CREATE_TABLE)
 	{
@@ -918,9 +929,12 @@ void object_printer::describe_resolution (const sm_resolution &resolution, class
 
   describe_identifier (resolution.name, prt_type);
 
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
   m_buf (" of ");
 
-  describe_identifier (sm_get_ch_name (resolution.class_mop), prt_type);
+  describe_identifier (sm_get_ch_qualified_name (resolution.class_mop, qualified_name, sizeof (qualified_name)),
+		       prt_type);
 
   if (resolution.alias != NULL)
     {
@@ -943,7 +957,9 @@ void object_printer::describe_method_file (const struct db_object &obj, const sm
 
   if (file.class_mop != NULL && file.class_mop != &obj)
     {
-      m_buf (" (from %s)", sm_get_ch_name (file.class_mop));
+      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+      m_buf (" (from %s)", sm_get_ch_qualified_name (file.class_mop, qualified_name, sizeof (qualified_name)));
     }
 }
 

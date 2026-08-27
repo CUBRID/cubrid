@@ -1264,8 +1264,10 @@ print_grant_entry (DB_SET *grants, int grant_index, FILE *fp)
 
   if (type == DB_OBJECT_CLASS)
     {
+      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
       fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CLASS_NAME),
-	       sm_get_ch_name (db_get_object (&value)));
+	       sm_get_ch_qualified_name (db_get_object (&value), qualified_name, sizeof (qualified_name)));
     }
   else
     {

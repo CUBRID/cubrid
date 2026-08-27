@@ -6664,7 +6664,9 @@ ldr_update_statistics (void)
     {
       if (ldr_Current_context->args->verbose)
 	{
-	  class_name = sm_get_ch_name (table->class_);
+	  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+	  class_name = sm_get_ch_qualified_name (table->class_, qualified_name, sizeof (qualified_name));
 	  if (class_name == NULL)
 	    {
 	      err = er_errid ();
