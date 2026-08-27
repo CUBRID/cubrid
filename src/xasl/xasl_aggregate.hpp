@@ -110,7 +110,12 @@ namespace cubxasl
     /* compiled operand-evaluation program covering the WHOLE aggregate list; kept on the
      * list HEAD node only.  Server-side runtime state -- never serialized.  See
      * expr_compile.h; built lazily on the first evaluated row when the bound host
-     * variable types are known. */
+     * variable types are known.
+     * Concurrency contract: these fields (and the program they point to) are written with
+     * plain, non-atomic stores.  That is safe only because an XASL clone is checked out to
+     * exactly one executing thread at a time (the xcache clone mutex publishes the stores
+     * when the clone changes hands).  Nothing here tolerates two threads sharing one clone
+     * -- do not add such a caller without making this state per-thread or synchronized. */
     void *operand_prog;		/* EXPR_PROG *, head node only */
     int *operand_prog_idx;	/* program root index per operand ordinal or -1; head only */
     int operand_prog_state;	/* 0 = untried, 1 = active, 2 = disabled; head only */
