@@ -378,15 +378,6 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    /* unique_name */
-    db_make_string (&value, info.unique_name.data ());
-    err = dbt_put_internal (obt_p, SP_ATTR_UNIQUE_NAME, &value);
-    pr_clear_value (&value);
-    if (err != NO_ERROR)
-      {
-	goto error;
-      }
-
     /* sp_name */
     db_make_string (&value, info.sp_name.data ());
     err = dbt_put_internal (obt_p, SP_ATTR_SP_NAME, &value);
@@ -425,7 +416,12 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    if (!info.pkg_name.empty ())
+    if (info.pkg_name.empty ())
+      {
+	/* no package: NULL says so. '' cannot, since oracle_style_empty_string makes it NULL too. */
+	db_make_null (&value);
+      }
+    else
       {
 	sp_normalize_name (info.pkg_name);
 	db_make_string (&value, info.pkg_name.data ());

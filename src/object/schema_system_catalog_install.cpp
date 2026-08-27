@@ -878,7 +878,6 @@ namespace cubschema
 		   CT_STORED_PROC_NAME,
 		   // columns
     {
-      {SP_ATTR_UNIQUE_NAME, format_varchar (255)},
       {SP_ATTR_SP_NAME, format_varchar (255)},
       {SP_ATTR_SP_TYPE, "integer"},
       {SP_ATTR_RETURN_TYPE, "integer"},
@@ -898,11 +897,15 @@ namespace cubschema
     },
 // constraints
     {
-      /* The key is owner, package and procedure at once, and a procedure outside a package
-       * has no package -- neither '' (oracle_style_empty_string turns it into NULL) nor NULL
-       * (db_find_multi_unique cannot ask for a NULL component) keys that triple. So this one
-       * catalog keeps the assembled name. */
-      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {"unique_name", nullptr}, false}
+      /* A procedure outside a package has no package, and NULL is what says so: a primary key
+       * would not allow it, and oracle_style_empty_string turns '' into NULL anyway. The unique
+       * key still keeps two procedures of one owner and package apart. */
+      {
+	DB_CONSTRAINT_UNIQUE, "u_db_stored_procedure_sp_name_pkg_name_owner",
+	{"sp_name", "pkg_name", "owner", nullptr}, false
+      },
+      {DB_CONSTRAINT_NOT_NULL, "", {"sp_name", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"owner", nullptr}, false}
     },
 // authorization
     {
