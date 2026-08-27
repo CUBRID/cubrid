@@ -2808,7 +2808,7 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
       entity_list = entity_spec->info.spec.flat_entity_list;
       for (entity = entity_list; entity != NULL; entity = entity->next)
 	{
-	  if (do_is_partitioned_subclass (NULL, entity->info.name.original, NULL))
+	  if (do_is_partitioned_subclass (NULL, pt_name_qualified (parser, entity), NULL))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_PARTITION_REQUEST, 0);
 	      return er_errid ();
@@ -10649,7 +10649,7 @@ do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement)
   for (entity = entity_list; entity != NULL; entity = entity->next)
     {
       /* partitioned sub-class check */
-      if (do_is_partitioned_subclass (NULL, entity->info.name.original, NULL))
+      if (do_is_partitioned_subclass (NULL, pt_name_qualified (parser, entity), NULL))
 	{
 	  error = ER_INVALID_PARTITION_REQUEST;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
