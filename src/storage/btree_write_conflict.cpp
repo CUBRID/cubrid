@@ -40,7 +40,7 @@
  * leaf_page (in/out)  : Leaf node page latch; unfixed and left NULL.
  * overflow_page (in/out) : Optional overflow node page latch; unfixed and left NULL, NULL when there is none.
  */
-void
+static void
 btree_key_release_locked_object_and_pages (THREAD_ENTRY *thread_p, BTREE_FIND_UNIQUE_HELPER *find_unique_helper,
     PAGE_PTR *leaf_page, PAGE_PTR *overflow_page)
 {
@@ -72,7 +72,7 @@ btree_key_release_locked_object_and_pages (THREAD_ENTRY *thread_p, BTREE_FIND_UN
  *
  * Note: all page latches must be released before blocking on the lock (never wait while holding a latch).
  */
-int
+static int
 btree_key_wait_for_tran_end (THREAD_ENTRY *thread_p, MVCCID writer_mvccid,
 			     BTREE_FIND_UNIQUE_HELPER *find_unique_helper, PAGE_PTR *leaf_page,
 			     PAGE_PTR *overflow_page, bool *restart)

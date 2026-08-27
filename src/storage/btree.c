@@ -27235,9 +27235,7 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
  * find_fk_obj (in/out): FK-find state; any object it has locked is released.
  * class_oid (in)      : Class OID of the locked object.
  *
- * Note: shared by the INSERT_IN_PROGRESS and DELETE_IN_PROGRESS paths of btree_fk_object_does_exist ();
- *       both must drop all latches before blocking on the conflicting transaction. The two paths differ
- *       only in how they then wait (transaction self-lock vs. object lock), which stays at the call site.
+ * Note: every caller must drop all latches before blocking on the conflicting transaction.
  */
 static void
 btree_fk_release_pages_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_FK_EXIST_ARG * fk_arg,

@@ -83,12 +83,6 @@ struct btree_find_unique_helper
 #endif /* !SA_MODE */
 
 #if defined (SERVER_MODE)
-extern void btree_key_release_locked_object_and_pages (THREAD_ENTRY *thread_p,
-    BTREE_FIND_UNIQUE_HELPER *find_unique_helper,
-    PAGE_PTR *leaf_page, PAGE_PTR *overflow_page);
-extern int btree_key_wait_for_tran_end (THREAD_ENTRY *thread_p, MVCCID writer_mvccid,
-					BTREE_FIND_UNIQUE_HELPER *find_unique_helper, PAGE_PTR *leaf_page,
-					PAGE_PTR *overflow_page, bool *restart);
 extern int btree_key_wait_out_conflicting_writer (THREAD_ENTRY *thread_p,
     MVCC_SATISFIES_DELETE_RESULT satisfies_delete,
     MVCC_REC_HEADER *mvcc_header,
