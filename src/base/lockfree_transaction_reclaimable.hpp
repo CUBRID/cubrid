@@ -45,6 +45,16 @@ namespace lockfree
 {
   namespace tran
   {
+    //
+    // reclaimable_node has no virtual member, and that is the point.
+    //
+    // A vtable pointer here is paid by every node of every table - eight of them in the server, the object
+    // lock resource table by far the largest - while the dispatch it buys is needed once per reclaimed run,
+    // not once per node. reclaimable_owner below carries it instead: one vtable for the whole freelist.
+    //
+    // Deleting through a reclaimable_node * is therefore undefined. Nothing does: the only owner is
+    // lockfree::freelist, and it frees its own free_node type.
+    //
     class reclaimable_node
     {
       public:
@@ -53,31 +63,10 @@ namespace lockfree
 	  , m_retire_tranid (0)
 	{
 	}
-	virtual ~reclaimable_node () = default;
-
-	// override reclaim to change what happens with the reclaimable node
-	virtual void reclaim ()
-	{
-	  // default is to delete itself
-	  delete this;
-	}
-
-	// reclaim this node through tail inclusive, linked by m_retired_next. a descriptor always reclaims a run,
-	// so an owner that can take a batch more cheaply than one at a time overrides this; the default walks it.
-	virtual void reclaim_run (reclaimable_node *tail, size_t count)
-	{
-	  (void) count;
-	  reclaimable_node *save_next = NULL;
-	  for (reclaimable_node *node = this; node != NULL; node = save_next)
-	    {
-	      // read the link first: reclaim () may delete the node
-	      save_next = (node == tail) ? NULL : node->m_retired_next;
-	      node->m_retired_next = NULL;
-	      node->reclaim ();
-	    }
-	}
 
       protected:
+	~reclaimable_node () = default;       // non-virtual: only the owner destroys its own nodes
+
 	reclaimable_node *m_retired_next;     // link to next retired node
 	// may be repurposed by derived classes
 
@@ -86,6 +75,27 @@ namespace lockfree
 
 	id m_retire_tranid;
     };
+
+    //
+    // The one object that knows how to reclaim a run of nodes. A freelist implements it and registers itself
+    // with its tran::table; the descriptor reaches it from there. Sound because a descriptor's retired list
+    // only ever holds nodes of one freelist - each freelist builds its own tran::table, so nothing else can
+    // retire into its descriptors.
+    //
+    class reclaimable_owner
+    {
+      public:
+	virtual ~reclaimable_owner () = default;
+
+	// reclaim head through tail inclusive, linked by m_retired_next. count is the length of that run.
+	virtual void reclaim_run (reclaimable_node *head, reclaimable_node *tail, size_t count) = 0;
+    };
+
+    // The node carries a retire link and a retire id, and nothing else. Adding a virtual member here - or any
+    // field - costs that on every node of every table; the object lock resource table alone can hold hundreds
+    // of thousands. Whatever wants dispatch belongs on reclaimable_owner, which exists once per freelist.
+    static_assert (sizeof (reclaimable_node) == sizeof (reclaimable_node *) + sizeof (id),
+		   "reclaimable_node must stay exactly a retire link plus a retire id");
   } // namespace tran
 } // namespace lockfree
 

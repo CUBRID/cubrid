@@ -42,10 +42,14 @@ namespace lockfree
 {
   // T must have on_reclaim function
   template <class T>
-  class freelist
+  class freelist : public tran::reclaimable_owner
   {
     public:
       class free_node;
+
+      // tran::reclaimable_owner - the single vtable behind node reclamation. Every node retired into this
+      // freelist's tran::table comes back here, so the nodes need carry no dispatch of their own.
+      void reclaim_run (tran::reclaimable_node *head, tran::reclaimable_node *tail, size_t count) final override;
 
       freelist () = delete;
       freelist (tran::system &transys, size_t block_size, size_t initial_block_count = 1);
@@ -117,19 +121,15 @@ namespace lockfree
 
       T &get_data ();
 
-      void reclaim () final override;
-      void reclaim_run (tran::reclaimable_node *tail, size_t count) final override;
-
     private:
       friend freelist;
-
-      void set_owner (freelist &m_freelist);
 
       void set_freelist_next (free_node *next);
       void reset_freelist_next (void);
       free_node *get_freelist_next ();
 
-      freelist *m_owner;
+      // no owner pointer: the freelist that reclaims this node is reached from the descriptor's table,
+      // once per run rather than once per node.
       T m_t;
   };
 } // namespace lockfree
@@ -169,6 +169,9 @@ namespace lockfree
 	initial_block_count = 2;
       }
     assert (m_block_size > 0);
+
+    // the descriptors of this table reclaim through us; nothing else retires into them
+    m_trantable->set_reclaimable_owner (*this);
 
     // initial_block_count blocks in total, the back-buffer's included. lf_freelist_init () allocates exactly
     // that many, and lock_dump_resource () prints the count, so one block more would change cubrid lockdb.
@@ -270,7 +273,6 @@ namespace lockfree
 	  {
 	    break;
 	  }
-	node->set_owner (*this);
 	if (tail == NULL)
 	  {
 	    tail = node;
@@ -540,7 +542,9 @@ namespace lockfree
   void
   freelist<T>::check_my_pointer (free_node *node)
   {
-    assert (this == node->m_owner);
+    // the node no longer carries its owner; ownership is a property of the tran::table it retires into
+    assert (node != NULL);
+    (void) node;
   }
 
   //
@@ -549,16 +553,8 @@ namespace lockfree
   template<class T>
   freelist<T>::free_node::free_node ()
     : tran::reclaimable_node ()
-    , m_owner (NULL)
     , m_t {}
   {
-  }
-
-  template<class T>
-  void
-  freelist<T>::free_node::set_owner (freelist &fl)
-  {
-    m_owner = &fl;
   }
 
   template<class T>
@@ -584,33 +580,11 @@ namespace lockfree
 
   template<class T>
   void
-  freelist<T>::free_node::reclaim ()
-  {
-    m_t.on_reclaim ();
-
-    m_retired_next = NULL;
-    --m_owner->m_retired_count;
-
-    if (m_owner->m_alloc_count > m_owner->m_max_alloc_count)
-      {
-	// over the cap: free rather than recycle, as lf_freelist_transport () does. only nodes older than the
-	// minimum active transaction reach here, so the node is already unreachable.
-	--m_owner->m_alloc_count;
-	delete this;
-	return;
-      }
-
-    ++m_owner->m_available_count;
-    m_owner->push_to_list (*this, *this, m_owner->m_available_list);
-  }
-
-  template<class T>
-  void
-  freelist<T>::free_node::reclaim_run (tran::reclaimable_node *tail, size_t count)
+  freelist<T>::reclaim_run (tran::reclaimable_node *head, tran::reclaimable_node *tail, size_t count)
   {
     // splicing is sound because every node in a descriptor's retired list belongs to this freelist: each
     // freelist builds its own tran::table, so nothing else can retire into its descriptors.
-    freelist *owner = m_owner;              // nodes below, including this one, may be deleted
+    freelist *owner = this;
     free_node *run_head = NULL;
     free_node *run_tail = NULL;
     size_t reusable = 0;
@@ -618,7 +592,7 @@ namespace lockfree
     size_t alloc_now = owner->m_alloc_count.load ();
     free_node *save_next = NULL;
 
-    for (free_node *node = this; node != NULL; node = save_next)
+    for (free_node *node = static_cast<free_node *> (head); node != NULL; node = save_next)
       {
 	save_next = (node == static_cast<free_node *> (tail)) ? NULL : node->get_freelist_next ();
 	node->m_t.on_reclaim ();
@@ -626,7 +600,8 @@ namespace lockfree
 
 	if (alloc_now > owner->m_max_alloc_count)
 	  {
-	    // over the cap - see reclaim ()
+	    // over the cap: free rather than recycle, as lf_freelist_transport () does. only nodes older than
+	    // the minimum active transaction reach here, so the node is already unreachable.
 	    delete node;
 	    --alloc_now;
 	    ++freed;

@@ -39,6 +39,26 @@ using namespace lockfree;
 
 namespace test_lockfree
 {
+  //
+  // Layout guard for the node wrapper. See plan/lockfree DESIGN_CBRD-24794 D1: the wrapper carried a vtable
+  // pointer and an owner pointer on top of the retire link and retire id, 32 bytes on every node of every
+  // table. Both went; these assertions fail at compile time if either comes back.
+  //
+  namespace
+  {
+    struct probe_entry_48
+    {
+      char pad[48];
+      void on_reclaim () {}
+    };
+
+    constexpr size_t WRAPPER_OVERHEAD = sizeof (tran::reclaimable_node);
+
+    static_assert (WRAPPER_OVERHEAD == 16, "the retire link and retire id, and nothing else");
+    static_assert (sizeof (freelist<probe_entry_48>::free_node) == sizeof (probe_entry_48) + WRAPPER_OVERHEAD,
+		   "free_node must add the reclaimable_node base and nothing of its own");
+  }
+
   std::atomic<size_t> g_item_alloc_count;
   std::atomic<size_t> g_item_dealloc_count;
   struct my_item

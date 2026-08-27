@@ -38,11 +38,26 @@ namespace lockfree
       , m_all (new descriptor[m_sys.get_max_transaction_count ()] ())
       , m_global_tranid { 0 }
       , m_min_active_tranid { 0 }
+      , m_owner (NULL)
     {
       for (size_t i = 0; i < m_sys.get_max_transaction_count (); i++)
 	{
 	  m_all[i].set_table (*this);
 	}
+    }
+
+    void
+    table::set_reclaimable_owner (reclaimable_owner &owner)
+    {
+      // one freelist per table; a second registration would mean nodes of two owners share these descriptors
+      assert (m_owner == NULL || m_owner == &owner);
+      m_owner = &owner;
+    }
+
+    reclaimable_owner *
+    table::get_reclaimable_owner () const
+    {
+      return m_owner;
     }
 
     table::~table ()

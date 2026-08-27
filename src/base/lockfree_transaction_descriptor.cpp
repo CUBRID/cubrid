@@ -51,7 +51,8 @@ namespace lockfree
 	}
       if (m_saved_node != NULL)
 	{
-	  m_saved_node->reclaim ();
+	  reclaim_run (m_saved_node, m_saved_node, 1);
+	  m_saved_node = NULL;
 	}
     }
 
@@ -166,7 +167,7 @@ namespace lockfree
       if (run_count != 0)
 	{
 	  run_tail->m_retired_next = NULL;
-	  run_head->reclaim_run (run_tail, run_count);
+	  reclaim_run (run_head, run_tail, run_count);
 	  m_reclaim_count += run_count;
 	}
 
@@ -190,8 +191,23 @@ namespace lockfree
 	}
 
       nodep->m_retired_next = NULL;
-      nodep->reclaim ();
+      reclaim_run (nodep, nodep, 1);
       ++m_reclaim_count;
+    }
+
+    void
+    descriptor::reclaim_run (reclaimable_node *head, reclaimable_node *tail, size_t count)
+    {
+      // the owner carries the only vtable involved; reclaimable_node has none, so there is nothing to
+      // dispatch on the nodes themselves.
+      reclaimable_owner *owner = (m_table != NULL) ? m_table->get_reclaimable_owner () : NULL;
+      if (owner == NULL)
+	{
+	  // a table whose owner never registered has nothing that could have retired into it
+	  assert (false);
+	  return;
+	}
+      owner->reclaim_run (head, tail, count);
     }
 
     void

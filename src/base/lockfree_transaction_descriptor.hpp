@@ -82,6 +82,7 @@ namespace lockfree
 
       private:
 	void reclaim_retired_head ();
+	void reclaim_run (reclaimable_node *head, reclaimable_node *tail, size_t count);
 
 	table *m_table;
 	// the epoch mark: published by the owner, read by every reclaimer in compute_min_active_tranid ()
