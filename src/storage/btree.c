@@ -10096,7 +10096,8 @@ btree_index_capacity_internal_parallel (THREAD_ENTRY * thread_p, const BTREE_CAP
 
     if (failed.load ())
       {
-	/* propagate the scanner error; no serial retry (the one-shot interrupt flag is consumed) */
+	/* propagate the scanner error; no serial retry (the one-shot interrupt flag is consumed).
+	 * Only ER_INTERRUPTED can be re-raised (0 args); ER_FAILED is not a settable error id. */
 	int errid = fail_errid.load ();
 	er_log_debug (ARG_FILE_LINE,
 		      "btree_index_capacity_internal_parallel: worker error errid=%d; aborting parallel\n", errid);
@@ -10105,7 +10106,20 @@ btree_index_capacity_internal_parallel (THREAD_ENTRY * thread_p, const BTREE_CAP
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	    return ER_INTERRUPTED;
 	  }
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	/* the worker cleared its own thread-local context, so report something rather than
+	 * returning ER_FAILED with an empty error stack */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_FAILED;
+      }
+
+    if (next_child.load () < ctx->n_children)
+      {
+	/* a child was never claimed: the pool retired tasks without running them (server shutting
+	 * down). The partials are incomplete, so do not report them as a result. */
+	er_log_debug (ARG_FILE_LINE,
+		      "btree_index_capacity_internal_parallel: only %d of %d children claimed\n",
+		      next_child.load (), ctx->n_children);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	return ER_FAILED;
       }
 
@@ -10159,13 +10173,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   root_ptr = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (root_ptr == NULL)
     {
-      /* propagate a consumed interrupt (serial would not see it again); otherwise fall back */
-      if (er_errid () == ER_INTERRUPTED)
-	{
-	  return ER_INTERRUPTED;
-	}
-      er_clear ();
-      goto fallback_serial;
+      goto exit_on_error;
     }
 
 #if !defined (NDEBUG)
@@ -10175,8 +10183,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   root_header = btree_get_root_header (thread_p, root_ptr);
   if (root_header == NULL)
     {
-      er_clear ();
-      goto fallback_serial;
+      goto exit_on_error;
     }
 
   /* deduplicate-key index: dis_key_cnt depends on the in-order traversal -> serial */
@@ -10188,8 +10195,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   node_header = btree_get_node_header (thread_p, root_ptr);
   if (node_header == NULL)
     {
-      er_clear ();
-      goto fallback_serial;
+      goto exit_on_error;
     }
   key_cnt = btree_node_number_of_keys (thread_p, root_ptr);
   if (node_header->node_level <= 1 || key_cnt < 2)
@@ -10198,12 +10204,16 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
       goto fallback_serial;
     }
 
-  if (file_get_num_user_pages (thread_p, &btid->vfid, &n_pages) != NO_ERROR)
+  error_code = file_get_num_user_pages (thread_p, &btid->vfid, &n_pages);
+  if (error_code != NO_ERROR)
     {
-      if (er_errid () == ER_INTERRUPTED)
+      /* n_pages only sizes the parallel degree, and serial never reads the file header -- a failure
+       * here does not mean the request failed. Propagate only a consumed interrupt; discard anything
+       * else so the serial run does not leave a stale error behind. Test the return value rather
+       * than er_errid (), which could still hold an older error. */
+      if (error_code == ER_INTERRUPTED)
 	{
-	  pgbuf_unfix_and_init (thread_p, root_ptr);
-	  return ER_INTERRUPTED;
+	  goto exit_on_error;
 	}
       er_clear ();
       goto fallback_serial;
@@ -10224,16 +10234,16 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   btid_int.sys_btid = btid;
   if (btree_glean_root_header_info (thread_p, root_header, &btid_int, true) != NO_ERROR)
     {
-      er_clear ();
-      goto fallback_serial;
+      goto exit_on_error;
     }
 
   /* enumerate the root's child VPIDs */
   children = (VPID *) db_private_alloc (thread_p, sizeof (VPID) * key_cnt);
   if (children == NULL)
     {
-      er_clear ();
-      goto fallback_serial;
+      /* db_private_alloc reports this itself via hl_lea_alloc, except under PRM_ID_USE_SYSTEM_MALLOC */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (VPID) * key_cnt);
+      goto exit_on_error;
     }
   for (i = 0; i < key_cnt; i++)
     {
@@ -10242,8 +10252,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
 
       if (spage_get_record (thread_p, root_ptr, i + 1, &rec, PEEK) != S_SUCCESS)
 	{
-	  er_clear ();
-	  goto fallback_serial;
+	  goto exit_on_error;
 	}
       btree_read_fixed_portion_of_non_leaf_record (&rec, &nleaf);
       children[i] = nleaf.pnt;
@@ -10272,6 +10281,26 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   db_private_free_and_init (thread_p, children);
   pgbuf_unfix_and_init (thread_p, root_ptr);
   return error_code;		/* success or a propagated scanner error */
+
+exit_on_error:
+  assert (wm == NULL);
+
+  /* a real failure, not an index this path cannot split: report it instead of hiding it behind the
+   * serial run. The callee already set the error; mirror the serial tail when it did not. */
+  error_code = er_errid ();
+  if (error_code == NO_ERROR)
+    {
+      error_code = ER_FAILED;
+    }
+  if (children != NULL)
+    {
+      db_private_free_and_init (thread_p, children);
+    }
+  if (root_ptr != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, root_ptr);
+    }
+  return error_code;
 
 fallback_serial:
   if (children != NULL)
