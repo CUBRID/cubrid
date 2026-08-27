@@ -142,8 +142,6 @@ static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 static int jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
 static int jsp_drop_stored_procedure_code (const char *name);
 
-static int jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
-
 extern bool ssl_client;
 
 static MOP
@@ -170,9 +168,9 @@ jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
       return NULL;
     }
 
-  if (mop)
+  if (mop && purpose == DB_AUTH_EXECUTE)
     {
-      err = jsp_check_execute_authorization (mop, purpose);
+      err = jsp_check_execute_authorization (mop);
     }
 
   if (err != NO_ERROR)
@@ -206,7 +204,8 @@ jsp_is_exist_stored_procedure (const char *name)
  * jsp_find_stored_procedure
  *   return: MOP
  *   name(in): find java stored procedure name
- *   purpose(in): DB_AUTH_NONE or DB_AUTH_SELECT
+ *   purpose(in): DB_AUTH_EXECUTE to check the EXECUTE authorization of the current user,
+ *                DB_AUTH_NONE to skip the check
  *
  * Note:
  */
@@ -246,9 +245,9 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
 	}
     }
 
-  if (mop)
+  if (mop && purpose == DB_AUTH_EXECUTE)
     {
-      err = jsp_check_execute_authorization (mop, purpose);
+      err = jsp_check_execute_authorization (mop);
     }
 
   if (err != NO_ERROR)
@@ -3870,7 +3869,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   AU_SAVE_AND_DISABLE (save);
 
   /* existence of sp */
-  sp_mop = jsp_find_stored_procedure (name_str, DB_AUTH_SELECT);
+  sp_mop = jsp_find_stored_procedure (name_str, DB_AUTH_NONE);
   if (sp_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (err);
@@ -4114,7 +4113,7 @@ jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   db_make_null (&args_val);
   db_make_null (&owner_val);
 
-  sp_mop = jsp_find_stored_procedure (name, DB_AUTH_SELECT);
+  sp_mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
   if (sp_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (err);
@@ -4853,17 +4852,20 @@ exit_on_error:
   return error;
 }
 
-static int
-jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
+/*
+ * jsp_check_execute_authorization
+ *   return: NO_ERROR if the current user can execute sp_obj, ER_FAILED otherwise
+ *   sp_obj(in): stored procedure or package object
+ *
+ * Note: EXECUTE is the only authorization grantable on a stored procedure or a package.
+ */
+
+int
+jsp_check_execute_authorization (const MOP sp_obj)
 {
   int error = NO_ERROR;
   MOP owner_mop = NULL;
   DB_VALUE owner;
-
-  if (au_type != DB_AUTH_EXECUTE)
-    {
-      return NO_ERROR;
-    }
 
   if (au_is_dba_group_member (Au_user))
     {

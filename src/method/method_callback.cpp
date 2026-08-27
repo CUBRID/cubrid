@@ -1008,10 +1008,6 @@ namespace cubmethod
 	  pr_clear_value (&return_type);
 	}
 
-      // generated Java class name of the resolved routine (Proc_/Func_/Pckg_...), used by the
-      // caller's compiled code to reference it directly.
-      // Only PL/CSQL routines have such a class; Java SPs keep the SQL CALL path, so their
-      // target_class is left empty (which the caller's compiler treats as "not directly callable").
       DB_VALUE lang_val;
       int lang = -1;
       if (db_get (routine_mop, SP_ATTR_LANG, &lang_val) == NO_ERROR)
@@ -1022,6 +1018,16 @@ namespace cubmethod
 
       if (lang == SP_LANG_PLCSQL)
 	{
+	  if (jsp_check_execute_authorization (routine_mop) != NO_ERROR)
+	    {
+	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  err = ER_FAILED;
+		}
+	      goto exit;
+	    }
+
 	  DB_VALUE target_class_val;
 	  if (db_get (routine_mop, SP_ATTR_TARGET_CLASS, &target_class_val) == NO_ERROR)
 	    {
