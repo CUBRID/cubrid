@@ -2204,7 +2204,7 @@ parser_check_hint (char *hint_string)
 {
   PT_HINT_ENUM hint = PT_HINT_NONE;
 
-  pt_check_hint (hint_string, parser_hint_table, &hint);
+  pt_check_hint (hint_string, pt_hint_table (), &hint);
   if (hint == PT_HINT_NONE)
     {
       return false;

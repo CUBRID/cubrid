@@ -13266,13 +13266,13 @@ hint_list
 		{{
 			PT_NODE *node = parser_top_hint_node ();
 			char *hint_comment = $2;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
+			(void) pt_get_hint (hint_comment, pt_hint_table (), node);
 		}}
 	| SQL_HINT
 		{{
 			PT_NODE *node = parser_top_hint_node ();
 			char *hint_comment = $1;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
+			(void) pt_get_hint (hint_comment, pt_hint_table (), node);
 		}}
 	;
 
@@ -23820,7 +23820,7 @@ parser_main (PARSER_CONTEXT * parser)
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 
-  pt_initialize_hint(parser, parser_hint_table); 
+  pt_initialize_hint(parser, pt_hint_table ()); 
 #if YYDEBUG
   parser_init_yydebug ();
 #endif
@@ -23836,7 +23836,7 @@ parser_main (PARSER_CONTEXT * parser)
   yytoken_start_line = yytoken_start_line_save;
   yytoken_start_column = yytoken_start_column_save;
 
-  pt_cleanup_hint (parser, parser_hint_table);
+  pt_cleanup_hint (parser, pt_hint_table ());
 
   if (pt_has_error (parser) || parser->stack_top <= 0 || !parser->node_stack)
     {
@@ -23937,9 +23937,9 @@ parse_one_statement (int state)
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 
-  pt_initialize_hint(this_parser, parser_hint_table);
+  pt_initialize_hint(this_parser, pt_hint_table ());
   rv = yyparse ();
-  pt_cleanup_hint (this_parser, parser_hint_table);
+  pt_cleanup_hint (this_parser, pt_hint_table ());
 
   if (parser_statement_OK)
     this_parser->statement_number = 1;
@@ -23956,7 +23956,7 @@ parse_one_statement (int state)
   It must start with an English capital letter.
 */
 #define INIT_PT_HINT(key, type) {key, NULL, type, 0, false}
-CSQL_PARSER_TLS PT_HINT parser_hint_table[] = {
+static CSQL_PARSER_TLS PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("ORDERED", PT_HINT_ORDERED),
   INIT_PT_HINT("LEADING", PT_HINT_LEADING),
   INIT_PT_HINT("NO_INDEX_SS", PT_HINT_NO_INDEX_SS),
@@ -24008,6 +24008,15 @@ CSQL_PARSER_TLS PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("BIND_SENSITIVE", PT_HINT_BIND_SENSITIVE),
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
+
+/* wf122 A2: cross-TU access to the thread_local hint table.  An extern
+ * declaration of an unsized thread_local array is unusable (gcc cannot
+ * form the TLS wrapper's reference type), so consumers call this instead. */
+PT_HINT *
+pt_hint_table (void)
+{
+  return parser_hint_table;
+}
 
 
 
