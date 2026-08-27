@@ -200,7 +200,7 @@ static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE 
 static int check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int *ret_msg_id);
 static int auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALUE * max_val, int cached_num,
 					    bool * fits);
-static bool truncate_need_repl_log (PT_NODE * statement);
+static bool truncate_need_repl_log (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 static int do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement);
@@ -445,7 +445,7 @@ end:
  *   statement(in):
  */
 static bool
-truncate_need_repl_log (PT_NODE * statement)
+truncate_need_repl_log (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_NODE *entity_spec = NULL;
   PT_NODE *entity_list = NULL;
@@ -466,7 +466,7 @@ truncate_need_repl_log (PT_NODE * statement)
 
   for (entity = entity_list; entity != NULL; entity = entity->next)
     {
-      class_name = entity->info.name.original;
+      class_name = pt_name_qualified (parser, entity);
       class_mop = db_find_class (class_name);
       if (class_mop == NULL)
 	{
@@ -7727,8 +7727,8 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  old_name = statement->info.rename_trigger.old_name->info.name.original;
-  new_name = statement->info.rename_trigger.new_name->info.name.original;
+  old_name = pt_name_qualified (parser, statement->info.rename_trigger.old_name);
+  new_name = pt_name_qualified (parser, statement->info.rename_trigger.new_name);
 
   trigger = tr_find_trigger (old_name);
   if (trigger == NULL)
@@ -17076,7 +17076,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
 
     case PT_TRUNCATE:
-      if (!truncate_need_repl_log (statement))
+      if (!truncate_need_repl_log (parser, statement))
 	{
 	  return NO_ERROR;
 	}
