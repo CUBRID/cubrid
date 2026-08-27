@@ -11897,7 +11897,21 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
 	    }
 
 	  *r = 0;
-	  spec->info.spec.entity_name->info.name.original = pt_append_string (parser, NULL, class_name);
+	  /* the target arrives with its owner in front of it; the node keeps the two apart */
+	  {
+	    char target_owner[DB_MAX_USER_LENGTH] = { '\0' };
+
+	    if (sm_qualifier_name (class_name, target_owner, sizeof (target_owner)) != NULL && target_owner[0] != '\0')
+	      {
+		spec->info.spec.entity_name->info.name.owner_name = pt_append_string (parser, NULL, target_owner);
+	      }
+	    else
+	      {
+		spec->info.spec.entity_name->info.name.owner_name = NULL;
+	      }
+	  }
+	  spec->info.spec.entity_name->info.name.original =
+	    pt_append_string (parser, NULL, sm_remove_qualifier_name (class_name));
 	  spec->info.spec.remote_server_name = parser_new_node (parser, PT_NAME);
 	  spec->info.spec.remote_server_name->info.name.original = pt_append_string (parser, NULL, r + 1);
 

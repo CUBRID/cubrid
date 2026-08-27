@@ -1114,7 +1114,9 @@ pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node, PT_CL
       return node;
     }
 
-  entity_name = pt_name_qualified (parser, node->info.spec.entity_name);
+  /* the partition is named after the class alone, and keeps the owner the class node holds:
+   * putting the whole "owner.class__p__part" in its place would offer the owner twice. */
+  entity_name = node->info.spec.entity_name->info.name.original;
   partition_name = pt_partition_name (parser, entity_name, node->info.spec.partition->info.name.original);
   if (partition_name == NULL)
     {
@@ -1125,18 +1127,19 @@ pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node, PT_CL
 	}
     }
 
-  if (!pt_in_lck_array (locks, partition_name, LC_PREF_FLAG_LOCK))
+  node->info.spec.entity_name->info.name.original = partition_name;
+
+  if (!pt_in_lck_array (locks, pt_name_qualified (parser, node->info.spec.entity_name), LC_PREF_FLAG_LOCK))
     {
       /* Set lock on specified partition. Only add to the array if not there already in this lock mode. */
-      node->info.spec.entity_name->info.name.original = partition_name;
       error = pt_add_lock_class (parser, locks, node, LC_PREF_FLAG_LOCK);
+    }
 
-      /* restore spec name */
-      node->info.spec.entity_name->info.name.original = entity_name;
-      if (error != NO_ERROR)
-	{
-	  return NULL;
-	}
+  /* restore spec name */
+  node->info.spec.entity_name->info.name.original = entity_name;
+  if (error != NO_ERROR)
+    {
+      return NULL;
     }
 
   return node;
