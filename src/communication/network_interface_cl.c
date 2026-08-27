@@ -44,6 +44,7 @@
 #include "xserver_interface.h"
 #include "boot_sr.h"
 #include "locator_sr.h"
+#include "log_impl.h"
 #include "log_manager.h"
 #include "schema_manager.h"
 #include "query_executor.h"
@@ -2943,8 +2944,58 @@ log_supplement_statement (int ddl_type, int objtype, OID * classoid, OID * objoi
   free_and_init (request);
 
   return rep_error;
-#endif // CS_MODE
+#elif defined (SERVER_MODE)
+  /* same work as the wire handler (slog_supplement_statement), in-process */
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 1)
+    {
+      char *supplemental_data, *ptr, *start_ptr;
+      int data_len;
+      LOG_TDES *tdes;
+      THREAD_ENTRY *thread_p;
+
+      data_len = (OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_OID_SIZE + OR_INT_SIZE
+		  + or_packed_string_length (stmt_text, NULL));
+
+      supplemental_data = (char *) malloc (data_len + MAX_ALIGNMENT);
+      if (supplemental_data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (data_len + MAX_ALIGNMENT));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      ptr = start_ptr = supplemental_data;
+      ptr = or_pack_int (ptr, ddl_type);
+      ptr = or_pack_int (ptr, objtype);
+      ptr = or_pack_oid (ptr, classoid);
+      ptr = or_pack_oid (ptr, objoid);
+      ptr = or_pack_int (ptr, (int) strlen (stmt_text));
+      ptr = or_pack_string (ptr, stmt_text);
+      data_len = CAST_BUFLEN (ptr - start_ptr);
+
+      thread_p = enter_server ();
+
+      tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      assert (tdes != NULL);
+      if (tdes != NULL)
+	{
+	  if (!tdes->has_supplemental_log)
+	    {
+	      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER,
+					    (int) strlen (tdes->client.get_db_user ()), tdes->client.get_db_user ());
+	      tdes->has_supplemental_log = true;
+	    }
+	  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_DDL, data_len, (void *) supplemental_data);
+	}
+
+      exit_server (*thread_p);
+
+      free_and_init (supplemental_data);
+    }
+
+  return NO_ERROR;
+#else /* SA_MODE */
   return ER_NOT_IN_STANDALONE;
+#endif
 }
 
 /*
@@ -11927,6 +11978,26 @@ tdes_set_query_start_info (char *sql_user_text)
   net_client_request (NET_SERVER_TDES_SET_QUERY_START_INFO, request, request_len, NULL, 0, NULL, 0, NULL, 0);
 
   free_and_init (request);
+#elif defined (SERVER_MODE)
+  /* same work as the wire handler (stdes_set_query_start_info), in-process */
+  THREAD_ENTRY *thread_p = enter_server ();
+  LOG_TDES *tdes_p = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  assert (tdes_p != NULL);
+  if (tdes_p != NULL)
+    {
+      tdes_p->query_start_time = log_get_clock_msec ();
+      if (tdes_p->tran_start_time == 0)
+	{
+	  tdes_p->tran_start_time = tdes_p->query_start_time;
+	}
+      if (sql_user_text != NULL)
+	{
+	  tdes_p->ddl_sql_user_text = strdup (sql_user_text);
+	}
+    }
+
+  exit_server (*thread_p);
 #endif /* !CS_MODE */
 }
 
@@ -11942,6 +12013,25 @@ tdes_reset_query_start_info (PT_NODE * node)
   if (pt_is_ddl_statement (node))
     {
       net_client_request (NET_SERVER_TDES_RESET_QUERY_START_INFO, NULL, 0, NULL, 0, NULL, 0, NULL, 0);
+    }
+#elif defined (SERVER_MODE)
+  /* same work as the wire handler (stdes_reset_query_start_info), in-process */
+  if (pt_is_ddl_statement (node))
+    {
+      THREAD_ENTRY *thread_p = enter_server ();
+      LOG_TDES *tdes_p = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+      assert (tdes_p != NULL);
+      if (tdes_p != NULL)
+	{
+	  tdes_p->query_start_time = 0;
+	  if (tdes_p->ddl_sql_user_text != NULL)
+	    {
+	      free_and_init (tdes_p->ddl_sql_user_text);
+	    }
+	}
+
+      exit_server (*thread_p);
     }
 #endif
 }
