@@ -2107,7 +2107,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      for (PT_NODE * procs = p_list; procs != NULL; procs = procs->next)
 		{
 		  // [TODO] Resovle user schema name, built-in package name
-		  const char *proc_name = procs->info.name.original;
+		  const char *proc_name = pt_name_qualified (parser, procs);
 
 		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
 		  if (proc_mop == NULL)
@@ -2215,7 +2215,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      for (PT_NODE * procs = p_list; procs != NULL; procs = procs->next)
 		{
 		  // [TODO] Resovle user schema name, built-in package name
-		  const char *proc_name = procs->info.name.original;
+		  const char *proc_name = pt_name_qualified (parser, procs);
 
 		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
 		  if (proc_mop == NULL)
@@ -9787,7 +9787,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (node->info.create_entity.create_like != NULL)
     {
-      create_like = node->info.create_entity.create_like->info.name.original;
+      create_like = pt_name_qualified (parser, node->info.create_entity.create_like);
     }
 
   create_select = node->info.create_entity.create_select;
@@ -11192,7 +11192,7 @@ do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser, PT_NODE * const 
 
   OID_SET_NULL (&class_oid);
 
-  entity_name = alter_info->entity_name->info.name.original;
+  entity_name = pt_name_qualified (parser, alter_info->entity_name);
   if (entity_name == NULL)
     {
       error = ER_UNEXPECTED;
@@ -11355,7 +11355,7 @@ do_alter_change_tbl_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
 
   assert (comment_node != NULL && comment_node->node_type == PT_VALUE);
 
-  entity_name = alter_info->entity_name->info.name.original;
+  entity_name = pt_name_qualified (parser, alter_info->entity_name);
   if (entity_name == NULL)
     {
       error = ER_UNEXPECTED;

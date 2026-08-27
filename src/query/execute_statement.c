@@ -16242,7 +16242,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	      goto error_exit;
 	    }
 
-	  classname = entity->info.name.original;
+	  classname = pt_name_qualified (parser, entity);
 	  class_obj = db_find_class (classname);
 	  if (class_obj == NULL)
 	    {
@@ -16332,11 +16332,11 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
   switch (statement->node_type)
     {
     case PT_CREATE_ENTITY:
-      classname = statement->info.create_entity.entity_name->info.name.original;
+      classname = pt_name_qualified (parser, statement->info.create_entity.entity_name);
       ddl_type = CDC_CREATE;
       if (statement->info.create_entity.entity_type == PT_CLASS)
 	{
-	  classname = statement->info.create_entity.entity_name->info.name.original;
+	  classname = pt_name_qualified (parser, statement->info.create_entity.entity_name);
 	  classoid = ws_oid (sm_find_class (classname));
 	  objtype = CDC_TABLE;
 	}
@@ -16352,7 +16352,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
       break;
 
     case PT_ALTER:
-      classname = statement->info.alter.entity_name->info.name.original;
+      classname = pt_name_qualified (parser, statement->info.alter.entity_name);
       ddl_type = CDC_ALTER;
 
       if (do_find_object_type (statement->info.alter.entity_type, classname, &objtype) != NO_ERROR)
@@ -16378,8 +16378,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  {
 	    char temp_statement[1024] = "\0";
 	    char *rename_statement = NULL;
-	    const char *new_name = current_rename->info.rename.new_name->info.name.original;
-	    const char *old_name = current_rename->info.rename.old_name->info.name.original;
+	    const char *new_name = pt_name_qualified (parser, current_rename->info.rename.new_name);
+	    const char *old_name = pt_name_qualified (parser, current_rename->info.rename.old_name);
 	    int length = 0;
 
 	    /* Bug : statement->info.rename.entity_type always has PT_CLASS 
@@ -16676,7 +16676,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 
       if (target)
 	{
-	  classname = target->info.event_target.class_name->info.name.original;
+	  classname = pt_name_qualified (parser, target->info.event_target.class_name);
 
 	  classoid = ws_oid (sm_find_class (classname));
 	}
@@ -16695,7 +16695,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
       {
 	DB_OBJECT *tr_object;
 	TR_TRIGGER *trigger;
-	objname = statement->info.rename_trigger.old_name->info.name.original;
+	objname = pt_name_qualified (parser, statement->info.rename_trigger.old_name);
 
 	tr_object = tr_find_trigger (objname);
 	if (tr_object != NULL)
@@ -16714,7 +16714,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 	DB_OBJECT *tr_object;
 	TR_TRIGGER *trigger;
 	objname =
-	  statement->info.drop_trigger.trigger_spec_list->info.trigger_spec_list.trigger_name_list->info.name.original;
+	  pt_name_qualified (parser,
+			     statement->info.drop_trigger.trigger_spec_list->info.trigger_spec_list.trigger_name_list);
 
 	tr_object = tr_find_trigger (objname);
 	if (tr_object != NULL)

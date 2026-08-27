@@ -11143,7 +11143,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
  *       itself, and how a name reads before the owner has been filled in.
  */
 const char *
-pt_name_qualified (PARSER_CONTEXT * parser, const PT_NODE * name)
+pt_name_qualified (const PARSER_CONTEXT * parser, const PT_NODE * name)
 {
   const char *original;
   const char *owner_name;
