@@ -20858,6 +20858,32 @@ exit_on_error:
 }
 
 /*
+ * pt_reev_reads_no_spec () - is there no spec for force-time reevaluation to re-read?
+ *   return: true when the flagging pass flagged none of the statement's own specs
+ *   spec_list(in): the statement's spec list
+ *
+ *  Note: The executor reads the same answer as "no reevaluation class", and has to be able to take it as
+ *	  "the statement reads no row of its own", not as "the statement reads one this plan cannot
+ *	  re-check". The callers keep the select-phase lock for the second case, so that by the time the
+ *	  executor sees no reevaluation class only the first is left.
+ */
+static bool
+pt_reev_reads_no_spec (PT_NODE * spec_list)
+{
+  PT_NODE *spec;
+
+  for (spec = spec_list; spec != NULL; spec = spec->next)
+    {
+      if (spec->info.spec.flag & (PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
  * pt_cond_spans_multiple_specs () - does any single conjunct reference more than one spec?
  *   return: true if some term relates two or more specs
  *   parser(in): parser context
@@ -21651,6 +21677,19 @@ pt_delete_must_abort_reevaluation (PARSER_CONTEXT * parser, PT_NODE * statement,
       return true;
     }
 
+  /* a search condition that flagged no spec of its own is read from something the delete phase cannot
+   * replay as a scan filter, so there is no row to re-check it against.  Locking at select keeps "the
+   * executor sees no reevaluation class" meaning "this statement reads no row of its own", which is what
+   * lets it delete a changed version instead of skipping it.  Both places a condition can be written are
+   * asked about, because the flagging pass only ever reads the statement's own WHERE and the generated
+   * SELECT can carry one the statement does not.
+   *   DELETE FROM t WHERE ROWNUM <= 3; */
+  if ((where != NULL || aptr_statement->info.query.q.select.where != NULL) && pt_reev_reads_no_spec (from))
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
   return false;
 }
 
@@ -22092,7 +22131,13 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* The count above was taken over the DELETE statement's spec list, but only a class that owns an
        * OID - CLASS OID pair in the generated SELECT can be reevaluated at all. A class the SELECT dropped
        * (an outer-joined table none of whose columns the outer query reads) leaves an entry unfilled, so the
-       * executor must be told how many entries this loop actually wrote. */
+       * executor must be told how many entries this loop actually wrote.
+       *
+       * The executor reads a count of zero as "this statement reads no row of its own", which is what the
+       * guards above make it mean. Dropping every flagged class here would say the same thing without it
+       * being true; the target class always owns a pair, so that needs a statement whose condition names
+       * only partner classes and whose partners the SELECT all dropped. No shape has been found that does. */
+      assert (j > 0 || delete_->num_reev_classes == 0);
       delete_->num_reev_classes = j;
 
       /* OID of the user who is creating this XASL */
