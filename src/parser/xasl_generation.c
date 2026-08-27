@@ -23055,9 +23055,22 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	    }
 
 	  /* set the position in SELECT list */
+	  assert (cl < update->num_reev_classes);
+	  if (cl >= update->num_reev_classes)
+	    {
+	      break;
+	    }
 	  update->mvcc_reev_classes[cl++] = cls_idx;
 	}
     }
+
+  /* The count above was taken over the UPDATE statement's spec list, but only a class that owns an
+   * OID - CLASS OID pair in the generated SELECT can be reevaluated at all. A class the SELECT dropped
+   * leaves an entry unfilled, so the executor must be told how many entries this loop actually wrote.
+   * As on the DELETE side, dropping every flagged class would tell the executor this statement reads no
+   * row of its own; the target class always owns a pair, so no shape has been found that does. */
+  assert (cl > 0 || update->num_reev_classes == 0);
+  update->num_reev_classes = cl;
 
   /* fill in XASL cache related information */
   /* OID of the user who is creating this XASL */

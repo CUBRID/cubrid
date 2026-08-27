@@ -10368,7 +10368,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
    * update starts, not later */
   (void) logtb_get_mvcc_snapshot (thread_p);
 
-  mvcc_upddel_reev_data.copyarea = NULL;
   mvcc_reev_data.set_update_reevaluation (mvcc_upddel_reev_data);
   class_oid_cnt = update->num_classes;
   mvcc_reev_class_cnt = update->num_reev_classes;
@@ -10557,7 +10556,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      upd_cls = &update->classes[class_oid_idx];
 	      internal_class = &internal_classes[class_oid_idx];
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      if (mvcc_reev_class_idx < mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
 		{
 		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
 		}
@@ -10874,9 +10874,17 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      internal_class = &internal_classes[class_oid_idx];
 	      upd_cls = &update->classes[class_oid_idx];
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      /* The classes are walked right to left here, so the reevaluation cursor walks down with them.  It
+	       * starts above them -- a class that appears only on the right-hand side of an assignment carries a
+	       * class_index past the last updated class -- so step it down to this class first.  Walking it up,
+	       * as this loop used to, matched the first class and then read past the array. */
+	      while (mvcc_reev_class_idx >= 0 && mvcc_reev_classes[mvcc_reev_class_idx].class_index > class_oid_idx)
 		{
-		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
+		  mvcc_reev_class_idx--;
+		}
+	      if (mvcc_reev_class_idx >= 0 && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+		{
+		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx--];
 		}
 	      else
 		{
