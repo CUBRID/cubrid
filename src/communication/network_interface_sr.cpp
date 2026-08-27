@@ -5829,6 +5829,14 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 	    {
 	      thread_p->release_packet (data);
 	    }
+	  if (base_stats != NULL)
+	    {
+	      free_and_init (base_stats);
+	    }
+	  if (p_net_Deferred_end_queries != net_Deferred_end_queries)
+	    {
+	      free_and_init (p_net_Deferred_end_queries);
+	    }
 	  return;
 	}
 
