@@ -26,15 +26,10 @@
 #include "query_rewrite.h"
 #include "dbi.h"
 
-static void qo_move_subquery_hints (PT_NODE * node, PT_NODE * subq);
-static bool qo_index_hint_is_movable (PT_NODE * using_index);
 static bool qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require_where);
 static bool qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list);
-static bool qo_classify_conjunct (PT_NODE * cnf_node, QO_UNNEST_INFO * info);
 static bool qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node,
 				       QO_UNNEST_INFO * info);
-static void qo_replace_conjunct_with_join (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node,
-					   PT_NODE * prev, const QO_UNNEST_INFO * info);
 
 
 /*
@@ -58,84 +53,7 @@ static void qo_replace_conjunct_with_join (PARSER_CONTEXT * parser, PT_NODE * no
  */
 
 /*
- * qo_move_subquery_hints () - carry the unnested subquery's hints to the enclosing SELECT
- *   return: none
- *   node(in/out): the enclosing SELECT, which takes over the spec the hints name
- *   subq(in/out): the subquery being discarded, left with no hints
- *
- * Note: appended rather than assigned, since the enclosing SELECT may already carry hints of its own.
- */
-static void
-qo_move_subquery_hints (PT_NODE * node, PT_NODE * subq)
-{
-  node->info.query.q.select.using_index =
-    parser_append_node (subq->info.query.q.select.using_index, node->info.query.q.select.using_index);
-  subq->info.query.q.select.using_index = NULL;
-
-  node->info.query.q.select.leading =
-    parser_append_node (subq->info.query.q.select.leading, node->info.query.q.select.leading);
-  subq->info.query.q.select.leading = NULL;
-
-  node->info.query.q.select.use_nl =
-    parser_append_node (subq->info.query.q.select.use_nl, node->info.query.q.select.use_nl);
-  subq->info.query.q.select.use_nl = NULL;
-
-  node->info.query.q.select.use_idx =
-    parser_append_node (subq->info.query.q.select.use_idx, node->info.query.q.select.use_idx);
-  subq->info.query.q.select.use_idx = NULL;
-
-  node->info.query.q.select.index_ss =
-    parser_append_node (subq->info.query.q.select.index_ss, node->info.query.q.select.index_ss);
-  subq->info.query.q.select.index_ss = NULL;
-
-  node->info.query.q.select.index_ls =
-    parser_append_node (subq->info.query.q.select.index_ls, node->info.query.q.select.index_ls);
-  subq->info.query.q.select.index_ls = NULL;
-
-  node->info.query.q.select.use_merge =
-    parser_append_node (subq->info.query.q.select.use_merge, node->info.query.q.select.use_merge);
-  subq->info.query.q.select.use_merge = NULL;
-
-  node->info.query.q.select.use_hash =
-    parser_append_node (subq->info.query.q.select.use_hash, node->info.query.q.select.use_hash);
-  subq->info.query.q.select.use_hash = NULL;
-
-  node->info.query.q.select.no_use_hash =
-    parser_append_node (subq->info.query.q.select.no_use_hash, node->info.query.q.select.no_use_hash);
-  subq->info.query.q.select.no_use_hash = NULL;
-
-  /* these three name the subquery block being discarded, so they have nothing left to describe */
-  node->info.query.q.select.hint |=
-    (subq->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE));
-}
-
-/*
- * qo_index_hint_is_movable () - true iff the subquery's USING INDEX list means the same thing once the
- *      unnest carries it to the enclosing SELECT
- *   return: bool
- *   using_index(in): the subquery's USING INDEX list, may be NULL
- *
- * Note: every other form names its table, so it keeps applying to the spec moving up. USING INDEX NONE
- *   names none and applies to every node in scope; lifted out it would silence the outer tables too.
- */
-static bool
-qo_index_hint_is_movable (PT_NODE * using_index)
-{
-  PT_NODE *hint;
-
-  for (hint = using_index; hint != NULL; hint = hint->next)
-    {
-      if (hint->info.name.original == NULL && hint->info.name.resolved == NULL)
-	{
-	  return false;
-	}
-    }
-
-  return true;
-}
-
-/*
- * qo_is_unnestable_subquery () - eligibility gate shared by the [NOT] EXISTS and [NOT] IN paths
+ * qo_is_unnestable_subquery () - eligibility check shared by the [NOT] EXISTS and [NOT] IN paths
  *   return: true only if 'subq' is a plain SELECT over one base table, safe to flatten into a single
  *           semi/anti-joined spec
  *   parser(in):
@@ -145,7 +63,7 @@ qo_index_hint_is_movable (PT_NODE * using_index)
 static bool
 qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require_where)
 {
-  PT_NODE *inner_spec;
+  PT_NODE *inner_spec, *hint;
   bool has_subquery;
 
   if (subq == NULL || subq->node_type != PT_SELECT)
@@ -201,10 +119,15 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
       return false;
     }
 
-  /* the hint is carried to the enclosing SELECT, so reject only the form that cannot survive the move */
-  if (!qo_index_hint_is_movable (subq->info.query.q.select.using_index))
+  /* USING INDEX travels to the enclosing SELECT. Every named form keeps applying to the spec moving up, but
+   * USING INDEX NONE names no table and no index, applies to every table in scope, and lifted out would
+   * silence the outer tables too; reject only that one. */
+  for (hint = subq->info.query.q.select.using_index; hint != NULL; hint = hint->next)
     {
-      return false;
+      if (hint->info.name.original == NULL && hint->info.name.resolved == NULL)
+	{
+	  return false;
+	}
     }
 
   /* one simple base-table spec: no join, derived table or CTE */
@@ -266,14 +189,24 @@ qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list)
 }
 
 /*
- * qo_classify_conjunct () - recognize one WHERE conjunct as a [NOT] EXISTS / [NOT] IN form
+ * qo_conjunct_is_unnestable () - decide whether one WHERE conjunct is a [NOT] EXISTS / [NOT] IN form that
+ *      can become a SEMI / ANTI joined spec, and assemble the ON condition it would carry
  *   return: bool
+ *   parser(in):
+ *   node(in): the enclosing PT_SELECT, with a non-empty FROM
  *   cnf_node(in): the conjunct to examine
- *   info(out): subq, is_anti and is_in_form, filled only when this returns true
+ *   info(out): the classification and the assembled ON, filled only when this returns true
+ *
+ * Note: the tree is never modified here; a rejected conjunct keeps its nested subquery, a missed
+ *   optimization and never a wrong answer.
  */
 static bool
-qo_classify_conjunct (PT_NODE * cnf_node, QO_UNNEST_INFO * info)
+qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node, QO_UNNEST_INFO * info)
 {
+  PT_NODE *subq, *inner_spec, *on_cond, *cnf, *save_next, *new_expr = NULL;
+  UINTPTR ref;
+  bool has_direct_join = false, has_outer_only = false;
+
   info->subq = NULL;
   info->on_cond = NULL;
   info->is_anti = false;
@@ -296,74 +229,47 @@ qo_classify_conjunct (PT_NODE * cnf_node, QO_UNNEST_INFO * info)
 	  return false;
 	}
       info->is_anti = true;	/* NOT EXISTS -> ANTI */
-      info->subq = inner->info.expr.arg1;
-      return true;
+      subq = inner->info.expr.arg1;
     }
-
-  switch (cnf_node->info.expr.op)
+  else
     {
-    case PT_EXISTS:		/* EXISTS -> SEMI */
-      break;
-    case PT_IS_IN:		/* IN / = SOME -> SEMI */
-    case PT_EQ_SOME:
-      info->is_in_form = true;
-      break;
-    case PT_IS_NOT_IN:		/* NOT IN / <> ALL -> ANTI */
-    case PT_NE_ALL:
-      info->is_in_form = true;
-      info->is_anti = true;
-      break;
-    default:
-      return false;
+      switch (cnf_node->info.expr.op)
+	{
+	case PT_EXISTS:	/* EXISTS -> SEMI */
+	  break;
+	case PT_IS_IN:		/* IN / = SOME -> SEMI */
+	case PT_EQ_SOME:
+	  info->is_in_form = true;
+	  break;
+	case PT_IS_NOT_IN:	/* NOT IN / <> ALL -> ANTI */
+	case PT_NE_ALL:
+	  info->is_in_form = true;
+	  info->is_anti = true;
+	  break;
+	default:
+	  return false;
+	}
+
+      /* EXISTS holds its subquery in arg1, the IN forms in arg2 */
+      subq = info->is_in_form ? cnf_node->info.expr.arg2 : cnf_node->info.expr.arg1;
     }
 
-  /* EXISTS holds its subquery in arg1, the IN forms in arg2 */
-  info->subq = info->is_in_form ? cnf_node->info.expr.arg2 : cnf_node->info.expr.arg1;
-  return true;
-}
-
-/*
- * qo_conjunct_is_unnestable () - decide whether one WHERE conjunct can become a SEMI / ANTI joined spec,
- *      and assemble the ON condition it would carry
- *   return: bool
- *   parser(in):
- *   node(in): the enclosing PT_SELECT, with a non-empty FROM
- *   cnf_node(in): the conjunct to examine
- *   info(out): the classification and the assembled ON, filled only when this returns true
- *
- * Note: the tree is never modified here; a rejected conjunct keeps its nested subquery, a missed
- *   optimization and never a wrong answer.
- */
-static bool
-qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node, QO_UNNEST_INFO * info)
-{
-  PT_NODE *subq, *inner_spec, *cond, *cnf, *new_on_pred = NULL;
-  bool is_anti, is_in_form, has_direct_join = false, has_outer_only = false;
-
-  if (!qo_classify_conjunct (cnf_node, info))
-    {
-      return false;
-    }
-  subq = info->subq;
-  is_anti = info->is_anti;
-  is_in_form = info->is_in_form;
-
-  if (!qo_is_unnestable_subquery (parser, subq, !is_in_form))
+  if (!qo_is_unnestable_subquery (parser, subq, !info->is_in_form))
     {
       return false;
     }
 
   /* uncorrelated IN / = SOME belongs to qo_rewrite_subqueries (), which ran just above; the ANTI forms
    * have no such path */
-  if (is_in_form && !is_anti && subq->info.query.correlation_level != 1)
+  if (info->is_in_form && !info->is_anti && subq->info.query.correlation_level != 1)
     {
       return false;
     }
 
   inner_spec = subq->info.query.q.select.from;
-  cond = subq->info.query.q.select.where;
+  on_cond = subq->info.query.q.select.where;
 
-  if (is_in_form)
+  if (info->is_in_form)
     {
       /* the IN forms carry no join predicate of their own, so synthesize 'lhs = select-list item'. */
       PT_NODE *lhs = cnf_node->info.expr.arg1;
@@ -377,27 +283,27 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
 	  return false;
 	}
 
-      if (is_anti
+      if (info->is_anti
 	  && !(qo_operand_is_non_null (lhs, node->info.query.q.select.from)
 	       && qo_operand_is_non_null (item, inner_spec)))
 	{
 	  return false;
 	}
 
-      new_on_pred = parser_new_node (parser, PT_EXPR);
-      if (new_on_pred == NULL)
+      new_expr = parser_new_node (parser, PT_EXPR);
+      if (new_expr == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "allocate new node");
 	  return false;
 	}
-      new_on_pred->info.expr.op = PT_EQ;
-      new_on_pred->info.expr.arg1 = lhs;	/* still owned by cnf_node until the caller commits */
-      new_on_pred->info.expr.arg2 = item;	/* likewise by the subquery select list */
-      new_on_pred->next = cond;
-      cond = new_on_pred;
+      new_expr->info.expr.op = PT_EQ;
+      new_expr->info.expr.arg1 = lhs;	/* still owned by cnf_node until the caller commits */
+      new_expr->info.expr.arg2 = item;	/* likewise by the subquery select list */
+      new_expr->next = on_cond;
+      on_cond = new_expr;
     }
 
-  for (cnf = cond; cnf != NULL && !has_outer_only; cnf = cnf->next)
+  for (cnf = on_cond; cnf != NULL; cnf = cnf->next)
     {
       if (!has_direct_join)
 	{
@@ -405,97 +311,40 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
 								   node->info.query.q.select.from);
 	}
 
-      if (is_anti && !pt_conjunct_refers_to_spec (parser, cnf, inner_spec->info.spec.id))
+      if (info->is_anti)
 	{
-	  has_outer_only = true;
-	  break;
+	  /* a conjunct naming only outer tables would sink to the outer scan as its filter
+	   * (qo_analyze_term ()) and cut rows the ANTI must emit. pt_is_spec_referenced () zeroes 'ref' when
+	   * the conjunct names the inner; detach ->next so the walk stays on this conjunct. */
+	  ref = inner_spec->info.spec.id;
+	  save_next = cnf->next;
+	  cnf->next = NULL;
+	  (void) parser_walk_tree (parser, cnf, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
+	  cnf->next = save_next;
+	  if (ref != 0)
+	    {
+	      has_outer_only = true;
+	      break;
+	    }
 	}
     }
 
   if (!has_direct_join || has_outer_only)
     {
-      if (new_on_pred != NULL)
+      if (new_expr != NULL)
 	{
 	  /* discard the synthesized equality; its operands still belong to the untouched tree */
-	  new_on_pred->next = NULL;
-	  new_on_pred->info.expr.arg1 = NULL;
-	  new_on_pred->info.expr.arg2 = NULL;
-	  parser_free_tree (parser, new_on_pred);
+	  new_expr->next = NULL;
+	  new_expr->info.expr.arg1 = NULL;
+	  new_expr->info.expr.arg2 = NULL;
+	  parser_free_tree (parser, new_expr);
 	}
       return false;
     }
 
-  info->on_cond = cond;
+  info->subq = subq;
+  info->on_cond = on_cond;
   return true;
-}
-
-/*
- * qo_replace_conjunct_with_join () - turn the subquery into a SEMI / ANTI joined spec of the enclosing
- *      FROM and drop the conjunct that held it
- *   return: none
- *   parser(in):
- *   node(in/out): the enclosing PT_SELECT
- *   cnf_node(in/out): the conjunct, unlinked from the WHERE and freed here
- *   prev(in): the conjunct's CNF-list predecessor, NULL when it heads the list
- *   info(in): what qo_conjunct_is_unnestable () worked out; its subquery is emptied and freed here
- *
- * Note: called only after qo_conjunct_is_unnestable () returned true, so nothing here can fail.
- */
-static void
-qo_replace_conjunct_with_join (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node, PT_NODE * prev,
-			       const QO_UNNEST_INFO * info)
-{
-  PT_NODE *subq = info->subq;
-  PT_NODE *on_cond = info->on_cond;
-  PT_NODE *inner_spec = subq->info.query.q.select.from;
-  PT_NODE *spec;
-  short loc;
-
-  /* detach everything we keep, before the subquery shell is freed at the end */
-  subq->info.query.q.select.from = NULL;
-  subq->info.query.q.select.where = NULL;
-  if (info->is_in_form)
-    {
-      /* the synthesized equality owns these two now */
-      cnf_node->info.expr.arg1 = NULL;
-      subq->info.query.q.select.list = NULL;
-    }
-
-  qo_move_subquery_hints (node, subq);
-
-  inner_spec->info.spec.join_type = (info->is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
-  inner_spec->info.spec.on_cond = on_cond;
-
-  /* count the position rather than read the last spec's location: a derived spec appended earlier by
-   * qo_rewrite_subqueries () still carries the unset -1, and qo_analyze_term () indexes the node array by
-   * location, so it must equal the FROM position */
-  loc = 0;
-  for (spec = node->info.query.q.select.from; spec->next != NULL; spec = spec->next)
-    {
-      loc++;
-    }
-  spec->next = inner_spec;
-  inner_spec->info.spec.location = (short) (loc + 1);
-
-  /* stamp the moved ON as pt_bind_names () would: this spec's location on every term, plus (ANTI only)
-   * PT_EXPR_INFO_ANTI_JOIN_ON so qo_reduce_equality_terms () keeps them as join predicates */
-  (void) parser_walk_tree (parser, on_cond, pt_mark_location, &inner_spec->info.spec.location, NULL, NULL);
-  if (info->is_anti)
-    {
-      (void) parser_walk_tree (parser, on_cond, pt_mark_anti_join_on, NULL, NULL, NULL);
-    }
-
-  /* unlink the conjunct and free its now empty shell */
-  if (prev == NULL)
-    {
-      node->info.query.q.select.where = cnf_node->next;
-    }
-  else
-    {
-      prev->next = cnf_node->next;
-    }
-  cnf_node->next = NULL;
-  parser_free_tree (parser, cnf_node);
 }
 
 /*
@@ -508,12 +357,9 @@ qo_replace_conjunct_with_join (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE 
 void
 qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *prev, *cnf_node, *next;
-
-  if (node == NULL || node->node_type != PT_SELECT)
-    {
-      return;
-    }
+  PT_NODE *prev, *cnf_node, *next, *subq, *inner_spec, *spec;
+  QO_UNNEST_INFO info;
+  short loc;
 
   /* pt_check_semi_anti_join () rejects SEMI/ANTI in a hierarchical query; the unnest also needs a FROM
    * tail to append to */
@@ -525,8 +371,6 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
   prev = NULL;
   for (cnf_node = node->info.query.q.select.where; cnf_node != NULL; cnf_node = next)
     {
-      QO_UNNEST_INFO info;
-
       next = cnf_node->next;
 
       if (!qo_conjunct_is_unnestable (parser, node, cnf_node, &info))
@@ -535,7 +379,96 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 	  continue;
 	}
 
-      qo_replace_conjunct_with_join (parser, node, cnf_node, prev, &info);
+      /* from here on nothing can fail: the tree is reshaped in place */
+      subq = info.subq;
+      inner_spec = subq->info.query.q.select.from;
+
+      /* detach everything we keep, before the subquery shell is freed at the end */
+      subq->info.query.q.select.from = NULL;
+      subq->info.query.q.select.where = NULL;
+      if (info.is_in_form)
+	{
+	  /* the synthesized equality owns these two now */
+	  cnf_node->info.expr.arg1 = NULL;
+	  subq->info.query.q.select.list = NULL;
+	}
+
+      /* carry the subquery's hints to the enclosing SELECT, appended after any it already has (as
+       * mq_rewrite_aggregate_as_derived () does). The optimizer reads the bitmask first and the lists only
+       * under it, so both move together. NO_MERGE / QUERY_CACHE / NO_SUBQUERY_CACHE name the subquery block
+       * itself, which is going away, so they are dropped. */
+      node->info.query.q.select.using_index =
+	parser_append_node (subq->info.query.q.select.using_index, node->info.query.q.select.using_index);
+      subq->info.query.q.select.using_index = NULL;
+
+      node->info.query.q.select.leading =
+	parser_append_node (subq->info.query.q.select.leading, node->info.query.q.select.leading);
+      subq->info.query.q.select.leading = NULL;
+
+      node->info.query.q.select.use_nl =
+	parser_append_node (subq->info.query.q.select.use_nl, node->info.query.q.select.use_nl);
+      subq->info.query.q.select.use_nl = NULL;
+
+      node->info.query.q.select.use_idx =
+	parser_append_node (subq->info.query.q.select.use_idx, node->info.query.q.select.use_idx);
+      subq->info.query.q.select.use_idx = NULL;
+
+      node->info.query.q.select.index_ss =
+	parser_append_node (subq->info.query.q.select.index_ss, node->info.query.q.select.index_ss);
+      subq->info.query.q.select.index_ss = NULL;
+
+      node->info.query.q.select.index_ls =
+	parser_append_node (subq->info.query.q.select.index_ls, node->info.query.q.select.index_ls);
+      subq->info.query.q.select.index_ls = NULL;
+
+      node->info.query.q.select.use_merge =
+	parser_append_node (subq->info.query.q.select.use_merge, node->info.query.q.select.use_merge);
+      subq->info.query.q.select.use_merge = NULL;
+
+      node->info.query.q.select.use_hash =
+	parser_append_node (subq->info.query.q.select.use_hash, node->info.query.q.select.use_hash);
+      subq->info.query.q.select.use_hash = NULL;
+
+      node->info.query.q.select.no_use_hash =
+	parser_append_node (subq->info.query.q.select.no_use_hash, node->info.query.q.select.no_use_hash);
+      subq->info.query.q.select.no_use_hash = NULL;
+
+      node->info.query.q.select.hint |=
+	(subq->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE));
+
+      inner_spec->info.spec.join_type = (info.is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
+      inner_spec->info.spec.on_cond = info.on_cond;
+
+      /* count the position rather than read the last spec's location: a derived spec appended earlier by
+       * qo_rewrite_subqueries () still carries the unset -1, and qo_analyze_term () indexes the node array by
+       * location, so it must equal the FROM position */
+      loc = 0;
+      for (spec = node->info.query.q.select.from; spec->next != NULL; spec = spec->next)
+	{
+	  loc++;
+	}
+      spec->next = inner_spec;
+      inner_spec->info.spec.location = (short) (loc + 1);
+
+      /* stamp the moved ON as pt_bind_names () would: this spec's location on every term, plus (ANTI only)
+       * PT_EXPR_INFO_ANTI_JOIN_ON so qo_reduce_equality_terms () keeps them as join predicates */
+      (void) parser_walk_tree (parser, info.on_cond, pt_mark_location, &inner_spec->info.spec.location, NULL, NULL);
+      if (info.is_anti)
+	{
+	  (void) parser_walk_tree (parser, info.on_cond, pt_mark_anti_join_on, NULL, NULL, NULL);
+	}
+
+      /* unlink the conjunct and free its now empty shell, the subquery shell and its select list with it */
+      if (prev == NULL)
+	{
+	  node->info.query.q.select.where = next;
+	}
+      else
+	{
+	  prev->next = next;
+	}
+      cnf_node->next = NULL;
+      parser_free_tree (parser, cnf_node);
     }
 }
 

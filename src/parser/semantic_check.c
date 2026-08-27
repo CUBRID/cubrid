@@ -10822,39 +10822,6 @@ pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, 
 }
 
 /*
- * pt_conjunct_refers_to_spec () - true iff the given conjunct names a column of the given spec.
- *   return:  whether the conjunct references spec_id
- *   parser(in): the parser context
- *   cond(in): one conjunct of a condition; ->next is ignored
- *   spec_id(in): the spec to look for
- */
-bool
-pt_conjunct_refers_to_spec (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR spec_id)
-{
-  PT_SEMI_ANTI_CONJUNCT_INFO info;
-  PT_NODE *save_next;
-
-  if (cond == NULL)
-    {
-      return false;
-    }
-
-  info.inner_id = spec_id;
-  info.from_list = NULL;	/* the outer bookkeeping of the classifier is unused here */
-  info.found_inner = false;
-  info.has_nested = false;
-  info.outer_id = 0;
-  info.multi_outer = false;
-
-  save_next = cond->next;
-  cond->next = NULL;
-  (void) parser_walk_tree (parser, cond, pt_semi_anti_conjunct_pre, &info, NULL, NULL);
-  cond->next = save_next;
-
-  return info.found_inner;
-}
-
-/*
  * pt_check_semi_anti_join () - enforce v1 SEMI/ANTI JOIN semantic rules:
  *      (1) the ON predicate must reference the outer (left) side;
  *      (2) inner columns may not be referenced outside the join's own ON predicate.
