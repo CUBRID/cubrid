@@ -11460,11 +11460,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			}
 		      if (!has_spec)
 			{
-			  /* The plan gives this class no filters to re-evaluate with, so the delete phase
-			   * cannot re-check the predicate: skip a version the statement never evaluated
-			   * rather than delete it, exactly as a plan carrying no reevaluation data does.
-			   * mvcc_reev_class_cnt is this loop's own bound over the value list's OID pairs;
-			   * cutting it short here would leave the remaining classes' pairs unconsumed. */
+			  /* No access spec for this row's subclass, so no filters to re-check with -- see
+			   * qexec_upddel_mvcc_set_filters ().  Skip the version rather than delete what the
+			   * predicate never saw.  mvcc_reev_class_cnt bounds this loop over the value list's
+			   * OID pairs and must stay as it is. */
 			  reev_disabled = true;
 			  mvcc_reev_class = NULL;
 			  mvcc_upddel_reev_data.curr_upddel = NULL;
