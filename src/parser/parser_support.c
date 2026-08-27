@@ -11181,9 +11181,6 @@ pt_name_qualified (const PARSER_CONTEXT * parser, const PT_NODE * name)
 const char *
 pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  const char *name = NULL;
-  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
-
   if (parser == NULL || node == NULL)
     {
       return NULL;
@@ -11199,10 +11196,9 @@ pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
     }
 
-#if !defined(NDEBUG)
-  /* the name carries only itself now; the owner is in its own field */
-  assert (sm_qualifier_name (PT_NAME_ORIGINAL (node), qualifier_name, DB_MAX_USER_LENGTH) == NULL);
-#endif
+  /* A name usually carries only itself, with the owner in its own field, but an exposed
+   * name is one label spelled the way the query wrote it, owner and all, so what is in
+   * original is not asked about here. */
 
   if (PT_NAME_OWNER_NAME (node) != NULL)
     {

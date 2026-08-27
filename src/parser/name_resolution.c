@@ -11065,7 +11065,8 @@ pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * sp
   root_name = pt_name_qualified (parser, entity_name);
   partition_node = spec->info.spec.partition;
   partition_suffix = partition_node->info.name.original;
-  partition_name = pt_partition_name (parser, root_name, partition_suffix);
+  /* a partition is named after the class alone and belongs to whoever the class does */
+  partition_name = pt_partition_name (parser, entity_name->info.name.original, partition_suffix);
   if (partition_name == NULL)
     {
       return NULL;
@@ -11073,6 +11074,7 @@ pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * sp
 
   /* set the actual partition name to the partition node */
   partition_node->info.name.original = partition_name;
+  partition_node->info.name.owner_name = entity_name->info.name.owner_name;
 
   /* use partition name to make flat list */
   spec->info.spec.entity_name = partition_node;
@@ -11133,6 +11135,10 @@ pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * sp
   /* set root class name as alias for this spec */
   if (spec->info.spec.range_var == NULL)
     {
+      /* an exposed name is one label, spelled the way the query wrote it */
+      entity_name->info.name.original = root_name;
+      entity_name->info.name.owner_name = NULL;
+      entity_name->info.name.resolved = NULL;
       spec->info.spec.range_var = entity_name;
       entity_name = NULL;
     }
