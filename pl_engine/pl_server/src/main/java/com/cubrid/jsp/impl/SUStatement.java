@@ -54,6 +54,7 @@ public class SUStatement {
 
     private List<ColumnInfo> columnInfos = null;
     private HashMap<String, Integer> colNameToIndex = null;
+    private HashMap<String, Integer> strippedColNameToIndex = null;
     private SUBindParameter bindParameter = null;
 
     private byte executeFlag;
@@ -277,14 +278,29 @@ public class SUStatement {
         return colNameToIndex;
     }
 
+    public Map<String, Integer> getStrippedColNameIndex() {
+        return strippedColNameToIndex;
+    }
+
     private void setColumnInfo(List<ColumnInfo> infos) {
         columnInfos = infos;
         columnNumber = columnInfos.size();
         colNameToIndex = new HashMap<String, Integer>(columnNumber);
+        strippedColNameToIndex = new HashMap<String, Integer>(columnNumber);
         for (int i = 0; i < columnInfos.size(); i++) {
             String name = columnInfos.get(i).colName.toLowerCase();
             if (colNameToIndex.containsKey(name) == false) {
                 colNameToIndex.put(name, i);
+            }
+
+            // strippedColName is empty when an AS alias was used or the name has no table
+            // qualifier.
+            String stripped = columnInfos.get(i).strippedColName;
+            if (stripped != null && stripped.length() > 0) {
+                stripped = stripped.toLowerCase();
+                if (strippedColNameToIndex.containsKey(stripped) == false) {
+                    strippedColNameToIndex.put(stripped, i);
+                }
             }
         }
     }
