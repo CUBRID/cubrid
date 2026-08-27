@@ -711,6 +711,12 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		      goto exit;
 		    }
 
+		  /* clear errors from failed casts if any cast attempt succeeds. */
+		  if (er_errid () != NO_ERROR)
+		    {
+		      er_clear ();
+		    }
+
 		  /* update domain */
 		  func_p->domain = tmp_domain_p;
 		}

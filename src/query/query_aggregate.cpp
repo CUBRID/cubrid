@@ -968,6 +968,12 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			  return error;
 			}
 
+		      /* clear errors from failed casts if any cast attempt succeeds. */
+		      if (er_errid () != NO_ERROR)
+			{
+			  er_clear ();
+			}
+
 		      /* update domain */
 		      agg_p->domain = tmp_domain_p;
 		    }

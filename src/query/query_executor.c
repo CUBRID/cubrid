@@ -21398,6 +21398,12 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		      return error;
 		    }
 
+		  /* clear errors from failed casts if any cast attempt succeeds. */
+		  if (er_errid () != NO_ERROR)
+		    {
+		      er_clear ();
+		    }
+
 		  /* update domain */
 		  agg_p->domain = tmp_domain_p;
 		  agg_p->accumulator_domain.value_dom = tmp_domain_p;
