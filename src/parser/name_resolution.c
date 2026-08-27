@@ -7264,6 +7264,12 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		  q->info.name.spec_id = p->info.spec.id;
 		  q->info.name.meta_class = p->info.spec.meta_class;
 		  p->info.spec.range_var = parser_copy_tree (parser, q);
+		  /* An exposed name stands for a range variable, not for a class: it is one
+		   * label spelled the way the query wrote it, the same as "t" in "from x t".
+		   * Everything downstream copies it into name.resolved and compares the two,
+		   * so it has to stay a single string. */
+		  p->info.spec.range_var->info.name.original = pt_name_qualified (parser, q);
+		  p->info.spec.range_var->info.name.owner_name = NULL;
 		  p->info.spec.range_var->info.name.resolved = NULL;
 		}
 	      else if (p->info.spec.cte_name)

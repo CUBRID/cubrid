@@ -1859,8 +1859,10 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       if (dt->info.data_type.entity && dt->info.data_type.entity->node_type == PT_NAME)
 	{
 	  const char *name;
+	  const char *owner_name;
 
 	  name = dt->info.data_type.entity->info.name.original;
+	  owner_name = dt->info.data_type.entity->info.name.owner_name;
 	  assert (name != NULL);
 
 	  if (class_name != NULL && pt_user_specified_name_compare (name, class_name) == 0)
@@ -1870,10 +1872,11 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
 	    }
 	  else
 	    {
-	      class_obj = db_find_class (name);
+	      class_obj = db_find_class_of_owner (owner_name, name);
 	      if (class_obj == NULL)
 		{
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_DOMAIN_NOT_A_CLASS, 1, name);
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_DOMAIN_NOT_A_CLASS, 1,
+			  pt_name_qualified (parser, dt->info.data_type.entity));
 		  return NULL;
 		}
 	    }

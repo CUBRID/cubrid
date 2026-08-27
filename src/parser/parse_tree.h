@@ -863,7 +863,8 @@ struct json_t;
 		  }								\
 		else								\
 		  {								\
-		    (r) = sm_find_class (PT_NAME_ORIGINAL (entity_name));	\
+		    (r) = sm_find_class_of_owner (PT_NAME_OWNER_NAME (entity_name),	\
+						  PT_NAME_ORIGINAL (entity_name));	\
 		    assert ((r) != NULL);					\
 		  }								\
 	      }									\

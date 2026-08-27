@@ -11147,6 +11147,7 @@ pt_name_qualified (PARSER_CONTEXT * parser, const PT_NODE * name)
 {
   const char *original;
   const char *owner_name;
+  const char *qualified;
 
   if (name == NULL || !PT_IS_NAME_NODE (name))
     {
@@ -11161,7 +11162,14 @@ pt_name_qualified (PARSER_CONTEXT * parser, const PT_NODE * name)
       return original;
     }
 
-  return pt_append_string (parser, pt_append_string (parser, owner_name, "."), original);
+  /* start from a copy: pt_append_string extends its first argument in place when that
+   * argument sits at the end of a parser string block, which would rewrite the owner
+   * name held by the node itself. */
+  qualified = pt_append_string (parser, NULL, owner_name);
+  qualified = pt_append_string (parser, qualified, ".");
+  qualified = pt_append_string (parser, qualified, original);
+
+  return qualified;
 }
 
 /*
