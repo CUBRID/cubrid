@@ -36,12 +36,15 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public abstract class Unit extends AstNode {
 
     public final boolean connectionRequired;
+    public final String owner;
     public final String compileSeqNo;
 
-    public Unit(ParserRuleContext ctx, boolean connectionRequired, String compileSeqNo) {
+    public Unit(
+            ParserRuleContext ctx, boolean connectionRequired, String owner, String compileSeqNo) {
         super(ctx);
 
         this.connectionRequired = connectionRequired;
+        this.owner = owner;
         this.compileSeqNo = compileSeqNo;
     }
 

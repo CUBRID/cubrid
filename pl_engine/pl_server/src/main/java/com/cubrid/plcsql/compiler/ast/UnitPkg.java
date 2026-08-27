@@ -46,9 +46,10 @@ public class UnitPkg extends Unit {
     public UnitPkg(
             ParserRuleContext ctx,
             boolean connectionRequired,
+            String owner,
             String compileSeqNo,
             DeclPackage pkg) {
-        super(ctx, connectionRequired, compileSeqNo);
+        super(ctx, connectionRequired, owner, compileSeqNo);
 
         this.pkg = pkg;
     }
@@ -58,7 +59,12 @@ public class UnitPkg extends Unit {
         if (className == null) {
             className =
                     String.format(
-                            "Pkg_%s_%s_%d", pkg.name, compileSeqNo, new java.util.Date().getTime());
+                            "Pckg_%d_%s_%s_%s_%d",
+                            owner.length(),
+                            owner,
+                            pkg.name,
+                            compileSeqNo,
+                            System.currentTimeMillis());
         }
 
         return className;

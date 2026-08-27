@@ -76,9 +76,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public final Set<Dependency> dependencies = new HashSet<>();
     public NodeList<Decl> pkgSpecItems;
 
-    public ParseTreeConverter(InstanceStore iStore, String spOwner, String compileSeqNo) {
+    public ParseTreeConverter(InstanceStore iStore, String unitOwner, String compileSeqNo) {
         this.iStore = iStore;
-        this.spOwner = Misc.getNormalizedText(spOwner);
+        this.unitOwner = Misc.getNormalizedText(unitOwner);
         this.compileSeqNo = compileSeqNo;
         this.sqlSerialNo = 1;
     }
@@ -165,7 +165,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         // but its scope must be set as other declarations
         declPkg.setScope(symbolStack.getCurrentScope());
 
-        return new UnitPkg(specContext, connectionRequired, compileSeqNo, declPkg);
+        return new UnitPkg(specContext, connectionRequired, unitOwner, compileSeqNo, declPkg);
     }
 
     public void askServerSemanticQuestions() {
@@ -339,7 +339,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         topLevelStmt = CREATE_SP;
         DeclRoutine decl = visitCreate_routine(ctx.create_routine());
-        ret = new UnitSp(ctx, connectionRequired, compileSeqNo, decl);
+        ret = new UnitSp(ctx, connectionRequired, unitOwner, compileSeqNo, decl);
 
         // every other stacks must have been popped except for PREDEFINED and MAIN (level 0 and 1)
         assert symbolStack.getSize() == 2;
@@ -591,7 +591,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         // row is a table
-        dependencies.add(new Dependency(Dependency.OBJ_TYPE_TABLE, row, spOwner));
+        dependencies.add(new Dependency(Dependency.OBJ_TYPE_TABLE, row, unitOwner));
 
         StaticSql staticSql = checkAndConvertStaticSql(false, sws, ctx);
         List<Misc.Pair<String, Type>> selectList = staticSql.selectList;
@@ -1152,7 +1152,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             // This has an owner name
 
             String owner = Misc.getNormalizedText(ctx.func_call_name().owner);
-            if (owner.equals(spOwner) && name.equals(spName) && isSpFunc) {
+            if (owner.equals(unitOwner) && name.equals(spName) && isSpFunc) {
 
                 // OK: recursive call of the stored function being defined
                 // Note that owner name is unused afterwards.
@@ -2664,7 +2664,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             // This has an owner name
 
             String owner = Misc.getNormalizedText(ctx.proc_call_name().owner);
-            if (owner.equals(spOwner)
+            if (owner.equals(unitOwner)
                     && ctx.proc_call_name().DBMS_OUTPUT() == null
                     && name.equals(spName)
                     && !isSpFunc) {
@@ -2970,7 +2970,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private final LinkedHashMap<AstNode, ServerAPI.Question> semanticQuestions =
             new LinkedHashMap<>();
 
-    private final String spOwner;
+    private final String unitOwner;
     private final String compileSeqNo;
 
     private StmtLoop.LoopOptimizables loopOptimizables = null;
@@ -3165,7 +3165,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 assert scopeLevel == DECL_TOP_LEVEL;
                 if (ctx.uniq_name().owner != null) {
                     String owner = Misc.getNormalizedText(ctx.uniq_name().owner);
-                    assert owner.equals(spOwner);
+                    assert owner.equals(unitOwner);
                 }
                 spName = name;
                 isSpFunc = (ctx.PROCEDURE() == null);
