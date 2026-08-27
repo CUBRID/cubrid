@@ -286,7 +286,7 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
   s_hint_msg.stmt_no = -1;
 #endif
 
-  /* wf122 A2: the hint table and its lead-offset index are per-thread under
+  /* the hint table and its lead-offset index are per-thread under
    * SERVER_MODE, so every thread must sort/index its own copy on first use;
    * a function-local static would initialize only the first thread's copy. */
   static CSQL_PARSER_TLS bool was_initialized = false;

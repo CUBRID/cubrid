@@ -16,7 +16,7 @@
  */
 
 /*
- * test_main.cpp - wf119 milestone-0: the client parser works inside a
+ * test_main.cpp - the client parser works inside a
  *                 SERVER_MODE binary
  *
  * Links against the SERVER_MODE libcubrid (the same library cub_server uses)
@@ -37,7 +37,7 @@
 #include "language_support.h"
 #include "parser.h"
 
-/* wf122/A1: au lives in the session-scoped client context installed by the
+/* au lives in the session-scoped client context installed by the
  * thread's activation bracket, not in a process singleton */
 static int
 test_au_context_bracket (void)
@@ -83,7 +83,7 @@ test_au_context_bracket (void)
   return 0;
 }
 
-/* wf122/A2: the parser state is per-thread - concurrent parses on distinct
+/* the parser state is per-thread - concurrent parses on distinct
  * threads must neither corrupt each other nor diverge from a single-thread
  * parse of the same statement.  Statements are chosen to exercise the state
  * that used to be process-global: hint table (with arguments), the grammar's

@@ -323,7 +323,7 @@ extern "C"
   extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
 #if !defined (_DBTYPE_FUNCTION_SELF_)
   /* the implementation in dbtype_function.i returns INTL_CODESET; this int
-   * alias is for API consumers only (wf119: C++ rejects the mismatch when
+   * alias is for API consumers only (C++ rejects the mismatch when
    * dbtype_function.c compiles both together) */
   extern int db_get_string_codeset (const DB_VALUE * value);
 #endif

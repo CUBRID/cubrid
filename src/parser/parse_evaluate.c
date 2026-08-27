@@ -51,7 +51,7 @@
 
 /* associates labels with DB_VALUES */
 #if defined (SERVER_MODE)
-/* wf122 A2 (D5): interpreter labels are session data - they outlive a
+/* interpreter labels are session data - they outlive a
  * statement and must not leak across sessions - so under SERVER_MODE the
  * table lives in the session's client context instead of a process global.
  * TLS would be wrong here: worker threads are pooled per request and have

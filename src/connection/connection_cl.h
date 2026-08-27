@@ -29,7 +29,7 @@
 #include "connection_defs.h"
 #include "connection_support.hpp"
 
-/* DB_CONNECT_ORDER_* / DB_HS_* moved to connection_defs.h (wf119: needed by
+/* DB_CONNECT_ORDER_* / DB_HS_* moved to connection_defs.h (needed by
  * db_admin.c compiled under SERVER_MODE, where this header cannot be used) */
 
 class connection_cl:public connection_support

@@ -58,7 +58,7 @@
 
 
 #if defined (SERVER_MODE)
-extern thread_local unsigned int db_on_server;	/* wf119 */
+extern thread_local unsigned int db_on_server;	/* defined in network_interface_sr.cpp */
 #else
 extern unsigned int db_on_server;
 #endif

@@ -50,7 +50,7 @@
 
 #include <utility>
 
-/* wf119: workspace/object client semantics are compiled in SERVER_MODE too
+/* workspace/object client semantics are compiled in SERVER_MODE too
  * (merged binary); runtime discrimination is db_on_server (thread_local, D5) */
 #include "work_space.h"
 #include "virtual_object.h"
@@ -67,7 +67,7 @@
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #if defined (SERVER_MODE)
-extern thread_local unsigned int db_on_server;	/* wf119 */
+extern thread_local unsigned int db_on_server;	/* defined in network_interface_sr.cpp */
 #else
 extern unsigned int db_on_server;
 #endif
@@ -81,7 +81,7 @@ extern unsigned int db_on_server;
 /*
  * MR_OID_SIZE
  * Hack so we don't have to conditionalize the type vector.
- * wf119: the merged SERVER_MODE binary links the workspace, so WS_MEMOID is
+ * the merged SERVER_MODE binary links the workspace, so WS_MEMOID is
  * always available; tp_Object.size = 0 tripped get_mem_size_of_mem's assert
  * while the in-process client loaded _db_authorization (round-14 core).
  */
@@ -106,7 +106,7 @@ extern unsigned int db_on_server;
  * and oid promotion cannot be controlled there.
  *
  */
-/* wf119: client default; server threads are covered at runtime by
+/* client default; server threads are covered at runtime by
  * db_on_server == 1 in every "db_on_server || pr_Inhibit_oid_promotion" test */
 #define PR_INHIBIT_OID_PROMOTION_DEFAULT 0
 
@@ -4868,7 +4868,7 @@ mr_null_oid (OID * oid)
 static void
 mr_initmem_object (void *memptr, TP_DOMAIN * domain)
 {
-  /* wf119: reached only from client-context threads (workspace layout) */
+  /* reached only from client-context threads (workspace layout) */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
 
   mr_null_oid (&mem->oid);
@@ -4885,7 +4885,7 @@ mr_initval_object (DB_VALUE * value, int precision, int scale)
 {
   OID oid;
 
-  /* wf119: db_on_server (thread_local) keeps the old SERVER_MODE behavior for
+  /* db_on_server (thread_local) keeps the old SERVER_MODE behavior for
    * server worker threads */
   if (db_on_server)
     {
@@ -4903,7 +4903,7 @@ mr_initval_object (DB_VALUE * value, int precision, int scale)
 static int
 mr_setmem_object (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
-  /* wf119: reached only from client-context threads (workspace layout) */
+  /* reached only from client-context threads (workspace layout) */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
   OID *oid;
   MOP op;
@@ -4944,7 +4944,7 @@ mr_getmem_object (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
   int error = NO_ERROR;
 
-  /* wf119: reached only from client-context threads (workspace layout) */
+  /* reached only from client-context threads (workspace layout) */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
   MOP op;
 
@@ -4980,7 +4980,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int error = NO_ERROR;
   OID *oid;
 
-  /* wf119: client body kept; db_on_server covers server-thread dispatch */
+  /* client body kept; db_on_server covers server-thread dispatch */
   if (DB_IS_NULL (src))
     {
       db_make_null (dest);
@@ -5035,7 +5035,7 @@ mr_index_lengthval_object (DB_VALUE * value)
 static int
 mr_data_lengthval_object (DB_VALUE * value, int disk)
 {
-  MOP mop;			/* wf119: un-gated */
+  MOP mop;			/* un-gated */
   int size;
 
   if (disk)
@@ -5074,7 +5074,7 @@ mr_data_lengthval_object (DB_VALUE * value, int disk)
 static void
 mr_data_writemem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
-  /* wf119: reached only from client-context threads (workspace layout) */
+  /* reached only from client-context threads (workspace layout) */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
   OID *oidp;
 
@@ -5130,7 +5130,7 @@ mr_data_writemem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 static void
 mr_data_readmem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-  /* wf119: reached only from client-context threads (workspace layout) */
+  /* reached only from client-context threads (workspace layout) */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
 
   if (mem != NULL)
@@ -5155,7 +5155,7 @@ mr_index_writeval_object (OR_BUF * buf, DB_VALUE * value)
 
   if (DB_VALUE_TYPE (value) == DB_TYPE_OBJECT)
     {
-      /* wf119: un-gated (SERVER_MODE used to leave oidp NULL here) */
+      /* un-gated (SERVER_MODE used to leave oidp NULL here) */
 #if defined (SERVER_MODE)
       /* SA executes these client bodies with db_on_server toggled; the
        * context-discipline invariant only holds in the merged server binary */
@@ -5185,7 +5185,7 @@ mr_index_writeval_object (OR_BUF * buf, DB_VALUE * value)
 static int
 mr_data_writeval_object (OR_BUF * buf, DB_VALUE * value)
 {
-  MOP mop;			/* wf119: un-gated */
+  MOP mop;			/* un-gated */
   OID *oidp = NULL;
   int rc = NO_ERROR;
 
@@ -5271,7 +5271,7 @@ mr_data_readval_object (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
   OID oid;
   int rc = NO_ERROR;
 
-  /* wf119: client body kept; server threads take the db_on_server branch */
+  /* client body kept; server threads take the db_on_server branch */
   if (value == NULL)
     {
       rc = or_advance (buf, tp_Object.disksize);
@@ -5337,7 +5337,7 @@ static DB_VALUE_COMPARE_RESULT
 mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
 		  int collation)
 {
-  /* wf119: client variant kept — its DB_TYPE_OID fast path is identical to the
+  /* client variant kept — its DB_TYPE_OID fast path is identical to the
    * old SERVER_MODE-only body, and it must also handle virtual db_object types
    * for client-context threads */
 #if defined (SERVER_MODE)
@@ -6904,7 +6904,7 @@ mr_data_lengthval_set (DB_VALUE * value, int disk)
   SETREF *ref;
   SETOBJ *set;
   int size;
-  int pin;			/* wf119: un-gated; ws_pin is a no-op when db_on_server */
+  int pin;			/* un-gated; ws_pin is a no-op when db_on_server */
 
   size = 0;
 
@@ -6955,7 +6955,7 @@ mr_data_writeval_set (OR_BUF * buf, DB_VALUE * value)
   SETREF *ref;
   SETOBJ *set;
   int size;
-  int pin;			/* wf119: un-gated; ws_pin is a no-op when db_on_server */
+  int pin;			/* un-gated; ws_pin is a no-op when db_on_server */
   int rc = NO_ERROR;
 
   ref = db_get_set (value);

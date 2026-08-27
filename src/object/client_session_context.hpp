@@ -17,7 +17,7 @@
 
 /*
  * client_session_context.hpp - session-scoped state of the client half
- *                              embedded in cub_server (wf122 track A)
+ *                              embedded in cub_server
  *
  * One instance holds everything the merged-in client half used to keep in
  * process-wide globals, one client process at a time.  Authorization is the
@@ -46,7 +46,7 @@ class client_session_context
   public:
     authenticate_context au_context;
 
-    /* interpreter label table (wf122 A2 D5) - owned here because labels are
+    /* interpreter label table - owned here because labels are
      * session data; created lazily by pt_associate_label_with_value.
      * Teardown (pt_free_label_table on session end) lands with the A4
      * session_state anchor - until then only unit/smoke contexts exist. */
