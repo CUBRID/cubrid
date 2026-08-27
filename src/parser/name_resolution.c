@@ -7295,6 +7295,9 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		{
 		  /* The name of the spec should be the name of the CTE */
 		  p->info.spec.range_var = parser_copy_tree (parser, p->info.spec.cte_name);
+		  /* one label, the same as any other exposed name */
+		  p->info.spec.range_var->info.name.original = pt_name_qualified (parser, p->info.spec.cte_name);
+		  p->info.spec.range_var->info.name.owner_name = NULL;
 		}
 	      else
 		{
