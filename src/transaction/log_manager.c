@@ -9815,12 +9815,12 @@ static SCAN_CODE
 log_get_undo_record_from_data (THREAD_ENTRY * thread_p, char *undo_data, int udata_size, bool is_zipped,
 			       RECDES * recdes)
 {
-  SCAN_CODE scan = S_SUCCESS;
-  LOG_ZIP *log_unzip_ptr = NULL;
-
   if (is_zipped)
     {
-      log_unzip_ptr = log_zip_alloc (IO_PAGESIZE);
+      /* One buffer per thread, reused: the version chain calls this once per hop, and the page path once
+       * per record, so a buffer allocated here would be an IO_PAGESIZE malloc/free on both. */
+      LOG_ZIP *log_unzip_ptr = log_append_get_unzip_undo (thread_p);
+
       if (log_unzip_ptr == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_get_undo_record_from_data");
@@ -9835,8 +9835,7 @@ log_get_undo_record_from_data (THREAD_ENTRY * thread_p, char *undo_data, int uda
       else
 	{
 	  assert (false);
-	  scan = S_ERROR;
-	  goto exit;
+	  return S_ERROR;
 	}
     }
 
@@ -9853,19 +9852,12 @@ log_get_undo_record_from_data (THREAD_ENTRY * thread_p, char *undo_data, int uda
       /* do not use unary minus because slot_p->record_length is unsigned */
       recdes->length *= -1;
 
-      scan = S_DOESNT_FIT;
-      goto exit;
+      return S_DOESNT_FIT;
     }
 
   memcpy (recdes->data, (char *) (undo_data) + sizeof (recdes->type), recdes->length);
 
-exit:
-  if (log_unzip_ptr != NULL)
-    {
-      log_zip_free (log_unzip_ptr);
-    }
-
-  return scan;
+  return S_SUCCESS;
 }
 
 /*

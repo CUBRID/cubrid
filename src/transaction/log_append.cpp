@@ -35,6 +35,7 @@
 #if !defined(SERVER_MODE)
 static LOG_ZIP *log_zip_undo = NULL;
 static LOG_ZIP *log_zip_redo = NULL;
+static LOG_ZIP *log_unzip_undo = NULL;
 static char *log_data_ptr = NULL;
 static int log_data_length = 0;
 #endif
@@ -249,6 +250,16 @@ log_append_init_zip ()
 void
 log_append_final_zip ()
 {
+#if !defined (SERVER_MODE)
+  /* Allocated on demand by the reader, which reads compressed records whether or not this process
+   * appends any, so it is released ahead of the log_Zip_support gate below. */
+  if (log_unzip_undo != NULL)
+    {
+      log_zip_free (log_unzip_undo);
+      log_unzip_undo = NULL;
+    }
+#endif
+
   if (!log_Zip_support)
     {
       return;
@@ -1776,6 +1787,36 @@ log_append_get_zip_undo (THREAD_ENTRY *thread_p)
     }
 #else
   return log_zip_undo;
+#endif
+}
+
+LOG_ZIP *
+log_append_get_unzip_undo (THREAD_ENTRY *thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p == NULL)
+    {
+      return NULL;
+    }
+  else
+    {
+      if (thread_p->log_unzip_undo == NULL)
+	{
+	  thread_p->log_unzip_undo = log_zip_alloc (IO_PAGESIZE);
+	}
+      return (LOG_ZIP *) thread_p->log_unzip_undo;
+    }
+#else
+  if (log_unzip_undo == NULL)
+    {
+      log_unzip_undo = log_zip_alloc (IO_PAGESIZE);
+    }
+  return log_unzip_undo;
 #endif
 }
 

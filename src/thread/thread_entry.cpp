@@ -118,6 +118,7 @@ namespace cubthread
     , worker_thrd_list (NULL)
     , log_zip_undo (NULL)
     , log_zip_redo (NULL)
+    , log_unzip_undo (NULL)
     , log_data_ptr (NULL)
     , log_data_length (0)
     , no_logging (false)
@@ -281,6 +282,10 @@ namespace cubthread
     if (log_zip_redo != NULL)
       {
 	log_zip_free ((LOG_ZIP *) log_zip_redo);
+      }
+    if (log_unzip_undo != NULL)
+      {
+	log_zip_free ((LOG_ZIP *) log_unzip_undo);
       }
     if (log_data_ptr != NULL)
       {

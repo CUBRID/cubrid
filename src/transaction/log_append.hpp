@@ -179,6 +179,9 @@ void log_append_init_zip ();
 void log_append_final_zip ();
 extern LOG_ZIP *log_append_get_zip_undo (THREAD_ENTRY *thread_p);
 extern LOG_ZIP *log_append_get_zip_redo (THREAD_ENTRY *thread_p);
+/* Reader side, for decompressing an undo image back out. Its own buffer rather than the two above, which
+ * the same thread may still be holding a compressed record in while it appends. */
+extern LOG_ZIP *log_append_get_unzip_undo (THREAD_ENTRY *thread_p);
 
 // todo - move to header of log page buffer
 size_t logpb_get_memsize ();
