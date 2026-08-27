@@ -82,6 +82,12 @@ csc_current (void)
   return tl_Csc_active;
 }
 
+bool
+csc_bracket_is_active (void)
+{
+  return tl_Csc_active != NULL;
+}
+
 ws_context *
 csc_ws (void)
 {
@@ -127,11 +133,25 @@ csc_obt (void)
 /* the parser owns the label table's contents (parse_evaluate.c) */
 extern "C" void pt_free_label_table (void);
 
+/* execution-plan trace buffer (db_query.c, plain malloc) */
+extern "C" void db_free_execution_plan (void);
+
+/* client/server boundary flag (network_interface_sr.cpp) */
+extern thread_local unsigned int db_on_server;
+
 /* per-session teardown; the calling thread's bracket must hold ctx */
 static void
 csc_teardown (client_session_context *ctx)
 {
   assert (tl_Csc_active == ctx);
+
+  /* teardown is client-half work: allocation routing must resolve to the
+   * session workspace even when a server worker (db_on_server == 1) drives
+   * the retirement — e.g. session expiry or disconnect cleanup */
+  unsigned int save_on_server = db_on_server;
+  db_on_server = 0;
+
+  db_free_execution_plan ();
 
   if (ctx->label_table != NULL)
     {
@@ -139,6 +159,13 @@ csc_teardown (client_session_context *ctx)
     }
   if (ctx->ws.mop_table != NULL)
     {
+      /* schema-manager teardown first: it clears Current_Schema and frees
+       * descriptors/virtual-query caches before ws_final frees their MOPs */
+      sm_final ();
+
+      /* remaining query results and the registry storage (db_query.c) */
+      db_final_client_query_results ();
+
       /* frees the MOP table, classname cache, resident class list and the
        * session's lea heap; shared areas are left alone (#123 D5) */
       ws_final ();
@@ -148,6 +175,8 @@ csc_teardown (client_session_context *ctx)
       /* boot failed between heap creation and table build */
       db_destroy_workspace_heap ();
     }
+
+  db_on_server = save_on_server;
 }
 
 void

@@ -23,9 +23,8 @@
  * server boot; output goes to CUBRID_M0_TRACER_OUT.
  * CUBRID_M0_TRACER_SESSIONS (default 1) runs that many concurrent sessions,
  * each with its own client session context (#123 D2) — the multi-session
- * smoke of stage A4.  Client boot is not yet reentrant (A5), so registration
- * and unregistration are serialized here; the SQL work itself runs
- * concurrently.
+ * smoke of stage A4.  Boot serialization is the engine's own
+ * (boot_restart_client) since A5; sessions here just boot and run.
  */
 
 #if defined (SERVER_MODE)
@@ -64,9 +63,6 @@ static void tracer_main (char *server_name, char *sql, char *out_path);
 
 /* thread-local server/client boundary flag (see network_interface_sr.cpp) */
 extern thread_local unsigned int db_on_server;
-
-/* client boot/shutdown is not reentrant until A5 — one session in it at a time */
-static std::mutex tracer_Boot_mutex;
 
 static FILE *tracer_Fp = NULL;
 static std::mutex tracer_Log_mutex;
@@ -176,11 +172,8 @@ tracer_session (int sid, const char *server_name, const char *sql)
    * enter_server/exit_server (network_interface_cl.c) toggle it per x-call */
   db_on_server = 0;
 
-  {
-    /* boot is not reentrant until A5 */
-    std::lock_guard<std::mutex> boot_guard (tracer_Boot_mutex);
-    err = db_restart_ex ("m0_tracer", server_name, "DBA", "", NULL, DB_CLIENT_TYPE_DEFAULT);
-  }
+  /* boot serialization is the engine's own (boot_restart_client) since A5 */
+  err = db_restart_ex ("m0_tracer", server_name, "DBA", "", NULL, DB_CLIENT_TYPE_DEFAULT);
   if (err != NO_ERROR)
     {
       tracer_log ("M0_TRACER: S%d FAIL db_restart_ex err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
@@ -322,6 +315,16 @@ tracer_session (int sid, const char *server_name, const char *sql)
 	tracer_log ("M0_TRACER: S%d FAIL db_commit_transaction err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
 	goto retire;
       }
+
+    /* end the server session explicitly: session_state_uninit then retires
+     * this thread's own client context (A5) — the orphan hand-back runs the
+     * per-session teardown (sm/Qres/workspace) at bracket exit below */
+    err = db_end_session ();
+    if (err != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL db_end_session err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
+	goto retire;
+      }
     succeeded = true;
   }
 
@@ -333,7 +336,6 @@ retire:
   if (registered)
     {
       /* log the tran out like a real disconnect: a tdes left ACTIVE at shutdown aborts inline on the main thread and corrupts Main_entry_p */
-      std::lock_guard<std::mutex> boot_guard (tracer_Boot_mutex);
       (void) boot_unregister_client (tm_Tran_index);
       /* leave the client globals logged-out so exit-path BOOT_IS_CLIENT_RESTARTED() stays a no-op */
       tm_Tran_index = NULL_TRAN_INDEX;

@@ -122,6 +122,10 @@ extern void csc_deactivate (void);
  * bracket is an ownership bug — fail fast */
 extern client_session_context *csc_current (void);
 
+/* does the calling thread hold an activation bracket? (no assert — memory
+ * routing probes this on paths shared with pure server threads) */
+extern bool csc_bracket_is_active (void);
+
 /* run the client half's session teardown under a temporary bracket and free
  * the context; called by the owning session_state when it is uninitialized */
 extern void csc_retire_and_delete (client_session_context *ctx);

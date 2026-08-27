@@ -91,6 +91,9 @@ struct db_cl_context
 
 extern struct db_cl_context *csc_db (void);
 
+/* session teardown of the query-result registry (db_query.c) */
+extern void db_final_client_query_results (void);
+
 #define db_Connect_status (csc_db ()->connect_status)
 #define db_Session_id (csc_db ()->session_id)
 #define db_Keep_session (csc_db ()->keep_session)
