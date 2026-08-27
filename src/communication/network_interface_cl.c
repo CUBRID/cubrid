@@ -44,6 +44,8 @@
 #include "xserver_interface.h"
 #include "boot_sr.h"
 #include "locator_sr.h"
+#include "log_manager.h"
+#include "schema_manager.h"
 #include "query_executor.h"
 #include "transaction_sr.h"
 #include "pl_sr.h"
@@ -108,7 +110,7 @@ static int net_Deferred_end_queries_count = 0;
  * It really only comes into play in standalone.
  */
 #if defined (SERVER_MODE)
-/* wf119: defined thread_local in network_interface_sr.cpp */
+/* defined thread_local in network_interface_sr.cpp */
 extern thread_local unsigned int db_on_server;
 #else
 unsigned int db_on_server = 0;
@@ -132,9 +134,7 @@ static int is_top_level_class (MOBJ mobj);
 //
 // enter_server_no_thread_entry () - enter server mode without getting a thread entry (e.g. when "starting" server).
 //
-/* SERVER_MODE (wf119 tracer): the calling thread is already a server worker
- * with its own private heap; only the boundary flag and error stack change.
- */
+/* under SERVER_MODE the calling thread is already a server worker with its own heap: only flag and er stack change */
 static void
 enter_server_no_thread_entry (void)
 {
@@ -1565,10 +1565,7 @@ locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
 				       fetch_copyarea);
 
 #if defined (SERVER_MODE)
-  /* wf122/A3: on the wire path the RR transaction lock rides this request —
-   * slocator_find_lockhint_class_oids applies it server-side and the client
-   * mirrors it into tm_Tran_rep_read_lock; the fold inherits both duties.
-   * SA keeps its no-op (single client, locks are moot). */
+  /* the RR transaction lock rides this request on the wire path (see slocator_find_lockhint_class_oids) */
   if (lock_rr_tran != NULL_LOCK && xtran_lock_rep_read (thread_p, lock_rr_tran) != NO_ERROR)
     {
       allfind = LC_CLASSNAME_ERROR;
@@ -2638,7 +2635,12 @@ log_checkpoint (void)
     }
 
   return error;
-#else /* CS_MODE */
+#elif defined (SERVER_MODE)
+  /* same action the wire handler (slog_checkpoint) takes */
+  log_wakeup_checkpoint_daemon ();
+
+  return NO_ERROR;
+#else /* SA_MODE */
   /* Cannot run in standalone mode */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "checkpoint");
 
@@ -3013,6 +3015,11 @@ tran_server_commit (bool retain_lock)
   TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
 
   THREAD_ENTRY *thread_p = enter_server ();
+
+#if defined (SERVER_MODE)
+  /* the row-count cache rides the commit request on the wire path (see stran_server_commit); no deferred end-query drain here — the fold never defers */
+  (void) xsession_set_row_count (thread_p, db_get_row_count_cache ());
+#endif /* SERVER_MODE */
 
   tran_state = xtran_server_commit (thread_p, retain_lock);
 
@@ -4054,8 +4061,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
   int tran_index = NULL_TRAN_INDEX;
 
 #if defined (SERVER_MODE)
-  /* wf119: in-process client — the server half needs the real thread entry
-   * (conn_entry carries connection state); NULL was an SA-only assumption */
+  /* the server half needs the real thread entry (conn_entry carries connection state); NULL was an SA-only assumption */
   THREAD_ENTRY *thread_p = enter_server ();
 
   tran_index =
@@ -4720,12 +4726,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   *session_id = db_Session_id;
 
 #if defined (SERVER_MODE)
-  /* wf119: a real CS client hands its session-parameter array to the server
-   * in this request and the server stores it on the session state
-   * (network_interface_sr -> sysprm_session_init_session_parameters).  The
-   * in-process client must do the same, or session_parameters stays NULL and
-   * the first prm_get_*_value on the compile path reads through it
-   * (round-19 core: session_get_session_parameter, session.c:2828). */
+  /* a CS client ships its session-parameter array in this request; do the same in-process or session_parameters stays NULL (session_get_session_parameter would read through it) */
   if (result != ER_FAILED)
     {
       SESSION_PARAM *session_params = sysprm_alloc_session_parameters_from_defaults ();
@@ -6657,13 +6658,22 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   THREAD_ENTRY *thread_p = enter_server ();
 
+#if defined (SERVER_MODE)
+  /* pass through the two per-request values the CS branch ships on the wire; SA keeps its historical constants */
+  const int ib_thread_count = ib_get_thread_count ();
+  const bool no_logging_index = btree_Load_no_logging_index;
+#else /* SA_MODE */
+  const int ib_thread_count = 1;
+  const bool no_logging_index = false;
+#endif
+
   if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       btid =
 	xbtree_load_online_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
 				  attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid,
 				  fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
-				  expr_stream_size, func_col_id, func_attr_index_start, 1);
+				  expr_stream_size, func_col_id, func_attr_index_start, ib_thread_count);
     }
   else
     {
@@ -6671,7 +6681,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 	xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
 			   attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid,
 			   fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
-			   func_attr_index_start, false);
+			   func_attr_index_start, no_logging_index);
     }
 
   if (btid == NULL)
@@ -7736,8 +7746,7 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  /* normalize the values to server semantics (OBJECT -> OID), same as qmgr_execute_query — the x-entry points never
-   * see a MOP */
+  /* normalize to server semantics (OBJECT -> OID), same as qmgr_execute_query — x-entry points never see a MOP */
   if (dbval_cnt > 0)
     {
       size_t s = dbval_cnt * sizeof (DB_VALUE);
@@ -10659,9 +10668,7 @@ tran_lock_rep_read (LOCK lock_rr_tran)
     }
   return req_error;
 #elif defined (SERVER_MODE)
-  /* wf122/A3: the SA no-op below is a single-client assumption; a folded
-   * server session shares the lock space with every other session, so the
-   * RR lock must really be taken (same contract as the CS branch). */
+  /* the SA no-op below is a single-client assumption; a server session shares the lock space, so really take the RR lock */
   int req_error;
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -10860,7 +10867,16 @@ log_does_active_user_exist (const char *user_name, bool * existed)
   free_and_init (request);
 
   return error;
-#else /* CS_MODE */
+#elif defined (SERVER_MODE)
+  /* the SA answer below is a single-client assumption; a server session shares the tran table, so really ask */
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  *existed = xlogtb_does_active_user_exist (thread_p, user_name);
+
+  exit_server (*thread_p);
+
+  return NO_ERROR;
+#else /* SA_MODE */
 
   /* in SA_MODE, no other active user */
   *existed = false;
