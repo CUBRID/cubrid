@@ -2326,9 +2326,17 @@ DB_COLLECTION *
 set_change_owner (DB_COLLECTION * ref, MOP owner, int attid, TP_DOMAIN * domain)
 {
   DB_COLLECTION *new_ = NULL;
-#if !defined(SERVER_MODE)
   COL *current, *newset;
   int pin;
+
+  /* client body kept — set ownership binds a collection to a workspace MOP,
+   * which only happens on client-context threads; the old compile-time guard
+   * left this a NULL-returning stub that broke its callers' error contract */
+#if defined (SERVER_MODE)
+  /* SA executes these client bodies with db_on_server toggled; the
+   * context-discipline invariant only holds in the merged server binary */
+  assert (!db_on_server);
+#endif
 
   /* fetch set of interest */
   if (set_get_setobj (ref, &current, 0) != NO_ERROR)
@@ -2370,7 +2378,6 @@ set_change_owner (DB_COLLECTION * ref, MOP owner, int attid, TP_DOMAIN * domain)
 
       (void) ws_pin (ref->owner, pin);
     }
-#endif
   return (new_);
 }
 
