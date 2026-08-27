@@ -2096,6 +2096,8 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   char *send_buf = NULL;
   int send_len = 0;
   int status = NO_ERROR;
+  int with_fullscan = 0;
+  INT64 sample_seed = 0;
   ATTR_ID *attr_ids = NULL;
   DB_TYPE *attr_types = NULL;
   double *null_freqs = NULL;
@@ -2104,10 +2106,18 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   INT64 *ndvs = NULL;
   int *attr_unique = NULL;
   INT64 total_rows = 0;
+  INT64 pages_seen = 0, pages_kept = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  if (reqlen < OR_OID_SIZE + 3 * OR_INT_SIZE)
+  /* fixed request header size, INCLUDING the alignment padding or_pack_int64 () inserts
+   * before the seed: OID + 3 ints, aligned up to MAX_ALIGNMENT, + int64 + attr_cnt int.
+   * Without the padding a 4-byte-short packet passes the check and attr_cnt is read past
+   * the end of the receive buffer. */
+  const int fixed_request_size =
+	  DB_ALIGN (OR_OID_SIZE + 3 * OR_INT_SIZE, MAX_ALIGNMENT) + OR_INT64_SIZE + OR_INT_SIZE;
+
+  if (reqlen < fixed_request_size)
     {
       /* short packet: the fixed header must be length-checked before it is unpacked */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
@@ -2119,10 +2129,12 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   ptr = or_unpack_oid (request, &class_oid);
   ptr = or_unpack_int (ptr, &max_buckets);
   ptr = or_unpack_int (ptr, &sample_size);
+  ptr = or_unpack_int (ptr, &with_fullscan);
+  ptr = or_unpack_int64 (ptr, &sample_seed);
   ptr = or_unpack_int (ptr, &attr_cnt);
 
   if (attr_cnt <= 0
-      || (INT64) OR_OID_SIZE + 3 * OR_INT_SIZE + (INT64) attr_cnt * (3 * OR_INT_SIZE) > (INT64) reqlen)
+      || (INT64) fixed_request_size + (INT64) attr_cnt * (3 * OR_INT_SIZE) > (INT64) reqlen)
     {
       /* also rejects a corrupt/hostile attr_cnt whose per-column triples could not possibly fit in
        * the received request -- prevents unpacking past the request buffer and absurd allocations */
@@ -2184,7 +2196,8 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
    * class_oid) -- deferred to a dedicated security follow-up PR. */
 
   status = xhistogram_build_multi_by_fullscan_reservoir (thread_p, &class_oid, &hfid, attr_ids, attr_types,
-	   attr_unique, attr_cnt, max_buckets, sample_size, null_freqs, blobs, blob_lens, ndvs, &total_rows);
+	   attr_unique, attr_cnt, max_buckets, sample_size, with_fullscan != 0, (UINT64) sample_seed, null_freqs,
+	   blobs, blob_lens, ndvs, &total_rows, &pages_seen, &pages_kept);
   if (status != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -2192,9 +2205,11 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
     }
 
   /* reply var-data (8-byte items first for natural alignment):
-   *   total_rows (int64), attr_cnt NDV (int64), attr_cnt null_frequency (double),
-   *   attr_cnt blob_length (int), then the blobs concatenated in column order. */
-  send_len = OR_INT64_SIZE + attr_cnt * OR_INT64_SIZE + attr_cnt * OR_DOUBLE_SIZE + attr_cnt * OR_INT_SIZE;
+   *   total_rows (int64), pages_seen (int64), pages_kept (int64) -- realized scan coverage, so
+   *   the client trace can report whether sampling actually happened -- then attr_cnt NDV
+   *   (int64), attr_cnt null_frequency (double), attr_cnt blob_length (int), then the blobs
+   *   concatenated in column order. */
+  send_len = 3 * OR_INT64_SIZE + attr_cnt * OR_INT64_SIZE + attr_cnt * OR_DOUBLE_SIZE + attr_cnt * OR_INT_SIZE;
   for (i = 0; i < attr_cnt; i++)
     {
       if (blob_lens[i] > 0)
@@ -2207,6 +2222,8 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
     {
       char *sp = send_buf;
       sp = or_pack_int64 (sp, total_rows);
+      sp = or_pack_int64 (sp, pages_seen);
+      sp = or_pack_int64 (sp, pages_kept);
       for (i = 0; i < attr_cnt; i++)
 	{
 	  sp = or_pack_int64 (sp, ndvs[i]);
@@ -4626,7 +4643,10 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   char *expr_stream = NULL;
   int csserror;
   int index_status = 0;
+  bool eligible_no_redo = false;
   int ib_thread_count = 0;
+  int no_logging_index = 0;
+  size_t tail_offset;
 
   ptr = or_unpack_btid (request, &btid);
   ptr = or_unpack_string_nocopy (ptr, &bt_name);
@@ -4714,6 +4734,17 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 
   ptr = or_unpack_int (ptr, &index_status);	/* Get index status. */
   ptr = or_unpack_int (ptr, &ib_thread_count);	/* Get thread count. */
+  /* Optional tail: older clients do not send this field and their request may end exactly at ptr, so
+   * bound it with integer offsets only (a pointer past one-past-the-end is UB even if only compared). */
+  tail_offset = DB_ALIGN ((size_t) (ptr - request), INT_ALIGNMENT);
+  if (tail_offset + OR_INT_SIZE <= (size_t) reqlen)
+    {
+      ptr = or_unpack_int (ptr, &no_logging_index);	/* Get no-logging index build request. */
+    }
+  /* The client flag is only a request; the server decides. Restricting the no-redo build to
+   * loaddb client types keeps it out of ordinary traffic no matter what a client sends. */
+  eligible_no_redo = no_logging_index != 0
+		     && BOOT_IS_LOADDB_CLIENT_TYPE (logtb_find_client_type (thread_p->tran_index));
 
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
@@ -4729,7 +4760,7 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	      xbtree_load_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
 				 attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid, &fk_refcls_pk_btid,
 				 fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
-				 func_attr_index_start);
+				 func_attr_index_start, eligible_no_redo);
     }
 
   if (return_btid == NULL)

@@ -1108,6 +1108,10 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  db_make_int (result, i1);
 	}
+      else if (OR_CHECK_INT_DIV_OVERFLOW (i1, s2))
+	{
+	  db_make_int (result, 0);
+	}
       else
 	{
 	  db_make_int (result, (int) (i1 % s2));
@@ -1118,6 +1122,10 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       if (i2 == 0)
 	{
 	  db_make_int (result, i1);
+	}
+      else if (OR_CHECK_INT_DIV_OVERFLOW (i1, i2))
+	{
+	  db_make_int (result, 0);
 	}
       else
 	{
@@ -1259,6 +1267,10 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  db_make_bigint (result, bi1);
 	}
+      else if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi1, s2))
+	{
+	  db_make_bigint (result, 0);
+	}
       else
 	{
 	  db_make_bigint (result, (DB_BIGINT) (bi1 % s2));
@@ -1270,6 +1282,10 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  db_make_bigint (result, bi1);
 	}
+      else if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi1, i2))
+	{
+	  db_make_bigint (result, 0);
+	}
       else
 	{
 	  db_make_bigint (result, (DB_BIGINT) (bi1 % i2));
@@ -1280,6 +1296,10 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       if (bi2 == 0)
 	{
 	  db_make_bigint (result, bi1);
+	}
+      else if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi1, bi2))
+	{
+	  db_make_bigint (result, 0);
 	}
       else
 	{
@@ -2560,10 +2580,18 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 		  if ('1' <= *ptr && *ptr <= '9')
 		    {
 		      int length = strlen (ptr);
+
 		      if (length > DB_MAX_NUMERIC_PRECISION)
 			{
-			  s -= (length - DB_MAX_NUMERIC_PRECISION);
+			  /* The round up grew a value at the max precision by one digit; the buffer fits
+			   * 41 digits, so give that digit to the scale. It is a '0' cleared above. */
+			  assert (length == DB_MAX_NUMERIC_PRECISION + 1 && end[-1] == '0');
+
+			  s--;
 			  p = DB_MAX_NUMERIC_PRECISION;
+
+			  end--;
+			  *end = '\0';
 			}
 
 		      if (s < DB_MIN_NUMERIC_SCALE)
