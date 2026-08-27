@@ -413,8 +413,8 @@ static int pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO *
 					 S_REMOTE_TBL_COLS * rmt_cols);
 static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink,
 					    S_REMOTE_TBL_COLS * rmt_tbl_cols);
-static int pt_dblink_table_get_column_defs_by_schema_info (int conn, char *table_name, const char *user,
-							   S_REMOTE_TBL_COLS * rmt_tbl_cols, bool * ambiguous);
+static int pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_TYPE sch_type, char *table_name,
+							   S_REMOTE_TBL_COLS * rmt_tbl_cols, int *reason);
 
 static PT_NODE *pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node);
 
@@ -5542,14 +5542,13 @@ enum
 
 /*
  * pt_dblink_table_get_column_defs_by_schema_info () - remote table schema via cci_schema_info
- *   return: NO_ERROR on success (rmt_tbl_cols filled); ER_FAILED to fall back to the
- *           "SELECT *" prepare (rmt_tbl_cols is left empty)
- *   parser(in): parser context
- *   conn(in): open CCI connection to a CUBRID remote
+ *   return: NO_ERROR on success (rmt_tbl_cols filled); ER_FAILED otherwise, with
+ *           rmt_tbl_cols left empty and the reason in reason
+ *   conn(in): open CCI connection to the remote
+ *   sch_type(in): CCI_SCH_ATTRIBUTE for a class, CCI_SCH_ATTR_WITH_SYNONYM for a synonym
  *   table_name(in): remote table name, as the statement wrote it
  *   rmt_tbl_cols(out): remote column list, invisible columns included
- *   ambiguous(out): set when the name matched classes of more than one owner, so that
- *          the caller can ask again with the name qualified; may be NULL
+ *   reason(out): why the request could not describe the table; PT_DBLINK_SCHEMA_OK on success
  *
  * Note: The "SELECT *" prepare metadata excludes invisible columns, so a valid
  *   reference to a remote invisible column would be reported as an unknown column.
@@ -5562,7 +5561,7 @@ enum
  */
 static int
 pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_TYPE sch_type, char *table_name,
-						const char *user, S_REMOTE_TBL_COLS * rmt_tbl_cols, int *reason)
+						S_REMOTE_TBL_COLS * rmt_tbl_cols, int *reason)
 {
   T_CCI_ERROR cci_error;
   T_CCI_CUBRID_STMT stmt_type;
@@ -5820,8 +5819,8 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 	      lookup_name = qualified_name;
 	    }
 
-	  rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, lookup_name, user,
-							       rmt_tbl_cols, &reason);
+	  rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, lookup_name, rmt_tbl_cols,
+							       &reason);
 
 	  /* CCI_SCH_ATTRIBUTE describes a class and never a synonym, so a synonym is answered
 	   * with no row.  CCI_SCH_ATTR_WITH_SYNONYM describes the target with the same 17
@@ -5829,7 +5828,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 	   * refuses the type outright, so the attempt costs nothing there. */
 	  if (rc != NO_ERROR && reason == PT_DBLINK_SCHEMA_NO_ROW)
 	    {
-	      rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTR_WITH_SYNONYM, lookup_name, user,
+	      rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTR_WITH_SYNONYM, lookup_name,
 								   rmt_tbl_cols, &reason);
 	    }
 

@@ -2371,11 +2371,11 @@ cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** 
 end:
   if (err < 0)
     {
-      /* every failure above ends the same way - the client falls back to the "SELECT *"
-       * prepare and loses the invisible columns - and the reason is only knowable here.
-       * One line per failed request, at compile time, so log it once for all of them
-       * instead of at one path out of twelve. */
-      cas_log_write (0, false, "cgw_schema_info: could not describe %s, the client falls back to the prepare",
+      /* every failure above ends the same way - the client cannot tell an invisible column
+       * from an unknown one and refuses the statement - and the reason is only knowable
+       * here.  One line per failed request, at compile time, so log it once for all of
+       * them instead of at one path out of twelve. */
+      cas_log_write (0, false, "cgw_schema_info: could not describe %s, the client cannot compile the statement",
 		     table_name);
     }
 
