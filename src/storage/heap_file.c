@@ -10107,6 +10107,10 @@ heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRI
 	    {
 	      value = &attr_info->values[i];
 	      value->read_attrepr = value->last_attrepr;
+	      /* the cached decoding plan keys on the attrepr pointer; a recache can hand back a
+	       * recycled address (old classrepr evicted, new one allocated in its place), so the
+	       * pointer alone cannot prove the plan is still valid -- force a re-derivation */
+	      value->rd_attrepr = NULL;
 	    }
 	}
       attr_info->read_classrepr = attr_info->last_classrepr;
@@ -10123,6 +10127,7 @@ heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRI
 	{
 	  value = &attr_info->values[i];
 	  value->read_attrepr = NULL;
+	  value->rd_attrepr = NULL;	/* see the short-cut path above */
 	}
     }
   attr_info->read_classrepr =
