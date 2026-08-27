@@ -469,7 +469,12 @@ expr_k_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
    * the per-row clear */
   pr_clear_value (step->out);
 
-  dom_status = tp_value_cast (src, step->out, step->domain, false);
+  /* T_CAST is the explicit CAST the user wrote, which the interpreted path coerces with
+   * tp_value_cast_force () -- it allows conversions the plain (non-forced) cast rejects,
+   * such as a character string to BIT. tp_value_cast () is reserved there for a
+   * STRICT_TYPE_CAST-flagged T_CAST_WRAP, which is never compiled here (see the T_CAST
+   * arm of expr_compile_node ()). */
+  dom_status = tp_value_cast_force (src, step->out, step->domain, false);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, step->domain);

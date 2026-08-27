@@ -3799,13 +3799,12 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent)
     {
       OUTPTR_LIST *out = outs[k];
 
-      if (out == NULL || out->eval_prog_state == 0)
+      /* Only an active program is reported. A list that was never tried (0) or that the
+       * compiler declined (2) runs entirely on the interpreted path, so its trace must stay
+       * byte-identical to a build without this feature -- printing a line for it would make
+       * every such statement's trace differ. */
+      if (out == NULL || out->eval_prog_state != 1)
 	{
-	  continue;
-	}
-      if (out->eval_prog_state != 1)
-	{
-	  fprintf (fp, "%*cEXPR_COMPILE (%s): interpreted (not covered)\n", indent, ' ', out_names[k]);
 	  continue;
 	}
       else
