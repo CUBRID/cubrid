@@ -159,7 +159,15 @@ public:
   int locator_repl_flush_all (void);
 };
 
+#if defined (SERVER_MODE)
+/* CUB_THREAD_LOCAL is a no-op under SERVER_MODE (db_multi_threads_connections.h),
+ * which would leave this mflush/repl scratch a plain global shared by every
+ * worker — its lifetime is one flush call on one thread, so make it genuinely
+ * per-thread here (A4 audit hand-off) */
+extern thread_local class locator_repl __gv_locator_repl;
+#else
 extern CUB_THREAD_LOCAL class locator_repl __gv_locator_repl;
+#endif
 #define __gv_loc_repl (__gv_locator_repl)
 
 #endif /* _LOCATOR_CL_H_ */

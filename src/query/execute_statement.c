@@ -48,6 +48,9 @@
 #include "db.h"
 #include "dbi.h"
 #include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
 #include "parser.h"
 #include "porting.h"
 #include "schema_manager.h"
@@ -6175,7 +6178,12 @@ get_savepoint_name_from_db_value (DB_VALUE * val)
 #define PT_TR_REF_REFERENCE(ref) \
   (&(ref)->info.event_object)
 
+#if defined (SERVER_MODE)
+/* savepoint-name minting is session state (a4 audit) */
+#define tr_savepoint_number (csc_current ()->tr_savepoint_number)
+#else
 static int tr_savepoint_number = 0;
+#endif
 
 static int merge_mop_list_extension (DB_OBJLIST * new_objlist, DB_OBJLIST ** list);
 static DB_TRIGGER_EVENT convert_event_to_tr_event (const PT_EVENT_TYPE ev);
@@ -7816,7 +7824,12 @@ typedef enum
 #define DB_VALUE_STACK_MAX 40
 
 /* It is used to generate unique savepoint names */
+#if defined (SERVER_MODE)
+/* savepoint-name minting is session state (a4 audit) */
+#define update_savepoint_number (csc_current ()->update_savepoint_number)
+#else
 static int update_savepoint_number = 0;
+#endif
 
 static void unlink_list (PT_NODE * list);
 
@@ -10445,7 +10458,12 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 
 /* used to generate unique savepoint names */
+#if defined (SERVER_MODE)
+/* savepoint-name minting is session state (a4 audit) */
+#define delete_savepoint_number (csc_current ()->delete_savepoint_number)
+#else
 static int delete_savepoint_number = 0;
+#endif
 
 static int select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE * delete_stmt);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -11826,7 +11844,12 @@ struct odku_tuple_value_arg
 };
 
 /* used to generate unique savepoint names */
+#if defined (SERVER_MODE)
+/* savepoint-name minting is session state (a4 audit) */
+#define insert_savepoint_number (csc_current ()->insert_savepoint_number)
+#else
 static int insert_savepoint_number = 0;
+#endif
 
 static int insert_object_attr (const PARSER_CONTEXT * parser, DB_OTMPL * otemplate, DB_VALUE * value, PT_NODE * name,
 			       DB_ATTDESC * attr_desc);
@@ -17490,7 +17513,12 @@ cleanup:
  */
 
 /* used to generate unique savepoint names */
+#if defined (SERVER_MODE)
+/* savepoint-name minting is session state (a4 audit) */
+#define merge_savepoint_number (csc_current ()->merge_savepoint_number)
+#else
 static int merge_savepoint_number = 0;
+#endif
 
 /*
  * do_check_merge_trigger() -

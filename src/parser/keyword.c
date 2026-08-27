@@ -26,6 +26,10 @@
 
 #include <stdlib.h>
 #include <string.h>
+#if defined (SERVER_MODE)
+#include <atomic>
+#include <mutex>
+#endif
 
 
 #include "csql_grammar.h"
@@ -951,6 +955,42 @@ verify_test (bool is_keywords, KEYWORDS_TABLE_SRCH_INFO & info)
     }
 }
 #endif
+#if defined (SERVER_MODE)
+/* Concurrent first parses must not race the in-place table sorts (a4 audit).
+ * One flag covers BOTH tables: the debug verifiers read across them
+ * (verify_test(true) walks functions[] too), so sorting must be all-or-none
+ * before any verifier runs.  verify_test re-enters the lookups, so it runs
+ * after (never inside) the once block, behind an atomic exchange. */
+static KEYWORDS_TABLE_SRCH_INFO srv_kinfo;
+static KEYWORDS_TABLE_SRCH_INFO srv_finfo;
+static std::once_flag keyword_tables_once;
+
+static void
+pt_sort_keyword_tables (void)
+{
+  // *INDENT-OFF*
+  std::call_once (keyword_tables_once, [] ()
+  {
+    srv_kinfo.min_len = MAX_KEYWORD_SIZE;
+    srv_kinfo.max_len = 0;
+    srv_kinfo.cnt = sizeof (keywords) / sizeof (keywords[0]);
+    memset (srv_kinfo.start_pos, 0x00, sizeof (srv_kinfo.start_pos));
+    srv_kinfo.func_char_convert = char_toupper;
+
+    init_keyword_tables (keywords, srv_kinfo, keyword_hash_comparator < KEYWORD_RECORD >);
+
+    srv_finfo.min_len = MAX_KEYWORD_SIZE;
+    srv_finfo.max_len = 0;
+    srv_finfo.cnt = sizeof (functions) / sizeof (functions[0]);
+    memset (srv_finfo.start_pos, 0x00, sizeof (srv_finfo.start_pos));
+    srv_finfo.func_char_convert = char_tolower;
+
+    init_keyword_tables (functions, srv_finfo, keyword_hash_comparator < FUNCTION_MAP >);
+  });
+  // *INDENT-ON*
+}
+#endif /* SERVER_MODE */
+
 /*
  * pt_find_keyword () -
  *   return: keyword record corresponding to keyword text
@@ -959,10 +999,25 @@ verify_test (bool is_keywords, KEYWORDS_TABLE_SRCH_INFO & info)
 static KEYWORD_RECORD *
 pt_find_keyword (const char *text)
 {
-  static bool keyword_sorted = false;
+#if !defined (SERVER_MODE)
   static KEYWORDS_TABLE_SRCH_INFO kinfo;
+#endif
   int i, len, cmp;
   KEYWORD_RECORD dummy;
+
+#if defined (SERVER_MODE)
+  pt_sort_keyword_tables ();
+#ifndef NDEBUG
+  // *INDENT-OFF*
+  static std::atomic<bool> keyword_verified (false);
+  // *INDENT-ON*
+  if (!keyword_verified.exchange (true))
+    {
+      verify_test (true, srv_kinfo);
+    }
+#endif
+#else /* SERVER_MODE */
+  static bool keyword_sorted = false;
 
   if (keyword_sorted == false)
     {
@@ -980,9 +1035,15 @@ pt_find_keyword (const char *text)
       verify_test (true, kinfo);
 #endif
     }
+#endif /* !SERVER_MODE */
 
+#if defined (SERVER_MODE)
+  return (KEYWORD_RECORD *) find_keyword_tables (keywords, dummy, srv_kinfo, keyword_hash_comparator < KEYWORD_RECORD >,
+						 text);
+#else
   return (KEYWORD_RECORD *) find_keyword_tables (keywords, dummy, kinfo, keyword_hash_comparator < KEYWORD_RECORD >,
 						 text);
+#endif
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -1086,10 +1147,25 @@ pt_get_keyword_rec (int *rec_count)
 FUNCTION_MAP *
 pt_find_function_name (const char *text)
 {
-  static bool function_keyword_sorted = false;
+#if !defined (SERVER_MODE)
   static KEYWORDS_TABLE_SRCH_INFO finfo;
+#endif
   int i, len, cmp;
   FUNCTION_MAP dummy;
+
+#if defined (SERVER_MODE)
+  pt_sort_keyword_tables ();
+#ifndef NDEBUG
+  // *INDENT-OFF*
+  static std::atomic<bool> function_verified (false);
+  // *INDENT-ON*
+  if (!function_verified.exchange (true))
+    {
+      verify_test (false, srv_finfo);
+    }
+#endif
+#else /* SERVER_MODE */
+  static bool function_keyword_sorted = false;
 
   if (function_keyword_sorted == false)
     {
@@ -1107,9 +1183,15 @@ pt_find_function_name (const char *text)
       verify_test (false, finfo);
 #endif
     }
+#endif /* !SERVER_MODE */
 
   char temp[DB_MAX_IDENTIFIER_LENGTH];
 
   dummy.keyword = temp;
+#if defined (SERVER_MODE)
+  return (FUNCTION_MAP *) find_keyword_tables (functions, dummy, srv_finfo, keyword_hash_comparator < FUNCTION_MAP >,
+					       text);
+#else
   return (FUNCTION_MAP *) find_keyword_tables (functions, dummy, finfo, keyword_hash_comparator < FUNCTION_MAP >, text);
+#endif
 }
