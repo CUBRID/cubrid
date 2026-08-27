@@ -62,7 +62,6 @@
 #include "object_representation.h"
 #include "px_worker_manager.hpp"
 #include "px_callable_task.hpp"
-#include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
 #include "ftab_set.hpp"
@@ -406,6 +405,7 @@ static BT_LOAD_PX_OUTCOME btsort_px_construct_index_leaf (THREAD_ENTRY * thread_
 static int btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param,
 							   BTSORT_PARAM * sort_param, int parallel_num);
 static int btsort_merge_nruns (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
+static int btsort_compute_parallel_degree (bool no_logging_build, int n_data_pages, int n_sects);
 static int btsort_check_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
 static int btsort_start_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, BTSORT_PARAM * sort_param);
 static int btsort_end_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, BTSORT_PARAM * sort_param);
@@ -1050,7 +1050,6 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
   int error = NO_ERROR;
   BTSORT_PARAM ori_sort_param;
   BTSORT_PARAM *sort_param = &ori_sort_param;
-  INT32 buffer_pages;		/* sort buffer size in pages */
   int i;
 
   /* for parallel sort */
@@ -1103,9 +1102,11 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
   sort_param->multipage_file.volid = NULL_VOLID;
   sort_param->multipage_file.fileid = NULL_FILEID;
 
-  /* The sort buffer is sized from the sort buffer parameter; the loader gives no input size estimate. */
-  buffer_pages = prm_get_integer_value (PRM_ID_SR_NBUFFERS);
-  sort_param->tot_buffers = MAX (4, buffer_pages);
+  /* index_build_buffer_size is entered in bytes and kept in IO pages (PRM_SIZE_UNIT |
+   * PRM_DIFFER_UNIT); the loader gives no size estimate of its input. Four pages is the minimum of
+   * the parameter and the floor the code needs: one page goes to the output buffer and the slots
+   * grow down from it. */
+  sort_param->tot_buffers = MAX (4, prm_get_integer_value (PRM_ID_INDEX_BUILD_BUFFER_SIZE));
 
   sort_param->internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
   if (sort_param->internal_memory == NULL)
@@ -4666,13 +4667,69 @@ retire_all_on_error:
 }
 
 /*
+ * btsort_compute_parallel_degree () - Compute the parallel degree of the index build sort
+ *   return: degree (< 2 means serial)
+ *   no_logging_build(in): true for the no-logging index build (loaddb --no-logging-index)
+ *   n_data_pages(in): data pages of the heap(s) to scan
+ *   n_sects(in): data sectors of the heap(s) to scan; a worker needs one of its own to make a run
+ *
+ * Note: The no-logging build owns the table, so it takes every core, capped by PRM_MAX_PARALLELISM
+ *       and n_sects. CREATE INDEX goes parallel from parallel_index_build_page_threshold pages on:
+ *       the degree is floor (log2 (pages / threshold)) + 2, capped by index_build_parallelism and
+ *       by the core count.
+ */
+static int
+btsort_compute_parallel_degree (bool no_logging_build, int n_data_pages, int n_sects)
+{
+  const int start_degree = 2;
+  int core_count = (int) cubthread::system_core_count ();
+  int page_threshold, cap, degree;
+  UINT64 x;
+
+  if (no_logging_build)
+    {
+      degree = MIN (core_count, PRM_MAX_PARALLELISM);
+      degree = MIN (degree, n_sects);
+      return (degree < start_degree) ? 0 : degree;
+    }
+
+  if (core_count <= start_degree)
+    {
+      return 0;
+    }
+
+  page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD);
+  page_threshold = MAX (page_threshold, start_degree);
+  if (n_data_pages < page_threshold)
+    {
+      return 0;
+    }
+
+  cap = prm_get_integer_value (PRM_ID_INDEX_BUILD_PARALLELISM);
+  if (cap < 0)
+    {
+      cap = prm_get_integer_value (PRM_ID_PARALLELISM);
+    }
+  cap = MIN (cap, core_count);
+
+  /* floor (log2 (pages / threshold)) + start_degree */
+  degree = start_degree;
+  for (x = (UINT64) n_data_pages / (UINT64) page_threshold; x > 1; x >>= 1)
+    {
+      degree++;
+    }
+
+  degree = MIN (degree, cap);
+  return (degree < start_degree) ? 0 : degree;
+}
+
+/*
  * btsort_check_parallelism () - Decide the parallel degree of the index build sort
  *   return: parallel_num (1 = single process)
  *   sort_param(in):
  *
- * Note: Only the no-logging index build (loaddb --no-logging-index) takes the maximum-degree policy.
- *       An ordinary CREATE INDEX keeps the existing policy: parallel_sort_page_threshold decides whether
- *       the heap is large enough to go parallel and the parallelism parameter caps the degree.
+ * Note: See btsort_compute_parallel_degree for the degree policy. The degree is then limited by
+ *       the number of data sectors and by the parallel workers actually reserved.
  */
 static int
 btsort_check_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
@@ -4700,18 +4757,7 @@ btsort_check_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
       return 1;
     }
 
-  if (no_logging_build)
-    {
-      /* No page threshold and no parallelism parameter: the degree is the number of system cores, capped by
-       * the maximum parallelism and the number of data sectors. */
-      parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::INDEX_BUILD, n_sects);
-    }
-  else
-    {
-      parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, n_data_pages,
-							      -1 /* no hint at parallel index build */ );
-    }
-
+  parallel_num = btsort_compute_parallel_degree (no_logging_build, n_data_pages, n_sects);
   if (parallel_num < 2)
     {
       /* single process */
