@@ -25174,7 +25174,12 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
 
       if (log_get_undo_record_from_inflight (thread_p, version_lsa, recdes, &window_scan))
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_HIT);
+	  if (window_scan == S_SUCCESS)
+	    {
+	      /* Counted where the window delivered the record. On S_DOESNT_FIT the caller grows the area and
+	       * comes back with the same version_lsa, and that retry is the same read, not a second one. */
+	      perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_HIT);
+	    }
 	  return window_scan;
 	}
 
