@@ -9931,7 +9931,8 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
       for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
 	{
 	  if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	      && (entity_name = name->info.name.original) != NULL && (db_obj = db_find_class (entity_name)) != NULL)
+	      && (entity_name = pt_name_qualified (parser, name)) != NULL
+	      && (db_obj = db_find_class (entity_name)) != NULL)
 	    {
 	      if (typ != PT_MISC_DUMMY)
 		{
@@ -9959,7 +9960,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
   for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
     {
       if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	  && (entity_name = name->info.name.original) != NULL && (db_obj = db_find_class (entity_name)) != NULL)
+	  && (entity_name = pt_name_qualified (parser, name)) != NULL && (db_obj = db_find_class (entity_name)) != NULL)
 	{
 	  attributes = db_get_attributes_force (db_obj);
 	  while (attributes)

@@ -1961,7 +1961,7 @@ qo_reduce_outer_joined_tbls (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
     }
 
   /* get class info */
-  cls = sm_find_class (spec->info.spec.flat_entity_list->info.name.original);
+  cls = sm_find_class (pt_name_qualified (parser, spec->info.spec.flat_entity_list));
   if (cls == NULL)
     {
       goto end;

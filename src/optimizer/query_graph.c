@@ -899,7 +899,7 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
   /* check if the constraint is a function index info and add a segment for each function index expression */
   if (entity->info.spec.flat_entity_list)
     {
-      cls = sm_find_class (entity->info.spec.flat_entity_list->info.name.original);
+      cls = sm_find_class (pt_name_qualified (QO_ENV_PARSER (env), entity->info.spec.flat_entity_list));
       if (cls)
 	{
 	  constraints = sm_class_constraints (cls);
@@ -1061,7 +1061,8 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree, void 
 
 	  if (entity != NULL && entity->info.spec.entity_name
 	      && entity->info.spec.entity_name->node_type == PT_NAME
-	      && ((cls = sm_find_class (entity->info.spec.entity_name->info.name.original)) != NULL))
+	      && ((cls = sm_find_class (pt_name_qualified (QO_ENV_PARSER (env), entity->info.spec.entity_name))) !=
+		  NULL))
 	    {
 	      constraints = sm_class_constraints (cls);
 	      k = 0;
