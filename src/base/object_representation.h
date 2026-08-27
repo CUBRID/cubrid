@@ -742,6 +742,12 @@ enum
   ORC_CLASS_TDE_ALGORITHM = 84
 };
 
+/* bits of the word at ORC_CLASS_FLAGS; mirrors SM_CLASSFLAG_* in class_object.h */
+enum
+{
+  ORC_CLASS_FLAG_SYSTEM = 1
+};
+
 enum
 {
   ORC_NAME_INDEX = 0,

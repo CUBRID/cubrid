@@ -765,6 +765,7 @@ static int heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * c
 static int heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATTR_ID * type_id,
 					  ATTR_ID * values_id);
 static int heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *count, OID ** subclasses);
+static int heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **name_out);
 
 static SCAN_CODE heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, RECDES forward_recdes,
 				       PGBUF_WATCHER * page_watcher, HEAP_SCANCACHE * scan_cache, bool ispeeking,
@@ -9551,11 +9552,216 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
  * Note: Find the name of the given class identifier. It asserts that the given OID is class OID.
  *
  * Note: Classname pointer must be released by the caller using free_and_init
+ *
+ * Note: The name comes with its owner in front of it, the way a user writes it: every
+ *       reader of this shows the name to someone. heap_get_class_name_alloc_if_diff ()
+ *       is the one that keeps to the name the record holds on its own.
  */
 int
 heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **class_name)
 {
-  return heap_get_class_name_alloc_if_diff (thread_p, class_oid, NULL, class_name);
+  return heap_get_class_qualified_name (thread_p, class_oid, class_name);
+}
+
+/*
+ * heap_get_user_name () - Read the name a user goes by
+ *
+ * return: NO_ERROR, or an error raised while reading the row
+ *
+ *   user_oid(in): an instance of _db_user
+ *   name(out): where the name is copied
+ *   name_size(in): size of that buffer
+ *
+ * Note: The server has no user name to OID map of its own, so a name it has to show
+ *       is read off the row. CATCLS_USER_ATTR_IDX_NAME follows the attribute order
+ *       au_install () lays out; the note there says to keep the two together.
+ */
+int
+heap_get_user_name (THREAD_ENTRY * thread_p, const OID * user_oid, char *name, int name_size)
+{
+#define CATCLS_USER_ATTR_IDX_NAME 11
+  HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes = RECDES_INITIALIZER;
+  ATTR_ID attr_id = CATCLS_USER_ATTR_IDX_NAME;
+  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  HFID hfid = HFID_INITIALIZER;
+  DB_VALUE *db_value = NULL;
+  const char *user_name = NULL;
+  bool attrinfo_inited = false;
+  bool scancache_inited = false;
+  int error = NO_ERROR;
+
+  assert (user_oid != NULL && name != NULL && name_size > 0);
+
+  name[0] = '\0';
+
+  if (OID_ISNULL (user_oid))
+    {
+      return ER_FAILED;
+    }
+
+  error = heap_attrinfo_start (thread_p, oid_User_class_oid, 1, &attr_id, &attr_info);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+  attrinfo_inited = true;
+
+  error = heap_get_class_info (thread_p, oid_User_class_oid, &hfid, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = heap_scancache_start (thread_p, &scan_cache, &hfid, oid_User_class_oid, true, mvcc_snapshot);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+  scancache_inited = true;
+
+  if (heap_get_visible_version (thread_p, user_oid, oid_User_class_oid, &recdes, &scan_cache, PEEK, NULL_CHN)
+      != S_SUCCESS)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  error = heap_attrinfo_read_dbvalues (thread_p, user_oid, &recdes, &attr_info);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  db_value = heap_attrinfo_access (attr_id, &attr_info);
+  if (db_value == NULL || DB_IS_NULL (db_value))
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  user_name = db_get_string (db_value);
+  if (user_name == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  if (snprintf (name, name_size, "%s", user_name) < 0)
+    {
+      error = ER_FAILED;
+    }
+
+end:
+  if (scancache_inited)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+    }
+  if (attrinfo_inited)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+
+  return error;
+#undef CATCLS_USER_ATTR_IDX_NAME
+}
+
+/*
+ * heap_get_class_qualified_name () - Read a class name the way a user writes it
+ *
+ * return: NO_ERROR, or an error raised while reading the record
+ *
+ *   class_oid(in): The class object identifier
+ *   name_out(out): malloc'ed "owner.name", or the name alone for a system class;
+ *                  must be released by the caller using free_and_init
+ *
+ * Note: The record keeps the name and the owner apart, so anything the server shows
+ *       to a user has to put them back together.
+ */
+static int
+heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **name_out)
+{
+  char bare_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char lower_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  RECDES recdes = RECDES_INITIALIZER;
+  HEAP_SCANCACHE scan_cache;
+  OID owner_oid = OID_INITIALIZER;
+  bool is_system = false;
+  int alloc_size;
+  int error = NO_ERROR;
+
+  assert (name_out != NULL);
+
+  *name_out = NULL;
+
+  /* read the record out first: the owner name is read from another heap, and this one
+   * has no reason to stay fixed while that happens */
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
+    {
+      snprintf (bare_name, sizeof (bare_name), "%s", or_class_name (&recdes));
+      or_class_owner (&recdes, &owner_oid);
+      is_system = or_class_is_system (&recdes);
+    }
+  else
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+  (void) heap_scancache_end (thread_p, &scan_cache);
+
+  if (error != NO_ERROR)
+    {
+      if (error == ER_HEAP_NODATA_NEWADDRESS)
+	{
+	  er_clear ();
+	  error = NO_ERROR;
+	}
+      return error;
+    }
+
+  if (!is_system && !OID_ISNULL (&owner_oid)
+      && heap_get_user_name (thread_p, &owner_oid, owner_name, sizeof (owner_name)) == NO_ERROR
+      && intl_identifier_lower_string_size (owner_name) < (int) sizeof (lower_owner_name))
+    {
+      intl_identifier_lower (owner_name, lower_owner_name);
+    }
+  else
+    {
+      er_clear ();
+      lower_owner_name[0] = '\0';
+    }
+
+  alloc_size = (int) (strlen (lower_owner_name) + strlen (bare_name) + 2);
+  *name_out = (char *) malloc (alloc_size);
+  if (*name_out == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) alloc_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if (lower_owner_name[0] == '\0')
+    {
+      snprintf (*name_out, alloc_size, "%s", bare_name);
+    }
+  else
+    {
+      snprintf (*name_out, alloc_size, "%s.%s", lower_owner_name, bare_name);
+    }
+
+  return NO_ERROR;
 }
 
 /*

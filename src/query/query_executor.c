@@ -24875,7 +24875,13 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	}
     }
 
-  class_name = or_class_name (&class_record);
+  /* this column has always named the table by its owner too */
+  if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      GOTO_EXIT_ON_ERROR;
+    }
+
   for (i = 0; i < rep->n_indexes; i++)
     {
       /* class name */
@@ -25106,6 +25112,11 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	}
     }
 
+  if (class_name != NULL)
+    {
+      free_and_init (class_name);
+    }
+
   if (tplrec.tpl)
     {
       db_private_free_and_init (thread_p, tplrec.tpl);
@@ -25120,6 +25131,11 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   return NO_ERROR;
 
 exit_on_error:
+
+  if (class_name != NULL)
+    {
+      free_and_init (class_name);
+    }
 
   if (out_values)
     {

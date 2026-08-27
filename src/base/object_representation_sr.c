@@ -788,6 +788,26 @@ or_class_owner (RECDES * record, OID * owner_oid)
 }
 
 /*
+ * or_class_is_system () - Is the record that of a class the system defines ?
+ *   return: true when it is
+ *   record(in): packed disk record containing class
+ *
+ * Note: A system class is named without an owner, so a name read off the record
+ *       has to know not to ask for one.
+ */
+bool
+or_class_is_system (RECDES * record)
+{
+  char *ptr;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+
+  return (OR_GET_INT (ptr + ORC_CLASS_FLAGS) & ORC_CLASS_FLAG_SYSTEM) != 0;
+}
+
+/*
  * or_class_tde_algorithm, () - Extracts the tde algorithm from the disk representation of a class
  *   return: void
  *   record(in): packed disk record containing class
