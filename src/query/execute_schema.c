@@ -250,11 +250,12 @@ static int create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *con
 					const PT_INDEX_INFO * idx_info, DB_OBJECT * const obj, DO_INDEX do_index);
 static int update_locksets_for_multiple_rename (const char *class_name, int *num_mops, MOP * mop_set, int *num_names,
 						char **name_set, bool error_on_misssing_class);
-static int acquire_locks_for_multiple_rename (const PT_NODE * statement);
+static int acquire_locks_for_multiple_rename (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
 static int validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const bool check_zero_precision);
 static SM_FOREIGN_KEY_ACTION map_pt_to_sm_action (const PT_MISC_TYPE action);
-static int add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_names);
+static int add_foreign_key (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const PT_NODE * cnstr,
+			    const char **att_names);
 
 static int add_union_query (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const PT_NODE * query);
 static int add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const PT_NODE * queries);
@@ -606,7 +607,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		return error;
 	      }
 
-	    error = do_add_constraints (ctemplate, alter->info.alter.constraint_list);
+	    error = do_add_constraints (parser, ctemplate, alter->info.alter.constraint_list);
 	    if (error != NO_ERROR)
 	      {
 		dbt_abort_class (ctemplate);
@@ -2827,7 +2828,7 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
       entity_list = entity_spec->info.spec.flat_entity_list;
       for (entity = entity_list; entity != NULL; entity = entity->next)
 	{
-	  error = drop_class_name (entity->info.name.original, statement->info.drop.is_cascade_constraints);
+	  error = drop_class_name (pt_name_qualified (parser, entity), statement->info.drop.is_cascade_constraints);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -2921,7 +2922,7 @@ update_locksets_for_multiple_rename (const char *class_name, int *num_mops, MOP 
  *       (locator_reserve_class_names ()).
  */
 int
-acquire_locks_for_multiple_rename (const PT_NODE * statement)
+acquire_locks_for_multiple_rename (PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   int error = NO_ERROR;
   const PT_NODE *current_rename = NULL;
@@ -2959,8 +2960,8 @@ acquire_locks_for_multiple_rename (const PT_NODE * statement)
   for (current_rename = statement; current_rename != NULL; current_rename = current_rename->next)
     {
       const bool is_first_rename = current_rename == statement ? true : false;
-      const char *old_name = current_rename->info.rename.old_name->info.name.original;
-      const char *new_name = current_rename->info.rename.new_name->info.name.original;
+      const char *old_name = pt_name_qualified (parser, current_rename->info.rename.old_name);
+      const char *new_name = pt_name_qualified (parser, current_rename->info.rename.new_name);
 
       bool found = false;
 
@@ -3104,7 +3105,7 @@ do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement->next != NULL)
     {
-      error = acquire_locks_for_multiple_rename (statement);
+      error = acquire_locks_for_multiple_rename (parser, statement);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -3113,8 +3114,8 @@ do_rename (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   for (current_rename = statement; current_rename != NULL; current_rename = current_rename->next)
     {
-      const char *old_name = current_rename->info.rename.old_name->info.name.original;
-      const char *new_name = current_rename->info.rename.new_name->info.name.original;
+      const char *old_name = pt_name_qualified (parser, current_rename->info.rename.old_name);
+      const char *new_name = pt_name_qualified (parser, current_rename->info.rename.new_name);
 
       /* We cannot change the schema of a class by using synonym names. */
       if (db_find_synonym (old_name) != NULL)
@@ -4739,13 +4740,13 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	  part_add = PT_PARTITION_HASH;
 	}
       entity_name = alter->info.alter.entity_name;
-      intl_identifier_lower ((char *) entity_name->info.name.original, class_name);
+      intl_identifier_lower ((char *) pt_name_qualified (parser, entity_name), class_name);
     }
   else if (alter->node_type == PT_CREATE_ENTITY)
     {
       entity_name = alter->info.create_entity.entity_name;
       alter_info = alter->info.create_entity.partition_info;
-      intl_identifier_lower ((char *) entity_name->info.name.original, class_name);
+      intl_identifier_lower ((char *) pt_name_qualified (parser, entity_name), class_name);
     }
   else
     {
@@ -8532,7 +8533,7 @@ map_pt_to_sm_action (const PT_MISC_TYPE action)
  * Note:
  */
 static int
-add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_names)
+add_foreign_key (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_names)
 {
   PT_FOREIGN_KEY_INFO *fk_info;
   const char *constraint_name = NULL;
@@ -8640,7 +8641,8 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
     }
 
   error =
-    dbt_add_foreign_key (ctemplate, constraint_name, att_names, fk_info->referenced_class->info.name.original,
+    dbt_add_foreign_key (ctemplate, constraint_name, att_names,
+			 pt_name_qualified (parser, fk_info->referenced_class),
 			 (const char **) ref_attrs, map_pt_to_sm_action (fk_info->delete_action),
 			 map_pt_to_sm_action (fk_info->update_action), comment);
   free_and_init (ref_attrs);
@@ -8658,7 +8660,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
  * Note : Class object is modified
  */
 int
-do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
+do_add_constraints (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * constraints)
 {
   int error = NO_ERROR;
   PT_NODE *cnstr;
@@ -8853,7 +8855,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		}
 	      else if (cnstr->info.constraint.type == PT_CONSTRAIN_FOREIGN_KEY)
 		{
-		  error = add_foreign_key (ctemplate, cnstr, (const char **) att_names);
+		  error = add_foreign_key (parser, ctemplate, cnstr, (const char **) att_names);
 		  if (error != NO_ERROR)
 		    {
 		      goto constraint_error;
@@ -9497,7 +9499,7 @@ do_create_local (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * pt_nod
       return error;
     }
 
-  error = do_add_constraints (ctemplate, pt_node->info.create_entity.constraint_list);
+  error = do_add_constraints (parser, ctemplate, pt_node->info.create_entity.constraint_list);
   if (error != NO_ERROR)
     {
       return error;
