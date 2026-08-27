@@ -27308,67 +27308,26 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
       return NO_ERROR;
 
     case DELETE_RECORD_INSERT_IN_PROGRESS:
-#if defined (SERVER_MODE)
-      /* Referenced row still being inserted. */
-      {
-	MVCCID fk_insert_mvccid = BTREE_MVCC_INFO_INSID (mvcc_info);
-	int fk_wait_error;
-
-	if (!logtb_is_active_other_mvccid (thread_p, fk_insert_mvccid))
-	  {
-	    /* Inserter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the stale
-	     * INSERT_IN_PROGRESS as "not found" (mirrors the unique-scan recheck). */
-	    btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	    *stop = true;
-	    return NO_ERROR;
-	  }
-
-	/* Wait for that transaction to end before deciding whether the FK reference holds: release all page
-	 * latches and any locked object, then wait out the inserter. */
-	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	fk_wait_error = logtb_wait_for_tran_end (thread_p, fk_insert_mvccid);
-	if (fk_wait_error != NO_ERROR)
-	  {
-	    return fk_wait_error;
-	  }
-
-	/* Inserter ended; trigger re-check. */
-	*stop = true;
-	return NO_ERROR;
-      }
-#else	/* !SERVER_MODE */		   /* SA_MODE */
-      /* Impossible: no other active transactions. */
-      assert_release (false);
-      return ER_FAILED;
-#endif /* SA_MODE */
-
     case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SERVER_MODE)
-      /* a published deleter holds no row lock: the object-lock suspend would be granted at once and the
-       * re-check would spin. Wait for the deleter to end, then re-check (mirrors the INSERT_IN_PROGRESS
-       * path above). */
+      /* Neither writer holds a row lock the object lock could suspend on, so that lock would be granted at
+       * once and the re-check would spin. Wait for the writer's transaction to end instead. */
       {
-	MVCCID fk_delete_mvccid = BTREE_MVCC_INFO_DELID (mvcc_info);
-	int fk_wait_error;
+	MVCCID fk_writer_mvccid = (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	  ? BTREE_MVCC_INFO_INSID (mvcc_info) : BTREE_MVCC_INFO_DELID (mvcc_info);
 
-	if (!logtb_is_active_other_mvccid (thread_p, fk_delete_mvccid))
-	  {
-	    /* Deleter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the
-	     * stale DELETE_IN_PROGRESS. */
-	    btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	    *stop = true;
-	    return NO_ERROR;
-	  }
-
-	/* Release all page latches and any locked object, then wait out the deleter. */
+	/* The writer may have ended in the race since mvcc_satisfies_delete (), so the verdict can be stale:
+	 * re-read the key either way rather than consume it. */
 	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	fk_wait_error = logtb_wait_for_tran_end (thread_p, fk_delete_mvccid);
-	if (fk_wait_error != NO_ERROR)
+	if (logtb_is_active_other_mvccid (thread_p, fk_writer_mvccid))
 	  {
-	    return fk_wait_error;
-	  }
+	    int fk_wait_error = logtb_wait_for_tran_end (thread_p, fk_writer_mvccid);
 
-	/* Deleter ended; trigger re-check. */
+	    if (fk_wait_error != NO_ERROR)
+	      {
+		return fk_wait_error;
+	      }
+	  }
 	*stop = true;
 	return NO_ERROR;
       }
