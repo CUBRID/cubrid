@@ -138,8 +138,8 @@ for case_spec in "$@"; do
     sleep 1
   done
 
-  # @EXPECT: SUCCESS alone is not enough — the fetched value must match
-  if [ $ok -eq 1 ] && [ -n "$expect" ] && ! grep -q "^M0_TRACER: first value = ${expect}$" "$out"; then
+  # @EXPECT: SUCCESS alone is not enough — the fetched value must match (fixed-string, whole-line)
+  if [ $ok -eq 1 ] && [ -n "$expect" ] && ! grep -qxF "M0_TRACER: first value = ${expect}" "$out"; then
     ok=0
   fi
 
