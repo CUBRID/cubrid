@@ -21772,13 +21772,6 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      continue;
 	    }
-	  /* A hierarchy scan reports subclass OIDs that no spec carries, so the delete phase cannot
-	   * resolve them back to an access spec and has nothing to re-check with.
-	   *
-	   * A class the condition merely references used to be listed here too.  It no longer needs
-	   * to be: force-time reevaluation now re-reads that class's own row from its own heap
-	   * (locator_mvcc_reeval_scan_filters), so a term confined to it is checkable.  A term that
-	   * relates it to another spec still is not, and the cross-spec test below catches that. */
 	  if (cl_name_node->info.spec.flat_entity_list != NULL
 	      && cl_name_node->info.spec.flat_entity_list->next != NULL)
 	    {
@@ -21787,20 +21780,13 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      /* A term relating two specs is re-checked one spec at a time, against that spec's own
-       * range/key/data filters, and such a filter cannot carry the other spec's row.  Both classes
-       * being delete targets does not make it any more re-checkable -- DELETE a, b FROM a, b WHERE
-       * a.k = b.k is the case the loop above lets through.  Terms that each stay inside one spec
-       * are fine, so ask whether any single term crosses, not how many specs appear. */
+      /* Both classes being delete targets does not make a cross-spec term re-checkable -- DELETE a, b
+       * FROM a, b WHERE a.k = b.k is the case the loop above lets through. */
       if (!abort_reevaluation && pt_cond_spans_multiple_specs (parser, from, where))
 	{
 	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
 	  abort_reevaluation = true;
 	}
-
-      /* Whatever survives the tests above is re-checked at the delete phase instead of being locked
-       * at select: the row is locked there and, if its version moved, the predicate is evaluated
-       * again against the latest one. */
 
       if (abort_reevaluation)
 	{

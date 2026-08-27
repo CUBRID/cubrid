@@ -11463,9 +11463,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			  /* The plan gives this class no filters to re-evaluate with, so the delete phase
 			   * cannot re-check the predicate: skip a version the statement never evaluated
 			   * rather than delete it, exactly as a plan carrying no reevaluation data does.
-			   * mvcc_reev_class_cnt stays as it is -- it is this loop's own bound over the
-			   * OID/class OID pairs of the value list, and cutting it short here would leave
-			   * the pairs of the remaining reevaluation classes unconsumed. */
+			   * mvcc_reev_class_cnt is this loop's own bound over the value list's OID pairs;
+			   * cutting it short here would leave the remaining classes' pairs unconsumed. */
 			  reev_disabled = true;
 			  mvcc_reev_class = NULL;
 			  mvcc_upddel_reev_data.curr_upddel = NULL;

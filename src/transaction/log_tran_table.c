@@ -4223,8 +4223,6 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
  *
  *   thread_p(in): thread entry
  *   mvccid(in): MVCC id
- *
- * Note: false when the id is invalid, our own, or already ended -- nothing to wait on then.
  */
 bool
 logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
