@@ -12942,9 +12942,149 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
 }
 
 /*
+ * locator_get_settled_last_version () - Read the locked object's last version and its MVCC header
+ *
+ * return	       : S_SUCCESS or S_SUCCESS_CHN_UPTODATE on success.
+ * thread_p (in)       :
+ * context (in/out)    : Heap get context.
+ * is_mvcc_class (in)  : False when MVCC does not apply, and then no header is read.
+ * recdes_header (out) : MVCC header of the version read.
+ *
+ * Note: settled means no delete is left undecided. A deleter holds no row lock and may still roll back,
+ *	 so it is waited out and the version read again; our row lock bounds that to one wait.
+ */
+static SCAN_CODE
+locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_mvcc_class,
+				  MVCC_REC_HEADER * recdes_header)
+{
+  SCAN_CODE scan = S_SUCCESS;
+
+  while (true)
+    {
+      if (context->recdes_p != NULL)
+	{
+	  scan = heap_get_last_version (thread_p, context);
+	  if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE)
+	    {
+	      return scan;
+	    }
+	}
+
+      if (!is_mvcc_class)
+	{
+	  return scan;
+	}
+
+      if (context->recdes_p == NULL || scan == S_SUCCESS_CHN_UPTODATE)
+	{
+	  if (heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED) != S_SUCCESS)
+	    {
+	      return S_ERROR;
+	    }
+	  if (heap_get_mvcc_header (thread_p, context, recdes_header) != S_SUCCESS)
+	    {
+	      return S_ERROR;
+	    }
+	}
+      else if (or_mvcc_get_header (context->recdes_p, recdes_header) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+#if defined (SERVER_MODE)
+      if (MVCC_IS_HEADER_DELID_VALID (recdes_header)
+	  && logtb_is_active_other_mvccid (thread_p, MVCC_GET_DELID (recdes_header)))
+	{
+	  MVCCID deleter_mvccid = MVCC_GET_DELID (recdes_header);
+
+	  heap_clean_get_context (thread_p, context);
+	  if (logtb_wait_for_tran_end (thread_p, deleter_mvccid) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
+	  scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
+	  if (scan != S_SUCCESS)
+	    {
+	      return scan;
+	    }
+	  continue;
+	}
+#endif /* SERVER_MODE */
+
+      return scan;
+    }
+}
+
+/*
+ * locator_has_isolation_conflict () - Is modifying the locked object an isolation conflict?
+ *
+ * return	       : True on conflict, false otherwise.
+ * thread_p (in)       :
+ * context (in)	       : Heap get context.
+ * recdes_header (in)  : MVCC header of the version to be modified.
+ * conflict_scan (out) : The code to fail with -- S_DOESNT_EXIST for a version that is gone, S_ERROR for
+ *			 a conflict, whose error is set. Written only on conflict, so a false return leaves
+ *			 the caller's own scan code intact.
+ */
+static bool
+locator_has_isolation_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_REC_HEADER * recdes_header,
+				SCAN_CODE * conflict_scan)
+{
+  /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
+  if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
+      && logtb_check_class_for_rr_isolation_err (context->class_oid_p))
+    {
+      /* In these isolation levels, the transaction is not allowed to modify an object that was already
+       * modified by other transactions. This would be true if last version matched the visible version.
+       *
+       * TODO: We already know here that this last row version is not deleted. It would be enough to just
+       * check whether the insert MVCCID is considered active relatively to transaction's snapshot.
+       */
+      MVCC_SNAPSHOT *tran_snapshot = logtb_get_mvcc_snapshot (thread_p);
+      MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
+
+      assert (tran_snapshot != NULL && tran_snapshot->snapshot_fnc != NULL);
+      snapshot_res = tran_snapshot->snapshot_fnc (thread_p, recdes_header, tran_snapshot);
+      if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
+	{
+	  /* Not visible. */
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid_p->volid,
+		  context->oid_p->pageid, context->oid_p->slotid);
+	  *conflict_scan = S_DOESNT_EXIST;
+	  return true;
+	}
+      else if (snapshot_res == TOO_NEW_FOR_SNAPSHOT)
+	{
+	  /* Trying to modify a version already modified by concurrent transaction, which is an isolation conflict.
+	   */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
+	  *conflict_scan = S_ERROR;
+	  return true;
+	}
+      else if (MVCC_IS_HEADER_DELID_VALID (recdes_header))
+	{
+	  /* Trying to modify version deleted by concurrent transaction, which is an isolation conflict. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
+	  *conflict_scan = S_ERROR;
+	  return true;
+	}
+      /* Last version is also visible version and it is not deleted. Fall through. */
+    }
+
+  if (MVCC_IS_HEADER_DELID_VALID (recdes_header))
+    {
+      *conflict_scan = S_DOESNT_EXIST;
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * locator_lock_and_get_object_internal () - Internal function: aquire lock and return object
  *
- * return : scan code
+ * return : Scan code; S_SUCCESS_CHN_UPTODATE from heap_get_last_version () is preserved to the caller.
  * thread_p (in)   :
  * context (in/out): Heap get context .
  * lock_mode (in)  : Type of lock.
@@ -12956,6 +13096,8 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 {
   SCAN_CODE scan = S_SUCCESS;
   bool lock_acquired = false;
+  MVCC_REC_HEADER recdes_header;
+  bool is_mvcc_class;
 
   assert (context != NULL);
   assert (context->oid_p != NULL && !OID_ISNULL (context->oid_p));
@@ -12994,114 +13136,16 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 
   assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK);
 
-  /* Lock should be aquired now -> get recdes */
-get_record:
-  if (context->recdes_p != NULL)
+  is_mvcc_class = !mvcc_is_mvcc_disabled_class (context->class_oid_p);
+  scan = locator_get_settled_last_version (thread_p, context, is_mvcc_class, &recdes_header);
+  if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE)
     {
-      scan = heap_get_last_version (thread_p, context);
-      /* this scan_code must be preserved until the end of this function to be returned; - unless an error occur */
-      if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE)
-	{
-	  goto error;
-	}
+      goto error;
     }
 
-  /* Check isolation restrictions and the visibility of the object if it belongs to a mvcc class */
-  if (!mvcc_is_mvcc_disabled_class (context->class_oid_p))
+  if (is_mvcc_class && locator_has_isolation_conflict (thread_p, context, &recdes_header, &scan))
     {
-      MVCC_REC_HEADER recdes_header;
-
-      /* get header: directly from recdes if it has been obtained, otherwise from heap */
-      if (context->recdes_p == NULL || scan == S_SUCCESS_CHN_UPTODATE)
-	{
-	  /* ensure context is prepared to get header of the record */
-	  if (heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED) != S_SUCCESS)
-	    {
-	      scan = S_ERROR;
-	      goto error;
-	    }
-	  if (heap_get_mvcc_header (thread_p, context, &recdes_header) != S_SUCCESS)
-	    {
-	      scan = S_ERROR;
-	      goto error;
-	    }
-	}
-      else if (or_mvcc_get_header (context->recdes_p, &recdes_header) != NO_ERROR)
-	{
-	  goto error;
-	}
-
-#if defined (SERVER_MODE)
-      if (MVCC_IS_HEADER_DELID_VALID (&recdes_header)
-	  && logtb_is_active_other_mvccid (thread_p, MVCC_GET_DELID (&recdes_header)))
-	{
-	  /* An active deleter may hold no per-row lock and may still roll back: wait it out, then
-	   * re-classify. Our row lock is held, so no third writer can re-stamp -- at most one wait. */
-	  MVCCID owner_mvccid = MVCC_GET_DELID (&recdes_header);
-
-	  heap_clean_get_context (thread_p, context);
-	  if (logtb_wait_for_tran_end (thread_p, owner_mvccid) != NO_ERROR)
-	    {
-	      scan = S_ERROR;
-	      goto error;
-	    }
-
-	  scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
-	  if (scan != S_SUCCESS)
-	    {
-	      goto error;
-	    }
-	  goto get_record;
-	}
-#endif /* SERVER_MODE */
-
-      /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
-      if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
-	  && logtb_check_class_for_rr_isolation_err (context->class_oid_p))
-	{
-	  /* In these isolation levels, the transaction is not allowed to modify an object that was already
-	   * modified by other transactions. This would be true if last version matched the visible version.
-	   *
-	   * TODO: We already know here that this last row version is not deleted. It would be enough to just
-	   * check whether the insert MVCCID is considered active relatively to transaction's snapshot.
-	   */
-	  MVCC_SNAPSHOT *tran_snapshot = logtb_get_mvcc_snapshot (thread_p);
-	  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
-
-	  assert (tran_snapshot != NULL && tran_snapshot->snapshot_fnc != NULL);
-	  snapshot_res = tran_snapshot->snapshot_fnc (thread_p, &recdes_header, tran_snapshot);
-	  if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
-	    {
-	      /* Not visible. */
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid_p->volid,
-		      context->oid_p->pageid, context->oid_p->slotid);
-	      scan = S_DOESNT_EXIST;
-	      goto error;
-	    }
-	  else if (snapshot_res == TOO_NEW_FOR_SNAPSHOT)
-	    {
-	      /* Trying to modify a version already modified by concurrent transaction, which is an isolation conflict.
-	       */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
-	      goto error;
-	    }
-	  else if (MVCC_IS_HEADER_DELID_VALID (&recdes_header))
-	    {
-	      /* Trying to modify version deleted by concurrent transaction, which is an isolation conflict. */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
-	      goto error;
-	    }
-	  else
-	    {
-	      /* Last version is also visible version and it is not deleted. Fall through. */
-	    }
-	}
-
-      if (MVCC_IS_HEADER_DELID_VALID (&recdes_header))
-	{
-	  scan = S_DOESNT_EXIST;
-	  goto error;
-	}
+      goto error;
     }
 
   return scan;
@@ -13234,14 +13278,19 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	       * which was already evaluated. */
 	      goto exit;
 	    }
-	  else if (mvcc_reev_data->type == REEV_DATA_UPDDEL && mvcc_reev_data->upddel_reev_data != NULL
-		   && mvcc_reev_data->upddel_reev_data->skip_unevaluated_version)
+	  else
 	    {
-	      /* no reevaluation data to re-check a version past the statement snapshot: skip the row rather
-	       * than modify what the predicate never saw */
-	      mvcc_reev_data->filter_result = V_FALSE;
-	      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
-	      goto exit;
+	      /* the DELETE path sets this when the statement has no reevaluation class to re-check with */
+	      bool skips_unevaluated_version =
+		(mvcc_reev_data->type == REEV_DATA_UPDDEL && mvcc_reev_data->upddel_reev_data != NULL
+		 && mvcc_reev_data->upddel_reev_data->skip_unevaluated_version);
+
+	      if (skips_unevaluated_version)
+		{
+		  mvcc_reev_data->filter_result = V_FALSE;
+		  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+		  goto exit;
+		}
 	    }
 	}
       ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
@@ -13651,32 +13700,29 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
   cls_oid = &mvcc_cond_reeval->cls_oid;
   if (!is_upddel)
     {
-      /* The class is different from the one being updated/deleted, so re-read ITS latest version --
-       * its own row out of its own heap.  Reading the target's OID from the target's heap and then
-       * evaluating this class's filters against that record is how a join DELETE came to delete rows
-       * whose predicate no longer held, and, where the two layouts differ, to skip rows that still
-       * qualified. */
-      HFID cls_hfid;
-
+      /* Not the class being updated/deleted: re-read its own row out of its own heap.  Evaluating this
+       * class's filters against the target's record instead is what let a join DELETE act on rows whose
+       * predicate no longer held.  The read carries no snapshot, so a version a concurrent transaction
+       * deleted still reads; a failure here means the slot itself is gone. */
       recdesp = &temp_recdes;
       oid_inst = mvcc_cond_reeval->inst_oid;
       if (oid_inst == NULL || OID_ISNULL (oid_inst))
 	{
-	  /* nothing to re-read this class against */
+	  /* the plan flagged this class for reevaluation but the scan bound no row of it to re-read.  The
+	   * caller asserts an error is set on V_ERROR, so say what went wrong rather than return silently. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  ev_res = V_ERROR;
 	  goto end;
 	}
-      if (heap_get_class_info (thread_p, cls_oid, &cls_hfid, NULL, NULL) != NO_ERROR)
-	{
-	  ev_res = V_ERROR;
-	  goto end;
-	}
-      if (heap_scancache_quick_start_with_class_hfid (thread_p, &local_scan_cache, &cls_hfid) != NO_ERROR)
+
+      if (heap_scancache_quick_start_with_class_hfid (thread_p, &local_scan_cache, &mvcc_cond_reeval->cls_hfid)
+	  != NO_ERROR)
 	{
 	  ev_res = V_ERROR;
 	  goto end;
 	}
       scan_cache_inited = true;
+
       scan_code = heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, PEEK, NULL_CHN);
       if (scan_code != S_SUCCESS)
 	{

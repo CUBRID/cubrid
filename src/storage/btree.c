@@ -30,6 +30,7 @@
 #include "btree.h"
 
 #include "btree_load.h"
+#include "btree_write_conflict.hpp"
 #include "config.h"
 #include "db_value_printer.hpp"
 #include "deduplicate_key.h"
@@ -386,54 +387,6 @@ struct btree_search_key_helper
 #define BTREE_SEARCH_KEY_HELPER_INITIALIZER \
   { BTREE_KEY_NOTFOUND, NULL_SLOTID, btree_search_key_helper::NO_FENCE_KEY }
 // *INDENT-ON*
-
-/* BTREE_FIND_UNIQUE_HELPER -
- * Structure used by find unique functions.
- *
- * Functions:
- * btree_key_find_unique_version_oid.
- * btree_key_find_and_lock_unique.
- * btree_key_find_and_lock_unique_of_unique.
- * btree_key_find_and_lock_unique_of_non_unique.
- */
-typedef struct btree_find_unique_helper BTREE_FIND_UNIQUE_HELPER;
-struct btree_find_unique_helper
-{
-  OID oid;			/* OID of found object (if found). */
-  OID match_class_oid;		/* Object is only considered if its class OID matches this class OID. */
-  LOCK lock_mode;		/* Lock mode for found unique object. */
-  MVCC_SNAPSHOT *snapshot;	/* Snapshot used to filter objects not visible. If NULL, objects are not filtered. */
-  bool found_object;		/* Set to true if object was found. */
-
-  PERF_UTIME_TRACKER time_track;
-
-#if defined (SERVER_MODE)
-  OID locked_oid;		/* Locked object. */
-  OID locked_class_oid;		/* Locked object class OID. */
-#endif				/* SERVER_MODE */
-};
-/* BTREE_FIND_UNIQUE_HELPER static initializer. */
-#if defined (SERVER_MODE)
-#define BTREE_FIND_UNIQUE_HELPER_INITIALIZER \
-  { OID_INITIALIZER, /* oid */ \
-    OID_INITIALIZER, /* match_class_oid */ \
-    NULL_LOCK, /* lock_mode */ \
-    NULL, /* snapshot */ \
-    false, /* found_object */ \
-    PERF_UTIME_TRACKER_INITIALIZER, /* time_track */ \
-    OID_INITIALIZER, /* locked_oid */ \
-    OID_INITIALIZER /* locked_class_oid */ \
-  }
-#else	/* !SERVER_MODE */		   /* SA_MODE */
-#define BTREE_FIND_UNIQUE_HELPER_INITIALIZER \
-  { OID_INITIALIZER, /* oid */ \
-    OID_INITIALIZER, /* match_class_oid */ \
-    NULL_LOCK, /* lock_mode */ \
-    NULL, /* snapshot */ \
-    false, /* found_object */ \
-    PERF_UTIME_TRACKER_INITIALIZER /* time_track */ \
-  }
-#endif /* !SA_MODE */
 
 /* BTREE_REC_SATISFIES_SNAPSHOT_HELPER -
  * Structure used as helper for btree_record_satisfies_snapshot function.
@@ -24252,70 +24205,6 @@ btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
     }
 }
 
-#if defined (SERVER_MODE)
-/*
- * btree_key_release_locked_object_and_pages () - Drop what this scan holds on the key: the object it
- *						  locked and the page latches. The caller re-reads from root.
- *
- * thread_p (in)       : Thread entry.
- * find_unique_helper (in/out) : Find-unique state; any object it has locked is released and forgotten.
- * leaf_page (in/out)  : Leaf node page latch; unfixed and left NULL.
- * overflow_page (in/out) : Optional overflow node page latch; unfixed and left NULL, NULL when there is none.
- */
-static void
-btree_key_release_locked_object_and_pages (THREAD_ENTRY * thread_p, BTREE_FIND_UNIQUE_HELPER * find_unique_helper,
-					   PAGE_PTR * leaf_page, PAGE_PTR * overflow_page)
-{
-  if (!OID_ISNULL (&find_unique_helper->locked_oid))
-    {
-      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_unique_helper->locked_oid,
-					       &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
-      OID_SET_NULL (&find_unique_helper->locked_oid);
-    }
-  if (overflow_page != NULL && *overflow_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, *overflow_page);
-    }
-  pgbuf_unfix_and_init (thread_p, *leaf_page);
-}
-
-/*
- * btree_key_wait_for_tran_end () - Wait for the writer working under the given MVCCID to end,
- *				    then signal a restart from root.
- *
- * return	       : Error code (NO_ERROR on success, with *restart set to true).
- * thread_p (in)       : Thread entry.
- * writer_mvccid (in)  : MVCCID of the in-progress inserter or deleter to wait on.
- * find_unique_helper (in/out) : Find-unique state; any object it has locked is released first.
- * leaf_page (in/out)  : Leaf node page latch; unfixed before suspending and left NULL.
- * overflow_page (in/out) : Optional overflow node page latch (..._of_non_unique () scans overflow pages);
- *			    unfixed before suspending and left NULL. NULL when there is no overflow page.
- * restart (out)       : Set to true so the caller re-reads the key from root.
- *
- * Note: all page latches must be released before blocking on the lock (never wait while holding a latch).
- */
-static int
-btree_key_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID writer_mvccid,
-			     BTREE_FIND_UNIQUE_HELPER * find_unique_helper, PAGE_PTR * leaf_page,
-			     PAGE_PTR * overflow_page, bool * restart)
-{
-  int error_code = NO_ERROR;
-
-  /* Release the locked object and the page latches before blocking on the lock. */
-  btree_key_release_locked_object_and_pages (thread_p, find_unique_helper, leaf_page, overflow_page);
-
-  error_code = logtb_wait_for_tran_end (thread_p, writer_mvccid);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* The page may have changed during the wait, so re-read the key from root. */
-  *restart = true;
-  return NO_ERROR;
-}
-#endif /* SERVER_MODE */
-
 /*
  * btree_key_find_and_lock_unique_of_unique () - Find key and lock its first object (if not deleted or dirty).
  *
@@ -24376,14 +24265,10 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
       goto error_or_not_found;
     }
 
-  /* Lock key non-dirty version to protect it. Non-dirty or newest key version is always kept first. Locking object is
-   * possible if object is not deleted and it is not dirty (its inserter/deleter is not active). If inserter or
-   * deleter is active, or if conditional lock on object failed, current transaction must suspend until the object lock
-   * holder is completed. This also means unfixing leaf page first. Current algorithm tries to avoid traversing the
-   * b-tree back from root after resume. If conditional lock on object fails, leaf node must be unfixed and then fixed
-   * again after object is locked. If page no longer exists or if the page is no longer usable (key is not in page),
-   * the process is restarted (while holding the lock however). NOTE: Stand-alone mode doesn't require locking. It
-   * should only check whether the first key object is deleted or not. */
+  /* Lock the key's first object; the non-dirty or newest version is always kept first. A live inserter or
+   * deleter is waited out by transaction end, not by the object lock -- see
+   * btree_key_wait_out_conflicting_writer (). NOTE: Stand-alone mode doesn't require locking. It should only
+   * check whether the first key object is deleted or not. */
 
   /* Initialize unique_oid */
   OID_SET_NULL (&unique_oid);
@@ -24444,28 +24329,18 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  error_code = ER_FAILED;
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
-	  {
-	    /* a published deleter holds no row lock the path below could suspend on: serialize on the
-	     * writer's end instead, then restart */
-	    MVCCID conflict_mvccid =
-	      (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
-	      ? BTREE_MVCC_INFO_INSID (&mvcc_info) : BTREE_MVCC_INFO_DELID (&mvcc_info);
-	    if (logtb_is_active_other_mvccid (thread_p, conflict_mvccid))
-	      {
-		return btree_key_wait_for_tran_end (thread_p, conflict_mvccid, find_unique_helper, leaf_page,
-						    NULL, restart);
-	      }
-	    if (satisfies_delete == DELETE_RECORD_DELETE_IN_PROGRESS)
-	      {
-		/* The deleter ended in the race since mvcc_satisfies_delete (): the verdict is stale, and a
-		 * deleter takes no row lock, so it may have landed on an object this scan already locked. */
-		btree_key_release_locked_object_and_pages (thread_p, find_unique_helper, leaf_page, NULL);
-		*restart = true;
-		return NO_ERROR;
-	      }
-	    /* Our own in-progress insert -- fall through to the row-lock path. */
-	  }
-	  /* Object is being inserted/deleted. We need to lock and suspend until its fate is decided. */
+	  error_code = btree_key_wait_out_conflicting_writer (thread_p, satisfies_delete, &mvcc_header,
+							      find_unique_helper, leaf_page, NULL, restart);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  if (*restart)
+	    {
+	      return NO_ERROR;
+	    }
+
+	  /* No writer left to wait out (our own insert, or one that just ended): lock the object as usual. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  [[fallthrough]];
@@ -24516,7 +24391,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	    {
 	      /* Key was found but we still need to re-check first object. Since page was re-fixed, it may have
 	       * changed. */
-	      break;		/* switch (satisfies_delete) */
+	      continue;
 	    }
 	  else
 	    {
@@ -24637,15 +24512,10 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
       goto error_or_not_found;
     }
 
-  /* Lock key non-dirty version to protect it. Since this is not an unique index, but can have only one non-dirty
-   * version, this must be searched through the leaf/overflow records. Locking object is possible if object is not
-   * deleted and it is not dirty (its inserter/deleter is not active). If inserter or deleter is active, or if
-   * conditional lock on object failed, current transaction must suspend until the object lock holder is completed.
-   * This also means unfixing leaf/overflow pages first. Current algorithm tries to avoid traversing the b-tree back
-   * from root after resume. If conditional lock on object fails, leaf/overflow nodes must be unfixed and then fixed
-   * again after object is locked. If leaf page no longer exists or if the page is no longer usable (key is not in
-   * page), the process is restarted from root. If leaf page is still valid, leaf/overflow records are processed again.
-   * NOTE: Stand-alone mode doesn't require locking. It should only check whether the first key object is deleted or not. */
+  /* Lock the key's non-dirty version; since this is not a unique index it must be searched through the
+   * leaf/overflow records. A live inserter or deleter is waited out by transaction end, not by the object
+   * lock -- see btree_key_wait_out_conflicting_writer (). NOTE: Stand-alone mode doesn't require locking. It
+   * should only check whether the first key object is deleted or not. */
 
   /* Initialize unique_oid */
   OID_SET_NULL (&unique_oid);
@@ -24777,28 +24647,18 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  error_code = ER_FAILED;
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
-	  {
-	    /* a published deleter holds no row lock the path below could suspend on: serialize on the
-	     * writer's end instead, then restart */
-	    MVCCID conflict_mvccid =
-	      (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
-	      ? BTREE_MVCC_INFO_INSID (&mvcc_info) : BTREE_MVCC_INFO_DELID (&mvcc_info);
-	    if (logtb_is_active_other_mvccid (thread_p, conflict_mvccid))
-	      {
-		return btree_key_wait_for_tran_end (thread_p, conflict_mvccid, find_unique_helper, leaf_page,
-						    &overflow_page, restart);
-	      }
-	    if (satisfies_delete == DELETE_RECORD_DELETE_IN_PROGRESS)
-	      {
-		/* The deleter ended in the race since mvcc_satisfies_delete (): the verdict is stale, and a
-		 * deleter takes no row lock, so it may have landed on an object this scan already locked. */
-		btree_key_release_locked_object_and_pages (thread_p, find_unique_helper, leaf_page, &overflow_page);
-		*restart = true;
-		return NO_ERROR;
-	      }
-	    /* Our own in-progress insert -- fall through to the row-lock path. */
-	  }
-	  /* Object is being inserted/deleted. We need to lock and suspend until its fate is decided. */
+	  error_code = btree_key_wait_out_conflicting_writer (thread_p, satisfies_delete, &mvcc_header,
+							      find_unique_helper, leaf_page, &overflow_page, restart);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  if (*restart)
+	    {
+	      return NO_ERROR;
+	    }
+
+	  /* No writer left to wait out (our own insert, or one that just ended): lock the object as usual. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  [[fallthrough]];
@@ -24868,7 +24728,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	      was_page_refixed = false;
 	      /* Safe guard: overflow page must be unfixed. */
 	      assert (overflow_page == NULL);
-	      break;		/* switch (satisfies_delete) */
+	      continue;
 	    }
 	  else
 	    {
@@ -24889,9 +24749,8 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 
 	case DELETE_RECORD_DELETED:
 	case DELETE_RECORD_SELF_DELETED:
-	  /* This object is deleted. */
-	  /* Continue to next object. */
-	  break;
+	  /* This object is deleted; go on to the next one. */
+	  continue;
 
 	default:
 	  /* Unhandled/unexpected case. */
@@ -27376,9 +27235,7 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
  * find_fk_obj (in/out): FK-find state; any object it has locked is released.
  * class_oid (in)      : Class OID of the locked object.
  *
- * Note: shared by the INSERT_IN_PROGRESS and DELETE_IN_PROGRESS paths of btree_fk_object_does_exist ();
- *       both must drop all latches before blocking on the conflicting transaction. The two paths differ
- *       only in how they then wait (transaction self-lock vs. object lock), which stays at the call site.
+ * Note: every caller must drop all latches before blocking on the conflicting transaction.
  */
 static void
 btree_fk_release_pages_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_FK_EXIST_ARG * fk_arg,
@@ -27449,67 +27306,26 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
       return NO_ERROR;
 
     case DELETE_RECORD_INSERT_IN_PROGRESS:
-#if defined (SERVER_MODE)
-      /* Referenced row still being inserted. */
-      {
-	MVCCID fk_insert_mvccid = BTREE_MVCC_INFO_INSID (mvcc_info);
-	int fk_wait_error;
-
-	if (!logtb_is_active_other_mvccid (thread_p, fk_insert_mvccid))
-	  {
-	    /* Inserter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the stale
-	     * INSERT_IN_PROGRESS as "not found" (mirrors the unique-scan recheck). */
-	    btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	    *stop = true;
-	    return NO_ERROR;
-	  }
-
-	/* Wait for that transaction to end before deciding whether the FK reference holds: release all page
-	 * latches and any locked object, then wait out the inserter. */
-	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	fk_wait_error = logtb_wait_for_tran_end (thread_p, fk_insert_mvccid);
-	if (fk_wait_error != NO_ERROR)
-	  {
-	    return fk_wait_error;
-	  }
-
-	/* Inserter ended; trigger re-check. */
-	*stop = true;
-	return NO_ERROR;
-      }
-#else	/* !SERVER_MODE */		   /* SA_MODE */
-      /* Impossible: no other active transactions. */
-      assert_release (false);
-      return ER_FAILED;
-#endif /* SA_MODE */
-
     case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SERVER_MODE)
-      /* a published deleter holds no row lock: the object-lock suspend would be granted at once and the
-       * re-check would spin. Wait for the deleter to end, then re-check (mirrors the INSERT_IN_PROGRESS
-       * path above). */
+      /* Neither writer holds a row lock the object lock could suspend on, so that lock would be granted at
+       * once and the re-check would spin. Wait for the writer's transaction to end instead. */
       {
-	MVCCID fk_delete_mvccid = BTREE_MVCC_INFO_DELID (mvcc_info);
-	int fk_wait_error;
+	MVCCID fk_writer_mvccid = (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	  ? BTREE_MVCC_INFO_INSID (mvcc_info) : BTREE_MVCC_INFO_DELID (mvcc_info);
 
-	if (!logtb_is_active_other_mvccid (thread_p, fk_delete_mvccid))
-	  {
-	    /* Deleter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the
-	     * stale DELETE_IN_PROGRESS. */
-	    btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	    *stop = true;
-	    return NO_ERROR;
-	  }
-
-	/* Release all page latches and any locked object, then wait out the deleter. */
+	/* The writer may have ended in the race since mvcc_satisfies_delete (), so the verdict can be stale:
+	 * re-read the key either way rather than consume it. */
 	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	fk_wait_error = logtb_wait_for_tran_end (thread_p, fk_delete_mvccid);
-	if (fk_wait_error != NO_ERROR)
+	if (logtb_is_active_other_mvccid (thread_p, fk_writer_mvccid))
 	  {
-	    return fk_wait_error;
-	  }
+	    int fk_wait_error = logtb_wait_for_tran_end (thread_p, fk_writer_mvccid);
 
-	/* Deleter ended; trigger re-check. */
+	    if (fk_wait_error != NO_ERROR)
+	      {
+		return fk_wait_error;
+	      }
+	  }
 	*stop = true;
 	return NO_ERROR;
       }

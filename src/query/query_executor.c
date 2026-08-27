@@ -373,6 +373,8 @@ struct upddel_class_info_internal
   HEAP_SCANCACHE *scan_cache;
 
   OID prev_class_oid;		/* previous class oid */
+  bool is_mvcc_class;		/* whether MVCC applies to class_oid; set when the class changes, because
+				 * mvcc_is_mvcc_disabled_class () is too slow to ask per row */
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
   bool is_attr_info_inited;	/* true if attr_info has valid data */
   int needs_pruning;		/* partition pruning information */
@@ -10239,6 +10241,7 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
       cond_reev_class = &cond_reev_classes[idx];
       cond_reev_class->class_index = mvcc_reev_indexes[idx];
       OID_SET_NULL (&cond_reev_class->cls_oid);
+      HFID_SET_NULL (&cond_reev_class->cls_hfid);
       cond_reev_class->inst_oid = NULL;
       cond_reev_class->rest_attrs = NULL;
       cond_reev_class->rest_regu_list = NULL;
@@ -11300,9 +11303,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       /* not locked in select phase, need locking at update phase */
       need_locking = true;
 
-      /* without reevaluation data a version that changed after the statement snapshot cannot be
-       * re-checked, so skip it rather than delete what the predicate never saw */
-      mvcc_upddel_reev_data.skip_unevaluated_version = (mvcc_reev_class_cnt == 0);
+      /* No reevaluation class means the statement reads no row of its own specs -- pt_to_delete_xasl ()
+       * keeps the select-phase lock for a search condition it cannot replay as a scan filter -- so a
+       * version that changed after the statement snapshot is deleted, not skipped.  The skip is for the
+       * runtime case below, where a subclass turns out to carry no access spec. */
     }
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
@@ -11429,6 +11433,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			  er_log_debug (ARG_FILE_LINE, "qexec_execute_delete: class OID is not correct\n");
 			  GOTO_EXIT_ON_ERROR;
 			}
+		      internal_class->is_mvcc_class = !mvcc_is_mvcc_disabled_class (class_oid);
 
 		      if (internal_class->num_lob_attrs)
 			{
@@ -11460,12 +11465,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			}
 		      if (!has_spec)
 			{
-			  /* The plan gives this class no filters to re-evaluate with, so the delete phase
-			   * cannot re-check the predicate: skip a version the statement never evaluated
-			   * rather than delete it, exactly as a plan carrying no reevaluation data does.
-			   * mvcc_reev_class_cnt stays as it is -- it is this loop's own bound over the
-			   * OID/class OID pairs of the value list, and cutting it short here would leave
-			   * the pairs of the remaining reevaluation classes unconsumed. */
+			  /* No access spec for this row's subclass, so no filters to re-check with -- see
+			   * qexec_upddel_mvcc_set_filters ().  Skip the version rather than delete what the
+			   * predicate never saw.  mvcc_reev_class_cnt bounds this loop over the value list's
+			   * OID pairs and must stay as it is. */
 			  reev_disabled = true;
 			  mvcc_reev_class = NULL;
 			  mvcc_upddel_reev_data.curr_upddel = NULL;
@@ -11575,7 +11578,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		{
 		  xasl->list_id->tuple_cnt++;
 
-		  if (need_locking && class_oid != NULL && !mvcc_is_mvcc_disabled_class (class_oid)
+		  if (need_locking && class_oid != NULL && internal_class->is_mvcc_class
 		      && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
 		    {
 		      /* the delete is published: late arrivals settle on our MVCCID self-lock, which the
@@ -12386,8 +12389,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
     }
   if (scan_code != S_SUCCESS)
     {
-      assert (er_errid () == ER_INTERRUPTED);
-      error = ER_FAILED;
+      ASSERT_ERROR_AND_SET (error);
       goto exit_on_error;
     }
 
@@ -26067,6 +26069,7 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * quer
       class_->class_oid = NULL;
       class_->needs_pruning = DB_NOT_PARTITIONED_CLASS;
       class_->subclass_idx = -1;
+      class_->is_mvcc_class = false;
       class_->scan_cache = NULL;
       OID_SET_NULL (&class_->prev_class_oid);
       class_->is_attr_info_inited = 0;
@@ -26275,6 +26278,11 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 
   mvcc_reev_class->init (curr_spec->s_id);
   mvcc_reev_class->cls_oid = *class_oid;
+  if (heap_get_class_info (thread_p, class_oid, &mvcc_reev_class->cls_hfid, NULL, NULL) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
   *has_spec = true;
 
   return NO_ERROR;
