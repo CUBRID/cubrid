@@ -297,7 +297,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 #endif
   DB_VALUE value;
   char *trigger_old_name = NULL;
-  char trigger_bare_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char trigger_bare_name[SM_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH] = { '\0' };
   char trigger_new_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *owner_name = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
