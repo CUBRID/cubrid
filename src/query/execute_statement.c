@@ -19194,7 +19194,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
       goto end;
     }
 
-  /* target_unique_name, target_name, target_owner */
+  /* target_name, target_owner */
   if (target_name == NULL)
     {
       /* If only the comment is changed, target_name can be NULL.

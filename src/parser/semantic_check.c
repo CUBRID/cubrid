@@ -4612,7 +4612,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC
 	      if ((dtyp->type_enum == PT_TYPE_OBJECT) && (sdtyp = dtyp->info.data_type.entity)
 		  && (sdtyp->node_type == PT_NAME) && (styp_nam = sdtyp->info.name.original))
 		{
-		  cls = db_find_class (styp_nam);
+		  cls = db_find_class_of_owner (sdtyp->info.name.owner_name, styp_nam);
 		  if (cls != NULL)
 		    {
 		      if (db_is_vclass (cls) > 0)
@@ -4623,7 +4623,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC
 		      if (sm_is_reuse_oid_class (cls))
 			{
 			  PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION,
-				      styp_nam);
+				      pt_name_qualified (parser, sdtyp));
 			  break;
 			}
 		    }
@@ -4645,7 +4645,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC
 	  && (typ_nam = dtyp->info.name.original) != NULL)
 	{
 	  /* typ_nam must be a class in the database */
-	  cls = db_find_class (typ_nam);
+	  cls = db_find_class_of_owner (dtyp->info.name.owner_name, typ_nam);
 	  if (!cls)
 	    {
 	      if (self != NULL && intl_identifier_casecmp (self, typ_nam) == 0)
@@ -4653,12 +4653,13 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC
 		  if (reuse_oid)
 		    {
 		      PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION,
-				  typ_nam);
+				  pt_name_qualified (parser, dtyp));
 		    }
 		}
 	      else
 		{
-		  PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED, typ_nam);
+		  PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED,
+			      pt_name_qualified (parser, dtyp));
 		}
 	    }
 	  else
@@ -9423,7 +9424,7 @@ pt_is_defined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
 	  if (!db_find_class_of_owner (name->info.name.owner_name, name->info.name.original))
 	    {
 	      PT_ERRORmf (parser, data_type, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED,
-			  name->info.name.original);
+			  pt_name_qualified (parser, name));
 	      return false;
 	    }
 	}
@@ -9441,7 +9442,7 @@ pt_get_type_enum_of_table_column (PARSER_CONTEXT * parser, PT_NODE * data_type)
   PT_NODE *column_name = table_column->info.dot.arg2;
   assert (PT_IS_NAME_NODE (table_name));
   assert (PT_IS_NAME_NODE (column_name));
-  const char *table_name_cstr = table_name->info.name.original;
+  const char *table_name_cstr = pt_name_qualified (parser, table_name);
   const char *column_name_cstr = column_name->info.name.original;
 
   DB_ATTRIBUTE *attr = db_get_attribute_by_name (table_name_cstr, column_name_cstr);

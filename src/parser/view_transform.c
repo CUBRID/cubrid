@@ -13456,7 +13456,9 @@ mq_translate_value (PARSER_CONTEXT * parser, PT_NODE * value)
 	  real_class = db_get_class (real_object);
 	  class_->info.name.db_object = db_get_class (real_object);
 	  class_->info.name.original =
-	    db_get_class_qualified_name (class_->info.name.db_object, qualified_name, sizeof (qualified_name));
+	    pt_append_string (parser, NULL,
+			      db_get_class_qualified_name (class_->info.name.db_object, qualified_name,
+							   sizeof (qualified_name)));
 	  value->info.value.data_value.op = real_object;
 
 	  db_value = pt_value_to_db (parser, value);

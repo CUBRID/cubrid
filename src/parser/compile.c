@@ -1402,7 +1402,8 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
       entity_name->info.name.spec_id = entity->info.spec.id;
       entity_name->info.name.meta_class = PT_CLASS;
       entity_name->info.name.original =
-	(const char *) db_get_class_qualified_name (class_op, qualified_name2, sizeof (qualified_name2));
+	pt_append_string (parser, NULL,
+			  db_get_class_qualified_name (class_op, qualified_name2, sizeof (qualified_name2)));
 
       entity->info.spec.only_all = PT_ONLY;
       entity->info.spec.range_var = parser_copy_tree (parser, entity_name);

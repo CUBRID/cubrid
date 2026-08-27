@@ -10186,7 +10186,7 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
   entity->info.spec.entity_name->info.name.spec_id = entity->info.spec.id;
   entity->info.spec.entity_name->info.name.meta_class = PT_CLASS;
   entity->info.spec.entity_name->info.name.original =
-    db_get_class_qualified_name (class_op, qualified_name, sizeof (qualified_name));
+    pt_append_string (parser, NULL, db_get_class_qualified_name (class_op, qualified_name, sizeof (qualified_name)));
   entity->info.spec.only_all = PT_ONLY;
   entity->info.spec.range_var = parser_copy_tree (parser, entity->info.spec.entity_name);
   if (entity->info.spec.range_var == NULL)
