@@ -1193,7 +1193,12 @@ cursor_allocate_oid_buffer (CURSOR_ID * cursor_id_p)
 bool
 cursor_open (CURSOR_ID * cursor_id_p, QFILE_LIST_ID * list_id_p, bool updatable, bool is_oid_included)
 {
+#if defined (SERVER_MODE)
+  /* zero template only, but concurrent workers each get their own */
+  static thread_local QFILE_LIST_ID empty_list_id;
+#else
   static QFILE_LIST_ID empty_list_id;	/* TODO: remove static empty_list_id */
+#endif
 
   if (cursor_id_p == NULL)
     {

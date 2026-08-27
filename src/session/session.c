@@ -61,6 +61,13 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined (SERVER_MODE)
+/* the merged client half's session context (client_session_context.hpp);
+ * only owned here — all use goes through activation brackets */
+class client_session_context;
+extern void csc_retire_and_delete (client_session_context *ctx);
+#endif
+
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
@@ -142,6 +149,12 @@ struct session_state
 
   load_session *load_session_p;
   PL_SESSION *pl_session_p;
+
+#if defined (SERVER_MODE)
+  /* the merged-in client half's session context (#123 D3): the session is the
+   * durable owner; worker threads reach it only through activation brackets */
+  client_session_context *csc_p;
+#endif
 
   // *INDENT-OFF*
   session_state ();
@@ -324,6 +337,9 @@ session_state_init (void *st)
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
   session_p->pl_session_p = NULL;
+#if defined (SERVER_MODE)
+  session_p->csc_p = NULL;
+#endif
 
   return NO_ERROR;
 }
@@ -364,6 +380,16 @@ session_state_uninit (void *st)
       er_log_debug (ARG_FILE_LINE, "[unexpected] session %u's pl_session_p is NULL in session_state_uninit()\n",
 		    session->id);
     }
+
+#if defined (SERVER_MODE)
+  if (session->csc_p != NULL)
+    {
+      /* no concurrent worker can reach this session here, so briefly wearing
+       * its bracket to run the client half's teardown is safe */
+      csc_retire_and_delete (session->csc_p);
+      session->csc_p = NULL;
+    }
+#endif
 
   /* free session variables */
   vcurent = session->session_variables;
@@ -2892,6 +2918,31 @@ session_get_session_state (THREAD_ENTRY * thread_p)
   return state_p;
 #endif
 }
+
+#if defined (SERVER_MODE)
+/*
+ * session_adopt_client_context () - hand ownership of the merged client
+ *   half's session context to the calling thread's session (#123 D3)
+ *   return  : NO_ERROR or ER_FAILED (no session on the connection)
+ *   thread_p(in)  :
+ *   csc(in) : context to adopt; freed at session_state_uninit
+ */
+int
+session_adopt_client_context (THREAD_ENTRY * thread_p, client_session_context * csc)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  assert (state_p->csc_p == NULL || state_p->csc_p == csc);
+  state_p->csc_p = csc;
+
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
 
 /*
  * session_get_trace_stats () - return query trace result

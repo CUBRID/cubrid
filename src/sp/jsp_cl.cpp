@@ -117,8 +117,14 @@
 #define MAX_ARG_COUNT 64
 
 static int server_port = -1;
+#if defined (SERVER_MODE)
+/* per-thread: an SP call and its nesting stay on one worker thread (#120 D7) */
+static thread_local int call_cnt = 0;
+static thread_local bool is_prepare_call[MAX_CALL_COUNT] = { false, };
+#else
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT] = { false, };
+#endif
 
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static SP_MODE_ENUM jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);

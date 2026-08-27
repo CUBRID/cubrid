@@ -62,6 +62,11 @@ struct alloc_resource
   DB_QUERY_RESULT *free_qres_list;	/* list of free query entry structures */
 };
 
+#if defined (SERVER_MODE)
+/* the registry is session state (db.h db_qres_table_context): a shared table
+ * would let one session's commit close another session's live cursors */
+#define Qres_table (csc_db ()->qres_table)
+#else /* SERVER_MODE */
 static struct
 {				/* global query table variable */
   int qres_cnt;			/* number of active query entries */
@@ -75,14 +80,21 @@ static struct
   {
   0, 0, (DB_QUERY_RESULT *) NULL}
 };				/* query result table */
+#endif /* !SERVER_MODE */
 
 static const int QP_QRES_LIST_INIT_CNT = 10;
 			       /* query result list initial cnt */
 static const float QP_QRES_LIST_INC_RATE = 1.25f;
 			   /* query result list increment ratio */
 
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#define db_Execution_plan (csc_current ()->db_execution_plan)
+#define db_Execution_plan_length (csc_current ()->db_execution_plan_length)
+#else
 static char *db_Execution_plan = NULL;
 static int db_Execution_plan_length = -1;
+#endif
 
 static DB_QUERY_RESULT *allocate_query_result (void);
 static void free_query_result (DB_QUERY_RESULT * q_res);

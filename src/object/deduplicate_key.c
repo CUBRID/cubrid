@@ -36,6 +36,9 @@
 #endif
 
 #include "deduplicate_key.h"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -378,7 +381,19 @@ dk_deduplicate_key_attribute_initialized ()
    * deduplicate-key attributes through it), and tp_init runs once at server
    * boot, so this is the only chance to build it.  Cost: a handful of small
    * one-time allocations on a pure server boot. */
+#if defined (SERVER_MODE)
+  /* server boot runs off any session bracket, and these attributes live for
+   * the whole process — give them their own context so the workspace-heap
+   * allocations below have an owner (sessions only read the result) */
+  {
+    static client_session_context dk_boot_ctx;
+    csc_activate (&dk_boot_ctx);
+    dk_sm_attribute_initialized ();
+    csc_deactivate ();
+  }
+#else
   dk_sm_attribute_initialized ();
+#endif
 }
 
 void

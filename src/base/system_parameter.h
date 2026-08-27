@@ -788,6 +788,7 @@ extern "C"
   extern int sysprm_set_to_default (PARAM_ID param_id, bool set_to_force);
   extern int sysprm_check_range (PARAM_ID param_id, void *value);
   extern int sysprm_get_range (PARAM_ID id, void *min, void *max);
+  extern bool sysprm_param_is_set (PARAM_ID id);
   extern int prm_get_master_port_id (void);
   extern bool prm_get_commit_on_shutdown (void);
 

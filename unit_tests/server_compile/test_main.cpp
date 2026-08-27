@@ -36,6 +36,7 @@
 #include "client_session_context.hpp"
 #include "language_support.h"
 #include "parser.h"
+#include "work_space.h"
 
 /* au lives in the session-scoped client context installed by the
  * thread's activation bracket, not in a process singleton */
@@ -78,6 +79,46 @@ test_au_context_bracket (void)
       fprintf (stderr, "FAIL: second bracket leaked state from the first\n");
       return 1;
     }
+  csc_deactivate ();
+
+  return 0;
+}
+
+/* the workspace lives in the session context (#123 D2): the ws_* globals of
+ * the CS build are macros over the activated bracket here, so rebinding the
+ * bracket must rebind the whole MOP closed system */
+static int
+test_ws_context_bracket (void)
+{
+  client_session_context ctx_a;
+  client_session_context ctx_b;
+
+  csc_activate (&ctx_a);
+  if (csc_ws () != &ctx_a.ws)
+    {
+      fprintf (stderr, "FAIL: csc_ws did not resolve to the activated context\n");
+      return 1;
+    }
+  ws_Mop_table_size = 7;
+  ws_Num_dirty_mop = 3;
+  csc_deactivate ();
+
+  csc_activate (&ctx_b);
+  if (ws_Mop_table_size != 0 || ws_Num_dirty_mop != 0)
+    {
+      fprintf (stderr, "FAIL: second bracket sees the first session's workspace\n");
+      return 1;
+    }
+  csc_deactivate ();
+
+  csc_activate (&ctx_a);
+  if (ws_Mop_table_size != 7 || ws_Num_dirty_mop != 3)
+    {
+      fprintf (stderr, "FAIL: first session's workspace state did not survive rebinding\n");
+      return 1;
+    }
+  ws_Mop_table_size = 0;
+  ws_Num_dirty_mop = 0;
   csc_deactivate ();
 
   return 0;
@@ -216,6 +257,12 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: au resolves through the session client context bracket\n");
+
+  if (test_ws_context_bracket () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: workspace state rebinds with the session context bracket\n");
 
   if (test_concurrent_parse () != 0)
     {

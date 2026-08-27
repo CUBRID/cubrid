@@ -56,7 +56,14 @@ extern "C"
   enum OPEN_BUFFER_FLAGS
   { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1 };
 
+#if defined (SERVER_MODE)
+  /* per-thread: set and cleared around one db_open_buffer call (PL/SQL
+   * static SQL prepare) — a shared flag would leak parse mode across
+   * concurrent sessions */
+  extern thread_local int g_open_buffer_control_flags;
+#else
   extern int g_open_buffer_control_flags;
+#endif
 
 /* Memory reclamation functions */
   extern void db_objlist_free (DB_OBJLIST * list);

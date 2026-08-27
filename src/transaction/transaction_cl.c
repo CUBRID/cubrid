@@ -63,6 +63,7 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 
+#if !defined (SERVER_MODE)
 int tm_Tran_index = NULL_TRAN_INDEX;
 TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
 bool tm_Tran_async_ws = false;
@@ -77,6 +78,7 @@ LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not
  */
 LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
 int tm_Tran_latest_query_status;
+#endif /* !SERVER_MODE */
 
 /* Timeout(milli seconds) for queries.
  *
@@ -88,9 +90,16 @@ int tm_Tran_latest_query_status;
  *
  * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (SP)
  */
+#if defined (SERVER_MODE)
+#define tm_Query_begin (csc_tm ()->query_begin)
+#define tm_Query_timeout (csc_tm ()->query_timeout)
+#define tm_libcas_depth (csc_tm ()->libcas_depth)
+#define user_savepoint_list (csc_tm ()->user_savepoint_list)
+#else /* SERVER_MODE */
 static UINT64 tm_Query_begin = 0;
 static int tm_Query_timeout = 0;
 static int tm_libcas_depth = 0;
+#endif /* !SERVER_MODE */
 
 /* this is a local list of user-defined savepoints.  It may be updated upon
  * the following calls:
@@ -99,7 +108,9 @@ static int tm_libcas_depth = 0;
  *    tran_abort()		-> tran_free_savepoint_list()
  *    tran_abort_upto_savepoint() -> tm_free_list_upto_savepoint()
  */
+#if !defined (SERVER_MODE)
 static DB_NAMELIST *user_savepoint_list = NULL;
+#endif
 
 static int tran_add_savepoint (const char *savept_name);
 static void tran_free_list_upto_savepoint (const char *savept_name);
@@ -223,7 +234,9 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
 }
 
 /* only loaddb changes this setting */
+#if !defined (SERVER_MODE)
 bool tm_Use_OID_preflush = true;
+#endif
 
 int
 tran_flush_to_commit (void)
