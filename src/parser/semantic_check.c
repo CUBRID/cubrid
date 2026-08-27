@@ -7493,7 +7493,8 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	  return node;
 	}
 
-      spec_name = pt_get_name (entity_name);
+      /* self carries the owner, so the spec has to be asked for its own */
+      spec_name = pt_name_qualified (parser, entity_name);
       if (pt_str_compare (spec_name, self, CASE_INSENSITIVE) == 0)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CYCLIC_REFERENCE_VIEW_SPEC, self);
@@ -8087,7 +8088,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
   else
     {
       assert ((stmt->node_type == PT_ALTER) && (stmt->info.alter.code == PT_RESET_QUERY));
-      name = stmt->info.alter.entity_name->info.name.original;
+      name = pt_name_qualified (parser, stmt->info.alter.entity_name);
       qry_specs_ptr = &stmt->info.alter.alter_clause.query.query;
       attr_def_list_ptr = &stmt->info.alter.alter_clause.query.attr_def_list;
     }
@@ -10051,7 +10052,7 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
       for (PT_NODE * procs = node->info.grant.spec_list; procs != NULL; procs = procs->next)
 	{
 	  // [TODO] Resovle user schema name, built-in package name
-	  const char *proc_name = procs->info.name.original;
+	  const char *proc_name = pt_name_qualified (parser, procs);
 	  if (jsp_is_exist_stored_procedure (proc_name) == false)
 	    {
 	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_NOT_EXIST, proc_name);
