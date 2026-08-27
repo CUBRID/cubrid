@@ -13702,7 +13702,8 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
     {
       /* Not the class being updated/deleted: re-read its own row out of its own heap.  Evaluating this
        * class's filters against the target's record instead is what let a join DELETE act on rows whose
-       * predicate no longer held. */
+       * predicate no longer held.  The read carries no snapshot, so a version a concurrent transaction
+       * deleted still reads; a failure here means the slot itself is gone. */
       recdesp = &temp_recdes;
       oid_inst = mvcc_cond_reeval->inst_oid;
       if (oid_inst == NULL || OID_ISNULL (oid_inst))
