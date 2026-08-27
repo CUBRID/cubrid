@@ -182,7 +182,11 @@ db_stmt_bind_fp_ptr (PT_NODE * statement)
   return NULL;
 }
 
+#if defined (SERVER_MODE)
+thread_local int g_open_buffer_control_flags = 0;
+#else
 int g_open_buffer_control_flags = 0;
+#endif
 
 /* Per-session registry of the compiled subsessions of SQL-level prepared statements
  * (PREPARE name FROM '...'). Keeping the post-transform tree between EXECUTE requests

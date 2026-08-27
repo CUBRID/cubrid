@@ -158,7 +158,13 @@ struct qo_implied_join_pair
   QO_SEGMENT *tail_seg;
 };
 
+#if defined (SERVER_MODE)
+/* immutable: a first-use store from concurrent optimizations would be a data
+ * race; UTIL_infinity() is the HUGE_VAL constant, so initialize statically */
+double QO_INFINITY = UTIL_infinity ();
+#else
 double QO_INFINITY = 0.0;
+#endif
 
 static QO_PLAN *qo_optimize_helper (QO_ENV * env);
 static QO_NODE *qo_add_node (PT_NODE * entity, QO_ENV * env);
@@ -760,12 +766,9 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
   env->nterms = 0;
   env->neqclasses = 0;
 
-  /* conditional store: shared across worker threads — every store writes the
-   * same value, so only the first needs to dirty the line (COH-04) */
-  if (QO_INFINITY == 0.0)
-    {
-      QO_INFINITY = UTIL_infinity ();
-    }
+#if !defined (SERVER_MODE)
+  QO_INFINITY = UTIL_infinity ();
+#endif
 
   return env;
 

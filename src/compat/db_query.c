@@ -62,6 +62,11 @@ struct alloc_resource
   DB_QUERY_RESULT *free_qres_list;	/* list of free query entry structures */
 };
 
+#if defined (SERVER_MODE)
+/* the registry is session state (db.h db_qres_table_context): a shared table
+ * would let one session's commit close another session's live cursors */
+#define Qres_table (csc_db ()->qres_table)
+#else /* SERVER_MODE */
 static struct
 {				/* global query table variable */
   int qres_cnt;			/* number of active query entries */
@@ -75,6 +80,7 @@ static struct
   {
   0, 0, (DB_QUERY_RESULT *) NULL}
 };				/* query result table */
+#endif /* !SERVER_MODE */
 
 static const int QP_QRES_LIST_INIT_CNT = 10;
 			       /* query result list initial cnt */

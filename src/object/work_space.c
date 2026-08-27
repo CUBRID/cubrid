@@ -2441,11 +2441,15 @@ ws_init (void)
 error:
   db_destroy_workspace_heap ();
 
+#if !defined (SERVER_MODE)
+  /* the areas are process-shared in the server (#123 D5): a failed session
+   * boot must only undo what it created, not allocators live sessions use */
   ws_area_final ();
   pr_area_final ();
   set_area_final ();
   obt_area_final ();
   classobj_area_final ();
+#endif
 
   if (ws_Mop_table != NULL)
     {

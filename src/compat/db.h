@@ -51,6 +51,24 @@
  * db_Session_id race is the A3->A4 hand-off item).  Reached through the
  * thread's activation bracket (client_session_context.hpp). */
 // *INDENT-OFF*
+/* db_query.c query-result registry (one per session — a shared registry
+ * would let one session's commit close another session's live cursors) */
+struct db_qres_alloc_resource
+{
+  int free_qres_cnt = 0;	/* number of free query_result structures */
+  int max_qres_cnt = 0;		/* maximum number of free structures to keep */
+  DB_QUERY_RESULT *free_qres_list = NULL;	/* list of free query entry structures */
+};
+
+struct db_qres_table_context
+{
+  int qres_cnt = 0;		/* number of active query entries */
+  int qres_closed_cnt = 0;	/* number of closed query entries */
+  int entry_cnt = 0;		/* # of result list entries */
+  DB_QUERY_RESULT **qres_list = NULL;	/* list of query result entries */
+  db_qres_alloc_resource alloc_res;	/* allocation structure resource */
+};
+
 struct db_cl_context
 {
   int connect_status = DB_CONNECTION_STATUS_CONNECTED;
@@ -65,6 +83,9 @@ struct db_cl_context
   int client_type = 1;		/* DB_CLIENT_TYPE_DEFAULT (db_client_type.hpp) */
   CUBRID_STMT_TYPE client_statement_type = CUBRID_STMT_NONE;
   int is_doing_end_session = -1;
+
+  /* file-scope state of db_query.c */
+  db_qres_table_context qres_table;
 };
 // *INDENT-ON*
 

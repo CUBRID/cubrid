@@ -53,13 +53,26 @@ csc_activate (client_session_context *ctx)
   tl_Csc_active = ctx;
 }
 
+static void csc_teardown (client_session_context *ctx);
+
 void
 csc_deactivate (void)
 {
   assert (tl_Csc_active != NULL);
   client_session_context *ctx = tl_Csc_active;
+  if (ctx->orphaned)
+    {
+      /* the owning session retired this context while this thread was inside
+       * it (see csc_retire_and_delete) — the bracket exit is the first safe
+       * point to run the teardown */
+      csc_teardown (ctx);
+    }
   tl_Csc_active = NULL;
   ctx->bracket_mutex.unlock ();
+  if (ctx->orphaned)
+    {
+      delete ctx;
+    }
 }
 
 client_session_context *
@@ -114,12 +127,11 @@ csc_obt (void)
 /* the parser owns the label table's contents (parse_evaluate.c) */
 extern "C" void pt_free_label_table (void);
 
-void
-csc_retire_and_delete (client_session_context *ctx)
+/* per-session teardown; the calling thread's bracket must hold ctx */
+static void
+csc_teardown (client_session_context *ctx)
 {
-  assert (ctx != NULL);
-
-  csc_activate (ctx);
+  assert (tl_Csc_active == ctx);
 
   if (ctx->label_table != NULL)
     {
@@ -136,7 +148,25 @@ csc_retire_and_delete (client_session_context *ctx)
       /* boot failed between heap creation and table build */
       db_destroy_workspace_heap ();
     }
+}
 
+void
+csc_retire_and_delete (client_session_context *ctx)
+{
+  assert (ctx != NULL);
+
+  if (tl_Csc_active == ctx)
+    {
+      /* the retiring thread is inside this very context (a session ended by
+       * its own client call, e.g. db_end_session): re-activating would
+       * self-deadlock, and the caller's stack still works on this context —
+       * hand the teardown to the bracket exit */
+      ctx->orphaned = true;
+      return;
+    }
+
+  csc_activate (ctx);
+  csc_teardown (ctx);
   csc_deactivate ();
 
   delete ctx;

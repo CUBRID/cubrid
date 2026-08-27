@@ -97,6 +97,12 @@ class client_session_context
     char *db_execution_plan = nullptr;
     int db_execution_plan_length = -1;
 
+    /* set when the owning session retired this context while the very thread
+     * inside it requested the retirement (db_end_session under its own
+     * bracket): the bracket keeps working on it, and csc_deactivate runs the
+     * teardown and frees it on exit instead */
+    bool orphaned = false;
+
     client_session_context ();
     ~client_session_context () = default;
 
