@@ -31,6 +31,8 @@
 #   @BIND=v1,v2   comma-separated integers bound as host variables
 #                 (exported as CUBRID_M0_TRACER_BIND)
 #   @EXPECT=str   additionally require "first value = str" in the tracer output
+#   @ISOLATION=RR run the tracer transaction at REPEATABLE READ
+#                 (exported as CUBRID_M0_TRACER_ISOLATION)
 
 set -eu
 
@@ -43,7 +45,8 @@ if [ $# -eq 0 ]; then
   # a native DB_VALUE array (wf122/A3, #124 D4)
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
-    "SELECT ? + ? @BIND=30,12 @EXPECT=42"
+    "SELECT ? + ? @BIND=30,12 @EXPECT=42" \
+    "SELECT COUNT(*) FROM db_class @ISOLATION=RR @EXPECT=74"
 fi
 
 # This script restarts cub_master via `cubrid service stop` (see below), which
@@ -98,11 +101,13 @@ for case_spec in "$@"; do
   sql="$case_spec"
   bind=""
   expect=""
+  isolation=""
   case "$case_spec" in
-    *"@BIND="*|*"@EXPECT="*)
-      sql="$(printf '%s' "$case_spec" | sed -e 's/ *@BIND=[^ ]*//' -e 's/ *@EXPECT=[^ ]*//')"
+    *"@BIND="*|*"@EXPECT="*|*"@ISOLATION="*)
+      sql="$(printf '%s' "$case_spec" | sed -e 's/ *@BIND=[^ ]*//' -e 's/ *@EXPECT=[^ ]*//' -e 's/ *@ISOLATION=[^ ]*//')"
       bind="$(printf '%s' "$case_spec" | sed -n 's/.*@BIND=\([^ ]*\).*/\1/p')"
       expect="$(printf '%s' "$case_spec" | sed -n 's/.*@EXPECT=\([^ ]*\).*/\1/p')"
+      isolation="$(printf '%s' "$case_spec" | sed -n 's/.*@ISOLATION=\([^ ]*\).*/\1/p')"
       ;;
   esac
 
@@ -120,6 +125,7 @@ for case_spec in "$@"; do
   # `|| true`: a failed start must fall through to the poll below and be
   # reported as FAIL, not abort the whole run via set -e
   CUBRID_M0_TRACER_SQL="$sql" CUBRID_M0_TRACER_OUT="$out" CUBRID_M0_TRACER_BIND="$bind" \
+    CUBRID_M0_TRACER_ISOLATION="$isolation" \
     cubrid server start "$DB" >/dev/null 2>&1 || true
 
   ok=0
