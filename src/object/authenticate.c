@@ -101,7 +101,7 @@ authenticate_context *
 au_ctx (void)
 {
 #if defined (SERVER_MODE)
-  /* wf122/A1: the embedded client half has no process-wide singleton — au
+  /* the embedded client half has no process-wide singleton — au
    * lives in the session-scoped client context the calling thread's
    * activation bracket installed (see client_session_context.hpp) */
   return &csc_current ()->au_context;

@@ -15,7 +15,7 @@
 #   limitations under the License.
 #
 
-# smoke.sh — track-A standard in-process smoke (workspace #122 D5).
+# smoke.sh — standard in-process smoke for the compiler-fold track.
 #
 # Boots cub_server with the env-gated in-process tracer so one server thread
 # compiles, executes and fetches the given SQL in the server address space
@@ -39,10 +39,9 @@ set -eu
 DB="${1:?usage: smoke.sh <dbname> [sql...]}"
 shift
 if [ $# -eq 0 ]; then
-  # the third case joins on an OID-typed catalog attribute so the server-side
-  # OID comparison path (mr_cmpval_object and its per-value assert) is exercised;
-  # the fourth binds host variables so execution crosses the fold boundary with
-  # a native DB_VALUE array (wf122/A3, #124 D4)
+  # case 3 joins on an OID-typed catalog attribute (exercises server-side OID comparison);
+  # case 4 binds host variables (native DB_VALUE array across the fold boundary);
+  # case 5 runs at REPEATABLE READ (exercises the fold's RR transaction lock)
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
     "SELECT ? + ? @BIND=30,12 @EXPECT=42" \
@@ -145,9 +144,8 @@ for case_spec in "$@"; do
   fi
 
   cubrid server stop "$DB" >/dev/null 2>&1 || true
-  # a PASS with the server still up is not a pass — shutdown health is part
-  # of the gate (this is exactly where the wf119 shutdown crashes hid).
-  # fail-closed: an unanswerable status check is itself a failure.
+  # a PASS with the server still up is not a pass — shutdown health is part of
+  # the gate (shutdown crashes hid exactly here); fail-closed on unknown status.
   stopped=1
   stop_note="server still running after stop"
   if ! status_out="$(cubrid server status 2>/dev/null)"; then

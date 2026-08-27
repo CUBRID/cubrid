@@ -20,7 +20,7 @@
  * csql_lexer.l - SQL lexer file
  */
 
-/* wf122 A2: emitted at the very top of the generated csql_lexer.c so the
+/* emitted at the very top of the generated csql_lexer.c so the
  * TLS marker is visible to the flex-generated scanner state declarations
  * that cmake/patch_parser_tls.cmake stamps below */
 %top{

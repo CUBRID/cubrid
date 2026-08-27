@@ -16,7 +16,7 @@
  */
 
 /*
- * server_compile_tracer.hpp - wf119 milestone-0 tracer (see .cpp)
+ * server_compile_tracer.hpp - in-process compile tracer (see .cpp)
  */
 
 #ifndef _SERVER_COMPILE_TRACER_HPP_

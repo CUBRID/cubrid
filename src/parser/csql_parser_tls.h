@@ -17,7 +17,7 @@
 
 /*
  * csql_parser_tls.h - thread-storage marker for the SQL parser's per-parse
- *                     state (wf122 track A, stage A2)
+ *                     state
  *
  * Under SERVER_MODE the merged-in client half parses SQL on server worker
  * threads, so every piece of per-parse state that historically lived in a

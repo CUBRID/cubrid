@@ -39,7 +39,7 @@ option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
-option (UNIT_TEST_SERVER_COMPILE "Unit testing: wf119 client parser inside SERVER_MODE binary")
+option (UNIT_TEST_SERVER_COMPILE "Unit testing: client parser inside SERVER_MODE binary")
 
 message("  unit_tests/...")
 

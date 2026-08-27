@@ -61,7 +61,7 @@
 #include <string>
 #include <locale>
 
-/* wf119: parse_tree.h needed in all modes now (client half compiled into
+/* parse_tree.h needed in all modes now (client half compiled into
  * server); misctype_def.h kept for TUs that relied on it transitively */
 #include "parse_tree.h"
 #include "es_common.h"
@@ -11012,7 +11012,7 @@ error_exit:
   return error_status;
 }
 
-/* wf119: unguarded — client half now compiled into server */
+/* unguarded — client half now compiled into server */
 /*
  * db_get_date_weekday () - compute day of week from a date type value
  *
@@ -11098,7 +11098,7 @@ error_exit:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
   return error_status;
 }
-/* wf119: end of former !SERVER_MODE region */
+/* end of former !SERVER_MODE region */
 
 /*
  * db_get_date_quarter () - compute quarter from a date type value
@@ -11716,7 +11716,7 @@ error_exit:
   return error_status;
 }
 
-/* wf119: unguarded — client half now compiled into server */
+/* unguarded — client half now compiled into server */
 /*
  * db_get_date_item () - compute an item from a datetime value
  *
@@ -11826,7 +11826,7 @@ db_get_time_item (const DB_VALUE * src_date, const int item_type, DB_VALUE * res
 
   return NO_ERROR;
 }
-/* wf119: end of former !SERVER_MODE region */
+/* end of former !SERVER_MODE region */
 
 
 /*

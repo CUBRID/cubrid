@@ -116,10 +116,7 @@
 // To have the safe area is just a safe guard to avoid potential issues of bad size calculation.
 #define QEWC_MAX_DATA_SIZE  (DB_PAGESIZE - QEWC_SAFE_GUARD_SIZE)
 
-/* This file is only included in the server.  So set the on_server flag on.
- * wf119: thread_local — server workers stay 1; a thread hosting the in-process
- * client half (tracer) sets 0 and lets enter_server/exit_server toggle it,
- * preserving SA semantics per thread. */
+/* server workers stay 1; a thread hosting the in-process client half sets 0 and lets enter_server/exit_server toggle it */
 thread_local unsigned int db_on_server = 1;
 
 STATIC_INLINE TRAN_STATE stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool retain_lock,
@@ -5819,7 +5816,7 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 
   CACHE_TIME_RESET (&srv_cache_time);
 
-  /* unpack the parameter values (DB_VALUE) — xqmgr_execute_query takes a native array and only borrows it */
+  /* unpack the parameter values — xqmgr_execute_query borrows a native DB_VALUE array */
   if (dbval_cnt > 0)
     {
       assert (data != NULL);
@@ -6402,8 +6399,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char 
   is_tran_auto_commit = IS_TRAN_AUTO_COMMIT (flag);
   xsession_set_tran_auto_commit (thread_p, is_tran_auto_commit);
 
-  /* unpack the positional values (DB_VALUE) — xqmgr_prepare_and_execute_query takes a native array and only borrows
-   * it */
+  /* unpack the positional values — xqmgr_prepare_and_execute_query borrows a native DB_VALUE array */
   if (var_count > 0 && var_data != NULL)
     {
       dbvals = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * var_count);

@@ -60,7 +60,7 @@ extern "C"
   extern CSQL_PARSER_TLS int parser_output_host_index;
   extern CSQL_PARSER_TLS int parser_statement_OK;
   extern CSQL_PARSER_TLS PARSER_CONTEXT *this_parser;
-  /* wf122 A2: the hint table is thread_local; an extern declaration of an
+  /* the hint table is thread_local; an extern declaration of an
    * unsized thread_local array breaks gcc's TLS wrapper, so cross-TU access
    * goes through this accessor instead */
   extern PT_HINT *pt_hint_table (void);

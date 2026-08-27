@@ -153,7 +153,7 @@ VOLID boot_User_volid = 0;	/* todo: boot_User_volid looks deprecated */
 char boot_Host_connected[CUB_MAXHOSTNAMELEN] = "";
 #endif /* CS_MODE */
 #if !defined (SERVER_MODE)
-char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";	/* wf119: server build uses boot_sr.c's */
+char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";	/* server build uses boot_sr.c's */
 #endif
 char boot_Ip_address[16] = { 0 };
 
@@ -218,7 +218,7 @@ boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
   boot_Set_client_at_exit = true;
   boot_Process_id = getpid ();
 #if !defined (SERVER_MODE)
-  /* wf119: the in-process client must not plant the CS client's exit-time
+  /* the in-process client must not plant the CS client's exit-time
    * shutdown inside cub_server — the client context is deliberately never
    * shut down (see server_compile_tracer.cpp), and this handler would free
    * client state after the thread manager's own teardown (tl_Entry_p
@@ -279,7 +279,7 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
     }
 
 #if !defined (SERVER_MODE)
-  /* wf119: same contract as boot_shutdown_client — an in-process (re)boot
+  /* same contract as boot_shutdown_client — an in-process (re)boot
    * must never finalize the client modules shared with the running server */
   if (!boot_Is_client_all_final)
     {
@@ -351,7 +351,7 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
 #endif
 
 /* initialize system parameters.
- * wf119: skipped for the in-process client (SERVER_MODE) — the server's
+ * skipped for the in-process client (SERVER_MODE) — the server's
  * already-loaded parameter state is authoritative; re-loading here would
  * both clobber live server parameters and hit prm_set_default's
  * session-parameter path on a thread that has no session yet. */
@@ -381,14 +381,14 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
 	}
 #endif
     }
-#endif /* !SERVER_MODE — wf119: keep the server's er state */
+#endif /* !SERVER_MODE — keep the server's er state */
 
   /* initialize the "areas" memory manager, requires prm_ */
   area_init ();
   locator_initialize_areas ();
 
 #if !defined (SERVER_MODE)
-  /* wf119: in-process boot must not re-run perfmon_initialize — the server
+  /* in-process boot must not re-run perfmon_initialize — the server
    * already initialized pstat_Global for MAX_NTRANS at boot, and re-running
    * it would leak those arrays and reallocate tran_stats for 1 transaction
    * while server workers keep indexing by their real tran_index (OOB). */
@@ -687,7 +687,7 @@ boot_restart_failure_cleanup (DB_INFO * db,
   else
     {
 #if !defined (SERVER_MODE)
-      /* wf119: not for the in-process boot — direct registration aliases
+      /* not for the in-process boot — direct registration aliases
        * these to the server's static boot_Db_full_name/boot_Host_name
        * (boot_sr.c xboot_register_client), so freeing them would hand static
        * storage to the private heap. The memset below still clears the
@@ -703,7 +703,7 @@ boot_restart_failure_cleanup (DB_INFO * db,
 #endif /* !SERVER_MODE */
 
 #if !defined (SERVER_MODE)
-      /* wf119: never finalize these for an in-process boot — they are shared
+      /* never finalize these for an in-process boot — they are shared
        * with (and owned by) the running server. Same contract as
        * boot_shutdown_client's SERVER_MODE branch. */
       showstmt_metadata_final ();
@@ -1399,7 +1399,7 @@ error:
     }
 
 #if defined (SERVER_MODE)
-  /* wf119: a failure between boot_register_client and boot_client leaves the
+  /* a failure between boot_register_client and boot_client leaves the
    * transaction registered server-side while tm_Tran_index is still unset —
    * unregister it here by the local index, or it stays ACTIVE and shutdown's
    * log_abort_all_active_transaction corrupts Main_entry_p (the SIGABRT
@@ -1482,7 +1482,7 @@ boot_shutdown_client (bool is_er_final)
 	}
 
 #if defined (SERVER_MODE)
-      /* wf119: for the in-process client, shutdown may only reclaim the
+      /* for the in-process client, shutdown may only reclaim the
        * transaction/registration (done above). The client modules
        * (parser/ws/tp/sysprm/perfmon/...) are shared with — and owned by —
        * the running server, so boot_client_all_finalize must never run

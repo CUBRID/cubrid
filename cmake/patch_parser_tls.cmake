@@ -1,5 +1,5 @@
 # patch_parser_tls.cmake - stamp CSQL_PARSER_TLS onto the mutable globals
-# that bison/flex generate for the csql parser (wf122 track A, stage A2).
+# that bison/flex generate for the csql parser.
 #
 # The hand-written per-parse state in csql_grammar.y / csql_lexer.l carries
 # the marker in source; the generator-owned state (bison's yylval/yylloc/

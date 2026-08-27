@@ -36,7 +36,7 @@
 #endif
 
 /* the order to connect to db-hosts in databases.txt
- * (moved from connection_cl.h — wf119: used by db_admin.c under SERVER_MODE) */
+ * (moved from connection_cl.h — used by db_admin.c under SERVER_MODE) */
 #define DB_CONNECT_ORDER_SEQ         0
 #define DB_CONNECT_ORDER_RANDOM      1
 

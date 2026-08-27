@@ -1213,7 +1213,7 @@ struct xasl_node
   int parallelism;		/* parallelism of the query */
 
   /* client-half compiler fields; unconditional so XASL_NODE has one layout
-   * when the client half is linked into the server (wf119) */
+   * when the client half is linked into the server */
   int projected_size;		/* # of bytes per result tuple */
   double cardinality;		/* estimated cardinality of result */
 

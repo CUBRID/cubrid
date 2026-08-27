@@ -1281,8 +1281,7 @@ exit_on_error:
  *   xasl_id(in)        : XASL file id that was a result of prepare_query()
  *   query_idp(out)     : query id to be used for getting results
  *   dbval_count(in)      : number of host variables
- *   dbvals_p(in) : array of host variables (query input parameters); borrowed
- *                  from the caller — never freed or kept past this call
+ *   dbvals_p(in) : array of host variables (borrowed — never freed or kept past this call)
  *   flagp(in)  : flag
  *   clt_cache_time(in) :
  *   srv_cache_time(in) :
@@ -1768,8 +1767,7 @@ copy_bind_value_to_tdes (THREAD_ENTRY * thread_p, int num_bind_vals, DB_VALUE * 
  *   xasl_stream_size(in)      : memory area size pointed by the xasl_stream
  *   query_id(in)       :
  *   dbval_count(in)      : Number of positional values
- *   dbvals_p(in)      : List of positional values; borrowed from the caller —
- *                       never freed or kept past this call
+ *   dbvals_p(in)      : List of positional values (borrowed — never freed or kept past this call)
  *   flag(in)   :
  *   query_timeout(in): set a timeout only if it is positive
  *

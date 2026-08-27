@@ -128,7 +128,7 @@ namespace parallel_scan
       }
   };
 
-  /* Eligibility, decided while the XASL is built.  wf119: the compiler now
+  /* Eligibility, decided while the XASL is built.  the compiler now
    * lives inside the server, so these are visible in all modes. */
   bool is_renumberable_instnum (XASL_NODE *x);
   bool is_atomic_instnum_eligible (XASL_NODE *x);

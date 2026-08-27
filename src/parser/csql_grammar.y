@@ -106,7 +106,7 @@ typedef struct
 void csql_yyerror_explicit (int line, int column);
 void csql_yyerror (const char *s);
 
-/* wf122 A2: this block is copied verbatim into the generated csql_grammar.h,
+/* this block is copied verbatim into the generated csql_grammar.h,
  * so the TLS marker must be defined here for both copies */
 #include "csql_parser_tls.h"
 
@@ -447,7 +447,7 @@ static CSQL_PARSER_TLS PT_MISC_TYPE parser_attr_type;
 
 static CSQL_PARSER_TLS bool allow_attribute_ordering;
 
-/* wf119: db.h declares this extern "C"; keep C linkage when this generated
+/* db.h declares this extern "C"; keep C linkage when this generated
  * file is compiled as C++ (SERVER_MODE build) */
 #ifdef __cplusplus
 extern "C" int parse_one_statement (int state);
@@ -24009,7 +24009,7 @@ static CSQL_PARSER_TLS PT_HINT parser_hint_table[] = {
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
 
-/* wf122 A2: cross-TU access to the thread_local hint table.  An extern
+/* cross-TU access to the thread_local hint table.  An extern
  * declaration of an unsized thread_local array is unusable (gcc cannot
  * form the TLS wrapper's reference type), so consumers call this instead. */
 PT_HINT *

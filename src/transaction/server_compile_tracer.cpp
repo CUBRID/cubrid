@@ -16,21 +16,13 @@
  */
 
 /*
- * server_compile_tracer.cpp - wf119 milestone-0 tracer
+ * server_compile_tracer.cpp - in-process compile tracer (test harness)
  *
- * Proves plan B's minimal skeleton: one cub_server worker thread calls the
- * client half (parser/compiler) in the same address space, compiles one SQL
- * statement, hands the XASL to this process's executor and fetches a result —
- * network 0-hop.
- *
- * Gate: env CUBRID_M0_TRACER_SQL is set when cub_server boots.  Output goes to
- * the file named by CUBRID_M0_TRACER_OUT (default: m0_tracer.out in cwd).
- *
- * Known milestone-0 limits (deliberate, see workspace issue #119):
- * - single tracer thread, single in-process client context (multiplexing is
- *   later work: #123/#124)
- * - the client context is never shut down (boot_shutdown_client would finalize
- *   modules shared with the server half)
+ * One cub_server worker thread compiles, executes and fetches one SQL
+ * statement in the server address space (0-hop).  Gated by env
+ * CUBRID_M0_TRACER_SQL at server boot; output goes to CUBRID_M0_TRACER_OUT.
+ * Deliberate limits: single tracer thread and single client context, never
+ * shut down (boot_shutdown_client would finalize modules the server shares).
  */
 
 #if defined (SERVER_MODE)
@@ -159,9 +151,7 @@ tracer_main (char *server_name, char *sql, char *out_path)
   entry_p->shutdown = false;
   entry_p->get_error_context ().register_thread_local ();
 
-  /* the session-scoped client context — au is the first tenant (wf122/A1).
-   * Milestone-0 keeps this single tracer context alive for the process
-   * lifetime, like the process singleton it replaces (see file header) */
+  /* session-scoped client context; stays alive for the process lifetime (see file header) */
   csc_activate (new client_session_context ());
 
   /* the server half anchors connection state and (eventually) the session on
@@ -192,10 +182,7 @@ tracer_main (char *server_name, char *sql, char *out_path)
   registered = true;
   tracer_log (fp, "M0_TRACER: in-process client registered (0-hop)");
 
-  /* wf122/A3: repeatable-read isolation routes compilation through the RR
-   * transaction lock (pt_class_pre_fetch -> tran_lock_rep_read /
-   * locator_find_lockhint_class_oids), which the fold must really take —
-   * let the harness opt in. */
+  /* RR isolation routes compilation through the RR transaction lock (pt_class_pre_fetch); harness opt-in */
   if (const char *iso_env = std::getenv ("CUBRID_M0_TRACER_ISOLATION"))
     {
       if (strcmp (iso_env, "RR") == 0)
@@ -231,9 +218,7 @@ tracer_main (char *server_name, char *sql, char *out_path)
       }
     tracer_log (fp, "M0_TRACER: compiled in server address space, stmt_id=%d", stmt_id);
 
-    /* wf122/A3: host variables gate the native DB_VALUE hand-off into
-     * xqmgr_execute_query (#124 D4) — bind them when the harness asks.
-     * CUBRID_M0_TRACER_BIND is a comma-separated list of integers. */
+    /* CUBRID_M0_TRACER_BIND (comma-separated ints): exercises the native DB_VALUE hand-off into the executor */
     const char *bind_env = std::getenv ("CUBRID_M0_TRACER_BIND");
     if (bind_env != NULL && *bind_env != '\0')
       {
@@ -317,28 +302,14 @@ tracer_main (char *server_name, char *sql, char *out_path)
   }
 
 retire:
-  // milestone-0: the client context stays alive (see file header), but the
-  // conn and the entry must not outlive this thread dirty:
-  // - the socketless conn left in css_Active_conn_anchor makes the shutdown
-  //   path "close" an orphan client on the main thread, stamping Main_entry_p
-  //   with the tracer's tran_index and TS_FREE — the next suspend on the main
-  //   entry (shutdown checkpoint's DWB wait) then assert-aborts
-  //   (thread_entry.cpp:564; see PR #181 shutdown-SIGABRT diagnosis)
-  // - retire_entry() returns the entry to the pool as-is, so scrub the fields
-  //   this tracer stamped before another thread reuses it
+  // the client context stays alive (see file header), but conn and entry must not outlive this thread dirty:
+  // an orphan conn in css_Active_conn_anchor corrupts Main_entry_p at shutdown (assert in thread_entry suspend),
+  // and retire_entry() returns the entry to the pool as-is — scrub the stamped fields first
   if (registered)
     {
-      /* log the tran out the way a real disconnect does (frees the tdes /
-       * tran index). Committing is not enough: the committed tdes goes back
-       * to ACTIVE for the next transaction, and a tran left ACTIVE at
-       * shutdown makes log_abort_all_active_transaction push its abort task
-       * inline onto the main thread, whose execute() stamps Main_entry_p
-       * with TS_FREE — the shutdown checkpoint's DWB wait then asserts
-       * (caught by instrumentation, see PR #181). */
+      /* log the tran out like a real disconnect: a tdes left ACTIVE at shutdown aborts inline on the main thread and corrupts Main_entry_p */
       (void) boot_unregister_client (tm_Tran_index);
-      /* leave the client globals describing a logged-out context, so any
-       * exit-path BOOT_IS_CLIENT_RESTARTED() check stays a no-op; the rest
-       * of the context is never reused (milestone-0 file-header limitation) */
+      /* leave the client globals logged-out so exit-path BOOT_IS_CLIENT_RESTARTED() stays a no-op */
       tm_Tran_index = NULL_TRAN_INDEX;
     }
   if (conn != NULL)
@@ -352,11 +323,8 @@ retire:
   entry_p->get_error_context ().deregister_thread_local ();
   entry_p->unregister_id ();
   cubthread::get_manager ()->retire_entry (*entry_p);
-  // SUCCESS is the harness's cue to stop the server, so it must be the very
-  // last act — logging it before css_free_conn re-opens the shutdown race
-  // this teardown exists to close (the orphan conn corrupting Main_entry_p).
-  // A stop racing a still-running tracer remains a documented milestone-0
-  // limitation; the harness never does that (it only stops after SUCCESS).
+  // SUCCESS cues the harness to stop the server, so it must be the very last act —
+  // logging it before css_free_conn re-opens the shutdown race this teardown closes
   if (succeeded)
     {
       tracer_log (fp, "M0_TRACER: SUCCESS");

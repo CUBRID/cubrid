@@ -40,7 +40,7 @@
 #include "object_representation.h"
 #include "set_object.h"
 
-/* wf119: WS_OID/OBJECT_HAS_TEMP_OID users are un-gated below, so the
+/* WS_OID/OBJECT_HAS_TEMP_OID users are un-gated below, so the
  * workspace header is needed in SERVER_MODE too (it only arrived
  * transitively through the client-only includes) */
 #include "work_space.h"
@@ -63,7 +63,7 @@
  */
 
 #if defined (SERVER_MODE)
-extern thread_local unsigned int db_on_server;	/* wf119 */
+extern thread_local unsigned int db_on_server;	/* defined in network_interface_sr.cpp */
 #else
 extern unsigned int db_on_server;
 #endif
@@ -1170,7 +1170,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	   * can be performed reliably.
 	   *
 	   */
-	  /* wf119: un-gated — OBJECT values only come from client-context threads */
+	  /* un-gated — OBJECT values only come from client-context threads */
 	  if (col->sorted && col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	    {
 #if defined (SERVER_MODE)
@@ -1322,7 +1322,7 @@ col_put (COL * col, long colindex, DB_VALUE * val)
       /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
       if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
-	  /* wf119: client body kept (crash-5 family) — OBJECT values only come
+	  /* client body kept (crash-5 family) — OBJECT values only come
 	   * from client-context threads; the old SERVER_MODE branch hard-failed */
 #if defined (SERVER_MODE)
 	  /* SA executes these client bodies with db_on_server toggled; the
@@ -1464,7 +1464,7 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
       /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
       if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
-	  /* wf119: client body kept (crash 5, round-15 core) — OBJECT values
+	  /* client body kept (crash 5, round-15 core) — OBJECT values
 	   * only come from client-context threads; the old SERVER_MODE branch
 	   * hard-failed with assert_release */
 #if defined (SERVER_MODE)
@@ -3244,7 +3244,7 @@ set_ismember (DB_COLLECTION * set, DB_VALUE * value)
   return (ismember);
 }
 
-/* wf119: unguarded — client half now compiled into server */
+/* unguarded — client half now compiled into server */
 /*
  * set_issome() -
  *      return: int
@@ -3278,7 +3278,7 @@ set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercio
   (void) ws_pin (set->owner, pin);
   return (issome);
 }
-/* wf119: end of former !SERVER_MODE region */
+/* end of former !SERVER_MODE region */
 
 /*
  * set_convert_oids_to_objects() -
@@ -5568,7 +5568,7 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
   return error;
 }
 
-/* wf119: unguarded — client half now compiled into server */
+/* unguarded — client half now compiled into server */
 /*
  * setobj_issome()
  *      return: 1 if value compares successfully using op to some element
@@ -5653,7 +5653,7 @@ setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion)
       return 0;
     }
 }
-/* wf119: end of former !SERVER_MODE region */
+/* end of former !SERVER_MODE region */
 
 /*
  * setobj_convert_oids_to_objects() - This will convert all OID and VOBJ

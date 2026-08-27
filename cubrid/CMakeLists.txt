@@ -614,7 +614,7 @@ set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED tr
 set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${FLEX_csql_lexer_OUTPUTS} PROPERTIES GENERATED true)
 
-# wf119 milestone-0 tracer: compile the client half (parser/optimizer/schema/workspace)
+# compile the client half (parser/optimizer/schema/workspace)
 # into the server library under SERVER_MODE so a worker thread can compile SQL in-process.
 # File list mirrors sa/CMakeLists.txt minus standalone-utility and network-transport files.
 set(CLIENT_HALF_SOURCES

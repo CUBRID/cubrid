@@ -7302,7 +7302,7 @@ prm_check_environment (void)
     }
 }
 
-/* wf119: was #if !SERVER_MODE — client half now compiled into server */
+/* was #if !SERVER_MODE — client half now compiled into server */
 /*
  * sysprm_validate_escape_char_parameters () - validate escape char setting
  *
@@ -7570,7 +7570,7 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
 
   return err;
 }
-/* wf119: end of former !SERVER_MODE region */
+/* end of former !SERVER_MODE region */
 
 /*
  * sysprm_change_parameter_values () - update system parameter values
@@ -11046,7 +11046,7 @@ sysprm_alloc_session_parameters (void)
  *
  * return : NULL or pointer to array of session parameters
  *
- * wf119: the in-process client has no network handshake to deliver its
+ * the in-process client has no network handshake to deliver its
  * session parameters, so it builds them from the live (server) values.
  */
 SESSION_PARAM *
@@ -12071,7 +12071,7 @@ sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int 
   return (int) (ptr - buffer);
 }
 
-/* wf119: was #if !SERVER_MODE — client half now compiled into server */
+/* was #if !SERVER_MODE — client half now compiled into server */
 /*
  * sysprm_print_parameters_for_qry_string () - print parameters for query
  *					       string
@@ -12271,7 +12271,7 @@ sysprm_init_intl_param (void)
 
   return error;
 }
-/* wf119: end of former !SERVER_MODE region */
+/* end of former !SERVER_MODE region */
 
 /*
  * sysprm_set_error () - sets an error for system parameter errors
