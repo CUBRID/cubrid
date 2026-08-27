@@ -159,7 +159,12 @@ namespace cubxasl
 
     /* compiled scan-filter form of this tree (expr_compile.c), resolved lazily by the
      * first eval_data_filter () over it and released with the XASL clone
-     * (qexec_clear_pred ()).  Only the tree's root ever holds one. */
+     * (qexec_clear_pred ()).  Only the tree's root ever holds one.
+     * Concurrency contract: these fields (and the program they point to) are written with
+     * plain, non-atomic stores.  That is safe only because an XASL clone is checked out to
+     * exactly one executing thread at a time (the xcache clone mutex publishes the stores
+     * when the clone changes hands).  Nothing here tolerates two threads sharing one clone
+     * -- do not add such a caller without making this state per-thread or synchronized. */
     void *scan_prog;
     int scan_prog_state;	/* 0 = not tried yet, 1 = active, 2 = keep the interpreted path */
 

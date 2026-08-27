@@ -2080,7 +2080,9 @@ namespace parallel_scan
 		operand_prog = (agg_list->operand_prog_state == 1) ? (EXPR_PROG *) agg_list->operand_prog : NULL;
 	      }
 	  }
-	if (operand_prog != NULL && expr_prog_eval (operand_prog, thread_p, tl_vd, NULL, tl_tpl_buf.tpl) != NO_ERROR)
+	/* tpl is NULL as on the serial path: compiled operands never contain TYPE_POSITION
+	 * leaves here, and tl_tpl_buf.tpl is a write scratch buffer, not a source tuple */
+	if (operand_prog != NULL && expr_prog_eval (operand_prog, thread_p, tl_vd, NULL, NULL) != NO_ERROR)
 	  {
 	    return false;
 	  }
