@@ -69,9 +69,9 @@
 #include "db_value_printer.hpp"
 #include "execute_statement.h"
 
-#define PT_NODE_SP_NAME(node) \
+#define PT_NODE_SP_NAME(parser, node) \
   (((node)->info.sp.name == NULL) ? "" : \
-   (node)->info.sp.name->info.name.original)
+   pt_name_qualified ((parser), (node)->info.sp.name))
 
 #define PT_NODE_SP_TYPE(node) \
   ((node)->info.sp.type)
@@ -944,7 +944,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   for (p = name_list, i = 0; p != NULL; p = p->next)
     {
-      name = (char *) p->info.name.original;
+      name = (char *) pt_name_qualified (parser, p);
       if (name == NULL || name[0] == '\0')
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
@@ -1122,7 +1122,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
-  temp = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));
+  temp = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (parser, statement));
   sp_info.unique_name = temp;
   free (temp);
   if (sp_info.unique_name.empty ())
@@ -1395,7 +1395,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   assert (sp_owner != NULL || sp_comment != NULL || sp_recompile);
 
-  name_str = sp_name->info.name.original;
+  name_str = pt_name_qualified (parser, sp_name);
   assert (name_str != NULL);
 
   if (sp_owner != NULL)

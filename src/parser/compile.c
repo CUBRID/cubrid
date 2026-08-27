@@ -441,11 +441,11 @@ pt_rewrite_resolved_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_CLASS_LOCK
 	{
 	  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
 
-	  name->info.name.original = pt_append_string (parser, NULL, lcks->resolved_names[i]);
 	  name->info.name.owner_defaulted = 0;
 
-	  /* it is another schema's class now, so the owner field has to say so too */
-	  if (sm_qualifier_name (name->info.name.original, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+	  /* it is another schema's class now: the owner goes in its own field and the name
+	   * keeps only itself, the same way every other name is put together */
+	  if (sm_qualifier_name (lcks->resolved_names[i], qualifier_name, DB_MAX_USER_LENGTH) != NULL)
 	    {
 	      name->info.name.owner_name = pt_append_string (parser, NULL, qualifier_name);
 	    }
@@ -453,6 +453,8 @@ pt_rewrite_resolved_name (PARSER_CONTEXT * parser, PT_NODE * name, PT_CLASS_LOCK
 	    {
 	      name->info.name.owner_name = NULL;
 	    }
+	  name->info.name.original =
+	    pt_append_string (parser, NULL, sm_remove_qualifier_name (lcks->resolved_names[i]));
 	  break;
 	}
     }

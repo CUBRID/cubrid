@@ -9783,7 +9783,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   tbl_opt_comment = comment_node = NULL;
   tbl_opt_encrypt = encrypt_node = NULL;
 
-  class_name = node->info.create_entity.entity_name->info.name.original;
+  class_name = pt_name_qualified (parser, node->info.create_entity.entity_name);
 
   if (node->info.create_entity.create_like != NULL)
     {

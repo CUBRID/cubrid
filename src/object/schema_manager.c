@@ -5638,14 +5638,28 @@ sm_find_class_with_purpose (const char *owner_name, const char *name, bool for_u
       return NULL;
     }
 
-  sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+  if (owner_name != NULL && strchr (name, '.') == NULL)
+    {
+      /* The owner is handed over beside the name, so completing the name with the current
+       * schema would name the wrong one. */
+      char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+      char downcase_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+      sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
+      sm_downcase_name (name, downcase_name, SM_MAX_IDENTIFIER_LENGTH);
+      snprintf (realname, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, downcase_name);
+    }
+  else
+    {
+      sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
+    }
 
 #if !defined(NDEBUG)
   if (owner_name != NULL)
     {
       char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
 
-      /* while the owner is in the name as well as passed alongside it, the two have to agree */
+      /* whichever way it was put together, it has to name the owner that was handed over */
       if (sm_qualifier_name (realname, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
 	{
 	  assert (intl_identifier_casecmp (owner_name, qualifier_name) == 0);

@@ -7118,6 +7118,8 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 	  result->info.name.spec_id = spec->info.spec.id;
 	  result->info.name.meta_class = spec->info.spec.meta_class;
 	  result->info.name.partition = name->info.name.partition;
+	  /* the name on its own says nothing about who owns it, so carry that over too */
+	  result->info.name.owner_name = name->info.name.owner_name;
 	  return result;	/* there can be no except part */
 	}
 
@@ -10702,7 +10704,9 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else if (PT_IS_NAME_NODE (node))
     {
+      /* the node carries the owner beside the name, not inside it */
       serial_name = node->info.name.original;
+      owner_name = node->info.name.owner_name;
     }
   else
     {
@@ -10716,9 +10720,10 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (owner_name && owner_name[0] != '\0')
     {
-      serial_unique_name = pt_append_string (parser, owner_name, ".");
+      serial_unique_name = pt_append_string (parser, serial_unique_name, owner_name);
+      serial_unique_name = pt_append_string (parser, serial_unique_name, ".");
     }
-  serial_unique_name = pt_append_string (parser, NULL, serial_name);
+  serial_unique_name = pt_append_string (parser, serial_unique_name, serial_name);
 
   serial_class_obj = sm_find_class (CT_SERIAL_NAME);
   serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class_obj, serial_unique_name);

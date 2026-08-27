@@ -6706,7 +6706,7 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 	      goto error;
 	    }
 
-	  intl_identifier_lower (arg->info.name.original, lower_table_name);
+	  intl_identifier_lower (pt_name_qualified (parser, arg), lower_table_name);
 
 	  /* replace identifier node with string value node */
 	  id_string = pt_make_string_value (parser, lower_table_name);
@@ -7085,7 +7085,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
       return NULL;
     }
 
-  intl_identifier_lower (original_cls_id->info.name.original, lower_table_name);
+  intl_identifier_lower (pt_name_qualified (parser, original_cls_id), lower_table_name);
 
   db_make_int (db_valuep + 0, 0);
   db_make_int (db_valuep + 1, 0);
@@ -7291,7 +7291,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
    * SELECT 'table_name' as TABLE, 'create table ...' as CREATE TABLE
    *      FROM db_root
    */
-  pt_add_string_col_to_sel_list (parser, select, table_name->info.name.original, "TABLE");
+  pt_add_string_col_to_sel_list (parser, select, pt_name_qualified (parser, table_name), "TABLE");
   pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer (), "CREATE TABLE");
   pt_add_table_name_to_from_list (parser, select, "dual", NULL, DB_AUTH_SELECT);
   return select;
@@ -8213,7 +8213,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_SELECT_INFO_SET_FLAG (query, PT_SELECT_INFO_IDX_SCHEMA);
   PT_SELECT_INFO_SET_FLAG (query, PT_SELECT_INFO_READ_ONLY);
 
-  intl_identifier_lower (original_cls_id->info.name.original, lower_table_name);
+  intl_identifier_lower (pt_name_qualified (parser, original_cls_id), lower_table_name);
 
   db_value_domain_default (db_valuep + 0, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
@@ -11019,16 +11019,16 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
   if (strchr (original_name, '.'))
     {
-      /* Already qualified. This walk runs more than once over a statement, so most of
-       * these have their owner field from the earlier pass; a name built pre-joined does
-       * not, and the field has to hold for every qualified name. */
-      if (PT_IS_NAME_NODE (node) && node->info.name.owner_name == NULL)
+      /* A name built pre-joined, or one this walk has already been over. Move the owner
+       * into its own field and leave the name carrying only itself. */
+      if (PT_IS_NAME_NODE (node))
 	{
 	  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
 
 	  if (sm_qualifier_name (original_name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
 	    {
 	      node->info.name.owner_name = pt_append_string (parser, NULL, qualifier_name);
+	      node->info.name.original = pt_append_string (parser, NULL, sm_remove_qualifier_name (original_name));
 	    }
 	}
 
@@ -11094,10 +11094,10 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   owner_name = pt_append_string (parser, NULL, downcase_resolved_name);
 
   /* In case 1, 2, 3 */
-  user_specified_name = pt_append_string (parser, downcase_resolved_name, ".");
-  user_specified_name = pt_append_string (parser, user_specified_name, original_name);
+  user_specified_name = pt_append_string (parser, NULL, original_name);
 
-  assert (intl_identifier_lower_string_size (user_specified_name) < DB_MAX_IDENTIFIER_LENGTH);
+  assert (intl_identifier_lower_string_size (owner_name) + 1
+	  + intl_identifier_lower_string_size (user_specified_name) < DB_MAX_IDENTIFIER_LENGTH);
 
   if (PT_IS_NAME_NODE (node))
     {
@@ -11161,12 +11161,6 @@ pt_name_qualified (PARSER_CONTEXT * parser, const PT_NODE * name)
       return original;
     }
 
-  /* while the owner is still joined into original, it is already written out */
-  if (strchr (original, '.') != NULL)
-    {
-      return original;
-    }
-
   return pt_append_string (parser, pt_append_string (parser, owner_name, "."), original);
 }
 
@@ -11198,15 +11192,8 @@ pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
 #if !defined(NDEBUG)
-  /* while the owner is in the name as well as in its own field, the two have to agree */
-  if (sm_qualifier_name (PT_NAME_ORIGINAL (node), qualifier_name, DB_MAX_USER_LENGTH) == NULL)
-    {
-      assert (PT_NAME_OWNER_NAME (node) == NULL);
-    }
-  else
-    {
-      assert (PT_NAME_OWNER_NAME (node) != NULL && strcmp (PT_NAME_OWNER_NAME (node), qualifier_name) == 0);
-    }
+  /* the name carries only itself now; the owner is in its own field */
+  assert (sm_qualifier_name (PT_NAME_ORIGINAL (node), qualifier_name, DB_MAX_USER_LENGTH) == NULL);
 #endif
 
   if (PT_NAME_OWNER_NAME (node) != NULL)

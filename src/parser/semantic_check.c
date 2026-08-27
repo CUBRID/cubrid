@@ -9037,7 +9037,7 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   assert (PT_SYNONYM_ACCESS_MODIFIER (node) != PT_PUBLIC);
 
   /* synonym_name */
-  name = PT_NAME_ORIGINAL (PT_SYNONYM_NAME (node));
+  name = pt_name_qualified (parser, PT_SYNONYM_NAME (node));
   assert (name != NULL && *name != '\0');
   if (sm_check_system_class_by_name (name) == true)
     {
@@ -9122,7 +9122,7 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   assert (PT_SYNONYM_ACCESS_MODIFIER (node) != PT_PUBLIC);
 
   /* synonym_name */
-  name = PT_NAME_ORIGINAL (PT_SYNONYM_NAME (node));
+  name = pt_name_qualified (parser, PT_SYNONYM_NAME (node));
   assert (name != NULL && *name != '\0');
   if (sm_check_system_class_by_name (name) == true)
     {
@@ -9228,7 +9228,7 @@ pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   assert (PT_SYNONYM_ACCESS_MODIFIER (node) != PT_PUBLIC);
 
   /* synonym_name */
-  name = PT_NAME_ORIGINAL (PT_SYNONYM_NAME (node));
+  name = pt_name_qualified (parser, PT_SYNONYM_NAME (node));
   assert (name != NULL && *name != '\0');
   if (sm_check_system_class_by_name (name) == true)
     {
@@ -9298,7 +9298,7 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   assert (PT_SYNONYM_ACCESS_MODIFIER (node) != PT_PUBLIC);
 
   /* old_synonym_name */
-  old_name = PT_NAME_ORIGINAL (PT_SYNONYM_OLD_NAME (node));
+  old_name = pt_name_qualified (parser, PT_SYNONYM_OLD_NAME (node));
   assert (old_name != NULL && *old_name != '\0');
   if (sm_check_system_class_by_name (old_name) == true)
     {
@@ -9338,7 +9338,7 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   /* old_synonym_obj != NULL */
 
   /* new_synonym_name */
-  new_name = PT_NAME_ORIGINAL (PT_SYNONYM_NEW_NAME (node));
+  new_name = pt_name_qualified (parser, PT_SYNONYM_NEW_NAME (node));
   assert (new_name != NULL && *new_name != '\0');
   if (sm_check_system_class_by_name (new_name) == true)
     {
@@ -9769,7 +9769,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  /* check if class name exists. if not, we remove the corresponding node from spec_list. */
 	  if ((name = free_node->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	      && (entity_name = name->info.name.original) != NULL)
+	      && (entity_name = pt_name_qualified (parser, name)) != NULL)
 	    {
 	      /* We cannot change the schema of a class by using synonym names. */
 	      if (db_find_synonym (entity_name) == NULL)
@@ -10311,7 +10311,7 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   /* serial_name */
-  name = node->info.serial.serial_name->info.name.original;
+  name = pt_name_qualified (parser, node->info.serial.serial_name);
   if (name == NULL)
     {
       assert (sm_check_system_class_by_name (name));

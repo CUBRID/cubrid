@@ -112,8 +112,8 @@
  *
  */
 
-#define PT_NODE_SR_NAME(node)			\
-	((node)->info.serial.serial_name->info.name.original)
+#define PT_NODE_SR_NAME(parser, node)		\
+	(pt_name_qualified ((parser), (node)->info.serial.serial_name))
 #define PT_NODE_SR_START_VAL(node)		\
 	((node)->info.serial.start_val)
 #define PT_NODE_SR_INCREMENT_VAL(node)		\
@@ -1709,7 +1709,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /*
    * lookup if serial object name already exists?
    */
-  serial_name = PT_NODE_SR_NAME (statement);
+  serial_name = PT_NODE_SR_NAME (parser, statement);
   sm_downcase_name (serial_name, downcase_serial_name, DB_MAX_IDENTIFIER_LENGTH);
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, downcase_serial_name);
   if (serial_mop != NULL)
@@ -2723,7 +2723,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * lookup if serial object name already exists?
    */
 
-  name = (char *) PT_NODE_SR_NAME (statement);
+  name = (char *) PT_NODE_SR_NAME (parser, statement);
 
   serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class, name);
   if (serial_object == NULL)
@@ -3264,7 +3264,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CHANGE_OWNER:
       /* owner to */
       assert (statement->info.serial.owner_name != NULL);
-      serial_name = (char *) PT_NODE_SR_NAME (statement);
+      serial_name = (char *) PT_NODE_SR_NAME (parser, statement);
       serial_owner_name = statement->info.serial.owner_name->info.name.original;
 
       sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, sizeof (user_specified_serial_name));
@@ -3375,7 +3375,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  name = (char *) PT_NODE_SR_NAME (statement);
+  name = (char *) PT_NODE_SR_NAME (parser, statement);
 
   serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class, name);
   if (serial_object == NULL)
@@ -6187,8 +6187,8 @@ get_savepoint_name_from_db_value (DB_VALUE * val)
   ((statement)->node_type == PT_TRIGGER_ACTION \
    && (statement)->info.trigger_action.action_type == PT_PRINT)
 
-#define PT_NODE_TR_NAME(node) \
- ((node)->info.create_trigger.trigger_name->info.name.original)
+#define PT_NODE_TR_NAME(parser, node) \
+ (pt_name_qualified ((parser), (node)->info.create_trigger.trigger_name))
 #define PT_NODE_TR_STATUS(node) \
  (convert_misc_to_tr_status((node)->info.create_trigger.trigger_status))
 #define PT_NODE_TR_PRI(node) \
@@ -6198,8 +6198,8 @@ get_savepoint_name_from_db_value (DB_VALUE * val)
 
 #define PT_NODE_TR_TARGET(node) \
   ((node)->info.create_trigger.trigger_event->info.event_spec.event_target)
-#define PT_TR_TARGET_CLASS(target) \
-  ((target)->info.event_target.class_name->info.name.original)
+#define PT_TR_TARGET_CLASS(parser, target) \
+  (pt_name_qualified ((parser), (target)->info.event_target.class_name))
 #define PT_TR_TARGET_ATTR(target) \
   ((target)->info.event_target.attribute)
 #define PT_TR_ATTR_NAME(attr) \
@@ -6226,7 +6226,7 @@ static int merge_mop_list_extension (DB_OBJLIST * new_objlist, DB_OBJLIST ** lis
 static DB_TRIGGER_EVENT convert_event_to_tr_event (const PT_EVENT_TYPE ev);
 static DB_TRIGGER_TIME convert_misc_to_tr_time (const PT_MISC_TYPE pt_time);
 static DB_TRIGGER_STATUS convert_misc_to_tr_status (const PT_MISC_TYPE pt_status);
-static int convert_speclist_to_objlist (DB_OBJLIST ** triglist, PT_NODE * specnode);
+static int convert_speclist_to_objlist (PARSER_CONTEXT * parser, DB_OBJLIST ** triglist, PT_NODE * specnode);
 static int check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, PT_NODE * statement);
 static int check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, PT_NODE * statement);
 static char **find_update_columns (int *count_ptr, PT_NODE * statement);
@@ -6409,7 +6409,7 @@ convert_misc_to_tr_status (const PT_MISC_TYPE pt_status)
  *    which we don't have authorization.
  */
 static int
-convert_speclist_to_objlist (DB_OBJLIST ** triglist, PT_NODE * specnode)
+convert_speclist_to_objlist (PARSER_CONTEXT * parser, DB_OBJLIST ** triglist, PT_NODE * specnode)
 {
   int error = NO_ERROR;
   DB_OBJLIST *triggers, *etrigs;
@@ -6436,7 +6436,7 @@ convert_speclist_to_objlist (DB_OBJLIST ** triglist, PT_NODE * specnode)
 	   * tr_check_authorization to find out. */
 	  for (n = names; n != NULL && error == NO_ERROR; n = n->next)
 	    {
-	      str = n->info.name.original;
+	      str = pt_name_qualified (parser, n);
 	      trigger = tr_find_trigger (str);
 	      if (trigger == NULL)
 		{
@@ -7285,7 +7285,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   CHECK_MODIFICATION_ERROR ();
 
-  name = PT_NODE_TR_NAME (statement);
+  name = PT_NODE_TR_NAME (parser, statement);
   status = PT_NODE_TR_STATUS (statement);
 
   comment_node = statement->info.create_trigger.comment;
@@ -7315,10 +7315,10 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   target = PT_NODE_TR_TARGET (statement);
   if (target)
     {
-      class_ = db_find_class (PT_TR_TARGET_CLASS (target));
+      class_ = db_find_class (PT_TR_TARGET_CLASS (parser, target));
       if (class_ == NULL)
 	{
-	  ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, PT_TR_TARGET_CLASS (target));
+	  ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, PT_TR_TARGET_CLASS (parser, target));
 	  return error;
 	}
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
@@ -7422,7 +7422,7 @@ do_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
    * own. */
 
   speclist = statement->info.drop_trigger.trigger_spec_list;
-  if (convert_speclist_to_objlist (&triggers, speclist))
+  if (convert_speclist_to_objlist (parser, &triggers, speclist))
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -7488,7 +7488,7 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   p_node = statement->info.alter_trigger.trigger_priority;
   trigger_owner = statement->info.alter_trigger.trigger_owner;
   speclist = statement->info.alter_trigger.trigger_spec_list;
-  if (convert_speclist_to_objlist (&triggers, speclist))
+  if (convert_speclist_to_objlist (parser, &triggers, speclist))
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -7663,7 +7663,7 @@ do_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   CHECK_MODIFICATION_ERROR ();
 
   speclist = statement->info.execute_trigger.trigger_spec_list;
-  error = convert_speclist_to_objlist (&triggers, speclist);
+  error = convert_speclist_to_objlist (parser, &triggers, speclist);
 
   if (error == NO_ERROR && triggers != NULL)
     {
@@ -7695,7 +7695,7 @@ do_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   CHECK_MODIFICATION_ERROR ();
 
   speclist = statement->info.remove_trigger.trigger_spec_list;
-  error = convert_speclist_to_objlist (&triggers, speclist);
+  error = convert_speclist_to_objlist (parser, &triggers, speclist);
 
   if (error == NO_ERROR && triggers != NULL)
     {
@@ -16133,7 +16133,7 @@ do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** reserve
 
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
-	objname = (char *) PT_NODE_SR_NAME (statement);
+	objname = (char *) PT_NODE_SR_NAME (parser, statement);
 	if (do_get_serial_obj_id (oid, serial_class, objname) == NULL)
 	  {
 	    free_and_init (oid);
@@ -16598,7 +16598,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
-	objname = (char *) PT_NODE_SR_NAME (statement);
+	objname = (char *) PT_NODE_SR_NAME (parser, statement);
 	if (do_get_serial_obj_id (oid, serial_class, objname) == NULL)
 	  {
 	    error = ER_FAILED;
@@ -16614,7 +16614,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
       {
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
-	objname = (char *) PT_NODE_SR_NAME (statement);
+	objname = (char *) PT_NODE_SR_NAME (parser, statement);
 	if (do_get_serial_obj_id (oid, serial_class, objname) == NULL)
 	  {
 	    goto end;
@@ -16748,7 +16748,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 	TR_TRIGGER *trigger;
 
 	objname =
-	  statement->info.alter_trigger.trigger_spec_list->info.trigger_spec_list.trigger_name_list->info.name.original;
+	  pt_name_qualified (parser,
+			     statement->info.alter_trigger.trigger_spec_list->info.trigger_spec_list.trigger_name_list);
 
 	tr_object = tr_find_trigger (objname);
 	if (tr_object != NULL)
