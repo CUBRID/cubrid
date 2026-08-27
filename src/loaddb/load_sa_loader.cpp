@@ -1094,13 +1094,14 @@ ldr_clear_err_total (LDR_CONTEXT *context)
 static const char *
 ldr_class_name (LDR_CONTEXT *context)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *name = NULL;
 
   if (context)
     {
       if (context->cls)
 	{
-	  name = db_get_class_name (context->cls);
+	  name = db_get_class_qualified_name (context->cls, qualified_name, sizeof (qualified_name));
 	}
     }
 
@@ -1218,6 +1219,7 @@ select_set_domain (LDR_CONTEXT *context, TP_DOMAIN *domain, TP_DOMAIN **set_doma
 static int
 check_object_domain (LDR_CONTEXT *context, DB_OBJECT *class_, DB_OBJECT **actual_class)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int err = NO_ERROR;
   TP_DOMAIN *domain = NULL, *best = NULL;
 
@@ -1265,7 +1267,7 @@ check_object_domain (LDR_CONTEXT *context, DB_OBJECT *class_, DB_OBJECT **actual
 	    {
 	      err = ER_LDR_OBJECT_DOMAIN_MISMATCH;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, ldr_attr_name (context), ldr_class_name (context),
-		      db_get_class_name (class_));
+		      db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name)));
 	    }
 	}
     }
@@ -4234,6 +4236,7 @@ error_exit:
 static int
 find_instance (LDR_CONTEXT *context, DB_OBJECT *class_, OID *oid, int id)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int err = NO_ERROR;
   CLASS_TABLE *table;
   INST_INFO *inst;
@@ -4274,7 +4277,8 @@ find_instance (LDR_CONTEXT *context, DB_OBJECT *class_, OID *oid, int id)
 	      if (is_internal_class (class_))
 		{
 		  err = ER_LDR_INTERNAL_REFERENCE;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, db_get_class_name (class_));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, db_get_class_qualified_name (class_, qualified_name,
+			  sizeof (qualified_name)));
 		}
 	      else
 		{
@@ -6741,6 +6745,7 @@ ldr_is_ignore_class (const char *class_name, size_t size)
 static void
 ldr_process_object_ref (object_ref_type *ref, int type)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   bool ignore_class = false;
   const char *class_name;
   DB_OBJECT *ref_class = NULL;
@@ -6766,7 +6771,7 @@ ldr_process_object_ref (object_ref_type *ref, int type)
   ref_class = ldr_act_get_ref_class (ldr_Current_context);
   if (ref_class != NULL)
     {
-      class_name = db_get_class_name (ref_class);
+      class_name = db_get_class_qualified_name (ref_class, qualified_name, sizeof (qualified_name));
       ignore_class = ldr_is_ignore_class (class_name, ((class_name) ? strlen (class_name) : 0));
     }
 

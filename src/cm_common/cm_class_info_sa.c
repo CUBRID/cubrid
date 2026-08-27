@@ -168,12 +168,14 @@ write_err_msg (const char *errfile, char *msg)
 static void
 write_class_info (FILE * fp, DB_OBJECT * classobj)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *objlist, *temp;
   DB_OBJECT *obj;
   DB_VALUE v;
 
   fprintf (fp, MSGFMT, "open", "class");
-  fprintf (fp, MSGFMT, "classname", db_get_class_name (classobj));
+  fprintf (fp, MSGFMT, "classname", db_get_class_qualified_name (classobj, qualified_name, sizeof (qualified_name)));
 
   obj = db_get_owner (classobj);
   db_get (obj, "name", &v);
@@ -182,7 +184,8 @@ write_class_info (FILE * fp, DB_OBJECT * classobj)
   objlist = db_get_superclasses (classobj);
   for (temp = objlist; temp != NULL; temp = temp->next)
     {
-      fprintf (fp, MSGFMT, "superclass", db_get_class_name (temp->op));
+      fprintf (fp, MSGFMT, "superclass",
+	       db_get_class_qualified_name (temp->op, qualified_name2, sizeof (qualified_name2)));
     }
   if (objlist != NULL)
     db_objlist_free (objlist);

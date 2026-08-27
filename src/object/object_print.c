@@ -347,6 +347,7 @@ help_print_obj (print_output & output_ctx, MOP obj)
 char **
 help_class_names (const char *qualifier)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *mops, *m;
   char **names;
   int count, i, outcount;
@@ -383,7 +384,7 @@ help_class_names (const char *qualifier)
 	{
 	  for (i = 0, m = mops; i < count; i++, m = m->next)
 	    {
-	      unique_name = db_get_class_name (m->op);
+	      unique_name = db_get_class_qualified_name (m->op, qualified_name, sizeof (qualified_name));
 	      buffer[0] = '\0';
 
 	      if (!requested_owner && sm_check_name (unique_name))

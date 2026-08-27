@@ -2150,6 +2150,7 @@ pt_to_method_arglist (PARSER_CONTEXT *parser, PT_NODE *target, PT_NODE *node_lis
 int
 jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_as_attr_list, cubpl::pl_signature &sig)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int save = 0;
   int error = NO_ERROR;
   char user_name_buffer [DB_MAX_USER_LENGTH + 1];
@@ -2257,8 +2258,20 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	PT_NODE *dt = node->info.method_call.on_call_target->data_type;
 	/* beware of virtual classes */
 
-	sig.ext.method.class_name = (dt->info.data_type.virt_object) ? (char *) db_get_class_name (
-					    dt->info.data_type.virt_object) : (char *) dt->info.data_type.entity->info.name.original;
+	if (dt->info.data_type.virt_object)
+	  {
+	    char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+	    /* parser memory, so the signature borrows this the same way it borrows the name below */
+	    sig.ext.method.class_name =
+		    (char *) pt_append_string (parser, NULL,
+					       db_get_class_qualified_name (dt->info.data_type.virt_object, qualified_name,
+						   sizeof (qualified_name)));
+	  }
+	else
+	  {
+	    sig.ext.method.class_name = (char *) dt->info.data_type.entity->info.name.original;
+	  }
 	sig.arg.set_arg_size (pt_length_of_list (node->info.method_call.arg_list) + 1);
 	sig.ext.method.arg_pos = pt_to_method_arglist (parser, node->info.method_call.on_call_target,
 				 node->info.method_call.arg_list, subquery_as_attr_list);

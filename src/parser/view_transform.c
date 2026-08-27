@@ -3443,6 +3443,7 @@ mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec)
 static int
 mq_check_authorization_path_entities (PARSER_CONTEXT * parser, PT_NODE * class_spec, int what_for)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *path_spec, *entity;
   int error;
   bool skip_auth_check = false;
@@ -3473,7 +3474,8 @@ mq_check_authorization_path_entities (PARSER_CONTEXT * parser, PT_NODE * class_s
 	    {			/* authorization fails */
 	      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
 			   get_authorization_name ((DB_AUTH) what_for),
-			   db_get_class_name (entity->info.name.db_object));
+			   db_get_class_qualified_name (entity->info.name.db_object, qualified_name,
+							sizeof (qualified_name)));
 	      return error;
 	    }
 	}
@@ -3529,6 +3531,7 @@ mq_check_subqueries_for_prepare (PARSER_CONTEXT * parser, PT_NODE * node, PT_NOD
 static PT_NODE *
 mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list, PT_NODE * order_by, int what_for)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *entity;
   PT_NODE *class_spec;
   PT_NODE *subquery;
@@ -3636,7 +3639,8 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 		    {
 		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
 				   get_authorization_name ((DB_AUTH) what_for),
-				   db_get_class_name (my_class->info.name.db_object));
+				   db_get_class_qualified_name (my_class->info.name.db_object, qualified_name,
+								sizeof (qualified_name)));
 		      return NULL;
 		    }
 		  my_class->next = real_classes;
@@ -8011,6 +8015,7 @@ mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
 PT_NODE *
 mq_fetch_subqueries (PARSER_CONTEXT * parser, PT_NODE * class_)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PARSER_CONTEXT *query_cache;
   DB_OBJECT *class_object;
 
@@ -8026,7 +8031,8 @@ mq_fetch_subqueries (PARSER_CONTEXT * parser, PT_NODE * class_)
       if (!(query_cache->view_cache->authorization & DB_AUTH_SELECT))
 	{
 	  PT_ERRORmf (parser, class_, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_SEL_NOT_AUTHORIZED,
-		      db_get_class_name (class_->info.name.db_object));
+		      db_get_class_qualified_name (class_->info.name.db_object, qualified_name,
+						   sizeof (qualified_name)));
 	  return NULL;
 	}
 
@@ -8099,6 +8105,8 @@ static PT_NODE *
 mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec, PT_NODE * attributes, DB_OBJECT * vclass_object,
 	      int cascaded_check)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *col, *prev_col, *next_col, *new_col;
   PT_NODE *attr;
   PT_NODE *col_type;
@@ -8279,14 +8287,14 @@ mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec, PT_NODE * attribute
       if (col)
 	{
 	  PT_ERRORmf (parser, query_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_QSPEC_COLS_GT_ATTRS,
-		      db_get_class_name (vclass_object));
+		      db_get_class_qualified_name (vclass_object, qualified_name, sizeof (qualified_name)));
 	  return NULL;
 	}
 
       if (attr)
 	{
 	  PT_ERRORmf (parser, query_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ATTRS_GT_QSPEC_COLS,
-		      db_get_class_name (vclass_object));
+		      db_get_class_qualified_name (vclass_object, qualified_name2, sizeof (qualified_name2)));
 	  return NULL;
 	}
 
@@ -8611,6 +8619,7 @@ mq_invert_subqueries (PARSER_CONTEXT * parser, PT_NODE * select_statements, PT_N
 static void
 mq_set_non_updatable_oid (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * virt_entity)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *select_list;
 
   if (!parser || !stmt)
@@ -8634,7 +8643,9 @@ mq_set_non_updatable_oid (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * vir
 	  select_list->type_enum = PT_TYPE_OBJECT;
 
 	  /* set vclass_name as literal string */
-	  db_make_string (&vid, db_get_class_name (virt_entity->info.name.db_object));
+	  db_make_string (&vid,
+			  db_get_class_qualified_name (virt_entity->info.name.db_object, qualified_name,
+						       sizeof (qualified_name)));
 	  select_list->info.function.arg_list = pt_dbval_to_value (parser, &vid);
 	  select_list->info.function.function_type = F_SEQUENCE;
 
@@ -8721,8 +8732,9 @@ mq_free_virtual_query_cache (PARSER_CONTEXT * parser)
 PARSER_CONTEXT *
 mq_virtual_queries (DB_OBJECT * class_object)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char buf[2000];
-  const char *cname = db_get_class_name (class_object);
+  const char *cname = db_get_class_qualified_name (class_object, qualified_name, sizeof (qualified_name));
   PARSER_CONTEXT *parser = parser_create_parser ();
   PT_NODE **statements;
   VIEW_CACHE_INFO *symbols;
@@ -8959,6 +8971,7 @@ mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 static PT_NODE *
 mq_check_non_updatable_vclass_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *dt;
   DB_OBJECT *vclass;
   bool strict = true, updatable;
@@ -8989,7 +9002,7 @@ mq_check_non_updatable_vclass_oid (PARSER_CONTEXT * parser, PT_NODE * node, void
 	      /* OID of non-updatable vclass found */
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_NO_VID_FOR_NON_UPDATABLE_VIEW,
 			  /* use function to get name */
-			  db_get_class_name (vclass));
+			  db_get_class_qualified_name (vclass, qualified_name, sizeof (qualified_name)));
 	      *continue_walk = PT_STOP_WALK;
 	    }
 	}
@@ -10510,6 +10523,7 @@ mq_replace_name_with_path (PARSER_CONTEXT * parser, PT_NODE * node, void *void_a
 static PT_NODE *
 mq_substitute_path (PARSER_CONTEXT * parser, PT_NODE * node, PATH_LAMBDA_INFO * path_info)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *column;
   PT_NODE *next;
   REPLACE_NAME_INFO info;
@@ -10529,7 +10543,8 @@ mq_substitute_path (PARSER_CONTEXT * parser, PT_NODE * node, PATH_LAMBDA_INFO * 
       if (column->info.name.meta_class == PT_SHARED)
 	{
 	  PT_NODE *new_spec = mq_new_spec (parser,
-					   db_get_class_name (column->info.name.db_object));
+					   db_get_class_qualified_name (column->info.name.db_object, qualified_name,
+									sizeof (qualified_name)));
 
 	  if (new_spec == NULL)
 	    {
@@ -13424,6 +13439,7 @@ mq_fix_derived_in_union (PARSER_CONTEXT * parser, PT_NODE * statement, UINTPTR s
 static PT_NODE *
 mq_translate_value (PARSER_CONTEXT * parser, PT_NODE * value)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *data_type, *class_;
   DB_OBJECT *real_object, *real_class;
   DB_VALUE *db_value;
@@ -13438,7 +13454,8 @@ mq_translate_value (PARSER_CONTEXT * parser, PT_NODE * value)
 	{
 	  real_class = db_get_class (real_object);
 	  class_->info.name.db_object = db_get_class (real_object);
-	  class_->info.name.original = db_get_class_name (class_->info.name.db_object);
+	  class_->info.name.original =
+	    db_get_class_qualified_name (class_->info.name.db_object, qualified_name, sizeof (qualified_name));
 	  value->info.value.data_value.op = real_object;
 
 	  db_value = pt_value_to_db (parser, value);
@@ -13777,6 +13794,9 @@ static PT_NODE *
 mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_, PT_FETCH_AS fetch_as, DB_AUTH what_for,
 				      PARSER_CONTEXT ** qry_cache)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name3[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PARSER_CONTEXT *query_cache;
   DB_OBJECT *class_object;
 
@@ -13792,7 +13812,9 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_,
       if (!(query_cache->view_cache->authorization & what_for))
 	{
 	  PT_ERRORmf2 (parser, class_, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
-		       get_authorization_name (what_for), db_get_class_name (class_->info.name.db_object));
+		       get_authorization_name (what_for), db_get_class_qualified_name (class_->info.name.db_object,
+										       qualified_name,
+										       sizeof (qualified_name)));
 	  return NULL;
 	}
       if (parser != NULL && query_cache->error_msgs != NULL)
@@ -13807,13 +13829,13 @@ mq_fetch_subqueries_for_update_local (PARSER_CONTEXT * parser, PT_NODE * class_,
 	    {
 	      PT_ERRORmf (parser, class_, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REUSE_OID_TABLE_NOT_UPDATABLE,
 			  /* use function to get name. class_->info.name.original is not always set. */
-			  db_get_class_name (class_object));
+			  db_get_class_qualified_name (class_object, qualified_name2, sizeof (qualified_name2)));
 	    }
 	  else
 	    {
 	      PT_ERRORmf (parser, class_, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_VCLASS_NOT_UPDATABLE,
 			  /* use function to get name. class_->info.name.original is not always set. */
-			  db_get_class_name (class_object));
+			  db_get_class_qualified_name (class_object, qualified_name3, sizeof (qualified_name3)));
 	    }
 	}
       if (fetch_as == PT_INVERTED_ASSIGNMENTS)
@@ -13945,6 +13967,8 @@ mq_fetch_expression_for_real_class_update (PARSER_CONTEXT * parser, DB_OBJECT * 
 					   PT_NODE * real_class, PT_FETCH_AS fetch_as, DB_AUTH what_for,
 					   UINTPTR * spec_id)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE vclass;
   PT_NODE *select_statement;
   PT_NODE *attr_list;
@@ -13971,7 +13995,8 @@ mq_fetch_expression_for_real_class_update (PARSER_CONTEXT * parser, DB_OBJECT * 
 	    }
 
 	  PT_ERRORmf2 (parser, attr, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_VC_COMP_NOT_UPDATABL,
-		       db_get_class_name (vclass_obj), real_class_name);
+		       db_get_class_qualified_name (vclass_obj, qualified_name, sizeof (qualified_name)),
+		       real_class_name);
 	}
       return NULL;
     }
@@ -14002,7 +14027,7 @@ mq_fetch_expression_for_real_class_update (PARSER_CONTEXT * parser, DB_OBJECT * 
   if (!pt_has_error (parser))
     {
       PT_ERRORmf2 (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_HAVE,
-		   db_get_class_name (vclass_obj), attr_name);
+		   db_get_class_qualified_name (vclass_obj, qualified_name2, sizeof (qualified_name2)), attr_name);
     }
 
   return NULL;
@@ -14496,6 +14521,7 @@ mq_update_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT
 static PT_NODE *
 mq_fetch_one_real_class_get_cache (DB_OBJECT * vclass_object, PARSER_CONTEXT ** query_cache)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PARSER_CONTEXT *parser = NULL;
   PT_NODE vclass;
   PT_NODE *subquery, *flat = NULL;
@@ -14526,7 +14552,7 @@ mq_fetch_one_real_class_get_cache (DB_OBJECT * vclass_object, PARSER_CONTEXT ** 
       dummy.line_number = 0;
       dummy.column_number = 0;
       PT_ERRORmf (parser, &dummy, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_NO_REALCLASS_4_VCLAS,
-		  db_get_class_name (vclass_object));
+		  db_get_class_qualified_name (vclass_object, qualified_name, sizeof (qualified_name)));
     }
 
   if (pt_has_error (parser))
@@ -14570,6 +14596,7 @@ mq_fetch_one_real_class (DB_OBJECT * vclass_object)
 int
 mq_get_expression (DB_OBJECT * object, const char *expr, DB_VALUE * value)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PARSER_CONTEXT *parser = NULL;
   int error = NO_ERROR;
   PT_NODE **statements;
@@ -14589,7 +14616,8 @@ mq_get_expression (DB_OBJECT * object, const char *expr, DB_VALUE * value)
   buffer = pt_append_string (parser, NULL, "select ");
   buffer = pt_append_string (parser, buffer, expr);
   buffer = pt_append_string (parser, buffer, " from ");
-  buffer = pt_append_string (parser, buffer, db_get_class_name (object));
+  buffer =
+    pt_append_string (parser, buffer, db_get_class_qualified_name (object, qualified_name, sizeof (qualified_name)));
 
   statements = parser_parse_string_with_escapes (parser, buffer, false);
 
@@ -14637,6 +14665,7 @@ static int
 mq_mget_exprs (DB_OBJECT ** objects, int rows, char **exprs, int cols, int qOnErr, DB_VALUE * values, int *results,
 	       char *emsg)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *buffer;
   DB_ATTDESC **attdesc;
   int c, count, err = NO_ERROR, r;
@@ -14672,7 +14701,8 @@ mq_mget_exprs (DB_OBJECT ** objects, int rows, char **exprs, int cols, int qOnEr
       buffer = pt_append_string (parser, buffer, exprs[c]);
     }
   buffer = pt_append_string (parser, buffer, " from ");
-  buffer = pt_append_string (parser, buffer, db_get_class_name (cls));
+  buffer =
+    pt_append_string (parser, buffer, db_get_class_qualified_name (cls, qualified_name, sizeof (qualified_name)));
 
   /* compile it */
   stmts = parser_parse_string (parser, buffer);
@@ -14806,6 +14836,7 @@ mq_is_real_class_of_vclass (PARSER_CONTEXT * parser, const PT_NODE * s_class, co
 int
 mq_evaluate_check_option (PARSER_CONTEXT * parser, PT_NODE * check_where, DB_OBJECT * object, PT_NODE * view_class)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_VALUE bool_val;
   int error;
 
@@ -14825,7 +14856,10 @@ mq_evaluate_check_option (PARSER_CONTEXT * parser, PT_NODE * check_where, DB_OBJ
 	  if (db_value_is_null (&bool_val) || db_get_int (&bool_val) == 0)
 	    {
 	      PT_ERRORmf (parser, check_where, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_CHECK_OPTION_EXCEPT,
-			  view_class->info.name.virt_object ? db_get_class_name (view_class->info.name.virt_object) : ""
+			  view_class->info.name.virt_object ? db_get_class_qualified_name (view_class->info.
+											   name.virt_object,
+											   qualified_name,
+											   sizeof (qualified_name)) : ""
 			  /* an internal error */ );
 
 	      /* Report check option error to sys error. */

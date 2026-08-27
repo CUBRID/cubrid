@@ -1118,6 +1118,7 @@ fn_get_class_num_objs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
 FN_RETURN
 fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *obj;
   char cmd;
   int err_code;
@@ -1199,7 +1200,7 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
 	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
 	  goto fn_oid_error;
 	}
-      res_msg = (char *) db_get_class_name (obj);
+      res_msg = (char *) db_get_class_qualified_name (obj, qualified_name, sizeof (qualified_name));
       if (res_msg == NULL)
 	{
 	  err_code = db_error_code ();

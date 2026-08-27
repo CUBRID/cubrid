@@ -1474,6 +1474,8 @@ pt_derive_attribute (PARSER_CONTEXT * parser, PT_NODE * c)
 static PT_NODE *
 pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_ATTRIBUTE *attributes;
   const char *class_name;
   PT_NODE *i_attr, *name, *typ, *types, *list = NULL;
@@ -1482,7 +1484,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
 
   assert (parser != NULL);
 
-  if (!c || !(class_name = db_get_class_name ((DB_OBJECT *) c)))
+  if (!c || !(class_name = db_get_class_qualified_name ((DB_OBJECT *) c, qualified_name, sizeof (qualified_name))))
     {
       return list;
     }
@@ -1512,7 +1514,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
 	  cls = db_domain_class (db_attribute_domain (attributes));
 	  if (cls)
 	    {
-	      name = pt_name (parser, db_get_class_name (cls));
+	      name = pt_name (parser, db_get_class_qualified_name (cls, qualified_name2, sizeof (qualified_name2)));
 	      name->info.name.meta_class = PT_CLASS;
 	      name->info.name.db_object = cls;
 	      name->info.name.spec_id = (UINTPTR) name;
@@ -4747,6 +4749,8 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC
 static void
 pt_check_mutable_attributes (PARSER_CONTEXT * parser, DB_OBJECT * cls, PT_NODE * attr_defs)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *def, *att;
   const char *att_nam, *cls_nam;
   DB_ATTRIBUTE *db_att;
@@ -4754,7 +4758,7 @@ pt_check_mutable_attributes (PARSER_CONTEXT * parser, DB_OBJECT * cls, PT_NODE *
 
   assert (parser != NULL);
 
-  if (!cls || (cls_nam = db_get_class_name (cls)) == NULL)
+  if (!cls || (cls_nam = db_get_class_qualified_name (cls, qualified_name, sizeof (qualified_name))) == NULL)
     {
       return;
     }
@@ -4773,7 +4777,7 @@ pt_check_mutable_attributes (PARSER_CONTEXT * parser, DB_OBJECT * cls, PT_NODE *
 	  super = db_attribute_class (db_att);
 	  if (super != cls)
 	    PT_ERRORmf2 (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HEIR_CANT_CHANGE_IT, att_nam,
-			 db_get_class_name (super));
+			 db_get_class_qualified_name (super, qualified_name2, sizeof (qualified_name2)));
 	}
     }
 }
@@ -4787,6 +4791,8 @@ pt_check_mutable_attributes (PARSER_CONTEXT * parser, DB_OBJECT * cls, PT_NODE *
 static void
 pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *db, *super;
   PT_ALTER_CODE code;
   PT_MISC_TYPE type;
@@ -5017,7 +5023,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      if (super != db)
 		{
 		  PT_ERRORmf2 (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HEIR_CANT_CHANGE_IT, att_nam,
-			       db_get_class_name (super));
+			       db_get_class_qualified_name (super, qualified_name, sizeof (qualified_name)));
 		}
 	      if (is_partitioned && keyattr[0])
 		{
@@ -5037,7 +5043,9 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		    {
 		      drop_name_list = pt_append_string (parser, drop_name_list, ",");
 		    }
-		  drop_name_list = pt_append_string (parser, drop_name_list, db_get_class_name (dom_cls));
+		  drop_name_list =
+		    pt_append_string (parser, drop_name_list,
+				      db_get_class_qualified_name (dom_cls, qualified_name2, sizeof (qualified_name2)));
 		}
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -9740,6 +9748,7 @@ end:
 static void
 pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *temp;
   PT_NODE *name;
   const char *entity_name;
@@ -9966,7 +9975,10 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 			  drop_name_list = pt_append_string (parser, drop_name_list, ",");
 			}
 
-		      drop_name_list = pt_append_string (parser, drop_name_list, db_get_class_name (domain_class));
+		      drop_name_list =
+			pt_append_string (parser, drop_name_list,
+					  db_get_class_qualified_name (domain_class, qualified_name,
+								       sizeof (qualified_name)));
 		    }
 #endif /* ENABLE_UNUSED_FUNCTION */
 		}
@@ -15294,6 +15306,7 @@ pt_has_using_index_clause (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 int
 pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *attrs = NULL;
   int error_code = NO_ERROR;
   bool do_not_replace_orderby;
@@ -15322,7 +15335,9 @@ pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
   attrs = pt_get_attributes (parser, c);
 
   /* apply semantic checks to query_spec */
-  s = pt_check_vclass_query_spec (parser, s, attrs, db_get_class_name (c), true);
+  s =
+    pt_check_vclass_query_spec (parser, s, attrs,
+				db_get_class_qualified_name (c, qualified_name, sizeof (qualified_name)), true);
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -15660,6 +15675,7 @@ pt_check_constraints (PARSER_CONTEXT * parser, const PT_NODE * create)
 PT_NODE *
 pt_find_class_of_index (PARSER_CONTEXT * parser, const char *const index_name, const DB_CONSTRAINT_TYPE index_type)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *node = NULL;
   DB_OBJECT *const class_ = db_find_class_of_index (index_name, index_type);
 
@@ -15667,7 +15683,7 @@ pt_find_class_of_index (PARSER_CONTEXT * parser, const char *const index_name, c
     {
       return NULL;
     }
-  node = pt_name (parser, db_get_class_name (class_));
+  node = pt_name (parser, db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name)));
   if (node == NULL)
     {
       PT_INTERNAL_ERROR (parser, "allocate new node");

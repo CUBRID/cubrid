@@ -7193,6 +7193,7 @@ error:
 static void
 pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *class_op;
   int is_class = 0;
 
@@ -7234,7 +7235,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string
       if (error == ER_AU_SELECT_FAILURE)
 	{
 	  PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
-		       db_get_class_name (class_op));
+		       db_get_class_qualified_name (class_op, qualified_name, sizeof (qualified_name)));
 	}
       else
 	{

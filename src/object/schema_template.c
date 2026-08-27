@@ -3594,6 +3594,8 @@ smt_class_delete (SM_TEMPLATE * template_, const char *name)
 int
 smt_add_super (SM_TEMPLATE * template_, MOP super_class)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   if (ml_find (template_->inheritance, super_class))
@@ -3617,7 +3619,9 @@ smt_add_super (SM_TEMPLATE * template_, MOP super_class)
 	    }
 	  else if (!is_class)
 	    {
-	      ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS, db_get_class_name (super_class), template_->name);
+	      ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS,
+		      db_get_class_qualified_name (super_class, qualified_name, sizeof (qualified_name)),
+		      template_->name);
 	    }
 	}
       if (error == NO_ERROR)
@@ -3633,7 +3637,9 @@ smt_add_super (SM_TEMPLATE * template_, MOP super_class)
 		}
 	      if (!is_vclass)
 		{
-		  ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS, db_get_class_name (super_class), template_->name);
+		  ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS,
+			  db_get_class_qualified_name (super_class, qualified_name2, sizeof (qualified_name2)),
+			  template_->name);
 		}
 	    }
 	  if (error == NO_ERROR)

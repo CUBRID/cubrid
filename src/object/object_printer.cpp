@@ -1039,6 +1039,7 @@ const char *object_printer::describe_trigger_action_time (const tr_trigger &trig
 //--------------------------------------------------------------------------------
 void object_printer::describe_class (struct db_object *class_op)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   m_buf.clear ();
 
   class_description class_descr;
@@ -1053,7 +1054,7 @@ void object_printer::describe_class (struct db_object *class_op)
       if (error == ER_AU_SELECT_FAILURE)
 	{
 	  PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
-		       db_get_class_name (class_op));
+		       db_get_class_qualified_name (class_op, qualified_name, sizeof (qualified_name)));
 	}
       else
 	{

@@ -1278,6 +1278,7 @@ vid_get_keys (MOP mop, DB_VALUE * value)
 DB_OBJLIST *
 vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *class_name;
   int error = NO_ERROR;
   DB_OBJLIST *objlst, *new1;
@@ -1303,7 +1304,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
 
   /* put together a query to get all instances of class_p */
   class_type = sm_get_class_type (class_p);
-  class_name = db_get_class_name (class_mop);
+  class_name = db_get_class_qualified_name (class_mop, qualified_name, sizeof (qualified_name));
   snprintf (query, sizeof (query) - 1, "SELECT [%s] FROM [%s]", class_name, class_name);
 
   /* run the query */

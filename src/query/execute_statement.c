@@ -4910,7 +4910,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      const char *fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
 						MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON);
 	      snprintf (au_msg, sizeof (au_msg), fmt ? fmt : "%s is not authorized on %s", "SELECT",
-			db_get_class_name (class_mop));
+			db_get_class_qualified_name (class_mop, qualified_name, sizeof (qualified_name)));
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_ERROR, 1, au_msg);
 	      return error;
 	    }

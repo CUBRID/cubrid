@@ -6822,6 +6822,7 @@ static PT_NODE *
 pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db, int line_num, int col_num, UINTPTR id,
 		       PT_MISC_TYPE meta_class, MHT_TABLE * names_mht)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *temp;
   const char *classname;
   PT_NODE *result = 0;		/* will be returned */
@@ -6844,7 +6845,7 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db, int line_num, in
       return NULL;
     }
 
-  classname = db_get_class_name (db);
+  classname = db_get_class_qualified_name (db, qualified_name, sizeof (qualified_name));
   if (classname == NULL)
     {
       PT_INTERNAL_ERROR (parser, "resolution");
@@ -9797,12 +9798,16 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 static PT_NODE *
 pt_copy_data_type_entity (PARSER_CONTEXT * parser, PT_NODE * data_type)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_NODE *entity = NULL;
   if (data_type->node_type == PT_DATA_TYPE)
     {
       if (data_type->info.data_type.virt_object)
 	{
-	  entity = pt_name (parser, db_get_class_name (data_type->info.data_type.virt_object));
+	  entity =
+	    pt_name (parser,
+		     db_get_class_qualified_name (data_type->info.data_type.virt_object, qualified_name,
+						  sizeof (qualified_name)));
 	  entity->info.name.db_object = data_type->info.data_type.virt_object;
 	}
       else
@@ -10104,6 +10109,7 @@ pt_lookup_entity (PARSER_CONTEXT * parser, PT_NODE * path_entities, PT_NODE * ex
 void
 pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_VALUE *val = NULL;
   PT_NODE *entity;
   DB_OBJECT *class_op = NULL;
@@ -10170,7 +10176,8 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
 
   entity->info.spec.entity_name->info.name.spec_id = entity->info.spec.id;
   entity->info.spec.entity_name->info.name.meta_class = PT_CLASS;
-  entity->info.spec.entity_name->info.name.original = db_get_class_name (class_op);
+  entity->info.spec.entity_name->info.name.original =
+    db_get_class_qualified_name (class_op, qualified_name, sizeof (qualified_name));
   entity->info.spec.only_all = PT_ONLY;
   entity->info.spec.range_var = parser_copy_tree (parser, entity->info.spec.entity_name);
   if (entity->info.spec.range_var == NULL)

@@ -192,6 +192,7 @@ otable_find (CLASS_TABLE * table, int id)
 int
 otable_insert (CLASS_TABLE * table, OID * instance, int id)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   INST_INFO *inst;
 
@@ -206,7 +207,7 @@ otable_insert (CLASS_TABLE * table, OID * instance, int id)
       if (inst->flags & INST_FLAG_INSERTED)
 	/* lame, should pass in a stream for this */
 	fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_REDEFINING_INSTANCE),
-		 id, db_get_class_name (table->class_));
+		 id, db_get_class_qualified_name (table->class_, qualified_name, sizeof (qualified_name)));
 
       inst->oid = *instance;
       inst->flags = INST_FLAG_INSERTED;
@@ -227,6 +228,8 @@ otable_insert (CLASS_TABLE * table, OID * instance, int id)
 int
 otable_reserve (CLASS_TABLE * table, OID * instance, int id)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   INST_INFO *inst;
 
@@ -243,11 +246,11 @@ otable_reserve (CLASS_TABLE * table, OID * instance, int id)
 	  /* should pass in an appropriate stream here */
 	  if (inst->flags & INST_FLAG_INSERTED)
 	    fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSTANCE_DEFINED),
-		     id, db_get_class_name (table->class_));
+		     id, db_get_class_qualified_name (table->class_, qualified_name, sizeof (qualified_name)));
 	  else
 	    fprintf (stdout,
 		     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSTANCE_RESERVED), id,
-		     db_get_class_name (table->class_));
+		     db_get_class_qualified_name (table->class_, qualified_name2, sizeof (qualified_name2)));
 	}
       else
 	{

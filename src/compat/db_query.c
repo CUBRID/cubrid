@@ -1829,6 +1829,7 @@ db_query_format_free (DB_QUERY_TYPE * query_type)
 const char *
 db_query_format_class_name (DB_QUERY_TYPE * query_type)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_DOMAIN *src_domain = NULL;
 
   CHECK_1ARG_NULL (query_type);
@@ -1843,7 +1844,7 @@ db_query_format_class_name (DB_QUERY_TYPE * query_type)
       return NULL;
     }
 
-  return db_get_class_name (src_domain->class_mop);
+  return db_get_class_qualified_name (src_domain->class_mop, qualified_name, sizeof (qualified_name));
 }
 
 /*

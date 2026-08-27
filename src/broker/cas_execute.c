@@ -2511,6 +2511,7 @@ fetch_error:
 int
 ux_oid_get (int argc, void **argv, T_NET_BUF * net_buf)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *obj;
   int err_code = 0;
   int attr_num;
@@ -2540,7 +2541,7 @@ ux_oid_get (int argc, void **argv, T_NET_BUF * net_buf)
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
 
-  class_name = (char *) db_get_class_name (obj);
+  class_name = (char *) db_get_class_qualified_name (obj, qualified_name, sizeof (qualified_name));
   if (class_name == NULL)
     {
       net_buf_cp_int (net_buf, 1, NULL);
@@ -5755,6 +5756,7 @@ static int
 fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
 	       T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   T_OBJECT dummy_obj;
   DB_OBJLIST *tmp_p;
   int i;
@@ -5840,7 +5842,7 @@ fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char 
 	}
       else
 	{
-	  tmp_str = (char *) db_get_class_name (target_class_obj);
+	  tmp_str = (char *) db_get_class_qualified_name (target_class_obj, qualified_name, sizeof (qualified_name));
 	  if (tmp_str == NULL)
 	    {
 	      tmp_str = (char *) "";
@@ -6919,6 +6921,7 @@ get_attr_type (DB_OBJECT * obj_p, char *attr_name)
 static char *
 get_domain_str (DB_DOMAIN * domain)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_TYPE dtype;
   DB_DOMAIN *set_domain;
   DB_OBJECT *dclass;
@@ -6958,7 +6961,7 @@ get_domain_str (DB_DOMAIN * domain)
 	}
       else
 	{
-	  p = db_get_class_name (dclass);
+	  p = db_get_class_qualified_name (dclass, qualified_name, sizeof (qualified_name));
 	}
       break;
 
@@ -7678,6 +7681,7 @@ sch_methfile_info (T_NET_BUF * net_buf, char *class_name, void **result)
 static int
 sch_superclass (T_NET_BUF * net_buf, char *class_name, char flag, T_SRV_HANDLE * srv_handle)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *class_obj;
   DB_OBJLIST *obj_list, *obj_tmp;
   int num_obj;
@@ -7711,7 +7715,7 @@ sch_superclass (T_NET_BUF * net_buf, char *class_name, char flag, T_SRV_HANDLE *
 	    }
 	}
 
-      p = (char *) db_get_class_name (obj_tmp->op);
+      p = (char *) db_get_class_qualified_name (obj_tmp->op, qualified_name, sizeof (qualified_name));
 
       class_table[num_obj].class_name = p;
       cls_type = class_type (obj_tmp->op);
@@ -7930,6 +7934,9 @@ end:
 static int
 sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HANDLE * srv_handle)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name3[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   T_PRIV_TABLE *priv_table = NULL;
   int num_tuple = 0;
   int priv_table_alloc_num = 0;
@@ -7954,7 +7961,10 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
 		}
 	      if (db_get_class_privilege (class_obj, &class_priv) >= 0)
 		{
-		  num_tuple = set_priv_table (class_priv, (char *) db_get_class_name (class_obj), priv_table, 0);
+		  num_tuple =
+		    set_priv_table (class_priv,
+				    (char *) db_get_class_qualified_name (class_obj, qualified_name,
+									  sizeof (qualified_name)), priv_table, 0);
 		}
 	    }
 	}
@@ -7999,7 +8009,7 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
 	{
 	  char *p, *q;
 
-	  p = CONST_CAST (char *, db_get_class_name (obj_tmp->op));
+	  p = CONST_CAST (char *, db_get_class_qualified_name (obj_tmp->op, qualified_name2, sizeof (qualified_name2)));
 	  q = p;
 	  /* If the user does not exist, compare the entire class_name. */
 	  if (owner && db_is_system_class (obj_tmp->op) == FALSE)
@@ -8038,7 +8048,10 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
 
 	  if (db_get_class_privilege (obj_tmp->op, &class_priv) >= 0)
 	    {
-	      num_tuple += set_priv_table (class_priv, (char *) db_get_class_name (obj_tmp->op), priv_table, num_tuple);
+	      num_tuple +=
+		set_priv_table (class_priv,
+				(char *) db_get_class_qualified_name (obj_tmp->op, qualified_name3,
+								      sizeof (qualified_name3)), priv_table, num_tuple);
 	    }
 	}
 
@@ -8159,6 +8172,7 @@ static int
 class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
 		 T_ATTR_TABLE * attr_table)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *p;
   int db_type;
   DB_DOMAIN *domain;
@@ -8239,7 +8253,7 @@ class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern
     }
   else
     {
-      attr_table->source_class = db_get_class_name (class_obj);
+      attr_table->source_class = db_get_class_qualified_name (class_obj, qualified_name, sizeof (qualified_name));
     }
 
   attr_table->attr_order = db_attribute_order (attr) + 1;
@@ -8629,6 +8643,7 @@ add_fk_info_result (T_FK_INFO_RESULT * fk_res, const char *pktable_name, const c
 static int
 sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *pktable_obj, *fktable_obj;
   DB_ATTRIBUTE **fk_attr = NULL, **pk_attr = NULL;
   DB_CONSTRAINT *fk_const = NULL, *pk = NULL;
@@ -8675,7 +8690,7 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 	  goto exit_on_error;
 	}
 
-      pktable_name = db_get_class_name (pktable_obj);
+      pktable_name = db_get_class_qualified_name (pktable_obj, qualified_name, sizeof (qualified_name));
       if (pktable_name == NULL)
 	{
 	  error = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -8767,6 +8782,7 @@ static int
 sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, char *pktable_name, char *fktable_name,
 				      void **result)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *pktable_obj, *fktable_obj = NULL;
   DB_ATTRIBUTE **pk_attr = NULL, **fk_attr;
   DB_CONSTRAINT *fk_const = NULL, *pk = NULL;
@@ -8839,7 +8855,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 	      goto exit_on_error;
 	    }
 
-	  fktable_name = (char *) db_get_class_name (fktable_obj);
+	  fktable_name = (char *) db_get_class_qualified_name (fktable_obj, qualified_name, sizeof (qualified_name));
 	  if (fktable_name == NULL)
 	    {
 	      error = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);

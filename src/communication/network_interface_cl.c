@@ -11238,6 +11238,7 @@ loaddb_interrupt ()
 int
 loaddb_update_stats (bool verbose)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 #if defined(CS_MODE)
   int rc = ER_FAILED;
   char *data_reply = NULL;
@@ -11278,7 +11279,7 @@ loaddb_update_stats (bool verbose)
 	{
 	  if (verbose)
 	    {
-	      const char *class_name_p = db_get_class_name (classop);
+	      const char *class_name_p = db_get_class_qualified_name (classop, qualified_name, sizeof (qualified_name));
 	      if (class_name_p != NULL)
 		{
 		  fprintf (stdout,

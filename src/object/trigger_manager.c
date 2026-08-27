@@ -3940,6 +3940,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 		   DB_TRIGGER_TIME action_time, DB_TRIGGER_ACTION action_type, const char *action_source,
 		   const char *comment)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   TR_TRIGGER *trigger;
   DB_OBJECT *object;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
@@ -3988,7 +3989,8 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 	}
       if (is_vclass)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_NO_VCLASSES, 1, db_get_class_name (class_mop));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_NO_VCLASSES, 1,
+		  db_get_class_qualified_name (class_mop, qualified_name, sizeof (qualified_name)));
 	  goto error;
 	}
     }

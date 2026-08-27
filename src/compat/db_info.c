@@ -659,6 +659,23 @@ db_get_class_name (DB_OBJECT * class_)
 }
 
 /*
+ * db_get_class_qualified_name() - This function writes out the name of a class the
+ *    way it is written in SQL, with the user that owns it in front of it.
+ * return : buf, or NULL if an error is encountered
+ * class(in): class object
+ * buf(out): receives "owner.name"
+ * buf_size(in): size of buf
+ */
+const char *
+db_get_class_qualified_name (DB_OBJECT * class_, char *buf, int buf_size)
+{
+  CHECK_CONNECT_NULL ();
+  CHECK_1ARG_NULL (class_);
+
+  return sm_get_ch_qualified_name (class_, buf, buf_size);
+}
+
+/*
  * db_get_superclasses() - This function returns a list of all of the super
  *    classes defined for a class.
  * return : an object list
