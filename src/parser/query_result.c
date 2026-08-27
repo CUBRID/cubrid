@@ -1461,7 +1461,7 @@ pt_find_users_class (PARSER_CONTEXT * parser, PT_NODE * name)
   if (!object)
     {
       PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
-		  name->info.name.original);
+		  pt_name_qualified (parser, name));
     }
   name->info.name.db_object = object;
 

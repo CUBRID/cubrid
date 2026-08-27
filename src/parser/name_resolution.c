@@ -6020,6 +6020,8 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 		    {
 		      return NULL;
 		    }
+		  /* the class named here may be another user's, and the name on its own does not say so */
+		  class_spec->info.spec.entity_name->info.name.owner_name = in_node->info.name.owner_name;
 		  info.spec_parent = NULL;
 		  info.for_update = false;
 		  class_spec = parser_walk_tree (parser, class_spec, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
