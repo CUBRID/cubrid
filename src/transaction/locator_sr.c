@@ -12942,18 +12942,16 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
 }
 
 /*
- * locator_get_settled_last_version () - Read the locked object's last version and its MVCC header, with no
- *				       concurrent delete left undecided.
+ * locator_get_settled_last_version () - Read the locked object's last version and its MVCC header
  *
- * return	       : S_SUCCESS or S_SUCCESS_CHN_UPTODATE on success; any other code is a failure.
- * thread_p (in)       : Thread entry.
+ * return	       : S_SUCCESS or S_SUCCESS_CHN_UPTODATE on success.
+ * thread_p (in)       :
  * context (in/out)    : Heap get context.
- * is_mvcc_class (in)  : False when MVCC does not apply to the class, and then no header is read.
- * recdes_header (out) : MVCC header of the version read. Set only for an MVCC class.
+ * is_mvcc_class (in)  : False when MVCC does not apply, and then no header is read.
+ * recdes_header (out) : MVCC header of the version read.
  *
- * Note: a deleter holds no per-row lock and may still roll back, so its delete id is waited out and the
- *	 version read again. Our own row lock is held throughout, so no third writer can re-stamp -- at most
- *	 one wait.
+ * Note: settled means no delete is left undecided. A deleter holds no row lock and may still roll back,
+ *	 so it is waited out and the version read again; our row lock bounds that to one wait.
  */
 static SCAN_CODE
 locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_mvcc_class,
@@ -13019,16 +13017,15 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 }
 
 /*
- * locator_has_isolation_conflict () - Decide whether the transaction's isolation level forbids modifying
- *				      the locked object.
+ * locator_has_isolation_conflict () - Is modifying the locked object an isolation conflict?
  *
- * return	       : True on conflict, and then *conflict_scan carries the code to fail with. False
- *			 leaves *conflict_scan untouched, so the caller keeps its own scan code.
- * thread_p (in)       : Thread entry.
+ * return	       : True on conflict, false otherwise.
+ * thread_p (in)       :
  * context (in)	       : Heap get context.
  * recdes_header (in)  : MVCC header of the version to be modified.
- * conflict_scan (out) : S_DOESNT_EXIST for a version that is gone, S_ERROR for an isolation conflict,
- *			 whose error is already set.
+ * conflict_scan (out) : The code to fail with -- S_DOESNT_EXIST for a version that is gone, S_ERROR for
+ *			 a conflict, whose error is set. Written only on conflict, so a false return leaves
+ *			 the caller's own scan code intact.
  */
 static bool
 locator_has_isolation_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_REC_HEADER * recdes_header,
@@ -13273,6 +13270,10 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       if (scan_cache->mvcc_snapshot)
 	{
 	  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
+	  /* the DELETE path sets this when the statement has no reevaluation class to re-check with */
+	  bool skips_unevaluated_version =
+	    (mvcc_reev_data->type == REEV_DATA_UPDDEL && mvcc_reev_data->upddel_reev_data != NULL
+	     && mvcc_reev_data->upddel_reev_data->skip_unevaluated_version);
 
 	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
 	  if (snapshot_res == SNAPSHOT_SATISFIED)
@@ -13281,11 +13282,8 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	       * which was already evaluated. */
 	      goto exit;
 	    }
-	  else if (mvcc_reev_data->type == REEV_DATA_UPDDEL && mvcc_reev_data->upddel_reev_data != NULL
-		   && mvcc_reev_data->upddel_reev_data->skip_unevaluated_version)
+	  else if (skips_unevaluated_version)
 	    {
-	      /* no reevaluation data to re-check a version past the statement snapshot: skip the row rather
-	       * than modify what the predicate never saw */
 	      mvcc_reev_data->filter_result = V_FALSE;
 	      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
 	      goto exit;
