@@ -50,7 +50,6 @@ namespace test_lockfree
     struct probe_entry_48
     {
       char pad[48];
-      void on_reclaim () {}
     };
 
     constexpr size_t WRAPPER_OVERHEAD = sizeof (tran::reclaimable_node);
@@ -77,7 +76,6 @@ namespace test_lockfree
 
     void set_owner ();
     void reset_owner ();
-    void on_reclaim () {}  // do nothing
   };
 
   using my_freelist = freelist<my_item>;

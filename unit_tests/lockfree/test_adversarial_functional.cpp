@@ -234,8 +234,15 @@ namespace test_lockfree
   // partially-destroyed owner: a per-node hook that lives on a virtual of the owner resolves to the base
   // during base destruction, and the derived answer - the one that calls f_uninit - is already gone.
   //
+  // Two shapes, because they exercise different amounts of the path. With one transaction index every
+  // retire_node () first runs reclaim_retired_list (), and the refresh every MATI_REFRESH_INTERVAL ids
+  // drains almost everything inside destroy () while the object is still fully typed - one node reaches the
+  // base destructor. The second shape is the one a server actually ends in: several indices, each left
+  // holding a retired list by a thread that will never call reclaim again, so the whole of each list waits
+  // for ~descriptor. Without the second shape a fix that only worked for the last node would pass.
+  //
   // Calibrated: with the drain removed from ~entry_freelist (), so that ~freelist () does it instead, this
-  // case reports fewer calls than entries.
+  // case reports fewer calls than entries in both shapes.
   //
   static int
   case_uninit_runs_at_destroy ()
@@ -244,50 +251,95 @@ namespace test_lockfree
 
     static const size_t HASH_SIZE = 64;
     static const size_t LIVE = 500;
+    static const size_t ABANDONED = 8;
 
     lf_entry_descriptor ed = g_adv_edesc;
     ed.f_uninit = adv_uninit_entry_counting;
-    g_uninit_calls = 0;
+    int err = 0;
 
-    tran::system transys { 1 };
-    tran::index idx = transys.assign_index ();
-
+    // shape 1 - one index, the common teardown
     {
-      adv_hashmap hash;
-      if (hash.init (transys, HASH_SIZE, 2, 100, ed) != NO_ERROR)
-	{
-	  test_common::sync_cout ("  init failed\n");
-	  transys.free_index (idx);
-	  return 1;
-	}
-      for (size_t i = 0; i < LIVE; i++)
-	{
-	  adv_key k;
-	  k.m_1 = (unsigned int) i;
-	  adv_entry *e = NULL;
-	  (void) hash.find_or_insert (idx, k, e);
-	  hash.unlock (idx, e);
-	}
-      hash.destroy ();
-    }
-    transys.free_index (idx);
-
-    const size_t seen = g_uninit_calls.load ();
-    test_common::sync_cout ("  entries = " + std::to_string (LIVE) + ", f_uninit calls = "
-			    + std::to_string (seen) + "\n");
-    if (seen < LIVE)
+      g_uninit_calls = 0;
+      tran::system transys { 1 };
+      tran::index idx = transys.assign_index ();
       {
-	test_common::sync_cout ("  BROKEN: entries were released without f_uninit\n");
-	return 1;
+	adv_hashmap hash;
+	if (hash.init (transys, HASH_SIZE, 2, 100, ed) != NO_ERROR)
+	  {
+	    test_common::sync_cout ("  init failed\n");
+	    transys.free_index (idx);
+	    return 1;
+	  }
+	for (size_t i = 0; i < LIVE; i++)
+	  {
+	    adv_key k;
+	    k.m_1 = (unsigned int) i;
+	    adv_entry *e = NULL;
+	    (void) hash.find_or_insert (idx, k, e);
+	    hash.unlock (idx, e);
+	  }
+	hash.destroy ();
       }
-    return 0;
+      transys.free_index (idx);
+
+      const size_t seen = g_uninit_calls.load ();
+      test_common::sync_cout ("  single index : entries = " + std::to_string (LIVE)
+			      + ", f_uninit calls = " + std::to_string (seen) + "\n");
+      if (seen < LIVE)
+	{
+	  test_common::sync_cout ("  BROKEN: entries were released without f_uninit\n");
+	  err = 1;
+	}
+    }
+
+    // shape 2 - each index erases its own keys and is then abandoned, the way a thread that exits leaves its
+    // descriptor. Nothing calls reclaim on them again, so every one of those lists waits for ~descriptor.
+    {
+      g_uninit_calls = 0;
+      tran::system transys { ABANDONED };
+      {
+	adv_hashmap hash;
+	if (hash.init (transys, HASH_SIZE, 2, 100, ed) != NO_ERROR)
+	  {
+	    test_common::sync_cout ("  init failed\n");
+	    return 1;
+	  }
+	for (size_t t = 0; t < ABANDONED; t++)
+	  {
+	    tran::index idx = transys.assign_index ();
+	    for (size_t i = 0; i < LIVE / ABANDONED; i++)
+	      {
+		adv_key k;
+		k.m_1 = (unsigned int) (t * (LIVE / ABANDONED) + i);
+		adv_entry *e = NULL;
+		(void) hash.find_or_insert (idx, k, e);
+		hash.unlock (idx, e);
+		(void) hash.erase (idx, k);
+	      }
+	    // no free_index (): the descriptor keeps whatever it retired, as an exited thread's would
+	  }
+	hash.destroy ();
+      }
+
+      const size_t seen = g_uninit_calls.load ();
+      const size_t want = (LIVE / ABANDONED) * ABANDONED;
+      test_common::sync_cout ("  abandoned    : entries = " + std::to_string (want)
+			      + ", f_uninit calls = " + std::to_string (seen) + "\n");
+      if (seen < want)
+	{
+	  test_common::sync_cout ("  BROKEN: entries were released without f_uninit\n");
+	  err = 1;
+	}
+    }
+
+    return err;
   }
 
   int
   test_adversarial_functional ()
   {
-    //
-  // last on purpose: case_erase_locked_liveness () may have to abandon two wedged threads rather than join them
+    // last on purpose: case_erase_locked_liveness () may have to abandon two wedged threads rather than
+    // join them
     static const adv_case CASES[] =
     {
       { "f_init_error_dropped", case_f_init_error_dropped },
@@ -424,7 +476,6 @@ namespace test_lockfree
     // a user-provided constructor, so value-initializing it does not try to zero the payload
     adv_oom_data () {}
     char m_payload[ (std::size_t) 1 << 62];
-    void on_reclaim () {}
   };
 
   static int
@@ -1145,7 +1196,6 @@ namespace test_lockfree
     {
     }
 
-    void on_reclaim () {}
   };
 
   static std::atomic<std::uint64_t> g_double_handout { 0 };
@@ -1711,8 +1761,8 @@ namespace test_lockfree
   //
   // case_alloc_cap_under_load () - the allocation cap engaged while entries are held.
   //
-  // Above edesc.max_alloc_cnt, free_node::reclaim () and reclaim_run () do delete rather than recycle
-  // (lockfree_freelist.hpp:599, :630), and lf_freelist_transport () calls f_free (lock_free.c). That turns any
+  // Above edesc.max_alloc_cnt, freelist::reclaim_run () deletes rather than recycles
+  // (the over-cap branch), and lf_freelist_transport () calls f_free (lock_free.c). That turns any
   // epoch hole from "the entry was wiped" into a real use-after-free, and the object lock resource table takes
   // that cap from PRM_ID_LK_ESCALATION_AT in production. Every case so far ran uncapped, so this path has never
   // carried load.

@@ -91,6 +91,12 @@ namespace lockfree
 	}
     }
 
+    table *
+    descriptor::get_table () const
+    {
+      return m_table;
+    }
+
     void
     descriptor::start_tran ()
     {

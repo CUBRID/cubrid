@@ -61,6 +61,10 @@ namespace lockfree
 	void retire_node (reclaimable_node &hzp);
 
 	void set_table (table &tbl);
+	// the table this descriptor belongs to. freelist::retire () checks against it that a node is going home:
+	// the whole soundness argument for splicing a run in one CAS is that a descriptor's retired list holds
+	// nodes of one freelist only, and nothing else enforces that.
+	table *get_table () const;
 
 	void start_tran ();
 	void start_tran_and_increment_id ();

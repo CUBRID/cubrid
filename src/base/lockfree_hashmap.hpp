@@ -741,8 +741,6 @@ namespace lockfree
 	      }
 	    return NULL;
 	  }
-	// make sure m_edesc is initialized
-
 	claimed = from_free_node (fn);
 	if (m_edesc->f_init != NULL && m_edesc->f_init (claimed) != NO_ERROR)
 	  {

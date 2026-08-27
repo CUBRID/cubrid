@@ -29,7 +29,6 @@
 #include <cstddef>
 #include <limits>
 #include <new>
-#include <type_traits>
 
 namespace lockfree
 {
@@ -41,14 +40,6 @@ namespace lockfree
 
 namespace lockfree
 {
-  // Does T offer its own on_reclaim ()? Standalone users of freelist supply one; the hashmap does not - it
-  // reclaims through the entry descriptor's f_uninit, which only the hashmap knows about, so it overrides
-  // on_node_reclaim () instead.
-  template <class U, class = void>
-  struct has_on_reclaim : std::false_type {};
-  template <class U>
-  struct has_on_reclaim<U, std::void_t<decltype (std::declval<U &> ().on_reclaim ())>> : std::true_type {};
-
   template <class T>
   class freelist : public tran::reclaimable_owner
   {
@@ -71,17 +62,17 @@ namespace lockfree
 	m_trantable = NULL;
       }
 
-      // called once per node being reclaimed, before the node rejoins the available list
+      // Called once per node being reclaimed, before the node rejoins the available list. Empty here: no
+      // entry type releases anything of its own. What the hashmap's entries need released is named by their
+      // entry descriptor, so hashmap::entry_freelist overrides this and calls f_uninit.
+      //
+      // This used to detect a T::on_reclaim () with if constexpr and call it. Nothing in the tree defined
+      // one except four empty test stubs, and the detection had a failure mode worth more than the
+      // generality: rename the member, make it private, give it a parameter, and reclamation goes quiet with
+      // no diagnostic - the same shape as the shutdown defect this file already had.
       virtual void on_node_reclaim (T &t)
       {
-	if constexpr (has_on_reclaim<T>::value)
-	  {
-	    t.on_reclaim ();
-	  }
-	else
-	  {
-	    (void) t;
-	  }
+	(void) t;
       }
 
     public:
@@ -451,6 +442,12 @@ namespace lockfree
   freelist<T>::retire (tran::descriptor &tdes, free_node &node)
   {
     assert (node.get_freelist_next () == NULL);
+    // The node is about to join this descriptor's retired list, and reclaim_run () will later splice that
+    // whole run onto m_available_list in one CAS on the strength of every node in it being ours. Since the
+    // node no longer carries its owner, the check is on the descriptor: it must be one of our table's, which
+    // is the same statement one level up. Retiring into a foreign table hands our nodes to another freelist,
+    // which then serves them as its own T - reuse of live memory, and silent.
+    assert (tdes.get_table () == m_trantable);
     ++m_retired_count;
     check_my_pointer (&node);
     tdes.retire_node (node);
