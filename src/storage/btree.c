@@ -9934,8 +9934,10 @@ btree_capacity_accum_to_cpc (const BTREE_CAPACITY_ACCUM * total, int root_free, 
       assert (cpc->deduplicate_dis_key_cnt > 0);
       cpc->avg_val_per_dedup_key = (int) (cpc->tot_val_cnt / cpc->deduplicate_dis_key_cnt);
       cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
-      cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
-      cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->deduplicate_dis_key_cnt);
+      /* divide the exact INT64 totals, not the float fields above: the float round-trip is what
+       * costs serial its accuracy past 2^24, and cpc->dis_key_cnt is already an int truncation */
+      cpc->avg_key_len = (int) (total->sum_key_len / total->dis_key_cnt);
+      cpc->avg_rec_len = (int) (total->sum_rec_len / total->deduplicate_dis_key_cnt);
     }
   if (cpc->leaf_pg_cnt > 0)
     {
@@ -10024,6 +10026,10 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
 	  er_clear ();
 	  break;
 	}
+
+#if !defined (NDEBUG)
+      (void) pgbuf_check_page_ptype (&thread_ref, child_page, PAGE_BTREE);
+#endif /* !NDEBUG */
 
       /* btree_get_subtree_capacity memsets child_cpc on entry */
       if (btree_get_subtree_capacity (&thread_ref, child_page, &child_cpc, &env) != NO_ERROR)
@@ -10161,6 +10167,10 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
       er_clear ();
       goto fallback_serial;
     }
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, root_ptr, PAGE_BTREE);
+#endif /* !NDEBUG */
 
   root_header = btree_get_root_header (thread_p, root_ptr);
   if (root_header == NULL)
