@@ -3069,7 +3069,7 @@ file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_
 
   if (!OID_ISNULL (class_oid_p))
     {
-      if (heap_get_class_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
+      if (heap_get_class_qualified_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
 	{
 	  /* ignore */
 	  er_clear ();

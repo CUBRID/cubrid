@@ -9843,7 +9843,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
       goto exit;
     }
 
-  if (heap_get_class_name (thread_p, &fdes.btree.class_oid, &class_name) != NO_ERROR)
+  if (heap_get_class_qualified_name (thread_p, &fdes.btree.class_oid, &class_name) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (ret);
       goto exit;
@@ -9992,7 +9992,7 @@ btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p, BT
   if (class_oid_p && !OID_ISNULL (class_oid_p))
     {
       char *class_name_p = NULL;
-      if (heap_get_class_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
+      if (heap_get_class_qualified_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return;
