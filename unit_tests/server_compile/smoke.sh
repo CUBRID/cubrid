@@ -37,6 +37,9 @@
 #   @SESSIONS=n   run n concurrent in-process sessions, each compiling and
 #                 executing the SQL in its own client session context
 #                 (exported as CUBRID_M0_TRACER_SESSIONS)
+#   @SCENARIO=s   run the named scripted choreography instead of the SQL
+#                 (exported as CUBRID_M0_TRACER_SCENARIO; the SQL text is
+#                 only a label)
 
 set -eu
 
@@ -47,11 +50,15 @@ if [ $# -eq 0 ]; then
   # case 4 binds host variables (native DB_VALUE array across the fold boundary);
   # case 5 runs at REPEATABLE READ (exercises the fold's RR transaction lock)
   # case 6 runs four concurrent sessions, each with its own workspace (A4)
+  # case 7 is the DDL-authorization choreography: wrong-password rejection,
+  #        grant/revoke across overlapping sessions, kept-statement
+  #        invalidation on revoke (A6)
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
     "SELECT ? + ? @BIND=30,12 @EXPECT=42" \
     "SELECT COUNT(*) FROM db_class @ISOLATION=RR @EXPECT=74" \
-    "SELECT COUNT(*) FROM db_class @SESSIONS=4 @EXPECT=74"
+    "SELECT COUNT(*) FROM db_class @SESSIONS=4 @EXPECT=74" \
+    "DDL AUTH @SCENARIO=ddl_auth"
 fi
 
 # This script restarts cub_master via `cubrid service stop` (see below), which
@@ -108,13 +115,15 @@ for case_spec in "$@"; do
   expect=""
   isolation=""
   sessions=""
+  scenario=""
   case "$case_spec" in
-    *"@BIND="*|*"@EXPECT="*|*"@ISOLATION="*|*"@SESSIONS="*)
-      sql="$(printf '%s' "$case_spec" | sed -e 's/ *@BIND=[^ ]*//' -e 's/ *@EXPECT=[^ ]*//' -e 's/ *@ISOLATION=[^ ]*//' -e 's/ *@SESSIONS=[^ ]*//')"
+    *"@BIND="*|*"@EXPECT="*|*"@ISOLATION="*|*"@SESSIONS="*|*"@SCENARIO="*)
+      sql="$(printf '%s' "$case_spec" | sed -e 's/ *@BIND=[^ ]*//' -e 's/ *@EXPECT=[^ ]*//' -e 's/ *@ISOLATION=[^ ]*//' -e 's/ *@SESSIONS=[^ ]*//' -e 's/ *@SCENARIO=[^ ]*//')"
       bind="$(printf '%s' "$case_spec" | sed -n 's/.*@BIND=\([^ ]*\).*/\1/p')"
       expect="$(printf '%s' "$case_spec" | sed -n 's/.*@EXPECT=\([^ ]*\).*/\1/p')"
       isolation="$(printf '%s' "$case_spec" | sed -n 's/.*@ISOLATION=\([^ ]*\).*/\1/p')"
       sessions="$(printf '%s' "$case_spec" | sed -n 's/.*@SESSIONS=\([^ ]*\).*/\1/p')"
+      scenario="$(printf '%s' "$case_spec" | sed -n 's/.*@SCENARIO=\([^ ]*\).*/\1/p')"
       ;;
   esac
 
@@ -133,6 +142,7 @@ for case_spec in "$@"; do
   # reported as FAIL, not abort the whole run via set -e
   CUBRID_M0_TRACER_SQL="$sql" CUBRID_M0_TRACER_OUT="$out" CUBRID_M0_TRACER_BIND="$bind" \
     CUBRID_M0_TRACER_ISOLATION="$isolation" CUBRID_M0_TRACER_SESSIONS="$sessions" \
+    CUBRID_M0_TRACER_SCENARIO="$scenario" \
     cubrid server start "$DB" >/dev/null 2>&1 || true
 
   ok=0

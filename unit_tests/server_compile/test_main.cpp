@@ -33,9 +33,11 @@
 #include <vector>
 
 #include "authenticate.h"
+#include "authenticate_password.hpp"
 #include "client_session_context.hpp"
 #include "language_support.h"
 #include "parser.h"
+#include "thread_manager.hpp"
 #include "work_space.h"
 
 /* au lives in the session-scoped client context installed by the
@@ -81,6 +83,28 @@ test_au_context_bracket (void)
     }
   csc_deactivate ();
 
+  return 0;
+}
+
+/* the password check primitive the in-server login (#118 D3) rests on works
+ * inside a SERVER_MODE binary: a stored SHA2-encrypted password matches its
+ * plaintext and rejects any other */
+static int
+test_password_match (void)
+{
+  char stored[AU_MAX_PASSWORD_BUF + 4];
+
+  encrypt_password_sha2_512 ("a6_secret", stored);
+  if (!match_password ("a6_secret", stored))
+    {
+      fprintf (stderr, "FAIL: correct password did not match its stored encryption\n");
+      return 1;
+    }
+  if (match_password ("a6_wrong", stored) || match_password ("", stored))
+    {
+      fprintf (stderr, "FAIL: wrong password matched the stored encryption\n");
+      return 1;
+    }
   return 0;
 }
 
@@ -217,6 +241,13 @@ test_concurrent_parse (void)
 int
 main (int, char **)
 {
+  /* register this thread with the thread manager (same setup as the other
+   * unit tests): SERVER_MODE code resolves a NULL thread_p argument through
+   * cubthread::get_entry (), which asserts on an unregistered thread —
+   * the password primitive's crypt/private-heap calls hit exactly that */
+  cubthread::entry *thread_p = NULL;
+  cubthread::initialize (thread_p);
+
   if (lang_init () != NO_ERROR)
     {
       fprintf (stderr, "FAIL: lang_init\n");
@@ -263,6 +294,12 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: workspace state rebinds with the session context bracket\n");
+
+  if (test_password_match () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: password verification primitive works in the SERVER_MODE binary\n");
 
   if (test_concurrent_parse () != 0)
     {
