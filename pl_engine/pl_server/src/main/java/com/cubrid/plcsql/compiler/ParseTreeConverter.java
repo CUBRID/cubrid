@@ -38,6 +38,8 @@ import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.Dependency;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.jsp.value.NumericValue;
+import com.cubrid.plcsql.compiler.antlrgen.PlcLexer;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser.Create_routineContext;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsLexer;
@@ -3700,9 +3702,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return new StaticSql(ctx, sws.kind, sws.rewritten, hostExprs, selectList, intoTargetList);
     }
 
-    private static final Expr SP_PARAM_DEFAULT_VAL_DUMMY =
-            new ExprNull(null); // any compatible value is OK
-
     private String makeParamList(NodeList<DeclParam> paramList, String name, PlParamInfo[] params) {
         if (params == null) {
             return null;
@@ -3723,12 +3722,89 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 boolean alsoIn = (params[i].mode & ServerConstants.SP_PARAM_MODE_IN) != 0;
                 paramList.nodes.add(new DeclParamOut(null, "p" + i, null, tySpec, alsoIn));
             } else {
-                Expr defaultVal = params[i].hasDefault ? SP_PARAM_DEFAULT_VAL_DUMMY : null;
+                Expr defaultVal = null;
+                if (params[i].hasDefault) {
+                    // the callee's default is stored in the system catalog; parse it so a direct
+                    // call can fill in an omitted argument the same way a local call does
+                    String defaultExpr = defaultExprText(params[i]);
+                    defaultVal = parseDefaultExpr(defaultExpr);
+                    if (defaultVal == null) {
+                        return name
+                                + ": cannot parse the default value of parameter "
+                                + (i + 1)
+                                + " ('"
+                                + defaultExpr
+                                + "')";
+                    }
+                }
                 paramList.nodes.add(new DeclParamIn(null, "p" + i, null, tySpec, defaultVal));
             }
         }
 
         return null;
+    }
+
+    // Built-in "default expression" names, stored verbatim (canonical, upper case) in the catalog.
+    // Mirrors db_default_expression_string() in src/compat/db_macro.c. CUBRID interprets a default
+    // matching one of these as the built-in expression regardless of the parameter type (even a
+    // VARCHAR parameter with ':= 'SYS_DATETIME'' means the expression, re-evaluated on each call),
+    // so it must be parsed as an expression rather than turned into a string literal.
+    private static final Set<String> DEFAULT_EXPR_NAMES =
+            new HashSet<>(
+                    Arrays.asList(
+                            "SYS_DATE",
+                            "SYS_DATETIME",
+                            "SYS_TIMESTAMP",
+                            "SYS_TIME",
+                            "CURRENT_DATE",
+                            "CURRENT_DATETIME",
+                            "CURRENT_TIMESTAMP",
+                            "CURRENT_TIME",
+                            "CURRENT_USER",
+                            "USER()",
+                            "UNIX_TIMESTAMP()",
+                            "SYS_GUID()",
+                            "UUID(4)",
+                            "UUID(7)"));
+
+    private static String defaultExprText(PlParamInfo p) {
+        String dv = p.defaultValue;
+        if (dv == null || dv.isEmpty()) {
+            return "null"; // ':= NULL' default
+        }
+        if (DEFAULT_EXPR_NAMES.contains(dv)) {
+            return dv;
+        }
+        if (p.type == DBType.DB_STRING || p.type == DBType.DB_CHAR) {
+            return "'" + dv.replace("'", "''") + "'";
+        }
+        return dv;
+    }
+
+    // Parse a default-value expression text into an Expr, or return null on a parse error.
+    private Expr parseDefaultExpr(String defaultStr) {
+        if (defaultStr == null || defaultStr.isEmpty()) {
+            return null;
+        }
+
+        CharStream input = CharStreams.fromString(defaultStr);
+        PlcLexer lexer = new PlcLexer(input);
+        SyntaxErrorIndicator lei = new SyntaxErrorIndicator();
+        lexer.removeErrorListeners();
+        lexer.addErrorListener(lei);
+
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        PlcParser p = new PlcParser(tokens);
+        SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
+        p.removeErrorListeners();
+        p.addErrorListener(sei);
+
+        ExpressionContext ctx = p.expression();
+        if (lei.hasError || sei.hasError) {
+            return null;
+        }
+
+        return visitExpression(ctx);
     }
 
     private int checkArguments(NodeList<Expr> args, NodeList<DeclParam> params) {

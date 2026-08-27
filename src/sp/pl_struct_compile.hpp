@@ -171,6 +171,7 @@ namespace cubpl
     int scale;
     int charset;
     int has_default;
+    string default_value; // default value expression text (when has_default), for direct calls
 
     DB_VALUE value; // only for auto parameterized
   };
