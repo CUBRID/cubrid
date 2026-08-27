@@ -517,8 +517,8 @@ extern void ws_decache (MOP mop);
 extern void ws_decache_all_instances (MOP classmop);
 
 /* Class name cache */
-extern MOP ws_find_class (const char *name);
-extern void ws_add_classname (MOBJ classobj, MOP classmop, const char *cl_name);
+extern MOP ws_find_class (const OID * owner_oid, const char *bare_name);
+extern void ws_add_classname (MOBJ classobj, MOP classmop, const OID * owner_oid, const char *bare_name);
 extern void ws_drop_classname (MOBJ classobj);
 
 /* MOP accessor functions */

@@ -3080,6 +3080,7 @@ static LC_FIND_CLASSNAME
 locator_find_class_by_name (const char *owner_name, const char *classname, LOCK lock, MOP * class_mop)
 {
   OID class_oid;		/* Class object identifier */
+  OID name_owner_oid;
   LOCK current_lock;
   LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
 
@@ -3095,7 +3096,8 @@ locator_find_class_by_name (const char *owner_name, const char *classname, LOCK 
    * Check if the classname to OID entry is cached. Trust the cache only if
    * there is a lock on the class
    */
-  *class_mop = ws_find_class (classname);
+  au_find_owner_oid_of_name (classname, &name_owner_oid);
+  *class_mop = ws_find_class (&name_owner_oid, sm_remove_qualifier_name (classname));
   if (*class_mop == NULL)
     {
       found = locator_find_class_by_oid (class_mop, owner_name, classname, &class_oid, lock);
@@ -5391,6 +5393,7 @@ MOP
 locator_add_class (MOBJ class_obj, const char *classname)
 {
   OID class_temp_oid;		/* A temporarily OID for the newly created class */
+  OID name_owner_oid;
   MOP class_mop;		/* The Mop of the newly created class */
   LOCK lock;
 
@@ -5399,7 +5402,8 @@ locator_add_class (MOBJ class_obj, const char *classname)
       return NULL;
     }
 
-  class_mop = ws_find_class (classname);
+  au_find_owner_oid_of_name (classname, &name_owner_oid);
+  class_mop = ws_find_class (&name_owner_oid, sm_remove_qualifier_name (classname));
   if (class_mop != NULL && ws_get_lock (class_mop) != NULL_LOCK)
     {
       if (!WS_IS_DELETED (class_mop))
@@ -5810,6 +5814,7 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname, const ch
 {
   MOBJ class_obj;
   MOP tmp_class_mop;
+  OID new_owner_oid;
   LC_FIND_CLASSNAME renamed;
 
   /* Do we know about new name ? */
@@ -5818,7 +5823,8 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname, const ch
       return NULL;
     }
 
-  tmp_class_mop = ws_find_class (new_classname);
+  au_find_owner_oid_of_name (new_classname, &new_owner_oid);
+  tmp_class_mop = ws_find_class (&new_owner_oid, sm_remove_qualifier_name (new_classname));
   if (new_classname != NULL && tmp_class_mop != NULL && tmp_class_mop != class_mop
       && ws_get_lock (tmp_class_mop) != NULL_LOCK && !WS_IS_DELETED (tmp_class_mop))
     {
@@ -5842,7 +5848,7 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname, const ch
 
       /* Invalidate old classname to MOP entry */
       ws_drop_classname (class_obj);
-      ws_add_classname (class_obj, class_mop, new_classname);
+      ws_add_classname (class_obj, class_mop, &new_owner_oid, sm_remove_qualifier_name (new_classname));
       ws_dirty (class_mop);
     }
 
@@ -6218,7 +6224,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
 	   * If we go to the server, let us flush any new class (temp OID or
 	   * small cache coherance number) or a class that has been deleted
 	   */
-	  class_mop = ws_find_class (many_classnames[i]);
+	  class_mop = ws_find_class (&owner_oids[i], sm_remove_qualifier_name (many_classnames[i]));
 	  if (class_mop == NULL)
 	    {
 	      need_call_server = true;
@@ -6295,7 +6301,8 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
 
   for (i = 0; i < num_classes; i++)
     {
-      if (many_classnames[i] && (class_mop = ws_find_class (many_classnames[i])) != NULL)
+      if (many_classnames[i]
+	  && (class_mop = ws_find_class (&owner_oids[i], sm_remove_qualifier_name (many_classnames[i]))) != NULL)
 	{
 	  /*
 	   * Flush the class when the class has never been flushed and/or

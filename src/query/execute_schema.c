@@ -5007,7 +5007,12 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
 	  if (alter->info.alter.code == PT_REORG_PARTITION && parts->flag.partition_pruned)
 	    {			/* reused partition */
-	      newpci->obj = ws_find_class (newpci->pname);
+	      {
+		OID part_owner_oid;
+
+		au_find_owner_oid_of_name (newpci->pname, &part_owner_oid);
+		newpci->obj = ws_find_class (&part_owner_oid, sm_remove_qualifier_name (newpci->pname));
+	      }
 	      if (newpci->obj == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);

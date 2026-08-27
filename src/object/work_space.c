@@ -37,6 +37,7 @@
 #include "oid.h"
 #include "work_space.h"
 #include "schema_manager.h"
+#include "schema_system_catalog.hpp"
 #include "authenticate.h"
 #include "object_accessor.h"
 #include "locator_cl.h"
@@ -137,9 +138,90 @@ static MOP Null_object;
  *    This is a hash table used to cache the class name to MOP mapping
  *    on the client side.  This avoids repeated calls to the server to
  *    find class OIDs.
+ *
+ *    A class is named here the way the server names it: by the user that owns it
+ *    and the name on its own, never by the two joined into one string.
  */
 
 static MHT_TABLE *Classname_cache = NULL;
+
+/* The owner is a NULL OID for a system class, which belongs to no one as far as naming
+ * goes; au_find_owner_oid_of_name () and locator_classname_key_set () say the same. */
+typedef struct ws_classname_key WS_CLASSNAME_KEY;
+struct ws_classname_key
+{
+  OID owner_oid;
+  char bare_name[SM_MAX_IDENTIFIER_LENGTH];
+};
+
+/*
+ * ws_classname_key_set () - Fill in a lookup key
+ *   return: void
+ *   key(out): receives the key
+ *   owner_oid(in): owner the name belongs to; NULL for a name that belongs to no one
+ *   bare_name(in): the name on its own, with no owner in front of it
+ *
+ * Note: A system class is keyed on no owner even though a user does own it, so that a
+ *       lookup by bare name alone finds it. Deciding that here rather than at each
+ *       caller is what keeps the two sides of the table from keying it differently.
+ */
+static void
+ws_classname_key_set (WS_CLASSNAME_KEY * key, const OID * owner_oid, const char *bare_name)
+{
+  snprintf (key->bare_name, sizeof (key->bare_name), "%s", bare_name != NULL ? bare_name : "");
+
+  if (owner_oid == NULL || sm_check_system_class_by_name (key->bare_name))
+    {
+      OID_SET_NULL (&key->owner_oid);
+    }
+  else
+    {
+      COPY_OID (&key->owner_oid, owner_oid);
+    }
+}
+
+/*
+ * ws_classname_key_hash () - Hash a (owner, bare name) key
+ *   return: slot in a table of ht_size
+ */
+static unsigned int
+ws_classname_key_hash (const void *key, const unsigned int ht_size)
+{
+  const WS_CLASSNAME_KEY *key_p = (const WS_CLASSNAME_KEY *) key;
+  unsigned int hash;
+
+  hash = mht_1strhash (key_p->bare_name, ht_size);
+
+  /* two users differ in the page and slot they live at */
+  hash += (unsigned int) key_p->owner_oid.pageid * 31 + (unsigned int) key_p->owner_oid.slotid;
+
+  return hash % ht_size;
+}
+
+/*
+ * ws_classname_key_compare () - Are two (owner, bare name) keys the same ?
+ *   return: non-zero when equal, as the hash table expects
+ */
+static int
+ws_classname_key_compare (const void *key1, const void *key2)
+{
+  const WS_CLASSNAME_KEY *a = (const WS_CLASSNAME_KEY *) key1;
+  const WS_CLASSNAME_KEY *b = (const WS_CLASSNAME_KEY *) key2;
+
+  return OID_EQ (&a->owner_oid, &b->owner_oid) && strcmp (a->bare_name, b->bare_name) == 0;
+}
+
+/*
+ * ws_classname_key_free () - Release the key a cache entry was put in under
+ *   return: NO_ERROR
+ */
+static int
+ws_classname_key_free (const void *key, void *data, void *args)
+{
+  free ((void *) key);
+
+  return NO_ERROR;
+}
 
 
 /*
@@ -2222,8 +2304,10 @@ ws_mark_instances_deleted (MOP class_op)
  *    It should be called by ws_cache when a class is given to the workspace.
  */
 void
-ws_add_classname (MOBJ classobj, MOP classmop, const char *cl_name)
+ws_add_classname (MOBJ classobj, MOP classmop, const OID * owner_oid, const char *bare_name)
 {
+  WS_CLASSNAME_KEY probe;
+  WS_CLASSNAME_KEY *key;
   MOP current;
 
   if (classobj == NULL || classmop == NULL)
@@ -2231,19 +2315,31 @@ ws_add_classname (MOBJ classobj, MOP classmop, const char *cl_name)
       return;
     }
 
-  current = (MOP) mht_get (Classname_cache, sm_ch_name (classobj));
+  ws_classname_key_set (&probe, owner_oid, bare_name);
 
-  if (current == NULL)
+  current = (MOP) mht_get (Classname_cache, &probe);
+  if (current == classmop)
     {
-      mht_put (Classname_cache, cl_name, classmop);
+      return;
     }
-  else
+
+  if (current != NULL)
     {
-      if (current != classmop)
-	{
-	  mht_rem (Classname_cache, sm_ch_name (classobj), NULL, NULL);
-	  mht_put (Classname_cache, cl_name, classmop);
-	}
+      mht_rem (Classname_cache, &probe, ws_classname_key_free, NULL);
+    }
+
+  /* the table keeps the key, so it cannot be the caller's */
+  key = (WS_CLASSNAME_KEY *) malloc (sizeof (*key));
+  if (key == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*key));
+      return;
+    }
+
+  *key = probe;
+  if (mht_put (Classname_cache, key, classmop) == NULL)
+    {
+      free (key);
     }
 }
 
@@ -2259,20 +2355,25 @@ ws_add_classname (MOBJ classobj, MOP classmop, const char *cl_name)
 void
 ws_drop_classname (MOBJ classobj)
 {
-  const char *class_name = NULL;
+  WS_CLASSNAME_KEY probe;
+  const char *bare_name = NULL;
+  MOP owner;
 
   if (classobj == NULL)
     {
       return;
     }
 
-  class_name = sm_ch_name (classobj);
-  if (class_name == NULL)
+  bare_name = sm_ch_bare_name (classobj);
+  if (bare_name == NULL)
     {
       return;			// ignore
     }
 
-  mht_rem (Classname_cache, class_name, NULL, NULL);
+  owner = sm_ch_owner (classobj);
+  ws_classname_key_set (&probe, owner != NULL ? ws_oid (owner) : NULL, bare_name);
+
+  mht_rem (Classname_cache, &probe, ws_classname_key_free, NULL);
 }
 
 /*
@@ -2288,13 +2389,18 @@ ws_drop_classname (MOBJ classobj)
  *    check the schema before calling the server.
  */
 MOP
-ws_find_class (const char *name)
+ws_find_class (const OID * owner_oid, const char *bare_name)
 {
-  MOP class_mop;
+  WS_CLASSNAME_KEY probe;
 
-  class_mop = (MOP) mht_get (Classname_cache, name);
+  if (bare_name == NULL)
+    {
+      return NULL;
+    }
 
-  return (class_mop);
+  ws_classname_key_set (&probe, owner_oid, bare_name);
+
+  return (MOP) mht_get (Classname_cache, &probe);
 }
 
 /*
@@ -2389,7 +2495,7 @@ ws_init (void)
   Ws_dirty = false;
 
   /* build the classname cache */
-  Classname_cache = mht_create ("Workspace class name cache", 256, mht_1strhash, mht_compare_strings_are_equal);
+  Classname_cache = mht_create ("Workspace class name cache", 256, ws_classname_key_hash, ws_classname_key_compare);
 
   if (Classname_cache == NULL)
     {
@@ -2425,6 +2531,7 @@ error:
 
   if (Classname_cache != NULL)
     {
+      mht_clear (Classname_cache, ws_classname_key_free, NULL);
       mht_destroy (Classname_cache);
       Classname_cache = NULL;
     }
@@ -2466,6 +2573,7 @@ ws_final (void)
   /* destroy the classname cache */
   if (Classname_cache != NULL)
     {
+      mht_clear (Classname_cache, ws_classname_key_free, NULL);
       mht_destroy (Classname_cache);
       Classname_cache = NULL;
     }
@@ -2628,7 +2736,11 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 	    }
 
 	  /* add to the classname cache */
-	  ws_add_classname (obj, mop, sm_ch_name (obj));
+	  {
+	    MOP owner = sm_ch_owner (obj);
+
+	    ws_add_classname (obj, mop, owner != NULL ? ws_oid (owner) : NULL, sm_ch_bare_name (obj));
+	  }
 	}
 
       if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG))
