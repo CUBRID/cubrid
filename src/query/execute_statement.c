@@ -21189,9 +21189,7 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
     }
 
   sp_name = sm_remove_qualifier_name (name);
-  query = "SELECT " "LOWER([owner].[name]) || '.' || "
-    "CASE WHEN [pkg_name] = '' THEN '' ELSE [pkg_name] || '.' END || [sp_name] FROM [%s] "
-    "WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  query = "SELECT [unique_name] FROM [%s] WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, qualifier_name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, qualifier_name);
   assert (query_buf[0] != '\0');

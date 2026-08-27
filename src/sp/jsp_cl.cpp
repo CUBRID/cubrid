@@ -160,64 +160,6 @@ jsp_is_exist_stored_procedure (const char *name)
 }
 
 /*
- * jsp_find_sp_of_owner () - Find a stored procedure by its owner and its own name
- *   return: MOP, or NULL when no procedure of that name belongs to that owner
- *   unique_name(in): the name a user goes by, owner and all
- *
- * Note: The row keeps the two apart, so the name is taken apart once here rather than
- *       stored a second time alongside them.
- */
-static MOP
-jsp_find_sp_of_owner (const char *unique_name)
-{
-  const char *attr_names[3] = { SP_ATTR_SP_NAME, SP_ATTR_PKG_NAME, SP_ATTR_OWNER };
-  DB_VALUE values[3];
-  DB_VALUE *value_ptrs[3] = { &values[0], &values[1], &values[2] };
-  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char pkg_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  const char *sp_name;
-  const char *first_dot, *second_dot;
-  MOP owner_mop;
-
-  /* owner.name, or owner.package.name. sm_qualifier_name () is no help here: it takes a
-   * class name apart and asserts there is only the one dot. */
-  first_dot = strchr (unique_name, '.');
-  if (first_dot == NULL || (size_t) (first_dot - unique_name) >= sizeof (owner_name))
-    {
-      return NULL;
-    }
-  memcpy (owner_name, unique_name, first_dot - unique_name);
-
-  second_dot = strchr (first_dot + 1, '.');
-  if (second_dot == NULL)
-    {
-      sp_name = first_dot + 1;
-    }
-  else
-    {
-      if ((size_t) (second_dot - (first_dot + 1)) >= sizeof (pkg_name))
-	{
-	  return NULL;
-	}
-      memcpy (pkg_name, first_dot + 1, second_dot - (first_dot + 1));
-      sp_name = second_dot + 1;
-    }
-
-  owner_mop = au_find_user (owner_name);
-  if (owner_mop == NULL)
-    {
-      er_clear ();
-      return NULL;
-    }
-
-  db_make_string (&values[0], sp_name);
-  db_make_string (&values[1], pkg_name);
-  db_make_object (&values[2], owner_mop);
-
-  return db_find_multi_unique (db_find_class (SP_CLASS_NAME), 3, (char **) attr_names, value_ptrs, DB_FETCH_READ);
-}
-
-/*
  * jsp_find_stored_procedure
  *   return: MOP
  *   name(in): find java stored procedure name
@@ -242,9 +184,10 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
   AU_SAVE_AND_DISABLE (save);
 
   checked_name = jsp_check_stored_procedure_name (name);
-  mop = jsp_find_sp_of_owner (checked_name);
+  db_make_string (&value, checked_name);
+  mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
 
-  if (mop == NULL || er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
       er_clear ();
 
@@ -343,8 +286,9 @@ jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
 	  return error;
 	}
 
-      *return_mop = jsp_find_sp_of_owner (other_class_name);
-      if (*return_mop == NULL || er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+      db_make_string (&value, other_class_name);
+      *return_mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
 	{
 	  error = ER_SP_NOT_EXIST;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, other_class_name);
@@ -610,9 +554,6 @@ jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
 {
   int save;
   DB_VALUE value;
-  char *owner_name;
-  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char pkg_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int err = NO_ERROR;
 
   assert (buf != NULL);
@@ -627,45 +568,15 @@ jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
 
   AU_SAVE_AND_DISABLE (save);
 
-  /* the row keeps the owner and the procedure's name apart; put them back together */
-  err = db_get (mop_p, SP_ATTR_OWNER, &value);
+  /* check type */
+  err = db_get (mop_p, SP_ATTR_UNIQUE_NAME, &value);
   if (err != NO_ERROR)
     {
       AU_RESTORE (save);
       return NULL;
     }
 
-  owner_name = au_get_user_name (db_get_object (&value));
-  pr_clear_value (&value);
-  if (owner_name == NULL)
-    {
-      AU_RESTORE (save);
-      return NULL;
-    }
-  sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
-  db_ws_free_and_init (owner_name);
-
-  err = db_get (mop_p, SP_ATTR_PKG_NAME, &value);
-  if (err != NO_ERROR)
-    {
-      AU_RESTORE (save);
-      return NULL;
-    }
-
-  if (!DB_IS_NULL (&value) && db_get_string (&value) != NULL && db_get_string (&value)[0] != '\0')
-    {
-      snprintf (pkg_name, sizeof (pkg_name), "%s.", db_get_string (&value));
-    }
-  pr_clear_value (&value);
-
-  err = db_get (mop_p, SP_ATTR_SP_NAME, &value);
-  if (err != NO_ERROR)
-    {
-      AU_RESTORE (save);
-      return NULL;
-    }
-
-  snprintf (buf, buf_size, "%s.%s%s", downcase_owner_name, pkg_name, db_get_string (&value));
+  strncpy (buf, db_get_string (&value), buf_size);
   pr_clear_value (&value);
 
   AU_RESTORE (save);

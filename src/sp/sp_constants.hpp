@@ -24,6 +24,7 @@
 #define SP_CODE_CLASS_NAME      "_db_stored_procedure_code"
 
 #define SP_ATTR_LIST    \
+    MAP_LIST_ITEM(UNIQUE_NAME) \
     MAP_LIST_ITEM(SP_NAME) \
     MAP_LIST_ITEM(SP_TYPE) \
     MAP_LIST_ITEM(RETURN_TYPE) \
@@ -41,6 +42,7 @@
     MAP_LIST_ITEM(CREATED_TIME) \
     MAP_LIST_ITEM(UPDATED_TIME)
 
+#define SP_ATTR_UNIQUE_NAME             "unique_name"
 #define SP_ATTR_SP_NAME                 "sp_name"
 #define SP_ATTR_SP_TYPE                 "sp_type"
 #define SP_ATTR_RETURN_TYPE             "return_type"

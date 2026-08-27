@@ -378,6 +378,15 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
+    /* unique_name */
+    db_make_string (&value, info.unique_name.data ());
+    err = dbt_put_internal (obt_p, SP_ATTR_UNIQUE_NAME, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
     /* sp_name */
     db_make_string (&value, info.sp_name.data ());
     err = dbt_put_internal (obt_p, SP_ATTR_SP_NAME, &value);
@@ -416,13 +425,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    if (info.pkg_name.empty ())
-      {
-	/* the package is part of what names a procedure, so say there is none rather
-	 * than leaving it unknown */
-	db_make_string (&value, "");
-      }
-    else
+    if (!info.pkg_name.empty ())
       {
 	sp_normalize_name (info.pkg_name);
 	db_make_string (&value, info.pkg_name.data ());

@@ -578,11 +578,20 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
 {
   int error = NO_ERROR;
   int save, lang;
-  const char *owner_str = NULL, *target_cls = NULL;
-  DB_VALUE value, name_value, owner_value, sp_lang_val, target_cls_val;
+  const char *name_str = NULL, *owner_str = NULL, *target_cls = NULL;
+  /* owner, package and procedure, dots and all -- the column caps it at 255, and obj_set
+   * is what rejects an over-long name, so hold all three here rather than truncate. */
+  char new_name_str[DB_MAX_USER_LENGTH + 2 * SM_MAX_IDENTIFIER_LENGTH + 4];
+  new_name_str[0] = '\0';
+  char downcase_owner_name[DB_MAX_USER_LENGTH];
+  downcase_owner_name[0] = '\0';
+  char pkg_prefix[SM_MAX_IDENTIFIER_LENGTH + 2];
+  pkg_prefix[0] = '\0';
+  DB_VALUE value, name_value, pkg_value, owner_value, sp_lang_val, target_cls_val;
 
   db_make_null (&value);
   db_make_null (&name_value);
+  db_make_null (&pkg_value);
   db_make_null (&owner_value);
   db_make_null (&sp_lang_val);
   db_make_null (&target_cls_val);
@@ -592,13 +601,40 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
   AU_SAVE_AND_DISABLE (save);
 
   /* change _db_stored_procedure */
+  error = obj_get (sp, SP_ATTR_SP_NAME, &name_value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  error = obj_get (sp, SP_ATTR_PKG_NAME, &pkg_value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
   error = obj_get (owner, "name", &owner_value);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
+  name_str = db_get_string (&name_value);
   owner_str = db_get_string (&owner_value);
+
+  if (!DB_IS_NULL (&pkg_value) && db_get_string (&pkg_value) != NULL && db_get_string (&pkg_value)[0] != '\0')
+    {
+      snprintf (pkg_prefix, sizeof (pkg_prefix), "%s.", db_get_string (&pkg_value));
+    }
+
+  sm_downcase_name (owner_str, downcase_owner_name, DB_MAX_USER_LENGTH);
+  snprintf (new_name_str, sizeof (new_name_str), "%s.%s%s", downcase_owner_name, pkg_prefix, name_str);
+
+  /* the key is the assembled name, so it has to follow the owner */
+  db_make_string (&value, new_name_str);
+  error = obj_set (sp, SP_ATTR_UNIQUE_NAME, &value);
+  if (error < 0)
+    {
+      goto end;
+    }
 
   /* change the owner */
   db_make_object (&value, owner);
@@ -644,6 +680,7 @@ end:
   AU_RESTORE (save);
   pr_clear_value (&value);
   pr_clear_value (&name_value);
+  pr_clear_value (&pkg_value);
   pr_clear_value (&owner_value);
   pr_clear_value (&sp_lang_val);
   pr_clear_value (&target_cls_val);
