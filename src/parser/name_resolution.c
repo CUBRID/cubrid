@@ -6854,6 +6854,15 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db, int line_num, in
       return NULL;
     }				/* not a class name (error) */
 
+  /* names_mht keeps the key, and this recursion hands it down: the name has to outlive the
+   * frame that wrote it, or a later subclass is taken for one already seen and dropped. */
+  classname = pt_append_string (parser, NULL, classname);
+  if (classname == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
   /* Check to see if this classname is already known, and only add a (name) node if we have never seen it before. Note:
    * Even if we have visited it, we still need to recursively check its subclasses (see dbl below) in order to maintain
    * the correct ordering of classnames found via our depth-first search. */
