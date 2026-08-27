@@ -114,8 +114,8 @@ struct parser_string_block
 /* the exact 8KB holds only while STRING_BLOCK_OVERHEAD's field list matches the struct */
 static_assert (sizeof (PARSER_STRING_BLOCK) == 8192, "a default string block must be exactly 8KB");
 
-/* the first character of the last string placed in the block */
-#define PT_STRBLK_LAST_START(b) ((b)->u.chars[(b)->last_string_start])
+/* the last string placed in the block */
+#define PT_STRBLK_LAST_STRING(b) (&(b)->u.chars[(b)->last_string_start])
 
 /* bytes still available after the block's last string, for extending it in place */
 #define PT_STRBLK_AVAILABLE_SIZE(b) ((b)->block_end - (b)->last_string_end)
@@ -487,9 +487,9 @@ parser_allocate_string_buffer (PARSER_CONTEXT * parser, const int length, const 
   /* set start to the aligned length */
   block->last_string_start = CAST_BUFLEN (DB_ALIGN (block->last_string_end + 1, align));
   block->last_string_end = CAST_BUFLEN (block->last_string_start + length);
-  PT_STRBLK_LAST_START (block) = 0;
+  *PT_STRBLK_LAST_STRING (block) = 0;
 
-  return &PT_STRBLK_LAST_START (block);
+  return PT_STRBLK_LAST_STRING (block);
 }
 
 
@@ -537,7 +537,7 @@ pt_find_block_by_last_string (const PARSER_CONTEXT * parser, const char *old_str
   /* the parser's own list; the block being appended to is almost always the
    * newest, so this usually stops at the first node */
   block = parser->string_blocks;
-  while (block != NULL && &PT_STRBLK_LAST_START (block) != old_string)
+  while (block != NULL && PT_STRBLK_LAST_STRING (block) != old_string)
     {
       block = block->next;
     }
@@ -649,7 +649,7 @@ pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const cha
 	  strcpy (s, new_tail);
 	}
       string->last_string_end += new_tail_length;
-      s = &PT_STRBLK_LAST_START (string);
+      s = PT_STRBLK_LAST_STRING (string);
     }
 
   return s;
@@ -727,7 +727,7 @@ pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const
       old_string->bytes[old_string->length] = 0;	/* nul terminate */
 
       string->last_string_end += (int) new_tail_length;
-      s = &PT_STRBLK_LAST_START (string);
+      s = PT_STRBLK_LAST_STRING (string);
     }
 
   return old_string;
