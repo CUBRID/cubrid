@@ -44,6 +44,8 @@ static bool qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, 
 						       QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
+static int qo_count_constraint_attributes (SM_CLASS_CONSTRAINT * cons);
+static bool qo_is_constraint_attribute (SM_CLASS_CONSTRAINT * cons, const char *name);
 static bool qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons);
 static bool qo_groupby_has_key (PT_NODE * group_by, PT_NODE * end, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
 static void qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query);
@@ -98,15 +100,14 @@ qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE **
 			      qo_analyze_path_join, (*nodep)->info.query.q.select.where);
 	}			/* if (pred) */
 
+      /* shrink the GROUP BY first, so that qo_reduce_order_by () judges the ORDER BY against the
+       * grouping key that will actually run */
+      qo_reduce_group_by (parser, (*nodep));
+
       if (qo_reduce_order_by (parser, (*nodep)) != NO_ERROR)
 	{
 	  return false;		/* give up */
 	}
-
-      /* must run after qo_reduce_order_by (), which drops an ORDER BY that the GROUP BY already
-       * covers. Shortening the GROUP BY first would break that prefix match and leave a sort
-       * behind. */
-      qo_reduce_group_by (parser, (*nodep));
 
       PT_NODE *point_list = NULL;
       PT_NODE *point, *tmp_spec;
@@ -1259,6 +1260,46 @@ exit_on_error:
 }
 
 /*
+ * qo_count_constraint_attributes () - count the columns of a constraint
+ *   return: number of columns the constraint is built on
+ *   cons(in): class constraint
+ */
+static int
+qo_count_constraint_attributes (SM_CLASS_CONSTRAINT * cons)
+{
+  int i;
+
+  for (i = 0; cons->attributes[i] != NULL; i++)
+    {
+      ;
+    }
+
+  return i;
+}
+
+/*
+ * qo_is_constraint_attribute () - check whether a name is one of the constraint columns
+ *   return: true, if the name is a column of the constraint
+ *   cons(in): class constraint
+ *   name(in): attribute name
+ */
+static bool
+qo_is_constraint_attribute (SM_CLASS_CONSTRAINT * cons, const char *name)
+{
+  int i;
+
+  for (i = 0; cons->attributes[i] != NULL; i++)
+    {
+      if (intl_identifier_casecmp (name, cons->attributes[i]->header.name) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_is_row_identifying_key () - check whether a constraint picks out a single row, and so
  *				  determines every other column of its table
  *   return: true, if the constraint may be used to drop redundant GROUP BY columns
@@ -1379,28 +1420,22 @@ qo_groupby_has_key (PT_NODE * group_by, PT_NODE * end, UINTPTR spec_id, SM_CLASS
  *          -> select pk, name, sum (amount) from t group by pk;
  *
  *        select pk, name, sum (amount) from t group by name, pk;
- *          -> do not change.
+ *          -> select pk, name, sum (amount) from t group by pk;
  *
- *   Only the columns written after the whole key are removed. One written before it is just as
- *   determined, but the groups leave a sorted GROUP BY in the order of its key, so removing
- *   such a column would reorder the result. Keeping it also keeps the ordering that an index
- *   scan may already provide, which is what lets the GROUP BY sort be skipped altogether.
+ *   A column goes wherever it is written, so the order in which a sorted GROUP BY hands out its
+ *   groups may change. This must therefore run before qo_reduce_order_by (), which drops an
+ *   ORDER BY only when the GROUP BY that will actually run still covers it.
  *
- *   Any key of the table will do, so a column goes as soon as one of them is complete ahead
- *   of it. Picking a single key up front would lose the cases where a wider key completes
- *   earlier: with a primary key of (pk) and a unique key of (x, y), "group by x, y, pk" drops
- *   pk on (x, y) although (pk) is the shorter key.
- *
- *   A column goes only when the whole key is already written ahead of it, so a key column
- *   repeated past that point goes as well. With a key of (a, b), "group by a, a, b, c" drops
- *   c, while "group by a, a, c, b" keeps c because the key is still short of b there.
+ *   When more than one key of the table is covered, the one with the fewest columns wins,
+ *   because everything outside the chosen key is removed.
  */
 static void
 qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   PT_NODE *group_by, *group, *prev, *next, *spec, *col;
   DB_OBJECT *classop;
-  SM_CLASS_CONSTRAINT *constraints, *cons;
+  SM_CLASS_CONSTRAINT *cons, *best_cons;
+  int size, best_size;
 
   if (query->node_type != PT_SELECT)
     {
@@ -1425,14 +1460,32 @@ qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	  continue;
 	}
 
-      constraints = sm_class_constraints (classop);
-      if (constraints == NULL)
+      /* an earlier spec may have shortened the clause */
+      group_by = query->info.query.q.select.group_by;
+
+      best_cons = NULL;
+      best_size = 0;
+
+      for (cons = sm_class_constraints (classop); cons != NULL; cons = cons->next)
+	{
+	  if (!qo_is_row_identifying_key (cons) || !qo_groupby_has_key (group_by, NULL, spec->info.spec.id, cons))
+	    {
+	      continue;
+	    }
+
+	  size = qo_count_constraint_attributes (cons);
+	  if (best_cons == NULL || size < best_size)
+	    {
+	      best_cons = cons;
+	      best_size = size;
+	    }
+	}
+
+      if (best_cons == NULL)
 	{
 	  continue;
 	}
 
-      /* an earlier spec may have shortened the clause */
-      group_by = query->info.query.q.select.group_by;
       prev = NULL;
 
       for (group = group_by; group != NULL; group = next)
@@ -1442,23 +1495,9 @@ qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	  col = group->info.sort_spec.expr;
 	  CAST_POINTER_TO_NODE (col);
 
-	  if (col == NULL || col->node_type != PT_NAME || col->info.name.spec_id != spec->info.spec.id)
+	  if (col == NULL || col->node_type != PT_NAME || col->info.name.spec_id != spec->info.spec.id
+	      || qo_is_constraint_attribute (best_cons, col->info.name.original))
 	    {
-	      prev = group;
-	      continue;
-	    }
-
-	  for (cons = constraints; cons != NULL; cons = cons->next)
-	    {
-	      if (qo_is_row_identifying_key (cons) && qo_groupby_has_key (group_by, group, spec->info.spec.id, cons))
-		{
-		  break;
-		}
-	    }
-
-	  if (cons == NULL)
-	    {
-	      /* no key is complete yet, so this column still orders the GROUP BY output */
 	      prev = group;
 	      continue;
 	    }
