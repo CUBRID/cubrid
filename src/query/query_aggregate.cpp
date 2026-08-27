@@ -2909,11 +2909,12 @@ qdata_copy_agg_hkey (cubthread::entry *thread_p, aggregate_hash_key *key)
 
 /*
  * qdata_load_agg_hvalue_in_agg_list () - load hash value in aggregate list
+ *   return: NO_ERROR, or ER_FAILED when a deferred NUMERIC sum cannot be materialized
  *   value(in): aggregate hash value
  *   agg_list(in): aggregate list
  *   copy_vals(in): true for deep copy of DB_VALUES, false for shallow copy
  */
-void
+int
 qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list,
 				   bool copy_vals)
 {
@@ -2922,13 +2923,13 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
   if (value == NULL)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
 
   if (value->func_count != 0 && agg_list == NULL)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
 
   while (agg_list != NULL)
@@ -2943,8 +2944,13 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
       if (agg_list->function != PT_GROUPBY_NUM)
 	{
 	  /* a deferred NUMERIC sum must be materialized before its value is copied;
-	   * the destination accumulator cannot carry a pending state either */
-	  (void) qdata_numeric_sum_flush (&value->accumulators[i]);
+	   * the destination accumulator cannot carry a pending state either. A failed
+	   * flush (overflow at materialization) must not degrade into copying the
+	   * already-cleared value as if it were the sum. */
+	  if (qdata_numeric_sum_flush (&value->accumulators[i]) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	  qdata_numeric_sum_discard (&agg_list->accumulator);
 
 	  if (copy_vals)
@@ -2990,6 +2996,8 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
     }
 
   assert (i == value->func_count);
+
+  return NO_ERROR;
 }
 
 /*

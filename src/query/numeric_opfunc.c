@@ -2658,7 +2658,7 @@ numeric_sum_state_free (NUMERIC_SUM_STATE * state)
 {
   if (state != NULL)
     {
-      free (state);
+      free_and_init (state);
     }
 }
 
@@ -2727,10 +2727,12 @@ numeric_sum_state_result (const NUMERIC_SUM_STATE * state, DB_VALUE * result)
 				  NUMERIC_SUM_STATE_WORDS * (int) sizeof (uint64_t), res_buf, &prec, &scale);
   if (ret != NO_ERROR)
     {
-      TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+      /* the interpreted per-row accumulation reports SUM overflow as a hard
+       * ER_QPROC_OVERFLOW_ADDITION; a deferred sum that cannot be materialized is the
+       * same user-visible condition and must not downgrade to a warning */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-      return ret;
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   db_make_numeric (result, res_buf, prec, scale, DB_NUMERIC_BUF_SIZE, sign, true);
