@@ -168,7 +168,7 @@ sm_define_view_column_privileges_spec (void)
     "WHERE "
       "FALSE",
     CT_DUAL_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -301,7 +301,7 @@ sm_define_view_columns_spec (void)
     CT_COLLATION_NAME,
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -346,7 +346,7 @@ sm_define_view_domains_spec (void)
     "WHERE "
       "FALSE",
     CT_DUAL_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -381,7 +381,7 @@ sm_define_view_foreign_servers_spec (void)
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[srv].[owner].[name]", "[srv]"),
     CT_SERVER_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -421,7 +421,7 @@ sm_define_view_key_column_usage_spec (void)
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
     CT_INDEXKEY_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -477,7 +477,7 @@ sm_define_view_parameters_spec (void)
     SP_TYPE_PROCEDURE, SP_TYPE_FUNCTION,
     CT_STORED_PROC_ARGS_NAME,
     CT_DATATYPE_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -529,7 +529,7 @@ sm_define_view_partitions_spec (void)
     DB_PARTITION_LIST,
     CT_PARTITION_NAME,
     CT_CLASS_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -574,7 +574,7 @@ sm_define_view_referential_constraints_spec (void)
     SM_FOREIGN_KEY_NO_ACTION,
     SM_FOREIGN_KEY_SET_NULL,
     CT_INDEX_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -610,7 +610,7 @@ sm_define_view_routine_privileges_spec (void)
     CT_CLASSAUTH_NAME,
     CT_STORED_PROC_NAME,
     DB_OBJECT_PROCEDURE);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -711,7 +711,7 @@ sm_define_view_routines_spec (void)
     CT_STORED_PROC_CODE_NAME,
     CT_ROOT_NAME,
     CT_CHARSET_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -747,7 +747,7 @@ sm_define_view_schemata_spec (void)
     AU_USER_CLASS_NAME,
     CT_ROOT_NAME,
     CT_CHARSET_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -788,7 +788,7 @@ sm_define_view_sequences_spec (void)
     DB_MAX_NUMERIC_PRECISION,
     DB_DEFAULT_NUMERIC_SCALE,
     CT_SERIAL_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -850,7 +850,7 @@ sm_define_view_statistics_spec (void)
     CT_INDEX_NAME,
     CT_CLASS_NAME,
     CT_ATTRIBUTE_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -880,7 +880,7 @@ sm_define_view_synonyms_spec (void)
     "WHERE "
       AUTH_CHECK_SYNONYM("[syn].[is_public]", "[syn].[owner].[name]"),
     CT_SYNONYM_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -916,7 +916,7 @@ sm_define_view_table_constraints_spec (void)
       AUTH_CHECK_OBJECT_WRITE("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEX_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -949,7 +949,7 @@ sm_define_view_table_privileges_spec (void)
     CT_CLASSAUTH_NAME,
     CT_CLASS_NAME,
     DB_OBJECT_CLASS);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -1021,7 +1021,7 @@ sm_define_view_tables_spec (void)
     CT_CLASS_NAME,
     CT_COLLATION_NAME,
     CT_SERIAL_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -1086,7 +1086,7 @@ sm_define_view_triggers_spec (void)
     TR_CLASS_NAME,
     CT_CLASS_NAME,
     TR_EVENT_UPDATE, TR_EVENT_STATEMENT_INSERT);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
@@ -1124,7 +1124,7 @@ sm_define_view_views_spec (void)
     SM_CLASSFLAG_WITHCHECKOPTION,
     SM_CLASSFLAG_LOCALCHECKOPTION,
     CT_QUERYSPEC_NAME);
-  assert(n < sizeof(stmt));
+  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
 
   return stmt;
