@@ -373,6 +373,8 @@ struct upddel_class_info_internal
   HEAP_SCANCACHE *scan_cache;
 
   OID prev_class_oid;		/* previous class oid */
+  bool is_mvcc_class;		/* whether MVCC applies to class_oid; set when the class changes, because
+				 * mvcc_is_mvcc_disabled_class () is too slow to ask per row */
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
   bool is_attr_info_inited;	/* true if attr_info has valid data */
   int needs_pruning;		/* partition pruning information */
@@ -11429,6 +11431,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			  er_log_debug (ARG_FILE_LINE, "qexec_execute_delete: class OID is not correct\n");
 			  GOTO_EXIT_ON_ERROR;
 			}
+		      internal_class->is_mvcc_class = !mvcc_is_mvcc_disabled_class (class_oid);
 
 		      if (internal_class->num_lob_attrs)
 			{
@@ -11573,7 +11576,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		{
 		  xasl->list_id->tuple_cnt++;
 
-		  if (need_locking && class_oid != NULL && !mvcc_is_mvcc_disabled_class (class_oid)
+		  if (need_locking && class_oid != NULL && internal_class->is_mvcc_class
 		      && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
 		    {
 		      /* the delete is published: late arrivals settle on our MVCCID self-lock, which the
@@ -26064,6 +26067,7 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * quer
       class_->class_oid = NULL;
       class_->needs_pruning = DB_NOT_PARTITIONED_CLASS;
       class_->subclass_idx = -1;
+      class_->is_mvcc_class = false;
       class_->scan_cache = NULL;
       OID_SET_NULL (&class_->prev_class_oid);
       class_->is_attr_info_inited = 0;
