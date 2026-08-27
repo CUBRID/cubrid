@@ -416,9 +416,11 @@ tracer_session (int sid, const char *server_name, const char *sql)
 /* Run one statement in the current session.  expect_err == 0: must succeed
  * (when first_int is non-null the first column of the first row is fetched
  * into it); expect_err < 0: the statement must be rejected — at compile or at
- * execute — with er_errid () == expect_err. */
+ * execute — with er_errid () == expect_err (and, when expect_msg is given,
+ * with that substring in er_msg (), since compile-time rejections all arrive
+ * as the generic ER_PT_SEMANTIC wrapping the original message). */
 static bool
-scenario_exec (int sid, const char *sql, int *first_int, int expect_err)
+scenario_exec (int sid, const char *sql, int *first_int, int expect_err, const char *expect_msg = NULL)
 {
   DB_SESSION *session = db_open_buffer (sql);
   if (session == NULL)
@@ -431,7 +433,8 @@ scenario_exec (int sid, const char *sql, int *first_int, int expect_err)
   int stmt_id = db_compile_statement (session);
   if (stmt_id < 0)
     {
-      if (expect_err != 0 && er_errid () == expect_err)
+      if (expect_err != 0 && er_errid () == expect_err
+	  && (expect_msg == NULL || (er_msg () != NULL && strstr (er_msg (), expect_msg) != NULL)))
 	{
 	  tracer_log ("M0_TRACER: S%d [%s] rejected at compile with %d as expected", sid, sql, expect_err);
 	  ok = true;
@@ -449,7 +452,8 @@ scenario_exec (int sid, const char *sql, int *first_int, int expect_err)
   int err = db_execute_statement (session, stmt_id, &result);
   if (err < 0)
     {
-      if (expect_err != 0 && er_errid () == expect_err)
+      if (expect_err != 0 && er_errid () == expect_err
+	  && (expect_msg == NULL || (er_msg () != NULL && strstr (er_msg (), expect_msg) != NULL)))
 	{
 	  tracer_log ("M0_TRACER: S%d [%s] rejected at execute with %d as expected", sid, sql, expect_err);
 	  ok = true;
@@ -695,8 +699,10 @@ scenario_ddl_auth (const char *server_name)
 	}
 
       /* a re-prepare from text — what a driver does on the error above —
-       * must hit the compile-time authorization check */
-      if (!scenario_exec (sid, "SELECT a FROM dba.a6_t1", NULL, ER_AU_SELECT_FAILURE))
+       * must hit the compile-time authorization check.  The parser wraps
+       * the ER_AU_SELECT_FAILURE raised during name resolution into the
+       * generic semantic error, so match the code plus the au message */
+      if (!scenario_exec (sid, "SELECT a FROM dba.a6_t1", NULL, ER_PT_SEMANTIC, "not authorized"))
 	{
 	  return false;
 	}
