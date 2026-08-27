@@ -25,6 +25,9 @@
  * each with its own client session context (#123 D2) — the multi-session
  * smoke of stage A4.  Boot serialization is the engine's own
  * (boot_restart_client) since A5; sessions here just boot and run.
+ * CUBRID_M0_TRACER_SCENARIO selects a scripted multi-session choreography
+ * instead of the single statement — "ddl_auth" is the DDL-authorization smoke
+ * of stage A6 (grant/revoke across overlapping sessions).
  */
 
 #if defined (SERVER_MODE)
@@ -38,6 +41,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <future>
 #include <mutex>
 #include <system_error>
 #include <thread>
@@ -71,9 +76,14 @@ void
 boot_tracer_start_if_requested (const char *server_name)
 {
   const char *sql = std::getenv ("CUBRID_M0_TRACER_SQL");
-  if (sql == NULL || *sql == '\0')
+  const char *scenario = std::getenv ("CUBRID_M0_TRACER_SCENARIO");
+  if ((sql == NULL || *sql == '\0') && (scenario == NULL || *scenario == '\0'))
     {
       return;
+    }
+  if (sql == NULL)
+    {
+      sql = "";
     }
   const char *out = std::getenv ("CUBRID_M0_TRACER_OUT");
   if (out == NULL || *out == '\0')
@@ -121,10 +131,15 @@ tracer_log (const char *fmt, ...)
   fflush (tracer_Fp);
 }
 
-/* run one in-process client session: register, compile/execute/fetch the
- * statement, commit, unregister.  Returns true when every stage succeeded. */
+/* Set up a full in-process client session (thread-manager ritual, socketless
+ * conn entry, client context bracket, boot as user/password, session adoption
+ * of the context), run body inside it, and tear everything down.  When
+ * expect_restart_error is nonzero the boot itself is the test: it must fail
+ * with exactly that error and body never runs.  Returns true when every stage
+ * behaved as expected. */
 static bool
-tracer_session (int sid, const char *server_name, const char *sql)
+in_process_session (int sid, const char *server_name, const char *user, const char *password,
+		    int expect_restart_error, const std::function<bool (int)> &body)
 {
   int err;
   bool succeeded = false;
@@ -173,14 +188,34 @@ tracer_session (int sid, const char *server_name, const char *sql)
   db_on_server = 0;
 
   /* boot serialization is the engine's own (boot_restart_client) since A5 */
-  err = db_restart_ex ("m0_tracer", server_name, "DBA", "", NULL, DB_CLIENT_TYPE_DEFAULT);
+  err = db_restart_ex ("m0_tracer", server_name, user, password, NULL, DB_CLIENT_TYPE_DEFAULT);
+  if (expect_restart_error != 0)
+    {
+      if (err == NO_ERROR)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL boot as %s succeeded but error %d was expected", sid, user,
+		      expect_restart_error);
+	  registered = true;
+	}
+      else if (err != expect_restart_error)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL boot as %s err=%d expected=%d msg=[%s]", sid, user, err,
+		      expect_restart_error, er_msg () ? er_msg () : "");
+	}
+      else
+	{
+	  tracer_log ("M0_TRACER: S%d boot as %s rejected with %d as expected", sid, user, err);
+	  succeeded = true;
+	}
+      goto retire;
+    }
   if (err != NO_ERROR)
     {
       tracer_log ("M0_TRACER: S%d FAIL db_restart_ex err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
       goto retire;
     }
   registered = true;
-  tracer_log ("M0_TRACER: S%d in-process client registered (0-hop)", sid);
+  tracer_log ("M0_TRACER: S%d in-process client registered (0-hop) as %s", sid, user);
 
   /* the session created during registration becomes the durable owner of the
    * client context (#123 D3) */
@@ -194,139 +229,7 @@ tracer_session (int sid, const char *server_name, const char *sql)
       goto retire;
     }
 
-  /* RR isolation routes compilation through the RR transaction lock (pt_class_pre_fetch); harness opt-in */
-  if (const char *iso_env = std::getenv ("CUBRID_M0_TRACER_ISOLATION"))
-    {
-      if (strcmp (iso_env, "RR") == 0)
-	{
-	  if (db_set_isolation (TRAN_REPEATABLE_READ) != NO_ERROR)
-	    {
-	      tracer_log ("M0_TRACER: S%d FAIL db_set_isolation msg=[%s]", sid, er_msg () ? er_msg () : "");
-	      goto retire;
-	    }
-	  tracer_log ("M0_TRACER: S%d isolation set to REPEATABLE READ", sid);
-	}
-      else if (*iso_env != '\0')
-	{
-	  tracer_log ("M0_TRACER: S%d FAIL unknown CUBRID_M0_TRACER_ISOLATION=[%s]", sid, iso_env);
-	  goto retire;
-	}
-    }
-
-  {
-    DB_SESSION *session = db_open_buffer (sql);
-    if (session == NULL)
-      {
-	tracer_log ("M0_TRACER: S%d FAIL db_open_buffer msg=[%s]", sid, er_msg () ? er_msg () : "");
-	goto retire;
-      }
-
-    int stmt_id = db_compile_statement (session);
-    if (stmt_id < 0)
-      {
-	tracer_log ("M0_TRACER: S%d FAIL db_compile_statement err=%d msg=[%s]", sid, stmt_id,
-		    er_msg () ? er_msg () : "");
-	db_close_session (session);
-	goto retire;
-      }
-    tracer_log ("M0_TRACER: S%d compiled in server address space, stmt_id=%d", sid, stmt_id);
-
-    /* CUBRID_M0_TRACER_BIND (comma-separated ints): exercises the native DB_VALUE hand-off into the executor */
-    const char *bind_env = std::getenv ("CUBRID_M0_TRACER_BIND");
-    if (bind_env != NULL && *bind_env != '\0')
-      {
-	DB_VALUE bind_vals[16];
-	int bind_cnt = 0;
-	const char *p = bind_env;
-	char *endp = NULL;
-	while (bind_cnt < 16)
-	  {
-	    long v = strtol (p, &endp, 10);
-	    if (endp == p)
-	      {
-		break;
-	      }
-	    db_make_int (&bind_vals[bind_cnt++], (int) v);
-	    if (*endp != ',')
-	      {
-		break;
-	      }
-	    p = endp + 1;
-	  }
-	if (db_push_values (session, bind_cnt, bind_vals) != NO_ERROR)
-	  {
-	    tracer_log ("M0_TRACER: S%d FAIL db_push_values msg=[%s]", sid, er_msg () ? er_msg () : "");
-	    db_close_session (session);
-	    goto retire;
-	  }
-	tracer_log ("M0_TRACER: S%d bound %d host variable(s)", sid, bind_cnt);
-      }
-
-    DB_QUERY_RESULT *result = NULL;
-    err = db_execute_statement (session, stmt_id, &result);
-    if (err < 0)
-      {
-	tracer_log ("M0_TRACER: S%d FAIL db_execute_statement err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
-	db_close_session (session);
-	goto retire;
-      }
-    tracer_log ("M0_TRACER: S%d executed, row_count=%d", sid, err);
-
-    /* the gate contract is connect→prepare→execute→fetch→commit: every stage
-     * must fail loudly, or a fetch/commit regression sails through as SUCCESS */
-    if (result == NULL)
-      {
-	tracer_log ("M0_TRACER: S%d FAIL no result to fetch", sid);
-	db_close_session (session);
-	goto retire;
-      }
-    err = db_query_first_tuple (result);
-    if (err != DB_CURSOR_SUCCESS)
-      {
-	tracer_log ("M0_TRACER: S%d FAIL db_query_first_tuple err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
-	db_query_end (result);
-	db_close_session (session);
-	goto retire;
-      }
-    DB_VALUE value;
-    err = db_query_get_tuple_value (result, 0, &value);
-    if (err != NO_ERROR)
-      {
-	tracer_log ("M0_TRACER: S%d FAIL db_query_get_tuple_value err=%d msg=[%s]", sid, err,
-		    er_msg () ? er_msg () : "");
-	db_query_end (result);
-	db_close_session (session);
-	goto retire;
-      }
-    {
-      std::lock_guard<std::mutex> guard (tracer_Log_mutex);
-      fprintf (tracer_Fp, "M0_TRACER: S%d first value = ", sid);
-      db_fprint_value (tracer_Fp, &value);
-      fputc ('\n', tracer_Fp);
-      fflush (tracer_Fp);
-    }
-    db_value_clear (&value);
-    db_query_end (result);
-    db_close_session (session);
-
-    err = db_commit_transaction ();
-    if (err != NO_ERROR)
-      {
-	tracer_log ("M0_TRACER: S%d FAIL db_commit_transaction err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
-	goto retire;
-      }
-
-    /* end the server session explicitly: session_state_uninit then retires
-     * this thread's own client context (A5) — the orphan hand-back runs the
-     * per-session teardown (sm/Qres/workspace) at bracket exit below */
-    err = db_end_session ();
-    if (err != NO_ERROR)
-      {
-	tracer_log ("M0_TRACER: S%d FAIL db_end_session err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
-	goto retire;
-      }
-    succeeded = true;
-  }
+  succeeded = body (sid);
 
 retire:
   // conn and entry must not outlive this thread dirty: an orphan conn in
@@ -359,6 +262,502 @@ retire:
   return succeeded;
 }
 
+/* compile/execute/fetch the statement in the current session — the standard
+ * per-case body (connect→prepare→execute→fetch→commit gate contract) */
+static bool
+tracer_sql_case (int sid, const char *sql)
+{
+  int err;
+
+  /* RR isolation routes compilation through the RR transaction lock (pt_class_pre_fetch); harness opt-in */
+  if (const char *iso_env = std::getenv ("CUBRID_M0_TRACER_ISOLATION"))
+    {
+      if (strcmp (iso_env, "RR") == 0)
+	{
+	  if (db_set_isolation (TRAN_REPEATABLE_READ) != NO_ERROR)
+	    {
+	      tracer_log ("M0_TRACER: S%d FAIL db_set_isolation msg=[%s]", sid, er_msg () ? er_msg () : "");
+	      return false;
+	    }
+	  tracer_log ("M0_TRACER: S%d isolation set to REPEATABLE READ", sid);
+	}
+      else if (*iso_env != '\0')
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL unknown CUBRID_M0_TRACER_ISOLATION=[%s]", sid, iso_env);
+	  return false;
+	}
+    }
+
+  DB_SESSION *session = db_open_buffer (sql);
+  if (session == NULL)
+    {
+      tracer_log ("M0_TRACER: S%d FAIL db_open_buffer msg=[%s]", sid, er_msg () ? er_msg () : "");
+      return false;
+    }
+
+  int stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      tracer_log ("M0_TRACER: S%d FAIL db_compile_statement err=%d msg=[%s]", sid, stmt_id,
+		  er_msg () ? er_msg () : "");
+      db_close_session (session);
+      return false;
+    }
+  tracer_log ("M0_TRACER: S%d compiled in server address space, stmt_id=%d", sid, stmt_id);
+
+  /* CUBRID_M0_TRACER_BIND (comma-separated ints): exercises the native DB_VALUE hand-off into the executor */
+  const char *bind_env = std::getenv ("CUBRID_M0_TRACER_BIND");
+  if (bind_env != NULL && *bind_env != '\0')
+    {
+      DB_VALUE bind_vals[16];
+      int bind_cnt = 0;
+      const char *p = bind_env;
+      char *endp = NULL;
+      while (bind_cnt < 16)
+	{
+	  long v = strtol (p, &endp, 10);
+	  if (endp == p)
+	    {
+	      break;
+	    }
+	  db_make_int (&bind_vals[bind_cnt++], (int) v);
+	  if (*endp != ',')
+	    {
+	      break;
+	    }
+	  p = endp + 1;
+	}
+      if (db_push_values (session, bind_cnt, bind_vals) != NO_ERROR)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL db_push_values msg=[%s]", sid, er_msg () ? er_msg () : "");
+	  db_close_session (session);
+	  return false;
+	}
+      tracer_log ("M0_TRACER: S%d bound %d host variable(s)", sid, bind_cnt);
+    }
+
+  DB_QUERY_RESULT *result = NULL;
+  err = db_execute_statement (session, stmt_id, &result);
+  if (err < 0)
+    {
+      tracer_log ("M0_TRACER: S%d FAIL db_execute_statement err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
+      db_close_session (session);
+      return false;
+    }
+  tracer_log ("M0_TRACER: S%d executed, row_count=%d", sid, err);
+
+  /* the gate contract is connect→prepare→execute→fetch→commit: every stage
+   * must fail loudly, or a fetch/commit regression sails through as SUCCESS */
+  if (result == NULL)
+    {
+      tracer_log ("M0_TRACER: S%d FAIL no result to fetch", sid);
+      db_close_session (session);
+      return false;
+    }
+  err = db_query_first_tuple (result);
+  if (err != DB_CURSOR_SUCCESS)
+    {
+      tracer_log ("M0_TRACER: S%d FAIL db_query_first_tuple err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
+      db_query_end (result);
+      db_close_session (session);
+      return false;
+    }
+  DB_VALUE value;
+  err = db_query_get_tuple_value (result, 0, &value);
+  if (err != NO_ERROR)
+    {
+      tracer_log ("M0_TRACER: S%d FAIL db_query_get_tuple_value err=%d msg=[%s]", sid, err,
+		  er_msg () ? er_msg () : "");
+      db_query_end (result);
+      db_close_session (session);
+      return false;
+    }
+  {
+    std::lock_guard<std::mutex> guard (tracer_Log_mutex);
+    fprintf (tracer_Fp, "M0_TRACER: S%d first value = ", sid);
+    db_fprint_value (tracer_Fp, &value);
+    fputc ('\n', tracer_Fp);
+    fflush (tracer_Fp);
+  }
+  db_value_clear (&value);
+  db_query_end (result);
+  db_close_session (session);
+
+  err = db_commit_transaction ();
+  if (err != NO_ERROR)
+    {
+      tracer_log ("M0_TRACER: S%d FAIL db_commit_transaction err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
+      return false;
+    }
+
+  /* end the server session explicitly: session_state_uninit then retires
+   * this thread's own client context (A5) — the orphan hand-back runs the
+   * per-session teardown (sm/Qres/workspace) at bracket exit below */
+  err = db_end_session ();
+  if (err != NO_ERROR)
+    {
+      tracer_log ("M0_TRACER: S%d FAIL db_end_session err=%d msg=[%s]", sid, err, er_msg () ? er_msg () : "");
+      return false;
+    }
+  return true;
+}
+
+/* run one in-process client session as DBA over the standard SQL case */
+static bool
+tracer_session (int sid, const char *server_name, const char *sql)
+{
+  return in_process_session (sid, server_name, "DBA", "", 0,
+			     [sql] (int s)
+  {
+    return tracer_sql_case (s, sql);
+  });
+}
+
+/* Run one statement in the current session.  expect_err == 0: must succeed
+ * (when first_int is non-null the first column of the first row is fetched
+ * into it); expect_err < 0: the statement must be rejected — at compile or at
+ * execute — with er_errid () == expect_err (and, when expect_msg is given,
+ * with that substring in er_msg (), since compile-time rejections all arrive
+ * as the generic ER_PT_SEMANTIC wrapping the original message). */
+static bool
+scenario_exec (int sid, const char *sql, int *first_int, int expect_err, const char *expect_msg = NULL)
+{
+  DB_SESSION *session = db_open_buffer (sql);
+  if (session == NULL)
+    {
+      tracer_log ("M0_TRACER: S%d FAIL [%s] db_open_buffer msg=[%s]", sid, sql, er_msg () ? er_msg () : "");
+      return false;
+    }
+
+  bool ok = false;
+  int stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      if (expect_err != 0 && er_errid () == expect_err
+	  && (expect_msg == NULL || (er_msg () != NULL && strstr (er_msg (), expect_msg) != NULL)))
+	{
+	  tracer_log ("M0_TRACER: S%d [%s] rejected at compile with %d as expected", sid, sql, expect_err);
+	  ok = true;
+	}
+      else
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL [%s] compile err=%d msg=[%s]", sid, sql, er_errid (),
+		      er_msg () ? er_msg () : "");
+	}
+      db_close_session (session);
+      return ok;
+    }
+
+  DB_QUERY_RESULT *result = NULL;
+  int err = db_execute_statement (session, stmt_id, &result);
+  if (err < 0)
+    {
+      if (expect_err != 0 && er_errid () == expect_err
+	  && (expect_msg == NULL || (er_msg () != NULL && strstr (er_msg (), expect_msg) != NULL)))
+	{
+	  tracer_log ("M0_TRACER: S%d [%s] rejected at execute with %d as expected", sid, sql, expect_err);
+	  ok = true;
+	}
+      else
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL [%s] execute err=%d msg=[%s]", sid, sql, er_errid (),
+		      er_msg () ? er_msg () : "");
+	}
+      db_close_session (session);
+      return ok;
+    }
+  if (expect_err != 0)
+    {
+      tracer_log ("M0_TRACER: S%d FAIL [%s] succeeded but error %d was expected", sid, sql, expect_err);
+      if (result != NULL)
+	{
+	  db_query_end (result);
+	}
+      db_close_session (session);
+      return false;
+    }
+
+  ok = true;
+  if (first_int != NULL)
+    {
+      DB_VALUE value;
+      ok = false;
+      if (result == NULL)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL [%s] no result to fetch", sid, sql);
+	}
+      else if (db_query_first_tuple (result) != DB_CURSOR_SUCCESS)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL [%s] first tuple msg=[%s]", sid, sql, er_msg () ? er_msg () : "");
+	}
+      else if (db_query_get_tuple_value (result, 0, &value) != NO_ERROR)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL [%s] tuple value msg=[%s]", sid, sql, er_msg () ? er_msg () : "");
+	}
+      else
+	{
+	  *first_int = db_get_int (&value);
+	  db_value_clear (&value);
+	  ok = true;
+	}
+    }
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+  db_close_session (session);
+  return ok;
+}
+
+/* best-effort statement for idempotent cleanup — failures are ignored */
+static void
+scenario_try (int sid, const char *sql)
+{
+  DB_SESSION *session = db_open_buffer (sql);
+  if (session == NULL)
+    {
+      return;
+    }
+  int stmt_id = db_compile_statement (session);
+  if (stmt_id >= 0)
+    {
+      DB_QUERY_RESULT *result = NULL;
+      if (db_execute_statement (session, stmt_id, &result) >= 0 && result != NULL)
+	{
+	  db_query_end (result);
+	}
+    }
+  db_close_session (session);
+  (void) sid;
+}
+
+/* A6 smoke scenario — DDL authorization is enforced server-side:
+ *   [1] a wrong password is rejected by the in-server login (#118 D3);
+ *   [2] a granted user compiles, keeps and executes a statement;
+ *   [3] DBA revokes while that session stays open — the revoke bumps the
+ *       class chn (#118 D2), so the kept plan is refused
+ *       (ER_QPROC_INVALID_XASLNODE) instead of executing under the revoked
+ *       grant, and a re-prepare from text is rejected by the compile-time
+ *       authorization check (#118 D1/D6). */
+static bool
+scenario_ddl_auth (const char *server_name)
+{
+  bool ok;
+
+  /* S0 (DBA): reset leftovers from a previous run, then schema + user + grant */
+  ok = in_process_session (0, server_name, "DBA", "", 0, [] (int sid)
+  {
+    scenario_try (sid, "DROP TABLE IF EXISTS a6_t1");
+    scenario_try (sid, "DROP USER a6_u1");
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL cleanup commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    if (!scenario_exec (sid, "CREATE TABLE a6_t1 (a INT)", NULL, 0)
+	|| !scenario_exec (sid, "INSERT INTO a6_t1 VALUES (42)", NULL, 0)
+	|| !scenario_exec (sid, "CREATE USER a6_u1 PASSWORD 'a6_p1'", NULL, 0)
+	|| !scenario_exec (sid, "GRANT SELECT ON a6_t1 TO a6_u1", NULL, 0))
+      {
+	return false;
+      }
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL setup commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    if (db_end_session () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL db_end_session msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    return true;
+  });
+  if (!ok)
+    {
+      return false;
+    }
+
+  /* S1: the in-server login must verify the password itself */
+  ok = in_process_session (1, server_name, "a6_u1", "wrong", ER_AU_INVALID_PASSWORD,
+			   [] (int)
+  {
+    return false;
+  });
+  if (!ok)
+    {
+      return false;
+    }
+
+  /* S2 (a6_u1) overlaps S3 (DBA): the kept statement lives across the revoke */
+  std::promise<void> prepared_pr, revoked_pr;
+  std::future<void> prepared = prepared_pr.get_future ();
+  std::future<void> revoked = revoked_pr.get_future ();
+  std::atomic<bool> prepared_signaled (false);
+  auto signal_prepared = [&] ()
+  {
+    if (!prepared_signaled.exchange (true))
+      {
+	prepared_pr.set_value ();
+      }
+  };
+
+  bool u1_ok = false;
+  std::thread u1_thread ([&] ()
+  {
+    u1_ok = in_process_session (2, server_name, "a6_u1", "a6_p1", 0, [&] (int sid)
+    {
+      DB_SESSION *session = db_open_buffer ("SELECT a FROM dba.a6_t1");
+      if (session == NULL)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL db_open_buffer msg=[%s]", sid, er_msg () ? er_msg () : "");
+	  return false;
+	}
+      bool step_ok = false;
+      int stmt_id = db_compile_statement (session);
+      if (stmt_id < 0)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL compile under grant err=%d msg=[%s]", sid, stmt_id,
+		      er_msg () ? er_msg () : "");
+	}
+      else
+	{
+	  DB_QUERY_RESULT *result = NULL;
+	  int err = db_execute_and_keep_statement (session, stmt_id, &result);
+	  if (err < 0 || result == NULL)
+	    {
+	      tracer_log ("M0_TRACER: S%d FAIL execute under grant err=%d msg=[%s]", sid, err,
+			  er_msg () ? er_msg () : "");
+	    }
+	  else
+	    {
+	      DB_VALUE value;
+	      if (db_query_first_tuple (result) == DB_CURSOR_SUCCESS
+		  && db_query_get_tuple_value (result, 0, &value) == NO_ERROR)
+		{
+		  if (db_get_int (&value) == 42)
+		    {
+		      tracer_log ("M0_TRACER: S%d executed under grant, kept statement", sid);
+		      step_ok = true;
+		    }
+		  else
+		    {
+		      tracer_log ("M0_TRACER: S%d FAIL wrong value under grant", sid);
+		    }
+		  db_value_clear (&value);
+		}
+	      else
+		{
+		  tracer_log ("M0_TRACER: S%d FAIL fetch under grant msg=[%s]", sid, er_msg () ? er_msg () : "");
+		}
+	      db_query_end (result);
+	    }
+	  /* tran boundary before the revoke — the per-tran auth cache reset
+	   * (#118 D6) is what lets the next compile see the revoke */
+	  if (step_ok && db_commit_transaction () != NO_ERROR)
+	    {
+	      tracer_log ("M0_TRACER: S%d FAIL commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	      step_ok = false;
+	    }
+	}
+
+      signal_prepared ();
+      if (!step_ok)
+	{
+	  db_close_session (session);
+	  return false;
+	}
+      revoked.wait ();
+
+      /* the kept plan must be refused: without the revoke-side chn bump it
+       * would still execute under the revoked grant and return the row */
+      step_ok = false;
+      DB_QUERY_RESULT *result = NULL;
+      int err = db_execute_and_keep_statement (session, stmt_id, &result);
+      if (err >= 0)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL kept statement still executes after REVOKE", sid);
+	  if (result != NULL)
+	    {
+	      db_query_end (result);
+	    }
+	}
+      else if (er_errid () != ER_QPROC_INVALID_XASLNODE)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL kept statement err=%d (expected %d) msg=[%s]", sid, er_errid (),
+		      ER_QPROC_INVALID_XASLNODE, er_msg () ? er_msg () : "");
+	}
+      else
+	{
+	  tracer_log ("M0_TRACER: S%d kept statement invalidated by REVOKE as expected", sid);
+	  step_ok = true;
+	}
+      db_close_session (session);
+      if (!step_ok)
+	{
+	  return false;
+	}
+
+      /* a re-prepare from text — what a driver does on the error above —
+       * must hit the compile-time authorization check.  The parser wraps
+       * the ER_AU_SELECT_FAILURE raised during name resolution into the
+       * generic semantic error, so match the code plus the au message */
+      if (!scenario_exec (sid, "SELECT a FROM dba.a6_t1", NULL, ER_PT_SEMANTIC, "not authorized"))
+	{
+	  return false;
+	}
+      if (db_abort_transaction () != NO_ERROR)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL db_abort_transaction msg=[%s]", sid, er_msg () ? er_msg () : "");
+	  return false;
+	}
+      if (db_end_session () != NO_ERROR)
+	{
+	  tracer_log ("M0_TRACER: S%d FAIL db_end_session msg=[%s]", sid, er_msg () ? er_msg () : "");
+	  return false;
+	}
+      return true;
+    });
+    /* the session may have failed before the handshake — unblock the main thread */
+    signal_prepared ();
+  });
+
+  prepared.wait ();
+  bool dba_ok = in_process_session (3, server_name, "DBA", "", 0, [] (int sid)
+  {
+    if (!scenario_exec (sid, "REVOKE SELECT ON a6_t1 FROM a6_u1", NULL, 0))
+      {
+	return false;
+      }
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL revoke commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    tracer_log ("M0_TRACER: S%d revoked and committed", sid);
+    if (db_end_session () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL db_end_session msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    return true;
+  });
+  revoked_pr.set_value ();
+  u1_thread.join ();
+
+  /* S4 (DBA): drop the scenario objects */
+  bool cleanup_ok = in_process_session (4, server_name, "DBA", "", 0, [] (int sid)
+  {
+    scenario_try (sid, "DROP TABLE a6_t1");
+    scenario_try (sid, "DROP USER a6_u1");
+    (void) db_commit_transaction ();
+    (void) db_end_session ();
+    return true;
+  });
+
+  return dba_ok && u1_ok && cleanup_ok;
+}
+
 static void
 tracer_main (char *server_name, char *sql, char *out_path)
 {
@@ -372,56 +771,82 @@ tracer_main (char *server_name, char *sql, char *out_path)
       tracer_Fp = stderr;
     }
 
-  int sessions = 1;
-  if (const char *sess_env = std::getenv ("CUBRID_M0_TRACER_SESSIONS"))
+  const char *scenario = std::getenv ("CUBRID_M0_TRACER_SCENARIO");
+  if (scenario != NULL && *scenario != '\0')
     {
-      sessions = atoi (sess_env);
-      if (sessions < 1 || sessions > 64)
+      tracer_log ("M0_TRACER: start db=%s scenario=[%s]", server_name, scenario);
+      bool ok = false;
+      if (strcmp (scenario, "ddl_auth") == 0)
 	{
-	  sessions = 1;
+	  ok = scenario_ddl_auth (server_name);
 	}
-    }
-
-  tracer_log ("M0_TRACER: start db=%s sessions=%d sql=[%s]", server_name, sessions, sql);
-
-  std::atomic<int> ok_count (0);
-  std::vector<std::thread> threads;
-  bool spawn_failed = false;
-  for (int sid = 0; sid < sessions; sid++)
-    {
-      try
+      else
 	{
-	  threads.emplace_back ([sid, server_name, sql, &ok_count] ()
-	  {
-	    if (tracer_session (sid, server_name, sql))
-	      {
-		ok_count.fetch_add (1);
-	      }
-	  });
+	  tracer_log ("M0_TRACER: FAIL unknown scenario [%s]", scenario);
 	}
-      catch (const std::system_error &)
+      if (ok)
 	{
-	  tracer_log ("M0_TRACER: FAIL thread creation for S%d", sid);
-	  spawn_failed = true;
-	  break;
+	  tracer_log ("M0_TRACER: SUCCESS");
 	}
-    }
-  for (auto &th : threads)
-    {
-      th.join ();
-    }
-
-  // SUCCESS cues the harness to stop the server, so it must be the very last
-  // act — logging it before the sessions' teardown re-opens the shutdown race
-  // that teardown closes
-  if (!spawn_failed && ok_count.load () == sessions)
-    {
-      tracer_log ("M0_TRACER: SUCCESS");
+      else
+	{
+	  tracer_log ("M0_TRACER: FAIL scenario %s", scenario);
+	}
     }
   else
     {
-      tracer_log ("M0_TRACER: FAIL %d/%d sessions succeeded", ok_count.load (), sessions);
+      int sessions = 1;
+      if (const char *sess_env = std::getenv ("CUBRID_M0_TRACER_SESSIONS"))
+	{
+	  sessions = atoi (sess_env);
+	  if (sessions < 1 || sessions > 64)
+	    {
+	      sessions = 1;
+	    }
+	}
+
+      tracer_log ("M0_TRACER: start db=%s sessions=%d sql=[%s]", server_name, sessions, sql);
+
+      std::atomic<int> ok_count (0);
+      std::vector<std::thread> threads;
+      bool spawn_failed = false;
+      for (int sid = 0; sid < sessions; sid++)
+	{
+	  try
+	    {
+	      threads.emplace_back ([sid, server_name, sql, &ok_count] ()
+	      {
+		if (tracer_session (sid, server_name, sql))
+		  {
+		    ok_count.fetch_add (1);
+		  }
+	      });
+	    }
+	  catch (const std::system_error &)
+	    {
+	      tracer_log ("M0_TRACER: FAIL thread creation for S%d", sid);
+	      spawn_failed = true;
+	      break;
+	    }
+	}
+      for (auto &th : threads)
+	{
+	  th.join ();
+	}
+
+      // SUCCESS cues the harness to stop the server, so it must be the very
+      // last act — logging it before the sessions' teardown re-opens the
+      // shutdown race that teardown closes
+      if (!spawn_failed && ok_count.load () == sessions)
+	{
+	  tracer_log ("M0_TRACER: SUCCESS");
+	}
+      else
+	{
+	  tracer_log ("M0_TRACER: FAIL %d/%d sessions succeeded", ok_count.load (), sessions);
+	}
     }
+
   if (tracer_Fp != stderr)
     {
       fclose (tracer_Fp);

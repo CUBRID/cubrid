@@ -698,6 +698,20 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user)
 		       * This may not be necessary.
 		       */
 		      sm_bump_local_schema_version ();
+
+#if defined (SERVER_MODE)
+		      /* the bump above only invalidates this session's parse
+		       * trees; other sessions' prepared statements against
+		       * this class would still execute on plans compiled
+		       * under the revoked grant.  Touch the class so the
+		       * schema-change machinery (chn bump + XASL cache
+		       * invalidation) forces them through a recompile, which
+		       * re-runs the compile-time authorization check. */
+		      if (error == NO_ERROR)
+			{
+			  error = sm_touch_class (class_mop);
+			}
+#endif /* SERVER_MODE */
 		    }
 		  free_grant_list (grant_list);
 		}
