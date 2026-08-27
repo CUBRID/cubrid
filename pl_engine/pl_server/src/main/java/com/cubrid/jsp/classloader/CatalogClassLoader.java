@@ -67,9 +67,9 @@ public class CatalogClassLoader extends ClassLoader {
 
     @Override
     public Class<?> loadClass(String name) throws ClassNotFoundException {
-        if (name.startsWith(mainClassName + "$")) {
-            // shortcut for the nested classes of the main class
-            // do not let them reach the relaying parent
+        if (codeSet.codeMap.containsKey(name)) {
+            // shortcut for the nested classes of the main class.
+            // Do not let them reach the relaying parent.
             return findClass(name);
         } else {
             return super.loadClass(name);

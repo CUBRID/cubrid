@@ -48,10 +48,7 @@ public abstract class Unit extends AstNode {
     public abstract String getClassName();
 
     // Injective, length-prefixed encoding of (owner, name) into a Java class name:
-    //   <kind>_<ownerLen>_<owner><name>
-    // The result is always matched as a whole string (never parsed back into owner/name),
-    // so distinct (owner, name) pairs are guaranteed to yield distinct class names even when
-    // owner or name contain underscores.
+    //   <kind>_<ownerLen>_<owner>_<name>
     protected static String encodeClassName(String kind, String owner, String name) {
         return String.format("%s_%d_%s_%s", kind, owner.length(), owner, name);
     }

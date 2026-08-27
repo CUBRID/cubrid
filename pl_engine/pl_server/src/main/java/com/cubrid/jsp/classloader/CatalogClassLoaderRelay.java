@@ -104,7 +104,7 @@ public class CatalogClassLoaderRelay extends ClassLoader {
 
         CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
         if (classLoader == null) {
-            CompiledCodeSet codeSet = ClassAccess.getObjectCodeOf(mainClassName);
+            CompiledCodeSet codeSet = ClassAccess.getObjectCodeOf(mainClassName, false);
             if (codeSet == null) {
                 // was it dropped?
                 throw new ClassNotFoundException(className);

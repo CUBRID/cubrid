@@ -30,9 +30,7 @@
  */
 package com.cubrid.jsp.code;
 
-import com.cubrid.jsp.Server;
 import com.cubrid.jsp.context.Context;
-import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -41,7 +39,6 @@ import com.cubrid.jsp.protocol.RequestCode;
 import com.cubrid.jsp.value.Value;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.sql.Connection;
 import java.util.Base64;
 
 public class ClassAccess {
@@ -49,78 +46,75 @@ public class ClassAccess {
     // get object code of the SP being invoked
     public static CompiledCodeSet getObjectCodeOfCurrentInvoke() {
 
-        CompiledCodeSet code = null;
-
         try {
             byte[] jarCode = getObjectCodeBytes();
             if (jarCode != null) {
-                code = CompiledCodeSet.loadFromJar(jarCode);
+                return CompiledCodeSet.loadFromJar(jarCode);
                 // mainClassName, and compileId will be set later
-            }
-        } catch (Exception e) {
-            Server.log(e);
-        }
-
-        return code;
-    }
-
-    public static CompiledCodeSet getObjectCodeOf(String mainClassName) {
-
-        // get the object code of given class name from ocode of _db_stored_procedure_code or
-        // _db_package_code
-        // or return null if absent for that name
-
-        CompiledCodeSet code = null;
-
-        try {
-            String[] compileIdRef = new String[1];
-            byte[] jarCode =
-                    getObjectCodeBytesWithNameAndId(mainClassName, null, compileIdRef);
-            if (jarCode == null) {
-                return null;
             } else {
-                assert jarCode.length > 0;
-                code = CompiledCodeSet.loadFromJar(jarCode);
-                code.setMainClassName(mainClassName);
-                code.setCompileId(compileIdRef[0]);
+                return null;
             }
         } catch (Exception e) {
-            Server.log(e);
+            throw new RuntimeException(e);
         }
-
-        return code;
     }
 
-    public static CompiledCodeSet getObjectCodeNewerThan(CompiledCodeSet codeSet) {
+    // duringCompile distinguishes the request framing: while compiling, the request is handled by
+    // the compile handler; at run time it is handled by the executor's callback loop.
+    public static CompiledCodeSet getObjectCodeOf(String mainClassName, boolean duringCompile) {
 
-        // get the object code of given class name from ocode of _db_stored_procedure_code or
-        // _db_package_code.
-        // if no record exist with the name of codeSet, then return null.
-        // if the current compileId of the code in the table is the same as that of codeSet, just
-        // return codeSet.
-        // otherwise, return a new CompiledCodeSet.
-
-        CompiledCodeSet code = null;
+        // get the object code of given class name from the ocode column of
+        // _db_stored_procedure_code or
+        // _db_package_code, or return null if no item is found for that class name.
 
         try {
             String[] compileIdRef = new String[1];
             byte[] jarCode =
                     getObjectCodeBytesWithNameAndId(
-                            codeSet.mainClassName, codeSet.compileId, compileIdRef);
+                            mainClassName, null, compileIdRef, duringCompile);
+            if (jarCode == null) {
+                return null;
+            } else {
+                assert jarCode.length > 0;
+
+                CompiledCodeSet code = CompiledCodeSet.loadFromJar(jarCode);
+                code.setMainClassName(mainClassName);
+                code.setCompileId(compileIdRef[0]);
+                return code;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static CompiledCodeSet getObjectCodeNewerThan(CompiledCodeSet codeSet) {
+
+        // get the object code of given class name from the ocode column of
+        // _db_stored_procedure_code or
+        // _db_package_code.
+        // if no record exist with the codeSet's main class name, then return null.
+        // if the current compileId of the code in the table is the same as that of codeSet, just
+        // return the given codeSet.
+        // otherwise, return a new CompiledCodeSet.
+
+        try {
+            String[] compileIdRef = new String[1];
+            byte[] jarCode =
+                    getObjectCodeBytesWithNameAndId(
+                            codeSet.mainClassName, codeSet.compileId, compileIdRef, false);
             if (jarCode == null) {
                 return null;
             } else if (jarCode.length == 0) {
                 return codeSet;
             } else {
-                code = CompiledCodeSet.loadFromJar(jarCode);
+                CompiledCodeSet code = CompiledCodeSet.loadFromJar(jarCode);
                 code.setMainClassName(codeSet.mainClassName);
                 code.setCompileId(compileIdRef[0]);
+                return code;
             }
         } catch (Exception e) {
-            Server.log(e);
+            throw new RuntimeException(e);
         }
-
-        return code;
     }
 
     // ======================
@@ -135,54 +129,59 @@ public class ClassAccess {
     private static final int STATUS_CHANGED = 2;
 
     private static byte[] getObjectCodeBytesWithNameAndId(
-            String mainClassName, String compileId, String[] compileIdRef) {
+            String mainClassName, String compileId, String[] compileIdRef, boolean duringCompile)
+            throws IOException {
         // Ask the server (via a dedicated protocol) for the ocode of the SP/package whose generated
         // class name is mainClassName. The server reads the catalog with authorization disabled, so
         // this works even when the referenced unit is owned by another user.
         // The result of this method can be one of the following three:
         //   - null        : no such SP/package (e.g. dropped)
-        //   - EMPTY_BYTES : compileId is given and equals the stored compile_id (caller is
+        //   - EMPTY_BYTES : compileId is given and equals the stored compile_id (i.e. caller is
         // up-to-date)
         //   - otherwise   : compileIdRef[0] is set to the stored compile_id and the ocode bytes are
         //                    returned (the ocode column is a base64-encoded jar)
-        try {
-            CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+        CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+        if (duringCompile) {
+            // the compile handler dispatches on the explicit outer request code, so the payload
+            // carries only the arguments
+            packer.packString(mainClassName);
+            packer.packString(compileId == null ? "" : compileId);
+            Context.getCurrentExecuteThread()
+                    .sendCommand(RequestCode.REQUEST_CODE_BY_NAME, packer.getBuffer());
+        } else {
+            // the executor's callback loop reads the request code from the payload
             packer.packInt(RequestCode.REQUEST_CODE_BY_NAME);
             packer.packString(mainClassName);
             packer.packString(compileId == null ? "" : compileId);
             Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
+        }
 
-            ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
-            CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+        ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+        CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
 
-            Header header = new Header(unpacker);
-            ByteBuffer payload = unpacker.unpackBuffer();
-            unpacker.setBuffer(payload);
+        Header header = new Header(unpacker);
+        ByteBuffer payload = unpacker.unpackBuffer();
+        unpacker.setBuffer(payload);
 
-            int error = unpacker.unpackInt();
-            if (error != 0) {
-                return null;
-            }
-
-            int status = unpacker.unpackInt();
-            if (status == STATUS_NOT_FOUND) {
-                return null;
-            } else if (status == STATUS_UNCHANGED) {
-                return EMPTY_BYTES;
-            } else {
-                String newCompileId = unpacker.unpackCString();
-                String base64Str = unpacker.unpackCString();
-                compileIdRef[0] = newCompileId;
-                return Base64.getDecoder().decode(base64Str);
-            }
-        } catch (Exception e) {
-            Server.log(e);
+        int error = unpacker.unpackInt();
+        if (error != 0) {
             return null;
+        }
+
+        int status = unpacker.unpackInt();
+        if (status == STATUS_NOT_FOUND) {
+            return null;
+        } else if (status == STATUS_UNCHANGED) {
+            return EMPTY_BYTES;
+        } else {
+            String newCompileId = unpacker.unpackCString();
+            String base64Str = unpacker.unpackCString();
+            compileIdRef[0] = newCompileId;
+            return Base64.getDecoder().decode(base64Str);
         }
     }
 
-    private static byte[] getObjectCodeBytes()
-            throws IOException, TypeMismatchException {
+    private static byte[] getObjectCodeBytes() throws IOException, TypeMismatchException {
         byte[] jar = null;
 
         sendGetCodeAttr("ocode");

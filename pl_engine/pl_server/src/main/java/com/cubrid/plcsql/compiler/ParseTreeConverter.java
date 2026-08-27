@@ -109,6 +109,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         // visit package spec items
         topLevelStmt = CREATE_PKG_SPEC;
         pkgSpecItems = visitSeq_of_declare_specs(specContext.seq_of_declare_specs());
+        for (Decl d : pkgSpecItems.nodes) {
+            d.setPkgItem();
+            d.setPkgPublic();
+        }
 
         String comment = null;
         if (specContext.CHAR_STRING() != null) {
@@ -122,7 +126,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             Create_package_bodyContext bodyContext =
                     ((Sql_scriptContext) bodyTree).create_package_body();
             assert bodyContext != null;
-            // one of declarations and body can be null, but not both.
+            // one of declarations and body can be null, but not both by syntax.
             assert bodyContext.seq_of_declare_specs() != null || bodyContext.body() != null;
 
             // check name and label
@@ -136,6 +140,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             topLevelStmt = CREATE_PKG_BODY;
             if (bodyContext.seq_of_declare_specs() != null) {
                 pkgBodyItems = visitSeq_of_declare_specs(bodyContext.seq_of_declare_specs());
+                for (Decl d : pkgBodyItems.nodes) {
+                    d.setPkgItem();
+                }
             }
 
             if (bodyContext.body() != null) {
@@ -230,6 +237,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 gpc.decl = new DeclProc(null, ps.name, null, null, paramList, ps.directive);
 
+                gpc.targetClass = ps.targetClass;
                 if (ps.targetClass != null && !ps.targetClass.isEmpty()) {
                     referencedClasses.add(ps.targetClass);
                 }
@@ -293,6 +301,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 fs.directive,
                                 TypeSpec.getBogus(iStore, retType));
 
+                gfc.targetClass = fs.targetClass;
                 if (fs.targetClass != null && !fs.targetClass.isEmpty()) {
                     referencedClasses.add(fs.targetClass);
                 }

@@ -128,7 +128,7 @@ public class MemoryJavaCompiler {
             if (cls == null || cls.isEmpty() || cls.equals(selfClassName)) {
                 continue;
             }
-            CompiledCodeSet set = ClassAccess.getObjectCodeOf(cls);
+            CompiledCodeSet set = ClassAccess.getObjectCodeOf(cls, true);
             if (set == null || set.codeMap == null) {
                 continue;
             }
