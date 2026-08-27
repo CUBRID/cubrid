@@ -2086,7 +2086,8 @@ lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *d
 	{
 	  COPY_OID (&real_class_oid, name_oid);
 	}
-      if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
+      /* the message names the class the way the user wrote it; nothing is fixed here */
+      if (heap_get_class_qualified_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
 	{
 	  /* ignore: the object phrase names it by OID instead */
 	  er_clear ();

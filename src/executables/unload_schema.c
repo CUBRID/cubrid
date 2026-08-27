@@ -4598,8 +4598,8 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 
       // sp_name
       const char *sp_name = db_get_string (&sp_name_val);
-      /* the row names the owner in its own column */
-      snprintf (owner_name, DB_MAX_USER_LENGTH, "%s", db_get_string (&owner_name_val));
+      /* the row names the owner in its own column, in upper case */
+      sm_downcase_name (db_get_string (&owner_name_val), owner_name, DB_MAX_USER_LENGTH);
       PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			sizeof (output_owner));
 
