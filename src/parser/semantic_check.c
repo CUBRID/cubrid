@@ -4814,7 +4814,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   /* look up the class */
   name = alter->info.alter.entity_name;
-  cls_nam = name->info.name.original;
+  cls_nam = pt_name_qualified (parser, name);
 
   if (alter->info.alter.code == PT_CHANGE_ATTR || alter->info.alter.code == PT_ADD_INDEX_CLAUSE)
     {
@@ -8534,9 +8534,10 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   /* We cannot use an existing synonym name as a class name. */
-  if (db_find_synonym (name->info.name.original) != NULL)
+  if (db_find_synonym (pt_name_qualified (parser, name)) != NULL)
     {
-      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, name->info.name.original);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS,
+		  pt_name_qualified (parser, name));
       return;
     }
   else
@@ -8855,9 +8856,10 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
   name = node->info.index.indexed_class->info.spec.entity_name;
 
   /* We cannot create index of a class by using synonym names. */
-  if (db_find_synonym (name->info.name.original) != NULL)
+  if (db_find_synonym (pt_name_qualified (parser, name)) != NULL)
     {
-      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A_CLASS, name->info.name.original);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A_CLASS,
+		  pt_name_qualified (parser, name));
       return;
     }
   else
@@ -9893,7 +9895,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
       for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
 	{
 	  if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	      && (entity_name = name->info.name.original) != NULL)
+	      && (entity_name = pt_name_qualified (parser, name)) != NULL)
 	    {
 	      /* We cannot change the schema of a class by using synonym names. */
 	      if (db_find_synonym (entity_name) != NULL)
@@ -10217,7 +10219,7 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
       const char *cls_nam;
 
       if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	  && (cls_nam = name->info.name.original) != NULL)
+	  && (cls_nam = pt_name_qualified (parser, name)) != NULL)
 	{
 	  /* We cannot change the schema of a class by using synonym names. */
 	  if (db_find_synonym (cls_nam) != NULL)
@@ -10415,7 +10417,7 @@ pt_check_update_stats (PARSER_CONTEXT * parser, PT_NODE * node)
       assert (class_name_node->node_type == PT_NAME);
       assert (class_name_node->info.name.original != NULL);
 
-      const char *class_name = class_name_node->info.name.original;
+      const char *class_name = pt_name_qualified (parser, class_name_node);
 
       /* The use of synonyms is not allowed in the update statistics statement. */
       if (db_find_synonym (class_name) != NULL)
