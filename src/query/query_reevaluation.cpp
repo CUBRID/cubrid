@@ -144,6 +144,7 @@ namespace cubquery
     , vd (NULL)
     , new_recdes (NULL)
     , skip_unevaluated_version (false)
+    , transient_row_lock (false)
   {
   }
 

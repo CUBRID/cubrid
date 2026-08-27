@@ -100,6 +100,8 @@ namespace cubquery
     recdes *new_recdes;		/* record descriptor after assignment reevaluation */
     bool skip_unevaluated_version;	/* skip a last version the predicate was never evaluated
 					 * against, instead of modifying it */
+    bool transient_row_lock;	/* the statement runs the transient row lock protocol: the row lock spans the
+				 * publish only, so the executor releases it as soon as the change is published */
 
     mvcc_update_reev_data ();
   };

@@ -7469,11 +7469,12 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   RECDES new_recdes;
   SCAN_CODE scan = S_SUCCESS;	/* Scan return value for next operation */
   RECDES copy_recdes;
+  RECDES reev_recdes = RECDES_INITIALIZER;	/* image the reevaluation rebuilt against the latest version */
   RECDES *old_recdes = NULL;
+  MVCC_UPDDEL_REEV_DATA *upddel_reev_data = NULL;
   int error_code = NO_ERROR;
   HFID class_hfid;
   OID class_oid;
-  MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
 
   /*
    * While scanning objects, the given scancache does not fix the last
@@ -7512,21 +7513,31 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	}
       else
 	{
-	  /* The oid has been already locked in select phase, however need to get the last object that may differ by
-	   * the current one in case that transaction updates same OID many times during command execution */
-	  /* TODO: investigate if this is still true */
-	  if (scan_cache && scan_cache->mvcc_snapshot != NULL)
+	  /* The select phase took no row lock, so the version this fetch returns may be newer than the one the
+	   * assignments were computed against.  Fetch through the reevaluation: it re-checks the predicate
+	   * against that version and rebuilds the image from it into reev_recdes.  Develop cleared the snapshot
+	   * here instead, on the grounds that the row was already locked at select -- with no such lock there is
+	   * nothing to justify reading past the snapshot unevaluated. */
+	  if (mvcc_reev_data != NULL && mvcc_reev_data->type == REEV_DATA_UPDDEL
+	      && mvcc_reev_data->upddel_reev_data != NULL)
 	    {
-	      /* Why is snapshot set to NULL? */
-	      saved_mvcc_snapshot = scan_cache->mvcc_snapshot;
-	      scan_cache->mvcc_snapshot = NULL;
+	      upddel_reev_data = mvcc_reev_data->upddel_reev_data;
+	      upddel_reev_data->new_recdes = &reev_recdes;
 	    }
 
-	  scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
-					      NULL_CHN, LOG_ERROR_IF_DELETED);
-	  if (saved_mvcc_snapshot != NULL)
+	  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache,
+							      COPY, NULL_CHN, mvcc_reev_data, LOG_ERROR_IF_DELETED);
+	  if (upddel_reev_data != NULL)
 	    {
-	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
+	      /* reev_recdes lives in this frame. The reevaluation data outlives it -- the same statement forces
+	       * the next row, and an UPDATE that also deletes forces its delete arm through the same struct --
+	       * so the pointer must not be left behind. */
+	      upddel_reev_data->new_recdes = NULL;
+	    }
+	  if (scan == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
+	    {
+	      /* the latest version no longer satisfies the statement's predicate: skip this row */
+	      return ER_MVCC_NOT_SATISFIED_REEVALUATION;
 	    }
 	}
 
@@ -7569,13 +7580,23 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
-      copyarea =
-	locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1,
-						 LOB_FLAG_INCLUDE_LOB);
-      if (copyarea == NULL)
+      if (reev_recdes.data != NULL)
 	{
-	  error_code = ER_FAILED;
-	  break;
+	  /* the reevaluation rebuilt the image against the latest version; it stands in for the one built
+	   * from the select-phase values.  Its copy area belongs to the reevaluation data and is freed with
+	   * it, not by the copyarea this function allocates. */
+	  new_recdes = reev_recdes;
+	}
+      else
+	{
+	  copyarea =
+	    locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1,
+						     LOB_FLAG_INCLUDE_LOB);
+	  if (copyarea == NULL)
+	    {
+	      error_code = ER_FAILED;
+	      break;
+	    }
 	}
 
       /* Assume that it has indices */
@@ -12950,14 +12971,19 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
  * is_mvcc_class (in)  : False when MVCC does not apply, and then no header is read.
  * recdes_header (out) : MVCC header of the version read.
  *
- * Note: settled means no delete is left undecided. A deleter holds no row lock and may still roll back,
- *	 so it is waited out and the version read again; our row lock bounds that to one wait.
+ * Note: settled means no write is left undecided. A writer that published under the transient row lock
+ *	 holds no row lock and may still roll back -- a deleter names itself in the DELID, an updater in
+ *	 the INSID of the version it wrote -- so it is waited out and the version read again. We hold the
+ *	 row lock, so no further writer can stamp behind us: that bounds this to one wait.
  */
 static SCAN_CODE
 locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_mvcc_class,
 				  MVCC_REC_HEADER * recdes_header)
 {
   SCAN_CODE scan = S_SUCCESS;
+#if defined (SERVER_MODE)
+  MVCCID owner_mvccid;
+#endif /* SERVER_MODE */
 
   while (true)
     {
@@ -12992,13 +13018,23 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 	}
 
 #if defined (SERVER_MODE)
+      owner_mvccid = MVCCID_NULL;
       if (MVCC_IS_HEADER_DELID_VALID (recdes_header)
 	  && logtb_is_active_other_mvccid (thread_p, MVCC_GET_DELID (recdes_header)))
 	{
-	  MVCCID deleter_mvccid = MVCC_GET_DELID (recdes_header);
+	  owner_mvccid = MVCC_GET_DELID (recdes_header);
+	}
+      else if (logtb_is_active_other_mvccid (thread_p, MVCC_GET_INSID (recdes_header)))
+	{
+	  /* an updater's new version: it names its writer in the INSID, the way a deleter names one in the
+	   * DELID.  MVCCID_ALL_VISIBLE and MVCCID_NULL are not active, so a settled row does not stop here. */
+	  owner_mvccid = MVCC_GET_INSID (recdes_header);
+	}
 
+      if (MVCCID_IS_VALID (owner_mvccid))
+	{
 	  heap_clean_get_context (thread_p, context);
-	  if (logtb_wait_for_tran_end (thread_p, deleter_mvccid) != NO_ERROR)
+	  if (logtb_wait_for_tran_end (thread_p, owner_mvccid) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
