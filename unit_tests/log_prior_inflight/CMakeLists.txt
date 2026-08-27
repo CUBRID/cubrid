@@ -16,47 +16,34 @@
 # 
 #
 
-set (TEST_LOCKFREE_SOURCES
+set (TEST_LOG_PRIOR_INFLIGHT_SOURCES
   test_main.cpp
-  test_cqueue_functional.cpp
-  test_freelist_functional.cpp
-  test_hashmap.cpp
+  test_inflight_ring.cpp
 )
-set (TEST_LOCKFREE_HEADERS
-  test_cqueue_functional.hpp
-  test_freelist_functional.hpp
-  test_hashmap.hpp
+set (TEST_LOG_PRIOR_INFLIGHT_HEADERS
+  test_inflight_ring.hpp
 )
 SET_SOURCE_FILES_PROPERTIES(
-  ${TEST_LOCKFREE_SOURCES}
+  ${TEST_LOG_PRIOR_INFLIGHT_SOURCES}
   PROPERTIES LANGUAGE CXX
 )
 
-add_executable(test_lockfree
-  ${TEST_LOCKFREE_SOURCES}
-  ${TEST_LOCKFREE_HEADERS}
+add_executable(test_log_prior_inflight
+  ${TEST_LOG_PRIOR_INFLIGHT_SOURCES}
+  ${TEST_LOG_PRIOR_INFLIGHT_HEADERS}
   )
 
-target_compile_definitions(test_lockfree PRIVATE
-  SERVER_MODE
+# log_prior_inflight_ring.hpp is a template over log_lsa.hpp and a forward-declared node, so this target
+# needs no engine library and no Catch2 - only the shared test output helpers.
+target_compile_definitions(test_log_prior_inflight PRIVATE
+  SA_MODE
   ${COMMON_DEFS}
   )
 
-target_include_directories(test_lockfree PRIVATE
+target_include_directories(test_log_prior_inflight PRIVATE
   ${TEST_INCLUDES}
   )
 
-target_link_libraries(test_lockfree LINK_PRIVATE
+target_link_libraries(test_log_prior_inflight LINK_PRIVATE
   test_common
   )
-if(UNIX)
-  target_link_libraries(test_lockfree LINK_PRIVATE
-    cubrid
-    )
-elseif(WIN32)
-  target_link_libraries(test_lockfree LINK_PRIVATE
-    cubrid-win-lib
-    )
-else()
-  message( SEND_ERROR "Lockfree unit testing is for unix/windows")
-endif ()

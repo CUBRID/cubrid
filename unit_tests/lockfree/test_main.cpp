@@ -19,7 +19,6 @@
 #include "test_cqueue_functional.hpp"
 #include "test_freelist_functional.hpp"
 #include "test_hashmap.hpp"
-#include "test_inflight_ring.hpp"
 
 #include <string>
 #include <vector>
@@ -33,8 +32,7 @@ main (int argc, char **argv)
     "all",
     "cqueue",
     "freelist",
-    "hashmap",
-    "inflight_ring"
+    "hashmap"
   };
   if (argc >= 2)
     {
@@ -90,10 +88,6 @@ main (int argc, char **argv)
 	{
 	  err = err | test_lockfree::test_hashmap_performance ();
 	}
-    }
-  if (opt == 0 || opt == 4)
-    {
-      err = err | test_lockfree::test_inflight_ring_functional ();
     }
 
   return err;
