@@ -77,28 +77,30 @@ namespace cubquery
     void init (scan_id_struct &sid);
   };
 
-  /* data for MVCC condition reevaluation. The defaults are the empty, condition-only state; the UPDATE
-   * path fills the assignment-side fields (prepare_mvcc_reev_data ()). vd must always be bound. */
+  /* data for MVCC condition reevaluation */
+  /* the constructor leaves the empty, condition-only state; the UPDATE path fills the assignment-side
+   * fields (prepare_mvcc_reev_data ()). vd must always be bound. */
   struct mvcc_update_reev_data
   {
-    upddel_mvcc_cond_reeval *mvcc_cond_reev_list = NULL;	/* list of classes that are referenced in condition */
+    upddel_mvcc_cond_reeval *mvcc_cond_reev_list;	/* list of classes that are referenced in condition */
 
     /* information for class that is currently updated/deleted */
-    upddel_mvcc_cond_reeval *curr_upddel = NULL;	/* pointer to the reevaluation data for class that is currently
-							 * updated/deleted or NULL if it is not involved in
-							 * reevaluation */
-    int curr_extra_assign_cnt = 0;	/* length of curr_extra_assign_reev array */
-    upddel_mvcc_cond_reeval **curr_extra_assign_reev = NULL;	/* classes involved in the right side of assignments
-								 * and are not part of conditions to be reevaluated */
-    update_mvcc_reev_assignment *curr_assigns = NULL;	/* list of assignments to the attributes of this class */
-    heap_cache_attrinfo *curr_attrinfo = NULL;	/* attribute info for performing assignments */
+    upddel_mvcc_cond_reeval *curr_upddel;	/* pointer to the reevaluation data for class that is currently updated/
+					   * deleted or NULL if it is not involved in reevaluation */
+    int curr_extra_assign_cnt;	/* length of curr_extra_assign_reev array */
+    upddel_mvcc_cond_reeval **curr_extra_assign_reev;	/* classes involved in the right side of assignments and are
+							   * not part of conditions to be reevaluated */
+    update_mvcc_reev_assignment *curr_assigns;	/* list of assignments to the attributes of this class */
+    heap_cache_attrinfo *curr_attrinfo;	/* attribute info for performing assignments */
 
-    cubxasl::pred_expr *cons_pred = NULL;
-    lc_copy_area *copyarea = NULL;	/* used to build the tuple to be stored to disk after reevaluation */
-    val_descr *vd = NULL;	/* values descriptor */
-    recdes *new_recdes = NULL;	/* record descriptor after assignment reevaluation */
-    bool skip_unevaluated_version = false;	/* skip a last version the predicate was never evaluated
-						 * against, instead of modifying it */
+    cubxasl::pred_expr *cons_pred;
+    lc_copy_area *copyarea;	/* used to build the tuple to be stored to disk after reevaluation */
+    val_descr *vd;		/* values descriptor */
+    recdes *new_recdes;		/* record descriptor after assignment reevaluation */
+    bool skip_unevaluated_version;	/* skip a last version the predicate was never evaluated
+					 * against, instead of modifying it */
+
+    mvcc_update_reev_data ();
   };
 
   /* Structure used in condition reevaluation at SELECT */
