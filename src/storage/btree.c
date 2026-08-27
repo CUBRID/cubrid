@@ -19769,7 +19769,9 @@ btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_
       if (!VACUUM_IS_THREAD_VACUUM (thread_p))
 	{
 	  save_old_wait = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
-	  if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR)
+	  /* the owner name comes from a second heap, read after this one is released; the zero wait
+	   * above covers it too, and a failed read leaves the bare name rather than nothing */
+	  if (heap_get_class_qualified_name (thread_p, class_oid, &class_name) != NO_ERROR)
 	    {
 	      /* ignore */
 	      er_clear ();
