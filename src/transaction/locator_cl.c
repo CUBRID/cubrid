@@ -6870,7 +6870,11 @@ end:
 
 //
 // class locator_repl
+#if defined (SERVER_MODE)
+thread_local class locator_repl __gv_locator_repl;
+#else
 CUB_THREAD_LOCAL class locator_repl __gv_locator_repl;
+#endif
 
 /*
  * locator_repl_mflush_force () - Force the mflush area

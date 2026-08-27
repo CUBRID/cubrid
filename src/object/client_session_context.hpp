@@ -87,11 +87,19 @@ class client_session_context
     /* object templates (object_template.h) */
     obt_context obt;
 
-    /* object_accessor.c: method invocation nesting */
+    /* object_accessor.c: method invocation nesting + last method error */
     int obj_method_call_level = 0;
+    char *obj_method_error_msg = nullptr;
 
     /* execute_schema.c: online-index thread count of the running DDL */
     int ib_thread_count = 0;
+
+    /* execute_statement.c: per-session savepoint-name counters */
+    int tr_savepoint_number = 0;
+    int update_savepoint_number = 0;
+    int delete_savepoint_number = 0;
+    int insert_savepoint_number = 0;
+    int merge_savepoint_number = 0;
 
     /* db_query.c: session trace of the last execution plan */
     char *db_execution_plan = nullptr;

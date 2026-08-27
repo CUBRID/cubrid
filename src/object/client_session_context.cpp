@@ -25,6 +25,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
 
 static thread_local client_session_context *tl_Csc_active = NULL;
@@ -48,7 +49,14 @@ void
 csc_activate (client_session_context *ctx)
 {
   assert (ctx != NULL);
-  assert (tl_Csc_active == NULL);
+  if (tl_Csc_active != NULL)
+    {
+      /* brackets do not nest; in a release build proceeding would turn the
+       * invariant violation into a silent self-deadlock on the non-recursive
+       * bracket_mutex — fail fast instead (a4 codex review) */
+      assert (false);
+      abort ();
+    }
   ctx->bracket_mutex.lock ();
   tl_Csc_active = ctx;
 }
@@ -152,6 +160,12 @@ csc_teardown (client_session_context *ctx)
   db_on_server = 0;
 
   db_free_execution_plan ();
+
+  if (ctx->obj_method_error_msg != NULL)
+    {
+      free (ctx->obj_method_error_msg);
+      ctx->obj_method_error_msg = NULL;
+    }
 
   if (ctx->label_table != NULL)
     {

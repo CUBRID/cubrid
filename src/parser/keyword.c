@@ -26,6 +26,10 @@
 
 #include <stdlib.h>
 #include <string.h>
+#if defined (SERVER_MODE)
+#include <atomic>
+#include <mutex>
+#endif
 
 
 #include "csql_grammar.h"
@@ -959,10 +963,36 @@ verify_test (bool is_keywords, KEYWORDS_TABLE_SRCH_INFO & info)
 static KEYWORD_RECORD *
 pt_find_keyword (const char *text)
 {
-  static bool keyword_sorted = false;
   static KEYWORDS_TABLE_SRCH_INFO kinfo;
   int i, len, cmp;
   KEYWORD_RECORD dummy;
+
+#if defined (SERVER_MODE)
+  /* concurrent first parses must not race the in-place table sort (a4 audit) */
+  // *INDENT-OFF*
+  static std::once_flag keyword_sort_once;
+  std::call_once (keyword_sort_once, [] ()
+  {
+    kinfo.min_len = MAX_KEYWORD_SIZE;
+    kinfo.max_len = 0;
+    kinfo.cnt = sizeof (keywords) / sizeof (keywords[0]);
+    memset (kinfo.start_pos, 0x00, sizeof (kinfo.start_pos));
+    kinfo.func_char_convert = char_toupper;
+
+    init_keyword_tables (keywords, kinfo, keyword_hash_comparator < KEYWORD_RECORD >);
+  });
+#ifndef NDEBUG
+  /* verify_test re-enters pt_find_keyword, so it must run after (never
+   * inside) the once block; the exchange keeps the recursion out */
+  static std::atomic<bool> keyword_verified (false);
+  if (!keyword_verified.exchange (true))
+    {
+      verify_test (true, kinfo);
+    }
+#endif
+  // *INDENT-ON*
+#else /* SERVER_MODE */
+  static bool keyword_sorted = false;
 
   if (keyword_sorted == false)
     {
@@ -980,6 +1010,7 @@ pt_find_keyword (const char *text)
       verify_test (true, kinfo);
 #endif
     }
+#endif /* !SERVER_MODE */
 
   return (KEYWORD_RECORD *) find_keyword_tables (keywords, dummy, kinfo, keyword_hash_comparator < KEYWORD_RECORD >,
 						 text);
@@ -1086,10 +1117,34 @@ pt_get_keyword_rec (int *rec_count)
 FUNCTION_MAP *
 pt_find_function_name (const char *text)
 {
-  static bool function_keyword_sorted = false;
   static KEYWORDS_TABLE_SRCH_INFO finfo;
   int i, len, cmp;
   FUNCTION_MAP dummy;
+
+#if defined (SERVER_MODE)
+  /* concurrent first parses must not race the in-place table sort (a4 audit) */
+  // *INDENT-OFF*
+  static std::once_flag function_sort_once;
+  std::call_once (function_sort_once, [] ()
+  {
+    finfo.min_len = MAX_KEYWORD_SIZE;
+    finfo.max_len = 0;
+    finfo.cnt = sizeof (functions) / sizeof (functions[0]);
+    memset (finfo.start_pos, 0x00, sizeof (finfo.start_pos));
+    finfo.func_char_convert = char_tolower;
+
+    init_keyword_tables (functions, finfo, keyword_hash_comparator < FUNCTION_MAP >);
+  });
+#ifndef NDEBUG
+  static std::atomic<bool> function_verified (false);
+  if (!function_verified.exchange (true))
+    {
+      verify_test (false, finfo);
+    }
+#endif
+  // *INDENT-ON*
+#else /* SERVER_MODE */
+  static bool function_keyword_sorted = false;
 
   if (function_keyword_sorted == false)
     {
@@ -1107,6 +1162,7 @@ pt_find_function_name (const char *text)
       verify_test (false, finfo);
 #endif
     }
+#endif /* !SERVER_MODE */
 
   char temp[DB_MAX_IDENTIFIER_LENGTH];
 

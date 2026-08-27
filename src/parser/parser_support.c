@@ -10144,7 +10144,13 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
   unsigned char pad[2];
 
   bool ti = true;
+#if defined (SERVER_MODE)
+  /* session-settable parameter: a first-caller cache would pin one session's
+   * value process-wide (a4 audit) */
+  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+#else
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+#endif
 
   if (dt == NULL || dt->node_type != PT_DATA_TYPE || dt->type_enum != PT_TYPE_ENUMERATION)
     {
