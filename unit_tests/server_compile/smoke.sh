@@ -25,6 +25,12 @@
 # Usage: smoke.sh <dbname> [sql...]
 #   Requires $CUBRID installed and <dbname> already created; starts and stops
 #   the server itself, so <dbname> must not be running.
+#
+# A case may carry trailing directives, stripped before the SQL reaches the
+# tracer:
+#   @BIND=v1,v2   comma-separated integers bound as host variables
+#                 (exported as CUBRID_M0_TRACER_BIND)
+#   @EXPECT=str   additionally require "first value = str" in the tracer output
 
 set -eu
 
@@ -32,9 +38,12 @@ DB="${1:?usage: smoke.sh <dbname> [sql...]}"
 shift
 if [ $# -eq 0 ]; then
   # the third case joins on an OID-typed catalog attribute so the server-side
-  # OID comparison path (mr_cmpval_object and its per-value assert) is exercised
+  # OID comparison path (mr_cmpval_object and its per-value assert) is exercised;
+  # the fourth binds host variables so execution crosses the fold boundary with
+  # a native DB_VALUE array (wf122/A3, #124 D4)
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
-    "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of"
+    "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
+    "SELECT ? + ? @BIND=30,12 @EXPECT=42"
 fi
 
 # This script restarts cub_master via `cubrid service stop` (see below), which
@@ -83,7 +92,20 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 fail=0
-for sql in "$@"; do
+for case_spec in "$@"; do
+  # split off the @BIND= / @EXPECT= directives (see header); everything before
+  # the first directive is the SQL, trailing blanks trimmed
+  sql="$case_spec"
+  bind=""
+  expect=""
+  case "$case_spec" in
+    *"@BIND="*|*"@EXPECT="*)
+      sql="$(printf '%s' "$case_spec" | sed -e 's/ *@BIND=[^ ]*//' -e 's/ *@EXPECT=[^ ]*//')"
+      bind="$(printf '%s' "$case_spec" | sed -n 's/.*@BIND=\([^ ]*\).*/\1/p')"
+      expect="$(printf '%s' "$case_spec" | sed -n 's/.*@EXPECT=\([^ ]*\).*/\1/p')"
+      ;;
+  esac
+
   out="$(pwd)/m0_smoke.$$.out"
   rm -f "$out"
 
@@ -97,7 +119,7 @@ for sql in "$@"; do
 
   # `|| true`: a failed start must fall through to the poll below and be
   # reported as FAIL, not abort the whole run via set -e
-  CUBRID_M0_TRACER_SQL="$sql" CUBRID_M0_TRACER_OUT="$out" \
+  CUBRID_M0_TRACER_SQL="$sql" CUBRID_M0_TRACER_OUT="$out" CUBRID_M0_TRACER_BIND="$bind" \
     cubrid server start "$DB" >/dev/null 2>&1 || true
 
   ok=0
@@ -110,6 +132,11 @@ for sql in "$@"; do
     fi
     sleep 1
   done
+
+  # @EXPECT: SUCCESS alone is not enough — the fetched value must match
+  if [ $ok -eq 1 ] && [ -n "$expect" ] && ! grep -q "^M0_TRACER: first value = ${expect}$" "$out"; then
+    ok=0
+  fi
 
   cubrid server stop "$DB" >/dev/null 2>&1 || true
   # a PASS with the server still up is not a pass — shutdown health is part

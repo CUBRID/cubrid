@@ -7596,50 +7596,9 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
     }
 
   /* call the server routine of query execute */
-#if defined (SERVER_MODE)
-  /* wf119: the SERVER_MODE build of xqmgr_execute_query treats dbval_p as a
-   * PACKED buffer (a real CS server unpacks it off the wire), while the SA
-   * build casts it to a DB_VALUE array — handing it the raw array made
-   * unpack_domain read a garbage type tag (round-23 core, type_id=44).
-   * Pack here exactly like the CS client does.  Milestone-0 expedient: the
-   * final 0-hop design should pass values natively (#123/#124). */
-  {
-    char *senddata = NULL, *ptr;
-    int senddata_size = 0;
-
-    for (i = 0; i < dbval_cnt; i++)
-      {
-	senddata_size += OR_VALUE_ALIGNED_SIZE (&server_db_values[i]);
-      }
-    if (senddata_size > 0)
-      {
-	senddata = (char *) malloc (senddata_size);
-	if (senddata == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) senddata_size);
-	    goto cleanup;
-	  }
-	ptr = senddata;
-	for (i = 0; i < dbval_cnt; i++)
-	  {
-	    ptr = or_pack_db_value (ptr, &server_db_values[i]);
-	  }
-      }
-
-    list_id =
-      xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, senddata, &flag, clt_cache_time, srv_cache_time,
-			   query_timeout, NULL);
-
-    if (senddata != NULL)
-      {
-	free_and_init (senddata);
-      }
-  }
-#else /* !SERVER_MODE */
   list_id =
     xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
 			 srv_cache_time, query_timeout, NULL);
-#endif /* !SERVER_MODE */
 
 cleanup:
   if (server_db_values != NULL)
@@ -7757,52 +7716,65 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
 
   return regu_result;
 #else /* CS_MODE */
-  QFILE_LIST_ID *regu_result;
+  QFILE_LIST_ID *regu_result = NULL;
+  DB_VALUE *server_db_values = NULL;
+  OID *oid;
+  int i;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-#if defined (SERVER_MODE)
-  /* wf119: same dual interpretation as xqmgr_execute_query — the SERVER_MODE
-   * build expects a PACKED value buffer, the SA build a DB_VALUE array; pack
-   * like the CS client does (see qmgr_execute_query, round-23 core) */
-  {
-    char *senddata = NULL, *ptr;
-    int i, senddata_size = 0;
+  /* normalize the values to server semantics (OBJECT -> OID), same as qmgr_execute_query — the x-entry points never
+   * see a MOP */
+  if (dbval_cnt > 0)
+    {
+      size_t s = dbval_cnt * sizeof (DB_VALUE);
 
-    for (i = 0; i < dbval_cnt; i++)
-      {
-	senddata_size += OR_VALUE_ALIGNED_SIZE (&dbval_ptr[i]);
-      }
-    if (senddata_size > 0)
-      {
-	senddata = (char *) malloc (senddata_size);
-	if (senddata == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) senddata_size);
-	    exit_server (*thread_p);
-	    return NULL;
-	  }
-	ptr = senddata;
-	for (i = 0; i < dbval_cnt; i++)
-	  {
-	    ptr = or_pack_db_value (ptr, &dbval_ptr[i]);
-	  }
-      }
+      server_db_values = (DB_VALUE *) db_private_alloc (thread_p, s);
+      if (server_db_values == NULL)
+	{
+	  goto cleanup;
+	}
+      for (i = 0; i < dbval_cnt; i++)
+	{
+	  db_make_null (&server_db_values[i]);
+	}
+      for (i = 0; i < dbval_cnt; i++)
+	{
+	  switch (DB_VALUE_TYPE (&dbval_ptr[i]))
+	    {
+	    case DB_TYPE_OBJECT:
+	      /* server cannot handle objects, convert to OID instead */
+	      oid = ws_identifier (db_get_object (&dbval_ptr[i]));
+	      if (oid != NULL)
+		{
+		  db_make_oid (&server_db_values[i], oid);
+		}
+	      break;
 
-    regu_result =
-      xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, senddata, &flag,
-				       query_timeout);
+	    default:
+	      /* Clone value */
+	      if (db_value_clone (&dbval_ptr[i], &server_db_values[i]) != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	      break;
+	    }
+	}
+    }
 
-    if (senddata != NULL)
-      {
-	free_and_init (senddata);
-      }
-  }
-#else /* !SERVER_MODE */
   regu_result =
-    xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, dbval_ptr, &flag,
-				     query_timeout);
-#endif /* !SERVER_MODE */
+    xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, server_db_values,
+				     &flag, query_timeout);
+
+cleanup:
+  if (server_db_values != NULL)
+    {
+      for (i = 0; i < dbval_cnt; i++)
+	{
+	  db_value_clear (&server_db_values[i]);
+	}
+      db_private_free (thread_p, server_db_values);
+    }
 
   exit_server (*thread_p);
 

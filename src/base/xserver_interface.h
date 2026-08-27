@@ -222,11 +222,11 @@ extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id
 extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, compile_context * ctx, xasl_stream * stream);
 
 extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd, const XASL_ID * xasl_id, QUERY_ID * query_idp,
-					   int dbval_cnt, void *data, QUERY_FLAG * flagp, CACHE_TIME * clt_cache_time,
-					   CACHE_TIME * srv_cache_time, int query_timeout,
-					   xasl_cache_ent ** ret_cache_entry_p);
+					   int dbval_cnt, DB_VALUE * dbvals, QUERY_FLAG * flagp,
+					   CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time,
+					   int query_timeout, xasl_cache_ent ** ret_cache_entry_p);
 extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, char *xasl_stream, int xasl_stream_size,
-						       QUERY_ID * query_id, int dbval_cnt, void *data,
+						       QUERY_ID * query_id, int dbval_cnt, DB_VALUE * dbvals,
 						       QUERY_FLAG * flag, int query_timeout);
 extern int xqmgr_end_query (THREAD_ENTRY * thrd, QUERY_ID query_id);
 extern int xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p);
