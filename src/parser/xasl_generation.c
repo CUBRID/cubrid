@@ -21568,6 +21568,89 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 }
 
 /*
+ * pt_delete_must_abort_reevaluation () - can the delete phase re-check this statement's predicate?
+ *   return: true when it cannot, so reevaluation is abandoned for the statement
+ *   parser(in): context
+ *   statement(in): delete parse tree
+ *   aptr_statement(in/out): the SELECT generated for it; flagged for locking where one is needed
+ *   from(in): the DELETE's own spec list
+ *   where(in): the DELETE's search condition
+ *   has_partitioned(in): a class being deleted from is partitioned
+ *
+ * Note: reevaluation matches one spec at a time against that spec's own range/key/data filters.  Each
+ *	 test below is a shape those filters cannot decide, and an earlier test hides a later one.
+ */
+static bool
+pt_delete_must_abort_reevaluation (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * aptr_statement,
+				   PT_NODE * from, PT_NODE * where, bool has_partitioned)
+{
+  PT_NODE *cl_name_node = NULL;
+
+  /* the rows are already locked at select, so this one abandons reevaluation without asking for a lock */
+  if (aptr_statement->info.query.q.select.group_by != NULL)
+    {
+      return true;
+    }
+
+  /* the flagging pass skips a partitioned class entirely, and a predicate under a subquery cannot be
+   * replayed as a scan filter.  Any spec below a subquery counts, which is why an inline view held back
+   * by the NO_MERGE hint stops here rather than at the derived-table test.
+   *   DELETE FROM part_t WHERE pk = 1;
+   *   DELETE FROM t WHERE pk IN (SELECT k FROM side_t WHERE k = 1); */
+  if (has_partitioned || pt_has_reev_in_subquery (parser, aptr_statement))
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
+  /* the candidate list holds exactly n rows and a rejected one is never replaced, so the statement would
+   * delete fewer while rows that still qualify are left behind.
+   *   DELETE FROM t WHERE pk > 0 LIMIT 1; */
+  if (statement->info.delete_.limit != NULL)
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
+  /* a flagged spec reading a derived table has no heap of its own to re-read */
+  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
+    {
+      if (cl_name_node->info.spec.derived_table != NULL && (cl_name_node->info.spec.flag & PT_SPEC_FLAG_MVCC_COND_REEV))
+	{
+	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+	  return true;
+	}
+    }
+
+  /* a spec over a class and its subclasses reports OIDs no single spec carries, so
+   * qexec_upddel_mvcc_set_filters () cannot resolve them back to an access spec.
+   *   DELETE FROM ALL h_base WHERE v = 1; */
+  for (cl_name_node = from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
+    {
+      if (!(cl_name_node->info.spec.flag & PT_SPEC_FLAG_MVCC_COND_REEV))
+	{
+	  continue;
+	}
+      if (cl_name_node->info.spec.flat_entity_list != NULL && cl_name_node->info.spec.flat_entity_list->next != NULL)
+	{
+	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+	  return true;
+	}
+    }
+
+  /* no per-scan filter can carry the other spec's row.  What decides is whether a single term crosses,
+   * not how many specs the statement mentions.
+   *   DELETE a FROM t a, side_t b WHERE a.pk = b.k; */
+  if (pt_cond_spans_multiple_specs (parser, from, where))
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * pt_to_delete_xasl () - Converts an delete parse tree to
  *                        an XASL graph for an delete
  *   return:
@@ -21722,71 +21805,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto error_return;
 	}
 
-      if (aptr_statement->info.query.q.select.group_by != NULL)
-	{
-	  /* remove reevaluation flags if we have GROUP BY because the locking will be made at SELECT stage */
-	  abort_reevaluation = true;
-	}
-      else if (has_partitioned || pt_has_reev_in_subquery (parser, aptr_statement))
-	{
-	  /* A partitioned class never gets the reevaluation flags at all (see the has_partitioned guard around
-	   * pt_mvcc_flag_specs_cond_reev above), and a predicate living in a subquery cannot be replayed as a
-	   * scan filter.  Either way the delete phase has nothing to re-check with, so the select phase must
-	   * keep the lock -- exactly as the UPDATE path already does. */
-	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	  abort_reevaluation = true;
-	}
-      else if (statement->info.delete_.limit != NULL)
-	{
-	  /* LIMIT is applied while the select builds the candidate list, so the list holds exactly n rows.
-	   * When reevaluation later rejects one of them the delete simply skips it -- there is no way back
-	   * into the finished scan to fetch a replacement, so a statement that should have deleted n rows
-	   * deletes fewer while rows that qualify are left behind.  Locking at select instead makes the
-	   * candidates settle before the quota is spent.  The lock footprint stays bounded by n. */
-	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	  abort_reevaluation = true;
-	}
-      else
-	{
-	  /* if at least one table involved in reevaluation is a derived table then abort reevaluation and force
-	   * locking on select */
-	  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL;
-	       cl_name_node = cl_name_node->next)
-	    {
-	      if (cl_name_node->info.spec.derived_table != NULL
-		  && (cl_name_node->info.spec.flag & PT_SPEC_FLAG_MVCC_COND_REEV))
-		{
-		  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-		  abort_reevaluation = true;
-		  break;
-		}
-	    }
-	}
-
-      /* The delete phase resolves each reevaluation class to its access spec by exact class OID
-       * (qexec_upddel_mvcc_set_filters).  A hierarchy scan reports subclass OIDs no spec carries, so
-       * that resolution fails and there is nothing to re-check with. */
-      for (cl_name_node = from; cl_name_node != NULL && !abort_reevaluation; cl_name_node = cl_name_node->next)
-	{
-	  if (!(cl_name_node->info.spec.flag & PT_SPEC_FLAG_MVCC_COND_REEV))
-	    {
-	      continue;
-	    }
-	  if (cl_name_node->info.spec.flat_entity_list != NULL
-	      && cl_name_node->info.spec.flat_entity_list->next != NULL)
-	    {
-	      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	      abort_reevaluation = true;
-	    }
-	}
-
-      /* Both classes being delete targets does not make a cross-spec term re-checkable -- DELETE a, b
-       * FROM a, b WHERE a.k = b.k is the case the loop above lets through. */
-      if (!abort_reevaluation && pt_cond_spans_multiple_specs (parser, from, where))
-	{
-	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	  abort_reevaluation = true;
-	}
+      abort_reevaluation =
+	pt_delete_must_abort_reevaluation (parser, statement, aptr_statement, from, where, has_partitioned);
 
       if (abort_reevaluation)
 	{
