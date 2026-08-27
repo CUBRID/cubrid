@@ -9989,6 +9989,13 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
   thread_ref.tran_index = arg->main_thread_p->tran_index;
   thread_ref.m_px_orig_thread_entry = arg->main_thread_p;
   thread_ref.conn_entry = arg->main_thread_p->conn_entry;
+  thread_ref.on_trace = arg->main_thread_p->on_trace;
+  if (thread_ref.on_trace)
+    {
+      /* without a private stats buffer perfmon_add_at_offset falls back to a non-atomic += on the
+       * caller's shared pstat_Global.tran_stats[], which every worker would race on */
+      perfmon_initialize_parallel_stats (&thread_ref);
+    }
 
   thread_ref.push_resource_tracks ();
 
@@ -10035,6 +10042,7 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
   btree_scan_clear_key (&env.btree_scan);
   pr_clear_value (&env.prev_key_val);
   thread_ref.pop_resource_tracks ();
+  perfmon_destroy_parallel_stats (&thread_ref);
 }
 
 /*
