@@ -22,6 +22,7 @@
 #include "test_debug.hpp"
 
 #include "lockfree_freelist.hpp"
+#include "lockfree_hashmap.hpp"
 #include "lockfree_transaction_system.hpp"
 #include "string_buffer.hpp"
 
@@ -57,6 +58,12 @@ namespace test_lockfree
     static_assert (WRAPPER_OVERHEAD == 16, "the retire link and retire id, and nothing else");
     static_assert (sizeof (freelist<probe_entry_48>::free_node) == sizeof (probe_entry_48) + WRAPPER_OVERHEAD,
 		   "free_node must add the reclaimable_node base and nothing of its own");
+
+    // and what the hashmap puts on a chain must be that same node over the entry itself - no wrapper struct
+    // between them. It used to hold an entry-descriptor pointer, one copy per node of the whole table.
+    static_assert (lockfree::hashmap<int, probe_entry_48>::get_chain_node_size ()
+		   == sizeof (probe_entry_48) + WRAPPER_OVERHEAD,
+		   "the hashmap chain node must be the entry plus the reclaimable_node base, nothing more");
   }
 
   std::atomic<size_t> g_item_alloc_count;

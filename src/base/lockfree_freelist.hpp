@@ -29,6 +29,7 @@
 #include <cstddef>
 #include <limits>
 #include <new>
+#include <type_traits>
 
 namespace lockfree
 {
@@ -40,7 +41,14 @@ namespace lockfree
 
 namespace lockfree
 {
-  // T must have on_reclaim function
+  // Does T offer its own on_reclaim ()? Standalone users of freelist supply one; the hashmap does not - it
+  // reclaims through the entry descriptor's f_uninit, which only the hashmap knows about, so it overrides
+  // on_node_reclaim () instead.
+  template <class U, class = void>
+  struct has_on_reclaim : std::false_type {};
+  template <class U>
+  struct has_on_reclaim<U, std::void_t<decltype (std::declval<U &> ().on_reclaim ())>> : std::true_type {};
+
   template <class T>
   class freelist : public tran::reclaimable_owner
   {
@@ -50,6 +58,22 @@ namespace lockfree
       // tran::reclaimable_owner - the single vtable behind node reclamation. Every node retired into this
       // freelist's tran::table comes back here, so the nodes need carry no dispatch of their own.
       void reclaim_run (tran::reclaimable_node *head, tran::reclaimable_node *tail, size_t count) final override;
+
+    protected:
+      // called once per node being reclaimed, before the node rejoins the available list
+      virtual void on_node_reclaim (T &t)
+      {
+	if constexpr (has_on_reclaim<T>::value)
+	  {
+	    t.on_reclaim ();
+	  }
+	else
+	  {
+	    (void) t;
+	  }
+      }
+
+    public:
 
       freelist () = delete;
       freelist (tran::system &transys, size_t block_size, size_t initial_block_count = 1);
@@ -595,7 +619,7 @@ namespace lockfree
     for (free_node *node = static_cast<free_node *> (head); node != NULL; node = save_next)
       {
 	save_next = (node == static_cast<free_node *> (tail)) ? NULL : node->get_freelist_next ();
-	node->m_t.on_reclaim ();
+	on_node_reclaim (node->m_t);
 	node->reset_freelist_next ();
 
 	if (alloc_now > owner->m_max_alloc_count)

@@ -81,24 +81,34 @@ namespace lockfree
     private:
       using address_type = address_marker<T>;
 
-      // wrap T with on_reclaim functionality based on edesc.f_uninit
-      struct freelist_node_data
+      // The entry used to be wrapped in a { T m_entry; lf_entry_descriptor *m_edesc; } so that the freelist,
+      // which knows nothing of entry descriptors, could reach f_uninit through the node. That put the same
+      // pointer on every node of the table - a hundred thousand copies of one address in the object lock
+      // resource table. The freelist calls on_node_reclaim () per node instead, and this subclass, which is
+      // built by the hashmap and holds the descriptor once, answers it.
+      class entry_freelist : public freelist<T>
       {
-	T m_entry;
-	lf_entry_descriptor *m_edesc;
+	public:
+	  entry_freelist (tran::system &transys, size_t block_size, size_t block_count,
+			  lf_entry_descriptor &edesc)
+	    : freelist<T> (transys, block_size, block_count)
+	    , m_edesc (&edesc)
+	  {
+	  }
 
-	freelist_node_data () = default;
-	~freelist_node_data () = default;
+	protected:
+	  void on_node_reclaim (T &t) final override
+	  {
+	    if (m_edesc->f_uninit != NULL)
+	      {
+		(void) m_edesc->f_uninit (&t);
+	      }
+	  }
 
-	void on_reclaim ()
-	{
-	  if (m_edesc->f_uninit != NULL)
-	    {
-	      (void) m_edesc->f_uninit (&m_entry);
-	    }
-	}
+	private:
+	  lf_entry_descriptor *m_edesc;
       };
-      using freelist_type = freelist<freelist_node_data>;
+      using freelist_type = entry_freelist;
       using free_node_type = typename freelist_type::free_node;
 
       freelist_type *m_freelist;
@@ -132,6 +142,15 @@ namespace lockfree
       pthread_mutex_t *get_pthread_mutexp (T *p);
 
       free_node_type *to_free_node (T *p);
+    public:
+      // What actually sits on a bucket chain, for anything that reports footprint. Exposed because a
+      // hand-written mirror of this layout drifts: one carried an owner pointer for a while after the real
+      // node stopped having one.
+      static constexpr size_t get_chain_node_size ()
+      {
+	return sizeof (free_node_type);
+      }
+    private:
       T *from_free_node (free_node_type *fn);
       void save_temporary (tran::descriptor &tdes, T *&p);
       T *freelist_claim (tran::descriptor &tdes);
@@ -165,7 +184,7 @@ namespace lockfree
 
       static constexpr std::ptrdiff_t free_node_offset_of_data (free_node_type fn)
       {
-	return ((char *) (&fn.get_data ().m_entry)) - ((char *) (&fn));
+	return ((char *) (&fn.get_data ())) - ((char *) (&fn));
       }
   }; // class hashmap
 
@@ -263,7 +282,7 @@ namespace lockfree
     // nothrow and checked, both because lf_hash_init () answered ER_OUT_OF_VIRTUAL_MEMORY for these arrays
     // (lock_free.c:1927-1946) and because a throw here unwinds through C callers - xcache_initialize (),
     // spage_boot (), catalog_initialize () - which cannot unwind, so it arrives as std::terminate.
-    m_freelist = new (std::nothrow) freelist_type (transys, freelist_block_size, freelist_block_count);
+    m_freelist = new (std::nothrow) freelist_type (transys, freelist_block_size, freelist_block_count, edesc);
     if (m_freelist == NULL)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) sizeof (freelist_type));
@@ -574,7 +593,7 @@ namespace lockfree
   hashmap<Key, T>::from_free_node (free_node_type *fn)
   {
     assert (fn != NULL);
-    return &fn->get_data ().m_entry;
+    return &fn->get_data ();
   }
 
   template <class Key, class T>
@@ -716,7 +735,6 @@ namespace lockfree
 	    return NULL;
 	  }
 	// make sure m_edesc is initialized
-	fn->get_data ().m_edesc = m_edesc;
 
 	claimed = from_free_node (fn);
 	if (m_edesc->f_init != NULL && m_edesc->f_init (claimed) != NO_ERROR)
