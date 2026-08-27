@@ -44,6 +44,8 @@
 #include "log_prior_inflight_ring.hpp"
 #include "thread_entry.hpp"
 #include "thread_lockfree_hash_map.hpp"
+
+#include <new>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -118,9 +120,21 @@ log_prior_inflight_initialize ()
 
   log_Inflight_ring.clear ();
 
-  /* operator new is noexcept here and yields NULL on OOM; a window that cannot be built stays down */
-  log_Inflight_table.store (new lockfree::tran::table (cubthread::get_thread_entry_lftransys ()),
-			    std::memory_order_release);
+  /* A window that cannot be built stays down. The catch is what makes that true in both builds: the
+   * noexcept operator new memory_wrapper.hpp installs is under SERVER_MODE only, and this file is in the
+   * SA target too, where new throws and nothing above logpb_initialize_pool () would catch it. */
+  lockfree::tran::table *table = NULL;
+
+  try
+    {
+      table = new lockfree::tran::table (cubthread::get_thread_entry_lftransys ());
+    }
+  catch (const std::bad_alloc &)
+    {
+      table = NULL;
+    }
+
+  log_Inflight_table.store (table, std::memory_order_release);
 }
 
 void
@@ -173,15 +187,16 @@ log_prior_inflight_prepare (LOG_PRIOR_NODE *node)
       return;			/* ring full; leave the node unregistered and let a reader drain for it */
     }
 
-  log_prior_inflight_holder *holder = new log_prior_inflight_holder (node);
-  if (holder == NULL)
-    {
-      return;			/* OOM degrades the same way as a full ring */
-    }
-
   /* Set before the slot is visible: the node is the drain's to retire, not to free. Nothing else reads it
    * in between - the node reaches the prior list only after register (). */
-  node->inflight_holder = holder;
+  try
+    {
+      node->inflight_holder = new log_prior_inflight_holder (node);
+    }
+  catch (const std::bad_alloc &)
+    {
+      node->inflight_holder = NULL;	/* OOM degrades the same way as a full ring */
+    }
 }
 
 void
