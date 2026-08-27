@@ -16891,10 +16891,14 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
 #if defined (SERVER_MODE)
   /* The two disk manager fixes must not inherit the transaction's no-wait setting; see
    * pgbuf_set_force_latch_wait ().
-   * Lift only that setting: a finite or an already infinite policy is left as the transaction set it, because
-   * pgbuf_timed_sleep () classifies a watchdog expiry by this very value and would otherwise report a plain
-   * timeout as a unilateral abort. Resolve NULL the way pgbuf_set_force_latch_wait () does, so the flag is read
-   * from the entry it was written to. */
+   * Both no-wait values are in scope although they have different owners - LK_ZERO_WAIT carries the user's
+   * lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. Every check fed by this function tests
+   * that same pair - the demotion in pgbuf_fix_internal (), the sleep budget in pgbuf_timed_sleep () and the
+   * early give-up in pgbuf_ordered_fix () - and a fix that must not be refused has to clear all of them.
+   * Lift only those two: a finite or an already infinite policy is left as the transaction set it, because
+   * pgbuf_timed_sleep () classifies a watchdog expiry by this very value and would otherwise report
+   * ER_LK_PAGE_TIMEOUT as ER_LK_UNILATERALLY_ABORTED. Resolve NULL the way pgbuf_set_force_latch_wait ()
+   * does, so the flag is read from the entry it was written to. */
   if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
     {
       THREAD_ENTRY *flag_owner_p = (thread_p != NULL) ? thread_p : thread_get_thread_entry_info ();
