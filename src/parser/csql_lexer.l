@@ -37,6 +37,7 @@
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define CSQL_MAXNAME	(256)
+#define IDNEXTIFIER_MAX_LIMIT   (DB_MAX_IDENTIFIER_LENGTH + 10)
 #define NUMBER_LITERAL_MAX_LEN  (254)
 #define NUMBER_LITERAL_EXTRA_BYTE (1) /* extra byte for overflow/rounding check in numeric literals */
 #define INTEGER_MAX_LITERAL (NUMBER_LITERAL_MAX_LEN + NUMBER_LITERAL_EXTRA_BYTE)
@@ -581,6 +582,8 @@ IDL       [a-zA-Z0-9_]
 									  return LOCK_; }
 [lL][oO][gG]								{ csql_yylval.cptr = pt_makename(yytext);
 									  return LOG; }
+[lL][oO][gG][iI][nN]							{ csql_yylval.cptr = pt_makename(yytext);
+									  return LOGIN; }
 [lL][oO][oO][pP]							{ return LOOP; }
 [lL][oO][wW][eE][rR]							{ return LOWER; }
 [mM][aA][tT][cC][hH]							{ return MATCH; }
@@ -627,6 +630,8 @@ IDL       [a-zA-Z0-9_]
 									  return NOCACHE; }
 [nN][oO][cC][yY][cC][lL][eE]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return NOCYCLE; }
+[nN][oO][lL][oO][gG][iI][nN]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return NOLOGIN; }
 [nN][oO][mM][aA][xX][vV][aA][lL][uU][eE]				{ csql_yylval.cptr = pt_makename(yytext);
 									  return NOMAXVALUE; }
 [nN][oO][mM][iI][nN][vV][aA][lL][uU][eE]				{ csql_yylval.cptr = pt_makename(yytext);
@@ -723,6 +728,8 @@ IDL       [a-zA-Z0-9_]
 									  return QUEUES; }
 [rR][aA][nN][kK]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return RANK; }
+[rR][aA][nN][dD][oO][mM]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return RANDOM_; }
 [rR][aA][nN][gG][eE]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return RANGE_; }
 [rR][eE][aA][dD]							{ return READ; }
@@ -793,6 +800,8 @@ IDL       [a-zA-Z0-9_]
 [sS][eE][cC][tT][iI][oO][nN]						{ return SECTION; }
 [sS][eE][cC][tT][iI][oO][nN][sS]					{ csql_yylval.cptr = pt_makename(yytext);
 									  return SECTIONS; }
+[sS][eE][eE][dD]							{ csql_yylval.cptr = pt_makename(yytext);
+									  return SEED_; }
 [sS][eE][lL][eE][cC][tT]						{ return SELECT; }
 [sS][eE][nN][sS][iI][tT][iI][vV][eE]					{ return SENSITIVE; }
 [sS][eE][pP][aA][rR][aA][tT][oO][rR]					{ csql_yylval.cptr = pt_makename(yytext);
@@ -1072,8 +1081,8 @@ _[uU][tT][fF]8[']		{
 				}
 
 ([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* {
-							   if (strlen(yytext) >= 254)
-							     yytext[254] = 0;
+							   if (strlen(yytext) >= IDNEXTIFIER_MAX_LIMIT)
+							     yytext[IDNEXTIFIER_MAX_LIMIT] = '\0';
 							   csql_yylval.cptr = pt_makename(yytext);
 							   return IdName;
 						         }
@@ -1097,9 +1106,9 @@ _[uU][tT][fF]8[']		{
                                         BEGIN(INITIAL);
                                        
                                         len = strlen(yytext);
-                                        if (len >= 254)
+                                        if (len >= IDNEXTIFIER_MAX_LIMIT)
                                           {
-                                             yytext[254] = 0;
+                                             yytext[IDNEXTIFIER_MAX_LIMIT] = '\0';
                                           }
 
                                         for (i = 0; i < len - 1 && IS_BLANK_CHAR (yytext[i]); i++)
@@ -1236,9 +1245,9 @@ _[uU][tT][fF]8[']		{
                                         } else {
                                                 BEGIN(INITIAL);
                                         }
-					if (strlen(csql_yylval.cptr) >= 254)
+					if (strlen(csql_yylval.cptr) >= IDNEXTIFIER_MAX_LIMIT)
 					  {
-					    csql_yylval.cptr[254] = 0;
+					    csql_yylval.cptr[IDNEXTIFIER_MAX_LIMIT] = '\0';
 					  }
 					return DelimitedIdName;
 				}
@@ -1250,9 +1259,9 @@ _[uU][tT][fF]8[']		{
                                         } else {
                                                 BEGIN(INITIAL);
                                         }
-					if (strlen(csql_yylval.cptr) >= 254)
+					if (strlen(csql_yylval.cptr) >= IDNEXTIFIER_MAX_LIMIT)
 					  {
-					    csql_yylval.cptr[254] = 0;
+					    csql_yylval.cptr[IDNEXTIFIER_MAX_LIMIT] = '\0';
 					  }
 					return BracketDelimitedIdName;
 				}
@@ -1264,9 +1273,9 @@ _[uU][tT][fF]8[']		{
                                         } else {
                                                 BEGIN(INITIAL);
                                         }
-					if (strlen(csql_yylval.cptr) >= 254)
+					if (strlen(csql_yylval.cptr) >= IDNEXTIFIER_MAX_LIMIT)
 					  {
-					    csql_yylval.cptr[254] = 0;
+					    csql_yylval.cptr[IDNEXTIFIER_MAX_LIMIT] = '\0';
 					  }
 					return BacktickDelimitedIdName;
 				}
@@ -2143,6 +2152,15 @@ parser_yyinput_multi_line (char *buff, int max_size)
   int i = 0;
 
   assert (max_size >= 1);
+
+  /* copy the in-memory input in one step; the loop below finishes EOF and non-memory inputs */
+  i = parser_copy_memory_input (this_parser, buff, max_size);
+  if (i == max_size)
+    {
+      buff[i] = 0;
+      return i;
+    }
+
   for (;;)
     {
       c = pt_nextchar ();

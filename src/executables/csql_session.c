@@ -679,7 +679,8 @@ csql_help_info (const char *command, int aucommit_flag)
       && (!strcasecmp (tok, "schema") || !strcasecmp (tok, "trigger") || !strcasecmp (tok, "deferred")
 	  || !strcasecmp (tok, "workspace") || !strcasecmp (tok, "lock") || !strcasecmp (tok, "stats")
 	  || !strcasecmp (tok, "logstat") || !strcasecmp (tok, "csstat") || !strcasecmp (tok, "plan")
-	  || !strcasecmp (tok, "qcache") || !strcasecmp (tok, "trantable") || !strcasecmp (tok, "ndv")))
+	  || !strcasecmp (tok, "qcache") || !strcasecmp (tok, "trantable") || !strcasecmp (tok, "ndv")
+	  || !strcasecmp (tok, "histogram")))
     {
       int result;
 
