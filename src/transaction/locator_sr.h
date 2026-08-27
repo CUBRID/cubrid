@@ -120,7 +120,8 @@ extern SCAN_CODE locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thr
 							      RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 							      int ispeeking, int old_chn,
 							      MVCC_REEV_DATA * mvcc_reev_data,
-							      NON_EXISTENT_HANDLING non_ex_handling_type);
+							      NON_EXISTENT_HANDLING non_ex_handling_type,
+							      SCAN_OPERATION_TYPE op_type);
 extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 				     HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, LOCK lock_mode,
 				     int ispeeking, int chn);

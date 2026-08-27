@@ -24254,23 +24254,6 @@ btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 
 #if defined (SERVER_MODE)
 /*
- * btree_is_active_other_inserter () - Is insert_mvccid an in-progress insert by another transaction?
- *
- * return	      : true if some other transaction is still inserting under insert_mvccid.
- * thread_p (in)      : Thread entry.
- * insert_mvccid (in) : Candidate inserter MVCCID (e.g. BTREE_MVCC_INFO_INSID of the record).
- *
- * Note: guards the "wait for the inserter to end" paths. False when the id is invalid, is our own
- *	 insert, or the inserter has already ended -- in those cases there is nothing to wait on.
- */
-static bool
-btree_is_active_other_inserter (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
-{
-  return MVCCID_IS_NORMAL (insert_mvccid) && !logtb_is_current_mvccid (thread_p, insert_mvccid)
-    && log_Gl.mvcc_table.is_active (insert_mvccid);
-}
-
-/*
  * btree_wait_for_inserter_end () - Block until the transaction inserting under insert_mvccid ends:
  *				    S_LOCK on its MVCCID self-lock, then release.
  *
@@ -24488,18 +24471,20 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  error_code = ER_FAILED;
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
-	  if (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
-	    {
-	      /* Conflicting object still being inserted: wait for that transaction to end, then restart. */
-	      MVCCID insert_mvccid = BTREE_MVCC_INFO_INSID (&mvcc_info);
-	      if (btree_is_active_other_inserter (thread_p, insert_mvccid))
-		{
-		  return btree_key_wait_for_insert_mvccid (thread_p, insert_mvccid, find_unique_helper, leaf_page,
-							   NULL, restart);
-		}
-	      /* No active inserter (e.g. our own in-progress insert) -- fall through to the row-lock path. */
-	    }
-	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
+	  {
+	    /* Conflicting object still being inserted/deleted (the in-progress writer holds no per-row X-lock):
+	     * wait for that transaction to end, then restart. */
+	    MVCCID conflict_mvccid =
+	      (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	      ? BTREE_MVCC_INFO_INSID (&mvcc_info) : BTREE_MVCC_INFO_DELID (&mvcc_info);
+	    if (logtb_is_active_other_mvccid (thread_p, conflict_mvccid))
+	      {
+		return btree_key_wait_for_insert_mvccid (thread_p, conflict_mvccid, find_unique_helper, leaf_page,
+							 NULL, restart);
+	      }
+	    /* No active writer (e.g. our own in-progress insert/delete) -- fall through to the row-lock path. */
+	  }
+	  /* Object is being inserted/deleted. We need to lock and suspend until its fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  [[fallthrough]];
@@ -24811,18 +24796,20 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  error_code = ER_FAILED;
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
-	  if (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
-	    {
-	      /* Conflicting object still being inserted: wait for that transaction to end, then restart. */
-	      MVCCID insert_mvccid = BTREE_MVCC_INFO_INSID (&mvcc_info);
-	      if (btree_is_active_other_inserter (thread_p, insert_mvccid))
-		{
-		  return btree_key_wait_for_insert_mvccid (thread_p, insert_mvccid, find_unique_helper, leaf_page,
-							   &overflow_page, restart);
-		}
-	      /* No active inserter (e.g. our own in-progress insert) -- fall through to the row-lock path. */
-	    }
-	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
+	  {
+	    /* Conflicting object still being inserted/deleted (the in-progress writer holds no per-row X-lock):
+	     * wait for that transaction to end, then restart. */
+	    MVCCID conflict_mvccid =
+	      (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	      ? BTREE_MVCC_INFO_INSID (&mvcc_info) : BTREE_MVCC_INFO_DELID (&mvcc_info);
+	    if (logtb_is_active_other_mvccid (thread_p, conflict_mvccid))
+	      {
+		return btree_key_wait_for_insert_mvccid (thread_p, conflict_mvccid, find_unique_helper, leaf_page,
+							 &overflow_page, restart);
+	      }
+	    /* No active writer (e.g. our own in-progress insert/delete) -- fall through to the row-lock path. */
+	  }
+	  /* Object is being inserted/deleted. We need to lock and suspend until its fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  [[fallthrough]];
@@ -27479,7 +27466,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	MVCCID fk_insert_mvccid = BTREE_MVCC_INFO_INSID (mvcc_info);
 	int fk_wait_error;
 
-	if (!btree_is_active_other_inserter (thread_p, fk_insert_mvccid))
+	if (!logtb_is_active_other_mvccid (thread_p, fk_insert_mvccid))
 	  {
 	    /* Inserter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the stale
 	     * INSERT_IN_PROGRESS as "not found" (mirrors the unique-scan recheck). */

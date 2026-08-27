@@ -287,6 +287,18 @@ struct heap_operation_context
   RECDES home_recdes;
   char home_recdes_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   INT16 record_type;		/* record type of original record */
+  bool ww_record_transformed;	/* the record changed type while a write-write seal waited on its owner
+				 * (e.g. a committed update relocated the row); record_type holds the new type
+				 * and the operation must be re-dispatched on it */
+  bool ww_oid_slock_held;	/* a seal waited out a per-row X-lock writer and still holds the transient
+				 * S lock on the OID: kept through the stamp so the next X writer queues
+				 * behind us (fairness) and cannot start its index maintenance before our
+				 * stamp lands; released at heap_delete_logical's exit */
+  bool ww_check_snapshot_version;	/* the seal must refuse any version outside the statement snapshot:
+					 * set by a decoupled MVCC DELETE, whose predicate was checked once
+					 * by the scan against a version no lock keeps still */
+  bool ww_version_changed;	/* out: the seal refused -- the version on the page is not the one the
+				 * statement's predicate was checked against, and nothing was stamped */
   FILE_TYPE file_type;		/* the file type of hfid */
 
   /* physical page watchers - these should not be referenced directly */
@@ -382,6 +394,10 @@ struct heap_get_context
 
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
 				 * (like serial increment) require WRITE mode */
+
+  bool implicit_write_lock;	/* for an MVCC UPDATE/DELETE write-write acquisition, skip the per-row
+				 * instance X-lock and serialize via the record header (mvcc_del_id /
+				 * mvcc_ins_id) + the write-owner's transaction self-lock. */
 };
 
 /* Forward definition. */
