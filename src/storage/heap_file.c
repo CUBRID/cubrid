@@ -25165,7 +25165,9 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
 {
   LOG_LSA copied_lsa = log_Gl.append.get_copied_lsa ();
 
-  if (LSA_LT (&copied_lsa, version_lsa))
+  /* Inclusive, as in logpb_fetch_page (): copied_lsa is where the next record goes, so a version at
+   * exactly that address is the head of what is still staged - the case this window exists for. */
+  if (LSA_LE (&copied_lsa, version_lsa))
     {
       SCAN_CODE window_scan;
       PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
@@ -25181,7 +25183,7 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
       perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_MISS);
       copied_lsa = log_Gl.append.get_copied_lsa ();
 
-      if (LSA_LT (&copied_lsa, version_lsa))
+      if (LSA_LE (&copied_lsa, version_lsa))
 	{
 	  PERF_UTIME_TRACKER_START (thread_p, &time_track);
 	  LOG_CS_ENTER (thread_p);
@@ -25192,7 +25194,8 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
 	  copied_lsa = log_Gl.append.get_copied_lsa ();
 	}
 
-      assert (!LSA_LT (&copied_lsa, version_lsa));
+      /* The drain leaves the record below the watermark, never at it. */
+      assert (LSA_LT (version_lsa, &copied_lsa));
     }
 
   /* Fetch the page where version_lsa is located */

@@ -76,11 +76,14 @@ struct log_append_info
   int vdes;			/* Volume descriptor of active log */
   std::atomic<LOG_LSA> nxio_lsa;  /* Lowest log sequence number which has not been written to disk (for WAL). */
   /* todo - not really belonging here. should be part of page buffer. */
-  /* Record-aligned watermark: everything below it has left the prior list, so logpb_fetch_page () reaches
-   * it. Published (release) by the drain and by LOG_RESET_APPEND_LSA (), read (acquire) by readers
-   * running ahead of the flush. Invariant copied_lsa <= append_lsa - lagging only sends a caller through
-   * the LOG_CS re-check, while running ahead makes one skip a drain it needed, so this is a store, never
-   * a max (). Distinct axis from nxio_lsa (what reached disk); do not maintain either from the other. */
+  /* Record-aligned watermark: everything strictly below it has left the prior list, so logpb_fetch_page ()
+   * reaches it. Exclusive, because the drain publishes append_lsa after copying a record and that is where
+   * the next one goes - a record at exactly copied_lsa is still staged. Every comparison against it is
+   * therefore inclusive on this side, as logpb_fetch_page () has always been.
+   * Published (release) by the drain and by LOG_RESET_APPEND_LSA (), read (acquire) by readers running
+   * ahead of the flush. Invariant copied_lsa <= append_lsa - lagging only sends a caller through the
+   * LOG_CS re-check, while running ahead makes one skip a drain it needed, so this is a store, never a
+   * max (). Distinct axis from nxio_lsa (what reached disk); do not maintain either from the other. */
   std::atomic<LOG_LSA> copied_lsa;
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
