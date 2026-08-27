@@ -18963,7 +18963,8 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
 
-  if (heap_get_class_name (thread_p, &(heap_hdr->class_oid), &class_name) != NO_ERROR || class_name == NULL)
+  /* the header is shown to a user, so the table is named the way one writes it */
+  if (heap_get_class_qualified_name (thread_p, &(heap_hdr->class_oid), &class_name) != NO_ERROR || class_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto cleanup;
@@ -19132,7 +19133,8 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
       goto cleanup;
     }
 
-  if (heap_get_class_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR || classname == NULL)
+  /* the capacity is shown to a user, so the table is named the way one writes it */
+  if (heap_get_class_qualified_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR || classname == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto cleanup;

@@ -774,7 +774,7 @@ locator_initialize (THREAD_ENTRY * thread_p)
 	mht_create ("Memory hash bare Classname to OID", CLASSNAME_CACHE_SIZE, mht_1strhash,
 		    mht_compare_strings_are_equal);
       locator_Mht_classnames_owned =
-	mht_create ("Memory hash owned Classname to OID", CLASSNAME_CACHE_SIZE, locator_classname_key_hash,
+	mht_create ("Memory hash Classname to OID", CLASSNAME_CACHE_SIZE, locator_classname_key_hash,
 		    locator_classname_key_compare);
     }
 
