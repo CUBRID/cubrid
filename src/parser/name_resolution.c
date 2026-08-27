@@ -63,8 +63,8 @@
 
 extern "C"
 {
-  extern int parser_function_code;
-  extern size_t json_table_column_count;
+  extern CSQL_PARSER_TLS int parser_function_code;
+  extern CSQL_PARSER_TLS size_t json_table_column_count;
 }
 
 #define PT_NAMES_HASH_SIZE                50

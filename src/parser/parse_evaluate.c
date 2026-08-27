@@ -50,7 +50,17 @@
 #include "optimizer.h"		/* qo_need_skip_execution () */
 
 /* associates labels with DB_VALUES */
+#if defined (SERVER_MODE)
+/* wf122 A2 (D5): interpreter labels are session data - they outlive a
+ * statement and must not leak across sessions - so under SERVER_MODE the
+ * table lives in the session's client context instead of a process global.
+ * TLS would be wrong here: worker threads are pooled per request and have
+ * no session affinity. */
+#include "client_session_context.hpp"
+#define pt_Label_table (csc_current ()->label_table)
+#else
 static MHT_TABLE *pt_Label_table = NULL;
+#endif
 
 static int pt_is_table_op (const PT_OP_TYPE op);
 static PT_NODE *pt_query_to_set_table (PARSER_CONTEXT * parser, PT_NODE * node);

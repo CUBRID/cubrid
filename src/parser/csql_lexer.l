@@ -20,6 +20,13 @@
  * csql_lexer.l - SQL lexer file
  */
 
+/* wf122 A2: emitted at the very top of the generated csql_lexer.c so the
+ * TLS marker is visible to the flex-generated scanner state declarations
+ * that cmake/patch_parser_tls.cmake stamps below */
+%top{
+#include "csql_parser_tls.h"
+}
+
 
 
 
@@ -45,7 +52,7 @@
 #define FLOAT_LITERAL_BUFFER (FLOAT_MAX_LITERAL + 2) /* +2: +1 for trailing '0' (e.g., "3." -> "3.0"), +1 for null terminator */
 #define FLOAT_APPENDABLE_TRAILING_ZERO (NUMBER_LITERAL_MAX_LEN)
 
-int parser_yyinput_single_mode = 0;
+CSQL_PARSER_TLS int parser_yyinput_single_mode = 0;
 
 static void init_plcsql_lexing (void);
 static int parser_yyinput (char *buff, int max_size);
@@ -53,11 +60,11 @@ static bool parser_check_hint (char* hint_string);
 static void parser_yy_user_action(void);
 static void csql_yyerror_internal (const char *s, const int line, const int column);
 
-static int plcsql_begin_end_balance;
-static int plcsql_nest_level;
-static int from_plcsql_text;
+static CSQL_PARSER_TLS int plcsql_begin_end_balance;
+static CSQL_PARSER_TLS int plcsql_nest_level;
+static CSQL_PARSER_TLS int from_plcsql_text;
 
-static enum {
+static CSQL_PARSER_TLS enum {
   ensingle_quoted_string,  
   endouble_quoted_string,
   enbracket_quoted_string,
@@ -78,19 +85,19 @@ static enum {
  */
 
 /* Stores the previous state (INITIAL or PL_LANG_SPEC) prior to handling hints/comments */
-static int saved_yy_start = 0;  
+static CSQL_PARSER_TLS int saved_yy_start = 0;  
 
 /* byte offset (in yybuffer_pos units) of the first character of the line that
  * is currently being scanned; column = yybuffer_pos - yyline_start_pos + 1 */
-int yyline_start_pos = 0;
-static int yyline_start_pos_bk = 0;
-int yylineno_prev = 0;
+CSQL_PARSER_TLS int yyline_start_pos = 0;
+static CSQL_PARSER_TLS int yyline_start_pos_bk = 0;
+CSQL_PARSER_TLS int yylineno_prev = 0;
 
 /* Stores the start line and column number of the currently read token.
  * Since first_line and first_column of the yyloc (csql_yylloc) may be forced to 0 upon parsing failure,
  * separate variables are added and managed. */
-int yytoken_start_line = 1;
-int yytoken_start_column = 0;
+CSQL_PARSER_TLS int yytoken_start_line = 1;
+CSQL_PARSER_TLS int yytoken_start_column = 0;
 
 #define CSQL_YY_LESS(n)   do {                      \
             yybuffer_pos -= (csql_yyleng - (n));    \
@@ -105,12 +112,12 @@ int yytoken_start_column = 0;
 
 #define IS_BLANK_CHAR(c)    (char_isspace2((c)))
 
-int g_msg[1024];
-int msg_ptr;
+CSQL_PARSER_TLS int g_msg[1024];
+CSQL_PARSER_TLS int msg_ptr;
 
-int yybuffer_pos;
-int is_dblink_query_string = 0;
-int expecting_pl_lang_spec = 0;
+CSQL_PARSER_TLS int yybuffer_pos;
+CSQL_PARSER_TLS int is_dblink_query_string = 0;
+CSQL_PARSER_TLS int expecting_pl_lang_spec = 0;
 
 /* TODO: 
  * For now, I've set it to ignore warnings in the automatically generated code. 

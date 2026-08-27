@@ -43,10 +43,10 @@
 
 #define IS_HINT_ON_TABLE(h)  ((h) & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
 
-int parser_input_host_index = 0;
-int parser_statement_OK = 0;
-PARSER_CONTEXT *this_parser;
-int parser_output_host_index = 0;
+CSQL_PARSER_TLS int parser_input_host_index = 0;
+CSQL_PARSER_TLS int parser_statement_OK = 0;
+CSQL_PARSER_TLS PARSER_CONTEXT *this_parser;
+CSQL_PARSER_TLS int parser_output_host_index = 0;
 
 
 #if defined(SA_MODE) && !defined(NDEBUG)
@@ -196,7 +196,7 @@ static struct st_hint_msg s_hint_msg;
 #endif //#if defined(SA_MODE) && !defined(NDEBUG)
 
 #define HINT_LEAD_CHAR_SIZE (129)
-static u_char hint_table_lead_offset[HINT_LEAD_CHAR_SIZE] = { 0, };
+static CSQL_PARSER_TLS u_char hint_table_lead_offset[HINT_LEAD_CHAR_SIZE] = { 0, };
 
 /*
  * pt_makename () -
@@ -286,7 +286,13 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
   s_hint_msg.stmt_no = -1;
 #endif
 
-  static bool was_initialized =[](PT_HINT hint_table[]){
+  /* wf122 A2: the hint table and its lead-offset index are per-thread under
+   * SERVER_MODE, so every thread must sort/index its own copy on first use;
+   * a function-local static would initialize only the first thread's copy. */
+  static CSQL_PARSER_TLS bool was_initialized = false;
+  if (!was_initialized)
+    {
+    was_initialized = true;
     int i;
 
     memset (hint_table_lead_offset, 0x00, sizeof (hint_table_lead_offset));
@@ -322,10 +328,7 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
       {
 	hint_table_lead_offset[i + 32 /*('a'-'A') */ ] = hint_table_lead_offset[i];
       }
-
-    return true;
-  }
-  (hint_table);
+    }
 }
 
 /*

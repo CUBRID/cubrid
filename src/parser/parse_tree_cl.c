@@ -146,7 +146,7 @@ typedef PT_NODE *(*PARSER_APPLY_NODE_FUNC) (PARSER_CONTEXT * parser, PT_NODE * p
 static PARSER_INIT_NODE_FUNC *pt_init_f = NULL;
 static PARSER_PRINT_NODE_FUNC *pt_print_f = NULL;
 static PARSER_APPLY_NODE_FUNC *pt_apply_f = NULL;
-PARSER_CONTEXT *parent_parser = NULL;
+CSQL_PARSER_TLS PARSER_CONTEXT *parent_parser = NULL;
 
 static void pt_print_buffer_disable (PT_PRINT_BUFFER * print_buf);
 static void pt_print_buffer_append_bytes (PARSER_CONTEXT * parser, PT_PRINT_BUFFER * print_buf, const char *tail,
@@ -481,8 +481,8 @@ static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
 extern "C"
 {
-  extern char *g_query_string;
-  extern int g_query_string_len;
+  extern CSQL_PARSER_TLS char *g_query_string;
+  extern CSQL_PARSER_TLS int g_query_string_len;
 }
 /*
  * pt_print_buffer_disable () - give the body back and let nothing more into the buffer

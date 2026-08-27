@@ -64,11 +64,11 @@ typedef enum
   SQS_TRANSPARENT_		/* SQS, but no check */
 } DBCS_INPUT_STATUS;
 
-static int DBCS_UNGET_BUF[MAX_UNGET_SIZE];
-static int *dbcs_Unget_buf;
-static unsigned int dbcs_Latter_byte;
-static int dbcs_Latter_flag;
-static DBCS_INPUT_STATUS dbcs_Input_status;
+static CSQL_PARSER_TLS int DBCS_UNGET_BUF[MAX_UNGET_SIZE];
+static CSQL_PARSER_TLS int *dbcs_Unget_buf;
+static CSQL_PARSER_TLS unsigned int dbcs_Latter_byte;
+static CSQL_PARSER_TLS int dbcs_Latter_flag;
+static CSQL_PARSER_TLS DBCS_INPUT_STATUS dbcs_Input_status;
 
 static int dbcs_get_next_w_char (PARSER_CONTEXT * parser);
 static int dbcs_convert_w_char (int input_char);

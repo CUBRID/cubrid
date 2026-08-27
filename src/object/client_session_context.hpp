@@ -39,10 +39,18 @@
 #include "authenticate_context.hpp"
 
 // *INDENT-OFF*
+struct mht_table;
+
 class client_session_context
 {
   public:
     authenticate_context au_context;
+
+    /* interpreter label table (wf122 A2 D5) - owned here because labels are
+     * session data; created lazily by pt_associate_label_with_value.
+     * Teardown (pt_free_label_table on session end) lands with the A4
+     * session_state anchor - until then only unit/smoke contexts exist. */
+    struct mht_table *label_table = nullptr;
 };
 // *INDENT-ON*
 
