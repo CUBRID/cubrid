@@ -524,6 +524,11 @@ qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_lis
 
 /*
  * qdata_free_valptr_list_prog () - release a value pointer list's compiled program
+ *
+ * Note: the state goes back to 0 (compile on next use), matching the per-execution
+ * lifetime of scan_prog and operand_prog. Leaving it at 2 (disabled) made every
+ * cached-clone reuse after the first execution fall back to the interpreter for
+ * good. State 2 is reserved for "compilation declined" set by the compile step.
  */
 void
 qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p)
@@ -535,7 +540,7 @@ qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_
   expr_prog_free ((EXPR_PROG *) valptr_list_p->eval_prog);
   valptr_list_p->eval_prog = NULL;
   free_and_init (valptr_list_p->eval_prog_idx);
-  valptr_list_p->eval_prog_state = 2;
+  valptr_list_p->eval_prog_state = 0;
 }
 
 /*
