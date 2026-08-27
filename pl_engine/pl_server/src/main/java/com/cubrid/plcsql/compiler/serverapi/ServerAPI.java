@@ -151,6 +151,7 @@ public class ServerAPI {
         // output
         public PlParamInfo[] params;
         public int directive; // TODO package
+        public String targetClass; // generated Java class name of the resolved procedure/package
 
         public void setAnswer(int seqNo, PlParamInfo[] params) {
             this.seqNo = seqNo;
@@ -179,6 +180,8 @@ public class ServerAPI {
                     params[i] = new PlParamInfo(unpacker);
                 }
             }
+
+            targetClass = unpacker.unpackCString();
         }
 
         @Override
@@ -200,6 +203,7 @@ public class ServerAPI {
         public PlParamInfo[] params;
         public PlParamInfo retType; // SQL type
         public int directive; // TODO package
+        public String targetClass; // generated Java class name of the resolved function/package
 
         public void setAnswer(int seqNo, PlParamInfo[] params, PlParamInfo retType) {
             this.seqNo = seqNo;
@@ -223,6 +227,8 @@ public class ServerAPI {
                     params[i] = new PlParamInfo(unpacker);
                 }
             }
+
+            targetClass = unpacker.unpackCString();
         }
 
         @Override

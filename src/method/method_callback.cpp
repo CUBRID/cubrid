@@ -991,6 +991,19 @@ namespace cubmethod
 	  res.ret.type = db_get_int (&return_type);
 	  pr_clear_value (&return_type);
 	}
+
+      // generated Java class name of the resolved routine (Proc_/Func_/Pckg_...), used by the
+      // caller's compiled code to reference it directly
+      DB_VALUE target_class_val;
+      if (db_get (routine_mop, SP_ATTR_TARGET_CLASS, &target_class_val) == NO_ERROR)
+	{
+	  const char *tc = db_get_string (&target_class_val);
+	  if (tc != NULL)
+	    {
+	      res.target_class.assign (tc);
+	    }
+	  pr_clear_value (&target_class_val);
+	}
     }
 
 exit:

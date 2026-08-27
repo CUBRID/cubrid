@@ -32,6 +32,8 @@
 package com.cubrid.jsp.compiler;
 
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.code.ClassAccess;
+import com.cubrid.jsp.code.CompiledCode;
 import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.SourceCode;
 import com.cubrid.jsp.context.Context;
@@ -39,6 +41,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -72,9 +75,15 @@ public class MemoryJavaCompiler {
     }
 
     public synchronized CompiledCodeSet compile(SourceCode code) {
+        return compile(code, null);
+    }
+
+    public synchronized CompiledCodeSet compile(SourceCode code, Set<String> referencedClasses) {
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
         MemoryFileManager fileManager =
-                new MemoryFileManager(compiler.getStandardFileManager(null, null, null));
+                new MemoryFileManager(
+                        compiler.getStandardFileManager(null, null, null),
+                        fetchReferencedClasses(code.getClassName(), referencedClasses));
         JavaCompiler.CompilationTask task =
                 compiler.getTask(null, fileManager, collector, options, null, Arrays.asList(code));
 
@@ -105,5 +114,28 @@ public class MemoryJavaCompiler {
         assert (code.getClassName() != null);
 
         return new CompiledCodeSet(fileManager.getCodeList());
+    }
+
+    // fetch the compiled code of each referenced SP/package from the catalog and wrap every .class
+    // as an input file object for javac (the unit being compiled is skipped)
+    private static List<CatalogClassFile> fetchReferencedClasses(
+            String selfClassName, Set<String> referencedClasses) {
+        List<CatalogClassFile> injected = new ArrayList<>();
+        if (referencedClasses == null) {
+            return injected;
+        }
+        for (String cls : referencedClasses) {
+            if (cls == null || cls.isEmpty() || cls.equals(selfClassName)) {
+                continue;
+            }
+            CompiledCodeSet set = ClassAccess.getObjectCodeOf(cls);
+            if (set == null || set.codeMap == null) {
+                continue;
+            }
+            for (CompiledCode cc : set.codeMap.values()) {
+                injected.add(new CatalogClassFile(cc.getClassName(), cc.getByteCode()));
+            }
+        }
+        return injected;
     }
 }

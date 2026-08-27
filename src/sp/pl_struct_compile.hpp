@@ -230,6 +230,7 @@ namespace cubpl
 
     pl_parameter_info ret;
     vector <pl_parameter_info> args;
+    string target_class; // generated Java class name of the resolved SP/package member
   };
 
   struct EXPORT_IMPORT global_semantics_response_serial : public global_semantics_response_common

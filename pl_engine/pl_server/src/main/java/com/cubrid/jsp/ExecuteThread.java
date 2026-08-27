@@ -66,7 +66,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
 
@@ -390,7 +392,8 @@ public class ExecuteThread extends Thread {
 
         try {
             CompileRequest request = new CompileRequest(unpacker);
-            response = PlcsqlCompilerMain.compilePLCSQL(request);
+            Set<String> referencedClasses = new HashSet<>();
+            response = PlcsqlCompilerMain.compilePLCSQL(request, referencedClasses);
             if (response.errCode == 0) {
                 switch (response.type) {
                     case CompileRequest.PLCSQL_COMPILE_TYPE_SP:
@@ -412,7 +415,7 @@ public class ExecuteThread extends Thread {
                                     response.translated.getBytes(Context.getSessionCharset()));
                         }
 
-                        CompiledCodeSet codeSet = compiler.compile(sCode);
+                        CompiledCodeSet codeSet = compiler.compile(sCode, referencedClasses);
 
                         byte[] data = null;
 

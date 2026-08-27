@@ -76,9 +76,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public final Set<Dependency> dependencies = new HashSet<>();
     public NodeList<Decl> pkgSpecItems;
 
-    public ParseTreeConverter(InstanceStore iStore, String spOwner) {
+    public ParseTreeConverter(InstanceStore iStore, String spOwner, Set<String> referencedClasses) {
         this.iStore = iStore;
         this.spOwner = Misc.getNormalizedText(spOwner);
+        this.referencedClasses = referencedClasses;
         this.sqlSerialNo = 1;
     }
 
@@ -229,6 +230,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 gpc.decl = new DeclProc(null, ps.name, null, null, paramList, ps.directive);
 
+                if (ps.targetClass != null && !ps.targetClass.isEmpty()) {
+                    referencedClasses.add(ps.targetClass);
+                }
+
             } else if (q instanceof ServerAPI.FunctionSignature) {
                 ServerAPI.FunctionSignature fs = (ServerAPI.FunctionSignature) q;
 
@@ -287,6 +292,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 paramList,
                                 fs.directive,
                                 TypeSpec.getBogus(iStore, retType));
+
+                if (fs.targetClass != null && !fs.targetClass.isEmpty()) {
+                    referencedClasses.add(fs.targetClass);
+                }
 
             } else if (q instanceof ServerAPI.SerialOrNot) {
 
@@ -3114,6 +3123,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // Private
     // --------------------------------------------------------
     //
+
+    private final Set<String> referencedClasses;
 
     private int topLevelStmt;
 
