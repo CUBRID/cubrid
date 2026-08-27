@@ -12386,8 +12386,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
     }
   if (scan_code != S_SUCCESS)
     {
-      assert (er_errid () == ER_INTERRUPTED);
-      error = ER_FAILED;
+      ASSERT_ERROR_AND_SET (error);
       goto exit_on_error;
     }
 
