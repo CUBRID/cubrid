@@ -31,11 +31,6 @@
 //   ADV_ONLY    legacy | new    - measure only that implementation, for cross-process comparison
 //   ADV_REPS    repetitions per case (default 7)
 //   ADV_EQWIDTH 1 - give lockfree::hashmap the same transaction-scan width legacy gets (see equalize_width ())
-//   ADV_MEMCASE lkres | xasl | session   - which real entry the mem suite stands in for
-//
-// ADVP_TAG names the source revision of the two header-only implementation files this binary was built from, so
-// a standalone build that injects an older lockfree_hashmap.hpp / lockfree_freelist.hpp on the include path says
-// so in its own output. It defaults to "tree", the version checked out in src/base.
 //
 
 #include "test_adversarial_performance.hpp"
@@ -53,14 +48,9 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <string>
 #include <thread>
 #include <vector>
-
-#if !defined (ADVP_TAG)
-#define ADVP_TAG "tree"
-#endif
 
 namespace test_lockfree
 {
@@ -238,16 +228,6 @@ namespace test_lockfree
       NULL
     };
 
-    // What lockfree::hashmap really puts on a bucket chain. This used to be mirrored here, member by member,
-    // and the mirror went stale the moment the real node lost its owner pointer - it kept reporting eight
-    // bytes that were no longer there. hashmap::get_chain_node_size () answers from the real type instead.
-    template <typename K, typename E>
-    static constexpr size_t
-    chain_node_size ()
-    {
-      return lockfree::hashmap<K, E>::get_chain_node_size ();
-    }
-
     using new_map = lockfree::hashmap<adv_key, adv_entry>;
     using old_map = lf_hash_table_cpp<adv_key, adv_entry>;
 
@@ -290,8 +270,7 @@ namespace test_lockfree
       WL_TRAN_ONLY,
       WL_CLAIM_RETIRE,
       WL_CLAIM_HOLD_RETIRE,
-      WL_SAME_KEY,
-      WL_FIND_HEAVY
+      WL_SAME_KEY
     };
 
     struct spec
@@ -309,8 +288,6 @@ namespace test_lockfree
       size_t m_block_count;
       size_t m_max_alloc;       // 0 -> uncapped
       bool m_time_init;         // include construction and destruction in the timed region
-      size_t m_prefill;         // distinct keys inserted before the clock starts; 0 -> no prefill phase
-      size_t m_find_mode;       // 0 all hits, 1 all misses, 2 alternating
     };
 
     static spec
@@ -330,8 +307,6 @@ namespace test_lockfree
       sp.m_block_count = 100;
       sp.m_max_alloc = 0;
       sp.m_time_init = false;
-      sp.m_prefill = 0;
-      sp.m_find_mode = 0;
       return sp;
     }
 
@@ -650,88 +625,18 @@ namespace test_lockfree
       g_sink += acc;
     }
 
-    // A key whose bucket is j % hash_size and whose position inside that bucket is j / hash_size. Prefilling
-    // j = 0 .. prefill-1 therefore gives every bucket the same chain length, prefill / hash_size, with no
-    // dependence on the PRNG - so a find () costs the same number of node visits in both implementations and a
-    // wall-clock ratio is a cost-per-visit ratio.
-    static inline void
-    keygen_indexed (adv_key &k, size_t j, size_t hash_size)
-    {
-      k.m_1 = (unsigned int) (j % hash_size);
-      k.m_2 = (unsigned int) (j / hash_size);
-    }
-
-    template <typename Hash, typename Tran>
-    static void
-    prefill_indexed (const spec &sp, Hash &hash, Tran tr, size_t tid)
-    {
-      adv_key k;
-      adv_entry *ent;
-      size_t hash_size = hash.get_size ();
-      for (size_t j = tid; j < sp.m_prefill; j += sp.m_threads)
-	{
-	  keygen_indexed (k, j, hash_size);
-	  if (hash.find_or_insert (tr, k, ent))
-	    {
-	      // inserted
-	    }
-	  hash.unlock (tr, ent);
-	}
-    }
-
-    // find () and nothing else, over a table whose chain length is known exactly. this is the path 7ecd01fc6
-    // changed: list_find () used to take the bucket head by value, loaded once at the call site, and now takes
-    // it by reference and loads it inside the transaction, re-reading the slot on every restart iteration.
-    template <typename Hash, typename Tran>
-    static void
-    wl_find_heavy (const spec &sp, Hash &hash, Tran tr)
-    {
-      adv_key k;
-      adv_entry *ent;
-      rng rd;
-      size_t acc = 0;
-      size_t hash_size = hash.get_size ();
-      size_t span = sp.m_prefill;
-
-      for (size_t i = 0; i < sp.m_p1; ++i)
-	{
-	  size_t j = (size_t) rd () % span;
-	  bool miss = (sp.m_find_mode == 1) || (sp.m_find_mode == 2 && (i & 1) == 0);
-	  keygen_indexed (k, miss ? j + span : j, hash_size);
-	  ent = hash.find (tr, k);
-	  if (ent != NULL)
-	    {
-	      hash.unlock (tr, ent);
-	      ++acc;
-	    }
-	}
-      g_sink += acc;
-      g_work_iter += acc;
-    }
-
     struct gate
     {
       std::atomic<size_t> m_arrived { 0 };
       std::atomic<bool> m_go { false };
-      std::atomic<size_t> m_prefilled { 0 };
-      std::atomic<bool> m_go2 { false };
     };
 
     template <typename Hash, typename Tran>
     static void
-    worker (const spec *sp, Hash *hash, Tran tr, gate *g, size_t tid)
+    worker (const spec *sp, Hash *hash, Tran tr, gate *g)
     {
       g->m_arrived.fetch_add (1);
       while (!g->m_go.load (std::memory_order_acquire))
-	{
-	  std::this_thread::yield ();
-	}
-      if (sp->m_prefill != 0)
-	{
-	  prefill_indexed (*sp, *hash, tr, tid);
-	  g->m_prefilled.fetch_add (1);
-	}
-      while (!g->m_go2.load (std::memory_order_acquire))
 	{
 	  std::this_thread::yield ();
 	}
@@ -765,9 +670,6 @@ namespace test_lockfree
 	case WL_SAME_KEY:
 	  wl_same_key (*sp, *hash, tr);
 	  break;
-	case WL_FIND_HEAVY:
-	  wl_find_heavy (*sp, *hash, tr);
-	  break;
 	default:
 	  break;
 	}
@@ -782,32 +684,15 @@ namespace test_lockfree
       threads.reserve (sp.m_threads);
       for (size_t i = 0; i < sp.m_threads; i++)
 	{
-	  threads.emplace_back (worker<Hash, Tran>, &sp, &hash, trans[i], &g, i);
+	  threads.emplace_back (worker<Hash, Tran>, &sp, &hash, trans[i], &g);
 	}
       while (g.m_arrived.load () < sp.m_threads)
 	{
 	  std::this_thread::yield ();
 	}
 
-      clock_type::time_point t0;
-      if (sp.m_prefill != 0)
-	{
-	  // the table is filled by the same threads, outside the clock, so the measured phase starts from a
-	  // table of a known shape in both implementations
-	  g.m_go.store (true, std::memory_order_release);
-	  while (g.m_prefilled.load () < sp.m_threads)
-	    {
-	      std::this_thread::yield ();
-	    }
-	  t0 = clock_type::now ();
-	  g.m_go2.store (true, std::memory_order_release);
-	}
-      else
-	{
-	  t0 = sp.m_time_init ? init_start : clock_type::now ();
-	  g.m_go.store (true, std::memory_order_release);
-	  g.m_go2.store (true, std::memory_order_release);
-	}
+      clock_type::time_point t0 = sp.m_time_init ? init_start : clock_type::now ();
+      g.m_go.store (true, std::memory_order_release);
       for (size_t i = 0; i < sp.m_threads; i++)
 	{
 	  threads[i].join ();
@@ -994,16 +879,9 @@ namespace test_lockfree
     describe (const spec &sp)
     {
       say ("");
-      char pf[128] = "";
-      if (sp.m_prefill != 0)
-	{
-	  snprintf (pf, sizeof (pf), " prefill=%zu chain=%.1f find=%s", sp.m_prefill,
-		    (double) sp.m_prefill / (double) sp.m_hash_size,
-		    sp.m_find_mode == 0 ? "hit" : (sp.m_find_mode == 1 ? "miss" : "half"));
-	}
-      say ("== %s  [tcnt=%zu hsz=%zu mutex=%d p=%zu/%zu/%zu/%zu block=%zux%zu maxalloc=%zu%s%s]",
+      say ("== %s  [tcnt=%zu hsz=%zu mutex=%d p=%zu/%zu/%zu/%zu block=%zux%zu maxalloc=%zu%s]",
 	   sp.m_name, sp.m_threads, sp.m_hash_size, sp.m_mutex ? 1 : 0, sp.m_p1, sp.m_p2, sp.m_p3, sp.m_p4,
-	   sp.m_block_count, sp.m_block_size, sp.m_max_alloc, sp.m_time_init ? " timed-with-init" : "", pf);
+	   sp.m_block_count, sp.m_block_size, sp.m_max_alloc, sp.m_time_init ? " timed-with-init" : "");
     }
 
     static void
@@ -1103,9 +981,8 @@ namespace test_lockfree
       say ("   VERDICT : %s", resolvable
 	   ? (dr.m_med < 1.0 ? "new faster, every rep agrees" : "new slower, every rep agrees")
 	   : "NOT RESOLVABLE - the paired ratio range straddles 1.00");
-      say ("RATIO,%s,%s,%zu,%zu,%d,%.3f,%.3f,%.3f,%.2f,%.2f,%zu,%zu", ADVP_TAG, sp.m_name, sp.m_hash_size,
-	   sp.m_threads, sp.m_mutex ? 1 : 0, dr.m_med, dr.m_min, dr.m_max, dl.m_med, dn.m_med, new_wins,
-	   reps_v.size ());
+      say ("RATIO,%s,%zu,%zu,%d,%.3f,%.3f,%.3f,%.2f,%.2f,%zu,%zu", sp.m_name, sp.m_hash_size, sp.m_threads,
+	   sp.m_mutex ? 1 : 0, dr.m_med, dr.m_min, dr.m_max, dl.m_med, dn.m_med, new_wins, reps_v.size ());
 
       if (sp.m_max_alloc != 0 || env_flag ("ADV_PROBE"))
 	{
@@ -1132,8 +1009,8 @@ namespace test_lockfree
       dist d = summarize (v);
       say ("   %-6s ms : min=%8.2f q1=%8.2f med=%8.2f q3=%8.2f max=%8.2f", is_new ? "new" : "legacy",
 	   d.m_min, d.m_q1, d.m_med, d.m_q3, d.m_max);
-      say ("SOLO,%s,%s,%s,%zu,%zu,%d,%.2f,%.2f,%.2f", ADVP_TAG, is_new ? "new" : "legacy", sp.m_name,
-	   sp.m_hash_size, sp.m_threads, sp.m_mutex ? 1 : 0, d.m_med, d.m_min, d.m_max);
+      say ("SOLO,%s,%s,%zu,%zu,%d,%.2f,%.2f,%.2f", is_new ? "new" : "legacy", sp.m_name, sp.m_hash_size,
+	   sp.m_threads, sp.m_mutex ? 1 : 0, d.m_med, d.m_min, d.m_max);
     }
 
     static void
@@ -1350,70 +1227,6 @@ namespace test_lockfree
     }
 
     static void
-    suite_find (size_t reps)
-    {
-      say ("");
-      say ("#### SUITE find - find () and nothing else, over a prefilled table of an exact chain length. this is");
-      say ("####              the path 7ecd01fc6 changed: list_find () took the bucket head by value and now");
-      say ("####              takes it by reference, so the slot is loaded inside the transaction and re-read on");
-      say ("####              every restart iteration. chain length separates a per-node cost in the walk from a");
-      say ("####              per-call cost outside it; threads separate an instruction cost from a coherence");
-      say ("####              cost on the slot.");
-
-      const size_t prefill = 64000;
-      struct shape
-      {
-	size_t m_hash_size;
-	size_t m_ops;
-      };
-      shape shapes[3] = { { 64000, 2700000 }, { 8000, 1080000 }, { 1000, 200000 } };
-      size_t tcs[4] = { 1, 8, 16, 64 };
-
-      for (size_t si = 0; si < 3; si++)
-	{
-	  for (size_t ti = 0; ti < 4; ti++)
-	    {
-	      spec a = make_spec (WL_FIND_HEAVY, "find_hit");
-	      a.m_hash_size = shapes[si].m_hash_size;
-	      a.m_prefill = prefill;
-	      // 64 threads on 16 hardware threads take four times the wall clock for the same work per thread;
-	      // shrinking the per-thread count there keeps every case in the same 50-200 ms band, which is where
-	      // the clock is trustworthy and the run is affordable
-	      a.m_p1 = tcs[ti] > 16 ? shapes[si].m_ops * 16 / tcs[ti] : shapes[si].m_ops;
-	      a.m_threads = tcs[ti];
-	      a.m_block_size = 1000;
-	      a.m_block_count = 100;
-	      measure (a, reps);
-	    }
-	}
-
-      // a miss walks the whole chain instead of half of it, so a per-node cost shows up at twice the weight
-      for (size_t si = 0; si < 3; si++)
-	{
-	  spec b = make_spec (WL_FIND_HEAVY, "find_miss");
-	  b.m_hash_size = shapes[si].m_hash_size;
-	  b.m_prefill = prefill;
-	  b.m_p1 = shapes[si].m_ops / 2;
-	  b.m_threads = 16;
-	  b.m_find_mode = 1;
-	  b.m_block_size = 1000;
-	  b.m_block_count = 100;
-	  measure (b, reps);
-	}
-
-      // 64000 nodes of either footprint fit in this box's 96 MB L3, so the extra bytes per node cost nothing
-      // there. one case large enough to miss it.
-      spec c = make_spec (WL_FIND_HEAVY, "find_hit_out_of_cache");
-      c.m_hash_size = 1000000;
-      c.m_prefill = 1000000;
-      c.m_p1 = 1200000;
-      c.m_threads = 16;
-      c.m_block_size = 10000;
-      c.m_block_count = 120;
-      measure (c, reps);
-    }
-
-    static void
     suite_patho (size_t reps)
     {
       say ("");
@@ -1602,205 +1415,6 @@ namespace test_lockfree
 	   dmb.m_med, dmb.m_max);
     }
 
-    //
-    // memory footprint against a real entry size at a real table geometry
-    //
-    static size_t
-    proc_status_kb (const char *field)
-    {
-      FILE *f = fopen ("/proc/self/status", "r");
-      if (f == NULL)
-	{
-	  return 0;
-	}
-      char line[256];
-      size_t len = strlen (field);
-      size_t kb = 0;
-      while (fgets (line, sizeof (line), f) != NULL)
-	{
-	  if (strncmp (line, field, len) == 0)
-	    {
-	      kb = (size_t) strtoull (line + len + 1, NULL, 10);
-	      break;
-	    }
-	}
-      fclose (f);
-      return kb;
-    }
-
-    // adv_entry padded out to the size of a real entry type. the descriptor fields the two implementations
-    // actually use are in the same places, so only the payload size changes.
-    template <size_t SIZE>
-    struct sized_entry
-    {
-      adv_key m_key;
-      sized_entry *m_next;
-      sized_entry *m_rstack;
-      pthread_mutex_t m_mutex;
-      UINT64 m_delid;
-      bool m_init;
-      char m_pad[SIZE > sizeof (adv_entry) ? SIZE - sizeof (adv_entry) : 1];
-    };
-
-    template <size_t SIZE>
-    static int
-    sized_copy_key (void *src, void *dest)
-    {
-      * (adv_key *) dest = * (adv_key *) src;
-      return 0;
-    }
-
-    template <size_t SIZE>
-    static void *
-    sized_alloc ()
-    {
-      return (void *) new sized_entry<SIZE> ();
-    }
-
-    template <size_t SIZE>
-    static int
-    sized_free (void *p)
-    {
-      delete (sized_entry<SIZE> *) p;
-      return 0;
-    }
-
-    template <size_t SIZE>
-    static int
-    sized_init (void *p)
-    {
-      ((sized_entry<SIZE> *) p)->m_init = true;
-      return 0;
-    }
-
-    template <size_t SIZE>
-    static int
-    sized_uninit (void *p)
-    {
-      ((sized_entry<SIZE> *) p)->m_init = false;
-      return 0;
-    }
-
-    template <size_t SIZE>
-    static lf_entry_descriptor &
-    sized_edesc ()
-    {
-      static lf_entry_descriptor d =
-      {
-	offsetof (sized_entry<SIZE>, m_rstack),
-	offsetof (sized_entry<SIZE>, m_next),
-	offsetof (sized_entry<SIZE>, m_delid),
-	offsetof (sized_entry<SIZE>, m_key),
-	offsetof (sized_entry<SIZE>, m_mutex),
-	LF_EM_NOT_USING_MUTEX,
-	LF_ENTRY_DESCRIPTOR_MAX_ALLOC,
-	sized_alloc<SIZE>,
-	sized_free<SIZE>,
-	sized_init<SIZE>,
-	sized_uninit<SIZE>,
-	sized_copy_key<SIZE>,
-	compare_key,
-	hash_key,
-	NULL
-      };
-      return d;
-    }
-
-    template <size_t SIZE>
-    static void
-    mem_case (const char *label, size_t hash_size, size_t live, size_t block_size, size_t block_count,
-	      size_t max_alloc, bool is_new)
-    {
-      using sized = sized_entry<SIZE>;
-      lf_entry_descriptor &ed = sized_edesc<SIZE> ();
-      ed.max_alloc_cnt = (max_alloc == 0) ? LF_ENTRY_DESCRIPTOR_MAX_ALLOC : (int) max_alloc;
-
-      size_t rss0 = proc_status_kb ("VmRSS");
-      size_t alloc_count = 0;
-      adv_key k;
-      sized *ent;
-
-      if (is_new)
-	{
-	  lockfree::tran::system transys { 1 };
-	  lockfree::tran::index idx = transys.assign_index ();
-	  lockfree::hashmap<adv_key, sized> hash;
-	  hash.init (transys, hash_size, block_size, block_count, ed);
-	  for (size_t j = 0; j < live; j++)
-	    {
-	      keygen_indexed (k, j, hash_size);
-	      (void) hash.find_or_insert (idx, k, ent);
-	      hash.unlock (idx, ent);
-	    }
-	  size_t rss1 = proc_status_kb ("VmRSS");
-	  alloc_count = hash.get_alloc_element_count ();
-	  say ("   MEM,%s,%s,%s,entry=%zu,node=%zu,hsz=%zu,live=%zu,alloc=%zu,rss_delta_kb=%zu,"
-	       "bytes_per_live=%.1f,vmhwm_kb=%zu", ADVP_TAG, "new", label, sizeof (sized),
-	       chain_node_size<adv_key, sized> (), hash_size, live, alloc_count,
-	       rss1 - rss0, 1024.0 * (double) (rss1 - rss0) / (double) live, proc_status_kb ("VmHWM"));
-	  hash.destroy ();
-	  transys.free_index (idx);
-	}
-      else
-	{
-	  lf_tran_system transys;
-	  lf_tran_system_init (&transys, 1);
-	  lf_tran_entry *te = lf_tran_request_entry (&transys);
-	  lf_hash_table_cpp<adv_key, sized> hash;
-	  hash.init (transys, (int) hash_size, (int) block_count, (int) block_size, ed);
-	  for (size_t j = 0; j < live; j++)
-	    {
-	      keygen_indexed (k, j, hash_size);
-	      (void) hash.find_or_insert (te, k, ent);
-	      hash.unlock (te, ent);
-	    }
-	  size_t rss1 = proc_status_kb ("VmRSS");
-	  alloc_count = (size_t) hash.get_freelist ().alloc_cnt;
-	  say ("   MEM,%s,%s,%s,entry=%zu,node=%zu,hsz=%zu,live=%zu,alloc=%zu,rss_delta_kb=%zu,"
-	       "bytes_per_live=%.1f,vmhwm_kb=%zu", ADVP_TAG, "legacy", label, sizeof (sized), sizeof (sized),
-	       hash_size, live, alloc_count, rss1 - rss0,
-	       1024.0 * (double) (rss1 - rss0) / (double) live, proc_status_kb ("VmHWM"));
-	  hash.destroy ();
-	  lf_tran_return_entry (te);
-	  lf_tran_system_destroy (&transys);
-	}
-    }
-
-    static void
-    suite_mem ()
-    {
-      // A PROXY, not the server. The entry is adv_entry padded to the size of the real one and the geometry is
-      // the one the real caller passes, but the real entry's own heap-allocated members are not here, so this
-      // sizes the map's overhead per entry and nothing else.
-      //
-      //   LK_RES         sizeof 120, lock_manager.c:1272 - obj_hash_size = MAX (initial_object_locks = 10000,
-      //                  MIN (num_trans * lock_escalation * 3 / 1000, 2^23)); with the default lock_escalation
-      //                  100000 and ~101 transactions that is 30300 buckets, block 2 x 500, cap = 100000
-      //   xasl_cache_ent sizeof 272, xasl_cache.c:335 - hash size = max_plan_cache_entries (default 1000),
-      //                  block count 2, block size 500
-      //   session_state  sizeof 312, session.c:621 - hash size 1000, block size 2, block count 50
-      say ("");
-      say ("#### SUITE mem - resident set against a real entry SIZE at the real table geometry. proxy only:");
-      say ("####             the entry is adv_entry padded to that size, not the real type.");
-      std::string only = env_text ("ADV_ONLY", "new");
-      bool is_new = (only != "legacy");
-      std::string which = env_text ("ADV_MEMCASE", "lkres");
-      say ("   impl=%s case=%s", is_new ? "new" : "legacy", which.c_str ());
-
-      if (which == "lkres" || which == "all")
-	{
-	  mem_case<120> ("lk_res", 30300, 100000, 500, 2, 100000, is_new);
-	}
-      if (which == "xasl" || which == "all")
-	{
-	  mem_case<272> ("xasl_cache_ent", 1000, 1000, 500, 2, 0, is_new);
-	}
-      if (which == "session" || which == "all")
-	{
-	  mem_case<312> ("session_state", 1000, 500, 2, 50, 0, is_new);
-	}
-    }
-
     static int
     run ()
     {
@@ -1808,21 +1422,25 @@ namespace test_lockfree
       std::string suite = env_text ("ADV_SUITE", "all");
       std::string only = env_text ("ADV_ONLY", "");
 
-      say ("test_adversarial_performance: tag=%s suite=%s reps=%zu only=%s eqwidth=%d hw_concurrency=%u",
-	   ADVP_TAG, suite.c_str (), reps, only.empty () ? "-" : only.c_str (), env_flag ("ADV_EQWIDTH") ? 1 : 0,
+      say ("test_adversarial_performance: suite=%s reps=%zu only=%s eqwidth=%d hw_concurrency=%u",
+	   suite.c_str (), reps, only.empty () ? "-" : only.c_str (), env_flag ("ADV_EQWIDTH") ? 1 : 0,
 	   std::thread::hardware_concurrency ());
 #if defined (NDEBUG)
       say ("build: NDEBUG defined (release; assertions off)");
 #else
       say ("build: NDEBUG NOT defined (debug; assertions on - timings are not release timings)");
 #endif
-      // node footprint. legacy stores an entry exactly as the descriptor describes it and reaches its links
-      // through offsets; the rewrite wraps the entry in a freelist node. That wrapper was five words - a vtable
-      // pointer, the retire link, the retire id, the owning freelist and the entry descriptor - and is now two:
-      // the retire link and the retire id. Every bucket chain walk touches that much more per node than legacy.
-      say ("node footprint: entry=%zu bytes; legacy chain node=%zu bytes; rewrite chain node=%zu bytes"
-	   " (reclaimable_node=%zu + entry)",
-	   sizeof (adv_entry), sizeof (adv_entry), chain_node_size<adv_key, adv_entry> (),
+      // Node footprint. Legacy stores an entry exactly as the descriptor describes it and reaches its links
+      // through offsets, so its chain node is the entry; the rewrite wraps the entry in a freelist node. That
+      // wrapper was five words - a vtable pointer, the retire link, the retire id, the owning freelist and the
+      // entry descriptor - and is now two. Every bucket chain walk touches that much more per node.
+      //
+      // Asked of the real type, not added up here: this line used to compute the sum by hand and the sum went
+      // stale the moment the wrapper lost a member, reporting bytes that were no longer there.
+      say ("node footprint: entry=%zu bytes; legacy chain node=%zu bytes;"
+	   " rewrite chain node = %zu bytes (reclaimable_node=%zu + entry)",
+	   sizeof (adv_entry), sizeof (adv_entry),
+	   new_map::get_chain_node_size (),
 	   sizeof (lockfree::tran::reclaimable_node));
 
       bool all = (suite == "all");
@@ -1850,10 +1468,6 @@ namespace test_lockfree
 	{
 	  suite_startup (reps);
 	}
-      if (all || suite == "find")
-	{
-	  suite_find (reps);
-	}
       if (all || suite == "patho")
 	{
 	  suite_patho (reps);
@@ -1865,10 +1479,6 @@ namespace test_lockfree
       if (suite == "stability")
 	{
 	  suite_stability (reps);
-	}
-      if (suite == "mem")
-	{
-	  suite_mem ();
 	}
       if (all || suite == "micro")
 	{
@@ -1887,15 +1497,3 @@ namespace test_lockfree
     return advp::run ();
   }
 } // namespace test_lockfree
-
-#if defined (ADVP_STANDALONE)
-// Built on its own, outside test_lockfree, so that an older revision of the two header-only implementation files
-// can be put in front of src/base on the include path without disturbing the tree or the rest of the suite. The
-// legacy implementation lives in libcubrid and is therefore the same code in every such binary, which is what
-// makes the in-process paired ratio comparable across them.
-int
-main (void)
-{
-  return test_lockfree::test_adversarial_performance ();
-}
-#endif // ADVP_STANDALONE
