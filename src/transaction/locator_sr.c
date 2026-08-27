@@ -13270,10 +13270,6 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       if (scan_cache->mvcc_snapshot)
 	{
 	  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
-	  /* the DELETE path sets this when the statement has no reevaluation class to re-check with */
-	  bool skips_unevaluated_version =
-	    (mvcc_reev_data->type == REEV_DATA_UPDDEL && mvcc_reev_data->upddel_reev_data != NULL
-	     && mvcc_reev_data->upddel_reev_data->skip_unevaluated_version);
 
 	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
 	  if (snapshot_res == SNAPSHOT_SATISFIED)
@@ -13282,11 +13278,19 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	       * which was already evaluated. */
 	      goto exit;
 	    }
-	  else if (skips_unevaluated_version)
+	  else
 	    {
-	      mvcc_reev_data->filter_result = V_FALSE;
-	      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
-	      goto exit;
+	      /* the DELETE path sets this when the statement has no reevaluation class to re-check with */
+	      bool skips_unevaluated_version =
+		(mvcc_reev_data->type == REEV_DATA_UPDDEL && mvcc_reev_data->upddel_reev_data != NULL
+		 && mvcc_reev_data->upddel_reev_data->skip_unevaluated_version);
+
+	      if (skips_unevaluated_version)
+		{
+		  mvcc_reev_data->filter_result = V_FALSE;
+		  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+		  goto exit;
+		}
 	    }
 	}
       ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
