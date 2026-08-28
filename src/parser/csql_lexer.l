@@ -582,6 +582,8 @@ IDL       [a-zA-Z0-9_]
 									  return LOCK_; }
 [lL][oO][gG]								{ csql_yylval.cptr = pt_makename(yytext);
 									  return LOG; }
+[lL][oO][gG][iI][nN]							{ csql_yylval.cptr = pt_makename(yytext);
+									  return LOGIN; }
 [lL][oO][oO][pP]							{ return LOOP; }
 [lL][oO][wW][eE][rR]							{ return LOWER; }
 [mM][aA][tT][cC][hH]							{ return MATCH; }
@@ -628,6 +630,8 @@ IDL       [a-zA-Z0-9_]
 									  return NOCACHE; }
 [nN][oO][cC][yY][cC][lL][eE]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return NOCYCLE; }
+[nN][oO][lL][oO][gG][iI][nN]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return NOLOGIN; }
 [nN][oO][mM][aA][xX][vV][aA][lL][uU][eE]				{ csql_yylval.cptr = pt_makename(yytext);
 									  return NOMAXVALUE; }
 [nN][oO][mM][iI][nN][vV][aA][lL][uU][eE]				{ csql_yylval.cptr = pt_makename(yytext);
@@ -724,6 +728,8 @@ IDL       [a-zA-Z0-9_]
 									  return QUEUES; }
 [rR][aA][nN][kK]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return RANK; }
+[rR][aA][nN][dD][oO][mM]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return RANDOM_; }
 [rR][aA][nN][gG][eE]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return RANGE_; }
 [rR][eE][aA][dD]							{ return READ; }
@@ -794,6 +800,8 @@ IDL       [a-zA-Z0-9_]
 [sS][eE][cC][tT][iI][oO][nN]						{ return SECTION; }
 [sS][eE][cC][tT][iI][oO][nN][sS]					{ csql_yylval.cptr = pt_makename(yytext);
 									  return SECTIONS; }
+[sS][eE][eE][dD]							{ csql_yylval.cptr = pt_makename(yytext);
+									  return SEED_; }
 [sS][eE][lL][eE][cC][tT]						{ return SELECT; }
 [sS][eE][nN][sS][iI][tT][iI][vV][eE]					{ return SENSITIVE; }
 [sS][eE][pP][aA][rR][aA][tT][oO][rR]					{ csql_yylval.cptr = pt_makename(yytext);
@@ -2144,6 +2152,15 @@ parser_yyinput_multi_line (char *buff, int max_size)
   int i = 0;
 
   assert (max_size >= 1);
+
+  /* copy the in-memory input in one step; the loop below finishes EOF and non-memory inputs */
+  i = parser_copy_memory_input (this_parser, buff, max_size);
+  if (i == max_size)
+    {
+      buff[i] = 0;
+      return i;
+    }
+
   for (;;)
     {
       c = pt_nextchar ();
