@@ -10686,7 +10686,6 @@ do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement)
 static int
 do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
   const char *entity_name = NULL;
@@ -10997,23 +10996,29 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 	      else if (!prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
 		{
 		  char query[SM_MAX_IDENTIFIER_LENGTH * 4 + 36] = { 0 };
+		  char *owner_name = NULL;
 		  const char *class_name = NULL;
+		  DB_OBJECT *owner_obj = NULL;
 		  const char *hard_default =
 		    get_hard_default_for_type (alter->info.alter.alter_clause.attr_mthd.attr_def_list->type_enum);
 		  int update_rows_count = 0;
 
-		  class_name = db_get_class_qualified_name (class_mop, qualified_name, sizeof (qualified_name));
-		  if (class_name == NULL)
+		  owner_obj = db_get_owner (class_mop);
+		  class_name = db_get_class_name (class_mop);
+		  owner_name = owner_obj != NULL ? au_get_user_name (owner_obj) : NULL;
+		  if (class_name == NULL || owner_name == NULL)
 		    {
 		      error = ER_UNEXPECTED;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get class name of mop.");
+		      ws_free_string (owner_name);
 		      goto exit;
 		    }
 
-		  assert (class_name != NULL && att_name != NULL && hard_default != NULL);
+		  assert (owner_name != NULL && class_name != NULL && att_name != NULL && hard_default != NULL);
 
-		  snprintf (query, SM_MAX_IDENTIFIER_LENGTH * 4 + 30, "UPDATE [%s] SET [%s]=%s WHERE [%s] IS NULL",
-			    class_name, att_name, hard_default, att_name);
+		  snprintf (query, SM_MAX_IDENTIFIER_LENGTH * 4 + 30, "UPDATE [%s].[%s] SET [%s]=%s WHERE [%s] IS NULL",
+			    owner_name, class_name, att_name, hard_default, att_name);
+		  ws_free_string (owner_name);
 		  error = do_run_update_query_for_class (query, class_mop, &update_rows_count);
 		  if (error != NO_ERROR)
 		    {
@@ -15298,13 +15303,14 @@ error_exit:
 int
 do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   int n = 0;
   int stmt_id = 0;
   DB_SESSION *session = NULL;
   DB_QUERY_RESULT *result = NULL;
   const char *class_name = NULL;
+  DB_OBJECT *class_owner = NULL;
+  char *owner_name = NULL;
   char query[2 * SM_MAX_IDENTIFIER_LENGTH + 50] = { 0 };
   DB_VALUE count;
 
@@ -15315,17 +15321,18 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
   *has_nulls = false;
   db_make_null (&count);
 
-  class_name = db_get_class_qualified_name (class_mop, qualified_name, sizeof (qualified_name));
-  if (class_name == NULL)
+  class_owner = db_get_owner (class_mop);
+  class_name = db_get_class_name (class_mop);
+  owner_name = class_owner != NULL ? au_get_user_name (class_owner) : NULL;
+  if (class_name == NULL || owner_name == NULL)
     {
       error = ER_UNEXPECTED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get class name of mop.");
       goto end;
     }
 
-  n =
-    snprintf (query, sizeof (query) / sizeof (char), "SELECT count(*) FROM [%s] WHERE [%s] IS NULL", class_name,
-	      att_name);
+  n = snprintf (query, sizeof (query) / sizeof (char), "SELECT count(*) FROM [%s].[%s] WHERE [%s] IS NULL",
+		owner_name, class_name, att_name);
   if (n < 0 || (n == sizeof (query) / sizeof (char)))
     {
       error = ER_UNEXPECTED;
@@ -15407,6 +15414,7 @@ end:
     {
       db_close_session (session);
     }
+  ws_free_string (owner_name);
   db_value_clear (&count);
 
   return error;

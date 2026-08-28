@@ -1278,7 +1278,7 @@ vid_get_keys (MOP mop, DB_VALUE * value)
 DB_OBJLIST *
 vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *owner_name = NULL;
   const char *class_name;
   int error = NO_ERROR;
   DB_OBJLIST *objlst, *new1;
@@ -1304,13 +1304,20 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
 
   /* put together a query to get all instances of class_p */
   class_type = sm_get_class_type (class_p);
-  class_name = db_get_class_qualified_name (class_mop, qualified_name, sizeof (qualified_name));
-  snprintf (query, sizeof (query) - 1, "SELECT [%s] FROM [%s]", class_name, class_name);
+  class_name = db_get_class_name (class_mop);
+  owner_name = au_get_user_name (db_get_owner (class_mop));
+  if (class_name == NULL || owner_name == NULL)
+    {
+      ws_free_string (owner_name);
+      return NULL;
+    }
+  snprintf (query, sizeof (query) - 1, "SELECT [%s] FROM [%s].[%s]", class_name, owner_name, class_name);
 
   /* run the query */
   error = db_compile_and_execute_local (query, &qres, &query_error);
   if (error != NO_ERROR)
     {
+      ws_free_string (owner_name);
       return NULL;
     }
 
@@ -1318,6 +1325,8 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
   tuple_cnt = db_query_tuple_count (qres);
   if (tuple_cnt == 0)
     {
+      (void) db_query_end (qres);
+      ws_free_string (owner_name);
       return NULL;
     }
 
@@ -1334,7 +1343,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
       /* get instance mop */
       if (error == DB_CURSOR_SUCCESS)
 	{
-	  error = db_query_get_tuple_value_by_name (qres, (char *) class_name, &value);
+	  error = db_query_get_tuple_value (qres, 0, &value);
 	}
 
       /* allocate objlist node */
@@ -1342,6 +1351,8 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
       if (error != NO_ERROR || new1 == NULL)
 	{
 	  ml_ext_free (objlst);
+	  (void) db_query_end (qres);
+	  ws_free_string (owner_name);
 	  return NULL;
 	}
 
@@ -1353,6 +1364,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
 
   /* recycle query results */
   error = db_query_end (qres);
+  ws_free_string (owner_name);
 
   /* convert purpose into a lock */
   switch (purpose)
