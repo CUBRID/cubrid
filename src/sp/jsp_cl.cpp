@@ -876,6 +876,8 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
  * Note:
  */
 
+#define SAVEPOINT_DROP_STORED_PROC "DROPSTOREDPROC"
+
 int
 jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
@@ -896,13 +898,21 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   name_list = statement->info.sp.name;
   type = PT_NODE_SP_TYPE (statement);
 
+  // one statement can name several routines: none of them may stay dropped when one fails
+  err = tran_system_savepoint (SAVEPOINT_DROP_STORED_PROC);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
   for (p = name_list, i = 0; p != NULL; p = p->next)
     {
       name = (char *) p->info.name.original;
       if (name == NULL || name[0] == '\0')
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
-	  return er_errid ();
+	  err = er_errid ();
+	  break;
 	}
 
       err = jsp_drop_stored_procedure (name, jsp_map_pt_misc_to_sp_type (type));
@@ -910,6 +920,11 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	{
 	  break;
 	}
+    }
+
+  if (err != NO_ERROR)
+    {
+      tran_abort_upto_system_savepoint (SAVEPOINT_DROP_STORED_PROC);
     }
 
   return err;
@@ -1108,9 +1123,11 @@ jsp_set_pkg_scode_body_and_ocode (const char *unique_name, const char *scode_bod
   DB_OTMPL *obt;
   DB_VALUE value;
   DB_OBJECT *object;
+  bool is_new_record;
 
   err = NO_ERROR;
   obt = NULL;
+  is_new_record = false;
 
   AU_SAVE_AND_DISABLE (save);    // side effect 0
 
@@ -1143,6 +1160,7 @@ jsp_set_pkg_scode_body_and_ocode (const char *unique_name, const char *scode_bod
 	  ASSERT_ERROR_AND_SET (err);
 	  goto cleanup0;
 	}
+      is_new_record = true;
 
       // set the unque_name of the new record
       db_make_string (&value, unique_name);
@@ -1205,7 +1223,11 @@ jsp_set_pkg_scode_body_and_ocode (const char *unique_name, const char *scode_bod
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      obj_delete (object);
+      // an existing record was only edited: deleting it would throw away the package's code
+      if (is_new_record)
+	{
+	  obj_delete (object);
+	}
       goto cleanup0;
     }
 
@@ -1473,10 +1495,11 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
 	    goto cleanup1;
 	  } // side effect 1 cleaned
 
+	// NOTE: object is the code row that was edited, not a newly created object, so it is
+	//       left alone when the flush fails
 	err = locator_flush_instance (object);
 	if (err != NO_ERROR)
 	  {
-	    obj_delete (object);
 	    goto cleanup0;
 	  }
       }
@@ -1838,6 +1861,7 @@ sp_set_pkg_code (MOP *mop_out, const char *pkg_unique_name, const char *class_na
   DB_OBJECT *object, *classobj;
   DB_VALUE value;
   int err;
+  bool is_new_record = false;
 
   // get object template to edit
   {
@@ -1875,6 +1899,7 @@ sp_set_pkg_code (MOP *mop_out, const char *pkg_unique_name, const char *class_na
 	    ASSERT_ERROR_AND_SET (err);
 	    goto error;
 	  } // side effect 0
+	is_new_record = true;
       }
   }
 
@@ -1964,7 +1989,11 @@ sp_set_pkg_code (MOP *mop_out, const char *pkg_unique_name, const char *class_na
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      obj_delete (object);
+      // an existing record was only edited: deleting it would throw away the package's code
+      if (is_new_record)
+	{
+	  obj_delete (object);
+	}
       goto error;
     }
 
@@ -3690,6 +3719,7 @@ error_exit:
  */
 
 #define SAVEPOINT_CREATE_STORED_PROC "CREATESTOREDPROC"
+#define SAVEPOINT_ALTER_STORED_PROC "ALTERSTOREDPROC"
 
 int
 jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
@@ -3871,19 +3901,22 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   sp_info.created_time = *db_get_datetime (&current_datetime);
   sp_info.updated_time = *db_get_datetime (&current_datetime);
 
+  // Everything below changes the catalog, and a failure in the middle would leave a routine
+  // without its code behind, so the savepoint covers all of it and not just the drop of an
+  // existing routine.
+  err = tran_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  has_savepoint = true;
+
   /* check already exists */
   if (jsp_is_existing_stored_procedure (sp_info.unique_name.data ()))
     {
       if (statement->info.sp.or_replace)
 	{
 	  /* drop existing stored procedure */
-	  err = tran_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
-	  if (err != NO_ERROR)
-	    {
-	      return err;
-	    }
-	  has_savepoint = true;
-
 	  err = jsp_drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type);
 	  if (err != NO_ERROR)
 	    {
@@ -3969,6 +4002,7 @@ int
 jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR, sp_recompile, save, lang;
+  bool has_savepoint = false;
   PT_NODE *sp_name = NULL, *sp_owner = NULL, *sp_comment = NULL;
   const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL, *target_cls = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH];
@@ -4040,6 +4074,32 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       goto error;
     }
 
+  /* authentication: check before anything is changed */
+  owner_mop = jsp_get_owner (sp_mop);
+  if (owner_mop == NULL)
+    {
+      // jsp_get_owner () returns NULL only when reading the owner failed, which sets the error
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+
+  if (!ws_is_same_object (owner_mop, Au_user) && !au_is_dba_group_member (Au_user))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DDL_NOT_ALLOWED_PRIVILEGES, 1, "alter");
+      err = er_errid ();
+      goto error;
+    }
+
+  // An ALTER can carry several changes, and the owner change alone rewrites the routine's rows
+  // and its code. The savepoint keeps a failure in a later change from leaving an earlier one
+  // applied.
+  err = tran_system_savepoint (SAVEPOINT_ALTER_STORED_PROC);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+  has_savepoint = true;
+
   /* change the owner */
   if (sp_owner != NULL)
     {
@@ -4057,22 +4117,6 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	{
 	  goto error;
 	}
-    }
-
-  /* authentication */
-  owner_mop = jsp_get_owner (sp_mop);
-  if (owner_mop == NULL)
-    {
-      // jsp_get_owner () returns NULL only when reading the owner failed, which sets the error
-      ASSERT_ERROR_AND_SET (err);
-      goto error;
-    }
-
-  if (!ws_is_same_object (owner_mop, Au_user) && !au_is_dba_group_member (Au_user))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DDL_NOT_ALLOWED_PRIVILEGES, 1, "alter");
-      err = er_errid ();
-      goto error;
     }
 
   /* pl/csql compile */
@@ -4123,6 +4167,11 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
 
 error:
+
+  if (err != NO_ERROR && has_savepoint)
+    {
+      tran_abort_upto_system_savepoint (SAVEPOINT_ALTER_STORED_PROC);
+    }
 
   pr_clear_value (&user_val);
   pr_clear_value (&sp_type_val);
@@ -4269,6 +4318,7 @@ jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 
   db_make_null (&args_val);
   db_make_null (&owner_val);
+  db_make_null (&target_cls_val);
 
   sp_mop = jsp_find_stored_procedure (name);
   if (sp_mop == NULL)
@@ -4362,7 +4412,12 @@ jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 
   for (i = 0; i < arg_cnt; i++)
     {
-      set_get_element (arg_set_p, i, &temp);
+      err = set_get_element (arg_set_p, i, &temp);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+
       arg_mop = db_get_object (&temp);
       err = obj_delete (arg_mop);
       pr_clear_value (&temp);
@@ -4375,7 +4430,9 @@ jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   /* before deleting an object, all permissions are revoked. */
   if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
     {
-      assert (er_errid () != NO_ERROR);
+      // the revocation below is keyed by this name, so it cannot go on without it
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
     }
 
   save_user = Au_user;
@@ -4407,6 +4464,7 @@ error:
 
   pr_clear_value (&args_val);
   pr_clear_value (&owner_val);
+  pr_clear_value (&target_cls_val);
 
   return err;
 }
@@ -4521,6 +4579,11 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   scode_len = db_get_string_size (&scode_val);
 
   sp_info.owner = db_find_user (owner_str);
+  if (sp_info.owner == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
 
   assert (scode && scode_len);
   pl_sp_compile_request.type = PLCSQL_COMPILE_TYPE_SP;
@@ -4611,14 +4674,22 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
     }
   obt_p = NULL;
 
+  // NOTE: object_p is the routine that was edited, not a newly created object, so it is left
+  //       alone when the flush fails
   err = locator_flush_instance (object_p);
   if (err != NO_ERROR)
     {
-      obj_delete (object_p);
       goto error;
     }
 
 error:
+  // the template is still open when an error escapes between dbt_edit_object () and
+  // dbt_finish_object ()
+  if (obt_p)
+    {
+      dbt_abort_object (obt_p);
+    }
+
   AU_RESTORE (save);
 
   pr_clear_value (&scode_val);
