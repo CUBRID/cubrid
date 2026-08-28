@@ -53,12 +53,16 @@ if [ $# -eq 0 ]; then
   # case 7 is the DDL-authorization choreography: wrong-password rejection,
   #        grant/revoke across overlapping sessions, kept-statement
   #        invalidation on revoke (A6)
+  # case 8 compiles and runs a PL/CSQL function with static SQL: the semantics
+  #        and INTERNAL_JDBC callbacks terminate in-process (A7); needs cub_pl
+  #        (a JVM) alive next to the server
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
     "SELECT ? + ? @BIND=30,12 @EXPECT=42" \
     "SELECT COUNT(*) FROM db_class @ISOLATION=RR @EXPECT=74" \
     "SELECT COUNT(*) FROM db_class @SESSIONS=4 @EXPECT=74" \
-    "DDL AUTH @SCENARIO=ddl_auth"
+    "DDL AUTH @SCENARIO=ddl_auth" \
+    "PLCSQL @SCENARIO=plcsql"
 fi
 
 # This script restarts cub_master via `cubrid service stop` (see below), which

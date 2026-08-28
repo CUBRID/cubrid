@@ -758,6 +758,67 @@ scenario_ddl_auth (const char *server_name)
   return dba_ok && u1_ok && cleanup_ok;
 }
 
+/* A7 smoke scenario — the PL callback terminates in-process (#120):
+ *   [1] CREATE FUNCTION of a PL/CSQL body with static SQL compiles through the
+ *       in-server semantics callbacks (GET_SQL_SEMANTICS, #120 D3(2));
+ *   [2] executing the function runs its static SELECT back through the
+ *       INTERNAL_JDBC callback (QUERY_PREPARE/EXECUTE, #120 D3(1)) — both legs
+ *       must land on this very session's thread, never on a CAS. */
+static bool
+scenario_plcsql (const char *server_name)
+{
+  return in_process_session (0, server_name, "DBA", "", 0, [] (int sid)
+  {
+    scenario_try (sid, "DROP FUNCTION a7_fn");
+    scenario_try (sid, "DROP TABLE IF EXISTS a7_t1");
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL cleanup commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    if (!scenario_exec (sid, "CREATE TABLE a7_t1 (a INT)", NULL, 0)
+	|| !scenario_exec (sid, "INSERT INTO a7_t1 VALUES (42)", NULL, 0)
+	|| !scenario_exec (sid,
+			   "CREATE OR REPLACE FUNCTION a7_fn() RETURN INT AS v INT; BEGIN SELECT a INTO v FROM a7_t1; RETURN v; END;",
+			   NULL, 0))
+      {
+	return false;
+      }
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL setup commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    tracer_log ("M0_TRACER: S%d plcsql function compiled via in-process semantics callback", sid);
+
+    int v = 0;
+    if (!scenario_exec (sid, "SELECT a7_fn()", &v, 0))
+      {
+	return false;
+      }
+    if (v != 42)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL plcsql returned %d expected 42", sid, v);
+	return false;
+      }
+    tracer_log ("M0_TRACER: S%d plcsql static SQL returned %d via in-process callback", sid, v);
+
+    scenario_try (sid, "DROP FUNCTION a7_fn");
+    scenario_try (sid, "DROP TABLE a7_t1");
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL drop commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    if (db_end_session () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL db_end_session msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    return true;
+  });
+}
+
 static void
 tracer_main (char *server_name, char *sql, char *out_path)
 {
@@ -779,6 +840,10 @@ tracer_main (char *server_name, char *sql, char *out_path)
       if (strcmp (scenario, "ddl_auth") == 0)
 	{
 	  ok = scenario_ddl_auth (server_name);
+	}
+      else if (strcmp (scenario, "plcsql") == 0)
+	{
+	  ok = scenario_plcsql (server_name);
 	}
       else
 	{
