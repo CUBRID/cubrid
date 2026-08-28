@@ -60,7 +60,6 @@
  */
 
 std::string
-
 sm_define_view_class_spec (void)
 {
   char stmt [2048];
@@ -150,7 +149,6 @@ sm_define_view_class_spec (void)
 }
 
 std::string
-
 sm_define_view_direct_super_class_spec (void)
 {
   char stmt [2048];
@@ -214,7 +212,6 @@ sm_define_view_direct_super_class_spec (void)
 }
 
 std::string
-
 sm_define_view_vclass_spec (void)
 {
   char stmt [2048];
@@ -288,7 +285,6 @@ sm_define_view_vclass_spec (void)
 }
 
 std::string
-
 sm_define_view_attribute_spec (void)
 {
   char stmt [4096];
@@ -400,7 +396,6 @@ sm_define_view_attribute_spec (void)
 }
 
 std::string
-
 sm_define_view_attr_setdomain_elm_spec (void)
 {
   char stmt [2048];
@@ -484,7 +479,6 @@ sm_define_view_attr_setdomain_elm_spec (void)
 }
 
 std::string
-
 sm_define_view_method_spec (void)
 {
   char stmt [2048];
@@ -558,7 +552,6 @@ sm_define_view_method_spec (void)
 }
 
 std::string
-
 sm_define_view_method_arg_spec (void)
 {
   char stmt [2048];
@@ -643,7 +636,6 @@ sm_define_view_method_arg_spec (void)
 }
 
 std::string
-
 sm_define_view_meth_arg_setdomain_elm_spec (void)
 {
   char stmt [2048];
@@ -728,7 +720,6 @@ sm_define_view_meth_arg_setdomain_elm_spec (void)
 }
 
 std::string
-
 sm_define_view_meth_file_spec (void)
 {
   char stmt [2048];
@@ -793,7 +784,6 @@ sm_define_view_meth_file_spec (void)
 }
 
 std::string
-
 sm_define_view_index_spec (void)
 {
   char stmt [4096];
@@ -925,7 +915,6 @@ sm_define_view_index_spec (void)
 }
 
 std::string
-
 sm_define_view_index_key_spec (void)
 {
   char stmt [2048];
@@ -999,7 +988,6 @@ sm_define_view_index_key_spec (void)
 }
 
 std::string
-
 sm_define_view_auth_spec (void)
 {
   char stmt [4096];
@@ -1076,7 +1064,6 @@ sm_define_view_auth_spec (void)
 }
 
 std::string
-
 sm_define_view_trigger_spec (void)
 {
   char stmt [2048];
@@ -1150,7 +1137,6 @@ sm_define_view_trigger_spec (void)
 }
 
 std::string
-
 sm_define_view_partition_spec (void)
 {
   char stmt [2048];
@@ -1231,7 +1217,6 @@ sm_define_view_partition_spec (void)
 }
 
 std::string
-
 sm_define_view_stored_procedure_spec (void)
 {
   char stmt [4096];
@@ -1349,7 +1334,6 @@ sm_define_view_stored_procedure_spec (void)
 }
 
 std::string
-
 sm_define_view_stored_procedure_args_spec (void)
 {
   char stmt [2048];
@@ -1430,7 +1414,6 @@ sm_define_view_stored_procedure_args_spec (void)
 }
 
 std::string
-
 sm_define_view_serial_spec (void)
 {
   char stmt [2048];
@@ -1467,7 +1450,6 @@ sm_define_view_serial_spec (void)
 }
 
 std::string
-
 sm_define_view_ha_apply_info_spec (void)
 {
   char stmt [2048];
@@ -1512,7 +1494,6 @@ sm_define_view_ha_apply_info_spec (void)
 }
 
 std::string
-
 sm_define_view_collation_spec (void)
 {
   char stmt [2048];
@@ -1551,7 +1532,6 @@ sm_define_view_collation_spec (void)
 }
 
 std::string
-
 sm_define_view_user_spec (void)
 {
   char stmt [2048];
@@ -1595,7 +1575,6 @@ sm_define_view_user_spec (void)
 }
 
 std::string
-
 sm_define_view_authorization_spec (void)
 {
   char stmt [2048];
@@ -1627,7 +1606,6 @@ sm_define_view_authorization_spec (void)
 }
 
 std::string
-
 sm_define_view_charset_spec (void)
 {
   char stmt [2048];
@@ -1657,7 +1635,6 @@ sm_define_view_charset_spec (void)
 }
 
 std::string
-
 sm_define_view_synonym_spec (void)
 {
   char stmt [2048];
@@ -1709,7 +1686,6 @@ sm_define_view_synonym_spec (void)
 }
 
 std::string
-
 sm_define_view_server_spec (void)
 {
   char stmt [2048];
@@ -1781,7 +1757,6 @@ sm_define_view_server_spec (void)
 }
 
 std::string
-
 sm_define_view_histogram_spec (void)
 {
   char stmt [2048];
