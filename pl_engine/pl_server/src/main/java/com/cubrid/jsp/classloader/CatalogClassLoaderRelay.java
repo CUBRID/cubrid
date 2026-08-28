@@ -111,6 +111,7 @@ public class CatalogClassLoaderRelay extends ClassLoader {
                 throw new ClassNotFoundException(className);
             }
             classLoader = new CatalogClassLoader(codeSet, this);
+            unitClassLoaders.put(mainClassName, classLoader);
         } else {
             if (classLoader.isOld) {
                 CompiledCodeSet codeSet0 = classLoader.codeSet;
