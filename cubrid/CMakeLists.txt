@@ -211,6 +211,8 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/host_lookup.c
   ${CONNECTION_DIR}/connection_context.cpp
   ${CONNECTION_DIR}/master_connector.cpp
+  ${CONNECTION_DIR}/adoption.cpp
+  ${CONNECTION_DIR}/driver_session.cpp
   ${CONNECTION_DIR}/connection_pool.cpp
   ${CONNECTION_DIR}/connection_worker.cpp
   ${CONNECTION_DIR}/coordinator.cpp
@@ -223,6 +225,8 @@ set(CONNECTION_HEADERS
   ${CONNECTION_DIR}/connection_support.hpp
   ${CONNECTION_DIR}/connection_context.hpp
   ${CONNECTION_DIR}/master_connector.hpp
+  ${CONNECTION_DIR}/adoption.hpp
+  ${CONNECTION_DIR}/driver_session.hpp
   ${CONNECTION_DIR}/connection_pool.hpp
   ${CONNECTION_DIR}/connection_worker.hpp
   ${CONNECTION_DIR}/coordinator.hpp
