@@ -382,7 +382,13 @@ namespace cubconn
 	}
       catch (const std::system_error &)
 	{
-	  registry_session_finished (token);	/* removes the entry, no SESSION_END needed yet */
+	  /* never ACKed: erase directly — a SESSION_END for a token the
+	   * broker never learned would corrupt its slot count */
+	  {
+	    std::lock_guard<std::mutex> guard (m.registry_mutex);
+	    m.registry.erase (token);
+	  }
+	  m.registry_cv.notify_all ();
 	  css_decrement_num_conn (DB_CLIENT_TYPE_DEFAULT);
 	  close (client_fd);
 	  reject_body reject;

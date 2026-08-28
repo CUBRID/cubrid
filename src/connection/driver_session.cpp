@@ -53,6 +53,7 @@
 #include "network_interface_cl.h"	// boot_unregister_client
 #include "session.h"		// session_adopt_client_context
 #include "storage_common.h"	// NULL_TRAN_INDEX
+#include "system_parameter.h"	// PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "transaction_cl.h"	// tm_Tran_index
@@ -432,6 +433,15 @@ namespace cubconn
 
       /* cancel arrives on the control channel as a tran interrupt (#117 D4) */
       registry_set_tran_index (params.token, tm_Tran_index);
+
+      /* the broker filled its own connect-reply facts (bytes 0-3:
+       * dbms/keep_con/statement pooling/pconnect); the server owns the
+       * protocol bytes (cas_bi_make_broker_info split, B1-D5) */
+      params.broker_info[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
+      params.broker_info[BROKER_INFO_FUNCTION_FLAG] = (char) (BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT);
+      params.broker_info[BROKER_INFO_SYSTEM_PARAM] =
+	      prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR) ? MASK_ORACLE_COMPAT_NUMBER_BEHAVIOR : 0;
+      params.broker_info[BROKER_INFO_RESERVED3] = 0;
 
       make_session_for_driver (session_blob);
       reply_size = build_connect_reply (params.token, params.slot_idx, params.broker_info, session_blob,

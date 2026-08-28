@@ -1,0 +1,78 @@
+#!/bin/bash
+# smoke_direct.sh - B1 direct-handoff smoke: 1-hop connect over the real wire.
+#
+# Boots the installed $CUBRID stack with a DIRECT_HANDOFF=ON broker and runs
+# probe_direct.py against it (connect / health check / cancel / anti-spoof /
+# request-loop answer).  The JDBC smoke supersedes this at the b1-jdbc-smoke
+# stage; this is the PR2 "first 1-hop" checkpoint.
+#
+# usage: smoke_direct.sh <dbname> <broker_port>
+#
+# Requirements: $CUBRID installed, <dbname> created, no other CUBRID service
+# running from this install (fail-closed, same hygiene as smoke.sh), and the
+# cubrid_broker.conf of this install is REPLACED for the run (backed up and
+# restored on exit).
+
+set -u
+
+DB="${1:?dbname required}"
+BROKER_PORT="${2:?broker port required}"
+
+: "${CUBRID:?CUBRID env required}"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BRCONF="$CUBRID/conf/cubrid_broker.conf"
+BRCONF_BAK="$BRCONF.smoke_direct.bak"
+
+fail() { echo "SMOKE_DIRECT: FAIL - $*" >&2; exit 1; }
+
+# fail-closed service check (mirrors smoke.sh)
+svc_out="$(cubrid service status 2>&1)" || true
+if printf '%s\n' "$svc_out" | grep -q '^ Server '; then
+  fail "other CUBRID servers are running from this install"
+fi
+
+cleanup() {
+  cubrid broker stop >/dev/null 2>&1 || true
+  cubrid server stop "$DB" >/dev/null 2>&1 || true
+  cubrid service stop >/dev/null 2>&1 || true
+  if [ -f "$BRCONF_BAK" ]; then
+    mv -f "$BRCONF_BAK" "$BRCONF"
+  fi
+}
+trap cleanup EXIT INT TERM
+
+cp -f "$BRCONF" "$BRCONF_BAK" || fail "cannot back up broker conf"
+
+cat > "$BRCONF" <<EOF
+[broker]
+MASTER_SHM_ID           =30001
+ADMIN_LOG_FILE          =log/broker/cubrid_broker.log
+
+[%B1DIRECT]
+SERVICE                 =ON
+BROKER_PORT             =$BROKER_PORT
+MIN_NUM_APPL_SERVER     =0
+MAX_NUM_APPL_SERVER     =20
+APPL_SERVER_SHM_ID      =30002
+LOG_DIR                 =log/broker/sql_log
+ERROR_LOG_DIR           =log/broker/error_log
+SQL_LOG                 =OFF
+TIME_TO_KILL            =120
+SESSION_TIMEOUT         =300
+KEEP_CONNECTION         =AUTO
+DIRECT_HANDOFF          =ON
+EOF
+
+cubrid server start "$DB" >/dev/null 2>&1 || fail "server start"
+cubrid broker start >/dev/null 2>&1 || fail "broker start"
+sleep 1
+
+python3 "$SCRIPT_DIR/probe_direct.py" "$BROKER_PORT" "$DB" dba "" || fail "probe"
+
+# teardown must be clean: the adopted-session sign-off path runs on stop
+cubrid broker stop >/dev/null 2>&1 || fail "broker stop"
+cubrid server stop "$DB" >/dev/null 2>&1 || fail "server stop"
+cubrid service stop >/dev/null 2>&1 || true
+
+echo "SMOKE_DIRECT: SUCCESS"
