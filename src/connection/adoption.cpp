@@ -47,6 +47,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cas_dispatch.h"	// cas_server_speaker_boot_init
 #include "connection_defs.h"
 #include "connection_sr.h"	// css_increment_num_conn
 #include "db_client_type.hpp"
@@ -55,6 +56,8 @@
 #include "log_impl.h"		// logtb_set_tran_index_interrupt
 #include "porting.h"
 #include "system_parameter.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
 
 namespace cubconn
 {
@@ -463,6 +466,20 @@ namespace cubconn
     static void
     channel_thread_run (manager *m, std::shared_ptr<channel> ch)
     {
+      /* CANCEL handling lands in engine code that uses the thread-local
+       * error context (logtb interrupt notification) — register this foreign
+       * thread like the session threads do */
+      cubthread::entry *entry_p = cubthread::get_manager ()->claim_entry ();
+      if (entry_p != NULL)
+	{
+	  entry_p->register_id ();
+	  entry_p->type = TT_SERVER;
+	  entry_p->tran_index = -1;
+	  entry_p->m_status = cubthread::entry::status::TS_RUN;
+	  entry_p->shutdown = false;
+	  entry_p->get_error_context ().register_thread_local ();
+	}
+
       for (;;)
 	{
 	  msg_header header;
@@ -548,8 +565,19 @@ namespace cubconn
 	}
 
       close (ch->fd);
-      std::lock_guard<std::mutex> guard (m->channels_mutex);
-      m->channels.erase (ch->id);
+      {
+	std::lock_guard<std::mutex> guard (m->channels_mutex);
+	m->channels.erase (ch->id);
+      }
+
+      if (entry_p != NULL)
+	{
+	  entry_p->tran_index = NULL_TRAN_INDEX;
+	  entry_p->m_status = cubthread::entry::status::TS_DEAD;
+	  entry_p->get_error_context ().deregister_thread_local ();
+	  entry_p->unregister_id ();
+	  cubthread::get_manager ()->retire_entry (*entry_p);
+	}
     }
 
     static void
@@ -647,6 +675,9 @@ namespace cubconn
 	  delete m;
 	  return ER_FAILED;
 	}
+
+      /* the folded CAS speaker's process-wide config stub (cas_server_support) */
+      cas_server_speaker_boot_init (db_name);
 
       m->accept_thread = std::thread (accept_thread_run, m);
       adoption_Manager = m;

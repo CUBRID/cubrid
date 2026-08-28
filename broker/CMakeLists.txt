@@ -245,6 +245,7 @@ set(CAS_COMMON_LIB_SOURCES
   ${BROKER_DIR}/cas_meta.c 
   ${BROKER_DIR}/cas_ssl.c
   ${BROKER_DIR}/cas_common_main.c
+  ${BROKER_DIR}/cas_conn_helpers.c
   ${BROKER_DIR}/cas_common_execute.c
   ${BROKER_DIR}/cas_common_function.c
   ${BROKER_DIR}/cas_common_vars.c
@@ -292,6 +293,7 @@ endif(UNIX)
 
 set(CUB_CAS_SOURCES
   ${BROKER_DIR}/cas.c
+  ${BROKER_DIR}/cas_dispatch.c
   ${BROKER_DIR}/cas_function.c
   ${BROKER_DIR}/cas_execute.c
   ${BROKER_DIR}/cas_str_like.c

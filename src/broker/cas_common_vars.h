@@ -29,6 +29,16 @@
 #include "cas_protocol.h"
 #include "cas_error.h"
 
+
+/* stage B1 (#117): in the merged server the CAS speaker runs as one dedicated
+ * thread per adopted connection, so a CAS-process-global is made session-local
+ * by making it thread-local.  The standalone CAS/CGW builds are unchanged. */
+#if defined(SERVER_MODE)
+#define CAS_TLS thread_local
+#else
+#define CAS_TLS
+#endif
+
 typedef struct t_object T_OBJECT;
 struct t_object
 {
@@ -71,29 +81,29 @@ extern int cas_shard_flag;
 /* Shared memory variables */
 extern int shm_as_index;
 extern T_SHM_APPL_SERVER *shm_appl;
-extern T_APPL_SERVER_INFO *as_info;
+extern CAS_TLS T_APPL_SERVER_INFO *as_info;
 
 /* Transaction and query timing */
-extern struct timeval tran_start_time;
-extern struct timeval query_start_time;
-extern int tran_timeout;
-extern int query_timeout;
-extern INT64 query_cancel_time;
-extern char query_cancel_flag;
+extern CAS_TLS struct timeval tran_start_time;
+extern CAS_TLS struct timeval query_start_time;
+extern CAS_TLS int tran_timeout;
+extern CAS_TLS int query_timeout;
+extern CAS_TLS INT64 query_cancel_time;
+extern CAS_TLS char query_cancel_flag;
 
 /* Error handling */
-extern int errors_in_transaction;
-extern T_ERROR_INFO err_info;
+extern CAS_TLS int errors_in_transaction;
+extern CAS_TLS T_ERROR_INFO err_info;
 
 /* Client info */
-extern char stripped_column_name;
-extern char cas_client_type;
+extern CAS_TLS char stripped_column_name;
+extern CAS_TLS char cas_client_type;
 
 /* CAS info buffer */
-extern char prev_cas_info[CAS_INFO_SIZE];
+extern CAS_TLS char prev_cas_info[CAS_INFO_SIZE];
 
 /* Network socket */
-extern SOCKET new_req_sock_fd;
+extern CAS_TLS SOCKET new_req_sock_fd;
 
 #if defined(WINDOWS)
 /* Request count for restart check (WINDOWS only) */
@@ -105,22 +115,22 @@ extern const char *program_name;
 extern char broker_name[BROKER_NAME_LEN];
 
 /* CAS configuration */
-extern int cas_default_isolation_level;
-extern int cas_default_lock_timeout;
-extern int cas_send_result_flag;
-extern bool cas_default_ansi_quotes;
-extern bool cas_default_no_backslash_escapes;
+extern CAS_TLS int cas_default_isolation_level;
+extern CAS_TLS int cas_default_lock_timeout;
+extern CAS_TLS int cas_send_result_flag;
+extern CAS_TLS bool cas_default_ansi_quotes;
+extern CAS_TLS bool cas_default_no_backslash_escapes;
 
 /* Request info and query sequence */
-extern T_REQ_INFO req_info;
+extern CAS_TLS T_REQ_INFO req_info;
 // extern int query_sequence_num;
 
 /* Additional variables used by CAS and CGW */
 extern int psize_at_start;
-extern int con_status_before_check_cas;
-extern bool is_first_request;
-extern int cas_info_size;
-extern bool autocommit_deferred;
+extern CAS_TLS int con_status_before_check_cas;
+extern CAS_TLS bool is_first_request;
+extern CAS_TLS int cas_info_size;
+extern CAS_TLS bool autocommit_deferred;
 
 /* Common functions */
 extern void cas_set_db_connect_status (int status);
