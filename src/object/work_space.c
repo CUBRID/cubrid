@@ -55,6 +55,7 @@
 #include "view_transform.h"
 #include "dbtype.h"
 #include "execute_statement.h"
+#include "client_session_context.hpp"
 
 
 #if defined (SERVER_MODE)
@@ -219,6 +220,15 @@ static void ws_examine_no_mop_has_cached_lock (void);
 void
 ws_abort_transaction (void)
 {
+#if defined (SERVER_MODE)
+  /* exhaustion outside any session bracket is server-internal area use; keep
+   * the pre-merge SERVER_MODE semantics of just failing the allocation */
+  if (!csc_bracket_is_active ())
+    {
+      return;
+    }
+#endif /* SERVER_MODE */
+
   if (db_Disable_modifications)
     {
       if (er_errid () != ER_OUT_OF_VIRTUAL_MEMORY)
@@ -233,10 +243,14 @@ ws_abort_transaction (void)
 
       (void) tran_unilaterally_abort ();
 
-      /* couldn't get to the catalog, use hard coded strings */
+#if !defined (SERVER_MODE)
+      /* couldn't get to the catalog, use hard coded strings; the server has no
+       * client console to print the halt banner to, and it does not halt - the
+       * session survives with its transaction aborted */
       fprintf (stdout, "CUBRID cannot allocate main memory and must halt execution.\n");
       fprintf (stdout, "The current transaction has been aborted.\n");
       fprintf (stdout, "Data integrity has been preserved.\n");
+#endif /* !SERVER_MODE */
     }
 }
 

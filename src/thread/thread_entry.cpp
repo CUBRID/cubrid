@@ -35,8 +35,13 @@
 #include "page_buffer.h"
 #include "resource_tracker.hpp"
 
+#include <cstdlib>
 #include <cstring>
 #include <sstream>
+
+#if !defined (WINDOWS)
+#include <csignal>
+#endif // !WINDOWS
 
 #if !defined (WINDOWS)
 #include <pthread.h>
@@ -336,6 +341,61 @@ namespace cubthread
     return thread_id;
   }
 
+#if defined (SERVER_MODE) && !defined (WINDOWS)
+  // Per-thread alternate signal stack for the fatal-signal handlers, which
+  // server.c registers with SA_ONSTACK: a SIGSEGV thrown by stack exhaustion
+  // cannot run its handler on the exhausted stack, so without this the
+  // handler re-faults and no symbolic crash callstack is written.  The RAII
+  // wrapper disarms and frees the stack when the thread exits.
+  namespace
+  {
+    class crash_signal_stack
+    {
+      public:
+	crash_signal_stack ()
+	  : m_stack (NULL)
+	{
+	  // generous fixed size: the crash handler builds PATH_MAX buffers and
+	  // walks the callstack, which does not fit the minimal SIGSTKSZ
+	  const size_t size = 32 * 1024;
+
+	  m_stack = malloc (size);
+	  if (m_stack == NULL)
+	    {
+	      return;
+	    }
+
+	  stack_t ss;
+	  ss.ss_sp = m_stack;
+	  ss.ss_size = size;
+	  ss.ss_flags = 0;
+	  if (sigaltstack (&ss, NULL) != 0)
+	    {
+	      free (m_stack);
+	      m_stack = NULL;
+	    }
+	}
+
+	~crash_signal_stack ()
+	{
+	  if (m_stack != NULL)
+	    {
+	      stack_t ss;
+	      ss.ss_sp = NULL;
+	      ss.ss_size = 0;
+	      ss.ss_flags = SS_DISABLE;
+	      sigaltstack (&ss, NULL);
+	      free (m_stack);
+	      m_stack = NULL;
+	    }
+	}
+
+      private:
+	void *m_stack;
+    };
+  } // anonymous namespace
+#endif // SERVER_MODE && !WINDOWS
+
   void
   entry::register_id ()
   {
@@ -344,6 +404,11 @@ namespace cubthread
 #if defined (SERVER_MODE)
     // native thread identifier must be equal to identifier of std::this_thread
     assert (get_posix_id () == pthread_self ());
+
+#if !defined (WINDOWS)
+    // constructed on the first registration of each OS thread
+    static thread_local crash_signal_stack tl_crash_stack;
+#endif // !WINDOWS
 #endif /* SERVER_MODE */
   }
 

@@ -459,6 +459,49 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
+/* maximum expression nesting depth accepted from user input; a generous fixed
+ * constant - legitimate statements nest at most a few hundred levels, while
+ * unbounded nesting overflows the C stack of the recursive tree walkers
+ * downstream of the parser */
+#define PT_MAX_NESTING_DEPTH 1024
+
+static int
+pt_nesting_depth_max3 (const PT_NODE * arg1, const PT_NODE * arg2, const PT_NODE * arg3)
+{
+  int depth = 0;
+
+  if (arg1 != NULL && arg1->nesting_depth > depth)
+    {
+      depth = arg1->nesting_depth;
+    }
+  if (arg2 != NULL && arg2->nesting_depth > depth)
+    {
+      depth = arg2->nesting_depth;
+    }
+  if (arg3 != NULL && arg3->nesting_depth > depth)
+    {
+      depth = arg3->nesting_depth;
+    }
+
+  return depth;
+}
+
+static int
+pt_nesting_depth_list_max (const PT_NODE * list)
+{
+  int depth = 0;
+
+  for (; list != NULL; list = list->next)
+    {
+      if (list->nesting_depth > depth)
+	{
+	  depth = list->nesting_depth;
+	}
+    }
+
+  return depth;
+}
+
 #define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)  do {  \
    if ((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
    {                                     \
@@ -22616,6 +22659,9 @@ parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_CODE func_code,
     {
       node_function->info.function.function_type = func_code;
       node_function->info.function.arg_list = args_list;
+      /* nesting through a function call runs arg -> PT_FUNCTION -> holder
+       * PT_EXPR; carry the argument depth so the holder's guard sees it */
+      node_function->nesting_depth = 1 + pt_nesting_depth_list_max (args_list);
 
       node =
 	parser_make_expression (parser, PT_FUNCTION_HOLDER, node_function, NULL,
@@ -22673,6 +22719,16 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
       expr->info.expr.arg1 = arg1;
       expr->info.expr.arg2 = arg2;
       expr->info.expr.arg3 = arg3;
+
+      /* the recursive tree walkers (pt_apply/pt_print/semantic passes) descend
+       * one C stack frame per nesting level, so user input must not build an
+       * arbitrarily deep tree; demote it to a statement error here instead */
+      expr->nesting_depth = 1 + pt_nesting_depth_max3 (arg1, arg2, arg3);
+      if (expr->nesting_depth > PT_MAX_NESTING_DEPTH && !pt_has_error (parser))
+	{
+	  PT_ERRORf (parser, expr, "Statement is nested too deeply (the maximum nesting depth is %d).",
+		     PT_MAX_NESTING_DEPTH);
+	}
 
       if (parser_instnum_check == 1 && !pt_instnum_compatibility (expr))
 	{

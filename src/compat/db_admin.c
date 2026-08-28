@@ -942,7 +942,11 @@ db_restart (const char *program, int print_version, const char *volume)
     }
   else
     {
-      strncpy_bufsize (db_Program_name, program);
+      /* strncat instead of strncpy_bufsize: through the session-context macro
+       * gcc no longer sees the null-write guard and raises
+       * -Wstringop-truncation on the equal-to-size bound */
+      db_Program_name[0] = '\0';
+      strncat (db_Program_name, program, sizeof (db_Program_name) - 1);
       db_Database_name[0] = '\0';
 
       /* authorization will need to access the database and call some db_ functions so assume connection will be ok

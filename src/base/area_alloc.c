@@ -191,11 +191,10 @@ area_create (const char *name, size_t element_size, size_t alloc_count)
 
   area->n_allocs = 0;
   area->n_frees = 0;
-#if defined (SERVER_MODE)
-  area->failure_function = NULL;
-#else
+  /* in SERVER_MODE ws_abort_transaction is a no-op unless the calling thread
+   * holds a session activation bracket, so server-internal area use keeps the
+   * old fail-the-allocation behavior */
   area->failure_function = ws_abort_transaction;
-#endif
 
   area->blockset_list = area_alloc_blockset (area);
   if (area->blockset_list == NULL)
