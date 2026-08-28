@@ -29,10 +29,10 @@
 #include "dbi.h"
 #include "dbtype_def.h"
 /*#include "db.h"*/
-/* also available in the merged SERVER_MODE library (db_admin.c is part of
- * the folded client half, stage B1) */
+#if !defined(SERVER_MODE)
 extern int db_get_connect_status (void);
 extern void db_set_connect_status (int status);
+#endif
 
 #define CUBRID_VERSION(X, Y)	(((X) << 8) | (Y))
 #define CUR_CUBRID_VERSION	\

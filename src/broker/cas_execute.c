@@ -74,7 +74,7 @@
 #include "connection_cl.h"
 #endif
 #include "db_set_function.h"
-#include "dbi.h"
+#include "db.h"		/* + db_get_connect_status under SERVER_MODE (stage B1) */
 #include "parse_tree.h"
 #include "dbtype.h"
 #include "memory_alloc.h"

@@ -47,7 +47,7 @@
 #include "cas_net_buf.h"
 #include "broker_process_size.h"
 #include "ddl_log.h"		/* logddl_set_start_time */
-#include "cas_db_inc.h"		/* db_set/get_connect_status */
+#include "db.h"		/* db_set/get_connect_status */
 
 int
 restart_is_needed (void)
