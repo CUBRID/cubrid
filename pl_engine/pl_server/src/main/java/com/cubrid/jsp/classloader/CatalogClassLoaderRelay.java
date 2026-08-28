@@ -86,7 +86,8 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         assert classLoader != null;
 
         // CAUTION: do not use classLoader.loadClass() :
-        //  it just calls classLoader.findClass() by the shortcut (see CatalogClassLoader::loadClass()
+        //  it just calls classLoader.findClass() by the shortcut (see
+        // CatalogClassLoader::loadClass()
         //  and calling classLoader.loadClass() is waste of CPU clocks.
         return classLoader.findClass(JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName);
     }
@@ -131,7 +132,8 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         assert classLoader != null;
 
         // CAUTION: do not use classLoader.loadClass() :
-        //  it just calls classLoader.findClass() by the shortcut (see CatalogClassLoader::loadClass()
+        //  it just calls classLoader.findClass() by the shortcut (see
+        // CatalogClassLoader::loadClass()
         //  and calling classLoader.loadClass() is waste of CPU clocks.
         return classLoader.findClass(className);
     }
