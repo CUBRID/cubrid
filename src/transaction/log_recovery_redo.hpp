@@ -643,6 +643,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
        */
       perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_FUNC_EXEC };
 
+      rcv.record_lsa = record_info.m_start_lsa;
       const int err_func = redofunc (thread_p, &rcv);
       if (err_func != NO_ERROR)
 	{

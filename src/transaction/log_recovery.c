@@ -454,6 +454,7 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
 
   if (redofun != NULL)
     {
+      LSA_COPY (&rcv->record_lsa, rcv_lsa_ptr);
       error_code = (*redofun) (thread_p, rcv);
       if (error_code != NO_ERROR)
 	{

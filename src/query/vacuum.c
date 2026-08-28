@@ -1585,6 +1585,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   HEAP_PAGE_VACUUM_STATUS page_vacuum_status;	/* Current page vacuum status. */
   int error_code = NO_ERROR;	/* Error code. */
   int obj_index = 0;		/* Index used to iterate the object array. */
+  int last_obj_index;		/* Index of the last distinct object; page status is finalized after it. */
 
   /* Assert expected arguments. */
   assert (heap_objects != NULL);
@@ -1639,8 +1640,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
       if (helper.home_page == NULL)
 	{
 	  /* deallocated */
-	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
-	  assert (n_heap_objects == 1);
+	  /* Safe guard: the interrupted job had removed the page after processing all of its objects; a page in
+	   * HEAP_PAGE_VACUUM_ONCE may hold many objects of one job, so no assumption on their number is possible. */
 
 	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run",
 				 VPID_AS_ARGS (&helper.home_vpid));
@@ -1651,8 +1652,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	{
 	  /* page was deallocated and reused as file table. */
 	  assert (ptype == PAGE_FTAB);
-	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
-	  assert (n_heap_objects == 1);
+	  /* Safe guard: the interrupted job had removed the page after processing all of its objects; a page in
+	   * HEAP_PAGE_VACUUM_ONCE may hold many objects of one job, so no assumption on their number is possible. */
 
 	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
 				 "Heap page %d|%d was deallocated during previous run and reused as file table page",
@@ -1701,6 +1702,14 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
     {
       helper.reusable = *reusable;
       helper.hfid = *hfid;
+    }
+
+  /* Objects are sorted by slot; the loop below skips repeated slots, so the last object it actually processes is the
+   * first of the trailing run of equal slots. The page status is finalized when that object is processed. */
+  last_obj_index = n_heap_objects - 1;
+  while (last_obj_index > 0 && heap_objects[last_obj_index].oid.slotid == heap_objects[last_obj_index - 1].oid.slotid)
+    {
+      last_obj_index--;
     }
 
   helper.crt_slotid = -1;
@@ -1811,11 +1820,13 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
        * Object can be removed.  8. Vacuum is executed for delete operation at #4.  It would be incorrect to change
        * page status from vacuum once to none, since it will be followed by another vacuum task. Since vacuum none
        * status means page might be deallocated, it is better to be paranoid about it. */
-      if ((page_vacuum_status == HEAP_PAGE_VACUUM_ONCE && !was_interrupted)
-	  || (page_vacuum_status == HEAP_PAGE_VACUUM_NONE && was_interrupted))
+      /* A page in HEAP_PAGE_VACUUM_ONCE may hold many objects of this job (all MVCC operations logged in the same
+       * block keep the status, see heap_page_update_chain_after_mvcc_log), so finalize the page status only after the
+       * last distinct object has been processed. */
+      if (obj_index == last_obj_index
+	  && ((page_vacuum_status == HEAP_PAGE_VACUUM_ONCE && !was_interrupted)
+	      || (page_vacuum_status == HEAP_PAGE_VACUUM_NONE && was_interrupted)))
 	{
-	  assert (n_heap_objects == 1);
-	  assert (helper.n_vacuumed <= 1);
 	  if (page_vacuum_status == HEAP_PAGE_VACUUM_ONCE)
 	    {
 	      heap_page_set_vacuum_status_none (thread_p, helper.home_page);
