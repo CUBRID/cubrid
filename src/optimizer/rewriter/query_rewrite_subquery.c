@@ -109,10 +109,12 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
       return false;
     }
 
-  /* the WHERE becomes an ON condition, and the grammar forbids a subquery there
-   * (MSGCAT_SYNTAX_JOIN_COND_SUBQ) */
+  /* the WHERE becomes an ON condition and the IN forms lift the select item into it too; the grammar forbids
+   * a subquery there (MSGCAT_SYNTAX_JOIN_COND_SUBQ) */
   has_subquery = false;
   (void) parser_walk_tree (parser, subq->info.query.q.select.where, pt_check_subquery_pre, NULL,
+			   pt_check_subquery_post, &has_subquery);
+  (void) parser_walk_tree (parser, subq->info.query.q.select.list, pt_check_subquery_pre, NULL,
 			   pt_check_subquery_post, &has_subquery);
   if (has_subquery)
     {
