@@ -1253,8 +1253,8 @@ static void
 print_grant_entry (DB_SET *grants, int grant_index, FILE *fp)
 {
   DB_VALUE value;
-  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-  unique_name[0] = '\0';
+  char qualified_name2[DB_MAX_IDENTIFIER_LENGTH + 1];
+  qualified_name2[0] = '\0';
 
   int type;
   set_get_element (grants, GRANT_ENTRY_TYPE (grant_index), &value);
@@ -1271,12 +1271,13 @@ print_grant_entry (DB_SET *grants, int grant_index, FILE *fp)
     }
   else
     {
-      if (jsp_get_unique_name (db_get_object (&value), unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+      if (jsp_get_qualified_name (db_get_object (&value), qualified_name2, DB_MAX_IDENTIFIER_LENGTH) == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
 	}
 
-      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CLASS_NAME), unique_name);
+      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CLASS_NAME),
+	       qualified_name2);
     }
   fprintf (fp, " ");
 

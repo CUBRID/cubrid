@@ -114,7 +114,6 @@ typedef sp_code_info SP_CODE_INFO;
 
 struct sp_info
 {
-  std::string unique_name;
   std::string sp_name;
   std::string pkg_name;
   SP_TYPE_ENUM sp_type;
@@ -132,8 +131,7 @@ struct sp_info
   DB_DATETIME updated_time;
 
   sp_info () 
-  : unique_name {}
-  , sp_name {}
+  : sp_name {}
   , pkg_name {}
   , sp_type {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
   , return_type {DB_TYPE::DB_TYPE_NULL}

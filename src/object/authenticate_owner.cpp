@@ -662,8 +662,6 @@ int
 au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
 {
   int error = NO_ERROR;
-  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-  unique_name[0] = '\0';
   PARSER_CONTEXT *dummy_parser = NULL;
   MOP owner = NULL;
 
@@ -681,12 +679,6 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
   if (owner == NULL)
     {
       error = ER_FAILED;
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
-    {
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }

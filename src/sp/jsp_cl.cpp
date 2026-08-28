@@ -614,7 +614,7 @@ jsp_get_name (MOP mop_p)
 }
 
 char *
-jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
+jsp_get_qualified_name (MOP mop_p, char *buf, int buf_size)
 {
   int save;
   DB_VALUE value;
@@ -635,7 +635,7 @@ jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
 
   AU_SAVE_AND_DISABLE (save);
 
-  /* the row keeps the owner and the procedure's name apart; put them back together */
+  /* Build an output-facing name from the split catalog columns. */
   err = db_get (mop_p, SP_ATTR_OWNER, &value);
   if (err != NO_ERROR)
     {
@@ -1110,7 +1110,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   PLCSQL_COMPILE_RESPONSE compile_response;
 
   SP_INFO sp_info;
-  char *temp;
+  char *checked_name = NULL;
   DB_VALUE current_datetime;
 
   CHECK_MODIFICATION_ERROR ();
@@ -1130,18 +1130,17 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
-  temp = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (parser, statement));
-  sp_info.unique_name = temp;
-  free (temp);
-  if (sp_info.unique_name.empty ())
+  checked_name = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (parser, statement));
+  if (checked_name == NULL || checked_name[0] == '\0')
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
       return er_errid ();
     }
 
-  sp_info.sp_name = sm_remove_qualifier_name (sp_info.unique_name.data ());
+  sp_info.sp_name = sm_remove_qualifier_name (checked_name);
   if (sp_info.sp_name.empty ())
     {
+      free_and_init (checked_name);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
       return er_errid ();
     }
@@ -1163,7 +1162,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   param_list = PT_NODE_SP_ARGS (statement);
   for (p = param_list; p != NULL; p = p->next)
     {
-      SP_ARG_INFO arg_info (sp_info.unique_name);
+      SP_ARG_INFO arg_info (sp_info.sp_name);
 
       arg_info.index_of = param_count++;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
@@ -1207,14 +1206,14 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       // check # of args constraint
       if (param_count > MAX_ARG_COUNT)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, sp_info.unique_name.data ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, checked_name);
 	  goto error_exit;
 	}
 
       sp_info.args.push_back (arg_info);
     }
 
-  if (sm_qualifier_name (sp_info.unique_name.data (), owner_name, DB_MAX_USER_LENGTH) == NULL)
+  if (sm_qualifier_name (checked_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
     {
       ASSERT_ERROR ();
       goto error_exit;
@@ -1275,7 +1274,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   sp_info.updated_time = *db_get_datetime (&current_datetime);
 
   /* check already exists */
-  if (jsp_is_exist_stored_procedure (sp_info.unique_name.data ()))
+  if (jsp_is_exist_stored_procedure (checked_name))
     {
       if (statement->info.sp.or_replace)
 	{
@@ -1283,11 +1282,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  err = tran_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
 	  if (err != NO_ERROR)
 	    {
+	      free_and_init (checked_name);
 	      return err;
 	    }
 	  has_savepoint = true;
 
-	  err = drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type);
+	  err = drop_stored_procedure (checked_name, sp_info.sp_type);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -1295,7 +1295,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, sp_info.unique_name.data ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, checked_name);
 	  goto error_exit;
 	}
     }
@@ -1348,6 +1348,9 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   return NO_ERROR;
 
 error_exit:
+
+  free_and_init (checked_name);
+
   if (has_savepoint)
     {
       tran_abort_upto_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
@@ -1653,8 +1656,6 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   DB_SET *arg_set_p;
   int save, i, arg_cnt, lang;
   int err;
-  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-  unique_name[0] = '\0';
 
   AU_SAVE_AND_DISABLE (save);
 
@@ -1763,12 +1764,6 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	{
 	  goto error;
 	}
-    }
-
-  /* before deleting an object, all permissions are revoked. */
-  if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
     }
 
   save_user = Au_user;

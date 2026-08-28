@@ -3559,7 +3559,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      if (sp_mop != NULL)
 		{
 		  sp_unique_name[0] = '\0';
-		  jsp_get_unique_name (sp_mop, sp_unique_name, DB_MAX_IDENTIFIER_LENGTH + 1);
+		  jsp_get_qualified_name (sp_mop, sp_unique_name, DB_MAX_IDENTIFIER_LENGTH + 1);
 		  if (sp_unique_name[0] != '\0')
 		    {
 		      node->info.function.generic_name = pt_append_string (parser, NULL, sp_unique_name);

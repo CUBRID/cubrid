@@ -887,7 +887,7 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
   char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *gtype;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  char qualified_name2[DB_MAX_IDENTIFIER_LENGTH + 1];
   char *class_name = NULL;
   char *username = NULL;
   int typebit;
@@ -933,9 +933,9 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
       output_ctx ("GRANT %s ON ", gtype);
       break;
     case DB_OBJECT_PROCEDURE:
-      unique_name[0] = '\0';
-      jsp_get_unique_name (auth->class_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH + 1);
-      SPLIT_USER_SPECIFIED_NAME (unique_name, owner_name, class_name);
+      qualified_name2[0] = '\0';
+      jsp_get_qualified_name (auth->class_mop, qualified_name2, DB_MAX_IDENTIFIER_LENGTH + 1);
+      SPLIT_USER_SPECIFIED_NAME (qualified_name2, owner_name, class_name);
       username = au_get_user_name (grant->user->obj);
 
       output_ctx ("GRANT %s ON PROCEDURE ", gtype);
