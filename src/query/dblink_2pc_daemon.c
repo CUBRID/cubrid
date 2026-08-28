@@ -151,8 +151,12 @@ dblink_2pc_completion_ref (DBLINK_2PC_COMPLETION * completion)
 
 /*
  * dblink_2pc_completion_unref - Drop one reference, freeing the completion with the last one.
+ *
+ * Note: internal on purpose.  The two references are released by dblink_2pc_completion_settle()
+ *       (the entry's) and dblink_2pc_completion_wait_and_release() (the commit path's), so no
+ *       caller outside this file has to get the pairing right.
  */
-void
+static void
 dblink_2pc_completion_unref (DBLINK_2PC_COMPLETION * completion)
 {
   int refcount;
@@ -204,15 +208,22 @@ dblink_2pc_completion_settle (DBLINK_2PC_COMPLETION * completion)
 }
 
 /*
- * dblink_2pc_completion_wait - Wait for every decision to be settled, up to timeout_msec.
+ * dblink_2pc_completion_wait_and_release - Wait for every decision to be settled, up to
+ *                                          timeout_msec, then release the commit path's reference.
  *
  * return: true if all were settled, false on timeout
  *
- * Note: a timeout_msec of 0 or less yields a deadline in the past, so the loop below polls once
+ * Note: waiting and releasing are one call because the reference is what keeps the completion -
+ *       and the mutex waited on below - alive for the duration of the wait.  Settling the last
+ *       entry can otherwise drop the final reference, and with it destroy the mutex and the
+ *       condition variable, right after it signals them.  Holding them apart would leave that
+ *       ordering to every caller; here it cannot be got wrong.
+ *
+ *       A timeout_msec of 0 or less yields a deadline in the past, so the loop below polls once
  *       rather than blocking.
  */
 bool
-dblink_2pc_completion_wait (DBLINK_2PC_COMPLETION * completion, int timeout_msec)
+dblink_2pc_completion_wait_and_release (DBLINK_2PC_COMPLETION * completion, int timeout_msec)
 {
   struct timespec deadline;
   bool settled;
@@ -244,6 +255,9 @@ dblink_2pc_completion_wait (DBLINK_2PC_COMPLETION * completion, int timeout_msec
     }
   settled = (completion->remaining == 0);
   pthread_mutex_unlock (&completion->mutex);
+
+  /* the reference taken by create() for this commit path, held across the wait above */
+  dblink_2pc_completion_unref (completion);
 
   return settled;
 }

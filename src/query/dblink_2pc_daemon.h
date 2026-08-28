@@ -73,6 +73,11 @@
  * Lifetime is refcounted because neither side reliably outlives the other: the commit path may give
  * up on the bound while entries are still queued, and an entry may be retried long after.  refcount
  * starts at 1 for the commit path; each queue entry adds one.  The last release frees it.
+ *
+ * A reference is never released on its own: an entry's goes with its _settle(), and the commit
+ * path's goes with the wait that used it, in _wait_and_release().  That is deliberate - the commit
+ * path's reference is what keeps the mutex and the condition variable alive while it waits on them,
+ * so the release cannot be allowed to drift away from the wait it protects.
  */
 typedef struct dblink_2pc_completion DBLINK_2PC_COMPLETION;
 struct dblink_2pc_completion
@@ -117,9 +122,6 @@ extern DBLINK_2PC_COMPLETION *dblink_2pc_completion_create (int num_participants
 /* Take a reference before attaching the completion to a queue entry. */
 extern void dblink_2pc_completion_ref (DBLINK_2PC_COMPLETION * completion);
 
-/* Drop one reference; frees the completion when the last one goes away. */
-extern void dblink_2pc_completion_unref (DBLINK_2PC_COMPLETION * completion);
-
 /*
  * Settle one entry - the Ownership rule above says when it is called.  Signals the completion when none
  * are left, then consumes that entry's reference, so the caller must not touch the completion afterwards.
@@ -127,7 +129,8 @@ extern void dblink_2pc_completion_unref (DBLINK_2PC_COMPLETION * completion);
 extern void dblink_2pc_completion_settle (DBLINK_2PC_COMPLETION * completion);
 
 /*
- * Wait until every participant's decision has been settled or timeout_msec elapses.
+ * Wait until every participant's decision has been settled or timeout_msec elapses, then release the
+ * commit path's reference - so the caller must not touch the completion afterwards.
  * Returns true if all were settled - which means there is nothing left to wait for, not that every
  * decision reached its participant: server shutdown settles the entries it drops.  A false return
  * is not an error either: the decisions remain queued and the daemon keeps delivering them.  Either
@@ -135,7 +138,7 @@ extern void dblink_2pc_completion_settle (DBLINK_2PC_COMPLETION * completion);
  * A timeout_msec of 0 or less polls - it reports whether everything is already settled without
  * blocking.
  */
-extern bool dblink_2pc_completion_wait (DBLINK_2PC_COMPLETION * completion, int timeout_msec);
+extern bool dblink_2pc_completion_wait_and_release (DBLINK_2PC_COMPLETION * completion, int timeout_msec);
 
 /*
  * Enqueue one participant for daemon to persist to _db_global_tran and/or send decision.

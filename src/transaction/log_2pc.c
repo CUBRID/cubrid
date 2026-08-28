@@ -639,8 +639,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    }
 	}
 
-      (void) dblink_2pc_completion_wait (completion, wait_msec);
-      dblink_2pc_completion_unref (completion);
+      (void) dblink_2pc_completion_wait_and_release (completion, wait_msec);
       completion = NULL;
 #endif
 
