@@ -7074,23 +7074,24 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 		  /* What was found may belong to someone other than the name said, and the name
 		   * is printed into whatever the statement stores, so the node takes on the
 		   * identity of the class itself -- who owns it as much as what it is called. */
-		  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-		  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+		  char *resolved_owner_name = NULL;
+		  const char *resolved_class_name = db_get_class_name (classop);
+		  DB_OBJECT *resolved_owner = db_get_owner (classop);
 
-		  if (db_get_class_qualified_name (classop, qualified_name, sizeof (qualified_name)) != NULL)
+		  if (resolved_owner != NULL)
 		    {
-		      if (sm_qualifier_name (qualified_name, owner_name, sizeof (owner_name)) != NULL
-			  && owner_name[0] != '\0')
+		      resolved_owner_name = au_get_user_name (resolved_owner);
+		      if (resolved_owner_name != NULL && resolved_owner_name[0] != '\0')
 			{
-			  name->info.name.owner_name = pt_append_string (parser, NULL, owner_name);
+			  name->info.name.owner_name = pt_append_string (parser, NULL, resolved_owner_name);
 			  name->info.name.owner_defaulted = 0;
 			}
+		      ws_free_string_and_init (resolved_owner_name);
+		    }
 
-		      if (intl_identifier_casecmp (class_name, sm_remove_qualifier_name (qualified_name)) != 0)
-			{
-			  name->info.name.original =
-			    pt_append_string (parser, NULL, sm_remove_qualifier_name (qualified_name));
-			}
+		  if (resolved_class_name != NULL && intl_identifier_casecmp (class_name, resolved_class_name) != 0)
+		    {
+		      name->info.name.original = pt_append_string (parser, NULL, resolved_class_name);
 		    }
 		}
 

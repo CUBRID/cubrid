@@ -6344,19 +6344,12 @@ update_histogram_for_all_classes (int random_seed)
     }
 
   int n_tables = 0, n_cols = 0, n_hist_skipped = 0;
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   for (int i = 0; i < lmops->num; i++)
     {
       class_mop = lmops->mops[i];
 
-      obj = db_find_class (sm_get_ch_qualified_name (class_mop, qualified_name, sizeof (qualified_name)));
-      if (obj == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  AU_RESTORE (save);
-	  return er_errid ();
-	}
+      obj = class_mop;
 
       histogram_info.target_columns = NULL;
       histogram_info.bucket_count = -1;

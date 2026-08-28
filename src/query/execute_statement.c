@@ -4971,13 +4971,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  int save;
 
 		  AU_SAVE_AND_DISABLE (save);
-		  obj = db_find_class (sm_get_ch_qualified_name (class_mop, qualified_name, sizeof (qualified_name)));
-		  if (obj == NULL)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      AU_RESTORE (save);
-		      return er_errid ();
-		    }
+		  obj = class_mop;
 
 		  histogram_info.target_columns = NULL;
 		  histogram_info.bucket_count = -1;
@@ -4999,13 +4993,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  int save;
 
 		  AU_SAVE_AND_DISABLE (save);
-		  obj = db_find_class (sm_get_ch_qualified_name (class_mop, qualified_name, sizeof (qualified_name)));
-		  if (obj == NULL)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      AU_RESTORE (save);
-		      return er_errid ();
-		    }
+		  obj = class_mop;
 
 		  /* the all-columns histogram build refreshes the class statistics itself, reusing the NDV and
 		   * row count of its single heap scan; running sm_update_statistics () beforehand would scan the
