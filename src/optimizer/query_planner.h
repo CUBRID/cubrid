@@ -250,6 +250,12 @@ struct qo_plan
 				   set by qo_iscan_cost. qo_nljoin_cost saturates only this share with the
 				   repeated-probe (Mackert-Lohman) correction -- the correction models heap
 				   re-fetches, so the per-probe leaf/ISS charges must survive it */
+  double iscan_descent_cpu;	/* per-probe root-to-leaf descent cpu (key compares + page steps);
+				   set by qo_iscan_cost, consumed only by qo_nljoin_cost on the inner side.
+				   Kept out of variable_cpu_cost: the driving side of a join and a standalone
+				   scan descend once per execution, and charging them per row taxed index
+				   scans with no qo_sscan_cost counterpart (broke exact plan ties on tiny
+				   and statistics-less tables) */
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))

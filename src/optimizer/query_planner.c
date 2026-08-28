@@ -546,6 +546,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->limit_nljoin_guessed_card = 0.0;
   plan->iscan_index_rows = 0.0;
   plan->iscan_heap_io = 0.0;
+  plan->iscan_descent_cpu = 0.0;
 
   return plan;
 }
@@ -2501,10 +2502,22 @@ qo_iscan_cost (QO_PLAN * planp)
   object_IO = MAX (1.0, object_IO) + (leaves - first_leaf) + iss_leaves;
 
   /* Every index scan pays a root-to-leaf descent: about ceil (log2 (rows)) key compares plus
-   * (height + 1) page-boundary steps of 50 operator units each. Charge it into the per-scan
-   * VARIABLE cpu cost so a nested loop pays it once per probe -- after the repeated-probe
-   * correction in qo_nljoin_cost () saturates the heap IO, this per-probe term is what keeps
-   * a multi-million-probe nested loop from looking free. */
+   * (height + 1) page-boundary steps of 50 operator units each (height here is the local
+   * cum_stats.height - 1, so the descent of a single-page index costs 1 * 50 * QO_CPU_WEIGHT
+   * = 0.125 and a two-level one 0.25).
+   *
+   * Publish it separately (iscan_descent_cpu) instead of folding it into variable_cpu_cost:
+   * only qo_nljoin_cost () charges it, once per probe on the inner side -- after the
+   * repeated-probe correction saturates the heap IO, this per-probe term is what keeps a
+   * multi-million-probe nested loop from looking free. The driving side of a join and a
+   * standalone scan descend once per execution, not once per row, so charging the descent
+   * into their variable cpu taxed index scans with no qo_sscan_cost () counterpart: on a tiny
+   * or statistics-less table the flat share dwarfed the whole sequential alternative
+   * (NCARD * QO_CPU_WEIGHT = 0.01 at 4 rows, 0.0 with no statistics) and systematically
+   * flipped exact plan ties to sscan -- covering scans degraded to heap scans, key ranges
+   * were dropped, and 1-2 page catalog probes paid 50-100 operator units. Large tables never
+   * noticed (0.009% of the scan cost at 2.5M rows), which is why JOB improved while the
+   * regression TCs failed. */
   descent_cpu =
     (ceil (log2 ((double) QO_NODE_NCARD (nodep) + 1.0)) +
      (height + 1.0) * (double) BTREE_DESCENT_PAGE_OVERHEAD) * (double) QO_CPU_WEIGHT;
@@ -2514,7 +2527,8 @@ qo_iscan_cost (QO_PLAN * planp)
   /* Fixed: the b+tree descent (n * height, upper levels shared across probes and assumed
    * buffer-resident) plus the single leaf page the descent lands on. */
   planp->fixed_io_cost = index_IO + first_leaf;
-  planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT + descent_cpu;
+  planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
+  planp->iscan_descent_cpu = descent_cpu;
   planp->variable_io_cost = object_IO;
   planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * heap_sel);
 
@@ -3689,7 +3703,10 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       guessed_result_cardinality = (outer->info)->cardinality;
     }
-  inner_cpu_cost = guessed_result_cardinality * inner->variable_cpu_cost;
+  /* iscan_descent_cpu is the per-probe root-to-leaf descent (zero for non-iscan inners):
+   * the inner side really descends once per outer row, so it is charged here and only here --
+   * see the publishing comment in qo_iscan_cost (). */
+  inner_cpu_cost = guessed_result_cardinality * (inner->variable_cpu_cost + inner->iscan_descent_cpu);
 
   /* inner side IO cost of nested-loop block join */
   if (qo_is_iscan (inner))
