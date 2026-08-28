@@ -8106,7 +8106,7 @@ delete_stmt
 			    del->info.delete_.target_classes = CONTAINER_AT_0 ($4);
 			    del->info.delete_.spec = CONTAINER_AT_1 ($4);
 
-			    pt_check_unique_names (this_parser,
+			    pt_check_distinct_spec_names (this_parser,
 						   del->info.delete_.spec);
 
 			    if (TO_NUMBER (CONTAINER_AT_0 ($5)))

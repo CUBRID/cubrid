@@ -63,7 +63,7 @@ static bool es_owfs_initialized = false;
 static const char *es_get_token (const char *base_path, char *token, size_t maxlen);
 static int es_parse_owfs_path (const char *base_path, char *mds_ip, char *svc_code, char *owner_name, char *file_name);
 static ES_OWFS_FSH *es_new_fsh (const char *mds_ip, const char *svc_code);
-static void es_make_unique_name (char *owner_name, const char *metaname, char *file_name);
+static void es_make_generated_name (char *owner_name, const char *metaname, char *file_name);
 static ES_OWFS_FSH *es_open_owfs (const char *mds_ip, const char *svc_code);
 
 
@@ -173,10 +173,10 @@ es_parse_owfs_path (const char *base_path, char *mds_ip, char *svc_code, char *o
 }
 
 /*
- * es_make_unique_name -
+ * es_make_generated_name -
  */
 static void
-es_make_unique_name (char *owner_name, const char *metaname, char *file_name)
+es_make_generated_name (char *owner_name, const char *metaname, char *file_name)
 {
   UINT64 unum;
   unsigned int base;
@@ -388,7 +388,7 @@ es_owfs_create_file (char *new_path)
 
 retry:
   /* make a file name & an owner name */
-  es_make_unique_name (owner_name, "ces_temp", file_name);
+  es_make_generated_name (owner_name, "ces_temp", file_name);
 
   /* open the owner. if not exist, create it */
   ret = owfs_open_owner (fsh->fsh, owner_name, &oh);
@@ -682,7 +682,7 @@ es_owfs_copy_file (const char *src_path, const char *metaname, char *new_path)
 
 retry:
   /* make a file name & an owner name */
-  es_make_unique_name (new_owner_name, metaname, new_file_name);
+  es_make_generated_name (new_owner_name, metaname, new_file_name);
 
   /* open the owner. if not exist, create it */
   ret = owfs_open_owner (dest_fsh->fsh, new_owner_name, &dest_oh);

@@ -57,7 +57,7 @@ typedef int mode_t;
 /* es_posix_base_dir - */
 char es_base_dir[PATH_MAX] = { 0 };
 
-static void es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename);
+static void es_get_generated_name (char *dirname1, char *dirname2, const char *metaname, char *filename);
 static void es_rename_path (const char *src, char *tgt, char *metaname);
 
 static int es_abs_open (const char *abs_path, int flags);
@@ -67,7 +67,7 @@ static int es_os_rename_file_abs (const char *src, const char *dst);
 
 
 /*
- * es_posix_get_unique_name - make unique path string for external file
+ * es_posix_get_generated_name - make unique path string for external file
  *
  * return: none
  * dirname1(out): first level directory name which is generated
@@ -75,7 +75,7 @@ static int es_os_rename_file_abs (const char *src, const char *dst);
  * filename(out): generated file name
  */
 static void
-es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename)
+es_get_generated_name (char *dirname1, char *dirname2, const char *metaname, char *filename)
 {
   UINT64 unum;
   int hashval;
@@ -332,7 +332,7 @@ xes_posix_create_file (char *new_path)
   char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
 
 retry:
-  es_get_unique_name (dirname1, dirname2, "ces_temp", filename);
+  es_get_generated_name (dirname1, dirname2, "ces_temp", filename);
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
 		dirname2, PATH_SEPARATOR, filename);
@@ -605,7 +605,7 @@ xes_posix_copy_file (const char *src_path, char *metaname, char *new_path)
 
 retry:
   /* create a target file */
-  es_get_unique_name (dirname1, dirname2, metaname, filename);
+  es_get_generated_name (dirname1, dirname2, metaname, filename);
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
 		dirname2, PATH_SEPARATOR, filename);
@@ -716,7 +716,7 @@ xes_posix_copy_file_with_prefix (const char *src_path, char *metaname, const cha
 
 retry:
   /* create a target file */
-  es_get_unique_name (dirname1, dirname2, metaname, filename);
+  es_get_generated_name (dirname1, dirname2, metaname, filename);
 
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
   if (n < 0 || n >= PATH_MAX - 1)
@@ -839,7 +839,7 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
   char *p;
 
   /* Create a target file */
-  es_get_unique_name (dirname1, dirname2, metaname, filename);
+  es_get_generated_name (dirname1, dirname2, metaname, filename);
 
   ret = snprintf (new_path, PATH_MAX, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
   if (ret < 0 || ret >= PATH_MAX)

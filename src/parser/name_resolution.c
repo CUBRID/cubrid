@@ -4335,7 +4335,7 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
 }
 
 /*
- * pt_check_unique_names () - make sure the spec names are different.
+ * pt_check_distinct_spec_names () - make sure the spec names are different.
  *
  *   return: 1 if names are all unique, 0 if duplicate name
  *   parser(in):
@@ -4348,7 +4348,7 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
  * otherwise it crashes.
  */
 int
-pt_check_unique_names (PARSER_CONTEXT * parser, const PT_NODE * p)
+pt_check_distinct_spec_names (PARSER_CONTEXT * parser, const PT_NODE * p)
 {
   PT_NODE *q;
 

@@ -110,7 +110,7 @@ namespace cubbase
       virtual cubbase::span<const std::byte> peek () const = 0;
 
     private:
-      std::string generate_unique_name ();
+      std::string generate_random_name ();
 
     protected:
       alignas (ThreadSafe ? 64 : alignof (std::uint64_t)) type_t m_head { 0 };
@@ -171,7 +171,7 @@ namespace cubbase
       }
 
     /* make virtual descriptor */
-    name = generate_unique_name ();
+    name = generate_random_name ();
     m_fd = ::shm_open (name.c_str (), O_RDWR | O_CREAT | O_EXCL, 0600);
     if (m_fd < 0)
       {
@@ -260,7 +260,7 @@ namespace cubbase
   }
 
   template <bool T>
-  std::string DMRB<T>::generate_unique_name ()
+  std::string DMRB<T>::generate_random_name ()
   {
     static std::atomic<std::uint32_t> counter { 0 };
 
