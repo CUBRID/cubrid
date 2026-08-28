@@ -96,6 +96,13 @@ csc_bracket_is_active (void)
   return tl_Csc_active != NULL;
 }
 
+/* the session's optimizer-level override slot (query_graph.c) */
+int *
+csc_qo_optimization_level (void)
+{
+  return &csc_current ()->qo_optimization_level;
+}
+
 /* has this session terminated a method/SP callback in-process? (its kept
  * statement handles may hold list files open across an outer query's end —
  * qexec's per-thread qlist balance check stands down only then) */

@@ -819,6 +819,70 @@ scenario_plcsql (const char *server_name)
   });
 }
 
+/* A7 review smoke — nesting and caught errors through the in-process seam:
+ *   a7_inner's static SELECT INTO finds no row and raises NO_DATA_FOUND, the
+ *   PL handler catches it and returns a fallback — the caught callback error
+ *   must not linger on the worker's er and poison the outer query (er
+ *   isolation in method_dispatch); a7_outer calls a7_inner from its own
+ *   static SQL, driving the dispatch to libcas depth 2. */
+static bool
+scenario_plcsql_nested (const char *server_name)
+{
+  return in_process_session (0, server_name, "DBA", "", 0, [] (int sid)
+  {
+    scenario_try (sid, "DROP FUNCTION a7_outer");
+    scenario_try (sid, "DROP FUNCTION a7_inner");
+    scenario_try (sid, "DROP TABLE IF EXISTS a7_t2");
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL cleanup commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    if (!scenario_exec (sid, "CREATE TABLE a7_t2 (a INT)", NULL, 0)
+	|| !scenario_exec (sid,
+			   "CREATE OR REPLACE FUNCTION a7_inner() RETURN INT AS v INT; BEGIN SELECT a INTO v FROM a7_t2; RETURN v; EXCEPTION WHEN NO_DATA_FOUND THEN RETURN 7; END;",
+			   NULL, 0)
+	|| !scenario_exec (sid,
+			   "CREATE OR REPLACE FUNCTION a7_outer() RETURN INT AS v INT; BEGIN SELECT a7_inner() + 35 INTO v; RETURN v; END;",
+			   NULL, 0))
+      {
+	return false;
+      }
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL setup commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+
+    int v = 0;
+    if (!scenario_exec (sid, "SELECT a7_outer()", &v, 0))
+      {
+	return false;
+      }
+    if (v != 42)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL nested plcsql returned %d expected 42", sid, v);
+	return false;
+      }
+    tracer_log ("M0_TRACER: S%d nested plcsql with caught inner error returned %d", sid, v);
+
+    scenario_try (sid, "DROP FUNCTION a7_outer");
+    scenario_try (sid, "DROP FUNCTION a7_inner");
+    scenario_try (sid, "DROP TABLE a7_t2");
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL drop commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    if (db_end_session () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL db_end_session msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    return true;
+  });
+}
+
 static void
 tracer_main (char *server_name, char *sql, char *out_path)
 {
@@ -844,6 +908,10 @@ tracer_main (char *server_name, char *sql, char *out_path)
       else if (strcmp (scenario, "plcsql") == 0)
 	{
 	  ok = scenario_plcsql (server_name);
+	}
+      else if (strcmp (scenario, "plcsql_nested") == 0)
+	{
+	  ok = scenario_plcsql_nested (server_name);
 	}
       else
 	{

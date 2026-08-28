@@ -112,6 +112,12 @@ class client_session_context
     char *db_execution_plan = nullptr;
     int db_execution_plan_length = -1;
 
+    /* optimizer level override (qo_get/set_optimization_param): the CAS
+     * original wrote the process sysprm, which was per-session in effect —
+     * here the write lands on the session instead of the shared parameter.
+     * -1 = unset (reads fall through to sysprm). */
+    int qo_optimization_level = -1;
+
     /* method/SP callback termination (#120 D8): the CAS-side process-global
      * handle cache was per-session in effect (one CAS per session) — its
      * faithful translation here is per-session ownership.  It holds

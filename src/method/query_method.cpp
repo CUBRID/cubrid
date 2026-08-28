@@ -212,6 +212,12 @@ method_dispatch (packing_unpacker &unpacker)
   unsigned int save_on_server = db_on_server;
   db_on_server = 0;
 
+  /* isolate the outer query's error state from the dispatched client half:
+   * a callback error the PL routine catches must not linger on this thread's
+   * er and poison the invoking executor (legacy CS kept it in the CAS
+   * process).  An error the dispatch propagates is kept on top. */
+  er_stack_push ();
+
   tran_begin_libcas_function ();
   int depth = tran_get_libcas_depth ();
   if (depth > METHOD_MAX_RECURSION_DEPTH)
@@ -226,6 +232,29 @@ method_dispatch (packing_unpacker &unpacker)
     }
 
   tran_end_libcas_function ();
+
+  /* outermost dispatch boundary: reclaim handlers a transaction boundary
+   * deferred (free_query_handle_all(true)) — the mirror of legacy CS's
+   * deferred_flush_guard at its network-callback boundary (network_cl.c) */
+  if (!tran_is_in_libcas ())
+    {
+      cubmethod::callback_handler *h = csc_current ()->method_callback_handler;
+      if (h != NULL && h->has_deferred_query_handler ())
+	{
+	  er_stack_push ();
+	  h->free_deferred_query_handler ();
+	  er_stack_pop ();
+	}
+    }
+
+  if (error == NO_ERROR)
+    {
+      er_stack_pop ();
+    }
+  else
+    {
+      er_stack_pop_and_keep_error ();
+    }
 
   db_on_server = save_on_server;
   return error;

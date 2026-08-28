@@ -56,13 +56,17 @@ if [ $# -eq 0 ]; then
   # case 8 compiles and runs a PL/CSQL function with static SQL: the semantics
   #        and INTERNAL_JDBC callbacks terminate in-process (A7); needs cub_pl
   #        (a JVM) alive next to the server
+  # case 9 nests two PL/CSQL functions (libcas depth 2) and catches an inner
+  #        NO_DATA_FOUND: the caught callback error must not poison the outer
+  #        query's er state (A7 review)
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
     "SELECT ? + ? @BIND=30,12 @EXPECT=42" \
     "SELECT COUNT(*) FROM db_class @ISOLATION=RR @EXPECT=74" \
     "SELECT COUNT(*) FROM db_class @SESSIONS=4 @EXPECT=74" \
     "DDL AUTH @SCENARIO=ddl_auth" \
-    "PLCSQL @SCENARIO=plcsql"
+    "PLCSQL @SCENARIO=plcsql" \
+    "PLCSQL NESTED @SCENARIO=plcsql_nested"
 fi
 
 # This script restarts cub_master via `cubrid service stop` (see below), which
