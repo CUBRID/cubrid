@@ -29,6 +29,7 @@
 
 #include "histogram_sampler_sr.hpp"
 
+#include <cstdint>
 #include <new>
 #include <string>
 #include <utility>
@@ -46,18 +47,19 @@
 #include "hyperloglog.hpp"
 #include "reservoir_sampler.hpp"
 #include "statistics.h"
-#include "system_parameter.h"
-#if defined (SERVER_MODE)
 #include "bit.h"
 #include "error_code.h"
 #include "file_manager.h"
 #include "ftab_set.hpp"
 #include "page_buffer.h"
+#include "system_parameter.h"
+#include "thread_entry.hpp"
+#include <atomic>
+#if defined (SERVER_MODE)
 #include "px_parallel.hpp"
 #include "px_worker_manager.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-#include <atomic>
 #endif /* SERVER_MODE */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -70,6 +72,12 @@
 #define HISTOGRAM_SAMPLE_ROWS_PER_BUCKET 300
 #define HISTOGRAM_MIN_SAMPLE_ROWS 10000
 #define HISTOGRAM_MAX_SAMPLE_ROWS 300000
+#define HISTOGRAM_COLLECT_MEM_BUDGET (256LL * 1024 * 1024)	/* cap for HLLs + reservoirs across all workers */
+#define HISTOGRAM_SAMPLE_ELEM_BYTES 32	/* reservoir bytes per kept numeric value (8B payload + bookkeeping) */
+/* A kept string value costs the std::string object itself (32B on libstdc++) plus a heap
+ * allocation for anything beyond SSO; budgeting strings at the numeric rate understated a
+ * 200B varchar column by 6x+ and let wide varchar tables blow through the memory budget. */
+#define HISTOGRAM_SAMPLE_STR_ELEM_BYTES 160
 
 /* Per-class set of per-column HLL sketches (see histogram_sampler_sr.hpp). One entry per column
  * the NDV scan could measure; columns of unsupported types have no entry. */
@@ -104,9 +112,11 @@ namespace
       case DB_TYPE_SHORT:
       case DB_TYPE_INTEGER:
       case DB_TYPE_BIGINT:
+      case DB_TYPE_ENUMERATION:	/* sampled as its member index (SHORT) */
 	return value_category::integer;
       case DB_TYPE_FLOAT:
       case DB_TYPE_DOUBLE:
+      case DB_TYPE_MONETARY:	/* sampled as its amount; the currency unit is per-column in practice */
       case DB_TYPE_NUMERIC:
 	/* NUMERIC histogram values (MCV/bucket endpoints) are collected as double, so precision
 	 * beyond ~16 significant digits (2^53) is lost and adjacent NUMERIC values can merge into
@@ -429,6 +439,9 @@ namespace
       case DB_TYPE_BIGINT:
 	out = db_get_bigint (v);
 	break;
+      case DB_TYPE_ENUMERATION:
+	out = db_get_enum_short (v);
+	break;
       default:
 	return false;
       }
@@ -457,6 +470,9 @@ namespace
 	break;
       case DB_TYPE_DOUBLE:
 	d = db_get_double (v);
+	break;
+      case DB_TYPE_MONETARY:
+	d = db_get_monetary (v)->amount;
 	break;
       case DB_TYPE_NUMERIC:
 	/* numeric is sampled as double, matching the client histogram key (histogram_cl.cpp) */
@@ -600,7 +616,63 @@ namespace
     return true;
   }
 
-#if defined (SERVER_MODE)
+  /* deterministic page-sampling predicate: keep a page iff hash (vpid) < threshold. Shared by the
+   * parallel walker and the serial scans so every path keeps the same reproducible page set. */
+  static inline bool
+  histogram_sample_accepts_page (std::uint64_t threshold, std::uint64_t seed, short volid, int pageid)
+  {
+    return threshold == UINT64_MAX
+	   || (cubsampling::hll_mix64 ((((std::uint64_t) (std::uint16_t) volid << 32) | (std::uint32_t) pageid) ^ seed)
+	       < threshold);
+  }
+
+  /* PostgreSQL-style sampling fraction: visit about statistics_sample_pages PAGES of the heap
+   * once it exceeds the sampling threshold; WITH FULLSCAN always visits everything. One formula
+   * for the parallel and serial collection paths. When the parameter is 0 the reservoir's row
+   * target doubles as the page target (>= one sampled row per page on average). */
+  static double
+  histogram_compute_sample_fraction (int npages, int fallback_target_pages, bool with_fullscan)
+  {
+    int sampling_threshold = prm_get_integer_value (PRM_ID_STATISTICS_SAMPLING_THRESHOLD_PAGES);
+    int target_pages = prm_get_integer_value (PRM_ID_STATISTICS_SAMPLE_PAGES);
+
+    if (target_pages <= 0)
+      {
+	target_pages = fallback_target_pages;
+      }
+    if (target_pages <= 0)
+      {
+	/* no usable page target (parameter 0 and no reservoir-derived fallback): collect
+	 * everything rather than sample zero pages -- a 0.0 fraction would keep no page at
+	 * all and store an empty histogram with total_rows = 0 over the real statistics. */
+	return 1.0;
+      }
+    if (!with_fullscan && sampling_threshold > 0 && npages > sampling_threshold && npages > target_pages)
+      {
+	return (double) target_pages / (double) npages;
+      }
+    return 1.0;
+  }
+
+  /* The scan demotes each page it leaves to the LRU bottom (pgbuf_mark_page_for_lru_bottom),
+   * but only when the heap is large enough that its pages are not worth keeping resident: a
+   * small hot table (a code table an OLTP load keeps reading) fits in the buffer pool, and
+   * demoting its pages during UPDATE STATISTICS would turn the next lookups into disk re-reads.
+   * Gate on a fraction of the data buffer, like PostgreSQL's BAS_BULKREAD ring (only for scans
+   * over more than shared_buffers/4) and Oracle's small-table threshold. */
+  static bool
+  histogram_scan_should_demote_pages (int npages)
+  {
+    if (npages <= 0)
+      {
+	return false;
+      }
+    /* data_buffer_pages is the pool size in pages; demote only when the heap exceeds a quarter
+     * of it, so a table that comfortably fits stays cached */
+    int buffer_pages = prm_get_integer_value (PRM_ID_PB_NBUFFERS);
+    return buffer_pages <= 0 || npages > buffer_pages / 4;
+  }
+
   /* Page-level iterator over an ftab_set. Kept out of the shared ftab_set (which is a plain sector
    * container used by parallel scan / index load / external sort) so only this histogram consumer
    * carries the per-walk cursor. Built by moving a split ftab partition into it. */
@@ -641,6 +713,12 @@ namespace
 		      {
 			continue;	/* heap file header page, no user records */
 		      }
+		    m_pages_seen++;
+		    if (!histogram_sample_accepts_page (m_sample_threshold, m_sample_seed, out->volid, out->pageid))
+		      {
+			continue;	/* page not chosen by the sampling filter */
+		      }
+		    m_pages_kept++;
 		    return true;
 		  }
 	      }
@@ -648,11 +726,51 @@ namespace
 	  }
       }
 
+      /* page-sampling filter: keep a page iff hash (vpid) < fraction * 2^64. The hash is
+       * deterministic per page -- independent of worker partitioning and scan order -- so the kept
+       * page set is stable and reproducible for a given fraction. fraction >= 1.0 disables it. */
+      void set_page_sample (double fraction, std::uint64_t seed, bool demote_on_leave)
+      {
+	if (fraction < 1.0)
+	  {
+	    m_sample_threshold = (std::uint64_t) (fraction * (double) UINT64_MAX);
+	    m_sample_seed = seed;
+	  }
+	m_demote_on_leave = demote_on_leave;
+      }
+
+      /* whether the scan should demote each page it leaves to the LRU bottom: true only for a heap
+       * large enough that keeping its pages resident is not worthwhile (see
+       * histogram_scan_should_demote_pages) */
+      bool should_demote () const
+      {
+	return m_demote_on_leave;
+      }
+
+      /* data pages enumerated / accepted by the filter: the walker visits the WHOLE ftab, so the
+       * ratio is the EXACT realized sampling fraction -- the population expansion uses it instead
+       * of the metadata page-count estimate the fraction was derived from */
+      std::int64_t pages_seen () const
+      {
+	return m_pages_seen;
+      }
+      std::int64_t pages_kept () const
+      {
+	return m_pages_kept;
+      }
+
     private:
       FILE_PARTIAL_SECTOR m_walk_sector = FILE_PARTIAL_SECTOR_INITIALIZER;
       size_t m_walk_pgoff = 0;
       bool m_walk_in_sector = false;
+      std::uint64_t m_sample_threshold = UINT64_MAX;
+      std::uint64_t m_sample_seed = 0;
+      std::int64_t m_pages_seen = 0;
+      std::int64_t m_pages_kept = 0;
+      bool m_demote_on_leave = false;
   };
+
+#if defined (SERVER_MODE)
 
   /* Scan every allocated data page contained in the ftab partition `part` (heap header page
    * excluded), pull MVCC-visible rows with heap_next_1page under the shared snapshot, and feed
@@ -701,6 +819,13 @@ namespace
       {
 	SCAN_CODE sc;
 	int fix_err;
+	bool interrupt_dummy = true;
+	if (logtb_is_interrupted (thread_p, true, &interrupt_dummy))
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	    error = ER_INTERRUPTED;
+	    break;
+	  }
 	if (abort_flag != NULL && abort_flag->load (std::memory_order_relaxed))
 	  {
 	    /* a sibling worker failed; its error aborts the whole request, so the pages this
@@ -728,6 +853,10 @@ namespace
 	  {
 	    if (old_pw.pgptr != NULL)
 	      {
+		if (part.should_demote ())
+		  {
+		    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+		  }
 		pgbuf_ordered_unfix (thread_p, &old_pw);
 	      }
 	    if (fix_err != NO_ERROR && fix_err != ER_PB_BAD_PAGEID)
@@ -740,6 +869,10 @@ namespace
 	  }
 	if (old_pw.pgptr != NULL)
 	  {
+	    if (part.should_demote ())
+	      {
+		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+	      }
 	    pgbuf_ordered_unfix (thread_p, &old_pw);
 	  }
 	if (pgbuf_get_page_ptype (thread_p, scan_cache.page_watcher.pgptr) != PAGE_HEAP)
@@ -800,6 +933,7 @@ namespace
 cleanup:
     if (old_pw.pgptr != NULL)
       {
+	pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
 	pgbuf_ordered_unfix (thread_p, &old_pw);
       }
     if (attrinfo_inited)
@@ -818,13 +952,42 @@ cleanup:
    * count), or 0 to fall back to the serial scan. On a positive return, *out_wm holds the
    * reservation (release with release_workers ()) and `parts` holds that many ftab partitions. */
   static int
-  reserve_and_split (THREAD_ENTRY *thread_p, const HFID *hfid, std::vector<ftab_set> &parts,
-		     parallel_query::worker_manager **out_wm)
+  reserve_and_split (THREAD_ENTRY *thread_p, const HFID *hfid, int sample_rows_target, int attr_cnt,
+		     int str_attr_cnt, bool with_fullscan, std::vector<ftab_set> &parts,
+		     parallel_query::worker_manager **out_wm, double *out_sample_fraction, bool *out_demote)
   {
     *out_wm = NULL;
+    *out_sample_fraction = 1.0;
+    if (out_demote != NULL)
+      {
+	*out_demote = false;
+      }
 
-    int npages = 0, nobjs = 0, avg_len = 0;
-    (void) heap_get_num_objects (thread_p, hfid, &npages, &nobjs, &avg_len);
+    /* page count from the file allocation metadata only: heap_get_num_objects () syncs the
+     * best-space statistics by walking EVERY heap page, which alone costs a full-scan's worth
+     * of page fixes and would cancel the sampling's I/O savings. The user page count is also
+     * what the ftab walker actually enumerates, so the fraction matches the sampled universe. */
+    int npages = 0;
+    if (file_get_num_user_pages (thread_p, &hfid->vfid, &npages) != NO_ERROR)
+      {
+	er_clear ();
+	npages = 0;
+      }
+    if (npages > 0)
+      {
+	/* the walker skips the heap file header page, so exclude it from the page universe the
+	 * sampling gate and fraction are computed over -- otherwise a heap with exactly
+	 * threshold data pages is gated into sampling by its header page */
+	npages--;
+      }
+
+    *out_sample_fraction = histogram_compute_sample_fraction (npages, sample_rows_target, with_fullscan);
+    if (out_demote != NULL)
+      {
+	/* demote scanned pages only for a heap large enough that keeping them resident is not
+	 * worthwhile (same page count the sampling gate/fraction use) */
+	*out_demote = histogram_scan_should_demote_pages (npages);
+      }
 
     /* This dedicated UPDATE STATISTICS / histogram full scan requests up to 2x the configured
      * 'parallelism' cap (without changing the global parameter). Passing an explicit hint_degree
@@ -836,11 +999,44 @@ cleanup:
       {
 	scan_hint = PRM_MAX_PARALLELISM;
       }
+
+    /* pre-scan memory bound: every worker holds one 16 KiB HLL sketch plus a row reservoir per
+     * column. Cap the worker count so the whole collection stays inside a fixed budget instead of
+     * scaling with columns x cores (a wide table on a large box could otherwise claim hundreds of
+     * MB). One worker set is the floor; the serial fallback allocates exactly one set. */
+    const int num_attr = MAX (attr_cnt, 1);
+    const int str_attr = MIN (MAX (str_attr_cnt, 0), num_attr);
+    const std::int64_t per_worker_bytes =
+	    (std::int64_t) num_attr * (16 * 1024)
+	    + (std::int64_t) MAX (sample_rows_target, 0)
+	    * ((std::int64_t) str_attr * HISTOGRAM_SAMPLE_STR_ELEM_BYTES
+	       + (std::int64_t) (num_attr - str_attr) * HISTOGRAM_SAMPLE_ELEM_BYTES);
+    int mem_max_degree = (int) (HISTOGRAM_COLLECT_MEM_BUDGET / MAX (per_worker_bytes, 1));
+    if (mem_max_degree < 1)
+      {
+	mem_max_degree = 1;
+      }
+    if (scan_hint > mem_max_degree)
+      {
+	/* leave a diagnosable trace: a wide table silently losing collection parallelism to
+	 * the memory budget is otherwise indistinguishable from "the table was too small" */
+	er_log_debug (ARG_FILE_LINE,
+		      "histogram collection: parallel degree capped by memory budget: "
+		      "attrs=%d, per_worker_bytes=%lld, budget=%lld, hint %d -> %d\n",
+		      attr_cnt, (long long) per_worker_bytes, (long long) HISTOGRAM_COLLECT_MEM_BUDGET,
+		      scan_hint, mem_max_degree);
+	scan_hint = mem_max_degree;
+      }
     int degree =
 	    (int) parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN, (UINT64) npages,
 		scan_hint);
     if (degree < 2)
       {
+	if (mem_max_degree < 2)
+	  {
+	    er_log_debug (ARG_FILE_LINE,
+			  "histogram collection: serial fallback forced by memory budget (attrs=%d)\n", attr_cnt);
+	  }
 	return 0;		/* not worth it / parallelism disabled -> serial */
       }
 
@@ -900,9 +1096,29 @@ cleanup:
       cubsampling::hyperloglog m_hll;	/* distinct-value sketch fed by every non-null value */
       bool unique;		/* single-column UNIQUE/PK: NDV == non-null rows, so skip the HLL */
 
+      bool sampled;		/* true when the scan visited only a page sample: counts are expanded
+				   estimates and the HLL saw the sample only */
+
       col_collector (ATTR_ID id, DB_TYPE t, value_category c)
-	: attr_id (id), attr_type (t), cat (c), null_rows (0), ndv (-1), unique (false)
+	: attr_id (id), attr_type (t), cat (c), null_rows (0), ndv (-1), unique (false), sampled (false)
       {
+      }
+
+      /* page-sampling -> population expansion: counts collected from the sampled pages scale by
+       * 1/fraction. After this the HLL sketch can no longer hint the population NDV (it only saw
+       * the sampled pages), so build ()/build_blob () fall back to the Duj1 sample estimator
+       * (stats_estimate_ndv_from_sample), fed with the expanded non-null row count. */
+      void apply_sample_expansion (double inv_fraction)
+      {
+	null_rows = (std::int64_t) ((double) null_rows * inv_fraction + 0.5);
+	sampled = true;
+      }
+
+      /* mark the scan as page-sampled BEFORE feeding: the HLL cannot be extrapolated from a
+       * sample (Duj1 takes over), so skipping its per-row hashing saves the dominant CPU cost */
+      void begin_sampled_scan ()
+      {
+	sampled = true;
       }
       virtual ~col_collector () {}
       virtual void feed (const DB_VALUE *v) = 0;
@@ -936,10 +1152,24 @@ cleanup:
 	  }
 	return v;
       }
-      /* same as estimate_ndv (), also storing into `ndv`. Used by the NDV-only path. */
+      /* population NDV from the merged row sample via the Duj1 estimator; only meaningful after
+       * merge_peers () on a page-sampled scan (the HLL saw the sample only). n_nn = expanded
+       * population non-null rows. */
+      virtual INT64 estimate_ndv_sampled (std::int64_t n_nn) = 0;
+
+      /* same as estimate_ndv (), also storing into `ndv`. Used by the NDV-only path. On a
+       * page-sampled scan the HLL cannot be extrapolated, so the Duj1 sample estimator takes
+       * over (unique columns keep NDV = expanded non-null rows). */
       INT64 compute_ndv (std::int64_t total_rows)
       {
-	ndv = estimate_ndv (total_rows);
+	if (sampled && !unique)
+	  {
+	    ndv = estimate_ndv_sampled (total_rows - null_rows);
+	  }
+	else
+	  {
+	    ndv = estimate_ndv (total_rows);
+	  }
 	return ndv;
       }
   };
@@ -951,9 +1181,11 @@ cleanup:
       cubsampling::reservoir_sampler<T> rs;
       std::vector<T> m_merged;
       bool m_has_merged;
+      std::uint64_t m_sample_seed;
 
-      col_collector_t (ATTR_ID id, DB_TYPE t, value_category c, std::size_t cap)
-	: col_collector (id, t, c), rs (cap), m_has_merged (false)
+      col_collector_t (ATTR_ID id, DB_TYPE t, value_category c, std::size_t cap, std::uint64_t sample_seed)
+	: col_collector (id, t, c), rs (cap, cubsampling::RESERVOIR_DEFAULT_SEED ^ sample_seed),
+	  m_has_merged (false), m_sample_seed (sample_seed)
       {
       }
 
@@ -964,7 +1196,7 @@ cleanup:
 	    null_rows++;
 	    return;
 	  }
-	if (!extract<T> (v, rs, unique ? NULL : &m_hll))
+	if (!extract<T> (v, rs, (unique || sampled) ? NULL : &m_hll))
 	  {
 	    null_rows++;
 	  }
@@ -983,20 +1215,27 @@ cleanup:
 	    seens.push_back (pt->rs.seen ());
 	    m_hll.merge (pt->m_hll);	/* register-wise max == one sketch over all partitions */
 	  }
-	m_merged = cubsampling::merge_partition_samples<T> (parts, seens, capacity);
+	m_merged = cubsampling::merge_partition_samples<T> (parts, seens, capacity,
+		   cubsampling::RESERVOIR_DEFAULT_SEED ^ m_sample_seed);
 	m_has_merged = true;
+      }
+
+      INT64 estimate_ndv_sampled (std::int64_t n_nn) override
+      {
+	std::vector<T> &samples = m_has_merged ? m_merged : rs.samples ();
+	return estimate_ndv_from_samples<T> (samples, n_nn);
       }
 
       char *build (THREAD_ENTRY *thread_p, int max_buckets, std::int64_t total_rows, int *blob_length) override
       {
 	std::vector<T> &s = m_has_merged ? m_merged : rs.samples ();
 	return build_blob<T> (thread_p, s, attr_type, max_buckets, total_rows, total_rows - null_rows, blob_length,
-			      &ndv, estimate_ndv (total_rows));
+			      &ndv, (sampled && !unique) ? -1 : estimate_ndv (total_rows));
       }
   };
 
   static col_collector *
-  make_col_collector (ATTR_ID id, DB_TYPE t, std::size_t cap)
+  make_col_collector (ATTR_ID id, DB_TYPE t, std::size_t cap, std::uint64_t sample_seed)
   {
     /* the engine's operator new is non-throwing, but the constructors allocate through STL
      * (the 16 KiB HLL register vector, the reservoir's reserve) whose failures arrive as
@@ -1007,13 +1246,13 @@ cleanup:
 	switch (category_of (t))
 	  {
 	  case value_category::integer:
-	    return new col_collector_t<std::int64_t> (id, t, value_category::integer, cap);
+	    return new col_collector_t<std::int64_t> (id, t, value_category::integer, cap, sample_seed);
 	  case value_category::real:
-	    return new col_collector_t<double> (id, t, value_category::real, cap);
+	    return new col_collector_t<double> (id, t, value_category::real, cap, sample_seed);
 	  case value_category::string:
-	    return new col_collector_t<std::string> (id, t, value_category::string, cap);
+	    return new col_collector_t<std::string> (id, t, value_category::string, cap, sample_seed);
 	  case value_category::datetime:
-	    return new col_collector_t<std::uint64_t> (id, t, value_category::datetime, cap);
+	    return new col_collector_t<std::uint64_t> (id, t, value_category::datetime, cap, sample_seed);
 	  default:
 	    return NULL;
 	  }
@@ -1024,9 +1263,10 @@ cleanup:
       }
   }
 
-#if defined (SERVER_MODE)
-  /* Worker side of the parallel multi-column build: scan one ftab page partition with
-   * heap_next_1page under the shared snapshot, feeding every column's collector. */
+  /* Scan one ftab page partition with heap_next_1page under the shared snapshot, feeding
+   * every column's collector. Used by the parallel workers AND by the serial fallback
+   * (partitioned classes, SA mode, no free workers), so only the sampled pages are ever
+   * fixed -- the sampling saves page I/O on every path. */
   static int
   scan_ftab_partition_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid, const ATTR_ID *attr_ids,
 			     int attr_cnt, MVCC_SNAPSHOT *snapshot, ftab_page_walker &part,
@@ -1070,6 +1310,13 @@ cleanup:
       {
 	SCAN_CODE sc;
 	int fix_err;
+	bool interrupt_dummy = true;
+	if (logtb_is_interrupted (thread_p, true, &interrupt_dummy))
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	    error = ER_INTERRUPTED;
+	    break;
+	  }
 	if (abort_flag != NULL && abort_flag->load (std::memory_order_relaxed))
 	  {
 	    /* a sibling worker failed; its error aborts the whole request, so the pages this
@@ -1098,6 +1345,10 @@ cleanup:
 	  {
 	    if (old_pw.pgptr != NULL)
 	      {
+		if (part.should_demote ())
+		  {
+		    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+		  }
 		pgbuf_ordered_unfix (thread_p, &old_pw);
 	      }
 	    if (fix_err != NO_ERROR && fix_err != ER_PB_BAD_PAGEID)
@@ -1110,6 +1361,10 @@ cleanup:
 	  }
 	if (old_pw.pgptr != NULL)
 	  {
+	    if (part.should_demote ())
+	      {
+		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+	      }
 	    pgbuf_ordered_unfix (thread_p, &old_pw);
 	  }
 	if (pgbuf_get_page_ptype (thread_p, scan_cache.page_watcher.pgptr) != PAGE_HEAP)
@@ -1175,6 +1430,7 @@ cleanup:
 cleanup:
     if (old_pw.pgptr != NULL)
       {
+	pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
 	pgbuf_ordered_unfix (thread_p, &old_pw);
       }
     if (attrinfo_inited)
@@ -1188,22 +1444,26 @@ cleanup:
     return error;
   }
 
+#if defined (SERVER_MODE)
   struct multi_worker_result
   {
     std::vector<col_collector *> collectors;	/* one per column, owned by the driver */
     std::int64_t total_rows;
+    std::int64_t pages_seen;	/* data pages enumerated / accepted by this worker's walker; their */
+    std::int64_t pages_kept;	/* global ratio is the exact realized sampling fraction */
     int error;
     int er_area_len;		/* > 0: er_area holds the failed worker's flattened er context */
     alignas (sizeof (int)) char er_area[1024];
-    multi_worker_result () : total_rows (0), error (NO_ERROR), er_area_len (0) {}
+    multi_worker_result () : total_rows (0), pages_seen (0), pages_kept (0), error (NO_ERROR), er_area_len (0) {}
   };
 
   class multi_scan_task : public cubthread::entry_task
   {
     public:
       multi_scan_task (const OID *class_oid, const HFID *hfid, const ATTR_ID *attr_ids, int attr_cnt,
-		       MVCC_SNAPSHOT *snapshot, ftab_set part, multi_worker_result *result,
-		       THREAD_ENTRY *parent, parallel_query::worker_manager *wm, std::atomic<bool> *abort_flag)
+		       MVCC_SNAPSHOT *snapshot, ftab_set part, double sample_fraction, std::uint64_t sample_seed,
+		       bool demote, multi_worker_result *result, THREAD_ENTRY *parent,
+		       parallel_query::worker_manager *wm, std::atomic<bool> *abort_flag)
 	: m_class_oid (*class_oid)
 	, m_hfid (*hfid)
 	, m_attr_ids (attr_ids)
@@ -1215,6 +1475,7 @@ cleanup:
 	, m_wm (wm)
 	, m_abort (abort_flag)
       {
+	m_part.set_page_sample (sample_fraction, sample_seed, demote);
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -1227,6 +1488,8 @@ cleanup:
 
 	m_result->error = scan_ftab_partition_multi (&thread_ref, &m_class_oid, &m_hfid, m_attr_ids, m_attr_cnt,
 			  m_snapshot, m_part, m_result->collectors, &m_result->total_rows, m_abort);
+	m_result->pages_seen = m_part.pages_seen ();
+	m_result->pages_kept = m_part.pages_kept ();
 	if (m_result->error != NO_ERROR)
 	  {
 	    /* this worker's er context is thread-local and gone once the pooled thread moves on;
@@ -1278,16 +1541,39 @@ cleanup:
   static int
   parallel_scan_merge_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
 			     const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt,
-			     int sample_size, std::vector<col_collector *> &merged, std::int64_t *out_total_rows,
-			     bool *did_parallel)
+			     int sample_size, bool with_fullscan, std::uint64_t sample_seed,
+			     std::vector<col_collector *> &merged, std::int64_t *out_total_rows,
+			     double *out_sample_fraction, bool *did_parallel,
+			     std::int64_t *out_pages_seen = NULL, std::int64_t *out_pages_kept = NULL)
   {
     int w, c;
+    std::int64_t pages_seen = 0, pages_kept = 0;
     *did_parallel = false;
     *out_total_rows = 0;
+    *out_sample_fraction = 1.0;
+    if (out_pages_seen != NULL)
+      {
+	*out_pages_seen = 0;
+      }
+    if (out_pages_kept != NULL)
+      {
+	*out_pages_kept = 0;
+      }
 
     std::vector<ftab_set> parts;
     parallel_query::worker_manager *wm = NULL;
-    int degree = reserve_and_split (thread_p, hfid, parts, &wm);
+    bool demote = false;
+    int str_attr_cnt = 0;
+    for (int a = 0; a < attr_cnt; a++)
+      {
+	const DB_TYPE t = attr_types[a];
+	if (t == DB_TYPE_STRING || t == DB_TYPE_CHAR || t == DB_TYPE_BIT || t == DB_TYPE_VARBIT)
+	  {
+	    str_attr_cnt++;
+	  }
+      }
+    int degree = reserve_and_split (thread_p, hfid, sample_size, attr_cnt, str_attr_cnt, with_fullscan, parts, &wm,
+				    out_sample_fraction, &demote);
     if (degree < 2)
       {
 	return NO_ERROR;	/* caller runs the serial single scan */
@@ -1307,7 +1593,12 @@ cleanup:
 	results[w].collectors.resize (attr_cnt, (col_collector *) NULL);
 	for (c = 0; c < attr_cnt; c++)
 	  {
-	    results[w].collectors[c] = make_col_collector (attr_ids[c], attr_types[c], (std::size_t) sample_size);
+	    results[w].collectors[c] =
+		    make_col_collector (attr_ids[c], attr_types[c], (std::size_t) sample_size, sample_seed);
+	    if (results[w].collectors[c] != NULL && *out_sample_fraction < 1.0)
+	      {
+		results[w].collectors[c]->begin_sampled_scan ();
+	      }
 	    if (results[w].collectors[c] == NULL && category_of (attr_types[c]) != value_category::unsupported)
 	      {
 		/* OOM (non-throwing new): failing loudly beats silently dropping this worker's
@@ -1341,8 +1632,9 @@ cleanup:
     for (w = 0; w < degree; w++)
       {
 	multi_scan_task *task =
-		new multi_scan_task (class_oid, hfid, attr_ids, attr_cnt, snapshot, std::move (parts[w]), &results[w],
-				     thread_p, wm, &abort_flag);
+		new multi_scan_task (class_oid, hfid, attr_ids, attr_cnt, snapshot, std::move (parts[w]),
+				     *out_sample_fraction, sample_seed, demote, &results[w], thread_p, wm,
+				     &abort_flag);
 	if (task == NULL)
 	  {
 	    /* non-throwing operator new: OOM. The partitions of the unpushed workers would go
@@ -1368,6 +1660,46 @@ cleanup:
 	    failed_w = w;
 	  }
 	total_rows += results[w].total_rows;
+	pages_seen += results[w].pages_seen;
+	pages_kept += results[w].pages_kept;
+      }
+    if (out_pages_seen != NULL)
+      {
+	*out_pages_seen = pages_seen;
+      }
+    if (out_pages_kept != NULL)
+      {
+	*out_pages_kept = pages_kept;
+      }
+    if (*out_sample_fraction < 1.0 && pages_seen > 0 && pages_kept > 0)
+      {
+	/* the walkers enumerated the whole ftab, so kept/seen is the EXACT realized fraction --
+	 * use it for the population expansion instead of the metadata page-count estimate the
+	 * requested fraction was derived from (heap_get_num_objects can be stale) */
+	*out_sample_fraction = (double) pages_kept / (double) pages_seen;
+      }
+    else if (*out_sample_fraction < 1.0 && pages_seen > 0 && pages_kept == 0 && error == NO_ERROR && !push_oom)
+      {
+	/* The deterministic page filter kept no page at all (a tiny statistics_sample_pages
+	 * against a larger heap can realize an empty pick). Expanding an empty sample would
+	 * overwrite the real statistics with "empty table" values (rows = 0, every NDV = 0),
+	 * and retrying with the same seed is a no-op since the filter is deterministic per
+	 * VPID -- so retry once as a full scan. The zero-kept pass fixed no data page, so the
+	 * wasted work is the ftab walk only. */
+	er_log_debug (ARG_FILE_LINE,
+		      "histogram parallel scan: page filter kept 0 of %lld data pages; retrying as a full scan\n",
+		      (long long) pages_seen);
+	for (w = 0; w < degree; w++)
+	  {
+	    for (c = 0; c < attr_cnt; c++)
+	      {
+		delete results[w].collectors[c];
+		results[w].collectors[c] = NULL;
+	      }
+	  }
+	return parallel_scan_merge_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
+					  sample_size, true /* with_fullscan */, sample_seed, merged, out_total_rows,
+					  out_sample_fraction, did_parallel, out_pages_seen, out_pages_kept);
       }
     if (push_oom && error == NO_ERROR)
       {
@@ -1392,7 +1724,7 @@ cleanup:
 	merged.assign (attr_cnt, (col_collector *) NULL);
 	for (c = 0; c < attr_cnt; c++)
 	  {
-	    col_collector *fin = make_col_collector (attr_ids[c], attr_types[c], (std::size_t) sample_size);
+	    col_collector *fin = make_col_collector (attr_ids[c], attr_types[c], (std::size_t) sample_size, sample_seed);
 	    if (fin == NULL && category_of (attr_types[c]) != value_category::unsupported)
 	      {
 		/* OOM (non-throwing new): a supported column losing its merged collector must fail
@@ -1572,16 +1904,36 @@ cleanup:
   static int
   parallel_build_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid, const ATTR_ID *attr_ids,
 			const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt, int max_buckets,
-			int sample_size, double *null_frequency, char **histogram_blob, int *blob_length,
-			INT64 *out_ndv, INT64 *out_total_rows, bool *did_parallel)
+			int sample_size, bool with_fullscan, std::uint64_t sample_seed, double *null_frequency,
+			char **histogram_blob, int *blob_length, INT64 *out_ndv, INT64 *out_total_rows,
+			bool *did_parallel, std::int64_t *out_pages_seen = NULL, std::int64_t *out_pages_kept = NULL)
   {
     std::vector<col_collector *> merged;
     std::int64_t total_rows = 0;
+    double sample_fraction = 1.0;
     int error = parallel_scan_merge_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
-					   sample_size, merged, &total_rows, did_parallel);
+					   sample_size, with_fullscan, sample_seed, merged, &total_rows,
+					   &sample_fraction, did_parallel, out_pages_seen, out_pages_kept);
     if (error != NO_ERROR || !*did_parallel)
       {
 	return error;
+      }
+
+    if (sample_fraction < 1.0)
+      {
+	/* the scan visited only sample_fraction of the pages: expand the observed row counts to
+	 * population estimates. Ratios (null fraction, MCV shares) are unaffected by the uniform
+	 * scale; the per-column NDV switches from the HLL sketch to the Duj1 sample estimator
+	 * (see apply_sample_expansion ()). */
+	const double inv_fraction = 1.0 / sample_fraction;
+	total_rows = (std::int64_t) ((double) total_rows * inv_fraction + 0.5);
+	for (int c = 0; c < attr_cnt; c++)
+	  {
+	    if (merged[c] != NULL)
+	      {
+		merged[c]->apply_sample_expansion (inv_fraction);
+	      }
+	  }
       }
 
     *out_total_rows = total_rows;
@@ -1693,16 +2045,36 @@ cleanup:
   static int
   parallel_collect_ndv_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
 			      const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt,
-			      int sample_size, INT64 *out_ndv, INT64 *out_total_rows, bool *did_parallel,
-			      STATS_NDV_SKETCH_SET **out_sketches)
+			      int sample_size, bool with_fullscan, INT64 *out_ndv, INT64 *out_total_rows,
+			      bool *did_parallel, STATS_NDV_SKETCH_SET **out_sketches)
   {
     std::vector<col_collector *> merged;
     std::int64_t total_rows = 0;
+    double sample_fraction = 1.0;
+    /* when the caller wants the HLL sketches (partitioned-class NDV merging), they must cover the
+     * whole population -- a sampled sketch would understate the merged NDV -- so sampling is only
+     * allowed when no sketches are requested */
+    bool force_full = with_fullscan || (out_sketches != NULL);
     int error = parallel_scan_merge_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
-					   sample_size, merged, &total_rows, did_parallel);
+					   sample_size, force_full, 0 /* fixed seed */, merged, &total_rows,
+					   &sample_fraction, did_parallel);
     if (error != NO_ERROR || !*did_parallel)
       {
 	return error;
+      }
+
+    if (sample_fraction < 1.0)
+      {
+	/* expand sampled counts to population estimates (see parallel_build_multi) */
+	const double inv_fraction = 1.0 / sample_fraction;
+	total_rows = (std::int64_t) ((double) total_rows * inv_fraction + 0.5);
+	for (int c = 0; c < attr_cnt; c++)
+	  {
+	    if (merged[c] != NULL)
+	      {
+		merged[c]->apply_sample_expansion (inv_fraction);
+	      }
+	  }
       }
 
     if (out_sketches != NULL)
@@ -1729,11 +2101,30 @@ cleanup:
 	out_ndv[c] = merged[c]->compute_ndv (total_rows);
 	if (out_sketches != NULL)
 	  {
-	    stats_ndv_sketch_set::column col;
-	    col.id = attr_ids[c];
-	    col.non_null_rows = total_rows - merged[c]->null_rows;
-	    col.hll = std::move (merged[c]->m_hll);
-	    (*out_sketches)->cols.push_back (std::move (col));
+	    try
+	      {
+		/* the column's hyperloglog and the vector growth allocate through STL, whose
+		 * failures arrive as std::bad_alloc: catch them here so OOM fails this request
+		 * with an error instead of terminating the server, and so the collectors of the
+		 * remaining columns (16 KiB sketch + row reservoir each) are still released */
+		stats_ndv_sketch_set::column col;
+		col.id = attr_ids[c];
+		col.non_null_rows = total_rows - merged[c]->null_rows;
+		col.hll = std::move (merged[c]->m_hll);
+		(*out_sketches)->cols.push_back (std::move (col));
+	      }
+	    catch (const std::bad_alloc &)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+		for (int c2 = c; c2 < attr_cnt; c2++)
+		  {
+		    delete merged[c2];
+		    merged[c2] = NULL;
+		  }
+		delete *out_sketches;
+		*out_sketches = NULL;
+		return ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
 	  }
 	delete merged[c];
       }
@@ -1791,19 +2182,13 @@ histogram_scan_targets (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID
 int
 xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
     const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt, int max_buckets,
-    int sample_size, double *null_frequency, char **histogram_blob, int *blob_length, INT64 *out_ndv,
-    INT64 *out_total_rows)
+    int sample_size, bool with_fullscan, UINT64 sample_seed, double *null_frequency, char **histogram_blob,
+    int *blob_length, INT64 *out_ndv, INT64 *out_total_rows, INT64 *out_pages_seen, INT64 *out_pages_kept)
 {
-  HEAP_SCANCACHE scan_cache;
-  HEAP_CACHE_ATTRINFO attr_info;
-  RECDES recdes;
-  OID inst_oid;
-  OID scan_class_oid;
-  SCAN_CODE sc;
   int error = NO_ERROR;
   int i;
-  bool scancache_inited = false;
-  bool attrinfo_inited = false;
+  std::int64_t serial_pages_seen = 0;
+  std::int64_t serial_pages_kept = 0;
   std::int64_t total_rows = 0;
   MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
   std::vector<col_collector *> collectors (attr_cnt, (col_collector *) NULL);
@@ -1816,6 +2201,14 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
     }
 
   *out_total_rows = 0;
+  if (out_pages_seen != NULL)
+    {
+      *out_pages_seen = 0;
+    }
+  if (out_pages_kept != NULL)
+    {
+      *out_pages_kept = 0;
+    }
   for (i = 0; i < attr_cnt; i++)
     {
       histogram_blob[i] = NULL;
@@ -1858,8 +2251,9 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
     {
       bool did_parallel = false;
       int perr = parallel_build_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
-				       max_buckets, sample_size, null_frequency, histogram_blob, blob_length, out_ndv,
-				       out_total_rows, &did_parallel);
+				       max_buckets, sample_size, with_fullscan, (std::uint64_t) sample_seed,
+				       null_frequency, histogram_blob, blob_length, out_ndv, out_total_rows,
+				       &did_parallel, out_pages_seen, out_pages_kept);
       if (perr != NO_ERROR)
 	{
 	  return perr;
@@ -1871,12 +2265,39 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
     }
 #endif /* SERVER_MODE */
 
+  /* serial fallback (partitioned classes, SA mode, no free workers): page-sample here too.
+   * The fraction is computed over the summed page count of every target heap and the same
+   * deterministic per-VPID predicate is applied, so a partitioned table is sampled uniformly
+   * across its partitions. The pages are pre-picked from each heap's file allocation bitmap
+   * (ftab) and only the picked pages are fixed, so the sampling saves page I/O here exactly
+   * like on the parallel path. */
+  int serial_npages = 0;
+  for (const std::pair<OID, HFID> &tgt : targets)
+    {
+      /* allocation metadata only -- see reserve_and_split (): heap_get_num_objects () would
+       * walk every page of every target heap just to refresh best-space statistics */
+      int np = 0;
+      if (file_get_num_user_pages (thread_p, &tgt.second.vfid, &np) == NO_ERROR && np > 0)
+	{
+	  /* minus each heap's header page, which the walker skips (see reserve_and_split) */
+	  serial_npages += np - 1;
+	}
+      else
+	{
+	  er_clear ();
+	}
+    }
+  const double serial_fraction = histogram_compute_sample_fraction (serial_npages, sample_size, with_fullscan);
+  const std::uint64_t serial_threshold =
+	  (serial_fraction < 1.0) ? (std::uint64_t) (serial_fraction * (double) UINT64_MAX) : UINT64_MAX;
+
   /* one collector per column; NULL for unsupported types (their blob stays NULL). Under the
    * engine's non-throwing operator new a failed allocation also yields NULL -- for a SUPPORTED
    * type that is an OOM and must fail the request, not silently drop the column's statistics. */
   for (i = 0; i < attr_cnt; i++)
     {
-      collectors[i] = make_col_collector (attr_ids[i], attr_types[i], (std::size_t) sample_size);
+      collectors[i] = make_col_collector (attr_ids[i], attr_types[i], (std::size_t) sample_size,
+					  (std::uint64_t) sample_seed);
       if (collectors[i] == NULL && category_of (attr_types[i]) != value_category::unsupported)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (col_collector_t<double>));
@@ -1887,92 +2308,100 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 	{
 	  collectors[i]->unique = true;
 	}
+      if (collectors[i] != NULL && serial_threshold != UINT64_MAX)
+	{
+	  collectors[i]->begin_sampled_scan ();
+	}
     }
 
-  /* shared full scan over every target heap: each row feeds every column's reservoir */
+  /* shared scan over every target heap: each row of the picked pages feeds every column's
+   * reservoir. The page set of each heap comes from its ftab, so unpicked pages are never
+   * fixed. */
   for (const std::pair<OID, HFID> &tgt : targets)
     {
       const OID *tgt_oid = &tgt.first;
       const HFID *tgt_hfid = &tgt.second;
+      std::int64_t tgt_rows = 0;
 
-      error = heap_scancache_start (thread_p, &scan_cache, tgt_hfid, tgt_oid, true /* cache_last_fix_page */,
-				    snapshot);
-      if (error != NO_ERROR)
+      FILE_FTAB_COLLECTOR ftab_collector;
+      if (file_get_all_data_sectors (thread_p, &tgt_hfid->vfid, &ftab_collector) != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
-	  goto cleanup;
-	}
-      scancache_inited = true;
-
-      error = heap_attrinfo_start (thread_p, tgt_oid, attr_cnt, attr_ids, &attr_info);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto cleanup;
-	}
-      attrinfo_inited = true;
-
-      OID_SET_NULL (&inst_oid);
-      scan_class_oid = *tgt_oid;
-
-      while (true)
-	{
-	  /* reset recdes before every fetch (mirrors the executor's heap scan): a stale PEEK
-	   * pointer left by the previous row makes heap_get_visible_version_from_log () treat
-	   * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
-	   * updated row's visible version must be read from the undo log */
-	  recdes.data = NULL;
-	  sc =
-		  heap_next (thread_p, tgt_hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK,
-			     HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
-	  if (sc != S_SUCCESS)
+	  if (ftab_collector.partsect_ftab != NULL)
 	    {
-	      break;
-	    }
-	  total_rows++;
-
-	  error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto cleanup;
-	    }
-
-	  try
-	    {
-	      for (i = 0; i < attr_cnt; i++)
-		{
-		  if (collectors[i] == NULL)
-		    {
-		      continue;
-		    }
-		  collectors[i]->feed (heap_attrinfo_access (attr_ids[i], &attr_info));
-		}
-	    }
-	  catch (const std::bad_alloc &)
-	    {
-	      /* sampled string copies allocate through STL; fail the scan cleanly */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto cleanup;
-	    }
-	}
-
-      if (sc != S_END)
-	{
-	  /* make sure an er message exists: ER_FAILED alone reaches the client as "(null)" */
-	  if (er_errid () == NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
 	    }
 	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}
 
-      heap_attrinfo_end (thread_p, &attr_info);
-      attrinfo_inited = false;
-      (void) heap_scancache_end (thread_p, &scan_cache);
-      scancache_inited = false;
+      {
+	ftab_set tgt_ftab;
+	tgt_ftab.convert (&ftab_collector);
+	if (ftab_collector.partsect_ftab != NULL)
+	  {
+	    db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
+	  }
+
+	ftab_page_walker walker (std::move (tgt_ftab));
+	walker.set_page_sample (serial_fraction, (std::uint64_t) sample_seed,
+				histogram_scan_should_demote_pages (serial_npages));
+
+	error = scan_ftab_partition_multi (thread_p, tgt_oid, tgt_hfid, attr_ids, attr_cnt, snapshot, walker,
+					   collectors, &tgt_rows, NULL /* abort_flag */);
+	serial_pages_seen += walker.pages_seen ();
+	serial_pages_kept += walker.pages_kept ();
+      }
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      total_rows += tgt_rows;
+    }
+
+  if (serial_fraction < 1.0 && serial_pages_seen > 0 && serial_pages_kept == 0)
+    {
+      /* the deterministic page filter kept no page at all: expanding an empty sample would
+       * overwrite the real statistics with "empty table" values (rows = 0, every NDV = 0), and
+       * retrying with the same seed is a no-op since the filter is deterministic per VPID --
+       * so retry once as a full scan (see parallel_scan_merge_multi for the parallel twin).
+       * The zero-kept pass fixed no data page, so the wasted work is the ftab walk only. */
+      er_log_debug (ARG_FILE_LINE,
+		    "histogram serial scan: page filter kept 0 of %lld data pages; retrying as a full scan\n",
+		    (long long) serial_pages_seen);
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  delete collectors[i];
+	  collectors[i] = NULL;
+	}
+      return xhistogram_build_multi_by_fullscan_reservoir (thread_p, class_oid, hfid, attr_ids, attr_types,
+	     attr_unique, attr_cnt, max_buckets, sample_size,
+	     true /* with_fullscan */, sample_seed, null_frequency,
+	     histogram_blob, blob_length, out_ndv, out_total_rows,
+	     out_pages_seen, out_pages_kept);
+    }
+
+  if (out_pages_seen != NULL)
+    {
+      *out_pages_seen = serial_pages_seen;
+    }
+  if (out_pages_kept != NULL)
+    {
+      *out_pages_kept = serial_pages_kept;
+    }
+
+  if (serial_fraction < 1.0 && serial_pages_kept > 0)
+    {
+      /* expand the sampled counts to population estimates -- by the fraction the scan actually
+       * realized (kept/seen pages), not the metadata estimate (see parallel_scan_merge_multi) */
+      const double inv_fraction = (double) serial_pages_seen / (double) serial_pages_kept;
+      total_rows = (std::int64_t) ((double) total_rows * inv_fraction + 0.5);
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  if (collectors[i] != NULL)
+	    {
+	      collectors[i]->apply_sample_expansion (inv_fraction);
+	    }
+	}
     }
 
   *out_total_rows = total_rows;
@@ -2011,14 +2440,6 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
   error = NO_ERROR;
 
 cleanup:
-  if (attrinfo_inited)
-    {
-      heap_attrinfo_end (thread_p, &attr_info);
-    }
-  if (scancache_inited)
-    {
-      (void) heap_scancache_end (thread_p, &scan_cache);
-    }
   for (i = 0; i < attr_cnt; i++)
     {
       delete collectors[i];
@@ -2056,6 +2477,9 @@ namespace
 	  case DB_TYPE_BIGINT:
 	    out = db_get_bigint (v);
 	    break;
+	  case DB_TYPE_ENUMERATION:
+	    out = db_get_enum_short (v);
+	    break;
 	  default:
 	    return false;
 	  }
@@ -2078,6 +2502,9 @@ namespace
 	    break;
 	  case DB_TYPE_DOUBLE:
 	    out = db_get_double (v);
+	    break;
+	  case DB_TYPE_MONETARY:
+	    out = db_get_monetary (v)->amount;
 	    break;
 	  default:
 	    return false;
@@ -2172,9 +2599,10 @@ namespace
 
 int
 xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
-    const ATTR_ID *attr_ids, const DB_TYPE *attr_types, int attr_cnt,
+    const ATTR_ID *attr_ids, const DB_TYPE *attr_types, int attr_cnt, bool with_fullscan,
     INT64 *out_ndv, INT64 *out_total_rows, STATS_NDV_SKETCH_SET **out_sketches)
 {
+
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
   RECDES recdes;
@@ -2202,11 +2630,13 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
   /* try the page-parallel scan first; falls through to the serial scan when not applicable */
   {
     bool did_parallel = false;
-    /* sample_size 0: the NDV-only path needs just the HLL sketches and null counts; a row
-     * reservoir per worker per column (capacity x degree x attr_cnt upfront) would be pure waste */
+    /* full scans need only the HLL sketches (a per-worker row reservoir would be waste), but a
+     * page-sampled scan estimates NDV with Duj1 from the merged row sample -- give it a reservoir.
+     * Sketch requests force a full scan inside, so they never need one. */
+    int ndv_sample_cap = (out_sketches == NULL && !with_fullscan) ? STATS_NDV_RESERVOIR_ROWS : 0;
     int perr = parallel_collect_ndv_multi (thread_p, class_oid, hfid, attr_ids, attr_types, NULL /* attr_unique */,
-					   attr_cnt, 0, out_ndv, out_total_rows, &did_parallel,
-					   out_sketches);
+					   attr_cnt, ndv_sample_cap, with_fullscan, out_ndv, out_total_rows,
+					   &did_parallel, out_sketches);
     if (perr != NO_ERROR)
       {
 	return perr;
@@ -2226,6 +2656,9 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
       cats[i] = category_of (attr_types[i]);
       out_ndv[i] = -1;		/* unsupported / not computed by default */
     }
+
+  PAGEID ndv_cur_pageid = NULL_PAGEID;
+  short ndv_cur_volid = -1;
 
   error = heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true /* cache_last_fix_page */, snapshot);
   if (error != NO_ERROR)
@@ -2259,6 +2692,19 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
       if (sc != S_SUCCESS)
 	{
 	  break;
+	}
+      if (inst_oid.pageid != ndv_cur_pageid || inst_oid.volid != ndv_cur_volid)
+	{
+	  bool ndv_continue_checking = true;
+
+	  ndv_cur_pageid = inst_oid.pageid;
+	  ndv_cur_volid = inst_oid.volid;
+	  if (logtb_is_interrupted (thread_p, true, &ndv_continue_checking))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      error = ER_INTERRUPTED;
+	      goto cleanup;
+	    }
 	}
       (*out_total_rows)++;
 
@@ -2337,11 +2783,24 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
 	}
       if (out_sketches != NULL)
 	{
-	  stats_ndv_sketch_set::column col;
-	  col.id = attr_ids[i];
-	  col.non_null_rows = n_nn;
-	  col.hll = std::move (hlls[i]);
-	  (*out_sketches)->cols.push_back (std::move (col));
+	  try
+	    {
+	      /* same STL-allocation exposure as the parallel path: fail this request with an
+	       * error instead of letting std::bad_alloc terminate the server */
+	      stats_ndv_sketch_set::column col;
+	      col.id = attr_ids[i];
+	      col.non_null_rows = n_nn;
+	      col.hll = std::move (hlls[i]);
+	      (*out_sketches)->cols.push_back (std::move (col));
+	    }
+	  catch (const std::bad_alloc &)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+	      delete *out_sketches;
+	      *out_sketches = NULL;
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto cleanup;
+	    }
 	}
     }
 
