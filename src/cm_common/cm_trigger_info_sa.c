@@ -128,7 +128,6 @@ write_err_msg (char *errfile, char *msg)
 static void
 get_trigger_information (FILE * fp, DB_OBJECT * triggerobj)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *trigger_name, *action, *attr, *condition, *comment;
   DB_OBJECT *target_class;
   DB_TRIGGER_EVENT event;
@@ -224,8 +223,7 @@ get_trigger_information (FILE * fp, DB_OBJECT * triggerobj)
   db_trigger_class (triggerobj, &target_class);
   if (target_class != NULL)
     {
-      fprintf (fp, MSGFMT, "target_class",
-	       db_get_class_qualified_name (target_class, qualified_name, sizeof (qualified_name)));
+      fprintf (fp, MSGFMT, "target_class", db_get_class_name (target_class));
     }
 
   db_trigger_attribute (triggerobj, &attr);

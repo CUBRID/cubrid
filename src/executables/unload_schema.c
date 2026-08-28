@@ -124,7 +124,7 @@ typedef enum
 
 typedef enum
 {
-  SERIAL_QUALIFIED_NAME,
+  SERIAL_UNIQUE_NAME,
   SERIAL_NAME,
   SERIAL_OWNER_NAME,
   SERIAL_CURRENT_VAL,
@@ -141,7 +141,7 @@ typedef enum
 
 typedef enum
 {
-  ALTER_SERIAL_QUALIFIED_NAME,
+  ALTER_SERIAL_UNIQUE_NAME,
   ALTER_SERIAL_NAME,
   ALTER_SERIAL_OWNER_NAME,
   ALTER_SERIAL_CURRENT_VAL,
@@ -159,7 +159,7 @@ typedef enum
 
 typedef enum
 {
-  SYNONYM_QUALIFIED_NAME,
+  SYNONYM_UNIQUE_NAME,
   SYNONYM_OWNER,
   SYNONYM_IS_PUBLIC,
   SYNONYM_TARGET_NAME,
@@ -183,7 +183,6 @@ static int check_domain_dependencies (DB_DOMAIN * domain, DB_OBJECT * this_class
 				      DB_OBJLIST * ordered);
 static int has_dependencies (DB_OBJECT * class_, DB_OBJLIST * unordered, DB_OBJLIST * ordered, int conservative);
 static int order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, int conservative);
-static void sort_classes_by_name (DB_OBJLIST ** class_list);
 static void emit_cycle_warning (print_output & output_ctx);
 static void force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
 static DB_OBJLIST *get_ordered_classes (print_output & output_ctx, MOP * class_table);
@@ -540,76 +539,6 @@ order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, int conservat
 
 
 /*
- * compare_classes_by_name - qsort comparator for DB_OBJLIST nodes, by class name
- *    return: strcmp order of the class names
- *    a(in): pointer to a DB_OBJLIST node pointer
- *    b(in): pointer to a DB_OBJLIST node pointer
- */
-static int
-compare_classes_by_name (const void *a, const void *b)
-{
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  const char *name_a =
-    db_get_class_qualified_name ((*(DB_OBJLIST * const *) a)->op, qualified_name, sizeof (qualified_name));
-  const char *name_b =
-    db_get_class_qualified_name ((*(DB_OBJLIST * const *) b)->op, qualified_name2, sizeof (qualified_name2));
-
-  return strcmp ((name_a != NULL) ? name_a : "", (name_b != NULL) ? name_b : "");
-}
-
-/*
- * sort_classes_by_name - order a class list by class name
- *    return: void
- *    class_list(in/out): list to sort in place
- * Note:
- *    The list arrives in the physical order of the class heap, which shifts with
- *    any change in page allocation. Sorting makes a schema dump comparable across
- *    databases holding the same schema; order_classes () then reorders only what
- *    dependencies demand, and preserves this order among independent classes.
- */
-static void
-sort_classes_by_name (DB_OBJLIST ** class_list)
-{
-  DB_OBJLIST **nodes;
-  DB_OBJLIST *cl;
-  int count, i;
-
-  for (cl = *class_list, count = 0; cl != NULL; cl = cl->next)
-    {
-      count++;
-    }
-
-  if (count < 2)
-    {
-      return;
-    }
-
-  nodes = (DB_OBJLIST **) malloc (count * sizeof (DB_OBJLIST *));
-  if (nodes == NULL)
-    {
-      /* leave the list as it is; the dump stays correct, only unordered */
-      return;
-    }
-
-  for (cl = *class_list, i = 0; cl != NULL; cl = cl->next)
-    {
-      nodes[i++] = cl;
-    }
-
-  qsort (nodes, count, sizeof (DB_OBJLIST *), compare_classes_by_name);
-
-  for (i = 0; i < count - 1; i++)
-    {
-      nodes[i]->next = nodes[i + 1];
-    }
-  nodes[count - 1]->next = NULL;
-  *class_list = nodes[0];
-
-  free_and_init (nodes);
-}
-
-/*
  * emit_cycle_warning - emit cyclic dependency warning
  *    return: void
  * Note:
@@ -709,9 +638,6 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
 	{
 	  filter_unrequired_classes (&classes);
 	}
-
-      /* the fetch order above is the class heap's physical order; make the dump deterministic */
-      sort_classes_by_name (&classes);
     }
   else
     {
@@ -778,14 +704,12 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
    * when changing the following query. Notice the order of the result.
    */
   const char *query_all =
-    "select " "LOWER([owner].[name]) || '.' || " "[name], [name], [owner].[name], "
-    "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
+    "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
     "from [_db_serial] where [class_name] is null and [attr_name] is null";
 
   const char *query_user =
-    "select " "LOWER([owner].[name]) || '.' || " "[name], [name], [owner].[name], "
-    "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
+    "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
     "from [_db_serial] where [class_name] is null and [attr_name] is null and owner.name='%s'";
 
@@ -852,7 +776,7 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 		  }
 		  break;
 
-		case SERIAL_QUALIFIED_NAME:
+		case SERIAL_UNIQUE_NAME:
 		case SERIAL_NAME:
 		  {
 		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
@@ -909,7 +833,7 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 		}
 	    }
 
-	  SPLIT_USER_SPECIFIED_NAME (db_get_string (&values[SERIAL_QUALIFIED_NAME]), owner_name, serial_name);
+	  SPLIT_USER_SPECIFIED_NAME (db_get_string (&values[SERIAL_UNIQUE_NAME]), owner_name, serial_name);
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			    sizeof (output_owner));
 
@@ -966,7 +890,6 @@ err:
 static int
 emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   int i;
   DB_QUERY_RESULT *query_result;
@@ -990,14 +913,12 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
    * when changing the following query. Notice the order of the result.
    */
   const char *query_all =
-    "select " "LOWER([owner].[name]) || '.' || " "[name], [name], [owner].[name], "
-    "[current_val], [increment_val], [max_val], [min_val], "
+    "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
     "from [_db_serial] where [class_name] is not null and [attr_name] is not null";
 
   const char *query_user =
-    "select " "LOWER([owner].[name]) || '.' || " "[name], [name], [owner].[name], "
-    "[current_val], [increment_val], [max_val], [min_val], "
+    "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
     "from [_db_serial] where [class_name] is not null and [attr_name] is not null and owner.name='%s'";
 
@@ -1064,7 +985,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 		  }
 		  break;
 
-		case ALTER_SERIAL_QUALIFIED_NAME:
+		case ALTER_SERIAL_UNIQUE_NAME:
 		case ALTER_SERIAL_NAME:
 		  {
 		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
@@ -1137,7 +1058,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 	      int same_schema = 0;
 	      for (cl = ctxt.classes; cl != NULL; cl = cl->next)
 		{
-		  schema_name = db_get_class_qualified_name (cl->op, qualified_name, sizeof (qualified_name));
+		  schema_name = db_get_class_name (cl->op);
 
 		  serial_owner_name = db_get_string (&values[ALTER_SERIAL_OWNER_NAME]);
 		  serial_class_name = db_get_string (&values[ALTER_SERIAL_CLASS_NAME]);
@@ -1173,13 +1094,13 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 	  else
 	    {
 	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
-			  PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_QUALIFIED_NAME])),
+			  PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_UNIQUE_NAME])),
 			  numeric_db_value_print (&values[ALTER_SERIAL_CURRENT_VAL], str_buf));
 
 	      if (db_get_int (&values[ALTER_SERIAL_STARTED]) == 1)
 		{
 		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ",
-			      PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_QUALIFIED_NAME])));
+			      PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_UNIQUE_NAME])));
 		}
 	    }
 
@@ -1214,13 +1135,12 @@ err:
 static int
 export_synonym (extract_context & ctxt, print_output & output_ctx)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
   DB_VALUE values[SYNONYM_VALUE_INDEX_MAX];
   char synonym_name[DB_MAX_CLASS_LENGTH] = { '\0', };
   DB_OBJECT *synonym_owner = NULL;
-  const char *synonym_qualified_name = NULL;
+  const char *synonym_unique_name = NULL;
   char synonym_owner_name[DB_MAX_USER_LENGTH] = { '\0', };
   int is_public = 0;
   const char *target_name = NULL;
@@ -1240,7 +1160,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   char temp_schema[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   // *INDENT-OFF*
-  const char *query_all = "SELECT LOWER([owner].[name]) || '.' || [name] AS [synonym_name], "
+  const char *query_all = "SELECT [unique_name], "
                              "[owner], "
 			     "[is_public], "
 			     "[target_name], "
@@ -1248,7 +1168,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 			     "[comment] "
 			  "FROM [_db_synonym]";
 
-  const char *query_user = "SELECT LOWER([owner].[name]) || '.' || [name] AS [synonym_name], "
+  const char *query_user = "SELECT [unique_name], "
                              "[owner], "
 			     "[is_public], "
 			     "[target_name], "
@@ -1317,7 +1237,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	      /* Validation of the result value */
 	      switch (i)
 		{
-		case SYNONYM_QUALIFIED_NAME:
+		case SYNONYM_UNIQUE_NAME:
 		case SYNONYM_TARGET_NAME:
 		case SYNONYM_TARGET_OWNER_NAME:
 		  {
@@ -1365,7 +1285,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 		}
 	    }
 
-	  synonym_qualified_name = db_get_string (&values[SYNONYM_QUALIFIED_NAME]);
+	  synonym_unique_name = db_get_string (&values[SYNONYM_UNIQUE_NAME]);
 	  synonym_owner = db_get_object (&values[SYNONYM_OWNER]);
 	  is_public = db_get_int (&values[SYNONYM_IS_PUBLIC]);
 	  target_name = db_get_string (&values[SYNONYM_TARGET_NAME]);
@@ -1381,7 +1301,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	      int same_schema = 0;
 	      for (cl = ctxt.classes; cl != NULL; cl = cl->next)
 		{
-		  name = db_get_class_qualified_name (cl->op, qualified_name, sizeof (qualified_name));
+		  name = db_get_class_name (cl->op);
 
 		  snprintf (temp_schema, DB_MAX_IDENTIFIER_LENGTH, "%s%s%s", (target_owner_name), ".", target_name);
 
@@ -1408,7 +1328,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	      output_ctx ("CREATE PRIVATE");
 	    }
 
-	  SPLIT_USER_SPECIFIED_NAME (synonym_qualified_name, synonym_owner_name, synonym_name);
+	  SPLIT_USER_SPECIFIED_NAME (synonym_unique_name, synonym_owner_name, synonym_name);
 	  PRINT_OWNER_NAME (synonym_owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), synonym_output_owner,
 			    sizeof (synonym_output_owner));
 
@@ -1789,7 +1709,6 @@ emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * cl
 static void
 emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TYPE extract_class)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *cl = NULL;
   int is_vclass = 0;
   const char *class_type = NULL;
@@ -1808,7 +1727,7 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
     {
       is_vclass = db_is_vclass (cl->op);
 
-      name = db_get_class_qualified_name (cl->op, qualified_name, sizeof (qualified_name));
+      name = db_get_class_name (cl->op);
       if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
 	{
 	  continue;
@@ -1901,7 +1820,6 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 static void
 emit_class_query_spec (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TYPE extract_class)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *cl = NULL;
   int is_vclass = 0;
   const char *class_type = NULL;
@@ -1964,7 +1882,7 @@ emit_class_query_spec (extract_context & ctxt, print_output & output_ctx, EXTRAC
 	    }
 	}
 
-      name = db_get_class_qualified_name (cl->op, qualified_name, sizeof (qualified_name));
+      name = db_get_class_name (cl->op);
       if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
 	{
 	  continue;
@@ -2062,8 +1980,6 @@ has_vclass_domains (DB_OBJECT * vclass)
 static DB_OBJLIST *
 emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_QUERY_SPEC *specs, *s;
   DB_OBJLIST *cl;
   DB_OBJLIST *vclass_list_has_using_index = NULL;
@@ -2091,7 +2007,7 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  continue;
 	}
 
-      name = db_get_class_qualified_name (cl->op, qualified_name, sizeof (qualified_name));
+      name = db_get_class_name (cl->op);
       specs = db_get_query_specs (cl->op);
       if (specs == NULL)
 	{
@@ -2172,7 +2088,7 @@ emit_query_specs (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  continue;
 	}
 
-      name = db_get_class_qualified_name (cl->op, qualified_name2, sizeof (qualified_name2));
+      name = db_get_class_name (cl->op);
       specs = db_get_query_specs (cl->op);
       if (specs == NULL)
 	{
@@ -2247,8 +2163,6 @@ static int
 emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_ctx,
 				  DB_OBJLIST * vclass_list_has_using_index)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_QUERY_SPEC *specs, *s;
   DB_OBJLIST *cl;
   PARSER_CONTEXT *parser;
@@ -2274,7 +2188,7 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	  continue;
 	}
 
-      name = db_get_class_qualified_name (cl->op, qualified_name, sizeof (qualified_name));
+      name = db_get_class_name (cl->op);
       specs = db_get_query_specs (cl->op);
       if (specs == NULL)
 	{
@@ -2326,7 +2240,7 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 	{
 	  continue;
 	}
-      name = db_get_class_qualified_name (cl->op, qualified_name2, sizeof (qualified_name2));
+      name = db_get_class_name (cl->op);
       specs = db_get_query_specs (cl->op);
       if (specs == NULL)
 	{
@@ -2396,8 +2310,6 @@ emit_query_specs_has_using_index (extract_context & ctxt, print_output & output_
 static bool
 emit_superclasses (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *supers, *s;
   const char *name;
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
@@ -2408,7 +2320,7 @@ emit_superclasses (extract_context & ctxt, print_output & output_ctx, DB_OBJECT 
   if (supers != NULL)
     {
       /* create class alter string */
-      name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+      name = db_get_class_name (class_);
       if (do_is_partitioned_subclass (NULL, name, NULL))
 	{
 	  return (supers != NULL);
@@ -2423,7 +2335,7 @@ emit_superclasses (extract_context & ctxt, print_output & output_ctx, DB_OBJECT 
 
       for (s = supers; s != NULL; s = s->next)
 	{
-	  name = db_get_class_qualified_name (s->op, qualified_name2, sizeof (qualified_name2));
+	  name = db_get_class_name (s->op);
 	  if (s != supers)
 	    {
 	      output_ctx (", ");
@@ -2459,7 +2371,6 @@ emit_superclasses (extract_context & ctxt, print_output & output_ctx, DB_OBJECT 
 static bool
 emit_resolutions (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_RESOLUTION *resolution_list;
   bool return_value = false;
   const char *name;
@@ -2470,7 +2381,7 @@ emit_resolutions (extract_context & ctxt, print_output & output_ctx, DB_OBJECT *
   resolution_list = db_get_resolutions (class_);
   if (resolution_list != NULL)
     {
-      name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+      name = db_get_class_name (class_);
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 
       PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
@@ -2510,7 +2421,6 @@ static void
 emit_resolution_def (extract_context & ctxt, print_output & output_ctx, DB_RESOLUTION * resolution,
 		     RESOLUTION_QUALIFIER qualifier)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *name, *alias, *class_name;
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   char class_name_p[DB_MAX_CLASS_LENGTH] = { '\0' };
@@ -2529,7 +2439,7 @@ emit_resolution_def (extract_context & ctxt, print_output & output_ctx, DB_RESOL
       return;
     }
 
-  class_name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+  class_name = db_get_class_name (class_);
   if (class_name == NULL)
     {
       return;
@@ -2591,7 +2501,6 @@ static bool
 emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_, const char *class_type,
 			  int *has_indexes, EMIT_STORAGE_ORDER storage_order)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_ATTRIBUTE *attribute_list, *first_attribute, *a;
   int unique_flag = 0;
   int reverse_unique_flag = 0;
@@ -2655,7 +2564,7 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
       return false;
     }
 
-  name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+  name = db_get_class_name (class_);
   if (storage_order == FOLLOW_STORAGE_ORDER)
     {
       DB_ATTRIBUTE **ordered_attributes, **storage_attributes;
@@ -2821,7 +2730,6 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
 static bool
 emit_class_attributes (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_ATTRIBUTE *class_attribute_list, *first_class_attribute, *a;
   const char *name;
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
@@ -2841,7 +2749,7 @@ emit_class_attributes (extract_context & ctxt, print_output & output_ctx, DB_OBJ
 
   if (first_class_attribute != NULL)
     {
-      name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+      name = db_get_class_name (class_);
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 
       PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
@@ -2869,12 +2777,11 @@ emit_class_attributes (extract_context & ctxt, print_output & output_ctx, DB_OBJ
 static bool
 emit_class_meta (print_output & output_ctx, DB_OBJECT * table)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_ATTRIBUTE *attribute_list, *a;
   const char *table_name;
   bool first_print = true;
 
-  table_name = db_get_class_qualified_name (table, qualified_name, sizeof (qualified_name));
+  table_name = db_get_class_name (table);
   output_ctx ("-- !META! %s%s%s:", PRINT_IDENTIFIER (table_name));
 
   attribute_list = db_get_attributes (table);
@@ -2974,8 +2881,6 @@ emit_method_files (print_output & output_ctx, DB_OBJECT * class_mop)
 static bool
 emit_methods (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_METHOD *method_list, *class_method_list, *m;
   DB_METHOD *first_method, *first_class_method;
   const char *name;
@@ -3006,7 +2911,7 @@ emit_methods (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * cla
 
   if (first_method != NULL)
     {
-      name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+      name = db_get_class_name (class_);
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 
       PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
@@ -3034,7 +2939,7 @@ emit_methods (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * cla
   /* eventually, this may merge with the statement above */
   if (first_class_method != NULL)
     {
-      name = db_get_class_qualified_name (class_, qualified_name2, sizeof (qualified_name2));
+      name = db_get_class_name (class_);
       SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 
       PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
@@ -3269,7 +3174,6 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
 static void
 emit_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_CONSTRAINT *constraint_list, *constraint;
   DB_ATTRIBUTE **atts, **att;
   bool has_inherited_atts;
@@ -3280,7 +3184,7 @@ emit_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * 
   int not_online = 0;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
-  class_name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+  class_name = db_get_class_name (class_);
 
   /* First we must check if there is a unique one without the online index tag. */
 
@@ -3392,7 +3296,6 @@ emit_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * 
 static void
 emit_primary_key_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_, const char *class_type)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_CONSTRAINT *constraint_list, *constraint;
   DB_ATTRIBUTE **atts, **att;
   bool has_inherited_atts;
@@ -3404,7 +3307,7 @@ emit_primary_key_def (extract_context & ctxt, print_output & output_ctx, DB_OBJE
   int i = 0;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
-  class_name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+  class_name = db_get_class_name (class_);
 
   /* First we must check if there is a unique one without the online index tag. */
 
@@ -3518,7 +3421,6 @@ static void
 emit_primary_and_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_,
 			     const char *class_type)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_CONSTRAINT *constraint_list, *constraint;
   DB_ATTRIBUTE **atts, **att;
   bool has_inherited_atts;
@@ -3529,7 +3431,7 @@ emit_primary_and_unique_def (extract_context & ctxt, print_output & output_ctx, 
   int not_online = 0;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
-  class_name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+  class_name = db_get_class_name (class_);
 
   /* First we must check if there is a unique one without the online index tag. */
 
@@ -3649,7 +3551,6 @@ emit_primary_and_unique_def (extract_context & ctxt, print_output & output_ctx, 
 static void
 emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_CONSTRAINT *constraint_list, *constraint;
   DB_ATTRIBUTE **atts, **att;
   bool has_inherited_atts;
@@ -3691,7 +3592,7 @@ emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_O
 
       if (!has_inherited_atts)
 	{
-	  name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+	  name = db_get_class_name (class_);
 	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
@@ -3733,7 +3634,6 @@ emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_O
 static int
 emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_CONSTRAINT *constraint_list, *constraint;
   DB_CONSTRAINT_TYPE ctype;
   DB_ATTRIBUTE **atts, **att;
@@ -3759,7 +3659,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
       return error;
     }
 
-  cls_name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+  cls_name = db_get_class_name (class_);
   if (cls_name != NULL)
     {
       partitioned_subclass = do_is_partitioned_subclass (NULL, cls_name, NULL);
@@ -4024,7 +3924,6 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 static void
 emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * domains)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_TYPE type;
   const PR_TYPE *prtype;
   DB_DOMAIN *domain;
@@ -4055,7 +3954,7 @@ emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * 
 	    }
 	  else
 	    {
-	      name = db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name));
+	      name = db_get_class_name (class_);
 	      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
 
 	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
@@ -4354,7 +4253,6 @@ emit_partition_parts (print_output & output_ctx, SM_PARTITION * partition_info, 
 static void
 emit_partition_info (extract_context & ctxt, print_output & output_ctx, MOP clsobj)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_VALUE ele;
   int partcnt = 0;
   char *ptr, *ptr2;
@@ -4370,7 +4268,7 @@ emit_partition_info (extract_context & ctxt, print_output & output_ctx, MOP clso
       return;
     }
 
-  name = db_get_class_qualified_name (clsobj, qualified_name, sizeof (qualified_name));
+  name = db_get_class_name (clsobj);
   if (au_fetch_class (clsobj, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
     {
       return;
@@ -4522,7 +4420,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
-  DB_VALUE sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, lang_val, generated_val, args_val,
+  DB_VALUE unique_name_val, sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, lang_val, generated_val, args_val,
     rtn_type_val, class_val, method_val, directive_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
   int sp_lang, sp_type, rtn_type, arg_cnt, directive, save;
@@ -4580,6 +4478,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	}
 
       if ((err = db_get (obj, SP_ATTR_SP_TYPE, &sp_type_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_UNIQUE_NAME, &unique_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_SP_NAME, &sp_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_PKG_NAME, &pkg_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
@@ -4596,10 +4495,11 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 
       output_ctx ("\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
 
+      // unique_name
+      const char *unique_name = db_get_string (&unique_name_val);
       // sp_name
       const char *sp_name = db_get_string (&sp_name_val);
-      /* the row names the owner in its own column, in upper case */
-      sm_downcase_name (db_get_string (&owner_name_val), owner_name, DB_MAX_USER_LENGTH);
+      sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH);
       PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			sizeof (output_owner));
 
@@ -4693,6 +4593,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	  output_ctx (";\n");
 	}
       db_value_clear (&sp_name_val);
+      db_value_clear (&unique_name_val);
       db_value_clear (&owner_name_val);
     }
 
@@ -4910,8 +4811,6 @@ exit:
 static int
 emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *cl;
   DB_CONSTRAINT *constraint_list, *constraint;
   DB_ATTRIBUTE **atts, **att;
@@ -4926,7 +4825,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
       constraint_list = db_get_constraints (cl->op);
-      cls_name = db_get_class_qualified_name (cl->op, qualified_name, sizeof (qualified_name));
+      cls_name = db_get_class_name (cl->op);
 
       for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
 	{
@@ -4998,8 +4897,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    }
 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
-	  SPLIT_USER_SPECIFIED_NAME (db_get_class_qualified_name (ref_clsop, qualified_name2, sizeof (qualified_name2)),
-				     owner_name, class_name);
+	  SPLIT_USER_SPECIFIED_NAME (db_get_class_name (ref_clsop), owner_name, class_name);
 
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			    sizeof (output_owner));
@@ -6144,7 +6042,6 @@ emit_primary_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 static int
 emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int err = NO_ERROR;
   DB_OBJLIST *cl, *cls, *sp_list = NULL;
   const char *name;
@@ -6155,7 +6052,7 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
     {
       for (cl = classes; cl != NULL; cl = cl->next)
 	{
-	  name = db_get_class_qualified_name (cl->op, qualified_name, sizeof (qualified_name));
+	  name = db_get_class_name (cl->op);
 	  if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
 	    {
 	      continue;
@@ -6184,7 +6081,6 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
 static void
 emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *cl = NULL;
   int is_vclass = 0;
   int reverse_unique_flag = 0;
@@ -6204,7 +6100,7 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
 	  continue;
 	}
 
-      name = db_get_class_qualified_name (cl->op, qualified_name, sizeof (qualified_name));
+      name = db_get_class_name (cl->op);
       if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
 	{
 	  continue;
@@ -6401,7 +6297,6 @@ get_classes (extract_context & ctxt, print_output & output_ctx)
 static void
 filter_user_classes (DB_OBJLIST ** class_list, const char *user)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *cl, *prev, *next;
   const char *name = NULL;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -6409,7 +6304,7 @@ filter_user_classes (DB_OBJLIST ** class_list, const char *user)
   for (cl = *class_list, prev = NULL, next = NULL; cl != NULL; cl = next)
     {
       next = cl->next;
-      name = db_get_class_qualified_name (cl->op, qualified_name, sizeof (qualified_name));
+      name = db_get_class_name (cl->op);
       sm_qualifier_name (name, owner_name, DB_MAX_IDENTIFIER_LENGTH);
 
       if (owner_name != NULL && strcmp (owner_name, user) == 0)

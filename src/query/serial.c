@@ -46,6 +46,7 @@
 /* attribute of _db_serial class */
 typedef enum
 {
+  SERIAL_ATTR_UNIQUE_NAME_INDEX,
   SERIAL_ATTR_NAME_INDEX,
   SERIAL_ATTR_OWNER_INDEX,
   SERIAL_ATTR_CURRENT_VAL_INDEX,
@@ -295,71 +296,6 @@ exit_on_error:
 
   ret = (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
   return ret;
-}
-
-/*
- * serial_get_pk_value () - Build the key that names a serial's row
- *
- * return: NO_ERROR, or ER_FAILED when the row has no primary key
- *
- *   attr_info(in): attribute info over _db_serial, values already read
- *   recdes(in): the row
- *   oid(in): the row's OID
- *   key_val(out): receives a copy of the key; the caller clears it
- *
- * Note: The row is keyed by the owner and the serial's own name together, so what a
- *       replication record carries is that pair rather than one joined string.
- */
-static int
-serial_get_pk_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, const OID * oid,
-		     DB_VALUE * key_val)
-{
-  char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
-  TP_DOMAIN *key_domain = NULL;
-  DB_VALUE dbvalue;
-  DB_VALUE *key;
-  BTID btid;
-  int i;
-
-  aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
-  db_make_null (&dbvalue);
-
-  for (i = 0; i < attr_info->last_classrepr->n_indexes; i++)
-    {
-      if (attr_info->last_classrepr->indexes[i].type == BTREE_PRIMARY_KEY)
-	{
-	  break;
-	}
-    }
-
-  if (i == attr_info->last_classrepr->n_indexes)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  key =
-    heap_attrvalue_get_key (thread_p, i, attr_info, recdes, &btid, &dbvalue, aligned_midxkey_buf, NULL, &key_domain,
-			    (OID *) oid, false);
-  if (key == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
-    {
-      /* the applier cannot trust the asc/desc it reads back, so say which domain this is */
-      key->data.midxkey.domain = key_domain;
-    }
-
-  pr_clone_value (key, key_val);
-
-  if (key == &dbvalue)
-    {
-      pr_clear_value (&dbvalue);
-    }
-
-  return NO_ERROR;
 }
 
 /*
@@ -668,12 +604,10 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
   DB_VALUE *val;
   DB_VALUE key_val;
-  DB_VALUE name_val;
   ATTR_ID attrid;
   OID serial_class_oid;
 
   db_make_null (&key_val);
-  db_make_null (&name_val);
 
   CHECK_MODIFICATION_NO_RETURN (thread_p, ret);
   if (ret != NO_ERROR)
@@ -715,19 +649,13 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
 
   attr_info_p = &attr_info;
 
-  if (serial_get_pk_value (thread_p, attr_info_p, &recdesc, &entry->oid, &key_val) != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  /* the supplemental record spells out a statement, so it needs the name and not the key */
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX, attrid) != NO_ERROR)
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_UNIQUE_NAME_INDEX, attrid) != NO_ERROR)
     {
       goto exit_on_error;
     }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  pr_clone_value (val, &name_val);
+  pr_clone_value (val, &key_val);
 
   if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR)
     {
@@ -763,11 +691,10 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
 	    }
 	}
 
-      (void) log_append_supplemental_serial (thread_p, db_get_string (&name_val), num_alloc, NULL, &entry->oid);
+      (void) log_append_supplemental_serial (thread_p, db_get_string (&key_val), num_alloc, NULL, &entry->oid);
     }
 
   pr_clear_value (&key_val);
-  pr_clear_value (&name_val);
 
   heap_attrinfo_end (thread_p, attr_info_p);
 
@@ -778,7 +705,6 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
 exit_on_error:
 
   pr_clear_value (&key_val);
-  pr_clear_value (&name_val);
 
   if (attr_info_p != NULL)
     {
@@ -814,7 +740,6 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   DB_VALUE started;
   DB_VALUE next_val;
   DB_VALUE key_val;
-  DB_VALUE name_val;
   DB_VALUE last_val;
   int cached_num, nturns;
   SERIAL_CACHE_ENTRY *entry = NULL;
@@ -824,7 +749,6 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   bool is_started;
 
   db_make_null (&key_val);
-  db_make_null (&name_val);
 
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
@@ -869,19 +793,13 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       cached_num = db_get_int (val);
     }
 
-  if (serial_get_pk_value (thread_p, attr_info_p, &recdesc, serial_oidp, &key_val) != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  /* the supplemental record spells out a statement, so it needs the name and not the key */
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX, attrid) != NO_ERROR)
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_UNIQUE_NAME_INDEX, attrid) != NO_ERROR)
     {
       goto exit_on_error;
     }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  pr_clone_value (val, &name_val);
+  pr_clone_value (val, &key_val);
 
   if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR)
     {
@@ -1026,15 +944,14 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	    }
 	}
 
-      (void) log_append_supplemental_serial (thread_p, db_get_string (&name_val),
-					     is_started ? num_alloc : num_alloc + 1, NULL, serial_oidp);
+      (void) log_append_supplemental_serial (thread_p, db_get_string (&key_val), is_started ? num_alloc : num_alloc + 1,
+					     NULL, serial_oidp);
     }
 
   /* copy result value */
   pr_share_value (&next_val, result_num);
 
   pr_clear_value (&key_val);
-  pr_clear_value (&name_val);
 
   heap_attrinfo_end (thread_p, attr_info_p);
 
@@ -1087,7 +1004,6 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 exit_on_error:
 
   pr_clear_value (&key_val);
-  pr_clear_value (&name_val);
 
   if (attr_info_p != NULL)
     {
@@ -1500,7 +1416,11 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
 	  goto exit_on_error;
 	}
 
-      if (strcmp (attr_name_p, SERIAL_ATTR_NAME) == 0)
+      if (strcmp (attr_name_p, SERIAL_ATTR_UNIQUE_NAME) == 0)
+	{
+	  serial_Attrs_id[SERIAL_ATTR_UNIQUE_NAME_INDEX] = i;
+	}
+      else if (strcmp (attr_name_p, SERIAL_ATTR_NAME) == 0)
 	{
 	  serial_Attrs_id[SERIAL_ATTR_NAME_INDEX] = i;
 	}
@@ -1747,7 +1667,7 @@ serial_cache_index_btid (THREAD_ENTRY * thread_p)
   assert (!OID_ISNULL (&serial_oid));
 
   /* Now try to get index BTID. */
-  error_code = heap_get_btid_from_index_name (thread_p, &serial_oid, "pk_db_serial_name_owner", &serial_Cached_btid);
+  error_code = heap_get_btid_from_index_name (thread_p, &serial_oid, "pk_db_serial_unique_name", &serial_Cached_btid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

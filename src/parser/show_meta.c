@@ -776,7 +776,6 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
   int error = NO_ERROR;
   PT_NODE *show_args_node = NULL, *spec, *derived_table;
   PT_NODE *partition_node = NULL;
-  PT_NODE *owner_node = NULL;
   SHOWSTMT_TYPE show_type;
   int partition_type = DB_NOT_PARTITIONED_CLASS;
   const char *table_name = NULL;
@@ -841,14 +840,6 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   parser_append_node (partition_node, show_args_node);
-
-  owner_node = pt_make_owner_value (parser, cls);
-  if (owner_node == NULL)
-    {
-      return node;
-    }
-
-  parser_append_node (owner_node, show_args_node);
 
   return node;
 }
@@ -1080,7 +1071,6 @@ pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node)
   int save;
   int partition_type = DB_NOT_PARTITIONED_CLASS;
   PT_NODE *partition_node = NULL;
-  PT_NODE *owner_node = NULL;
 
   if (node->node_type != PT_SELECT)
     {
@@ -1159,14 +1149,6 @@ pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
   parser_append_node (partition_node, show_args_node);
-
-  owner_node = pt_make_owner_value (parser, cls);
-  if (owner_node == NULL)
-    {
-      return node;
-    }
-
-  parser_append_node (owner_node, show_args_node);
 
   return node;
 }

@@ -1405,6 +1405,7 @@ sm_define_view_serial_spec (void)
   // *INDENT-OFF*
   sprintf (stmt,
         "SELECT "
+          "[serial].[unique_name] AS [unique_name], "
           "[serial].[name] AS [name], "
           "[serial].[owner].[name] AS [owner], "
           "[serial].[current_val] AS [current_val], "

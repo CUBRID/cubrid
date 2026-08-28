@@ -66,7 +66,7 @@ extern int jsp_find_sp_of_another_owner (const char *name, MOP * return_mop);
 
 extern MOP jsp_get_owner (MOP mop_p);
 extern char *jsp_get_name (MOP mop_p);
-extern char *jsp_get_qualified_name (MOP mop_p, char *buf, int buf_size);
+extern char *jsp_get_unique_name (MOP mop_p, char *buf, int buf_size);
 
 extern void jsp_set_prepare_call (void);
 extern void jsp_unset_prepare_call (void);

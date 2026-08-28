@@ -138,7 +138,6 @@ show_statistics (OID * class_oid, bool unlocked_class, bool valid_class, bool pr
 		 int failed_objects, int modified_objects, int big_objects, bool delete_old_repr_flag,
 		 bool old_repr_deleted)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   MOP class_mop = NULL;
   char *temp_class_name;
 
@@ -149,7 +148,7 @@ show_statistics (OID * class_oid, bool unlocked_class, bool valid_class, bool pr
       return;
     }
 
-  temp_class_name = (char *) db_get_class_qualified_name (class_mop, qualified_name, sizeof (qualified_name));
+  temp_class_name = (char *) db_get_class_name (class_mop);
   if (temp_class_name == NULL || strlen (temp_class_name) == 0)
     {
       printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UNKNOWN_CLASS_NAME));
@@ -210,7 +209,6 @@ show_statistics (OID * class_oid, bool unlocked_class, bool valid_class, bool pr
 static char *
 get_name_from_class_oid (OID * class_oid)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   MOP class_mop = NULL;
   char *temp_class_name;
   char *result;
@@ -226,7 +224,7 @@ get_name_from_class_oid (OID * class_oid)
       return NULL;
     }
 
-  temp_class_name = (char *) db_get_class_qualified_name (class_mop, qualified_name, sizeof (qualified_name));
+  temp_class_name = (char *) db_get_class_name (class_mop);
   if (temp_class_name == NULL)
     {
       return NULL;
@@ -1098,11 +1096,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
     }
 
   assert (*class_name == NULL);
-  {
-    char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-
-    *class_name = strdup (sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
-  }
+  *class_name = strdup (sm_ch_name ((MOBJ) class_));
   if (*class_name == NULL)
     {
       error_code = ER_FAILED;

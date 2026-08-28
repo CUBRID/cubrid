@@ -1797,8 +1797,6 @@ chksum_need_skip_table (const char *table_name, CHKSUM_ARG * chksum_arg)
 static int
 chksum_start (CHKSUM_ARG * chksum_arg)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PARSER_CONTEXT *parser = NULL;
   DB_OBJLIST *tbl_list = NULL, *tbl = NULL;
   DB_OBJECT *classobj = NULL;
@@ -1851,7 +1849,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 	  continue;
 	}
 
-      table_name = db_get_class_qualified_name (classobj, qualified_name, sizeof (qualified_name));
+      table_name = db_get_class_name (classobj);
       if (table_name == NULL)
 	{
 	  continue;
@@ -1881,7 +1879,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 	  else if (repid != prev_repid || force_refetch_class_info == true)
 	    {
 	      /* schema has been changed or previous tran aborted */
-	      table_name = db_get_class_qualified_name (classobj, qualified_name2, sizeof (qualified_name2));
+	      table_name = db_get_class_name (classobj);
 	      attributes = db_get_attributes (classobj);
 	      if (table_name == NULL || attributes == NULL)
 		{

@@ -6596,7 +6596,6 @@ exit:
 static int
 tzc_update_internal (const char *database_name)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *program_name = "extend";
   DB_OBJLIST *table_list = NULL, *table = NULL;
   DB_QUERY_RESULT *result = NULL;
@@ -6643,7 +6642,7 @@ tzc_update_internal (const char *database_name)
 	  continue;
 	}
 
-      table_name = db_get_class_qualified_name (table->op, qualified_name, sizeof (qualified_name));	/* owner_name.table_name */
+      table_name = db_get_class_name (table->op);	/* owner_name.table_name */
 
       printf ("Updating table %s...\n", table_name);
 

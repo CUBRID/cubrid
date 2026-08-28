@@ -69,9 +69,9 @@
 #include "db_value_printer.hpp"
 #include "execute_statement.h"
 
-#define PT_NODE_SP_NAME(parser, node) \
+#define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
-   pt_name_qualified ((parser), (node)->info.sp.name))
+   (node)->info.sp.name->info.name.original)
 
 #define PT_NODE_SP_TYPE(node) \
   ((node)->info.sp.type)
@@ -160,72 +160,6 @@ jsp_is_exist_stored_procedure (const char *name)
 }
 
 /*
- * jsp_find_sp_of_owner () - Find a stored procedure by its owner and its own name
- *   return: MOP, or NULL when no procedure of that name belongs to that owner
- *   qualified_name(in): owner.name or owner.package.name
- *
- * Note: The row keeps the two apart, so the name is taken apart once here rather than
- *       stored a second time alongside them.
- */
-static MOP
-jsp_find_sp_of_owner (const char *qualified_name)
-{
-  const char *attr_names[3] = { SP_ATTR_SP_NAME, SP_ATTR_PKG_NAME, SP_ATTR_OWNER };
-  DB_VALUE values[3];
-  DB_VALUE *value_ptrs[3] = { &values[0], &values[1], &values[2] };
-  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char pkg_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  const char *sp_name;
-  const char *first_dot, *second_dot;
-  MOP owner_mop;
-
-  /* owner.name, or owner.package.name. sm_qualifier_name () is no help here: it takes a
-   * class name apart and asserts there is only the one dot. */
-  first_dot = strchr (qualified_name, '.');
-  if (first_dot == NULL || (size_t) (first_dot - qualified_name) >= sizeof (owner_name))
-    {
-      return NULL;
-    }
-  memcpy (owner_name, qualified_name, first_dot - qualified_name);
-
-  second_dot = strchr (first_dot + 1, '.');
-  if (second_dot == NULL)
-    {
-      sp_name = first_dot + 1;
-    }
-  else
-    {
-      if ((size_t) (second_dot - (first_dot + 1)) >= sizeof (pkg_name))
-	{
-	  return NULL;
-	}
-      memcpy (pkg_name, first_dot + 1, second_dot - (first_dot + 1));
-      sp_name = second_dot + 1;
-    }
-
-  owner_mop = au_find_user (owner_name);
-  if (owner_mop == NULL)
-    {
-      er_clear ();
-      return NULL;
-    }
-
-  db_make_string (&values[0], sp_name);
-  if (pkg_name[0] == '\0')
-    {
-      /* the row says "no package" with NULL, so the key has to ask for NULL */
-      db_make_null (&values[1]);
-    }
-  else
-    {
-      db_make_string (&values[1], pkg_name);
-    }
-  db_make_object (&values[2], owner_mop);
-
-  return db_find_multi_unique (db_find_class (SP_CLASS_NAME), 3, (char **) attr_names, value_ptrs, DB_FETCH_READ);
-}
-
-/*
  * jsp_find_stored_procedure
  *   return: MOP
  *   name(in): find java stored procedure name
@@ -238,6 +172,7 @@ MOP
 jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
 {
   MOP mop = NULL;
+  DB_VALUE value;
   int save, err = NO_ERROR;
   char *checked_name;
 
@@ -249,9 +184,10 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
   AU_SAVE_AND_DISABLE (save);
 
   checked_name = jsp_check_stored_procedure_name (name);
-  mop = jsp_find_sp_of_owner (checked_name);
+  db_make_string (&value, checked_name);
+  mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
 
-  if (mop == NULL || er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+  if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
     {
       er_clear ();
 
@@ -324,14 +260,14 @@ jsp_find_stored_procedure_code (const char *name)
  *   name(in): find java stored procedure name
  *   return_mop(in): retrieves the name of a java stored procedure and returns its MOP value.
  *
- * Note: This finds the qualified name of an SP when loaddb runs with
- *       --no-user-specified-name as a dba user.
+ * Note: This is a function for finding the unique_name of an SP when running the loaddb utility with the --no-user-specified-name option as a dba user.
  */
 
 int
 jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
 {
   int error = NO_ERROR;
+  DB_VALUE value;
   char other_class_name[DB_MAX_IDENTIFIER_LENGTH];
   other_class_name[0] = '\0';
   *return_mop = NULL;
@@ -350,8 +286,9 @@ jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
 	  return error;
 	}
 
-      *return_mop = jsp_find_sp_of_owner (other_class_name);
-      if (*return_mop == NULL || er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+      db_make_string (&value, other_class_name);
+      *return_mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
 	{
 	  error = ER_SP_NOT_EXIST;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, other_class_name);
@@ -613,13 +550,10 @@ jsp_get_name (MOP mop_p)
 }
 
 char *
-jsp_get_qualified_name (MOP mop_p, char *buf, int buf_size)
+jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
 {
   int save;
   DB_VALUE value;
-  char *owner_name;
-  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char pkg_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int err = NO_ERROR;
 
   assert (buf != NULL);
@@ -634,45 +568,15 @@ jsp_get_qualified_name (MOP mop_p, char *buf, int buf_size)
 
   AU_SAVE_AND_DISABLE (save);
 
-  /* Build an output-facing name from the split catalog columns. */
-  err = db_get (mop_p, SP_ATTR_OWNER, &value);
+  /* check type */
+  err = db_get (mop_p, SP_ATTR_UNIQUE_NAME, &value);
   if (err != NO_ERROR)
     {
       AU_RESTORE (save);
       return NULL;
     }
 
-  owner_name = au_get_user_name (db_get_object (&value));
-  pr_clear_value (&value);
-  if (owner_name == NULL)
-    {
-      AU_RESTORE (save);
-      return NULL;
-    }
-  sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
-  db_ws_free_and_init (owner_name);
-
-  err = db_get (mop_p, SP_ATTR_PKG_NAME, &value);
-  if (err != NO_ERROR)
-    {
-      AU_RESTORE (save);
-      return NULL;
-    }
-
-  if (!DB_IS_NULL (&value) && db_get_string (&value) != NULL && db_get_string (&value)[0] != '\0')
-    {
-      snprintf (pkg_name, sizeof (pkg_name), "%s.", db_get_string (&value));
-    }
-  pr_clear_value (&value);
-
-  err = db_get (mop_p, SP_ATTR_SP_NAME, &value);
-  if (err != NO_ERROR)
-    {
-      AU_RESTORE (save);
-      return NULL;
-    }
-
-  snprintf (buf, buf_size, "%s.%s%s", downcase_owner_name, pkg_name, db_get_string (&value));
+  strncpy (buf, db_get_string (&value), buf_size);
   pr_clear_value (&value);
 
   AU_RESTORE (save);
@@ -951,7 +855,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   for (p = name_list, i = 0; p != NULL; p = p->next)
     {
-      name = (char *) pt_name_qualified (parser, p);
+      name = (char *) p->info.name.original;
       if (name == NULL || name[0] == '\0')
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
@@ -1109,7 +1013,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   PLCSQL_COMPILE_RESPONSE compile_response;
 
   SP_INFO sp_info;
-  char *checked_name = NULL;
+  char *temp;
   DB_VALUE current_datetime;
 
   CHECK_MODIFICATION_ERROR ();
@@ -1129,17 +1033,18 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       return er_errid ();
     }
 
-  checked_name = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (parser, statement));
-  if (checked_name == NULL || checked_name[0] == '\0')
+  temp = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));
+  sp_info.unique_name = temp;
+  free (temp);
+  if (sp_info.unique_name.empty ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
       return er_errid ();
     }
 
-  sp_info.sp_name = sm_remove_qualifier_name (checked_name);
+  sp_info.sp_name = sm_remove_qualifier_name (sp_info.unique_name.data ());
   if (sp_info.sp_name.empty ())
     {
-      free_and_init (checked_name);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
       return er_errid ();
     }
@@ -1161,7 +1066,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   param_list = PT_NODE_SP_ARGS (statement);
   for (p = param_list; p != NULL; p = p->next)
     {
-      SP_ARG_INFO arg_info (sp_info.sp_name);
+      SP_ARG_INFO arg_info (sp_info.unique_name);
 
       arg_info.index_of = param_count++;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
@@ -1205,14 +1110,14 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       // check # of args constraint
       if (param_count > MAX_ARG_COUNT)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, checked_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, sp_info.unique_name.data ());
 	  goto error_exit;
 	}
 
       sp_info.args.push_back (arg_info);
     }
 
-  if (sm_qualifier_name (checked_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+  if (sm_qualifier_name (sp_info.unique_name.data (), owner_name, DB_MAX_USER_LENGTH) == NULL)
     {
       ASSERT_ERROR ();
       goto error_exit;
@@ -1273,7 +1178,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   sp_info.updated_time = *db_get_datetime (&current_datetime);
 
   /* check already exists */
-  if (jsp_is_exist_stored_procedure (checked_name))
+  if (jsp_is_exist_stored_procedure (sp_info.unique_name.data ()))
     {
       if (statement->info.sp.or_replace)
 	{
@@ -1281,12 +1186,11 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  err = tran_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
 	  if (err != NO_ERROR)
 	    {
-	      free_and_init (checked_name);
 	      return err;
 	    }
 	  has_savepoint = true;
 
-	  err = drop_stored_procedure (checked_name, sp_info.sp_type);
+	  err = drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -1294,7 +1198,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, checked_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, sp_info.unique_name.data ());
 	  goto error_exit;
 	}
     }
@@ -1347,9 +1251,6 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   return NO_ERROR;
 
 error_exit:
-
-  free_and_init (checked_name);
-
   if (has_savepoint)
     {
       tran_abort_upto_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
@@ -1405,7 +1306,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   assert (sp_owner != NULL || sp_comment != NULL || sp_recompile);
 
-  name_str = pt_name_qualified (parser, sp_name);
+  name_str = sp_name->info.name.original;
   assert (name_str != NULL);
 
   if (sp_owner != NULL)
@@ -1650,10 +1551,13 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   MOP sp_mop, arg_mop, owner, save_user;
   DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_cls_val, lang_val, temp;
   SP_TYPE_ENUM real_type;
+  std::string class_name;
   const char *target_cls;
   DB_SET *arg_set_p;
   int save, i, arg_cnt, lang;
   int err;
+  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  unique_name[0] = '\0';
 
   AU_SAVE_AND_DISABLE (save);
 
@@ -1764,10 +1668,16 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	}
     }
 
+  /* before deleting an object, all permissions are revoked. */
+  if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+    }
+
   save_user = Au_user;
   if (AU_SET_USER (owner) == NO_ERROR)
     {
-      err = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner, sp_mop);
+      err = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner, unique_name);
       if (err != NO_ERROR)
 	{
 	  AU_SET_USER (save_user);
@@ -1777,7 +1687,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 
   AU_SET_USER (save_user);
 
-  err = au_delete_auth_of_dropping_database_object (sp_mop);
+  err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PROCEDURE, name);
   if (err != NO_ERROR)
     {
       goto error;
@@ -2151,7 +2061,6 @@ pt_to_method_arglist (PARSER_CONTEXT *parser, PT_NODE *target, PT_NODE *node_lis
 int
 jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_as_attr_list, cubpl::pl_signature &sig)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int save = 0;
   int error = NO_ERROR;
   char user_name_buffer [DB_MAX_USER_LENGTH + 1];
@@ -2259,20 +2168,8 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	PT_NODE *dt = node->info.method_call.on_call_target->data_type;
 	/* beware of virtual classes */
 
-	if (dt->info.data_type.virt_object)
-	  {
-	    char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-
-	    /* parser memory, so the signature borrows this the same way it borrows the name below */
-	    sig.ext.method.class_name =
-		    (char *) pt_append_string (parser, NULL,
-					       db_get_class_qualified_name (dt->info.data_type.virt_object, qualified_name,
-						   sizeof (qualified_name)));
-	  }
-	else
-	  {
-	    sig.ext.method.class_name = (char *) dt->info.data_type.entity->info.name.original;
-	  }
+	sig.ext.method.class_name = (dt->info.data_type.virt_object) ? (char *) db_get_class_name (
+					    dt->info.data_type.virt_object) : (char *) dt->info.data_type.entity->info.name.original;
 	sig.arg.set_arg_size (pt_length_of_list (node->info.method_call.arg_list) + 1);
 	sig.ext.method.arg_pos = pt_to_method_arglist (parser, node->info.method_call.on_call_target,
 				 node->info.method_call.arg_list, subquery_as_attr_list);
