@@ -205,9 +205,10 @@ qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list)
 static bool
 qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node, QO_UNNEST_INFO * info)
 {
-  PT_NODE *subq, *inner_spec, *on_cond, *cnf, *save_next, *new_expr = NULL;
+  PT_NODE *subq, *inner_spec, *on_cond, *cnf, *spec, *save_next, *new_expr = NULL;
   UINTPTR ref;
-  bool has_direct_join = false, has_outer_only = false;
+  int n_outer = 0;
+  bool has_direct_join = false;
 
   info->subq = NULL;
   info->on_cond = NULL;
@@ -305,6 +306,24 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
       on_cond = new_expr;
     }
 
+  /* v1: the ON as a whole may name one outer spec only. Naming two puts the inner behind both, and when no
+   * term joins those two the planner cannot place it (it never cross-joins inside a partition), so the query
+   * fails with MSGCAT_RUNTIME_OUTER_JOIN_OPT_FAILED instead of running as a nested subquery. */
+  for (spec = node->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      ref = spec->info.spec.id;
+      (void) parser_walk_tree (parser, on_cond, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
+      if (ref == 0)
+	{
+	  n_outer++;
+	}
+    }
+
+  if (n_outer > 1)
+    {
+      goto exit;
+    }
+
   for (cnf = on_cond; cnf != NULL; cnf = cnf->next)
     {
       if (!has_direct_join)
@@ -325,28 +344,30 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
 	  cnf->next = save_next;
 	  if (ref != 0)
 	    {
-	      has_outer_only = true;
-	      break;
+	      goto exit;
 	    }
 	}
     }
 
-  if (!has_direct_join || has_outer_only)
+  if (!has_direct_join)
     {
-      if (new_expr != NULL)
-	{
-	  /* discard the synthesized equality; its operands still belong to the untouched tree */
-	  new_expr->next = NULL;
-	  new_expr->info.expr.arg1 = NULL;
-	  new_expr->info.expr.arg2 = NULL;
-	  parser_free_tree (parser, new_expr);
-	}
-      return false;
+      goto exit;
     }
 
   info->subq = subq;
   info->on_cond = on_cond;
   return true;
+
+exit:
+  if (new_expr != NULL)
+    {
+      /* discard the synthesized equality; its operands still belong to the untouched tree */
+      new_expr->next = NULL;
+      new_expr->info.expr.arg1 = NULL;
+      new_expr->info.expr.arg2 = NULL;
+      parser_free_tree (parser, new_expr);
+    }
+  return false;
 }
 
 /*
