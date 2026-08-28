@@ -96,6 +96,15 @@ csc_bracket_is_active (void)
   return tl_Csc_active != NULL;
 }
 
+/* has this session terminated a method/SP callback in-process? (its kept
+ * statement handles may hold list files open across an outer query's end —
+ * qexec's per-thread qlist balance check stands down only then) */
+bool
+csc_has_method_callback_state (void)
+{
+  return tl_Csc_active != NULL && tl_Csc_active->method_callback_handler != nullptr;
+}
+
 ws_context *
 csc_ws (void)
 {

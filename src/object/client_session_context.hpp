@@ -153,6 +153,10 @@ extern client_session_context *csc_current (void);
  * routing probes this on paths shared with pure server threads) */
 extern bool csc_bracket_is_active (void);
 
+/* has the bracketed session terminated a method/SP callback in-process?
+ * (qexec's qlist balance check stands down only for such sessions) */
+extern bool csc_has_method_callback_state (void);
+
 /* run the client half's session teardown under a temporary bracket and free
  * the context; called by the owning session_state when it is uninitialized */
 extern void csc_retire_and_delete (client_session_context *ctx);

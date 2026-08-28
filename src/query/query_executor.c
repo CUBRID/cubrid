@@ -17372,12 +17372,12 @@ end:
 			  "[thread %d with tran index %d] ending query execution with qlist_count = %d\n",
 			  thread_p->index, thread_p->tran_index, thread_p->m_qlist_count.load ());
     }
-  /* merged in-process session (activation bracket held): a method/SP callback
-   * dispatched on this very thread (the SA shape, #120 D7) runs nested
-   * client-half queries whose kept statement handles legitimately hold their
-   * list files open across the outer query's end — the per-thread balance
-   * below only holds for legacy one-query-per-thread workers */
-  extern bool csc_bracket_is_active (void);	/* client_session_context.cpp */
+  /* merged in-process session that has dispatched a method/SP callback (the
+   * SA shape, #120 D7): the callback's kept statement handles legitimately
+   * hold their list files open across the outer query's end, so the
+   * per-thread balance below only holds for sessions that never ran one —
+   * bracketed sessions without callback state keep the full leak check */
+  extern bool csc_has_method_callback_state (void);	/* client_session_context.cpp */
   if (list_id && list_id->type_list.type_cnt != 0)
     {
       // one new list file
@@ -17387,13 +17387,13 @@ end:
 	{
 	  dependent_cnt++;
 	}
-      assert (csc_bracket_is_active () || thread_p->m_qlist_count.load () == qlist_enter_count + dependent_cnt);
+      assert (csc_has_method_callback_state () || thread_p->m_qlist_count.load () == qlist_enter_count + dependent_cnt);
 #endif
     }
   else
     {
       // no new list files
-      assert (csc_bracket_is_active () || thread_p->m_qlist_count.load () == qlist_enter_count);
+      assert (csc_has_method_callback_state () || thread_p->m_qlist_count.load () == qlist_enter_count);
     }
 #endif // SERVER_MODE
 
