@@ -71,10 +71,11 @@ namespace cubconn
     struct channel
     {
       std::uint64_t id;
-      int fd;
+      int fd;			/* -1 once invalidated; guarded by send_mutex */
       char broker_name[BROKER_NAME_MAX];
-      std::mutex send_mutex;	/* replies and async SESSION_ENDs interleave */
-      std::thread thread;
+      std::mutex send_mutex;	/* replies and async SESSION_ENDs interleave; also guards fd close */
+      std::thread thread;	/* joinable: stop()/the accept reaper joins it */
+      std::atomic<bool> dead { false };
 
       channel () : id (0), fd (-1)
       {
@@ -108,6 +109,10 @@ namespace cubconn
       std::condition_variable registry_cv;	/* signaled when a session signs off */
       std::unordered_map<std::uint32_t, session_entry> registry;
       std::uint32_t next_token = 1;
+
+      /* sign-off callbacks still touching this manager after their registry
+       * erase; stop() must not free the manager under them (codex review F2) */
+      std::atomic<int> active_finishers { 0 };
     };
 
     static manager *adoption_Manager = NULL;
@@ -147,6 +152,10 @@ namespace cubconn
       header.length = (std::uint32_t) body_len;
 
       std::lock_guard<std::mutex> guard (ch.send_mutex);
+      if (ch.fd < 0)
+	{
+	  return ER_FAILED;	/* invalidated under this mutex; never write a reused fd */
+	}
       if (send_all (ch.fd, &header, sizeof (header)) != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -260,6 +269,7 @@ namespace cubconn
 	{
 	  return;
 	}
+      m->active_finishers.fetch_add (1);
 
       std::uint64_t channel_id = 0;
       bool found = false;
@@ -276,6 +286,7 @@ namespace cubconn
       m->registry_cv.notify_all ();
       if (!found)
 	{
+	  m->active_finishers.fetch_sub (1);
 	  return;
 	}
 
@@ -296,6 +307,7 @@ namespace cubconn
 	  body.token = token;
 	  (void) send_message (*ch, msg_op::SESSION_END, &body, sizeof (body));
 	}
+      m->active_finishers.fetch_sub (1);
     }
 
     /* ------------------------------------------------------------------ */
@@ -378,6 +390,13 @@ namespace cubconn
       }
       params.token = token;
 
+      /* ACK strictly before the session may exist: a session that dies fast
+       * would otherwise emit SESSION_END ahead of the ACK on this channel and
+       * skew the broker's slot count (codex review F1) */
+      token_body ack;
+      ack.token = token;
+      (void) send_message (ch, msg_op::HANDOFF_ACK, &ack, sizeof (ack));
+
       try
 	{
 	  std::thread session_thread (driver_session_run, std::move (params));
@@ -385,24 +404,12 @@ namespace cubconn
 	}
       catch (const std::system_error &)
 	{
-	  /* never ACKed: erase directly — a SESSION_END for a token the
-	   * broker never learned would corrupt its slot count */
-	  {
-	    std::lock_guard<std::mutex> guard (m.registry_mutex);
-	    m.registry.erase (token);
-	  }
-	  m.registry_cv.notify_all ();
 	  css_decrement_num_conn (DB_CLIENT_TYPE_DEFAULT);
 	  close (client_fd);
-	  reject_body reject;
-	  reject.reason = (std::int32_t) reject_reason::CLIENTS_EXCEEDED;
-	  (void) send_message (ch, msg_op::HANDOFF_REJECT, &reject, sizeof (reject));
+	  /* already ACKed: sign the token off like a session would */
+	  registry_session_finished (token);
 	  return;
 	}
-
-      token_body ack;
-      ack.token = token;
-      (void) send_message (ch, msg_op::HANDOFF_ACK, &ack, sizeof (ack));
     }
 
     static void
@@ -564,11 +571,16 @@ namespace cubconn
 	    }
 	}
 
-      close (ch->fd);
+      /* invalidate under send_mutex so no concurrent SESSION_END/reply can
+       * write a closed (possibly reused) descriptor (codex review F4); the
+       * map entry stays — the accept loop reaps dead channels, stop() joins
+       * them (F3: the thread is joinable, never detached) */
       {
-	std::lock_guard<std::mutex> guard (m->channels_mutex);
-	m->channels.erase (ch->id);
+	std::lock_guard<std::mutex> guard (ch->send_mutex);
+	close (ch->fd);
+	ch->fd = -1;
       }
+      ch->dead.store (true);
 
       if (entry_p != NULL)
 	{
@@ -604,11 +616,27 @@ namespace cubconn
 	  ch->fd = fd;
 	  {
 	    std::lock_guard<std::mutex> guard (m->channels_mutex);
+	    /* reap finished channel threads (a dead entry appears once per
+	     * broker restart, so this stays tiny) */
+	    for (auto it = m->channels.begin (); it != m->channels.end ();)
+	      {
+		if (it->second->dead.load ())
+		  {
+		    if (it->second->thread.joinable ())
+		      {
+			it->second->thread.join ();
+		      }
+		    it = m->channels.erase (it);
+		  }
+		else
+		  {
+		    ++it;
+		  }
+	      }
 	    ch->id = m->next_channel_id++;
 	    m->channels.emplace (ch->id, ch);
 	  }
 	  ch->thread = std::thread (channel_thread_run, m, ch);
-	  ch->thread.detach ();
 	}
     }
 
@@ -702,12 +730,17 @@ namespace cubconn
 	  m->accept_thread.join ();
 	}
 
-      /* drop the control channels; their (detached) threads erase themselves */
+      /* wake the control-channel readers; their (joinable) threads mark
+       * themselves dead and are joined below (codex review F3) */
       {
 	std::lock_guard<std::mutex> guard (m->channels_mutex);
 	for (auto &pair : m->channels)
 	  {
-	    shutdown (pair.second->fd, SHUT_RDWR);
+	    std::lock_guard<std::mutex> send_guard (pair.second->send_mutex);
+	    if (pair.second->fd >= 0)
+	      {
+		shutdown (pair.second->fd, SHUT_RDWR);
+	      }
 	  }
       }
 
@@ -730,19 +763,26 @@ namespace cubconn
 	assert (m->registry.empty ());
       }
 
-      /* channel threads are detached and may still be erasing themselves;
-       * give them a beat before the map goes away */
-      for (int i = 0; i < 100; i++)
+      /* a sign-off may still be inside the manager after its registry erase
+       * (SESSION_END notify); don't free the manager under it (codex F2) */
+      while (m->active_finishers.load () > 0)
 	{
-	  {
-	    std::lock_guard<std::mutex> guard (m->channels_mutex);
-	    if (m->channels.empty ())
-	      {
-		break;
-	      }
-	  }
 	  std::this_thread::sleep_for (std::chrono::milliseconds (10));
 	}
+
+      /* join the channel threads — nothing references the channels after
+       * the sessions are gone and the finishers drained */
+      {
+	std::lock_guard<std::mutex> guard (m->channels_mutex);
+	for (auto &pair : m->channels)
+	  {
+	    if (pair.second->thread.joinable ())
+	      {
+		pair.second->thread.join ();
+	      }
+	  }
+	m->channels.clear ();
+      }
 
       unlink (m->socket_path.c_str ());
       adoption_Manager = NULL;
