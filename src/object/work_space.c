@@ -220,14 +220,26 @@ static void ws_examine_no_mop_has_cached_lock (void);
 void
 ws_abort_transaction (void)
 {
+  /* the abort below may itself run out of memory and re-enter this callback;
+   * a second entry just leaves the already-set error and returns instead of
+   * recursing into another abort */
+  static thread_local bool ws_abort_in_progress = false;
+
 #if defined (SERVER_MODE)
-  /* exhaustion outside any session bracket is server-internal area use; keep
-   * the pre-merge SERVER_MODE semantics of just failing the allocation */
+  /* allocation failure on a thread with no session bracket has no
+   * transaction to abort: the caller sees the failed allocation with
+   * ER_OUT_OF_VIRTUAL_MEMORY set and nothing else happens */
   if (!csc_bracket_is_active ())
     {
       return;
     }
 #endif /* SERVER_MODE */
+
+  if (ws_abort_in_progress)
+    {
+      return;
+    }
+  ws_abort_in_progress = true;
 
   if (db_Disable_modifications)
     {
@@ -244,14 +256,16 @@ ws_abort_transaction (void)
       (void) tran_unilaterally_abort ();
 
 #if !defined (SERVER_MODE)
-      /* couldn't get to the catalog, use hard coded strings; the server has no
-       * client console to print the halt banner to, and it does not halt - the
-       * session survives with its transaction aborted */
+      /* couldn't get to the catalog, use hard coded strings; the server build
+       * has no client console for this banner - there the contract is
+       * transaction aborted, session and process live on */
       fprintf (stdout, "CUBRID cannot allocate main memory and must halt execution.\n");
       fprintf (stdout, "The current transaction has been aborted.\n");
       fprintf (stdout, "Data integrity has been preserved.\n");
 #endif /* !SERVER_MODE */
     }
+
+  ws_abort_in_progress = false;
 }
 
 /*

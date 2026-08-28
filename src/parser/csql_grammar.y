@@ -502,6 +502,28 @@ pt_nesting_depth_list_max (const PT_NODE * list)
   return depth;
 }
 
+/* record a node's nesting depth and demote the statement to a parse error
+ * past the limit.  Every grammar path that builds a PT_EXPR outside
+ * parser_make_expression () must route its depth through here; constructs
+ * that desugar an argument list into a nested chain (CASE, DECODE, COALESCE,
+ * LEAST/GREATEST, CONCAT) pass list-length + argument-depth, which bounds the
+ * walker recursion within a small constant factor of the true node depth. */
+static void
+pt_set_guarded_nesting_depth (PARSER_CONTEXT * parser, PT_NODE * node, int depth)
+{
+  if (node == NULL)
+    {
+      return;
+    }
+
+  node->nesting_depth = depth;
+  if (depth > PT_MAX_NESTING_DEPTH && !pt_has_error (parser))
+    {
+      PT_ERRORf (parser, node, "Statement is nested too deeply (the maximum nesting depth is %d).",
+		 PT_MAX_NESTING_DEPTH);
+    }
+}
+
 #define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)  do {  \
    if ((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
    {                                     \
@@ -8009,6 +8031,8 @@ update_assignment
 					tmp->info.expr.arg1 = e1;
 					tmp->info.expr.arg2 = e2;
 				      }
+				    pt_set_guarded_nesting_depth (this_parser, tmp,
+								  1 + pt_nesting_depth_max3 (e1, e2, NULL));
 				    list = parser_make_link (tmp, list);
 
 				    e2 = e2_next;
@@ -8069,6 +8093,7 @@ paren_path_expression_set
 			    p->info.expr.paren_type = 1;
 			    p->info.expr.arg1 = $2;
 			  }
+			pt_set_guarded_nesting_depth (this_parser, p, 1 + pt_nesting_depth_list_max ($2));
 
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -16988,6 +17013,7 @@ case_expr
 		{{
 			PT_NODE *prev, *expr, *arg, *tmp;
 			int count = parser_count_list ($3);
+			int args_max = pt_nesting_depth_list_max ($3);
 			int i;
 			arg = $3;
 
@@ -17046,6 +17072,9 @@ case_expr
 			      }
 			  }
 
+			/* the argument list desugared into a count-deep chain */
+			pt_set_guarded_nesting_depth (this_parser, expr, count + args_max);
+
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -17056,6 +17085,8 @@ case_expr
 			PT_NODE *node, *prev, *tmp, *curr, *p;
 
 			int count = parser_count_list ($3);
+			int when_max = pt_nesting_depth_list_max ($3);
+			int oper_depth = ($2 != NULL) ? $2->nesting_depth : 0;
 			node = prev = $3;
 			if (node)
 			  node->info.expr.continued_case = 0;
@@ -17102,6 +17133,10 @@ case_expr
 			if (case_oper)
 			  parser_free_node (this_parser, case_oper);
 
+			/* when-list desugared into a count-deep chain, with a copy of the
+			 * case operand under each when */
+			pt_set_guarded_nesting_depth (this_parser, node, count + when_max + oper_depth);
+
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -17111,6 +17146,7 @@ case_expr
 			PT_NODE *node, *prev, *curr, *p;
 
 			int count = parser_count_list ($2);
+			int when_max = pt_nesting_depth_list_max ($2);
 			node = prev = $2;
 			if (node)
 			  node->info.expr.continued_case = 0;
@@ -17144,6 +17180,9 @@ case_expr
 			    prev->info.expr.arg2 = p;
 			    PICE (prev);
 			  }
+
+			/* when-list desugared into a count-deep chain */
+			pt_set_guarded_nesting_depth (this_parser, node, count + when_max);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -17193,12 +17232,16 @@ simple_when_clause
 				node->info.expr.arg3 = q;
 				PICE (q);
 			      }
+			    pt_set_guarded_nesting_depth (this_parser, q,
+							  1 + pt_nesting_depth_max3 ($2, NULL, NULL));
 			  }
 
 			p = $4;
 			if (node)
 			  node->info.expr.arg1 = p;
 			PICE (node);
+			pt_set_guarded_nesting_depth (this_parser, node,
+						      2 + pt_nesting_depth_max3 ($2, $4, NULL));
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -17238,6 +17281,8 @@ searched_when_clause
 			if (node)
 			  node->info.expr.arg1 = p;
 			PICE (node);
+			pt_set_guarded_nesting_depth (this_parser, node,
+						      1 + pt_nesting_depth_max3 ($2, $4, NULL));
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -22723,12 +22768,7 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
       /* the recursive tree walkers (pt_apply/pt_print/semantic passes) descend
        * one C stack frame per nesting level, so user input must not build an
        * arbitrarily deep tree; demote it to a statement error here instead */
-      expr->nesting_depth = 1 + pt_nesting_depth_max3 (arg1, arg2, arg3);
-      if (expr->nesting_depth > PT_MAX_NESTING_DEPTH && !pt_has_error (parser))
-	{
-	  PT_ERRORf (parser, expr, "Statement is nested too deeply (the maximum nesting depth is %d).",
-		     PT_MAX_NESTING_DEPTH);
-	}
+      pt_set_guarded_nesting_depth (parser, expr, 1 + pt_nesting_depth_max3 (arg1, arg2, arg3));
 
       if (parser_instnum_check == 1 && !pt_instnum_compatibility (expr))
 	{
@@ -24792,6 +24832,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	int i;
 	PT_NODE *case_oper, *p, *q, *r, *nodep, *node, *curr, *prev;
 	int count;
+	int args_max = pt_nesting_depth_list_max (args);
 
 	if (c < 3)
 	  return NULL;
@@ -24884,6 +24925,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	if (case_oper)
 	  parser_free_node (this_parser, case_oper);
 
+	/* pair list desugared into a chain with an EQ layer per pair */
+	pt_set_guarded_nesting_depth (this_parser, node, c + 1 + args_max);
+
 	return node;
       }
 
@@ -24892,6 +24936,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       {
 	PT_NODE *prev, *expr, *arg, *tmp;
 	int i;
+	int args_max = pt_nesting_depth_list_max (args);
 	arg = args;
 
 	if (c < 1)
@@ -24949,6 +24994,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	    expr->info.expr.arg2->flag.is_hidden_column = 1;
 	  }
 
+	/* argument list desugared into a c-deep chain */
+	pt_set_guarded_nesting_depth (this_parser, expr, c + args_max);
+
 	return expr;
       }
 
@@ -24958,6 +25006,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       {
 	PT_NODE *prev, *expr, *arg, *tmp, *sep, *val;
 	int i, ws;
+	int args_max = pt_nesting_depth_list_max (args);
 	arg = args;
 
 	ws = (key->op != PT_CONCAT) ? 1 : 0;
@@ -25064,6 +25113,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	      }
 	    expr->info.expr.arg2 = val;
 	  }
+
+	/* argument list desugared into a c-deep chain */
+	pt_set_guarded_nesting_depth (this_parser, expr, c + args_max);
 
 	return expr;
       }
