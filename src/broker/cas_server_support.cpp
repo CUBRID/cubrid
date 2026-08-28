@@ -216,6 +216,11 @@ sql_log2_append_file (char *)
 {
 }
 
+void
+sql_log2_flush (void)
+{
+}
+
 /* ------------------------------------------------------------------ */
 /* SSL: server-side termination is a B2 item (#116); the broker       */
 /* rejects DIRECT_HANDOFF+SSL so these are unreachable                */

@@ -762,6 +762,7 @@ set(CAS_SPEAKER_SOURCES
   ${BROKER_DIR}/cas_log.c
   ${BROKER_DIR}/cas_server_support.cpp
   ${BROKER_DIR}/broker_filename.c
+  ${BROKER_DIR}/broker_util.c
   )
 # ASYNC_MODE is load-bearing: without it cas_network.c loses every poll()
 # timeout; CAS_CUBRID selects the CUBRID branches in cas_net_buf.c
