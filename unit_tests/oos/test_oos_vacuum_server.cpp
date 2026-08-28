@@ -28,6 +28,7 @@
  */
 
 #include "object_representation.h"
+#include "xserver_interface.h"
 #include "test_oos_server_common.hpp"
 #include "vacuum_oos.hpp"
 
@@ -268,7 +269,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteSingle)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec);
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   /* OOS record must be gone */
@@ -315,7 +316,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultipleColumns)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec);
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   /* All 3 OOS records must be gone */
@@ -370,7 +371,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultiChunk)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec);
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Multi-chunk OOS must be fully gone */
@@ -408,7 +409,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteLarge160KB)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec);
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES after {};
@@ -475,6 +476,10 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_GT (pages_after_insert, 0);
 
+  /* Accumulate reclaim candidates across the whole churn, like vacuum_heap_page does per
+   * heap-page batch. */
+  VACUUM_OOS_TOUCHED_PAGES touched_pages;
+
   /* Simulate UPDATE_ROUNDS of UPDATEs with vacuum cleanup */
   for (int round = 0; round < UPDATE_ROUNDS; round++)
     {
@@ -492,7 +497,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	  err = build_heap_recdes_with_oos ({old_oid}, {oos_len}, heap_rec);
 	  ASSERT_EQ (err, NO_ERROR);
 
-	  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec);
+	  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &touched_pages);
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  recdes_free_data_area (&heap_rec);
@@ -535,13 +540,22 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	}
     }
 
-  /* After 25 update+vacuum cycles, page count should be bounded */
+  /* Reclaim the churn's residue through the real batch path. Commit first: the LSA gate defers
+   * pages whose deleter is still a live undo source (this transaction). */
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_FALSE (touched_pages.empty ());
+  err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &touched_pages);
+  ASSERT_EQ (err, NO_ERROR);
+
+  /* After 25 update+vacuum cycles plus the batch reclaim, the file must be back at (or below)
+   * its initial footprint — an assertion that actually detects whether reclaim ran, unlike a
+   * loose "+ 2" bound. */
   int pages_after_churn = -1;
   err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_churn);
   ASSERT_EQ (err, NO_ERROR);
-  EXPECT_LE (pages_after_churn, pages_after_insert + 2)
-      << "After " << (N_ROWS * UPDATE_ROUNDS) << " update+vacuum cycles, "
-      << "page count should stay bounded (was " << pages_after_insert
+  EXPECT_LE (pages_after_churn, pages_after_insert)
+      << "After " << (N_ROWS * UPDATE_ROUNDS) << " update+vacuum cycles and the batch reclaim, "
+      << "page count should return to the initial footprint (was " << pages_after_insert
       << ", now " << pages_after_churn << ")";
 
   /* All current OOS versions must still be readable */
@@ -596,7 +610,8 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec);
+  VACUUM_OOS_TOUCHED_PAGES touched_pages;
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &touched_pages);
   ASSERT_EQ (err, NO_ERROR);
 
   /* All N OOS records must be gone */
@@ -610,6 +625,24 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
 	  recdes_free_data_area (&after);
 	}
     }
+
+  /* Reclaim through the real batch path — every data page was emptied, so the page count must
+   * DROP to the sticky first page alone (the effectiveness this feature exists for; a bound that
+   * merely tolerates growth cannot detect a reclaim that silently never ran). Commit first: the
+   * LSA gate defers pages whose deleter is still a live undo source. */
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_FALSE (touched_pages.empty ());
+  err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &touched_pages);
+  ASSERT_EQ (err, NO_ERROR);
+
+  int pages_after_reclaim = -1;
+  err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_reclaim);
+  ASSERT_EQ (err, NO_ERROR);
+  EXPECT_LT (pages_after_reclaim, pages_after_insert)
+      << "batch reclaim did not shrink the file (insert=" << pages_after_insert
+      << ", after reclaim=" << pages_after_reclaim << ")";
+  EXPECT_EQ (pages_after_reclaim, 1)
+      << "all data pages were emptied and committed — only the sticky first page should remain";
 
   /* Reinsert N records — should reuse freed space */
   OID new_oids[N];
@@ -631,8 +664,8 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
   err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_reinsert);
   ASSERT_EQ (err, NO_ERROR);
 
-  EXPECT_LE (pages_after_reinsert, pages_after_insert * 2)
-      << "After vacuum + reinsert, page count should stay bounded "
+  EXPECT_LE (pages_after_reinsert, pages_after_insert)
+      << "After reclaim + reinsert, the file must not exceed its initial footprint "
       << "(insert=" << pages_after_insert << ", reinsert=" << pages_after_reinsert << ")";
 
   /* All reinserted records must be readable */

@@ -384,6 +384,54 @@ TEST (OosBestspaceTest, BestspaceInsertDeleteCycle)
 
 
 // ===========================================================================
+// TEST: BestspaceStaleHintToNonOosPageIsRejected
+//
+// Regression for the reviewer-reproduced release corruption path (PR #7617 B1): a bestspace
+// hint may point at a page that reclaim deallocated and another file already REALLOCATED for a
+// different purpose. Such a page fixes successfully again (the ER_PB_BAD_PAGEID net only covers
+// the still-deallocated window), so the lookup must re-validate ptype == PAGE_OOS before
+// trusting the page — otherwise the inserter writes into the other file's page.
+//
+// The file's own file-table header page (PAGE_FTAB, vpid = {vfid.fileid, vfid.volid}) stands in
+// for "reallocated for another purpose": plant a hint to it and verify the lookup evicts the
+// hint and hands out a real OOS page instead.
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceStaleHintToNonOosPageIsRejected)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  VPID fhead_vpid;
+  fhead_vpid.volid = oos_vfid.volid;
+  fhead_vpid.pageid = oos_vfid.fileid;
+
+  // Plant the poisoned hint with plenty of advertised free space.
+  ASSERT_NE (bridge_oos_stats_add_bestspace (thread_p, &oos_vfid, &fhead_vpid, DB_PAGESIZE / 2), nullptr);
+
+  VPID found_vpid{NULL_PAGEID, NULL_VOLID};
+  auto page_ptr = bridge_oos_find_best_page (thread_p, oos_vfid, 100, found_vpid);
+  ASSERT_NE (page_ptr, nullptr);
+  ASSERT_FALSE (VPID_EQ (&found_vpid, &fhead_vpid))
+      << "lookup handed out a non-OOS (file-table) page from a stale hint";
+  ASSERT_EQ (pgbuf_get_page_ptype (thread_p, page_ptr.get ()), PAGE_OOS);
+  page_ptr.reset ();
+
+  // The poisoned hint must be evicted, not retried: a second lookup stays clean.
+  found_vpid = {NULL_PAGEID, NULL_VOLID};
+  auto page_ptr2 = bridge_oos_find_best_page (thread_p, oos_vfid, 100, found_vpid);
+  ASSERT_NE (page_ptr2, nullptr);
+  ASSERT_FALSE (VPID_EQ (&found_vpid, &fhead_vpid));
+  page_ptr2.reset ();
+
+  err = oos_remove_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
 // TEST: BestspaceFindBestPageBasic
 //
 // Directly test bridge_oos_find_best_page: verify it returns a valid

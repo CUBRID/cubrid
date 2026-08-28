@@ -537,6 +537,23 @@ oos_stats_get_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid)
 // OOS Bestspace — find page in bestspace (hash + best[])
 // ****************************************************************************
 
+/* Drop a hint that turned out not to point at a usable OOS data page — deallocated, or
+ * reclaimed and already reallocated for another purpose — from whichever store it came from. */
+static void
+oos_stats_evict_stale_hint (THREAD_ENTRY *thread_p, VPID *candidate_vpid, bool found_in_hash,
+			    OOS_BESTSPACE *bestspace, int best_array_index)
+{
+  if (found_in_hash)
+    {
+      (void) oos_stats_del_bestspace_by_vpid (thread_p, candidate_vpid);
+    }
+  else if (bestspace != NULL && best_array_index >= 0 && best_array_index < OOS_NUM_BEST_SPACESTATS)
+    {
+      VPID_SET_NULL (&bestspace[best_array_index].vpid);
+      bestspace[best_array_index].freespace = 0;
+    }
+}
+
 static OOS_FINDSPACE
 oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 				  OOS_BESTSPACE *bestspace, int *idx_badspace,
@@ -652,15 +669,7 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	      /* Stale hint to a reclaimed page — evict it so it is not retried */
 	      oos_trace ("stale bestspace hint to deallocated page vpid={vol=%d,page=%d} — evicting",
 			 candidate_vpid.volid, candidate_vpid.pageid);
-	      if (found_in_hash)
-		{
-		  (void) oos_stats_del_bestspace_by_vpid (thread_p, &candidate_vpid);
-		}
-	      else if (bestspace != NULL && best_array_index >= 0 && best_array_index < OOS_NUM_BEST_SPACESTATS)
-		{
-		  VPID_SET_NULL (&bestspace[best_array_index].vpid);
-		  bestspace[best_array_index].freespace = 0;
-		}
+	      oos_stats_evict_stale_hint (thread_p, &candidate_vpid, found_in_hash, bestspace, best_array_index);
 	      er_clear ();
 	      notfound_cnt++;
 	      continue;
@@ -672,6 +681,22 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 			 candidate_vpid.volid, candidate_vpid.pageid, err);
 	      er_clear ();
 	    }
+	  notfound_cnt++;
+	  continue;
+	}
+
+      /* The hint may point at a page that reclaim deallocated and another file already
+       * reallocated for a different purpose (e.g. PAGE_FTAB). The ER_PB_BAD_PAGEID branch above
+       * only covers the window while the page STAYS deallocated; once reallocated its fix
+       * succeeds again, and only the page type betrays the stale hint. Handing it out would
+       * corrupt the new owner — release builds do not stop at the slotted-page asserts — so
+       * re-validate the type before trusting anything else on the page. */
+      if (pgbuf_get_page_ptype (thread_p, *out_pgptr) != PAGE_OOS)
+	{
+	  oos_trace ("stale bestspace hint to reallocated non-OOS page vpid={vol=%d,page=%d} — evicting",
+		     candidate_vpid.volid, candidate_vpid.pageid);
+	  pgbuf_unfix_and_init (thread_p, *out_pgptr);
+	  oos_stats_evict_stale_hint (thread_p, &candidate_vpid, found_in_hash, bestspace, best_array_index);
 	  notfound_cnt++;
 	  continue;
 	}
@@ -699,8 +724,11 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	    {
 	      (void) oos_stats_del_bestspace_by_vpid (thread_p, &candidate_vpid);
 	    }
-	  if (best_array_index >= 0 && best_array_index < OOS_NUM_BEST_SPACESTATS)
+	  else if (best_array_index >= 0 && best_array_index < OOS_NUM_BEST_SPACESTATS)
 	    {
+	      /* Only when the candidate came from best[] does best_array_index point at it — a
+	       * hash candidate must not overwrite whatever unrelated slot the array scan last
+	       * stopped on. */
 	      bestspace[best_array_index].freespace = actual_free;
 	    }
 	  notfound_cnt++;
@@ -926,8 +954,10 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	    }
 	}
 
-      /* Save resume point */
-      oos_hdr->estimates.full_search_vpid = scan_vpid;
+      /* NOTE: estimates.full_search_vpid (the old numerable-scan resume point) is intentionally
+       * no longer written: bitmap-order enumeration made the field's reader obsolete, and page
+       * rediscovery is now the growth-gate sweep's job (its cursor lives in the side map). The
+       * field itself stays in OOS_HDR_STATS for on-disk layout stability. */
     }
 
   /* On full scan, clear stale best[] entries with freespace below the threshold.
@@ -1532,6 +1562,16 @@ oos_page_is_reclaimable_empty (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr)
  *      carries a page LSA at or above that source's head LSA, so a page passing the gate cannot
  *      be an undo target of anyone still running. Gated pages are classified deferred and become
  *      reclaimable once the writer commits or aborts.
+ *
+ * Why not the heap's OLD_PAGE_PREVENT_DEALLOC protocol (heap_remove_page_on_vacuum): readers
+ * reach OOS chunk pages only by following head OOS OIDs out of heap record versions, and vacuum
+ * deletes a chain (emptying its pages) only after the owning version is invisible to every
+ * active snapshot — so no reader can legally be walking a chain whose pages become empty. The
+ * reader-side dealloc tolerance that exists anyway (oos_chunk_exists, OLD_PAGE_MAYBE_DEALLOCATED
+ * in hint lookups and scans, the post-fix PAGE_OOS re-validation) is defense in depth for stale
+ * hints, not a substitute for pinning. What PREVENT_DEALLOC would add — blocking dealloc while
+ * an unlatched reader holds a VPID — is therefore not needed here, and it would reintroduce a
+ * waiting edge into a path built to be zero-wait.
  */
 static int
 oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid,
@@ -1655,6 +1695,14 @@ oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, con
 	    {
 	      VPID_SET_NULL (&oos_hdr->estimates.best[i].vpid);
 	      oos_hdr->estimates.best[i].freespace = 0;
+	      hdr_changed = true;
+	    }
+	  /* The second-best ring records the same kind of hint; scrub it too so a future
+	   * consumer of the ring can never receive this page (the lookup-side type guard would
+	   * catch it, but a hint store must not keep pointing at deallocated pages). */
+	  if (VPID_EQ (&oos_hdr->estimates.second_best[i], &vpid))
+	    {
+	      VPID_SET_NULL (&oos_hdr->estimates.second_best[i]);
 	      hdr_changed = true;
 	    }
 	}
@@ -2482,6 +2530,11 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer
   assert (required_length <= DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT));
 
   auto auto_page_ptr = oos_find_best_page (thread_p, oos_vfid, required_length, vpid);
+  if (auto_page_ptr == nullptr)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
   PAGE_PTR page_ptr = auto_page_ptr.get ();
   err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, src, header, oid);
   if (err != NO_ERROR)
@@ -3141,9 +3194,16 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
 	    }
 	  catch (std::bad_alloc &)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (touched_vpids->size () + 1) * sizeof (VPID));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      /* The candidate list is only a reclaim hint. The chunk deletes themselves are
+	       * logged, and the growth-gate sweep rediscovers unreclaimed empty pages from the
+	       * sector bitmap — so a failed collection must not turn a healthy delete batch into
+	       * an error (the caller would abort its sysop and roll the whole batch back). Drop
+	       * the hints and stop collecting for the rest of the chain. */
+	      oos_warn ("dropping empty-page reclaim hints for file %d|%d: out of memory growing "
+			"the candidate list; the growth-gate sweep will rediscover the pages",
+			VFID_AS_ARGS (&oos_vfid));
+	      touched_vpids->clear ();
+	      touched_vpids = NULL;
 	    }
 	}
 
