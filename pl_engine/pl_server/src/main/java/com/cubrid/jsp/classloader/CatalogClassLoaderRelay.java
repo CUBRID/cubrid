@@ -39,9 +39,8 @@ import java.util.Map;
 
 public class CatalogClassLoaderRelay extends ClassLoader {
 
-    public CatalogClassLoaderRelay(long sessionId) {
+    public CatalogClassLoaderRelay() {
         super(getSystemClassLoader());
-        this.sessionId = sessionId;
     }
 
     public void markChildrenAsOld() {
@@ -65,10 +64,10 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         return super.loadClass(name);
     }
 
+    // this is only called from StoredProcedure::findTargetMethod
     public Class<?> findClassWithCompileId(String mainClassName, String compileId)
             throws ClassNotFoundException {
 
-        // this is only called from StoredProcedure::findTargetMethod
         assert (mainClassName.startsWith("Proc_")
                 || mainClassName.startsWith("Func_")
                 || mainClassName.startsWith("Pckg_"));
@@ -76,18 +75,19 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
         if (classLoader == null) {
             classLoader = new CatalogClassLoader(mainClassName, compileId, this);
+            unitClassLoaders.put(mainClassName, classLoader);
         } else {
             if (!compileId.equals(classLoader.codeSet.compileId)) {
                 classLoader = new CatalogClassLoader(mainClassName, compileId, this);
-                CatalogClassLoader old = unitClassLoaders.put(mainClassName, classLoader);
-                old.clear();
+                unitClassLoaders.put(mainClassName, classLoader);
             }
         }
 
         assert classLoader != null;
 
         // CAUTION: do not use classLoader.loadClass() :
-        //  it will result in an infinite loop because classLoader's parent is this relaying class
+        //  it just calls classLoader.findClass() by the shortcut (see CatalogClassLoader::loadClass()
+        //  and calling classLoader.loadClass() is waste of CPU clocks.
         return classLoader.findClass(JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName);
     }
 
@@ -115,14 +115,15 @@ public class CatalogClassLoaderRelay extends ClassLoader {
                 CompiledCodeSet codeSet0 = classLoader.codeSet;
                 CompiledCodeSet codeSet1 = ClassAccess.getObjectCodeNewerThan(codeSet0);
                 if (codeSet1 == null) {
-                    // was it dropped?
+                    // it was dropped
                     throw new ClassNotFoundException(className);
                 } else if (codeSet1 == codeSet0) {
-                    classLoader.setOld(false); // it is up-to-date
+                    // it is actually not old
+                    classLoader.setOld(false);
                 } else {
+                    // the class has been updated.
                     classLoader = new CatalogClassLoader(codeSet1, this);
-                    CatalogClassLoader old = unitClassLoaders.put(mainClassName, classLoader);
-                    old.clear();
+                    unitClassLoaders.put(mainClassName, classLoader);
                 }
             }
         }
@@ -130,7 +131,8 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         assert classLoader != null;
 
         // CAUTION: do not use classLoader.loadClass() :
-        //  it will result in an infinite loop because classLoader's parent is this relaying class
+        //  it just calls classLoader.findClass() by the shortcut (see CatalogClassLoader::loadClass()
+        //  and calling classLoader.loadClass() is waste of CPU clocks.
         return classLoader.findClass(className);
     }
 
@@ -142,7 +144,6 @@ public class CatalogClassLoaderRelay extends ClassLoader {
     // Private
     // =======================
 
-    private final long sessionId;
     private Map<String, CatalogClassLoader> unitClassLoaders = new HashMap<>();
 
     private static String getMainClassName(String className) {

@@ -30,6 +30,7 @@
  */
 package com.cubrid.jsp.code;
 
+import com.cubrid.jsp.Server;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;

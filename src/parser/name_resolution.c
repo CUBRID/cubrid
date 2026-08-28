@@ -3309,23 +3309,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       *continue_walk = PT_LIST_WALK;
       break;
 
-    case PT_UPDATE_HISTOGRAM:
-    case PT_DROP_HISTOGRAM:
-    case PT_SHOW_HISTOGRAM:
-      scopestack.specs = node->info.histogram.target_table_spec;
-      bind_arg->scopes = &scopestack;
-      spec_frame.next = bind_arg->spec_frames;
-      spec_frame.extra_specs = NULL;
-      bind_arg->spec_frames = &spec_frame;
-      pt_bind_scope (parser, bind_arg);
-
-      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-
-      bind_arg->spec_frames = bind_arg->spec_frames->next;
-      bind_arg->scopes = bind_arg->scopes->next;
-
-      *continue_walk = PT_LIST_WALK;
-      break;
     case PT_METHOD_CALL:
       /*
        * We accept two different method call syntax:
@@ -3350,7 +3333,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	{
 	  method_name = PT_NAME_ORIGINAL (method_name_node);
 	}
-      if (!node->info.method_call.on_call_target && jsp_is_exist_stored_procedure (method_name))
+      if (!node->info.method_call.on_call_target && jsp_is_existing_stored_procedure (method_name))
 	{
 	  method_name_node->info.name.spec_id = (UINTPTR) method_name_node;
 	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name);
@@ -3486,7 +3469,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    pt_reset_error (parser);
 
 	    /*
-	     * jsp_is_exist_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
+	     * jsp_is_existing_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
 	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
 	     */
 	    char downcase_owner_name[DB_MAX_USER_LENGTH];
@@ -3499,7 +3482,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    node->info.dot.arg2->info.function.generic_name = generic_name;
 	    node->info.dot.arg1->info.name.original = generic_name;
 
-	    if (jsp_is_exist_stored_procedure (node->info.dot.arg2->info.function.generic_name))
+	    if (jsp_is_existing_stored_procedure (node->info.dot.arg2->info.function.generic_name))
 	      {
 		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		if (node1 == NULL)

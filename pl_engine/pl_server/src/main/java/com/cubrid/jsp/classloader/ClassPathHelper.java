@@ -72,8 +72,7 @@ public class ClassPathHelper {
         try {
             lastModifiedTime = Files.getLastModifiedTime(getDynamicPath());
         } catch (IOException e) {
-            Server.log(e);
-            return null;
+            throw new RuntimeException(e);
         }
         return lastModifiedTime;
     }

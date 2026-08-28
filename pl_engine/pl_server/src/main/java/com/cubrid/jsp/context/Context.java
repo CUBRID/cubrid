@@ -190,7 +190,7 @@ public class Context {
 
     public CatalogClassLoaderRelay getCatalogClassLoaderRelay() {
         if (catalogClassLoaderRelay == null) {
-            catalogClassLoaderRelay = new CatalogClassLoaderRelay(sessionId);
+            catalogClassLoaderRelay = new CatalogClassLoaderRelay();
         }
 
         return catalogClassLoaderRelay;

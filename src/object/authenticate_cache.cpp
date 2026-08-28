@@ -91,14 +91,14 @@ authenticate_cache::flush (void)
     }
   user_name_cache.clear ();
 
-  for (auto &it : procedure_cache)
+  for (auto &it : proc_or_pkg_cache)
     {
       if (it.second)
 	{
 	  delete it.second;
 	}
     }
-  procedure_cache.clear ();
+  proc_or_pkg_cache.clear ();
 
   /* clear the associated globals */
   init ();
@@ -146,9 +146,10 @@ authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
       bits = get_cache_bits ((SM_CLASS *) ptr);
       owner = sm_class->owner;
     }
-  else if (obj_type == DB_OBJECT_PROCEDURE)
+  else if (obj_type == DB_OBJECT_PROCEDURE || obj_type == DB_OBJECT_PACKAGE)
     {
-      bits = get_procedure_cache_bits (mop);
+      // a package shares the same authorization cache and grant machinery as a procedure
+      bits = get_proc_or_pkg_cache_bits (mop);
       owner = (MOP) ptr;
     }
 
@@ -433,15 +434,15 @@ authenticate_cache::get_cache_bits (SM_CLASS *sm_class)
 }
 
 unsigned int *
-authenticate_cache::get_procedure_cache_bits (MOP proc_mop)
+authenticate_cache::get_proc_or_pkg_cache_bits (MOP mop)
 {
   std::vector<unsigned int> *bits = nullptr;
 
-  auto it = procedure_cache.find (proc_mop);
-  if (it == procedure_cache.end ())
+  auto it = proc_or_pkg_cache.find (mop);
+  if (it == proc_or_pkg_cache.end ())
     {
       bits = new std::vector<unsigned int> (cache_max, AU_CACHE_INVALID);
-      procedure_cache[proc_mop] = bits;
+      proc_or_pkg_cache[mop] = bits;
     }
   else
     {
@@ -710,12 +711,12 @@ authenticate_cache::reset_cache_for_user_and_class (SM_CLASS *sm_class)
 }
 
 void
-authenticate_cache::reset_cache_for_user_and_procedure (MOP obj)
+authenticate_cache::reset_cache_for_user_and_proc_or_pkg (MOP obj)
 {
   AU_USER_CACHE *u;
   AU_CLASS_CACHE *c;
 
-  for (auto &it : procedure_cache)
+  for (auto &it : proc_or_pkg_cache)
     {
       if (it.first == obj)
 	{
@@ -770,7 +771,7 @@ authenticate_cache::reset_authorization_caches (void)
     }
 
   // reset procedure cache
-  for (auto &it : procedure_cache)
+  for (auto &it : proc_or_pkg_cache)
     {
       std::vector <unsigned int> *data = it.second;
       std::fill (data->begin (), data->end(), AU_CACHE_INVALID);

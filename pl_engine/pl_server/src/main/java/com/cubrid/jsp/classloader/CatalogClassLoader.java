@@ -96,12 +96,6 @@ public class CatalogClassLoader extends ClassLoader {
         return ret;
     }
 
-    public void clear() {
-        // faster garbage collection?
-        codeSet.clear();
-        defined.clear();
-    }
-
     public void setOld(boolean val) {
         isOld = val;
     }

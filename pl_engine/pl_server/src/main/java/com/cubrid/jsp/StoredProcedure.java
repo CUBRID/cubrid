@@ -90,10 +90,10 @@ public class StoredProcedure {
 
         Context ctx = ContextManager.getContextofCurrentThread();
 
-        Class<?> c = null;
-
         Signature sig = Signature.parse(signature);
         String mainClassName = sig.getClassName();
+
+        Class<?> c = null;
 
         switch (lang) {
             case LANG_PLCSQL:
