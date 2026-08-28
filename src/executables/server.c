@@ -110,6 +110,9 @@ register_fatal_signal_handler (int signo)
   sigemptyset (&act.sa_mask);
   act.sa_flags = 0;
   act.sa_flags |= SA_SIGINFO;
+  /* run on the per-thread alternate stack (installed by the thread manager)
+   * so a SIGSEGV from stack exhaustion still produces the crash callstack */
+  act.sa_flags |= SA_ONSTACK;
   sigaction (signo, &act, NULL);
 }
 
@@ -124,6 +127,7 @@ register_abort_signal_handler (int signo)
   sigemptyset (&act.sa_mask);
   act.sa_flags = 0;
   act.sa_flags |= SA_SIGINFO;
+  act.sa_flags |= SA_ONSTACK;
   sigaction (signo, &act, NULL);
 }
 #endif /* !NDEBUG */

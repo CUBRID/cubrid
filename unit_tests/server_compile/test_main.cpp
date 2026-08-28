@@ -26,6 +26,7 @@
  */
 
 #include <atomic>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -238,6 +239,71 @@ test_concurrent_parse (void)
   return failures.load () == 0 ? 0 : 1;
 }
 
+/* user input must not build a tree deep enough to overflow the recursive
+ * tree walkers (#128 D5): nesting past the parser's fixed limit is a
+ * statement error, while a moderately nested statement still parses */
+static int
+test_nesting_depth_guard (void)
+{
+  /* "SELECT 1+1+...+1": each '+' adds one nesting level */
+  const int deep_terms = 1100;	/* over the 1024 limit */
+  const int sane_terms = 200;
+
+  std::string deep = "SELECT 1";
+  for (int i = 0; i < deep_terms; i++)
+    {
+      deep += "+1";
+    }
+  std::string sane = "SELECT 1";
+  for (int i = 0; i < sane_terms; i++)
+    {
+      sane += "+1";
+    }
+
+  if (!parse_to_string (deep.c_str ()).empty ())
+    {
+      fprintf (stderr, "FAIL: %d-level nesting parsed without error\n", deep_terms);
+      return 1;
+    }
+  if (parse_to_string (sane.c_str ()).empty ())
+    {
+      fprintf (stderr, "FAIL: %d-level nesting was rejected\n", sane_terms);
+      return 1;
+    }
+  return 0;
+}
+
+/* the thread manager installs a per-thread alternate signal stack (#128 D6)
+ * so the SA_ONSTACK crash handlers survive stack exhaustion; registration of
+ * the main thread happened in cubthread::initialize below */
+static int
+test_crash_signal_stack_installed (void)
+{
+  stack_t ss;
+
+  if (sigaltstack (NULL, &ss) != 0)
+    {
+      fprintf (stderr, "FAIL: sigaltstack query failed\n");
+      return 1;
+    }
+  if ((ss.ss_flags & SS_DISABLE) != 0 || ss.ss_sp == NULL || ss.ss_size == 0)
+    {
+      fprintf (stderr, "FAIL: no alternate signal stack installed on a registered thread\n");
+      return 1;
+    }
+  return 0;
+}
+
+/* AREA exhaustion outside any session bracket keeps the pre-merge server
+ * semantics of just failing the allocation (#128 D8): the callback returns
+ * without touching transaction state */
+static int
+test_ws_abort_transaction_no_bracket (void)
+{
+  ws_abort_transaction ();
+  return 0;
+}
+
 int
 main (int, char **)
 {
@@ -306,5 +372,23 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: %d threads parsed concurrently with per-thread parser state\n", 8);
+
+  if (test_nesting_depth_guard () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: over-limit expression nesting is a statement error, sane nesting parses\n");
+
+  if (test_crash_signal_stack_installed () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: registered thread carries an alternate signal stack for the crash handler\n");
+
+  if (test_ws_abort_transaction_no_bracket () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: ws_abort_transaction outside a session bracket is a no-op\n");
   return 0;
 }
