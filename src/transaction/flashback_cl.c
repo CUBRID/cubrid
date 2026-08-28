@@ -30,6 +30,7 @@
 #include "config.h"
 
 #include <stdio.h>
+#include <limits.h>
 #if defined(WINDOWS)
 #include <windows.h>
 #include <conio.h>
@@ -77,7 +78,7 @@ flashback_util_get_winsize ()
     }
 }
 
-static char
+static int
 flashback_util_get_char ()
 {
   int c;
@@ -88,7 +89,7 @@ flashback_util_get_char ()
 }
 
 #else
-static char
+static int
 flashback_util_get_char ()
 {
   int c;
@@ -120,7 +121,12 @@ flashback_util_get_winsize ()
     }
   else
     {
-      ioctl (STDOUT_FILENO, TIOCGWINSZ, &w);
+      /* When stdout is not a tty (pipe/redirection), TIOCGWINSZ fails and w.ws_row is left
+       * uninitialized. Treat that (and a zero row count) as "no paging" instead of reading garbage. */
+      if (ioctl (STDOUT_FILENO, TIOCGWINSZ, &w) != 0 || w.ws_row == 0)
+	{
+	  return INT_MAX;
+	}
 
       return w.ws_row;
     }
@@ -182,6 +188,9 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
 
   bool stop_print = false;
   const int max_window_size = flashback_util_get_winsize ();
+  /* Paging prompts require an interactive terminal to answer them; with a non-tty stdin
+   * (pipe/redirection) there is no one to respond, so print the whole summary without paging. */
+  const bool do_paging = (isatty (STDIN_FILENO) != 0);
   int line_cnt = 0;
 
   char stime_buf[20];
@@ -285,14 +294,15 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
 	    }
 	}
 
-      if (line_cnt >= max_window_size)
+      if (!stop_print && do_paging && line_cnt >= max_window_size)
 	{
-	  char c;
+	  int c;
 	  printf ("press 'q' to quit or press anything to continue");
 
 	  c = flashback_util_get_char ();
-	  if (c == 'q')
+	  if (c == 'q' || c == EOF)
 	    {
+	      /* 'q' or EOF (non-interactive/EOF stdin) stops further paging output. */
 	      stop_print = true;
 	    }
 
