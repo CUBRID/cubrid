@@ -3948,6 +3948,7 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
     }
 
   dblink_conn_entry->conn_info.conn_handle = conn_handle;
+  dblink_conn_entry->conn_info.xa_unsupported = false;
   dblink_conn_entry->is_2pc_participant = set_participant;
 
   snprintf (dblink_conn_entry->conn_info.conn_url, sizeof (dblink_conn_entry->conn_info.conn_url), "%s", conn_url);
