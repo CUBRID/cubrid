@@ -57,11 +57,11 @@
 #define CT_GLOBAL_TRAN_NAME     "_db_global_tran"
 
 /*
- * SQL expression deriving the unique name of a _db_class row: "owner.class_name" for
+ * SQL expression deriving the qualified name of a _db_class row: "owner.class_name" for
  * user classes, the bare class_name for system classes. q is the row's qualifier in the
  * surrounding query, as a string literal ("", "[c].", "[a].[class_of].", ...).
  */
-#define CT_CLASS_UNIQUE_NAME_EXPR(q) \
+#define CT_CLASS_QUALIFIED_NAME_EXPR(q) \
   "IF (" q "[is_system_class] = 0, CONCAT (LOWER (" q "[owner].[name]), '.', " q "[class_name]), " q "[class_name])"
 
 /* catalog vclasses */

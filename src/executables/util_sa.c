@@ -3504,7 +3504,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   DB_VALUE value;
-  DB_VALUE unique_name_val;
+  DB_VALUE qualified_name_val;
   DB_VALUE class_name_val;
   DB_VALUE owner_name_val;
   DB_VALUE attr_name_val;
@@ -3517,7 +3517,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
   memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
 
   db_make_null (&value);
-  db_make_null (&unique_name_val);
+  db_make_null (&qualified_name_val);
   db_make_null (&class_name_val);
   db_make_null (&owner_name_val);
   db_make_null (&attr_name_val);
@@ -3537,7 +3537,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	"SELECT "
 	  "[a].[class_of].[class_type] AS [class_type], "
 	  "[a].[class_of].[is_system_class] AS [is_system_class], "
-	  CT_CLASS_UNIQUE_NAME_EXPR ("[a].[class_of].") " AS [unique_name], "
+	  CT_CLASS_QUALIFIED_NAME_EXPR ("[a].[class_of].") " AS [qualified_name], "
 	  "[a].[class_of].[class_name] AS [class_name], "
 	  "LOWER ([a].[class_of].[owner].[name]) AS [owner_name], "
 	  "[a].[attr_name] AS [attr_name], "
@@ -3572,7 +3572,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	  "[d].[collation_id] = %d "
 	  "AND [p].[pname] IS NULL "
 	"ORDER BY "
-	  "[unique_name], "
+	  "[qualified_name], "
 	  "[a].[attr_name]",
 	db_coll->coll_id);
   // *INDENT-ON*
@@ -3606,7 +3606,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
     {
       int class_type = SM_CLASS_CT;
       int is_system_class = 0;
-      const char *unique_name = NULL;
+      const char *qualified_name = NULL;
       const char *class_name = NULL;
       const char *owner_name = NULL;
       const char *attr_name = NULL;
@@ -3635,15 +3635,15 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
       is_system_class = db_get_int (&value);
       db_value_clear (&value);
 
-      /* unique_name */
-      error = db_query_get_tuple_value (query_result, 2, &unique_name_val);
+      /* qualified_name */
+      error = db_query_get_tuple_value (query_result, 2, &qualified_name_val);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
-      assert (DB_VALUE_TYPE (&unique_name_val) == DB_TYPE_STRING);
-      unique_name = db_get_string (&unique_name_val);
+      assert (DB_VALUE_TYPE (&qualified_name_val) == DB_TYPE_STRING);
+      qualified_name = db_get_string (&qualified_name_val);
 
       /* class_name */
       error = db_query_get_tuple_value (query_result, 3, &class_name_val);
@@ -3696,7 +3696,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
       has_partition = db_get_int (&value);
       db_value_clear (&value);
 
-      fprintf (stdout, "%s | %s %s\n", unique_name, attr_name, attr_data_type);
+      fprintf (stdout, "%s | %s %s\n", qualified_name, attr_name, attr_data_type);
 
       if (class_type == SM_CLASS_CT)
 	{
@@ -3705,7 +3705,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	      /* class is partitioned, remove partition; we cannot change the collation of an attribute
 	       * having partitions */
 
-	      error = da_add (partition_array, unique_name);
+	      error = da_add (partition_array, qualified_name);
 	      if (error != NO_ERROR)
 		{
 		  ERROR_SET_ERROR (error, ER_OUT_OF_VIRTUAL_MEMORY);
@@ -3755,7 +3755,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 
       *need_manual_sync = true;
 
-      db_value_clear (&unique_name_val);
+      db_value_clear (&qualified_name_val);
       db_value_clear (&owner_name_val);
       db_value_clear (&class_name_val);
       db_value_clear (&attr_name_val);
@@ -3807,7 +3807,7 @@ exit:
   return error;
 
 exit_on_error:
-  db_value_clear (&unique_name_val);
+  db_value_clear (&qualified_name_val);
   db_value_clear (&class_name_val);
   db_value_clear (&owner_name_val);
   db_value_clear (&attr_name_val);

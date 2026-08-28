@@ -7745,7 +7745,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                 "GROUP_CONCAT([auth_type] ORDER BY 1 SEPARATOR ', '), "
                 "' ON ',"
                 "IF ([object_type]=5, 'PROCEDURE ', ''), "
-                "[unique_name], "
+                "[object_name], "
                 "' TO ',"
                 "[grantee_name],"
                 "IF ([is_grantable]=1, ' WITH GRANT OPTION', '')"
@@ -7755,7 +7755,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
                         "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
                         "[a].[object_type] AS [object_type], "
-                        CT_CLASS_UNIQUE_NAME_EXPR ("[c].") " AS [unique_name], "
+                        CT_CLASS_QUALIFIED_NAME_EXPR ("[c].") " AS [object_name], "
                         "[a].[auth_type] AS [auth_type], "
                         "[a].[is_grantable] AS [is_grantable] "
                 "FROM "
@@ -7784,7 +7784,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         "[a].[object_type] AS [object_type], "
                         "LOWER([s].[owner].[name]) || '.' "
                         "|| CASE WHEN [s].[pkg_name] IS NULL THEN '' ELSE [s].[pkg_name] || '.' END "
-                        "|| [s].[sp_name] AS [unique_name], "
+                        "|| [s].[sp_name] AS [object_name], "
                         "[a].[auth_type] AS [auth_type], "
                         "[a].[is_grantable] AS [is_grantable] "
                 "FROM "
@@ -7808,7 +7808,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         ") "
         ") "
         "GROUP BY "
-                "[grantee_name], [unique_name], [is_grantable] ASC "
+                "[grantee_name], [object_name], [is_grantable] ASC "
         "ORDER BY 1;";
   // *INDENT-ON*
 

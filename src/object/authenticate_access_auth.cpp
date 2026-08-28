@@ -1300,7 +1300,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 		   * ex) SELECT * FROM _db_authorization;
 		   *   owner            grants
 		   * ================================
-		   *   grantee         {..,unique_name, grantor, ..}
+		   *   grantee         {..,qualified_name, grantor, ..}
 		   */
 		  if (ws_is_same_object (grantee_mop, new_owner_mop))
 		    {
@@ -1610,7 +1610,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
        * ex) SELECT * FROM _db_authorization;
        *   owner            grants
        * ================================
-       *   grantee         {..,unique_name, grantor, ..}
+       *   grantee         {..,qualified_name, grantor, ..}
        */
       if (ws_is_same_object (grantee_mop, new_owner_mop))
 	{

@@ -124,7 +124,7 @@ typedef enum
 
 typedef enum
 {
-  SERIAL_UNIQUE_NAME,
+  SERIAL_QUALIFIED_NAME,
   SERIAL_NAME,
   SERIAL_OWNER_NAME,
   SERIAL_CURRENT_VAL,
@@ -141,7 +141,7 @@ typedef enum
 
 typedef enum
 {
-  ALTER_SERIAL_UNIQUE_NAME,
+  ALTER_SERIAL_QUALIFIED_NAME,
   ALTER_SERIAL_NAME,
   ALTER_SERIAL_OWNER_NAME,
   ALTER_SERIAL_CURRENT_VAL,
@@ -159,7 +159,7 @@ typedef enum
 
 typedef enum
 {
-  SYNONYM_UNIQUE_NAME,
+  SYNONYM_QUALIFIED_NAME,
   SYNONYM_OWNER,
   SYNONYM_IS_PUBLIC,
   SYNONYM_TARGET_NAME,
@@ -852,7 +852,7 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 		  }
 		  break;
 
-		case SERIAL_UNIQUE_NAME:
+		case SERIAL_QUALIFIED_NAME:
 		case SERIAL_NAME:
 		  {
 		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
@@ -909,7 +909,7 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 		}
 	    }
 
-	  SPLIT_USER_SPECIFIED_NAME (db_get_string (&values[SERIAL_UNIQUE_NAME]), owner_name, serial_name);
+	  SPLIT_USER_SPECIFIED_NAME (db_get_string (&values[SERIAL_QUALIFIED_NAME]), owner_name, serial_name);
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			    sizeof (output_owner));
 
@@ -1064,7 +1064,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 		  }
 		  break;
 
-		case ALTER_SERIAL_UNIQUE_NAME:
+		case ALTER_SERIAL_QUALIFIED_NAME:
 		case ALTER_SERIAL_NAME:
 		  {
 		    if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
@@ -1173,13 +1173,13 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
 	  else
 	    {
 	      output_ctx ("\nALTER SERIAL %s%s%s START WITH %s;\n",
-			  PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_UNIQUE_NAME])),
+			  PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_QUALIFIED_NAME])),
 			  numeric_db_value_print (&values[ALTER_SERIAL_CURRENT_VAL], str_buf));
 
 	      if (db_get_int (&values[ALTER_SERIAL_STARTED]) == 1)
 		{
 		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ",
-			      PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_UNIQUE_NAME])));
+			      PRINT_IDENTIFIER (db_get_string (&values[ALTER_SERIAL_QUALIFIED_NAME])));
 		}
 	    }
 
@@ -1220,7 +1220,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   DB_VALUE values[SYNONYM_VALUE_INDEX_MAX];
   char synonym_name[DB_MAX_CLASS_LENGTH] = { '\0', };
   DB_OBJECT *synonym_owner = NULL;
-  const char *synonym_unique_name = NULL;
+  const char *synonym_qualified_name = NULL;
   char synonym_owner_name[DB_MAX_USER_LENGTH] = { '\0', };
   int is_public = 0;
   const char *target_name = NULL;
@@ -1240,7 +1240,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   char temp_schema[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   // *INDENT-OFF*
-  const char *query_all = "SELECT LOWER([owner].[name]) || '.' || [name] AS [unique_name], "
+  const char *query_all = "SELECT LOWER([owner].[name]) || '.' || [name] AS [synonym_name], "
                              "[owner], "
 			     "[is_public], "
 			     "[target_name], "
@@ -1248,7 +1248,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 			     "[comment] "
 			  "FROM [_db_synonym]";
 
-  const char *query_user = "SELECT LOWER([owner].[name]) || '.' || [name] AS [unique_name], "
+  const char *query_user = "SELECT LOWER([owner].[name]) || '.' || [name] AS [synonym_name], "
                              "[owner], "
 			     "[is_public], "
 			     "[target_name], "
@@ -1317,7 +1317,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	      /* Validation of the result value */
 	      switch (i)
 		{
-		case SYNONYM_UNIQUE_NAME:
+		case SYNONYM_QUALIFIED_NAME:
 		case SYNONYM_TARGET_NAME:
 		case SYNONYM_TARGET_OWNER_NAME:
 		  {
@@ -1365,7 +1365,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 		}
 	    }
 
-	  synonym_unique_name = db_get_string (&values[SYNONYM_UNIQUE_NAME]);
+	  synonym_qualified_name = db_get_string (&values[SYNONYM_QUALIFIED_NAME]);
 	  synonym_owner = db_get_object (&values[SYNONYM_OWNER]);
 	  is_public = db_get_int (&values[SYNONYM_IS_PUBLIC]);
 	  target_name = db_get_string (&values[SYNONYM_TARGET_NAME]);
@@ -1408,7 +1408,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	      output_ctx ("CREATE PRIVATE");
 	    }
 
-	  SPLIT_USER_SPECIFIED_NAME (synonym_unique_name, synonym_owner_name, synonym_name);
+	  SPLIT_USER_SPECIFIED_NAME (synonym_qualified_name, synonym_owner_name, synonym_name);
 	  PRINT_OWNER_NAME (synonym_owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), synonym_output_owner,
 			    sizeof (synonym_output_owner));
 

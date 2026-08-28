@@ -215,7 +215,7 @@ namespace cubmethod
 	  "CASE "
 	    "WHEN is_system_class = 'NO' THEN LOWER (owner_name) || '.' || class_name "
 	    "ELSE class_name "
-	    "END AS unique_name, "
+	    "END AS qualified_name, "
 	  "CAST ( "
 	      "CASE "
 		"WHEN is_system_class = 'YES' THEN 0 "
@@ -307,7 +307,7 @@ namespace cubmethod
 		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
 	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
 	    "ELSE a.class_name "
-	    "END AS unique_name, "
+	    "END AS qualified_name, "
 	  "a.attr_name "
 	"FROM "
 	  "db_attribute a "
@@ -404,7 +404,7 @@ namespace cubmethod
 	  }
       }
 
-    std::string sql = "SELECT vclass_def FROM db_vclass WHERE unique_name = '";
+    std::string sql = "SELECT vclass_def FROM db_vclass WHERE class_name = '";
     sql.append (class_name_only);
     sql.append ("' ");
 
@@ -730,7 +730,7 @@ namespace cubmethod
 	    /* If the user does not exist, compare the entire class_name. */
 	    if (owner && db_is_system_class (tmp->op) == FALSE)
 	      {
-		/* p: unique_name, q: class_name */
+		/* p: qualified_name, q: class_name */
 		q = strchr (p, '.');
 		if (q)
 		  {
@@ -843,7 +843,7 @@ namespace cubmethod
 		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
 	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
 	    "ELSE a.class_name "
-	    "END AS unique_name, "
+	    "END AS qualified_name, "
 	  "CASE "
 	    "WHEN ( "
 		"SELECT b.is_system_class "
@@ -851,7 +851,7 @@ namespace cubmethod
 		"WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name "
 	      ") = 'NO' THEN LOWER (a.super_owner_name) || '.' || a.super_class_name "
 	    "ELSE a.super_class_name "
-	    "END AS super_unique_name "
+	    "END AS super_qualified_name "
 	"FROM "
 	  "db_direct_super_class a "
 	"WHERE 1 = 1 ";
@@ -930,7 +930,7 @@ namespace cubmethod
 			"WHERE c.class_name = a.class_name AND c.owner_name = a.owner_name "
 		      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
 		    "ELSE a.class_name "
-		    "END AS unique_name, "
+		    "END AS qualified_name, "
 		  "b.key_attr_name, "
 		  "b.key_order + 1, "
 		  "a.index_name "

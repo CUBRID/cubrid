@@ -230,7 +230,7 @@ extern char *sm_qualifier_name (const char *name, char *buf, int buf_size);
 extern const char *sm_remove_qualifier_name (const char *name);
 extern MOP sm_find_class (const char *name);
 extern MOP sm_find_class_of_owner (const char *owner_name, const char *name);
-extern MOP sm_find_synonym_of_owner (MOP synonym_class_obj, const char *unique_name);
+extern MOP sm_find_synonym_of_owner (MOP synonym_class_obj, const char *qualified_name);
 extern MOP sm_find_class_with_purpose (const char *owner_name, const char *name, bool for_update);
 extern MOP sm_find_synonym (const char *name);
 extern char *sm_get_synonym_target_name (MOP synonym, char *buf, int buf_size);

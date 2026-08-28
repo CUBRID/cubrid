@@ -5731,10 +5731,10 @@ sm_find_synonym (const char *name)
  * sm_find_synonym_of_owner () - Find a synonym by its owner and its own name
  *   return: synonym object, or NULL when no synonym of that name belongs to that owner
  *   synonym_class_obj(in): the synonym catalog class
- *   unique_name(in): the name a user goes by, owner and all
+ *   qualified_name(in): the name a user goes by, owner and all
  */
 MOP
-sm_find_synonym_of_owner (MOP synonym_class_obj, const char *unique_name)
+sm_find_synonym_of_owner (MOP synonym_class_obj, const char *qualified_name)
 {
   const char *attr_names[2] = { "name", "owner" };
   DB_VALUE values[2];
@@ -5743,12 +5743,12 @@ sm_find_synonym_of_owner (MOP synonym_class_obj, const char *unique_name)
   MOP owner_mop;
   MOP synonym_obj = NULL;
 
-  if (synonym_class_obj == NULL || unique_name == NULL)
+  if (synonym_class_obj == NULL || qualified_name == NULL)
     {
       return NULL;
     }
 
-  if (sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH) != NULL)
+  if (sm_qualifier_name (qualified_name, owner_name, DB_MAX_USER_LENGTH) != NULL)
     {
       owner_mop = au_find_user (owner_name);
       if (owner_mop == NULL)
@@ -5757,7 +5757,7 @@ sm_find_synonym_of_owner (MOP synonym_class_obj, const char *unique_name)
 	}
       else
 	{
-	  db_make_string (&values[0], sm_remove_qualifier_name (unique_name));
+	  db_make_string (&values[0], sm_remove_qualifier_name (qualified_name));
 	  db_make_object (&values[1], owner_mop);
 
 	  synonym_obj = db_find_multi_unique (synonym_class_obj, 2, (char **) attr_names, value_ptrs, DB_FETCH_READ);

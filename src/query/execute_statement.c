@@ -1515,10 +1515,10 @@ do_get_obj_id (DB_IDENTIFIER * obj_id, DB_OBJECT * class_mop, const char *name, 
  *   return: MOP, or NULL when no serial of that name belongs to that owner
  *   serial_obj_id(out): the serial's OID, set when one is found
  *   serial_class_mop(in): the serial catalog class
- *   unique_name(in): the name a user goes by, owner and all
+ *   qualified_name(in): the name a user goes by, owner and all
  */
 static MOP
-do_find_serial_of_owner (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *unique_name)
+do_find_serial_of_owner (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *qualified_name)
 {
   const char *attr_names[2] = { SERIAL_ATTR_NAME, SERIAL_ATTR_OWNER };
   DB_VALUE values[2];
@@ -1531,13 +1531,13 @@ do_find_serial_of_owner (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class
 
   OID_SET_NULL (serial_obj_id);
 
-  if (serial_class_mop == NULL || unique_name == NULL
-      || intl_identifier_lower_string_size (unique_name) >= DB_MAX_IDENTIFIER_LENGTH)
+  if (serial_class_mop == NULL || qualified_name == NULL
+      || intl_identifier_lower_string_size (qualified_name) >= DB_MAX_IDENTIFIER_LENGTH)
     {
       return NULL;
     }
 
-  intl_identifier_lower (unique_name, lower_name);
+  intl_identifier_lower (qualified_name, lower_name);
 
   if (sm_qualifier_name (lower_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
     {
@@ -20775,7 +20775,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
     }
 
   class_name = sm_remove_qualifier_name (name);
-  query = "SELECT " CT_CLASS_UNIQUE_NAME_EXPR ("")
+  query = "SELECT " CT_CLASS_QUALIFIED_NAME_EXPR ("")
     " FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, qualifier_name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, qualifier_name);
@@ -20817,7 +20817,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* unique_name must not be null. */
+      /* qualified_name must not be null. */
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
@@ -20825,7 +20825,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because unique_name is not unique. */
+      /* No result can be returned because qualified_name is not unique. */
       buf[0] = '\0';
 
       ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
@@ -20931,7 +20931,7 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* unique_name must not be null. */
+      /* qualified_name must not be null. */
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
@@ -20939,7 +20939,7 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because unique_name is not unique. */
+      /* No result can be returned because qualified_name is not unique. */
       buf[0] = '\0';
     }
 
@@ -21037,7 +21037,7 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* unique_name must not be null. */
+      /* qualified_name must not be null. */
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
@@ -21045,7 +21045,7 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because unique_name is not unique. */
+      /* No result can be returned because qualified_name is not unique. */
       buf[0] = '\0';
     }
 
@@ -21124,14 +21124,14 @@ do_find_synonym_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* unique_name must not be null. */
+      /* qualified_name must not be null. */
       assert (false);
     }
 
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because unique_name is not unique. */
+      /* No result can be returned because qualified_name is not unique. */
       buf[0] = '\0';
 
       ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, name);
@@ -21232,7 +21232,7 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* unique_name must not be null. */
+      /* qualified_name must not be null. */
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
@@ -21240,7 +21240,7 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because unique_name is not unique. */
+      /* No result can be returned because qualified_name is not unique. */
       buf[0] = '\0';
 
       ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);

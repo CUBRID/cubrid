@@ -353,7 +353,7 @@ help_class_names (const char *qualifier)
   int count, i, outcount;
   DB_OBJECT *requested_owner, *owner;
   char buffer[2 * DB_MAX_IDENTIFIER_LENGTH + 4];
-  const char *unique_name;
+  const char *qualified_name;
   const char *class_name;
 
   requested_owner = NULL;
@@ -384,18 +384,18 @@ help_class_names (const char *qualifier)
 	{
 	  for (i = 0, m = mops; i < count; i++, m = m->next)
 	    {
-	      unique_name = db_get_class_qualified_name (m->op, qualified_name, sizeof (qualified_name));
+	      qualified_name = db_get_class_qualified_name (m->op, qualified_name, sizeof (qualified_name));
 	      buffer[0] = '\0';
 
-	      if (!requested_owner && sm_check_name (unique_name))
+	      if (!requested_owner && sm_check_name (qualified_name))
 		{
-		  snprintf (buffer, sizeof (buffer) - 1, "%s", unique_name);
+		  snprintf (buffer, sizeof (buffer) - 1, "%s", qualified_name);
 		  names[outcount++] = object_print::copy_string (buffer);
 		  continue;
 		}
 
 	      owner = db_get_owner (m->op);
-	      class_name = sm_remove_qualifier_name (unique_name);
+	      class_name = sm_remove_qualifier_name (qualified_name);
 	      if (ws_is_same_object (requested_owner, owner) && sm_check_name (class_name))
 		{
 		  snprintf (buffer, sizeof (buffer) - 1, "%s", class_name);

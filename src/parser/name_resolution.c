@@ -10723,7 +10723,7 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_OBJECT *serial_obj = NULL;
   DB_IDENTIFIER serial_obj_id;
   const char *serial_name = NULL;
-  const char *serial_unique_name = NULL;
+  const char *serial_qualified_name = NULL;
   const char *owner_name = NULL;
 
   if (node == NULL)
@@ -10757,16 +10757,16 @@ pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (owner_name && owner_name[0] != '\0')
     {
-      serial_unique_name = pt_append_string (parser, serial_unique_name, owner_name);
-      serial_unique_name = pt_append_string (parser, serial_unique_name, ".");
+      serial_qualified_name = pt_append_string (parser, serial_qualified_name, owner_name);
+      serial_qualified_name = pt_append_string (parser, serial_qualified_name, ".");
     }
-  serial_unique_name = pt_append_string (parser, serial_unique_name, serial_name);
+  serial_qualified_name = pt_append_string (parser, serial_qualified_name, serial_name);
 
   serial_class_obj = sm_find_class (CT_SERIAL_NAME);
-  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class_obj, serial_unique_name);
+  serial_obj = do_get_serial_obj_id (&serial_obj_id, serial_class_obj, serial_qualified_name);
   if (serial_obj == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_unique_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_qualified_name);
     }
 
   return serial_obj;

@@ -1015,7 +1015,7 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 
   while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
     {
-      const char *unique_name = NULL;
+      const char *qualified_name = NULL;
       const char *target = NULL;
 
       if (mvcc_snapshot == NULL)
@@ -1045,7 +1045,7 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
       value = heap_attrinfo_access (name_att_id, &attr_info);
       if (value != NULL && !DB_IS_NULL (value))
 	{
-	  unique_name = db_get_string (value);
+	  qualified_name = db_get_string (value);
 	}
 
       value = heap_attrinfo_access (target_att_id, &attr_info);
@@ -1068,13 +1068,13 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	  COPY_OID (&target_owner_oid, db_get_oid (value));
 	}
 
-      if (unique_name == NULL || target == NULL)
+      if (qualified_name == NULL || target == NULL)
 	{
 	  assert (false);
 	  continue;
 	}
 
-      if (locator_get_entry (&owner_oid, unique_name) != NULL)
+      if (locator_get_entry (&owner_oid, qualified_name) != NULL)
 	{
 	  /* an old row version scanned without a snapshot, or a name clash; first one wins */
 	  continue;
@@ -1088,11 +1088,12 @@ locator_initialize_synonym_entries (THREAD_ENTRY * thread_p)
 	  goto exit;
 	}
 
-      entry->e_name = strdup (unique_name);
+      entry->e_name = strdup (qualified_name);
       if (entry->e_name == NULL)
 	{
 	  free_and_init (entry);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (unique_name) + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) (strlen (qualified_name) + 1));
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto exit;
 	}

@@ -1522,7 +1522,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
     }
 
   class_name = sm_remove_qualifier_name (name);
-  query = "SELECT " CT_CLASS_UNIQUE_NAME_EXPR ("")
+  query = "SELECT " CT_CLASS_QUALIFIED_NAME_EXPR ("")
 	  " FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, current_schema_name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, current_schema_name);
@@ -1565,7 +1565,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* unique_name must not be null. */
+      /* qualified_name must not be null. */
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
@@ -1573,7 +1573,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because unique_name is not unique. */
+      /* No result can be returned because qualified_name is not unique. */
       buf[0] = '\0';
     }
 
