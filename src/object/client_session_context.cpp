@@ -154,11 +154,8 @@ csc_obt (void)
   return &csc_current ()->obt;
 }
 
-/* the parser owns the label table's contents (parse_evaluate.c) */
-extern "C" void pt_free_label_table (void);
-
-/* execution-plan trace buffer (db_query.c, plain malloc) */
-extern "C" void db_free_execution_plan (void);
+/* pt_free_label_table (parser.h) frees the label table the parser owns;
+ * db_free_execution_plan (db_query.h) frees the plan trace buffer */
 
 /* method/SP callback termination state (#120): the handler caches
  * workspace-backed query handles (method_callback.cpp) and the runtime-args

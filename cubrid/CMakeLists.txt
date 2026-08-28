@@ -759,11 +759,21 @@ SET_SOURCE_FILES_PROPERTIES(
 
 # grammar/lexer output must build as C++ here: under SERVER_MODE their include
 # chain reaches C++-only headers (thread_compat.hpp -> <thread>).  The generated
-# C code needs -fpermissive for C-style int<->enum and void* conversions.
+# C code needs -fpermissive for C-style int<->enum and void* conversions, and
+# -Wno-error so the Release -Werror does not re-escalate what -fpermissive
+# demoted.
 SET_SOURCE_FILES_PROPERTIES(
   ${BISON_csql_grammar_OUTPUTS}
   ${FLEX_csql_lexer_OUTPUTS}
-  PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-fpermissive -Wno-narrowing -Wno-write-strings"
+  PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-fpermissive -Wno-narrowing -Wno-write-strings -Wno-error"
+  )
+
+# under SERVER_MODE inlining, gcc's -Wclobbered flags allocator locals inlined
+# into qo_optimize_query's setjmp frame although they are dead at the longjmp;
+# keep the warning visible but not fatal
+SET_SOURCE_FILES_PROPERTIES(
+  ${OPTIMIZER_DIR}/query_graph.c
+  PROPERTIES COMPILE_FLAGS "-Wno-error=clobbered"
   )
 
 set (CUBRID_LIB_SOURCES

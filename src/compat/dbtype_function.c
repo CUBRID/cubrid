@@ -44,6 +44,10 @@ extern "C"
   int db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str,
 		       const int size);
   DB_TYPE setobj_type (struct setobj *set);
+  /* _DBTYPE_FUNCTION_SELF_ suppressed the header's int-typed alias, so the
+   * definition in dbtype_function.i needs this same-typed previous prototype
+   * (-Werror=missing-prototypes in the C compile) */
+  INTL_CODESET db_get_string_codeset (const DB_VALUE * value);
 #ifdef __cplusplus
 }
 #endif
