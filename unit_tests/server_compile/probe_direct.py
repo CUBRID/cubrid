@@ -127,9 +127,10 @@ def main():
     qc.sendall(msg)
     code = struct.unpack(">i", recv_exact(qc, 4, "qc reply"))[0]
     qc.close()
-    if code != 0:
+    # legacy CAS wire convention: CAS_CONV_ERROR_TO_OLD adds 9000, even on success
+    if code != 9000:
         die("cancel with valid token returned %d" % code)
-    print("PROBE: cancel forwarded (code 0)")
+    print("PROBE: cancel forwarded (code 9000)")
 
     # 4. cancel anti-spoof: unknown token must be refused
     qc2 = socket.create_connection(("127.0.0.1", port), timeout=10)
@@ -137,7 +138,7 @@ def main():
     qc2.sendall(msg)
     code = struct.unpack(">i", recv_exact(qc2, 4, "qc2 reply"))[0]
     qc2.close()
-    if code == 0:
+    if code == 9000:
         die("cancel with bogus token was accepted")
     print("PROBE: bogus-token cancel refused (code %d)" % code)
 

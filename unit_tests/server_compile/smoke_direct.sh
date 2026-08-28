@@ -70,9 +70,19 @@ sleep 1
 
 python3 "$SCRIPT_DIR/probe_direct.py" "$BROKER_PORT" "$DB" dba "" || fail "probe"
 
-# teardown must be clean: the adopted-session sign-off path runs on stop
-cubrid broker stop >/dev/null 2>&1 || fail "broker stop"
-cubrid server stop "$DB" >/dev/null 2>&1 || fail "server stop"
+# teardown: the adopted-session sign-off path runs on broker stop.  The stop
+# commands themselves are tolerated (master may auto-exit once the broker is
+# gone, making a late `server stop` unable to reach it) — what gates is the
+# verified end state: nothing from this install left running.
+cubrid broker stop >/dev/null 2>&1 || true
+cubrid server stop "$DB" >/dev/null 2>&1 || true
 cubrid service stop >/dev/null 2>&1 || true
+for _ in $(seq 1 20); do
+  pgrep -f "$CUBRID/bin/cub_" >/dev/null 2>&1 || break
+  sleep 0.5
+done
+if pgrep -af "$CUBRID/bin/cub_" 2>/dev/null | grep -q .; then
+  fail "processes still running after teardown"
+fi
 
 echo "SMOKE_DIRECT: SUCCESS"
