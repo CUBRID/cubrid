@@ -3534,7 +3534,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       if (node->info.function.function_type == PT_GENERIC)
 	{
 	  MOP sp_mop = NULL;
-	  char sp_unique_name[SM_MAX_IDENTIFIER_LENGTH + 1];
+	  char sp_qualified_name[SM_MAX_IDENTIFIER_LENGTH + 1];
 	  node->info.function.function_type = pt_find_function_type (node->info.function.generic_name);
 
 	  if (node->info.function.function_type == PT_GENERIC)
@@ -3558,11 +3558,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      sp_mop = jsp_find_stored_procedure (node->info.function.generic_name, DB_AUTH_NONE);
 	      if (sp_mop != NULL)
 		{
-		  sp_unique_name[0] = '\0';
-		  jsp_get_qualified_name (sp_mop, sp_unique_name, DB_MAX_IDENTIFIER_LENGTH + 1);
-		  if (sp_unique_name[0] != '\0')
+		  sp_qualified_name[0] = '\0';
+		  jsp_get_qualified_name (sp_mop, sp_qualified_name, DB_MAX_IDENTIFIER_LENGTH + 1);
+		  if (sp_qualified_name[0] != '\0')
 		    {
-		      node->info.function.generic_name = pt_append_string (parser, NULL, sp_unique_name);
+		      node->info.function.generic_name = pt_append_string (parser, NULL, sp_qualified_name);
 		    }
 
 		  node1 = pt_resolve_stored_procedure (parser, node, bind_arg);

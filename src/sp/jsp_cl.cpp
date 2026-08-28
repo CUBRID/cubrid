@@ -162,13 +162,13 @@ jsp_is_exist_stored_procedure (const char *name)
 /*
  * jsp_find_sp_of_owner () - Find a stored procedure by its owner and its own name
  *   return: MOP, or NULL when no procedure of that name belongs to that owner
- *   unique_name(in): the name a user goes by, owner and all
+ *   qualified_name(in): owner.name or owner.package.name
  *
  * Note: The row keeps the two apart, so the name is taken apart once here rather than
  *       stored a second time alongside them.
  */
 static MOP
-jsp_find_sp_of_owner (const char *unique_name)
+jsp_find_sp_of_owner (const char *qualified_name)
 {
   const char *attr_names[3] = { SP_ATTR_SP_NAME, SP_ATTR_PKG_NAME, SP_ATTR_OWNER };
   DB_VALUE values[3];
@@ -181,12 +181,12 @@ jsp_find_sp_of_owner (const char *unique_name)
 
   /* owner.name, or owner.package.name. sm_qualifier_name () is no help here: it takes a
    * class name apart and asserts there is only the one dot. */
-  first_dot = strchr (unique_name, '.');
-  if (first_dot == NULL || (size_t) (first_dot - unique_name) >= sizeof (owner_name))
+  first_dot = strchr (qualified_name, '.');
+  if (first_dot == NULL || (size_t) (first_dot - qualified_name) >= sizeof (owner_name))
     {
       return NULL;
     }
-  memcpy (owner_name, unique_name, first_dot - unique_name);
+  memcpy (owner_name, qualified_name, first_dot - qualified_name);
 
   second_dot = strchr (first_dot + 1, '.');
   if (second_dot == NULL)
@@ -325,7 +325,8 @@ jsp_find_stored_procedure_code (const char *name)
  *   name(in): find java stored procedure name
  *   return_mop(in): retrieves the name of a java stored procedure and returns its MOP value.
  *
- * Note: This is a function for finding the unique_name of an SP when running the loaddb utility with the --no-user-specified-name option as a dba user.
+ * Note: This finds the qualified name of an SP when loaddb runs with
+ *       --no-user-specified-name as a dba user.
  */
 
 int

@@ -657,7 +657,7 @@ exit:
  *   return: error code
  *   obj_type(in) : objcet type
  *   grantor_mop(in): grantor user
- *   unique_name(in): class/stored procedure unique_name
+ *   obj_mop(in): class/stored procedure object
  */
 int
 au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, MOP obj_mop)
