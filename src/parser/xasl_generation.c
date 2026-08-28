@@ -22657,12 +22657,16 @@ pt_update_must_abort_reevaluation (PARSER_CONTEXT * parser, PT_NODE * statement,
       return true;
     }
 
-  /* the assignment flag counts here as the condition flag does.
+  /* a spec reading a derived table has no heap of its own to re-read.  The flag is not what says so,
+   * no more than it does on the DELETE side: the rewrite that puts a derived table there takes the
+   * heap and the flag together, so the spec that most needs this test is the one that no longer
+   * carries it.  An OID equality turns the target's own scan into a scan over a set -- FROM t becomes
+   * FROM table({:obj}) -- and leaves the UPDATE's spec flagged while the SELECT's is not.
+   *   UPDATE t SET v = 1 WHERE t = :obj;
    *   UPDATE t a, (SELECT 1 AS k) x SET a.v = 1 WHERE a.pk = x.k; */
   for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
     {
-      if (cl_name_node->info.spec.derived_table != NULL
-	  && (cl_name_node->info.spec.flag & (PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV)))
+      if (cl_name_node->info.spec.derived_table != NULL)
 	{
 	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
 	  return true;
