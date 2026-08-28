@@ -24518,6 +24518,28 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
 	  return error_code;
 	}
+
+      if (HFID_IS_NULL (&hfid_local))
+	{
+	  /* The class record has no heap file assigned at this moment: TRUNCATE flushes the class with a NULL HFID
+	   * before re-creating the heap (sm_truncate_using_destroy_heap), and views never have one. Do not cache
+	   * the transient state; report the class as unknown so the caller treats the access as a miss. */
+	  if (classname_local != NULL)
+	    {
+	      free_and_init (classname_local);
+	    }
+	  lf_tran_end_with_mb (t_entry);
+
+	  // remove entry
+	  lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, class_oid->volid, class_oid->pageid,
+		  class_oid->slotid);
+	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get: class record has NULL HFID, error = %d",
+			       ER_HEAP_UNKNOWN_OBJECT);
+	  return ER_HEAP_UNKNOWN_OBJECT;
+	}
+
       entry->hfid = hfid_local;
 
       char *dummy_null = NULL;
