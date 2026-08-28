@@ -563,6 +563,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->client_id = -1;
   tdes->client.set_system_internal ();
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->block_global_oldest_active_until_commit = false;
 
@@ -1591,6 +1592,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
@@ -1681,6 +1683,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->suppress_replication = 0;
   tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
@@ -6523,6 +6526,7 @@ log_tdes::copy_to (LOG_TDES & dest) const
   REPLACE_COPY_2_DEST (dest, suppress_replication);
   REPLACE_COPY_2_DEST (dest, lob_locator_root);
   REPLACE_COPY_2_DEST (dest, query_timeout);
+  REPLACE_COPY_2_DEST (dest, last_query_deadline);
   REPLACE_COPY_2_DEST (dest, query_start_time);
   REPLACE_COPY_2_DEST (dest, tran_start_time);
   REPLACE_COPY_2_DEST (dest, xasl_id);
