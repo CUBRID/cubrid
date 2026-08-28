@@ -270,17 +270,20 @@ namespace cubconn
 	}
     }
 
-    /* cas_set_session_id translation: hand the driver-supplied session key
-     * to the client half before boot so the server session is reattached
-     * (or a fresh one created when the key is empty/stale) */
+    /* connection == session (#116 D5; the CAS session-reattach protocol is
+     * retired, B1-D12): every adopted connection gets a FRESH server session,
+     * whatever session key the driver sent.  Reattaching would land a second
+     * client context on a session slot that still owns the previous
+     * connection's one (session_adopt_client_context invariant). */
     static void
     apply_driver_session_id (const char (&session_20b)[20])
     {
-      SESSION_ID id;
-      std::memcpy (&id, session_20b + 8, sizeof (SESSION_ID));
-      id = ntohl (id);
-      db_set_server_session_key (session_20b);
-      db_set_session_id (id);
+      static const char empty_key[SERVER_SESSION_KEY_SIZE] =
+	{ (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF };
+
+      (void) session_20b;
+      db_set_server_session_key (empty_key);
+      db_set_session_id (DB_EMPTY_SESSION);
     }
 
     /* cas_make_session_for_driver translation */
