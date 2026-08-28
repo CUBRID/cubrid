@@ -7649,7 +7649,6 @@ sm_get_descriptor_component (MOP op, SM_DESCRIPTOR * desc, int for_update, SM_CL
 int
 sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_ATTRIBUTE *attr;
   DB_OBJLIST *supers;
   DB_OBJECT *domain;
@@ -7663,10 +7662,7 @@ sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all)
 	  if (domain)
 	    {
 	      supers = db_get_superclasses (domain);
-	      if (supers && supers->op
-		  &&
-		  (intl_identifier_casecmp
-		   (db_get_class_qualified_name (supers->op, qualified_name, sizeof (qualified_name)), "db_text") == 0))
+	      if (supers && supers->op && (intl_identifier_casecmp (db_get_class_name (supers->op), "db_text") == 0))
 		{
 		  return true;
 		}
