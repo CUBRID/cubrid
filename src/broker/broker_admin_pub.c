@@ -3120,6 +3120,15 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id, T_SHM_BROKER * shm_br)
 	    }
 	}
     }
+  else if (br_info->direct_handoff == ON)
+    {
+      /* stage B1 (#117): no CAS pool — connections are handed off to the
+       * database server; slots exist only as the broker's admission count */
+      for (i = 0; i < br_info->appl_server_max_num; i++)
+	{
+	  CON_STATUS_LOCK_INIT (&(shm_appl->as_info[i]));
+	}
+    }
   else
     {
       for (i = 0; i < shm_appl->num_appl_server && i < APPL_SERVER_NUM_LIMIT; i++)

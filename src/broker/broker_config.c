@@ -257,6 +257,7 @@ const char *broker_keywords[] = {
   "SQL_LOG_MAX_SIZE",
   "SERVICE",
   "SSL",
+  "DIRECT_HANDOFF",
 #if defined (FOR_ODBC_GATEWAY)
   "CGW_LINK_SERVER",
   "CGW_LINK_SERVER_IP",
@@ -653,6 +654,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       INI_GETSTR_CHK (s, ini, sec_name, "SSL", DEFAULT_SSL_MODE, &lineno);
       br_info[num_brs].use_SSL = conf_get_value_table_on_off (s);
       if (br_info[num_brs].use_SSL < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
+      INI_GETSTR_CHK (s, ini, sec_name, "DIRECT_HANDOFF", "OFF", &lineno);
+      br_info[num_brs].direct_handoff = conf_get_value_table_on_off (s);
+      if (br_info[num_brs].direct_handoff < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
@@ -1300,6 +1309,15 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 		  error_flag = TRUE;
 		}
 	    }
+
+	  /* B1: the broker peeks db_info in cleartext (SSL termination moves
+	   * server-side in B2) and SHARD is not supported in the new
+	   * architecture (#116 D2) */
+	  if (br_info[i].direct_handoff == ON && (br_info[i].use_SSL == ON || br_info[i].shard_flag == ON))
+	    {
+	      PRINTERROR ("config error, %s, DIRECT_HANDOFF cannot be combined with SSL or SHARD\n", br_info[i].name);
+	      error_flag = TRUE;
+	    }
 	}			/* end for (i) */
     }				/* end if (admin_flag) */
   if (error_flag == TRUE)
@@ -1616,6 +1634,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 #endif
       fprintf (fp, "APPL_SERVER_SHM_ID\t=%x\n", br_info[i].appl_server_shm_id);
       fprintf (fp, "SSL\t\t\t=%s\n", br_info[i].use_SSL ? "ON" : "OFF");
+      fprintf (fp, "DIRECT_HANDOFF\t\t=%s\n", br_info[i].direct_handoff ? "ON" : "OFF");
       fprintf (fp, "APPL_SERVER_MAX_SIZE\t=%d\n", br_info[i].appl_server_max_size / ONE_K);
       fprintf (fp, "SESSION_TIMEOUT\t\t=%d\n", br_info[i].session_timeout);
       fprintf (fp, "LOG_DIR\t\t\t=%s\n", br_info[i].log_dir);

@@ -35,6 +35,7 @@
 #include "driver_session.hpp"
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -53,6 +54,7 @@
 #include "network_interface_cl.h"	// boot_unregister_client
 #include "session.h"		// session_adopt_client_context
 #include "storage_common.h"	// NULL_TRAN_INDEX
+#include "system_parameter.h"	// PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "transaction_cl.h"	// tm_Tran_index
@@ -346,6 +348,17 @@ namespace cubconn
       char reply[CONNECT_REPLY_BUF_SIZE];
       std::size_t reply_size;
 
+      /* the broker's peek engine set O_NONBLOCK, and an SCM_RIGHTS-passed fd
+       * shares the open file description — restore blocking mode, this
+       * thread's loop owns the fd exclusively */
+      {
+	int flags = fcntl (params.client_fd, F_GETFL, 0);
+	if (flags >= 0)
+	  {
+	    (void) fcntl (params.client_fd, F_SETFL, flags & ~O_NONBLOCK);
+	  }
+      }
+
       /* register this foreign thread with the thread manager (same ritual as
        * the tracer / connection_worker.cpp) */
       cubthread::entry *entry_p = cubthread::get_manager ()->claim_entry ();
@@ -432,6 +445,15 @@ namespace cubconn
 
       /* cancel arrives on the control channel as a tran interrupt (#117 D4) */
       registry_set_tran_index (params.token, tm_Tran_index);
+
+      /* the broker filled its own connect-reply facts (bytes 0-3:
+       * dbms/keep_con/statement pooling/pconnect); the server owns the
+       * protocol bytes (cas_bi_make_broker_info split, B1-D5) */
+      params.broker_info[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
+      params.broker_info[BROKER_INFO_FUNCTION_FLAG] = (char) (BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT);
+      params.broker_info[BROKER_INFO_SYSTEM_PARAM] =
+	      prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR) ? MASK_ORACLE_COMPAT_NUMBER_BEHAVIOR : 0;
+      params.broker_info[BROKER_INFO_RESERVED3] = 0;
 
       make_session_for_driver (session_blob);
       reply_size = build_connect_reply (params.token, params.slot_idx, params.broker_info, session_blob,

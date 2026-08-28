@@ -291,6 +291,10 @@ struct t_broker_info
 
   char use_SSL;
 
+  /* stage B1 (#117): dispatch driver connections to the database server's
+   * adoption socket instead of a CAS pool */
+  char direct_handoff;
+
   char cgw_link_server[CGW_LINK_SERVER_NAME_LEN];
   char cgw_link_server_ip[CGW_LINK_SERVER_IP_LEN];
   char cgw_link_server_port[CGW_LINK_SERVER_PORT_LEN];
