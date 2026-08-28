@@ -46,6 +46,9 @@
 #include <atomic>
 #include <cassert>
 #include <condition_variable>
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <memory>
@@ -66,6 +69,34 @@ namespace brd
 
   static const int DB_INFO_PEEK_TIMEOUT_SEC = 60;	/* inherited header-read budget */
   static const int CHANNEL_REPLY_TIMEOUT_SEC = 5;
+
+  /* cold-path diagnostics: set BRD_DEBUG_LOG=<path> in the broker's
+   * environment to trace handoff/cancel decisions */
+  static void
+  brd_debug (const char *fmt, ...)
+  {
+    static FILE *fp = NULL;
+    static bool tried = false;
+    if (!tried)
+      {
+	tried = true;
+	const char *path = getenv ("BRD_DEBUG_LOG");
+	if (path != NULL && path[0] != '\0')
+	  {
+	    fp = fopen (path, "a");
+	  }
+      }
+    if (fp == NULL)
+      {
+	return;
+      }
+    va_list ap;
+    va_start (ap, fmt);
+    vfprintf (fp, fmt, ap);
+    va_end (ap);
+    fputc ('\n', fp);
+    fflush (fp);
+  }
 
   /* ------------------------------------------------------------------ */
   /* small wire helpers                                                 */
@@ -883,11 +914,13 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
       if (channel_request (*ch, adopt::msg_op::HANDOFF, &body, sizeof (body), NULL, 0, job->clt_sock_fd,
 			   &reply_header, reply_body, sizeof (reply_body)) != 0)
 	{
+	  brd_debug ("handoff db=%s: request failed/timeout", db_name);
 	  send_error_code_to_driver (job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
 	  close (job->clt_sock_fd);
 	  return;
 	}
 
+      brd_debug ("handoff db=%s: reply op=%u len=%u", db_name, reply_header.op, reply_header.length);
       if ((adopt::msg_op) reply_header.op == adopt::msg_op::HANDOFF_ACK
 	  && reply_header.length == sizeof (adopt::token_body))
 	{
@@ -900,6 +933,7 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
 	    std::memcpy (ti.clt_ip, job->ip_addr, 4);
 	    ti.clt_port = job->port;
 	  }
+	  brd_debug ("handoff db=%s: token=%u stored (clt_port=%u)", db_name, ack.token, (unsigned) job->port);
 	  m->slots_used.fetch_add (1);
 	  close (job->clt_sock_fd);	/* the server owns the connection now */
 	  return;
@@ -939,12 +973,15 @@ brd_cancel (unsigned int token, const unsigned char *clt_ip, unsigned short clt_
     auto it = m->tokens.find (token);
     if (it == m->tokens.end ())
       {
+	brd_debug ("cancel token=%u: unknown (table size %zu)", token, m->tokens.size ());
 	return -1;
       }
     /* the anti-spoof check the pid scan used to make (broker.c:938-943):
      * client port or client ip must match */
     if (clt_port > 0 && it->second.clt_port != clt_port && std::memcmp (it->second.clt_ip, clt_ip, 4) != 0)
       {
+	brd_debug ("cancel token=%u: spoof check failed (have port %u, got %u)", token,
+		   (unsigned) it->second.clt_port, (unsigned) clt_port);
 	return -1;
       }
     db_name = it->second.db_name;
@@ -953,6 +990,7 @@ brd_cancel (unsigned int token, const unsigned char *clt_ip, unsigned short clt_
   std::shared_ptr<channel> ch = channel_get_or_dial (*m, db_name);
   if (ch == NULL)
     {
+      brd_debug ("cancel token=%u: no channel", token);
       return -1;
     }
   adopt::token_body body;

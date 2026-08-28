@@ -52,7 +52,7 @@ ADMIN_LOG_FILE          =log/broker/cubrid_broker.log
 [%B1DIRECT]
 SERVICE                 =ON
 BROKER_PORT             =$BROKER_PORT
-MIN_NUM_APPL_SERVER     =0
+MIN_NUM_APPL_SERVER     =1
 MAX_NUM_APPL_SERVER     =20
 APPL_SERVER_SHM_ID      =30002
 LOG_DIR                 =log/broker/sql_log
