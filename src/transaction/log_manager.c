@@ -14270,7 +14270,7 @@ cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_star
    * archives; this one is the only record of a decision, so a lost write means no protection at all -
    * exactly the failure this is meant to prevent. The value tracks archive creation, so the cost is
    * one sync per archive. */
-  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, false) == NULL_VOLDES)
     {
       /* fileio_synchronize () has already set the error. There is nothing to undo - the value is written,
        * it is just not known to be on the medium yet - but it must not look durable when it is not. */
