@@ -1,0 +1,58 @@
+
+Time: 05/06/26 16:49:50.661 - NOTIFICATION *** file /home/claude_user/CUBRID_GIT/CUBRID_CACHE/cubrid114_ttl/src/transaction/boot_cl.c, line 1085  CODE = -971, Tran = -1, EID = 1
+Program '/home/claude_user/CUBRID_TTL114/bin/csql' (pid 2199028) connected to database server 'demodb' on the host 'localhost' (port 1624).
+
+Time: 05/06/26 16:49:50.679 - SYNTAX ERROR *** file /home/claude_user/CUBRID_GIT/CUBRID_CACHE/cubrid114_ttl/src/compat/db_vdb.c, line 1051 ERROR CODE = -492, Tran = 3, EID = 2
+In line 1, column 6 before ' STATUS;'
+Syntax error: unexpected 'SERVER', expecting COLUMNS or TABLES
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/06/26 20:06:27.944 - NOTIFICATION *** file /home/claude_user/CUBRID_GIT/CUBRID_CACHE/cubrid114_ttl/src/transaction/boot_cl.c, line 1085  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 2224378) connected to database server 'demodb' on the host 'localhost' (port 1624).
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/06/26 20:06:27.976 - NOTIFICATION *** file /home/claude_user/CUBRID_GIT/CUBRID_CACHE/cubrid114_ttl/src/transaction/boot_cl.c, line 1085  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 2224380) connected to database server 'demodb' on the host 'localhost' (port 1624).
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/06/26 20:06:28.006 - NOTIFICATION *** file /home/claude_user/CUBRID_GIT/CUBRID_CACHE/cubrid114_ttl/src/transaction/boot_cl.c, line 1085  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 2224382) connected to database server 'demodb' on the host 'localhost' (port 1624).
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/06/26 20:06:28.037 - NOTIFICATION *** file /home/claude_user/CUBRID_GIT/CUBRID_CACHE/cubrid114_ttl/src/transaction/boot_cl.c, line 1085  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 2224384) connected to database server 'demodb' on the host 'localhost' (port 1624).
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/06/26 20:06:34.172 - NOTIFICATION *** file /home/claude_user/CUBRID_GIT/CUBRID_CACHE/cubrid114/src/transaction/boot_cl.c, line 1082  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 2224417) connected to database server 'demodb' on the host 'localhost' (port 1624).
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/06/26 20:06:34.200 - NOTIFICATION *** file /home/claude_user/CUBRID_GIT/CUBRID_CACHE/cubrid114/src/transaction/boot_cl.c, line 1082  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 2224419) connected to database server 'demodb' on the host 'localhost' (port 1624).
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/06/26 20:06:34.228 - NOTIFICATION *** file /home/claude_user/CUBRID_GIT/CUBRID_CACHE/cubrid114/src/transaction/boot_cl.c, line 1082  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 2224421) connected to database server 'demodb' on the host 'localhost' (port 1624).
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/06/26 20:06:34.256 - NOTIFICATION *** file /home/claude_user/CUBRID_GIT/CUBRID_CACHE/cubrid114/src/transaction/boot_cl.c, line 1082  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 2224423) connected to database server 'demodb' on the host 'localhost' (port 1624).
+
+*** The previous error message is the last one. ***
+

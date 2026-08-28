@@ -5449,6 +5449,8 @@ or_pack_listid (char *ptr, void *listid_ptr)
   ptr += OR_INT_SIZE;
   OR_PUT_INT (ptr, listid->type_list.type_cnt);
   ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, listid->is_result_cached ? 1 : 0);
+  ptr += OR_INT_SIZE;
 
   for (i = 0; i < listid->type_list.type_cnt; i++)
     {
@@ -5536,6 +5538,8 @@ or_unpack_listid (char *ptr, void *listid_ptr)
   listid->lasttpl_len = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
   listid->type_list.type_cnt = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  listid->is_result_cached = (OR_GET_INT (ptr) != 0);
   ptr += OR_INT_SIZE;
 
   return ptr;
@@ -5635,9 +5639,9 @@ or_listid_length (void *listid_ptr)
   length = DB_ALIGN (length, MAX_ALIGNMENT);	// aligned offset
   length += OR_INT64_SIZE;
 
-  /* 8 fixed item page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
-   * last_offset lasttpl_len type_list_type_cnt */
-  length += OR_INT_SIZE * 8;
+  /* 9 fixed item page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
+   * last_offset lasttpl_len type_list_type_cnt is_result_cached */
+  length += OR_INT_SIZE * 9;
 
   for (i = 0; i < listid->type_list.type_cnt; i++)
     {

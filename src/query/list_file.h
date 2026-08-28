@@ -99,6 +99,13 @@ struct qfile_list_cache_entry
   int ref_count;		/* how many times this query used */
   bool deletion_marker;		/* this entry will be deleted if marker set */
   bool invalidate;		/* related xcache entry is erased */
+  int ttl_seconds;		/* TTL in seconds; 0 means invalidate on DML commit (default) */
+  int cache_policy;		/* 0=default, 1=TTL */
+  int queue_slots;		/* 1=single buffer (default), 2=double-buffering */
+  bool needs_refresh;		/* queue: pending slot needs refresh */
+  bool force_miss_next;		/* queue: next lookup should return miss to trigger refresh */
+  bool has_pending;		/* queue: pending slot has valid refreshed data */
+  QFILE_LIST_ID list_id_pending; /* queue: pending slot for double-buffering swap */
 };
 
 enum
@@ -170,6 +177,7 @@ int qcache_get_new_ht_no (THREAD_ENTRY * thread_p);
 void qcache_free_ht_no (THREAD_ENTRY * thread_p, int ht_no);
 
 int qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENTRY * lent, bool marker);
+int qfile_clear_list_cache_except_ttl (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 
 /* Scan related routines */
 extern int qfile_modify_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_LIST_ID * list_id);

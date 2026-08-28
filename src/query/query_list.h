@@ -577,6 +577,43 @@ enum
 #define IS_XASL_TRACE_TEXT(flag)    (((flag) & XASL_TRACE_TEXT) != 0)
 #define IS_XASL_TRACE_JSON(flag)    (((flag) & XASL_TRACE_JSON) != 0)
 
+/* QUERY_CACHE TTL & Policy encoding in query_flag upper bits
+ * Bits 20-29: TTL seconds (10 bits, max 1023s)
+ * Bits 30-31: Policy (2 bits: 0=default, 1=TTL)
+ */
+#define RESULT_CACHE_TTL_SHIFT    20
+#define RESULT_CACHE_TTL_BITS     10
+#define RESULT_CACHE_TTL_MAX      1023
+#define RESULT_CACHE_TTL_MASK     (RESULT_CACHE_TTL_MAX << RESULT_CACHE_TTL_SHIFT)  /* 0x3FF00000 */
+#define RESULT_CACHE_TTL_ENCODE(ttl)   ((((ttl) > RESULT_CACHE_TTL_MAX ? RESULT_CACHE_TTL_MAX : (ttl)) & RESULT_CACHE_TTL_MAX) << RESULT_CACHE_TTL_SHIFT)
+#define RESULT_CACHE_TTL_DECODE(flag)  (((flag) & RESULT_CACHE_TTL_MASK) >> RESULT_CACHE_TTL_SHIFT)
+#define RESULT_CACHE_HAS_TTL(flag)     (((flag) & RESULT_CACHE_TTL_MASK) != 0)
+
+/* Cache policy types */
+#define RESULT_CACHE_POLICY_DEFAULT     0  /* legacy: invalidate on DML commit */
+#define RESULT_CACHE_POLICY_TTL         1  /* TTL-based: ignore DML invalidation */
+
+#define RESULT_CACHE_POLICY_SHIFT   30
+#define RESULT_CACHE_POLICY_MASK    (0x3 << RESULT_CACHE_POLICY_SHIFT)  /* 0xC0000000 */
+#define RESULT_CACHE_POLICY_ENCODE(p)   (((p) & 0x3) << RESULT_CACHE_POLICY_SHIFT)
+#define RESULT_CACHE_POLICY_DECODE(flag) (((flag) & RESULT_CACHE_POLICY_MASK) >> RESULT_CACHE_POLICY_SHIFT)
+
+/* Cache queue slots encoding in bit 19 (1 bit: 0=single, 1=double-buffering) */
+#define RESULT_CACHE_QUEUE_SHIFT    19
+#define RESULT_CACHE_QUEUE_MASK     (0x1 << RESULT_CACHE_QUEUE_SHIFT)  /* 0x00080000 */
+#define RESULT_CACHE_QUEUE_ENCODE(q) ((((q) > 1 ? 1 : 0)) << RESULT_CACHE_QUEUE_SHIFT)
+#define RESULT_CACHE_QUEUE_DECODE(flag) ((((flag) & RESULT_CACHE_QUEUE_MASK) >> RESULT_CACHE_QUEUE_SHIFT) ? 2 : 1)
+#define RESULT_CACHE_HAS_QUEUE(flag) (((flag) & RESULT_CACHE_QUEUE_MASK) != 0)
+
+/* Convenience: check if this flag uses TTL-based protection (TTL policy with TTL > 0) */
+#define RESULT_CACHE_IS_TTL_PROTECTED(flag) \
+  (RESULT_CACHE_HAS_TTL(flag) && \
+   RESULT_CACHE_POLICY_DECODE(flag) == RESULT_CACHE_POLICY_TTL)
+
+/* Check if this flag allows DML invalidation (non-TTL policies) */
+#define RESULT_CACHE_IS_DML_INVALIDATABLE(flag) \
+  (RESULT_CACHE_POLICY_DECODE(flag) != RESULT_CACHE_POLICY_TTL)
+
 #define IS_TRIGGER_INVOLVED(flag)   (((flag) & TRIGGER_IS_INVOLVED) != 0)
 
 #define IS_XASL_CACHE_PINNED_REFERENCE(flag)   (((flag) & XASL_CACHE_PINNED_REFERENCE) != 0)
