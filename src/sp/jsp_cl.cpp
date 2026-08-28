@@ -1424,7 +1424,8 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
 
 	  if (err == NO_ERROR && pkg_compile_response.err_code == NO_ERROR)
 	    {
-	      // side effect 1
+	      // NOTE: the value borrows the response buffer, which outlives its use here, so it
+	      //       owns nothing and needs no clearing
 	      db_make_string (&ocode_value, pkg_compile_response.compiled_code.data());
 	    }
 	  else
@@ -1440,38 +1441,37 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
 	err = jsp_set_pkg_compile_id (unique_name, pkg_compile_response.compile_id.data());
 	if (err != NO_ERROR)
 	  {
-	    goto cleanup1;
+	    goto cleanup0;
 	  }
 
 	obt = dbt_edit_object (pkg_code_mop);
 	if (obt == NULL)
 	  {
 	    ASSERT_ERROR_AND_SET (err);
-	    goto cleanup1;
-	  }     // side effect 2
+	    goto cleanup0;
+	  }     // side effect 1
 
 	// set null to the scode_body column
 	db_make_null (&scode_body_value);
 	err = dbt_put_internal (obt, PKG_CODE_ATTR_SCODE_BODY, &scode_body_value);
 	if (err != NO_ERROR)
 	  {
-	    goto cleanup2;
+	    goto cleanup1;
 	  }
 
 	// set the new ocode to the column
 	err = dbt_put_internal (obt, PKG_CODE_ATTR_OCODE, &ocode_value);
 	if (err != NO_ERROR)
 	  {
-	    goto cleanup2;
+	    goto cleanup1;
 	  }
 
 	object = dbt_finish_object (obt);
 	if (!object)
 	  {
 	    ASSERT_ERROR_AND_SET (err);
-	    goto cleanup2;
-	  } // side effect 2 cleaned
-	pr_clear_value (&ocode_value);  // side effect 1 cleaned
+	    goto cleanup1;
+	  } // side effect 1 cleaned
 
 	err = locator_flush_instance (object);
 	if (err != NO_ERROR)
@@ -1485,12 +1485,9 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
   AU_RESTORE (save); // side effect 0 cleaned
   return NO_ERROR;
 
-cleanup2:
+cleanup1:
   assert (obt);
   dbt_abort_object (obt);
-
-cleanup1:
-  pr_clear_value (&ocode_value);
 
 cleanup0:
   AU_RESTORE (save);
@@ -1525,7 +1522,11 @@ jsp_drop_pkg_member_sp (MOP pkg_mop)
   for (int i = 0; i < proc_cnt; i++)
     {
       // find sp
-      set_get_element (procs, i, &sp_elem);       // side effect 1
+      err = set_get_element (procs, i, &sp_elem);       // side effect 1
+      if (err != NO_ERROR)
+	{
+	  goto cleanup1;
+	}
       sp_mop = db_get_object (&sp_elem);
 
       // NOTE: Package member procedures/functions do not have their records in _db_stored_procedure_code.
@@ -1549,7 +1550,13 @@ jsp_drop_pkg_member_sp (MOP pkg_mop)
 
 	for (int j = 0; j < args_cnt; j++)
 	  {
-	    set_get_element (args_seq, j, &arg_elem);
+	    err = set_get_element (args_seq, j, &arg_elem);
+	    if (err != NO_ERROR)
+	      {
+		pr_clear_value (&args_seq_val);
+		goto cleanup1;
+	      }
+
 	    sp_arg_mop = db_get_object (&arg_elem);
 	    err = obj_delete (sp_arg_mop);
 	    pr_clear_value (&arg_elem);
@@ -1608,10 +1615,16 @@ jsp_drop_pkg_members (MOP pkg_mop, const char *cnt_attr, const char *members_att
 
   for (i = 0; i < cnt; i++)
     {
-      set_get_element (seq, i, &elem);
+      err = set_get_element (seq, i, &elem);
+      if (err != NO_ERROR)
+	{
+	  pr_clear_value (&seq_val);
+	  return err;
+	}
+
       mop = db_get_object (&elem);
-      pr_clear_value (&elem);
       err = obj_delete (mop);
+      pr_clear_value (&elem);
       if (err != NO_ERROR)
 	{
 	  pr_clear_value (&seq_val);
@@ -1629,28 +1642,49 @@ jsp_drop_pkg (const char *unique_name, MOP pkg_mop, MOP owner)
 {
   MOP mop;
   int err, save;
-  DB_OTMPL *obt;
 
   err = NO_ERROR;
 
   AU_SAVE_AND_DISABLE (save);    // side effect 0
+
+  // A system generated package cannot be dropped. The statement level check in jsp_drop_package ()
+  // does not cover CREATE OR REPLACE, which drops the existing package through this function.
+  {
+    DB_VALUE flags_val;
+
+    err = db_get (pkg_mop, PKG_ATTR_FLAGS, &flags_val);
+    if (err != NO_ERROR)
+      {
+	goto cleanup0;
+      }
+
+    if (db_get_int (&flags_val) & PKG_FLAGS_SYSTEM_GENERATED)
+      {
+	err = ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	goto cleanup0;
+      }
+  }
 
   // clear authorization settings of the dropped package
   {
     MOP save_user;
 
     save_user = Au_user;
-    if (AU_SET_USER (owner) == NO_ERROR)
+    err = AU_SET_USER (owner);
+    if (err == NO_ERROR)
       {
 	err = au_object_revoke_all_privileges (DB_OBJECT_PACKAGE, owner, unique_name);
-	if (err != NO_ERROR)
-	  {
-	    AU_SET_USER (save_user);
-	    goto cleanup0;
-	  }
       }
 
+    // restore the user even when switching to the owner failed: au_set_user () can fail after
+    // having changed the current user
     AU_SET_USER (save_user);
+
+    if (err != NO_ERROR)
+      {
+	goto cleanup0;
+      }
 
     err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PACKAGE, unique_name);
     if (err != NO_ERROR)
@@ -1676,9 +1710,11 @@ jsp_drop_pkg (const char *unique_name, MOP pkg_mop, MOP owner)
 	  err = er_errid ();
 	  goto cleanup0;
 	}
-      // _db_package exists but _db_package_code doesn't - unreachable state
+      // _db_package exists but _db_package_code doesn't, which is an unreachable state.
+      // Every package created through jsp_create_pkg_spec () has a code row,
+      // and packages that have none - the system generated one such as DBMS_OUTPUT - are refused above.
       assert (false);
-      err = ER_FAILED;
+      err = ER_GENERIC_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
       goto cleanup0;
     }
@@ -1727,10 +1763,6 @@ jsp_drop_pkg (const char *unique_name, MOP pkg_mop, MOP owner)
 
   AU_RESTORE (save);
   return NO_ERROR;
-
-cleanup1:
-  assert (obt);
-  dbt_abort_object (obt);
 
 cleanup0:
   AU_RESTORE (save);
@@ -3498,8 +3530,11 @@ error_exit:
 int
 jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  // TODO package
-  return NO_ERROR;
+  // TODO package: not implemented yet. pt_check_alter_package () rejects the statement with a
+  // message naming ALTER PACKAGE, so this is only a backstop that keeps any path from reporting
+  // success without doing anything.
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+  return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 }
 
 /*
@@ -4028,8 +4063,8 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   owner_mop = jsp_get_owner (sp_mop);
   if (owner_mop == NULL)
     {
-      err = ER_FAILED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      // jsp_get_owner () returns NULL only when reading the owner failed, which sets the error
+      ASSERT_ERROR_AND_SET (err);
       goto error;
     }
 
@@ -4344,17 +4379,20 @@ jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
     }
 
   save_user = Au_user;
-  if (AU_SET_USER (owner) == NO_ERROR)
+  err = AU_SET_USER (owner);
+  if (err == NO_ERROR)
     {
       err = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner, unique_name);
-      if (err != NO_ERROR)
-	{
-	  AU_SET_USER (save_user);
-	  goto error;
-	}
     }
 
+  // restore the user even when switching to the owner failed: au_set_user () can fail after
+  // having changed the current user
   AU_SET_USER (save_user);
+
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
 
   err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PROCEDURE, name);
   if (err != NO_ERROR)
