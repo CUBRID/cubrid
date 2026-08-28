@@ -184,12 +184,22 @@ namespace cubpl
 	return nullptr;
       }
 
-    /* Unlike the legacy path this is checked unconditionally (there, only when the stack is not
-     * empty): a cancelled query has to stop the workers that have not started yet. The clearing
-     * side stays with the legacy path alone, so a real interrupt of another worker cannot be
-     * erased here. */
-    if (m_interrupt_id != NO_ERROR)
+    if (m_stack_idx == -1 && m_stack_map.empty ())
       {
+	/* Nothing of this session is running: a leftover interrupt belongs to a previous
+	 * statement, not to this one, so it must not refuse this stack. Cancelling any query
+	 * records ER_INTERRUPTED here even when no SP is involved (TT_WORKER hook of
+	 * logtb_set_tran_index_interrupt / logtb_is_interrupted_tdes), and only stack creation
+	 * clears it - a query whose first SP call lands on a px worker would otherwise be
+	 * refused forever. Same idle rule as create_and_push_stack (); the cancel-erasing
+	 * window this opens between a worker's destroy and a sibling's create already exists
+	 * in destroy_px_stack (), and the tdes interrupt still stops such a worker upstream. */
+	clear_interrupt ();
+      }
+    else if (m_interrupt_id != NO_ERROR)
+      {
+	/* The session is busy, so the interrupt targets the statement in flight: refuse, so a
+	 * cancelled query also stops the workers that have not started yet. */
 	set_local_error_for_interrupt ();
 	return nullptr;
       }
