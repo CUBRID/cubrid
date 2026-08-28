@@ -96,6 +96,15 @@ csc_bracket_is_active (void)
   return tl_Csc_active != NULL;
 }
 
+/* has this session terminated a method/SP callback in-process? (its kept
+ * statement handles may hold list files open across an outer query's end —
+ * qexec's per-thread qlist balance check stands down only then) */
+bool
+csc_has_method_callback_state (void)
+{
+  return tl_Csc_active != NULL && tl_Csc_active->method_callback_handler != nullptr;
+}
+
 ws_context *
 csc_ws (void)
 {
@@ -144,6 +153,13 @@ extern "C" void pt_free_label_table (void);
 /* execution-plan trace buffer (db_query.c, plain malloc) */
 extern "C" void db_free_execution_plan (void);
 
+/* method/SP callback termination state (#120): the handler caches
+ * workspace-backed query handles (method_callback.cpp) and the runtime-args
+ * map holds session DB_VALUEs (query_method.cpp) — both must retire before
+ * ws_final */
+extern void method_callback_session_final (void);
+extern void method_runtime_args_session_final (void);
+
 /* client/server boundary flag (network_interface_sr.cpp) */
 extern thread_local unsigned int db_on_server;
 
@@ -171,6 +187,9 @@ csc_teardown (client_session_context *ctx)
     {
       pt_free_label_table ();
     }
+
+  method_callback_session_final ();
+  method_runtime_args_session_final ();
   if (ctx->ws.mop_table != NULL)
     {
       /* schema-manager teardown first: it clears Current_Schema and frees

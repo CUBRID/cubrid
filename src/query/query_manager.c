@@ -64,6 +64,16 @@
 extern int method_Num_method_jsp_calls;
 #define IS_IN_METHOD_OR_JSP_CALL() (method_Num_method_jsp_calls > 0)
 
+#else
+
+/* merged server: the in-process method/SP callback dispatch re-enters qmgr on
+ * the very thread evaluating the outer XASL (the SA shape, #120 D2/D7); its
+ * dispatch counts libcas depth on the session, reachable only under the
+ * thread's activation bracket */
+extern bool csc_bracket_is_active (void);	/* client_session_context.cpp */
+extern bool tran_is_in_libcas (void);	/* transaction_cl.c */
+#define IS_IN_METHOD_OR_JSP_CALL() (csc_bracket_is_active () && tran_is_in_libcas ())
+
 #endif
 
 #define QMGR_TEMP_FILE_FREE_LIST_SIZE   100
@@ -1324,11 +1334,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   xasl_cache_entry_p = NULL;
   list_cache_entry_p = NULL;
 
-#if defined (SERVER_MODE)
-  assert (thread_get_recursion_depth (thread_p) == 0);
-#elif defined (SA_MODE)
   assert (thread_get_recursion_depth (thread_p) == 0 || IS_IN_METHOD_OR_JSP_CALL ());
-#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
@@ -1796,11 +1802,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
   *query_id_p = -1;
   list_id_p = NULL;
 
-#if defined (SERVER_MODE)
-  assert (thread_get_recursion_depth (thread_p) == 0);
-#elif defined (SA_MODE)
   assert (thread_get_recursion_depth (thread_p) == 0 || IS_IN_METHOD_OR_JSP_CALL ());
-#endif
 
   saved_is_stats_on = perfmon_server_is_stats_on (thread_p);
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);

@@ -47,9 +47,16 @@
 #include "xasl_generation.h"
 
 #include <mutex>
+#include <unordered_map>
+#include <vector>
 
 // *INDENT-OFF*
 struct mht_table;
+
+namespace cubmethod
+{
+  class callback_handler;
+}
 
 class client_session_context
 {
@@ -105,6 +112,18 @@ class client_session_context
     char *db_execution_plan = nullptr;
     int db_execution_plan_length = -1;
 
+    /* method/SP callback termination (#120 D8): the CAS-side process-global
+     * handle cache was per-session in effect (one CAS per session) — its
+     * faithful translation here is per-session ownership.  It holds
+     * workspace-backed query handles, so it must retire inside the bracketed
+     * teardown, before ws_final — which is why it lives here and not on
+     * cubpl::session (session_state_uninit deletes that outside the bracket).
+     * Created lazily by get_callback_handler(). */
+    cubmethod::callback_handler *method_callback_handler = nullptr;
+
+    /* query_method.c: builtin C-method runtime arguments keyed by invoke-group id */
+    std::unordered_map<UINT64, std::vector<DB_VALUE>> method_runtime_args;
+
     /* set when the owning session retired this context while the very thread
      * inside it requested the retirement (db_end_session under its own
      * bracket): the bracket keeps working on it, and csc_deactivate runs the
@@ -133,6 +152,10 @@ extern client_session_context *csc_current (void);
 /* does the calling thread hold an activation bracket? (no assert — memory
  * routing probes this on paths shared with pure server threads) */
 extern bool csc_bracket_is_active (void);
+
+/* has the bracketed session terminated a method/SP callback in-process?
+ * (qexec's qlist balance check stands down only for such sessions) */
+extern bool csc_has_method_callback_state (void);
 
 /* run the client half's session teardown under a temporary bracket and free
  * the context; called by the owning session_state when it is uninitialized */

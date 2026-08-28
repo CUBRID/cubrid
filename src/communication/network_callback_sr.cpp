@@ -23,9 +23,11 @@
 #include "object_representation.h" /* OR_ */
 #include "server_support.h"	/* css_send_reply_and_data_to_client(), css_get_comm_request_id() */
 
-#if !defined (SERVER_MODE)
 #include "query_method.hpp"
 #include "method_callback.hpp"
+
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
 #endif
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -34,6 +36,16 @@
 #if defined (SERVER_MODE)
 int xs_callback_send (cubthread::entry *thread_p, const cubmem::extensible_block &mem)
 {
+  /* merged in-process session: the client half lives on this very thread (the
+   * activation bracket is thread-local) — terminate the callback here, the
+   * SA-mode shape (#120 D2/D7).  A legacy CAS connection's worker holds no
+   * bracket and takes the wire path below. */
+  if (csc_bracket_is_active ())
+    {
+      packing_unpacker unpacker (mem.get_read_ptr (), mem.get_size ());
+      return method_dispatch (unpacker);
+    }
+
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -59,6 +71,22 @@ int xs_callback_send (cubthread::entry *thread_p, const cubmem::extensible_block
 
 int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &func)
 {
+  if (csc_bracket_is_active ())
+    {
+      /* in-process termination: the dispatch above queued its response on the
+       * session's handler (the SA-mode shape) */
+      std::queue <cubmem::extensible_block> &queue = cubmethod::get_callback_handler ()->get_data_queue ();
+
+      assert (!queue.empty ());
+
+      cubmem::extensible_block &blk = queue.front ();
+      cubmem::block in_proc_buffer (blk.get_size (), blk.get_ptr ());
+      int in_proc_error = func (in_proc_buffer);
+
+      queue.pop ();
+      return in_proc_error;
+    }
+
   cubmem::block buffer (0, nullptr);
 
   int error = xs_receive_data_from_client (thread_p, &buffer.ptr, (int *) &buffer.dim);
