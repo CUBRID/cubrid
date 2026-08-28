@@ -20,7 +20,9 @@
 #define _SP_CONSTANTS_HPP_
 
 #define PLCSQL_COMPILE_ID_LEN           (39)    // 19 (max long len) * 2 + 1 (delimiter)
-#define PLCSQL_TARGET_CLASS_LEN        (255)
+// A generated class name is <kind>_<owner-len>_<owner>_<name>, and <owner>.<name> must fit in
+// SP_ATTR_UNIQUE_NAME_LEN, so its upper bound is about 264. This leaves room to spare.
+#define PLCSQL_TARGET_CLASS_LEN        (512)
 
 #define PKG_ATTR_LIST    \
     MAP_LIST_ITEM(UNIQUE_NAME) \
@@ -415,7 +417,10 @@ enum METHOD_CALLBACK_RESPONSE
 
   // CLASS ACCESS
   METHOD_CALLBACK_GET_CODE_ATTR = 201,
-  METHOD_CALLBACK_GET_CODE_BY_NAME = 202
+  METHOD_CALLBACK_GET_CODE_BY_NAME = 202,
+
+  // runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member
+  METHOD_CALLBACK_CHECK_EXECUTE_AUTH = 203
 };
 
 // result of looking up object code by (generated) class name (shared by the CAS handler that

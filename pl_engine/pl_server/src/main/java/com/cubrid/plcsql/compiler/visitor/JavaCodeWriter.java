@@ -45,6 +45,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.apache.commons.text.StringEscapeUtils;
@@ -83,9 +84,59 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return type.javaCode;
     }
 
-    public JavaCodeWriter(InstanceStore iStore, Set<SqlUse> sqlUsesInRecursiveCalls) {
+    // Maps the generated Java class name of each directly-referenced PL/CSQL routine/package to a
+    // slot in this unit's static boolean[] authChecked. A call site sets its slot once its runtime
+    // EXECUTE check has passed, so the check is performed only once per activation.
+    private final Map<String, Integer> authCheckedIndex;
+
+    public JavaCodeWriter(
+            InstanceStore iStore,
+            Set<SqlUse> sqlUsesInRecursiveCalls,
+            Map<String, Integer> authCheckedIndex) {
         this.iStore = iStore;
         this.sqlUsesReachableFromLoop = sqlUsesInRecursiveCalls;
+        this.authCheckedIndex = authCheckedIndex;
+    }
+
+    // static boolean[] telling, per directly-referenced routine/package, whether its runtime
+    // EXECUTE
+    // check has already passed. A false element means 'not checked yet', not 'not authorized': a
+    // failed check throws. Empty when the unit has no direct calls (then no field is emitted).
+    private Object getAuthCheckedDecl() {
+        int n = authCheckedIndex.size();
+        if (n == 0) {
+            return "";
+        }
+        return new String[] {
+            "private static final boolean[] authChecked = new boolean[" + n + "];"
+        };
+    }
+
+    // Clears the runtime EXECUTE-check cache. Emitted at the entry of each top-level static method
+    // (the SP's method and every package member), so the cache lives for a single activation of the
+    // routine: a grant change is picked up on the next call. Local routines do not clear it (their
+    // caller's activation still owns the cache). Empty when the unit has no direct calls.
+    private Object getAuthCheckedClear() {
+        if (authCheckedIndex.isEmpty()) {
+            return "";
+        }
+        return new String[] {"java.util.Arrays.fill(authChecked, false);"};
+    }
+
+    // Statements guarding a direct call site: on first reach, perform the runtime EXECUTE check and
+    // mark the slot as checked. Only called for a PL/CSQL target (the callers branch on
+    // targetClass), so every direct call site gets a guard. A Java SP does not come here: it keeps
+    // the SQL CALL path, which is checked server-side on each call.
+    private Object getAuthCheckCode(String targetClass, String uniqueName) {
+        assert uniqueName != null && !uniqueName.isEmpty();
+        Integer slot = authCheckedIndex.get(targetClass);
+        assert slot != null;
+        return new String[] {
+            "if (!authChecked[" + slot + "]) {",
+            "  checkExecuteAuthorization(\"" + uniqueName + "\");",
+            "  authChecked[" + slot + "] = true;",
+            "}"
+        };
     }
 
     public List<String> codeLines = new ArrayList<>(); // no LinkedList : frequent access by indexes
@@ -152,6 +203,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
                 "public class %'CLASS-NAME'% {",
                 "  %'+GET-CONNECTION'%",
+                "  %'+AUTH-CHECKED-DECL'%",
                 "  %'+DECLARATIONS'%",
                 "  %'+OPT-INITIALIZER'%",
                 "  %'+RECORD-DEFS'%",
@@ -231,6 +283,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 node.getClassName(),
                 "%'+GET-CONNECTION'%",
                 node.connectionRequired ? strGetConn : "",
+                "%'+AUTH-CHECKED-DECL'%",
+                getAuthCheckedDecl(),
                 "%'+DECLARATIONS'%",
                 pkgItemsCode,
                 "%'+OPT-INITIALIZER'%",
@@ -261,9 +315,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
                 "public class %'CLASS-NAME'% {",
                 "  %'+GET-CONNECTION'%",
+                "  %'+AUTH-CHECKED-DECL'%",
                 "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
                 "      %'+PARAMETERS'%",
                 "    ) throws Exception {",
+                "    %'+AUTH-CLEAR'%",
                 "    try {",
                 "      %'+MAIN-USER-CODE'%",
                 // exceptions that escaped from the exception handlers of the body
@@ -388,6 +444,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 objParamArr,
                 "%'+GET-CONNECTION'%",
                 node.connectionRequired ? strGetConn : "",
+                "%'+AUTH-CHECKED-DECL'%",
+                getAuthCheckedDecl(),
+                "%'+AUTH-CLEAR'%",
+                getAuthCheckedClear(),
                 "%'+RECORD-DEFS'%",
                 recordDefs,
                 "%'+RECORD-ASSIGN-FUNCS'%",
@@ -403,6 +463,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'MODIFIER'%%'RETURN-TYPE'% %'METHOD-NAME'%(",
                 "    %'+PARAMETERS'%",
                 "  ) throws Exception {",
+                "  %'+AUTH-CLEAR'%",
                 "  %'+NULLIFY-OUT-PARAMETERS'%",
                 "  %'+DECL-CLASS'%",
                 "  %'+BODY'%",
@@ -471,6 +532,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     tmplDeclRoutine,
                     "%'MODIFIER'%",
                     getModifier(node),
+                    "%'+AUTH-CLEAR'%",
+                    node.isPkgPublic ? getAuthCheckedClear() : "",
                     "%'RETURN-TYPE'%",
                     node.retTypeSpec == null ? "void" : getJavaCodeOfType(node.retTypeSpec),
                     "%'+PARAMETERS'%",
@@ -954,6 +1017,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "(new Object() { // global function call (direct): %'FUNC-NAME'%",
                 "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) throws Exception {",
+                "    %'+AUTH-CHECK'%",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
                 "    %'RETURN-TYPE'% ret = %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);",
                 "    %'+UPDATE-OUT-ARGS'%",
@@ -990,6 +1054,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             tmplExprGlobalFuncCall_direct,
                             "%'FUNC-NAME'%",
                             node.name,
+                            "%'+AUTH-CHECK'%",
+                            getAuthCheckCode(node.targetClass, node.uniqueName),
                             "%'TARGET-CLASS'%",
                             node.targetClass,
                             "%'METHOD-NAME'%",
@@ -2578,6 +2644,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "new Object() { // global procedure call (direct): %'PROC-NAME'%",
                 "  void invoke(%'PARAMETERS'%) throws Exception {",
+                "    %'+AUTH-CHECK'%",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
                 "    %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);",
                 "    %'+UPDATE-OUT-ARGS'%",
@@ -2606,6 +2673,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     tmplStmtGlobalProcCall_direct,
                     "%'PROC-NAME'%",
                     node.name,
+                    "%'+AUTH-CHECK'%",
+                    getAuthCheckCode(node.targetClass, node.uniqueName),
                     "%'TARGET-CLASS'%",
                     node.targetClass,
                     "%'METHOD-NAME'%",

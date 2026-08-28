@@ -47,8 +47,10 @@ import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
@@ -73,7 +75,8 @@ public class PlcsqlCompilerMain {
         }
     }
 
-    public static CompileResponse compilePLCSQL(CompileRequest request, Set<String> referencedClasses) {
+    public static CompileResponse compilePLCSQL(
+            CompileRequest request, Set<String> referencedClasses) {
 
         try {
             return compileInner(new InstanceStore(), request, referencedClasses);
@@ -197,7 +200,8 @@ public class PlcsqlCompilerMain {
         return t;
     }
 
-    private static CompileResponse compileInner( InstanceStore iStore, CompileRequest request, Set<String> referencedClasses) {
+    private static CompileResponse compileInner(
+            InstanceStore iStore, CompileRequest request, Set<String> referencedClasses) {
 
         int type = request.type;
         String code = request.code;
@@ -346,7 +350,19 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // Java code generation
 
-        String javaCode = new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls).buildCodeLines(unit);
+        // Assign each directly-referenced routine/package a slot in the unit's runtime
+        // EXECUTE-check cache (static boolean[] authChecked). The slot numbers are meaningful
+        // only within this compilation: the field's size and every call site's index come from
+        // this same map.
+        Map<String, Integer> authCheckedIndex = new HashMap<>();
+        int slot = 0;
+        for (String cls : referencedClasses) {
+            authCheckedIndex.put(cls, slot++);
+        }
+
+        String javaCode =
+                new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls, authCheckedIndex)
+                        .buildCodeLines(unit);
 
         if (verbose) {
             logElapsedTime(logStore, "Java code generation", t0);

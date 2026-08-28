@@ -32,6 +32,7 @@ package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.SysParam;
+import com.cubrid.jsp.code.ClassAccess;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideStatement;
 import com.cubrid.jsp.value.DateTimeParser;
@@ -63,6 +64,16 @@ import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
+
+    // Runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member.
+    // Called from generated code the first time each call site is reached (see authChecked). Throws
+    // when the definer is no longer authorized to execute the target (e.g. the grant was revoked
+    // after the caller was compiled).
+    public static void checkExecuteAuthorization(String uniqueName) {
+        if (ClassAccess.checkExecuteAuth(uniqueName) != 0) {
+            throw new SQL_ERROR("no authorization to execute " + uniqueName);
+        }
+    }
 
     public static final Date ZERO_DATE = new Date(0 - 1900, 0 - 1, 0);
     public static final Timestamp ZERO_DATETIME = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);

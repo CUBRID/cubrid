@@ -152,6 +152,8 @@ public class ServerAPI {
         public PlParamInfo[] params;
         public int directive; // TODO package
         public String targetClass; // generated Java class name of the resolved procedure/package
+        public String
+                uniqueName; // canonical unique_name of the resolved routine (runtime EXECUTE check)
 
         public void setAnswer(int seqNo, PlParamInfo[] params) {
             this.seqNo = seqNo;
@@ -182,6 +184,7 @@ public class ServerAPI {
             }
 
             targetClass = unpacker.unpackCString();
+            uniqueName = unpacker.unpackCString();
         }
 
         @Override
@@ -204,6 +207,8 @@ public class ServerAPI {
         public PlParamInfo retType; // SQL type
         public int directive; // TODO package
         public String targetClass; // generated Java class name of the resolved function/package
+        public String
+                uniqueName; // canonical unique_name of the resolved routine (runtime EXECUTE check)
 
         public void setAnswer(int seqNo, PlParamInfo[] params, PlParamInfo retType) {
             this.seqNo = seqNo;
@@ -229,6 +234,7 @@ public class ServerAPI {
             }
 
             targetClass = unpacker.unpackCString();
+            uniqueName = unpacker.unpackCString();
         }
 
         @Override

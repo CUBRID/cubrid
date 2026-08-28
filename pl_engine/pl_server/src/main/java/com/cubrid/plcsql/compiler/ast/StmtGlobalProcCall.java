@@ -81,6 +81,8 @@ public class StmtGlobalProcCall extends Stmt implements SqlUse {
     // generated Java class name of the target when it is a PL/CSQL routine/package (empty for a
     // Java SP, which is still called through a SQL CALL statement)
     public String targetClass;
+    // canonical unique_name of the resolved routine, used by the runtime EXECUTE check
+    public String uniqueName;
 
     public StmtGlobalProcCall(
             ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {

@@ -91,8 +91,7 @@ public class ClassAccess {
     public static CompiledCodeSet getObjectCodeNewerThan(CompiledCodeSet codeSet) {
 
         // get the object code of given class name from the ocode column of
-        // _db_stored_procedure_code or
-        // _db_package_code.
+        // _db_stored_procedure_code or _db_package_code.
         // if no record exist with the codeSet's main class name, then return null.
         // if the current compileId of the code in the table is the same as that of codeSet, just
         // return the given codeSet.
@@ -115,6 +114,29 @@ public class ClassAccess {
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    // Runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member.
+    public static int checkExecuteAuth(String uniqueName) {
+        try {
+            CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+            // the executor's callback loop reads the request code from the payload
+            packer.packInt(RequestCode.REQUEST_CHECK_EXECUTE_AUTH);
+            packer.packString(uniqueName);
+            Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
+
+            ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+            CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+
+            Header header = new Header(unpacker);
+            ByteBuffer payload = unpacker.unpackBuffer();
+            unpacker.setBuffer(payload);
+
+            return unpacker.unpackInt();
+        } catch (Exception e) {
+            Server.log(e);
+            return -1; // treat a transport failure as "not authorized"
         }
     }
 

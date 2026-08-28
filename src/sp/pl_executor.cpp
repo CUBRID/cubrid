@@ -584,6 +584,10 @@ exit:
 	error_code = callback_get_code_by_name (thread_ref, unpacker);
 	break;
 
+      case METHOD_CALLBACK_CHECK_EXECUTE_AUTH:
+	error_code = callback_check_execute_auth (thread_ref, unpacker);
+	break;
+
       case METHOD_CALLBACK_SET_PL_SESSION_PARAM:
 	error_code = callback_set_pl_session_param (thread_ref, unpacker);
 	break;
@@ -1053,14 +1057,30 @@ exit:
     std::string req_compile_id;
     unpacker.unpack_all (class_name, req_compile_id);
 
-    // The object code lives in the catalog, which is read on the client (CAS) side. Forward the
-    // by-name lookup to the CAS - the same way static SQL is - and relay its reply to the PL server.
     auto relay_result = [&] (const cubmem::block & b)
     {
       return m_stack->send_data_to_java (b);
     };
 
     return m_stack->send_data_to_client_recv (relay_result, code, class_name, req_compile_id);
+  }
+
+  int
+  executor::callback_check_execute_auth (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_CHECK_EXECUTE_AUTH;
+
+    std::string unique_name;
+    unpacker.unpack_all (unique_name);
+
+    auto relay_result = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    error = m_stack->send_data_to_client_recv (relay_result, code, unique_name);
+    return error;
   }
 
   int

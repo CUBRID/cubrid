@@ -139,6 +139,9 @@ namespace cubmethod
       case METHOD_CALLBACK_CHANGE_RIGHTS:
 	error = change_rights (unpacker);
 	break;
+      case METHOD_CALLBACK_CHECK_EXECUTE_AUTH:
+	error = check_execute_auth (unpacker);
+	break;
       default:
 	assert (false);
 	error = ER_FAILED;
@@ -1042,6 +1045,17 @@ namespace cubmethod
 		}
 	      pr_clear_value (&target_class_val);
 	    }
+
+	  DB_VALUE unique_name_val;
+	  if (db_get (routine_mop, SP_ATTR_UNIQUE_NAME, &unique_name_val) == NO_ERROR)
+	    {
+	      const char *un = db_get_string (&unique_name_val);
+	      if (un != NULL)
+		{
+		  res.unique_name.assign (un);
+		}
+	      pr_clear_value (&unique_name_val);
+	    }
 	}
     }
 
@@ -1454,6 +1468,45 @@ exit:
 	return xs_pack_and_queue (NO_ERROR, status, compile_id, ocode);
       }
     return xs_pack_and_queue (NO_ERROR, status);
+  }
+
+  int
+  callback_handler::check_execute_auth (packing_unpacker &unpacker)
+  {
+    // Runtime EXECUTE check for a directly-called PL/CSQL routine/package member. This mirrors the
+    // compile-time check in get_user_defined_routine_info, re-evaluated here at run time so that a
+    // grant revoked after the caller was compiled takes effect. Au_user is the definer (pushed via
+    // METHOD_CALLBACK_CHANGE_RIGHTS), which is the correct principal for a definer's-rights routine.
+    std::string unique_name;
+    unpacker.unpack_all (unique_name);
+
+    int auth_error = NO_ERROR;
+    int save;
+
+    AU_SAVE_AND_DISABLE (save);
+
+    MOP routine_mop = jsp_find_stored_procedure (unique_name.c_str (), DB_AUTH_NONE);
+    if (routine_mop == NULL)
+      {
+	// dropped between the caller's compilation and this execution
+	auth_error = er_errid ();
+	if (auth_error == NO_ERROR)
+	  {
+	    auth_error = ER_SP_NOT_EXIST;
+	  }
+      }
+    else if (jsp_check_execute_authorization (routine_mop) != NO_ERROR)
+      {
+	auth_error = er_errid ();
+	if (auth_error == NO_ERROR)
+	  {
+	    auth_error = ER_FAILED;
+	  }
+      }
+
+    AU_RESTORE (save);
+
+    return xs_pack_and_queue (auth_error);
   }
 
 //////////////////////////////////////////////////////////////////////////
