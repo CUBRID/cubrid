@@ -381,8 +381,8 @@ namespace cubconn
       cubthread::entry *entry_p = cubthread::get_manager ()->claim_entry ();
       if (entry_p == NULL)
 	{
-	  close (params.client_fd);
 	  registry_session_finished (params.token);
+	  close (params.client_fd);
 	  return;
 	}
       entry_p->register_id ();
@@ -520,8 +520,11 @@ namespace cubconn
       entry_p->unregister_id ();
       cubthread::get_manager ()->retire_entry (*entry_p);
 
-      close (params.client_fd);
+      /* drop the registry entry BEFORE closing the fd: stop() shuts down the
+       * fds it finds in the registry, and a closed (possibly reused) number
+       * must never be visible there */
       registry_session_finished (params.token);
+      close (params.client_fd);
     }
   }				/* namespace adoption */
 }				/* namespace cubconn */
