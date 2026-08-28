@@ -42,6 +42,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+// the system package that the built-in stored procedures belong to
+#define SP_BUILTIN_PKG_UNIQUE_NAME      "public.dbms_output"
+#define SP_BUILTIN_PKG_NAME             "dbms_output"
+
 // memory representation of built-in stored procedures
 static std::vector <sp_info> sp_builtin_definition;
 
@@ -66,7 +70,7 @@ static const std::vector<std::string> sp_code_entry_names
 #undef MAP_LIST_ITEM
 };
 
-static int sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint);
+static int sp_add_stored_procedure_internal (MOP *mop_p, SP_INFO &info, bool has_savepoint);
 static int sp_builtin_init ();
 
 // TODO
@@ -100,7 +104,6 @@ static int sp_builtin_init ()
   // DBMS_OUTPUT.enable
   v.unique_name = "public.dbms_output.enable";
   v.sp_name = "enable";
-  v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
   v.target_method = "enable(int)";
@@ -125,7 +128,6 @@ static int sp_builtin_init ()
   // DBMS_OUTPUT.disable
   v.unique_name = "public.dbms_output.disable";
   v.sp_name = "disable";
-  v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
   v.target_method = "disable()";
@@ -138,7 +140,6 @@ static int sp_builtin_init ()
   // DBMS_OUTPUT.put
   v.unique_name = "public.dbms_output.put";
   v.sp_name = "put";
-  v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
   v.target_method = "put(java.lang.String)";
@@ -161,7 +162,6 @@ static int sp_builtin_init ()
   // DBMS_OUTPUT.put_line
   v.unique_name = "public.dbms_output.put_line";
   v.sp_name = "put_line";
-  v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
   v.target_method = "putLine(java.lang.String)";
@@ -184,7 +184,6 @@ static int sp_builtin_init ()
   // DBMS_OUTPUT.new_line
   v.unique_name = "public.dbms_output.new_line";
   v.sp_name = "new_line";
-  v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
   v.target_method = "newLine()";
@@ -197,7 +196,6 @@ static int sp_builtin_init ()
   // DBMS_OUTPUT.get_line
   v.unique_name = "public.dbms_output.get_line";
   v.sp_name = "get_line";
-  v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
   v.target_method = "getLine(java.lang.String[], int[])";
@@ -230,7 +228,6 @@ static int sp_builtin_init ()
   // DBMS_OUTPUT.get_lines
   v.unique_name = "public.dbms_output.get_lines";
   v.sp_name = "get_lines";
-  v.pkg_name = "DBMS_OUTPUT";
   v.sp_type = SP_TYPE_PROCEDURE;
   v.return_type = DB_TYPE_NULL;
   v.target_method = "getLines(java.lang.String[], int[])";
@@ -280,14 +277,138 @@ sp_entry::~sp_entry ()
     }
 }
 
+/*
+ * sp_add_builtin_package - create the system package the built-in routines belong to
+ *   return: error code
+ *   mop_out(out): the created _db_package object
+ *
+ * Note: the row carries neither code nor a member list. It exists so that a built-in routine's
+ *       pkg_of has a target; the member list is only read while dropping a package, and this one
+ *       cannot be dropped (flags bit0 marks it as system generated).
+ */
+static int
+sp_add_builtin_package (MOP *mop_out)
+{
+  DB_OBJECT *classobj_p, *object_p;
+  DB_OTMPL *obt_p = NULL;
+  DB_VALUE value, current_datetime;
+  int save, err;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  err = db_sys_datetime (&current_datetime);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  classobj_p = db_find_class (CT_PACKAGE_NAME);
+  if (classobj_p == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+
+  obt_p = dbt_create_object_internal (classobj_p, false);
+  if (obt_p == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+
+  db_make_string (&value, SP_BUILTIN_PKG_UNIQUE_NAME);
+  err = dbt_put_internal (obt_p, PKG_ATTR_UNIQUE_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_string (&value, SP_BUILTIN_PKG_NAME);
+  err = dbt_put_internal (obt_p, PKG_ATTR_PKG_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_int (&value, 1);      // bit0 == 1: system generated package
+  err = dbt_put_internal (obt_p, PKG_ATTR_FLAGS, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_object (&value, Au_public_user);
+  err = dbt_put_internal (obt_p, PKG_ATTR_OWNER, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  err = dbt_put_internal (obt_p, PKG_ATTR_CREATED_TIME, &current_datetime);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  err = dbt_put_internal (obt_p, PKG_ATTR_UPDATED_TIME, &current_datetime);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  object_p = dbt_finish_object (obt_p);
+  if (object_p == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+  obt_p = NULL;
+
+  err = locator_flush_instance (object_p);
+  if (err != NO_ERROR)
+    {
+      obj_delete (object_p);
+      goto error;
+    }
+
+  *mop_out = object_p;
+  AU_RESTORE (save);
+  pr_clear_value (&current_datetime);
+  return NO_ERROR;
+
+error:
+  if (obt_p)
+    {
+      dbt_abort_object (obt_p);
+    }
+  AU_RESTORE (save);
+  pr_clear_value (&current_datetime);
+  return err;
+}
+
 int sp_builtin_install ()
 {
   (void) sp_builtin_init ();
 
   int error = NO_ERROR;
+  MOP pkg_mop = NULL;
+
+  error = sp_add_builtin_package (&pkg_mop);
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      return error;
+    }
+
   for (sp_info &info : sp_builtin_definition)
     {
-      error = sp_add_stored_procedure_internal (info, false);
+      // every built-in routine defined so far is a member of the DBMS_OUTPUT package
+      info.pkg_of = pkg_mop;
+      error = sp_add_stored_procedure_internal (NULL, info, false);
       assert (error == NO_ERROR);
     }
   return error;
@@ -334,15 +455,15 @@ sp_check_param_type_supported (DB_TYPE domain_type, SP_MODE_ENUM mode)
 }
 
 int
-sp_add_stored_procedure (SP_INFO &info)
+sp_add_stored_procedure (MOP *mop_p, SP_INFO &info)
 {
-  return sp_add_stored_procedure_internal (info, true);
+  return sp_add_stored_procedure_internal (mop_p, info, true);
 }
 
 #define SAVEPOINT_ADD_STORED_PROC "ADDSTOREDPROC"
 
 static int
-sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
+sp_add_stored_procedure_internal (MOP *mop_p, SP_INFO &info, bool has_savepoint)
 {
   DB_OBJECT *classobj_p, *object_p, *sp_arg_obj;
   DB_OTMPL *obt_p = NULL;
@@ -427,12 +548,11 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    if (!info.pkg_name.empty ())
+    if (info.pkg_of != NULL)
       {
-	sp_normalize_name (info.pkg_name);
-	db_make_string (&value, info.pkg_name.data ());
+	db_make_object (&value, info.pkg_of);
       }
-    err = dbt_put_internal (obt_p, SP_ATTR_PKG_NAME, &value);
+    err = dbt_put_internal (obt_p, SP_ATTR_PKG_OF, &value);
     pr_clear_value (&value);
 
     if (err != NO_ERROR)
@@ -521,14 +641,6 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    db_make_string (&value, info.compile_id.data ());
-    err = dbt_put_internal (obt_p, SP_ATTR_COMPILE_ID, &value);
-    pr_clear_value (&value);
-    if (err != NO_ERROR)
-      {
-	goto error;
-      }
-
     db_make_string (&value, info.target_class.data ());
     err = dbt_put_internal (obt_p, SP_ATTR_TARGET_CLASS, &value);
     pr_clear_value (&value);
@@ -603,6 +715,11 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	err = er_errid ();
 	obj_delete (object_p);
 	goto error;
+      }
+
+    if (mop_p != NULL)
+      {
+	*mop_p = object_p;
       }
 
     // args (_db_stored_procedure_args) sp_of oid begin
@@ -797,7 +914,7 @@ error:
 }
 
 int
-sp_add_stored_procedure_code (SP_CODE_INFO &info)
+sp_add_stored_procedure_code (MOP *mop_p, SP_CODE_INFO &info)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -890,6 +1007,14 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
+  db_make_object (&value, info.sp_of);
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_SP_OF, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
   object_p = dbt_finish_object (obt_p);
   if (!object_p)
     {
@@ -906,6 +1031,25 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       err = er_errid ();
       obj_delete (object_p);
       goto error;
+    }
+
+  // the routine was created before its code row existed, so its reference to it is set here.
+  // Both directions are written while authorization is disabled: a system catalog class rejects
+  // a direct update otherwise.
+  if (info.sp_of != NULL)
+    {
+      db_make_object (&value, object_p);
+      err = obj_set (info.sp_of, SP_ATTR_CODE, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+  if (mop_p != NULL)
+    {
+      *mop_p = object_p;
     }
 
   AU_RESTORE (save);

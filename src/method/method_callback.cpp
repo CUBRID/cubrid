@@ -1393,24 +1393,14 @@ exit:
       }
     else
       {
-	// package: _db_package (target_class -> unique_name, compile_id), _db_package_code (ocode)
+	// package: _db_package_code keyed by the generated class name, like the SP case
 	db_make_string (&key, class_name.c_str ());
-	MOP pkg_mop = db_find_unique (db_find_class (CT_PACKAGE_NAME), PKG_ATTR_TARGET_CLASS, &key);
+	code_mop = db_find_unique (db_find_class (CT_PACKAGE_CODE_NAME), PKG_CODE_ATTR_NAME, &key);
 	pr_clear_value (&key);
-	if (pkg_mop != NULL)
+	if (code_mop != NULL)
 	  {
-	    std::string unique_name;
 	    DB_VALUE v;
-	    if (db_get (pkg_mop, PKG_ATTR_UNIQUE_NAME, &v) == NO_ERROR)
-	      {
-		const char *s = db_get_string (&v);
-		if (s != NULL)
-		  {
-		    unique_name.assign (s);
-		  }
-		pr_clear_value (&v);
-	      }
-	    if (db_get (pkg_mop, PKG_ATTR_COMPILE_ID, &v) == NO_ERROR)
+	    if (db_get (code_mop, PKG_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
 	      {
 		const char *s = db_get_string (&v);
 		if (s != NULL)
@@ -1418,12 +1408,6 @@ exit:
 		    compile_id.assign (s);
 		  }
 		pr_clear_value (&v);
-	      }
-	    if (!unique_name.empty ())
-	      {
-		db_make_string (&key, unique_name.c_str ());
-		code_mop = db_find_unique (db_find_class (CT_PACKAGE_CODE_NAME), PKG_CODE_ATTR_PKG_UNIQUE_NAME, &key);
-		pr_clear_value (&key);
 	      }
 	  }
       }
