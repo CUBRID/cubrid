@@ -1253,8 +1253,6 @@ static void
 print_grant_entry (DB_SET *grants, int grant_index, FILE *fp)
 {
   DB_VALUE value;
-  char qualified_name2[DB_MAX_IDENTIFIER_LENGTH + 1];
-  qualified_name2[0] = '\0';
 
   int type;
   set_get_element (grants, GRANT_ENTRY_TYPE (grant_index), &value);
@@ -1264,20 +1262,21 @@ print_grant_entry (DB_SET *grants, int grant_index, FILE *fp)
 
   if (type == DB_OBJECT_CLASS)
     {
-      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-
       fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CLASS_NAME),
-	       sm_get_ch_qualified_name (db_get_object (&value), qualified_name, sizeof (qualified_name)));
+	       sm_get_ch_name (db_get_object (&value)));
     }
   else
     {
-      if (jsp_get_qualified_name (db_get_object (&value), qualified_name2, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+      char *sp_name = jsp_get_name (db_get_object (&value));
+
+      if (sp_name == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
 	}
 
       fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CLASS_NAME),
-	       qualified_name2);
+	       sp_name != NULL ? sp_name : "");
+      ws_free_string (sp_name);
     }
   fprintf (fp, " ");
 

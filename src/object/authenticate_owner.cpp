@@ -105,8 +105,8 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
   AU_SAVE_AND_DISABLE (save);
 
   /*
-   * class, serial, and trigger distinguish user schema by qualified_name (user_specified_name).
-   * so if the owner of class, serial, trigger changes, the qualified_name must also change.
+   * class, serial, and trigger distinguish user schema by user-specified name.
+   * so if the owner of class, serial, trigger changes, the name must also change.
    */
 
   /*
@@ -129,7 +129,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
 
   if (!by_class_owner_change)
     {
-      /* It can be checked as one of qualified_name, class_name, and att_name. */
+      /* It can be checked as one of class_name, and att_name. */
       error = obj_get (serial_mop, SERIAL_ATTR_ATTR_NAME, &value);
       if (error != NO_ERROR)
 	{
@@ -386,7 +386,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   snprintf (trigger_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, trigger_bare_name);
 
   /* the name to put back if the owner does not take */
-  trigger_old_name = tr_qualified_name (trigger_owner_obj, trigger_bare_name);
+  trigger_old_name = strdup (trigger_bare_name);
   if (trigger_old_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);

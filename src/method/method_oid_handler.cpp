@@ -76,7 +76,7 @@ namespace cubmethod
   oid_get_info
   oid_handler::oid_get (OID &oid, std::vector<std::string> &attr_names)
   {
-    char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+    char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
     int error = NO_ERROR;
     oid_get_info info;
 
@@ -166,7 +166,7 @@ namespace cubmethod
       }
 
     // set class name
-    const char *cname = db_get_class_qualified_name (obj, qualified_name, sizeof (qualified_name));
+    const char *cname = db_get_class_name (obj);
     if (cname != NULL)
       {
 	info.class_name.assign (cname);
@@ -250,7 +250,7 @@ namespace cubmethod
   int
   oid_handler::oid_cmd (OID &oid, int cmd, std::string &res)
   {
-    char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+    char class_name_buf2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
     int error = NO_ERROR;
 
     DB_OBJECT *obj = db_object (&oid);
@@ -321,7 +321,7 @@ namespace cubmethod
 	    m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
 	    return ER_FAILED;
 	  }
-	char *class_name = (char *) db_get_class_qualified_name (obj, qualified_name2, sizeof (qualified_name2));
+	char *class_name = (char *) db_get_class_name (obj);
 	if (class_name == NULL)
 	  {
 	    error = db_error_code ();

@@ -1139,7 +1139,7 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
   MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
   const char *class_name;
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int cached_num;
 
   if (template_ptr->is_class_update)
@@ -1163,7 +1163,7 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 	      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 	    }
 
-	  class_name = sm_get_ch_qualified_name (att->class_mop, qualified_name, sizeof (qualified_name));
+	  class_name = sm_get_ch_name (att->class_mop);
 	  if (class_name == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -2170,7 +2170,7 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;
   OBJ_TEMPASSIGN *ass;
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   /* only do this if its an insert template */
 
@@ -2195,9 +2195,7 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
 		    }
 		  if (att->flags & SM_ATTFLAG_VID)
 		    {
-		      ERROR1 (error, ER_SM_OBJECT_ID_NOT_SET,
-			      sm_ch_qualified_name ((MOBJ) (template_ptr->class_), qualified_name,
-						    sizeof (qualified_name)));
+		      ERROR1 (error, ER_SM_OBJECT_ID_NOT_SET, sm_ch_name ((MOBJ) (template_ptr->class_)));
 		    }
 		}
 	    }
@@ -2388,7 +2386,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
   DB_OBJECT *object = NULL;
   MOBJ mobj = NULL;
   char *mem;
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int i;
 
   /* have we already been here ? */
@@ -2610,8 +2608,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 
 		  assert (sm_ch_name ((MOBJ) class_) != NULL);
 		  save_meta_data = elo_p->meta_data;
-		  elo_p->meta_data =
-		    (char *) sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name));
+		  elo_p->meta_data = (char *) sm_ch_name ((MOBJ) class_);
 		  error = db_elo_copy (db_get_elo (a->variable), &dest_elo);
 		  elo_p->meta_data = save_meta_data;
 

@@ -4465,11 +4465,11 @@ db_get_all_vclasses (void)
 int
 db_validate_query_spec (DB_OBJECT * vclass, const char *query_spec)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PARSER_CONTEXT *parser = NULL;
   PT_NODE **spec = NULL;
   int rc = NO_ERROR, is_vclass = 0;
-  const char *const vclass_name = db_get_class_qualified_name (vclass, qualified_name, sizeof (qualified_name));
+  const char *const vclass_name = db_get_class_name (vclass);
 
   if (vclass_name == NULL)
     {
@@ -4600,7 +4600,7 @@ get_reasonable_predicate (DB_ATTRIBUTE * att, char *predicate, int predicate_buf
 int
 db_validate (DB_OBJECT * vc)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int retval = NO_ERROR;
 
   CHECK_CONNECT_ERROR ();
@@ -4653,8 +4653,7 @@ db_validate (DB_OBJECT * vc)
       int len, tlen, limit = BUF_SIZE;
       char predicate[300];
 
-      sprintf (buffer, "select count(*) from %s",
-	       db_get_class_qualified_name (vc, qualified_name, sizeof (qualified_name)));
+      sprintf (buffer, "select count(*) from %s", db_get_class_name (vc));
       attributes = db_get_attributes (vc);
       len = (int) strlen (buffer);
       bufp = buffer;

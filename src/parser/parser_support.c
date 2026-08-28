@@ -7193,7 +7193,7 @@ error:
 static void
 pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *class_op;
   int is_class = 0;
 
@@ -7235,7 +7235,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string
       if (error == ER_AU_SELECT_FAILURE)
 	{
 	  PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
-		       db_get_class_qualified_name (class_op, qualified_name, sizeof (qualified_name)));
+		       db_get_class_name (class_op));
 	}
       else
 	{
@@ -7755,7 +7755,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
                         "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
                         "[a].[object_type] AS [object_type], "
-                        CT_CLASS_QUALIFIED_NAME_EXPR ("[c].") " AS [object_name], "
+                        CT_CLASS_NAME_EXPR ("[c].") " AS [object_name], "
                         "[a].[auth_type] AS [auth_type], "
                         "[a].[is_grantable] AS [is_grantable] "
                 "FROM "

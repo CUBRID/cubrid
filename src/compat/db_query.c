@@ -1843,7 +1843,7 @@ db_query_format_class_name (DB_QUERY_TYPE * query_type, char *buf, int buf_size)
       return NULL;
     }
 
-  return db_get_class_qualified_name (src_domain->class_mop, buf, buf_size);
+  return db_get_class_name (src_domain->class_mop);
 }
 
 /*

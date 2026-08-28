@@ -139,7 +139,7 @@ static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const 
 int
 smt_find_attribute (SM_TEMPLATE * template_, const char *name, int class_attribute, SM_ATTRIBUTE ** attp)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_ATTRIBUTE *attr_list;
 
@@ -173,8 +173,7 @@ smt_find_attribute (SM_TEMPLATE * template_, const char *name, int class_attribu
   if (*attp != NULL)
     {
       // found inherited attr
-      ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name,
-	      sm_get_ch_qualified_name ((*attp)->class_mop, qualified_name, sizeof (qualified_name)));
+      ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name, sm_get_ch_name ((*attp)->class_mop));
       return error;
     }
   else
@@ -198,7 +197,7 @@ smt_find_attribute (SM_TEMPLATE * template_, const char *name, int class_attribu
 static int
 find_method (SM_TEMPLATE * template_, const char *name, int class_method, SM_METHOD ** methodp)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_METHOD *method_list;
 
@@ -231,8 +230,7 @@ find_method (SM_TEMPLATE * template_, const char *name, int class_method, SM_MET
   if (*methodp != NULL)
     {
       /* inherited, indicate the source class */
-      ERROR2 (error, ER_SM_INHERITED_METHOD, name,
-	      sm_get_ch_qualified_name ((*methodp)->class_mop, qualified_name, sizeof (qualified_name)));
+      ERROR2 (error, ER_SM_INHERITED_METHOD, name, sm_get_ch_name ((*methodp)->class_mop));
       return error;
     }
   else
@@ -297,7 +295,7 @@ find_component (SM_TEMPLATE * template_, const char *name, int class_stuff)
 static int
 find_any (SM_TEMPLATE * template_, const char *name, int class_stuff, SM_COMPONENT ** thing)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_ATTRIBUTE *att;
   SM_METHOD *method;
@@ -330,8 +328,7 @@ find_any (SM_TEMPLATE * template_, const char *name, int class_stuff, SM_COMPONE
   if (att != NULL)
     {
       /* inherited, indicate the source class */
-      ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name,
-	      sm_get_ch_qualified_name (att->class_mop, qualified_name, sizeof (qualified_name)));
+      ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name, sm_get_ch_name (att->class_mop));
       return error;
     }
 
@@ -340,8 +337,7 @@ find_any (SM_TEMPLATE * template_, const char *name, int class_stuff, SM_COMPONE
   if (method != NULL)
     {
       /* inherited, indicate the source class */
-      ERROR2 (error, ER_SM_INHERITED_METHOD, name,
-	      sm_get_ch_qualified_name (method->class_mop, qualified_name, sizeof (qualified_name)));
+      ERROR2 (error, ER_SM_INHERITED_METHOD, name, sm_get_ch_name (method->class_mop));
       return error;
     }
   else
@@ -672,7 +668,7 @@ get_domain (SM_TEMPLATE * tmp, const char *domain_string, DB_DOMAIN ** domain)
 static int
 check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_CLASS *class_;
 
@@ -682,8 +678,7 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
       if (domain_classobj != NULL && !(error = au_fetch_class_force (domain_classobj, &class_, AU_FETCH_READ))
 	  && template_->class_type != class_->class_type)
 	{
-	  ERROR1 (error, ER_SM_INCOMPATIBLE_DOMAIN_CLASS_TYPE,
-		  sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
+	  ERROR1 (error, ER_SM_INCOMPATIBLE_DOMAIN_CLASS_TYPE, sm_ch_name ((MOBJ) class_));
 	}
     }
 
@@ -761,7 +756,7 @@ smt_def_class (const char *name)
 SM_TEMPLATE *
 smt_edit_class_mop (MOP op, DB_AUTH db_auth_type)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_TEMPLATE *template_;
   SM_CLASS *class_;
   int is_class = 0;
@@ -785,9 +780,7 @@ smt_edit_class_mop (MOP op, DB_AUTH db_auth_type)
 	  /* cleanup the class and flush out the run-time information prior to editing */
 	  if (sm_clean_class (op, class_) == NO_ERROR)
 	    {
-	      template_ =
-		classobj_make_template (sm_get_ch_qualified_name (op, qualified_name, sizeof (qualified_name)), op,
-					class_);
+	      template_ = classobj_make_template (sm_get_ch_name (op), op, class_);
 	    }
 	}
     }
@@ -1831,7 +1824,7 @@ int
 smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char *constraint_name, int class_attribute,
 		     SM_ATTRIBUTE_FLAG constraint)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_ATTRIBUTE *not_null_attr[1], *pk_attr;
   SM_CLASS_CONSTRAINT *pk;
@@ -1884,8 +1877,7 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char
   if (owner != template_->op && template_->partition == NULL)
     {
       /* it is inherited. */
-      ERROR2 (error, ER_SM_INHERITED, constraint_name,
-	      sm_get_ch_qualified_name (owner, qualified_name, sizeof (qualified_name)));
+      ERROR2 (error, ER_SM_INHERITED, constraint_name, sm_get_ch_name (owner));
       return error;
     }
 
@@ -2025,7 +2017,7 @@ end:
 int
 smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool no_error_if_not_found)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   int au_save;
   DB_OBJECT *histogram_class, *histogram_obj = NULL;
@@ -2057,7 +2049,7 @@ smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool n
 	  // ---- query buffer ---- (error_length + table_name_length + attr_name_length)
 	  char error_histogram[100 + 222 + 254];
 	  snprintf (error_histogram, sizeof (error_histogram), "histogram of %s(%s)",
-		    sm_get_ch_qualified_name (classop, qualified_name, sizeof (qualified_name)), attr_name);
+		    sm_get_ch_name (classop), attr_name);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, error_histogram);
 	  goto end;
 	}
@@ -3156,8 +3148,7 @@ smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name, const char
   if (owner != ctemplate->op)
     {
       /* it is inherited. */
-      ERROR2 (error, ER_SM_INHERITED, old_name,
-	      sm_get_ch_qualified_name (owner, qualified_name, sizeof (qualified_name)));
+      ERROR2 (error, ER_SM_INHERITED, old_name, sm_get_ch_name (owner));
       return error;
     }
 
@@ -3594,8 +3585,8 @@ smt_class_delete (SM_TEMPLATE * template_, const char *name)
 int
 smt_add_super (SM_TEMPLATE * template_, MOP super_class)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   if (ml_find (template_->inheritance, super_class))
@@ -3619,9 +3610,7 @@ smt_add_super (SM_TEMPLATE * template_, MOP super_class)
 	    }
 	  else if (!is_class)
 	    {
-	      ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS,
-		      db_get_class_qualified_name (super_class, qualified_name, sizeof (qualified_name)),
-		      template_->name);
+	      ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS, db_get_class_name (super_class), template_->name);
 	    }
 	}
       if (error == NO_ERROR)
@@ -3637,9 +3626,7 @@ smt_add_super (SM_TEMPLATE * template_, MOP super_class)
 		}
 	      if (!is_vclass)
 		{
-		  ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS,
-			  db_get_class_qualified_name (super_class, qualified_name2, sizeof (qualified_name2)),
-			  template_->name);
+		  ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS, db_get_class_name (super_class), template_->name);
 		}
 	    }
 	  if (error == NO_ERROR)
@@ -5067,7 +5054,7 @@ smt_find_constraint (SM_TEMPLATE * ctemplate, const char *constraint_name)
 static int
 smt_is_change_status_allowed (SM_TEMPLATE * ctemplate, const char *index_name)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *constraint;
   int partition_type;
@@ -5078,8 +5065,7 @@ smt_is_change_status_allowed (SM_TEMPLATE * ctemplate, const char *index_name)
     {
       error = ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3,
-	      sm_ch_qualified_name ((MOBJ) ctemplate->current, qualified_name, sizeof (qualified_name)), index_name,
-	      "local index on a partition");
+	      sm_ch_name ((MOBJ) ctemplate->current), index_name, "local index on a partition");
       return error;
     }
 
@@ -5095,22 +5081,19 @@ smt_is_change_status_allowed (SM_TEMPLATE * ctemplate, const char *index_name)
     case SM_CONSTRAINT_FOREIGN_KEY:
       error = ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3,
-	      sm_ch_qualified_name ((MOBJ) ctemplate->current, qualified_name, sizeof (qualified_name)),
-	      constraint->name, "foreign key");
+	      sm_ch_name ((MOBJ) ctemplate->current), constraint->name, "foreign key");
       return error;
 
     case SM_CONSTRAINT_PRIMARY_KEY:
       error = ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3,
-	      sm_ch_qualified_name ((MOBJ) ctemplate->current, qualified_name, sizeof (qualified_name)),
-	      constraint->name, "primary key");
+	      sm_ch_name ((MOBJ) ctemplate->current), constraint->name, "primary key");
       return error;
 
     case SM_CONSTRAINT_NOT_NULL:
       error = ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3,
-	      sm_ch_qualified_name ((MOBJ) ctemplate->current, qualified_name, sizeof (qualified_name)),
-	      constraint->name, "NOT NULL constraint");
+	      sm_ch_name ((MOBJ) ctemplate->current), constraint->name, "NOT NULL constraint");
       return error;
 
     default:

@@ -259,7 +259,7 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in, DB_VALUE * d
 bool
 pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   bool result = true;
   PT_NODE *arg1, *arg2;
   DB_VALUE val1, *valp;
@@ -303,9 +303,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 
 		  class_op = db_get_class (obj1);
 		  PT_ERRORmf2 (parser, arg1, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "Select",
-			       ((class_op) ?
-				db_get_class_qualified_name (class_op, qualified_name,
-							     sizeof (qualified_name)) : pt_short_print (parser, arg1)));
+			       ((class_op) ? db_get_class_name (class_op) : pt_short_print (parser, arg1)));
 		}
 
 	      result = (error == NO_ERROR);

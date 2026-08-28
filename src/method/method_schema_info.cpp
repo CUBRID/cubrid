@@ -212,10 +212,7 @@ namespace cubmethod
     // *INDENT-OFF*
     std::string sql = ""
 	"SELECT "
-	  "CASE "
-	    "WHEN is_system_class = 'NO' THEN LOWER (owner_name) || '.' || class_name "
-	    "ELSE class_name "
-	    "END AS qualified_name, "
+	  "class_name, "
 	  "CAST ( "
 	      "CASE "
 		"WHEN is_system_class = 'YES' THEN 0 "
@@ -300,14 +297,7 @@ namespace cubmethod
     // *INDENT-OFF*
     std::string sql = ""
 	"SELECT "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT b.is_system_class "
-		"FROM db_class b "
-		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
-	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
-	    "ELSE a.class_name "
-	    "END AS qualified_name, "
+	  "a.class_name, "
 	  "a.attr_name "
 	"FROM "
 	  "db_attribute a "
@@ -470,7 +460,6 @@ namespace cubmethod
   int
   schema_info_handler::sch_superclass (schema_info &info, std::string &class_name, int flag)
   {
-    char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
     int error = NO_ERROR;
     DB_OBJECT *class_obj = db_find_class (class_name.c_str());
     DB_OBJLIST *obj_list = NULL;
@@ -486,7 +475,7 @@ namespace cubmethod
     class_table ct;
     for (DB_OBJLIST *tmp = obj_list; tmp; tmp = tmp->next)
       {
-	char *p = (char *) db_get_class_qualified_name (tmp->op, qualified_name, sizeof (qualified_name));
+	char *p = (char *) db_get_class_name (tmp->op);
 	int cls_type = class_type (tmp->op);
 	if (cls_type < 0)
 	  {
@@ -600,9 +589,8 @@ namespace cubmethod
 	    DB_OBJECT *obj_trigger_target = trigger->class_mop;
 	    assert (obj_trigger_target != NULL);
 
-	    char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 	    const char *name_trigger_target =
-		    sm_get_ch_qualified_name (obj_trigger_target, qualified_name, sizeof (qualified_name));
+		    sm_get_ch_name (obj_trigger_target);
 	    if (name_trigger_target == NULL)
 	      {
 		assert (er_errid () != NO_ERROR);
@@ -678,9 +666,6 @@ namespace cubmethod
   int
   schema_info_handler::sch_class_priv (schema_info &info, std::string &class_name, int pat_flag)
   {
-    char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-    char qualified_name3[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-    char qualified_name4[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
     int num_tuple = 0;
     unsigned int class_priv;
 
@@ -693,8 +678,7 @@ namespace cubmethod
 	      {
 		if (db_get_class_privilege (class_obj, &class_priv) >= 0)
 		  {
-		    num_tuple = set_priv_table (m_priv_tbl, 0, (char *) db_get_class_qualified_name (class_obj, qualified_name2,
-						sizeof (qualified_name2)), class_priv);
+		    num_tuple = set_priv_table (m_priv_tbl, 0, (char *) db_get_class_name (class_obj), class_priv);
 		  }
 	      }
 	  }
@@ -725,37 +709,24 @@ namespace cubmethod
 	DB_OBJLIST *obj_list = db_get_all_classes ();
 	for (DB_OBJLIST *tmp = obj_list; tmp; tmp = tmp->next)
 	  {
-	    char *p = (char *) db_get_class_qualified_name (tmp->op, qualified_name3, sizeof (qualified_name3));
-	    char *q = p;
+	    char *p = (char *) db_get_class_name (tmp->op);
 	    /* If the user does not exist, compare the entire class_name. */
 	    if (owner && db_is_system_class (tmp->op) == FALSE)
 	      {
-		/* p: qualified_name, q: class_name */
-		q = strchr (p, '.');
-		if (q)
-		  {
-		    q = q + 1;
-		  }
-		else
-		  {
-		    assert (false);
-		  }
-
 		/* If the owner is different from the specified owner, skip it. */
 		if (db_get_owner (tmp->op) != owner)
 		  {
 		    continue;
 		  }
 	      }
-	    if (!class_name.empty() && str_like (std::string (q), class_name.c_str(), '\\') < 1)
+	    if (!class_name.empty() && str_like (std::string (p), class_name.c_str(), '\\') < 1)
 	      {
 		continue;
 	      }
 
 	    if (db_get_class_privilege (tmp->op, &class_priv) >= 0)
 	      {
-		num_tuple += set_priv_table (m_priv_tbl, num_tuple, (char *) db_get_class_qualified_name (tmp->op, qualified_name4,
-					     sizeof (qualified_name4)), class_priv);
+		num_tuple += set_priv_table (m_priv_tbl, num_tuple, (char *) db_get_class_name (tmp->op), class_priv);
 	      }
 	  }
 	db_objlist_free (obj_list);
@@ -770,7 +741,6 @@ namespace cubmethod
 				      std::string &attr_name_pat,
 				      int pat_flag)
   {
-    char qualified_name5[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
     int num_tuple = 0;
 
     DB_OBJECT *class_obj = db_find_class (class_name.c_str ());
@@ -802,8 +772,7 @@ namespace cubmethod
 		  }
 	      }
 
-	    num_tuple += set_priv_table (m_priv_tbl, num_tuple, (char *) db_get_class_qualified_name (class_obj, qualified_name5,
-					 sizeof (qualified_name5)), class_priv);
+	    num_tuple += set_priv_table (m_priv_tbl, num_tuple, (char *) db_get_class_name (class_obj), class_priv);
 	  }
       }
 
@@ -836,22 +805,8 @@ namespace cubmethod
     // *INDENT-OFF*
     std::string sql = ""
 	"SELECT "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT b.is_system_class "
-		"FROM db_class b "
-		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
-	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
-	    "ELSE a.class_name "
-	    "END AS qualified_name, "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT b.is_system_class "
-		"FROM db_class b "
-		"WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name "
-	      ") = 'NO' THEN LOWER (a.super_owner_name) || '.' || a.super_class_name "
-	    "ELSE a.super_class_name "
-	    "END AS super_qualified_name "
+	  "a.class_name, "
+	  "a.super_class_name "
 	"FROM "
 	  "db_direct_super_class a "
 	"WHERE 1 = 1 ";
@@ -923,14 +878,7 @@ namespace cubmethod
 	// *INDENT-OFF*
 	std::string sql = ""
 		"SELECT "
-		  "CASE "
-		    "WHEN ( "
-			"SELECT c.is_system_class "
-			"FROM db_class c "
-			"WHERE c.class_name = a.class_name AND c.owner_name = a.owner_name "
-		      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
-		    "ELSE a.class_name "
-		    "END AS qualified_name, "
+		  "a.class_name, "
 		  "b.key_attr_name, "
 		  "b.key_order + 1, "
 		  "a.index_name "
@@ -970,7 +918,6 @@ namespace cubmethod
 
   int schema_info_handler::sch_imported_keys (schema_info &info, std::string &fktable_name)
   {
-    char qualified_name6[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
     int error = NO_ERROR;
     int num_fk_info = 0, i = 0;
     int fk_i;
@@ -1002,7 +949,7 @@ namespace cubmethod
 	    return ER_FAILED;
 	  }
 
-	const char *pktable_name = db_get_class_qualified_name (pktable_obj, qualified_name6, sizeof (qualified_name6));
+	const char *pktable_name = db_get_class_name (pktable_obj);
 	if (pktable_name == NULL)
 	  {
 	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);

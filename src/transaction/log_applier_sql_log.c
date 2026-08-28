@@ -100,9 +100,9 @@ trim_single_quote (char *str, size_t len)
 static int
 sl_print_select (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-  strbuf ("SELECT * FROM [%s] WHERE ", sm_ch_qualified_name ((MOBJ) sm_class, qualified_name, sizeof (qualified_name)));
+  strbuf ("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) sm_class));
 
   if (sl_print_pk (strbuf, sm_class, key) != NO_ERROR)
     {
@@ -349,10 +349,9 @@ int
 sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
   string_buffer insert_strbuf;
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-  insert_strbuf ("INSERT INTO [%s](",
-		 sm_ch_qualified_name ((MOBJ) (inst_tp->class_), qualified_name, sizeof (qualified_name)));
+  insert_strbuf ("INSERT INTO [%s](", sm_ch_name ((MOBJ) (inst_tp->class_)));
   sl_print_insert_att_names (insert_strbuf, inst_tp->assignments, inst_tp->nassigns);
   insert_strbuf (") VALUES (");
   sl_print_insert_att_values (insert_strbuf, inst_tp->assignments, inst_tp->nassigns);
@@ -382,10 +381,9 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
     {
       /* ordinary tables */
       string_buffer update_strbuf;
-      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+      char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-      update_strbuf ("UPDATE [%s] SET ",
-		     sm_ch_qualified_name ((MOBJ) (inst_tp->class_), qualified_name, sizeof (qualified_name)));
+      update_strbuf ("UPDATE [%s] SET ", sm_ch_name ((MOBJ) (inst_tp->class_)));
       sl_print_update_att_set (update_strbuf, inst_tp->assignments, inst_tp->nassigns);
       update_strbuf (" WHERE ");
       if (sl_print_pk (update_strbuf, inst_tp->class_, key) != NO_ERROR)

@@ -1316,8 +1316,8 @@ PT_NODE *
 pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_OBJECT * class_op, const char *name1,
 			 const char *name2, char **new_trigger_stmt, int with_evaluate)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *stmt_str = NULL;
   const char *class_name;
   PT_NODE **statement_p, *statement;
@@ -1355,7 +1355,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
   class_name = NULL;
   if (class_op && name1 != NULL)
     {
-      class_name = db_get_class_qualified_name (class_op, qualified_name, sizeof (qualified_name));
+      class_name = db_get_class_name (class_op);
       if (!class_name)
 	{
 	  return (PT_NODE *) 0;
@@ -1404,9 +1404,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
       entity_name = entity->info.spec.entity_name;
       entity_name->info.name.spec_id = entity->info.spec.id;
       entity_name->info.name.meta_class = PT_CLASS;
-      entity_name->info.name.original =
-	pt_append_string (parser, NULL,
-			  db_get_class_qualified_name (class_op, qualified_name2, sizeof (qualified_name2)));
+      entity_name->info.name.original = pt_append_string (parser, NULL, db_get_class_name (class_op));
 
       entity->info.spec.only_all = PT_ONLY;
       entity->info.spec.range_var = parser_copy_tree (parser, entity_name);

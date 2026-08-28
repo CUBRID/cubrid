@@ -5407,11 +5407,10 @@ locator_add_class (MOBJ class_obj, const OID * owner_oid, const char *classname)
     {
       if (!WS_IS_DELETED (class_mop))
 	{
-	  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
 	  /* The class already exist.. since it is cached */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_CLASSNAME_EXIST, 1,
-		  sm_ch_qualified_name (class_obj, qualified_name, sizeof (qualified_name)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_CLASSNAME_EXIST, 1, sm_ch_name (class_obj));
 	  return NULL;
 	}
 
@@ -6115,7 +6114,7 @@ locator_lockhint_class_name (LC_LOCKHINT * lockhint, int slot, char *buf, int bu
     }
 
   /* the caller compares this against the name as requested, which says who owns it */
-  return sm_ch_qualified_name (class_obj, buf, buf_size);
+  return sm_ch_name (class_obj);
 }
 
 /*
@@ -6148,7 +6147,7 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
 {
   int i;
   int slot = 0;
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   for (i = 0; i < num_classes; i++)
     {
@@ -6178,7 +6177,7 @@ locator_report_resolved_names (LC_LOCKHINT * lockhint, int num_classes, const ch
 	  continue;
 	}
 
-      found = locator_lockhint_class_name (lockhint, my_slot, qualified_name, sizeof (qualified_name));
+      found = locator_lockhint_class_name (lockhint, my_slot, class_name_buf, sizeof (class_name_buf));
       if (found != NULL && intl_identifier_casecmp (found, requested) != 0)
 	{
 	  /* Copy now: found points into the workspace, which a later fetch can recache. */

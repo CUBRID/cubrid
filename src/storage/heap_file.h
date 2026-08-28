@@ -464,7 +464,6 @@ extern int heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid
 extern int heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **class_name);
 extern int heap_get_user_name (THREAD_ENTRY * thread_p, const OID * user_oid, char *name, int name_size);
 extern int heap_find_user_oid (THREAD_ENTRY * thread_p, const char *name, OID * user_oid);
-extern int heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **name_out);
 extern int heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oid, char *guess_classname,
 					      char **class_name_out);
 extern int heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TDE_ALGORITHM * tde_algo);

@@ -79,11 +79,10 @@ int object_description::init (struct db_object *op)
     {
       return error;
     }
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   this->classname =
-	  object_print::copy_string ((char *) sm_ch_qualified_name ((MOBJ) class_, qualified_name,
-				     sizeof (qualified_name)));
+	  object_print::copy_string ((char *) sm_ch_name ((MOBJ) class_));
 
   string_buffer sb;
   db_value_printer printer (sb);

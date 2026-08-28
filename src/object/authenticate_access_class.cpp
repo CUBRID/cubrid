@@ -76,7 +76,7 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   char *class_new_name = NULL;
   char *owner_name = NULL;
   const char *classname_only = NULL;
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   bool has_savepoint = true;
   int save = 0, alloc_sz;
@@ -133,8 +133,7 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
 
   /* The server has this class under a name that says who owns it, so read that out before
    * the owner changes under us. The class itself only carries the name on its own. */
-  class_old_name = db_private_strdup (NULL, sm_ch_qualified_name ((MOBJ) class_, qualified_name,
-				      sizeof (qualified_name)));
+  class_old_name = db_private_strdup (NULL, sm_ch_name ((MOBJ) class_));
   if (class_old_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);

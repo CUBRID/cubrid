@@ -1466,7 +1466,7 @@ pt_find_users_class (PARSER_CONTEXT * parser, PT_NODE * name)
   name->info.name.db_object = object;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-  /* The code below is no longer needed because it finds objects by qualified_name that includes the owner's name. */
+  /* The code below is no longer needed because it finds objects by a combined owner and class name. */
   pt_check_user_owns_class (parser, name);
 #endif
 

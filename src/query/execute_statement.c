@@ -1515,43 +1515,42 @@ do_get_obj_id (DB_IDENTIFIER * obj_id, DB_OBJECT * class_mop, const char *name, 
  *   return: MOP, or NULL when no serial of that name belongs to that owner
  *   serial_obj_id(out): the serial's OID, set when one is found
  *   serial_class_mop(in): the serial catalog class
- *   qualified_name(in): the name a user goes by, owner and all
+ *   owner_name(in): serial owner name
+ *   serial_name(in): serial name
  */
 static MOP
-do_find_serial_of_owner (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *qualified_name)
+do_find_serial_of_owner (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *owner_name,
+			 const char *serial_name)
 {
   const char *attr_names[2] = { SERIAL_ATTR_NAME, SERIAL_ATTR_OWNER };
   DB_VALUE values[2];
   DB_VALUE *value_ptrs[2] = { &values[0], &values[1] };
-  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char lower_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char lower_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char lower_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_IDENTIFIER *db_id;
   MOP owner_mop, mop;
   int save;
 
   OID_SET_NULL (serial_obj_id);
 
-  if (serial_class_mop == NULL || qualified_name == NULL
-      || intl_identifier_lower_string_size (qualified_name) >= DB_MAX_IDENTIFIER_LENGTH)
+  if (serial_class_mop == NULL || owner_name == NULL || serial_name == NULL
+      || intl_identifier_lower_string_size (owner_name) >= DB_MAX_USER_LENGTH
+      || intl_identifier_lower_string_size (serial_name) >= DB_MAX_IDENTIFIER_LENGTH)
     {
       return NULL;
     }
 
-  intl_identifier_lower (qualified_name, lower_name);
+  intl_identifier_lower (owner_name, lower_owner_name);
+  intl_identifier_lower (serial_name, lower_serial_name);
 
-  if (sm_qualifier_name (lower_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
-    {
-      return NULL;
-    }
-
-  owner_mop = au_find_user (owner_name);
+  owner_mop = au_find_user (lower_owner_name);
   if (owner_mop == NULL)
     {
       er_clear ();
       return NULL;
     }
 
-  db_make_string (&values[0], sm_remove_qualifier_name (lower_name));
+  db_make_string (&values[0], lower_serial_name);
   db_make_object (&values[1], owner_mop);
 
   AU_SAVE_AND_DISABLE (save);
@@ -1575,9 +1574,15 @@ do_find_serial_of_owner (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class
 MOP
 do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *serial_name)
 {
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *bare_serial_name = NULL;
   MOP serial_mop = NULL;
 
-  serial_mop = do_find_serial_of_owner (serial_obj_id, serial_class_mop, serial_name);
+  if (sm_qualifier_name (serial_name, owner_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      bare_serial_name = sm_remove_qualifier_name (serial_name);
+      serial_mop = do_find_serial_of_owner (serial_obj_id, serial_class_mop, owner_name, bare_serial_name);
+    }
   if (serial_mop)
     {
       return serial_mop;
@@ -1598,7 +1603,11 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
 	      return NULL;
 	    }
 
-	  serial_mop = do_find_serial_of_owner (serial_obj_id, serial_class_mop, other_serial_name);
+	  if (sm_qualifier_name (other_serial_name, owner_name, DB_MAX_USER_LENGTH) != NULL)
+	    {
+	      bare_serial_name = sm_remove_qualifier_name (other_serial_name);
+	      serial_mop = do_find_serial_of_owner (serial_obj_id, serial_class_mop, owner_name, bare_serial_name);
+	    }
 	  if (serial_mop)
 	    {
 	      return serial_mop;
@@ -4815,7 +4824,7 @@ static int make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_
 int
 do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   CHECK_MODIFICATION_ERROR ();
@@ -4910,7 +4919,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      const char *fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
 						MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON);
 	      snprintf (au_msg, sizeof (au_msg), fmt ? fmt : "%s is not authorized on %s", "SELECT",
-			db_get_class_qualified_name (class_mop, qualified_name, sizeof (qualified_name)));
+			db_get_class_name (class_mop));
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_ERROR, 1, au_msg);
 	      return error;
 	    }
@@ -4952,7 +4961,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       * server-side gate (statistics_sampling_threshold_pages, 0 = disabled) admits the heap.
 	       * The histogram TRACE lines report the realized coverage after the collection. */
 	      fprintf (stdout, "\nTRACE update statistics: %s (%s%s%s%s)\n",
-		       sm_get_ch_qualified_name (class_mop, qualified_name, sizeof (qualified_name)),
+		       sm_get_ch_name (class_mop),
 		       statement->info.update_stats.with_fullscan ? "fullscan" : "page sampling eligible",
 		       statement->info.update_stats.random_seed ? ", random seed" : "",
 		       statement->info.update_stats.no_histogram ? ", no histogram" : "",
@@ -5042,7 +5051,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      gettimeofday (&trace_end, NULL);
 	      fprintf (stdout, "TRACE update statistics: %s done in %.1f ms\n",
-		       sm_get_ch_qualified_name (class_mop, qualified_name, sizeof (qualified_name)),
+		       sm_get_ch_name (class_mop),
 		       (trace_end.tv_sec - trace_start.tv_sec) * 1000.0 + (trace_end.tv_usec -
 									   trace_start.tv_usec) / 1000.0);
 	      fflush (stdout);
@@ -20763,8 +20772,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
     }
 
   class_name = sm_remove_qualifier_name (name);
-  query = "SELECT " CT_CLASS_QUALIFIED_NAME_EXPR ("")
-    " FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  query = "SELECT " CT_CLASS_NAME_EXPR ("") " FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, qualifier_name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, qualifier_name);
   assert (query_buf[0] != '\0');
@@ -20805,7 +20813,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* qualified_name must not be null. */
+      /* lookup name must not be null. */
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
@@ -20813,7 +20821,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because qualified_name is not unique. */
+      /* No result can be returned because the lookup name is ambiguous. */
       buf[0] = '\0';
 
       ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
@@ -20919,7 +20927,7 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* qualified_name must not be null. */
+      /* lookup name must not be null. */
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
@@ -20927,7 +20935,7 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because qualified_name is not unique. */
+      /* No result can be returned because the lookup name is ambiguous. */
       buf[0] = '\0';
     }
 
@@ -21025,7 +21033,7 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* qualified_name must not be null. */
+      /* lookup name must not be null. */
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
@@ -21033,7 +21041,7 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because qualified_name is not unique. */
+      /* No result can be returned because the lookup name is ambiguous. */
       buf[0] = '\0';
     }
 
@@ -21112,14 +21120,14 @@ do_find_synonym_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* qualified_name must not be null. */
+      /* lookup name must not be null. */
       assert (false);
     }
 
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because qualified_name is not unique. */
+      /* No result can be returned because the lookup name is ambiguous. */
       buf[0] = '\0';
 
       ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, name);
@@ -21220,7 +21228,7 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* qualified_name must not be null. */
+      /* lookup name must not be null. */
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
@@ -21228,7 +21236,7 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because qualified_name is not unique. */
+      /* No result can be returned because the lookup name is ambiguous. */
       buf[0] = '\0';
 
       ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);

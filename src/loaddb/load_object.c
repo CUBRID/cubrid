@@ -722,10 +722,9 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
   oldrep = classobj_find_representation (class_, repid);
   if (oldrep == NULL)
     {
-      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+      char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
-	      sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1, sm_ch_name ((MOBJ) class_));
       return;
     }
 

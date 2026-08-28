@@ -904,9 +904,9 @@ exit:
     split_str (name, prev, cur, class_name);
     split_str (name, prev, cur, attr_name);
 
-    std::string class_name_with_owner = owner_name + class_name;
+    std::string class_lookup_name = owner_name + class_name;
     char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-    sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH);
+    sm_user_specified_name (class_lookup_name.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH);
 
     transform (attr_name.begin(), attr_name.end(), attr_name.begin(), ::tolower);
     DB_ATTRIBUTE *attr = db_get_attribute_by_name (realname, attr_name.c_str ());

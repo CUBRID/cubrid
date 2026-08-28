@@ -1094,14 +1094,14 @@ ldr_clear_err_total (LDR_CONTEXT *context)
 static const char *
 ldr_class_name (LDR_CONTEXT *context)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *name = NULL;
 
   if (context)
     {
       if (context->cls)
 	{
-	  name = db_get_class_qualified_name (context->cls, qualified_name, sizeof (qualified_name));
+	  name = db_get_class_name (context->cls);
 	}
     }
 
@@ -1219,7 +1219,7 @@ select_set_domain (LDR_CONTEXT *context, TP_DOMAIN *domain, TP_DOMAIN **set_doma
 static int
 check_object_domain (LDR_CONTEXT *context, DB_OBJECT *class_, DB_OBJECT **actual_class)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int err = NO_ERROR;
   TP_DOMAIN *domain = NULL, *best = NULL;
 
@@ -1267,7 +1267,7 @@ check_object_domain (LDR_CONTEXT *context, DB_OBJECT *class_, DB_OBJECT **actual
 	    {
 	      err = ER_LDR_OBJECT_DOMAIN_MISMATCH;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, ldr_attr_name (context), ldr_class_name (context),
-		      db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name)));
+		      db_get_class_name (class_));
 	    }
 	}
     }
@@ -1522,7 +1522,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
     }
 
   class_name = sm_remove_qualifier_name (name);
-  query = "SELECT " CT_CLASS_QUALIFIED_NAME_EXPR ("")
+  query = "SELECT " CT_CLASS_NAME_EXPR ("")
 	  " FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
   assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, current_schema_name));
   snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, current_schema_name);
@@ -1565,7 +1565,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
     }
   else
     {
-      /* qualified_name must not be null. */
+      /* lookup name must not be null. */
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
@@ -1573,7 +1573,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   error = db_query_next_tuple (query_result);
   if (error != DB_CURSOR_END)
     {
-      /* No result can be returned because qualified_name is not unique. */
+      /* No result can be returned because the lookup name is ambiguous. */
       buf[0] = '\0';
     }
 
@@ -4236,7 +4236,7 @@ error_exit:
 static int
 find_instance (LDR_CONTEXT *context, DB_OBJECT *class_, OID *oid, int id)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int err = NO_ERROR;
   CLASS_TABLE *table;
   INST_INFO *inst;
@@ -4277,8 +4277,7 @@ find_instance (LDR_CONTEXT *context, DB_OBJECT *class_, OID *oid, int id)
 	      if (is_internal_class (class_))
 		{
 		  err = ER_LDR_INTERNAL_REFERENCE;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, db_get_class_qualified_name (class_, qualified_name,
-			  sizeof (qualified_name)));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, db_get_class_name (class_));
 		}
 	      else
 		{
@@ -6668,9 +6667,9 @@ ldr_update_statistics (void)
     {
       if (ldr_Current_context->args->verbose)
 	{
-	  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-	  class_name = sm_get_ch_qualified_name (table->class_, qualified_name, sizeof (qualified_name));
+	  class_name = sm_get_ch_name (table->class_);
 	  if (class_name == NULL)
 	    {
 	      err = er_errid ();
@@ -6745,7 +6744,7 @@ ldr_is_ignore_class (const char *class_name, size_t size)
 static void
 ldr_process_object_ref (object_ref_type *ref, int type)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   bool ignore_class = false;
   const char *class_name;
   DB_OBJECT *ref_class = NULL;
@@ -6771,7 +6770,7 @@ ldr_process_object_ref (object_ref_type *ref, int type)
   ref_class = ldr_act_get_ref_class (ldr_Current_context);
   if (ref_class != NULL)
     {
-      class_name = db_get_class_qualified_name (ref_class, qualified_name, sizeof (qualified_name));
+      class_name = db_get_class_name (ref_class);
       ignore_class = ldr_is_ignore_class (class_name, ((class_name) ? strlen (class_name) : 0));
     }
 

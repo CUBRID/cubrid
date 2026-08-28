@@ -1728,14 +1728,14 @@ _op_get_user_classes_info (nvplist * out, char *_dbmt_error)
 static void
 _op_get_class_info (nvplist * out, DB_OBJECT * classobj)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *objlist, *temp;
   DB_OBJECT *obj;
   DB_VALUE v;
 
   nv_add_nvp (out, "open", "class");
-  nv_add_nvp (out, "classname", db_get_class_qualified_name (classobj, qualified_name, sizeof (qualified_name)));
+  nv_add_nvp (out, "classname", db_get_class_name (classobj));
 
   obj = db_get_owner (classobj);
   if (db_get (obj, "name", &v) < 0)
@@ -1752,7 +1752,7 @@ _op_get_class_info (nvplist * out, DB_OBJECT * classobj)
   for (temp = objlist; temp != NULL; temp = temp->next)
     {
       obj = temp->op;
-      nv_add_nvp (out, "superclass", db_get_class_qualified_name (obj, qualified_name2, sizeof (qualified_name2)));
+      nv_add_nvp (out, "superclass", db_get_class_name (obj));
     }
   db_objlist_free (objlist);
 
@@ -1788,9 +1788,9 @@ get_client_version (char *cli_ver_val)
 static int
 _op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj, char *_dbmt_error)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name3[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf3[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *objlist, *temp;
   DB_OBJECT *obj;
   DB_ATTRIBUTE *attr;
@@ -1806,7 +1806,7 @@ _op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj, char *_dbmt_er
   dbname = db_get_database_name ();
   nv_add_nvp (out, "open", "classinfo");
   nv_add_nvp (out, "dbname", dbname);
-  class_name = (char *) db_get_class_qualified_name (classobj, qualified_name, sizeof (qualified_name));
+  class_name = (char *) db_get_class_name (classobj);
   if (class_name == NULL)
     {
       CUBRID_ERR_MSG_SET (_dbmt_error);
@@ -1837,16 +1837,14 @@ _op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj, char *_dbmt_er
   for (temp = objlist; temp != NULL; temp = temp->next)
     {
       obj = temp->op;
-      nv_add_nvp (out, "superclass",
-		  (char *) db_get_class_qualified_name (obj, qualified_name2, sizeof (qualified_name2)));
+      nv_add_nvp (out, "superclass", (char *) db_get_class_name (obj));
     }
   db_objlist_free (objlist);
   objlist = db_get_subclasses (classobj);
   for (temp = objlist; temp != NULL; temp = temp->next)
     {
       obj = temp->op;
-      nv_add_nvp (out, "subclass",
-		  (char *) db_get_class_qualified_name (obj, qualified_name3, sizeof (qualified_name3)));
+      nv_add_nvp (out, "subclass", (char *) db_get_class_name (obj));
     }
   db_objlist_free (objlist);
 
@@ -1926,7 +1924,7 @@ _op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj, char *_dbmt_er
 static void
 _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *classname;
   char query[QUERY_BUFFER_MAX], attr_name[128], order[10];
   int i, end, con_type;
@@ -2031,8 +2029,7 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
       DB_OBJECT *ref_cls;
 
       ref_cls = db_get_foreign_key_ref_class (con);
-      snprintf (buf, sizeof (buf) - 1, "REFERENCES %s",
-		db_get_class_qualified_name (ref_cls, qualified_name, sizeof (qualified_name)));
+      snprintf (buf, sizeof (buf) - 1, "REFERENCES %s", db_get_class_name (ref_cls));
       nv_add_nvp (out, "rule", buf);
 
       snprintf (buf, sizeof (buf) - 1, "ON DELETE %s", db_get_foreign_key_action (con, DB_FK_DELETE));
@@ -2048,7 +2045,7 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
 static void
 _op_get_attribute_info (nvplist * out, DB_ATTRIBUTE * attr, int isclass)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *type_name, *v_str;
   DB_OBJECT *superobj;
 
@@ -2068,7 +2065,7 @@ _op_get_attribute_info (nvplist * out, DB_ATTRIBUTE * attr, int isclass)
   superobj = db_attribute_class (attr);
   if (superobj != NULL)
     {
-      nv_add_nvp (out, "inherit", db_get_class_qualified_name (superobj, qualified_name, sizeof (qualified_name)));
+      nv_add_nvp (out, "inherit", db_get_class_name (superobj));
     }
   else
     {
@@ -2128,7 +2125,7 @@ _op_get_attribute_info (nvplist * out, DB_ATTRIBUTE * attr, int isclass)
 static void
 _op_get_resolution_info (nvplist * out, DB_RESOLUTION * res, int isclass)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   if (isclass)
     {
       nv_add_nvp (out, "open", "classresolution");
@@ -2138,8 +2135,7 @@ _op_get_resolution_info (nvplist * out, DB_RESOLUTION * res, int isclass)
       nv_add_nvp (out, "open", "resolution");
     }
   nv_add_nvp (out, "name", db_resolution_name (res));
-  nv_add_nvp (out, "classname",
-	      db_get_class_qualified_name (db_resolution_class (res), qualified_name, sizeof (qualified_name)));
+  nv_add_nvp (out, "classname", db_get_class_name (db_resolution_class (res)));
   nv_add_nvp (out, "alias", db_resolution_alias (res));
   if (isclass)
     {
@@ -2154,7 +2150,7 @@ _op_get_resolution_info (nvplist * out, DB_RESOLUTION * res, int isclass)
 static void
 _op_get_method_info (nvplist * out, DB_METHOD * method, int isclass)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int i, cnt;
   char *type_name;
   DB_DOMAIN *d;
@@ -2172,7 +2168,7 @@ _op_get_method_info (nvplist * out, DB_METHOD * method, int isclass)
   superobj = db_method_class (method);
   if (superobj != NULL)
     {
-      nv_add_nvp (out, "inherit", db_get_class_qualified_name (superobj, qualified_name, sizeof (qualified_name)));
+      nv_add_nvp (out, "inherit", db_get_class_name (superobj));
     }
   else
     {
@@ -2236,7 +2232,7 @@ _op_is_classattribute (DB_ATTRIBUTE * attr, DB_OBJECT * classobj)
 static char *
 _op_get_type_name (DB_DOMAIN * domain)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *class_;
   DB_DOMAIN *set_domain;
   DB_TYPE type_id;
@@ -2261,8 +2257,7 @@ _op_get_type_name (DB_DOMAIN * domain)
       class_ = db_domain_class (domain);
       if (class_ != NULL)
 	{
-	  snprintf (result, result_size, "%s",
-		    db_get_class_qualified_name (class_, qualified_name, sizeof (qualified_name)));
+	  snprintf (result, result_size, "%s", db_get_class_name (class_));
 	}
       else
 	{
@@ -2663,7 +2658,7 @@ trigger_info_sa_finale:
 static void
 op_get_trigger_information (nvplist * res, DB_OBJECT * p_trigger)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *trigger_name, *action, *attr, *condition, *comment;
   DB_OBJECT *target_class;
   DB_TRIGGER_EVENT event;
@@ -2762,8 +2757,7 @@ op_get_trigger_information (nvplist * res, DB_OBJECT * p_trigger)
   db_trigger_class (p_trigger, &target_class);
   if (target_class != NULL)
     {
-      nv_add_nvp (res, "target_class",
-		  db_get_class_qualified_name (target_class, qualified_name, sizeof (qualified_name)));
+      nv_add_nvp (res, "target_class", db_get_class_name (target_class));
     }
 
   db_trigger_attribute (p_trigger, &attr);
@@ -2879,7 +2873,7 @@ _op_get_db_user_name (nvplist * res, DB_OBJECT * user)
 static void
 _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_VALUE v;
   DB_OBJECT *obj;
   DB_COLLECTION *col;
@@ -2899,7 +2893,7 @@ _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
       obj = db_get_object (&v);
       db_seq_get (col, GRANT_ENTRY_TYPE (i), &v);
       snprintf (buf, sizeof (buf) - 1, "%d", db_get_int (&v));
-      nv_add_nvp (res, (char *) db_get_class_qualified_name (obj, qualified_name, sizeof (qualified_name)), buf);
+      nv_add_nvp (res, (char *) db_get_class_name (obj), buf);
     }
 }
 

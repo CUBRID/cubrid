@@ -9775,100 +9775,6 @@ end:
 }
 
 /*
- * heap_get_class_qualified_name () - Read a class name the way a user writes it
- *
- * return: NO_ERROR, or an error raised while reading the record
- *
- *   class_oid(in): The class object identifier
- *   name_out(out): malloc'ed "owner.name", or the name alone for a system class;
- *                  must be released by the caller using free_and_init
- *
- * Note: The record keeps the name and the owner apart, so anything shown to a user has
- *       to put them back together. Reading the owner name fixes a page in another heap,
- *       so call this with no page held: pgbuf_ordered_fix () will not have it otherwise.
- *
- * Note: The trace asks for this while the error that ended the query still stands, so
- *       nothing raised in here is allowed to take its place.
- */
-int
-heap_get_class_qualified_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **name_out)
-{
-  char bare_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char lower_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  RECDES recdes = RECDES_INITIALIZER;
-  HEAP_SCANCACHE scan_cache;
-  OID owner_oid = OID_INITIALIZER;
-  bool is_system = false;
-  int alloc_size;
-  int error = NO_ERROR;
-
-  assert (name_out != NULL);
-
-  *name_out = NULL;
-
-  er_stack_push ();
-
-  /* read the record out first: the owner name is read from another heap, and this one
-   * has no reason to stay fixed while that happens */
-  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
-  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
-    {
-      snprintf (bare_name, sizeof (bare_name), "%s", or_class_name (&recdes));
-      or_class_owner (&recdes, &owner_oid);
-      is_system = or_class_is_system (&recdes);
-    }
-  else
-    {
-      ASSERT_ERROR_AND_SET (error);
-    }
-  (void) heap_scancache_end (thread_p, &scan_cache);
-
-  if (error != NO_ERROR)
-    {
-      if (error == ER_HEAP_NODATA_NEWADDRESS)
-	{
-	  error = NO_ERROR;
-	}
-      er_stack_pop ();
-      return error;
-    }
-
-  if (!is_system && !OID_ISNULL (&owner_oid)
-      && heap_get_user_name (thread_p, &owner_oid, owner_name, sizeof (owner_name)) == NO_ERROR
-      && intl_identifier_lower_string_size (owner_name) < (int) sizeof (lower_owner_name))
-    {
-      intl_identifier_lower (owner_name, lower_owner_name);
-    }
-  else
-    {
-      lower_owner_name[0] = '\0';
-    }
-
-  alloc_size = (int) (strlen (lower_owner_name) + strlen (bare_name) + 2);
-  *name_out = (char *) malloc (alloc_size);
-  if (*name_out == NULL)
-    {
-      er_stack_pop ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) alloc_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  if (lower_owner_name[0] == '\0')
-    {
-      snprintf (*name_out, alloc_size, "%s", bare_name);
-    }
-  else
-    {
-      snprintf (*name_out, alloc_size, "%s.%s", lower_owner_name, bare_name);
-    }
-
-  er_stack_pop ();
-
-  return NO_ERROR;
-}
-
-/*
  * heap_get_class_name_alloc_if_diff () - Get the name of given class
  *                               name is malloc when different than given name
  *   return: error_code if error(other than ER_HEAP_NODATA_NEWADDRESS) occur
@@ -18964,7 +18870,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
 
   /* the header is shown to a user, so the table is named the way one writes it */
-  if (heap_get_class_qualified_name (thread_p, &(heap_hdr->class_oid), &class_name) != NO_ERROR || class_name == NULL)
+  if (heap_get_class_name (thread_p, &(heap_hdr->class_oid), &class_name) != NO_ERROR || class_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto cleanup;
@@ -19134,7 +19040,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
     }
 
   /* the capacity is shown to a user, so the table is named the way one writes it */
-  if (heap_get_class_qualified_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR || classname == NULL)
+  if (heap_get_class_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR || classname == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto cleanup;

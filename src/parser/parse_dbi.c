@@ -197,7 +197,7 @@ pt_is_same_enum_data_type (PT_NODE * dt1, PT_NODE * dt2)
 void
 pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs, PT_NODE ** set)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   PT_TYPE_ENUM typ, expected_typ;
   PT_NODE *next_typs, *expected_typs = NULL;
   PT_NODE *s, *ent;
@@ -251,7 +251,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs, PT_NODE ** se
 		{
 		  /* non-generic object. it must have a class name */
 		  cls = typs->data_type->info.data_type.entity->info.name.db_object;
-		  cls_nam = db_get_class_qualified_name (cls, qualified_name, sizeof (qualified_name));
+		  cls_nam = db_get_class_name (cls);
 		  if (cls == NULL || cls_nam == NULL)
 		    {
 		      PT_INTERNAL_ERROR (parser, "interface");
@@ -415,7 +415,7 @@ exit_on_error:
 static PT_NODE *
 pt_get_object_data_type (PARSER_CONTEXT * parser, const DB_VALUE * val)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *cls;
   PT_NODE *name, *dt;
   const char *class_name = NULL;
@@ -435,7 +435,7 @@ pt_get_object_data_type (PARSER_CONTEXT * parser, const DB_VALUE * val)
       return NULL;
     }
 
-  class_name = db_get_class_qualified_name (cls, qualified_name, sizeof (qualified_name));
+  class_name = db_get_class_name (cls);
   if (class_name == NULL)
     {
       PT_INTERNAL_ERROR (parser, "unknown class name");

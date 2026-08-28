@@ -5021,7 +5021,7 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
       if (info->mop)
 	{
 	  info->oid = *WS_OID (info->mop);
-	  sm_get_ch_qualified_name (info->mop, info->name, sizeof (info->name));
+	  sm_get_ch_name (info->mop);
 	  info->smclass = sm_get_class_with_statistics (info->mop);
 	}
       else

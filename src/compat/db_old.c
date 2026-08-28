@@ -467,7 +467,7 @@ db_get_superclass_names (MOP obj)
   DB_OBJLIST *el;
   SM_CLASS *class_;
   const char *class_name = NULL;
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   CHECK_CONNECT_NULL ();
 
@@ -475,7 +475,7 @@ db_get_superclass_names (MOP obj)
     {
       for (el = class_->inheritance; el != NULL; el = el->next)
 	{
-	  class_name = sm_get_ch_qualified_name (el->op, qualified_name, sizeof (qualified_name));
+	  class_name = sm_get_ch_name (el->op);
 	  if (class_name == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -510,7 +510,7 @@ db_get_subclass_names (MOP obj)
   DB_OBJLIST *el;
   SM_CLASS *class_;
   const char *class_name = NULL;
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
   CHECK_CONNECT_NULL ();
 
@@ -518,7 +518,7 @@ db_get_subclass_names (MOP obj)
     {
       for (el = class_->users; el != NULL; el = el->next)
 	{
-	  class_name = sm_get_ch_qualified_name (el->op, qualified_name, sizeof (qualified_name));
+	  class_name = sm_get_ch_name (el->op);
 	  if (class_name == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);

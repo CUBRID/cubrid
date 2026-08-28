@@ -211,7 +211,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
   bool has_comment = false;
   int max_name_size = SM_MAX_IDENTIFIER_LENGTH + 50;
   size_t buf_size = 0;
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   object_printer printer (sb);
 
   include_inherited = (prt_type == CSQL_SCHEMA_COMMAND);
@@ -261,25 +261,25 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  sb.clear ();
 	  if (has_comment)
 	    {
-	      sb ("%-20s ", (char *) sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
+	      sb ("%-20s ", (char *) sm_ch_name ((MOBJ) class_));
 	      printer.describe_comment_for_session_cmd (class_->comment);
 	    }
 	  else
 	    {
-	      sb ("%s", (char *) sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
+	      sb ("%s", (char *) sm_ch_name ((MOBJ) class_));
 	    }
 	}
       else
 	{
 	  if (has_comment)
 	    {
-	      sb ("%-20s COLLATE %s ", sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)),
+	      sb ("%-20s COLLATE %s ", sm_ch_name ((MOBJ) class_),
 		  lang_get_collation_name (class_->collation_id));
 	      printer.describe_comment_for_session_cmd (class_->comment);
 	    }
 	  else
 	    {
-	      sb ("%-20s COLLATE %s", sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)),
+	      sb ("%-20s COLLATE %s", sm_ch_name ((MOBJ) class_),
 		  lang_get_collation_name (class_->collation_id));
 	    }
 	}
@@ -347,7 +347,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
       for (super = class_->inheritance; super != NULL; super = super->next)
 	{
 	  /* kludge for const vs. non-const warnings */
-	  kludge = sm_get_ch_qualified_name (super->op, qualified_name, sizeof (qualified_name));
+	  kludge = sm_get_ch_name (super->op);
 	  if (kludge == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -388,7 +388,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
       for (user = class_->users; user != NULL; user = user->next)
 	{
 	  /* kludge for const vs. non-const warnings */
-	  kludge = sm_get_ch_qualified_name (user->op, qualified_name, sizeof (qualified_name));
+	  kludge = sm_get_ch_name (user->op);
 	  if (kludge == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);

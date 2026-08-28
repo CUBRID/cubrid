@@ -8901,7 +8901,7 @@ exit:
 int
 qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p, OPERATOR_TYPE op)
 {
-  const char *qualified_name_str;
+  const char *class_name_str;
   char lower_name[SM_MAX_IDENTIFIER_LENGTH];
   OID class_oid;
   HFID hfid;
@@ -8935,13 +8935,13 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
 	  goto exit;
 	}
 
-      qualified_name_str = db_get_string (db_table_name);
-      if (qualified_name_str == NULL)
+      class_name_str = db_get_string (db_table_name);
+      if (class_name_str == NULL)
 	{
 	  goto exit;
 	}
 
-      intl_identifier_lower (qualified_name_str, lower_name);
+      intl_identifier_lower (class_name_str, lower_name);
 
       if (locator_find_class_oid_by_bare_name (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
 	{

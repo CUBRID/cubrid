@@ -1094,7 +1094,7 @@ clear_new_unbound (char *obj, SM_CLASS * class_, SM_REPRESENTATION * oldrep)
 static char *
 get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_bit_flag, int offset_size)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_REPRESENTATION *oldrep;
   SM_REPR_ATTRIBUTE *rat;
   SM_ATTRIBUTE **attmap;
@@ -1108,8 +1108,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 
   if (oldrep == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
-	      sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1, sm_ch_name ((MOBJ) class_));
     }
   else
     {
@@ -1189,7 +1188,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	      if (type == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
-			  sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
+			  sm_ch_name ((MOBJ) class_));
 
 		  db_ws_free (attmap);
 		  if (vars != NULL)
@@ -1251,7 +1250,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 		  if (type == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
-			      sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name)));
+			      sm_ch_name ((MOBJ) class_));
 
 		      db_ws_free (attmap);
 		      db_ws_free (vars);
@@ -4001,7 +4000,7 @@ tag_component_namespace (SM_COMPONENT * components, SM_NAME_SPACE name_space)
 static SM_CLASS *
 disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;
   OR_VARINFO *vars;
@@ -4190,10 +4189,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 		}
 	    }
 
-	  rc =
-	    set_auto_increment_serial_name (auto_increment_name,
-					    sm_ch_qualified_name ((MOBJ) class_, qualified_name,
-								  sizeof (qualified_name)), att->header.name);
+	  rc = set_auto_increment_serial_name (auto_increment_name, sm_ch_name ((MOBJ) class_), att->header.name);
 	  if (rc != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();

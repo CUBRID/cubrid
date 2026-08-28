@@ -9843,7 +9843,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
       goto exit;
     }
 
-  if (heap_get_class_qualified_name (thread_p, &fdes.btree.class_oid, &class_name) != NO_ERROR)
+  if (heap_get_class_name (thread_p, &fdes.btree.class_oid, &class_name) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (ret);
       goto exit;
@@ -9992,7 +9992,7 @@ btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p, BT
   if (class_oid_p && !OID_ISNULL (class_oid_p))
     {
       char *class_name_p = NULL;
-      if (heap_get_class_qualified_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
+      if (heap_get_class_name (thread_p, class_oid_p, &class_name_p) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return;
@@ -19771,7 +19771,7 @@ btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_
 	  save_old_wait = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
 	  /* the owner name comes from a second heap, read after this one is released; the zero wait
 	   * above covers it too, and a failed read leaves the bare name rather than nothing */
-	  if (heap_get_class_qualified_name (thread_p, class_oid, &class_name) != NO_ERROR)
+	  if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR)
 	    {
 	      /* ignore */
 	      er_clear ();
@@ -21929,7 +21929,7 @@ btree_index_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   class_oid_p = &ctx->class_oids[oid_idx];
 
   /* the index header is shown to a user, so the table is named the way one writes it */
-  if (heap_get_class_qualified_name (thread_p, class_oid_p, &class_name) != NO_ERROR || class_name == NULL)
+  if (heap_get_class_name (thread_p, class_oid_p, &class_name) != NO_ERROR || class_name == NULL)
     {
       ret = S_ERROR;
       goto cleanup;

@@ -162,13 +162,13 @@ jsp_is_exist_stored_procedure (const char *name)
 /*
  * jsp_find_sp_of_owner () - Find a stored procedure by its owner and its own name
  *   return: MOP, or NULL when no procedure of that name belongs to that owner
- *   qualified_name(in): owner.name or owner.package.name
+ *   name(in): owner.name or owner.package.name
  *
  * Note: The row keeps the two apart, so the name is taken apart once here rather than
  *       stored a second time alongside them.
  */
 static MOP
-jsp_find_sp_of_owner (const char *qualified_name)
+jsp_find_sp_of_owner (const char *name)
 {
   const char *attr_names[3] = { SP_ATTR_SP_NAME, SP_ATTR_PKG_NAME, SP_ATTR_OWNER };
   DB_VALUE values[3];
@@ -181,12 +181,12 @@ jsp_find_sp_of_owner (const char *qualified_name)
 
   /* owner.name, or owner.package.name. sm_qualifier_name () is no help here: it takes a
    * class name apart and asserts there is only the one dot. */
-  first_dot = strchr (qualified_name, '.');
-  if (first_dot == NULL || (size_t) (first_dot - qualified_name) >= sizeof (owner_name))
+  first_dot = strchr (name, '.');
+  if (first_dot == NULL || (size_t) (first_dot - name) >= sizeof (owner_name))
     {
       return NULL;
     }
-  memcpy (owner_name, qualified_name, first_dot - qualified_name);
+  memcpy (owner_name, name, first_dot - name);
 
   second_dot = strchr (first_dot + 1, '.');
   if (second_dot == NULL)
@@ -610,73 +610,6 @@ jsp_get_name (MOP mop_p)
 
   AU_RESTORE (save);
   return res;
-}
-
-char *
-jsp_get_qualified_name (MOP mop_p, char *buf, int buf_size)
-{
-  int save;
-  DB_VALUE value;
-  char *owner_name;
-  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char pkg_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  int err = NO_ERROR;
-
-  assert (buf != NULL);
-  assert (buf_size > 0);
-
-  if (mop_p == NULL)
-    {
-      ERROR_SET_WARNING (err, ER_SM_INVALID_ARGUMENTS);
-      buf[0] = '\0';
-      return NULL;
-    }
-
-  AU_SAVE_AND_DISABLE (save);
-
-  /* Build an output-facing name from the split catalog columns. */
-  err = db_get (mop_p, SP_ATTR_OWNER, &value);
-  if (err != NO_ERROR)
-    {
-      AU_RESTORE (save);
-      return NULL;
-    }
-
-  owner_name = au_get_user_name (db_get_object (&value));
-  pr_clear_value (&value);
-  if (owner_name == NULL)
-    {
-      AU_RESTORE (save);
-      return NULL;
-    }
-  sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
-  db_ws_free_and_init (owner_name);
-
-  err = db_get (mop_p, SP_ATTR_PKG_NAME, &value);
-  if (err != NO_ERROR)
-    {
-      AU_RESTORE (save);
-      return NULL;
-    }
-
-  if (!DB_IS_NULL (&value) && db_get_string (&value) != NULL && db_get_string (&value)[0] != '\0')
-    {
-      snprintf (pkg_name, sizeof (pkg_name), "%s.", db_get_string (&value));
-    }
-  pr_clear_value (&value);
-
-  err = db_get (mop_p, SP_ATTR_SP_NAME, &value);
-  if (err != NO_ERROR)
-    {
-      AU_RESTORE (save);
-      return NULL;
-    }
-
-  snprintf (buf, buf_size, "%s.%s%s", downcase_owner_name, pkg_name, db_get_string (&value));
-  pr_clear_value (&value);
-
-  AU_RESTORE (save);
-  return buf;
 }
 
 /*
@@ -2151,7 +2084,6 @@ pt_to_method_arglist (PARSER_CONTEXT *parser, PT_NODE *target, PT_NODE *node_lis
 int
 jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_as_attr_list, cubpl::pl_signature &sig)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int save = 0;
   int error = NO_ERROR;
   char user_name_buffer [DB_MAX_USER_LENGTH + 1];
@@ -2261,13 +2193,10 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
 	if (dt->info.data_type.virt_object)
 	  {
-	    char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-
 	    /* parser memory, so the signature borrows this the same way it borrows the name below */
 	    sig.ext.method.class_name =
 		    (char *) pt_append_string (parser, NULL,
-					       db_get_class_qualified_name (dt->info.data_type.virt_object, qualified_name,
-						   sizeof (qualified_name)));
+					       db_get_class_name (dt->info.data_type.virt_object));
 	  }
 	else
 	  {

@@ -11079,7 +11079,7 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
 static void
 fprint_domain (FILE * fp, TP_DOMAIN * domain)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   TP_DOMAIN *d;
 
   for (d = domain; d != NULL; d = d->next)
@@ -11098,7 +11098,7 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 #if !defined (SERVER_MODE)
 	  if (d->class_mop != NULL)
 	    {
-	      fprintf (fp, "%s", db_get_class_qualified_name (d->class_mop, qualified_name, sizeof (qualified_name)));
+	      fprintf (fp, "%s", db_get_class_name (d->class_mop));
 	    }
 	  else if (OID_ISNULL (&d->class_oid))
 	    {

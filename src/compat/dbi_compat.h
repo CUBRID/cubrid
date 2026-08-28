@@ -344,9 +344,8 @@ extern "C"
   extern int db_is_partition (DB_OBJECT * classobj, DB_OBJECT * superobj);
   extern int db_is_system_class (DB_OBJECT * op);
   extern int db_is_deleted (DB_OBJECT * obj);
-
   extern const char *db_get_class_name (DB_OBJECT * classobj);
-  extern const char *db_get_class_qualified_name (DB_OBJECT * classobj, char *buf, int buf_size);
+  extern const char *db_get_class_name (DB_OBJECT * classobj);
   extern DB_OBJLIST *db_get_superclasses (DB_OBJECT * obj);
   extern DB_OBJLIST *db_get_subclasses (DB_OBJECT * obj);
   extern DB_ATTRIBUTE *db_get_attribute (DB_OBJECT * obj, const char *name);

@@ -1276,10 +1276,10 @@ get_attribute_number_method (DB_OBJECT *target, DB_VALUE *result, DB_VALUE *attr
 static void
 dbmeth_class_name (DB_OBJECT *self, DB_VALUE *result)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *cname;
 
-  cname = db_get_class_qualified_name (self, qualified_name, sizeof (qualified_name));
+  cname = db_get_class_name (self);
 
   /*
    * Make a string and clone it so that it won't become invalid if the

@@ -347,13 +347,12 @@ help_print_obj (print_output & output_ctx, MOP obj)
 char **
 help_class_names (const char *qualifier)
 {
-  char qualified_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *mops, *m;
   char **names;
   int count, i, outcount;
   DB_OBJECT *requested_owner, *owner;
   char buffer[2 * DB_MAX_IDENTIFIER_LENGTH + 4];
-  const char *class_qualified_name;
+  const char *class_name_for_output;
   const char *class_name;
 
   requested_owner = NULL;
@@ -384,13 +383,12 @@ help_class_names (const char *qualifier)
 	{
 	  for (i = 0, m = mops; i < count; i++, m = m->next)
 	    {
-	      class_qualified_name =
-		db_get_class_qualified_name (m->op, qualified_name_buf, sizeof (qualified_name_buf));
+	      class_name_for_output = db_get_class_name (m->op);
 	      buffer[0] = '\0';
 
-	      if (!requested_owner && sm_check_name (class_qualified_name))
+	      if (!requested_owner && sm_check_name (class_name_for_output))
 		{
-		  snprintf (buffer, sizeof (buffer) - 1, "%s", class_qualified_name);
+		  snprintf (buffer, sizeof (buffer) - 1, "%s", class_name_for_output);
 		  names[outcount++] = object_print::copy_string (buffer);
 		  continue;
 		}
@@ -498,7 +496,7 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
 {
   SM_CLASS *class_;
   char oidbuffer[64];		/* three integers, better be big enough */
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *class_name;
   int required, total;
 
@@ -510,7 +508,7 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
 	  sprintf (oidbuffer, "%ld.%ld.%ld", (DB_C_LONG) WS_OID (obj)->volid, (DB_C_LONG) WS_OID (obj)->pageid,
 		   (DB_C_LONG) WS_OID (obj)->slotid);
 
-	  class_name = sm_ch_qualified_name ((MOBJ) class_, qualified_name, sizeof (qualified_name));
+	  class_name = sm_ch_name ((MOBJ) class_);
 	  required = strlen (oidbuffer) + strlen (class_name) + 2;
 	  if (locator_is_class (obj, DB_FETCH_READ) > 0)
 	    {

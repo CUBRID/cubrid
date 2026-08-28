@@ -2895,7 +2895,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
       if (type == TARGET_CLASS)
 	{
 	  cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
-	  if (heap_get_class_qualified_name (thread_p, &(cls_node->cls_oid), &class_name) != NO_ERROR)
+	  if (heap_get_class_name (thread_p, &(cls_node->cls_oid), &class_name) != NO_ERROR)
 	    {
 	      if (er_errid () != ER_INTERRUPTED)
 		{
@@ -2970,7 +2970,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
 		  part_scan = json_object ();
 
-		  if (heap_get_class_qualified_name (thread_p, &curr_part->oid, &class_name) != NO_ERROR)
+		  if (heap_get_class_name (thread_p, &curr_part->oid, &class_name) != NO_ERROR)
 		    {
 		      /* ignore */
 		      er_clear ();
@@ -3538,7 +3538,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
       if (type == TARGET_CLASS)
 	{
 	  cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
-	  if (heap_get_class_qualified_name (thread_p, &(cls_node->cls_oid), &class_name) != NO_ERROR)
+	  if (heap_get_class_name (thread_p, &(cls_node->cls_oid), &class_name) != NO_ERROR)
 	    {
 	      if (er_errid () != ER_INTERRUPTED)
 		{
@@ -3636,7 +3636,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		  fprintf (fp, "\n");
 		  fprintf (fp, "%*cPARTITION ", multi_spec_indent + 2, ' ');
 
-		  if (heap_get_class_qualified_name (thread_p, &curr_part->oid, &class_name) != NO_ERROR)
+		  if (heap_get_class_name (thread_p, &curr_part->oid, &class_name) != NO_ERROR)
 		    {
 		      /* ignore */
 		      er_clear ();

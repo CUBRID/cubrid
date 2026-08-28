@@ -1218,8 +1218,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 	}
     }
 
-  /* NAME. The row keeps the trigger's own name and its owner apart, so put them back
-   * together for the name this trigger goes by. */
+  /* NAME */
   if (db_get (object, TR_ATT_NAME, &value))
     {
       goto error;
@@ -1230,7 +1229,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
       tmp = db_get_string (&value);
       if (tmp)
 	{
-	  trigger->name = tr_qualified_name (trigger->owner, tmp);
+	  trigger->name = strdup (tmp);
 	}
     }
   db_value_clear (&value);
@@ -3734,10 +3733,9 @@ check_target (DB_TRIGGER_EVENT event, DB_OBJECT * class_mop, const char *attribu
       /* not a class event, class and attribute must be unspecified */
       if (class_mop != NULL)
 	{
-	  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_BAD_TARGET_CLASS, 1,
-		  sm_get_ch_qualified_name (class_mop, qualified_name, sizeof (qualified_name)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_BAD_TARGET_CLASS, 1, sm_get_ch_name (class_mop));
 	}
       else if (attribute != NULL)
 	{
@@ -3940,7 +3938,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 		   DB_TRIGGER_TIME action_time, DB_TRIGGER_ACTION action_type, const char *action_source,
 		   const char *comment)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char class_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   TR_TRIGGER *trigger;
   DB_OBJECT *object;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
@@ -3989,8 +3987,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 	}
       if (is_vclass)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_NO_VCLASSES, 1,
-		  db_get_class_qualified_name (class_mop, qualified_name, sizeof (qualified_name)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_NO_VCLASSES, 1, db_get_class_name (class_mop));
 	  goto error;
 	}
     }
@@ -7145,47 +7142,6 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api
   AU_RESTORE (save);
 
   return error;
-}
-
-/*
- * tr_qualified_name () - Build the name a trigger goes by out of its parts
- *
- * return: a copy of "owner.name" the caller frees, or NULL when out of memory
- *
- *   owner(in): the trigger's owner; NULL gives back the bare name
- *   name(in): the trigger's own name
- *
- * Note: The row keeps the two apart. Only the name a user sees or types puts them together.
- */
-char *
-tr_qualified_name (DB_OBJECT * owner, const char *name)
-{
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  char *owner_name;
-
-  if (name == NULL)
-    {
-      return NULL;
-    }
-
-  if (owner == NULL)
-    {
-      return strdup (name);
-    }
-
-  owner_name = au_get_user_name (owner);
-  if (owner_name == NULL)
-    {
-      return NULL;
-    }
-
-  sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
-  db_ws_free_and_init (owner_name);
-
-  snprintf (qualified_name, sizeof (qualified_name), "%s.%s", downcase_owner_name, name);
-
-  return strdup (qualified_name);
 }
 
 /*
