@@ -3133,7 +3133,7 @@ end:
  *    trigger_ptr(out):  trigger object (returned)
  *
  * Note:
- *    All triggers must have a globally unique name.
+ *    Triggers are identified by owner and trigger name.
  *    Should be modified to use an actual persistent table rather than the temporary in-memory table.
  */
 static int
@@ -3909,7 +3909,7 @@ tr_check_correlation (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *w
 /*
  * tr_create_trigger() - Primary interface function for defining a trigger
  *    return: trigger object (persistent database object)
- *    name(in): unique name
+ *    name(in): trigger name
  *    status(in): active/inactive
  *    priority(in): relative priority (default is 0.0)
  *    event(in): event type

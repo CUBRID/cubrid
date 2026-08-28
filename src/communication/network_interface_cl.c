@@ -1089,8 +1089,8 @@ locator_find_class_oid (const char *class_name, const char *owner_name, OID * cl
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
  *   op(in): Synonym DDL operation to mirror into the server classname table
- *   name(in): Synonym unique name (the old name for RENAME)
- *   arg(in): Target unique name (ADD, ALTER) or the new name (RENAME); NULL for DROP
+ *   name(in): Synonym name (the old name for RENAME)
+ *   arg(in): Target name (ADD, ALTER) or the new name (RENAME); NULL for DROP
  */
 int
 locator_synonym_ddl (LC_SYNONYM_DDL_OP op, const char *name, const char *arg)

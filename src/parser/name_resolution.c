@@ -4337,14 +4337,14 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
 /*
  * pt_check_distinct_spec_names () - make sure the spec names are different.
  *
- *   return: 1 if names are all unique, 0 if duplicate name
+ *   return: 1 if names are all distinct, 0 if duplicate name
  *   parser(in):
  *   p(in): a PT_SPEC node (list)
 
  * Note :
  * If names in range_var are resolved, use pt_check_unique_exposed () instead.
  * This was specially created for DELETE statement which needs to verify
- * that specs have unique names before calling pt_class_pre_fetch ();
+ * that specs have distinct names before calling pt_class_pre_fetch ();
  * otherwise it crashes.
  */
 int
@@ -7313,7 +7313,7 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		{
 		  const char *unique_exposed_name;
 		  /*
-		   * Was sublist, they didn't give a correlation variable name so We generate a unique name and attach
+		   * Was sublist, they didn't give a correlation variable name so We generate a distinct name and attach
 		   * it. */
 		  r = parser_new_node (parser, PT_NAME);
 

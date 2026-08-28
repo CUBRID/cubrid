@@ -376,9 +376,9 @@ typedef enum
 /* Synonym DDL operations mirrored into the server classname table */
 typedef enum
 {
-  LC_SYNONYM_DDL_ADD,		/* CREATE SYNONYM: name + target unique name */
+  LC_SYNONYM_DDL_ADD,		/* CREATE SYNONYM: name + target name */
   LC_SYNONYM_DDL_DROP,		/* DROP SYNONYM: name */
-  LC_SYNONYM_DDL_ALTER,		/* ALTER SYNONYM: name + new target unique name */
+  LC_SYNONYM_DDL_ALTER,		/* ALTER SYNONYM: name + new target name */
   LC_SYNONYM_DDL_RENAME		/* RENAME SYNONYM: old name + new name */
 } LC_SYNONYM_DDL_OP;
 

@@ -1111,7 +1111,7 @@ meth_get_method_params (PARSER_CONTEXT * parser, UINTPTR spec_id, PT_NODE * meth
 
 
 /*
- * meth_make_unique_range_var() - Create a new range variable with a unique name
+ * meth_make_unique_range_var() - Create a new range variable with a generated name
  *   return:
  *   parser(in):
  *   spec(in): corresponding spec node

@@ -115,7 +115,7 @@ static AREA *Assignment_area = NULL;
 
 static unsigned int obj_Template_traversal = 0;
 /*
- * Must make sure template savepoints have unique names to allow for concurrent
+ * Must make sure template savepoints have distinct names to allow for concurrent
  * or nested updates.  Could be resetting this at db_restart() time.
  */
 static unsigned int template_savepoint_count = 0;

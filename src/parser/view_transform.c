@@ -14859,9 +14859,8 @@ mq_evaluate_check_option (PARSER_CONTEXT * parser, PT_NODE * check_where, DB_OBJ
 	  if (db_value_is_null (&bool_val) || db_get_int (&bool_val) == 0)
 	    {
 	      PT_ERRORmf (parser, check_where, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_CHECK_OPTION_EXCEPT,
-			  view_class->info.name.virt_object ? db_get_class_qualified_name (view_class->info.
-											   name.virt_object,
-											   qualified_name,
+			  view_class->info.name.virt_object ? db_get_class_qualified_name (view_class->info.name.
+											   virt_object, qualified_name,
 											   sizeof (qualified_name)) : ""
 			  /* an internal error */ );
 
@@ -15055,7 +15054,7 @@ mq_mark_order_dependent_nodes (PT_NODE * node)
  *   parser(in): parser context
  *   node(in): node to rewrite
  *   select(in): parent SELECT query
- *   unique(in/out): pointer to an int counter, used for unique name generation
+ *   unique(in/out): pointer to an int counter, used for generated name suffixes
  *
  * NOTE: this function will take all order independent subtrees and add them to
  * the derived table select list, thus making sure the expressions are
@@ -15193,7 +15192,7 @@ mq_rewrite_order_dependent_nodes (PARSER_CONTEXT * parser, PT_NODE * node, PT_NO
   /* add node to select list of derived table */
   dt_query->info.query.q.select.list = parser_append_node (node, dt_query->info.query.q.select.list);
 
-  /* generate unique name for subexpression */
+  /* generate a name for subexpression */
   name = (char *) mq_generate_name (parser, "sx", unique);
   if (name == NULL)
     {
@@ -15237,7 +15236,7 @@ mq_rewrite_order_dependent_nodes (PARSER_CONTEXT * parser, PT_NODE * node, PT_NO
  *   returns: rewritten query
  *   parser(in): parser context
  *   select(in): SELECT statement node
- *   unique(in/out): pointer to an int counter, used for unique name generation
+ *   unique(in/out): pointer to an int counter, used for generated name suffixes
  *
  * EXAMPLE: the function will rewrite the query:
  *

@@ -694,7 +694,7 @@ set_auto_increment_serial_name (char *serial_name, const char *class_name, const
 
       assert ((class_only_length + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + attr_length) < (int) sizeof (name_buf));
 
-      // original serial name is too long, we need to generate a unique name using md5 hash value of the original serial name
+      // original serial name is too long, so generate a shortened md5-based name
       copy_length = sprintf (name_buf, "%s_ai_%s", dot + 1, attr_name);
       pos = crypt_md5_buffer_hex (name_buf, copy_length, md5_str + 1);
       if (pos != NO_ERROR)

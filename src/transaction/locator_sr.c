@@ -90,7 +90,7 @@ struct locator_classname_action
 {
   LC_FIND_CLASSNAME action;	/* The transient operation, delete or reserve name */
   OID oid;			/* The class identifier of classname */
-  char *synonym_target;		/* Target unique name for synonym entries; NULL for class entries. Owned by this
+  char *synonym_target;		/* Target name for synonym entries; NULL for class entries. Owned by this
 				 * action node so that partial/full rollback restores the previous target. */
   OID synonym_target_owner;	/* Owner the target name refers to; travels with the target */
   LOG_LSA savep_lsa;		/* A top action LSA address (likely a savepoint) for return NULL is for current */
@@ -706,7 +706,7 @@ locator_classname_entry_set_owner (LOCATOR_CLASSNAME_ENTRY * entry, const OID * 
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
  *   entry(in/out):
- *   target(in): New target unique name; NULL for class entries
+ *   target(in): New target name; NULL for class entries
  *   target_owner(in): Owner the target refers to; NULL leaves it unknown
  */
 static int
@@ -1253,7 +1253,7 @@ xlocator_reserve_class_name (THREAD_ENTRY * thread_p, const char *classname, OID
  *   classname(in): Name to reserve
  *   owner_oid(in): Owner the name refers to; NULL OID when the name has no qualifier
  *   class_oid(in/out): Object identifier; a pseudo OID is generated when NULL
- *   synonym_target(in): Target unique name for a synonym; NULL reserves a class name
+ *   synonym_target(in): Target name for a synonym; NULL reserves a class name
  *   synonym_target_owner(in): Owner the target refers to
  */
 static LC_FIND_CLASSNAME
@@ -1739,7 +1739,7 @@ xlocator_rename_class_name (THREAD_ENTRY * thread_p, const char *oldname, const 
  *   newname(in): New name
  *   owner_oid(in): Owner the new name refers to; NULL OID when it has no qualifier
  *   class_oid(in/out): Object identifier
- *   synonym_target(in): Target unique name carried over to the new synonym entry; NULL for classes
+ *   synonym_target(in): Target name carried over to the new synonym entry; NULL for classes
  */
 static LC_FIND_CLASSNAME
 xlocator_rename_name_internal (THREAD_ENTRY * thread_p, const char *oldname, const char *newname,
@@ -1850,8 +1850,8 @@ error:
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
  *   op(in): Which DDL statement is being mirrored
- *   name(in): Synonym unique name (the old name for RENAME)
- *   arg(in): Target unique name (ADD, ALTER) or the new synonym name (RENAME); NULL for DROP
+ *   name(in): Synonym name (the old name for RENAME)
+ *   arg(in): Target name (ADD, ALTER) or the new synonym name (RENAME); NULL for DROP
  *
  * Note: Synonym entries follow the same transient lifecycle as class names: they
  *       become permanent at commit and are reverted at (partial) rollback. The
@@ -2182,7 +2182,7 @@ xlocator_find_system_class_oid (THREAD_ENTRY * thread_p, const char *classname, 
  *   lock(in): Lock to acquire for the class
  *   synonym_target(in/out): Buffer of DB_MAX_IDENTIFIER_LENGTH bytes; left empty
  *                           unless the given name resolved through a synonym, in
- *                           which case it receives the target unique name.
+ *                           which case it receives the target name.
  *                           NULL when the caller must not see synonyms
  *
  * Note: When the name matches a visible synonym entry, the target name is copied

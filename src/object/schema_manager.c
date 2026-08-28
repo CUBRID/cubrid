@@ -1037,7 +1037,7 @@ sm_expand_method_files (SM_METHOD_FILE * files)
 
 /*
  * sm_build_function_nlist() - Builds an nlist function name array from a list of
- *    method link structures.  The links are filtered so that only unique
+ *    method link structures.  The links are filtered so that only distinct
  *    names will be in the nlist array.  The links structures are
  *    modified as a side effect so that their namelist_index is set to the
  *    index in the nlist array where the information for that function
@@ -1067,7 +1067,7 @@ sm_build_function_nlist (METHOD_LINK * links, struct nlist **nlist_p)
       goto end;
     }
 
-  /* allocation & initialize an array for building the unique name list */
+  /* allocation & initialize an array for building the distinct function-name list */
   nlinks = WS_LIST_LENGTH (links);
   fnames = (const char **) db_ws_alloc (sizeof (char *) * nlinks);
   if (fnames == NULL)
@@ -1082,7 +1082,7 @@ sm_build_function_nlist (METHOD_LINK * links, struct nlist **nlist_p)
 	  fnames[i] = NULL;
 	}
 
-      /* populate the unique name array */
+      /* populate the distinct function-name array */
       index = 0;
       for (ml = links; ml != NULL && error == NO_ERROR; ml = ml->next)
 	{
@@ -1123,7 +1123,7 @@ sm_build_function_nlist (METHOD_LINK * links, struct nlist **nlist_p)
 
       if (error == NO_ERROR)
 	{
-	  /* build an actual nlist structure from the unique name array */
+	  /* build an actual nlist structure from the distinct function-name array */
 	  namelist = (struct nlist *) db_ws_alloc (sizeof (struct nlist) * (index + 1));
 	  if (namelist == NULL)
 	    {
