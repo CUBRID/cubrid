@@ -273,7 +273,7 @@ namespace lockfree
     // (lock_free.c:1927-1946) and because a throw here unwinds through C callers - xcache_initialize (),
     // spage_boot (), catalog_initialize () - which cannot unwind, so it arrives as std::terminate.
     m_freelist = new (std::nothrow) freelist_type (transys, freelist_block_size, freelist_block_count,
-						  entry_uninit { &edesc });
+	entry_uninit { &edesc });
     if (m_freelist == NULL)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) sizeof (freelist_type));
