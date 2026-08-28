@@ -3776,8 +3776,8 @@ qmgr_reset_query_exec_info (int tran_index)
     {
       tdes_p->query_start_time = 0;
       XASL_ID_SET_NULL (&tdes_p->xasl_id);
-      /* Hand the deadline to the commit path, which runs after this reset and bounds its wait for
-       * the 2PC decisions by whatever is left of it. */
+      /* Hand the deadline to the commit path, which runs after this reset and lets it wait for the
+       * 2PC decisions longer than its built-in bound when more than that is left. */
       tdes_p->last_query_deadline = tdes_p->query_timeout;
       tdes_p->query_timeout = 0;
     }

@@ -152,9 +152,9 @@ dblink_2pc_completion_ref (DBLINK_2PC_COMPLETION * completion)
 /*
  * dblink_2pc_completion_unref - Drop one reference, freeing the completion with the last one.
  *
- * Note: internal on purpose.  The two references are released by dblink_2pc_completion_settle()
- *       (the entry's) and dblink_2pc_completion_wait_and_release() (the commit path's), so no
- *       caller outside this file has to get the pairing right.
+ * Note: internal on purpose.  Every reference is released by the operation that used it -
+ *       dblink_2pc_completion_settle() for an entry's, dblink_2pc_completion_wait_and_release()
+ *       for the commit path's - so no caller outside this file has to get the pairing right.
  */
 static void
 dblink_2pc_completion_unref (DBLINK_2PC_COMPLETION * completion)

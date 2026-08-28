@@ -535,8 +535,10 @@ struct log_tdes
   INT64 query_timeout;		/* a query should be executed before query_timeout time. */
   INT64 last_query_deadline;	/* Deadline of the query that just ended, kept past the reset in
 				 * qmgr_reset_query_exec_info() so that the commit path, which runs after it,
-				 * can bound its own wait by what is left of the client's query timeout.
-				 * 0 means the client asked for no limit. */
+				 * can wait for its 2PC decisions longer than the built-in bound when more
+				 * than that is left.  It only extends that wait, never shortens it - see
+				 * log_2pc_commit_first_phase() for why.  0 means there is no deadline to
+				 * carry: either none was asked for, or the session never had one. */
 
   INT64 query_start_time;
   INT64 tran_start_time;
