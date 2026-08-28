@@ -1916,6 +1916,7 @@ struct pt_alter_user_info
   PT_NODE *comment;		/* PT_VALUE */
   PT_ALTER_CODE code;		/* PT_ADD_MEMBERS, PT_DROP_MEMBERS */
   PT_NODE *members;		/* PT_NAME list */
+  PT_MISC_TYPE login_capability;	/* PT_LOGIN, PT_NOLOGIN, PT_MISC_DUMMY */
 };
 
 /* Info for ALTER_TRIGGER */
@@ -2054,6 +2055,7 @@ struct pt_create_user_info
   PT_NODE *groups;		/* PT_NAME list */
   PT_NODE *members;		/* PT_NAME list */
   PT_NODE *comment;		/* PT_VALUE */
+  PT_MISC_TYPE login_capability;	/* PT_LOGIN, PT_NOLOGIN, PT_MISC_DUMMY */
 };
 
 /* CREATE TRIGGER INFO */
@@ -2361,6 +2363,12 @@ struct pt_expr_info
 #define PT_EXPR_INFO_LIKE_DERIVED_RANGE 4194304	/* 0x400000, range derived from a prefix LIKE; excluded from row-count selectivity */
 #define PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE 8388608	/* 0x800000, the prefix LIKE a range was derived from; the pair
 							 * of PT_EXPR_INFO_LIKE_DERIVED_RANGE */
+#define PT_EXPR_INFO_OR_DERIVED 16777216	/* 0x1000000, single-spec restriction derived from a multi-spec OR
+						 * factor; implied by that factor, so excluded from row-count
+						 * selectivity */
+#define PT_EXPR_INFO_OR_DERIVED_EXPENSIVE 33554432	/* 0x2000000, an OR-derived restriction with a conjunct costlier
+							 * than a column-vs-constant compare; kept only when an index
+							 * adopts it */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
