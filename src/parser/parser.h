@@ -137,6 +137,7 @@ extern "C"
   extern const unsigned char *pt_get_varchar_bytes (const PARSER_VARCHAR * string);
   extern int pt_get_varchar_length (const PARSER_VARCHAR * string);
 
+  extern const char *pt_print_quoted_value_text (PARSER_CONTEXT * parser, const char *str, int length);
   extern PARSER_VARCHAR *pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_bytes_spec_list (PARSER_CONTEXT * parser, const PT_NODE * node);
