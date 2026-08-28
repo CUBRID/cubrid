@@ -196,8 +196,8 @@ typedef enum t_con_status T_CON_STATUS;
 typedef INT64 int64_t;
 #endif
 
-typedef struct ip_info IP_INFO;
-struct ip_info
+typedef struct br_acl_ip_info BR_ACL_IP_INFO;
+struct br_acl_ip_info	/* renamed from ip_info: the tag collided with connection_sr.h in merged-server TUs (stage B1) */
 {
   unsigned char address_list[ACL_MAX_IP_COUNT * IP_BYTE_COUNT];
   time_t last_access_time[ACL_MAX_IP_COUNT];
@@ -210,7 +210,7 @@ struct access_list
   char dbname[ACL_MAX_DBNAME_LENGTH];
   char dbuser[ACL_MAX_DBUSER_LENGTH];
   char ip_files[LINE_MAX + 1];	/* reserve buffer for '\0' */
-  IP_INFO ip_info;
+  BR_ACL_IP_INFO ip_info;
 };
 
 typedef struct t_shard_conn_info T_SHARD_CONN_INFO;

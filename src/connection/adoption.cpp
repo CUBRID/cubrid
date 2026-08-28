@@ -47,6 +47,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cas_dispatch.h"	// cas_server_speaker_boot_init
 #include "connection_defs.h"
 #include "connection_sr.h"	// css_increment_num_conn
 #include "db_client_type.hpp"
@@ -647,6 +648,9 @@ namespace cubconn
 	  delete m;
 	  return ER_FAILED;
 	}
+
+      /* the folded CAS speaker's process-wide config stub (cas_server_support) */
+      cas_server_speaker_boot_init (db_name);
 
       m->accept_thread = std::thread (accept_thread_run, m);
       adoption_Manager = m;

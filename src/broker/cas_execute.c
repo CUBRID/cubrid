@@ -68,7 +68,11 @@
 #include "system_parameter.h"
 #include "schema_manager.h"
 #include "object_representation.h"
+#if defined(SERVER_MODE)
+#include "connection_defs.h"	/* DB_HS_* (the only surface used here); connection_cl.h is CS-only */
+#else
 #include "connection_cl.h"
+#endif
 #include "db_set_function.h"
 #include "dbi.h"
 #include "parse_tree.h"
@@ -322,10 +326,10 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_attribute,		/* SCH_ATTR_WITH_SYNONYM */
 };
 
-static char database_name[MAX_HA_DBINFO_LENGTH] = "";
-static char database_user[SRV_CON_DBUSER_SIZE] = "";
-static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
-static char cas_db_sys_param[128] = "";
+static CAS_TLS char database_name[MAX_HA_DBINFO_LENGTH] = "";
+static CAS_TLS char database_user[SRV_CON_DBUSER_SIZE] = "";
+static CAS_TLS char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
+static CAS_TLS char cas_db_sys_param[128] = "";
 
 int
 ux_check_connection (void)

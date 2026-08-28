@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include "cas_common_execute.h"
+#include "cas_common_vars.h"
 #include "cas_net_buf.h"
 #include "cas_util.h"
 #include "perf_monitor.h"
@@ -35,7 +36,7 @@
 
 
 /* Shared cas_u_type array for CAS and CGW */
-static char cas_u_type[] = { 0,	/* 0 */
+static CAS_TLS char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_INT,		/* 1 */
   CCI_U_TYPE_FLOAT,		/* 2 */
   CCI_U_TYPE_DOUBLE,		/* 3 */
@@ -72,7 +73,7 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_JSON,		/* 40 */
 };
 
-static CAS_ERROR_LOG_HANDLE_CONTEXT *cas_EHCTX = NULL;
+static CAS_TLS CAS_ERROR_LOG_HANDLE_CONTEXT *cas_EHCTX = NULL;
 
 char
 ux_db_type_to_cas_type (int db_type)
@@ -559,8 +560,8 @@ cas_log_error_handler (unsigned int eid)
 char *
 get_error_log_eids (int err)
 {
-  static char *pending_alloc = NULL;
-  static char buffer[512];
+  static CAS_TLS char *pending_alloc = NULL;
+  static CAS_TLS char buffer[512];
   char *buf;
 
   if (err >= 0)

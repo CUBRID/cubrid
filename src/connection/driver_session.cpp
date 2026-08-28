@@ -41,10 +41,9 @@
 
 #include <cassert>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 
-#include "cas_error.h"
-#include "cas_protocol.h"
 #include "client_session_context.hpp"
 #include "connection_defs.h"
 #include "connection_sr.h"
@@ -58,6 +57,19 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "transaction_cl.h"	// tm_Tran_index
+
+/* page_buffer.h (via the engine headers above) and cas_common.h both define
+ * FREE; neither macro is used in this TU */
+#undef FREE
+
+#include "cas_common_execute.h"	// cas_log_error_handler_begin/end
+#include "cas_common_vars.h"	// req_info (thread_local CAS globals)
+#include "cas_dispatch.h"	// cas_process_request + server-support API
+#include "cas_error.h"
+#include "cas_execute.h"	// ux_get_default_setting
+#include "cas_handle.h"		// hm_srv_handle_free_all
+#include "cas_net_buf.h"
+#include "cas_protocol.h"
 
 extern thread_local unsigned int db_on_server;	/* network_interface_sr.cpp */
 
@@ -288,47 +300,49 @@ namespace cubconn
     }
 
     /* ------------------------------------------------------------------ */
-    /* request loop (B1 skeleton)                                         */
+    /* request loop: the folded CAS speaker (B1-D9)                       */
     /* ------------------------------------------------------------------ */
 
+    /* cas_common_main.c's inner request loop, translated: the CAS globals
+     * (req_info, as_info, srv handles, net_buf scratch) are thread-local in
+     * SERVER_MODE, so this thread IS the CAS process for its connection */
     static void
-    request_loop (int fd)
+    request_loop (int fd, int client_version, const char (&driver_header)[DRIVER_HEADER_SIZE])
     {
-      for (;;)
+      T_NET_BUF net_buf;
+
+      std::memset (&net_buf, 0, sizeof (net_buf));
+      net_buf_init (&net_buf, client_version);
+      net_buf.data = (char *) malloc (NET_BUF_ALLOC_SIZE);
+      if (net_buf.data == NULL)
 	{
-	  /* MSG_HEADER: 4-byte body length + CAS_INFO_SIZE info bytes */
-	  char header[sizeof (int) + CAS_INFO_SIZE];
-	  if (read_full (fd, header, sizeof (header)) != NO_ERROR)
-	    {
-	      return;		/* disconnect */
-	    }
-	  int body_size;
-	  std::memcpy (&body_size, header, sizeof (int));
-	  body_size = ntohl (body_size);
-	  if (body_size <= 0 || (std::uint32_t) body_size > REQUEST_BODY_MAX)
-	    {
-	      send_error_reply (fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
-	      return;
-	    }
-
-	  char *body = new (std::nothrow) char[body_size];
-	  if (body == NULL)
-	    {
-	      send_error_reply (fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR, CAS_ER_NO_MORE_MEMORY, NULL);
-	      return;
-	    }
-	  int rc = read_full (fd, body, (std::size_t) body_size);
-	  delete[] body;
-	  if (rc != NO_ERROR)
-	    {
-	      return;
-	    }
-
-	  /* function dispatch lands with the b1-cas-speaker PR; until then
-	   * every request is answered and the connection closed */
-	  send_error_reply (fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR, CAS_ER_NOT_IMPLEMENTED, NULL);
+	  send_error_reply (fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR, CAS_ER_NO_MORE_MEMORY, NULL);
 	  return;
 	}
+      net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
+
+      std::memset (&req_info, 0, sizeof (req_info));
+      req_info.client_version = client_version;
+      std::memcpy (req_info.driver_info, driver_header, DRIVER_HEADER_SIZE);
+      req_info.need_rollback = TRUE;
+
+      cas_log_error_handler_begin ();
+
+      FN_RETURN fn_ret = FN_KEEP_CONN;
+      while (fn_ret == FN_KEEP_CONN)
+	{
+	  /* the SIGUSR1 (re)arming of the CAS loop is retired: cancel arrives
+	   * as a tran interrupt via the control channel (#117 D4) */
+	  fn_ret = cas_process_request (fd, &net_buf, &req_info, INVALID_SOCKET);
+	  cas_log_error_handler_clear ();
+	}
+
+      if (as_info != NULL && as_info->cur_statement_pooling)
+	{
+	  hm_srv_handle_free_all (true);
+	}
+      cas_log_error_handler_end ();
+      net_buf_destroy (&net_buf);
     }
 
     /* ------------------------------------------------------------------ */
@@ -417,6 +431,10 @@ namespace cubconn
       /* the broker routed by dbname; a mismatch is its bug, not the driver's */
       assert (params.server_name == info.db_name);
 
+      /* point the CAS globals at this thread's slot (cas_server_support) */
+      cas_server_session_slot_begin (params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
+				     CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
+
       apply_driver_session_id (info.session_id);
 
       /* client-half boot with the driver's credentials; serialization is the
@@ -446,6 +464,10 @@ namespace cubconn
       /* cancel arrives on the control channel as a tran interrupt (#117 D4) */
       registry_set_tran_index (params.token, tm_Tran_index);
 
+      /* the new-connection defaults capture ux_database_connect performs
+       * (cas_execute.c:493): isolation/lock-timeout baselines + sys params */
+      ux_get_default_setting ();
+
       /* the broker filled its own connect-reply facts (bytes 0-3:
        * dbms/keep_con/statement pooling/pconnect); the server owns the
        * protocol bytes (cas_bi_make_broker_info split, B1-D5) */
@@ -463,9 +485,10 @@ namespace cubconn
 	  goto retire;
 	}
 
-      request_loop (params.client_fd);
+      request_loop (params.client_fd, CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
 
     retire:
+      cas_server_session_slot_end ();
       /* teardown order inherited from the tracer (S0): unregister the tran,
        * scrub the conn entry, close the bracket, then retire the thread */
       if (registered)
