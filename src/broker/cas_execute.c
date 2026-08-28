@@ -74,7 +74,7 @@
 #include "connection_cl.h"
 #endif
 #include "db_set_function.h"
-#include "db.h"		/* + db_get_connect_status under SERVER_MODE (stage B1) */
+#include "dbi.h"
 #include "parse_tree.h"
 #include "dbtype.h"
 #include "memory_alloc.h"
@@ -1648,7 +1648,7 @@ execute_all_error:
   return err_code;
 }
 
-extern DB_VALUE *db_get_hostvars (DB_SESSION * session);
+/* db_get_hostvars comes from db.h (via cas_db_inc.h) */
 extern void jsp_set_prepare_call ();
 extern void jsp_unset_prepare_call ();
 

@@ -28,11 +28,10 @@
 
 #include "dbi.h"
 #include "dbtype_def.h"
-/*#include "db.h"*/
-#if !defined(SERVER_MODE)
-extern int db_get_connect_status (void);
-extern void db_set_connect_status (int status);
-#endif
+/* db.h carries db_get/set_connect_status for every build shape; local
+ * re-declarations trip -Wredundant-decls now that the merged server also
+ * compiles this surface (stage B1) */
+#include "db.h"
 
 #define CUBRID_VERSION(X, Y)	(((X) << 8) | (Y))
 #define CUR_CUBRID_VERSION	\
