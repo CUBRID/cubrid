@@ -393,17 +393,9 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 	  subq->info.query.q.select.list = NULL;
 	}
 
-      /* carry the subquery's hints to the enclosing SELECT, appended after any it already has (as
-       * mq_rewrite_aggregate_as_derived () does). The optimizer reads the bitmask first and the lists only
-       * under it, so both move together. NO_MERGE / QUERY_CACHE / NO_SUBQUERY_CACHE name the subquery block
-       * itself, which is going away, so they are dropped. */
       node->info.query.q.select.using_index =
 	parser_append_node (subq->info.query.q.select.using_index, node->info.query.q.select.using_index);
       subq->info.query.q.select.using_index = NULL;
-
-      node->info.query.q.select.leading =
-	parser_append_node (subq->info.query.q.select.leading, node->info.query.q.select.leading);
-      subq->info.query.q.select.leading = NULL;
 
       node->info.query.q.select.use_nl =
 	parser_append_node (subq->info.query.q.select.use_nl, node->info.query.q.select.use_nl);
@@ -434,7 +426,8 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
       subq->info.query.q.select.no_use_hash = NULL;
 
       node->info.query.q.select.hint |=
-	(subq->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE));
+	(subq->info.query.q.select.hint
+	 & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE | PT_HINT_ORDERED | PT_HINT_LEADING));
 
       inner_spec->info.spec.join_type = (info.is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
       inner_spec->info.spec.on_cond = info.on_cond;
