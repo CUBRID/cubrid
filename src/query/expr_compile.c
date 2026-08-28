@@ -194,6 +194,42 @@ expr_coerce_dbval_to_numeric (const DB_VALUE * dbval_p, DB_VALUE * result_p)
       return NO_ERROR; \
     }
 
+/* A typed kernel is bound because both operands were of its type at compile time, and for
+ * almost every source that holds for the whole execution.  A recursive CTE breaks it: the
+ * column domain carries the anchor branch's type (INTEGER for "SELECT 1"), while the
+ * recursive branch refills the same slot with whatever it produces (BIGINT for count ()),
+ * so the operand type changes between iterations of one query.  The interpreted path never
+ * notices because qdata_add_dbval () re-reads the actual types per row.
+ *
+ * Trusting the domain here is not merely a debug-build assert in db_get_int (): in a
+ * release build db_get_int () on a BIGINT returns the low half of the value, which is a
+ * silently wrong answer -- worse than the crash.  So verify, and hand the row to the
+ * interpreter when the types are not what the kernel was specialized for. */
+#define EXPR_ARITH_REQUIRE_TYPE(a, b, t) \
+  if (unlikely (DB_VALUE_DOMAIN_TYPE (a) != (t) || DB_VALUE_DOMAIN_TYPE (b) != (t))) \
+    { \
+      return expr_arith_row_interp (step, ctx); \
+    }
+
+/* Evaluate this node's whole subtree the interpreted way and take the result into the
+ * kernel's own slot, so the rest of the program sees the cell it expects. */
+static int
+expr_arith_row_interp (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_VALUE *peek = NULL;
+
+  if (step->regu == NULL)
+    {
+      return ER_FAILED;
+    }
+  if (fetch_peek_dbval (ctx->thread_p, step->regu, ctx->vd, NULL, ctx->obj_oid, ctx->tpl, &peek) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  pr_clear_value (step->out);
+  return pr_clone_value (peek, step->out);
+}
+
 /* A result domain the kernel's own type already satisfies is dropped at compile time
  * (step->domain == NULL), so only the parameterized NUMERIC case reaches the coercion. */
 #define EXPR_ARITH_EPILOGUE() \
@@ -205,6 +241,7 @@ static int
 expr_k_add_int (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_INTEGER);
   int i1 = db_get_int (a), i2 = db_get_int (b);
   int result;
   if (unlikely (OR_ADD_OVERFLOW (i1, i2, &result)))
@@ -220,6 +257,7 @@ static int
 expr_k_sub_int (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_INTEGER);
   int i1 = db_get_int (a), i2 = db_get_int (b);
   int itmp;
   if (unlikely (OR_SUB_OVERFLOW (i1, i2, &itmp)))
@@ -235,6 +273,7 @@ static int
 expr_k_mul_int (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_INTEGER);
   /* OR_MULT_OVERFLOW checks via the overflow flag -- no volatile pinning of the operands,
    * which forced a per-row store/reload round trip in the interpreted qdata_multiply_int */
   int i1 = db_get_int (a), i2 = db_get_int (b);
@@ -252,6 +291,7 @@ static int
 expr_k_div_int (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_INTEGER);
   int i1 = db_get_int (a), i2 = db_get_int (b);
   if (i2 == 0)
     {
@@ -268,6 +308,7 @@ static int
 expr_k_add_bigint (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_BIGINT);
   DB_BIGINT bi1 = db_get_bigint (a), bi2 = db_get_bigint (b);
   DB_BIGINT result;
   if (unlikely (OR_ADD_OVERFLOW (bi1, bi2, &result)))
@@ -283,6 +324,7 @@ static int
 expr_k_sub_bigint (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_BIGINT);
   DB_BIGINT bi1 = db_get_bigint (a), bi2 = db_get_bigint (b);
   DB_BIGINT bitmp;
   if (unlikely (OR_SUB_OVERFLOW (bi1, bi2, &bitmp)))
@@ -298,6 +340,7 @@ static int
 expr_k_mul_bigint (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_BIGINT);
   DB_BIGINT bi1 = db_get_bigint (a), bi2 = db_get_bigint (b);
   DB_BIGINT bitmp;
   if (unlikely (OR_MULT_OVERFLOW (bi1, bi2, &bitmp)))
@@ -313,6 +356,7 @@ static int
 expr_k_div_bigint (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_BIGINT);
   DB_BIGINT bi1 = db_get_bigint (a), bi2 = db_get_bigint (b);
   if (bi2 == 0)
     {
@@ -329,6 +373,7 @@ static int
 expr_k_add_double (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_DOUBLE);
   double result = db_get_double (a) + db_get_double (b);
   if (unlikely (OR_CHECK_DOUBLE_OVERFLOW (result)))
     {
@@ -343,6 +388,7 @@ static int
 expr_k_sub_double (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_DOUBLE);
   double dtmp = db_get_double (a) - db_get_double (b);
   if (unlikely (OR_CHECK_DOUBLE_OVERFLOW (dtmp)))
     {
@@ -357,6 +403,7 @@ static int
 expr_k_mul_double (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_DOUBLE);
   double dtmp = db_get_double (a) * db_get_double (b);
   if (unlikely (OR_CHECK_DOUBLE_OVERFLOW (dtmp)))
     {
