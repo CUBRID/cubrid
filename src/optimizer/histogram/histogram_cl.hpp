@@ -78,11 +78,11 @@ typedef struct histogram_collect
 #define HISTOGRAM_COLLECT_INITIALIZER { 0, NULL, NULL, NULL, NULL }
 
 /* histogram analysis functions */
-int analyze_classes (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name, int max_number_of_buckets,
-		     bool with_fullscan, MOP classop);
+int analyze_classes (THREAD_ENTRY *thread_p, const char *attr_name, int max_number_of_buckets, bool with_fullscan,
+		     MOP classop);
 /* server-side full-scan + reservoir sampling histogram collection (replaces the query-based path) */
-int analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name,
-				  int max_number_of_buckets, int with_fullscan, MOP classop);
+int analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *attr_name, int max_number_of_buckets,
+				  int with_fullscan, MOP classop);
 /* single-scan variant: build histograms for all histogrammable columns of the class in one heap scan.
  * Also surfaces the per-column NDV + exact row count derived from the same scan (out_ndv_info /
  * out_total_rows, may be NULL) so the caller can feed them to UPDATE STATISTICS and skip its NDV scan.
@@ -92,8 +92,8 @@ int analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, 
  * out_collect is NULL the blobs are stored immediately (legacy behavior).
  * out_pages_seen / out_pages_kept (may be NULL) report the scan's realized page coverage:
  * kept == seen means the collection was a full scan, kept < seen means page sampling ran. */
-int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, int max_number_of_buckets,
-					int with_fullscan, int random_seed, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
+int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, int max_number_of_buckets, int with_fullscan,
+					int random_seed, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
 					INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect,
 					INT64 *out_pages_seen = NULL, INT64 *out_pages_kept = NULL);
 /* fingerprint of the host-variable predicate values as the plan would see them: for each

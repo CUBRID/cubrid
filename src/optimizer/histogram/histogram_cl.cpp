@@ -64,22 +64,20 @@ static void mcv_join_parts_str (const hist::HistogramReader &r1, const hist::His
  *
  * return: NO_ERROR if successful, otherwise an error code
  *   thread_p(in): thread pointer
- *   tbl_name(in): table name
  *   attr_name(in): attribute name
  *   max_number_of_buckets(in): maximum number of buckets
  *   with_fullscan(in): true iff WITH FULLSCAN
  *   classop(in): class object pointer
  */
 int
-analyze_classes (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name, int max_number_of_buckets,
-		 bool with_fullscan, MOP classop)
+analyze_classes (THREAD_ENTRY *thread_p, const char *attr_name, int max_number_of_buckets, bool with_fullscan,
+		 MOP classop)
 {
   /* New path: a single server request performs a full heap scan, draws a fixed-size
    * reservoir sample, builds the histogram (and exact null frequency) server-side, and
    * returns the blob. No client SQL query is executed. with_fullscan forces a full heap
    * scan; without it a large heap may be page-sampled server-side. (see histogram_sampler_sr) */
-  return analyze_classes_by_reservoir (thread_p, tbl_name, attr_name, max_number_of_buckets,
-				       with_fullscan ? 1 : 0, classop);
+  return analyze_classes_by_reservoir (thread_p, attr_name, max_number_of_buckets, with_fullscan ? 1 : 0, classop);
 }
 
 /* true iff `attr_id` is the sole column of a UNIQUE or PRIMARY KEY constraint on `classop`. Such a
@@ -111,8 +109,8 @@ attr_is_single_col_unique (MOP classop, int attr_id)
  *   the histogram blob and computes the exact null frequency; stores both in _db_histogram.
  */
 int
-analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name,
-			      int max_number_of_buckets, int with_fullscan, MOP classop)
+analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *attr_name, int max_number_of_buckets,
+			      int with_fullscan, MOP classop)
 {
   int error = NO_ERROR;
   OID *class_oid;
@@ -226,10 +224,10 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
  *   heap scan) and stores each returned blob, instead of one scan per column.
  */
 int
-analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, int max_number_of_buckets,
-				    int with_fullscan, int random_seed, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
-				    INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect,
-				    INT64 *out_pages_seen, INT64 *out_pages_kept)
+analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, int max_number_of_buckets, int with_fullscan,
+				    int random_seed, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
+				    INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect, INT64 *out_pages_seen,
+				    INT64 *out_pages_kept)
 {
   OID *class_oid = ws_oid (classop);
   if (class_oid == NULL || OID_ISNULL (class_oid))

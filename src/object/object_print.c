@@ -347,13 +347,13 @@ help_print_obj (print_output & output_ctx, MOP obj)
 char **
 help_class_names (const char *qualifier)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char qualified_name_buf[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJLIST *mops, *m;
   char **names;
   int count, i, outcount;
   DB_OBJECT *requested_owner, *owner;
   char buffer[2 * DB_MAX_IDENTIFIER_LENGTH + 4];
-  const char *qualified_name;
+  const char *class_qualified_name;
   const char *class_name;
 
   requested_owner = NULL;
@@ -384,18 +384,19 @@ help_class_names (const char *qualifier)
 	{
 	  for (i = 0, m = mops; i < count; i++, m = m->next)
 	    {
-	      qualified_name = db_get_class_qualified_name (m->op, qualified_name, sizeof (qualified_name));
+	      class_qualified_name =
+		db_get_class_qualified_name (m->op, qualified_name_buf, sizeof (qualified_name_buf));
 	      buffer[0] = '\0';
 
-	      if (!requested_owner && sm_check_name (qualified_name))
+	      if (!requested_owner && sm_check_name (class_qualified_name))
 		{
-		  snprintf (buffer, sizeof (buffer) - 1, "%s", qualified_name);
+		  snprintf (buffer, sizeof (buffer) - 1, "%s", class_qualified_name);
 		  names[outcount++] = object_print::copy_string (buffer);
 		  continue;
 		}
 
 	      owner = db_get_owner (m->op);
-	      class_name = sm_remove_qualifier_name (qualified_name);
+	      class_name = db_get_class_name (m->op);
 	      if (ws_is_same_object (requested_owner, owner) && sm_check_name (class_name))
 		{
 		  snprintf (buffer, sizeof (buffer) - 1, "%s", class_name);

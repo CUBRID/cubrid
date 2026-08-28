@@ -4320,8 +4320,6 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 				 PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram,
 				 int *out_histogram_skipped)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   int bucket_count, nnames = 0, bucket_count_min, bucket_count_max;
   bool with_fullscan = false;
@@ -4485,11 +4483,9 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	  INT64 hist_pages_seen = 0, hist_pages_kept = 0;
 	  HISTOGRAM_COLLECT hist_collect = HISTOGRAM_COLLECT_INITIALIZER;
 	  error =
-	    analyze_classes_multi_by_reservoir (NULL,
-						db_get_class_qualified_name (obj, qualified_name,
-									     sizeof (qualified_name)), bucket_count,
-						with_fullscan ? 1 : 0, histogram_info->random_seed, obj, &ndv_info,
-						&hist_total_rows, &hist_collect, &hist_pages_seen, &hist_pages_kept);
+	    analyze_classes_multi_by_reservoir (NULL, bucket_count, with_fullscan ? 1 : 0,
+						histogram_info->random_seed, obj, &ndv_info, &hist_total_rows,
+						&hist_collect, &hist_pages_seen, &hist_pages_kept);
 	  if (error == NO_ERROR)
 	    {
 	      error = sm_update_statistics (obj, with_fullscan, &ndv_info);
@@ -4623,9 +4619,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 		}
 	    }
 	  /* update the histogram */
-	  error =
-	    analyze_classes (NULL, db_get_class_qualified_name (obj, qualified_name2, sizeof (qualified_name2)),
-			     attname, bucket_count, with_fullscan, obj);
+	  error = analyze_classes (NULL, attname, bucket_count, with_fullscan, obj);
 	  if (error != NO_ERROR)
 	    {
 	      /* class statistics were already refreshed above; undo them together with any

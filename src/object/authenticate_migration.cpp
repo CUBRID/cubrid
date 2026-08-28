@@ -857,21 +857,6 @@ end:
 }
 
 /*
- * name is user_specified_name.
- * owner_name must be a char array of size DB_MAX_IDENTIFIER_LENGTH to copy user_specified_name.
- * class_name refers to class_name after dot(.).
- */
-#define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) \
-	do \
-	  { \
-	    assert (strlen ((name)) < STATIC_CAST (int, sizeof ((owner_name)))); \
-	    strcpy ((owner_name), (name)); \
-	    (class_name) = strchr ((owner_name), '.'); \
-	    *(class_name)++ = '\0'; \
-	  } \
-	while (0)
-
-/*
  * issue_grant_statement - Generates an CSQL "grant" statement.
  *   return: none
  *   output_ctx(in/out): output context
@@ -884,11 +869,10 @@ static void
 issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AUTH *auth, CLASS_GRANT *grant,
 		       int authbits, DB_OBJECT_TYPE obj_type)
 {
-  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *gtype;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char qualified_name2[DB_MAX_IDENTIFIER_LENGTH + 1];
-  char *class_name = NULL;
+  char *owner_name = NULL;
+  char *sp_name = NULL;
+  const char *class_name = NULL;
   char *username = NULL;
   int typebit;
 
@@ -926,28 +910,35 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      SPLIT_USER_SPECIFIED_NAME (sm_get_ch_qualified_name (auth->class_mop, qualified_name,
-				 sizeof (qualified_name)), owner_name, class_name);
+      owner_name = au_get_user_name (db_get_owner (auth->class_mop));
+      class_name = db_get_class_name (auth->class_mop);
       username = au_get_user_name (grant->user->obj);
 
       output_ctx ("GRANT %s ON ", gtype);
       break;
     case DB_OBJECT_PROCEDURE:
-      qualified_name2[0] = '\0';
-      jsp_get_qualified_name (auth->class_mop, qualified_name2, DB_MAX_IDENTIFIER_LENGTH + 1);
-      SPLIT_USER_SPECIFIED_NAME (qualified_name2, owner_name, class_name);
+      owner_name = au_get_user_name (jsp_get_owner (auth->class_mop));
+      sp_name = jsp_get_name (auth->class_mop);
+      class_name = sp_name;
       username = au_get_user_name (grant->user->obj);
 
       output_ctx ("GRANT %s ON PROCEDURE ", gtype);
       break;
     default:
+      class_name = "???";
+      owner_name = NULL;
       output_ctx ("GRANT %s ON ", gtype);
       break;
     }
 
+  if (class_name == NULL)
+    {
+      class_name = "???";
+    }
+
   if (ctxt.is_dba_user || ctxt.is_dba_group_member)
     {
-      output_ctx ("[%s].[%s]", owner_name, class_name);
+      output_ctx ("[%s].[%s]", owner_name != NULL ? owner_name : "???", class_name);
     }
   else
     {
@@ -969,6 +960,8 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
     }
   output_ctx (";\n");
 
+  ws_free_string (sp_name);
+  ws_free_string (owner_name);
   ws_free_string (username);
 }
 
