@@ -349,15 +349,17 @@ namespace cubthread
   // wrapper disarms and frees the stack when the thread exits.
   namespace
   {
+    // sized for the crash handler: it builds PATH_MAX buffers and walks the
+    // callstack, which does not fit the minimal SIGSTKSZ
+    static const size_t CRASH_SIGNAL_STACK_SIZE = 32 * 1024;
+
     class crash_signal_stack
     {
       public:
 	crash_signal_stack ()
 	  : m_stack (NULL)
 	{
-	  // generous fixed size: the crash handler builds PATH_MAX buffers and
-	  // walks the callstack, which does not fit the minimal SIGSTKSZ
-	  const size_t size = 32 * 1024;
+	  const size_t size = CRASH_SIGNAL_STACK_SIZE;
 
 	  m_stack = malloc (size);
 	  if (m_stack == NULL)

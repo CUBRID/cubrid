@@ -240,36 +240,91 @@ test_concurrent_parse (void)
 }
 
 /* user input must not build a tree deep enough to overflow the recursive
- * tree walkers (#128 D5): nesting past the parser's fixed limit is a
- * statement error, while a moderately nested statement still parses */
+ * tree walkers (#128 D5): nesting past the parser's fixed limit (1024) is a
+ * statement error, while a moderately nested statement still parses.  The
+ * guard must hold at the exact boundary and on the constructs that build
+ * PT_EXPR chains outside parser_make_expression (COALESCE, CASE). */
 static int
 test_nesting_depth_guard (void)
 {
   /* "SELECT 1+1+...+1": each '+' adds one nesting level */
-  const int deep_terms = 1100;	/* over the 1024 limit */
-  const int sane_terms = 200;
+  struct
+  {
+    const char *label;
+    int terms;
+    bool expect_ok;
+  } plus_cases[] = {
+    {"at-limit (1024)", 1024, true},
+    {"over-limit (1025)", 1025, false},
+  };
 
-  std::string deep = "SELECT 1";
-  for (int i = 0; i < deep_terms; i++)
+  for (auto &c : plus_cases)
     {
-      deep += "+1";
-    }
-  std::string sane = "SELECT 1";
-  for (int i = 0; i < sane_terms; i++)
-    {
-      sane += "+1";
+      std::string sql = "SELECT 1";
+      for (int i = 0; i < c.terms; i++)
+	{
+	  sql += "+1";
+	}
+      bool ok = !parse_to_string (sql.c_str ()).empty ();
+      if (ok != c.expect_ok)
+	{
+	  fprintf (stderr, "FAIL: '+' chain %s: expected %s, got %s\n", c.label,
+		   c.expect_ok ? "accept" : "reject", ok ? "accept" : "reject");
+	  return 1;
+	}
     }
 
-  if (!parse_to_string (deep.c_str ()).empty ())
-    {
-      fprintf (stderr, "FAIL: %d-level nesting parsed without error\n", deep_terms);
-      return 1;
-    }
-  if (parse_to_string (sane.c_str ()).empty ())
-    {
-      fprintf (stderr, "FAIL: %d-level nesting was rejected\n", sane_terms);
-      return 1;
-    }
+  /* COALESCE desugars its argument list into a nested chain without going
+   * through parser_make_expression - the guard must still see it */
+  {
+    std::string wide = "SELECT COALESCE(1";
+    for (int i = 0; i < 2000; i++)
+      {
+	wide += ",1";
+      }
+    wide += ")";
+    if (!parse_to_string (wide.c_str ()).empty ())
+      {
+	fprintf (stderr, "FAIL: 2001-arg COALESCE parsed without error\n");
+	return 1;
+      }
+
+    std::string sane = "SELECT COALESCE(1";
+    for (int i = 0; i < 200; i++)
+      {
+	sane += ",1";
+      }
+    sane += ")";
+    if (parse_to_string (sane.c_str ()).empty ())
+      {
+	fprintf (stderr, "FAIL: 201-arg COALESCE was rejected\n");
+	return 1;
+      }
+  }
+
+  /* deeply nested searched CASE - the when-clause and chain constructors
+   * also bypass parser_make_expression */
+  {
+    const int levels = 1100;
+    std::string deep;
+    deep.reserve (levels * 32);
+    deep = "SELECT ";
+    for (int i = 0; i < levels; i++)
+      {
+	deep += "CASE WHEN 1=1 THEN ";
+      }
+    deep += "0";
+    for (int i = 0; i < levels; i++)
+      {
+	deep += " ELSE 0 END";
+      }
+    if (!parse_to_string (deep.c_str ()).empty ())
+      {
+	fprintf (stderr, "FAIL: %d-level nested CASE parsed without error\n", levels);
+	return 1;
+      }
+  }
+
   return 0;
 }
 
@@ -294,9 +349,9 @@ test_crash_signal_stack_installed (void)
   return 0;
 }
 
-/* AREA exhaustion outside any session bracket keeps the pre-merge server
- * semantics of just failing the allocation (#128 D8): the callback returns
- * without touching transaction state */
+/* allocation-failure contract (#128 D8): on a thread with no session bracket
+ * there is no transaction to abort - the callback must return without
+ * touching transaction state */
 static int
 test_ws_abort_transaction_no_bracket (void)
 {
