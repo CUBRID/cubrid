@@ -604,7 +604,13 @@ cas_log_error_handler_begin (void)
     }
 
   cas_EHCTX = ectx;
+#if !defined(SERVER_MODE)
+  /* in the merged server the process-global er handler does not exist
+   * (er_register_log_handler asserts under SERVER_MODE) and its only consumer
+   * is the SQL log eid cross-reference, which is OFF in-server until the log
+   * producer moves (stage B1; #116 D4) */
   (void) db_register_error_log_handler (cas_log_error_handler);
+#endif
 }
 
 void
@@ -614,7 +620,9 @@ cas_log_error_handler_end (void)
     {
       free (cas_EHCTX);
       cas_EHCTX = NULL;
+#if !defined(SERVER_MODE)
       (void) db_register_error_log_handler (NULL);
+#endif
     }
 }
 
