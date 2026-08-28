@@ -35,6 +35,7 @@
 #include "driver_session.hpp"
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -346,6 +347,17 @@ namespace cubconn
       char session_blob[DRIVER_SESSION_SIZE];
       char reply[CONNECT_REPLY_BUF_SIZE];
       std::size_t reply_size;
+
+      /* the broker's peek engine set O_NONBLOCK, and an SCM_RIGHTS-passed fd
+       * shares the open file description — restore blocking mode, this
+       * thread's loop owns the fd exclusively */
+      {
+	int flags = fcntl (params.client_fd, F_GETFL, 0);
+	if (flags >= 0)
+	  {
+	    (void) fcntl (params.client_fd, F_SETFL, flags & ~O_NONBLOCK);
+	  }
+      }
 
       /* register this foreign thread with the thread manager (same ritual as
        * the tracer / connection_worker.cpp) */
