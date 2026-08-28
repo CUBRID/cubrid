@@ -1777,6 +1777,21 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       return -1;
     }
 
+  /* An unresolved domain must not be baked into a program.  A host variable has no type
+   * until EXECUTE binds it, so a node built over one carries DB_TYPE_VARIABLE here even
+   * though this compiler runs lazily on the clone's first execution: the resolved type
+   * lands on the value, not back on the regu tree the program is specialized from.
+   * The interpreted path never reads a domain that stale -- it coerces against
+   * arithptr->domain, which fetch.c resolves per execution -- so a kernel that trusts
+   * regu->domain diverges the moment the operand is a host variable: a cast to
+   * "*variable*" fails with ER_TP_CANT_COERCE, and a string read against it trips the
+   * mr_readval_string_internal assertion.  Decline the node and let the interpreter run
+   * it, which is exactly what a build without this feature does. */
+  if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+    {
+      return -1;
+    }
+
   switch (regu->type)
     {
     case TYPE_CONSTANT:
