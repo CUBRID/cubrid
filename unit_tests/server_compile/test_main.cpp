@@ -25,6 +25,8 @@
  * compiled into the server library, not stubbed out.
  */
 
+#include <arpa/inet.h>
+
 #include <atomic>
 #include <csignal>
 #include <cstdio>
@@ -35,7 +37,9 @@
 
 #include "authenticate.h"
 #include "authenticate_password.hpp"
+#include "cas_protocol.h"
 #include "client_session_context.hpp"
+#include "driver_session.hpp"
 #include "language_support.h"
 #include "parser.h"
 #include "thread_manager.hpp"
@@ -359,6 +363,126 @@ test_ws_abort_transaction_no_bracket (void)
   return 0;
 }
 
+/* the driver-facing pure helpers of the adoption endpoint (stage B1): db_info
+ * parsing, the V12-single protocol gate, and the connect-reply layout the
+ * JDBC/CCI drivers decode */
+static int
+test_adoption_wire_helpers (void)
+{
+  using namespace cubconn::adoption;
+
+  /* -- parse_db_info: normal, empty-user default, unterminated fields -- */
+  char db_info[DRIVER_DB_INFO_SIZE];
+  memset (db_info, 0, sizeof (db_info));
+  memcpy (db_info, "smokedb", 7);
+  memcpy (db_info + 32, "dba", 3);
+  memcpy (db_info + 64, "secret", 6);
+  memcpy (db_info + 96, "jdbc:cubrid:...", 15);
+  for (int i = 0; i < 20; i++)
+    {
+      db_info[608 + i] = (char) i;
+    }
+
+  driver_conn_info info;
+  if (parse_db_info (db_info, sizeof (db_info), info) != NO_ERROR)
+    {
+      fprintf (stderr, "FAIL: parse_db_info rejected a well-formed packet\n");
+      return 1;
+    }
+  if (strcmp (info.db_name, "smokedb") != 0 || strcmp (info.db_user, "dba") != 0
+      || strcmp (info.db_passwd, "secret") != 0 || info.session_id[5] != 5 || info.is_health_check)
+    {
+      fprintf (stderr, "FAIL: parse_db_info field extraction\n");
+      return 1;
+    }
+
+  memset (db_info + 32, 0, 32);	/* empty user defaults to PUBLIC */
+  memset (db_info, 'x', 32);	/* dbname with no NUL: must not overrun */
+  if (parse_db_info (db_info, sizeof (db_info), info) != NO_ERROR || strcmp (info.db_user, "PUBLIC") != 0
+      || strlen (info.db_name) != 32)
+    {
+      fprintf (stderr, "FAIL: parse_db_info tampered-field handling\n");
+      return 1;
+    }
+
+  memset (db_info, 0, sizeof (db_info));
+  memcpy (db_info, HEALTH_CHECK_DUMMY_DB, strlen (HEALTH_CHECK_DUMMY_DB));
+  if (parse_db_info (db_info, sizeof (db_info), info) != NO_ERROR || !info.is_health_check)
+    {
+      fprintf (stderr, "FAIL: parse_db_info health-check detection\n");
+      return 1;
+    }
+
+  if (parse_db_info (db_info, sizeof (db_info) - 1, info) == NO_ERROR
+      || parse_db_info (NULL, sizeof (db_info), info) == NO_ERROR)
+    {
+      fprintf (stderr, "FAIL: parse_db_info accepted malformed input\n");
+      return 1;
+    }
+
+  /* -- parse_driver_protocol: V12 header, pre-9.0 dialect rejected -- */
+  char header[DRIVER_HEADER_SIZE] = { 'C', 'U', 'B', 'R', 'K', 5, 0, 0, 0, 0 };
+  header[SRV_CON_MSG_IDX_PROTO_VERSION] = (char) (CAS_PROTO_INDICATOR | 12);
+  if (parse_driver_protocol (header) != 12)
+    {
+      fprintf (stderr, "FAIL: parse_driver_protocol V12 header\n");
+      return 1;
+    }
+  header[SRV_CON_MSG_IDX_PROTO_VERSION] = 8;	/* old major-version dialect */
+  if (parse_driver_protocol (header) != -1)
+    {
+      fprintf (stderr, "FAIL: parse_driver_protocol accepted a pre-9.0 dialect\n");
+      return 1;
+    }
+
+  /* -- build_connect_reply: byte-exact V4 layout with the token in the pid
+   * slot (#117 D4) and the slot index echoed 1-based -- */
+  char broker_info[DRIVER_BROKER_INFO_SIZE] = { 'C', 1, 2, 3, 4, 5, 6, 7 };
+  char session[20];
+  for (int i = 0; i < 20; i++)
+    {
+      session[i] = (char) (0x40 + i);
+    }
+  char reply[64];
+  size_t n = build_connect_reply (0xABCD1234u, 6, broker_info, session, reply, sizeof (reply));
+  if (n != 4 + 4 + CAS_CONNECTION_REPLY_SIZE)
+    {
+      fprintf (stderr, "FAIL: build_connect_reply size %zu\n", n);
+      return 1;
+    }
+  unsigned int v;
+  memcpy (&v, reply, 4);
+  if (ntohl (v) != (unsigned int) CAS_CONNECTION_REPLY_SIZE || reply[4] != CAS_INFO_STATUS_ACTIVE)
+    {
+      fprintf (stderr, "FAIL: build_connect_reply prefix\n");
+      return 1;
+    }
+  memcpy (&v, reply + 8, 4);
+  if (ntohl (v) != 0xABCD1234u)
+    {
+      fprintf (stderr, "FAIL: build_connect_reply token slot\n");
+      return 1;
+    }
+  if (memcmp (reply + 12, broker_info, 8) != 0)
+    {
+      fprintf (stderr, "FAIL: build_connect_reply broker_info echo\n");
+      return 1;
+    }
+  memcpy (&v, reply + 20, 4);
+  if (ntohl (v) != 7u)		/* slot 6 echoed 1-based */
+    {
+      fprintf (stderr, "FAIL: build_connect_reply slot index\n");
+      return 1;
+    }
+  if (memcmp (reply + 24, session, 20) != 0)
+    {
+      fprintf (stderr, "FAIL: build_connect_reply session blob\n");
+      return 1;
+    }
+
+  return 0;
+}
+
 int
 main (int, char **)
 {
@@ -445,5 +569,11 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: ws_abort_transaction outside a session bracket is a no-op\n");
+
+  if (test_adoption_wire_helpers () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: adoption wire helpers (db_info parse, V12 gate, connect reply layout)\n");
   return 0;
 }
