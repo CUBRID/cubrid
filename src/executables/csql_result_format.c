@@ -873,6 +873,7 @@ bigint_to_string (DB_BIGINT int_value, int field_width, bool leading_zeros, bool
 static char *
 object_to_string (DB_OBJECT * object, int format)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   if (object == NULL)
     return NULL;
 
@@ -890,7 +891,7 @@ object_to_string (DB_OBJECT * object, int format)
     {
       char *name;
 
-      name = (char *) db_get_class_name (object);
+      name = (char *) db_get_class_qualified_name (object, qualified_name, sizeof (qualified_name));
       if (name == NULL)
 	{
 	  return (NULL);

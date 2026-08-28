@@ -370,11 +370,14 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      /* A required class is not granted. */
 	      MOBJ object = NULL;
+	      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
 	      ws_find (req_class_table[i], &object);
 	      if (object != NULL)
 		{
-		  PRINT_AND_LOG_ERR_MSG ("%s: %s\n", sm_ch_name (object), db_error_string (3));
+		  PRINT_AND_LOG_ERR_MSG ("%s: %s\n", sm_ch_qualified_name (object, qualified_name,
+									   sizeof (qualified_name)),
+					 db_error_string (3));
 		}
 	      status = 1;
 	    }

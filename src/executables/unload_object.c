@@ -197,7 +197,7 @@ static std::atomic <int64_t>  failed_objects_atomic = 0;
 
 static int64_t approximate_class_objects = 0;
 static int64_t total_approximate_class_objects = 0;
-static char *gauge_class_name;
+static char gauge_class_name[SM_MAX_IDENTIFIER_LENGTH];
 
 
 static volatile bool writer_thread_proc_terminate = false;
@@ -723,6 +723,7 @@ int
 extract_objects (extract_context & ctxt, const char *output_dirname, int nthreads, int sampling_records,
 		 bool enhanced_estimates)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int i, error;
   HFID *hfid;
   int64_t est_objects = 0;
@@ -893,10 +894,12 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
       if (*cptr == NULL)
 	{
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
-	  fprintf (stderr, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+	  fprintf (stderr, "%s%s%s\n",
+		   PRINT_IDENTIFIER (sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name))));
 #endif /* CUBRID_DEBUG */
 
-	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name)),
+				     owner_name, class_name);
 
 	  if ((ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
 	      && strcasecmp (owner_name, ctxt.login_user) != 0)
@@ -958,7 +961,9 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 			    {
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 			      fprintf (stderr, "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
+				       PRINT_IDENTIFIER (sm_ch_qualified_name
+							 ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name))),
+				       db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -975,7 +980,9 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 			    {
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 			      fprintf (stderr, "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
+				       PRINT_IDENTIFIER (sm_ch_qualified_name
+							 ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name))),
+				       db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -997,7 +1004,9 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 			    {
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 			      fprintf (stderr, "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
+				       PRINT_IDENTIFIER (sm_ch_qualified_name
+							 ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name))),
+				       db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -1104,7 +1113,8 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 		status = 1;
 		goto end;
 	      }
-	    SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+	    SPLIT_USER_SPECIFIED_NAME (sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name)),
+				       owner_name, class_name);
 	    fprintf (stderr, "%s%s%s.%s%s%s\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
 	    total_ref_cls++;
 	  }
@@ -1212,7 +1222,9 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 		      goto end;
 		    }
 
-		  if (open_object_file (ctxt, output_dirname, sm_ch_name ((MOBJ) class_ptr)) == false)
+		  if (open_object_file
+		      (ctxt, output_dirname,
+		       sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name))) == false)
 		    {
 		      status = 1;
 		      goto end;
@@ -1650,6 +1662,7 @@ unload_writer_thread (void *param)
 int
 print_object_header_for_class (extract_context & ctxt, SM_CLASS * class_ptr, OID * class_oid, TEXT_OUTPUT * obj_out)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   char class_name[DB_MAX_CLASS_LENGTH] = { '\0' };
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
@@ -1665,7 +1678,8 @@ print_object_header_for_class (extract_context & ctxt, SM_CLASS * class_ptr, OID
 	}
       if (v == 0)
 	{
-	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name)),
+				     owner_name, class_name);
 
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			    sizeof (output_owner));
@@ -1723,7 +1737,8 @@ print_object_header_for_class (extract_context & ctxt, SM_CLASS * class_ptr, OID
 	}
       if (v == 0)
 	{
-	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name)),
+				     owner_name, class_name);
 
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			    sizeof (output_owner));
@@ -1766,7 +1781,8 @@ print_object_header_for_class (extract_context & ctxt, SM_CLASS * class_ptr, OID
       ++v;
     }
 
-  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+  SPLIT_USER_SPECIFIED_NAME (sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name)),
+			     owner_name, class_name);
 
   PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
 
@@ -1799,6 +1815,7 @@ exit_on_error:
 static int
 process_class (extract_context & ctxt, int cl_no, int nthreads)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   DB_OBJECT *class_ = class_table->mops[cl_no];
   int i = 0;
@@ -1871,10 +1888,13 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	    {
 	    case DB_TYPE_OID:
 	    case DB_TYPE_OBJECT:
-	      fprintf (stderr, "warning: %s%s%s has %s type.\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
+	      fprintf (stderr, "warning: %s%s%s has %s type.\n",
+		       PRINT_IDENTIFIER (sm_ch_qualified_name
+					 ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name))),
 		       db_get_type_name (db_type));
 	      fprintf (stderr, "So for class %s%s%s, '--thread-count' option is ignored.\n",
-		       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+		       PRINT_IDENTIFIER (sm_ch_qualified_name
+					 ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name))));
 	      fflush (stderr);
 	      // Notice: In this case, Do NOT use multi-threading!
 	      nthreads = 0;
@@ -1886,10 +1906,12 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 	      if (check_include_object_domain (class_ptr->attributes[i].domain, &db_type_in))
 		{
 		  fprintf (stderr, "warning: %s%s%s has %s type with %s type.\n",
-			   PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_get_type_name (db_type),
-			   db_get_type_name (db_type_in));
+			   PRINT_IDENTIFIER (sm_ch_qualified_name
+					     ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name))),
+			   db_get_type_name (db_type), db_get_type_name (db_type_in));
 		  fprintf (stderr, "So for class %s%s%s, '--thread-count' option is ignored.\n",
-			   PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+			   PRINT_IDENTIFIER (sm_ch_qualified_name
+					     ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name))));
 		  fflush (stderr);
 		  // Notice: In this case, Do NOT use multi-threading!
 		  nthreads = 0;
@@ -1938,7 +1960,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
 
   if (verbose_flag)
     {
-      gauge_class_name = (char *) sm_ch_name ((MOBJ) class_ptr);
+      sm_ch_qualified_name ((MOBJ) class_ptr, gauge_class_name, sizeof (gauge_class_name));
 #if !defined (WINDOWS)
       prev_handler = os_set_signal_handler (SIGALRM, gauge_alarm_handler);
       prev_alarm = alarm (GAUGE_INTERVAL);
@@ -2090,19 +2112,25 @@ exit_on_end:
 	}
 #endif
 
-      fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
+      fprintf (stdout, MSG_FORMAT "\n",
+	       sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name)), class_objects, 100,
+	       total);
       fflush (stdout);
     }
 
 #if !defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
-  fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
+  fprintf (unloadlog_file, MSG_FORMAT "\n",
+	   sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name)), class_objects, 100, total);
 #else
-  unload_log_write (p_unloadlog_filename, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
+  unload_log_write (p_unloadlog_filename, MSG_FORMAT "\n",
+		    sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name)), class_objects,
+		    100, total);
 #endif
 
   if (g_sampling_records >= 0)
     {
-      print_monitoring_info (sm_ch_name ((MOBJ) class_ptr), nthreads);
+      print_monitoring_info (sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name)),
+			     nthreads);
     }
   return error;
 
@@ -2256,6 +2284,7 @@ exit_on_error:
 static int
 process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   switch (DB_VALUE_TYPE (value))
@@ -2299,7 +2328,9 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 		  {
 		    goto exit_on_error;
 		  }
-		CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, "@%s", sm_ch_name ((MOBJ) class_ptr)));
+		CHECK_PRINT_ERROR (text_print
+				   (obj_out, NULL, 0, "@%s",
+				    sm_ch_qualified_name ((MOBJ) class_ptr, qualified_name, sizeof (qualified_name))));
 		break;
 	      }
 

@@ -126,7 +126,9 @@ int trigger_description::init (struct db_object *trobj)
 
   if (trigger->class_mop != NULL)
     {
-      classname = (char *) sm_get_ch_name (trigger->class_mop);
+      char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+
+      classname = (char *) sm_get_ch_qualified_name (trigger->class_mop, qualified_name, sizeof (qualified_name));
       if (classname != NULL)
 	{
 	  this->class_name = object_print::copy_string ((char *) classname);
@@ -237,6 +239,7 @@ void trigger_description::fprint (FILE *file)
 int
 tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *trigger_object)
 {
+  char qualified_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
   DB_TRIGGER_TIME time;
@@ -261,7 +264,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
     {
       if (trigger->class_mop != NULL)
 	{
-	  name = db_get_class_name (trigger->class_mop);
+	  name = db_get_class_qualified_name (trigger->class_mop, qualified_name, sizeof (qualified_name));
 	  if (sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH) == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);

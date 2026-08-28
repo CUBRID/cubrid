@@ -402,7 +402,6 @@ namespace cubschema
 		   // columns
     {
       {"class_of", "object"},
-      {"unique_name", format_varchar (255)},
       {"class_name", format_varchar (255)},
       {"class_type", "integer"},
       {"is_system_class", "integer"},
@@ -435,8 +434,9 @@ namespace cubschema
 // constraints
     {
       /*
-      *  Define the index name so that it always has the same name as the macro variable (CATCLS_INDEX_NAME)
-      *  in src/storage/catalog_class.c.
+      *  Keep the index names in step with the literals catcls_compile_catalog_classes () passes to
+      *  catcls_find_btid_of_index () in src/storage/catalog_class.c. The (class_name, owner) index gets
+      *  its auto-generated name, i__db_class_class_name_owner.
       *
       *  _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
       *  in src/storage/btree.c, it becomes assert (false) in the code below.
@@ -454,9 +454,8 @@ namespace cubschema
       *
       *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
       */
-      {DB_CONSTRAINT_INDEX, "i__db_class_unique_name", {"unique_name", nullptr}, false},
       {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false}
+      {DB_CONSTRAINT_INDEX, "i__db_class_class_of", {"class_of", nullptr}, false}
     },
 // authorization
     {
@@ -786,7 +785,6 @@ namespace cubschema
 		   CT_TRIGGER_NAME,
 		   // columns
     {
-      {TR_ATT_UNIQUE_NAME, "string"},
       {TR_ATT_OWNER, AU_USER_CLASS_NAME},
       {TR_ATT_NAME, "string"},
       {TR_ATT_STATUS, "integer", make_int_value_fn (TR_STATUS_ACTIVE)},
@@ -880,7 +878,6 @@ namespace cubschema
 		   CT_STORED_PROC_NAME,
 		   // columns
     {
-      {SP_ATTR_UNIQUE_NAME, format_varchar (255)},
       {SP_ATTR_SP_NAME, format_varchar (255)},
       {SP_ATTR_SP_TYPE, "integer"},
       {SP_ATTR_RETURN_TYPE, "integer"},
@@ -900,7 +897,15 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {"unique_name", nullptr}, false}
+      /* A procedure outside a package has no package, and NULL is what says so: a primary key
+       * would not allow it, and oracle_style_empty_string turns '' into NULL anyway. The unique
+       * key still keeps two procedures of one owner and package apart. */
+      {
+	DB_CONSTRAINT_UNIQUE, "u_db_stored_procedure_sp_name_pkg_name_owner",
+	{"sp_name", "pkg_name", "owner", nullptr}, false
+      },
+      {DB_CONSTRAINT_NOT_NULL, "", {"sp_name", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"owner", nullptr}, false}
     },
 // authorization
     {
@@ -984,7 +989,6 @@ namespace cubschema
 		   CT_SERIAL_NAME,
 		   // columns
     {
-      {"unique_name", "string"},
       {"name", "string"},
       {"owner", AU_USER_CLASS_NAME},
       {"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
@@ -1004,8 +1008,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_unique_name", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_UNIQUE, "", {"name", "owner", nullptr}, false},
+      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_name_owner", {"name", "owner", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"current_val", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"increment_val", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"max_val", nullptr}, false},
@@ -1166,11 +1169,9 @@ namespace cubschema
 		   CT_SYNONYM_NAME,
 		   // columns
     {
-      {"unique_name", format_varchar (255)},
       {"name", format_varchar (255)},
       {"owner", AU_USER_CLASS_NAME},
       {"is_public", "integer", make_int_value_fn (0)},
-      {"target_unique_name", format_varchar (255)},
       {"target_name", format_varchar (255)},
       {"target_owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (2048)},
@@ -1179,12 +1180,10 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"name", "owner", "is_public", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"name", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"owner", nullptr}, false},
+      /* the key already leads with the name, so a lookup by name alone still uses it,
+       * and it is what makes those two columns not null */
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"name", "owner", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"is_public", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"target_unique_name", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"target_name", nullptr}, false},
       {DB_CONSTRAINT_NOT_NULL, "", {"target_owner", nullptr}, false}
     },
@@ -1917,8 +1916,6 @@ namespace cubschema
 		   CTV_SERIAL_NAME,
 		   // columns
     {
-      /* kept for compatibility */
-      {"unique_name", format_varchar (255)},
       {"name", format_varchar (255)},
       {"owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
