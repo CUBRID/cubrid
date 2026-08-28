@@ -33,11 +33,6 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
-/* Every in-memory sort record is preceded by its length; the prefix is 8 bytes wide to keep records
- * MAX_ALIGNMENT-aligned. */
-#define BTSORT_RECORD_LENGTH_SIZE (sizeof(INT64))	/* for 8byte align */
-#define BTSORT_RECORD_LENGTH(item_p) (*((int *) ((item_p) - BTSORT_RECORD_LENGTH_SIZE)))
-
 typedef enum
 {
   BTSORT_REC_DOESNT_FIT,
@@ -45,6 +40,30 @@ typedef enum
   BTSORT_NOMORE_RECS,
   BTSORT_ERROR_OCCURRED
 } BTSORT_STATUS;
+
+/*
+ * sort record starts with this 4-byte header: the loader (btree_load.c) fills key_off and the
+ * flags, the sort fills the length. It travels with the record into the run pages.
+ */
+typedef struct btsort_rec_header BTSORT_REC_HEADER;
+struct btsort_rec_header
+{
+  UINT16 length:14;		/* length of the record, header included */
+  UINT16 is_bigone:1;		/* the record holds the VPID of a record of the multipage file */
+  UINT16 has_null:1;		/* the key is NULL or a multi-column key with a NULL column */
+  UINT8 key_off;		/* offset of the key from the start of the record */
+  UINT8 flags;			/* BTSORT_REC_HAS_INSID | BTSORT_REC_HAS_DELID */
+};
+static_assert (sizeof (BTSORT_REC_HEADER) == 4, "the sort record header must stay 4 bytes wide");
+
+#define BTSORT_REC_HEADER_SIZE      ((int) sizeof (BTSORT_REC_HEADER))
+#define BTSORT_REC_MAX_LENGTH       0x3FFF	/* the length field of the header is 14 bits wide */
+#define BTSORT_REC_HAS_INSID        ((UINT8) 0x40)	/* insert MVCCID stored (row not all-visible) */
+#define BTSORT_REC_HAS_DELID        ((UINT8) 0x80)	/* delete MVCCID stored */
+
+#define BTSORT_REC_HDR(rec)         ((BTSORT_REC_HEADER *) (rec))
+#define BTSORT_REC_KEY(rec)         ((char *) (rec) + BTSORT_REC_HDR (rec)->key_off)
+#define BTSORT_REC_BODY(rec)        ((char *) (rec) + BTSORT_REC_HEADER_SIZE)
 
 typedef BTSORT_STATUS BTSORT_GET_FUNC (THREAD_ENTRY * thread_p, RECDES *, void *);
 typedef int BTSORT_PUT_FUNC (THREAD_ENTRY * thread_p, const RECDES *, void *);

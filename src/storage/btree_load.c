@@ -3633,10 +3633,12 @@ bt_load_put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has
 			   MVCC_REC_HEADER * mvcc_header, DB_VALUE * dbvalue_ptr, int key_len, int cur_class,
 			   bool is_btree_ops_log)
 {
-  int next_size;
   int record_size;
   OR_BUF buf;
+  BTSORT_REC_HEADER *header;
   int oid_size;
+  UINT8 flags = 0;
+  int mvcc_size = 0;
 
   if (BTREE_IS_UNIQUE (sort_args->unique_pk))
     {
@@ -3647,13 +3649,23 @@ bt_load_put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has
       oid_size = OR_OID_SIZE;
     }
 
-  next_size = sizeof (char *);
-  record_size = (next_size	/* Pointer to next */
-		 + OR_INT_SIZE	/* Has null */
+  /* only the MVCCIDs that carry information are stored (BTSORT_REC_HAS_INSID / _DELID) */
+  if (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (mvcc_header))
+    {
+      flags |= BTSORT_REC_HAS_INSID;
+      mvcc_size += OR_MVCCID_SIZE;
+    }
+  if (MVCC_IS_HEADER_DELID_VALID (mvcc_header))
+    {
+      flags |= BTSORT_REC_HAS_DELID;
+      mvcc_size += OR_MVCCID_SIZE;
+    }
+
+  record_size = (BTSORT_REC_HEADER_SIZE	/* header */
 		 + oid_size	/* OID, Class OID */
-		 + 2 * OR_MVCCID_SIZE	/* Insert and delete MVCCID */
+		 + mvcc_size	/* Insert and/or delete MVCCID, when present */
 		 + key_len	/* Key length */
-		 + (int) MAX_ALIGNMENT /* Alignment */ );
+		 + (int) INT_ALIGNMENT /* Alignment */ );
 
   if (recdes->area_size < record_size)
     {
@@ -3666,18 +3678,22 @@ bt_load_put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has
       return ER_FAILED;
     }
 
-  assert (PTR_ALIGN (recdes->data, MAX_ALIGNMENT) == recdes->data);
-  or_init (&buf, recdes->data, 0);
+  assert (PTR_ALIGN (recdes->data, INT_ALIGNMENT) == recdes->data);
+  /* area_size ends just below the sort's run slot arrays, and or_init with 0 would not bound the
+   * buffer at all: a data_writeval past the key_len estimate must fail, not overwrite them */
+  assert (recdes->area_size > 0);
+  or_init (&buf, recdes->data, recdes->area_size);
 
-  or_pad (&buf, next_size);	/* init as NULL */
+  /* the header; the sort fills its length.  A long record keeps 0: it exceeds the 14-bit field
+   * and its length comes from the multipage file instead */
+  header = BTSORT_REC_HDR (recdes->data);
+  header->length = 0;
+  header->is_bigone = 0;
+  header->has_null = (value_has_null != 0);
+  header->key_off = (UINT8) (BTSORT_REC_HEADER_SIZE + oid_size + mvcc_size);
+  header->flags = flags;
 
-  /* save has_null */
-  if (or_put_byte (&buf, value_has_null) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  or_advance (&buf, (OR_INT_SIZE - OR_BYTE_SIZE));
+  or_advance (&buf, BTSORT_REC_HEADER_SIZE);
   assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
 
   if (or_put_oid (&buf, &sort_args->cur_oid) != NO_ERROR)
@@ -3693,32 +3709,18 @@ bt_load_put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has
 	}
     }
 
-  /* Pack insert and delete MVCCID's */
-  if (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (mvcc_header))
+  /* Pack the insert and delete MVCCIDs that are present */
+  if (flags & BTSORT_REC_HAS_INSID)
     {
       if (or_put_mvccid (&buf, MVCC_GET_INSID (mvcc_header)) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
     }
-  else
-    {
-      if (or_put_mvccid (&buf, MVCCID_ALL_VISIBLE) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
 
-  if (MVCC_IS_HEADER_DELID_VALID (mvcc_header))
+  if (flags & BTSORT_REC_HAS_DELID)
     {
       if (or_put_mvccid (&buf, MVCC_GET_DELID (mvcc_header)) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
-  else
-    {
-      if (or_put_mvccid (&buf, MVCCID_NULL) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -3742,6 +3744,7 @@ bt_load_put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has
     }
 
   assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
+  assert (buf.ptr == recdes->data + header->key_off);
 
   if (sort_args->key_type->type->data_writeval (&buf, dbvalue_ptr) != NO_ERROR)
     {
@@ -3749,6 +3752,7 @@ bt_load_put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has
     }
 
   recdes->length = CAST_STRLEN (buf.ptr - buf.buffer);
+  assert (recdes->length <= record_size);	/* data_writeval must not exceed the key_len estimate */
   return NO_ERROR;
 }
 
@@ -3766,14 +3770,19 @@ bt_load_get_buf_from_record (RECDES * recdes, LOAD_ARGS * load_args, S_PARAM_ST 
 {
   OR_BUF buf;
   int ret;
-  int next_size = sizeof (char *);
+  int flags;
 
   /* First decompose the input record into the key and oid components */
   or_init (&buf, recdes->data, recdes->length);
-  assert (buf.ptr == PTR_ALIGN (buf.ptr, MAX_ALIGNMENT));
+  assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
 
-  /* Skip forward link, value_has_null */
-  or_advance (&buf, next_size + OR_INT_SIZE);
+  /* the header tells which MVCCIDs the record carries */
+  flags = BTSORT_REC_HDR (buf.ptr)->flags;
+  ret = or_advance (&buf, BTSORT_REC_HEADER_SIZE);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
 
   assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
 
@@ -3795,19 +3804,26 @@ bt_load_get_buf_from_record (RECDES * recdes, LOAD_ARGS * load_args, S_PARAM_ST 
 	}
     }
 
-  /* Create MVCC header */
+  /* Create MVCC header; an absent MVCCID means all-visible (insert) or null (delete) */
   BTREE_INIT_MVCC_HEADER (&pparam->mvcc_header);
+  MVCC_SET_INSID (&pparam->mvcc_header, MVCCID_ALL_VISIBLE);
 
-  ret = or_get_mvccid (&buf, &MVCC_GET_INSID (&pparam->mvcc_header));
-  if (ret != NO_ERROR)
+  if (flags & BTSORT_REC_HAS_INSID)
     {
-      return ret;
+      ret = or_get_mvccid (&buf, &MVCC_GET_INSID (&pparam->mvcc_header));
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
     }
 
-  ret = or_get_mvccid (&buf, &MVCC_GET_DELID (&pparam->mvcc_header));
-  if (ret != NO_ERROR)
+  if (flags & BTSORT_REC_HAS_DELID)
     {
-      return ret;
+      ret = or_get_mvccid (&buf, &MVCC_GET_DELID (&pparam->mvcc_header));
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
     }
 
 #if defined(SERVER_MODE)
@@ -4663,7 +4679,6 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
   int ret = NO_ERROR;
   bool copy = false;
   RECDES sort_key_recdes, *recdes;
-  char *next;
   char notify_vacuum_rv_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char *notify_vacuum_rv_data_bufalign = PTR_ALIGN (notify_vacuum_rv_data_buffer, BTREE_MAX_ALIGN);
   char *notify_vacuum_rv_data = notify_vacuum_rv_data_bufalign;
@@ -4683,81 +4698,68 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
   sort_key_recdes = *in_recdes;
   recdes = &sort_key_recdes;
 
-  for (;;)
-    {				/* Infinite loop; will exit with break statement */
-      next = *(char **) recdes->data;	/* save forward link */
-      load_args->report_n_oids++;
-      if (OR_GET_BYTE (recdes->data + sizeof (char *)) != 0)
-	{
-	  load_args->report_n_nulls++;
-	}
-      if ((ret = bt_load_get_buf_from_record (recdes, load_args, &sparam, copy)) != NO_ERROR)
+  load_args->report_n_oids++;
+  if (BTSORT_REC_HDR (recdes->data)->has_null)
+    {
+      load_args->report_n_nulls++;
+    }
+  if ((ret = bt_load_get_buf_from_record (recdes, load_args, &sparam, copy)) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (VPID_ISNULL (&(load_args->leaf.vpid)))	/* Find out if this is the first call */
+    {
+      /* This is the first call to this function; so, initialize some fields in the LOAD_ARGS
+       * structure */
+      if ((ret = bt_load_get_first_leaf_page_and_init_args (thread_p, load_args, &sparam)) != NO_ERROR)
 	{
 	  goto error;
 	}
-
-      if (VPID_ISNULL (&(load_args->leaf.vpid)))	/* Find out if this is the first call */
-	{
-	  /* This is the first call to this function; so, initialize some fields in the LOAD_ARGS structure */
-	  if ((ret = bt_load_get_first_leaf_page_and_init_args (thread_p, load_args, &sparam)) != NO_ERROR)
-	    {
-	      goto error;
-	    }
+    }
+  else
+    {				/* This is not the first call to this function */
+      /*
+       * Compare the received key with the current one.
+       * If different, then dump the current record and create a new record.
+       */
+      int sp_success = SP_SUCCESS;
+      int c = btree_compare_key (&sparam.this_key, &load_args->current_key, load_args->btid->key_type, 0, 1, NULL);
+      /* EQUALITY test only - doesn't care the reverse index */
+      if (c == DB_GT)
+	{			/* Current key is finished; dump this output record to the disk page */
+	  ret = bt_load_make_new_record_on_leaf_page (thread_p, load_args, &sparam, &sp_success);
+	}
+      else if (c == DB_EQ)
+	{			/* This key (retrieved key) is the same with the current one. */
+	  ret = bt_load_add_same_key_to_record (thread_p, load_args, &sparam, &sp_success);
 	}
       else
-	{			/* This is not the first call to this function */
-	  /*
-	   * Compare the received key with the current one.
-	   * If different, then dump the current record and create a new record.
-	   */
-	  int sp_success = SP_SUCCESS;
-	  int c = btree_compare_key (&sparam.this_key, &load_args->current_key, load_args->btid->key_type, 0, 1, NULL);
-	  /* EQUALITY test only - doesn't care the reverse index */
-	  if (c == DB_GT)
-	    {			/* Current key is finished; dump this output record to the disk page */
-	      ret = bt_load_make_new_record_on_leaf_page (thread_p, load_args, &sparam, &sp_success);
-	    }
-	  else if (c == DB_EQ)
-	    {			/* This key (retrieved key) is the same with the current one. */
-	      ret = bt_load_add_same_key_to_record (thread_p, load_args, &sparam, &sp_success);
-	    }
-	  else
-	    {
-	      assert_release (false);
-	      goto error;
-	    }
-
-	  if (ret != NO_ERROR || sp_success != SP_SUCCESS)
-	    {
-	      goto error;
-	    }
-	}
-
-      ret =
-	bt_load_notify_to_vacuum (thread_p, load_args, &sparam, &notify_vacuum_rv_data, notify_vacuum_rv_data_bufalign);
-      if (ret != NO_ERROR)
 	{
+	  assert_release (false);
 	  goto error;
 	}
 
-      /* set level 1 to leaf */
-      load_args->leaf.hdr.node_level = 1;
-      if (sparam.this_key.need_clear)
+      if (ret != NO_ERROR || sp_success != SP_SUCCESS)
 	{
-	  copy = true;
+	  goto error;
 	}
+    }
 
-      btree_clear_key_value (&copy, &sparam.this_key);
+  ret = bt_load_notify_to_vacuum (thread_p, load_args, &sparam, &notify_vacuum_rv_data, notify_vacuum_rv_data_bufalign);
+  if (ret != NO_ERROR)
+    {
+      goto error;
+    }
 
-      if (!next)
-	{
-	  break;		/* exit infinite loop */
-	}
+  /* set level 1 to leaf */
+  load_args->leaf.hdr.node_level = 1;
+  if (sparam.this_key.need_clear)
+    {
+      copy = true;
+    }
 
-      /* move to next link */
-      recdes->data = next;
-      recdes->length = BTSORT_RECORD_LENGTH (next);
-    }				// for (;;)
+  btree_clear_key_value (&copy, &sparam.this_key);
 
   if (notify_vacuum_rv_data != NULL && notify_vacuum_rv_data != notify_vacuum_rv_data_bufalign)
     {
@@ -6121,15 +6123,15 @@ nofit:
 /*
  * compare_driver () -
  *   return:
- *   first(in):
- *   second(in):
- *   arg(in):
+ *   first(in): first sort record (see bt_load_put_buf_to_record)
+ *   second(in): second sort record
+ *   arg(in): SORT_ARGS
  */
 static int
 compare_driver (const void *first, const void *second, void *arg)
 {
-  char *mem1 = *(char **) first;
-  char *mem2 = *(char **) second;
+  char *mem1 = (char *) first;
+  char *mem2 = (char *) second;
   int has_null;
   SORT_ARGS *sort_args;
   TP_DOMAIN *key_type;
@@ -6139,45 +6141,17 @@ compare_driver (const void *first, const void *second, void *arg)
   sort_args = (SORT_ARGS *) arg;
   key_type = sort_args->key_type;
 
-  assert (PTR_ALIGN (mem1, MAX_ALIGNMENT) == mem1);
-  assert (PTR_ALIGN (mem2, MAX_ALIGNMENT) == mem2);
-
-  /* Skip next link */
-  mem1 += sizeof (char *);
-  mem2 += sizeof (char *);
-
-  /* Read value_has_null */
-  assert (OR_GET_BYTE (mem1) == 0 || OR_GET_BYTE (mem1) == 1);
-  assert (OR_GET_BYTE (mem2) == 0 || OR_GET_BYTE (mem2) == 1);
-  has_null = (OR_GET_BYTE (mem1) || OR_GET_BYTE (mem2)) ? 1 : 0;
-
-  mem1 += OR_INT_SIZE;
-  mem2 += OR_INT_SIZE;
-
   assert (PTR_ALIGN (mem1, INT_ALIGNMENT) == mem1);
   assert (PTR_ALIGN (mem2, INT_ALIGNMENT) == mem2);
 
-  oidptr1 = mem1;
-  oidptr2 = mem2;
+  /* key_off skips the OIDs and the MVCCIDs at once */
+  has_null = BTSORT_REC_HDR (mem1)->has_null || BTSORT_REC_HDR (mem2)->has_null;
 
-  /* Skip the oids */
-  if (BTREE_IS_UNIQUE (sort_args->unique_pk))
-    {				/* unique index */
-      mem1 += (2 * OR_OID_SIZE);
-      mem2 += (2 * OR_OID_SIZE);
-    }
-  else
-    {				/* non-unique index */
-      mem1 += OR_OID_SIZE;
-      mem2 += OR_OID_SIZE;
-    }
+  oidptr1 = BTSORT_REC_BODY (mem1);
+  oidptr2 = BTSORT_REC_BODY (mem2);
 
-  assert (PTR_ALIGN (mem1, INT_ALIGNMENT) == mem1);
-  assert (PTR_ALIGN (mem2, INT_ALIGNMENT) == mem2);
-
-  /* Skip the MVCCID's */
-  mem1 += 2 * OR_MVCCID_SIZE;
-  mem2 += 2 * OR_MVCCID_SIZE;
+  mem1 = BTSORT_REC_KEY (mem1);
+  mem2 = BTSORT_REC_KEY (mem2);
 
   assert (PTR_ALIGN (mem1, INT_ALIGNMENT) == mem1);
   assert (PTR_ALIGN (mem2, INT_ALIGNMENT) == mem2);

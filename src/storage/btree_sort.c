@@ -69,6 +69,17 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+/* One slot of the run built in memory: where the record starts, counted from
+ * sort_param->internal_memory; its length is in its header. The arrays that btsort_run_sort orders
+ * hold these slots, not the records. The 32-bit slot bounds the sort buffer (see btree_sort). */
+typedef UINT32 BTSORT_RUN_SLOT;
+#define BTSORT_REC_AT(base, slot)  ((char *) (base) + *(slot))
+#define BTSORT_MAX_BUFFERS_FOR_RUN_SLOT ((int) (INT_MAX / DB_PAGESIZE))
+
+/* The placeholder of a record in the multipage file: a BIGONE header and the record's VPID */
+#define BTSORT_BIGONE_REC_SIZE  (BTSORT_REC_HEADER_SIZE + (int) sizeof (VPID))
+#define BTSORT_BIGONE_VPID(rec) ((VPID *) BTSORT_REC_BODY (rec))
+
 /* Upper limit on the half of the total number of the temporary files.
  * The exact upper limit on total number of temp files is twice this number.
  * (i.e., this number specifies the upper limit on the number of total input
@@ -94,23 +105,13 @@
  * btsort_spage_initialize leaves, less the slot and the alignment waste find_free charges. */
 #define BTSORT_MAXREC_LENGTH             \
         ((ssize_t) DB_ALIGN_BELOW (DB_PAGESIZE - DB_ALIGN ((int) sizeof (BTSORT_SPAGE_HEADER), \
-                                                          (int) MAX_ALIGNMENT) \
-                                   - (int) sizeof (BTSORT_PAGE_SLOT), (int) MAX_ALIGNMENT))
+                                                          (int) INT_ALIGNMENT) \
+                                   - (int) sizeof (BTSORT_PAGE_SLOT), (int) INT_ALIGNMENT))
 
-/* Smallest record area worth offering to the input function; below this the sort buffer is treated as full
- * (an OID plus a short key needs less, this only keeps a sliver at the end of the buffer from being offered). */
-#define BTSORT_MIN_REC_AREA  ((ssize_t) (3 * sizeof (INT64)))
-
-/* Index build always keeps duplicate keys: equal-key records are chained onto the first one and the freed
- * slot is compacted away (see btsort_run_find / btsort_run_merge). */
-#define BTSORT_CHECK_DUPLICATE(a, b)  \
-    do {                          \
-        if (cmp == 0) {           \
-            btsort_append(a, b);  \
-            *(a) = NULL;          \
-            dup_num++;            \
-        }                         \
-    } while (0)
+/* Smallest record area worth offering to the input function: below it the sort buffer counts as
+ * full and the run is flushed. A unique index makes no record shorter than this, a non-unique one
+ * only 8 bytes shorter. */
+#define BTSORT_MIN_REC_AREA  ((ssize_t) (BTSORT_REC_HEADER_SIZE + 2 * OR_OID_SIZE + (int) INT_ALIGNMENT))
 
 /* parallel merge: runs consumed per dispatched merge task */
 #define BTSORT_PX_MERGE_FILES	4
@@ -178,14 +179,6 @@ struct btsort_result_run
 {
   VFID temp_file;
   int num_pages;
-};
-
-/* In-memory link used to chain records with an equal sort key.  The record produced by btree_sort_get_next ()
- * reserves its first sizeof (char *) bytes for this link (bt_load_put_buf_to_record). */
-typedef struct btsort_rec BTSORT_REC;
-struct btsort_rec
-{
-  BTSORT_REC *next;		/* forward link for duplicate sort_key value */
 };
 
 typedef struct btsort_file_contents BTSORT_FILE_CONTENTS;
@@ -293,13 +286,13 @@ struct btsort_spage_header
   INT16 foffset;		/* Byte offset from the beginning of the page to the first free byte area on the page. */
 };
 
-typedef struct btsort_page_slot BTSORT_PAGE_SLOT;
-struct btsort_page_slot
-{
-  INT16 roffset;		/* Byte Offset from the beginning of the page to the beginning of the record */
-  INT16 rlength;		/* Length of record */
-  INT16 rtype;			/* Record type described by slot. */
-};
+/* One slot of a run page: where the record starts in the page. */
+typedef INT16 BTSORT_PAGE_SLOT;
+
+/* the length bits of the record header reach every record that fits in a run page
+ * (BTSORT_MAXREC_LENGTH) */
+static_assert (IO_MAX_PAGE_SIZE - sizeof (BTSORT_SPAGE_HEADER) - sizeof (BTSORT_PAGE_SLOT) <= BTSORT_REC_MAX_LENGTH,
+	       "the record of a full run page must fit in the length field of its header");
 
 typedef struct btsort_srun BTSORT_SRUN;
 struct btsort_srun
@@ -323,22 +316,23 @@ typedef struct btsort_merge_queue_ctx BTSORT_MERGE_QUEUE_CTX;
 /* engine phases */
 static void btsort_spage_initialize (PAGE_PTR pgptr);
 static INT16 btsort_spage_get_numrecs (PAGE_PTR pgptr);
-static INT16 btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_PAGE_SLOT ** sptr, INT16 length, INT16 type, INT16 * space);
+static INT16 btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_PAGE_SLOT ** sptr, INT16 length, INT16 * space);
 static INT16 btsort_spage_insert (PAGE_PTR pgptr, RECDES * recdes);
 static SCAN_CODE btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_p);
-static void btsort_run_flip (char **start, char **stop);
-static void btsort_append (const void *pk0, const void *pk1);
-static void btsort_run_find (char **source, long *top, BTSORT_STACK * st_p, long limit, BTSORT_CMP_FUNC * compare,
-			     void *comp_arg);
-static void btsort_run_merge (char **low, char **high, BTSORT_STACK * st_p, BTSORT_CMP_FUNC * compare, void *comp_arg);
-static char **btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, char **base, long limit,
-			       char **otherbase, long *srun_limit);
+static void btsort_run_flip (BTSORT_RUN_SLOT * start, BTSORT_RUN_SLOT * stop);
+static void btsort_run_find (const char *base, BTSORT_RUN_SLOT * source, long *top, BTSORT_STACK * st_p, long limit,
+			     BTSORT_CMP_FUNC * compare, void *comp_arg);
+static void btsort_run_merge (const char *base, BTSORT_RUN_SLOT * low, BTSORT_RUN_SLOT * high, BTSORT_STACK * st_p,
+			      BTSORT_CMP_FUNC * compare, void *comp_arg);
+static BTSORT_RUN_SLOT *btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param,
+					 BTSORT_RUN_SLOT * slots, long limit, BTSORT_RUN_SLOT * other_slots,
+					 long *srun_limit);
 static void btsort_listfile_execute (cubthread::entry & thread_ref, BTSORT_PARAM * sort_param);
 static int btsort_listfile_internal (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
 static int btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_GET_FUNC * get_fn,
 				void *get_arg, unsigned int *total_numrecs);
 static int btsort_run_flush (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_file, int *cur_page,
-			     char *output_buffer, char **index_area, int numrecs, int rec_type);
+			     char *output_buffer, BTSORT_RUN_SLOT * index_area, int numrecs);
 static char *btsort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address, RECDES * memory);
 static int btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
 static int btsort_get_avg_numpages_of_nonempty_tmpfile (BTSORT_PARAM * sort_param);
@@ -417,7 +411,7 @@ static int btsort_end_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_so
  *   pgptr(in): Pointer to the page
  *
  * Note: A run page must be initialized before records are inserted on it. Every run page appends its records
- *       in order and keeps them MAX_ALIGNMENT-aligned; no slot is ever freed or reused.
+ *       in order and keeps them INT_ALIGNMENT-aligned; no slot is ever freed or reused.
  */
 static void
 btsort_spage_initialize (PAGE_PTR pgptr)
@@ -429,10 +423,10 @@ btsort_spage_initialize (PAGE_PTR pgptr)
 
   sphdr->nslots = 0;
   sphdr->nrecs = 0;
-  sphdr->alignment = MAX_ALIGNMENT;
+  sphdr->alignment = INT_ALIGNMENT;
 
   /* the first record starts at the first aligned offset past the header */
-  waste = DB_WASTED_ALIGN (sizeof (BTSORT_SPAGE_HEADER), MAX_ALIGNMENT);
+  waste = DB_WASTED_ALIGN (sizeof (BTSORT_SPAGE_HEADER), INT_ALIGNMENT);
   sphdr->foffset = sizeof (BTSORT_SPAGE_HEADER) + waste;
   sphdr->tfree = DB_PAGESIZE - sphdr->foffset;
 }
@@ -459,14 +453,13 @@ btsort_spage_get_numrecs (PAGE_PTR pgptr)
  *   pgptr(in): Pointer to slotted page
  *   sptr(out): Pointer to slotted page array pointer
  *   length(in): Length of area/record
- *   type(in): Type of record to be inserted
  *   space(out): Space used/defined
  *
  * Note: If there is not enough space on the page, an error condition is
  *       indicated and NULLSLOTID is returned.
  */
 static INT16
-btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_PAGE_SLOT ** sptr, INT16 length, INT16 type, INT16 * space)
+btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_PAGE_SLOT ** sptr, INT16 length, INT16 * space)
 {
   BTSORT_SPAGE_HEADER *sphdr;
   INT16 slotid;
@@ -494,9 +487,7 @@ btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_PAGE_SLOT ** sptr, INT16 length, 
   sphdr->nslots++;
 
   /* Now separate an empty area for the record */
-  (*sptr)->roffset = sphdr->foffset;
-  (*sptr)->rlength = length;
-  (*sptr)->rtype = type;
+  **sptr = sphdr->foffset;
 
   /* Adjust the header */
   sphdr->nrecs++;
@@ -529,13 +520,13 @@ btsort_spage_insert (PAGE_PTR pgptr, RECDES * recdes)
       return NULL_SLOTID;
     }
 
-  assert (recdes->type == REC_HOME || recdes->type == REC_BIGONE);
+  assert (recdes->length == BTSORT_REC_HDR (recdes->data)->length);
 
-  slotid = btsort_spage_find_free (pgptr, &sptr, recdes->length, recdes->type, &used_space);
+  slotid = btsort_spage_find_free (pgptr, &sptr, recdes->length, &used_space);
   if (slotid != NULL_SLOTID)
     {
       /* Find the free slot and insert the record */
-      memcpy (((char *) pgptr + sptr->roffset), recdes->data, recdes->length);
+      memcpy (((char *) pgptr + *sptr), recdes->data, recdes->length);
     }
 
   return slotid;
@@ -570,6 +561,8 @@ btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool pee
 {
   BTSORT_SPAGE_HEADER *sphdr;
   BTSORT_PAGE_SLOT *sptr;
+  char *rec;
+  INT16 length;
 
   sphdr = (BTSORT_SPAGE_HEADER *) pgptr;
 
@@ -584,6 +577,12 @@ btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool pee
       return S_DOESNT_EXIST;
     }
 
+  /* the length and the type of the record are in its header; a long record appears here only
+   * as its BIGONE placeholder, since the record itself exceeds the 14-bit length field */
+  rec = (char *) pgptr + *sptr;
+  length = (INT16) BTSORT_REC_HDR (rec)->length;
+  assert (length > 0 && *sptr + length <= sphdr->foffset);
+
   /*
    * If peeking, the address of the data in the descriptor is set to the
    * address of the record in the buffer. Otherwise, the record is copied
@@ -592,28 +591,28 @@ btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool pee
   if (peek_p == PEEK)
     {
       recdes->area_size = -1;
-      recdes->data = (char *) pgptr + sptr->roffset;
+      recdes->data = rec;
     }
   else
     {
       /* copy the record */
 
-      if (sptr->rlength > recdes->area_size)
+      if (length > recdes->area_size)
 	{
 	  /*
 	   * DOES NOT FIT
 	   * Give a hint to the user of the needed length. Hint is given as a
 	   * negative value
 	   */
-	  recdes->length = -sptr->rlength;
+	  recdes->length = -length;
 	  return S_DOESNT_FIT;
 	}
 
-      memcpy (recdes->data, (char *) pgptr + sptr->roffset, sptr->rlength);
+      memcpy (recdes->data, rec, length);
     }
 
-  recdes->length = sptr->rlength;
-  recdes->type = sptr->rtype;
+  recdes->length = length;
+  recdes->type = BTSORT_REC_HDR (rec)->is_bigone ? REC_BIGONE : REC_HOME;
 
   return S_SUCCESS;
 }
@@ -627,9 +626,9 @@ btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool pee
  * Note: Odd runs will have middle pointer undisturbed.
  */
 static void
-btsort_run_flip (char **start, char **stop)
+btsort_run_flip (BTSORT_RUN_SLOT * start, BTSORT_RUN_SLOT * stop)
 {
-  char *temp;
+  BTSORT_RUN_SLOT temp;
 
   while (start < stop)
     {
@@ -639,29 +638,6 @@ btsort_run_flip (char **start, char **stop)
       start++;
       stop--;
     }
-
-  return;
-}
-
-/*
- * btsort_append () -
- *   return: void
- *   pk0(in):
- *   pk1(in):
- */
-static void
-btsort_append (const void *pk0, const void *pk1)
-{
-  BTSORT_REC *node, *list;
-
-  node = *(BTSORT_REC **) pk0;
-  list = *(BTSORT_REC **) pk1;
-
-  while (list->next)
-    {
-      list = list->next;
-    }
-  list->next = node;
 
   return;
 }
@@ -679,17 +655,14 @@ btsort_append (const void *pk0, const void *pk1)
  * Note: Flip descending run, and assign RUN start and stop
  */
 static void
-btsort_run_find (char **source, long *top, BTSORT_STACK * st_p, long limit, BTSORT_CMP_FUNC * compare, void *comp_arg)
+btsort_run_find (const char *base, BTSORT_RUN_SLOT * source, long *top, BTSORT_STACK * st_p, long limit,
+		 BTSORT_CMP_FUNC * compare, void *comp_arg)
 {
-  char **start;
-  char **stop;
-  char **next_stop;
-  char **limit_p;
+  BTSORT_RUN_SLOT *start;
+  BTSORT_RUN_SLOT *stop;
+  BTSORT_RUN_SLOT *next_stop;
+  BTSORT_RUN_SLOT *limit_p;
   BTSORT_SRUN *srun_p;
-
-  char **dup;
-  char **non_dup;
-  int dup_num;
   int cmp;
   bool increasing_order;
 
@@ -714,18 +687,16 @@ btsort_run_find (char **source, long *top, BTSORT_STACK * st_p, long limit, BTSO
   next_stop = stop + 1;
   limit_p = &source[limit];
 
-  dup_num = 0;
-
   /* have a non-trivial run of length 2 or more */
-  cmp = (*compare) (start, stop, comp_arg);
+  cmp = (*compare) (BTSORT_REC_AT (base, start), BTSORT_REC_AT (base, stop), comp_arg);
   if (cmp > 0)
     {
       increasing_order = false;	/* mark as non-increasing order run */
 
-      while (next_stop < limit_p && ((cmp = (*compare) (stop, next_stop, comp_arg)) >= 0))
+      while (next_stop < limit_p
+	     && ((cmp = (*compare) (BTSORT_REC_AT (base, stop), BTSORT_REC_AT (base, next_stop), comp_arg)) >= 0))
 	{
-	  /* mark duplicate as NULL */
-	  BTSORT_CHECK_DUPLICATE (stop, next_stop);	/* increase dup_num */
+	  assert (cmp != 0);	/* compare_driver breaks key ties by OID */
 
 	  stop = next_stop;
 	  next_stop = next_stop + 1;
@@ -735,52 +706,26 @@ btsort_run_find (char **source, long *top, BTSORT_STACK * st_p, long limit, BTSO
     {
       increasing_order = true;	/* mark as increasing order run */
 
-      /* mark duplicate as NULL */
-      BTSORT_CHECK_DUPLICATE (start, stop);	/* increase dup_num */
+      assert (cmp != 0);	/* compare_driver breaks key ties by OID */
 
       /* build increasing order run */
-      while (next_stop < limit_p && ((cmp = (*compare) (stop, next_stop, comp_arg)) <= 0))
+      while (next_stop < limit_p
+	     && ((cmp = (*compare) (BTSORT_REC_AT (base, stop), BTSORT_REC_AT (base, next_stop), comp_arg)) <= 0))
 	{
-	  /* mark duplicate as NULL */
-	  BTSORT_CHECK_DUPLICATE (stop, next_stop);	/* increase dup_num */
+	  assert (cmp != 0);	/* compare_driver breaks key ties by OID */
 
 	  stop = next_stop;
 	  next_stop = next_stop + 1;
 	}
     }
 
-  /* eliminate duplicates; right-shift slots */
-  if (dup_num)
-    {
-      dup = stop - 1;
-      for (non_dup = dup - 1; non_dup >= start; dup--, non_dup--)
-	{
-	  /* find duplicated value slot */
-	  if (*dup == NULL)
-	    {
-	      /* find previous non-duplicated value slot */
-	      for (; non_dup >= start; non_dup--)
-		{
-		  /* move non-duplicated value slot to duplicated value slot */
-		  if (*non_dup != NULL)
-		    {
-		      *dup = *non_dup;
-		      *non_dup = NULL;
-		      break;
-		    }
-		}
-	    }
-	}
-    }
-
   /* change non-increasing order run to increasing order run */
   if (increasing_order != true)
     {
-      btsort_run_flip (start + dup_num, stop);
+      btsort_run_flip (start, stop);
     }
 
   *top += CAST_BUFLEN (stop - start);	/* advance to last visited */
-  srun_p->start += dup_num;
   srun_p->stop = *top;
 
   (*top)++;			/* advance to next unvisited element */
@@ -798,15 +743,15 @@ btsort_run_find (char **source, long *top, BTSORT_STACK * st_p, long limit, BTSO
  *   comp_arg(in):
  */
 static void
-btsort_run_merge (char **low, char **high, BTSORT_STACK * st_p, BTSORT_CMP_FUNC * compare, void *comp_arg)
+btsort_run_merge (const char *base, BTSORT_RUN_SLOT * low, BTSORT_RUN_SLOT * high, BTSORT_STACK * st_p,
+		  BTSORT_CMP_FUNC * compare, void *comp_arg)
 {
   char dest_low_high;
-  char **left_start, **right_start;
-  char **left_stop, **right_stop;
-  char **dest_ptr;
+  BTSORT_RUN_SLOT *left_start, *right_start;
+  BTSORT_RUN_SLOT *left_stop, *right_stop;
+  BTSORT_RUN_SLOT *dest_ptr;
   BTSORT_SRUN *left_srun_p, *right_srun_p;
   int cmp;
-  int dup_num;
 
   do
     {
@@ -838,11 +783,9 @@ btsort_run_merge (char **low, char **high, BTSORT_STACK * st_p, BTSORT_CMP_FUNC 
 	  right_stop = &high[right_srun_p->stop];
 	}
 
-      dup_num = 0;
-
       /* STEP 2: check CON conditions srun follows ascending order. if (left_max < right_min) do FORWARD-CON. we use
        * '<' instead of '<=' */
-      cmp = (*compare) (left_stop, right_start, comp_arg);
+      cmp = (*compare) (BTSORT_REC_AT (base, left_stop), BTSORT_REC_AT (base, right_start), comp_arg);
       if (cmp < 0)
 	{
 	  /* con == TRUE */
@@ -887,17 +830,9 @@ btsort_run_merge (char **low, char **high, BTSORT_STACK * st_p, BTSORT_CMP_FUNC 
 
 	  while (left_stop >= left_start && right_stop >= right_start)
 	    {
-	      cmp = (*compare) (left_stop, right_stop, comp_arg);
-	      if (cmp == 0)
-		{
-		  /* chain duplicate onto the left record */
-		  btsort_append (left_stop, right_stop);
-		  dup_num++;
-
-		  *dest_ptr-- = *right_stop--;
-		  left_stop--;
-		}
-	      else if (cmp > 0)
+	      cmp = (*compare) (BTSORT_REC_AT (base, left_stop), BTSORT_REC_AT (base, right_stop), comp_arg);
+	      assert (cmp != 0);	/* compare_driver breaks key ties by OID */
+	      if (cmp > 0)
 		{
 		  *dest_ptr-- = *left_stop--;
 		}
@@ -922,7 +857,7 @@ btsort_run_merge (char **low, char **high, BTSORT_STACK * st_p, BTSORT_CMP_FUNC 
       /* STEP 3: reconfig BTSORT_STACK */
       st_p->top--;
       left_srun_p->low_high = dest_low_high;
-      left_srun_p->start = right_srun_p->start - (left_srun_p->stop - left_srun_p->start + 1) + dup_num;
+      left_srun_p->start = right_srun_p->start - (left_srun_p->stop - left_srun_p->start + 1);
       left_srun_p->stop = right_srun_p->stop;
 
     }
@@ -954,13 +889,14 @@ btsort_run_merge (char **low, char **high, BTSORT_STACK * st_p, BTSORT_CMP_FUNC 
  *       This could be sped up a bit by looking for N runs, and sorting these
  *       into lists of concatennatable runs.
  */
-static char **
-btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, char **base, long limit, char **otherbase,
-		 long *srun_limit)
+static BTSORT_RUN_SLOT *
+btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_RUN_SLOT * slots, long limit,
+		 BTSORT_RUN_SLOT * other_slots, long *srun_limit)
 {
   BTSORT_CMP_FUNC *compare;
   void *comp_arg;
-  char **src, **dest, **result;
+  const char *rec_base = sort_param->internal_memory;
+  BTSORT_RUN_SLOT *src, *dest, *result;
   BTSORT_STACK sr_stack, *st_p;
   long src_top = 0;
   int cnt;
@@ -969,15 +905,15 @@ btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, char **base
 
   if (limit <= 1)
     {
-      return base;
+      return slots;
     }
 
   /* init */
   compare = sort_param->cmp_fn;
   comp_arg = sort_param->cmp_arg;
 
-  src = base;
-  dest = otherbase;
+  src = slots;
+  dest = other_slots;
   result = NULL;
 
   st_p = &sr_stack;
@@ -994,10 +930,10 @@ btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, char **base
 
   do
     {
-      btsort_run_find (src, &src_top, st_p, limit, compare, comp_arg);
+      btsort_run_find (rec_base, src, &src_top, st_p, limit, compare, comp_arg);
       if (src_top < limit)
 	{
-	  btsort_run_find (src, &src_top, st_p, limit, compare, comp_arg);
+	  btsort_run_find (rec_base, src, &src_top, st_p, limit, compare, comp_arg);
 	}
 
       while ((st_p->top >= 1)	/* may need to merge */
@@ -1005,7 +941,7 @@ btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, char **base
 		 || ((src_top < limit)	/* case 2: non-final merge stage */
 		     && (st_p->srun[st_p->top - 1].tree_depth == st_p->srun[st_p->top].tree_depth))))
 	{
-	  btsort_run_merge (dest, src, st_p, compare, comp_arg);
+	  btsort_run_merge (rec_base, dest, src, st_p, compare, comp_arg);
 	}
     }
   while (src_top < limit);
@@ -1014,11 +950,11 @@ btsort_run_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, char **base
   *srun_limit = limit - st_p->srun[0].start;
 
   /* move base pointer */
-  result = base + st_p->srun[0].start;
+  result = slots + st_p->srun[0].start;
 
   if (st_p->srun[0].low_high == 'L')
     {
-      result = otherbase + st_p->srun[0].start;
+      result = other_slots + st_p->srun[0].start;
     }
 
   assert (result != NULL);
@@ -1107,6 +1043,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
    * the parameter and the floor the code needs: one page goes to the output buffer and the slots
    * grow down from it. */
   sort_param->tot_buffers = MAX (4, prm_get_integer_value (PRM_ID_INDEX_BUILD_BUFFER_SIZE));
+  sort_param->tot_buffers = MIN (sort_param->tot_buffers, BTSORT_MAX_BUFFERS_FOR_RUN_SLOT);
 
   sort_param->internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
   if (sort_param->internal_memory == NULL)
@@ -1455,9 +1392,11 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
   long numrecs;			/* Number of records kept in the internal memory */
   bool once_flushed = false;
   long saved_numrecs;
-  char **saved_index_area;
-  char **index_area;		/* Part of internal memory keeping the addresses of records */
-  char **index_buff;		/* buffer area to sort indexes. */
+  char *base = sort_param->internal_memory;	/* run area; slots address records relative to it */
+  BTSORT_RUN_SLOT *saved_index_area;
+  BTSORT_RUN_SLOT *index_area;	/* Part of internal memory keeping the slots of the records */
+  BTSORT_RUN_SLOT *index_buff;	/* buffer area to sort the slots */
+  BTSORT_REC_HEADER *header;
   int i;
   int error = NO_ERROR;
 
@@ -1483,8 +1422,8 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
   saved_numrecs = 0;
   *total_numrecs = 0;
   saved_index_area = NULL;
-  item_ptr = sort_param->internal_memory + BTSORT_RECORD_LENGTH_SIZE;
-  index_area = (char **) (output_buffer - sizeof (char *));
+  item_ptr = base;
+  index_area = (BTSORT_RUN_SLOT *) (output_buffer - sizeof (BTSORT_RUN_SLOT));
   index_buff = index_area - 1;
   temp_recdes.area_size = BTSORT_MAXREC_LENGTH;
   temp_recdes.length = 0;
@@ -1505,7 +1444,8 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	  temp_recdes.data = item_ptr;
 	  if (((int) ((char *) index_buff - item_ptr)) < BTSORT_MAXREC_LENGTH)
 	    {
-	      temp_recdes.area_size = (int) ((char *) index_buff - item_ptr) - (4 * sizeof (char *));
+	      /* each record takes two slots, one per array; keep a record's worth in reserve */
+	      temp_recdes.area_size = (int) ((char *) index_buff - item_ptr) - (4 * sizeof (BTSORT_RUN_SLOT));
 	    }
 
 	  if (temp_recdes.area_size <= BTSORT_MIN_REC_AREA)
@@ -1548,8 +1488,7 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 		}
 
 	      error =
-		btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, index_area, numrecs,
-				  REC_HOME);
+		btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, index_area, numrecs);
 	      if (error != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -1565,8 +1504,8 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 		}
 
 	      numrecs = 0;
-	      item_ptr = sort_param->internal_memory + BTSORT_RECORD_LENGTH_SIZE;
-	      index_area = (char **) (output_buffer - sizeof (char *));
+	      item_ptr = base;
+	      index_area = (BTSORT_RUN_SLOT *) (output_buffer - sizeof (BTSORT_RUN_SLOT));
 	      index_buff = index_area - 1;
 	      temp_recdes.area_size = BTSORT_MAXREC_LENGTH;
 
@@ -1653,21 +1592,25 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 
 	      /* Create a multipage record for this long record : insert to multipage_file and put the pointer as the
 	       * first record in this run */
-	      if (overflow_insert (thread_p, &sort_param->multipage_file, (VPID *) item_ptr, &long_recdes, FILE_TEMP)
-		  != NO_ERROR)
+	      if (overflow_insert (thread_p, &sort_param->multipage_file, BTSORT_BIGONE_VPID (item_ptr), &long_recdes,
+				   FILE_TEMP) != NO_ERROR)
 		{
 		  ASSERT_ERROR_AND_SET (error);
 		  goto exit_on_error;
 		}
 
-	      /* Update the pointers */
-	      BTSORT_RECORD_LENGTH (item_ptr) = sizeof (VPID);
-	      *index_area = item_ptr;
+	      /* the placeholder: a BIGONE header ahead of the VPID that overflow_insert wrote */
+	      header = BTSORT_REC_HDR (item_ptr);
+	      header->length = BTSORT_BIGONE_REC_SIZE;
+	      header->is_bigone = 1;
+	      header->has_null = 0;
+	      header->key_off = 0;
+	      header->flags = 0;
+	      *index_area = CAST_BUFLEN (item_ptr - base);
 	      numrecs++;
 
 	      error =
-		btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, index_area, numrecs,
-				  REC_BIGONE);
+		btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, index_area, numrecs);
 	      if (error != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -1675,8 +1618,8 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 
 	      /* Prepare for the next internal sorting run */
 	      numrecs = 0;
-	      item_ptr = sort_param->internal_memory + BTSORT_RECORD_LENGTH_SIZE;
-	      index_area = (char **) (output_buffer - sizeof (char *));
+	      item_ptr = base;
+	      index_area = (BTSORT_RUN_SLOT *) (output_buffer - sizeof (BTSORT_RUN_SLOT));
 	      index_buff = index_area - 1;
 	      temp_recdes.area_size = BTSORT_MAXREC_LENGTH;
 
@@ -1689,16 +1632,17 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	  break;
 
 	case BTSORT_SUCCESS:
-	  /* Proceed the pointers */
-	  BTSORT_RECORD_LENGTH (item_ptr) = temp_recdes.length;
-	  *index_area = item_ptr;
+	  /* Proceed the pointers; the record carries its length in its header */
+	  assert (temp_recdes.length <= BTSORT_REC_MAX_LENGTH);
+	  BTSORT_REC_HDR (item_ptr)->length = temp_recdes.length;
+	  *index_area = CAST_BUFLEN (item_ptr - base);
 	  numrecs++;
 
 	  index_area--;
-	  index_buff--;		/* decrease once for pointer, once for pointer buffer */
+	  index_buff--;		/* decrease once for the slot, once for the slot buffer of the run sort */
 	  index_buff--;		/* must keep track because index_buff is used to detect when sort buffer is full */
 
-	  item_ptr += DB_ALIGN (temp_recdes.length, MAX_ALIGNMENT) + BTSORT_RECORD_LENGTH_SIZE;
+	  item_ptr += DB_ALIGN (temp_recdes.length, INT_ALIGNMENT);
 	  break;
 
 	default:
@@ -1728,9 +1672,7 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	{
 	  /* There has been other runs produced already */
 
-	  error =
-	    btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, index_area, numrecs,
-			      REC_HOME);
+	  error = btsort_run_flush (thread_p, sort_param, out_curfile, cur_page, output_buffer, index_area, numrecs);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -1744,8 +1686,8 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	  for (i = 0; i < numrecs; i++)
 	    {
 	      /* Obtain the output record for this temporary record */
-	      temp_recdes.data = index_area[i];
-	      temp_recdes.length = BTSORT_RECORD_LENGTH (index_area[i]);
+	      temp_recdes.data = BTSORT_REC_AT (base, &index_area[i]);
+	      temp_recdes.length = BTSORT_REC_HDR (temp_recdes.data)->length;
 
 	      error = (*sort_param->put_fn) (thread_p, &temp_recdes, sort_param->put_arg);
 	      if (error != NO_ERROR)
@@ -1762,8 +1704,8 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	  for (i = 0; i < saved_numrecs; i++)
 	    {
 	      /* Obtain the output record for this temporary record */
-	      temp_recdes.data = saved_index_area[i];
-	      temp_recdes.length = BTSORT_RECORD_LENGTH (saved_index_area[i]);
+	      temp_recdes.data = BTSORT_REC_AT (base, &saved_index_area[i]);
+	      temp_recdes.length = BTSORT_REC_HDR (temp_recdes.data)->length;
 
 	      error = (*sort_param->put_fn) (thread_p, &temp_recdes, sort_param->put_arg);
 	      if (error != NO_ERROR)
@@ -1821,9 +1763,6 @@ exit_on_error:
  *   output_buffer(in): output buffer to use for flushing the records
  *   index_area(in): index area keeping ordered pointers to the records
  *   numrecs(in): number of records the run includes
- *   rec_type(in): type of records; Assume that all the records of this
- *                 run has the same type. This may need to be changed
- *                 to allow individual records have different types.
  *
  * Note: This function flushes a run to the specified output file. The records
  *       of the run are loaded to the output buffer in the order imposed by
@@ -1833,15 +1772,12 @@ exit_on_error:
  */
 static int
 btsort_run_flush (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_file, int *cur_page, char *output_buffer,
-		  char **index_area, int numrecs, int rec_type)
+		  BTSORT_RUN_SLOT * index_area, int numrecs)
 {
   int error = NO_ERROR;
   int run_size;
   RECDES out_recdes;
   int i;
-  BTSORT_REC *key, *next;
-  int flushed_items = 0;
-  int should_continue = true;
 
   /* Make sure the the temp file indexed by out_file has been created; if not, create it now. */
   if (sort_param->temp[out_file].volid == NULL_VOLID)
@@ -1855,57 +1791,38 @@ btsort_run_flush (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_fi
 	}
     }
 
-  /* Store the record type; used for REC_BIGONE record types */
-  out_recdes.type = rec_type;
-
   run_size = 0;
   btsort_spage_initialize (output_buffer);
 
   /* Insert each record to the output buffer and flush the buffer when it is full */
-  for (i = 0; i < numrecs && should_continue; i++)
+  for (i = 0; i < numrecs; i++)
     {
-      /* Traverse next link */
-      for (key = (BTSORT_REC *) index_area[i]; key; key = next)
+      out_recdes.data = BTSORT_REC_AT (sort_param->internal_memory, &index_area[i]);
+      out_recdes.length = BTSORT_REC_HDR (out_recdes.data)->length;
+
+      if (btsort_spage_insert (output_buffer, &out_recdes) == NULL_SLOTID)
 	{
-	  /* cut-off and save duplicate sort_key value link */
-	  if (rec_type == REC_HOME)
+	  /* Output buffer is full */
+	  error =
+	    btsort_write_area (thread_p, &sort_param->temp[out_file], &sort_param->temp_cursor[out_file],
+			       cur_page[out_file], 1, output_buffer, sort_param->tde_encrypted);
+	  if (error != NO_ERROR)
 	    {
-	      next = key->next;
-	    }
-	  else
-	    {
-	      /* REC_BIGONE */
-	      next = NULL;
+	      return error;
 	    }
 
-	  out_recdes.data = (char *) key;
-	  out_recdes.length = BTSORT_RECORD_LENGTH ((char *) key);
+	  cur_page[out_file]++;
+	  run_size++;
+	  btsort_spage_initialize (output_buffer);
 
 	  if (btsort_spage_insert (output_buffer, &out_recdes) == NULL_SLOTID)
 	    {
-	      /* Output buffer is full */
-	      error =
-		btsort_write_area (thread_p, &sort_param->temp[out_file], &sort_param->temp_cursor[out_file],
-				   cur_page[out_file], 1, output_buffer, sort_param->tde_encrypted);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-
-	      cur_page[out_file]++;
-	      run_size++;
-	      btsort_spage_initialize (output_buffer);
-
-	      if (btsort_spage_insert (output_buffer, &out_recdes) == NULL_SLOTID)
-		{
-		  /* Slotted page module refuses to insert a short size record to an empty page. This should never
-		   * happen. */
-		  error = ER_GENERIC_ERROR;
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-		  return error;
-		}
+	      /* Slotted page module refuses to insert a short size record to an empty page. This
+	       * should never happen. */
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      return error;
 	    }
-	  flushed_items++;
 	}
     }
 
@@ -1940,7 +1857,7 @@ btsort_run_flush (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_fi
 /*
  * btsort_retrieve_longrec () -
  *   return:
- *   address(in):
+ *   address(in): the BIGONE placeholder record (header and VPID) of the long record
  *   memory(in):
  */
 static char *
@@ -1949,7 +1866,7 @@ btsort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address, RECDES * mem
   int needed_area_size;
 
   /* Find the required area for the long record */
-  needed_area_size = overflow_get_length (thread_p, (VPID *) address->data);
+  needed_area_size = overflow_get_length (thread_p, BTSORT_BIGONE_VPID (address->data));
   if (needed_area_size == -1)
     {
       return NULL;
@@ -1974,7 +1891,7 @@ btsort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address, RECDES * mem
     }
 
   /* Retrieve the long record */
-  if (overflow_get (thread_p, (VPID *) address->data, memory, NULL) != S_SUCCESS)
+  if (overflow_get (thread_p, BTSORT_BIGONE_VPID (address->data), memory, NULL) != S_SUCCESS)
     {
       return NULL;
     }
@@ -2000,7 +1917,6 @@ btsort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_par
   RECDES record = RECDES_INITIALIZER;
   RECDES long_record = RECDES_INITIALIZER;
   int error = NO_ERROR;
-  BTSORT_REC *sort_rec;
 
   tot_pages = sort_param->file_contents[result_file_idx].num_pages[0];
   while (tot_pages > 0)
@@ -2051,9 +1967,6 @@ btsort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_par
 		}
 	      else
 		{
-		  sort_rec = (BTSORT_REC *) (record.data);
-		  /* cut-off link used in Internal Sort */
-		  sort_rec->next = NULL;
 		  error = (*sort_param->put_fn) (thread_p, &record, sort_param->put_arg);
 		  if (error != NO_ERROR)
 		    {
@@ -2740,8 +2653,8 @@ static bool
 btsort_px_merge_cursor_less (BTSORT_CMP_FUNC * compare, void *compare_arg, RECDES * cur_rec, RECDES * long_rec,
 			     int a, int b)
 {
-  char **data1 = (cur_rec[a].type == REC_BIGONE) ? &long_rec[a].data : &cur_rec[a].data;
-  char **data2 = (cur_rec[b].type == REC_BIGONE) ? &long_rec[b].data : &cur_rec[b].data;
+  char *data1 = (cur_rec[a].type == REC_BIGONE) ? long_rec[a].data : cur_rec[a].data;
+  char *data2 = (cur_rec[b].type == REC_BIGONE) ? long_rec[b].data : cur_rec[b].data;
   return (*compare) (data1, data2, compare_arg) < 0;
 }
 
@@ -2835,8 +2748,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   RECDES last_long_recdes;
   bool last_elem_is_min;	/* false: must find min record true: last element in the current input section is min
 				 * record. no need to find min */
-  char **data1, **data2;
-  BTSORT_REC *sort_rec;
+  char *data1, *data2;
   int first_run;
   int cmp;
 
@@ -3109,10 +3021,10 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		  do_swap = false;
 
 		  data1 = ((smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
-			   ? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data));
+			   ? long_recdes[s->rec_pos].data : smallest_elem_ptr[s->rec_pos].data);
 
 		  data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-			   ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
+			   ? long_recdes[p->rec_pos].data : smallest_elem_ptr[p->rec_pos].data);
 
 		  cmp = (*compare) (data1, data2, compare_arg);
 		  if (cmp > 0)
@@ -3159,10 +3071,10 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		}
 
 	      /* STEP 2: compare last, p */
-	      data1 = ((last_elem_ptr.type == REC_BIGONE) ? &(last_long_recdes.data) : &(last_elem_ptr.data));
+	      data1 = ((last_elem_ptr.type == REC_BIGONE) ? last_long_recdes.data : last_elem_ptr.data);
 
 	      data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-		       ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
+		       ? long_recdes[p->rec_pos].data : smallest_elem_ptr[p->rec_pos].data);
 
 	      cmp = (*compare) (data1, data2, compare_arg);
 	      if (cmp <= 0)
@@ -3210,9 +3122,6 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		    }
 		  else
 		    {
-		      sort_rec = (BTSORT_REC *) (smallest_elem_ptr[min].data);
-		      /* cut-off link used in Internal Sort */
-		      sort_rec->next = NULL;
 		      error = (*sort_param->put_fn) (thread_p, &smallest_elem_ptr[min], sort_param->put_arg);
 		      if (error != NO_ERROR)
 			{
@@ -3320,8 +3229,8 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 
 			  error =
 			    btsort_read_area (thread_p, &sort_param->temp[big_index],
-					      &sort_param->temp_cursor[big_index], cur_page[big_index], read_pages,
-					      in_cur_bufaddr[min]);
+					      &sort_param->temp_cursor[big_index],
+					      cur_page[big_index], read_pages, in_cur_bufaddr[min]);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -3397,10 +3306,10 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		      do_swap = false;
 
 		      data1 = ((smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
-			       ? &(long_recdes[s->rec_pos].data) : &(smallest_elem_ptr[s->rec_pos].data));
+			       ? long_recdes[s->rec_pos].data : smallest_elem_ptr[s->rec_pos].data);
 
 		      data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-			       ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
+			       ? long_recdes[p->rec_pos].data : smallest_elem_ptr[p->rec_pos].data);
 
 		      cmp = (*compare) (data1, data2, compare_arg);
 		      if (cmp > 0)
@@ -3450,11 +3359,10 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 			    }
 
 			  /* STEP 2: compare last, p */
-			  data1 =
-			    ((last_elem_ptr.type == REC_BIGONE) ? &(last_long_recdes.data) : &(last_elem_ptr.data));
+			  data1 = ((last_elem_ptr.type == REC_BIGONE) ? last_long_recdes.data : last_elem_ptr.data);
 
 			  data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-				   ? &(long_recdes[p->rec_pos].data) : &(smallest_elem_ptr[p->rec_pos].data));
+				   ? long_recdes[p->rec_pos].data : smallest_elem_ptr[p->rec_pos].data);
 
 			  cmp = (*compare) (data1, data2, compare_arg);
 			  if (cmp <= 0)
@@ -4200,7 +4108,6 @@ btsort_put_result_index_leaf (cubthread::entry & thread_ref, BTSORT_PARAM * sort
 	}
       else
 	{
-	  ((BTSORT_REC *) cur_rec[c].data)->next = NULL;
 	  error = bt_load_worker_put_range (thread_p, load_args, &cur_rec[c]);
 	}
       if (error != NO_ERROR)

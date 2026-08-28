@@ -334,6 +334,16 @@ struct filter_index_info
   int pred_stream_size;
 };
 
+/* Layout of the sort record that bt_load_put_buf_to_record () hands to the index build sort
+ * (btree_sort.c):
+ *
+ *   [BTSORT_REC_HEADER 4B][OID 8B][class OID 8B, unique index only][insert MVCCID 8B, if HAS_INSID]
+ *   [delete MVCCID 8B, if HAS_DELID][key]
+ *
+ * The header (btree_sort.h) tells which MVCCIDs follow, where the key starts and whether it has a
+ * NULL column. The record starts INT_ALIGNMENT-aligned and every field above is a multiple of it,
+ * so the key is aligned too. Readers: bt_load_get_buf_from_record () and compare_driver (). */
+
 typedef struct sort_args SORT_ARGS;
 struct sort_args
 {				/* Collection of information required for "sr_index_sort" */
