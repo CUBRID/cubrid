@@ -56,6 +56,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "adoption.hpp"
 #include "cas_common.h"		/* FN_STATUS_* */
@@ -222,8 +223,12 @@ namespace brd
     /* channels + tokens */
     std::mutex channels_mutex;
     std::unordered_map<std::string, std::shared_ptr<channel>> channels;
+    std::mutex dial_mutex;	/* single-flight channel creation (codex F7) */
     std::mutex tokens_mutex;
     std::unordered_map<unsigned int, token_info> tokens;
+    /* SESSION_ENDs that arrived before their HANDOFF_ACK was processed
+     * (reader vs dispatch ordering); the ACK consumes them (codex F1) */
+    std::unordered_set<unsigned int> orphan_ends;
   };
 
   static manager *brd_Manager = NULL;
@@ -253,17 +258,29 @@ namespace brd
   static void
   tokens_drop_for_db (manager &m, const std::string &db_name)
   {
-    std::lock_guard<std::mutex> guard (m.tokens_mutex);
-    for (auto it = m.tokens.begin (); it != m.tokens.end ();)
+    int dropped = 0;
+    {
+      std::lock_guard<std::mutex> guard (m.tokens_mutex);
+      for (auto it = m.tokens.begin (); it != m.tokens.end ();)
+	{
+	  if (it->second.db_name == db_name)
+	    {
+	      it = m.tokens.erase (it);
+	      dropped++;
+	    }
+	  else
+	    {
+	      ++it;
+	    }
+	}
+    }
+    /* the sessions died with their server: free their slots (#117 D7 —
+     * otherwise every server restart leaks slots until the pool starves) */
+    while (dropped-- > 0)
       {
-	if (it->second.db_name == db_name)
-	  {
-	    it = m.tokens.erase (it);
-	  }
-	else
-	  {
-	    ++it;
-	  }
+	int used = m.slots_used.load ();
+	while (used > 0 && !m.slots_used.compare_exchange_weak (used, used - 1))
+	  ;
       }
   }
 
@@ -297,15 +314,25 @@ namespace brd
 	      {
 		adopt::token_body tb;
 		std::memcpy (&tb, body, sizeof (tb));
+		bool known;
 		{
 		  std::lock_guard<std::mutex> guard (m->tokens_mutex);
-		  m->tokens.erase (tb.token);
+		  known = (m->tokens.erase (tb.token) > 0);
+		  if (!known)
+		    {
+		      /* the dispatch thread has not processed the ACK yet:
+		       * park the end for the ACK to consume (codex F1) */
+		      m->orphan_ends.insert (tb.token);
+		    }
 		}
-		/* floor at 0: a pre-restart session's end can race the
-		 * re-sync that would have counted it */
-		int used = m->slots_used.load ();
-		while (used > 0 && !m->slots_used.compare_exchange_weak (used, used - 1))
-		  ;
+		if (known)
+		  {
+		    /* floor at 0: a pre-restart session's end can race the
+		     * re-sync that would have counted it */
+		    int used = m->slots_used.load ();
+		    while (used > 0 && !m->slots_used.compare_exchange_weak (used, used - 1))
+		      ;
+		  }
 	      }
 	    continue;
 	  }
@@ -324,7 +351,13 @@ namespace brd
      * db is dialed again on the next dispatch; its sessions are gone */
     ch->dead.store (true);
     ch->reply_cv.notify_all ();
-    close (ch->fd);
+    /* invalidate under send_mutex so no request/cancel thread can write a
+     * closed (possibly reused) descriptor (codex F6) */
+    {
+      std::lock_guard<std::mutex> guard (ch->send_mutex);
+      close (ch->fd);
+      ch->fd = -1;
+    }
     {
       std::lock_guard<std::mutex> guard (m->channels_mutex);
       auto it = m->channels.find (ch->db_name);
@@ -357,6 +390,10 @@ namespace brd
 
     {
       std::lock_guard<std::mutex> send_guard (ch.send_mutex);
+      if (ch.fd < 0)
+	{
+	  return -1;		/* invalidated by the reader (codex F6) */
+	}
       if (handoff_fd >= 0)
 	{
 	  /* single sendmsg so SCM_RIGHTS rides with the message head */
@@ -389,7 +426,12 @@ namespace brd
 	  cmsg->cmsg_len = CMSG_LEN (sizeof (int));
 	  std::memcpy (CMSG_DATA (cmsg), &handoff_fd, sizeof (int));
 
-	  ssize_t sent = sendmsg (ch.fd, &msg, MSG_NOSIGNAL);
+	  ssize_t sent;
+	  do
+	    {
+	      sent = sendmsg (ch.fd, &msg, MSG_NOSIGNAL);
+	    }
+	  while (sent < 0 && errno == EINTR);	/* nothing transferred yet (codex F8) */
 	  std::size_t total = sizeof (header) + body_len + handoff_payload_len;
 	  if (sent < 0)
 	    {
@@ -435,6 +477,16 @@ namespace brd
     if (!ch.reply_cv.wait_for (lock, std::chrono::seconds (CHANNEL_REPLY_TIMEOUT_SEC),
 			       [&ch] { return ch.reply_ready || ch.dead.load (); }))
       {
+	/* a late reply must never satisfy a LATER request on this channel:
+	 * kill it — the next use redials (codex F5) */
+	ch.dead.store (true);
+	{
+	  std::lock_guard<std::mutex> send_guard (ch.send_mutex);
+	  if (ch.fd >= 0)
+	    {
+	      shutdown (ch.fd, SHUT_RDWR);	/* the reader wakes and cleans up */
+	    }
+	}
 	return -1;
       }
     if (!ch.reply_ready)
@@ -460,6 +512,10 @@ namespace brd
     header.length = (std::uint32_t) body_len;
 
     std::lock_guard<std::mutex> guard (ch.send_mutex);
+    if (ch.fd < 0)
+      {
+	return -1;		/* invalidated by the reader (codex F6) */
+      }
     if (send_all (ch.fd, &header, sizeof (header)) != 0)
       {
 	return -1;
@@ -489,6 +545,10 @@ namespace brd
   static std::shared_ptr<channel>
   channel_get_or_dial (manager &m, const std::string &db_name)
   {
+    /* single-flight: without this, two threads can dial the same db, apply
+     * RESYNC accounting twice, and orphan one live channel (codex F7) */
+    std::lock_guard<std::mutex> dial_guard (m.dial_mutex);
+
     {
       std::lock_guard<std::mutex> guard (m.channels_mutex);
       auto it = m.channels.find (db_name);
@@ -764,16 +824,19 @@ brd_init (const char *broker_name, int max_slots, char statement_pooling, char c
 
   m->epoll_fd = epoll_create1 (EPOLL_CLOEXEC);
   m->wakeup_fd = eventfd (0, EFD_CLOEXEC | EFD_NONBLOCK);
-  if (m->epoll_fd < 0 || m->wakeup_fd < 0)
-    {
-      delete m;
-      return -1;
-    }
   struct epoll_event ev;
   ev.events = EPOLLIN;
   ev.data.ptr = NULL;		/* NULL tags the wakeup fd */
-  if (epoll_ctl (m->epoll_fd, EPOLL_CTL_ADD, m->wakeup_fd, &ev) != 0)
+  if (m->epoll_fd < 0 || m->wakeup_fd < 0 || epoll_ctl (m->epoll_fd, EPOLL_CTL_ADD, m->wakeup_fd, &ev) != 0)
     {
+      if (m->epoll_fd >= 0)
+	{
+	  close (m->epoll_fd);
+	}
+      if (m->wakeup_fd >= 0)
+	{
+	  close (m->wakeup_fd);
+	}
       delete m;
       return -1;
     }
@@ -926,15 +989,29 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
 	{
 	  adopt::token_body ack;
 	  std::memcpy (&ack, reply_body, sizeof (ack));
+	  bool already_ended;
 	  {
 	    std::lock_guard<std::mutex> guard (m->tokens_mutex);
-	    token_info &ti = m->tokens[ack.token];
-	    ti.db_name = db_name;
-	    std::memcpy (ti.clt_ip, job->ip_addr, 4);
-	    ti.clt_port = job->port;
+	    already_ended = (m->orphan_ends.erase (ack.token) > 0);
+	    if (!already_ended)
+	      {
+		token_info &ti = m->tokens[ack.token];
+		ti.db_name = db_name;
+		std::memcpy (ti.clt_ip, job->ip_addr, 4);
+		ti.clt_port = job->port;
+	      }
 	  }
-	  brd_debug ("handoff db=%s: token=%u stored (clt_port=%u)", db_name, ack.token, (unsigned) job->port);
-	  m->slots_used.fetch_add (1);
+	  if (already_ended)
+	    {
+	      /* the session died before this thread processed the ACK; its
+	       * SESSION_END was parked — the slot was never occupied (codex F1) */
+	      brd_debug ("handoff db=%s: token=%u ended before ack", db_name, ack.token);
+	    }
+	  else
+	    {
+	      brd_debug ("handoff db=%s: token=%u stored (clt_port=%u)", db_name, ack.token, (unsigned) job->port);
+	      m->slots_used.fetch_add (1);
+	    }
 	  close (job->clt_sock_fd);	/* the server owns the connection now */
 	  return;
 	}
