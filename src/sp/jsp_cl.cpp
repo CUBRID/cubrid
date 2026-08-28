@@ -238,7 +238,6 @@ MOP
 jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
 {
   MOP mop = NULL;
-  DB_VALUE value;
   int save, err = NO_ERROR;
   char *checked_name;
 
@@ -333,7 +332,6 @@ int
 jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
 {
   int error = NO_ERROR;
-  DB_VALUE value;
   char other_class_name[DB_MAX_IDENTIFIER_LENGTH];
   other_class_name[0] = '\0';
   *return_mop = NULL;
@@ -1652,7 +1650,6 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   MOP sp_mop, arg_mop, owner, save_user;
   DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_cls_val, lang_val, temp;
   SP_TYPE_ENUM real_type;
-  std::string class_name;
   const char *target_cls;
   DB_SET *arg_set_p;
   int save, i, arg_cnt, lang;
