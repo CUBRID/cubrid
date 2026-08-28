@@ -1648,7 +1648,7 @@ execute_all_error:
   return err_code;
 }
 
-/* db_get_hostvars comes from db.h (via cas_db_inc.h) */
+extern DB_VALUE *db_get_hostvars (DB_SESSION * session);
 extern void jsp_set_prepare_call ();
 extern void jsp_unset_prepare_call ();
 
