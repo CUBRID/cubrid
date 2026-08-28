@@ -750,7 +750,7 @@ namespace cubmethod
     int save;
     DB_VALUE val;
 
-    found = jsp_find_stored_procedure (uniq_name, DB_AUTH_NONE);
+    found = jsp_find_stored_procedure (uniq_name);
     if (found)
       {
 	AU_SAVE_AND_DISABLE (save);
@@ -1469,7 +1469,7 @@ exit:
 
     AU_SAVE_AND_DISABLE (save);
 
-    MOP routine_mop = jsp_find_stored_procedure (unique_name.c_str (), DB_AUTH_NONE);
+    MOP routine_mop = jsp_find_stored_procedure (unique_name.c_str ());
     if (routine_mop == NULL)
       {
 	// dropped between the caller's compilation and this execution

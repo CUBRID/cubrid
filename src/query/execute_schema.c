@@ -2093,10 +2093,10 @@ do_grant_or_revoke_obj_list (DB_OBJECT * user_obj, DB_OBJECT_TYPE obj_type, PT_N
 	  switch (obj_type)
 	    {
 	    case DB_OBJECT_PROCEDURE:
-	      obj_mop = jsp_find_stored_procedure (obj_name, DB_AUTH_NONE);
+	      obj_mop = jsp_find_stored_procedure (obj_name);
 	      break;
 	    case DB_OBJECT_PACKAGE:
-	      obj_mop = jsp_find_package (obj_name, DB_AUTH_NONE);
+	      obj_mop = jsp_find_package (obj_name);
 	      break;
 	    default:
 	      assert (false);

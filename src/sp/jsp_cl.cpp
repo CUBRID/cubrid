@@ -144,16 +144,15 @@ static int jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_ty
 static int jsp_drop_stored_procedure_code (const char *name);
 
 static int jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p);
-static int jsp_check_pkg_execute_authorization (const MOP pkg_obj);
 
 extern bool ssl_client;
 
 static MOP
-jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
+jsp_find_pkg (const char *unique_name)
 {
   MOP mop = NULL;
   DB_VALUE value;
-  int save, err = NO_ERROR;
+  int save;
 
   if (!unique_name || unique_name[0] == '\0')
     {
@@ -170,16 +169,6 @@ jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
       er_clear ();
       AU_RESTORE (save);
       return NULL;
-    }
-
-  if (mop && purpose == DB_AUTH_EXECUTE)
-    {
-      err = jsp_check_pkg_execute_authorization (mop);
-    }
-
-  if (err != NO_ERROR)
-    {
-      mop = NULL;
     }
 
   AU_RESTORE (save);
@@ -199,7 +188,7 @@ jsp_find_pkg (const char *unique_name, DB_AUTH purpose)
 int
 jsp_is_existing_stored_procedure (const char *name)
 {
-  MOP mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  MOP mop = jsp_find_stored_procedure (name);
   er_clear ();
   return mop != NULL;
 }
@@ -207,7 +196,7 @@ jsp_is_existing_stored_procedure (const char *name)
 int
 jsp_is_existing_package (const char *name)
 {
-  MOP mop = jsp_find_package (name, DB_AUTH_NONE);
+  MOP mop = jsp_find_package (name);
   er_clear ();
   return mop != NULL;
 }
@@ -216,14 +205,12 @@ jsp_is_existing_package (const char *name)
  * jsp_find_stored_procedure
  *   return: MOP
  *   name(in): find java stored procedure name
- *   purpose(in): DB_AUTH_EXECUTE to check the EXECUTE authorization of the current user,
- *                DB_AUTH_NONE to skip the check
  *
  * Note:
  */
 
 MOP
-jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
+jsp_find_stored_procedure (const char *name)
 {
   MOP mop = NULL;
   DB_VALUE value;
@@ -257,11 +244,6 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
 	}
     }
 
-  if (mop && purpose == DB_AUTH_EXECUTE)
-    {
-      err = jsp_check_execute_authorization (mop);
-    }
-
   if (err != NO_ERROR)
     {
       mop = NULL;
@@ -277,13 +259,12 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
  * jsp_find_package
  *   return: MOP
  *   name(in): package name (with or without owner prefix)
- *   purpose(in): DB_AUTH_NONE or DB_AUTH_EXECUTE
  *
  * Note: normalizes the name (owner prefix + downcase) like jsp_find_stored_procedure,
  *       then looks up the package object in _db_package.
  */
 MOP
-jsp_find_package (const char *name, DB_AUTH purpose)
+jsp_find_package (const char *name)
 {
   if (!name)
     {
@@ -291,7 +272,7 @@ jsp_find_package (const char *name, DB_AUTH purpose)
     }
 
   char *checked_name = jsp_check_package_name (name);
-  MOP mop = jsp_find_pkg (checked_name, purpose);
+  MOP mop = jsp_find_pkg (checked_name);
   if (!mop)
     {
       if (er_errid() == NO_ERROR)
@@ -529,7 +510,7 @@ jsp_get_return_type (const char *name)
 
   AU_SAVE_AND_DISABLE (save);
 
-  mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  mop_p = jsp_find_stored_procedure (name);
   if (mop_p == NULL)
     {
       AU_RESTORE (save);
@@ -568,7 +549,7 @@ jsp_get_sp_type (const char *name)
 
   AU_SAVE_AND_DISABLE (save);
 
-  mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  mop_p = jsp_find_stored_procedure (name);
   if (mop_p == NULL)
     {
       AU_RESTORE (save);
@@ -674,7 +655,7 @@ jsp_get_owner_name (const char *name, char *buf, int buf_size)
 
   AU_SAVE_AND_DISABLE (save);
 
-  mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  mop_p = jsp_find_stored_procedure (name);
   if (mop_p == NULL)
     {
       AU_RESTORE (save);
@@ -1287,7 +1268,7 @@ jsp_set_pkg_compile_id (const char *unique_name, const char *compile_id)
     }
   obt = NULL;
 
-  pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
+  pkg_mop = jsp_find_pkg (unique_name);
   if (pkg_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (err);
@@ -3361,7 +3342,7 @@ jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
     }
 
   // does it already exist?
-  pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
+  pkg_mop = jsp_find_pkg (unique_name);
   if (pkg_mop)
     {
       if (statement->info.pkg.or_replace)
@@ -3589,7 +3570,7 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
 
       // check if it is system generated
-      pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
+      pkg_mop = jsp_find_pkg (unique_name);
       if (pkg_mop)
 	{
 	  DB_VALUE value;
@@ -3644,7 +3625,7 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
       else
 	{
-	  pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
+	  pkg_mop = jsp_find_pkg (unique_name);
 	  err = jsp_drop_pkg (unique_name, pkg_mop, owner_mop);
 	}
 
@@ -4001,7 +3982,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   AU_SAVE_AND_DISABLE (save);
 
   /* existence of sp */
-  sp_mop = jsp_find_stored_procedure (name_str, DB_AUTH_NONE);
+  sp_mop = jsp_find_stored_procedure (name_str);
   if (sp_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (err);
@@ -4254,7 +4235,7 @@ jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   db_make_null (&args_val);
   db_make_null (&owner_val);
 
-  sp_mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  sp_mop = jsp_find_stored_procedure (name);
   if (sp_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (err);
@@ -4771,7 +4752,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
       }
     else
       {
-	mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
+	mop_p = jsp_find_stored_procedure (name);
 	if (mop_p == NULL)
 	  {
 	    error = er_errid ();
@@ -4781,6 +4762,19 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
 	AU_SAVE_AND_DISABLE (save);
 	entry.oid = *WS_OID (mop_p);
+
+	// The SQL CALL path checks EXECUTE here, when the call statement is compiled. Like the
+	// other callers of this check, it runs with authorization disabled so that the owner and
+	// grant catalog reads succeed while the decision is still made against the current user.
+	if (jsp_check_execute_authorization (mop_p) != NO_ERROR)
+	  {
+	    error = er_errid ();
+	    if (error == NO_ERROR)
+	      {
+		error = ER_FAILED;
+	      }
+	    goto exit;
+	  }
 
 	for (int i = 0; i < NUM_SP_ATTR; i++)
 	  {
@@ -5037,24 +5031,6 @@ jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p)
  *
  * Note: EXECUTE is the only authorization grantable on a stored procedure or a package.
  */
-
-/*
- * jsp_check_pkg_execute_authorization
- *   return: NO_ERROR if the current user can execute the members of pkg_obj, ER_FAILED otherwise
- *   pkg_obj(in): package object
- *
- * Note: a package object has no pkg_of, so it cannot go through jsp_check_execute_authorization.
- */
-static int
-jsp_check_pkg_execute_authorization (const MOP pkg_obj)
-{
-  if (au_is_dba_group_member (Au_user))
-    {
-      return NO_ERROR;
-    }
-
-  return (au_check_package_authorization (pkg_obj) == NO_ERROR) ? NO_ERROR : ER_FAILED;
-}
 
 int
 jsp_check_execute_authorization (const MOP sp_obj)
