@@ -687,6 +687,43 @@ metadata_of_threads (void)
   return &md;
 }
 
+/* SHOW SESSION STATUS: the per-session CAS statistics the broker's shm slot
+ * table used to expose through 'cubrid broker status' (B2-D10, #116 D10) */
+static SHOWSTMT_METADATA *
+metadata_of_session_status (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Token", "bigint"},
+    {"Slot", "int"},
+    {"Broker", "varchar(64)"},
+    {"Client_ip", "varchar(20)"},
+    {"Db_user", "varchar(32)"},
+    {"Session_id", "bigint"},
+    {"Tran_index", "int"},
+    {"Num_requests", "bigint"},
+    {"Num_transactions", "bigint"},
+    {"Num_queries", "bigint"},
+    {"Num_selects", "bigint"},
+    {"Num_inserts", "bigint"},
+    {"Num_updates", "bigint"},
+    {"Num_deletes", "bigint"},
+    {"Num_errors", "bigint"},
+    {"Num_long_queries", "bigint"},
+    {"Num_long_transactions", "bigint"},
+    {"Last_activity", "varchar(256)"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_SESSION_STATUS, true /* only_for_dba */ , "show session status",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
+  };
+  return &md;
+}
+
 static SHOWSTMT_METADATA *
 metadata_of_page_buffer_status (void)
 {
@@ -971,6 +1008,7 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_TRAN_TABLES] = metadata_of_tran_tables ();
   show_Metas[SHOWSTMT_THREADS] = metadata_of_threads ();
   show_Metas[SHOWSTMT_PAGE_BUFFER_STATUS] = metadata_of_page_buffer_status ();
+  show_Metas[SHOWSTMT_SESSION_STATUS] = metadata_of_session_status ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {

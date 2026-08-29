@@ -476,7 +476,24 @@ public class B1JdbcSmoke {
             throw new RuntimeException("stmt cap expected to fail at handle 65, failed at " + failedAt);
         }
 
-        // 16. cancel: long-running SLEEP interrupted out-of-band ("QC" via the
+        // 16. SHOW SESSION STATUS: the server view replacing the broker's
+        // per-CAS slot statistics (B2-D10) — this session must be listed
+        step("session_status");
+        rs = stmt.executeQuery("SHOW SESSION STATUS");
+        boolean foundSelf = false;
+        int sessionRows = 0;
+        while (rs.next()) {
+            sessionRows++;
+            if ("dba".equalsIgnoreCase(rs.getString("Db_user")) && rs.getLong("Num_queries") > 0) {
+                foundSelf = true;
+            }
+        }
+        rs.close();
+        if (sessionRows < 1 || !foundSelf) {
+            throw new RuntimeException("SHOW SESSION STATUS: rows=" + sessionRows + " foundSelf=" + foundSelf);
+        }
+
+        // 17. cancel: long-running SLEEP interrupted out-of-band ("QC" via the
         // broker -> control channel -> tran interrupt, #117 D4); the
         // connection must survive the cancelled statement
         step("cancel");
@@ -514,7 +531,7 @@ public class B1JdbcSmoke {
         }
         rs.close();
 
-        // 17. reconnect: close, open a fresh connection (a fresh handoff/token)
+        // 18. reconnect: close, open a fresh connection (a fresh handoff/token)
         step("reconnect");
         stmt.close();
         con.close();

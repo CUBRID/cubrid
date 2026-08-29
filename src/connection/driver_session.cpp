@@ -522,6 +522,9 @@ namespace cubconn
       cas_server_session_slot_begin (params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
 				     CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
 
+      /* publish this session's CAS slot for SHOW SESSION STATUS (B2-D10) */
+      registry_set_session_stats (params.token, as_info, shm_as_index, params.client_ip);
+
       /* ACCESS_CONTROL db:dbuser:ip check before any engine boot (B2-D8,
        * #116 D6) — the same ordering the CAS kept (check, then db_connect) */
       if (cas_server_acl_check (params.broker_name.c_str (), info.db_name, info.db_user,

@@ -145,6 +145,34 @@ namespace cubconn
 
     /* adopted-session registry hooks (driver_session.cpp) */
     void registry_set_tran_index (std::uint32_t token, int tran_index);
+
+    /* SHOW SESSION STATUS (B2-D10): a copied row per live adopted session */
+    struct session_stat_row
+    {
+      std::uint32_t token;
+      int slot;
+      char broker_name[BROKER_NAME_MAX];
+      std::uint32_t client_ip;	/* network byte order */
+      char db_user[32 + 1];
+      unsigned int session_id;
+      int tran_index;
+      long long num_requests;
+      long long num_transactions;
+      long long num_queries;
+      long long num_selects;
+      long long num_inserts;
+      long long num_updates;
+      long long num_deletes;
+      long long num_errors;
+      long long num_long_queries;
+      long long num_long_transactions;
+      char last_activity[256];
+    };
+    /* the session thread publishes its CAS slot after slot begin; cleared
+     * with the registry entry.  as_info_slot is a T_APPL_SERVER_INFO*. */
+    void registry_set_session_stats (std::uint32_t token, void *as_info_slot, int slot_index,
+				     std::uint32_t client_ip);
+    std::size_t registry_stats_snapshot (session_stat_row *rows, std::size_t max_rows);
     void registry_set_fn_status (std::uint32_t token, int fn_status);
     /* session thread signs off: notify SESSION_END and drop the entry */
     void registry_session_finished (std::uint32_t token);
