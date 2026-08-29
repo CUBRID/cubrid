@@ -22,6 +22,8 @@
 #ifndef _CAS_DISPATCH_H_
 #define _CAS_DISPATCH_H_
 
+#include <sys/time.h>		/* struct timeval (cas_server_access_log) */
+
 #include "cas_common_function.h"
 #include "cas_common_vars.h"	/* CAS_TLS, T_REQ_INFO */
 #include "cas_net_buf.h"
@@ -58,6 +60,10 @@ extern "C"
 extern void cas_server_speaker_boot_init (const char *db_name);
 extern void cas_server_session_slot_begin (int client_type, int client_version, const char *driver_info);
 extern void cas_server_session_slot_end (void);
+/* access log writes are one shared append-mode file; the CAS's read-modify-
+ * rename rotation is not concurrency-safe, so the server serializes it */
+extern int cas_server_access_log (struct timeval *start_time, int as_index, int client_ip_addr, char *dbname,
+				  char *dbuser, int log_type);
 #endif
 
 #endif /* _CAS_DISPATCH_H_ */

@@ -1019,7 +1019,14 @@ cas_log_query_plan_file (int id)
   static CAS_TLS char plan_file_name[BROKER_PATH_MAX];
   char dirname[BROKER_PATH_MAX];
   get_cubrid_file (FID_CAS_TMP_DIR, dirname, BROKER_PATH_MAX);
+#if defined (SERVER_MODE)
+  /* the slot index disambiguates sessions in the merged server, where every
+   * session shares one pid and the srv_handle ids are per-session (B2-D5) */
+  if (snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.%d.plan", dirname, (int) getpid (), shm_as_index, id) <
+      0)
+#else
   if (snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.plan", dirname, (int) getpid (), id) < 0)
+#endif
     {
       assert (false);
       return NULL;

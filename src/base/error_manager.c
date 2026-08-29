@@ -299,7 +299,12 @@ static FILE *er_Accesslog_fh = NULL;
 static ER_FMT er_Fmt_list[(-ER_LAST_ERROR) + 1];
 static int er_Fmt_msg_fail_count = -ER_LAST_ERROR;
 static int er_Errid_not_initialized = 0;
-#if !defined (SERVER_MODE)
+#if defined (SERVER_MODE)
+/* stage B2 (#139): the folded CAS speaker registers a per-session handler
+ * (cas_log_error_handler) to stamp EID cross-references into the SQL log;
+ * sessions are threads, so the handler slot is thread-local */
+static thread_local er_log_handler_t er_Handler = NULL;
+#else
 static er_log_handler_t er_Handler = NULL;
 #endif /* !SERVER_MODE */
 static unsigned int er_Eid = 0;
@@ -1724,6 +1729,11 @@ er_log (int err_id)
 	    more_info_p = &more_info[0];
 	  }
       }
+
+    if (er_Handler != NULL)
+      {
+	(*er_Handler) (er_Eid);
+      }
   }
 #else /* SERVER_MODE */
   tran_index = TM_TRAN_INDEX ();
@@ -1800,17 +1810,11 @@ er_log (int err_id)
 er_log_handler_t
 er_register_log_handler (er_log_handler_t handler)
 {
-#if !defined (SERVER_MODE)
   er_log_handler_t prev;
 
   prev = er_Handler;
   er_Handler = handler;
   return prev;
-#else
-  assert (0);
-
-  return NULL;
-#endif
 }
 
 /*

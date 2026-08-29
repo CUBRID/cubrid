@@ -816,6 +816,14 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
 
+#define PRM_NAME_CAS_SQL_LOG "cas_sql_log"
+#define PRM_NAME_CAS_SLOW_LOG "cas_slow_log"
+#define PRM_NAME_CAS_SQL_LOG_MAX_SIZE "cas_sql_log_max_size"
+#define PRM_NAME_CAS_ACCESS_LOG "cas_access_log"
+#define PRM_NAME_CAS_ACCESS_LOG_MAX_SIZE "cas_access_log_max_size"
+#define PRM_NAME_CAS_LONG_QUERY_TIME "cas_long_query_time"
+#define PRM_NAME_CAS_LONG_TRANSACTION_TIME "cas_long_transaction_time"
+
 // #endregion 
 
 /*
@@ -5517,6 +5525,89 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* stage B2 (#116 D9): CAS-owned parameters, server-resident since the CAS
+   * speaker fold.  Units/defaults/limits follow the broker conf they replace
+   * (SQL_LOG, SLOW_LOG, SQL_LOG_MAX_SIZE KB, ACCESS_LOG, ACCESS_LOG_MAX_SIZE
+   * KB, LONG_QUERY_TIME msec, LONG_TRANSACTION_TIME msec). */
+  {PRM_ID_CAS_SQL_LOG,
+   PRM_NAME_CAS_SQL_LOG,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_KEYWORD,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 0 /* SQL_LOG_MODE_NONE */ }},
+   {false, {.i = 0}},
+   {false, {.i = 4 /* SQL_LOG_MODE_ALL */ }}, {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_SLOW_LOG,
+   PRM_NAME_CAS_SLOW_LOG,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_SQL_LOG_MAX_SIZE,
+   PRM_NAME_CAS_SQL_LOG_MAX_SIZE,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 10000 /* KB = 10M */ }},
+   {false, {.i = 10000}},
+   {false, {.i = 2097152 /* KB = 2G */ }}, {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_ACCESS_LOG,
+   PRM_NAME_CAS_ACCESS_LOG,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_ACCESS_LOG_MAX_SIZE,
+   PRM_NAME_CAS_ACCESS_LOG_MAX_SIZE,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 10000 /* KB = 10M */ }},
+   {false, {.i = 10000}},
+   {false, {.i = 2097152 /* KB = 2G */ }}, {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_LONG_QUERY_TIME,
+   PRM_NAME_CAS_LONG_QUERY_TIME,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 60000 /* msec = 1min */ }},
+   {false, {.i = 60000}},
+   {false, {.i = 86400000 /* 24h */ }}, {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_LONG_TRANSACTION_TIME,
+   PRM_NAME_CAS_LONG_TRANSACTION_TIME,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 60000 /* msec = 1min */ }},
+   {false, {.i = 60000}},
+   {false, {.i = 86400000 /* 24h */ }}, {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
@@ -5596,6 +5687,16 @@ static const KEYVAL boolean_words[] = {
   {"0", 0},
   {"false", 0},
   {"off", 0}
+};
+
+/* values track T_SQL_LOG_MODE_VALUE (broker_config.h) — the folded CAS
+ * speaker consumes them as as_info->cur_sql_log_mode */
+static const KEYVAL cas_sql_log_mode_words[] = {
+  {"none", 0},
+  {"error", 1},
+  {"timeout", 2},
+  {"notice", 3},
+  {"all", 4}
 };
 
 static const KEYVAL er_log_level_words[] = {
@@ -7667,6 +7768,9 @@ prm_get_keyval (const SYSPRM_PARAM * prm, int value, const char *name)
     {
     case PRM_ID_ER_LOG_LEVEL:
       return prm_keyword (value, name, er_log_level_words, DIM (er_log_level_words));
+
+    case PRM_ID_CAS_SQL_LOG:
+      return prm_keyword (value, name, cas_sql_log_mode_words, DIM (cas_sql_log_mode_words));
 
     case PRM_ID_LOG_ISOLATION_LEVEL:
       return prm_keyword (value, name, isolation_level_words, DIM (isolation_level_words));

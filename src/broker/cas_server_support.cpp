@@ -33,15 +33,22 @@
 #if defined (SERVER_MODE)
 
 #include <semaphore.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include <cassert>
 #include <cstring>
+#include <mutex>
+#include <vector>
 
 #include "broker_config.h"
+#include "broker_filename.h"	/* get_cubrid_file, FID_* */
 #include "broker_shm.h"		/* uw_sem_* declarations */
+#include "environment_variable.h"	/* envvar_logdir_file */
 #include "cas_common.h"
 #include "cas_common_vars.h"
 #include "cas_dispatch.h"	/* the server-support API declarations */
+#include "cas_log.h"
 #include "cas_net_buf.h"
 #include "cas_sql_log2.h"
 #include "cas_ssl.h"
@@ -54,27 +61,65 @@
 static T_SHM_APPL_SERVER cas_Shm_stub;
 static thread_local T_APPL_SERVER_INFO cas_As_slot;
 
+/* ------------------------------------------------------------------ */
+/* session slot ids (B2-D1): the CAS slot index (shm_as_index) names   */
+/* the per-session SQL/slow/DDL log files and the query plan file, so  */
+/* each adopted session takes the lowest free index for its lifetime — */
+/* the same identity a CAS process got from the broker's slot table    */
+/* ------------------------------------------------------------------ */
+
+static std::mutex cas_Slot_index_mutex;
+static std::vector<bool> cas_Slot_index_used;
+
+static int
+cas_slot_index_alloc (void)
+{
+  std::lock_guard<std::mutex> guard (cas_Slot_index_mutex);
+
+  for (size_t i = 0; i < cas_Slot_index_used.size (); i++)
+    {
+      if (!cas_Slot_index_used[i])
+	{
+	  cas_Slot_index_used[i] = true;
+	  return (int) i;
+	}
+    }
+  cas_Slot_index_used.push_back (true);
+  return (int) (cas_Slot_index_used.size () - 1);
+}
+
+static void
+cas_slot_index_free (int slot)
+{
+  std::lock_guard<std::mutex> guard (cas_Slot_index_mutex);
+
+  if (slot >= 0 && (size_t) slot < cas_Slot_index_used.size ())
+    {
+      cas_Slot_index_used[slot] = false;
+    }
+}
+
 void
 cas_server_speaker_boot_init (const char *db_name)
 {
   T_SHM_APPL_SERVER *shm = &cas_Shm_stub;
 
-  (void) db_name;		/* identity lives in the session boot; kept for the B2 log naming */
-
   std::memset (shm, 0, sizeof (*shm));
 
   /* config the folded code reads; broker conf defaults where the value was
-   * broker-owned, forced OFF where the facility is retired in-server */
-  std::strncpy (shm->broker_name, "cub_server", BROKER_NAME_LEN - 1);
+   * broker-owned, forced OFF where the facility is retired in-server.
+   * Log production config (B2-D7) comes from the cas_* system parameters,
+   * refreshed per session in cas_server_session_slot_begin. */
+  std::strncpy (shm->broker_name, db_name, BROKER_NAME_LEN - 1);	/* log files: <dbname>_<slot+1>.* (B2-D2) */
   shm->session_timeout = -1;	/* net_read path falls back to NET_DEFAULT_TIMEOUT */
   shm->max_string_length = -1;
   shm->max_prepared_stmt_count = 2000;	/* DEFAULT_MAX_PREPARED_STMT_COUNT */
   shm->statement_pooling = ON;
   shm->cci_default_autocommit = ON;
   shm->keep_connection = KEEP_CON_ON;	/* connection == session (#116 D5) */
-  shm->sql_log_mode = SQL_LOG_MODE_NONE;	/* producer moves in B2/B4 (#116 D4) */
+  shm->sql_log_mode = SQL_LOG_MODE_NONE;	/* per-session seed comes from PRM_ID_CAS_SQL_LOG */
   shm->slow_log_mode = SLOW_LOG_MODE_OFF;
-  shm->sql_log2 = 0;
+  shm->sql_log2 = 0;		/* retired in-server: dup2 on fd 1 is process-wide (B2-D5) */
   shm->access_log = OFF;
   shm->jdbc_cache = OFF;
   shm->trigger_action_flag = ON;
@@ -87,14 +132,54 @@ cas_server_speaker_boot_init (const char *db_name)
   shm->job_queue_size = 0;
   shm->net_buf_size = 0;	/* set_net_buf_size falls back to the default */
 
+  /* the access log is one shared append-mode file: <dbname>.access under the
+   * broker log root, mirroring get_access_log_file_name (broker_shm.c) */
+  {
+    char name_buf[BROKER_PATH_MAX];
+
+    snprintf (name_buf, sizeof (name_buf), "broker/%s.access", db_name);
+    envvar_logdir_file (shm->access_log_file, sizeof (shm->access_log_file), name_buf);
+  }
+
+  /* the broker created the log directories at its own startup; the server
+   * does the same for the producers it now hosts (EEXIST is the norm) */
+  {
+    char dir_buf[BROKER_PATH_MAX];
+
+    envvar_logdir_file (dir_buf, sizeof (dir_buf), "broker/");
+    (void) mkdir (dir_buf, 0777);
+    get_cubrid_file (FID_SQL_LOG_DIR, dir_buf, sizeof (dir_buf));
+    (void) mkdir (dir_buf, 0777);
+    get_cubrid_file (FID_CAS_TMP_DIR, dir_buf, sizeof (dir_buf));
+    (void) mkdir (dir_buf, 0777);
+  }
+
   shm_appl = shm;
   broker_name[0] = '\0';
-  std::strncpy (broker_name, "cub_server", BROKER_NAME_LEN - 1);
+  std::strncpy (broker_name, db_name, BROKER_NAME_LEN - 1);
   program_name = "cub_server";
   cas_shard_flag = OFF;
-  shm_as_index = 0;
 
   set_net_buf_size ();
+}
+
+/* per session: refresh the log-production config from the cas_* system
+ * parameters (B2-D7).  The shm stub's numeric fields are shared plain ints;
+ * writing the same prm-derived values from every session begin is benign
+ * (dynamic changes take effect for sessions started afterwards). */
+static void
+cas_server_refresh_log_config (T_APPL_SERVER_INFO * slot)
+{
+  T_SHM_APPL_SERVER *shm = &cas_Shm_stub;
+
+  slot->cur_sql_log_mode = (char) prm_get_integer_value (PRM_ID_CAS_SQL_LOG);
+  slot->cur_slow_log_mode = prm_get_bool_value (PRM_ID_CAS_SLOW_LOG) ? SLOW_LOG_MODE_ON : SLOW_LOG_MODE_OFF;
+
+  shm->sql_log_max_size = prm_get_integer_value (PRM_ID_CAS_SQL_LOG_MAX_SIZE);
+  shm->access_log = prm_get_bool_value (PRM_ID_CAS_ACCESS_LOG) ? ON : OFF;
+  shm->access_log_max_size = prm_get_integer_value (PRM_ID_CAS_ACCESS_LOG_MAX_SIZE);
+  shm->long_query_time = prm_get_integer_value (PRM_ID_CAS_LONG_QUERY_TIME);
+  shm->long_transaction_time = prm_get_integer_value (PRM_ID_CAS_LONG_TRANSACTION_TIME);
 }
 
 /* per adopted session: point the CAS globals at this thread's slot */
@@ -112,8 +197,7 @@ cas_server_session_slot_begin (int client_type, int client_version, const char *
   slot->cur_statement_pooling = shm_appl->statement_pooling ? ON : OFF;
   slot->cci_default_autocommit = shm_appl->cci_default_autocommit;
   slot->auto_commit_mode = FALSE;
-  slot->cur_sql_log_mode = SQL_LOG_MODE_NONE;
-  slot->cur_slow_log_mode = SLOW_LOG_MODE_OFF;
+  cas_server_refresh_log_config (slot);
   slot->cur_sql_log2 = 0;
   slot->isolation_level = CAS_USE_DEFAULT_DB_PARAM;
   slot->lock_timeout = CAS_USE_DEFAULT_DB_PARAM;
@@ -123,6 +207,7 @@ cas_server_session_slot_begin (int client_type, int client_version, const char *
   slot->fn_status = FN_STATUS_CONN;
 
   as_info = slot;
+  shm_as_index = cas_slot_index_alloc ();	/* names this session's log files (B2-D1) */
 
   /* per-connection CAS globals that cas_common_main.c's session setup used
    * to (re)initialize */
@@ -142,7 +227,26 @@ cas_server_session_slot_end (void)
     {
       CON_STATUS_LOCK_DESTROY (&cas_As_slot);
       as_info = NULL;
+      cas_slot_index_free (shm_as_index);
+      shm_as_index = 0;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* access log: one shared append-mode file for all sessions; appends   */
+/* are atomic per fprintf, but the rotation path (ftell/rename/reopen) */
+/* is read-modify-write — serialize the whole producer (B2-D6)         */
+/* ------------------------------------------------------------------ */
+
+static std::mutex cas_Access_log_mutex;
+
+int
+cas_server_access_log (struct timeval *start_time, int as_index, int client_ip_addr, char *dbname, char *dbuser,
+		       int log_type)
+{
+  std::lock_guard<std::mutex> guard (cas_Access_log_mutex);
+
+  return cas_access_log (start_time, as_index, client_ip_addr, dbname, dbuser, (ACCESS_LOG_TYPE) log_type);
 }
 
 /* ------------------------------------------------------------------ */

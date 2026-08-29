@@ -79,7 +79,9 @@ extern int shm_shard_cas_id;
 extern int cas_shard_flag;
 
 /* Shared memory variables */
-extern int shm_as_index;
+/* per-session in the folded server (B2-D1): the CAS slot index names the
+ * SQL/slow/DDL log files, so each adopted session needs its own */
+extern CAS_TLS int shm_as_index;
 extern T_SHM_APPL_SERVER *shm_appl;
 extern CAS_TLS T_APPL_SERVER_INFO *as_info;
 

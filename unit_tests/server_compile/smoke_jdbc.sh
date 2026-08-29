@@ -38,6 +38,9 @@ if printf '%s\n' "$svc_out" | grep -q '^ Server '; then
   fail "other CUBRID servers are running from this install"
 fi
 
+SVCONF="$CUBRID/conf/cubrid.conf"
+SVCONF_BAK="$SVCONF.smoke_jdbc.bak"
+
 cleanup() {
   cubrid broker stop >/dev/null 2>&1 || true
   cubrid server stop "$DB" >/dev/null 2>&1 || true
@@ -45,10 +48,24 @@ cleanup() {
   if [ -f "$BRCONF_BAK" ]; then
     mv -f "$BRCONF_BAK" "$BRCONF"
   fi
+  if [ -f "$SVCONF_BAK" ]; then
+    mv -f "$SVCONF_BAK" "$SVCONF"
+  fi
 }
 trap cleanup EXIT INT TERM
 
 cp -f "$BRCONF" "$BRCONF_BAK" || fail "cannot back up broker conf"
+
+# stage B2: turn the server-resident CAS log producers on (cas_* sysprms) so
+# this run also verifies SQL/slow/access/DDL log production (#116 D4)
+cp -f "$SVCONF" "$SVCONF_BAK" || fail "cannot back up cubrid.conf"
+grep -q '^\[common\]' "$SVCONF" || fail "cubrid.conf has no [common] section"
+sed -i '/^\[common\]/a cas_sql_log=all\ncas_slow_log=yes\ncas_access_log=yes\ncas_long_query_time=1000\nddl_audit_log=yes' "$SVCONF" \
+  || fail "cannot enable cas_* log parameters"
+
+# scope the log assertions to this run
+rm -f "$CUBRID"/log/broker/sql_log/"${DB}"_*.sql.log "$CUBRID"/log/broker/sql_log/"${DB}"_*.slow.log \
+      "$CUBRID"/log/broker/"${DB}".access "$CUBRID"/log/ddl_audit/"${DB}"_*_ddl.log 2>/dev/null || true
 
 cat > "$BRCONF" <<EOF
 [broker]
@@ -81,6 +98,27 @@ cubrid broker start >/dev/null 2>&1 || fail "broker start"
 sleep 1
 
 java -cp "$workdir:$JAR" B1JdbcSmoke "$BROKER_PORT" "$DB" dba "" || fail "jdbc scenario"
+
+# --- log production checks (B2-D1..D6): the sessions above must have produced
+# per-slot CAS-format logs under the server's ownership -------------------
+sqllog="$(ls "$CUBRID"/log/broker/sql_log/"${DB}"_*.sql.log 2>/dev/null | head -1)"
+[ -n "$sqllog" ] || fail "no per-session SQL log was produced"
+grep -q "connect db" "$sqllog" || fail "SQL log misses the connect unit"
+grep -qi "CREATE TABLE b1_smoke" "$sqllog" || fail "SQL log misses statement text"
+grep -q "EID = " "$sqllog" || fail "SQL log misses the error EID cross-reference"
+slowlog="$(ls "$CUBRID"/log/broker/sql_log/"${DB}"_*.slow.log 2>/dev/null | head -1)"
+[ -n "$slowlog" ] || fail "no slow log was produced (SLEEP cases exceed cas_long_query_time=1s)"
+grep -qi "SLEEP" "$slowlog" || fail "slow log misses the SLEEP statement"
+[ -s "$CUBRID/log/broker/${DB}.access" ] || fail "no access log line was produced"
+ddllog="$(ls "$CUBRID"/log/ddl_audit/"${DB}"_*_ddl.log 2>/dev/null | head -1)"
+[ -n "$ddllog" ] || fail "no DDL audit log was produced"
+grep -qi "CREATE TABLE" "$ddllog" || fail "DDL audit log misses CREATE TABLE"
+# the CAS log format must stay readable by the existing tooling (#116 D4)
+if [ -x "$CUBRID/bin/broker_log_top" ]; then
+  topdir="$(mktemp -d "$SCRIPT_DIR/.log_top.XXXXXX")" || fail "mktemp log_top"
+  (cd "$topdir" && "$CUBRID/bin/broker_log_top" "$sqllog" >/dev/null 2>&1) || { rm -rf "$topdir"; fail "broker_log_top cannot parse the server-produced SQL log"; }
+  rm -rf "$topdir"
+fi
 
 cubrid broker stop >/dev/null 2>&1 || true
 cubrid server stop "$DB" >/dev/null 2>&1 || true
