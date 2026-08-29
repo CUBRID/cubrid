@@ -37,6 +37,8 @@
 
 #include "authenticate.h"
 #include "authenticate_password.hpp"
+#include "cas_common_vars.h"	// shm_as_index (per-session slot id, B2-D1)
+#include "cas_dispatch.h"	// cas_server_session_slot_begin/end
 #include "cas_protocol.h"
 #include "client_session_context.hpp"
 #include "driver_session.hpp"
@@ -366,6 +368,64 @@ test_ws_abort_transaction_no_bracket (void)
 /* the driver-facing pure helpers of the adoption endpoint (stage B1): db_info
  * parsing, the V12-single protocol gate, and the connect-reply layout the
  * JDBC/CCI drivers decode */
+/* concurrent sessions take distinct CAS slot indices (the per-session log
+ * file identity, B2-D1) and a retired index is reused lowest-first */
+static int
+test_session_slot_indices (void)
+{
+  char driver_info[SRV_CON_CLIENT_INFO_SIZE];
+  std::atomic<int> other_slot (-1);
+  std::atomic<bool> other_hold (true);
+  int my_slot, reused_slot;
+
+  memset (driver_info, 0, sizeof (driver_info));
+  cas_server_speaker_boot_init ("unitdb");
+
+  std::thread holder ([&] ()
+  {
+    char di[SRV_CON_CLIENT_INFO_SIZE];
+    memset (di, 0, sizeof (di));
+    cas_server_session_slot_begin (0, 0, di);
+    other_slot.store (shm_as_index);
+    while (other_hold.load ())
+      {
+	std::this_thread::yield ();
+      }
+    cas_server_session_slot_end ();
+  });
+
+  while (other_slot.load () < 0)
+    {
+      std::this_thread::yield ();
+    }
+
+  cas_server_session_slot_begin (0, 0, driver_info);
+  my_slot = shm_as_index;
+  if (my_slot == other_slot.load ())
+    {
+      fprintf (stderr, "FAIL: two live sessions share slot index %d\n", my_slot);
+      other_hold.store (false);
+      holder.join ();
+      return 1;
+    }
+  cas_server_session_slot_end ();
+
+  cas_server_session_slot_begin (0, 0, driver_info);
+  reused_slot = shm_as_index;
+  cas_server_session_slot_end ();
+  if (reused_slot != my_slot)
+    {
+      fprintf (stderr, "FAIL: retired slot %d not reused (got %d)\n", my_slot, reused_slot);
+      other_hold.store (false);
+      holder.join ();
+      return 1;
+    }
+
+  other_hold.store (false);
+  holder.join ();
+  return 0;
+}
+
 static int
 test_adoption_wire_helpers (void)
 {
@@ -575,5 +635,11 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: adoption wire helpers (db_info parse, V12 gate, connect reply layout)\n");
+
+  if (test_session_slot_indices () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: concurrent sessions take distinct CAS slot indices, retired ones are reused\n");
   return 0;
 }

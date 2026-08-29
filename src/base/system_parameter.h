@@ -550,8 +550,19 @@ enum param_id
 
   PRM_ID_PLAN_CACHE_BIND_SENSITIVITY,
 
+  /* stage B2 (#116 D9): CAS-owned broker parameters whose owner moved into
+   * the server with the folded CAS speaker — sql/slow/access log production
+   * and the long-query/long-transaction thresholds */
+  PRM_ID_CAS_SQL_LOG,
+  PRM_ID_CAS_SLOW_LOG,
+  PRM_ID_CAS_SQL_LOG_MAX_SIZE,
+  PRM_ID_CAS_ACCESS_LOG,
+  PRM_ID_CAS_ACCESS_LOG_MAX_SIZE,
+  PRM_ID_CAS_LONG_QUERY_TIME,
+  PRM_ID_CAS_LONG_TRANSACTION_TIME,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_PLAN_CACHE_BIND_SENSITIVITY
+  PRM_LAST_ID = PRM_ID_CAS_LONG_TRANSACTION_TIME
 };
 typedef enum param_id PARAM_ID;
 

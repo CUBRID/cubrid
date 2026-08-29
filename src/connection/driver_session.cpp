@@ -37,6 +37,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include <cassert>
@@ -68,6 +69,9 @@
 #include "cas_error.h"
 #include "cas_execute.h"	// ux_get_default_setting
 #include "cas_handle.h"		// hm_srv_handle_free_all
+#include "cas_log.h"		// session log lifecycle (B2-D2/D4/D6)
+#include "broker_util.h"	// ut_get_ipv4_string
+#include "ddl_log.h"		// per-session DDL audit identity
 #include "cas_net_buf.h"
 #include "cas_protocol.h"
 
@@ -364,6 +368,9 @@ namespace cubconn
       char session_blob[DRIVER_SESSION_SIZE];
       char reply[CONNECT_REPLY_BUF_SIZE];
       std::size_t reply_size;
+      struct timeval session_start;
+
+      gettimeofday (&session_start, NULL);	/* the access log's connect timestamp (B2-D6) */
 
       /* the broker's peek engine set O_NONBLOCK, and an SCM_RIGHTS-passed fd
        * shares the open file description — restore blocking mode, this
@@ -438,6 +445,19 @@ namespace cubconn
       cas_server_session_slot_begin (params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
 				     CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
 
+      /* the session-scoped log producers a CAS process opened at startup
+       * (B2-D2/D4): SQL/slow logs on this slot, DDL audit identity */
+      cas_log_open (broker_name);
+      cas_slow_log_open (broker_name);
+      logddl_init (APP_NAME_CAS);
+      logddl_check_ddl_audit_param ();
+      logddl_set_broker_info (shm_as_index, broker_name);
+      {
+	char client_ip_str[16];
+	ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str), (unsigned char *) &params.client_ip);
+	logddl_set_ip (client_ip_str);
+      }
+
       apply_driver_session_id (info.session_id);
 
       /* client-half boot with the driver's credentials; serialization is the
@@ -486,6 +506,18 @@ namespace cubconn
       params.broker_info[BROKER_INFO_RESERVED3] = 0;
 
       make_session_for_driver (session_blob);
+
+      /* cas_post_db_connect's producer half (B2-D6): the access log line and
+       * the SQL log's connect unit, now that the session id is final */
+      as_info->session_id = db_get_session_id ();
+      if (shm_appl->access_log == ON)
+	{
+	  (void) cas_server_access_log (&session_start, shm_as_index, (int) params.client_ip, info.db_name,
+					info.db_user, NEW_CONNECTION);
+	}
+      cas_log_write_and_end (0, false, "connect db %s@%s user %s session id %u", as_info->database_name,
+			     as_info->database_host, info.db_user, as_info->session_id);
+
       reply_size = build_connect_reply (params.token, params.slot_idx, params.broker_info, session_blob,
 					reply, sizeof (reply));
       if (write_full (params.client_fd, reply, reply_size) != NO_ERROR)
@@ -496,6 +528,14 @@ namespace cubconn
       request_loop (params.client_fd, CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
 
     retire:
+      if (as_info != NULL)
+	{
+	  /* the CAS process closed its logs at exit; a session closes its own
+	   * (per-slot files, so no other session is affected) */
+	  logddl_destroy ();
+	  cas_log_close (true);
+	  cas_slow_log_close ();
+	}
       cas_server_session_slot_end ();
       /* teardown order inherited from the tracer (S0): unregister the tran,
        * scrub the conn entry, close the bracket, then retire the thread */
