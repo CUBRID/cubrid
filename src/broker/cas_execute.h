@@ -30,6 +30,9 @@
 
 extern int ux_check_connection (void);
 extern int ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_err_msg);
+#if defined (SERVER_MODE)
+extern void ux_adopted_identity_record (const char *db_name, const char *db_user, const char *db_passwd);
+#endif
 extern int ux_database_reconnect (void);
 extern int ux_is_database_connected (void);
 extern int ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * ne_buf, T_REQ_INFO * req_info,

@@ -452,6 +452,11 @@ namespace cubconn
 	}
       registered = true;
 
+      /* replay ux_database_connect's connected-identity bookkeeping the
+       * direct db_restart_ex boot skipped, so CHECK_CAS answers correctly
+       * on this OUT_TRAN adopted connection (B2-D11) */
+      ux_adopted_identity_record (info.db_name, info.db_user, info.db_passwd);
+
       /* the session created during registration becomes the durable owner of
        * the client context (#123 D3) */
       if (session_adopt_client_context (entry_p, ctx) == NO_ERROR)
