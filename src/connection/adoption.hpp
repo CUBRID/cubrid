@@ -134,6 +134,18 @@ namespace cubconn
       std::uint32_t live_count;	/* adopted sessions of the requesting broker */
     };
 
+    /* live_count of these follow resync_reply_body in the same reply (B4
+     * codex F2): the surviving sessions' tokens, so a restarted broker can
+     * rebuild its token table — without them every survivor's SESSION_END
+     * lands as an unknown token and its slot leaks until the next restart.
+     * client_port is not tracked server-side; rebuilt entries carry port 0
+     * (the cancel disambiguator then requires the client ip to match). */
+    struct resync_token_body
+    {
+      std::uint32_t token;
+      std::uint32_t client_ip;	/* raw bytes as the handoff carried them */
+    };
+
 #if defined (SERVER_MODE)
     /* ------------------------------------------------------------------ */
     /* server-side endpoint lifecycle (called from css_init)              */

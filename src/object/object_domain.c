@@ -3097,6 +3097,17 @@ tp_domain_cache (TP_DOMAIN * transient)
 
   /* B4-D9: a MOP-embedding domain interns into the session lists */
   bool session_scoped = tp_domain_routes_to_session (transient);
+#if defined (SERVER_MODE)
+  if (session_scoped && tp_session_domains () == NULL)
+    {
+      /* never let a MOP-bearing domain fall back into the process lists —
+       * that is the cross-session use-after-free again (codex F1).  The
+       * allocation failure fails the statement instead. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_SESSION_DOMAINS));
+      tp_domain_free (transient);
+      return NULL;
+    }
+#endif
 
   /*
    * first search stage: NO LOCK

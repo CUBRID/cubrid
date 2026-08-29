@@ -729,6 +729,12 @@ namespace cubconn
 					reply, sizeof (reply));
       if (write_full (params.client_fd, reply, reply_size) != NO_ERROR)
 	{
+	  /* the server session exists from here on — end it the way the
+	   * normal epilogue does, or it lingers until the state GC and a
+	   * driver that resets during the connect reply accumulates leaked
+	   * sessions (codex F7).  No XA can be prepared this early. */
+	  (void) ux_end_tran (CCI_TRAN_ROLLBACK, false, true);
+	  (void) ux_end_session ();
 	  goto retire;
 	}
 
