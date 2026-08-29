@@ -558,6 +558,8 @@ ux_adopted_identity_record (const char *db_name, const char *db_user, const char
     }
   memcpy (as_info->database_name, db_name, name_len);
   as_info->database_name[name_len] = '\0';
+  strncpy (as_info->database_user, db_user, sizeof (as_info->database_user) - 1);
+  as_info->database_user[sizeof (as_info->database_user) - 1] = '\0';
   strncpy (as_info->database_host, host_connected, sizeof (as_info->database_host) - 1);
   as_info->last_connect_time = time (NULL);
 
