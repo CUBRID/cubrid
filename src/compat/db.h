@@ -81,6 +81,11 @@ struct db_cl_context
   /* file-scope state of db_admin.c */
   char client_ip_addr[16] = {};
   int client_type = 1;		/* DB_CLIENT_TYPE_DEFAULT (db_client_type.hpp) */
+  /* db_disable/enable_modification nesting depth (#121 D8, codex B3 F2):
+   * session-lived, so a transaction boundary's tdes reseed cannot destroy
+   * an open protected region.  The gate is baseline (tdes, type-derived)
+   * PLUS this depth — the sum reproduces the legacy global's arithmetic. */
+  int modification_disable_depth = 0;
   CUBRID_STMT_TYPE client_statement_type = CUBRID_STMT_NONE;
   int is_doing_end_session = -1;
 

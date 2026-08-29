@@ -46,6 +46,8 @@
 #include "cas_dispatch.h"	// cas_server_session_slot_begin/end
 #include "cas_protocol.h"
 #include "client_session_context.hpp"
+#include "db.h"			// db_cl_modification_disabled (B3 codex F2)
+#include "dbi.h"		// db_disable/enable_modification
 #include "driver_session.hpp"
 #include "language_support.h"
 #include "parser.h"
@@ -551,6 +553,47 @@ test_synthesize_client_type (void)
   return 0;
 }
 
+/* the modification gate's toggle depth is session state that survives what
+ * a transaction-boundary tdes reseed would destroy (codex B3 F2); with no
+ * transaction the tdes baseline contributes 0, isolating the depth part */
+static int
+test_modification_gate_depth (void)
+{
+  client_session_context ctx;
+
+  csc_activate (&ctx);
+  if (db_cl_modification_disabled () != 0)
+    {
+      fprintf (stderr, "FAIL: fresh session's modification gate is not open\n");
+      csc_deactivate ();
+      return 1;
+    }
+  db_disable_modification ();
+  db_disable_modification ();
+  if (db_cl_modification_disabled () == 0)
+    {
+      fprintf (stderr, "FAIL: disable_modification did not close the gate\n");
+      csc_deactivate ();
+      return 1;
+    }
+  db_enable_modification ();
+  if (db_cl_modification_disabled () == 0)
+    {
+      fprintf (stderr, "FAIL: nested disable lost its depth\n");
+      csc_deactivate ();
+      return 1;
+    }
+  db_enable_modification ();
+  if (db_cl_modification_disabled () != 0)
+    {
+      fprintf (stderr, "FAIL: balanced enable did not reopen the gate\n");
+      csc_deactivate ();
+      return 1;
+    }
+  csc_deactivate ();
+  return 0;
+}
+
 static int
 test_admission_check (void)
 {
@@ -584,6 +627,10 @@ test_admission_check (void)
     {DB_CLIENT_TYPE_SLAVE_ONLY_BROKER, HA_SERVER_STATE_ACTIVE, true, false, false, true},	/* SO x non-HA */
     {DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY, HA_SERVER_STATE_STANDBY, false, true, false, true},	/* replica-only on replica */
     {DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY, HA_SERVER_STATE_STANDBY, false, true, false, true},	/* write-on-standby replica RW */
+    /* maintenance: every adopted broker type is disallowed by the reset
+     * table's rule, and the row is not HA-gated (codex B3 F3) */
+    {DB_CLIENT_TYPE_BROKER, HA_SERVER_STATE_MAINTENANCE, false, false, false, false},
+    {DB_CLIENT_TYPE_READ_ONLY_BROKER, HA_SERVER_STATE_MAINTENANCE, true, false, false, false},
   };
 
   for (size_t i = 0; i < sizeof (cases) / sizeof (cases[0]); i++)
@@ -821,6 +868,12 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: strict single-pass admission matrix (#121 D2) rejects and admits per table\n");
+
+  if (test_modification_gate_depth () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: modification-gate toggle depth is session state, balanced across nesting\n");
 
   if (test_session_slot_indices () != 0)
     {

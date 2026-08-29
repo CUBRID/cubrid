@@ -1082,10 +1082,10 @@ db_disable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
 #if defined (SERVER_MODE)
-  /* #121 D8: the session's gate is its transaction descriptor; a write with
-   * no transaction is a no-op (the type-derived seeding at registration
-   * covers the boot-time read-only raise) */
-  logtb_session_adjust_modification_disabled (tm_Tran_index, 1);
+  /* #121 D8: the toggle depth is session state, deliberately NOT the tdes —
+   * a transaction boundary reseeds the tdes baseline and would destroy an
+   * open protected region's nesting (codex B3 F2) */
+  csc_db ()->modification_disable_depth++;
 #else
   db_Disable_modifications++;
 #endif
@@ -1103,7 +1103,7 @@ db_enable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
 #if defined (SERVER_MODE)
-  logtb_session_adjust_modification_disabled (tm_Tran_index, -1);
+  csc_db ()->modification_disable_depth--;
 #else
   db_Disable_modifications--;
 #endif
@@ -1113,13 +1113,16 @@ db_enable_modification (void)
 #if defined (SERVER_MODE)
 /*
  * db_cl_modification_disabled - the folded client half's modification gate
- *   (#121 D8): the session transaction's disable_modifications.  0 before a
+ *   (#121 D8): the transaction's type-derived baseline plus the session's
+ *   toggle depth.  The sum reproduces the legacy process global's
+ *   arithmetic (a boot-time read-only raise, temporary method-call toggles,
+ *   even an unbalanced enable cancelling the baseline).  0 before a
  *   transaction exists — every db_ entry point checks CHECK_CONNECT first.
  */
 int
 db_cl_modification_disabled (void)
 {
-  return logtb_session_modification_disabled (tm_Tran_index);
+  return logtb_session_modification_disabled (tm_Tran_index) + csc_db ()->modification_disable_depth;
 }
 #endif /* SERVER_MODE */
 
