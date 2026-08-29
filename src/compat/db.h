@@ -99,7 +99,15 @@ extern struct db_cl_context *csc_db (void);
 /* session teardown of the query-result registry (db_query.c) */
 extern void db_final_client_query_results (void);
 
-#define db_Connect_status (csc_db ()->connect_status)
+/* B4-D8: inside an active session bracket the session context's status
+ * applies; any other server thread (legacy CS dispatch, executor internals
+ * reaching compat code — e.g. a SET-column scan calling db_set_size) sees
+ * the constant CONNECTED that upstream's SERVER_MODE global hardwired, so
+ * every CHECK_CONNECT_* stays a no-op there instead of asserting on the
+ * missing bracket.  The pointer keeps the macro an lvalue for the
+ * client-half writes, which all happen in-bracket. */
+extern int *db_connect_status_ptr (void);
+#define db_Connect_status (*db_connect_status_ptr ())
 #define db_Session_id (csc_db ()->session_id)
 #define db_Keep_session (csc_db ()->keep_session)
 #define db_Row_count (csc_db ()->row_count)

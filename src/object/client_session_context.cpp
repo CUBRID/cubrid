@@ -28,6 +28,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "object_domain.h"	// tp_session_domains_final (B4-D9)
+
 static thread_local client_session_context *tl_Csc_active = NULL;
 
 client_session_context::client_session_context ()
@@ -142,6 +144,28 @@ csc_db (void)
   return &csc_current ()->db;
 }
 
+void **
+csc_tp_domains_slot (void)
+{
+  return &csc_current ()->tp_domains;
+}
+
+/* B4-D8: db_Connect_status expands to this.  Outside a bracket the server
+ * sees the constant CONNECTED upstream's SERVER_MODE global hardwired
+ * (db_macro.c), so compat-layer CHECK_CONNECT_* guards reached from server
+ * execution pass instead of asserting; inside a bracket the session's own
+ * status applies. */
+int *
+db_connect_status_ptr (void)
+{
+  static int server_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
+  if (tl_Csc_active != NULL)
+    {
+      return &tl_Csc_active->db.connect_status;
+    }
+  return &server_Connect_status;
+}
+
 plan_dump_context *
 csc_plan_dump (void)
 {
@@ -194,6 +218,7 @@ csc_teardown (client_session_context *ctx)
 
   method_callback_session_final ();
   method_runtime_args_session_final ();
+
   if (ctx->ws.mop_table != NULL)
     {
       /* schema-manager teardown first: it clears Current_Schema and frees
@@ -212,6 +237,14 @@ csc_teardown (client_session_context *ctx)
       /* boot failed between heap creation and table build */
       db_destroy_workspace_heap ();
     }
+
+  /* the session's domain lists (B4-D9) go AFTER ws_final: while the
+   * workspace lives, class attributes point at these nodes and every
+   * teardown-path tp_domain_free (classobj_clear_attribute etc.) relies on
+   * is_cached == 1 being a no-op — sweeping earlier double-frees them.
+   * Only now are the nodes unreferenced.  tp_domain_free never dereferences
+   * the (now dangling) embedded class_mop. */
+  tp_session_domains_final ();
 
   db_on_server = save_on_server;
 }

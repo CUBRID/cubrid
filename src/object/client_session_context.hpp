@@ -112,6 +112,16 @@ class client_session_context
     char *db_execution_plan = nullptr;
     int db_execution_plan_length = -1;
 
+    /* object_domain.c: per-session lists for the MOP-capable domain types
+     * (B4-D9).  The process-wide domain cache is structural — one node
+     * serves every session — so a cached node that embeds a workspace MOP
+     * outlives the workspace owning that MOP (use-after-free once sessions
+     * retire promptly).  The legacy CAS ran one client process per session,
+     * i.e. one domain cache per session; this restores that shape.  Opaque
+     * TP_SESSION_DOMAINS, allocated lazily and freed by
+     * tp_session_domains_final() in the bracketed teardown. */
+    void *tp_domains = nullptr;
+
     /* optimizer level override (qo_get/set_optimization_param): the CAS
      * original wrote the process sysprm, which was per-session in effect —
      * here the write lands on the session instead of the shared parameter.
@@ -162,6 +172,9 @@ extern bool csc_bracket_is_active (void);
 /* has the bracketed session terminated a method/SP callback in-process?
  * (qexec's qlist balance check stands down only for such sessions) */
 extern bool csc_has_method_callback_state (void);
+
+/* the session's domain-cache slot (object_domain.c owns the contents, B4-D9) */
+extern void **csc_tp_domains_slot (void);
 
 /* run the client half's session teardown under a temporary bracket and free
  * the context; called by the owning session_state when it is uninitialized */

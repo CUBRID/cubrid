@@ -36,6 +36,9 @@
 
 #include "area_alloc.h"
 #include "deduplicate_key.h"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -628,8 +631,10 @@ static int tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * d
 #if defined(CUBRID_DEBUG)
 static void fprint_domain (FILE * fp, TP_DOMAIN * domain);
 #endif
-static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
-static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
+static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain,
+						  bool session_scoped) __attribute__ ((ALWAYS_INLINE));
+static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain,
+					     bool session_scoped) __attribute__ ((ALWAYS_INLINE));
 
 static int tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db_enum2);
 static int tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
@@ -1879,10 +1884,141 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
  *    type(in): type of value
  *    setdomain(in): used to find appropriate list of MIDXKEY
  */
+#if defined (SERVER_MODE)
+/* B4-D9: per-session lists for the MOP-capable domain types.  The process
+ * cache is structural — one node serves every session — so a cached node
+ * embedding a workspace MOP outlives the workspace owning that MOP: any
+ * later session that hits the node dereferences freed memory once sessions
+ * retire promptly.  The legacy CAS ran one client process per session (one
+ * domain cache per session); these lists restore that shape for the folded
+ * client half.  The server half (db_on_server, or no bracket) never sets
+ * class_mop and keeps the process lists. */
+typedef struct tp_session_domains TP_SESSION_DOMAINS;
+struct tp_session_domains
+{
+  TP_DOMAIN *domains[DB_TYPE_LAST + 1];
+  TP_DOMAIN *midxkey_domains[TP_NUM_MIDXKEY_DOMAIN_LIST];
+};
+
+/* is a bracketed client-half thread running?  (the only context whose
+ * domains may embed workspace MOPs) */
+STATIC_INLINE bool
+tp_domain_client_session_active (void)
+{
+  return !db_on_server && csc_bracket_is_active ();
+}
+
+/* does any domain in this chain (recursively) embed a workspace MOP? */
+static bool
+tp_domain_chain_carries_mop (const TP_DOMAIN * d)
+{
+  for (; d != NULL; d = d->next)
+    {
+      if (d->class_mop != NULL || (d->setdomain != NULL && tp_domain_chain_carries_mop (d->setdomain)))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* B4-D9 routing is by CONTENT, not type: only a domain that actually embeds
+ * a workspace MOP is session-scoped.  A MOP-free domain keeps the process
+ * lists — and their built-in heads — exactly as before, so its packed XASL
+ * representation (built-in one-word reference vs full form) is unchanged;
+ * routing whole type families to (built-in-less) session lists demoted
+ * built-in-matched domains to allocated clones and corrupted the stream
+ * shape the executor unpacks (gate: COUNT(*) over a vclass). */
+STATIC_INLINE bool
+tp_domain_routes_to_session (const TP_DOMAIN * transient)
+{
+  if (transient == NULL || !tp_domain_client_session_active ())
+    {
+      return false;
+    }
+  return transient->class_mop != NULL
+    || (transient->setdomain != NULL && tp_domain_chain_carries_mop (transient->setdomain));
+}
+
+static TP_SESSION_DOMAINS *
+tp_session_domains (void)
+{
+  void **slot = csc_tp_domains_slot ();
+  if (*slot == NULL)
+    {
+      *slot = calloc (1, sizeof (TP_SESSION_DOMAINS));
+    }
+  return (TP_SESSION_DOMAINS *) (*slot);
+}
+
+/* frees the session's domain lists — bracketed teardown only, before
+ * ws_final (the nodes embed this workspace's MOPs).  Session lists carry no
+ * built-ins, so every node is freed. */
+void
+tp_session_domains_final (void)
+{
+  void **slot = csc_tp_domains_slot ();
+  TP_SESSION_DOMAINS *sd = (TP_SESSION_DOMAINS *) (*slot);
+  TP_DOMAIN *d, *next;
+  size_t i;
+
+  if (sd == NULL)
+    {
+      return;
+    }
+  for (i = 0; i < sizeof (sd->domains) / sizeof (sd->domains[0]); i++)
+    {
+      for (d = sd->domains[i], next = NULL; d != NULL; d = next)
+	{
+	  next = d->next_list;
+	  d->is_cached = 0;
+	  tp_domain_free (d);
+	}
+    }
+  for (i = 0; i < sizeof (sd->midxkey_domains) / sizeof (sd->midxkey_domains[0]); i++)
+    {
+      for (d = sd->midxkey_domains[i], next = NULL; d != NULL; d = next)
+	{
+	  next = d->next_list;
+	  d->is_cached = 0;
+	  tp_domain_free (d);
+	}
+    }
+  free (sd);
+  *slot = NULL;
+}
+#else /* SERVER_MODE */
+/* single-workspace builds: the process lists ARE the session (B4-D9) */
+#define tp_domain_client_session_active() false
+#define tp_domain_chain_carries_mop(d) false
+#define tp_domain_routes_to_session(transient) false
+#endif /* SERVER_MODE */
+
 STATIC_INLINE TP_DOMAIN **
-tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain)
+tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain, bool session_scoped)
 {
   int list_index;
+
+  (void) session_scoped;	/* unused in the single-workspace builds */
+
+#if defined (SERVER_MODE)
+  if (session_scoped)
+    {
+      TP_SESSION_DOMAINS *sd = tp_session_domains ();
+      if (sd != NULL)
+	{
+	  if (type == DB_TYPE_MIDXKEY)
+	    {
+	      list_index = tp_domain_size (setdomain);
+	      list_index %= TP_NUM_MIDXKEY_DOMAIN_LIST;
+	      return &(sd->midxkey_domains[list_index]);
+	    }
+	  return &(sd->domains[type]);
+	}
+      /* allocation failure: fall through to the process lists — the
+       * pre-B4-D9 behavior — rather than fail the statement here */
+    }
+#endif
 
   if (type == DB_TYPE_MIDXKEY)
     {
@@ -1901,13 +2037,14 @@ tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain)
  *    return: the head of the list
  *    type(in): type of value
  *    setdomain(in): used to find appropriate list of MIDXKEY
+ *    session_scoped(in): B4-D9 — true routes to the session's lists
  */
 STATIC_INLINE TP_DOMAIN *
-tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain)
+tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain, bool session_scoped)
 {
   TP_DOMAIN **dlist;
 
-  dlist = tp_domain_get_list_ptr (type, setdomain);
+  dlist = tp_domain_get_list_ptr (type, setdomain, session_scoped);
   return *dlist;
 }
 
@@ -1991,8 +2128,15 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_SUB:
 
 #if defined (SERVER_MODE)
-      /* not match for these types on server... fall through. */
-#else /* !defined (SERVER_MODE) */
+      /* the server half never interns these (no MOPs to compare — fall
+       * through, no match); the folded client half runs the client
+       * comparator below on its own session lists (B4-D9), or every
+       * resolve inserts a fresh duplicate */
+      if (db_on_server || !csc_bracket_is_active ())
+	{
+	  break;
+	}
+#endif /* SERVER_MODE */
 
       while (domain)
 	{
@@ -2040,7 +2184,6 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	  *ins_pos = domain;
 	  domain = domain->next_list;
 	}
-#endif /* !defined (SERVER_MODE) */
       break;
 
     case DB_TYPE_VARIABLE:
@@ -2573,7 +2716,7 @@ tp_domain_find_noparam (DB_TYPE type, bool is_desc)
    * DB_TYPE_CLOB DB_TYPE_TIMESTAMP DB_TYPE_DATE DB_TYPE_DATETIME DB_TYPE_MONETARY DB_TYPE_SHORT DB_TYPE_BIGINT
    * DB_TYPE_TIMESTAMPTZ DB_TYPE_TIMESTAMPLTZ DB_TYPE_DATETIMETZ DB_TYPE_DATETIMELTZ */
 
-  for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
+  for (dom = tp_domain_get_list (type, NULL, false); dom != NULL; dom = dom->next_list)
     {
       if (dom->is_desc == is_desc)
 	{
@@ -2605,7 +2748,7 @@ tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc)
    * The first domain is a default domain for numeric type,
    * actually NUMERIC(15,0). We try to match it first.
    */
-  dom = tp_domain_get_list (type, NULL);
+  dom = tp_domain_get_list (type, NULL, false);
   if (precision == dom->precision && scale == dom->scale && is_desc == dom->is_desc)
     {
       return dom;
@@ -2654,7 +2797,7 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
   if (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT)
     {
       /* search the list for a domain that matches */
-      for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
+      for (dom = tp_domain_get_list (type, NULL, false); dom != NULL; dom = dom->next_list)
 	{
 	  /* Variable character/bit is sorted in descending order of precision. */
 	  if (precision > dom->precision)
@@ -2682,7 +2825,7 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
   else
     {
       /* search the list for a domain that matches */
-      for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
+      for (dom = tp_domain_get_list (type, NULL, false); dom != NULL; dom = dom->next_list)
 	{
 	  /* Fixed character/bit is sorted in ascending order of precision. */
 	  if (precision < dom->precision)
@@ -2722,11 +2865,12 @@ TP_DOMAIN *
 tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_mop, bool is_desc)
 {
   TP_DOMAIN *dom;
+  bool session_scoped = (class_mop != NULL && tp_domain_client_session_active ());
 
   /* tp_domain_find_with_classinfo */
 
   /* search the list for a domain that matches */
-  for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
+  for (dom = tp_domain_get_list (type, NULL, session_scoped); dom != NULL; dom = dom->next_list)
     {
       /* we MUST perform exact matches here */
 
@@ -2791,11 +2935,12 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
   TP_DOMAIN *dom;
   int dsize;
   int src_dsize;
+  bool session_scoped = (tp_domain_client_session_active () && tp_domain_chain_carries_mop (setdomain));
 
   src_dsize = tp_domain_size (setdomain);
 
   /* search the list for a domain that matches */
-  for (dom = tp_domain_get_list (type, setdomain); dom != NULL; dom = dom->next_list)
+  for (dom = tp_domain_get_list (type, setdomain, session_scoped); dom != NULL; dom = dom->next_list)
     {
       /* we MUST perform exact matches here */
       if (dom->setdomain == setdomain)
@@ -2899,7 +3044,7 @@ tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc)
   TP_DOMAIN *dom = NULL;
 
   /* search the list for a domain that matches */
-  for (dom = tp_domain_get_list (DB_TYPE_ENUMERATION, NULL); dom != NULL; dom = dom->next_list)
+  for (dom = tp_domain_get_list (DB_TYPE_ENUMERATION, NULL, false); dom != NULL; dom = dom->next_list)
     {
       if (dom->is_desc == is_desc && tp_enumeration_match (&DOM_GET_ENUMERATION (dom), enumeration))
 	{
@@ -2950,11 +3095,14 @@ tp_domain_cache (TP_DOMAIN * transient)
   tp_swizzle_oid (transient);
 #endif /* !SERVER_MODE */
 
+  /* B4-D9: a MOP-embedding domain interns into the session lists */
+  bool session_scoped = tp_domain_routes_to_session (transient);
+
   /*
    * first search stage: NO LOCK
    */
   /* locate the root of the cache list for domains of this type */
-  dlist = tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
+  dlist = tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain, session_scoped);
 
   /* search the list for a domain that matches */
   if (*dlist != NULL)
@@ -2979,7 +3127,7 @@ tp_domain_cache (TP_DOMAIN * transient)
   rv = pthread_mutex_lock (&tp_domain_cache_lock);	/* LOCK */
 
   /* locate the root of the cache list for domains of this type */
-  dlist = tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
+  dlist = tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain, session_scoped);
 
   /* search the list for a domain that matches */
   if (*dlist != NULL)

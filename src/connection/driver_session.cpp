@@ -65,6 +65,8 @@
  * FREE; neither macro is used in this TU */
 #undef FREE
 
+#include "broker_cas_cci.h"	// CCI_TRAN_ROLLBACK (session epilogue, B4-D6)
+#include "cas.h"		// is_xa_prepared
 #include "cas_common_execute.h"	// cas_log_error_handler_begin/end
 #include "cas_common_vars.h"	// req_info (thread_local CAS globals)
 #include "cas_dispatch.h"	// cas_process_request + server-support API
@@ -731,6 +733,17 @@ namespace cubconn
 	}
 
       request_loop (params.client_fd, CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
+
+      /* cas.c:340-351 translated (B4-D6): roll back whatever transaction is
+       * still open unless an XA-prepared one must survive for recovery, then
+       * end the server session — an adopted connection never reattaches
+       * (B1-D12), so the session dies with the connection instead of holding
+       * its slot and workspace until the session-state GC */
+      if (!is_xa_prepared ())
+	{
+	  (void) ux_end_tran (CCI_TRAN_ROLLBACK, false, true);
+	}
+      (void) ux_end_session ();
 
     retire:
       if (as_info != NULL)
