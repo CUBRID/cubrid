@@ -832,6 +832,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_CAS_SESSION_TIMEOUT "cas_session_timeout"
 #define PRM_NAME_CAS_MAX_STRING_LENGTH "cas_max_string_length"
 #define PRM_NAME_CAS_MAX_QUERY_TIMEOUT "cas_max_query_timeout"
+#define PRM_NAME_CAS_ACCESS_CONTROL "cas_access_control"
+#define PRM_NAME_CAS_ACCESS_CONTROL_FILE "cas_access_control_file"
+#define PRM_NAME_CAS_ACCESS_CONTROL_DEFAULT_ALLOW "cas_access_control_default_allow"
 
 // #endregion 
 
@@ -5722,6 +5725,44 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 0 /* sec; 0 = unlimited (broker MAX_QUERY_TIMEOUT) */ }},
    {false, {.i = 0}},
    {false, {.i = 86400 /* 24h */ }}, {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* stage B2 (#116 D6): the db:dbuser:ip ACCESS_CONTROL check moves from the
+   * CAS to the server's session establishment; the broker's IP-only
+   * ACCESS_LIST stays broker-side unchanged */
+  {PRM_ID_CAS_ACCESS_CONTROL,
+   PRM_NAME_CAS_ACCESS_CONTROL,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_ACCESS_CONTROL_FILE,
+   PRM_NAME_CAS_ACCESS_CONTROL_FILE,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_STRING,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.str = (char *) ""}},
+   {false, {.str = (char *) ""}},
+   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_ACCESS_CONTROL_DEFAULT_ALLOW,
+   PRM_NAME_CAS_ACCESS_CONTROL_DEFAULT_ALLOW,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false /* = the broker's DENY default policy */ }},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

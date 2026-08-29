@@ -369,6 +369,7 @@ namespace cubconn
       std::memcpy (params.driver_header, body.driver_header, sizeof (params.driver_header));
       std::memcpy (params.db_info, body.db_info, sizeof (params.db_info));
       params.server_name = m.db_name;
+      params.broker_name = ch.broker_name;
 
       std::uint32_t token;
       {

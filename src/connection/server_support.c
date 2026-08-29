@@ -32,6 +32,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "adoption.hpp"
+#include "cas_dispatch.h"	/* cas_server_acl_reload (B2-D8) */
 #include "master_connector.hpp"
 #include "connection_pool.hpp"
 #include "connection_worker.hpp"
@@ -1962,6 +1963,10 @@ xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 int
 xacl_reload (THREAD_ENTRY * thread_p)
 {
+  /* the CAS-format db:dbuser:ip table rides the same reload trigger
+   * (cubrid server acl reload) as the server's ip list (B2-D8) */
+  cas_server_acl_reload ();
+
   return css_set_accessible_ip_info ();
 }
 #endif

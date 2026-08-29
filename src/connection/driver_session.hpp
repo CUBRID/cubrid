@@ -84,6 +84,7 @@ namespace cubconn
       char driver_header[DRIVER_HEADER_SIZE];
       char db_info[DRIVER_DB_INFO_SIZE];
       std::string server_name;	/* this server's database name */
+      std::string broker_name;	/* the handing broker (ACL section key, B2-D8) */
     };
 
     /* session thread body; owns client_fd and signs off via
