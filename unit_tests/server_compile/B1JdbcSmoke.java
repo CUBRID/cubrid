@@ -389,8 +389,12 @@ public class B1JdbcSmoke {
 
         // 14. XA 2PC round-trip (fn_xa_prepare / fn_xa_recover / fn_xa_end_tran)
         step("xa");
+        // getXAConnection reads serverName/portNumber/databaseName only —
+        // setUrl is not parsed on the XA path (CUBRIDXADataSource.java:70-73)
         cubrid.jdbc.driver.CUBRIDXADataSource xds = new cubrid.jdbc.driver.CUBRIDXADataSource();
-        xds.setUrl(url);
+        xds.setServerName("127.0.0.1");
+        xds.setPortNumber(Integer.parseInt(args[0]));
+        xds.setDatabaseName(args[1]);
         XAConnection xacon = xds.getXAConnection(user, pass);
         XAResource xares = xacon.getXAResource();
         Connection xc = xacon.getConnection();
