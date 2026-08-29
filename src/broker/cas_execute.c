@@ -539,6 +539,34 @@ connect_error:
   return ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR, p);
 }
 
+#if defined (SERVER_MODE)
+/* the adopted session boots through db_restart_ex directly (driver_session,
+ * B1-D11: client-type synthesis is B3 scope) and skips ux_database_connect,
+ * so the connected-identity bookkeeping it performs must be replayed here —
+ * otherwise ux_check_connection () reports "not connected" and the driver's
+ * first CHECK_CAS discards the connection and forces a second handoff */
+void
+ux_adopted_identity_record (const char *db_name, const char *db_user, const char *db_passwd)
+{
+  const char *host_connected = db_get_host_connected ();
+  const char *p = strchr (db_name, '@');
+  size_t name_len = (p != NULL) ? (size_t) (p - db_name) : strlen (db_name);
+
+  if (name_len >= sizeof (as_info->database_name))
+    {
+      name_len = sizeof (as_info->database_name) - 1;
+    }
+  memcpy (as_info->database_name, db_name, name_len);
+  as_info->database_name[name_len] = '\0';
+  strncpy (as_info->database_host, host_connected, sizeof (as_info->database_host) - 1);
+  as_info->last_connect_time = time (NULL);
+
+  strncpy (database_name, db_name, sizeof (database_name) - 1);
+  strncpy (database_user, db_user, sizeof (database_user) - 1);
+  strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
+}
+#endif /* SERVER_MODE */
+
 int
 ux_is_database_connected (void)
 {
