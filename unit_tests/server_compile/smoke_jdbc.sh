@@ -40,6 +40,8 @@ fi
 
 SVCONF="$CUBRID/conf/cubrid.conf"
 SVCONF_BAK="$SVCONF.smoke_jdbc.bak"
+ACLFILE=""
+ACLIPS=""
 
 cleanup() {
   cubrid broker stop >/dev/null 2>&1 || true
@@ -51,16 +53,25 @@ cleanup() {
   if [ -f "$SVCONF_BAK" ]; then
     mv -f "$SVCONF_BAK" "$SVCONF"
   fi
+  if [ -n "$ACLFILE" ]; then
+    rm -f "$ACLFILE" "$ACLIPS"
+  fi
 }
 trap cleanup EXIT INT TERM
 
 cp -f "$BRCONF" "$BRCONF_BAK" || fail "cannot back up broker conf"
 
 # stage B2: turn the server-resident CAS log producers on (cas_* sysprms) so
-# this run also verifies SQL/slow/access/DDL log production (#116 D4)
+# this run also verifies SQL/slow/access/DDL log production (#116 D4), and
+# run every connect through a live ACCESS_CONTROL table (B2-D8; reject
+# semantics are unit-tested — loopback is always allowed by design)
+ACLFILE="$CUBRID/conf/b2_smoke_acl.txt"
+ACLIPS="$CUBRID/conf/b2_smoke_ips.txt"
+printf '*\n' > "$ACLIPS" || fail "cannot write acl ip file"
+printf '[%%B1DIRECT]\n%s:*:%s\n' "$DB" "$ACLIPS" > "$ACLFILE" || fail "cannot write acl file"
 cp -f "$SVCONF" "$SVCONF_BAK" || fail "cannot back up cubrid.conf"
 grep -q '^\[common\]' "$SVCONF" || fail "cubrid.conf has no [common] section"
-sed -i '/^\[common\]/a cas_sql_log=all\ncas_slow_log=yes\ncas_access_log=yes\ncas_long_query_time=1000\nddl_audit_log=yes\ncas_max_prepared_stmt_count=64' "$SVCONF" \
+sed -i "/^\[common\]/a cas_sql_log=all\ncas_slow_log=yes\ncas_access_log=yes\ncas_long_query_time=1000\nddl_audit_log=yes\ncas_max_prepared_stmt_count=64\ncas_access_control=yes\ncas_access_control_file=$ACLFILE" "$SVCONF" \
   || fail "cannot enable cas_* log parameters"
 
 # scope the log assertions to this run

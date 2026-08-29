@@ -64,6 +64,11 @@ extern void cas_server_session_slot_end (void);
  * rename rotation is not concurrency-safe, so the server serializes it */
 extern int cas_server_access_log (struct timeval *start_time, int as_index, int client_ip_addr, char *dbname,
 				  char *dbuser, int log_type);
+/* ACCESS_CONTROL db:dbuser:ip check at session establishment (B2-D8);
+ * 0 = allowed, -1 = rejected.  address is 4 bytes, network order. */
+extern int cas_server_acl_check (const char *broker, const char *dbname, const char *dbuser,
+				 const unsigned char *address);
+extern void cas_server_acl_reload (void);
 #endif
 
 #endif /* _CAS_DISPATCH_H_ */

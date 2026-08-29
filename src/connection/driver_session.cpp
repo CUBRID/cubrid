@@ -445,6 +445,22 @@ namespace cubconn
       cas_server_session_slot_begin (params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
 				     CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
 
+      /* ACCESS_CONTROL db:dbuser:ip check before any engine boot (B2-D8,
+       * #116 D6) — the same ordering the CAS kept (check, then db_connect) */
+      if (cas_server_acl_check (params.broker_name.c_str (), info.db_name, info.db_user,
+				(const unsigned char *) &params.client_ip) < 0)
+	{
+	  as_info->num_connect_rejected++;
+	  if (prm_get_bool_value (PRM_ID_CAS_ACCESS_LOG))
+	    {
+	      (void) cas_server_access_log (&session_start, shm_as_index, (int) params.client_ip, info.db_name,
+					    info.db_user, ACL_REJECTED);
+	    }
+	  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, DBMS_ERROR_INDICATOR,
+			    CAS_ER_NOT_AUTHORIZED_CLIENT, "Authorization error.(Address is rejected)");
+	  goto retire;
+	}
+
       /* the session-scoped log producers a CAS process opened at startup
        * (B2-D2/D4): SQL/slow logs on this slot, DDL audit identity */
       cas_log_open (broker_name);

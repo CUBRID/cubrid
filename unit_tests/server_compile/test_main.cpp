@@ -26,8 +26,10 @@
  */
 
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #include <atomic>
+#include <cstdlib>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
@@ -44,6 +46,7 @@
 #include "driver_session.hpp"
 #include "language_support.h"
 #include "parser.h"
+#include "system_parameter.h"
 #include "thread_manager.hpp"
 #include "work_space.h"
 
@@ -368,6 +371,92 @@ test_ws_abort_transaction_no_bracket (void)
 /* the driver-facing pure helpers of the adoption endpoint (stage B1): db_info
  * parsing, the V12-single protocol gate, and the connect-reply layout the
  * JDBC/CCI drivers decode */
+/* the server-side ACCESS_CONTROL matcher (B2-D8): broker-section scoping,
+ * '*' wildcards, case-blind names, prefix-match ips, loopback always-allow,
+ * default policy, and reload */
+static int
+test_cas_acl (void)
+{
+  const char *cubrid_home = getenv ("CUBRID");
+  char dir_tmpl[1024], acl_path[1200], allow_all[1200], allow_one[1200];
+  const unsigned char loopback[4] = { 127, 0, 0, 1 };
+  const unsigned char some_ip[4] = { 10, 9, 9, 9 };
+  const unsigned char listed_ip[4] = { 10, 1, 2, 3 };
+  const unsigned char unlisted_ip[4] = { 10, 1, 2, 4 };
+  FILE *fp;
+  int rc = 1;
+
+  if (cubrid_home == NULL)
+    {
+      fprintf (stderr, "FAIL: CUBRID env is required for the acl test\n");
+      return 1;
+    }
+  snprintf (dir_tmpl, sizeof (dir_tmpl), "%s/acl_test_XXXXXX", cubrid_home);
+  if (mkdtemp (dir_tmpl) == NULL)
+    {
+      fprintf (stderr, "FAIL: mkdtemp for the acl test\n");
+      return 1;
+    }
+  snprintf (acl_path, sizeof (acl_path), "%s/access.txt", dir_tmpl);
+  snprintf (allow_all, sizeof (allow_all), "%s/allow_all.txt", dir_tmpl);
+  snprintf (allow_one, sizeof (allow_one), "%s/allow_one.txt", dir_tmpl);
+
+  fp = fopen (allow_all, "w");
+  fprintf (fp, "# any address\n*\n");
+  fclose (fp);
+  fp = fopen (allow_one, "w");
+  fprintf (fp, "10.1.2.3\n");
+  fclose (fp);
+  fp = fopen (acl_path, "w");
+  fprintf (fp, "[%%B1DIRECT]\nunitdb:dba:%s\notherdb:*:%s\n[%%OTHERBRK]\n*:*:%s\n", allow_all, allow_one, allow_all);
+  fclose (fp);
+
+  prm_set_bool_value (PRM_ID_CAS_ACCESS_CONTROL, true);
+  prm_set_string_value (PRM_ID_CAS_ACCESS_CONTROL_FILE, acl_path);
+  prm_set_bool_value (PRM_ID_CAS_ACCESS_CONTROL_DEFAULT_ALLOW, false);
+  cas_server_acl_reload ();
+
+#define ACL_EXPECT(broker, db, user, ip, expect, what) \
+  do { \
+    if (cas_server_acl_check ((broker), (db), (user), (ip)) != (expect)) \
+      { \
+	fprintf (stderr, "FAIL: acl %s\n", (what)); \
+	goto acl_done; \
+      } \
+  } while (0)
+
+  ACL_EXPECT ("b1direct", "nodb", "nouser", loopback, 0, "loopback must always pass");
+  ACL_EXPECT ("B1DIRECT", "unitdb", "dba", some_ip, 0, "wildcard-ip rule must allow");
+  ACL_EXPECT ("b1direct", "UNITDB", "DBA", some_ip, 0, "name matching must be case-blind");
+  ACL_EXPECT ("b1direct", "unitdb@host", "dba", some_ip, 0, "@host suffix must be ignored");
+  ACL_EXPECT ("b1direct", "unitdb", "public", some_ip, -1, "unlisted user must be rejected");
+  ACL_EXPECT ("b1direct", "otherdb", "anyone", listed_ip, 0, "listed ip must pass the '*' user rule");
+  ACL_EXPECT ("b1direct", "otherdb", "anyone", unlisted_ip, -1, "unlisted ip must be rejected");
+  ACL_EXPECT ("otherbrk", "whatever", "whoever", some_ip, 0, "the other broker section allows all");
+  ACL_EXPECT ("nobrk", "unitdb", "dba", some_ip, -1, "unknown broker + default deny rejects");
+
+  prm_set_bool_value (PRM_ID_CAS_ACCESS_CONTROL_DEFAULT_ALLOW, true);
+  ACL_EXPECT ("nobrk", "unitdb", "dba", some_ip, 0, "unknown broker + default allow passes");
+  prm_set_bool_value (PRM_ID_CAS_ACCESS_CONTROL_DEFAULT_ALLOW, false);
+
+  /* reload picks up a changed file; an unreadable file fails closed */
+  unlink (acl_path);
+  cas_server_acl_reload ();
+  ACL_EXPECT ("b1direct", "unitdb", "dba", some_ip, -1, "missing file must fail closed");
+  ACL_EXPECT ("b1direct", "unitdb", "dba", loopback, 0, "loopback survives fail-closed");
+
+#undef ACL_EXPECT
+  rc = 0;
+
+acl_done:
+  prm_set_bool_value (PRM_ID_CAS_ACCESS_CONTROL, false);
+  unlink (allow_all);
+  unlink (allow_one);
+  unlink (acl_path);
+  rmdir (dir_tmpl);
+  return rc;
+}
+
 /* concurrent sessions take distinct CAS slot indices (the per-session log
  * file identity, B2-D1) and a retired index is reused lowest-first */
 static int
@@ -641,5 +730,11 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: concurrent sessions take distinct CAS slot indices, retired ones are reused\n");
+
+  if (test_cas_acl () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: ACCESS_CONTROL matcher (sections, wildcards, ips, loopback, default policy, reload)\n");
   return 0;
 }

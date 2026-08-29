@@ -37,9 +37,14 @@
 #include <sys/types.h>
 
 #include <cassert>
+#include <cctype>
 #include <cstring>
+#include <map>
 #include <mutex>
+#include <string>
 #include <vector>
+
+#include "broker_util.h"	/* trim */
 
 #include "broker_config.h"
 #include "broker_filename.h"	/* get_cubrid_file, FID_* */
@@ -240,6 +245,266 @@ cas_server_session_slot_end (void)
       cas_slot_index_free (shm_as_index);
       shm_as_index = 0;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* ACCESS_CONTROL (B2-D8, #116 D6): the CAS's db:dbuser:ip check moves  */
+/* to session establishment.  The file keeps the broker's format —      */
+/* [%BROKER] sections of "dbname:dbuser:ipfile[,ipfile]" lines, ip      */
+/* files resolved against $CUBRID/conf — and the matcher mirrors        */
+/* access_control_check_right_internal: '*' wildcards, case-blind       */
+/* names, prefix-match ips (leading count byte, 0 = any), loopback      */
+/* unconditionally allowed.  Dropped relative to the CAS: the           */
+/* last-access-time shm write-back (#116 D10 forbids it) and the        */
+/* local-broker-ip retry (D8 pins broker host = DB host).  A missing    */
+/* or invalid file while the check is ON fails closed.                  */
+/* ------------------------------------------------------------------ */
+
+struct cas_acl_rule
+{
+  std::string dbname;
+  std::string dbuser;
+  std::vector<unsigned char> addresses;	/* IP_BYTE_COUNT bytes per entry */
+};
+
+static std::mutex cas_Acl_mutex;
+/* key: broker section name, lower-cased */
+static std::map<std::string, std::vector<cas_acl_rule>> cas_Acl_table;
+static bool cas_Acl_loaded = false;
+static bool cas_Acl_load_failed = false;
+
+static std::string
+cas_acl_lower (const char *s)
+{
+  std::string out (s);
+  for (char &c : out)
+    {
+      c = (char) tolower ((unsigned char) c);
+    }
+  return out;
+}
+
+/* one ip list file, same accept rules as access_control_read_ip_info */
+static int
+cas_acl_read_ip_file (const char *path, std::vector<unsigned char> &addresses)
+{
+  FILE *fp = fopen (path, "r");
+  char buf[LINE_MAX];
+
+  if (fp == NULL)
+    {
+      return -1;
+    }
+
+  while (fgets (buf, (int) sizeof (buf), fp) != NULL)
+    {
+      char *p = strchr (buf, '#');
+      char *save = NULL;
+      unsigned char entry[IP_BYTE_COUNT] = { 0, 0, 0, 0, 0 };
+      int i;
+
+      if (p != NULL)
+	{
+	  *p = '\0';
+	}
+      trim (buf);
+      if (buf[0] == '\0')
+	{
+	  continue;
+	}
+
+      char *token = strtok_r (buf, ".", &save);
+      for (i = 0; i < 4; i++)
+	{
+	  if (token == NULL)
+	    {
+	      fclose (fp);
+	      return -1;
+	    }
+	  if (strcmp (token, "*") == 0)
+	    {
+	      break;
+	    }
+	  char *end = NULL;
+	  long adr = strtol (token, &end, 10);
+	  if (end == token || *end != '\0' || adr < 0 || adr > 255)
+	    {
+	      fclose (fp);
+	      return -1;
+	    }
+	  entry[1 + i] = (unsigned char) adr;
+	  token = strtok_r (NULL, ".", &save);
+	}
+      entry[0] = (unsigned char) i;	/* number of significant octets; 0 = any */
+
+      addresses.insert (addresses.end (), entry, entry + IP_BYTE_COUNT);
+    }
+
+  fclose (fp);
+  return 0;
+}
+
+/* parse the whole ACCESS_CONTROL_FILE into the per-broker table */
+static int
+cas_acl_load_locked (void)
+{
+  const char *file = prm_get_string_value (PRM_ID_CAS_ACCESS_CONTROL_FILE);
+  char buf[1024];
+  char path_buf[BROKER_PATH_MAX];
+  std::map<std::string, std::vector<cas_acl_rule>> table;
+  std::string current_section;
+
+  cas_Acl_table.clear ();
+  cas_Acl_loaded = true;
+  cas_Acl_load_failed = true;	/* until proven otherwise: fail closed */
+
+  if (file == NULL || file[0] == '\0')
+    {
+      return -1;
+    }
+
+  FILE *fp = fopen (file, "r");
+  if (fp == NULL)
+    {
+      return -1;
+    }
+
+  while (fgets (buf, (int) sizeof (buf), fp) != NULL)
+    {
+      char *p = strchr (buf, '#');
+      if (p != NULL)
+	{
+	  *p = '\0';
+	}
+      trim (buf);
+      if (buf[0] == '\0')
+	{
+	  continue;
+	}
+
+      size_t len = strlen (buf);
+      if (strncmp (buf, "[%", 2) == 0 && buf[len - 1] == ']')
+	{
+	  buf[len - 1] = '\0';
+	  current_section = cas_acl_lower (buf + 2);
+	  continue;
+	}
+      if (current_section.empty ())
+	{
+	  goto parse_error;	/* an entry before any [%BROKER] section */
+	}
+
+      {
+	char *save = NULL;
+	char *dbname = strtok_r (buf, ":", &save);
+	char *dbuser = (dbname != NULL) ? strtok_r (NULL, ":", &save) : NULL;
+	char *ip_files = save;
+
+	if (dbname == NULL || dbuser == NULL || ip_files == NULL || ip_files[0] == '\0')
+	  {
+	    goto parse_error;
+	  }
+
+	cas_acl_rule rule;
+	rule.dbname = dbname;
+	rule.dbuser = dbuser;
+
+	char *fsave = NULL;
+	for (char *files = ip_files;; files = NULL)
+	  {
+	    char *token = strtok_r (files, ",", &fsave);
+	    if (token == NULL)
+	      {
+		break;
+	      }
+	    trim (token);
+	    if (make_abs_path (path_buf, "conf", token, BROKER_PATH_MAX) < 0
+		|| cas_acl_read_ip_file (path_buf, rule.addresses) < 0)
+	      {
+		goto parse_error;
+	      }
+	  }
+
+	table[current_section].push_back (std::move (rule));
+      }
+    }
+
+  fclose (fp);
+  cas_Acl_table = std::move (table);
+  cas_Acl_load_failed = false;
+  return 0;
+
+parse_error:
+  fclose (fp);
+  return -1;
+}
+
+void
+cas_server_acl_reload (void)
+{
+  std::lock_guard<std::mutex> guard (cas_Acl_mutex);
+
+  (void) cas_acl_load_locked ();
+}
+
+int
+cas_server_acl_check (const char *broker, const char *dbname, const char *dbuser, const unsigned char *address)
+{
+  bool local_ip = (address[0] == 127 && address[1] == 0 && address[2] == 0 && address[3] == 1);
+
+  if (!prm_get_bool_value (PRM_ID_CAS_ACCESS_CONTROL))
+    {
+      return 0;
+    }
+
+  std::lock_guard<std::mutex> guard (cas_Acl_mutex);
+
+  if (!cas_Acl_loaded)
+    {
+      (void) cas_acl_load_locked ();
+    }
+  if (cas_Acl_load_failed)
+    {
+      return local_ip ? 0 : -1;	/* fail closed, loopback still allowed */
+    }
+
+  auto it = cas_Acl_table.find (cas_acl_lower (broker != NULL ? broker : ""));
+  const std::vector<cas_acl_rule> *rules = (it != cas_Acl_table.end ()) ? &it->second : NULL;
+
+  if ((rules == NULL || rules->empty ()) && prm_get_bool_value (PRM_ID_CAS_ACCESS_CONTROL_DEFAULT_ALLOW))
+    {
+      return 0;
+    }
+
+  /* dbname may carry an @host suffix; match only the name part */
+  const char *at = strchr (dbname, '@');
+  size_t dbname_len = (at != NULL) ? (size_t) (at - dbname) : strlen (dbname);
+
+  if (rules != NULL)
+    {
+      for (const cas_acl_rule & rule : *rules)
+	{
+	  if (rule.dbname != "*"
+	      && (rule.dbname.size () != dbname_len || strncasecmp (rule.dbname.c_str (), dbname, dbname_len) != 0))
+	    {
+	      continue;
+	    }
+	  if (rule.dbuser != "*" && strcasecmp (rule.dbuser.c_str (), dbuser) != 0)
+	    {
+	      continue;
+	    }
+	  for (size_t i = 0; i + IP_BYTE_COUNT <= rule.addresses.size (); i += IP_BYTE_COUNT)
+	    {
+	      unsigned char sig = rule.addresses[i];
+	      if (sig == 0 || memcmp (&rule.addresses[i + 1], address, sig) == 0)
+		{
+		  return 0;
+		}
+	    }
+	}
+    }
+
+  return local_ip ? 0 : -1;
 }
 
 /* ------------------------------------------------------------------ */
