@@ -32,6 +32,9 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "adoption.hpp"
+/* page_buffer.h (via the engine headers above) and cas_common.h both define
+ * FREE; neither macro is used in this TU (same shim as driver_session.cpp) */
+#undef FREE
 #include "cas_dispatch.h"	/* cas_server_acl_reload (B2-D8) */
 #include "master_connector.hpp"
 #include "connection_pool.hpp"
