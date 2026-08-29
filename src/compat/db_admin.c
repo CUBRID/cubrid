@@ -63,6 +63,7 @@
 #include "jsp_cl.h"
 #include "execute_statement.h"
 #include "connection_support.hpp"
+#include "transaction_cl.h"	/* tm_Tran_index (#121 D8) */
 #include "trigger_manager.h"
 #if !defined(CS_MODE)
 #include "session.h"
@@ -1041,7 +1042,11 @@ db_shutdown (void)
 #if !defined(WINDOWS)
   (void) os_set_signal_handler (SIGFPE, prev_sigfpe_handler);
 #endif
+#if !defined (SERVER_MODE)
+  /* the folded server's global is the SERVER's own (#121 D8); the session's
+   * gate lives in its tdes and dies with it */
   db_Disable_modifications = 0;
+#endif
 
   db_free_execution_plan ();
 
@@ -1076,7 +1081,14 @@ int
 db_disable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
+#if defined (SERVER_MODE)
+  /* #121 D8: the session's gate is its transaction descriptor; a write with
+   * no transaction is a no-op (the type-derived seeding at registration
+   * covers the boot-time read-only raise) */
+  logtb_session_adjust_modification_disabled (tm_Tran_index, 1);
+#else
   db_Disable_modifications++;
+#endif
   return NO_ERROR;
 }
 
@@ -1090,9 +1102,26 @@ int
 db_enable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
+#if defined (SERVER_MODE)
+  logtb_session_adjust_modification_disabled (tm_Tran_index, -1);
+#else
   db_Disable_modifications--;
+#endif
   return NO_ERROR;
 }
+
+#if defined (SERVER_MODE)
+/*
+ * db_cl_modification_disabled - the folded client half's modification gate
+ *   (#121 D8): the session transaction's disable_modifications.  0 before a
+ *   transaction exists — every db_ entry point checks CHECK_CONNECT first.
+ */
+int
+db_cl_modification_disabled (void)
+{
+  return logtb_session_modification_disabled (tm_Tran_index);
+}
+#endif /* SERVER_MODE */
 
 /*
  * db_end_session - end current session

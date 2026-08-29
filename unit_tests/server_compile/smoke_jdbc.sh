@@ -72,7 +72,7 @@ cp -f "$BRCONF" "$BRCONF_BAK" || fail "cannot back up broker conf"
 ACLFILE="$CUBRID/conf/b2_smoke_acl.txt"
 ACLIPS="$CUBRID/conf/b2_smoke_ips.txt"
 printf '*\n' > "$ACLIPS" || fail "cannot write acl ip file"
-printf '[%%B1DIRECT]\n%s:*:%s\n[%%B1SSL]\n%s:*:%s\n' "$DB" "$ACLIPS" "$DB" "$ACLIPS" > "$ACLFILE" || fail "cannot write acl file"
+printf '[%%B1DIRECT]\n%s:*:%s\n[%%B1SSL]\n%s:*:%s\n[%%B3RO]\n%s:*:%s\n' "$DB" "$ACLIPS" "$DB" "$ACLIPS" "$DB" "$ACLIPS" > "$ACLFILE" || fail "cannot write acl file"
 cp -f "$SVCONF" "$SVCONF_BAK" || fail "cannot back up cubrid.conf"
 grep -q '^\[common\]' "$SVCONF" || fail "cubrid.conf has no [common] section"
 sed -i "/^\[common\]/a cas_sql_log=all\ncas_slow_log=yes\ncas_access_log=yes\ncas_long_query_time=1000\nddl_audit_log=yes\ncas_max_prepared_stmt_count=64\ncas_access_control=yes\ncas_access_control_file=$ACLFILE" "$SVCONF" \
@@ -85,6 +85,7 @@ rm -f "$CUBRID"/log/broker/sql_log/"${DB}"_*.sql.log "$CUBRID"/log/broker/sql_lo
 # self-signed cert for the SSL leg (B2-D9): the server terminates TLS with
 # the CAS's historical cert paths, $CUBRID/conf/cas_ssl_cert.{crt,key}
 SSL_PORT=$((BROKER_PORT + 1))
+RO_PORT=$((BROKER_PORT + 2))
 CERT="$CUBRID/conf/cas_ssl_cert.crt"
 KEY="$CUBRID/conf/cas_ssl_cert.key"
 if [ ! -f "$CERT" ] || [ ! -f "$KEY" ]; then
@@ -127,6 +128,21 @@ KEEP_CONNECTION         =AUTO
 DIRECT_HANDOFF          =ON
 SSL                     =ON
 DIRECT_HANDOFF_SSL_DB   =$DB
+
+[%B3RO]
+SERVICE                 =ON
+BROKER_PORT             =$RO_PORT
+MIN_NUM_APPL_SERVER     =1
+MAX_NUM_APPL_SERVER     =20
+APPL_SERVER_SHM_ID      =30004
+LOG_DIR                 =log/broker/sql_log
+ERROR_LOG_DIR           =log/broker/error_log
+SQL_LOG                 =OFF
+TIME_TO_KILL            =120
+SESSION_TIMEOUT         =300
+KEEP_CONNECTION         =AUTO
+DIRECT_HANDOFF          =ON
+ACCESS_MODE             =RO
 EOF
 
 workdir="$(mktemp -d "$SCRIPT_DIR/.smoke_jdbc.XXXXXX")" || fail "mktemp"
@@ -143,6 +159,10 @@ java -cp "$workdir:$JAR" B1JdbcSmoke "$BROKER_PORT" "$DB" dba "" || fail "jdbc s
 
 # the same battery over TLS (server-side termination, B2-D9; xa self-skips)
 java -cp "$workdir:$JAR" B1JdbcSmoke "$SSL_PORT" "$DB" dba "" ssl || fail "jdbc ssl scenario"
+
+# stage B3 (#121 D1/D7/D8): the ACCESS_MODE=RO broker's sessions carry the
+# read-only client type end to end — reads work, writes are -581
+java -cp "$workdir:$JAR" B1JdbcSmoke "$RO_PORT" "$DB" dba "" ro || fail "jdbc read-only scenario"
 
 # --- log production checks (B2-D1..D6): the sessions above must have produced
 # per-slot CAS-format logs under the server's ownership -------------------

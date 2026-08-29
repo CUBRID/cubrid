@@ -64,11 +64,52 @@ public class B1JdbcSmoke {
             System.exit(2);
         }
         sslMode = args.length == 5 && "ssl".equals(args[4]);
+        boolean roMode = args.length == 5 && "ro".equals(args[4]);
         Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
         url = "jdbc:cubrid:127.0.0.1:" + args[0] + ":" + args[1] + ":::"
                 + (sslMode ? "?useSSL=true" : "");
         user = args[2];
         pass = args[3];
+
+        if (roMode) {
+            // stage B3 (#121 D1/D7/D8): against an ACCESS_MODE=RO broker the
+            // adopted session must carry DB_CLIENT_TYPE_READ_ONLY_BROKER —
+            // reads work, writes fail with ER_DB_NO_MODIFICATIONS (-581)
+            step("ro_connect");
+            Connection roc = connect();
+            Statement ros = roc.createStatement();
+            ResultSet rrs = ros.executeQuery("SELECT 1 FROM db_root");
+            if (!rrs.next() || rrs.getInt(1) != 1) {
+                throw new RuntimeException("read-only broker cannot read");
+            }
+            rrs.close();
+            step("ro_write_refused");
+            boolean refused = false;
+            try {
+                ros.executeUpdate("CREATE TABLE b3_ro_probe (id INT)");
+            } catch (SQLException e) {
+                refused = true;
+                System.out.println("B1_JDBC: ro write raised: " + e.getErrorCode()
+                        + " " + e.getMessage().trim());
+                if (e.getErrorCode() != -581) {
+                    throw new RuntimeException("expected ER_DB_NO_MODIFICATIONS (-581), got "
+                            + e.getErrorCode());
+                }
+            }
+            if (!refused) {
+                throw new RuntimeException("read-only broker accepted a write");
+            }
+            // the session must survive the refusal
+            rrs = ros.executeQuery("SELECT 1 FROM db_root");
+            if (!rrs.next()) {
+                throw new RuntimeException("read-only session died after the refusal");
+            }
+            rrs.close();
+            ros.close();
+            roc.close();
+            System.out.println("B1_JDBC: SUCCESS");
+            return;
+        }
 
         // 1. connect; the first statement makes the driver run CHECK_CAS on
         // the idle (OUT_TRAN) connection - if the folded speaker answers it
