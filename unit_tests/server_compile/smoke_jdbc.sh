@@ -60,7 +60,7 @@ cp -f "$BRCONF" "$BRCONF_BAK" || fail "cannot back up broker conf"
 # this run also verifies SQL/slow/access/DDL log production (#116 D4)
 cp -f "$SVCONF" "$SVCONF_BAK" || fail "cannot back up cubrid.conf"
 grep -q '^\[common\]' "$SVCONF" || fail "cubrid.conf has no [common] section"
-sed -i '/^\[common\]/a cas_sql_log=all\ncas_slow_log=yes\ncas_access_log=yes\ncas_long_query_time=1000\nddl_audit_log=yes' "$SVCONF" \
+sed -i '/^\[common\]/a cas_sql_log=all\ncas_slow_log=yes\ncas_access_log=yes\ncas_long_query_time=1000\nddl_audit_log=yes\ncas_max_prepared_stmt_count=64' "$SVCONF" \
   || fail "cannot enable cas_* log parameters"
 
 # scope the log assertions to this run

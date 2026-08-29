@@ -163,12 +163,12 @@ cas_server_speaker_boot_init (const char *db_name)
   set_net_buf_size ();
 }
 
-/* per session: refresh the log-production config from the cas_* system
- * parameters (B2-D7).  The shm stub's numeric fields are shared plain ints;
- * writing the same prm-derived values from every session begin is benign
- * (dynamic changes take effect for sessions started afterwards). */
+/* per session: refresh the CAS-owned config from the cas_* system parameters
+ * (B2-D7, #116 D9 split).  The shm stub's numeric fields are shared plain
+ * ints; writing the same prm-derived values from every session begin is
+ * benign (dynamic changes take effect for sessions started afterwards). */
 static void
-cas_server_refresh_log_config (T_APPL_SERVER_INFO * slot)
+cas_server_refresh_session_config (T_APPL_SERVER_INFO * slot)
 {
   T_SHM_APPL_SERVER *shm = &cas_Shm_stub;
 
@@ -180,6 +180,16 @@ cas_server_refresh_log_config (T_APPL_SERVER_INFO * slot)
   shm->access_log_max_size = prm_get_integer_value (PRM_ID_CAS_ACCESS_LOG_MAX_SIZE);
   shm->long_query_time = prm_get_integer_value (PRM_ID_CAS_LONG_QUERY_TIME);
   shm->long_transaction_time = prm_get_integer_value (PRM_ID_CAS_LONG_TRANSACTION_TIME);
+
+  shm->jdbc_cache = prm_get_bool_value (PRM_ID_CAS_JDBC_CACHE) ? ON : OFF;
+  shm->jdbc_cache_only_hint = prm_get_bool_value (PRM_ID_CAS_JDBC_CACHE_HINT_ONLY) ? ON : OFF;
+  shm->jdbc_cache_life_time = prm_get_integer_value (PRM_ID_CAS_JDBC_CACHE_LIFE_TIME);
+  shm->statement_pooling = prm_get_bool_value (PRM_ID_CAS_STATEMENT_POOLING) ? ON : OFF;
+  shm->cci_default_autocommit = prm_get_bool_value (PRM_ID_CAS_CCI_DEFAULT_AUTOCOMMIT) ? ON : OFF;
+  shm->max_prepared_stmt_count = prm_get_integer_value (PRM_ID_CAS_MAX_PREPARED_STMT_COUNT);
+  shm->session_timeout = prm_get_integer_value (PRM_ID_CAS_SESSION_TIMEOUT);
+  shm->max_string_length = prm_get_integer_value (PRM_ID_CAS_MAX_STRING_LENGTH);
+  shm->query_timeout = prm_get_integer_value (PRM_ID_CAS_MAX_QUERY_TIMEOUT);
 }
 
 /* per adopted session: point the CAS globals at this thread's slot */
@@ -194,10 +204,10 @@ cas_server_session_slot_begin (int client_type, int client_version, const char *
   slot->service_flag = ON;
   slot->con_status = CON_STATUS_IN_TRAN;	/* connect starts in-tran (cas_common_main.c:136) */
   slot->cur_keep_con = KEEP_CON_ON;
+  cas_server_refresh_session_config (slot);
   slot->cur_statement_pooling = shm_appl->statement_pooling ? ON : OFF;
   slot->cci_default_autocommit = shm_appl->cci_default_autocommit;
   slot->auto_commit_mode = FALSE;
-  cas_server_refresh_log_config (slot);
   slot->cur_sql_log2 = 0;
   slot->isolation_level = CAS_USE_DEFAULT_DB_PARAM;
   slot->lock_timeout = CAS_USE_DEFAULT_DB_PARAM;

@@ -436,7 +436,37 @@ public class B1JdbcSmoke {
         rs.close();
         stmt.executeUpdate("DELETE FROM b1_smoke WHERE id = 100");
 
-        // 15. cancel: long-running SLEEP interrupted out-of-band ("QC" via the
+        // 15. prepared-handle cap: cas_max_prepared_stmt_count=64 (set by
+        // smoke_jdbc.sh) must reject the 65th open handle on one session —
+        // proves the cas_* conf actually reaches the folded speaker (B2-D7)
+        step("stmt_cap");
+        Connection capCon = connect();
+        PreparedStatement[] held = new PreparedStatement[65];
+        int failedAt = -1;
+        try {
+            for (int i = 0; i < 65; i++) {
+                try {
+                    held[i] = capCon.prepareStatement("SELECT 1 + " + i + " FROM db_root");
+                } catch (SQLException e) {
+                    failedAt = i + 1;
+                    System.out.println("B1_JDBC: stmt cap raised at handle " + failedAt + ": "
+                            + e.getMessage().trim());
+                    break;
+                }
+            }
+        } finally {
+            for (PreparedStatement p : held) {
+                if (p != null) {
+                    p.close();
+                }
+            }
+            capCon.close();
+        }
+        if (failedAt != 65) {
+            throw new RuntimeException("stmt cap expected to fail at handle 65, failed at " + failedAt);
+        }
+
+        // 16. cancel: long-running SLEEP interrupted out-of-band ("QC" via the
         // broker -> control channel -> tran interrupt, #117 D4); the
         // connection must survive the cancelled statement
         step("cancel");
@@ -474,7 +504,7 @@ public class B1JdbcSmoke {
         }
         rs.close();
 
-        // 16. reconnect: close, open a fresh connection (a fresh handoff/token)
+        // 17. reconnect: close, open a fresh connection (a fresh handoff/token)
         step("reconnect");
         stmt.close();
         con.close();
