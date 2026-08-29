@@ -373,6 +373,39 @@ test_ws_abort_transaction_no_bracket (void)
   return 0;
 }
 
+/* B4-D8: compat-layer CHECK_CONNECT guards reached from server-internal
+ * execution (no bracket - e.g. a SET-column scan calling db_set_size) must
+ * see the constant CONNECTED upstream's SERVER_MODE global hardwired, while
+ * an active bracket routes reads and writes to the session's own status */
+static int
+test_connect_status_no_bracket (void)
+{
+  if (db_Connect_status != DB_CONNECTION_STATUS_CONNECTED)
+    {
+      fprintf (stderr, "FAIL: no-bracket db_Connect_status != CONNECTED\n");
+      return 1;
+    }
+
+  client_session_context ctx;
+  csc_activate (&ctx);
+  db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+  if (ctx.db.connect_status != DB_CONNECTION_STATUS_NOT_CONNECTED)
+    {
+      fprintf (stderr, "FAIL: bracketed db_Connect_status write missed the session context\n");
+      csc_deactivate ();
+      return 1;
+    }
+  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
+  csc_deactivate ();
+
+  if (db_Connect_status != DB_CONNECTION_STATUS_CONNECTED)
+    {
+      fprintf (stderr, "FAIL: bracket exit leaked a non-CONNECTED status to the server\n");
+      return 1;
+    }
+  return 0;
+}
+
 /* the driver-facing pure helpers of the adoption endpoint (stage B1): db_info
  * parsing, the V12-single protocol gate, and the connect-reply layout the
  * JDBC/CCI drivers decode */
@@ -850,6 +883,12 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: ws_abort_transaction outside a session bracket is a no-op\n");
+
+  if (test_connect_status_no_bracket () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: db_Connect_status is CONNECTED outside a bracket, session-scoped inside\n");
 
   if (test_adoption_wire_helpers () != 0)
     {

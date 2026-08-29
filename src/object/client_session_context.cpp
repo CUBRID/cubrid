@@ -142,6 +142,22 @@ csc_db (void)
   return &csc_current ()->db;
 }
 
+/* B4-D8: db_Connect_status expands to this.  Outside a bracket the server
+ * sees the constant CONNECTED upstream's SERVER_MODE global hardwired
+ * (db_macro.c), so compat-layer CHECK_CONNECT_* guards reached from server
+ * execution pass instead of asserting; inside a bracket the session's own
+ * status applies. */
+int *
+db_connect_status_ptr (void)
+{
+  static int server_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
+  if (tl_Csc_active != NULL)
+    {
+      return &tl_Csc_active->db.connect_status;
+    }
+  return &server_Connect_status;
+}
+
 plan_dump_context *
 csc_plan_dump (void)
 {
