@@ -258,6 +258,7 @@ const char *broker_keywords[] = {
   "SERVICE",
   "SSL",
   "DIRECT_HANDOFF",
+  "DIRECT_HANDOFF_SSL_DB",
 #if defined (FOR_ODBC_GATEWAY)
   "CGW_LINK_SERVER",
   "CGW_LINK_SERVER_IP",
