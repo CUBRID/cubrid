@@ -74,6 +74,7 @@
 #include "ddl_log.h"		// per-session DDL audit identity
 #include "cas_net_buf.h"
 #include "cas_protocol.h"
+#include "cas_ssl.h"		// server-side TLS termination (B2-D9)
 
 extern thread_local unsigned int db_on_server;	/* network_interface_sr.cpp */
 
@@ -98,20 +99,35 @@ namespace cubconn
     /* blocking wire helpers (the session thread owns the fd)             */
     /* ------------------------------------------------------------------ */
 
+    /* these helpers carry the connect-phase bytes the CAS speaker's
+     * READ_FROM_NET/WRITE_TO_NET macros don't cover; once cas_init_ssl has
+     * run, ssl_client routes them through the session's TLS channel (B2-D9) */
     static int
     write_full (int fd, const void *buf, std::size_t len)
     {
       const char *p = static_cast<const char *> (buf);
       while (len > 0)
 	{
-	  ssize_t n = send (fd, p, len, MSG_NOSIGNAL);
-	  if (n < 0)
+	  ssize_t n;
+	  if (ssl_client)
 	    {
-	      if (errno == EINTR)
+	      n = cas_ssl_write (fd, p, (int) len);
+	      if (n <= 0)
 		{
-		  continue;
+		  return ER_FAILED;
 		}
-	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      n = send (fd, p, len, MSG_NOSIGNAL);
+	      if (n < 0)
+		{
+		  if (errno == EINTR)
+		    {
+		      continue;
+		    }
+		  return ER_FAILED;
+		}
 	    }
 	  p += n;
 	  len -= (std::size_t) n;
@@ -125,18 +141,30 @@ namespace cubconn
       char *p = static_cast<char *> (buf);
       while (len > 0)
 	{
-	  ssize_t n = recv (fd, p, len, 0);
-	  if (n == 0)
+	  ssize_t n;
+	  if (ssl_client)
 	    {
-	      return ER_FAILED;	/* peer closed */
-	    }
-	  if (n < 0)
-	    {
-	      if (errno == EINTR)
+	      n = cas_ssl_read (fd, p, (int) len);
+	      if (n <= 0)
 		{
-		  continue;
+		  return ER_FAILED;
 		}
-	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      n = recv (fd, p, len, 0);
+	      if (n == 0)
+		{
+		  return ER_FAILED;	/* peer closed */
+		}
+	      if (n < 0)
+		{
+		  if (errno == EINTR)
+		    {
+		      continue;
+		    }
+		  return ER_FAILED;
+		}
 	    }
 	  p += n;
 	  len -= (std::size_t) n;
@@ -383,6 +411,27 @@ namespace cubconn
 	  }
       }
 
+      /* SSL clients hand off right after the cleartext header + ack: the
+       * server terminates TLS and reads the encrypted db_info the broker
+       * could not peek (B2-D9).  cas_init_ssl sets ssl_client, which routes
+       * every later byte — read_full/write_full here and the CAS speaker's
+       * READ_FROM_NET/WRITE_TO_NET — through the session's TLS channel. */
+      const bool is_ssl = IS_SSL_CLIENT (params.driver_header);
+      if (is_ssl)
+	{
+	  if (cas_init_ssl (params.client_fd) < 0
+	      || read_full (params.client_fd, params.db_info, sizeof (params.db_info)) != NO_ERROR)
+	    {
+	      if (ssl_client)
+		{
+		  cas_ssl_close (params.client_fd);
+		}
+	      registry_session_finished (params.token);
+	      close (params.client_fd);
+	      return;
+	    }
+	}
+
       /* register this foreign thread with the thread manager (same ritual as
        * the tracer / connection_worker.cpp) */
       cubthread::entry *entry_p = cubthread::get_manager ()->claim_entry ();
@@ -421,12 +470,32 @@ namespace cubconn
       /* this thread now acts as the in-process client (D5) */
       db_on_server = 0;
 
-      if (parse_db_info (params.db_info, sizeof (params.db_info), info) != NO_ERROR || info.is_health_check)
+      if (parse_db_info (params.db_info, sizeof (params.db_info), info) != NO_ERROR)
 	{
-	  /* the broker absorbs health checks and validates db_info; reaching
-	   * here means a malformed handoff */
+	  /* the broker validates cleartext db_info; reaching here means a
+	   * malformed handoff (or a malformed encrypted packet) */
 	  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION,
 			    NULL);
+	  goto retire;
+	}
+      if (info.is_health_check)
+	{
+	  if (is_ssl)
+	    {
+	      /* the broker absorbs cleartext health checks; encrypted ones
+	       * land here — reply what park_finish_health_check replies */
+	      int hc_zero = 0;
+	      char hc_cas_info[CAS_INFO_SIZE] =
+		      { CAS_INFO_STATUS_ACTIVE, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT,
+			CAS_INFO_RESERVED_DEFAULT };
+	      (void) write_full (params.client_fd, &hc_zero, sizeof (hc_zero));
+	      (void) write_full (params.client_fd, hc_cas_info, sizeof (hc_cas_info));
+	    }
+	  else
+	    {
+	      send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION,
+				NULL);
+	    }
 	  goto retire;
 	}
 
@@ -438,8 +507,16 @@ namespace cubconn
 	  goto retire;
 	}
 
-      /* the broker routed by dbname; a mismatch is its bug, not the driver's */
-      assert (params.server_name == info.db_name);
+      /* cleartext: the broker routed by dbname, a mismatch is its bug; SSL:
+       * the driver may genuinely ask for a database this server is not — the
+       * conf routed it here blind (DIRECT_HANDOFF_SSL_DB), so reject it */
+      if (params.server_name != info.db_name)
+	{
+	  assert (is_ssl);
+	  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR, CAS_ER_FREE_SERVER,
+			    "this server does not serve the requested database");
+	  goto retire;
+	}
 
       /* point the CAS globals at this thread's slot (cas_server_support) */
       cas_server_session_slot_begin (params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
@@ -584,6 +661,11 @@ namespace cubconn
       /* drop the registry entry BEFORE closing the fd: stop() shuts down the
        * fds it finds in the registry, and a closed (possibly reused) number
        * must never be visible there */
+      if (ssl_client)
+	{
+	  cas_ssl_close (params.client_fd);
+	  ssl_client = false;
+	}
       registry_session_finished (params.token);
       close (params.client_fd);
     }

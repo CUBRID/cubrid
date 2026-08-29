@@ -739,8 +739,9 @@ endif(UNIX)
 # (driver_session.cpp).  The per-CAS-process globals in these files are
 # thread-local under SERVER_MODE (CAS_TLS, cas_common_vars.h); shm reads are
 # served by the stub in cas_server_support.cpp.  cas_sql_log2.c (dup2 on fd 1)
-# and cas_ssl.c (B2) are deliberately NOT folded — cas_server_support.cpp
-# carries their no-op/assert stubs.
+# is deliberately NOT folded (structurally retired, B2-D5); cas_ssl.c is
+# folded since B2-D9 (server-side TLS termination) — OpenSSL comes with
+# EP_LIBS, which the cubrid target already links.
 set(CAS_SPEAKER_SOURCES
   ${BROKER_DIR}/cas_dispatch.c
   ${BROKER_DIR}/cas_conn_helpers.c
@@ -760,6 +761,7 @@ set(CAS_SPEAKER_SOURCES
   ${BROKER_DIR}/cas_optimization.c
   ${BROKER_DIR}/cas_xa.c
   ${BROKER_DIR}/cas_log.c
+  ${BROKER_DIR}/cas_ssl.c
   ${BROKER_DIR}/cas_server_support.cpp
   ${BROKER_DIR}/broker_filename.c
   ${BROKER_DIR}/broker_util.c

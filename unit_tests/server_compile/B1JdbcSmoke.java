@@ -56,13 +56,17 @@ public class B1JdbcSmoke {
         return ucon.getClass().getField("casProcessId").getInt(ucon);
     }
 
+    static boolean sslMode;
+
     public static void main(String[] args) throws Exception {
-        if (args.length != 4) {
-            System.err.println("usage: B1JdbcSmoke <broker_port> <dbname> <dbuser> <dbpasswd>");
+        if (args.length != 4 && args.length != 5) {
+            System.err.println("usage: B1JdbcSmoke <broker_port> <dbname> <dbuser> <dbpasswd> [ssl]");
             System.exit(2);
         }
+        sslMode = args.length == 5 && "ssl".equals(args[4]);
         Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
-        url = "jdbc:cubrid:127.0.0.1:" + args[0] + ":" + args[1] + ":::";
+        url = "jdbc:cubrid:127.0.0.1:" + args[0] + ":" + args[1] + ":::"
+                + (sslMode ? "?useSSL=true" : "");
         user = args[2];
         pass = args[3];
 
@@ -387,7 +391,12 @@ public class B1JdbcSmoke {
         rs.next();
         rs.close();
 
-        // 14. XA 2PC round-trip (fn_xa_prepare / fn_xa_recover / fn_xa_end_tran)
+        // 14. XA 2PC round-trip (fn_xa_prepare / fn_xa_recover / fn_xa_end_tran).
+        // Skipped over SSL: CUBRIDXADataSource has no useSSL property channel,
+        // so its plaintext dial would be refused by an SSL=ON broker.
+        if (sslMode) {
+            System.out.println("B1_JDBC: step xa (skipped in ssl mode)");
+        } else {
         step("xa");
         // getXAConnection reads serverName/portNumber/databaseName only —
         // setUrl is not parsed on the XA path (CUBRIDXADataSource.java:70-73)
@@ -435,6 +444,7 @@ public class B1JdbcSmoke {
         }
         rs.close();
         stmt.executeUpdate("DELETE FROM b1_smoke WHERE id = 100");
+        }
 
         // 15. prepared-handle cap: cas_max_prepared_stmt_count=64 (set by
         // smoke_jdbc.sh) must reject the 65th open handle on one session —
