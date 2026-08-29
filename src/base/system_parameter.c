@@ -4714,7 +4714,9 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DDL_AUDIT_LOG,
    PRM_NAME_DDL_AUDIT_LOG,
-   (PRM_FOR_CLIENT),
+   /* also a server parameter since the folded CAS speaker produces the DDL
+    * audit log inside cub_server (stage B2, #116 D4) */
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -4725,7 +4727,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DDL_AUDIT_LOG_SIZE,
    PRM_NAME_DDL_AUDIT_LOG_SIZE,
-   (PRM_FOR_CLIENT | PRM_SIZE_UNIT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_SIZE_UNIT),
    PRM_BIGINT,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.bi = 10485760ULL /* 10M */ }},
