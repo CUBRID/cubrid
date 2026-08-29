@@ -53,10 +53,11 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
-#include <unordered_set>
+#include <utility>
 
 #include "adoption.hpp"
 #include "cas_common.h"		/* FN_STATUS_* */
@@ -195,11 +196,9 @@ namespace brd
     std::string broker_name;
     std::string ssl_db;		/* DIRECT_HANDOFF_SSL_DB: the route for SSL clients (B2-D9) */
     int max_slots = 0;
-    char statement_pooling = 1;
-    char cci_pconnect = 0;
-    /* live shm_appl reads at handoff time (#121 D1; dynamic since B4) */
-    const char *access_mode_p = NULL;
-    const int *replica_only_p = NULL;
+    /* read live at handoff time (ACCESS_MODE stays dynamic, #121 D1/B4) and
+     * written for the front metrics + slot mirror (#116 D10) */
+    T_SHM_APPL_SERVER *shm = NULL;
 
     /* job queue plumbing owned by broker.c */
     T_MAX_HEAP_NODE *job_queue = NULL;
@@ -224,15 +223,17 @@ namespace brd
      * by channel readers (#117 D3) */
     std::atomic<int> slots_used { 0 };
 
-    /* channels + tokens */
+    /* channels + tokens.  Token counters are per-server, so two databases
+     * behind one broker may issue equal token values — the table is a
+     * multimap keyed by token and disambiguated by database (B4). */
     std::mutex channels_mutex;
     std::unordered_map<std::string, std::shared_ptr<channel>> channels;
     std::mutex dial_mutex;	/* single-flight channel creation (codex F7) */
     std::mutex tokens_mutex;
-    std::unordered_map<unsigned int, token_info> tokens;
+    std::unordered_multimap<unsigned int, token_info> tokens;
     /* SESSION_ENDs that arrived before their HANDOFF_ACK was processed
      * (reader vs dispatch ordering); the ACK consumes them (codex F1) */
-    std::unordered_set<unsigned int> orphan_ends;
+    std::set<std::pair<unsigned int, std::string>> orphan_ends;
   };
 
   static manager *brd_Manager = NULL;
@@ -259,6 +260,34 @@ namespace brd
   /* token table                                                        */
   /* ------------------------------------------------------------------ */
 
+  /* front rejection: count it (#116 D10) and answer the driver.  Callers on
+   * the receiver, peek, and dispatch threads share the counter — atomic. */
+  static void
+  reject_client (manager &m, SOCKET fd, int error, const char *driver_info)
+  {
+    __atomic_add_fetch (&m.shm->brd_num_rejected, 1, __ATOMIC_RELAXED);
+    send_error_code_to_driver (fd, error, driver_info);
+  }
+
+  /* slot accounting, mirrored into shm for `cubrid broker status` (#116 D10) */
+  static void
+  slots_acquire (manager &m, int count)
+  {
+    m.slots_used.fetch_add (count);
+    m.shm->brd_slots_used = m.slots_used.load ();
+  }
+
+  static void
+  slots_release (manager &m)
+  {
+    /* floor at 0: a pre-restart session's end can race the re-sync that
+     * would have counted it */
+    int used = m.slots_used.load ();
+    while (used > 0 && !m.slots_used.compare_exchange_weak (used, used - 1))
+      ;
+    m.shm->brd_slots_used = m.slots_used.load ();
+  }
+
   static void
   tokens_drop_for_db (manager &m, const std::string &db_name)
   {
@@ -282,9 +311,7 @@ namespace brd
      * otherwise every server restart leaks slots until the pool starves) */
     while (dropped-- > 0)
       {
-	int used = m.slots_used.load ();
-	while (used > 0 && !m.slots_used.compare_exchange_weak (used, used - 1))
-	  ;
+	slots_release (m);
       }
   }
 
@@ -318,24 +345,31 @@ namespace brd
 	      {
 		adopt::token_body tb;
 		std::memcpy (&tb, body, sizeof (tb));
-		bool known;
+		bool known = false;
 		{
 		  std::lock_guard<std::mutex> guard (m->tokens_mutex);
-		  known = (m->tokens.erase (tb.token) > 0);
+		  auto range = m->tokens.equal_range (tb.token);
+		  for (auto it = range.first; it != range.second; ++it)
+		    {
+		      /* this channel's database scopes the erase — equal
+		       * token values may be live for other databases */
+		      if (it->second.db_name == ch->db_name)
+			{
+			  m->tokens.erase (it);
+			  known = true;
+			  break;
+			}
+		    }
 		  if (!known)
 		    {
 		      /* the dispatch thread has not processed the ACK yet:
 		       * park the end for the ACK to consume (codex F1) */
-		      m->orphan_ends.insert (tb.token);
+		      m->orphan_ends.insert (std::make_pair (tb.token, ch->db_name));
 		    }
 		}
 		if (known)
 		  {
-		    /* floor at 0: a pre-restart session's end can race the
-		     * re-sync that would have counted it */
-		    int used = m->slots_used.load ();
-		    while (used > 0 && !m->slots_used.compare_exchange_weak (used, used - 1))
-		      ;
+		    slots_release (*m);
 		  }
 	      }
 	    continue;
@@ -615,7 +649,7 @@ namespace brd
 	std::memcpy (&resync, reply_body, sizeof (resync));
 	if (resync.live_count > 0)
 	  {
-	    m.slots_used.fetch_add ((int) resync.live_count);
+	    slots_acquire (m, (int) resync.live_count);
 	  }
       }
 
@@ -811,18 +845,19 @@ namespace brd
 using namespace brd;
 
 int
-brd_init (const char *broker_name, int max_slots, char statement_pooling, char cci_pconnect,
-	  const char *access_mode_p, const int *replica_only_p, const char *ssl_db, T_MAX_HEAP_NODE * job_queue,
-	  int job_queue_size, pthread_mutex_t * job_queue_mutex, pthread_cond_t * job_queue_cond)
+brd_init (const char *broker_name, int max_slots, T_SHM_APPL_SERVER * shm_appl, const char *ssl_db,
+	  T_MAX_HEAP_NODE * job_queue, int job_queue_size, pthread_mutex_t * job_queue_mutex,
+	  pthread_cond_t * job_queue_cond)
 {
   assert (brd_Manager == NULL);
   manager *m = new manager ();
   m->broker_name = broker_name;
   m->max_slots = max_slots;
-  m->statement_pooling = statement_pooling;
-  m->cci_pconnect = cci_pconnect;
-  m->access_mode_p = access_mode_p;
-  m->replica_only_p = replica_only_p;
+  m->shm = shm_appl;
+  shm_appl->brd_num_accepted = 0;
+  shm_appl->brd_num_handoffs = 0;
+  shm_appl->brd_num_rejected = 0;
+  shm_appl->brd_slots_used = 0;
   m->ssl_db = (ssl_db != NULL) ? ssl_db : "";
   m->job_queue = job_queue;
   m->job_queue_size = job_queue_size;
@@ -890,6 +925,7 @@ brd_park_client (SOCKET clt_sock_fd, const T_MAX_HEAP_NODE * job)
       close (clt_sock_fd);
       return;
     }
+  m->shm->brd_num_accepted++;	/* receiver thread only (#116 D10) */
 
   if (IS_SSL_CLIENT (job->driver_info))
     {
@@ -900,7 +936,7 @@ brd_park_client (SOCKET clt_sock_fd, const T_MAX_HEAP_NODE * job)
       if (m->ssl_db.empty ())
 	{
 	  /* conf validation prevents this; fail the connect cleanly */
-	  send_error_code_to_driver (clt_sock_fd, CAS_ER_SSL_TYPE_NOT_ALLOWED, job->driver_info);
+	  reject_client (*m, clt_sock_fd, CAS_ER_SSL_TYPE_NOT_ALLOWED, job->driver_info);
 	  close (clt_sock_fd);
 	  return;
 	}
@@ -953,7 +989,7 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
   }
   if (db_info == NULL)
     {
-      send_error_code_to_driver (job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
+      reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
       close (job->clt_sock_fd);
       return;
     }
@@ -973,7 +1009,7 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
 	}
       if (m->stopping.load ())
 	{
-	  send_error_code_to_driver (job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
+	  reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
 	  close (job->clt_sock_fd);
 	  return;
 	}
@@ -982,7 +1018,7 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
       if (ch == NULL)
 	{
 	  /* server not up: immediate retryable rejection (#117 D5/D7) */
-	  send_error_code_to_driver (job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
+	  reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
 	  close (job->clt_sock_fd);
 	  return;
 	}
@@ -991,8 +1027,8 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
       std::memset (&body, 0, sizeof (body));
       std::memcpy (&body.client_ip, job->ip_addr, 4);
       body.client_port = job->port;
-      body.access_mode = (std::uint8_t) (*m->access_mode_p);
-      body.replica_only = (std::uint8_t) (*m->replica_only_p ? 1 : 0);
+      body.access_mode = (std::uint8_t) m->shm->access_mode;
+      body.replica_only = (std::uint8_t) (m->shm->replica_only_flag ? 1 : 0);
       body.slot_idx = 0;	/* per-slot identity retired with the CAS pool */
       /* broker-owned connect-reply facts (cas_bi_make_broker_info bytes 0-3);
        * the server overwrites its own bytes 4-7 (proto version, function
@@ -1000,8 +1036,8 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
       body.broker_info[BROKER_INFO_DBMS_TYPE] = CAS_DBMS_CUBRID;
       body.broker_info[BROKER_INFO_KEEP_CONNECTION] = CAS_KEEP_CONNECTION_ON;
       body.broker_info[BROKER_INFO_STATEMENT_POOLING] =
-	      m->statement_pooling ? CAS_STATEMENT_POOLING_ON : CAS_STATEMENT_POOLING_OFF;
-      body.broker_info[BROKER_INFO_CCI_PCONNECT] = m->cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF;
+	      m->shm->statement_pooling ? CAS_STATEMENT_POOLING_ON : CAS_STATEMENT_POOLING_OFF;
+      body.broker_info[BROKER_INFO_CCI_PCONNECT] = m->shm->cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF;
       std::memcpy (body.driver_header, job->driver_info, adopt::DRIVER_HEADER_SIZE);
       std::memcpy (body.db_info, db_info.get (), adopt::DRIVER_DB_INFO_SIZE);
 
@@ -1011,7 +1047,7 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
 			   &reply_header, reply_body, sizeof (reply_body)) != 0)
 	{
 	  brd_debug ("handoff db=%s: request failed/timeout", db_name);
-	  send_error_code_to_driver (job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
+	  reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
 	  close (job->clt_sock_fd);
 	  return;
 	}
@@ -1025,13 +1061,14 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
 	  bool already_ended;
 	  {
 	    std::lock_guard<std::mutex> guard (m->tokens_mutex);
-	    already_ended = (m->orphan_ends.erase (ack.token) > 0);
+	    already_ended = (m->orphan_ends.erase (std::make_pair (ack.token, std::string (db_name))) > 0);
 	    if (!already_ended)
 	      {
-		token_info &ti = m->tokens[ack.token];
+		token_info ti;
 		ti.db_name = db_name;
 		std::memcpy (ti.clt_ip, job->ip_addr, 4);
 		ti.clt_port = job->port;
+		m->tokens.emplace (ack.token, ti);
 	      }
 	  }
 	  if (already_ended)
@@ -1043,7 +1080,8 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
 	  else
 	    {
 	      brd_debug ("handoff db=%s: token=%u stored (clt_port=%u)", db_name, ack.token, (unsigned) job->port);
-	      m->slots_used.fetch_add (1);
+	      slots_acquire (*m, 1);
+	      m->shm->brd_num_handoffs++;
 	    }
 	  close (job->clt_sock_fd);	/* the server owns the connection now */
 	  return;
@@ -1062,7 +1100,7 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
 	    }
 	}
 
-      send_error_code_to_driver (job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
+      reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
       close (job->clt_sock_fd);
       return;
     }
@@ -1080,21 +1118,31 @@ brd_cancel (unsigned int token, const unsigned char *clt_ip, unsigned short clt_
   std::string db_name;
   {
     std::lock_guard<std::mutex> guard (m->tokens_mutex);
-    auto it = m->tokens.find (token);
-    if (it == m->tokens.end ())
+    auto range = m->tokens.equal_range (token);
+    if (range.first == range.second)
       {
 	brd_debug ("cancel token=%u: unknown (table size %zu)", token, m->tokens.size ());
 	return -1;
       }
     /* the anti-spoof check the pid scan used to make (broker.c:938-943):
-     * client port or client ip must match */
-    if (clt_port > 0 && it->second.clt_port != clt_port && std::memcmp (it->second.clt_ip, clt_ip, 4) != 0)
+     * client port or client ip must match.  It doubles as the disambiguator
+     * when equal tokens are live for different databases. */
+    bool found = false;
+    for (auto it = range.first; it != range.second; ++it)
       {
-	brd_debug ("cancel token=%u: spoof check failed (have port %u, got %u)", token,
-		   (unsigned) it->second.clt_port, (unsigned) clt_port);
+	if (clt_port > 0 && it->second.clt_port != clt_port && std::memcmp (it->second.clt_ip, clt_ip, 4) != 0)
+	  {
+	    continue;
+	  }
+	db_name = it->second.db_name;
+	found = true;
+	break;
+      }
+    if (!found)
+      {
+	brd_debug ("cancel token=%u: spoof check failed (got port %u)", token, (unsigned) clt_port);
 	return -1;
       }
-    db_name = it->second.db_name;
   }
 
   std::shared_ptr<channel> ch = channel_get_or_dial (*m, db_name);
@@ -1125,6 +1173,8 @@ brd_status (unsigned int token)
       {
 	return FN_STATUS_NONE;
       }
+    /* equal tokens across databases: the ST probe carries no client address
+     * to disambiguate with — first match, as the legacy pid scan behaved */
     db_name = it->second.db_name;
   }
 

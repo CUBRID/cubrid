@@ -647,6 +647,14 @@ struct t_shm_appl_server
   T_APPL_SERVER_INFO as_info[APPL_SERVER_NUM_LIMIT];
 
   T_DB_SERVER unusable_databases[PAIR_LIST][UNUSABLE_DATABASE_MAX];
+
+  /* B4 (#116 D10): direct-handoff front metrics, written by cub_broker only
+   * (the server never writes back into broker shm); `cubrid broker status`
+   * reads these instead of the retired per-CAS rows */
+  INT64 brd_num_accepted;	/* clients parked for the db_info peek */
+  INT64 brd_num_handoffs;	/* successful fd handoffs (HANDOFF_ACK) */
+  INT64 brd_num_rejected;	/* front rejections (ACL, no server, full) */
+  int brd_slots_used;		/* monitor mirror of the live slot count */
 };
 
 /* shared memory information */
