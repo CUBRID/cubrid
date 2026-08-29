@@ -296,6 +296,7 @@ namespace cubconn
 	  r.broker_name[sizeof (r.broker_name) - 1] = '\0';
 	  r.client_ip = e.client_ip;
 	  std::strncpy (r.db_user, e.stats_slot->database_user, sizeof (r.db_user) - 1);
+	  r.db_user[sizeof (r.db_user) - 1] = '\0';
 	  r.session_id = e.stats_slot->session_id;
 	  r.tran_index = e.tran_index;
 	  r.num_requests = e.stats_slot->num_requests_received;
@@ -309,6 +310,7 @@ namespace cubconn
 	  r.num_long_queries = e.stats_slot->num_long_queries;
 	  r.num_long_transactions = e.stats_slot->num_long_transactions;
 	  std::strncpy (r.last_activity, e.stats_slot->log_msg, sizeof (r.last_activity) - 1);
+	  r.last_activity[sizeof (r.last_activity) - 1] = '\0';
 	}
       return n;
     }
