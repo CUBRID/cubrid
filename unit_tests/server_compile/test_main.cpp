@@ -37,6 +37,7 @@
 #include <thread>
 #include <vector>
 
+#include "area_alloc.h"	// area_init (B4-D9 domain-cache test)
 #include "authenticate.h"
 #include "authenticate_password.hpp"
 #include "boot.h"		// HA_SERVER_STATE (B3, #121 D2)
@@ -50,10 +51,15 @@
 #include "dbi.h"		// db_disable/enable_modification
 #include "driver_session.hpp"
 #include "language_support.h"
+#include "object_domain.h"	// tp_domain_resolve / tp_session_domains_final (B4-D9)
 #include "parser.h"
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 #include "work_space.h"
+
+/* the client-half discriminator (thread_local, defaults to 1 on a raw
+ * server thread; driver_session.cpp zeroes it right after csc_activate) */
+extern thread_local unsigned int db_on_server;
 
 /* au lives in the session-scoped client context installed by the
  * thread's activation bracket, not in a process singleton */
@@ -370,6 +376,70 @@ static int
 test_ws_abort_transaction_no_bracket (void)
 {
   ws_abort_transaction ();
+  return 0;
+}
+
+/* B4-D9: object domains cached under one session bracket must never be
+ * handed to another session — a process-wide cache node embeds workspace
+ * MOPs that die with their session (the SSL-leg SIGSEGV: ws_mop_compare on
+ * a freed MOP through a structurally-shared cached domain) */
+static int
+test_domain_cache_session_scoped (void)
+{
+  char fake_mop[64] = { 0 };
+  client_session_context ctx_a;
+  client_session_context ctx_b;
+  TP_DOMAIN *dom_a, *dom_a2, *dom_b;
+
+  /* the harness boots no database: bring up the area manager and the domain
+   * module (tp_init creates the domain area) the way the server boot does */
+  area_init ();
+  if (tp_init () != NO_ERROR)
+    {
+      fprintf (stderr, "FAIL: tp_init\n");
+      return 1;
+    }
+
+  /* mirror driver_session.cpp: the client half is (bracket active,
+   * db_on_server == 0) — without the toggle this test never leaves the
+   * server half and the session routing is not exercised at all */
+  unsigned int save_on_server = db_on_server;
+
+  csc_activate (&ctx_a);
+  db_on_server = 0;
+  dom_a = tp_domain_resolve (DB_TYPE_OBJECT, (DB_OBJECT *) fake_mop, 0, 0, NULL, 0);
+  dom_a2 = tp_domain_resolve (DB_TYPE_OBJECT, (DB_OBJECT *) fake_mop, 0, 0, NULL, 0);
+  db_on_server = save_on_server;
+  csc_deactivate ();
+  if (dom_a == NULL || dom_a != dom_a2)
+    {
+      fprintf (stderr, "FAIL: session domain cache did not intern within one session\n");
+      return 1;
+    }
+
+  csc_activate (&ctx_b);
+  db_on_server = 0;
+  dom_b = tp_domain_resolve (DB_TYPE_OBJECT, (DB_OBJECT *) fake_mop, 0, 0, NULL, 0);
+  db_on_server = save_on_server;
+  csc_deactivate ();
+  if (dom_b == dom_a)
+    {
+      fprintf (stderr, "FAIL: a second session was handed the first session's cached domain node\n");
+      return 1;
+    }
+
+  /* free both sessions' lists the way the bracketed teardown does */
+  csc_activate (&ctx_a);
+  db_on_server = 0;
+  tp_session_domains_final ();
+  db_on_server = save_on_server;
+  csc_deactivate ();
+  csc_activate (&ctx_b);
+  db_on_server = 0;
+  tp_session_domains_final ();
+  db_on_server = save_on_server;
+  csc_deactivate ();
+
   return 0;
 }
 
@@ -889,6 +959,12 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: db_Connect_status is CONNECTED outside a bracket, session-scoped inside\n");
+
+  if (test_domain_cache_session_scoped () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: object domain cache nodes are session-scoped, not process-shared\n");
 
   if (test_adoption_wire_helpers () != 0)
     {
