@@ -961,6 +961,7 @@ typedef enum
   SHOWSTMT_TRAN_TABLES,
   SHOWSTMT_THREADS,
   SHOWSTMT_PAGE_BUFFER_STATUS,
+  SHOWSTMT_SESSION_STATUS,	/* per-driver-session CAS statistics (B2-D10, #116 D10) */
 
   /* append the new show statement types in here */
 

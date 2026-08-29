@@ -91,6 +91,13 @@ namespace cubconn
       int client_fd;
       int tran_index;
       std::int32_t fn_status;
+      /* SHOW SESSION STATUS (B2-D10): the session thread's CAS slot; its
+       * thread_local storage outlives the registry entry (the entry is
+       * dropped before the thread retires), so reads under registry_mutex
+       * against a live entry are safe */
+      T_APPL_SERVER_INFO *stats_slot = NULL;
+      int slot_index = -1;
+      std::uint32_t client_ip = 0;
     };
 
     struct manager
@@ -243,6 +250,67 @@ namespace cubconn
 	{
 	  it->second.tran_index = tran_index;
 	}
+    }
+
+    void
+    registry_set_session_stats (std::uint32_t token, void *as_info_slot, int slot_index, std::uint32_t client_ip)
+    {
+      manager *m = adoption_Manager;
+      if (m == NULL)
+	{
+	  return;
+	}
+      std::lock_guard<std::mutex> guard (m->registry_mutex);
+      auto it = m->registry.find (token);
+      if (it != m->registry.end ())
+	{
+	  it->second.stats_slot = (T_APPL_SERVER_INFO *) as_info_slot;
+	  it->second.slot_index = slot_index;
+	  it->second.client_ip = client_ip;
+	}
+    }
+
+    std::size_t
+    registry_stats_snapshot (session_stat_row *rows, std::size_t max_rows)
+    {
+      manager *m = adoption_Manager;
+      std::size_t n = 0;
+
+      if (m == NULL || rows == NULL)
+	{
+	  return 0;
+	}
+      std::lock_guard<std::mutex> guard (m->registry_mutex);
+      for (const auto &pair : m->registry)
+	{
+	  const session_entry &e = pair.second;
+	  if (e.stats_slot == NULL || n >= max_rows)
+	    {
+	      continue;
+	    }
+	  session_stat_row &r = rows[n++];
+	  std::memset (&r, 0, sizeof (r));
+	  r.token = e.token;
+	  r.slot = e.slot_index;
+	  std::memcpy (r.broker_name, e.broker_name, sizeof (r.broker_name));
+	  r.broker_name[sizeof (r.broker_name) - 1] = '\0';
+	  r.client_ip = e.client_ip;
+	  std::strncpy (r.db_user, e.stats_slot->database_user, sizeof (r.db_user) - 1);
+	  r.session_id = e.stats_slot->session_id;
+	  r.tran_index = e.tran_index;
+	  r.num_requests = e.stats_slot->num_requests_received;
+	  r.num_transactions = e.stats_slot->num_transactions_processed;
+	  r.num_queries = e.stats_slot->num_queries_processed;
+	  r.num_selects = e.stats_slot->num_select_queries;
+	  r.num_inserts = e.stats_slot->num_insert_queries;
+	  r.num_updates = e.stats_slot->num_update_queries;
+	  r.num_deletes = e.stats_slot->num_delete_queries;
+	  r.num_errors = e.stats_slot->num_error_queries;
+	  r.num_long_queries = e.stats_slot->num_long_queries;
+	  r.num_long_transactions = e.stats_slot->num_long_transactions;
+	  std::strncpy (r.last_activity, e.stats_slot->log_msg, sizeof (r.last_activity) - 1);
+	}
+      return n;
     }
 
     void

@@ -7530,6 +7530,10 @@ show_type
 		{{
 			$$ = SHOWSTMT_THREADS;
 		}}
+	| SESSION STATUS
+		{{
+			$$ = SHOWSTMT_SESSION_STATUS;
+		}}
 	;
 
 show_type_of_like

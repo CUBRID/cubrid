@@ -279,6 +279,98 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
 
   return NO_ERROR;
 }
+
+/*
+ * css_session_status_start_scan() - start scan function for 'SHOW SESSION STATUS'
+ *   return: NO_ERROR, or ER_code
+ *
+ * One row per live adopted driver session: the per-session CAS statistics
+ * the broker's shm slot table used to expose through 'cubrid broker status'
+ * (B2-D10, #116 D10 — the server view replaces it; no server->broker shm
+ * write-back).
+ */
+int
+css_session_status_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
+  const int SESSION_STATUS_COLUMN_COUNT = 18;
+  int error = NO_ERROR;
+  SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
+  cubconn::adoption::session_stat_row *rows = NULL;
+  std::size_t max_rows, n;
+
+  (void) show_type;
+  (void) arg_values;
+  (void) arg_cnt;
+
+  *ptr = NULL;
+
+  max_rows = css_get_max_connections () + 1;
+  rows = new cubconn::adoption::session_stat_row[max_rows];
+  n = cubconn::adoption::registry_stats_snapshot (rows, max_rows);
+
+  ctx = showstmt_alloc_array_context (thread_p, (int) n, SESSION_STATUS_COLUMN_COUNT);
+  if (ctx == NULL)
+    {
+      delete[] rows;
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  for (std::size_t i = 0; i < n && error == NO_ERROR; i++)
+    {
+      DB_VALUE *vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
+      if (vals == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  break;
+	}
+      const cubconn::adoption::session_stat_row & r = rows[i];
+      char ip_buf[20];
+      const unsigned char *ip = (const unsigned char *) &r.client_ip;
+      int idx = 0;
+
+      snprintf (ip_buf, sizeof (ip_buf), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.token);
+      (void) db_make_int (&vals[idx++], r.slot);
+      error = db_make_string_copy (&vals[idx++], r.broker_name);
+      if (error == NO_ERROR)
+	{
+	  error = db_make_string_copy (&vals[idx++], ip_buf);
+	}
+      if (error == NO_ERROR)
+	{
+	  error = db_make_string_copy (&vals[idx++], r.db_user);
+	}
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.session_id);
+      (void) db_make_int (&vals[idx++], r.tran_index);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_requests);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_transactions);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_queries);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_selects);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_inserts);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_updates);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_deletes);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_errors);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_long_queries);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_long_transactions);
+      error = db_make_string_copy (&vals[idx++], r.last_activity);
+    }
+
+  delete[] rows;
+  if (error != NO_ERROR)
+    {
+      showstmt_free_array_context (thread_p, ctx);
+      return error;
+    }
+  *ptr = ctx;
+
+  return NO_ERROR;
+}
 #endif // SERVER_MODE
 
 /*
