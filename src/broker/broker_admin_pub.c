@@ -1746,6 +1746,18 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
 	}
     }
 
+  /* B4 (#116 D9): on a direct-handoff broker the CAS-execution parameters
+   * are server system parameters (cas_*) now, and there is no appl-server
+   * pool — only the connection-front parameter ACCESS_MODE stays changeable
+   * here. The gateway keeps the full surface (it can never be direct). */
+  if (br_info_p->direct_handoff == ON && strcasecmp (conf_name, "ACCESS_MODE") != 0)
+    {
+      sprintf (admin_err_msg,
+	       "Cannot change %s on a direct-handoff broker; CAS execution parameters are server parameters (cas_*)",
+	       conf_name);
+      goto set_conf_error;
+    }
+
   if (strcasecmp (conf_name, "SQL_LOG") == 0)
     {
       char sql_log_mode;
