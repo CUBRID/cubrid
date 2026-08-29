@@ -872,6 +872,21 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
     }
   tdes->client.set_ids (*client_credential);
   tdes->is_user_active = false;
+  /* the preceding logtb_clear_tdes seeded disable_modifications before the
+   * client type was known; re-derive with the same rule now that it is
+   * (#121 D8 — the first transaction must be gated like every later one) */
+  if (BOOT_WRITE_ON_STANDY_CLIENT_TYPE (tdes->client.client_type))
+    {
+      tdes->disable_modifications = 0;
+    }
+  else if (BOOT_READ_ONLY_CLIENT_TYPE (tdes->client.client_type))
+    {
+      tdes->disable_modifications = 1;
+    }
+  else
+    {
+      tdes->disable_modifications = db_Disable_modifications;
+    }
 #if defined(SERVER_MODE)
   if (thread_p == NULL)
     {
@@ -1054,6 +1069,46 @@ logtb_is_tran_modification_disabled (THREAD_ENTRY * thread_p)
 
   return tdes->disable_modifications;
 }
+
+#if defined (SERVER_MODE)
+/*
+ * logtb_session_modification_disabled - the folded client half's per-session
+ *   modification gate (#121 D8), keyed by its transaction index
+ */
+int
+logtb_session_modification_disabled (int tran_index)
+{
+  LOG_TDES *tdes;
+
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      return 0;
+    }
+  tdes = LOG_FIND_TDES (tran_index);
+  return (tdes != NULL) ? tdes->disable_modifications : 0;
+}
+
+/*
+ * logtb_session_adjust_modification_disabled - counter adjustment for the
+ *   folded db_disable/enable_modification pair (#121 D8); no-op without a
+ *   live descriptor
+ */
+void
+logtb_session_adjust_modification_disabled (int tran_index, int delta)
+{
+  LOG_TDES *tdes;
+
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      return;
+    }
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      tdes->disable_modifications += delta;
+    }
+}
+#endif /* SERVER_MODE */
 
 /*
  * logtb_rv_find_allocate_tran_index - find/alloc a transaction during the recovery
@@ -1611,6 +1666,13 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (BOOT_WRITE_ON_STANDY_CLIENT_TYPE (tdes->client.client_type))
     {
       tdes->disable_modifications = 0;
+    }
+  else if (BOOT_READ_ONLY_CLIENT_TYPE (tdes->client.client_type))
+    {
+      /* the read-only client types' write gate was the client library's
+       * process global, raised at boot; the descriptor is its per-session
+       * home now (#121 D8) — the boundary reseed must preserve it */
+      tdes->disable_modifications = 1;
     }
   else
     {

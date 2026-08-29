@@ -88,4 +88,12 @@ extern const char *log_isolation_string (TRAN_ISOLATION isolation);
 extern int log_dump_log_info (const char *logname_info, bool also_stdout, const char *fmt, ...);
 extern bool log_does_allow_replication (void);
 
+#if defined (SERVER_MODE)
+/* the folded client half's per-session modification gate (#121 D8):
+ * read/adjust tdes->disable_modifications by transaction index.  Both are
+ * no-ops (read: 0) when the index has no live descriptor. */
+extern int logtb_session_modification_disabled (int tran_index);
+extern void logtb_session_adjust_modification_disabled (int tran_index, int delta);
+#endif
+
 #endif /* _LOG_COMM_H_ */

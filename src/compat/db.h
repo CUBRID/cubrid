@@ -114,6 +114,18 @@ extern int db_Row_count;
 extern int db_Disable_modifications;
 #endif /* _DB_DISABLE_MODIFICATIONS_ */
 
+/* #121 D8: in the folded server the process global is the SERVER'S own
+ * (capability advertisement, tdes seeding); the client half's modification
+ * gate is the session's transaction state (tdes->disable_modifications),
+ * seeded from the client type at registration and every boundary.  CS/SA
+ * keep the historical global. */
+#if defined (SERVER_MODE)
+extern int db_cl_modification_disabled (void);
+#define DB_MODIFICATION_DISABLED() db_cl_modification_disabled ()
+#else
+#define DB_MODIFICATION_DISABLED() db_Disable_modifications
+#endif
+
 #if !defined (SERVER_MODE)
 extern char db_Database_name[];
 extern char db_Program_name[];
@@ -163,14 +175,14 @@ extern char db_Program_name[];
 /* CHECK MODIFICATION */
 #define CHECK_MODIFICATION_VOID()                                            \
   do {                                                                       \
-    if (db_Disable_modifications) {                                          \
+    if (DB_MODIFICATION_DISABLED ()) {                                          \
       er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0);   \
       return;                                                                \
     }                                                                        \
   } while (0)
 
 #define CHECK_MODIFICATION_AND_RETURN_EXPR(return_expr_)                     \
-  if (db_Disable_modifications) {                                            \
+  if (DB_MODIFICATION_DISABLED ()) {                                            \
     er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0);     \
     return (return_expr_);                                                   \
   }
@@ -190,10 +202,10 @@ extern char db_Program_name[];
   error = NO_ERROR;
 #else /* SA_MODE */
 #define CHECK_MODIFICATION_NO_RETURN(error)                                  \
-  if (db_Disable_modifications) {                                            \
+  if (DB_MODIFICATION_DISABLED ()) {                                          \
     er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0);     \
     er_log_debug (ARG_FILE_LINE, "db_Disable_modification = %d\n",           \
-		  db_Disable_modifications);                                  \
+		  DB_MODIFICATION_DISABLED ());                               \
     error = ER_DB_NO_MODIFICATIONS;                                          \
   } else {                                                                   \
     error = NO_ERROR;                                                        \

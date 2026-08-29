@@ -241,7 +241,7 @@ ws_abort_transaction (void)
     }
   ws_abort_in_progress = true;
 
-  if (db_Disable_modifications)
+  if (DB_MODIFICATION_DISABLED ())
     {
       if (er_errid () != ER_OUT_OF_VIRTUAL_MEMORY)
 	{
