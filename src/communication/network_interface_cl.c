@@ -48,6 +48,8 @@
 #include "log_manager.h"
 #include "schema_manager.h"
 #include "query_executor.h"
+#include "query_list.h"
+#include "query_manager.h"
 #include "transaction_sr.h"
 #include "pl_sr.h"
 #include "vacuum.h"
@@ -191,6 +193,50 @@ exit_server (const THREAD_ENTRY & thread_ref)
 
   exit_server_no_thread_entry ();
 }
+
+#if defined (SERVER_MODE)
+//
+// qmgr_attach_first_page_copy () - hand the folded caller a client-owned copy
+//   of the result's first page, the way sqmgr_execute_query ships it to CS
+//   clients: the caller's cursor must be able to read that page after the
+//   query is ended (the autocommit generated-keys read-back), and the temp
+//   file page it points at dies with xqmgr_end_query — which the fold issues
+//   immediately, unlike CS's deferred batching.  The copy lands in
+//   last_pgptr, the slot cursor_copy_list_id duplicates and
+//   cursor_free_list_id frees.  Failure is benign: reads fall back to
+//   qfile_get_list_file_page while the query is still alive.
+//
+static void
+qmgr_attach_first_page_copy (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
+{
+  PAGE_PTR page_ptr;
+  char *page_copy;
+
+  if (list_id == NULL || VPID_ISNULL (&list_id->first_vpid) || list_id->tfile_vfid == NULL
+      || list_id->last_pgptr != NULL)
+    {
+      return;
+    }
+
+  page_copy = (char *) malloc (DB_PAGESIZE);
+  if (page_copy == NULL)
+    {
+      return;
+    }
+
+  page_ptr = qmgr_get_old_page (thread_p, &list_id->first_vpid, list_id->tfile_vfid);
+  if (page_ptr == NULL)
+    {
+      free (page_copy);
+      return;
+    }
+
+  memcpy (page_copy, page_ptr, DB_PAGESIZE);
+  qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
+
+  list_id->last_pgptr = page_copy;
+}
+#endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
 #if defined(CS_MODE)
@@ -7678,6 +7724,10 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
     xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
 			 srv_cache_time, query_timeout, NULL);
 
+#if defined (SERVER_MODE)
+  qmgr_attach_first_page_copy (thread_p, list_id);
+#endif
+
 cleanup:
   if (server_db_values != NULL)
     {
@@ -7842,6 +7892,10 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
   regu_result =
     xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, server_db_values,
 				     &flag, query_timeout);
+
+#if defined (SERVER_MODE)
+  qmgr_attach_first_page_copy (thread_p, regu_result);
+#endif
 
 cleanup:
   if (server_db_values != NULL)
