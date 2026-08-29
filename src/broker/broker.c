@@ -584,6 +584,7 @@ main (int argc, char *argv[])
        * the receiver/dispatch pair's own (#117 D3) */
       if (brd_init (shm_br->br_info[br_index].name, shm_br->br_info[br_index].appl_server_max_num,
 		    shm_appl->statement_pooling, shm_appl->cci_pconnect,
+		    shm_appl->access_mode, (char) (shm_appl->replica_only_flag ? 1 : 0),
 		    shm_br->br_info[br_index].direct_handoff_ssl_db, shm_appl->job_queue,
 		    shm_appl->job_queue_size, &clt_table_mutex, &clt_table_cond) < 0)
 	{

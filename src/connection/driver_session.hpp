@@ -65,6 +65,12 @@ namespace cubconn
      * not carried over, #116 D3) */
     int parse_driver_protocol (const char (&driver_header)[DRIVER_HEADER_SIZE]);
 
+    /* the broker's ACCESS_MODE x REPLICA_ONLY -> DB_CLIENT_TYPE mapping the
+     * CAS performed in ux_database_connect (cas_execute.c), verbatim; the
+     * server synthesizes the type at session establishment (#121 D7).
+     * Returns an int of the DB_CLIENT_TYPE enum. */
+    int synthesize_client_type (int access_mode, int replica_only);
+
     /* build the V4+ CAS connect reply (36 payload bytes + 4-byte length
      * prefix + 4-byte cas_info = 44 bytes total).  session_20b is the
      * DRIVER_SESSION_SIZE driver session blob.  Returns bytes written. */
@@ -80,6 +86,7 @@ namespace cubconn
       std::int32_t slot_idx;
       std::uint32_t client_ip;	/* network byte order */
       std::uint16_t client_port;
+      int client_type;		/* synthesized DB_CLIENT_TYPE (#121 D7) */
       char broker_info[DRIVER_BROKER_INFO_SIZE];
       char driver_header[DRIVER_HEADER_SIZE];
       char db_info[DRIVER_DB_INFO_SIZE];

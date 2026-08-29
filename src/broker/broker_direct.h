@@ -43,8 +43,8 @@ extern "C"
  * receiver/dispatch pair's own (shm heap + mutex/cond), passed in so the
  * queue semantics stay untouched (#117 D3). */
   int brd_init (const char *broker_name, int max_slots, char statement_pooling, char cci_pconnect,
-		const char *ssl_db, T_MAX_HEAP_NODE * job_queue, int job_queue_size,
-		pthread_mutex_t * job_queue_mutex, pthread_cond_t * job_queue_cond);
+		char access_mode, char replica_only, const char *ssl_db, T_MAX_HEAP_NODE * job_queue,
+		int job_queue_size, pthread_mutex_t * job_queue_mutex, pthread_cond_t * job_queue_cond);
   void brd_final (void);
 
 /* receiver thread: takes ownership of clt_sock_fd right after header

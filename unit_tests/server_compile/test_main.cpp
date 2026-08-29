@@ -39,6 +39,8 @@
 
 #include "authenticate.h"
 #include "authenticate_password.hpp"
+#include "broker_config.h"	// access-mode enum (B3, #121 D7)
+#include "db_client_type.hpp"
 #include "cas_common_vars.h"	// shm_as_index (per-session slot id, B2-D1)
 #include "cas_dispatch.h"	// cas_server_session_slot_begin/end
 #include "cas_protocol.h"
@@ -516,6 +518,39 @@ test_session_slot_indices (void)
 }
 
 static int
+test_synthesize_client_type (void)
+{
+  using cubconn::adoption::synthesize_client_type;
+
+  /* the full ACCESS_MODE x REPLICA_ONLY matrix (#121 D7, cas_execute.c verbatim) */
+  struct
+  {
+    int access_mode;
+    int replica_only;
+    int expected;
+  } cases[] = {
+    {READ_WRITE_ACCESS_MODE, 0, DB_CLIENT_TYPE_BROKER},
+    {READ_WRITE_ACCESS_MODE, 1, DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY},
+    {READ_ONLY_ACCESS_MODE, 0, DB_CLIENT_TYPE_READ_ONLY_BROKER},
+    {READ_ONLY_ACCESS_MODE, 1, DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY},
+    {SLAVE_ONLY_ACCESS_MODE, 0, DB_CLIENT_TYPE_SLAVE_ONLY_BROKER},
+    {SLAVE_ONLY_ACCESS_MODE, 1, DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY},
+  };
+
+  for (size_t i = 0; i < sizeof (cases) / sizeof (cases[0]); i++)
+    {
+      int got = synthesize_client_type (cases[i].access_mode, cases[i].replica_only);
+      if (got != cases[i].expected)
+	{
+	  fprintf (stderr, "FAIL: synthesize_client_type (%d, %d) = %d, expected %d\n", cases[i].access_mode,
+		   cases[i].replica_only, got, cases[i].expected);
+	  return 1;
+	}
+    }
+  return 0;
+}
+
+static int
 test_adoption_wire_helpers (void)
 {
   using namespace cubconn::adoption;
@@ -724,6 +759,12 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: adoption wire helpers (db_info parse, V12 gate, connect reply layout)\n");
+
+  if (test_synthesize_client_type () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: ACCESS_MODE x REPLICA_ONLY synthesizes all six broker client types\n");
 
   if (test_session_slot_indices () != 0)
     {
