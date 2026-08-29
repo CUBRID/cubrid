@@ -244,6 +244,16 @@ namespace cubconn
 	  return "replica-only broker requires a replica server";
 	}
 
+      if (ha_state == HA_SERVER_STATE_MAINTENANCE && BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_type))
+	{
+	  /* the reset table's maintenance row is not HA-gated, so neither is
+	   * this.  BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE's host-less value:
+	   * every broker-and-default type is disallowed (its remote-host leg
+	   * cannot apply here — the broker host IS the DB host, and passing
+	   * literal NULL hosts trips -Werror=nonnull on the macro's strcmp) */
+	  return "server is in maintenance mode";
+	}
+
       if (ha_disabled)
 	{
 	  /* the reset table's HA rows never produce a driver-visible reset on
@@ -506,6 +516,9 @@ namespace cubconn
 		  cas_ssl_close (params.client_fd);
 		  ssl_client = false;	/* defensive: keep the pair consistent should threads ever be pooled */
 		}
+	      /* no conn entry yet: refund the adoption channel's quota seat
+	       * (codex B3 F1 — this exit leaked it since B1) */
+	      css_decrement_num_conn ((BOOT_CLIENT_TYPE) params.client_type);
 	      registry_session_finished (params.token);
 	      close (params.client_fd);
 	      return;
@@ -517,6 +530,7 @@ namespace cubconn
       cubthread::entry *entry_p = cubthread::get_manager ()->claim_entry ();
       if (entry_p == NULL)
 	{
+	  css_decrement_num_conn ((BOOT_CLIENT_TYPE) params.client_type);	/* same refund as above */
 	  registry_session_finished (params.token);
 	  close (params.client_fd);
 	  return;

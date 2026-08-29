@@ -1088,26 +1088,6 @@ logtb_session_modification_disabled (int tran_index)
   return (tdes != NULL) ? tdes->disable_modifications : 0;
 }
 
-/*
- * logtb_session_adjust_modification_disabled - counter adjustment for the
- *   folded db_disable/enable_modification pair (#121 D8); no-op without a
- *   live descriptor
- */
-void
-logtb_session_adjust_modification_disabled (int tran_index, int delta)
-{
-  LOG_TDES *tdes;
-
-  if (tran_index == NULL_TRAN_INDEX)
-    {
-      return;
-    }
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL)
-    {
-      tdes->disable_modifications += delta;
-    }
-}
 #endif /* SERVER_MODE */
 
 /*
