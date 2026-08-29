@@ -25,9 +25,9 @@
  * read-only stub filled at boot, and as_info points at a thread_local slot
  * initialized per adopted session (the session thread IS the CAS process,
  * B1-D1/D2).  Also provides the deliberately-absent surfaces: sql_log2
- * (dup2 on fd 1 is structurally impossible per-session — forced off), SSL
- * (server-side termination is a B2 item), and the uw_sem wrappers the
- * CON_STATUS_LOCK macros use (broker_shm.c is not folded).
+ * (dup2 on fd 1 is structurally impossible per-session — retired, B2-D5)
+ * and the uw_sem wrappers the CON_STATUS_LOCK macros use (broker_shm.c is
+ * not folded).  SSL termination is the real cas_ssl.c since B2-D9.
  */
 
 #if defined (SERVER_MODE)
@@ -598,34 +598,6 @@ sql_log2_append_file (char *)
 void
 sql_log2_flush (void)
 {
-}
-
-/* ------------------------------------------------------------------ */
-/* SSL: server-side termination is a B2 item (#116); the broker       */
-/* rejects DIRECT_HANDOFF+SSL so these are unreachable                */
-/* ------------------------------------------------------------------ */
-
-bool ssl_client = false;
-
-int
-cas_ssl_read (int, char *, int)
-{
-  assert (false);
-  return -1;
-}
-
-int
-cas_ssl_write (int, const char *, int)
-{
-  assert (false);
-  return -1;
-}
-
-bool
-is_ssl_data_ready (int)
-{
-  assert (false);
-  return false;
 }
 
 #endif /* SERVER_MODE */

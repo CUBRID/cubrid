@@ -42,6 +42,7 @@ SVCONF="$CUBRID/conf/cubrid.conf"
 SVCONF_BAK="$SVCONF.smoke_jdbc.bak"
 ACLFILE=""
 ACLIPS=""
+GENERATED_CERT=0
 
 cleanup() {
   cubrid broker stop >/dev/null 2>&1 || true
@@ -56,6 +57,9 @@ cleanup() {
   if [ -n "$ACLFILE" ]; then
     rm -f "$ACLFILE" "$ACLIPS"
   fi
+  if [ "$GENERATED_CERT" = 1 ]; then
+    rm -f "$CUBRID/conf/cas_ssl_cert.crt" "$CUBRID/conf/cas_ssl_cert.key"
+  fi
 }
 trap cleanup EXIT INT TERM
 
@@ -68,7 +72,7 @@ cp -f "$BRCONF" "$BRCONF_BAK" || fail "cannot back up broker conf"
 ACLFILE="$CUBRID/conf/b2_smoke_acl.txt"
 ACLIPS="$CUBRID/conf/b2_smoke_ips.txt"
 printf '*\n' > "$ACLIPS" || fail "cannot write acl ip file"
-printf '[%%B1DIRECT]\n%s:*:%s\n' "$DB" "$ACLIPS" > "$ACLFILE" || fail "cannot write acl file"
+printf '[%%B1DIRECT]\n%s:*:%s\n[%%B1SSL]\n%s:*:%s\n' "$DB" "$ACLIPS" "$DB" "$ACLIPS" > "$ACLFILE" || fail "cannot write acl file"
 cp -f "$SVCONF" "$SVCONF_BAK" || fail "cannot back up cubrid.conf"
 grep -q '^\[common\]' "$SVCONF" || fail "cubrid.conf has no [common] section"
 sed -i "/^\[common\]/a cas_sql_log=all\ncas_slow_log=yes\ncas_access_log=yes\ncas_long_query_time=1000\nddl_audit_log=yes\ncas_max_prepared_stmt_count=64\ncas_access_control=yes\ncas_access_control_file=$ACLFILE" "$SVCONF" \
@@ -77,6 +81,17 @@ sed -i "/^\[common\]/a cas_sql_log=all\ncas_slow_log=yes\ncas_access_log=yes\nca
 # scope the log assertions to this run
 rm -f "$CUBRID"/log/broker/sql_log/"${DB}"_*.sql.log "$CUBRID"/log/broker/sql_log/"${DB}"_*.slow.log \
       "$CUBRID"/log/broker/"${DB}".access "$CUBRID"/log/ddl_audit/"${DB}"_*_ddl.log 2>/dev/null || true
+
+# self-signed cert for the SSL leg (B2-D9): the server terminates TLS with
+# the CAS's historical cert paths, $CUBRID/conf/cas_ssl_cert.{crt,key}
+SSL_PORT=$((BROKER_PORT + 1))
+CERT="$CUBRID/conf/cas_ssl_cert.crt"
+KEY="$CUBRID/conf/cas_ssl_cert.key"
+if [ ! -f "$CERT" ] || [ ! -f "$KEY" ]; then
+  openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=b2smoke" \
+    -keyout "$KEY" -out "$CERT" >/dev/null 2>&1 || fail "cannot generate the smoke SSL cert"
+  GENERATED_CERT=1
+fi
 
 cat > "$BRCONF" <<EOF
 [broker]
@@ -96,6 +111,22 @@ TIME_TO_KILL            =120
 SESSION_TIMEOUT         =300
 KEEP_CONNECTION         =AUTO
 DIRECT_HANDOFF          =ON
+
+[%B1SSL]
+SERVICE                 =ON
+BROKER_PORT             =$SSL_PORT
+MIN_NUM_APPL_SERVER     =1
+MAX_NUM_APPL_SERVER     =20
+APPL_SERVER_SHM_ID      =30003
+LOG_DIR                 =log/broker/sql_log
+ERROR_LOG_DIR           =log/broker/error_log
+SQL_LOG                 =OFF
+TIME_TO_KILL            =120
+SESSION_TIMEOUT         =300
+KEEP_CONNECTION         =AUTO
+DIRECT_HANDOFF          =ON
+SSL                     =ON
+DIRECT_HANDOFF_SSL_DB   =$DB
 EOF
 
 workdir="$(mktemp -d "$SCRIPT_DIR/.smoke_jdbc.XXXXXX")" || fail "mktemp"
@@ -109,6 +140,9 @@ cubrid broker start >/dev/null 2>&1 || fail "broker start"
 sleep 1
 
 java -cp "$workdir:$JAR" B1JdbcSmoke "$BROKER_PORT" "$DB" dba "" || fail "jdbc scenario"
+
+# the same battery over TLS (server-side termination, B2-D9; xa self-skips)
+java -cp "$workdir:$JAR" B1JdbcSmoke "$SSL_PORT" "$DB" dba "" ssl || fail "jdbc ssl scenario"
 
 # --- log production checks (B2-D1..D6): the sessions above must have produced
 # per-slot CAS-format logs under the server's ownership -------------------

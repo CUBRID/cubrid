@@ -193,6 +193,7 @@ namespace brd
   struct manager
   {
     std::string broker_name;
+    std::string ssl_db;		/* DIRECT_HANDOFF_SSL_DB: the route for SSL clients (B2-D9) */
     int max_slots = 0;
     char statement_pooling = 1;
     char cci_pconnect = 0;
@@ -808,7 +809,7 @@ using namespace brd;
 
 int
 brd_init (const char *broker_name, int max_slots, char statement_pooling, char cci_pconnect,
-	  T_MAX_HEAP_NODE * job_queue, int job_queue_size,
+	  const char *ssl_db, T_MAX_HEAP_NODE * job_queue, int job_queue_size,
 	  pthread_mutex_t * job_queue_mutex, pthread_cond_t * job_queue_cond)
 {
   assert (brd_Manager == NULL);
@@ -817,6 +818,7 @@ brd_init (const char *broker_name, int max_slots, char statement_pooling, char c
   m->max_slots = max_slots;
   m->statement_pooling = statement_pooling;
   m->cci_pconnect = cci_pconnect;
+  m->ssl_db = (ssl_db != NULL) ? ssl_db : "";
   m->job_queue = job_queue;
   m->job_queue_size = job_queue_size;
   m->job_queue_mutex = job_queue_mutex;
@@ -881,6 +883,30 @@ brd_park_client (SOCKET clt_sock_fd, const T_MAX_HEAP_NODE * job)
   if (send_all (clt_sock_fd, &zero, sizeof (int)) != 0)
     {
       close (clt_sock_fd);
+      return;
+    }
+
+  if (IS_SSL_CLIENT (job->driver_info))
+    {
+      /* an SSL client's db_info is encrypted — no peek is possible.  Route
+       * to the configured DIRECT_HANDOFF_SSL_DB with a synthesized db_info
+       * (dbname only); the server terminates TLS and reads the real packet
+       * itself (B2-D9).  Health checks are absorbed server-side too. */
+      if (m->ssl_db.empty ())
+	{
+	  /* conf validation prevents this; fail the connect cleanly */
+	  send_error_code_to_driver (clt_sock_fd, CAS_ER_SSL_TYPE_NOT_ALLOWED, job->driver_info);
+	  close (clt_sock_fd);
+	  return;
+	}
+      parked_client *ssl_pc = new parked_client ();
+      ssl_pc->fd = clt_sock_fd;
+      ssl_pc->job = *job;
+      ssl_pc->got = 0;
+      ssl_pc->deadline = 0;
+      std::memset (ssl_pc->db_info, 0, sizeof (ssl_pc->db_info));
+      std::strncpy (ssl_pc->db_info, m->ssl_db.c_str (), 32);
+      park_complete (*m, ssl_pc);
       return;
     }
 

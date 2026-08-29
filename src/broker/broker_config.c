@@ -258,6 +258,7 @@ const char *broker_keywords[] = {
   "SERVICE",
   "SSL",
   "DIRECT_HANDOFF",
+  "DIRECT_HANDOFF_SSL_DB",
 #if defined (FOR_ODBC_GATEWAY)
   "CGW_LINK_SERVER",
   "CGW_LINK_SERVER_IP",
@@ -666,6 +667,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
+
+      INI_GETSTR_CHK (s, ini, sec_name, "DIRECT_HANDOFF_SSL_DB", "", &lineno);
+      if (strlen (s) >= sizeof (br_info[num_brs].direct_handoff_ssl_db))
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+      strcpy (br_info[num_brs].direct_handoff_ssl_db, s);
 #if defined (FOR_ODBC_GATEWAY)
       INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_SERVER", DEFAULT_EMPTY_STRING, &lineno);
       strcpy (br_info[num_brs].cgw_link_server, s);
@@ -1310,12 +1319,20 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 		}
 	    }
 
-	  /* B1: the broker peeks db_info in cleartext (SSL termination moves
-	   * server-side in B2) and SHARD is not supported in the new
-	   * architecture (#116 D2) */
-	  if (br_info[i].direct_handoff == ON && (br_info[i].use_SSL == ON || br_info[i].shard_flag == ON))
+	  /* SHARD is not supported in the new architecture (#116 D2) */
+	  if (br_info[i].direct_handoff == ON && br_info[i].shard_flag == ON)
 	    {
-	      PRINTERROR ("config error, %s, DIRECT_HANDOFF cannot be combined with SSL or SHARD\n", br_info[i].name);
+	      PRINTERROR ("config error, %s, DIRECT_HANDOFF cannot be combined with SHARD\n", br_info[i].name);
+	      error_flag = TRUE;
+	    }
+
+	  /* B2 (#116 D9-SSL): an SSL client's db_info is encrypted, so the
+	   * broker cannot route by dbname — the target must be configured */
+	  if (br_info[i].direct_handoff == ON && br_info[i].use_SSL == ON
+	      && br_info[i].direct_handoff_ssl_db[0] == '\0')
+	    {
+	      PRINTERROR ("config error, %s, DIRECT_HANDOFF with SSL requires DIRECT_HANDOFF_SSL_DB\n",
+			  br_info[i].name);
 	      error_flag = TRUE;
 	    }
 	}			/* end for (i) */
