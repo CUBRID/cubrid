@@ -70,6 +70,7 @@
 #include "cas_execute.h"	// ux_get_default_setting
 #include "cas_handle.h"		// hm_srv_handle_free_all
 #include "cas_log.h"		// session log lifecycle (B2-D2/D4/D6)
+#include "broker_config.h"	// READ_ONLY/SLAVE_ONLY_ACCESS_MODE (#121 D7)
 #include "broker_util.h"	// ut_get_ipv4_string
 #include "ddl_log.h"		// per-session DDL audit identity
 #include "cas_net_buf.h"
@@ -213,6 +214,21 @@ namespace cubconn
 	}
       out.is_health_check = (std::strcmp (out.db_name, HEALTH_CHECK_DUMMY_DB) == 0);
       return NO_ERROR;
+    }
+
+    int
+    synthesize_client_type (int access_mode, int replica_only)
+    {
+      /* ux_database_connect's selection (cas_execute.c), verbatim (#121 D7) */
+      if (access_mode == READ_ONLY_ACCESS_MODE)
+	{
+	  return replica_only ? DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY : DB_CLIENT_TYPE_READ_ONLY_BROKER;
+	}
+      if (access_mode == SLAVE_ONLY_ACCESS_MODE)
+	{
+	  return replica_only ? DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY : DB_CLIENT_TYPE_SLAVE_ONLY_BROKER;
+	}
+      return replica_only ? DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY : DB_CLIENT_TYPE_BROKER;
     }
 
     int
@@ -464,7 +480,7 @@ namespace cubconn
 	}
       /* pairs with the adoption channel's css_increment_num_conn: css_free_conn
        * decrements by conn->client_type on every exit path */
-      conn->client_type = DB_CLIENT_TYPE_DEFAULT;
+      conn->client_type = (BOOT_CLIENT_TYPE) params.client_type;
       css_insert_into_active_conn_list (conn);
       entry_p->conn_entry = conn;
 
@@ -559,7 +575,7 @@ namespace cubconn
 
       /* client-half boot with the driver's credentials; serialization is the
        * engine's own (boot_restart_client) since A5 */
-      err = db_restart_ex ("driver_session", info.db_name, info.db_user, info.db_passwd, NULL, DB_CLIENT_TYPE_DEFAULT);
+      err = db_restart_ex ("driver_session", info.db_name, info.db_user, info.db_passwd, NULL, params.client_type);
       if (err != NO_ERROR)
 	{
 	  /* cas_db_connect failure path: DBMS error straight to the driver */
@@ -649,7 +665,7 @@ namespace cubconn
       else
 	{
 	  /* never got a conn entry: pair the adoption channel's increment here */
-	  css_decrement_num_conn (DB_CLIENT_TYPE_DEFAULT);
+	  css_decrement_num_conn ((BOOT_CLIENT_TYPE) params.client_type);
 	}
       entry_p->tran_index = NULL_TRAN_INDEX;
       entry_p->m_status = cubthread::entry::status::TS_DEAD;

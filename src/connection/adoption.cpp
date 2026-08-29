@@ -420,9 +420,11 @@ namespace cubconn
 	  return;
 	}
 
-      /* adopted connections take normal seats (#117 D5/D6); the decrement
-       * runs in the session thread's css_free_conn */
-      if (css_increment_num_conn (DB_CLIENT_TYPE_DEFAULT) != NO_ERROR)
+      /* the broker's ACCESS_MODE x REPLICA_ONLY becomes the session's client
+       * type (#121 D1/D7); the decrement runs in the session thread's
+       * css_free_conn, keyed by the same type via conn->client_type */
+      int client_type = synthesize_client_type (body.access_mode, body.replica_only);
+      if (css_increment_num_conn ((BOOT_CLIENT_TYPE) client_type) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
 	  reject_body reject;
@@ -437,6 +439,7 @@ namespace cubconn
       params.slot_idx = body.slot_idx;
       params.client_ip = body.client_ip;
       params.client_port = body.client_port;
+      params.client_type = client_type;
       std::memcpy (params.broker_info, body.broker_info, sizeof (params.broker_info));
       std::memcpy (params.driver_header, body.driver_header, sizeof (params.driver_header));
       std::memcpy (params.db_info, body.db_info, sizeof (params.db_info));
@@ -477,7 +480,7 @@ namespace cubconn
 	}
       catch (const std::system_error &)
 	{
-	  css_decrement_num_conn (DB_CLIENT_TYPE_DEFAULT);
+	  css_decrement_num_conn ((BOOT_CLIENT_TYPE) client_type);
 	  close (client_fd);
 	  /* already ACKed: sign the token off like a session would */
 	  registry_session_finished (token);
