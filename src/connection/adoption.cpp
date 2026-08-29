@@ -91,10 +91,12 @@ namespace cubconn
       int client_fd;
       int tran_index;
       std::int32_t fn_status;
-      /* SHOW SESSION STATUS (B2-D10): the session thread's CAS slot; its
-       * thread_local storage outlives the registry entry (the entry is
-       * dropped before the thread retires), so reads under registry_mutex
-       * against a live entry are safe */
+      /* SHOW SESSION STATUS (B2-D10): the session thread's CAS slot.  The
+       * registry_mutex guarantees POINTER lifetime only (the entry is
+       * dropped before the thread retires, so a live entry's slot storage
+       * is valid); the fields themselves are mutated by the session thread
+       * with no synchronization, so the snapshot is best-effort — counters
+       * and strings may be stale or torn, which monitoring tolerates */
       T_APPL_SERVER_INFO *stats_slot = NULL;
       int slot_index = -1;
       std::uint32_t client_ip = 0;

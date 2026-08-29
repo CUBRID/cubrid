@@ -425,6 +425,7 @@ namespace cubconn
 	      if (ssl_client)
 		{
 		  cas_ssl_close (params.client_fd);
+		  ssl_client = false;	/* defensive: keep the pair consistent should threads ever be pooled */
 		}
 	      registry_session_finished (params.token);
 	      close (params.client_fd);
