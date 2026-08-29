@@ -42,9 +42,13 @@ extern "C"
 /* start the peek engine and channel manager.  job enqueue plumbing is the
  * receiver/dispatch pair's own (shm heap + mutex/cond), passed in so the
  * queue semantics stay untouched (#117 D3). */
+/* access_mode_p/replica_only_p point into shm_appl and are re-read on every
+ * handoff, so a broker_changer ACCESS_MODE write applies from the next
+ * connection on (B4, #116 D9 — same granularity as the legacy CAS reset). */
   int brd_init (const char *broker_name, int max_slots, char statement_pooling, char cci_pconnect,
-		char access_mode, char replica_only, const char *ssl_db, T_MAX_HEAP_NODE * job_queue,
-		int job_queue_size, pthread_mutex_t * job_queue_mutex, pthread_cond_t * job_queue_cond);
+		const char *access_mode_p, const int *replica_only_p, const char *ssl_db,
+		T_MAX_HEAP_NODE * job_queue, int job_queue_size, pthread_mutex_t * job_queue_mutex,
+		pthread_cond_t * job_queue_cond);
   void brd_final (void);
 
 /* receiver thread: takes ownership of clt_sock_fd right after header

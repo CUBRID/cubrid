@@ -197,8 +197,9 @@ namespace brd
     int max_slots = 0;
     char statement_pooling = 1;
     char cci_pconnect = 0;
-    char access_mode = 0;	/* shm_appl->access_mode: RW/RO/SO (#121 D1) */
-    char replica_only = 0;	/* shm_appl->replica_only_flag (#121 D1) */
+    /* live shm_appl reads at handoff time (#121 D1; dynamic since B4) */
+    const char *access_mode_p = NULL;
+    const int *replica_only_p = NULL;
 
     /* job queue plumbing owned by broker.c */
     T_MAX_HEAP_NODE *job_queue = NULL;
@@ -811,7 +812,7 @@ using namespace brd;
 
 int
 brd_init (const char *broker_name, int max_slots, char statement_pooling, char cci_pconnect,
-	  char access_mode, char replica_only, const char *ssl_db, T_MAX_HEAP_NODE * job_queue,
+	  const char *access_mode_p, const int *replica_only_p, const char *ssl_db, T_MAX_HEAP_NODE * job_queue,
 	  int job_queue_size, pthread_mutex_t * job_queue_mutex, pthread_cond_t * job_queue_cond)
 {
   assert (brd_Manager == NULL);
@@ -820,8 +821,8 @@ brd_init (const char *broker_name, int max_slots, char statement_pooling, char c
   m->max_slots = max_slots;
   m->statement_pooling = statement_pooling;
   m->cci_pconnect = cci_pconnect;
-  m->access_mode = access_mode;
-  m->replica_only = replica_only;
+  m->access_mode_p = access_mode_p;
+  m->replica_only_p = replica_only_p;
   m->ssl_db = (ssl_db != NULL) ? ssl_db : "";
   m->job_queue = job_queue;
   m->job_queue_size = job_queue_size;
@@ -990,8 +991,8 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
       std::memset (&body, 0, sizeof (body));
       std::memcpy (&body.client_ip, job->ip_addr, 4);
       body.client_port = job->port;
-      body.access_mode = (std::uint8_t) m->access_mode;
-      body.replica_only = (std::uint8_t) m->replica_only;
+      body.access_mode = (std::uint8_t) (*m->access_mode_p);
+      body.replica_only = (std::uint8_t) (*m->replica_only_p ? 1 : 0);
       body.slot_idx = 0;	/* per-slot identity retired with the CAS pool */
       /* broker-owned connect-reply facts (cas_bi_make_broker_info bytes 0-3);
        * the server overwrites its own bytes 4-7 (proto version, function
