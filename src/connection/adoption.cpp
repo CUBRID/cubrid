@@ -344,13 +344,16 @@ namespace cubconn
       m->active_finishers.fetch_add (1);
 
       std::uint64_t channel_id = 0;
+      char owner_broker[BROKER_NAME_MAX];
       bool found = false;
+      owner_broker[0] = '\0';
       {
 	std::lock_guard<std::mutex> guard (m->registry_mutex);
 	auto it = m->registry.find (token);
 	if (it != m->registry.end ())
 	  {
 	    channel_id = it->second.channel_id;
+	    std::memcpy (owner_broker, it->second.broker_name, sizeof (owner_broker));
 	    m->registry.erase (it);
 	    found = true;
 	  }
@@ -362,8 +365,7 @@ namespace cubconn
 	  return;
 	}
 
-      /* frees the broker's slot (#117 D3); the channel may be gone (broker
-       * restart) — the re-sync handshake reconciles the count then */
+      /* frees the broker's slot (#117 D3) */
       std::shared_ptr<channel> ch;
       {
 	std::lock_guard<std::mutex> guard (m->channels_mutex);
@@ -371,6 +373,21 @@ namespace cubconn
 	if (it != m->channels.end ())
 	  {
 	    ch = it->second;
+	  }
+	else
+	  {
+	    /* the owning channel died (broker restart): the restarted broker
+	     * rebuilt this token from the RESYNC reply, so deliver the END on
+	     * any live channel of the same broker (codex F2, server half) —
+	     * dropping it left the slot leaked until the next restart */
+	    for (auto &pair : m->channels)
+	      {
+		if (std::strncmp (pair.second->broker_name, owner_broker, BROKER_NAME_MAX) == 0)
+		  {
+		    ch = pair.second;
+		    break;
+		  }
+	      }
 	  }
       }
       if (ch != NULL)
@@ -527,19 +544,29 @@ namespace cubconn
     static void
     handle_resync (manager &m, channel &ch)
     {
-      resync_reply_body reply;
-      reply.live_count = 0;
+      /* reply = resync_reply_body + live_count trailing resync_token_body
+       * entries, so a restarted broker rebuilds its token table (codex F2) */
+      std::vector<char> buf (sizeof (resync_reply_body));
+      std::uint32_t live_count = 0;
       {
 	std::lock_guard<std::mutex> guard (m.registry_mutex);
 	for (const auto &pair : m.registry)
 	  {
 	    if (std::strncmp (pair.second.broker_name, ch.broker_name, BROKER_NAME_MAX) == 0)
 	      {
-		reply.live_count++;
+		resync_token_body t;
+		t.token = pair.first;
+		t.client_ip = pair.second.client_ip;
+		const char *p = reinterpret_cast<const char *> (&t);
+		buf.insert (buf.end (), p, p + sizeof (t));
+		live_count++;
 	      }
 	  }
       }
-      (void) send_message (ch, msg_op::RESYNC_REPLY, &reply, sizeof (reply));
+      resync_reply_body reply;
+      reply.live_count = live_count;
+      std::memcpy (buf.data (), &reply, sizeof (reply));
+      (void) send_message (ch, msg_op::RESYNC_REPLY, buf.data (), buf.size ());
     }
 
     /* ------------------------------------------------------------------ */

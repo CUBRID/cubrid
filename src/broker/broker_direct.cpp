@@ -51,6 +51,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -58,6 +59,7 @@
 #include <thread>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "adoption.hpp"
 #include "cas_common.h"		/* FN_STATUS_* */
@@ -251,7 +253,9 @@ namespace brd
     std::condition_variable reply_cv;
     bool reply_ready = false;
     adopt::msg_header reply_header;
-    char reply_body[64];
+    /* sized at dial: RESYNC replies carry up to max_slots trailing token
+     * entries (codex F2) */
+    std::vector<char> reply_body;
 
     std::atomic<bool> dead { false };
   };
@@ -273,8 +277,10 @@ namespace brd
   static void
   slots_acquire (manager &m, int count)
   {
-    m.slots_used.fetch_add (count);
-    m.shm->brd_slots_used = m.slots_used.load ();
+    /* mirror the value THIS transition produced (codex F6: a separate load
+     * interleaves with concurrent updates and publishes a stale count) */
+    int now = m.slots_used.fetch_add (count) + count;
+    m.shm->brd_slots_used = now;
   }
 
   static void
@@ -285,33 +291,31 @@ namespace brd
     int used = m.slots_used.load ();
     while (used > 0 && !m.slots_used.compare_exchange_weak (used, used - 1))
       ;
-    m.shm->brd_slots_used = m.slots_used.load ();
+    m.shm->brd_slots_used = (used > 0) ? used - 1 : 0;
   }
 
   static void
   tokens_drop_for_db (manager &m, const std::string &db_name)
   {
-    int dropped = 0;
-    {
-      std::lock_guard<std::mutex> guard (m.tokens_mutex);
-      for (auto it = m.tokens.begin (); it != m.tokens.end ();)
-	{
-	  if (it->second.db_name == db_name)
-	    {
-	      it = m.tokens.erase (it);
-	      dropped++;
-	    }
-	  else
-	    {
-	      ++it;
-	    }
-	}
-    }
-    /* the sessions died with their server: free their slots (#117 D7 —
-     * otherwise every server restart leaks slots until the pool starves) */
-    while (dropped-- > 0)
+    /* erase and release under the same lock the ACK path holds while it
+     * inserts+acquires: either order then nets to a consistent count
+     * (codex F4 — releasing outside let a late ACK acquire a slot for a
+     * token this loop had already dropped) */
+    std::lock_guard<std::mutex> guard (m.tokens_mutex);
+    for (auto it = m.tokens.begin (); it != m.tokens.end ();)
       {
-	slots_release (m);
+	if (it->second.db_name == db_name)
+	  {
+	    it = m.tokens.erase (it);
+	    /* the sessions died with their server: free their slots (#117
+	     * D7 — otherwise every server restart leaks slots until the
+	     * pool starves) */
+	    slots_release (m);
+	  }
+	else
+	  {
+	    ++it;
+	  }
       }
   }
 
@@ -329,12 +333,12 @@ namespace brd
 	  {
 	    break;
 	  }
-	if (header.magic != adopt::PROTO_MAGIC || header.length > sizeof (ch->reply_body))
+	if (header.magic != adopt::PROTO_MAGIC || header.length > ch->reply_body.size ())
 	  {
 	    break;
 	  }
-	char body[sizeof (ch->reply_body)];
-	if (header.length > 0 && recv_all (ch->fd, body, header.length) != 0)
+	std::vector<char> body (ch->reply_body.size ());
+	if (header.length > 0 && recv_all (ch->fd, body.data (), header.length) != 0)
 	  {
 	    break;
 	  }
@@ -344,7 +348,7 @@ namespace brd
 	    if (header.length == sizeof (adopt::token_body))
 	      {
 		adopt::token_body tb;
-		std::memcpy (&tb, body, sizeof (tb));
+		std::memcpy (&tb, body.data (), sizeof (tb));
 		bool known = false;
 		{
 		  std::lock_guard<std::mutex> guard (m->tokens_mutex);
@@ -360,17 +364,17 @@ namespace brd
 			  break;
 			}
 		    }
-		  if (!known)
+		  if (known)
+		    {
+		      slots_release (*m);
+		    }
+		  else
 		    {
 		      /* the dispatch thread has not processed the ACK yet:
 		       * park the end for the ACK to consume (codex F1) */
 		      m->orphan_ends.insert (std::make_pair (tb.token, ch->db_name));
 		    }
 		}
-		if (known)
-		  {
-		    slots_release (*m);
-		  }
 	      }
 	    continue;
 	  }
@@ -379,7 +383,7 @@ namespace brd
 	{
 	  std::lock_guard<std::mutex> guard (ch->reply_mutex);
 	  ch->reply_header = header;
-	  std::memcpy (ch->reply_body, body, header.length);
+	  std::memcpy (ch->reply_body.data (), body.data (), header.length);
 	  ch->reply_ready = true;
 	}
 	ch->reply_cv.notify_one ();
@@ -534,8 +538,14 @@ namespace brd
     *reply_header = ch.reply_header;
     if (ch.reply_header.length > 0 && reply_body != NULL)
       {
-	assert (ch.reply_header.length <= reply_body_size);
-	std::memcpy (reply_body, ch.reply_body, ch.reply_header.length);
+	if (ch.reply_header.length > reply_body_size)
+	  {
+	    /* a reply bigger than the caller's buffer is a protocol error —
+	     * refuse it instead of truncating silently (codex F2 rework) */
+	    assert (false);
+	    return -1;
+	  }
+	std::memcpy (reply_body, ch.reply_body.data (), ch.reply_header.length);
       }
     return 0;
   }
@@ -619,6 +629,8 @@ namespace brd
     auto ch = std::make_shared<channel> ();
     ch->db_name = db_name;
     ch->fd = fd;
+    /* big enough for a RESYNC reply carrying max_slots token entries */
+    ch->reply_body.resize (64 + (std::size_t) m.max_slots * sizeof (adopt::resync_token_body));
     ch->reader = std::thread (channel_reader_run, &m, ch);
     ch->reader.detach ();
 
@@ -628,9 +640,9 @@ namespace brd
     strncpy (hello.broker_name, m.broker_name.c_str (), sizeof (hello.broker_name) - 1);
 
     adopt::msg_header reply_header;
-    char reply_body[64];
+    std::vector<char> reply_body (ch->reply_body.size ());
     if (channel_request (*ch, adopt::msg_op::HELLO, &hello, sizeof (hello), NULL, 0, -1,
-			 &reply_header, reply_body, sizeof (reply_body)) != 0
+			 &reply_header, reply_body.data (), reply_body.size ()) != 0
 	|| (adopt::msg_op) reply_header.op != adopt::msg_op::HELLO_ACK)
       {
 	ch->dead.store (true);
@@ -639,14 +651,31 @@ namespace brd
       }
 
     /* restart re-sync (#117 D7): sessions surviving a broker restart occupy
-     * slots the new incarnation doesn't know about */
+     * slots the new incarnation doesn't know about.  The reply carries the
+     * survivors' tokens (codex F2) — rebuild the table with them, or every
+     * survivor's later SESSION_END is an unknown token and its slot leaks. */
     if (channel_request (*ch, adopt::msg_op::RESYNC, NULL, 0, NULL, 0, -1,
-			 &reply_header, reply_body, sizeof (reply_body)) == 0
+			 &reply_header, reply_body.data (), reply_body.size ()) == 0
 	&& (adopt::msg_op) reply_header.op == adopt::msg_op::RESYNC_REPLY
-	&& reply_header.length == sizeof (adopt::resync_reply_body))
+	&& reply_header.length >= sizeof (adopt::resync_reply_body))
       {
 	adopt::resync_reply_body resync;
-	std::memcpy (&resync, reply_body, sizeof (resync));
+	std::memcpy (&resync, reply_body.data (), sizeof (resync));
+	std::size_t trailing = (reply_header.length - sizeof (resync)) / sizeof (adopt::resync_token_body);
+	std::size_t n = (trailing < (std::size_t) resync.live_count) ? trailing : (std::size_t) resync.live_count;
+	{
+	  std::lock_guard<std::mutex> guard (m.tokens_mutex);
+	  for (std::size_t i = 0; i < n; i++)
+	    {
+	      adopt::resync_token_body t;
+	      std::memcpy (&t, reply_body.data () + sizeof (resync) + i * sizeof (t), sizeof (t));
+	      token_info ti;
+	      ti.db_name = db_name;
+	      std::memcpy (ti.clt_ip, &t.client_ip, 4);
+	      ti.clt_port = 0;	/* unknown post-restart: cancel requires the ip to match */
+	      m.tokens.emplace (t.token, ti);
+	    }
+	}
 	if (resync.live_count > 0)
 	  {
 	    slots_acquire (m, (int) resync.live_count);
@@ -1059,16 +1088,23 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
 	  adopt::token_body ack;
 	  std::memcpy (&ack, reply_body, sizeof (ack));
 	  bool already_ended;
+	  bool channel_died = false;
 	  {
+	    /* insert + acquire under the same lock tokens_drop_for_db holds
+	     * for erase + release: either interleaving nets consistently.
+	     * A dead channel means the reader already dropped this db's
+	     * tokens/slots — a late insert would leak both (codex F4). */
 	    std::lock_guard<std::mutex> guard (m->tokens_mutex);
 	    already_ended = (m->orphan_ends.erase (std::make_pair (ack.token, std::string (db_name))) > 0);
-	    if (!already_ended)
+	    channel_died = ch->dead.load ();
+	    if (!already_ended && !channel_died)
 	      {
 		token_info ti;
 		ti.db_name = db_name;
 		std::memcpy (ti.clt_ip, job->ip_addr, 4);
 		ti.clt_port = job->port;
 		m->tokens.emplace (ack.token, ti);
+		slots_acquire (*m, 1);
 	      }
 	  }
 	  if (already_ended)
@@ -1077,10 +1113,14 @@ brd_dispatch_job (T_MAX_HEAP_NODE * job)
 	       * SESSION_END was parked — the slot was never occupied (codex F1) */
 	      brd_debug ("handoff db=%s: token=%u ended before ack", db_name, ack.token);
 	    }
+	  else if (channel_died)
+	    {
+	      /* the server (and the session) died between the ACK and here */
+	      brd_debug ("handoff db=%s: token=%u acked on a dead channel", db_name, ack.token);
+	    }
 	  else
 	    {
 	      brd_debug ("handoff db=%s: token=%u stored (clt_port=%u)", db_name, ack.token, (unsigned) job->port);
-	      slots_acquire (*m, 1);
 	      m->shm->brd_num_handoffs++;
 	    }
 	  close (job->clt_sock_fd);	/* the server owns the connection now */
@@ -1124,19 +1164,42 @@ brd_cancel (unsigned int token, const unsigned char *clt_ip, unsigned short clt_
 	brd_debug ("cancel token=%u: unknown (table size %zu)", token, m->tokens.size ());
 	return -1;
       }
-    /* the anti-spoof check the pid scan used to make (broker.c:938-943):
-     * client port or client ip must match.  It doubles as the disambiguator
-     * when equal tokens are live for different databases. */
+    /* the anti-spoof check the pid scan used to make (broker.c:938-943)
+     * doubles as the disambiguator when equal tokens are live for different
+     * databases.  Preference order (codex F3 — OR-matching could route a
+     * cancel to the wrong database's session): exact (ip AND port) first,
+     * then ip-only (covers RESYNC-rebuilt entries, which carry port 0),
+     * then the legacy lenient rule only when the token is unambiguous. */
     bool found = false;
     for (auto it = range.first; it != range.second; ++it)
       {
-	if (clt_port > 0 && it->second.clt_port != clt_port && std::memcmp (it->second.clt_ip, clt_ip, 4) != 0)
+	if (clt_port > 0 && it->second.clt_port == clt_port && std::memcmp (it->second.clt_ip, clt_ip, 4) == 0)
 	  {
-	    continue;
+	    db_name = it->second.db_name;
+	    found = true;
+	    break;
 	  }
-	db_name = it->second.db_name;
-	found = true;
-	break;
+      }
+    if (!found)
+      {
+	for (auto it = range.first; it != range.second; ++it)
+	  {
+	    if (std::memcmp (it->second.clt_ip, clt_ip, 4) == 0)
+	      {
+		db_name = it->second.db_name;
+		found = true;
+		break;
+	      }
+	  }
+      }
+    if (!found && std::next (range.first) == range.second)
+      {
+	auto it = range.first;
+	if (!(clt_port > 0 && it->second.clt_port != clt_port && std::memcmp (it->second.clt_ip, clt_ip, 4) != 0))
+	  {
+	    db_name = it->second.db_name;
+	    found = true;
+	  }
       }
     if (!found)
       {
