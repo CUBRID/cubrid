@@ -618,6 +618,13 @@ admin_add_cmd (int master_shm_id, const char *broker)
       uw_shm_detach (shm_br);
       return 0;
     }
+  if (shm_br->br_info[br_index].direct_handoff == ON)
+    {
+      sprintf (admin_err_msg, "Cannot add appl server: broker [%s] is a direct-handoff front (no CAS pool)\n",
+	       broker);
+      uw_shm_detach (shm_br);
+      return -1;
+    }
 
   if (shm_br->br_info[br_index].auto_add_appl_server == ON)
     {
@@ -704,6 +711,12 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
     {
       uw_shm_detach (shm_br);
       return 0;
+    }
+  if (shm_br->br_info[br_index].direct_handoff == ON)
+    {
+      sprintf (admin_err_msg, "Cannot restart appl server: broker [%s] is a direct-handoff front (no CAS pool)\n",
+	       broker);
+      goto restart_error;
     }
 
   shm_appl = (T_SHM_APPL_SERVER *) uw_shm_open (appl_shm_key, SHM_APPL_SERVER, SHM_MODE_ADMIN);
@@ -892,6 +905,12 @@ admin_drop_cmd (int master_shm_id, const char *broker)
     {
       uw_shm_detach (shm_br);
       return 0;
+    }
+  if (shm_br->br_info[br_index].direct_handoff == ON)
+    {
+      sprintf (admin_err_msg, "Cannot drop appl server: broker [%s] is a direct-handoff front (no CAS pool)", broker);
+      uw_shm_detach (shm_br);
+      return -1;
     }
 
   shm_appl_server = (T_SHM_APPL_SERVER *) uw_shm_open (appl_shm_key, SHM_APPL_SERVER, SHM_MODE_ADMIN);

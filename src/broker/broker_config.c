@@ -1245,6 +1245,17 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
+#if !defined (WINDOWS)
+      /* B4 (#116 D1): the standalone CAS is removed on UNIX — a plain CAS
+       * broker always hands connections off to the server directly. The
+       * gateway (CAS_CGW) and the Windows relay path keep their appl-server
+       * pools. */
+      if (br_info[num_brs].appl_server == APPL_SERVER_CAS && br_info[num_brs].shard_flag == OFF)
+	{
+	  br_info[num_brs].direct_handoff = ON;
+	}
+#endif
+
       num_brs++;
     }
 
@@ -1307,6 +1318,12 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
 	  if (br_info[i].shard_flag == ON)
 	    {
+#if !defined (WINDOWS)
+	      /* B4 (#116 D2): SHARD is not supported in the new architecture
+	       * (sources stay frozen; removal is upstream's call) */
+	      PRINTERROR ("config error, %s, SHARD is not supported\n", br_info[i].name);
+	      error_flag = TRUE;
+#endif
 	      if (br_info[i].proxy_shm_id <= 0)
 		{
 		  PRINTERROR ("config error, %s, SHARD_PROXY_SHM_ID\n", br_info[i].name);
@@ -1319,10 +1336,10 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 		}
 	    }
 
-	  /* SHARD is not supported in the new architecture (#116 D2) */
-	  if (br_info[i].direct_handoff == ON && br_info[i].shard_flag == ON)
+	  /* B4 (#116 D1/D7): the gateway keeps its CAS pool — no handoff */
+	  if (br_info[i].direct_handoff == ON && br_info[i].appl_server != APPL_SERVER_CAS)
 	    {
-	      PRINTERROR ("config error, %s, DIRECT_HANDOFF cannot be combined with SHARD\n", br_info[i].name);
+	      PRINTERROR ("config error, %s, DIRECT_HANDOFF requires APPL_SERVER=CAS\n", br_info[i].name);
 	      error_flag = TRUE;
 	    }
 
