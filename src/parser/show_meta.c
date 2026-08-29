@@ -33,6 +33,9 @@
 #include <ctype.h>
 
 #include "authenticate.h"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
 #include "show_meta.h"
 #include "error_manager.h"
 #include "parser.h"
@@ -974,8 +977,44 @@ free_db_attribute_list (SHOWSTMT_METADATA * md)
  * showstmt_metadata_init() -- initialize the metadata of show statements
  * return error code>
  */
+static int showstmt_metadata_init_internal (void);
+
 int
 showstmt_metadata_init (void)
+{
+#if defined (SERVER_MODE)
+  /* B4: this runs once, from the FIRST session's boot (boot_restart_client,
+   * which is serialized) — but init_db_attribute_list's attribute structs
+   * are workspace-heap allocations, and a session's workspace dies with the
+   * session now (B4-D6 immediate teardown), leaving show_Metas[] pointing
+   * into freed memory for every later session's SHOW.  Build the
+   * process-lifetime metadata under its own never-torn-down context instead
+   * (the dk_boot_ctx pattern, deduplicate_key.c). */
+  int error;
+  client_session_context *session_ctx;
+
+  if (show_Inited)
+    {
+      return NO_ERROR;
+    }
+
+  session_ctx = csc_current ();
+  csc_deactivate ();
+  {
+    static client_session_context show_boot_ctx;
+    csc_activate (&show_boot_ctx);
+    error = showstmt_metadata_init_internal ();
+    csc_deactivate ();
+  }
+  csc_activate (session_ctx);
+  return error;
+#else
+  return showstmt_metadata_init_internal ();
+#endif
+}
+
+static int
+showstmt_metadata_init_internal (void)
 {
   int error;
   unsigned int i;
