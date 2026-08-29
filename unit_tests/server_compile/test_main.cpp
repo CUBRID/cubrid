@@ -39,6 +39,7 @@
 
 #include "authenticate.h"
 #include "authenticate_password.hpp"
+#include "boot.h"		// HA_SERVER_STATE (B3, #121 D2)
 #include "broker_config.h"	// access-mode enum (B3, #121 D7)
 #include "db_client_type.hpp"
 #include "cas_common_vars.h"	// shm_as_index (per-session slot id, B2-D1)
@@ -551,6 +552,55 @@ test_synthesize_client_type (void)
 }
 
 static int
+test_admission_check (void)
+{
+  using cubconn::adoption::admission_check;
+
+  /* #121 D2 admission matrix: reject = non-NULL reason, admit = NULL.
+   * columns: client_type, ha_state, ha_disabled, is_replica, repl_delayed */
+  struct
+  {
+    int client_type;
+    int ha_state;
+    bool ha_disabled;
+    bool is_replica;
+    bool repl_delayed;
+    bool admitted;
+  } cases[] = {
+    /* reject rows (the reset table's connect-time pre-application) */
+    {DB_CLIENT_TYPE_BROKER, HA_SERVER_STATE_STANDBY, false, false, false, false},	/* RW x standby */
+    {DB_CLIENT_TYPE_SLAVE_ONLY_BROKER, HA_SERVER_STATE_ACTIVE, false, false, false, false},	/* SO x active */
+    {DB_CLIENT_TYPE_READ_ONLY_BROKER, HA_SERVER_STATE_STANDBY, false, false, true, false},	/* repl delay */
+    {DB_CLIENT_TYPE_BROKER, HA_SERVER_STATE_TO_BE_STANDBY, false, false, false, false},	/* drain */
+    {DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY, HA_SERVER_STATE_ACTIVE, false, false, false, false},	/* replica mismatch */
+    {DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY, HA_SERVER_STATE_STANDBY, true, false, false, false},	/* replica mismatch, non-HA */
+    /* accept rows (no reset-table row: the strict pass's asymmetry, #121 D2) */
+    {DB_CLIENT_TYPE_READ_ONLY_BROKER, HA_SERVER_STATE_ACTIVE, false, false, false, true},	/* RO x active */
+    {DB_CLIENT_TYPE_READ_ONLY_BROKER, HA_SERVER_STATE_STANDBY, false, false, false, true},	/* RO x standby */
+    {DB_CLIENT_TYPE_SLAVE_ONLY_BROKER, HA_SERVER_STATE_STANDBY, false, false, false, true},	/* SO x standby */
+    {DB_CLIENT_TYPE_SLAVE_ONLY_BROKER, HA_SERVER_STATE_TO_BE_STANDBY, false, false, false, true},	/* SO is not a normal type: no drain */
+    {DB_CLIENT_TYPE_BROKER, HA_SERVER_STATE_ACTIVE, false, false, false, true},	/* RW x active */
+    {DB_CLIENT_TYPE_BROKER, HA_SERVER_STATE_ACTIVE, true, false, false, true},	/* non-HA accepts everything */
+    {DB_CLIENT_TYPE_SLAVE_ONLY_BROKER, HA_SERVER_STATE_ACTIVE, true, false, false, true},	/* SO x non-HA */
+    {DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY, HA_SERVER_STATE_STANDBY, false, true, false, true},	/* replica-only on replica */
+    {DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY, HA_SERVER_STATE_STANDBY, false, true, false, true},	/* write-on-standby replica RW */
+  };
+
+  for (size_t i = 0; i < sizeof (cases) / sizeof (cases[0]); i++)
+    {
+      const char *deny = admission_check (cases[i].client_type, cases[i].ha_state, cases[i].ha_disabled,
+					  cases[i].is_replica, cases[i].repl_delayed);
+      if ((deny == NULL) != cases[i].admitted)
+	{
+	  fprintf (stderr, "FAIL: admission_check case %zu (type %d, state %d): %s\n", i, cases[i].client_type,
+		   cases[i].ha_state, deny != NULL ? deny : "admitted");
+	  return 1;
+	}
+    }
+  return 0;
+}
+
+static int
 test_adoption_wire_helpers (void)
 {
   using namespace cubconn::adoption;
@@ -765,6 +815,12 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: ACCESS_MODE x REPLICA_ONLY synthesizes all six broker client types\n");
+
+  if (test_admission_check () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: strict single-pass admission matrix (#121 D2) rejects and admits per table\n");
 
   if (test_session_slot_indices () != 0)
     {

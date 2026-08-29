@@ -45,9 +45,11 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "boot.h"		// BOOT client-type macros, HA_SERVER_STATE (#121 D2/D7)
 #include "client_session_context.hpp"
 #include "connection_defs.h"
 #include "connection_sr.h"
+#include "server_support.h"	// css_ha_server_state, css_is_ha_repl_delayed
 #include "db.h"
 #include "db_client_type.hpp"
 #include "error_manager.h"
@@ -229,6 +231,67 @@ namespace cubconn
 	  return replica_only ? DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY : DB_CLIENT_TYPE_SLAVE_ONLY_BROKER;
 	}
       return replica_only ? DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY : DB_CLIENT_TYPE_BROKER;
+    }
+
+    const char *
+    admission_check (int client_type, int ha_state, bool ha_disabled, bool is_replica_server, bool repl_delayed)
+    {
+      /* the replica capability check was unconditional on the client side
+       * (network_cl.c NET_CAP_HA_REPLICA), with no lenient second pass for
+       * replica-only types (boot_cl.c host loop) — same here */
+      if (BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_type) && !is_replica_server)
+	{
+	  return "replica-only broker requires a replica server";
+	}
+
+      if (ha_disabled)
+	{
+	  /* the reset table's HA rows never produce a driver-visible reset on
+	   * a non-HA server (the CS consumption is gated on replication being
+	   * allowed), so admission mirrors that: accept everything */
+	  return NULL;
+	}
+
+      switch (ha_state)
+	{
+	case HA_SERVER_STATE_TO_BE_STANDBY:
+	  /* the -366 fail-back drain refuses new normal clients at
+	   * registration with a DBMS error; refusing them here instead keeps
+	   * the rejection on the driver's retryable whitelist so altHosts
+	   * failover reaches the new active (the fold has no CAS host loop
+	   * to absorb the DBMS error) */
+	  if (BOOT_NORMAL_CLIENT_TYPE (client_type))
+	    {
+	      return "server is changing to standby mode";
+	    }
+	  break;
+
+	case HA_SERVER_STATE_STANDBY:
+	  if (client_type == DB_CLIENT_TYPE_BROKER)
+	    {
+	      return "read-write broker on a standby server";
+	    }
+	  if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_type) && repl_delayed)
+	    {
+	      /* adopted sessions never carry the all-hosts-delayed override
+	       * (NET_CAP_HA_IGNORE_REPL_DELAY) — that last-resort acceptance
+	       * is the loss #121 D2 chose */
+	      return "replication is delayed on this standby server";
+	    }
+	  break;
+
+	case HA_SERVER_STATE_ACTIVE:
+	  if (client_type == DB_CLIENT_TYPE_SLAVE_ONLY_BROKER)
+	    {
+	      return "slave-only broker on an active server";
+	    }
+	  break;
+
+	default:
+	  break;
+	}
+
+      return NULL;
     }
 
     int
@@ -557,6 +620,21 @@ namespace cubconn
 			    CAS_ER_NOT_AUTHORIZED_CLIENT, "Authorization error.(Address is rejected)");
 	  goto retire;
 	}
+
+      /* strict single-pass admission (#121 D2): combinations the reset table
+       * would bounce at the first transaction boundary are refused now, on
+       * the driver's retryable whitelist (D3) so altHosts failover moves the
+       * driver to the right host at once */
+      {
+	const char *deny = admission_check (params.client_type, (int) css_ha_server_state (), HA_DISABLED (),
+					    HA_GET_MODE () == HA_MODE_REPLICA, css_is_ha_repl_delayed ());
+	if (deny != NULL)
+	  {
+	    send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR, CAS_ER_FREE_SERVER,
+			      deny);
+	    goto retire;
+	  }
+      }
 
       /* the session-scoped log producers a CAS process opened at startup
        * (B2-D2/D4): SQL/slow logs on this slot, DDL audit identity */
