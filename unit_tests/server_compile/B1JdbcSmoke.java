@@ -549,6 +549,28 @@ public class B1JdbcSmoke {
         stmt.close();
         con.close();
 
+        // 19. altHosts failover (stage B3, workspace#122 D5): the primary
+        // host is a dead port, so the driver's whitelist/retry machinery
+        // must move to the altHost — the only failover path left once the
+        // CAS-side host loop is gone (#121 D3/D8)
+        if (sslMode) {
+            System.out.println("B1_JDBC: step alt_hosts (skipped in ssl mode)");
+        } else {
+            step("alt_hosts");
+            int deadPort = Integer.parseInt(args[0]) + 17;
+            String altUrl = "jdbc:cubrid:127.0.0.1:" + deadPort + ":" + args[1]
+                    + ":::?altHosts=127.0.0.1:" + args[0] + "&rcTime=600";
+            Connection alt = DriverManager.getConnection(altUrl, user, pass);
+            Statement astmt = alt.createStatement();
+            ResultSet ars = astmt.executeQuery("SELECT 1 FROM db_root");
+            if (!ars.next() || ars.getInt(1) != 1) {
+                throw new RuntimeException("altHosts failover connection cannot query");
+            }
+            ars.close();
+            astmt.close();
+            alt.close();
+        }
+
         System.out.println("B1_JDBC: SUCCESS");
     }
 }

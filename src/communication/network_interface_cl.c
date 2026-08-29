@@ -3120,9 +3120,23 @@ tran_server_commit (bool retain_lock)
 #if defined (SERVER_MODE)
   /* the row-count cache rides the commit request on the wire path (see stran_server_commit); no deferred end-query drain here — the fold never defers */
   (void) xsession_set_row_count (thread_p, db_get_row_count_cache ());
+  bool has_updated = logtb_has_updated (thread_p);
 #endif /* SERVER_MODE */
 
   tran_state = xtran_server_commit (thread_p, retain_lock);
+
+#if defined (SERVER_MODE)
+  /* the CS commit reply carried should_conn_reset (stran_server_commit);
+   * the fold computes it in place (#121 D3).  The CS consumer's
+   * log_does_allow_replication() gate only excluded copier/applier client
+   * types, which an in-process session can never be — the SERVER_MODE
+   * variant of that function answers a different question (it is false on
+   * standby) and must not be used here */
+  if (xtran_should_connection_reset (thread_p, has_updated))
+    {
+      db_Connect_status = DB_CONNECTION_STATUS_RESET;
+    }
+#endif /* SERVER_MODE */
 
   exit_server (*thread_p);
 
@@ -3178,7 +3192,19 @@ tran_server_abort (void)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
+#if defined (SERVER_MODE)
+  bool has_updated = logtb_has_updated (thread_p);
+#endif /* SERVER_MODE */
+
   tran_state = xtran_server_abort (thread_p);
+
+#if defined (SERVER_MODE)
+  /* mirror of the commit seam above (#121 D3) */
+  if (xtran_should_connection_reset (thread_p, has_updated))
+    {
+      db_Connect_status = DB_CONNECTION_STATUS_RESET;
+    }
+#endif /* SERVER_MODE */
 
   exit_server (*thread_p);
 

@@ -71,6 +71,14 @@ namespace cubconn
      * Returns an int of the DB_CLIENT_TYPE enum. */
     int synthesize_client_type (int access_mode, int replica_only);
 
+    /* #121 D2: strict single-pass admission — the client-type x HA-state
+     * combinations the xtran_should_connection_reset table would bounce at
+     * the first transaction boundary are refused at session establishment
+     * instead.  Returns NULL to admit, or a short reason for the retryable
+     * rejection (D3).  ha_state is an HA_SERVER_STATE value. */
+    const char *admission_check (int client_type, int ha_state, bool ha_disabled, bool is_replica_server,
+				 bool repl_delayed);
+
     /* build the V4+ CAS connect reply (36 payload bytes + 4-byte length
      * prefix + 4-byte cas_info = 44 bytes total).  session_20b is the
      * DRIVER_SESSION_SIZE driver session blob.  Returns bytes written. */
