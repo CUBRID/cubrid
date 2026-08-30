@@ -574,8 +574,19 @@ namespace cubconn
 	  return false;
 	}
 
+      /* codex review #6: transfer fd ownership to the session thread BEFORE
+       * spawning it, so a fast-failing session can never close-and-let-reuse
+       * a descriptor the channel loop / stop() still believes it owns.  The
+       * channel keeps fd == -1 from here; on spawn failure we restore it. */
+      int client_fd;
+      {
+	std::lock_guard<std::mutex> guard (ch.send_mutex);
+	client_fd = ch.fd;
+	ch.fd = -1;
+      }
+
       session_params params;
-      params.client_fd = ch.fd;
+      params.client_fd = client_fd;
       params.slot_idx = -1;	/* no broker slot */
       params.client_ip = htonl (INADDR_LOOPBACK);
       params.client_port = 0;
@@ -605,7 +616,7 @@ namespace cubconn
 	entry.token = token;
 	entry.channel_id = ch.id;
 	std::memcpy (entry.broker_name, params.broker_name.c_str (), params.broker_name.size () + 1);
-	entry.client_fd = ch.fd;
+	entry.client_fd = client_fd;
 	entry.tran_index = NULL_TRAN_INDEX;
 	entry.fn_status = FN_STATUS_PROBE_BUSY;
 	entry.direct = true;
@@ -624,9 +635,14 @@ namespace cubconn
 	{
 	  css_decrement_num_conn ((BOOT_CLIENT_TYPE) client_type);
 	  registry_session_finished (token);
+	  /* restore fd ownership to the channel so its exit path closes it */
+	  {
+	    std::lock_guard<std::mutex> guard (ch.send_mutex);
+	    ch.fd = client_fd;
+	  }
 	  reject.reason = (std::int32_t) reject_reason::SHUTDOWN;
 	  (void) send_message (ch, msg_op::HANDOFF_REJECT, &reject, sizeof (reject));
-	  return false;		/* fd stays with the channel (closed on exit) */
+	  return false;
 	}
       return true;
     }
@@ -778,12 +794,8 @@ namespace cubconn
 		  std::memcpy (&body, payload, sizeof (body));
 		  if (handle_direct_connect (*m, *ch, body))
 		    {
-		      /* the fd is a driver connection now (wf122/B5); leave
-		       * it to the session thread and retire this channel */
-		      {
-			std::lock_guard<std::mutex> guard (ch->send_mutex);
-			ch->fd = -1;
-		      }
+		      /* handle_direct_connect already transferred fd ownership
+		       * (ch->fd == -1) to the session thread; just retire */
 		      goto channel_done;
 		    }
 		}
@@ -947,8 +959,17 @@ namespace cubconn
       std::memset (&addr, 0, sizeof (addr));
       addr.sun_family = AF_UNIX;
       std::strcpy (addr.sun_path, m->socket_path.c_str ());
-      if (bind (m->listen_fd, (struct sockaddr *) &addr, sizeof (addr)) < 0
-	  || listen (m->listen_fd, 8) < 0)
+      /* codex review #4: this endpoint now also serves local csql
+       * (DIRECT_CONNECT).  The broker and every local csql run as the same
+       * user as the server, so restrict the socket to owner-only — closing
+       * the cross-UID spoof vector for ALL ops (HELLO/HANDOFF/RESYNC/CANCEL,
+       * not just DIRECT_CONNECT's own SO_PEERCRED check).  fchmod before bind
+       * would not stick on the inode; chmod the bound path with a tight
+       * umask around bind to avoid the create-time window. */
+      mode_t old_umask = umask (0077);
+      int bind_rc = bind (m->listen_fd, (struct sockaddr *) &addr, sizeof (addr));
+      umask (old_umask);
+      if (bind_rc < 0 || chmod (m->socket_path.c_str (), S_IRUSR | S_IWUSR) < 0 || listen (m->listen_fd, 8) < 0)
 	{
 	  close (m->listen_fd);
 	  delete m;

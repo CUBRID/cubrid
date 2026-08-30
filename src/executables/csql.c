@@ -1248,15 +1248,31 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    csql_check_server_down ();
 	    return DO_CMD_FAILURE;
 	  }
+	/* codex review #9: only a state-CHANGING on/off form updates the
+	 * client flag; the query-only form (no argument) and invalid forms
+	 * leave it unchanged, so `;trace` alone does not silently enable
+	 * tracing and `;server-output` alone does not stop the drain */
 	if (cmd_no == S_CMD_TRACE && wire_rc == DO_CMD_SUCCESS)
 	  {
-	    /* track the client half of ;trace so later requests carry it */
-	    csql_wire_set_trace (!(argument[0] != '\0' && strncasecmp (argument, "off", 3) == 0));
+	    if (strncasecmp (argument, "on", 2) == 0)
+	      {
+		csql_wire_set_trace (true);
+	      }
+	    else if (strncasecmp (argument, "off", 3) == 0)
+	      {
+		csql_wire_set_trace (false);
+	      }
 	  }
 	if (cmd_no == S_CMD_SERVER_OUTPUT && wire_rc == DO_CMD_SUCCESS)
 	  {
-	    /* the drain flag rides every later request */
-	    csql_arg->pl_server_output = (strcasecmp (argument, "on") == 0);
+	    if (strcasecmp (argument, "on") == 0)
+	      {
+		csql_arg->pl_server_output = true;
+	      }
+	    else if (strcasecmp (argument, "off") == 0)
+	      {
+		csql_arg->pl_server_output = false;
+	      }
 	  }
 	return wire_rc;
       }
@@ -4593,7 +4609,9 @@ csql_server_session_cmd_request (const CSQL_ARGUMENT * csql_arg, const CSQL_SERV
   volatile int rc = -1;
   volatile bool au_disabled = false;
   volatile int au_save = 0;
-  char *dup;
+  /* codex review #10: volatile + freed only at end: so a csql_exit longjmp
+   * (e.g. server-down on an auto-committing command) cannot leak it */
+  char *volatile dup = NULL;
 
   csql_server_request_begin (opts, out_fp, err_fp);
   csql_Server_request_env_armed = true;
@@ -4628,10 +4646,13 @@ csql_server_session_cmd_request (const CSQL_ARGUMENT * csql_arg, const CSQL_SERV
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
     }
-  free (dup);
 
 end:
   csql_Server_request_env_armed = false;
+  if (dup != NULL)
+    {
+      free (dup);
+    }
   if (au_disabled)
     {
       int save = au_save;
