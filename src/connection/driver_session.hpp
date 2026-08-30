@@ -100,6 +100,8 @@ namespace cubconn
       char db_info[DRIVER_DB_INFO_SIZE];
       std::string server_name;	/* this server's database name */
       std::string broker_name;	/* the handing broker (ACL section key, B2-D8) */
+      bool direct = false;	/* DIRECT_CONNECT session (wf122/B5): same-uid
+				 * local peer, no broker slot, no CAS ACL */
     };
 
     /* session thread body; owns client_fd and signs off via

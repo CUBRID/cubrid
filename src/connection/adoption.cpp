@@ -30,6 +30,7 @@
 #include "adoption.hpp"
 #include "driver_session.hpp"
 
+#include <netinet/in.h>		/* htonl/INADDR_LOOPBACK (DIRECT_CONNECT, wf122/B5) */
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -48,6 +49,8 @@
 #include <vector>
 
 #include "cas_dispatch.h"	// cas_server_speaker_boot_init
+#include "cas_protocol.h"	// broker_info byte values for DIRECT_CONNECT (wf122/B5)
+#include "boot.h"		// BOOT_CSQL_CLIENT_TYPE (wf122/B5 D2)
 #include "connection_defs.h"
 #include "connection_sr.h"	// css_increment_num_conn
 #include "db_client_type.hpp"
@@ -100,6 +103,7 @@ namespace cubconn
       T_APPL_SERVER_INFO *stats_slot = NULL;
       int slot_index = -1;
       std::uint32_t client_ip = 0;
+      bool direct = false;	/* DIRECT_CONNECT session: no broker slot, no SESSION_END (wf122/B5) */
     };
 
     struct manager
@@ -346,6 +350,7 @@ namespace cubconn
       std::uint64_t channel_id = 0;
       char owner_broker[BROKER_NAME_MAX];
       bool found = false;
+      bool direct = false;
       owner_broker[0] = '\0';
       {
 	std::lock_guard<std::mutex> guard (m->registry_mutex);
@@ -353,14 +358,16 @@ namespace cubconn
 	if (it != m->registry.end ())
 	  {
 	    channel_id = it->second.channel_id;
+	    direct = it->second.direct;
 	    std::memcpy (owner_broker, it->second.broker_name, sizeof (owner_broker));
 	    m->registry.erase (it);
 	    found = true;
 	  }
       }
       m->registry_cv.notify_all ();
-      if (!found)
+      if (!found || direct)
 	{
+	  /* a DIRECT_CONNECT session has no broker slot to free (wf122/B5) */
 	  m->active_finishers.fetch_sub (1);
 	  return;
 	}
@@ -505,6 +512,125 @@ namespace cubconn
 	}
     }
 
+    /* DIRECT_CONNECT (wf122/B5 D1/D2): a same-uid local csql turns its
+     * control connection into the driver connection.  Returns true when fd
+     * ownership moved to a session thread (the channel loop must then leave
+     * the fd alone and exit); false leaves the channel as it was, with a
+     * HANDOFF_REJECT frame sent on refusal. */
+    /* the python probe and any external local client build this by hand */
+    static_assert (sizeof (direct_connect_body) == 4 + DRIVER_HEADER_SIZE + DRIVER_DB_INFO_SIZE,
+		   "direct_connect_body layout drifted");
+
+    static bool
+    handle_direct_connect (manager &m, channel &ch, const direct_connect_body &body)
+    {
+      reject_body reject;
+
+      /* same-uid gate: the adoption socket becomes reachable by local
+       * clients here; the broker ops above stay same-process-owner in
+       * practice, this op enforces it (B5-D1) */
+      struct ucred cred;
+      socklen_t cred_len = sizeof (cred);
+      if (getsockopt (ch.fd, SOL_SOCKET, SO_PEERCRED, &cred, &cred_len) != 0 || cred.uid != geteuid ())
+	{
+	  reject.reason = (std::int32_t) reject_reason::NOT_AUTHORIZED;
+	  (void) send_message (ch, msg_op::HANDOFF_REJECT, &reject, sizeof (reject));
+	  return false;
+	}
+
+      /* only the csql family may declare its own type (B5-D2); drivers keep
+       * arriving through the broker where the server synthesizes the type */
+      int client_type = (int) body.client_type;
+      if (!BOOT_CSQL_CLIENT_TYPE (client_type) || client_type == DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG)
+	{
+	  reject.reason = (std::int32_t) reject_reason::NOT_AUTHORIZED;
+	  (void) send_message (ch, msg_op::HANDOFF_REJECT, &reject, sizeof (reject));
+	  return false;
+	}
+
+      if (m.stopping.load ())
+	{
+	  reject.reason = (std::int32_t) reject_reason::SHUTDOWN;
+	  (void) send_message (ch, msg_op::HANDOFF_REJECT, &reject, sizeof (reject));
+	  return false;
+	}
+
+      char db_name[33];
+      std::size_t name_len = strnlen (body.db_info, 32);
+      std::memcpy (db_name, body.db_info, name_len);
+      db_name[name_len] = '\0';
+      if (m.db_name != db_name)
+	{
+	  reject.reason = (std::int32_t) reject_reason::DBNAME_MISMATCH;
+	  (void) send_message (ch, msg_op::HANDOFF_REJECT, &reject, sizeof (reject));
+	  return false;
+	}
+
+      if (css_increment_num_conn ((BOOT_CLIENT_TYPE) client_type) != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
+	  reject.reason = (std::int32_t) reject_reason::CLIENTS_EXCEEDED;
+	  (void) send_message (ch, msg_op::HANDOFF_REJECT, &reject, sizeof (reject));
+	  return false;
+	}
+
+      session_params params;
+      params.client_fd = ch.fd;
+      params.slot_idx = -1;	/* no broker slot */
+      params.client_ip = htonl (INADDR_LOOPBACK);
+      params.client_port = 0;
+      params.client_type = client_type;
+      params.broker_info[BROKER_INFO_DBMS_TYPE] = CAS_DBMS_CUBRID;
+      params.broker_info[BROKER_INFO_KEEP_CONNECTION] = CAS_KEEP_CONNECTION_ON;
+      params.broker_info[BROKER_INFO_STATEMENT_POOLING] = CAS_STATEMENT_POOLING_ON;
+      params.broker_info[BROKER_INFO_CCI_PCONNECT] = CCI_PCONNECT_OFF;
+      std::memset (params.broker_info + BROKER_INFO_PROTO_VERSION, 0,
+		   sizeof (params.broker_info) - BROKER_INFO_PROTO_VERSION);
+      std::memcpy (params.driver_header, body.driver_header, sizeof (params.driver_header));
+      std::memcpy (params.db_info, body.db_info, sizeof (params.db_info));
+      params.server_name = m.db_name;
+      params.broker_name = "__direct__";
+      params.direct = true;
+
+      std::uint32_t token;
+      {
+	std::lock_guard<std::mutex> guard (m.registry_mutex);
+	do
+	  {
+	    token = m.next_token++;
+	  }
+	while (token == 0 || m.registry.count (token) > 0);
+
+	session_entry entry;
+	entry.token = token;
+	entry.channel_id = ch.id;
+	std::memcpy (entry.broker_name, params.broker_name.c_str (), params.broker_name.size () + 1);
+	entry.client_fd = ch.fd;
+	entry.tran_index = NULL_TRAN_INDEX;
+	entry.fn_status = FN_STATUS_PROBE_BUSY;
+	entry.direct = true;
+	m.registry.emplace (token, entry);
+      }
+      params.token = token;
+      /* no HANDOFF_ACK: the client learns the token from the CAS connect
+       * reply's pid slot, exactly like a broker-routed driver */
+
+      try
+	{
+	  std::thread session_thread (driver_session_run, std::move (params));
+	  session_thread.detach ();
+	}
+      catch (const std::system_error &)
+	{
+	  css_decrement_num_conn ((BOOT_CLIENT_TYPE) client_type);
+	  registry_session_finished (token);
+	  reject.reason = (std::int32_t) reject_reason::SHUTDOWN;
+	  (void) send_message (ch, msg_op::HANDOFF_REJECT, &reject, sizeof (reject));
+	  return false;		/* fd stays with the channel (closed on exit) */
+	}
+      return true;
+    }
+
     static void
     handle_cancel (manager &m, const token_body &body)
     {
@@ -645,6 +771,23 @@ namespace cubconn
 		  handoff_fd = -1;
 		}
 	      break;
+	    case msg_op::DIRECT_CONNECT:
+	      if (header.length == sizeof (direct_connect_body))
+		{
+		  direct_connect_body body;
+		  std::memcpy (&body, payload, sizeof (body));
+		  if (handle_direct_connect (*m, *ch, body))
+		    {
+		      /* the fd is a driver connection now (wf122/B5); leave
+		       * it to the session thread and retire this channel */
+		      {
+			std::lock_guard<std::mutex> guard (ch->send_mutex);
+			ch->fd = -1;
+		      }
+		      goto channel_done;
+		    }
+		}
+	      break;
 	    case msg_op::CANCEL:
 	      if (header.length == sizeof (token_body))
 		{
@@ -674,13 +817,18 @@ namespace cubconn
 	    }
 	}
 
+    channel_done:
       /* invalidate under send_mutex so no concurrent SESSION_END/reply can
        * write a closed (possibly reused) descriptor (codex review F4); the
        * map entry stays — the accept loop reaps dead channels, stop() joins
-       * them (F3: the thread is joinable, never detached) */
+       * them (F3: the thread is joinable, never detached).  fd is already -1
+       * when a DIRECT_CONNECT transferred it to a session thread. */
       {
 	std::lock_guard<std::mutex> guard (ch->send_mutex);
-	close (ch->fd);
+	if (ch->fd >= 0)
+	  {
+	    close (ch->fd);
+	  }
 	ch->fd = -1;
       }
       ch->dead.store (true);
