@@ -6851,9 +6851,11 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 #endif /* CS_MODE */
 
 #if defined (SERVER_MODE)
-      if (PRM_IS_FOR_CLIENT (prm) && !PRM_IS_FOR_SERVER (prm))
+      if (PRM_IS_FOR_CLIENT (prm) && !PRM_IS_FOR_SERVER (prm) && !PRM_IS_FOR_SESSION (prm))
 	{
-	  /* prm for only client */
+	  /* prm for only client; client session parameters must load so in-process
+	   * sessions seed their parameter array from this conf (the same values a
+	   * CAS reading this file would have carried) */
 	  continue;
 	}
 #endif /* SERVER_MODE */
@@ -10937,7 +10939,7 @@ prm_get_value (PARAM_ID prm_id)
 #if defined (SERVER_MODE)
   THREAD_ENTRY *thread_p;
 
-  if (PRM_SERVER_SESSION (prm_id) && BO_IS_SERVER_RESTARTED ())
+  if (PRM_SESSION_READTHROUGH (prm_id) && BO_IS_SERVER_RESTARTED ())
     {
       SESSION_PARAM *sprm;
       thread_p = thread_get_thread_entry_info ();
@@ -10958,7 +10960,14 @@ prm_get_value (PARAM_ID prm_id)
     case PRM_BIGINT:
     case PRM_STRING:
     case PRM_INTEGER_LIST:
+      /* client-only session parameters may carry a NULL-string static default
+       * (a client build returns it unasserted); only server-session statics
+       * are guaranteed non-null here */
+#if defined (SERVER_MODE)
+      assert (GET_PRM (prm_id)->value.is_null == false || PRM_CLIENT_ONLY_SESSION (prm_id));
+#else
       assert (GET_PRM (prm_id)->value.is_null == false);
+#endif
       return &(GET_PRM (prm_id)->value.v);
     default:
       break;

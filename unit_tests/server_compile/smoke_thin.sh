@@ -9,6 +9,8 @@
 #   3. session commands: ;schema ;database ;plan + statement
 #   4. DDL/DML round trip with rollback semantics (autocommit off exit = abort)
 #   5. SA-mode (-S) fat csql still works on the same DB (bit-untouched flavor)
+#   6. client-only session parameter (create_table_reuseoid) resolves through
+#      the session on the folded compile path, both SET directions (wf159)
 #
 # usage: smoke_thin.sh <dbname>
 
@@ -93,7 +95,19 @@ grep -q "row selected" "$WORK/out5t" || fail ";time off SELECT rendering"
 grep -q "sec)" "$WORK/out5t" && fail ";time off did not suppress the timing suffix: $(cat "$WORK/out5t")"
 echo "THIN: ;time off shipped to the renderer"
 
-# 6. SA-mode fat flavor untouched (server must be down for -S)
+# 6. client-only session parameter reaches the folded compile (wf159):
+#    create_table_reuseoid is PRM_FOR_CLIENT|PRM_FOR_SESSION only — a SET must
+#    steer the in-server compile through the session parameter array, both ways
+out="$("$CSQL" -u dba "$DB" -c "SET SYSTEM PARAMETERS 'create_table_reuseoid=no'; CREATE CLASS thin_ro1 (a INT); SELECT is_reuse_oid_class FROM db_class WHERE class_name='thin_ro1';" 2>"$WORK/err6")" \
+  || fail "reuseoid=no leg run ($(cat "$WORK/err6"))"
+printf '%s\n' "$out" | grep -q "'NO'" || fail "reuseoid=no ignored by folded compile: $out"
+out="$("$CSQL" -u dba "$DB" -c "SET SYSTEM PARAMETERS 'create_table_reuseoid=yes'; CREATE CLASS thin_ro2 (a INT); SELECT is_reuse_oid_class FROM db_class WHERE class_name='thin_ro2';" 2>"$WORK/err6")" \
+  || fail "reuseoid=yes leg run ($(cat "$WORK/err6"))"
+printf '%s\n' "$out" | grep -q "'YES'" || fail "reuseoid=yes ignored by folded compile: $out"
+"$CSQL" -u dba "$DB" -c "DROP CLASS thin_ro1; DROP CLASS thin_ro2;" >/dev/null 2>&1 || fail "reuseoid case cleanup"
+echo "THIN: client-only session parameter steers the folded compile (both SET directions)"
+
+# 7. SA-mode fat flavor untouched (server must be down for -S)
 cubrid server stop "$DB" >/dev/null 2>&1 || true
 sleep 1
 "$CSQL" -S -u dba "$DB" -c "SELECT 1;" >"$WORK/out5" 2>"$WORK/err5" || fail "-S run ($(cat "$WORK/err5"))"
