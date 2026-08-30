@@ -75,6 +75,9 @@
 #if defined(SERVER_MODE)
 #include "client_session_context.hpp"	/* csc_bracket_is_active (wf122/B5) */
 #include "xasl_generation.h"	/* query_Plan_dump_fp session macro (wf122/B5) */
+/* wf122/B5: server-side --sysadm gate (client_type is admin-csql AND DBA);
+ * used to keep ;checkpoint/;killtran off the broker-routed path */
+static bool csql_server_sysadm_allowed (void);
 #endif
 #if defined(CSQL_THIN)
 #include "csql_wire.h"		/* thin csql transport (wf122/B5 D6R) */
@@ -1389,7 +1392,15 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_CHECKPOINT:
+#if defined(SERVER_MODE)
+      /* codex review (b5-codex-review #1): the bare sysadm-flag + DBA check
+       * is settable by any broker-routed client over function code 45.
+       * Require the server-side admin-csql gate so a forced checkpoint stays
+       * reachable only through the same-uid --sysadm DIRECT_CONNECT path. */
+      if (csql_server_sysadm_allowed ())
+#else
       if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+#endif
 	{
 	  error_code = db_checkpoint ();
 	  if (error_code != NO_ERROR)
@@ -1408,7 +1419,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_KILLTRAN:
+#if defined(SERVER_MODE)
+      /* codex review (b5-codex-review #1): same as ;checkpoint — killing an
+       * arbitrary transaction by index must require the admin-csql gate, not
+       * just a wire-settable flag on a broker-routed DBA session */
+      if (csql_server_sysadm_allowed ())
+#else
       if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+#endif
 	{
 	  csql_killtran ((argument[0] == '\0') ? NULL : argument);
 	}
