@@ -763,14 +763,31 @@ set(CAS_SPEAKER_SOURCES
   ${BROKER_DIR}/cas_log.c
   ${BROKER_DIR}/cas_ssl.c
   ${BROKER_DIR}/cas_server_support.cpp
+  ${BROKER_DIR}/cas_csql.cpp
   ${BROKER_DIR}/broker_filename.c
   ${BROKER_DIR}/broker_util.c
+  )
+
+# wf122/B5: the csql body is folded in so CAS_FC_CSQL_REQUEST can render
+# results server-side (thin csql).  Mutable file-scope state in these files
+# is thread-local under SERVER_MODE (CSQL_BODY_TLS, csql.h).
+set(CSQL_BODY_SOURCES
+  ${EXECUTABLES_DIR}/csql.c
+  ${EXECUTABLES_DIR}/csql_session.c
+  ${EXECUTABLES_DIR}/csql_result.c
+  ${EXECUTABLES_DIR}/csql_result_format.c
+  ${EXECUTABLES_DIR}/csql_support.c
   )
 # ASYNC_MODE is load-bearing: without it cas_network.c loses every poll()
 # timeout; CAS_CUBRID selects the CUBRID branches in cas_net_buf.c
 SET_SOURCE_FILES_PROPERTIES(
   ${CAS_SPEAKER_SOURCES}
   PROPERTIES COMPILE_DEFINITIONS "ASYNC_MODE;CAS_CUBRID"
+  )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${CSQL_BODY_SOURCES}
+  PROPERTIES LANGUAGE CXX
   )
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -857,6 +874,7 @@ list(APPEND CUBRID_LIB_SOURCES
   )
 
 list(APPEND CUBRID_LIB_SOURCES ${CAS_SPEAKER_SOURCES})
+list(APPEND CUBRID_LIB_SOURCES ${CSQL_BODY_SOURCES})
 
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}

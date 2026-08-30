@@ -48,6 +48,18 @@
 
 #define MSGCAT_CSQL_SET_CSQL	  1
 
+/* wf122/B5: the csql body files are folded into cub_server so that
+ * CAS_FC_CSQL_REQUEST can render results server-side (thin csql).  Under
+ * SERVER_MODE every mutable file-scope state of the csql body becomes
+ * thread-local: a request is handled entirely on its session thread and the
+ * render state is request-transient (persistent client settings travel with
+ * each request).  CS/SA builds are bit-identical (marker expands to nothing). */
+#if defined(SERVER_MODE)
+#define CSQL_BODY_TLS thread_local
+#else
+#define CSQL_BODY_TLS
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -311,22 +323,22 @@ extern "C"
   } CSQL_COLUMN_WIDTH_INFO;
 
 /* The file streams we are to use */
-  extern FILE *csql_Input_fp;
-  extern FILE *csql_Output_fp;
-  extern FILE *csql_Error_fp;
+  extern CSQL_BODY_TLS FILE *csql_Input_fp;
+  extern CSQL_BODY_TLS FILE *csql_Output_fp;
+  extern CSQL_BODY_TLS FILE *csql_Error_fp;
 
   extern char csql_Editor_cmd[];
   extern char csql_Shell_cmd[];
   extern char csql_Print_cmd[];
   extern char csql_Pager_cmd[];
-  extern char csql_Scratch_text[];
+  extern CSQL_BODY_TLS char csql_Scratch_text[];
   extern char csql_Formatter_cmd[];
-  extern int csql_Error_code;
+  extern CSQL_BODY_TLS int csql_Error_code;
 
 
-  extern int csql_Line_lwm;
-  extern int csql_Row_count;
-  extern int csql_Num_failures;
+  extern CSQL_BODY_TLS int csql_Line_lwm;
+  extern CSQL_BODY_TLS int csql_Row_count;
+  extern CSQL_BODY_TLS int csql_Num_failures;
 
   extern int (*csql_text_utf8_to_console) (const char *, const int, char **, int *);
   extern int (*csql_text_console_to_utf8) (const char *, const int, char **, int *);
@@ -334,6 +346,28 @@ extern "C"
   extern void csql_display_msg (const char *string);
   extern void csql_exit (int exit_status);
   extern int csql (const char *argv0, CSQL_ARGUMENT * csql_arg);
+
+#if defined(SERVER_MODE)
+/* wf122/B5: entry points for CAS_FC_CSQL_REQUEST (cas_csql.cpp).  They run
+ * the fat-csql pipeline inside the active session bracket with output
+ * captured into the given streams; per-request client settings arrive here
+ * instead of living in process globals. */
+  typedef struct csql_server_exec_opts
+  {
+    int input_type;		/* FILE_INPUT/STRING_INPUT/EDITOR_INPUT semantics */
+    int line_no;		/* starting line number; -1 = per-statement */
+    bool is_interactive;
+    bool is_echo_on;
+    bool is_time_on;
+    bool query_trace;
+    const char *column_widths;	/* serialized "name=w;name=w" or NULL */
+  } CSQL_SERVER_EXEC_OPTS;
+
+  extern int csql_server_execute_request (const CSQL_ARGUMENT * csql_arg, const CSQL_SERVER_EXEC_OPTS * opts,
+					  const char *text, FILE * out_fp, FILE * err_fp);
+  extern int csql_server_session_cmd_request (const CSQL_ARGUMENT * csql_arg, const CSQL_SERVER_EXEC_OPTS * opts,
+					      const char *line, FILE * out_fp, FILE * err_fp);
+#endif				/* SERVER_MODE */
 
   extern const char *csql_get_message (int message_index);
 

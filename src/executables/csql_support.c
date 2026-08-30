@@ -53,9 +53,9 @@
 #define	MORE_LINE_EXPANSION_UNIT	40
 
 /* to build the current help message lines */
-static char **iq_More_lines;	/* more message lines */
-static int iq_Num_more_lines = 0;	/* number of more lines */
-static jmp_buf iq_Jmp_buf;
+static CSQL_BODY_TLS char **iq_More_lines;	/* more message lines */
+static CSQL_BODY_TLS int iq_Num_more_lines = 0;	/* number of more lines */
+static CSQL_BODY_TLS jmp_buf iq_Jmp_buf;
 
 #define DEFAULT_DB_ERROR_MSG_LEVEL      3	/* current max */
 
@@ -99,7 +99,7 @@ typedef struct
   int plcsql_nest_level;
 } CSQL_EDIT_CONTENTS;
 
-static CSQL_EDIT_CONTENTS csql_Edit_contents = { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0 };
+static CSQL_BODY_TLS CSQL_EDIT_CONTENTS csql_Edit_contents = { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0 };
 
 
 static bool is_identifier_letter (const char c);
@@ -797,11 +797,13 @@ csql_display_more_lines (const char *title)
 {
   int i;
   FILE *pf;			/* pipe stream to pager */
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
   void (*iq_pipe_save) (int sig);
 
+  /* never touch process signal disposition inside cub_server (wf122/B5);
+   * the pager cannot engage there (capture stream is not a tty) */
   iq_pipe_save = signal (SIGPIPE, &iq_pipe_handler);
-#endif /* ! WINDOWS */
+#endif /* ! WINDOWS && ! SERVER_MODE */
   if (setjmp (iq_Jmp_buf) == 0)
     {
       pf = csql_popen (csql_Pager_cmd, csql_Output_fp);
@@ -822,9 +824,9 @@ csql_display_more_lines (const char *title)
 
       csql_pclose (pf, csql_Output_fp);
     }
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
   signal (SIGPIPE, iq_pipe_save);
-#endif /* ! WINDOWS */
+#endif /* ! WINDOWS && ! SERVER_MODE */
 }
 
 /*
@@ -890,8 +892,8 @@ csql_check_server_down (void)
 char *
 csql_get_tmp_buf (size_t size)
 {
-  static char *bufp = NULL;
-  static size_t bufsize = 0;
+  static CSQL_BODY_TLS char *bufp = NULL;
+  static CSQL_BODY_TLS size_t bufsize = 0;
 
   bufsize = size + 1;
   bufp = (char *) malloc (bufsize);
