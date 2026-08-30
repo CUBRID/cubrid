@@ -26,6 +26,7 @@ SUB_SESSION_CMD = 2
 
 FLAG_AUTO_COMMIT = 0x1
 FLAG_CONTINUE_ON_ERROR = 0x2
+FLAG_SYSADM = 0x400
 FLAG_TRIGGER_ACTION = 0x4000
 
 CHUNK_END = 0
@@ -201,6 +202,16 @@ def main():
     if status == 0:
         die("client-only command was accepted server-side")
     print("PROBE_CSQL: client-only ;shell refused (status %d)" % status)
+
+    # 6. ;checkpoint with the SYSADM flag over a broker/CSQL (non-admin-csql)
+    #    connection must be refused: the flag alone must not grant sysadm
+    #    (b5-codex-review #1).  This connection is DB_CLIENT_TYPE_CSQL, not
+    #    admin-csql, so csql_server_sysadm_allowed() is false.
+    status, chunks = csql_session_cmd(sock, ";checkpoint", FLAG_AUTO_COMMIT | FLAG_SYSADM | FLAG_TRIGGER_ACTION)
+    out = text_of(chunks, CHUNK_OUT)
+    if "only allowed" not in out:
+        die("sysadm-flagged ;checkpoint was NOT refused on a non-admin session: %r" % out)
+    print("PROBE_CSQL: sysadm-flag ;checkpoint refused on a non-admin session")
 
     sock.close()
     print("PROBE_CSQL: SUCCESS")
