@@ -727,6 +727,15 @@ extern "C"
 #define SERVER_SESSION_CHCK  ((PRM_FOR_SESSION | PRM_FOR_SERVER) & ~PRM_CLIENT_SESSION)	// 0x00000104
 #define PRM_SERVER_SESSION(id)  (((GET_PRM (id))->static_flag & SERVER_SESSION_MASK) == SERVER_SESSION_CHCK)
 
+/* client-only session parameters (e.g. create_table_reuseoid, optimization_level): the server
+ * process hosts the in-process client half, whose reads must resolve through the session's
+ * parameter array like a CAS resolved its per-connection copy; server-proper code never reads
+ * these, and PRM_CLIENT_SESSION dual parameters keep the server's own value */
+#define CLIENT_ONLY_SESSION_MASK  (PRM_FOR_SESSION | PRM_FOR_CLIENT | PRM_FOR_SERVER)
+#define CLIENT_ONLY_SESSION_CHCK  (PRM_FOR_SESSION | PRM_FOR_CLIENT)
+#define PRM_CLIENT_ONLY_SESSION(id)  (((GET_PRM (id))->static_flag & CLIENT_ONLY_SESSION_MASK) == CLIENT_ONLY_SESSION_CHCK)
+#define PRM_SESSION_READTHROUGH(id)  (PRM_SERVER_SESSION (id) || PRM_CLIENT_ONLY_SESSION (id))
+
 /*
  * for PRM_ID_PARALLELISM
  */
@@ -876,7 +885,7 @@ extern "C"
     assert (PRM_IS_INTEGER (GET_PRM (prm_id)) || PRM_IS_KEYWORD (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_INT_P (prm_get_value (prm_id));
       }
@@ -896,7 +905,7 @@ extern "C"
     assert (PRM_IS_BOOLEAN (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_BOOL_P (prm_get_value (prm_id));
       }
@@ -916,7 +925,7 @@ extern "C"
     assert (PRM_IS_FLOAT (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_FLOAT_P (prm_get_value (prm_id));
       }
@@ -936,7 +945,7 @@ extern "C"
     assert (PRM_IS_STRING (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_STRING_P (prm_get_value (prm_id));
       }
@@ -957,7 +966,7 @@ extern "C"
     assert (PRM_IS_INTEGER_LIST (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_INTEGER_LIST_P (prm_get_value (prm_id));
       }
@@ -977,7 +986,7 @@ extern "C"
     assert (PRM_IS_BIGINT (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_BIGINT_P (prm_get_value (prm_id));
       }
