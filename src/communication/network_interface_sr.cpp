@@ -4019,8 +4019,20 @@ sboot_register_client (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
   unpacker.unpack_all (client_credential, client_lock_wait, xint);
   client_isolation = (TRAN_ISOLATION) xint;
 
-  tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
-				      &server_credential);
+  if (!BOOT_UTIL_CHANNEL_CLIENT_TYPE (client_credential.client_type))
+    {
+      /* wf122/B5 D5: this channel is the utility/HA plane; csql and driver
+       * traffic rides the CAS wire.  The handshake error is one every
+       * legacy client can render locally. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_HAND_SHAKE, 1, client_credential.get_host_name ());
+      tran_index = NULL_TRAN_INDEX;
+      tran_state = TRAN_UNACTIVE_UNKNOWN;
+    }
+  else
+    {
+      tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
+					  &server_credential);
+    }
   if (tran_index == NULL_TRAN_INDEX)
     {
       (void) return_error_to_client (thread_p, rid);
