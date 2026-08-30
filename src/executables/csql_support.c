@@ -36,6 +36,9 @@
 #endif /* !WINDOWS */
 #include "porting.h"
 #include "csql.h"
+#if defined(CSQL_THIN)
+#include "csql_wire.h"		/* wf122/B5: thin transport liveness */
+#endif
 #include "filesys.hpp"
 #include "filesys_temp.hpp"
 #include "memory_alloc.h"
@@ -875,6 +878,14 @@ iq_pipe_handler (int sig_no)
 void
 csql_check_server_down (void)
 {
+#if defined(CSQL_THIN)
+  /* wf122/B5: the wire layer drops the connection on transport failure */
+  if (!csql_wire_is_connected ())
+    {
+      fprintf (csql_Error_fp, "Exiting ...\n");
+      csql_exit (EXIT_FAILURE);
+    }
+#else
   if (db_error_code () == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
@@ -882,6 +893,7 @@ csql_check_server_down (void)
       fprintf (csql_Error_fp, "Exiting ...\n");
       csql_exit (EXIT_FAILURE);
     }
+#endif
 }
 
 /*

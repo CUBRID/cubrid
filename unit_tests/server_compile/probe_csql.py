@@ -26,6 +26,7 @@ SUB_SESSION_CMD = 2
 
 FLAG_AUTO_COMMIT = 0x1
 FLAG_CONTINUE_ON_ERROR = 0x2
+FLAG_TRIGGER_ACTION = 0x4000
 
 CHUNK_END = 0
 CHUNK_OUT = 1
@@ -107,7 +108,8 @@ def parse_reply(body, what):
     if result_code < 0:
         die("%s: server error frame, code %d" % (what, result_code))
     status = struct.unpack(">i", body[4:8])[0]
-    pos = 8
+    # body[8] is the tran-dirty byte (db_commit_is_needed), skipped here
+    pos = 9
     chunks = []
     while True:
         if pos >= len(body):
@@ -161,7 +163,7 @@ def main():
     print("PROBE_CSQL: connected 1-hop")
 
     # 1. plain SELECT renders like fat csql
-    status, chunks = csql_execute(sock, "SELECT 1;", FLAG_AUTO_COMMIT)
+    status, chunks = csql_execute(sock, "SELECT 1;", FLAG_AUTO_COMMIT | FLAG_TRIGGER_ACTION)
     out = text_of(chunks, CHUNK_OUT)
     if status != 0:
         die("SELECT 1 status %d, out=%r err=%r" % (status, out, text_of(chunks, CHUNK_ERR)))
@@ -170,7 +172,7 @@ def main():
     print("PROBE_CSQL: SELECT 1 rendered (%d bytes)" % len(out))
 
     # 2. syntax error goes to the ERR stream, session survives
-    status, chunks = csql_execute(sock, "SELEC 1;", FLAG_AUTO_COMMIT | FLAG_CONTINUE_ON_ERROR)
+    status, chunks = csql_execute(sock, "SELEC 1;", FLAG_AUTO_COMMIT | FLAG_CONTINUE_ON_ERROR | FLAG_TRIGGER_ACTION)
     err = text_of(chunks, CHUNK_ERR)
     if status <= 0:
         die("syntax error not reported as failure (status %d)" % status)
@@ -179,14 +181,14 @@ def main():
     print("PROBE_CSQL: syntax error captured on ERR stream")
 
     # 3. still usable after the error
-    status, chunks = csql_execute(sock, "SELECT COUNT(*) FROM db_class;", FLAG_AUTO_COMMIT)
+    status, chunks = csql_execute(sock, "SELECT COUNT(*) FROM db_class;", FLAG_AUTO_COMMIT | FLAG_TRIGGER_ACTION)
     if status != 0 or "row selected" not in text_of(chunks, CHUNK_OUT):
         die("post-error execute failed: status %d out=%r err=%r"
             % (status, text_of(chunks, CHUNK_OUT), text_of(chunks, CHUNK_ERR)))
     print("PROBE_CSQL: session healthy after statement error")
 
     # 4. server-dependent session command renders
-    status, chunks = csql_session_cmd(sock, ";schema db_class", FLAG_AUTO_COMMIT)
+    status, chunks = csql_session_cmd(sock, ";schema db_class", FLAG_AUTO_COMMIT | FLAG_TRIGGER_ACTION)
     out = text_of(chunks, CHUNK_OUT)
     if status != 0 or "db_class" not in out:
         die("schema command failed: status %d out=%r err=%r"
@@ -195,7 +197,7 @@ def main():
 
     # 5. client-only command (;shell would exec csh in fat csql) is refused
     #    by the SERVER_MODE allowlist gate
-    status, chunks = csql_session_cmd(sock, ";shell", FLAG_AUTO_COMMIT)
+    status, chunks = csql_session_cmd(sock, ";shell", FLAG_AUTO_COMMIT | FLAG_TRIGGER_ACTION)
     if status == 0:
         die("client-only command was accepted server-side")
     print("PROBE_CSQL: client-only ;shell refused (status %d)" % status)

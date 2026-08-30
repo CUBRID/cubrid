@@ -153,10 +153,31 @@ extern "C"
 /* CAS_FC_CSQL_REQUEST sub-commands (arg0) */
 #define CAS_CSQL_SUB_EXECUTE                    1
 #define CAS_CSQL_SUB_SESSION_CMD                2
+#define CAS_CSQL_SUB_TRAN                       3	/* silent commit/abort: exit paths print nothing */
 /* CAS_FC_CSQL_REQUEST reply chunk tags: ordered stdout/stderr interleaving */
 #define CAS_CSQL_CHUNK_END                      0
 #define CAS_CSQL_CHUNK_OUT                      1
 #define CAS_CSQL_CHUNK_ERR                      2
+
+/* CAS_FC_CSQL_REQUEST request flag bits (thin csql <-> server) */
+#define CAS_CSQL_FLAG_AUTO_COMMIT        0x00000001
+#define CAS_CSQL_FLAG_CONTINUE_ON_ERROR  0x00000002
+#define CAS_CSQL_FLAG_PLAIN_OUTPUT       0x00000004
+#define CAS_CSQL_FLAG_SKIP_COLUMN_NAMES  0x00000008
+#define CAS_CSQL_FLAG_LINE_OUTPUT        0x00000010
+#define CAS_CSQL_FLAG_QUERY_OUTPUT       0x00000020
+#define CAS_CSQL_FLAG_LOADDB_OUTPUT      0x00000040
+#define CAS_CSQL_FLAG_ECHO               0x00000080
+#define CAS_CSQL_FLAG_TIME_ON            0x00000100
+#define CAS_CSQL_FLAG_QUERY_TRACE        0x00000200
+#define CAS_CSQL_FLAG_SYSADM             0x00000400
+#define CAS_CSQL_FLAG_WRITE_ON_STANDBY   0x00000800
+#define CAS_CSQL_FLAG_MIDXKEY_PRINT      0x00001000
+#define CAS_CSQL_FLAG_PL_SERVER_OUTPUT   0x00002000
+#define CAS_CSQL_FLAG_TRIGGER_ACTION     0x00004000
+#define CAS_CSQL_FLAG_SINGLE_LINE        0x00008000
+#define CAS_CSQL_FLAG_READ_ONLY          0x00010000
+#define CAS_CSQL_FLAG_INTERACTIVE        0x00020000
 
 #define CAS_STATEMENT_POOLING_OFF		0
 #define CAS_STATEMENT_POOLING_ON		1

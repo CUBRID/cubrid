@@ -417,6 +417,9 @@ extern "C"
   extern char *csql_string_to_plain_string (const char *string_value, int length, int *result_length);
 
   extern int csql_set_column_width_info (const char *column_name, int column_width);
+  /* wf122/B5: serialize the ;column-width list as "name=w;name=w" (thin csql
+   * ships it with every request) */
+  extern void csql_column_widths_serialize (char *buf, size_t bufsize);
   extern int csql_get_column_width (const char *column_name);
 
   extern char *string_to_string (const char *string_value, char string_delimiter, char string_introducer, int length,
