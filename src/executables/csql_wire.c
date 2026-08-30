@@ -35,6 +35,7 @@
 #include "csql_wire.h"
 
 #include "cas_protocol.h"
+#include "db_client_type.hpp"
 #include "environment_variable.h"
 #include "error_code.h"
 
@@ -43,6 +44,8 @@
 
 #define WIRE_ERR_MSG_MAX 2048
 #define WIRE_DEFAULT_BROKER_PORT 33000
+/* server render cap is 32 MiB (CSQL_CAPTURE_LIMIT); allow framing headroom */
+#define WIRE_REPLY_LIMIT (64 * 1024 * 1024)
 
 /* single-connection client state (the csql process holds one session) */
 static int wire_Fd = -1;
@@ -485,6 +488,19 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
     }
   else
     {
+      /* codex review #3: the broker handoff synthesizes the client type from
+       * ACCESS_MODE (a broker property), so a remote thin csql cannot carry
+       * --read-only / --sysadm / --skip-vacuum semantics.  Rather than let
+       * those modes silently degrade to a plain RW broker session, refuse
+       * them for db@host until a distinct thin-csql type flows through the
+       * handoff (B5 fog item).  Plain csql is unaffected. */
+      if (client_type != DB_CLIENT_TYPE_CSQL)
+	{
+	  wire_set_error (ER_FAILED,
+			  "--sysadm / --read-only / --skip-vacuum are not supported for a remote "
+			  "connection (db@host); use them on a local connection");
+	  return ER_FAILED;
+	}
       const char *env = getenv ("CUBRID_CSQL_BROKER_PORT");
       int port = (env != NULL && atoi (env) > 0) ? atoi (env) : WIRE_DEFAULT_BROKER_PORT;
       err = wire_connect_broker (host, port, db, user_name, passwd);
@@ -693,8 +709,11 @@ wire_roundtrip (wire_body * b)
       wire_close_fd ();
       return ER_FAILED;
     }
+  /* codex review #5: bound the reply — a hostile/broken endpoint must not be
+   * able to force an unbounded malloc.  The server caps its render at 32 MiB
+   * (CSQL_CAPTURE_LIMIT); allow generous framing headroom above that. */
   int length = (int) wire_get_be32 (rh);
-  if (length <= 0)
+  if (length < 4 || length > WIRE_REPLY_LIMIT)
     {
       wire_set_error (ER_FAILED, "malformed reply");
       wire_close_fd ();
@@ -712,10 +731,22 @@ wire_roundtrip (wire_body * b)
   int first = (int) wire_get_be32 (reply);
   if (first < 0)
     {
-      /* error frame: [indicator][code][msg] */
+      /* error frame: [indicator][code][msg]; msg is not guaranteed
+       * NUL-terminated, so copy it with an explicit bounded length */
       int code = (length >= 8) ? (int) wire_get_be32 (reply + 4) : ER_FAILED;
-      const char *msg = (length > 8) ? reply + 8 : "server error";
-      wire_set_error (code, msg);
+      if (length > 8)
+	{
+	  int mlen = length - 8;
+	  char tmp[WIRE_ERR_MSG_MAX];
+	  int n = (mlen < (int) sizeof (tmp) - 1) ? mlen : (int) sizeof (tmp) - 1;
+	  memcpy (tmp, reply + 8, (size_t) n);
+	  tmp[n] = '\0';
+	  wire_set_error (code, tmp);
+	}
+      else
+	{
+	  wire_set_error (code, "server error");
+	}
       free (reply);
       return code < 0 ? code : ER_FAILED;
     }
@@ -723,31 +754,44 @@ wire_roundtrip (wire_body * b)
     {
       free (reply);
       wire_set_error (ER_FAILED, "short reply");
+      wire_close_fd ();
       return ER_FAILED;
     }
   status = (int) wire_get_be32 (reply + 4);
   wire_Tran_dirty = (reply[8] != 0);
 
-  /* replay ordered out/err chunks */
-  int pos = 9;
-  while (pos < length)
+  /* replay ordered out/err chunks (size_t arithmetic: no signed overflow) */
+  size_t pos = 9;
+  size_t ulength = (size_t) length;
+  bool saw_end = false;
+  bool framing_error = false;
+  while (pos < ulength)
     {
       int tag = (unsigned char) reply[pos];
       pos += 1;
       if (tag == CAS_CSQL_CHUNK_END)
 	{
+	  saw_end = true;
 	  break;
 	}
-      if (pos + 4 > length)
+      if (tag != CAS_CSQL_CHUNK_OUT && tag != CAS_CSQL_CHUNK_ERR)
 	{
+	  framing_error = true;
 	  break;
 	}
-      int clen = (int) wire_get_be32 (reply + pos);
+      if (pos + 4 > ulength)
+	{
+	  framing_error = true;
+	  break;
+	}
+      int clen_i = (int) wire_get_be32 (reply + pos);
       pos += 4;
-      if (clen < 0 || pos + clen > length)
+      if (clen_i < 0 || (size_t) clen_i > ulength - pos)
 	{
+	  framing_error = true;
 	  break;
 	}
+      int clen = clen_i;
       FILE *fp = (tag == CAS_CSQL_CHUNK_ERR) ? csql_Error_fp : csql_Output_fp;
       if (fp != NULL && clen > 0)
 	{
@@ -773,7 +817,7 @@ wire_roundtrip (wire_body * b)
 	      fwrite (reply + pos, 1, (size_t) clen, fp);
 	    }
 	}
-      pos += clen;
+      pos += (size_t) clen;
     }
   if (csql_Output_fp != NULL)
     {
@@ -785,6 +829,14 @@ wire_roundtrip (wire_body * b)
     }
 
   free (reply);
+
+  /* a truncated/garbled frame must not read as a successful statement */
+  if (framing_error || !saw_end)
+    {
+      wire_set_error (ER_FAILED, "malformed reply framing");
+      wire_close_fd ();
+      return ER_FAILED;
+    }
   return status;
 }
 
