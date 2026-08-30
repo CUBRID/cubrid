@@ -196,6 +196,7 @@ FN_RETURN
 fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int sub_code = 0;
+  int cas_err = CAS_ER_ARGS;	/* the shared error epilogue's code (arg_error keeps it) */
 
   if (argc < 1 || !csql_arg_int_ok (argv[0]))
     {
@@ -339,14 +340,15 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
     {
       /* the render exceeded CSQL_CAPTURE_LIMIT — report a controlled error
        * instead of returning a truncated result as success */
-      ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
+      goto mem_error;
     }
 
   csql_reply_chunks (net_buf, status, chunks);
   return FN_KEEP_CONN;
 
+mem_error:
+  cas_err = CAS_ER_NO_MORE_MEMORY;
+  /* FALLTHRU */
 arg_error:
   if (out_fp != NULL)
     {
@@ -356,20 +358,7 @@ arg_error:
     {
       fclose (err_fp);
     }
-  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-  NET_BUF_ERR_SET (net_buf);
-  return FN_KEEP_CONN;
-
-mem_error:
-  if (out_fp != NULL)
-    {
-      fclose (out_fp);
-    }
-  if (err_fp != NULL)
-    {
-      fclose (err_fp);
-    }
-  ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+  ERROR_INFO_SET (cas_err, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (net_buf);
   return FN_KEEP_CONN;
 }

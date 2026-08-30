@@ -86,7 +86,14 @@ printf 'CREATE TABLE thin_r (a INT);\nINSERT INTO thin_r VALUES (7);\n' \
 [ $? -ne 0 ] || fail "thin_r should have been rolled back on exit"
 echo "THIN: no-autocommit exit rolled back"
 
-# 5. SA-mode fat flavor untouched (server must be down for -S)
+# 5. ;time off reaches the server-side renderer (wire flag sync — the
+#    timing suffix must disappear; postmerge-review fix)
+printf ';time off\nSELECT 1;\n' | "$CSQL" -u dba "$DB" >"$WORK/out5t" 2>&1 || fail ";time off run"
+grep -q "row selected" "$WORK/out5t" || fail ";time off SELECT rendering"
+grep -q "sec)" "$WORK/out5t" && fail ";time off did not suppress the timing suffix: $(cat "$WORK/out5t")"
+echo "THIN: ;time off shipped to the renderer"
+
+# 6. SA-mode fat flavor untouched (server must be down for -S)
 cubrid server stop "$DB" >/dev/null 2>&1 || true
 sleep 1
 "$CSQL" -S -u dba "$DB" -c "SELECT 1;" >"$WORK/out5" 2>"$WORK/err5" || fail "-S run ($(cat "$WORK/err5"))"
