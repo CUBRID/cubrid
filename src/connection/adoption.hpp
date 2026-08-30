@@ -57,6 +57,13 @@ namespace cubconn
       STATUS = 4,		/* "ST" status probe; body: token_body */
       RESYNC = 5,		/* restart re-sync; no body */
 
+      /* local client -> server (wf122/B5 D1: broker-independent thin csql) */
+      DIRECT_CONNECT = 6,	/* this very fd becomes the driver connection;
+				 * body: direct_connect_body; same-uid only
+				 * (SO_PEERCRED).  Success answers with the CAS
+				 * connect reply on this fd; failure with a
+				 * HANDOFF_REJECT frame. */
+
       /* server -> broker */
       HELLO_ACK = 9,		/* body: hello_ack_body */
       HANDOFF_ACK = 10,		/* body: token_body (server-issued cancel token) */
@@ -110,13 +117,25 @@ namespace cubconn
       std::uint32_t token;
     };
 
+    /* DIRECT_CONNECT payload (wf122/B5 D1/D2): a local csql declares its
+     * DB_CLIENT_TYPE (csql family only — the server validates) and sends the
+     * same two driver packets the broker would have peeked. */
+    struct direct_connect_body
+    {
+      std::uint8_t client_type;	/* DB_CLIENT_TYPE, csql family only */
+      std::uint8_t pad[3];
+      char driver_header[DRIVER_HEADER_SIZE];
+      char db_info[DRIVER_DB_INFO_SIZE];
+    };
+
     enum class reject_reason : std::int32_t
     {
       CLIENTS_EXCEEDED = 1,	/* css_Conn_rules refused; broker requeues (#117 D3) */
       DBNAME_MISMATCH = 2,	/* routed to the wrong server */
       SHUTDOWN = 3,		/* server is going down */
       MALFORMED = 4,		/* bad handoff payload */
-      UNSUPPORTED_DRIVER = 5	/* protocol below V12 (#116 D3) */
+      UNSUPPORTED_DRIVER = 5,	/* protocol below V12 (#116 D3) */
+      NOT_AUTHORIZED = 6	/* DIRECT_CONNECT peer/type refused (wf122/B5) */
     };
 
     struct reject_body

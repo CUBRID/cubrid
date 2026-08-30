@@ -64,6 +64,14 @@ sleep 1
 
 python3 "$SCRIPT_DIR/probe_csql.py" "$BROKER_PORT" "$DB" dba "" || fail "probe"
 
+# B5 PR2: broker-independent DIRECT_CONNECT on the adoption socket
+ADOPT_SOCK="${CUBRID_TMP:-/tmp}/CUBRID_adopt_$DB"
+if [ -S "$ADOPT_SOCK" ]; then
+  python3 "$SCRIPT_DIR/probe_direct_connect.py" "$ADOPT_SOCK" "$DB" dba "" || fail "direct-connect probe"
+else
+  fail "adoption socket $ADOPT_SOCK not found"
+fi
+
 cubrid broker stop >/dev/null 2>&1 || true
 cubrid server stop "$DB" >/dev/null 2>&1 || true
 cubrid service stop >/dev/null 2>&1 || true

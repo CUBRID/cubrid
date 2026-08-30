@@ -622,9 +622,12 @@ namespace cubconn
       registry_set_session_stats (params.token, as_info, shm_as_index, params.client_ip);
 
       /* ACCESS_CONTROL db:dbuser:ip check before any engine boot (B2-D8,
-       * #116 D6) — the same ordering the CAS kept (check, then db_connect) */
-      if (cas_server_acl_check (params.broker_name.c_str (), info.db_name, info.db_user,
-				(const unsigned char *) &params.client_ip) < 0)
+       * #116 D6) — the same ordering the CAS kept (check, then db_connect).
+       * DIRECT_CONNECT sessions (wf122/B5) skip it: the peer is same-uid
+       * local (SO_PEERCRED) and the broker ACL never governed local csql. */
+      if (!params.direct
+	  && cas_server_acl_check (params.broker_name.c_str (), info.db_name, info.db_user,
+				   (const unsigned char *) &params.client_ip) < 0)
 	{
 	  as_info->num_connect_rejected++;
 	  if (prm_get_bool_value (PRM_ID_CAS_ACCESS_LOG))
