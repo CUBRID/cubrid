@@ -23,6 +23,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_result_format.c
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/csql_wire.c
   ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
@@ -502,6 +503,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql_result_format.c
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/csql_wire.c
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_object_file.c
@@ -550,6 +552,17 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${HISTOGRAM_SOURCES}
   PROPERTIES LANGUAGE CXX
+  )
+
+# wf122/B5 D5R: the CS flavor of the csql body is the THIN csql — DB work
+# rides the CAS wire (csql_wire.c); the SA flavor stays fat.  The adoption
+# protocol header is under src/connection.
+SET_SOURCE_FILES_PROPERTIES(
+  ${EXECUTABLES_DIR}/csql.c
+  ${EXECUTABLES_DIR}/csql_session.c
+  ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/csql_wire.c
+  PROPERTIES COMPILE_DEFINITIONS "CSQL_THIN"
   )
 SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_GRAMMAR_OUTPUT}

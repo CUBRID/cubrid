@@ -46,25 +46,6 @@
 
 #include "csql.h"
 
-/* request flag bits shared by both sub-commands (must match the thin csql) */
-#define CAS_CSQL_FLAG_AUTO_COMMIT        0x00000001
-#define CAS_CSQL_FLAG_CONTINUE_ON_ERROR  0x00000002
-#define CAS_CSQL_FLAG_PLAIN_OUTPUT       0x00000004
-#define CAS_CSQL_FLAG_SKIP_COLUMN_NAMES  0x00000008
-#define CAS_CSQL_FLAG_LINE_OUTPUT        0x00000010
-#define CAS_CSQL_FLAG_QUERY_OUTPUT       0x00000020
-#define CAS_CSQL_FLAG_LOADDB_OUTPUT      0x00000040
-#define CAS_CSQL_FLAG_ECHO               0x00000080
-#define CAS_CSQL_FLAG_TIME_ON            0x00000100
-#define CAS_CSQL_FLAG_QUERY_TRACE        0x00000200
-#define CAS_CSQL_FLAG_SYSADM             0x00000400
-#define CAS_CSQL_FLAG_WRITE_ON_STANDBY   0x00000800
-#define CAS_CSQL_FLAG_MIDXKEY_PRINT      0x00001000
-#define CAS_CSQL_FLAG_PL_SERVER_OUTPUT   0x00002000
-#define CAS_CSQL_FLAG_TRIGGER_ACTION     0x00004000
-#define CAS_CSQL_FLAG_SINGLE_LINE        0x00008000
-#define CAS_CSQL_FLAG_READ_ONLY          0x00010000
-
 typedef std::vector<std::pair<char, std::string>> csql_chunk_vec;
 
 typedef struct
@@ -138,6 +119,9 @@ csql_reply_chunks (T_NET_BUF * net_buf, int status, const csql_chunk_vec & chunk
 {
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, status, NULL);
+  /* the thin client's exit paths mirror the fat client's
+   * db_commit_is_needed () decisions from this byte */
+  net_buf_cp_byte (net_buf, db_commit_is_needed ()? 1 : 0);
   for (const auto & c : chunks)
     {
       net_buf_cp_byte (net_buf, c.first);
@@ -214,6 +198,7 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
       memset (&opts, 0, sizeof (opts));
       opts.input_type = input_type;
       opts.line_no = line_no;
+      opts.is_interactive = (flags & CAS_CSQL_FLAG_INTERACTIVE) != 0;
       opts.is_echo_on = (flags & CAS_CSQL_FLAG_ECHO) != 0;
       opts.is_time_on = (flags & CAS_CSQL_FLAG_TIME_ON) != 0;
       opts.query_trace = (flags & CAS_CSQL_FLAG_QUERY_TRACE) != 0;
@@ -257,6 +242,29 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
 
       cas_log_write (0, true, "csql_request session_cmd");
       status = csql_server_session_cmd_request (&csql_arg, &opts, line, out_fp, err_fp);
+    }
+  else if (sub_code == CAS_CSQL_SUB_TRAN)
+    {
+      char op = 0;
+
+      if (argc < 2)
+	{
+	  goto arg_error;
+	}
+      net_arg_get_char (op, argv[1]);
+      if (op == 'C')
+	{
+	  status = (db_commit_transaction () < 0) ? 1 : 0;
+	}
+      else if (op == 'A')
+	{
+	  status = (db_abort_transaction () < 0) ? 1 : 0;
+	}
+      else
+	{
+	  goto arg_error;
+	}
+      cas_log_write (0, true, "csql_request tran %c", op);
     }
   else
     {

@@ -33,6 +33,7 @@ CLIENT_TYPE_BROKER = 4
 CAS_FC_CSQL_REQUEST = 45
 SUB_EXECUTE = 1
 FLAG_AUTO_COMMIT = 0x1
+FLAG_TRIGGER_ACTION = 0x4000
 CHUNK_END = 0
 CHUNK_OUT = 1
 
@@ -127,7 +128,7 @@ def arg_str(s):
 
 def csql_select_1(sock, tolerate_cancel=False):
     body = struct.pack(">b", CAS_FC_CSQL_REQUEST)
-    body += arg_int(SUB_EXECUTE) + arg_int(FLAG_AUTO_COMMIT | 0x2) + arg_int(1) + arg_int(-1) + arg_int(0)
+    body += arg_int(SUB_EXECUTE) + arg_int(FLAG_AUTO_COMMIT | 0x2 | FLAG_TRIGGER_ACTION) + arg_int(1) + arg_int(-1) + arg_int(0)
     body += arg_str("") + arg_str("") + arg_str("") + arg_str("SELECT 1;")
     sock.sendall(struct.pack(">i", len(body)) + b"\xff\xff\xff\xff" + body)
     length = struct.unpack(">i", recv_exact(sock, 4, "req reply length"))[0]
@@ -143,7 +144,7 @@ def csql_select_1(sock, tolerate_cancel=False):
             # by this (legitimately cancelled) statement
             return False
         die("csql request failed: status=%d" % status)
-    pos, out = 8, b""
+    pos, out = 9, b""  # reply[8] = tran-dirty byte
     while reply[pos] != CHUNK_END:
         tag = reply[pos]
         clen = struct.unpack(">i", reply[pos + 1:pos + 5])[0]
