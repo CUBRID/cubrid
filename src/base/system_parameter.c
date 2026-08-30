@@ -6850,15 +6850,11 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	}
 #endif /* CS_MODE */
 
-#if defined (SERVER_MODE)
-      if (PRM_IS_FOR_CLIENT (prm) && !PRM_IS_FOR_SERVER (prm) && !PRM_IS_FOR_SESSION (prm))
-	{
-	  /* prm for only client; client session parameters must load so in-process
-	   * sessions seed their parameter array from this conf (the same values a
-	   * CAS reading this file would have carried) */
-	  continue;
-	}
-#endif /* SERVER_MODE */
+      /* the server process hosts the in-process client half, so it loads every
+       * client parameter this conf carries (the same values a CAS reading this
+       * file held): session parameters seed each session's parameter array, and
+       * non-session ones are read from these statics by the folded compile
+       * path — the SA build, the fold's template, loads all of them too */
 
       if (reload && !PRM_IS_RELOADABLE (prm))
 	{
