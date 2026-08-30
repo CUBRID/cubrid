@@ -150,6 +150,14 @@ extern "C"
 
 #define CAS_GET_QUERY_INFO_PLAN			1
 
+/* CAS_FC_CSQL_REQUEST sub-commands (arg0) */
+#define CAS_CSQL_SUB_EXECUTE                    1
+#define CAS_CSQL_SUB_SESSION_CMD                2
+/* CAS_FC_CSQL_REQUEST reply chunk tags: ordered stdout/stderr interleaving */
+#define CAS_CSQL_CHUNK_END                      0
+#define CAS_CSQL_CHUNK_OUT                      1
+#define CAS_CSQL_CHUNK_ERR                      2
+
 #define CAS_STATEMENT_POOLING_OFF		0
 #define CAS_STATEMENT_POOLING_ON		1
 
@@ -217,6 +225,7 @@ extern "C"
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
     CAS_FC_CAS_CHANGE_MODE = 44,
+    CAS_FC_CSQL_REQUEST = 45,	/* additive, V12 thin-csql only: server-rendered text execute/session-command */
 
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */

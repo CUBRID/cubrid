@@ -47,6 +47,8 @@
 #include "cas_dispatch.h"	// cas_server_session_slot_begin/end
 #include "cas_protocol.h"
 #include "client_session_context.hpp"
+#include "csql.h"		// csql_server_*_request (B5 PR1)
+#include "message_catalog.h"	// msgcat_init (B5 PR1 test needs the csql catalog)
 #include "db.h"			// db_cl_modification_disabled (B3 codex F2)
 #include "dbi.h"		// db_disable/enable_modification
 #include "driver_session.hpp"
@@ -867,6 +869,76 @@ test_adoption_wire_helpers (void)
   return 0;
 }
 
+/* wf122/B5 PR1: the SERVER_MODE session-command allowlist and the request
+ * entry-point plumbing (thread-local stream capture, no bracket required for
+ * a refused command).  The full render path needs a booted DB and is covered
+ * by smoke_csql.sh. */
+static int
+test_csql_server_allowlist (void)
+{
+  char *out_buf = NULL, *err_buf = NULL;
+  size_t out_sz = 0, err_sz = 0;
+  FILE *out_fp = open_memstream (&out_buf, &out_sz);
+  FILE *err_fp = open_memstream (&err_buf, &err_sz);
+  CSQL_ARGUMENT csql_arg;
+  CSQL_SERVER_EXEC_OPTS opts;
+  int rc, ret = 1;
+
+  if (out_fp == NULL || err_fp == NULL)
+    {
+      fprintf (stderr, "FAIL: open_memstream\n");
+      goto cleanup;
+    }
+
+  /* the csql catalog backs the refusal message; without an install the
+   * message lookup would return NULL and the display path would crash */
+  (void) msgcat_init ();
+
+  memset (&csql_arg, 0, sizeof (csql_arg));
+  csql_arg.cs_mode = true;
+  csql_arg.nopager = true;
+  memset (&opts, 0, sizeof (opts));
+  opts.input_type = 1;		/* STRING semantics */
+  opts.line_no = -1;
+
+  /* client-only command must be refused (DO_CMD_FAILURE == 1) */
+  rc = csql_server_session_cmd_request (&csql_arg, &opts, ";shell", out_fp, err_fp);
+  if (rc != 1)
+    {
+      fprintf (stderr, "FAIL: ;shell expected DO_CMD_FAILURE(1), got %d\n", rc);
+      goto cleanup;
+    }
+  fflush (out_fp);
+  if (out_sz != 0)
+    {
+      fprintf (stderr, "FAIL: refused command produced output (%zu bytes)\n", out_sz);
+      goto cleanup;
+    }
+
+  /* unknown command is also a plain failure, not a crash */
+  rc = csql_server_session_cmd_request (&csql_arg, &opts, ";no_such_cmd", out_fp, err_fp);
+  if (rc != 1)
+    {
+      fprintf (stderr, "FAIL: unknown cmd expected DO_CMD_FAILURE(1), got %d\n", rc);
+      goto cleanup;
+    }
+
+  ret = 0;
+
+cleanup:
+  if (out_fp != NULL)
+    {
+      fclose (out_fp);
+    }
+  if (err_fp != NULL)
+    {
+      fclose (err_fp);
+    }
+  free (out_buf);
+  free (err_buf);
+  return ret;
+}
+
 int
 main (int, char **)
 {
@@ -1001,5 +1073,11 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: ACCESS_CONTROL matcher (sections, wildcards, ips, loopback, default policy, reload)\n");
+
+  if (test_csql_server_allowlist () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: server-side csql session-command allowlist refuses client-only commands\n");
   return 0;
 }

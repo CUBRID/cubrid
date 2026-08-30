@@ -55,7 +55,7 @@
 		  APPEND_MORE_LINE(0, ""); \
 		} while(0)
 
-static jmp_buf csql_Jmp_buf;
+static CSQL_BODY_TLS jmp_buf csql_Jmp_buf;
 
 static void csql_pipe_handler (int sig_no);
 static void csql_dump_alltran (volatile TRANS_INFO * info);
@@ -657,10 +657,10 @@ csql_help_info (const char *command, int aucommit_flag)
 {
   char *dup = NULL, *tok, *save;
   FILE *p_stream;		/* pipe stream to pager */
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
   void (*csql_intr_save) (int sig);
   void (*csql_pipe_save) (int sig);
-#endif /* ! WINDOWS */
+#endif /* ! WINDOWS && ! SERVER_MODE */
 
   if (!command)
     {
@@ -684,12 +684,12 @@ csql_help_info (const char *command, int aucommit_flag)
     {
       int result;
 
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
       csql_intr_save = signal (SIGINT, SIG_IGN);
       csql_pipe_save = signal (SIGPIPE, SIG_IGN);
-#else
+#elif defined(WINDOWS)
       SetConsoleCtrlHandler (NULL, true);	/* ignore Ctrl + c */
-#endif /* ! WINDOWS */
+#endif /* ! WINDOWS && ! SERVER_MODE */
       result = NO_ERROR;
 
       p_stream = csql_popen (csql_Pager_cmd, csql_Output_fp);
@@ -711,12 +711,12 @@ csql_help_info (const char *command, int aucommit_flag)
 	      csql_display_msg (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_STAT_COMMITTED_TEXT));
 	    }
 	}
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
       signal (SIGINT, csql_intr_save);
       signal (SIGPIPE, csql_pipe_save);
-#else
+#elif defined(WINDOWS)
       SetConsoleCtrlHandler (NULL, false);
-#endif /* ! WINDOWS */
+#endif /* ! WINDOWS && ! SERVER_MODE */
     }
   else
     {
@@ -766,9 +766,9 @@ csql_killtran (const char *argument)
 {
   TRANS_INFO *info = NULL;
   int tran_index = -1, i;
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
   void (*csql_pipe_save) (int sig);
-#endif /* ! WINDOWS */
+#endif /* ! WINDOWS && ! SERVER_MODE */
 
   if (argument)
     {
@@ -785,13 +785,13 @@ csql_killtran (const char *argument)
   /* dump transaction */
   if (tran_index <= 0)
     {
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
       csql_pipe_save = signal (SIGPIPE, &csql_pipe_handler);
-#endif /* ! WINDOWS */
+#endif /* ! WINDOWS && ! SERVER_MODE */
       csql_dump_alltran (info);
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
       signal (SIGPIPE, csql_pipe_save);
-#endif /* ! WINDOWS */
+#endif /* ! WINDOWS && ! SERVER_MODE */
     }
   /* kill transaction */
   else

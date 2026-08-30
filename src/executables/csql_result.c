@@ -163,7 +163,7 @@ static const char *csql_Isolation_level_string[] = {
   "SERIALIZABLE"
 };
 
-static jmp_buf csql_Jmp_buf;
+static CSQL_BODY_TLS jmp_buf csql_Jmp_buf;
 
 static const char *csql_cmd_string (CUBRID_STMT_TYPE stmt_type, const char *default_string);
 static void display_empty_result (int stmt_type, int line_no);
@@ -700,7 +700,7 @@ csql_pipe_handler (int sig_no)
   longjmp (csql_Jmp_buf, 1);
 }
 
-static void (*csql_pipe_save) (int sig);
+static CSQL_BODY_TLS void (*csql_pipe_save) (int sig);
 /*
  * write_results_to_stream()
  *   return: CSQL_FAILURE/CSQL_SUCCESS
@@ -757,9 +757,10 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 
   if (setjmp (csql_Jmp_buf) == 0)
     {
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
+      /* never touch process signal disposition inside cub_server (wf122/B5) */
       csql_pipe_save = os_set_signal_handler (SIGPIPE, &csql_pipe_handler);
-#endif /* !WINDOWS */
+#endif /* !WINDOWS && !SERVER_MODE */
 
       if (csql_arg->plain_output == false && csql_arg->query_output == false && csql_arg->loaddb_output == false)
 	{
@@ -981,15 +982,15 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
        *      system default, the program could exit.
        *      I cannot use the old error handler since I could not longjmp
        */
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
       (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
-#endif /* !WINDOWS */
+#endif /* !WINDOWS && !SERVER_MODE */
       csql_pclose (pf, fp);
     }
 
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
   (void) os_set_signal_handler (SIGPIPE, csql_pipe_save);
-#endif /* !WINDOWS */
+#endif /* !WINDOWS && !SERVER_MODE */
 
   /* free result */
   if (val != NULL)
