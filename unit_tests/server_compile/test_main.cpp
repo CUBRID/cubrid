@@ -869,6 +869,39 @@ test_adoption_wire_helpers (void)
   return 0;
 }
 
+/* wf122/B5 PR4: the utility-channel client-type allowlist (boot.h) — the
+ * legacy RPC plane admits only admin utilities, HA daemons and the loaddb
+ * family; csql, driver and default types are refused at registration. */
+static int
+test_util_channel_allowlist (void)
+{
+  static const int allowed[] = {
+    DB_CLIENT_TYPE_ADMIN_UTILITY, DB_CLIENT_TYPE_LOG_COPIER, DB_CLIENT_TYPE_LOG_APPLIER,
+    DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS, DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2,
+    DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4, DB_CLIENT_TYPE_LOADDB_UTILITY
+  };
+  int t;
+
+  for (t = DB_CLIENT_TYPE_UNKNOWN; t < DB_CLIENT_TYPE_MAX; t++)
+    {
+      bool expect = false;
+      for (size_t i = 0; i < sizeof (allowed) / sizeof (allowed[0]); i++)
+	{
+	  if (allowed[i] == t)
+	    {
+	      expect = true;
+	    }
+	}
+      if (BOOT_UTIL_CHANNEL_CLIENT_TYPE (t) != expect)
+	{
+	  fprintf (stderr, "FAIL: util-channel allowlist for client type %d: got %d want %d\n", t,
+		   (int) BOOT_UTIL_CHANNEL_CLIENT_TYPE (t), (int) expect);
+	  return 1;
+	}
+    }
+  return 0;
+}
+
 /* wf122/B5 PR1: the SERVER_MODE session-command allowlist and the request
  * entry-point plumbing (thread-local stream capture, no bracket required for
  * a refused command).  The full render path needs a booted DB and is covered
@@ -1079,5 +1112,11 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: server-side csql session-command allowlist refuses client-only commands\n");
+
+  if (test_util_channel_allowlist () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: utility-channel client-type allowlist admits exactly the utility/HA plane\n");
   return 0;
 }
