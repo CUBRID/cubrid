@@ -1579,6 +1579,11 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  fprintf (csql_Output_fp, "ECHO IS %s\n", (csql_Is_echo_on ? "ON" : "OFF"));
 	}
+#if defined(CSQL_THIN)
+      /* wf122/B5: the render runs server-side — ship the toggle with every
+       * request, or the server keeps the connect-time default */
+      csql_wire_set_echo_on (csql_Is_echo_on);
+#endif
       break;
 
     case S_CMD_DATE:
@@ -1605,6 +1610,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  fprintf (csql_Output_fp, "TIME IS %s\n", (csql_Is_time_on ? "ON" : "OFF"));
 	}
+#if defined(CSQL_THIN)
+      /* wf122/B5: same as ;echo — the timing line is rendered server-side */
+      csql_wire_set_time_on (csql_Is_time_on);
+#endif
       break;
 
     case S_CMD_LINE_OUTPUT:
