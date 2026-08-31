@@ -307,6 +307,12 @@ namespace cuberr
     return !m_stack.empty ();
   }
 
+  std::size_t
+  context::get_stack_depth (void)
+  {
+    return m_stack.size ();
+  }
+
   const bool &
   context::get_logging (void)
   {

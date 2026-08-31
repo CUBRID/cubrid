@@ -319,6 +319,8 @@ extern "C"
   extern void er_stack_pop_and_keep_error (void);
   extern void er_restore_last_error (void);
   extern void er_stack_clearall (void);
+  extern int er_stack_depth (void);
+  extern void er_stack_clear_above (int floor);
   extern void *db_default_malloc_handler (void *arg, const char *filename, int line_no, size_t size);
   extern int er_event_restart (void);
   extern void er_clearid (void);
