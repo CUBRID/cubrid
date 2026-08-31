@@ -774,6 +774,12 @@ namespace cubconn
       if (conn != NULL)
 	{
 	  entry_p->conn_entry = NULL;
+	  /* css_make_conn's client-slot count (css_Num_current_client) is only
+	   * refunded by css_prepare_shutdown_conn, never by css_free_conn —
+	   * skipping it leaks one max_clients slot per driver session until
+	   * connects fail with CAS_ER_FREE_SERVER (wf171: wall at the
+	   * (max_clients+1)-th session, scaling linearly with max_clients) */
+	  css_prepare_shutdown_conn (conn);
 	  css_free_conn (conn);	/* decrements the conn-rule counter by client_type */
 	}
       else
