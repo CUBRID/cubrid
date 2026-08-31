@@ -1063,15 +1063,17 @@ scenario_selfref_catalog (const char *server_name)
   {
     scenario_try (sid, "DROP CLASS wf174_c2");
     scenario_try (sid, "DROP CLASS wf174_c1");
-    /* plant a self-referencing SET element domain in the cache, then drop it */
-    if (!scenario_exec (sid, "CREATE CLASS wf174_c1 (a INT)", NULL, 0)
+    /* plant a self-referencing SET element domain in the cache, then drop it.
+     * DONT_REUSE_OID: the test-mode default makes new classes REUSE_OID
+     * (non-referable), which rejects self-referencing attributes at compile */
+    if (!scenario_exec (sid, "CREATE CLASS wf174_c1 (a INT) DONT_REUSE_OID", NULL, 0)
 	|| !scenario_exec (sid, "ALTER CLASS wf174_c1 ADD ATTRIBUTE b SET(wf174_c1)", NULL, 0)
 	|| !scenario_exec (sid, "DROP CLASS wf174_c1", NULL, 0))
       {
 	return false;
       }
     if (!scenario_exec (sid, "CREATE CLASS wf174_c2 (a DOUBLE, d SET(wf174_c2), e MULTISET(wf174_c2),"
-			" f SEQUENCE(wf174_c2))", NULL, 0))
+			" f SEQUENCE(wf174_c2)) DONT_REUSE_OID", NULL, 0))
       {
 	return false;
       }
