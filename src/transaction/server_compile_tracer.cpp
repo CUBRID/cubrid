@@ -745,11 +745,17 @@ scenario_ddl_auth (const char *server_name)
   revoked_pr.set_value ();
   u1_thread.join ();
 
-  /* S4 (DBA): drop the scenario objects */
+  /* S4 (DBA): drop the scenario objects.  DROP USER must succeed — its
+   * internal owner-check query binds the user MOP as an OBJECT host var,
+   * the folded compile path that #167 fixed — and a swallowed failure here
+   * leaves a6_u1 behind, failing the next run's CREATE USER */
   bool cleanup_ok = in_process_session (4, server_name, "DBA", "", 0, [] (int sid)
   {
     scenario_try (sid, "DROP TABLE a6_t1");
-    scenario_try (sid, "DROP USER a6_u1");
+    if (!scenario_exec (sid, "DROP USER a6_u1", NULL, 0))
+      {
+	return false;
+      }
     (void) db_commit_transaction ();
     (void) db_end_session ();
     return true;
