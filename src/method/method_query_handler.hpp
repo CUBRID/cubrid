@@ -148,7 +148,7 @@ namespace cubmethod
 
       /* column info */
       column_info set_column_info (int dbType, int setType, short scale, int prec, char charset, const char *col_name,
-				   const char *attr_name,
+				   const char *stripped_col_name, const char *attr_name,
 				   const char *class_name, char is_non_null);
 
       /* session */

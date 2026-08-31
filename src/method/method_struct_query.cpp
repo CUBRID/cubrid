@@ -48,9 +48,10 @@ namespace cubmethod
     charset = lang_charset();
     is_non_null = 0;
 
-    /* col_name, attr_name, class_name, default_value leave as empty */
+    /* col_name, stripped_col_name, attr_name, class_name, default_value leave as empty */
     // FIXME: to remove warning
     col_name.clear ();
+    stripped_col_name.clear ();
     attr_name.clear ();
     class_name.clear ();
     default_value_string.clear();
@@ -77,6 +78,7 @@ namespace cubmethod
     this->col_name.assign (col_name);
     str_trim (this->col_name);
 
+    stripped_col_name.clear ();
     attr_name.clear ();
     class_name.clear ();
     default_value_string.clear();
@@ -91,7 +93,8 @@ namespace cubmethod
   }
 
   column_info::column_info (int db_type, int set_type, short scale, int prec, char charset,
-			    std::string col_name, std::string default_value, char auto_increment,
+			    std::string col_name, std::string stripped_col_name, std::string default_value,
+			    char auto_increment,
 			    char unique_key, char primary_key, char reverse_index, char reverse_unique,
 			    char foreign_key, char shared, std::string attr_name, std::string class_name,
 			    char is_non_null)
@@ -105,6 +108,9 @@ namespace cubmethod
 
     this->col_name.assign (col_name);
     str_trim (this->col_name);
+
+    this->stripped_col_name.assign (stripped_col_name);
+    str_trim (this->stripped_col_name);
 
     this->attr_name.assign (attr_name);
     this->class_name.assign (class_name);
@@ -138,6 +144,7 @@ namespace cubmethod
     serializator.pack_short (scale);
     serializator.pack_int (prec);
     serializator.pack_string (col_name);
+    serializator.pack_string (stripped_col_name);
     serializator.pack_string (attr_name);
     serializator.pack_string (class_name);
     serializator.pack_string (default_value_string);
@@ -164,6 +171,7 @@ namespace cubmethod
     deserializator.unpack_int (p);
 
     deserializator.unpack_string (col_name);
+    deserializator.unpack_string (stripped_col_name);
     deserializator.unpack_string (attr_name);
     deserializator.unpack_string (class_name);
     deserializator.unpack_string (default_value_string);
@@ -203,6 +211,7 @@ namespace cubmethod
     size += serializator.get_packed_int_size (size); // prec
 
     size += serializator.get_packed_string_size (col_name, size); // col_name
+    size += serializator.get_packed_string_size (stripped_col_name, size); // stripped_col_name
     size += serializator.get_packed_string_size (attr_name, size); // attr_name
     size += serializator.get_packed_string_size (class_name, size); // class_name
     size += serializator.get_packed_string_size (default_value_string, size); // default_value_string
@@ -224,6 +233,7 @@ namespace cubmethod
     fprintf (stdout, "class_name: %s\n", class_name.c_str());
     fprintf (stdout, "attr_name: %s\n", attr_name.c_str());
     fprintf (stdout, "col_name: %s\n", col_name.c_str());
+    fprintf (stdout, "stripped_col_name: %s\n", stripped_col_name.c_str());
     fprintf (stdout, "default_value_string: %s\n", default_value_string.c_str());
 
     fprintf (stdout, "scale: %d\n", scale);
