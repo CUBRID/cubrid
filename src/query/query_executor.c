@@ -10318,6 +10318,117 @@ exit_on_error:
 }
 
 /*
+ * qexec_transient_row_locks - rows this statement published under the transient row lock
+ *
+ * Note: the row lock ends when the statement stops forcing rows, not as each row is published.
+ *	 Releasing it at publish leaves the row unlocked while this same statement forces the next one,
+ *	 and the index is where that gap shows.  A second updater taking the row in that window reads a
+ *	 heap version whose key this statement has already removed from the index -- the heap still
+ *	 carries the version the removal was for -- so its own removal of that key finds nothing and
+ *	 btree_key_find_and_insert_delete_mvccid () reports the key unknown.  The lock still ends before
+ *	 commit, so the uncommitted write-lock footprint stays O(transactions).
+ */
+typedef struct qexec_transient_row_locks QEXEC_TRANSIENT_ROW_LOCKS;
+struct qexec_transient_row_locks
+{
+  OID *oids;			/* rows to unlock */
+  OID *class_oids;		/* the class each row was locked under */
+  int count;
+  int capacity;
+};
+
+#define QEXEC_TRANSIENT_ROW_LOCKS_INITIALIZER { NULL, NULL, 0, 0 }
+#define QEXEC_TRANSIENT_ROW_LOCKS_INITIAL_CAPACITY 64
+
+/*
+ * qexec_transient_row_locks_add () - remember a published row whose lock this statement will release
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY when the row cannot be remembered
+ *   thread_p(in): thread entry
+ *   locks(in/out): the statement's set
+ *   oid(in): the row
+ *   class_oid(in): the class it was locked under
+ *
+ * Note: a row that cannot be remembered keeps its lock to commit.  That costs one lock; releasing a
+ *	 row the set does not know about would leave it unlocked for good.
+ */
+static int
+qexec_transient_row_locks_add (THREAD_ENTRY * thread_p, QEXEC_TRANSIENT_ROW_LOCKS * locks, const OID * oid,
+			       const OID * class_oid)
+{
+  assert (locks != NULL && oid != NULL && class_oid != NULL);
+
+  if (locks->count == locks->capacity)
+    {
+      int new_capacity = (locks->capacity == 0 ? QEXEC_TRANSIENT_ROW_LOCKS_INITIAL_CAPACITY : locks->capacity * 2);
+      OID *new_oids = (OID *) db_private_realloc (thread_p, locks->oids, new_capacity * sizeof (OID));
+      OID *new_class_oids;
+
+      if (new_oids == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      locks->oids = new_oids;
+
+      new_class_oids = (OID *) db_private_realloc (thread_p, locks->class_oids, new_capacity * sizeof (OID));
+      if (new_class_oids == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      locks->class_oids = new_class_oids;
+      locks->capacity = new_capacity;
+    }
+
+  COPY_OID (&locks->oids[locks->count], oid);
+  COPY_OID (&locks->class_oids[locks->count], class_oid);
+  locks->count++;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_transient_row_locks_release () - release the row locks this statement was holding
+ *   return: void
+ *   thread_p(in): thread entry
+ *   locks(in/out): the statement's set, emptied here
+ */
+static void
+qexec_transient_row_locks_release (THREAD_ENTRY * thread_p, QEXEC_TRANSIENT_ROW_LOCKS * locks)
+{
+  int i;
+
+  assert (locks != NULL);
+
+  for (i = 0; i < locks->count; i++)
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &locks->oids[i], &locks->class_oids[i], X_LOCK);
+    }
+  locks->count = 0;
+}
+
+/*
+ * qexec_transient_row_locks_clear () - free the set
+ *   return: void
+ *   thread_p(in): thread entry
+ *   locks(in/out): the statement's set
+ */
+static void
+qexec_transient_row_locks_clear (THREAD_ENTRY * thread_p, QEXEC_TRANSIENT_ROW_LOCKS * locks)
+{
+  assert (locks != NULL);
+
+  if (locks->oids != NULL)
+    {
+      db_private_free_and_init (thread_p, locks->oids);
+    }
+  if (locks->class_oids != NULL)
+    {
+      db_private_free_and_init (thread_p, locks->class_oids);
+    }
+  locks->count = 0;
+  locks->capacity = 0;
+}
+
+/*
  * qexec_execute_update () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in): XASL Tree block
@@ -10365,6 +10476,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
+  QEXEC_TRANSIENT_ROW_LOCKS transient_row_locks = QEXEC_TRANSIENT_ROW_LOCKS_INITIALIZER;
 
   thread_p->no_logging = (bool) update->no_logging;
 
@@ -10964,10 +11076,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		      && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
 		    {
 		      /* the update is published: late arrivals settle on our MVCCID self-lock, which the
-		       * prepare record persists across 2PC, so the row lock is redundant from here.
+		       * prepare record persists across 2PC, so the row lock is redundant from here.  It ends
+		       * when this statement stops forcing rows, not now -- see qexec_transient_row_locks.
 		       * A partition-pruned update keeps it -- the row may have moved to another class, so the
 		       * OID the unlock would name is not the one that was locked. */
-		      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, internal_class->class_oid, X_LOCK);
+		      (void) qexec_transient_row_locks_add (thread_p, &transient_row_locks, oid,
+							    internal_class->class_oid);
 		    }
 		}
 	    }
@@ -11005,6 +11119,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	    }
 	}
     }
+
+  qexec_transient_row_locks_release (thread_p, &transient_row_locks);
+  qexec_transient_row_locks_clear (thread_p, &transient_row_locks);
 
   qexec_close_scan (thread_p, specp);
 
@@ -11065,6 +11182,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   return NO_ERROR;
 
 exit_on_error:
+
+  /* the statement failed: the transaction unwinds and releases these with everything else */
+  qexec_transient_row_locks_clear (thread_p, &transient_row_locks);
 
   if (scan_open)
     {
