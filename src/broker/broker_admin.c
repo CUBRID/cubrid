@@ -325,8 +325,8 @@ main (int argc, char **argv)
 	{
 	"disable", QRCMD_DISABLE},
 	{
-      "enable", QRCMD_ENABLE},};
-#define SUBCMD_COUNT (int) (sizeof (subcommand_table) / sizeof (subcommand_table[0]))
+	"enable", QRCMD_ENABLE}
+      };
       int i_subcmd;
       QRCMD subcommand = QRCMD_UNKNOWN;
 
@@ -337,7 +337,7 @@ main (int argc, char **argv)
 
       /* the table index is not the QRCMD value: always carry the .code around so that
        * reordering the table cannot silently change which command runs. */
-      for (i_subcmd = 0; i_subcmd < SUBCMD_COUNT; i_subcmd++)
+      for (i_subcmd = 0; i_subcmd < DIM (subcommand_table); i_subcmd++)
 	{
 	  if (strcasecmp (argv[2], subcommand_table[i_subcmd].name) == 0)
 	    {
@@ -375,7 +375,6 @@ main (int argc, char **argv)
 
 	  admin_log_write (admin_log_file, msg_buf);
 	}
-#undef SUBCMD_COUNT
       return 0;
 
     qr_usage:
