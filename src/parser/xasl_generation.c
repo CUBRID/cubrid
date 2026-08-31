@@ -17220,7 +17220,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       /* MERGE executes its update/insert subplans inside xtran_server_start_topop()'s system operation, whose
        * tdes->rmutex_topop does not support workers of the same transaction locking it from other threads —
        * parallel dispatch under it self-deadlocks (see qo_check_parallel_hash_join, which already refuses
-       * MERGE for the same reason; this covers the sort/scan/subquery paths driven by xasl->parallelism). */
+       * MERGE for the same reason; this covers the sort/subquery/hash-join paths driven by
+       * xasl->parallelism, while parallel scan is blocked for MERGE by the recursive scan checker). */
       xasl->parallelism = 0;	/* disable */
     }
   else if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
@@ -17604,7 +17605,8 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
       /* MERGE executes its update/insert subplans inside xtran_server_start_topop()'s system operation, whose
        * tdes->rmutex_topop does not support workers of the same transaction locking it from other threads —
        * parallel dispatch under it self-deadlocks (see qo_check_parallel_hash_join, which already refuses
-       * MERGE for the same reason; this covers the sort/scan/subquery paths driven by xasl->parallelism). */
+       * MERGE for the same reason; this covers the sort/subquery/hash-join paths driven by
+       * xasl->parallelism, while parallel scan is blocked for MERGE by the recursive scan checker). */
       xasl->parallelism = 0;	/* disable */
     }
   else if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
