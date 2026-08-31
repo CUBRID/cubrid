@@ -18404,19 +18404,19 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
   memset (ctx, 0, sizeof (HEAP_SHOW_SCAN_CTX));
 
   status = xlocator_find_class_oid (thread_p, class_name, &class_oid, class_lock);
-  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
+  if (status == LC_CLASSNAME_ERROR)
     {
-      /* A failed class-lock acquisition (e.g. an S_LOCK timeout while a concurrent DML holds an
-       * IX_LOCK) is reported only via LC_CLASSNAME_ERROR, with the real error already set by the
-       * lock manager (ER_LK_OBJECT_TIMEOUT_*). Preserve that error; otherwise (a genuine
-       * unknown/deleted class, which returns LC_CLASSNAME_DELETED without setting an error) report
-       * ER_LC_UNKNOWN_CLASSNAME. */
-      error = (status == LC_CLASSNAME_ERROR) ? er_errid_if_has_error () : NO_ERROR;
-      if (error == NO_ERROR)
-	{
-	  error = ER_LC_UNKNOWN_CLASSNAME;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, class_name);
-	}
+      /* The class name is known, but the class lock could not be acquired (e.g. an S_LOCK timeout
+       * while a concurrent DML holds an IX_LOCK).  The lock manager has set the real error, so
+       * report it; this is never an unknown class. */
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+  if (status == LC_CLASSNAME_DELETED)
+    {
+      /* the class has been dropped since the statement was compiled */
+      error = ER_LC_UNKNOWN_CLASSNAME;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, class_name);
       goto cleanup;
     }
 
