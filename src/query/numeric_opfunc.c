@@ -1068,8 +1068,16 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUM
 
       numeric_coerce_num_to_int (arg1, &long_arg1);
       numeric_coerce_num_to_int (arg2, &long_arg2);
-      numeric_coerce_int_to_num ((long_arg1 / long_arg2), answer);
-      numeric_coerce_int_to_num ((long_arg1 % long_arg2), remainder);
+      if (OR_CHECK_INT_DIV_OVERFLOW (long_arg1, long_arg2))
+	{
+	  numeric_coerce_bigint_to_num ((DB_BIGINT) long_arg1 / long_arg2, answer);
+	  numeric_coerce_bigint_to_num ((DB_BIGINT) long_arg1 % long_arg2, remainder);
+	}
+      else
+	{
+	  numeric_coerce_int_to_num ((long_arg1 / long_arg2), answer);
+	  numeric_coerce_int_to_num ((long_arg1 % long_arg2), remainder);
+	}
     }
 
   /* Case 4 - arg1, arg2 are bigints. Do machine divide */
@@ -1079,8 +1087,15 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUM
 
       numeric_coerce_num_to_bigint (arg1, 0, &bi_arg1);
       numeric_coerce_num_to_bigint (arg2, 0, &bi_arg2);
-      numeric_coerce_bigint_to_num ((bi_arg1 / bi_arg2), answer);
-      numeric_coerce_bigint_to_num ((bi_arg1 % bi_arg2), remainder);
+      if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi_arg1, bi_arg2))
+	{
+	  numeric_long_div (arg1, arg2, answer, remainder, false);
+	}
+      else
+	{
+	  numeric_coerce_bigint_to_num ((bi_arg1 / bi_arg2), answer);
+	  numeric_coerce_bigint_to_num ((bi_arg1 % bi_arg2), remainder);
+	}
     }
 
   /* Default case: perform long division */
@@ -2371,29 +2386,39 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
   if (scale > 0)
     {
       numeric_div (arg, numeric_get_pow_of_10 (scale), zero_scale_arg, rem);
-      if (!numeric_is_negative (zero_scale_arg))
+      if (!numeric_is_zero (rem))
 	{
-	  numeric_negate (rem);
-	}
-
-      /* round */
-      numeric_add (numeric_get_pow_of_10 (scale), rem, tmp, DB_NUMERIC_BUF_SIZE);
-      numeric_add (tmp, rem, tmp, DB_NUMERIC_BUF_SIZE);
-      if (numeric_is_negative (tmp) || numeric_is_zero (tmp))
-	{
-	  if (numeric_is_negative (zero_scale_arg))
+	  /* The signs of the input, quotient(except for zero), and remainder will be the same. 
+	     Here, we force 'rem' to be negative */
+	  if (!numeric_is_negative (rem))
 	    {
-	      numeric_decrease (zero_scale_arg);
+	      numeric_negate (rem);
 	    }
-	  else
+
+	  /* round */
+	  /* If (10^'scale' + 'rem' + 'rem') <= 0 (where 'rem' is a negative remainder), round up; otherwise, disregard. 
+	   * If adding the negative remainder twice to a power of 10 results in a negative value, the remainder is considered large enough to round up.
+	   * Otherwise, it is disregarded. 
+	   * Note: Since the remainder is expressed as a negative value, addition is used instead of subtraction.
+	   */
+	  numeric_add (numeric_get_pow_of_10 (scale), rem, tmp, DB_NUMERIC_BUF_SIZE);
+	  numeric_add (tmp, rem, tmp, DB_NUMERIC_BUF_SIZE);
+	  if (numeric_is_negative (tmp) || numeric_is_zero (tmp))
 	    {
-	      numeric_increase (zero_scale_arg);
+	      if (numeric_is_negative (arg))
+		{
+		  numeric_decrease (zero_scale_arg);
+		}
+	      else
+		{
+		  numeric_increase (zero_scale_arg);
+		}
 	    }
 	}
     }
   else
     {
-      numeric_copy (zero_scale_arg, arg);
+      zero_scale_arg = arg;
     }
 
   if (!numeric_is_bigint (zero_scale_arg))
@@ -3090,6 +3115,12 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       skip_size = 1;
       if (astring[i] == '.')
 	{
+	  if (decimal_part || trailing_spaces)
+	    {
+	      /* reject duplicate decimal points and decimal points after trailing spaces (e.g. '1   .') */
+	      ret = DOMAIN_INCOMPATIBLE;
+	      break;
+	    }
 	  leading_zeroes = false;
 	  decimal_part = true;
 	  scale = astring_length - (i + 1);
@@ -3107,17 +3138,18 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	    }
 	  else if (astring[i] == '+' || astring[i] == '-')
 	    {			/* sign found */
-	      if (!sign_found)
+	      /* Sign is only allowed before any digit (rejects duplicates and signs after a leading zero, e.g. '0-1') */
+	      if (sign_found || pad_character_zero)
+		{
+		  ret = DOMAIN_INCOMPATIBLE;
+		}
+	      else
 		{
 		  sign_found = true;
 		  if (astring[i] == '-')
 		    {
 		      negate_value = true;
 		    }
-		}
-	      else
-		{		/* Duplicate sign characters */
-		  ret = DOMAIN_INCOMPATIBLE;
 		}
 	    }
 	  else if (astring[i] == '0')
@@ -3127,8 +3159,18 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	    }
 	  else if (intl_is_space (astring + i, NULL, codeset, &skip_size))
 	    {
-	      /* Just skip this.  OK to have leading spaces */
-	      ;
+	      /* A space after a sign without any digit is invalid (e.g. '-   1'). */
+	      if (sign_found && !pad_character_zero)
+		{
+		  ret = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+	      /* A space after a leading zero ends the leading phase (e.g. '0   1' is invalid). */
+	      if (pad_character_zero)
+		{
+		  leading_zeroes = false;
+		  trailing_spaces = true;
+		}
 	    }
 	  else
 	    {
@@ -3195,12 +3237,30 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       goto exit_on_error;
     }
 
-  if (prec == 0 && pad_character_zero)
+  if (prec == 0)
     {
-      prec = 1;
-      num_string[0] = '0';
-      num_string[prec] = '\0';
-      numeric_coerce_dec_str_to_num (num_string, num);
+      if (pad_character_zero)
+	{
+	  prec = 1;
+	  num_string[0] = '0';
+	  num_string[prec] = '\0';
+	  numeric_coerce_dec_str_to_num (num_string, num);
+	}
+      else
+	{
+	  /*
+	   * no valid digit was found in input.
+	   * reject strings that do not contain any numeric digit.
+	   *
+	   * examples:
+	   *   '+', '-'                  (sign only)
+	   *   '.', ' . ', '   .   '     (decimal point only)
+	   *   ' ', '    '               (whitespace only)
+	   *   '+.', '-.', ' + . '       (sign + non-digit combinations)
+	   */
+	  ret = DOMAIN_INCOMPATIBLE;
+	  goto exit_on_error;
+	}
     }
   else
     {

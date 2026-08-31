@@ -2823,7 +2823,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     regu_variable_list_node * regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
 		     HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		     HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
-		     regu_variable_list_node * regu_list_recordinfo, bool is_partition_table)
+		     regu_variable_list_node * regu_list_recordinfo)
 {
   HEAP_SCAN_ID *hsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -2867,19 +2867,6 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   hsidp->cache_recordinfo = cache_recordinfo;
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
-
-  /* for scampling statistics. */
-  if (scan_type == S_HEAP_SAMPLING_SCAN && !is_partition_table)
-    {
-      int total_pages = 0;
-      if (file_get_num_total_user_pages (thread_p, cls_oid, &total_pages) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
-      /* sampling_weight = total_page / sampling_page */
-      hsidp->sampling.weight = MAX ((total_pages / NUMBER_OF_SAMPLING_PAGES), 1);
-    }
 
   return NO_ERROR;
 }
@@ -4408,6 +4395,15 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	}
       break;
 
+    case S_HEAP_SAMPLING_SCAN:
+      assert (s_id->s.hsid.sampling.prepared);
+      assert (s_id->s.hsid.sampling.part_offsets != NULL);
+      assert (s_id->s.hsid.sampling.partition_cursor < s_id->s.hsid.sampling.n_parts);
+      s_id->s.hsid.sampling.picked_cursor = s_id->s.hsid.sampling.part_offsets[s_id->s.hsid.sampling.partition_cursor];
+      s_id->s.hsid.sampling.slice_end = s_id->s.hsid.sampling.part_offsets[s_id->s.hsid.sampling.partition_cursor + 1];
+      UT_CAST_TO_NULL_HEAP_OID (&s_id->s.hsid.hfid, &s_id->s.hsid.curr_oid);
+      break;
+
     case S_INDX_SCAN:
       if (s_id->grouped)
 	{
@@ -4785,6 +4781,37 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     }
 
   scan_id->status = S_ENDED;
+}
+
+/*
+ * scan_free_sampling () - free sampling pick buffers
+ *   return:
+ *   scan_id(in/out): Scan identifier
+ */
+void
+scan_free_sampling (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  if (scan_id == NULL || scan_id->type != S_HEAP_SAMPLING_SCAN)
+    {
+      return;
+    }
+
+  if (scan_id->s.hsid.sampling.picked_vpids != NULL)
+    {
+      db_private_free_and_init (thread_p, scan_id->s.hsid.sampling.picked_vpids);
+    }
+  if (scan_id->s.hsid.sampling.part_offsets != NULL)
+    {
+      db_private_free_and_init (thread_p, scan_id->s.hsid.sampling.part_offsets);
+    }
+
+  scan_id->s.hsid.sampling.prepared = false;
+  scan_id->s.hsid.sampling.weight = 0;
+  scan_id->s.hsid.sampling.picked_count = 0;
+  scan_id->s.hsid.sampling.picked_cursor = 0;
+  scan_id->s.hsid.sampling.slice_end = 0;
+  scan_id->s.hsid.sampling.n_parts = 0;
+  scan_id->s.hsid.sampling.partition_cursor = 0;
 }
 
 /*

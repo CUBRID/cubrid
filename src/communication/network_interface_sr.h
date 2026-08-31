@@ -261,4 +261,12 @@ extern void spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 /* memmon */
 extern void smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+/* file manager */
+extern void sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sfile_tracker_clean_invalid_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+#if !defined(NDEBUG)
+extern void sfile_tracker_delete_target_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+#endif
+
 #endif /* _NETWORK_INTERFACE_SR_H_ */

@@ -745,6 +745,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PL_TRANSACTION_CONTROL "pl_transaction_control"
 
+#define PRM_NAME_PAGE_LATCH_TIMEOUT_IN_MSECS "page_latch_timeout_in_msecs"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -770,6 +772,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DBLINK_AUTO_COMMIT "dblink_auto_commit"
 
 #define PRM_NAME_ENABLE_JVM_HEAP_DUMP "enable_jvm_heap_dump"
+
+#define PRM_NAME_LOG_POSTPONE_CACHE_SIZE "postpone_cache_size"
+
+#define PRM_NAME_STATS_FULLSCAN_MAX_PAGES "stats_fullscan_max_pages"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -2498,6 +2504,23 @@ static bool PRM_ENABLE_JVM_HEAP_DUMP = true;
 static bool prm_enable_jvm_heap_dump_default = true;
 #endif
 static unsigned int prm_enable_jvm_heap_dump_flag = 0;
+
+int PRM_PAGE_LATCH_TIMEOUT_IN_MSECS = 300 * 1000;
+static int prm_page_latch_timeout_in_msecs_default = 300 * 1000;
+static int prm_page_latch_timeout_in_msecs_upper = 3000 * 1000;
+static int prm_page_latch_timeout_in_msecs_lower = 0;
+static unsigned int prm_page_latch_timeout_in_msecs_flag = 0;
+
+int PRM_LOG_POSTPONE_CACHE_SIZE = 512;
+static int prm_log_postpone_cache_size_default = 512;
+static int prm_log_postpone_cache_size_upper = 4096;
+static int prm_log_postpone_cache_size_lower = 4;
+static unsigned int prm_log_postpone_cache_size_flag = 0;
+
+int PRM_STATS_FULLSCAN_MAX_PAGES = 10000;
+static int prm_stats_fullscan_max_pages_default = 10000;
+static int prm_stats_fullscan_max_pages_lower = 0;
+static unsigned int prm_stats_fullscan_max_pages_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -4841,7 +4864,7 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_sql_trace_execution_plan_default,
    (void *) &PRM_SQL_TRACE_EXECUTION_PLAN,
    (void *) NULL,
-   (void *) NULL,
+   (char *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -6068,7 +6091,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_RELOADABLE | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_stored_procedure_flag,
    (void *) &prm_stored_procedure_default,
@@ -6494,7 +6517,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_STORED_PROCEDURE,
    PRM_NAME_STORED_PROCEDURE,
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_RELOADABLE),
    PRM_BOOLEAN,
    &prm_stored_procedure_flag,
    (void *) &prm_stored_procedure_default,
@@ -6590,7 +6613,43 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PAGE_LATCH_TIMEOUT_IN_MSECS,
+   PRM_NAME_PAGE_LATCH_TIMEOUT_IN_MSECS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_page_latch_timeout_in_msecs_flag,
+   (void *) &prm_page_latch_timeout_in_msecs_default,
+   (void *) &PRM_PAGE_LATCH_TIMEOUT_IN_MSECS,
+   (void *) &prm_page_latch_timeout_in_msecs_upper,
+   (void *) &prm_page_latch_timeout_in_msecs_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_POSTPONE_CACHE_SIZE,
+   PRM_NAME_LOG_POSTPONE_CACHE_SIZE,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_log_postpone_cache_size_flag,
+   (void *) &prm_log_postpone_cache_size_default,
+   (void *) &PRM_LOG_POSTPONE_CACHE_SIZE,
+   (void *) &prm_log_postpone_cache_size_upper,
+   (void *) &prm_log_postpone_cache_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STATS_FULLSCAN_MAX_PAGES,
+   PRM_NAME_STATS_FULLSCAN_MAX_PAGES,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_stats_fullscan_max_pages_flag,
+   (void *) &prm_stats_fullscan_max_pages_default,
+   (void *) &PRM_STATS_FULLSCAN_MAX_PAGES,
+   (void *) NULL,
+   (void *) &prm_stats_fullscan_max_pages_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 static int num_session_parameters = 0;

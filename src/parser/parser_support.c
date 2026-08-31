@@ -1993,12 +1993,71 @@ pt_expr_disallow_op_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   int *op_list = (int *) arg;
   int i;
 
+  if (*continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
   if (!PT_IS_EXPR_NODE (node))
     {
       return node;
     }
 
+  assert (op_list != NULL);
+
+  for (i = 1; i <= op_list[0]; i++)
+    {
+      if (op_list[i] == node->info.expr.op)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
+		      pt_show_binopcode (node->info.expr.op));
+	}
+    }
+  return node;
+}
+
+/*
+ * pt_expr_disallow_op_except_agg () - looks if the expression op is in the list
+ *				       given as argument and throws an error if
+ *				       found except aggregate function
+ *
+ * return: node
+ * parser(in):
+ * node(in):
+ * arg(in): integer list with forbidden operators. arg[0] keeps the number of
+ *	    operators
+ * continue_wals (in/out):
+ */
+PT_NODE *
+pt_expr_disallow_op_except_agg (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  int *op_list = (int *) arg;
+  int i;
+
   if (*continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type) || pt_is_aggregate_function (parser, node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  if (!PT_IS_EXPR_NODE (node))
     {
       return node;
     }
@@ -3449,6 +3508,42 @@ pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return has_inst_orderby_num;
+}
+
+/*
+ * pt_has_having ()
+ *          - check if tree has an HAVING
+ *   return: true if tree has HAVING
+ *   parser(in):
+ *   node(in):
+ */
+
+bool
+pt_has_having (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_having = false;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      if (node->info.query.q.select.having != NULL)
+	{
+	  return true;
+	}
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      has_having |= pt_has_having (parser, node->info.query.q.union_.arg1);
+      has_having |= pt_has_having (parser, node->info.query.q.union_.arg2);
+      break;
+
+    default:
+      break;
+    }
+
+  return has_having;
 }
 
 /*
@@ -11097,52 +11192,62 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     }
 
   snl->server_cnt++;
-  for (int i = 0; i < snl->server_node_cnt; i++)
+  for (int i = 0; i < snl->stored_cnt; i++)
     {
-      int node_cnt = 0;
-
       if (name_ptr == NULL || strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
 	{
-	  node_cnt++;
+	  continue;		/* name mismatch: not a duplicate of this slot, keep scanning */
 	}
 
       if (owner_ptr == NULL && snl->server[i]->next == NULL)
 	{
-	  snl->server_node_cnt += node_cnt;
-	  return node;
+	  return node;		/* exact duplicate (no owner qualifier on either side) */
 	}
 
-      if (owner_ptr && snl->server[i]->next)
+      if (owner_ptr != NULL && snl->server[i]->next != NULL)
 	{
 	  if (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) != 0)
 	    {
-	      node_cnt++;
+	      continue;		/* same name, different owner: distinct server, keep scanning */
 	    }
-	  snl->server_node_cnt += node_cnt;
-	  return node;
+	  return node;		/* same name and same owner qualifier: exact duplicate */
 	}
+      /* same name, owner-presence differs (one qualified, one not): keep scanning */
     }
 
-  if (name_ptr != NULL)
+  if (name_ptr == NULL)
     {
-      new_name = parser_new_node (parser, PT_NAME);
-      new_name->info.name.original = pt_append_string (parser, NULL, name_ptr);
-      if (owner_ptr)
-	{
-	  new_owner = parser_new_node (parser, PT_NAME);
-	  new_owner->info.name.original = pt_append_string (parser, NULL, owner_ptr);
-	  new_name->next = new_owner;
-
-	  vq = pt_append_nulstring (parser, vq, owner_ptr);
-	  vq = pt_append_bytes (parser, vq, ".", 1);
-	}
-      vq = pt_append_nulstring (parser, vq, name_ptr);
-
-      snl->len[snl->server_node_cnt] = (int) strlen ((char *) vq->bytes);
-      snl->server_full_name[snl->server_node_cnt] = (char *) vq->bytes;
-      snl->server[snl->server_node_cnt] = new_name;
-      snl->server_node_cnt++;
+      return node;
     }
+
+  if (snl->stored_cnt >= (int) (sizeof (snl->server) / sizeof (snl->server[0])))
+    {
+      /* slots full (3rd+ distinct remote): count only, no out-of-bounds store. Keep walking (not
+       * PT_STOP_WALK) so any local spec later in the same FROM-list is still visited and counted
+       * into local_cnt; otherwise pt_convert_dblink_dml_query's local_cnt>0 check is skipped and
+       * the wrong rejection message (multi-remote instead of local-mixed-remote) is raised. */
+      snl->distinct_cnt++;
+      return node;
+    }
+
+  new_name = parser_new_node (parser, PT_NAME);
+  new_name->info.name.original = pt_append_string (parser, NULL, name_ptr);
+  if (owner_ptr)
+    {
+      new_owner = parser_new_node (parser, PT_NAME);
+      new_owner->info.name.original = pt_append_string (parser, NULL, owner_ptr);
+      new_name->next = new_owner;
+
+      vq = pt_append_nulstring (parser, vq, owner_ptr);
+      vq = pt_append_bytes (parser, vq, ".", 1);
+    }
+  vq = pt_append_nulstring (parser, vq, name_ptr);
+
+  snl->len[snl->stored_cnt] = (int) strlen ((char *) vq->bytes);
+  snl->server_full_name[snl->stored_cnt] = (char *) vq->bytes;
+  snl->server[snl->stored_cnt] = new_name;
+  snl->stored_cnt++;
+  snl->distinct_cnt++;		/* a store always means exactly one new distinct server (lockstep) */
 
   return node;
 }
@@ -11298,6 +11403,8 @@ find_circle_at_char (bool ansi_quotes, bool no_escape, char *ps)
 #endif
 
 #if defined (ENABLE_UNUSED_FUNCTION)
+/* not migrated to stored_cnt/distinct_cnt (CBRD-26966): dead code, excluded from the build.
+ * if ever revived, its server_node_cnt uses below must become stored_cnt (array bound). */
 static PARSER_VARCHAR *
 pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_LIST * snl)
 {
@@ -11773,11 +11880,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       assert (false);
     }
 
-  if (local_upd > 0 && upd_spec)
-    {
-      parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
-    }
-
   if (into_spec)
     {
       parser_walk_tree (parser, into_spec, pt_get_server_name_list, snl, NULL, NULL);
@@ -11785,6 +11887,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (upd_spec)
     {
+      if (local_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
+	}
+      else if (remote_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_get_server_name_list, snl, NULL, NULL);
+	}
+
       parser_walk_tree (parser, upd_spec, pt_get_server_name_list, snl, NULL, NULL);
     }
 
@@ -11811,7 +11922,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  if (snl->server_node_cnt >= 2 && remote_upd > 0)
+  if (snl->distinct_cnt >= 2)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: multi-remote DML is not allowed");
       return;
@@ -11915,9 +12026,9 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   ct->info.dblink_table.qstr = val;
 
-  for (i = 0; i < snl->server_node_cnt; i++)
+  for (i = 0; i < snl->stored_cnt; i++)
     {
-      if (snl->server_node_cnt != 1)
+      if (snl->stored_cnt != 1)
 	{
 	  if (ct->info.dblink_table.owner_list == NULL && snl->server[i]->next)
 	    {
@@ -12077,7 +12188,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
       // Note that this is not the case for Static SQL SELECT statements.
       if (parser->flag.is_parsing_static_sql)
 	{
-	  if (snl.has_dblink_query || snl.server_node_cnt > 0)
+	  if (snl.has_dblink_query || snl.distinct_cnt > 0)
 	    {
 	      PT_ERROR (parser, stmt, "DBLink DML is not yet supported for PL/CSQL Static SQL.");
 	      return;

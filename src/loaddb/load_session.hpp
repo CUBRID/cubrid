@@ -123,6 +123,9 @@ namespace cubload
 
       class_registry &get_class_registry ();
 
+      void set_client_type (int client_type);
+      int get_client_type ();
+
       template<typename... Args>
       void append_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
@@ -144,6 +147,8 @@ namespace cubload
       std::atomic<size_t> m_active_task_count;    // note: all decrements need to be protected by mutex
 
       class_registry m_class_registry;
+
+      std::atomic<int> m_load_client_type;	/* ADMIN_LOADDB_COMPAT_UNDER_11_2 or ADMIN_LOADDB_COMPAT_UNDER_11_4 */
 
       stats m_stats; // load db stats
       bool m_is_failed;

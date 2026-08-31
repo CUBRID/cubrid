@@ -88,9 +88,6 @@
 #define PT_NODE_SP_ARGS(node) \
   ((node)->info.sp.param_list)
 
-#define PT_NODE_SP_DIRECT(node) \
-  ((node)->info.sp.body->info.sp_body.direct)
-
 #define PT_NODE_SP_IMPL(node) \
   ((node)->info.sp.body->info.sp_body.impl->info.value.data_value.str->bytes)
 
@@ -195,9 +192,9 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
       er_clear ();
 
       /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+      if (db_client_type_is_loaddb_compat () /*latest compat client type */ )
 	{
-	  err = jsp_find_sp_of_another_owner (name, &mop);
+	  err = jsp_find_sp_of_another_owner (checked_name, &mop);
 	}
       else
 	{
@@ -278,6 +275,17 @@ jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
   error = do_find_stored_procedure_by_query (name, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
   if (other_class_name[0] != '\0')
     {
+      if (db_get_client_statement_type () == CUBRID_STMT_CREATE_STORED_PROCEDURE)
+	{
+	  /* maybe unloaded from version 11.4+ or later */
+	  db_set_client_type (DB_CLIENT_TYPE_LOADDB_UTILITY);
+
+	  error = ER_SP_NOT_EXIST;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, name);
+
+	  return error;
+	}
+
       db_make_string (&value, other_class_name);
       *return_mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
       if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
@@ -1146,16 +1154,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
   else				/* SP_LANG_JAVA */
     {
-      bool is_direct = PT_NODE_SP_DIRECT (statement);
-      if (is_direct)
-	{
-	  // TODO: CBRD-24641
-	  assert (false);
-	}
-      else
-	{
-	  decl = (const char *) PT_NODE_SP_JAVA_METHOD (statement);
-	}
+      decl = (const char *) PT_NODE_SP_JAVA_METHOD (statement);
     }
 
   if (decl)
@@ -1205,6 +1204,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (!compile_request.code.empty ())
     {
+      assert (sp_info.lang == SP_LANG_PLCSQL);
       SP_CODE_INFO code_info;
 
       auto now = std::chrono::system_clock::now();
@@ -1212,10 +1212,32 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       std::stringstream stm;
       stm << std::put_time (localtime (&converted_timep), "%Y%m%d%H%M%S");
 
+
+      // CBRD-26513, CBRD-26514: rewrite the user code without the user name and the comment
+      const char *rewritten_code;
+      {
+	int custom_print_saved = parser->custom_print;
+
+	parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+	parser->flag.is_unloading_plcsql_def = 1;
+	rewritten_code = parser_print_tree (parser, statement);
+	parser->flag.is_unloading_plcsql_def = 0;
+
+	parser->custom_print = custom_print_saved;
+      }
+
+      if (rewritten_code == NULL)
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	  err = ER_FAILED;
+	  goto error_exit;
+	}
+
       code_info.name = sp_info.target_class;
       code_info.created_time = stm.str ();
-      code_info.stype = (sp_info.lang == SP_LANG_PLCSQL) ? SPSC_PLCSQL : SPSC_JAVA;
-      code_info.scode = compile_request.code;
+      code_info.stype = SPSC_PLCSQL;
+      code_info.scode.assign (rewritten_code, strlen (rewritten_code));
       code_info.otype = compile_response.compiled_type;
       code_info.ocode = compile_response.compiled_code;
       code_info.owner = sp_info.owner;
@@ -2035,8 +2057,20 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
   {
     PT_NODE *method_name_node = node->info.method_call.method_name;
-    const char *name = PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
-		       method_name_node) : PT_NAME_ORIGINAL (method_name_node);
+
+    const char *name;
+    if (PT_NAME_RESOLVED (method_name_node))
+      {
+	int custom_print_saved = parser->custom_print;
+	parser->custom_print |= PT_SUPPRESS_QUOTES;
+	parser->custom_print &= ~PT_PRINT_QUOTES;
+	name = parser_print_tree (parser, method_name_node);
+	parser->custom_print = custom_print_saved;
+      }
+    else
+      {
+	name = PT_NAME_ORIGINAL (method_name_node);
+      }
 
     sig.name = db_private_strdup (NULL, name);
     if (PT_IS_METHOD (node))

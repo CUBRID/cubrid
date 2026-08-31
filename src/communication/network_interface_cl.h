@@ -464,4 +464,11 @@ EXPORT_IMPORT extern int pl_call (const cubpl::pl_signature & sig,
 /* memmon */
 extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
 extern int mmon_disable_force ();
+
+extern int file_dump_file_list (FILE * outfp, bool invalid_only);
+extern int file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *btree_ovf);
+#if !defined(NDEBUG)
+extern int file_delete_target_file (const char *target_vfid_str);
+#endif
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */

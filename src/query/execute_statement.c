@@ -185,6 +185,12 @@ typedef struct reserved_class_info
   char name[1024];
 } RESERVED_CLASS_INFO;
 
+typedef struct reserved_class_info_list
+{
+  RESERVED_CLASS_INFO *cls_info;
+  int num_classes;
+} RESERVED_CLASS_INFO_LIST;
+
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
 					 PT_OP_TYPE cmp_op, int val1_msgid, int val2_msgid, int error_type);
 static int check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int *ret_msg_id);
@@ -206,10 +212,12 @@ static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_v
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
 static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner);
 
-static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
-				      OID * reserved_oid);
+static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
+				      RESERVED_CLASS_INFO_LIST & reserved_cls_info, OID * reserved_oid);
 
-static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info);
+static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement,
+				 RESERVED_CLASS_INFO_LIST & reserved_cls_info);
+static void do_free_reserved_classinfo (RESERVED_CLASS_INFO_LIST & reserved_cls_info);
 
 static int do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** oid);
 /*
@@ -1313,13 +1321,20 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
       char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
 
       do_find_serial_by_query (serial_name, other_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
       if (other_serial_name[0] != '\0')
 	{
+	  if (db_get_client_statement_type () == CUBRID_STMT_CREATE_SERIAL)
+	    {
+	      /* maybe unloaded from version 11.2+ or later */
+	      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+	      return NULL;
+	    }
+
 	  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, other_serial_name, SERIAL_ATTR_UNIQUE_NAME);
 	  if (serial_mop)
 	    {
@@ -3065,7 +3080,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error = NO_ERROR;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
+  RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
 
   /* save old read fetch instance version */
@@ -3247,7 +3262,12 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP:
-	  (void) do_reserve_classinfo (parser, statement, cls_info);
+	  error = do_reserve_classinfo (parser, statement, reserved_cls_info);
+	  /* Do not execute DROP if CDC supplemental log metadata cannot be reserved. */
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
 
 	  error = do_check_internal_statements (parser, statement,
 						/* statement->info.drop. internal_stmts, */
@@ -3474,13 +3494,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+      if (error >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	{
-	  (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
+	  (void) do_supplemental_statement (parser, statement, reserved_cls_info, reserved_oid);
 	}
     }
 
 end:
+
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
   /* There may be parse tree fragments that were collected during the execution of the statement that should be freed
@@ -3500,6 +3521,9 @@ end:
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  do_free_reserved_classinfo (reserved_cls_info);
+  free_and_init (reserved_oid);
 
   if (error == ER_FAILED)
     {
@@ -3763,7 +3787,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
+  RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
 
   assert (parser->query_id == NULL_QUERY_ID);
@@ -3949,7 +3973,12 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* err = do_drop(parser, statement); */
       /* execute internal statements before and after do_drop() */
 
-      (void) do_reserve_classinfo (parser, statement, cls_info);
+      err = do_reserve_classinfo (parser, statement, reserved_cls_info);
+      /* Do not execute DROP if CDC supplemental log metadata cannot be reserved. */
+      if (err != NO_ERROR)
+	{
+	  goto end;
+	}
       err = do_check_internal_statements (parser, statement,
 					  /* statement->info.drop.internal_stmts, */
 					  do_drop);
@@ -4153,12 +4182,13 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+  if (err >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
     {
-      (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
+      (void) do_supplemental_statement (parser, statement, reserved_cls_info, reserved_oid);
     }
 
 end:
+
 
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
@@ -4180,6 +4210,9 @@ end:
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  do_free_reserved_classinfo (reserved_cls_info);
+  free_and_init (reserved_oid);
 
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_execute_statement() */
@@ -5424,22 +5457,25 @@ set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool
     case TRAN_READ_COMMITTED:
       *tran_isolation = TRAN_READ_COMMITTED;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REPREAD_S_READCOM_I));
       break;
     case TRAN_REPEATABLE_READ:
       *tran_isolation = TRAN_REPEATABLE_READ;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REPREAD_S_REPREAD_I));
       break;
     case TRAN_SERIALIZABLE:
       *tran_isolation = TRAN_SERIALIZABLE;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_SERIAL_S_SERIAL_I));
       break;
     case 0:
@@ -14497,6 +14533,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   COMPILE_CONTEXT *contextp;
   XASL_STREAM stream;
+  XASL_NODE_HEADER xasl_header = { 0 };
 
   contextp = &parser->context;
 
@@ -14558,7 +14595,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   contextp->recompile_xasl = statement->flag.recompile;
   if (statement->flag.recompile == 0)
     {
-      XASL_NODE_HEADER xasl_header;
       stream.xasl_header = &xasl_header;
 
       err = prepare_query (contextp, &stream);
@@ -15378,14 +15414,21 @@ do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TY
 }
 
 static int
-do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info)
+do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO_LIST & reserved_cls_info)
 {
   int count = 0;
+  int num_class = 0;
+  int error = NO_ERROR;
+  size_t cls_info_size = 0;
   PT_NODE *entity = NULL;
   PT_NODE *entity_spec = NULL;
 
   const char *classname;
   DB_OBJECT *class_obj;
+  OID *class_oid;
+
+  reserved_cls_info.cls_info = NULL;
+  reserved_cls_info.num_classes = 0;
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
     {
@@ -15401,40 +15444,87 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
 	{
-	  entity = entity_spec->info.spec.flat_entity_list;
+	  num_class++;
+	}
 
-	  cls_info[count] = (RESERVED_CLASS_INFO *) malloc (sizeof (RESERVED_CLASS_INFO));
-	  if (cls_info[count] == NULL)
+      cls_info_size = num_class * sizeof (RESERVED_CLASS_INFO);
+      reserved_cls_info.cls_info = (RESERVED_CLASS_INFO *) calloc (num_class, sizeof (RESERVED_CLASS_INFO));
+      if (reserved_cls_info.cls_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cls_info_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      reserved_cls_info.num_classes = 0;
+
+      for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
+	{
+	  RESERVED_CLASS_INFO & class_info = reserved_cls_info.cls_info[count];
+
+	  entity = entity_spec->info.spec.flat_entity_list;
+	  if (entity == NULL || entity->info.name.original == NULL)
 	    {
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      assert (false);
+	      error = ER_FAILED;
+	      goto error_exit;
 	    }
 
 	  classname = entity->info.name.original;
 	  class_obj = db_find_class (classname);
-
-	  strcpy (cls_info[count]->name, classname);
-
-	  memcpy (&cls_info[count]->oid, ws_oid (class_obj), sizeof (OID));
-
-	  if (do_find_object_type (statement->info.drop.entity_type, classname, &cls_info[count]->objtype) != NO_ERROR)
+	  if (class_obj == NULL)
 	    {
-	      return ER_FAILED;
+	      if (statement->info.drop.if_exists)
+		{
+		  er_clear ();
+		  continue;
+		}
+
+	      ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, classname);
+	      goto error_exit;
 	    }
 
-	  assert (cls_info[count]->objtype == CDC_TABLE || cls_info[count]->objtype == CDC_VIEW);
+	  class_oid = ws_oid (class_obj);
+	  if (class_oid == NULL)
+	    {
+	      assert (false);
+	      error = ER_FAILED;
+	      goto error_exit;
+	    }
+
+	  strcpy (class_info.name, classname);
+
+	  memcpy (&class_info.oid, class_oid, sizeof (OID));
+
+	  if (do_find_object_type (statement->info.drop.entity_type, classname, &class_info.objtype) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto error_exit;
+	    }
+
+	  assert (class_info.objtype == CDC_TABLE || class_info.objtype == CDC_VIEW);
 
 	  count++;
 	}
+
+      reserved_cls_info.num_classes = count;
     }
 
-  cls_info[count] = NULL;
-
   return NO_ERROR;
+
+error_exit:
+  do_free_reserved_classinfo (reserved_cls_info);
+  return error;
+}
+
+static void
+do_free_reserved_classinfo (RESERVED_CLASS_INFO_LIST & reserved_cls_info)
+{
+  free_and_init (reserved_cls_info.cls_info);
+  reserved_cls_info.num_classes = 0;
 }
 
 static int
-do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
-			   OID * reserved_oid)
+do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
+			   RESERVED_CLASS_INFO_LIST & reserved_cls_info, OID * reserved_oid)
 {
   int error = NO_ERROR;
   PARSER_VARCHAR **host_val = NULL;
@@ -15444,7 +15534,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
   char *sbr_text = NULL;
   char *stmt_text = NULL;
 
-  int num_class = 0;
   int num_object = 0;
 
   int drop_stmt_length = 0, pre_drop_length = 0;
@@ -15594,35 +15683,28 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
 	ddl_type = CDC_DROP;
 
-	if (cls_info != NULL)
+	for (int i = 0; i < reserved_cls_info.num_classes; i++)
 	  {
-	    while (cls_info[num_class] != NULL)
-	      {
-		num_class++;
-	      }
-	  }
+	    RESERVED_CLASS_INFO & class_info = reserved_cls_info.cls_info[i];
 
-
-	for (int i = 0; i < num_class; i++)
-	  {
 	    pre_drop_length =
-	      ((cls_info[i]->objtype ==
+	      ((class_info.objtype ==
 		CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix)) + strlen (if_exist_statement) +
 	      strlen (cascade_statement) + 2;
 
-	    drop_stmt_length = pre_drop_length + strlen (cls_info[i]->name);
+	    drop_stmt_length = pre_drop_length + strlen (class_info.name);
 	    drop_stmt = (char *) malloc (drop_stmt_length * 2);
 	    if (drop_stmt == NULL)
 	      {
 		goto end;
 	      }
 
-	    if (cls_info[i]->objtype == CDC_TABLE)
+	    if (class_info.objtype == CDC_TABLE)
 	      {
 		strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
 		drop_copied_length = strlen (drop_prefix);
 	      }
-	    else if (cls_info[i]->objtype == CDC_VIEW)
+	    else if (class_info.objtype == CDC_VIEW)
 	      {
 		strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix));
 		drop_copied_length = strlen (drop_view_prefix);
@@ -15638,8 +15720,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 		drop_copied_length += strlen (if_exist_statement);
 	      }
 
-	    strncpy (drop_stmt + drop_copied_length, cls_info[i]->name, strlen (cls_info[i]->name));
-	    drop_copied_length += strlen (cls_info[i]->name);
+	    strncpy (drop_stmt + drop_copied_length, class_info.name, strlen (class_info.name));
+	    drop_copied_length += strlen (class_info.name);
 
 	    if (statement->info.drop.is_cascade_constraints)
 	      {
@@ -15650,11 +15732,9 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	    drop_stmt[drop_copied_length] = '\0';
 
 	    error =
-	      log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid,
-					drop_stmt);
+	      log_supplement_statement (ddl_type, class_info.objtype, &class_info.oid, &class_info.oid, drop_stmt);
 
 	    free_and_init (drop_stmt);
-	    free_and_init (cls_info[i]);
 	  }
 
 	supp_appended = true;
@@ -15663,7 +15743,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_CREATE_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	oid = (OID *) malloc (sizeof (OID));
@@ -15679,8 +15759,16 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* the index must be resolved by its constraint name; sm_get_index () looks up attribute names only */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
+	else
+	  {
+	    OID_SET_NULL (oid);
+	  }
 
 	ddl_type = CDC_CREATE;
 	objtype = CDC_INDEX;
@@ -15689,7 +15777,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_ALTER_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	oid = (OID *) malloc (sizeof (OID));
@@ -15705,8 +15793,16 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* the index must be resolved by its constraint name; sm_get_index () looks up attribute names only */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
+	else
+	  {
+	    OID_SET_NULL (oid);
+	  }
 
 	ddl_type = CDC_ALTER;
 	objtype = CDC_INDEX;
@@ -15715,7 +15811,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_DROP_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	oid = (OID *) malloc (sizeof (OID));
@@ -15731,8 +15827,16 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* after a successful DROP INDEX the constraint is already gone; oid then remains a NULL OID */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
+	else
+	  {
+	    OID_SET_NULL (oid);
+	  }
 
 	ddl_type = CDC_DROP;
 	objtype = CDC_INDEX;
@@ -16039,7 +16143,7 @@ end:
       free (host_val);
     }
 
-  if (oid != NULL)
+  if (oid != NULL && oid != reserved_oid)
     {
       free_and_init (oid);
     }
@@ -16047,16 +16151,6 @@ end:
   if (drop_stmt != NULL)
     {
       free_and_init (drop_stmt);
-    }
-
-  if (cls_info[0] != NULL && statement->node_type == PT_DROP)
-    {
-      int i = 0;
-
-      while (cls_info[i] != NULL)
-	{
-	  free_and_init (cls_info[i++]);
-	}
     }
 
   return error;
@@ -19899,6 +19993,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *class_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -19915,10 +20010,23 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0
+	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER() has been called */ )
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
+	  return error;
+	}
+    }
+
   class_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -19967,6 +20075,8 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
     }
 
 end:
@@ -19991,6 +20101,7 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *serial_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20007,10 +20118,21 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  return NO_ERROR;
+	}
+    }
+
   serial_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SERIAL_NAME, serial_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SERIAL_NAME, serial_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20090,6 +20212,7 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *trigger_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20106,10 +20229,22 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0
+	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER() has been called */ )
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  return NO_ERROR;
+	}
+    }
+
   trigger_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_TRIGGER_NAME, trigger_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_TRIGGER_NAME, trigger_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20243,6 +20378,8 @@ do_find_synonym_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, name);
     }
 
 end:
@@ -20267,6 +20404,7 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *sp_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20283,10 +20421,22 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
+	  return error;
+	}
+    }
+
   sp_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20335,6 +20485,8 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
     }
 
 end:
@@ -21702,11 +21854,10 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
   char *upper_case_name = NULL;
   size_t name_size;
   char *owner_name = NULL;
-  char *server_name = NULL;
   char query[2048];
-  char name_buf[SERVER_ATTR_LINK_NAME_BUF_SIZE + 1];	// link_name varchar(255)
+  char server_name_lwr[SERVER_ATTR_LINK_NAME_BUF_SIZE + 1];	// link_name varchar(255)
 
-  sm_downcase_name ((char *) node_server->info.name.original, name_buf, SERVER_ATTR_LINK_NAME_BUF_SIZE);
+  sm_downcase_name ((char *) node_server->info.name.original, server_name_lwr, SERVER_ATTR_LINK_NAME_BUF_SIZE);
   if (node_owner)
     {
       owner_name = (char *) node_owner->info.name.original;
@@ -21732,16 +21883,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
   assert (owner_name);
   sprintf (query,
 	   "SELECT [_db_server], [owner] FROM [_db_server] WHERE [link_name] = '%s' AND [owner].[name] = '%s'",
-	   name_buf, owner_name);
-
-  if (owner_name == upper_case_name)
-    {
-      free (upper_case_name);
-    }
-  else
-    {
-      db_string_free ((char *) owner_name);
-    }
+	   server_name_lwr, owner_name);
 
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
@@ -21750,13 +21892,11 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
   int rec_cnt = 0;
   int saved_opt_level;
 
-  server_name = (char *) node_server->info.name.original;
-  owner_name = (char *) (node_owner ? node_owner->info.name.original : NULL);
-
   PARSER_CONTEXT *parser = parser_create_parser ();
   if (parser == NULL)
     {
-      return NULL;
+      // return NULL;
+      goto clear_and_return;
     }
 
   db_make_null (&values[0]);
@@ -21824,15 +21964,11 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
 
   if (rec_cnt != 1)
     {
+      char owner_name_lwr[DB_MAX_USER_LENGTH + 1];
       server_obj = NULL;
-      if (owner_name)
-	{
-	  sprintf (query, "[%s].[%s]", owner_name, server_name);
-	}
-      else
-	{
-	  sprintf (query, "[%s]", server_name);
-	}
+
+      sm_downcase_name (owner_name, owner_name_lwr, sizeof (owner_name_lwr));
+      sprintf (query, "[%s].[%s]", owner_name_lwr, server_name_lwr);
 
       if (rec_cnt == 0)
 	{
@@ -21855,6 +21991,16 @@ err:
     {
       db_value_clear (&values[0]);
       db_value_clear (&values[1]);
+    }
+
+clear_and_return:
+  if (owner_name == upper_case_name)
+    {
+      free (upper_case_name);
+    }
+  else
+    {
+      db_string_free ((char *) owner_name);
     }
 
   return server_obj;

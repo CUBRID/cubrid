@@ -167,7 +167,6 @@ struct t_cgw_handle
 {
   SQLHENV henv;
   SQLHDBC hdbc;
-  SQLHSTMT hstmt;
 };
 #endif /* CAS_FOR_CGW */
 
@@ -225,7 +224,9 @@ struct t_srv_handle
   bool has_mysql_last_insert_id;
 #endif				/* CAS_FOR_MYSQL */
 #if defined (CAS_FOR_CGW)
-  T_CGW_HANDLE *cgw_handle;
+  SQLHSTMT cgw_hstmt;
+  void *cgw_col_binding;
+  void *cgw_col_binding_buff;
   int total_tuple_count;
   int stmt_type;
   bool is_cursor_open;

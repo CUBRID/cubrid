@@ -38,6 +38,9 @@
 #define bitset_malloc(env, size) malloc(size)
 #define bitset_free(ptr)         free_and_init(ptr)
 
+#define BITSET_IS_VALID(p)    ((p)->nwords > 0)
+
+
 /*
  * The number of one bits in a four-bit nibble.
  */
@@ -93,6 +96,8 @@ bitset_extend (BITSET * dst, int nwords)
 {
   BITSET_CARRIER *words;
 
+  assert (BITSET_IS_VALID (dst));
+
   words = (BITSET_CARRIER *) malloc (NBYTES (nwords));
   if (words == NULL)
     {
@@ -119,6 +124,8 @@ bitset_extend (BITSET * dst, int nwords)
 void
 bitset_assign (BITSET * dst, const BITSET * src)
 {
+  assert (BITSET_IS_VALID (dst));
+  assert (BITSET_IS_VALID (src));
   if (dst->nwords < src->nwords)
     {
       bitset_extend (dst, src->nwords);
@@ -138,6 +145,7 @@ void
 bitset_add (BITSET * dst, int x)
 {
   int n;
+  assert (BITSET_IS_VALID (dst));
 
   n = _WORD (x);
   if (n >= dst->nwords)
@@ -159,6 +167,8 @@ bitset_remove (BITSET * dst, int x)
 {
   int n;
 
+  assert (BITSET_IS_VALID (dst));
+
   n = _WORD (x);
   if (n < dst->nwords)
     {
@@ -176,6 +186,9 @@ void
 bitset_union (BITSET * dst, const BITSET * src)
 {
   int nwords;
+
+  assert (BITSET_IS_VALID (dst));
+  assert (BITSET_IS_VALID (src));
 
   if (dst->nwords < src->nwords)
     {
@@ -201,6 +214,9 @@ bitset_intersect (BITSET * dst, const BITSET * src)
 {
   int nwords;
 
+  assert (BITSET_IS_VALID (dst));
+  assert (BITSET_IS_VALID (src));
+
   nwords = dst->nwords;
   while (nwords > src->nwords)
     {
@@ -224,6 +240,9 @@ void
 bitset_difference (BITSET * dst, const BITSET * src)
 {
   int nwords;
+
+  assert (BITSET_IS_VALID (dst));
+  assert (BITSET_IS_VALID (src));
 
   nwords = MIN (dst->nwords, src->nwords);
   while (nwords)
@@ -264,6 +283,9 @@ bitset_subset (const BITSET * r, const BITSET * s)
 {
   int nwords;
 
+  assert (BITSET_IS_VALID (s));
+  assert (BITSET_IS_VALID (r));
+
   nwords = s->nwords;
   while (nwords > r->nwords)
     {
@@ -296,6 +318,9 @@ bitset_intersects (const BITSET * r, const BITSET * s)
 {
   int nwords;
 
+  assert (BITSET_IS_VALID (s));
+  assert (BITSET_IS_VALID (r));
+
   nwords = MIN (r->nwords, s->nwords);
   while (nwords)
     {
@@ -318,6 +343,8 @@ int
 bitset_is_empty (const BITSET * s)
 {
   int nwords;
+
+  assert (BITSET_IS_VALID (s));
 
   nwords = s->nwords;
   while (nwords)
@@ -342,6 +369,9 @@ int
 bitset_is_equivalent (const BITSET * r, const BITSET * s)
 {
   int nwords;
+
+  assert (BITSET_IS_VALID (s));
+  assert (BITSET_IS_VALID (r));
 
   if (r->nwords < s->nwords)
     {
@@ -393,6 +423,8 @@ int
 bitset_cardinality (const BITSET * s)
 {
   int nwords, card;
+
+  assert (BITSET_IS_VALID (s));
 
   nwords = s->nwords;
   card = 0;
@@ -488,6 +520,7 @@ bitset_next_member (BITSET_ITERATOR * si)
       return -1;
     }
 
+  assert (BITSET_IS_VALID (si->set));
   nwords = si->set->nwords;
   for (m = _WORD (current); m < nwords; current = _WORDSIZE * ++m)
     {
@@ -573,6 +606,14 @@ bitset_delset (BITSET * s)
   if (s->setp != s->set.word)
     {
       bitset_free (s->setp);
-      s->setp = NULL;
+      s->setp = s->set.word;
+      s->nwords = NWORDS;
+      BITSET_CLEAR (*s);
     }
+#if 0				// Disable using BITSET_MEMBER() after bitset_delset() until we can fix the issue.
+#if !defined(NDEBUG)
+  s->nwords = 0;
+  assert (BITSET_IS_VALID (s) == false);
+#endif
+#endif
 }

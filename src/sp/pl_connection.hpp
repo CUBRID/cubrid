@@ -154,7 +154,7 @@ namespace cubpl
       explicit connection (connection_pool *pool, int index);
 
       void do_reconnect ();
-      int do_handle_network_error (int nbytes);
+      int do_handle_network_error (const char *file_name, const int line_no, int nbytes);
 
       SOCKET get_socket () const;
 

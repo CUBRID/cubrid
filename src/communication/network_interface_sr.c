@@ -72,6 +72,7 @@
 #include "es.h"
 #include "es_posix.h"
 #include "event_log.h"
+#include "trace_log.h"
 #include "tsc_timer.h"
 #include "vacuum.h"
 #include "object_primitive.h"
@@ -136,9 +137,10 @@ static int check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, i
 static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
 			      UINT64 * diff_stats, char *queryinfo_string);
-static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
+static int trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats,
+				 char *queryinfo_string, int trace_level);
 static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
-static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
+static void event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
 
 /*
  * stran_server_commit_internal - commit transaction on server.
@@ -3798,6 +3800,18 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ptr = or_unpack_int (ptr, &tmp);
   ext_info.overwrite = (bool) tmp;
 
+  /* check if request is from an older patch version. */
+  if ((reqlen - (ptr - request)) >= OR_INT_SIZE)
+    {
+      ptr = or_unpack_int (ptr, &tmp);
+      ext_info.voltype = (DB_VOLTYPE) tmp;
+    }
+  else
+    {
+      /* If the request is from an older patch version, set permanent volume type. */
+      ext_info.voltype = DB_PERMANENT_VOLTYPE;
+    }
+
   volid = xboot_add_volume_extension (thread_p, &ext_info);
 
   if (volid == NULL_VOLID)
@@ -5200,7 +5214,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   UINT64 *diff_stats = NULL;
   char *sql_id = NULL;
   int error_code = NO_ERROR, all_error_code = NO_ERROR;
-  int trace_slow_msec, trace_ioreads;
+  int trace_level, trace_slow_msec, trace_ioreads;
   bool tran_abort = false, has_xasl_entry = false;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
@@ -5211,6 +5225,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   TRAN_STATE tran_state;
   bool is_tran_auto_commit;
 
+  trace_level = prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) ? TRACE_LOG_LEVEL_DETAIL : TRACE_LOG_LEVEL_OFF;
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
 
@@ -5224,9 +5239,9 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  return;
 	}
-      if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+      if (trace_level != TRACE_LOG_LEVEL_OFF)
 	{
-	  xperfmon_server_copy_stats (thread_p, base_stats);
+	  xperfmon_server_copy_stats (thread_p, base_stats, false);
 	}
       else
 	{
@@ -5474,10 +5489,12 @@ null_list:
 	      goto exit;
 	    }
 
-	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+	  if (trace_level != TRACE_LOG_LEVEL_OFF)
 	    {
-	      xperfmon_server_copy_stats (thread_p, current_stats);
-	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
+	      bool need_pgbuf_stat = (trace_level == TRACE_LOG_LEVEL_DETAIL && response_time >= trace_slow_msec);
+
+	      xperfmon_server_copy_stats (thread_p, current_stats, need_pgbuf_stat);
+	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats, need_pgbuf_stat);
 	    }
 	  else
 	    {
@@ -5488,8 +5505,7 @@ null_list:
 	  if (response_time >= trace_slow_msec)
 	    {
 	      queryinfo_string_length =
-		er_log_slow_query (thread_p, &info, response_time, diff_stats, queryinfo_string);
-	      event_log_slow_query (thread_p, &info, response_time, diff_stats);
+		trace_log_slow_query (thread_p, &info, response_time, diff_stats, queryinfo_string, trace_level);
 	    }
 
 	  if (trace_ioreads > 0
@@ -5501,9 +5517,9 @@ null_list:
 	  perfmon_stop_watch (thread_p);
 	}
 
-      if (thread_p->event_stats.temp_expand_pages > 0)
+      if (thread_p->event_stats.extend_pages > 0)
 	{
-	  event_log_temp_expand_pages (thread_p, &info);
+	  event_log_extend_pages (thread_p, &info);
 	}
     }
 
@@ -5604,27 +5620,38 @@ exit:
 }
 
 /*
- * er_log_slow_query - log slow query to error log file
+ * trace_log_slow_query - log slow query to trace log file
  * return:
  *   thread_p(in):
  *   info(in):
  *   time(in):
  *   diff_stats(in):
- *   queryinfo_string(out):
  */
 static int
-er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats,
-		   char *queryinfo_string)
+trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats,
+		      char *queryinfo_string, int trace_level)
 {
+  FILE *log_fp;
   char stat_buf[STATDUMP_BUF_SIZE];
   char *sql_id;
-  int queryinfo_string_length;
+  int indent = 2;
+  int tran_index;
+  int queryinfo_string_length = 0;
   const char *line = "--------------------------------------------------------------------------------";
-  const char *title = "Operation";
+  const char *title = "SLOW_QUERY";
+  LOG_TDES *tdes;
 
-  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+
+  if (tdes == NULL)
     {
-      perfmon_server_dump_stats_to_buffer (diff_stats, stat_buf, STATDUMP_BUF_SIZE, NULL);
+      return 0;
+    }
+
+  if (trace_level != TRACE_LOG_LEVEL_OFF)
+    {
+      perfmon_trace_dump_stats_to_buffer (diff_stats, stat_buf, STATDUMP_BUF_SIZE, trace_level);
     }
   else
     {
@@ -5638,11 +5665,30 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UIN
       sql_id = NULL;
     }
 
+  log_fp = trace_log_start (thread_p, title);
+  if (log_fp == NULL)
+    {
+      return 0;
+    }
+
+  trace_log_print_client_info (tran_index, indent);
+
   queryinfo_string_length =
-    snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE, "%s\n%s\n%s\n %s\n\n /* SQL_ID: %s */ %s%s \n\n%s\n%s\n", line,
-	      title, line, info->sql_user_text ? info->sql_user_text : "(UNKNOWN USER_TEXT)",
-	      sql_id ? sql_id : "(UNKNOWN SQL_ID)", info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)",
-	      info->sql_plan_text ? info->sql_plan_text : "", stat_buf, line);
+    snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE, "%s\n%s\n%s\n %s\n\n SQL_ID: %s\n  sql: %s\n", line, title, line,
+	      info->sql_user_text ? info->sql_user_text : "(UNKNOWN USER_TEXT)", sql_id ? sql_id : "(UNKNOWN SQL_ID)",
+	      info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
+
+  fprintf (log_fp, "%*c%s\n", indent, ' ', info->sql_plan_text ? info->sql_plan_text : "");
+
+  if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
+    {
+      trace_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
+    }
+
+  fprintf (log_fp, "%*ctime: %dmsec\n", indent, ' ', time);
+  fprintf (log_fp, "\n\n%s%s%s\n", queryinfo_string, stat_buf, line);
+
+  trace_log_end (thread_p);
 
   if (sql_id != NULL)
     {
@@ -5656,56 +5702,7 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UIN
       queryinfo_string[queryinfo_string_length] = '\0';
     }
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_SLOW_QUERY, 2, time, queryinfo_string);
-
   return queryinfo_string_length;
-}
-
-/*
- * event_log_slow_query - log slow query to event log file
- * return:
- *   thread_p(in):
- *   info(in):
- *   time(in):
- *   diff_stats(in):
- *   num_bind_vals(in):
- *   bind_vals(in):
- */
-static void
-event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats)
-{
-  FILE *log_fp;
-  int indent = 2;
-  LOG_TDES *tdes;
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  log_fp = event_log_start (thread_p, "SLOW_QUERY");
-
-  if (tdes == NULL || log_fp == NULL)
-    {
-      return;
-    }
-
-  event_log_print_client_info (tran_index, indent);
-  event_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
-				  info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
-
-  if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
-    {
-      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
-    }
-
-  fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
-  fprintf (log_fp, "%*cbuffer: fetch=%lld, ioread=%lld, iowrite=%lld\n", indent, ' ',
-	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset],
-	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset],
-	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOWRITES].start_offset]);
-  fprintf (log_fp, "%*cwait: cs=%d, lock=%d, latch=%d\n\n", indent, ' ', TO_MSEC (thread_p->event_stats.cs_waits),
-	   TO_MSEC (thread_p->event_stats.lock_waits), TO_MSEC (thread_p->event_stats.latch_waits));
-
-  event_log_end (thread_p);
 }
 
 /*
@@ -5752,7 +5749,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
 }
 
 /*
- * event_log_temp_expand_pages - log temp volume expand pages to event log file
+ * event_log_extend_pages - log volume extend pages to event log file
  * return:
  *   thread_p(in):
  *   info(in):
@@ -5760,7 +5757,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
  *   bind_vals(in):
  */
 static void
-event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
+event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
 {
   FILE *log_fp;
   int indent = 2;
@@ -5769,7 +5766,7 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
-  log_fp = event_log_start (thread_p, "TEMP_VOLUME_EXPAND");
+  log_fp = event_log_start (thread_p, "EXTEND_VOLUME_INFO");
 
   if (tdes == NULL || log_fp == NULL)
     {
@@ -5780,13 +5777,10 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
   event_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
 				  info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
-  if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
-    {
-      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
-    }
+  fprintf (log_fp, "%*ctime: %dms\n", indent, ' ', TO_MSEC (thread_p->event_stats.extend_time));
+  fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ', thread_p->event_stats.extend_pages);
 
-  fprintf (log_fp, "%*ctime: %d\n", indent, ' ', TO_MSEC (thread_p->event_stats.temp_expand_time));
-  fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ', thread_p->event_stats.temp_expand_pages);
+  /* printing bind values for placeholders (?) is skipped due to performance issues when logging long column values (e.g. LOB) in event_log_bind_values(). */
 
   event_log_end (thread_p);
 }
@@ -6573,7 +6567,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       return;
     }
 
-  xperfmon_server_copy_stats (thread_p, stats);
+  xperfmon_server_copy_stats (thread_p, stats, true);
   perfmon_pack_stats (reply, stats);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, nr_statistic_values * sizeof (UINT64));
   free_and_init (stats);
@@ -10235,6 +10229,7 @@ sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
   args.unpack (unpacker);
 
   load_session *session = new load_session (args);
+  session->set_client_type (thread_p->conn_entry->client_type);
 
   int error_code = session_set_load_session (thread_p, session);
   if (error_code != NO_ERROR)
@@ -10509,6 +10504,7 @@ ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session, bool is_
   session_stop_attached_threads (thread_p, session, is_destory);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static bool
 cdc_check_client_connection ()
 {
@@ -10522,6 +10518,7 @@ cdc_check_client_connection ()
       return false;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
@@ -10749,23 +10746,39 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
-  /* scdc_start_session more than once without scdc_end_session */
+  /* scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
+   * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
+   * In that case always accept the new connection and forcibly shut down the previous connection (its socket)
+   * so that a restarted client can reconnect. */
   if (cdc_Gl.conn.fd != -1)
     {
-      if (thread_p->conn_entry->fd != cdc_Gl.conn.fd)
-	{
-	  /* check if existing connection is alive */
-	  if (cdc_check_client_connection ())
-	    {
-	      cdc_log ("%s : More than two clients attempt to connect", __func__);
+      SOCKET prev_fd = cdc_Gl.conn.fd;
+      int prev_client_id = cdc_Gl.conn.client_id;
 
-	      error_code = ER_CDC_NOT_AVAILABLE;
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
-	      goto error;
+      if (thread_p->conn_entry->fd != prev_fd)
+	{
+	  /* A new client is requesting a session while the previous one still holds the CDC connection.
+	   * Verify client_id as well as fd since a stale fd may be reused by an unrelated client. */
+	  CSS_CONN_ENTRY *prev_conn = css_find_conn_from_fd (prev_fd);
+
+	  if (prev_conn != NULL && prev_conn != thread_p->conn_entry)
+	    {
+	      int r = rmutex_lock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
+
+	      if (prev_conn->status == CONN_OPEN && prev_conn->fd == prev_fd && prev_conn->client_id == prev_client_id)
+		{
+		  cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d, client_id %d) "
+			   "for the new client (fd %d)", __func__, prev_fd, prev_client_id, thread_p->conn_entry->fd);
+		  prev_conn->status = CONN_CLOSING;
+		}
+
+	      r = rmutex_unlock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
 	    }
 	}
 
-      /* if existing session is dead, then pause loginfo producer thread (cdc). */
+      /* the previous session is being replaced; pause loginfo producer thread (cdc). */
       if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
 	{
 	  cdc_pause_producer ();
@@ -10776,6 +10789,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   cdc_Gl.conn.fd = thread_p->conn_entry->fd;
   cdc_Gl.conn.status = thread_p->conn_entry->status;
+  cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
 
   ptr = or_unpack_int (request, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
@@ -10899,6 +10913,12 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
 
       cdc_set_extraction_lsa (&start_lsa);
 
+      /* The client is about to be told to resume from here, so the volume holding that position has to be
+       * kept from now on. Waiting for the first bundle leaves a window: extraction can come back as
+       * ER_CDC_EXTRACTION_TIMEOUT before the volume is ever recorded, and archive removal is free to run
+       * in between. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
+
       cdc_reinitialize_queue (&start_lsa);
 
       cdc_wakeup_producer ();
@@ -10956,7 +10976,15 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 	  goto error;
 	}
 
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
+	}
+
       cdc_set_extraction_lsa (&start_lsa);
+
+      /* Same window as in scdc_find_lsa(): record the volume before the first bundle is attempted. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
 
       cdc_reinitialize_queue (&start_lsa);
 
@@ -11034,12 +11062,13 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-  error_code = cdc_cleanup ();
+  error_code = cdc_cleanup (thread_p);
 
   cdc_log ("%s : clean up for cdc thread has done.", __func__);
 
   cdc_Gl.conn.fd = -1;
   cdc_Gl.conn.status = CONN_CLOSED;
+  cdc_Gl.conn.client_id = -1;
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -11502,3 +11531,152 @@ smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 #endif // !WINDOWS
 }
+
+/*
+ * sfile_tracker_dump_file_list -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sfile_tracker_dump_file_list (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  FILE *outfp;
+  int file_size;
+  char *buffer;
+  int buffer_size;
+  int send_size;
+  int invalid_only;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_unpack_int (request, &buffer_size);
+  ptr = or_unpack_int (ptr, &invalid_only);
+
+  buffer = (char *) db_private_alloc (thread_p, buffer_size);
+  if (buffer == NULL)
+    {
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  outfp = tmpfile ();
+  if (outfp == NULL)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      db_private_free_and_init (thread_p, buffer);
+      return;
+    }
+
+  xfile_tracker_dump_file_list (thread_p, outfp, (bool) invalid_only);
+  file_size = ftell (outfp);
+
+  /*
+   * Send the file in pieces
+   */
+  rewind (outfp);
+
+  (void) or_pack_int (reply, (int) file_size);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  while (file_size > 0)
+    {
+      if (file_size > buffer_size)
+	{
+	  send_size = buffer_size;
+	}
+      else
+	{
+	  send_size = file_size;
+	}
+
+      file_size -= send_size;
+      if (fread (buffer, 1, send_size, outfp) == 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  /*
+	   * Continue sending the stuff that was prmoised to client. In this case
+	   * junk (i.e., whatever it is in the buffers) is sent.
+	   */
+	}
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, send_size);
+    }
+  fclose (outfp);
+  db_private_free_and_init (thread_p, buffer);
+}
+
+/*
+ * sfile_tracker_clean_invalid_file -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sfile_tracker_clean_invalid_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int heap = 0, heap_ovf = 0, btree = 0, btree_ovf = 0;
+  int error;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  error = xfile_tracker_clean_invalid_file (thread_p, &heap, &heap_ovf, &btree, &btree_ovf);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_errcode (reply, error);
+  ptr = or_pack_int (ptr, heap);
+  ptr = or_pack_int (ptr, heap_ovf);
+  ptr = or_pack_int (ptr, btree);
+  ptr = or_pack_int (ptr, btree_ovf);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+#if !defined(NDEBUG)
+/*
+ * sfile_tracker_delete_target_file -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sfile_tracker_delete_target_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  char *target_vfid_str;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_unpack_string_nocopy (request, &target_vfid_str);
+
+  error = xfile_tracker_delete_target_file (thread_p, target_vfid_str);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_errcode (reply, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+#endif

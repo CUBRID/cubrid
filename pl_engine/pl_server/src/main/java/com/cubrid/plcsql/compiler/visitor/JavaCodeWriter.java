@@ -75,6 +75,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public String buildCodeLines(Unit unit) {
 
         javaTypesUsed.add("com.cubrid.jsp.Server");
+        javaTypesUsed.add("com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode");
         javaTypesUsed.add("com.cubrid.plcsql.predefined.PlcsqlRuntimeError");
         javaTypesUsed.add("java.util.List");
 
@@ -104,8 +105,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // -----------------------------------------------------------------
     // Unit
     //
-    private static final String tmplGetConn =
-            "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::?autonomous_transaction=%s\");";
+    private static final String strGetConn =
+            "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::\");";
 
     private static final String[] tmplMainUserCode =
             new String[] {
@@ -169,12 +170,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         if (node.connectionRequired) {
             javaTypesUsed.add("java.sql.*");
         }
-
-        // get connection, if necessary
-        String strGetConn =
-                node.connectionRequired
-                        ? String.format(tmplGetConn, node.autonomousTransaction)
-                        : "";
 
         // declarations
         Object codeDeclClass =
@@ -291,7 +286,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+PARAMETERS'%",
                 objParamArr,
                 "%'GET-CONNECTION'%",
-                strGetConn,
+                node.connectionRequired ? strGetConn : "",
                 "%'+RECORD-DEFS'%",
                 recordDefs,
                 "%'+RECORD-ASSIGN-FUNCS'%",
@@ -444,7 +439,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         String code =
                 String.format(
-                        "final Query %s = new Query(\"%s\"); // param-ref-counts: %s, param-num-of-host-expr: %s",
+                        "final Query %s = new Query(\"%s\", false); // param-ref-counts:%s, param-num-of-host-expr:%s",
                         node.name,
                         StringEscapeUtils.escapeJava(node.staticSql.rewritten),
                         Arrays.toString(node.paramRefCounts),
@@ -1569,13 +1564,20 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtCursorFetch =
             new String[] {
-                "{ // cursor fetch",
+                "try { // cursor fetch",
                 "  if (%'CURSOR'% == null) {",
                 "    throw new INVALID_CURSOR(\"the cursor is NULL\");",
                 "  }",
                 "  ResultSet rs = %'CURSOR'%.rs;",
                 "  if (%'CURSOR'%.fetch()) {",
                 "    %'+SET-INTO-VARIABLES'%",
+                "  }",
+                "} catch (SQLException e) {",
+                "  Server.log(e);",
+                "  if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_SP_INVALID_CURSOR) {",
+                "    throw new INVALID_CURSOR(e.getMessage());",
+                "  } else {",
+                "    throw new SQL_ERROR(e.getMessage());",
                 "  }",
                 "}"
             };
@@ -2463,37 +2465,44 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtOpenForWithHV =
             new String[] {
-                "{ // open-for statement",
-                "  %'REF-CURSOR'% = new Query(%'QUERY'%);",
-                "  %'REF-CURSOR'%.open(conn, null,",
-                "    %'+HOST-EXPRS'%);",
+                "{ // %'KIND'% open-for statement",
+                "  %'REF-CURSOR'% = new Query(",
+                "    %'+QUERY'%,",
+                "    %'DYNAMIC'%);",
+                "  %'REF-CURSOR'%.open(conn, null, new Object[] {",
+                "    %'+HOST-EXPRS'% });",
                 "}"
             };
 
     private static String[] tmplStmtOpenForWithoutHV =
             new String[] {
-                "{ // open-for statement",
-                "  %'REF-CURSOR'% = new Query(%'QUERY'%);",
+                "{ // %'KIND'% open-for statement",
+                "  %'REF-CURSOR'% = new Query(",
+                "    %'+QUERY'%,",
+                "    %'DYNAMIC'%);",
                 "  %'REF-CURSOR'%.open(conn, null);",
                 "}"
             };
 
-    @Override
-    public CodeToResolve visitStmtOpenFor(StmtOpenFor node) {
+    private CodeToResolve visitStmtOpenFor(StmtOpenFor node) {
 
-        if (node.staticSql.hostExprs.size() == 0) {
+        if (node.usedExprList == null || node.usedExprList.size() == 0) {
             return new CodeTemplate(
                     "StmtOpenFor",
                     Misc.getLineColumnOf(node.ctx),
                     tmplStmtOpenForWithoutHV,
+                    "%'KIND'%",
+                    node.dynamic ? "dynamic" : "static",
                     "%'REF-CURSOR'%",
                     node.id.javaCode(),
-                    "%'QUERY'%",
-                    '"' + StringEscapeUtils.escapeJava(node.staticSql.rewritten) + '"');
+                    "%'+QUERY'%",
+                    visit(node.sql),
+                    "%'DYNAMIC'%",
+                    node.dynamic ? "true" : "false");
         } else {
 
             CodeTemplateList hostExprs = new CodeTemplateList();
-            for (Expr e : node.staticSql.hostExprs.keySet()) {
+            for (Expr e : node.usedExprList) {
                 hostExprs.addElement((CodeTemplate) visit(e));
             }
 
@@ -2501,14 +2510,32 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "StmtOpenFor",
                     Misc.getLineColumnOf(node.ctx),
                     tmplStmtOpenForWithHV,
+                    "%'KIND'%",
+                    node.dynamic ? "dynamic" : "static",
                     "%'REF-CURSOR'%",
                     node.id.javaCode(),
-                    "%'QUERY'%",
-                    '"' + StringEscapeUtils.escapeJava(node.staticSql.rewritten) + '"',
+                    "%'+QUERY'%",
+                    visit(node.sql),
+                    "%'DYNAMIC'%",
+                    node.dynamic ? "true" : "false",
                     "%'+HOST-EXPRS'%",
                     hostExprs.setDelimiter(","));
         }
     }
+
+    @Override
+    public CodeToResolve visitStmtOpenForStatic(StmtOpenForStatic node) {
+        return visitStmtOpenFor(node);
+    }
+
+    @Override
+    public CodeToResolve visitStmtOpenForDynamic(StmtOpenForDynamic node) {
+        return visitStmtOpenFor(node);
+    }
+
+    // -------------------------------------------------------------------------
+    // StmtRaise
+    //
 
     @Override
     public CodeToResolve visitStmtRaise(StmtRaise node) {

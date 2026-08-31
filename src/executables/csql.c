@@ -561,11 +561,14 @@ start_csql (CSQL_ARGUMENT * csql_arg)
     }
 
   /* display product title */
-  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n\t%s\n\n", csql_get_message (CSQL_INITIAL_CSQL_TITLE));
-  csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
+  if (!csql_arg->noprint_entrymsg)
+    {
+      snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_INITIAL_CSQL_TITLE), rel_release_string ());
+      csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
 
-  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n%s\n\n", csql_get_message (CSQL_INITIAL_HELP_MSG));
-  csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
+      snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n%s\n\n", csql_get_message (CSQL_INITIAL_HELP_MSG));
+      csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
+    }
 
 #if !defined(WINDOWS)
   if (csql_Is_interactive)
@@ -2749,7 +2752,7 @@ csql_exit_session (int error, bool exit_flag)
       tf = csql_Error_fp;
 
       /* interactive, default action is abort but there was update */
-      fprintf (tf, csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_TEXT));
+      fprintf (tf, "%s", csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_TEXT));
       fflush (tf);
       for (; fgets (line_buf, LINE_BUFFER_SIZE, csql_Input_fp) != NULL;)
 	{
@@ -2766,7 +2769,7 @@ csql_exit_session (int error, bool exit_flag)
 	      break;
 	    }
 
-	  fprintf (tf, csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_RETRY_TEXT));
+	  fprintf (tf, "%s", csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_RETRY_TEXT));
 	  fflush (tf);
 	}
 

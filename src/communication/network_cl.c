@@ -63,6 +63,27 @@
 #include "packer.hpp"
 #include "network_histogram.hpp"
 
+/* RAII guard: flush callback_handler's deferred query_handler queue on every return
+   path of method callback helpers. PL/SP execution pushes handlers into the process-wide
+   singleton; early-return paths would otherwise leak stale handlers that a later client
+   request frees. er_stack_push/pop keeps handler dtor er_set()s from clobbering the outer error. */
+namespace
+{
+  struct deferred_flush_guard
+  {
+    ~deferred_flush_guard ()
+    {
+      cubmethod::callback_handler * h = cubmethod::get_callback_handler ();
+      if (h->has_deferred_query_handler () && !tran_is_in_libcas ())
+	{
+	  er_stack_push ();
+	  h->free_deferred_query_handler ();
+	  er_stack_pop ();
+	}
+    }
+  };
+}
+
 /*
  * To check for errors from the comm system. Note that if we get any error
  * other than RECORD_TRUNCATED or CANT_ALLOC_BUFFER, we will call it a
@@ -82,10 +103,6 @@
     } \
     (reply) = NULL; \
   } while (0)
-
-#if defined(CS_MODE)
-unsigned short method_request_id;
-#endif /* CS_MODE */
 
 /* Contains the name of the current sever host machine.  */
 static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = "";
@@ -150,6 +167,8 @@ set_server_error (int error)
 	  return server_error;
 	case ER_AU_DBA_ONLY:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 1, "");
+	  return server_error;
+	case ER_THREAD_STACK:
 	  return server_error;
 	}
       /* FALLTHRU */
@@ -1140,6 +1159,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				  int *replydatasize_listid, char **replydata_page, int *replydatasize_page,
 				  char **replydata_plan, int *replydatasize_plan)
 {
+  deferred_flush_guard _flush_guard;
+
   unsigned int rc;
   int size, error;
   int reply_datasize_listid, reply_datasize_page, reply_datasize_plan, remaining_size;
@@ -1371,14 +1392,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		      }
 		    else
 		      {
-#if defined(CS_MODE)
-			bool need_to_reset = false;
-			if (method_request_id == 0)
-			  {
-			    method_request_id = CSS_RID_FROM_EID (rc);
-			    need_to_reset = true;
-			  }
-#endif /* CS_MODE */
 			error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
 
 			if (error == NO_ERROR)
@@ -1398,13 +1411,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			      }
 			  }
-#if defined(CS_MODE)
-			if (need_to_reset == true)
-			  {
-			    method_request_id = 0;
-			    need_to_reset = false;
-			  }
-#endif /* CS_MODE */
 		      }
 		  }
 		else
@@ -1500,7 +1506,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    while (error == NO_ERROR && retry_in)
 		      {
 			/* Display prompt, then get user's input. */
-			fprintf (stdout, display_string);
+			fprintf (stdout, "%s", display_string);
 			pr_status = ER_FAILED;
 			pr_len = 0;
 			retry_in = false;
@@ -1518,7 +1524,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				    result = str_to_int32 (&x, &a_ptr, user_response_ptr, 10);
 				    if (result != 0 || x < range_lower || x > range_higher)
 				      {
-					fprintf (stdout, failure_prompt);
+					fprintf (stdout, "%s", failure_prompt);
 					retry_in = true;
 				      }
 				    else
@@ -1564,7 +1570,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				    result = str_to_int32 (&x, &a_ptr, user_response_ptr, 10);
 				    if (result != 0 || x < range_lower || x > range_higher)
 				      {
-					fprintf (stdout, failure_prompt);
+					fprintf (stdout, "%s", failure_prompt);
 					retry_in = true;
 				      }
 				    else if (x == reprompt_value)
@@ -1693,7 +1699,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    else
 		      {
 			ptr = or_unpack_string_nocopy (reply, &print_str);
-			fprintf (stdout, print_str);
+			fprintf (stdout, "%s", print_str);
 			fflush (stdout);
 		      }
 		    free_and_init (print_data);
@@ -1715,15 +1721,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	}
       while (server_request != END_CALLBACK && server_request != QUERY_END);
 
-      /*
-       * delete deferred query handlers during PL execution
-       * TODO: move it to proper place
-       */
-      if (!tran_is_in_libcas ())
-	{
-	  cubmethod::get_callback_handler ()->free_deferred_query_handler ();
-	}
-
       if (histo_is_collecting ())
 	{
 	  int recevied = replysize
@@ -1740,6 +1737,8 @@ int
 net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
 				    char **replydata_ptr, int *replydatasize_ptr)
 {
+  deferred_flush_guard _flush_guard;
+
   unsigned int rc;
   int error;
   QUERY_SERVER_REQUEST server_request;
@@ -1810,14 +1809,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 		  }
 		else
 		  {
-#if defined(CS_MODE)
-		    bool need_to_reset = false;
-		    if (method_request_id == 0)
-		      {
-			method_request_id = CSS_RID_FROM_EID (rc);
-			need_to_reset = true;
-		      }
-#endif /* CS_MODE */
 		    error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
 
 		    if (error == NO_ERROR)
@@ -1837,13 +1828,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			  }
 		      }
-#if defined(CS_MODE)
-		    if (need_to_reset == true)
-		      {
-			method_request_id = 0;
-			need_to_reset = false;
-		      }
-#endif /* CS_MODE */
 		  }
 	      }
 	    else
@@ -1916,15 +1900,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 	}
     }
   while (server_request != END_CALLBACK);
-
-  /*
-   * delete deferred query handlers during PL execution
-   * TODO: move it to proper place
-   */
-  if (!tran_is_in_libcas ())
-    {
-      cubmethod::get_callback_handler ()->free_deferred_query_handler ();
-    }
 
   if (histo_is_collecting ())
     {

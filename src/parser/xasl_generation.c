@@ -1669,7 +1669,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	      pred = pt_make_pred_term_comp (regu_var1, NULL, R_EXISTS, data_type);
 
 	      /* exists op must fetch one tuple */
-	      if (regu_var1 && regu_var1->xasl)
+	      if (!pt_has_having (parser, node->info.expr.arg1) && regu_var1 && regu_var1->xasl)
 		{
 		  XASL_SET_FLAG (regu_var1->xasl, XASL_NEED_SINGLE_TUPLE_SCAN);
 		}
@@ -7606,7 +7606,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      PT_ERRORc (parser, node, er_msg ());
 		    }
-		  return regu;
 		}
 	      break;
 
@@ -8326,7 +8325,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_WEEK, domain);
 		  break;
 
-		case PT_SCHEMA:
 		case PT_DATABASE:
 		  {
 		    PT_NODE *dbname_val;
@@ -8853,12 +8851,21 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		    return NULL;
 		  }
+		case PT_SCHEMA:
 		case PT_USER:
 		  {
 		    char *user = NULL;
 		    PT_NODE *current_user_val = NULL;
 
-		    user = db_get_user_and_host_name ();
+		    if (node->info.expr.op == PT_USER)
+		      {
+			user = db_get_user_and_host_name ();
+		      }
+		    else
+		      {
+			user = db_get_user_name ();
+		      }
+
 		    if (user == NULL)
 		      {
 			assert (er_errid () != NO_ERROR);

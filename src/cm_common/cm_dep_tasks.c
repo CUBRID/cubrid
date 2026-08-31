@@ -1592,7 +1592,7 @@ class_info_sa (const char *dbname, const char *uid, const char *passwd, char *cl
 
   if (run_child (argv, 1, NULL, NULL, NULL, NULL) < 0)
     {				/* cub_jobsa */
-      sprintf (_dbmt_error, argv[0]);
+      sprintf (_dbmt_error, "%s", argv[0]);
       return ERR_SYSTEM_CALL;
     }
 
@@ -2602,7 +2602,7 @@ trigger_info_sa (const char *dbname, const char *uid, const char *passwd, nvplis
 
   if (run_child (argv, 1, NULL, NULL, NULL, NULL) < 0)
     {				/* cm_sainfo sa mode */
-      sprintf (_dbmt_error, argv[0]);
+      sprintf (_dbmt_error, "%s", argv[0]);
       return ERR_SYSTEM_CALL;
     }
 
@@ -2808,7 +2808,7 @@ revoke_all_from_user (DB_OBJECT * user)
     {
       db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
-      if (is_class_entry (col, i) && db_is_system_class (obj))
+      if (obj->class_mop == NULL || is_class_entry (col, i) && db_is_system_class (obj))
 	{
 	  continue;
 	}

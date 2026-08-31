@@ -89,16 +89,17 @@ namespace cubpl
       {
 	qfile_close_scan (m_thread, &m_scan_id);
 
-	if (m_query_entry->list_id == NULL || m_query_entry->alloc_no != m_query_entry_no)
+	if (m_query_entry && (m_query_entry->list_id == NULL || m_query_entry->alloc_no != m_query_entry_no))
 	  {
 	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
 	    m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
 	  }
 
-	if (m_query_entry && m_query_entry->list_id)
+	if (m_query_entry)
 	  {
 	    // Since the list was not created in this thread,
 	    // incrementing the count of the list (m_qlist_count) is required
+	    // to make the assertion on m_qlist_count in qexec_execute_query() hold
 	    qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
 	    qfile_close_list (m_thread, m_query_entry->list_id);
 	  }
@@ -124,79 +125,6 @@ namespace cubpl
     m_current_tuple.clear ();
     m_current_row_index = 0;
     m_fetch_count = 0;
-  }
-
-  SCAN_CODE
-  query_cursor::prev_row ()
-  {
-    if (m_is_opened == false)
-      {
-	return S_END;
-      }
-
-    QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
-    SCAN_CODE scan_code = qfile_scan_list_prev (m_thread, &m_scan_id, &tuple_record, PEEK);
-    if (scan_code == S_SUCCESS)
-      {
-	m_current_row_index--;
-	char *ptr;
-	int length;
-	OR_BUF buf;
-
-	assert (m_query_entry != NULL);
-	if (m_query_entry->list_id == NULL || m_query_entry->alloc_no != m_query_entry_no)
-	  {
-	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
-	    m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
-	    if (m_query_entry && m_query_entry->list_id)
-	      {
-		m_query_entry_no = m_query_entry->alloc_no;
-	      }
-	    else
-	      {
-		qfile_close_scan (m_thread, &m_scan_id);
-		return S_ERROR;
-	      }
-	  }
-
-	QFILE_LIST_ID *list_id = m_query_entry->list_id;
-	for (int i = 0; i < list_id->type_list.type_cnt; i++)
-	  {
-	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value_r (tuple_record.tpl, i, &ptr, &length);
-	    or_init (&buf, ptr, length);
-
-	    TP_DOMAIN *domain = list_id->type_list.domp[i];
-	    if (domain == NULL || domain->type == NULL)
-	      {
-		scan_code = S_ERROR;
-		qfile_close_scan (m_thread, &m_scan_id);
-		break;
-	      }
-
-	    DB_VALUE *value = &m_current_tuple[i];
-	    PR_TYPE *pr_type = domain->type;
-
-	    if (flag == V_BOUND)
-	      {
-		if (pr_type->data_readval (&buf, value, domain, -1, false /* Don't copy */, NULL, 0) != NO_ERROR)
-		  {
-		    scan_code = S_ERROR;
-		    break;
-		  }
-	      }
-	    else
-	      {
-		/* If value is NULL, properly initialize the result */
-		db_value_domain_init (value, pr_type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	      }
-	  }
-      }
-    else if (scan_code == S_END)
-      {
-	close ();
-      }
-
-    return scan_code;
   }
 
   SCAN_CODE
@@ -229,12 +157,13 @@ namespace cubpl
 	    else
 	      {
 		qfile_close_scan (m_thread, &m_scan_id);
-		return S_ERROR;
+		return S_ERROR; // control reaches here when this method is called after ROLLBACK
 	      }
 	  }
 
 	QFILE_LIST_ID *list_id = m_query_entry->list_id;
-	for (int i = 0; i < list_id->type_list.type_cnt; i++)
+	int i;
+	for (i = 0; i < list_id->type_list.type_cnt; i++)
 	  {
 	    DB_VALUE *value = &m_current_tuple[i];
 	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
@@ -256,11 +185,25 @@ namespace cubpl
 
 		or_init (&buf, ptr, length);
 
-		if (pr_type->data_readval (&buf, value, domain, -1, false /* Don't copy */, NULL, 0) != NO_ERROR)
+		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
 		  {
 		    scan_code = S_ERROR;
 		    break;
 		  }
+	      }
+	    else
+	      {
+		db_make_null (value);
+	      }
+	  }
+	if (i < list_id->type_list.type_cnt)
+	  {
+	    // incomplete tuple due to an error
+	    // clear values in the tuple.
+	    assert (scan_code == S_ERROR);
+	    for (int j = 0; j < i; j++)
+	      {
+		pr_clear_value (&m_current_tuple[j]);
 	      }
 	  }
       }

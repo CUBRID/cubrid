@@ -1653,7 +1653,7 @@ static int
 qfile_save_normal_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p, char *page_p, int tuple_length)
 {
   int i, tuple_value_size;
-
+  int total_tuple_value_size = 0;
   for (i = 0; i < tuple_descr_p->f_cnt; i++)
     {
       if (qdata_copy_db_value_to_tuple_value (tuple_descr_p->f_valp[i],
@@ -1662,9 +1662,11 @@ qfile_save_normal_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p, 
 	{
 	  return ER_FAILED;
 	}
+      total_tuple_value_size += tuple_value_size;
       tuple_p += tuple_value_size;
     }
 
+  assert_release (total_tuple_value_size <= tuple_length);
   QFILE_PUT_TUPLE_LENGTH (page_p, tuple_length);
   return NO_ERROR;
 }
@@ -6613,7 +6615,8 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
       thread_p->m_qlist_count += inc;
       if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
 	{
-	  er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc, thread_p->m_qlist_count);
+	  er_print_callstack (ARG_FILE_LINE, "[thread %d with tran index %d] update qlist_count by %d to %d\n",
+			      thread_p->index, thread_p->tran_index, inc, thread_p->m_qlist_count);
 	}
     }
 #endif // SERVER_MODE

@@ -669,6 +669,20 @@ exit_on_error:
 
 #define INTERNAL_BUFFER_SIZE (400)	/* bigger than DBL_MAX_DIGITS */
 
+inline bool
+need_append_dot (const char *val)
+{
+  while (*val)
+    {
+      if (*val == '.' || *val == 'e' || *val == 'E')
+	{
+	  return false;
+	}
+      val++;
+    }
+  return true;
+}
+
 /*
  * fprint_special_strings - print special DB_VALUE to TEXT_OUTPUT
  *    return: NO_ERROR if successful, error code otherwise
@@ -706,21 +720,25 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
       {
-	char *pos;
+	char *pos = NULL;
+	TEXT_BUFFER_BLK *tail_ptr_bk = NULL;
 
-	if (tout->tail_ptr == NULL)
+	if (tout->tail_ptr)
 	  {
-	    assert (tout->head_ptr == NULL);
-	    CHECK_PRINT_ERROR (get_text_output_mem (tout, -1));
+	    tail_ptr_bk = tout->tail_ptr;
+	    pos = tout->tail_ptr->ptr;
 	  }
-
-	pos = tout->tail_ptr->ptr;
 	CHECK_PRINT_ERROR (text_print
 			   (tout, NULL, 0, "%.*g", (type == DB_TYPE_FLOAT) ? 10 : 17,
 			    (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_double (value)));
 	/* if tout flushed, then this float/double should be the first content */
-	if ((pos < tout->tail_ptr->ptr && !strchr (pos, '.'))
-	    || (pos > tout->tail_ptr->ptr && !strchr (tout->tail_ptr->buffer, '.')))
+	if (pos == NULL || tail_ptr_bk != tout->tail_ptr)
+	  {
+	    assert (tout->tail_ptr != NULL);
+	    pos = tout->tail_ptr->buffer;
+	  }
+
+	if (need_append_dot (pos))
 	  {
 	    CHECK_PRINT_ERROR (text_print (tout, ".", 1, NULL));
 	  }
@@ -869,7 +887,7 @@ desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
       break;
     default:
       CHECK_PRINT_ERROR (fprint_special_strings (tout, value));
@@ -905,7 +923,7 @@ desc_value_print (print_output & output_ctx, DB_VALUE * value)
       break;
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
       break;
     default:
       db_print_value (output_ctx, value);

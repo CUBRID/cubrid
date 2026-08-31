@@ -38,6 +38,7 @@
 #include "object_primitive.h"
 #include "memory_alloc.h"
 #include "intl_support.h"
+#include "language_support.h"
 #include "memory_hash.h"
 #include "system_parameter.h"
 #include "object_print.h"
@@ -3301,9 +3302,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        */
       method_name_node = node->info.method_call.method_name;
       // parser_print_tree is for built-in package names such as DBMS_OUTPUT
-      method_name = PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
-									     method_name_node) :
-	PT_NAME_ORIGINAL (method_name_node);
+      if (PT_NAME_RESOLVED (method_name_node))
+	{
+	  int custom_print_saved = parser->custom_print;
+	  parser->custom_print |= PT_SUPPRESS_QUOTES;
+	  parser->custom_print &= ~PT_PRINT_QUOTES;
+	  method_name = parser_print_tree (parser, method_name_node);
+	  parser->custom_print = custom_print_saved;
+	}
+      else
+	{
+	  method_name = PT_NAME_ORIGINAL (method_name_node);
+	}
       if (!node->info.method_call.on_call_target && jsp_is_exist_stored_procedure (method_name))
 	{
 	  method_name_node->info.name.spec_id = (UINTPTR) method_name_node;
@@ -5006,7 +5016,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 #define DBLINK_ATTR_PRECISION (4)
 #define DBLINK_ATTR_CLASS_NAME (11)
 
-PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
+static PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   PT_TYPE_NULL,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
@@ -5125,7 +5135,21 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
       dt->info.data_type.dec_precision = attr->dec_precision;
       dt->info.data_type.precision = attr->precision;
-      dt->info.data_type.units = attr->charset;
+      if (PT_HAS_COLLATION (attr_def_node->type_enum))
+	{
+	  /* DBLink converts the remote string to the LOCAL DB codeset at run time
+	   * (the codeset conversion in dblink_scan.c). Declare the column with that
+	   * local codeset/collation so compile-time type/collation checks match the
+	   * run-time value; attr->charset (remote) diverges and breaks UNION/IN. */
+	  dt->info.data_type.units = LANG_SYS_CODESET;
+	  dt->info.data_type.collation_id = LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET);
+	}
+      else
+	{
+	  /* non-string (BIT/VARBIT/NUMERIC/...): codeset/collation are not semantically
+	   * used; keep the prior assignment. */
+	  dt->info.data_type.units = attr->charset;
+	}
     }
 
   attr_def_node->data_type = dt;
@@ -5427,10 +5451,8 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
     }
   else
     {
-      int client_type = db_get_client_type ();
-
       /* in the case of loaddb, it can just check the column from the attr_def node. */
-      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+      if (db_client_type_is_loaddb ())
 	{
 	  PT_NODE *cols;
 
@@ -7056,7 +7078,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 	  if (au_fetch_class (classop, &class_, fetchmode, type) == NO_ERROR)
 	    {
 	      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 		{
 		  if (intl_identifier_casecmp (class_name, class_->header.ch_name) != 0)
 		    {

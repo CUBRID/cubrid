@@ -4407,7 +4407,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
   DB_VALUE unique_name_val, sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, lang_val, generated_val, args_val,
     rtn_type_val, class_val, method_val, directive_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
-  int sp_type, rtn_type, arg_cnt, directive, save;
+  int sp_lang, sp_type, rtn_type, arg_cnt, directive, save;
   DB_SET *arg_set;
   int err;
   int err_count = 0;
@@ -4474,6 +4474,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	  continue;
 	}
 
+      sp_lang = db_get_int (&lang_val);
       sp_type = db_get_int (&sp_type_val);
 
       output_ctx ("\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
@@ -4513,7 +4514,14 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 
 	  if (rtn_type == DB_TYPE_RESULTSET)
 	    {
-	      output_ctx ("RETURN CURSOR ");
+	      if (sp_lang == SP_LANG_PLCSQL)
+		{
+		  output_ctx ("RETURN SYS_REFCURSOR ");
+		}
+	      else
+		{
+		  output_ctx ("RETURN CURSOR ");
+		}
 	    }
 	  else
 	    {
@@ -4538,7 +4546,6 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	  output_ctx ("DETERMINISTIC ");
 	}
 
-      int sp_lang = db_get_int (&lang_val);
       if (sp_lang == SP_LANG_PLCSQL)
 	{
 	  output_ctx ("AS LANGUAGE PLCSQL BEGIN ");
@@ -4724,6 +4731,13 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
       scode_ptr = parser_parse_string (parser, scode);
       if (scode_ptr != NULL)
 	{
+	  if ((*scode_ptr)->info.sp.comment)
+	    {
+	      // This can happen (scode has a comment) if the data was populated by a CUBRID version prior to 11.4.5,
+	      // in particular, prior to the patch for issue CBRD-26513
+	      (*scode_ptr)->info.sp.comment = NULL;
+	    }
+
 	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
 	    {
 	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
@@ -4738,7 +4752,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 		}
 	    }
 
-	  parser->flag.is_parsing_unload_schema = 1;
+	  parser->flag.is_unloading_plcsql_def = 1;
 	  scode_ptr_result = parser_print_tree_with_quotes (parser, *scode_ptr);
 	}
 
@@ -4747,14 +4761,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 	  output_ctx ("\n%s", scode_ptr_result);
 	  if (!DB_IS_NULL (comment))
 	    {
-	      if ((*scode_ptr)->info.sp.comment == NULL)
-		{
-		  output_ctx ("\nCOMMENT ");
-		}
-	      else
-		{
-		  output_ctx ("COMMENT ");
-		}
+	      output_ctx (" COMMENT ");
 	      desc_value_print (output_ctx, comment);
 	    }
 	}

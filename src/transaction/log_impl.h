@@ -683,6 +683,9 @@ struct log_global
 
 #if defined(SERVER_MODE)
   bool backup_in_progress;
+  /* First archive a running backup still needs; -1 when none. In memory only: a crash must not leave
+   * a pin that blocks archive removal forever. */
+  int backup_first_arv_num_needed;
 #else				/* SERVER_MODE */
   LOG_LSA final_restored_lsa;
 #endif				/* SERVER_MODE */
@@ -817,6 +820,7 @@ typedef struct cdc_temp_logbuf
 typedef struct cdc_producer
 {
   LOG_LSA next_extraction_lsa;
+  bool is_reset_process_lsa;
 
   /* configuration */
   int all_in_cond;
@@ -876,7 +880,11 @@ typedef struct cdc_global
   LOG_LSA first_loginfo_queue_lsa;
   LOG_LSA last_loginfo_queue_lsa;
 
-  bool is_queue_reinitialized;
+  /* First LSA of the last log info bundle handed to a client. Unlike consumer.start_lsa it outlives the
+   * connection, so archive removal can still resolve the exact volume after a client has gone without
+   * ending its session - the case a restart has to be able to resume from. Ending the session does give
+   * the protection up; that is cdc_release_arv_num_to_keep()'s job. */
+  LOG_LSA arv_keep_lsa;
 
 } CDC_GLOBAL;
 
@@ -1020,6 +1028,7 @@ extern LOG_PHY_PAGEID logpb_to_physical_pageid (LOG_PAGEID logical_pageid);
 extern bool logpb_is_page_in_archive (LOG_PAGEID pageid);
 extern bool logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p);
 extern int logpb_get_archive_number (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
+extern int logpb_get_archive_num_for_pageid (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 extern void logpb_decache_archive_info (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr,
 					   int *ret_arv_num, LOG_ARV_HEADER * arv_hdr, bool is_fatal);

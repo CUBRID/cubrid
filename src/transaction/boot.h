@@ -56,7 +56,8 @@
          || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
          || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL \
          || (client_type) == DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS \
-	 || (client_type) == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	 || (client_type) == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2 \
+	 || (client_type) == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
 
 #define BOOT_LOG_REPLICATOR_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_LOG_COPIER \

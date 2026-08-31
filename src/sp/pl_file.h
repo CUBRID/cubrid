@@ -59,8 +59,6 @@ extern "C"
   extern EXPORT_IMPORT bool pl_reset_info (const char *db_name);
 
   extern EXPORT_IMPORT bool pl_get_info_file (char *buf, size_t len, const char *db_name);
-  extern EXPORT_IMPORT bool pl_get_error_file (char *buf, size_t len, const char *db_name);
-  extern EXPORT_IMPORT bool pl_get_log_file (char *buf, size_t len, const char *db_name);
 
 #ifdef __cplusplus
 }

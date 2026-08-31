@@ -426,6 +426,68 @@ end:
 }
 
 /*
+ * stats_get_fullscan_page_count () - Return the approximate number of heap
+ *   pages that a full-table count(distinct) query would scan for a class.
+ *   return: NO_ERROR or error code
+ *   class_mop(in): class object
+ *   npages(out): approximate total heap page count
+ *
+ * Note: For a partitioned table the count(distinct) query scans every
+ *   partition, so the partition heap pages are summed. The parent (catalog)
+ *   heap of a partitioned class is nearly empty and must not be used alone.
+ */
+static int
+stats_get_fullscan_page_count (const MOP class_mop, int *npages)
+{
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
+  MOP *partitions = NULL;
+  int nobjs = 0;
+  int error = NO_ERROR;
+
+  *npages = 0;
+
+  error = sm_partitioned_class_type ((DB_OBJECT *) class_mop, &partition_type, NULL, &partitions);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (partition_type == DB_PARTITIONED_CLASS && partitions != NULL)
+    {
+      int i, part_pages;
+
+      for (i = 0; partitions[i] != NULL; i++)
+	{
+	  part_pages = 0;
+	  error = db_get_class_num_objs_and_pages (partitions[i], 1 /* approximation */ , &nobjs, &part_pages);
+	  if (error != NO_ERROR)
+	    {
+	      free_and_init (partitions);
+	      return error;
+	    }
+	  *npages += part_pages;
+	}
+
+      free_and_init (partitions);
+    }
+  else
+    {
+      if (partitions != NULL)
+	{
+	  free_and_init (partitions);
+	}
+
+      error = db_get_class_num_objs_and_pages ((DB_OBJECT *) class_mop, 1 /* approximation */ , &nobjs, npages);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * stats_get_ndv_by_query () - get NDV by query
  *   return:
  *   class_mop(in):
@@ -481,6 +543,24 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
   if (select_list == NULL)
     {
       return ER_FAILED;
+    }
+
+  if (with_fullscan == STATS_WITH_FULLSCAN)
+    {
+      int max_pages = prm_get_integer_value (PRM_ID_STATS_FULLSCAN_MAX_PAGES);
+      int npages = 0;
+
+      /* Bound the cost of the hint-less count(distinct) full scan: downgrade WITH FULLSCAN to a sampling scan when
+       * the table has more than stats_fullscan_max_pages (hidden parameter) heap pages, or when its size cannot be
+       * determined (fail-safe: a probe failure must not fall back to the expensive full scan). A value of 0 or less
+       * disables the cap and always honors WITH FULLSCAN. */
+      if (max_pages > 0 && (stats_get_fullscan_page_count (class_mop, &npages) != NO_ERROR || npages > max_pages))
+	{
+	  er_clear ();		/* clear the error a failed probe may have raised; it does not fail the update */
+	  with_fullscan = STATS_WITH_SAMPLING;
+	  er_log_debug (ARG_FILE_LINE, "update stats: %s WITH FULLSCAN -> sampling (pages %d, max %d)\n",
+			class_name_p, npages, max_pages);
+	}
     }
 
   /* create sampling SQL statement */

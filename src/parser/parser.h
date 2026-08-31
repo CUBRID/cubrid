@@ -367,6 +367,7 @@ extern "C"
   extern PT_NODE *pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where);
   extern PT_NODE *pt_where_type_keep_true (PARSER_CONTEXT * parser, PT_NODE * where);
   extern bool pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * statement);
+  extern bool pt_true_search_condition (PARSER_CONTEXT * parser, const PT_NODE * statement);
   extern const char *mq_generate_name (PARSER_CONTEXT * parser, const char *root, int *version);
   extern int mq_is_real_class_of_vclass (PARSER_CONTEXT * parser, const PT_NODE * s_class, const PT_NODE * d_class);
   extern void pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt);
@@ -473,6 +474,8 @@ extern "C"
   extern PT_NODE *pt_check_orderbynum_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_check_orderbynum_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_expr_disallow_op_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern PT_NODE *pt_expr_disallow_op_except_agg (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						  int *continue_walk);
   extern void pt_check_level_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool * has_greater, bool * has_lesser);
   extern PT_NODE *pt_check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_check_subquery_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -544,6 +547,8 @@ extern "C"
   extern bool pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_expr_of_inst_in_sel_list (PARSER_CONTEXT * parser, PT_NODE * select_list);
   extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_having (PARSER_CONTEXT * parser, PT_NODE * node);
+
   extern bool pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
   extern void pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * pre_pred, int pre_order);
@@ -594,6 +599,7 @@ extern "C"
   extern int pt_node_list_to_array (PARSER_CONTEXT * parser, PT_NODE * arg_list, PT_NODE * arg_array[],
 				    const int array_size, int *num_args);
   extern int pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query);
+  extern int pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where);
 
   extern PT_NODE *pt_make_query_show_table (PARSER_CONTEXT * parser, bool is_full_syntax, int like_where_syntax,

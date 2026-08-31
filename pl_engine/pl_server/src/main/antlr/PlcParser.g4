@@ -76,8 +76,7 @@ seq_of_declare_specs
     ;
 
 declare_spec
-    : pragma_declaration
-    | constant_declaration
+    : constant_declaration
     | exception_declaration
     | variable_declaration
     | cursor_definition
@@ -107,10 +106,6 @@ cursor_parameter
 
 exception_declaration
     : identifier EXCEPTION SEMICOLON
-    ;
-
-pragma_declaration
-    : PRAGMA AUTONOMOUS_TRANSACTION SEMICOLON
     ;
 
 seq_of_statements
@@ -251,7 +246,7 @@ sql_statement
     ;
 
 static_sql
-    : static_sql_begin (SS_STR | SS_WS | SS_NON_STR)+
+    : static_sql_begin (SS_STR | SS_WS | SS_NON_STR | SS_BIND_PARAM)+
     ;
 
 static_sql_begin
@@ -286,6 +281,7 @@ fetch_statement
 
 open_for_statement
     : OPEN identifier FOR static_sql
+    | OPEN identifier FOR dyn_sql restricted_using_clause?
     ;
 
 transaction_control_statement

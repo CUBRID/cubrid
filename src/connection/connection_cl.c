@@ -73,6 +73,7 @@
 #endif /* WINDOWS */
 #include "connection_list_cl.h"
 #include "connection_cl.h"
+#include "network_callback_cl.hpp"
 #include "master_util.h"
 
 #if defined(HPUX)
@@ -1232,9 +1233,8 @@ bool
 css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
 #if defined(CS_MODE)
-  extern unsigned short method_request_id;
 
-  if (method_request_id == request_id)
+  if (xs_is_in_method_rids (request_id))
     {
       return false;
     }
