@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,14 +34,8 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
-/* BTREE_FIND_UNIQUE_HELPER -
- * Structure used by find unique functions.
- *
- * Functions:
- * btree_key_find_unique_version_oid.
- * btree_key_find_and_lock_unique.
- * btree_key_find_and_lock_unique_of_unique.
- * btree_key_find_and_lock_unique_of_non_unique.
+/* BTREE_FIND_UNIQUE_HELPER - State carried through a unique-key probe: what to match, what was found,
+ *			      and what this scan has locked and must release if it restarts.
  */
 typedef struct btree_find_unique_helper BTREE_FIND_UNIQUE_HELPER;
 struct btree_find_unique_helper
@@ -90,4 +84,4 @@ extern int btree_key_wait_out_conflicting_writer (THREAD_ENTRY *thread_p,
     PAGE_PTR *leaf_page, PAGE_PTR *overflow_page, bool *restart);
 #endif /* SERVER_MODE */
 
-#endif // _BTREE_WRITE_CONFLICT_HPP_
+#endif /* _BTREE_WRITE_CONFLICT_HPP_ */
