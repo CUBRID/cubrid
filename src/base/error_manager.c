@@ -2348,6 +2348,39 @@ er_stack_clearall (void)
     }
 }
 
+/*
+ * er_stack_depth - Current depth of this thread's saved-error stack
+ *   return: number of pushed er frames
+ */
+int
+er_stack_depth (void)
+{
+  // *INDENT-OFF*
+  context &tl_context = context::get_thread_local_context ();
+  // *INDENT-ON*
+
+  return (int) tl_context.get_stack_depth ();
+}
+
+/*
+ * er_stack_clear_above - er_stack_clearall bounded to a floor: frames at or
+ *   below the floor depth are kept.  clear_above (0) == er_stack_clearall.
+ *   return: none
+ *   floor(in): stack depth to clear down to (from er_stack_depth)
+ */
+void
+er_stack_clear_above (int floor)
+{
+  // *INDENT-OFF*
+  context &tl_context = context::get_thread_local_context ();
+  // *INDENT-ON*
+
+  while ((int) tl_context.get_stack_depth () > floor)
+    {
+      er_stack_pop_and_keep_error ();
+    }
+}
+
 
 /*
  * er_study_spec -

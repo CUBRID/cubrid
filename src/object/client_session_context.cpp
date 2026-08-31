@@ -98,6 +98,14 @@ csc_bracket_is_active (void)
   return tl_Csc_active != NULL;
 }
 
+/* the method-dispatch er-stack floor (see client_session_context.hpp); 0 —
+ * i.e. plain er_stack_clearall behavior — outside a bracket or a dispatch */
+int
+csc_er_stack_floor (void)
+{
+  return tl_Csc_active != NULL ? tl_Csc_active->er_dispatch_floor : 0;
+}
+
 /* the session's optimizer-level override slot (query_graph.c) */
 int *
 csc_qo_optimization_level (void)

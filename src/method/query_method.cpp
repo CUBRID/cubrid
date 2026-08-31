@@ -218,6 +218,14 @@ method_dispatch (packing_unpacker &unpacker)
    * process).  An error the dispatch propagates is kept on top. */
   er_stack_push ();
 
+  /* frames at or below this depth (the isolation frame included) belong to
+   * the server side: the client half's er_stack_clearall stops at the floor
+   * (transaction_cl.c), the way legacy CAS's clearall could not reach the
+   * server process's stack.  Nested dispatches re-floor and restore. */
+  client_session_context *csc = csc_current ();
+  int save_er_floor = csc->er_dispatch_floor;
+  csc->er_dispatch_floor = er_stack_depth ();
+
   tran_begin_libcas_function ();
   int depth = tran_get_libcas_depth ();
   if (depth > METHOD_MAX_RECURSION_DEPTH)
@@ -246,6 +254,8 @@ method_dispatch (packing_unpacker &unpacker)
 	  er_stack_pop ();
 	}
     }
+
+  csc->er_dispatch_floor = save_er_floor;
 
   if (error == NO_ERROR)
     {

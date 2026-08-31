@@ -63,6 +63,26 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 
+#if defined (SERVER_MODE)
+extern int csc_er_stack_floor (void);	/* client_session_context.cpp */
+#else
+/* single-workspace builds have no dispatch boundary; keeps pre-fold behavior */
+#define csc_er_stack_floor() 0
+#endif
+
+/*
+ * tran_er_stack_clearall - er_stack_clearall bounded to the client half.
+ *   Under a fold session bracket the er frames at or below the innermost
+ *   method-dispatch floor belong to the invoking server executor; legacy CAS's
+ *   clearall could only reach its own process's stack, so the fold clears only
+ *   the frames above the floor.  Outside a bracket the floor is 0 == clearall.
+ */
+static void
+tran_er_stack_clearall (void)
+{
+  er_stack_clear_above (csc_er_stack_floor ());
+}
+
 #if !defined (SERVER_MODE)
 int tm_Tran_index = NULL_TRAN_INDEX;
 TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
@@ -389,7 +409,7 @@ tran_commit (bool retain_lock)
   if (error_code == NO_ERROR || BOOT_IS_CLIENT_RESTARTED ())
     {
       ws_clear_all_hints (retain_lock);
-      er_stack_clearall ();
+      tran_er_stack_clearall ();
     }
 
   /* allow triggers AFTER the commit */
@@ -511,7 +531,7 @@ tran_abort (void)
   /* Increment snapshot version in work space */
   ws_increment_mvcc_snapshot_version ();
 
-  er_stack_clearall ();
+  tran_er_stack_clearall ();
 
   /* can these do anything useful ? */
   tr_check_rollback_triggers (TR_TIME_AFTER);
@@ -819,7 +839,7 @@ tran_2pc_prepare (void)
     {
       db_clear_client_query_result (true, true);
       ws_clear_all_hints (false);
-      er_stack_clearall ();
+      tran_er_stack_clearall ();
     }
 
 end:
@@ -978,7 +998,7 @@ tran_2pc_prepare_global_tran (int gtrid)
     {
       db_clear_client_query_result (true, true);
       ws_clear_all_hints (false);
-      er_stack_clearall ();
+      tran_er_stack_clearall ();
     }
 
   return error_code;

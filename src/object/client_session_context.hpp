@@ -94,6 +94,12 @@ class client_session_context
     /* object templates (object_template.h) */
     obt_context obt;
 
+    /* query_method.cpp: er-stack depth at the innermost method-dispatch
+     * boundary.  Frames at or below this depth belong to the invoking server
+     * executor; the client half's er_stack_clearall (transaction_cl.c) must
+     * not clear past it (legacy CAS cleared only its own process's stack). */
+    int er_dispatch_floor = 0;
+
     /* object_accessor.c: method invocation nesting + last method error */
     int obj_method_call_level = 0;
     char *obj_method_error_msg = nullptr;
