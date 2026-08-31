@@ -401,40 +401,18 @@ jobs:
           set -eo pipefail
           cd "$GITHUB_WORKSPACE"
 
-          # Never write to the mirror: a pod dying mid-fetch leaves a .lock that stalls
-          # every later build. Borrow history with --shared, fetch here.
-          git clone --quiet --shared --no-checkout "$BUILD_MIRROR/cubrid.git" .
+          # cubridci#112 moved this into the image: a --shared clone off $BUILD_MIRROR,
+          # only the delta fetched from GitHub, the mirror never written to, 5 retries.
+          # Not shallow -- the serial is `git rev-list --count` and shallow stamps 0001.
+          # The tree lands in ./cubrid, so step 3 stays one level up.
+          /entrypoint.sh checkout "$SHA"
 
-          # Not shallow: the serial is `git rev-list --count`; shallow stamps 0001.
-          git fetch --quiet https://github.com/CUBRID/cubrid.git "$SHA"
-          git checkout --quiet --detach "$SHA"
-
-          git submodule sync
-          git submodule init
-          # Only submodules the mirror has are pointed at it; the rest come from GitHub.
-          while read -r sub_sha sub_path; do
-            url=$(git config -f .gitmodules --get "submodule.${sub_path}.url")
-            mirror="$BUILD_MIRROR/$(basename "${url%.git}").git"
-            if git -C "$mirror" cat-file -e "${sub_sha}^{commit}" 2>/dev/null; then
-              git config "submodule.${sub_path}.url" "$mirror"
-              echo "[mirror] $sub_path"
-            else
-              echo "[warn] $sub_path is not in the mirror, fetching it in full from GitHub"
-            fi
-          done < <(git ls-tree HEAD | awk '$2 == "commit" { print $3, $4 }')
-
-          # git 2.38 stopped cloning submodules from local paths (CVE-2022-39253).
-          git -c protocol.file.allow=always submodule update
-
-          echo "HEAD        : $(git rev-parse HEAD)"
-          echo "build serial: $(git rev-list --count HEAD)"
-
-      - name: 3. Build, from the source root
+      - name: 3. Build
         if: steps.reuse.outputs.reuse != 'reused'
         run: |
           set -eo pipefail
-          # entrypoint's run_build writes build.log to cwd but checks $CUBRID_SRCDIR.
-          # One level down, a failed build reports success. Run from the source root.
+          # One level up from the source on purpose: run_build finds cubrid/build.sh
+          # from here and writes build.log to cwd, which is where step 5 reads it.
           cd "$GITHUB_WORKSPACE"
 
           # Read-only unless this is a develop push. There is no save_cache step to
