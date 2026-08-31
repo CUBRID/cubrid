@@ -155,7 +155,7 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
 static bool
 qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list)
 {
-  PT_NODE *spec, *flat;
+  PT_NODE *spec, *next_spec, *flat;
   DB_ATTRIBUTE *attr;
 
   if (operand == NULL || operand->node_type != PT_NAME || operand->info.name.spec_id == 0
@@ -175,6 +175,20 @@ qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list)
       || spec->info.spec.cte_name != NULL)
     {
       return false;
+    }
+
+  /* an outer join's null-supplying side is NULL at run time whatever the schema declares: this spec as the
+   * inner of a LEFT OUTER, or any spec after it opening a RIGHT OUTER */
+  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
+    {
+      return false;
+    }
+  for (next_spec = spec->next; next_spec != NULL; next_spec = next_spec->next)
+    {
+      if (next_spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER || next_spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
+	{
+	  return false;
+	}
     }
 
   /* one resolved class only: a hierarchy would need every subclass checked */
