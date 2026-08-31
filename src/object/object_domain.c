@@ -1604,13 +1604,18 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_OBJECT:
     case DB_TYPE_SUB:
 
-#if defined (SERVER_MODE)
-      match = OID_EQ (&dom1->class_oid, &dom2->class_oid);
-#else /* !defined (SERVER_MODE) */
       /*
        * if "exact" is zero, we should be checking the subclass hierarchy of
        * dom1 to see id dom2 is in it !
        */
+      /* client comparator kept for the merged server too (wf174 cluster B):
+       * a bracketed session's self-referencing domain carries only class_mop
+       * (class_oid stays NULL — nothing backfills it on the server), so the
+       * old SERVER_MODE-only OID_EQ matched ANY two self-referencing element
+       * domains of unrelated classes (OID_EQ(NULL,NULL)), aliasing them in
+       * the domain cache and writing class_of=NULL to the catalog.  Genuine
+       * server domains never set class_mop, so for them the both-NULL branch
+       * below is bit-identical to the old OID_EQ. */
 
       /* Always prefer comparison of MOPs */
       if (dom1->class_mop != NULL && dom2->class_mop != NULL)
@@ -1637,7 +1642,6 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	      match = OID_EQ (WS_OID (dom1->class_mop), &dom2->class_oid);
 	    }
 	}
-#endif /* defined (SERVER_MODE) */
 
       if (match == 0 && exact == TP_SET_MATCH && dom1->class_mop == NULL && OID_ISNULL (&dom1->class_oid))
 	{

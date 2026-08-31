@@ -66,6 +66,9 @@ if [ $# -eq 0 ]; then
   # case 12 runs INSERT ... ON DUPLICATE KEY UPDATE on a UNIQUE OBJECT column:
   #        the MOP key crossing the folded seam must survive mr_cmpval_object
   #        (wf173 class — bracket ownership, not the hat, gates MOP handling)
+  # case 13 creates two unrelated self-referencing SET attributes in sequence:
+  #        their element domains must not alias in the domain cache and
+  #        db_attr_setdomain_elm must resolve all three (wf174 cluster B)
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
     "SELECT ? + ? @BIND=30,12 @EXPECT=42" \
@@ -76,7 +79,8 @@ if [ $# -eq 0 ]; then
     "PLCSQL NESTED @SCENARIO=plcsql_nested" \
     "SESSION VAR @SCENARIO=session_var" \
     "METHOD ENV @SCENARIO=method_env" \
-    "ODKU OBJECT KEY @SCENARIO=odku_object_key"
+    "ODKU OBJECT KEY @SCENARIO=odku_object_key" \
+    "SELFREF CATALOG @SCENARIO=selfref_catalog"
 fi
 
 # This script restarts cub_master via `cubrid service stop` (see below), which

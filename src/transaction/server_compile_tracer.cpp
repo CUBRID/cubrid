@@ -1050,6 +1050,62 @@ scenario_odku_object_key (const char *server_name)
   });
 }
 
+/* wf174 smoke scenario (medium cluster B) — self-referencing SET element
+ * domains of two unrelated classes must not alias in the domain cache: the
+ * pre-fold SERVER_MODE matcher compared only class_oid, which stays NULL for
+ * self-references (only class_mop is filled), so OID_EQ(NULL,NULL) matched a
+ * stale earlier class's node and the catalog recorded class_of=NULL for the
+ * first self-referencing collection attribute (cat2/cat3). */
+static bool
+scenario_selfref_catalog (const char *server_name)
+{
+  return in_process_session (0, server_name, "DBA", "", 0, [] (int sid)
+  {
+    scenario_try (sid, "DROP CLASS wf174_c2");
+    scenario_try (sid, "DROP CLASS wf174_c1");
+    /* plant a self-referencing SET element domain in the cache, then drop it */
+    if (!scenario_exec (sid, "CREATE CLASS wf174_c1 (a INT)", NULL, 0)
+	|| !scenario_exec (sid, "ALTER CLASS wf174_c1 ADD ATTRIBUTE b SET(wf174_c1)", NULL, 0)
+	|| !scenario_exec (sid, "DROP CLASS wf174_c1", NULL, 0))
+      {
+	return false;
+      }
+    if (!scenario_exec (sid, "CREATE CLASS wf174_c2 (a DOUBLE, d SET(wf174_c2), e MULTISET(wf174_c2),"
+			" f SEQUENCE(wf174_c2))", NULL, 0))
+      {
+	return false;
+      }
+    int v = 0;
+    /* CAST: COUNT(*) is BIGINT and scenario_exec's probe reads an INTEGER */
+    if (!scenario_exec (sid, "SELECT CAST (COUNT(*) AS INTEGER) FROM db_attr_setdomain_elm"
+			" WHERE class_name='wf174_c2' AND domain_class_name='wf174_c2'", &v, 0))
+      {
+	return false;
+      }
+    if (v != 3)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL self-ref domain_class_name count %d expected 3 (d/e/f)", sid, v);
+	return false;
+      }
+    tracer_log ("M0_TRACER: S%d self-referencing set domains resolved, %d of 3", sid, v);
+    if (!scenario_exec (sid, "DROP CLASS wf174_c2", NULL, 0))
+      {
+	return false;
+      }
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    if (db_end_session () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL db_end_session msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    return true;
+  });
+}
+
 static void
 tracer_main (char *server_name, char *sql, char *out_path)
 {
@@ -1091,6 +1147,10 @@ tracer_main (char *server_name, char *sql, char *out_path)
       else if (strcmp (scenario, "odku_object_key") == 0)
 	{
 	  ok = scenario_odku_object_key (server_name);
+	}
+      else if (strcmp (scenario, "selfref_catalog") == 0)
+	{
+	  ok = scenario_selfref_catalog (server_name);
 	}
       else
 	{
