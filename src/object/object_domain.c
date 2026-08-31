@@ -3966,17 +3966,24 @@ static int
 tp_domain_check_class (TP_DOMAIN * domain, int *change)
 {
   int error = NO_ERROR;
-#if !defined (SERVER_MODE)
   int status;
-#endif /* !SERVER_MODE */
 
   if (change != NULL)
     {
       *change = 0;
     }
 
-#if !defined (SERVER_MODE)
-  if (!db_on_server)
+  /* client body kept for the merged server (wf174 prtnull): the deleted-class
+   * downgrade to the wildcard "object" domain is what lets a surviving class
+   * keep selecting an attribute whose domain class was dropped — pre-fold this
+   * revalidation was compiled out of the server, so the folded compile failed
+   * name resolution with -494 instead.  Genuine server threads (db_on_server,
+   * no bracket) skip it exactly as pre-fold. */
+  if (!db_on_server
+#if defined (SERVER_MODE)
+      && csc_bracket_is_active ()
+#endif /* SERVER_MODE */
+     )
     {
       if (domain != NULL && domain->type == tp_Type_object && domain->class_mop != NULL)
 	{
@@ -3999,7 +4006,6 @@ tp_domain_check_class (TP_DOMAIN * domain, int *change)
 	    }
 	}
     }
-#endif /* !SERVER_MODE */
 
   return error;
 }
