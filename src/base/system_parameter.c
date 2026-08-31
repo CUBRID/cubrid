@@ -89,6 +89,8 @@
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"	// for cubthread::system_core_count
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+
+extern bool csc_bracket_is_active (void);	/* client_session_context.cpp — merged client half's scope rules */
 #endif // SERVER_MODE
 #include "string_regex.hpp"
 #if !defined (SERVER_MODE)
@@ -7874,7 +7876,18 @@ sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments, bool ch
 #if defined (SERVER_MODE)
       if (check)
 	{
-	  if (!PRM_IS_FOR_SERVER (prm) && !PRM_IS_FOR_SESSION (prm))
+	  if (csc_bracket_is_active ())
+	    {
+	      /* the merged client half applies with the legacy client rule —
+	       * the server rule below silently dropped client-only writes
+	       * (SET 'ansi_quotes=...' reported success and wrote nothing) */
+	      if (!PRM_IS_FOR_CLIENT (prm))
+		{
+		  /* skip this assignment */
+		  continue;
+		}
+	    }
+	  else if (!PRM_IS_FOR_SERVER (prm) && !PRM_IS_FOR_SESSION (prm))
 	    {
 	      /* skip this assignment */
 	      continue;
@@ -9097,7 +9110,40 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 #if defined (SERVER_MODE)
   if (check)
     {
-      if (!PRM_IS_FOR_SERVER (prm) && !PRM_IS_FOR_SESSION (prm))
+      if (csc_bracket_is_active ())
+	{
+	  /* the merged client half's SET SYSTEM PARAMETERS: legacy client
+	   * scope rules (the CS_MODE block above).  A client-only parameter
+	   * applies in-process — rejecting it as "not for server" broke every
+	   * test-mode SET (ansi_quotes & friends, workspace#176 결함 6). */
+	  if (PRM_IS_FOR_CLIENT (prm))
+	    {
+	      if (PRM_IS_FOR_SESSION (prm))
+		{
+		  /* the value in session state must also be updated. user doesn't have to be part of DBA group. */
+		  ret = PRM_ERR_NOT_FOR_CLIENT_NO_AUTH;
+		}
+	      else if (PRM_IS_FOR_SERVER (prm))
+		{
+		  /* the value has to be changed on server too. user has to be part of DBA group. */
+		  ret = PRM_ERR_NOT_FOR_CLIENT;
+		}
+	    }
+	  else
+	    {
+	      if (PRM_IS_FOR_SERVER (prm))
+		{
+		  /* this value is only for server. user has to be DBA. */
+		  ret = PRM_ERR_NOT_FOR_CLIENT;
+		}
+	      else
+		{
+		  /* not for client or server, cannot be changed on-line */
+		  return PRM_ERR_CANNOT_CHANGE;
+		}
+	    }
+	}
+      else if (!PRM_IS_FOR_SERVER (prm) && !PRM_IS_FOR_SESSION (prm))
 	{
 	  return PRM_ERR_NOT_FOR_SERVER;
 	}
