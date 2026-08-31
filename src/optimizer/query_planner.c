@@ -12031,7 +12031,7 @@ qo_validate_index_key_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
   assert (index_entryp->constraints != NULL);
 
   if (qo_is_prefix_index (index_entryp) || index_entryp->constraints->filter_predicate != NULL
-      || index_entryp->is_func_index)
+      || index_entryp->constraints->func_index_info != NULL)
     {
       /* qo_is_filter_index() requires force > 0, so check the filter predicate directly. */
       return false;
