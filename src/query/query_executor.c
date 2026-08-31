@@ -8216,6 +8216,11 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	{
 	  if (xptr2->scan_ptr)
 	    {
+	      if (XASL_IS_NL_SEMI_OR_ANTI (xptr2->scan_ptr)
+		  && qexec_reset_sa_inner_scan_block (thread_p, xptr2->scan_ptr) == S_ERROR)
+		{
+		  return S_ERROR;
+		}
 	      sb_next = qexec_next_scan_block (thread_p, xptr2->scan_ptr);
 	      if (sb_next == S_SUCCESS)
 		{
@@ -8270,6 +8275,14 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 		{
 		  if (xptr2->scan_ptr)
 		    {
+		      /* a semi/anti inner is driven per outer row and was left where its last probe stopped; rewind
+		       * it (to its first partition when partitioned) so the block advance below restarts it, instead
+		       * of reading S_END here and abandoning the outer's remaining scan blocks (partitions) */
+		      if (XASL_IS_NL_SEMI_OR_ANTI (xptr2->scan_ptr)
+			  && qexec_reset_sa_inner_scan_block (thread_p, xptr2->scan_ptr) == S_ERROR)
+			{
+			  return S_ERROR;
+			}
 		      sb_next = qexec_next_scan_block (thread_p, xptr2->scan_ptr);
 		      if (sb_next == S_SUCCESS)
 			{
