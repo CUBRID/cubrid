@@ -16890,7 +16890,7 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
-  wait_msecs = (tdes != NULL) ? tdes->wait_msecs : 0;
+  wait_msecs = (tdes != NULL) ? tdes->wait_msecs : LK_ZERO_WAIT;
 
 #if defined (SERVER_MODE)
   /* The two disk manager fixes must not inherit the transaction's no-wait setting; see
