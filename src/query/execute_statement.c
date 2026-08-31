@@ -22559,12 +22559,13 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
    * backup the optimization level for executing internal query to find server-name,
    * because it could not be executed depending on the optimization level.
    */
-  saved_opt_level = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
-  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, 1);
+  /* through the optimizer's setter: under a fold session bracket the level
+   * lives on the session override slot, not the shared sysprm */
+  qo_set_optimization_param (&saved_opt_level, QO_PARAM_LEVEL, 1);
 
   error = db_compile_and_execute_local (query, &query_result, &query_error);
 
-  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, saved_opt_level);
+  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, saved_opt_level);
 
   if (error < 0)
     {

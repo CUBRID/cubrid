@@ -27,26 +27,29 @@
 
 #include "system_parameter.h"
 #include "cas_optimization.h"
+#include "cas_common_vars.h"
+#include "optimizer.h"
 
-static int saved_Optimization_level = -1;
+/* CAS_TLS: in the merged server one driver-session thread speaks for one
+ * session, and the CAS original kept this per-process */
+static CAS_TLS int saved_Optimization_level = -1;
 
 void
 set_optimization_level (int level)
 {
-  saved_Optimization_level = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
-  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, level);
+  /* through the optimizer's setter: in the merged server the level must land
+   * on the session override slot qo_get_optimization_param prefers — a plain
+   * sysprm write is invisible to this session's optimizer (session-parameter
+   * read-through) and would race every other session.  Outside a bracket the
+   * setter is the sysprm write the CAS original did. */
+  qo_set_optimization_param (&saved_Optimization_level, QO_PARAM_LEVEL, level);
 }
 
 void
 reset_optimization_level_as_saved (void)
 {
-  if (CHK_OPTIMIZATION_LEVEL_VALID (saved_Optimization_level))
-    {
-      prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, saved_Optimization_level);
-    }
-  else
-    {
-      prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, 1);
-    }
+  int level = CHK_OPTIMIZATION_LEVEL_VALID (saved_Optimization_level) ? saved_Optimization_level : 1;
+
+  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
   saved_Optimization_level = -1;
 }
