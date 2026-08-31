@@ -7391,8 +7391,8 @@ show_stmt
 			    PT_INTERNAL_ERROR (this_parser, "allocate new node");
 			  }
 
-			/* the scan mode is moved after the partition type argument by
-			 * pt_check_table_in_show_heap (), so that it always stays last */
+			/* pt_check_table_in_show_heap () inserts the partition type BEFORE the scan mode,
+			 * so the scan mode always stays last */
 			args->next = scan_mode;
 
 			node = pt_make_query_showstmt (this_parser, type, args, 0, NULL);
