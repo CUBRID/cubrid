@@ -54,7 +54,6 @@ $       27      restartevnt
 $       28      prestartldb
 $       29      shutdownldb
 $       30      mqueueldb
-$       31      migrate_v73
 $       32      load_audit_trail
 $       33      alterdbhost
 $       37      plandump
@@ -892,26 +891,6 @@ valid options:\n\
   -q, --query-exec-info              display information about query execution information of active transactions\n\
   -f, --force                        kill the transaction without a prompt for verification\n
 
-
-$set 31 MSGCAT_UTIL_SET_MIGRATE
-1 database-name
-2 required argument, no default
-3 compatibility-check
-4 compatibility check only
-5 backup-destination
-6 a directory path or device for the destination of the backup volumes
-20 database '%1$s' does not exist.
-21 '%1$s' can't be migrated to %2$s, because its DB version is too low.\n
-22 '%1$s' don't need to be migrated.\n
-23 '%1$s' needs to be migrated.\n
-24 Backup is recommended after migration. Do you want to back up your database now? (y/n):
-25 We recommend to back up your new database with backupdb command after migration.
-26 \n*** WARNING: Backup your database before you start migrating to %1$s ***\n\nTo recover errors which might be occurred during migration, we strongly recommend to back up your database.\nHave you already backed up your database? (y/n):
-27 \n1. Run backupdb \n2. Enter the new backup path for the new database.(current path: %1$s)\n3. Exit \n
-28 \nThe new backup path for the database:
-29 \nMigration and backup have been successfully completed.
-30 Backup failed. Please, retry to back up your database.
-31 \n\n*** WARNING : Once the migration is completed, you cannot restore the database with the former backup volumes.\nNotice that the previous version of backup files can be restored only on the corresponding version of restoredb.\nPlease, check the former backup volumes is securely kept.\n
 
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \
