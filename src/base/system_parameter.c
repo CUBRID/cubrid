@@ -11001,6 +11001,23 @@ prm_set_integer_value (PARAM_ID prm_id, int value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER (GET_PRM (prm_id)) || PRM_IS_KEYWORD (GET_PRM (prm_id)));
 
+#if defined (SERVER_MODE)
+  /* the write half of the session read-through: reads of a session parameter
+   * come from the session (prm_get_value), so a client-half write must land
+   * there too or it is silently lost to the very next read (SET TRACE, CAS
+   * optimization level, ...).  Without a session (server-internal threads)
+   * fall through to the shared value, as before. */
+  if (PRM_SESSION_READTHROUGH (prm_id) && BO_IS_SERVER_RESTARTED ())
+    {
+      SESSION_PARAM *sprm = session_get_session_parameter (thread_get_thread_entry_info (), prm_id);
+      if (sprm != NULL)
+	{
+	  sprm->value.i = value;
+	  return;
+	}
+    }
+#endif
+
   PRM_GET_INT (GET_PRM (prm_id)->value) = value;
 
   sysprm_update_flag_different (GET_PRM (prm_id));
@@ -11018,6 +11035,19 @@ prm_set_bool_value (PARAM_ID prm_id, bool value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BOOLEAN (GET_PRM (prm_id)));
+
+#if defined (SERVER_MODE)
+  /* see prm_set_integer_value: the write half of the session read-through */
+  if (PRM_SESSION_READTHROUGH (prm_id) && BO_IS_SERVER_RESTARTED ())
+    {
+      SESSION_PARAM *sprm = session_get_session_parameter (thread_get_thread_entry_info (), prm_id);
+      if (sprm != NULL)
+	{
+	  sprm->value.b = value;
+	  return;
+	}
+    }
+#endif
 
   PRM_GET_BOOL (GET_PRM (prm_id)->value) = value;
 

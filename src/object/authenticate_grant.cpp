@@ -37,6 +37,7 @@
 #include "set_object.h" /* set_free () */
 #include "object_accessor.h" /* obj_inst_lock () */
 #include "object_primitive.h"
+#include "optimizer.h"		/* qo_set_optimization_param () */
 
 #include "msgcat_glossary.hpp"
 
@@ -1624,12 +1625,13 @@ collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked
 
   sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
 
-  saved_opt_level = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
-  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, 1);
+  /* through the optimizer's setter: under a fold session bracket the level
+   * lives on the session override slot, not the shared sysprm */
+  qo_set_optimization_param (&saved_opt_level, QO_PARAM_LEVEL, 1);
 
   error = db_compile_and_execute_local (query, &query_result, &query_error);
 
-  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, saved_opt_level);
+  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, saved_opt_level);
 
   if (error < 0)
     /* error is row count if not negative. */
