@@ -18373,13 +18373,19 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
   SHOWSTMT_SCAN_MODE scan_mode = SHOWSTMT_SCAN_EXACT;
   LOCK class_lock;
 
+  *ptr = NULL;
+
   /* The scan mode is the last argument, and it is missing when the request comes from a client
-   * which does not know it yet; such a client gets the default (EXACT). */
-  assert (arg_cnt == 2 || arg_cnt == 3);
+   * which does not know it yet; such a client gets the default (EXACT).  The argument count comes
+   * from the XASL the client built, so it is checked and not only asserted. */
+  if (arg_cnt < 2 || arg_cnt > 3)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
+    }
   assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
   assert (DB_VALUE_TYPE (arg_values[1]) == DB_TYPE_INTEGER);	/* partition type */
-
-  *ptr = NULL;
 
   class_name = db_get_string (arg_values[0]);
   partition_type = (DB_CLASS_PARTITION_TYPE) db_get_int (arg_values[1]);
