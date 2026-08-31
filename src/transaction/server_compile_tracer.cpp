@@ -1018,7 +1018,8 @@ scenario_odku_object_key (const char *server_name)
 	return false;
       }
     int v = 0;
-    if (!scenario_exec (sid, "SELECT COUNT(*) FROM wf173_b", &v, 0))
+    /* CAST: COUNT(*) is BIGINT and scenario_exec's probe reads an INTEGER */
+    if (!scenario_exec (sid, "SELECT CAST (COUNT(*) AS INTEGER) FROM wf173_b", &v, 0))
       {
 	return false;
       }
