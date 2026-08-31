@@ -46,6 +46,7 @@ public class PlParamInfo {
     public short scale;
     public byte charset;
     public boolean hasDefault;
+    public String defaultValue; // default value expression text (when hasDefault)
 
     public Value value;
 
@@ -76,6 +77,7 @@ public class PlParamInfo {
         this.scale = (short) unpacker.unpackInt();
         this.charset = (byte) unpacker.unpackInt();
         this.hasDefault = (unpacker.unpackInt() != 0);
+        this.defaultValue = unpacker.unpackCString();
 
         int has_value = unpacker.unpackInt();
         if (has_value == 1) {

@@ -78,6 +78,11 @@ public class ExprGlobalFuncCall extends Expr implements SqlUse {
     public int sqlSerialNo;
 
     public DeclFunc decl;
+    // generated Java class name of the target when it is a PL/CSQL routine/package (empty for a
+    // Java SP, which is still called through a SQL CALL statement)
+    public String targetClass;
+    // canonical unique_name of the resolved routine, used by the runtime EXECUTE check
+    public String uniqueName;
 
     public ExprGlobalFuncCall(
             ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {

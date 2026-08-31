@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -28,40 +29,34 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.jsp.compiler;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.sql.*;
-import org.antlr.v4.runtime.ParserRuleContext;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.net.URI;
+import javax.tools.SimpleJavaFileObject;
 
-public class UnitPkg extends Unit {
+// A compiled .class of an already-compiled SP/package, fetched from the catalog and supplied to
+// javac as an input class file so that direct references (e.g. Proc_owner_name.name(...)) resolve.
+public class CatalogClassFile extends SimpleJavaFileObject {
+
+    private final String binaryName;
+    private final byte[] bytes;
+
+    public CatalogClassFile(String binaryName, byte[] bytes) {
+        super(
+                URI.create("mem:///" + binaryName.replace('.', '/') + Kind.CLASS.extension),
+                Kind.CLASS);
+        this.binaryName = binaryName;
+        this.bytes = bytes;
+    }
+
+    public String getBinaryName() {
+        return binaryName;
+    }
 
     @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitUnitPkg(this);
+    public InputStream openInputStream() {
+        return new ByteArrayInputStream(bytes);
     }
-
-    public final DeclPackage pkg;
-
-    public UnitPkg(
-            ParserRuleContext ctx, boolean connectionRequired, String owner, DeclPackage pkg) {
-        super(ctx, connectionRequired, owner);
-
-        this.pkg = pkg;
-    }
-
-    public String getClassName() {
-
-        if (className == null) {
-            className = encodeClassName("Pckg", owner, pkg.name);
-        }
-
-        return className;
-    }
-
-    // ------------------------------------------
-    // Private
-    // ------------------------------------------
-
-    private String className;
 }

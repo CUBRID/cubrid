@@ -47,8 +47,10 @@ import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
@@ -73,18 +75,11 @@ public class PlcsqlCompilerMain {
         }
     }
 
-    private static synchronized long getCompileSeqNo() {
-        return compileSeqNo++;
-    }
-
-    public static CompileResponse compilePLCSQL(CompileRequest request) {
-        return compilePLCSQL(request, Long.toString(getCompileSeqNo()));
-    }
-
-    public static CompileResponse compilePLCSQL(CompileRequest request, String compileSeqNo) {
+    public static CompileResponse compilePLCSQL(
+            CompileRequest request, Set<String> referencedClasses) {
 
         try {
-            return compileInner(new InstanceStore(), compileSeqNo, request);
+            return compileInner(new InstanceStore(), request, referencedClasses);
         } catch (SyntaxError e) {
             CompileResponse err = new CompileResponse(-1, e.line, e.column, e.getMessage());
             return err;
@@ -125,8 +120,6 @@ public class PlcsqlCompilerMain {
     // ------------------------------------------------------------------
     // Private
     // ------------------------------------------------------------------
-
-    private static long compileSeqNo = 1;
 
     private static final String STR_EXPECTING = " expecting ";
     private static final int STR_EXPECTING_LEN = STR_EXPECTING.length();
@@ -208,7 +201,7 @@ public class PlcsqlCompilerMain {
     }
 
     private static CompileResponse compileInner(
-            InstanceStore iStore, String compileSeqNo, CompileRequest request) {
+            InstanceStore iStore, CompileRequest request, Set<String> referencedClasses) {
 
         int type = request.type;
         String code = request.code;
@@ -313,7 +306,7 @@ public class PlcsqlCompilerMain {
         Unit unit;
         UnitSp unitSp = null;
         UnitPkg unitPkg = null;
-        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, compileSeqNo);
+        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, referencedClasses);
 
         if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
             unit = unitSp = (UnitSp) converter.visit(codeTree);
@@ -357,14 +350,19 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // Java code generation
 
-        String javaCode;
-        if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
-            javaCode = new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls).buildCodeLines(unit);
-        } else {
-            // temporary code
-            javaCode =
-                    String.format("public class %s { public int i = 1; }", unitPkg.getClassName());
+        // Assign each directly-referenced routine/package a slot in the unit's runtime
+        // EXECUTE-check cache (static boolean[] authChecked). The slot numbers are meaningful
+        // only within this compilation: the field's size and every call site's index come from
+        // this same map.
+        Map<String, Integer> authCheckedIndex = new HashMap<>();
+        int slot = 0;
+        for (String cls : referencedClasses) {
+            authCheckedIndex.put(cls, slot++);
         }
+
+        String javaCode =
+                new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls, authCheckedIndex)
+                        .buildCodeLines(unit);
 
         if (verbose) {
             logElapsedTime(logStore, "Java code generation", t0);

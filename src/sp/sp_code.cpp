@@ -25,10 +25,16 @@
 #include <unordered_map>
 #include <string>
 
+#include <cstring>
+
 #include "dbtype.h"
 #include "heap_file.h"
 #include "object_representation_sr.h"
+#include "oid.h"
+#include "schema_system_catalog_constants.h"
 #include "sp_constants.hpp"
+#include "storage_common.h"
+#include "xserver_interface.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"

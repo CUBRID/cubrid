@@ -41,23 +41,35 @@ public class CatalogClassLoader extends ClassLoader {
 
     public final String mainClassName;
 
-    public CatalogClassLoader(String mainClassName, ClassLoader parent) {
+    public boolean isOld;
+    public CompiledCodeSet codeSet;
+
+    public CatalogClassLoader(String mainClassName, String compileId, ClassLoader parent) {
         super(parent);
 
         this.mainClassName = mainClassName;
 
-        codeSet = ClassAccess.getObjectCode();
+        this.codeSet = ClassAccess.getObjectCodeOfCurrentInvoke();
         if (codeSet == null) {
             throw new IllegalStateException(
                     "retrieving object code failed for a class " + mainClassName);
         }
+        this.codeSet.setMainClassName(mainClassName);
+        this.codeSet.setCompileId(compileId);
+    }
+
+    public CatalogClassLoader(CompiledCodeSet codeSet, ClassLoader parent) {
+        super(parent);
+
+        this.mainClassName = codeSet.mainClassName;
+        this.codeSet = codeSet;
     }
 
     @Override
     public Class<?> loadClass(String name) throws ClassNotFoundException {
-        // The unit's own classes (the main class and its nested classes) are all in codeSet.codeMap
-        // Load them here and do not let them reach the relaying parent.
         if (codeSet.codeMap.containsKey(name)) {
+            // shortcut for the nested classes of the main class.
+            // Do not let them reach the relaying parent.
             return findClass(name);
         } else {
             return super.loadClass(name);
@@ -84,10 +96,13 @@ public class CatalogClassLoader extends ClassLoader {
         return ret;
     }
 
+    public void setOld(boolean val) {
+        isOld = val;
+    }
+
     // ===========================
     // Private
     // ===========================
 
-    private CompiledCodeSet codeSet;
     private Map<String, Class<?>> defined = new HashMap<>();
 }

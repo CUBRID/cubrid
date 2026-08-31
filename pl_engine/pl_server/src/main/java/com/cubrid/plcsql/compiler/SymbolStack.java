@@ -661,6 +661,12 @@ public class SymbolStack {
             if (decl.givesBodyOf(old)) {
                 decl.setScope(symbolTable.scope);
                 old.setBodyDecl(decl);
+                if (old.isPkgItem) {
+                    decl.setPkgItem();
+                    if (old.isPkgPublic) {
+                        decl.setPkgPublic();
+                    }
+                }
             } else {
                 throw new SemanticError(
                         Misc.getLineColumnOf(decl.ctx), // s062

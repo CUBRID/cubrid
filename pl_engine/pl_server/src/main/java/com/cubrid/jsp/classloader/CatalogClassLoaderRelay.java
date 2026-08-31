@@ -31,6 +31,9 @@
 
 package com.cubrid.jsp.classloader;
 
+import com.cubrid.jsp.code.ClassAccess;
+import com.cubrid.jsp.code.CompiledCodeSet;
+import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -40,53 +43,100 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         super(getSystemClassLoader());
     }
 
-    @Override
-    public Class<?> loadClass(String name) throws ClassNotFoundException {
-
-        // CatalogClassLoaderRelay cannot be an initiating class loader of the class of the given
-        // name because
-        //   . it does not call defineClass(), and
-        //   . JVM does not call loadClass on it, but only the application code does.
-        // This overriding is only to check the assertion. TODO: remove this overriding after some
-        // time.
-
-        assert findLoadedClass(name) == null
-                : "CatalogClassLoaderRelay may not be an initiating class loader for " + name;
-        return super.loadClass(name);
+    public void markChildrenAsOld() {
+        for (CatalogClassLoader ccl : unitClassLoaders.values()) {
+            ccl.setOld(true);
+        }
     }
 
     @Override
-    public Class<?> findClass(String mainClassName) throws ClassNotFoundException {
+    public Class<?> loadClass(String name) throws ClassNotFoundException {
 
-        // The argument mainClassName must be always the name of a main class of an SP because
-        // the only reaching path to this method is from StoredProcedure::findTargetMethod.
-        // Especially, delegation from a CatalogClassLoader does not reach here because classloading
-        // of a main class's nested class is done within the CatalogClassLoader (see
-        // CatalogClassLoader::loadClass)
+        // CatalogClassLoaderRelay cannot be a initiating class loader of the class of the given
+        // name because
+        //   . it does not call defineClass(), and
+        //   . JVM does not call loadClass on it, but only the application code does.
+        // This overriding is only to check the assertion.
+        // TODO: remove this overridding after some time.
 
-        // main class name ends with a string of the form _<seqno>_<creation-time>
-        // Detaching this string yields the invariant part of the main class name
-        // (invariant over recreations by executing CREATE OR REPLACE PROCEDURE/FUNCTION)
-        // of the form Proc_<owner-name-len>_<owner-name>_<procedure-name> or
-        // Func_<owner-name-len>_<owner-name>_<function-name>.
-        String unitKey = getInvariantPartOfMainClassName(mainClassName);
-        if (unitKey == null) {
-            // the name is not a unit (procedure, function) class name
-            throw new ClassNotFoundException(mainClassName);
-        }
+        assert findLoadedClass(name) == null
+                : "CatalogClassLoaderRelay cannot be a initiating class loader for " + name;
+        return super.loadClass(name);
+    }
 
-        CatalogClassLoader classLoader = unitClassLoaders.get(unitKey);
-        if (classLoader == null || !mainClassName.equals(classLoader.mainClassName)) {
-            // if the unit's class is first loaded or it is recompiled to a new class
-            classLoader = new CatalogClassLoader(mainClassName, this);
-            unitClassLoaders.put(unitKey, classLoader);
+    // this is only called from StoredProcedure::findTargetMethod
+    public Class<?> findClassWithCompileId(String mainClassName, String compileId)
+            throws ClassNotFoundException {
+
+        assert (mainClassName.startsWith("Proc_")
+                || mainClassName.startsWith("Func_")
+                || mainClassName.startsWith("Pckg_"));
+
+        CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
+        if (classLoader == null) {
+            classLoader = new CatalogClassLoader(mainClassName, compileId, this);
+            unitClassLoaders.put(mainClassName, classLoader);
+        } else {
+            if (!compileId.equals(classLoader.codeSet.compileId)) {
+                classLoader = new CatalogClassLoader(mainClassName, compileId, this);
+                unitClassLoaders.put(mainClassName, classLoader);
+            }
         }
 
         assert classLoader != null;
 
         // CAUTION: do not use classLoader.loadClass() :
-        //  it will result in an infinite loop because classLoader's parent is this relaying class
-        return classLoader.findClass(mainClassName);
+        //  it just calls classLoader.findClass() by the shortcut (see
+        // CatalogClassLoader::loadClass()
+        //  and calling classLoader.loadClass() is waste of CPU clocks.
+        return classLoader.findClass(JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName);
+    }
+
+    @Override
+    public Class<?> findClass(String className) throws ClassNotFoundException {
+
+        // control reaches here only when a stored procedure or pacakge is referenced by another,
+        // and to find the class for that reference
+
+        String mainClassName = getMainClassName(className);
+        assert (mainClassName.startsWith("Proc_")
+                || mainClassName.startsWith("Func_")
+                || mainClassName.startsWith("Pckg_"));
+
+        CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
+        if (classLoader == null) {
+            CompiledCodeSet codeSet = ClassAccess.getObjectCodeOf(mainClassName, false);
+            if (codeSet == null) {
+                // was it dropped?
+                throw new ClassNotFoundException(className);
+            }
+            classLoader = new CatalogClassLoader(codeSet, this);
+            unitClassLoaders.put(mainClassName, classLoader);
+        } else {
+            if (classLoader.isOld) {
+                CompiledCodeSet codeSet0 = classLoader.codeSet;
+                CompiledCodeSet codeSet1 = ClassAccess.getObjectCodeNewerThan(codeSet0);
+                if (codeSet1 == null) {
+                    // it was dropped
+                    throw new ClassNotFoundException(className);
+                } else if (codeSet1 == codeSet0) {
+                    // it is actually not old
+                    classLoader.setOld(false);
+                } else {
+                    // the class has been updated.
+                    classLoader = new CatalogClassLoader(codeSet1, this);
+                    unitClassLoaders.put(mainClassName, classLoader);
+                }
+            }
+        }
+
+        assert classLoader != null;
+
+        // CAUTION: do not use classLoader.loadClass() :
+        //  it just calls classLoader.findClass() by the shortcut (see
+        // CatalogClassLoader::loadClass()
+        //  and calling classLoader.loadClass() is waste of CPU clocks.
+        return classLoader.findClass(className);
     }
 
     public void clear() {
@@ -99,25 +149,13 @@ public class CatalogClassLoaderRelay extends ClassLoader {
 
     private Map<String, CatalogClassLoader> unitClassLoaders = new HashMap<>();
 
-    private static String getInvariantPartOfMainClassName(String mainClassName) {
+    private static String getMainClassName(String className) {
 
-        // mainClassName should be of the form <invariant-part>_<seqno>_<creation-time>
-        // where <invariant-part> starts with 'Proc_' or 'Func_'.
+        // nested class cannot reach here
+        assert className.indexOf('$') == -1;
+        // only pl/csql compiler generated code can reach here
+        assert className.startsWith(JavaCodeWriter.JAVA_PKG_OF_GENERATED + ".");
 
-        if (!mainClassName.startsWith("Proc_") && !mainClassName.startsWith("Func_")) {
-            return null;
-        }
-
-        int lastIndex = mainClassName.lastIndexOf('_');
-        if (lastIndex == -1) {
-            return null;
-        }
-
-        lastIndex = mainClassName.lastIndexOf('_', lastIndex - 1);
-        if (lastIndex == -1) {
-            return null;
-        }
-
-        return mainClassName.substring(0, lastIndex);
+        return className.substring(JavaCodeWriter.JAVA_PKG_OF_GENERATED.length() + 1);
     }
 }
