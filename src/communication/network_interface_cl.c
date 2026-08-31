@@ -6796,11 +6796,23 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      btid =
-	xbtree_load_online_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
-				  attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid,
-				  fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
-				  expr_stream_size, func_col_id, func_attr_index_start, ib_thread_count);
+      /* the online loader treats the btid argument as per-class scratch
+       * (btid_int.sys_btid is re-read from each class's heap in turn), so it
+       * must get a COPY: on the legacy wire it worked on the server's unpacked
+       * copy and the client discarded the reply btid.  Passing the caller's
+       * pointer lets the loop leave the LAST class's btid in the session's
+       * constraint, and the following status-change flush then "replaces" the
+       * constraint's index and destroys that class's live b-tree (partition
+       * DROP assert, workspace#176 결함 3). */
+      BTID local_btid = *btid;
+
+      if (xbtree_load_online_index (thread_p, &local_btid, bt_name, key_type, class_oids, n_classes, n_attrs,
+				    attr_ids, attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid,
+				    fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
+				    expr_stream_size, func_col_id, func_attr_index_start, ib_thread_count) == NULL)
+	{
+	  btid = NULL;
+	}
     }
   else
     {
