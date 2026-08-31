@@ -44,6 +44,9 @@
 #include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
 #include "xasl_unpack_info.hpp"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	/* thread_get_thread_entry_info () — xts_debug_check */
+#endif
 
 #define    BYTE_SIZE        OR_INT_SIZE
 #define    LONG_SIZE        OR_INT_SIZE
@@ -8037,7 +8040,17 @@ xts_debug_check (const T &t, char *pack_start, const char *pack_end)
   //     check original data is same as resulted data after pack/unpack
   //
 
-  stx_init_xasl_unpack_info (NULL, xts_Stream_buffer, xts_Stream_size);
+  /* pre-fold this ran against the client's process-global unpack slot (NULL
+   * thread); in the merged server the slot lives on the executing thread, so
+   * use that thread and RESTORE its slot — the server half of this very
+   * thread may own an unpack of its own (dispatched inner statements). */
+  THREAD_ENTRY *thread_p = NULL;
+#if defined (SERVER_MODE)
+  thread_p = thread_get_thread_entry_info ();
+  XASL_UNPACK_INFO *save_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+#endif
+
+  stx_init_xasl_unpack_info (thread_p, xts_Stream_buffer, xts_Stream_size);
 
   // check sizeof is correct
   std::size_t buf_size = pack_end - pack_start;
@@ -8046,7 +8059,7 @@ xts_debug_check (const T &t, char *pack_start, const char *pack_end)
 
   // build object from packed data
   T unpack_t;
-  char * unpack_end = stx_build (NULL, pack_start, unpack_t);
+  char * unpack_end = stx_build (thread_p, pack_start, unpack_t);
   if (unpack_end != pack_end)
     {
       // this leads to build corruption
@@ -8061,9 +8074,13 @@ xts_debug_check (const T &t, char *pack_start, const char *pack_end)
 
   xts_debug_clear (unpack_t);
 
-  xasl_unpack_info* unpack_info = get_xasl_unpack_info_ptr (NULL);
-  db_private_free_and_init (NULL, unpack_info);
-  set_xasl_unpack_info_ptr (NULL, NULL);
+  xasl_unpack_info* unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  db_private_free_and_init (thread_p, unpack_info);
+#if defined (SERVER_MODE)
+  set_xasl_unpack_info_ptr (thread_p, save_unpack_info);
+#else
+  set_xasl_unpack_info_ptr (thread_p, NULL);
+#endif
 #endif // DEBUG
 }
 
