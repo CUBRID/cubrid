@@ -755,32 +755,6 @@ make_temp_filename (char *tempfile, const char *prefix, int size)
   return 0;
 }
 
-/*
- * even with pid and atomic seq, we can gurantee uniqness for a temp filename
- */
-int
-make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, int size)
-{
-  static std::atomic < long >seq_counter (0);
-  long seq;
-  long pid;
-  time_t now;
-
-  if (tempfile == NULL || tempdir == NULL || size < 1)
-    {
-      return -1;
-    }
-
-  now = time (NULL);
-  seq = seq_counter.fetch_add (1, std::memory_order_relaxed);
-  pid = (long) getpid ();
-
-  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%ld_%ld", tempdir, prefix ? prefix : "", task_code,
-	    (long) now, pid, seq);
-
-  return 0;
-}
-
 #if defined (WINDOWS)
 /* Number of 100 nanosecond units from 1/1/1601 to 1/1/1970 */
 #define EPOCH_BIAS_IN_100NANOSECS 116444736000000000LL
