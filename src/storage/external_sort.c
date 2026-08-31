@@ -6274,6 +6274,18 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   int parallel_num = 1;
 
+  /* Parallel sort workers share the dispatching transaction's tdes. If the dispatcher is already inside a
+   * system operation it holds tdes->rmutex_topop (log_sysop_start) for the sysop's whole extent; a worker
+   * that spills to a temp file calls log_sysop_start on the same tdes from another thread and blocks on
+   * that rmutex forever while the dispatcher waits on the workers' completion condition: self-deadlock
+   * (e.g. MERGE opens a topop across its update's GROUP BY sort). btree_load.c already defers its build
+   * sysop for exactly this reason; here the sysop belongs to the caller, so fall back to serial instead. */
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes != NULL && tdes->is_under_sysop ())
+    {
+      return 1;
+    }
+
   if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT)
     {
       SORT_INFO *sort_info_p;
