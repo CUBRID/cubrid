@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,8 @@
 #include "lock_manager.h"
 #include "memory_alloc.h"
 #include "object_representation_sr.h"
+
+#include "memory_wrapper.hpp"
 
 #define TRANSIENT_ROW_LOCKS_INITIAL_CAPACITY 64
 
