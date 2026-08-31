@@ -9854,8 +9854,12 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	    return ER_INTERRUPTED;
 	  }
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
-	return ER_FAILED;
+	/* ER_FAILED (-1) is a return-value marker, not an error id - er_set and er_find_fmt both
+	 * assert on it and er_Fmt_list[1] is never populated. Report the generic error instead; its
+	 * catalog entry takes no argument, so the worker's errid is only available from the log line
+	 * above (enable er_log_debug to see it). */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
       }
 
     /* 5. reduce per-worker partials into the 8 outputs (averages computed once, as in serial) */
