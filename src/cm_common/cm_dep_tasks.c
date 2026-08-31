@@ -346,10 +346,10 @@ cm_ts_delete_user (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (res, req, ha_mode, _dbmt_error) < 0)
@@ -633,10 +633,10 @@ cm_ts_class (nvplist * in, nvplist * out, char *_dbmt_error)
     }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (out, in, ha_mode, _dbmt_error) < 0)
@@ -759,10 +759,10 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
     }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (out, in, ha_mode, _dbmt_error) < 0)
@@ -969,10 +969,10 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   db_mode = uDatabaseMode ((char *) db_name, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", db_name);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (res, req, ha_mode, _dbmt_error) < 0)
@@ -1189,10 +1189,10 @@ cm_ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (res, req, ha_mode, _dbmt_error) < 0)
@@ -1309,10 +1309,10 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_WITH_MSG;
     }
   db_mode = uDatabaseMode (db_name, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", db_name);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (out, in, ha_mode, _dbmt_error) < 0)
