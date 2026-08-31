@@ -2012,7 +2012,7 @@ pt_to_method_arglist (PARSER_CONTEXT *parser, PT_NODE *target, PT_NODE *node_lis
   int num_args = pt_length_of_list (node_list) + 1;
   PT_NODE *node;
 
-  arg_list = (int *) db_private_alloc (NULL, num_args);
+  arg_list = (int *) db_private_alloc (NULL, num_args * sizeof (int));
   if (!arg_list)
     {
       return NULL;
