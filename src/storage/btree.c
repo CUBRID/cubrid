@@ -30,7 +30,7 @@
 #include "btree.h"
 
 #include "btree_load.h"
-#include "btree_write_conflict.hpp"
+#include "btree_object_lock.hpp"
 #include "config.h"
 #include "db_value_printer.hpp"
 #include "deduplicate_key.h"
@@ -32107,21 +32107,18 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
        * only an object without one.  A still-running owner means the entry was stamped by a writer that gave
        * up the row lock before ending, and rollback restores the heap before the index -- so the record this
        * key came from can already be back to the version it was stamped for.  The heap-side settle cannot
-       * see that, only the entry can.  Wait that writer out and look again; latches go first.  How long to
-       * wait is the transaction's lock timeout, the same as every other wait on a writer -- there is no
-       * private budget here, and the heap-side settle keeps no count either. */
+       * see that, only the entry can.  Hand the owner to btree_key_wait_for_tran_end (), which drops the
+       * latch, waits under the transaction's lock timeout and asks for a restart -- the same primitive the
+       * unique-key probe waits on.  No private budget here, and the heap-side settle keeps no count either. */
       if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
 	  && btree_key_find_active_delete_owner (thread_p, btid_int, insert_helper, &record, offset_after_key,
 						&settle_owner_mvccid))
 	{
-	  pgbuf_unfix_and_init (thread_p, *leaf_page);
-	  error_code = logtb_wait_for_tran_end (thread_p, settle_owner_mvccid);
+	  error_code = btree_key_wait_for_tran_end (thread_p, settle_owner_mvccid, NULL, leaf_page, NULL, restart);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      goto exit;
 	    }
-	  *restart = true;
 	  goto exit;
 	}
 
