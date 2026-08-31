@@ -179,6 +179,10 @@ extern bool csc_bracket_is_active (void);
  * (qexec's qlist balance check stands down only for such sessions) */
 extern bool csc_has_method_callback_state (void);
 
+/* is the calling thread inside an in-process method dispatch? (page_buffer's
+ * commit-time unfix sweep must spare the suspended outer executor's fixes) */
+extern bool csc_in_method_dispatch (void);
+
 /* the session's domain-cache slot (object_domain.c owns the contents, B4-D9) */
 extern void **csc_tp_domains_slot (void);
 

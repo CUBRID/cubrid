@@ -106,6 +106,15 @@ csc_er_stack_floor (void)
   return tl_Csc_active != NULL ? tl_Csc_active->er_dispatch_floor : 0;
 }
 
+/* whether this thread is inside an in-process method dispatch (the client
+ * half of a PL callback).  page_buffer.c's commit-time unfix sweep gates on
+ * it: the fixes on this thread belong to the suspended outer executor. */
+bool
+csc_in_method_dispatch (void)
+{
+  return tl_Csc_active != NULL && tl_Csc_active->tm.libcas_depth > 0;
+}
+
 /* the session's optimizer-level override slot (query_graph.c) */
 int *
 csc_qo_optimization_level (void)
