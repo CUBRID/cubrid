@@ -9608,7 +9608,7 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	{
 	  /* the allocation failed and left ER_OUT_OF_VIRTUAL_MEMORY behind; clear it so the page-fix
 	   * loop below does not mistake it for an error of its own. Stats fall back to the shared
-	   * counters, as they did before this isolation existed. */
+	   * counters, which is what happened before this isolation existed. */
 	  er_clear ();
 	}
     }
@@ -9752,6 +9752,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
   parallel_query::worker_manager * wm = NULL;
   FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
   int setup_errid = NO_ERROR;
+  int last_page_errid = NO_ERROR;
 
   *applied = false;
 
@@ -9759,6 +9760,14 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
    *    (small heap / parallelism disabled) means "not worthwhile" -> decline, caller runs serial. */
   if (file_get_num_user_pages (thread_p, &hfid->vfid, &n_pages) != NO_ERROR)
     {
+      /* pgbuf_fix clears the transaction's interrupt flag when it raises ER_INTERRUPTED, so er_clear
+       * here would drop the cancellation for good and let the serial scan below run to completion
+       * and answer. Propagate it, as the sector enumeration below already does. */
+      if (er_errid () == ER_INTERRUPTED)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  return ER_INTERRUPTED;
+	}
       er_clear ();
       return NO_ERROR;
     }
@@ -9820,6 +9829,19 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
       {
 	have_last_page = heap_capacity_vpid_is_counted (&collector, &last_page_vpid);
       }
+    else if (er_errid () == ER_INTERRUPTED)
+      {
+	/* the header fix consumed the transaction's interrupt flag, so clearing it here would be
+	 * worse than on the paths above: those decline to serial, while this one would run every
+	 * worker and hand back a complete answer for a query the user cancelled. */
+	if (collector.partsect_ftab != NULL)
+	  {
+	    db_private_free_and_init (thread_p, collector.partsect_ftab);
+	  }
+	wm->release_workers ();
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	return ER_INTERRUPTED;
+      }
     else
       {
 	er_clear ();
@@ -9880,6 +9902,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	    return ER_INTERRUPTED;
 	  }
+
 	/* ER_FAILED (-1) is a return-value marker, not an error id - er_set and er_find_fmt both
 	 * assert on it and er_Fmt_list[1] is never populated. Report the generic error instead; its
 	 * catalog entry takes no argument, so the worker's errid is only available from the log line
@@ -9923,6 +9946,9 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 	    }
 	  else
 	    {
+	      /* remember why: er_clear would swallow a cancellation the fix already consumed. The
+	       * resources are released at the end of the function, so propagate it from there. */
+	      last_page_errid = er_errid ();
 	      er_clear ();
 	    }
 	}
@@ -9955,6 +9981,12 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
       db_private_free_and_init (thread_p, collector.partsect_ftab);
     }
   wm->release_workers ();
+
+  if (last_page_errid == ER_INTERRUPTED)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+      return ER_INTERRUPTED;
+    }
 
   /* the parallel result is complete: tell the caller to use *capacity instead of running serial */
   *applied = true;
