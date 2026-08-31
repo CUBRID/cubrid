@@ -621,18 +621,19 @@ namespace cubmethod
     stmt_type = CUBRID_STMT_NONE;
     num_markers = 0;
     call_info = nullptr;
+    owns_call_info = false;
   }
 
   execute_info::~execute_info ()
   {
-#if defined (SERVER_MODE)
-    // call_info is only allocated by unpack() in cub_server
-    if (call_info != nullptr)
+    // call_info is only owned when unpack() allocated it; the in-process
+    // (folded) execute path aliases the handler's m_prepare_call_info member
+    if (owns_call_info && call_info != nullptr)
       {
 	delete call_info;
       }
-#endif
     call_info = nullptr;
+    owns_call_info = false;
   }
 
   void
@@ -689,11 +690,13 @@ namespace cubmethod
     deserializator.unpack_bool (has_call_info);
     if (has_call_info)
       {
-	call_info = new prepare_call_info (); // need to be freed;
+	call_info = new prepare_call_info (); // freed by ~execute_info via owns_call_info
+	owns_call_info = true;
       }
     else
       {
 	call_info = nullptr;
+	owns_call_info = false;
       }
   }
 
