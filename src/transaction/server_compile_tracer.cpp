@@ -1050,6 +1050,54 @@ scenario_odku_object_key (const char *server_name)
   });
 }
 
+/* wf171 smoke scenario — DROP CLASS on an indexed class with a live grant:
+ * the drop's revoke-all runs au_revoke_class's cross-session invalidation
+ * touch (A6), which rebuilds the representation; done after the disk
+ * structures were freed it re-entered deallocate_index with a NULL BTID
+ * (pgbuf_is_valid_page assert, wf169 shard_3 bts772-1). */
+static bool
+scenario_drop_granted_index (const char *server_name)
+{
+  return in_process_session (0, server_name, "DBA", "", 0, [] (int sid)
+  {
+    scenario_try (sid, "DROP CLASS wf171_t");
+    if (!scenario_exec (sid, "CREATE CLASS wf171_t (i INT, j INT)", NULL, 0)
+	|| !scenario_exec (sid, "INSERT INTO wf171_t VALUES (1, 1)", NULL, 0)
+	|| !scenario_exec (sid, "CREATE INDEX wf171_idx ON wf171_t (i)", NULL, 0)
+	|| !scenario_exec (sid, "GRANT SELECT ON wf171_t TO public", NULL, 0))
+      {
+	return false;
+      }
+    if (!scenario_exec (sid, "DROP CLASS wf171_t", NULL, 0))
+      {
+	return false;
+      }
+    int v = 0;
+    /* CAST: COUNT(*) is BIGINT and scenario_exec's probe reads an INTEGER */
+    if (!scenario_exec (sid, "SELECT CAST (COUNT(*) AS INTEGER) FROM db_class WHERE class_name = 'wf171_t'", &v, 0))
+      {
+	return false;
+      }
+    if (v != 0)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL dropped class still visible (%d)", sid, v);
+	return false;
+      }
+    tracer_log ("M0_TRACER: S%d indexed+granted class dropped cleanly", sid);
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    if (db_end_session () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL db_end_session msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    return true;
+  });
+}
+
 static void
 tracer_main (char *server_name, char *sql, char *out_path)
 {
@@ -1091,6 +1139,10 @@ tracer_main (char *server_name, char *sql, char *out_path)
       else if (strcmp (scenario, "odku_object_key") == 0)
 	{
 	  ok = scenario_odku_object_key (server_name);
+	}
+      else if (strcmp (scenario, "drop_granted_index") == 0)
+	{
+	  ok = scenario_drop_granted_index (server_name);
 	}
       else
 	{
