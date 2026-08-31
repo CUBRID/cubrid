@@ -246,6 +246,9 @@ retire:
   if (conn != NULL)
     {
       entry_p->conn_entry = NULL;
+      /* refund the css_Num_current_client slot taken by css_make_conn
+       * (wf171 — css_free_conn alone never refunds it) */
+      css_prepare_shutdown_conn (conn);
       css_free_conn (conn);
     }
   entry_p->tran_index = NULL_TRAN_INDEX;
