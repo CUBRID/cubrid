@@ -5574,10 +5574,44 @@ cleanup:
   return err;
 #else
   int err = 0;
+  int i;
+  DB_VALUE *server_values = NULL;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  err = xsession_set_session_variables (thread_p, variables, count);
+  /* normalize to server semantics (OBJECT -> OID), the way or_pack_db_value
+   * shipped these on the wire — session state must never hold a MOP, or a
+   * later server-hat read fails to coerce it (same rule as qmgr_execute_query
+   * above).  xsession clones the values, so non-objects pass by reference. */
+  server_values = (DB_VALUE *) db_private_alloc (thread_p, count * sizeof (DB_VALUE));
+  if (server_values == NULL)
+    {
+      exit_server (*thread_p);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (i = 0; i < count; i++)
+    {
+      if (DB_VALUE_TYPE (&variables[i]) == DB_TYPE_OBJECT)
+	{
+	  OID *oid = ws_identifier (db_get_object (&variables[i]));
+	  if (oid != NULL)
+	    {
+	      db_make_oid (&server_values[i], oid);
+	    }
+	  else
+	    {
+	      db_make_null (&server_values[i]);
+	    }
+	}
+      else
+	{
+	  server_values[i] = variables[i];
+	}
+    }
+
+  err = xsession_set_session_variables (thread_p, server_values, count);
+
+  db_private_free_and_init (thread_p, server_values);
 
   exit_server (*thread_p);
 
