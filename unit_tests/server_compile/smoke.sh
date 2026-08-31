@@ -66,7 +66,10 @@ if [ $# -eq 0 ]; then
   # case 12 runs INSERT ... ON DUPLICATE KEY UPDATE on a UNIQUE OBJECT column:
   #        the MOP key crossing the folded seam must survive mr_cmpval_object
   #        (wf173 class — bracket ownership, not the hat, gates MOP handling)
-  # case 13 drops an indexed class carrying a live grant: the revoke-all's
+  # case 13 creates two unrelated self-referencing SET attributes in sequence:
+  #        their element domains must not alias in the domain cache and
+  #        db_attr_setdomain_elm must resolve all three (wf174 cluster B)
+  # case 14 drops an indexed class carrying a live grant: the revoke-all's
   #        representation touch must not re-deallocate freed indexes (wf171)
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
@@ -79,6 +82,7 @@ if [ $# -eq 0 ]; then
     "SESSION VAR @SCENARIO=session_var" \
     "METHOD ENV @SCENARIO=method_env" \
     "ODKU OBJECT KEY @SCENARIO=odku_object_key" \
+    "SELFREF CATALOG @SCENARIO=selfref_catalog" \
     "DROP GRANTED INDEX @SCENARIO=drop_granted_index"
 fi
 
