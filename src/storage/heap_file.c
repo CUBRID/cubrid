@@ -9596,6 +9596,22 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
   thread_ref.tran_index = arg->main_thread_p->tran_index;
   thread_ref.m_px_orig_thread_entry = arg->main_thread_p;
   thread_ref.conn_entry = arg->main_thread_p->conn_entry;
+  thread_ref.on_trace = arg->main_thread_p->on_trace;
+
+  /* Every worker inherits the caller's tran_index, so without per-worker stats they would all
+   * read-modify-write the same pstat_Global.tran_stats element without a lock while the transaction
+   * is being watched. Isolate them the way px_scan_task does. */
+  if (thread_ref.on_trace)
+    {
+      perfmon_initialize_parallel_stats (&thread_ref);
+      if (!thread_ref.m_uses_px_stats)
+	{
+	  /* the allocation failed and left ER_OUT_OF_VIRTUAL_MEMORY behind; clear it so the page-fix
+	   * loop below does not mistake it for an error of its own. Stats fall back to the shared
+	   * counters, as they did before this isolation existed. */
+	  er_clear ();
+	}
+    }
 
   for (ps = arg->slice->get_next (); !VSID_IS_NULL (&ps.vsid); ps = arg->slice->get_next ())
     {
@@ -9664,6 +9680,14 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	{
 	  break;
 	}
+    }
+
+  if (thread_ref.on_trace)
+    {
+      perfmon_destroy_parallel_stats (&thread_ref);
+      /* the pool recycles this entry without resetting on_trace, so a later unrelated task would
+       * otherwise see thread_is_on_trace () as true (see px_hash_join_task_manager.hpp). */
+      thread_ref.on_trace = false;
     }
 }
 
