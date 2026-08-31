@@ -63,6 +63,9 @@ if [ $# -eq 0 ]; then
   #        (the folded no-copy reference path, #165) and a plain SELECT
   # case 11 invokes a legacy C METHOD whose FILE names an unset envvar: the
   #        dynamic-link failure must surface as -294, not the -889 wrap (#168)
+  # case 12 runs INSERT ... ON DUPLICATE KEY UPDATE on a UNIQUE OBJECT column:
+  #        the MOP key crossing the folded seam must survive mr_cmpval_object
+  #        (wf173 class — bracket ownership, not the hat, gates MOP handling)
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
     "SELECT ? + ? @BIND=30,12 @EXPECT=42" \
@@ -72,7 +75,8 @@ if [ $# -eq 0 ]; then
     "PLCSQL @SCENARIO=plcsql" \
     "PLCSQL NESTED @SCENARIO=plcsql_nested" \
     "SESSION VAR @SCENARIO=session_var" \
-    "METHOD ENV @SCENARIO=method_env"
+    "METHOD ENV @SCENARIO=method_env" \
+    "ODKU OBJECT KEY @SCENARIO=odku_object_key"
 fi
 
 # This script restarts cub_master via `cubrid service stop` (see below), which
