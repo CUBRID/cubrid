@@ -59,8 +59,11 @@
 
 #if defined (SERVER_MODE)
 extern thread_local unsigned int db_on_server;	/* defined in network_interface_sr.cpp */
+extern bool csc_bracket_is_active (void);	/* client_session_context.cpp */
 #else
 extern unsigned int db_on_server;
+/* single-workspace builds have no bracket; keeps the pre-fold conditions */
+#define csc_bracket_is_active() false
 #endif
 
 /*
@@ -1167,9 +1170,11 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	  if (col->sorted && col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	    {
 #if defined (SERVER_MODE)
-	      /* SA executes these client bodies with db_on_server toggled; the
-	       * context-discipline invariant only holds in the merged server binary */
-	      assert (!db_on_server);
+	      /* a bracketed session's server half may reach this client body with
+	       * in-memory MOP values (pre-fold the wire pack normalized them to
+	       * OIDs); that thread owns the session workspace (D7), so only a
+	       * hatless genuine server thread violates the contract (wf173 class) */
+	      assert (!db_on_server || csc_bracket_is_active ());
 #endif
 
 	      DB_OBJECT *obj = db_get_object (val);
@@ -1318,9 +1323,11 @@ col_put (COL * col, long colindex, DB_VALUE * val)
 	  /* client body kept (crash-5 family) — OBJECT values only come
 	   * from client-context threads; the old SERVER_MODE branch hard-failed */
 #if defined (SERVER_MODE)
-	  /* SA executes these client bodies with db_on_server toggled; the
-	   * context-discipline invariant only holds in the merged server binary */
-	  assert (!db_on_server);
+	  /* a bracketed session's server half may reach this client body with
+	   * in-memory MOP values (pre-fold the wire pack normalized them to
+	   * OIDs); that thread owns the session workspace (D7), so only a
+	   * hatless genuine server thread violates the contract (wf173 class) */
+	  assert (!db_on_server || csc_bracket_is_active ());
 #endif
 	  DB_OBJECT *obj = db_get_object (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
@@ -1461,9 +1468,11 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
 	   * only come from client-context threads; the old SERVER_MODE branch
 	   * hard-failed with assert_release */
 #if defined (SERVER_MODE)
-	  /* SA executes these client bodies with db_on_server toggled; the
-	   * context-discipline invariant only holds in the merged server binary */
-	  assert (!db_on_server);
+	  /* a bracketed session's server half may reach this client body with
+	   * in-memory MOP values (pre-fold the wire pack normalized them to
+	   * OIDs); that thread owns the session workspace (D7), so only a
+	   * hatless genuine server thread violates the contract (wf173 class) */
+	  assert (!db_on_server || csc_bracket_is_active ());
 #endif
 	  DB_OBJECT *obj = db_get_object (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
@@ -2327,9 +2336,11 @@ set_change_owner (DB_COLLECTION * ref, MOP owner, int attid, TP_DOMAIN * domain)
    * which only happens on client-context threads; the old compile-time guard
    * left this a NULL-returning stub that broke its callers' error contract */
 #if defined (SERVER_MODE)
-  /* SA executes these client bodies with db_on_server toggled; the
-   * context-discipline invariant only holds in the merged server binary */
-  assert (!db_on_server);
+  /* a bracketed session's server half may reach this client body with
+   * in-memory MOP values (pre-fold the wire pack normalized them to
+   * OIDs); that thread owns the session workspace (D7), so only a
+   * hatless genuine server thread violates the contract (wf173 class) */
+  assert (!db_on_server || csc_bracket_is_active ());
 #endif
 
   /* fetch set of interest */
