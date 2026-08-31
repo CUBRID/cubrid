@@ -9647,6 +9647,15 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
+	  /* pgbuf_fix refuses the page only while it is still PAGE_UNKNOWN, so a page that was
+	   * deallocated after the sector snapshot and already reused for something else comes back
+	   * here. Skip anything that is no longer a heap page instead of handing it to spage_*. */
+	  if (pgbuf_get_page_ptype (&thread_ref, page) != PAGE_HEAP)
+	    {
+	      pgbuf_unfix_and_init (&thread_ref, page);
+	      continue;
+	    }
+
 	  (void) heap_capacity_accumulate_one_page (&thread_ref, page, arg->accum);
 	  pgbuf_unfix_and_init (&thread_ref, page);
 	}
