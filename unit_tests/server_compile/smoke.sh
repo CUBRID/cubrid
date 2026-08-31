@@ -61,6 +61,8 @@ if [ $# -eq 0 ]; then
   #        query's er state (A7 review)
   # case 10 sets a session variable and reads it back through EXECUTE ... USING
   #        (the folded no-copy reference path, #165) and a plain SELECT
+  # case 11 invokes a legacy C METHOD whose FILE names an unset envvar: the
+  #        dynamic-link failure must surface as -294, not the -889 wrap (#168)
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
     "SELECT ? + ? @BIND=30,12 @EXPECT=42" \
@@ -69,7 +71,8 @@ if [ $# -eq 0 ]; then
     "DDL AUTH @SCENARIO=ddl_auth" \
     "PLCSQL @SCENARIO=plcsql" \
     "PLCSQL NESTED @SCENARIO=plcsql_nested" \
-    "SESSION VAR @SCENARIO=session_var"
+    "SESSION VAR @SCENARIO=session_var" \
+    "METHOD ENV @SCENARIO=method_env"
 fi
 
 # This script restarts cub_master via `cubrid service stop` (see below), which

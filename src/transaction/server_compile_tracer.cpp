@@ -946,6 +946,50 @@ scenario_session_var (const char *server_name)
   });
 }
 
+/* #168 smoke scenario — a legacy C METHOD whose FILE names an unset envvar
+ * fails dynamic linking with ER_SM_INVALID_METHOD_ENV (-294), and the invoke
+ * loop's pass-through must deliver that id, not wrap it in
+ * ER_SP_EXECUTE_ERROR (-889): the in-process callback boundary has to ship
+ * er_errid () the way legacy CS's METHOD_ERROR did (network_callback_sr.cpp). */
+static bool
+scenario_method_env (const char *server_name)
+{
+  return in_process_session (0, server_name, "DBA", "", 0, [] (int sid)
+  {
+    scenario_try (sid, "DROP CLASS wf168_x");
+    /* DONT_REUSE_OID: the test-mode default makes new classes REUSE_OID
+     * (non-referable), which would reject the correlated method call at
+     * compile time (-494) before the invoke boundary is ever reached */
+    if (!scenario_exec (sid, "CREATE CLASS wf168_x (a INT) DONT_REUSE_OID"
+			" METHOD wf168_add (INT, INT) INT FUNCTION wf168_add_fn"
+			" FILE '$WF168_NO_SUCH_METHOD_FILE'", NULL, 0)
+	|| !scenario_exec (sid, "INSERT INTO wf168_x VALUES (1)", NULL, 0))
+      {
+	return false;
+      }
+    if (!scenario_exec (sid, "SELECT wf168_add (t, 1, 2) FROM wf168_x t", NULL, ER_SM_INVALID_METHOD_ENV))
+      {
+	return false;
+      }
+    tracer_log ("M0_TRACER: S%d method-env failure surfaced as %d as expected", sid, ER_SM_INVALID_METHOD_ENV);
+    if (!scenario_exec (sid, "DROP CLASS wf168_x", NULL, 0))
+      {
+	return false;
+      }
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    if (db_end_session () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL db_end_session msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    return true;
+  });
+}
+
 static void
 tracer_main (char *server_name, char *sql, char *out_path)
 {
@@ -979,6 +1023,10 @@ tracer_main (char *server_name, char *sql, char *out_path)
       else if (strcmp (scenario, "session_var") == 0)
 	{
 	  ok = scenario_session_var (server_name);
+	}
+      else if (strcmp (scenario, "method_env") == 0)
+	{
+	  ok = scenario_method_env (server_name);
 	}
       else
 	{
