@@ -221,6 +221,13 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
       return false;
     }
 
+  /* a located conjunct is some join's ON condition parked here by qo_move_on_of_explicit_join_to_where ();
+   * unnesting it would turn that join's own condition into a filter on the whole query */
+  if (cnf_node->info.expr.location != 0)
+    {
+      return false;
+    }
+
   /* pt_cnf () pushes negation into the operator (pt_negate_op ()), so the only NOT still standing wraps
    * EXISTS, the one form with no negated opcode of its own */
   if (cnf_node->info.expr.op == PT_NOT)
