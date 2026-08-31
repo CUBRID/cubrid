@@ -8973,8 +8973,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       break;
 
-#if !defined (SERVER_MODE)
     case DB_TYPE_OBJECT:
+#if defined (SERVER_MODE)
+      /* the server half has no workspace, so an OBJECT target stays
+       * incompatible exactly as when this case was compiled out pre-fold;
+       * the folded client half runs the client body below */
+      if (db_on_server || !csc_bracket_is_active ())
+	{
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+#endif /* SERVER_MODE */
       {
 	DB_OBJECT *v_obj = NULL;
 	int is_vclass = 0;
@@ -9060,7 +9069,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
       }
       break;
-#endif /* !SERVER_MODE */
 
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
@@ -9178,8 +9186,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	}
       else
-#if !defined (SERVER_MODE)
-      if (original_type == DB_TYPE_OBJECT)
+      /* OBJECT-to-VOBJ needs the workspace: client half only — the server
+       * half keeps treating an OBJECT as its OID representation below */
+      if (original_type == DB_TYPE_OBJECT
+#if defined (SERVER_MODE)
+	  && !db_on_server && csc_bracket_is_active ()
+#endif /* SERVER_MODE */
+	 )
 	{
 	  if (vid_object_to_vobj (db_get_object (src), target) < 0)
 	    {
@@ -9191,9 +9204,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	  break;
 	}
-      else
-#endif /* !SERVER_MODE */
-      if (original_type == DB_TYPE_OID || original_type == DB_TYPE_OBJECT)
+      else if (original_type == DB_TYPE_OID || original_type == DB_TYPE_OBJECT)
 	{
 	  DB_VALUE view_oid;
 	  DB_VALUE class_oid;
