@@ -18,6 +18,7 @@
 
 #include "network_callback_sr.hpp"
 
+#include "error_manager.h" /* er_errid() */
 #include "network.h" /* METHOD_CALL */
 #include "network_interface_sr.h" /* xs_receive_data_from_client() */
 #include "object_representation.h" /* OR_ */
@@ -43,7 +44,15 @@ int xs_callback_send (cubthread::entry *thread_p, const cubmem::extensible_block
   if (csc_bracket_is_active ())
     {
       packing_unpacker unpacker (mem.get_read_ptr (), mem.get_size ());
-      return method_dispatch (unpacker);
+      int error = method_dispatch (unpacker);
+      if (error != NO_ERROR && er_errid () != NO_ERROR)
+	{
+	  /* legacy CS shipped er_errid () — not the raw dispatch status — back
+	   * through METHOD_ERROR (network_cl.c), and the invoke loop's
+	   * ER_SM_INVALID_METHOD_ENV pass-through keys on that id */
+	  error = er_errid ();
+	}
+      return error;
     }
 
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
