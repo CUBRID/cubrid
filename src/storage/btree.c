@@ -620,8 +620,6 @@ struct btree_insert_helper
   int op_type;			/* Single-multi insert/modify operation type. */
   btree_unique_stats *unique_stats_info;	/* Unique statistics kept when operation type is not single. */
   int key_len_in_page;		/* Packed length of key being inserted. */
-  int settle_waits;		/* Times this operation waited out a transaction that had already stamped the
-				 * entry it came to stamp.  Bounded so a hot key cannot spin. */
 
   PGBUF_LATCH_MODE nonleaf_latch_mode;	/* Default page latch mode while advancing through non-leaf nodes. */
 
@@ -29597,8 +29595,6 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
   /* Is HA enabled? The above exception will no longer apply. */
   insert_helper.is_ha_enabled = !HA_DISABLED ();
 
-  insert_helper.settle_waits = 0;
-
   /* Add more insert_helper initialization here. */
 
   /* Search for key leaf page and insert data. */
@@ -32111,13 +32107,14 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
        * only an object without one.  A still-running owner means the entry was stamped by a writer that gave
        * up the row lock before ending, and rollback restores the heap before the index -- so the record this
        * key came from can already be back to the version it was stamped for.  The heap-side settle cannot
-       * see that, only the entry can.  Wait that writer out and look again; latches go first. */
-      if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID && insert_helper->settle_waits < 10
+       * see that, only the entry can.  Wait that writer out and look again; latches go first.  How long to
+       * wait is the transaction's lock timeout, the same as every other wait on a writer -- there is no
+       * private budget here, and the heap-side settle keeps no count either. */
+      if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
 	  && btree_key_find_active_delete_owner (thread_p, btid_int, insert_helper, &record, offset_after_key,
 						&settle_owner_mvccid))
 	{
 	  pgbuf_unfix_and_init (thread_p, *leaf_page);
-	  insert_helper->settle_waits++;
 	  error_code = logtb_wait_for_tran_end (thread_p, settle_owner_mvccid);
 	  if (error_code != NO_ERROR)
 	    {
