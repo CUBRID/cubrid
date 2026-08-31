@@ -604,6 +604,30 @@ ux_set_default_setting ()
   int cur_isolation_level;
   int cur_lock_timeout;
 
+#if defined (SERVER_MODE)
+  /* ansi_quotes is a client-only (non-session) parameter, so in the merged
+   * server it lives in the one shared process prm: a test-mode SET would
+   * outlive its driver session and poison the next session's parsing (the
+   * legacy CAS's prm never outlived its process).  Capture the boot value on
+   * the first session and restore it for every later one.  The first capture
+   * always precedes any session's SET — a SET needs a session, and that
+   * session captured first. */
+  static bool cas_boot_ansi_quotes;
+  static bool cas_boot_ansi_quotes_init = false;
+
+  if (!cas_boot_ansi_quotes_init)
+    {
+      cas_boot_ansi_quotes = prm_get_bool_value (PRM_ID_ANSI_QUOTES);
+      cas_boot_ansi_quotes_init = true;
+    }
+  else
+    {
+      prm_set_bool_value (PRM_ID_ANSI_QUOTES, cas_boot_ansi_quotes);
+      /* ux_database_connect captured the scanner default before this restore */
+      cas_default_ansi_quotes = cas_boot_ansi_quotes;
+    }
+#endif
+
   ux_get_tran_setting (&cur_lock_timeout, &cur_isolation_level);
 
   if (cas_default_isolation_level != cur_isolation_level)
