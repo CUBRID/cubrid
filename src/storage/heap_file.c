@@ -9972,6 +9972,7 @@ heap_get_capacity_serial (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * nu
   *avg_overhead = 0;
   *num_recs_relocated = 0;
   *num_recs_inovf = 0;
+  *avg_freespace_nolast = 0;
   last_freespace = 0;
 
   vpid.volid = hfid->vfid.volid;
@@ -19348,7 +19349,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
   char *classname = NULL;
   char class_oid_str[64] = { 0 };
   bool is_heap_attrinfo_started = false;
-  HEAP_CAPACITY_INFO capacity;
+  HEAP_CAPACITY_INFO capacity = { 0 };
   int val = 0;
   int idx = 0;
   FILE_DESCRIPTORS fdes;
