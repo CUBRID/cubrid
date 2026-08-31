@@ -288,8 +288,9 @@ static QO_PLAN *qo_seq_scan_new (QO_INFO *, QO_NODE *);
 static QO_PLAN *qo_index_scan_new (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *, QO_SCANMETHOD, BITSET *, BITSET *);
 static int qo_has_is_not_null_term (QO_NODE * node);
 
-static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp);
+static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, int seg_idx);
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
+static bool qo_validate_index_key_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp);
 static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -11776,10 +11777,13 @@ qo_is_iscan_from_orderby (QO_PLAN * plan)
 
 /*
  * qo_validate_index_term_notnull ()
+ *  env(in): pointer to the optimizer environment
+ *  index_entryp(in): pointer to QO_INDEX_ENTRY (index entry)
+ *  seg_idx(in): index (into env's segment array) of the index key segment to check
  *   return: true/false
  */
 static bool
-qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
+qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, int seg_idx)
 {
   bool term_notnull = false;	/* init */
   PT_NODE *node;
@@ -11796,9 +11800,9 @@ qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
 
   index_class = index_entryp->class_;
 
-  /* do a check on the first column - it should be present in the where clause check if exists a simple expression
-   * with PT_IS_NOT_NULL on the first key this should not contain OR operator and the PT_IS_NOT_NULL should contain the
-   * column directly as parameter (PT_NAME)
+  /* do a check on the given key segment - it should be present in the where clause check if exists a simple
+   * expression with PT_IS_NOT_NULL on that key this should not contain OR operator and the PT_IS_NOT_NULL should
+   * contain the column directly as parameter (PT_NAME)
    */
   for (t = 0; t < env->nterms && !term_notnull; t++)
     {
@@ -11824,10 +11828,10 @@ qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
       if (node->node_type == PT_EXPR && node->info.expr.op == PT_IS_NOT_NULL
 	  && node->info.expr.arg1->node_type == PT_NAME)
 	{
-	  iseg = index_entryp->seg_idxs[0];
+	  iseg = seg_idx;
 	  if (iseg != -1 && BITSET_MEMBER (QO_TERM_SEGS (termp), iseg))
 	    {
-	      /* check it's the same column as the first in the index */
+	      /* check it's the same column as the given key segment */
 	      node_name = pt_get_name (node->info.expr.arg1);
 	      segp = QO_ENV_SEG (env, iseg);
 	      assert (segp != NULL);
@@ -12008,6 +12012,64 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 }
 
 /*
+ * qo_validate_index_key_notnull () - checks whether any index key column
+ *				      is guaranteed to be not null. If so,
+ *				      the index key cannot be fully null.
+ *  env(in): pointer to the optimizer environment
+ *  index_entryp(in): pointer to QO_INDEX_ENTRY (index entry)
+ *   return: true/false
+ */
+static bool
+qo_validate_index_key_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
+{
+  int i;
+  SM_ATTRIBUTE *attr;
+  QO_SEGMENT *segp;
+
+  assert (env != NULL);
+  assert (index_entryp != NULL);
+  assert (index_entryp->constraints != NULL);
+
+  if (qo_is_prefix_index (index_entryp) || index_entryp->constraints->filter_predicate != NULL
+      || index_entryp->is_func_index)
+    {
+      /* qo_is_filter_index() requires force > 0, so check the filter predicate directly. */
+      return false;
+    }
+
+  for (i = 0; i < index_entryp->col_num; i++)
+    {
+      /* schema NOT NULL proves this column even if it has no QO_SEGMENT (unreferenced elsewhere in the query) */
+      attr = index_entryp->constraints->attributes[i];
+      if (attr != NULL && (attr->flags & SM_ATTFLAG_NON_NULL))
+	{
+	  return true;
+	}
+
+      if (i >= index_entryp->nsegs || index_entryp->seg_idxs[i] == -1)
+	{
+	  /* this key column isn't referenced anywhere in the query, so there is no WHERE predicate on it to examine */
+	  continue;
+	}
+
+      segp = QO_ENV_SEG (env, index_entryp->seg_idxs[i]);
+      if (segp == NULL)
+	{
+	  continue;
+	}
+
+      /* reuse the order by/group by column checks, pointed at this segment's own parse tree node */
+      if (qo_validate_index_term_notnull (env, index_entryp, index_entryp->seg_idxs[i])
+	  || qo_validate_index_attr_notnull (env, index_entryp, QO_SEG_PT_NODE (segp)))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_validate_index_for_orderby () - checks for isnull(key) or not null flag
  *  env(in): pointer to the optimizer environment
  *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
@@ -12035,7 +12097,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
       goto end;
     }
 
-  key_notnull = qo_validate_index_term_notnull (env, index_entryp);
+  key_notnull = qo_validate_index_term_notnull (env, index_entryp, index_entryp->seg_idxs[0]);
   if (key_notnull)
     {
       goto final_;
@@ -12068,6 +12130,12 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   assert (key_notnull == false);
 
   key_notnull = qo_validate_index_attr_notnull (env, index_entryp, node);
+  if (key_notnull)
+    {
+      goto final_;
+    }
+
+  key_notnull = qo_validate_index_key_notnull (env, index_entryp);
   if (key_notnull)
     {
       goto final_;
@@ -12659,7 +12727,7 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
       goto end;
     }
 
-  key_notnull = qo_validate_index_term_notnull (env, index_entryp);
+  key_notnull = qo_validate_index_term_notnull (env, index_entryp, index_entryp->seg_idxs[0]);
   if (key_notnull)
     {
       goto final;
@@ -12671,6 +12739,12 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   assert (key_notnull == false);
 
   key_notnull = qo_validate_index_attr_notnull (env, index_entryp, groupby_expr);
+  if (key_notnull)
+    {
+      goto final;
+    }
+
+  key_notnull = qo_validate_index_key_notnull (env, index_entryp);
   if (key_notnull)
     {
       goto final;
