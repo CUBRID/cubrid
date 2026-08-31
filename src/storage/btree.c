@@ -620,6 +620,8 @@ struct btree_insert_helper
   int op_type;			/* Single-multi insert/modify operation type. */
   btree_unique_stats *unique_stats_info;	/* Unique statistics kept when operation type is not single. */
   int key_len_in_page;		/* Packed length of key being inserted. */
+  int settle_waits;		/* Times this operation waited out a transaction that had already stamped the
+				 * entry it came to stamp.  Bounded so a hot key cannot spin. */
 
   PGBUF_LATCH_MODE nonleaf_latch_mode;	/* Default page latch mode while advancing through non-leaf nodes. */
 
@@ -1530,6 +1532,9 @@ static int btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT *
 					     void *other_args);
 static int btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR leaf_page,
 				     BTREE_INSERT_HELPER * insert_helper, BTREE_SEARCH_KEY_HELPER * search_key);
+static bool btree_key_find_active_delete_owner (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
+					       BTREE_INSERT_HELPER * insert_helper, RECDES * record,
+					       int offset_after_key, MVCCID * owner_mvccid);
 static int btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 						    PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key,
 						    bool * restart, void *other_args);
@@ -29592,6 +29597,8 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
   /* Is HA enabled? The above exception will no longer apply. */
   insert_helper.is_ha_enabled = !HA_DISABLED ();
 
+  insert_helper.settle_waits = 0;
+
   /* Add more insert_helper initialization here. */
 
   /* Search for key leaf page and insert data. */
@@ -31937,6 +31944,57 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 }
 
 /*
+ * btree_key_find_active_delete_owner () - Is this object already stamped by a running transaction?
+ *
+ * return		 : True when the object is in this key with a delete MVCCID owned by another
+ *			   running transaction; that MVCCID is output.
+ * thread_p (in)	 : Thread entry.
+ * btid_int (in)	 : B-tree info.
+ * insert_helper (in)	 : Names the object we came to stamp.
+ * record (in)		 : The key's leaf record.
+ * offset_after_key (in) : Offset in the record where the packed key ends.
+ * owner_mvccid (out)	 : The owning MVCCID.
+ *
+ * Note: only the leaf record is walked; an object that moved to an overflow page is not found here.
+ */
+static bool
+btree_key_find_active_delete_owner (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_INSERT_HELPER * insert_helper,
+				    RECDES * record, int offset_after_key, MVCCID * owner_mvccid)
+{
+#if defined (SERVER_MODE)
+  OR_BUF buf;
+  OID inst_oid, class_oid;
+  BTREE_MVCC_INFO mvcc_info;
+  bool is_first = true;
+
+  assert (owner_mvccid != NULL);
+
+  BTREE_RECORD_OR_BUF_INIT (buf, record);
+  while (buf.ptr < buf.endptr)
+    {
+      if (btree_or_get_object (&buf, btid_int, BTREE_LEAF_NODE, offset_after_key, &inst_oid, &class_oid, &mvcc_info)
+	  != NO_ERROR)
+	{
+	  return false;
+	}
+      if (OID_EQ (&inst_oid, BTREE_INSERT_OID (insert_helper)) && BTREE_MVCC_INFO_IS_DELID_VALID (&mvcc_info)
+	  && logtb_is_active_other_mvccid (thread_p, mvcc_info.delete_mvccid))
+	{
+	  *owner_mvccid = mvcc_info.delete_mvccid;
+	  return true;
+	}
+      if (is_first)
+	{
+	  or_seek (&buf, offset_after_key);
+	  is_first = false;
+	}
+    }
+#endif /* SERVER_MODE */
+
+  return false;
+}
+
+/*
  * btree_key_find_and_insert_delete_mvccid () - BTREE_ADVANCE_WITH_KEY_FUNCTION used for MVCC logical delete.
  *						An object is found and an MVCCID is added to its MVCC info.
  *
@@ -31968,6 +32026,7 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
 
   int num_visible = 0;
   MVCC_SNAPSHOT snapshot_dirty;
+  MVCCID settle_owner_mvccid = MVCCID_NULL;
 
   /* Assert expected arguments. */
   assert (btid_int != NULL);
@@ -32047,6 +32106,28 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
   if (offset_to_found_object == NOT_FOUND)
     {
       assert (found_page == NULL);
+
+      /* NOT_FOUND can also mean the object is here with a delete MVCCID already set: this purpose matches
+       * only an object without one.  A still-running owner means the entry was stamped by a writer that gave
+       * up the row lock before ending, and rollback restores the heap before the index -- so the record this
+       * key came from can already be back to the version it was stamped for.  The heap-side settle cannot
+       * see that, only the entry can.  Wait that writer out and look again; latches go first. */
+      if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID && insert_helper->settle_waits < 10
+	  && btree_key_find_active_delete_owner (thread_p, btid_int, insert_helper, &record, offset_after_key,
+						&settle_owner_mvccid))
+	{
+	  pgbuf_unfix_and_init (thread_p, *leaf_page);
+	  insert_helper->settle_waits++;
+	  error_code = logtb_wait_for_tran_end (thread_p, settle_owner_mvccid);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit;
+	    }
+	  *restart = true;
+	  goto exit;
+	}
+
       assert (false);
       btree_set_unknown_key_error (thread_p, btid_int->sys_btid, key, "btree_key_find_and_insert_delete_mvccid");
       error_code = ER_BTREE_UNKNOWN_KEY;
