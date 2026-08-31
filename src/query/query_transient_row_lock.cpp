@@ -17,7 +17,7 @@
  */
 
 //
-// Transient row lock bookkeeping for the update/delete force phase
+// Transient row lock bookkeeping for the delete/update force phase
 //
 
 #include "query_transient_row_lock.hpp"

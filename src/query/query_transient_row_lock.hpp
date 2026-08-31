@@ -17,7 +17,7 @@
  */
 
 //
-// Transient row lock bookkeeping for the update/delete force phase
+// Transient row lock bookkeeping for the delete/update force phase
 //
 // A statement that scans its targets without a row lock takes one at the force phase and gives it up
 // before commit.  Two things about that release need somewhere to live: the set of rows whose locks
@@ -35,7 +35,7 @@
  *
  * Note: the row lock ends when the statement stops forcing rows, not as each row is published.
  *	 Releasing it at publish leaves the row unlocked while this same statement forces the next one,
- *	 and the index is where that gap shows.  A second updater taking the row in that window reads a
+ *	 and the index is where that gap shows.  A second writer taking the row in that window reads a
  *	 heap version whose key this statement has already removed from the index -- the heap still
  *	 carries the version the removal was for -- so its own removal of that key finds nothing and
  *	 btree_key_find_and_insert_delete_mvccid () reports the key unknown.  The lock still ends before

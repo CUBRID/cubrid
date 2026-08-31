@@ -11280,6 +11280,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   bool scan_open = false;
   UPDDEL_CLASS_INFO *query_class = NULL;
   UPDDEL_CLASS_INFO_INTERNAL *internal_classes = NULL, *internal_class = NULL;
+  TRANSIENT_ROW_LOCKS transient_row_locks = TRANSIENT_ROW_LOCKS_INITIALIZER;
   DEL_LOB_INFO *del_lob_info_list = NULL;
   MVCC_REEV_DATA mvcc_reev_data;
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
@@ -11488,6 +11489,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			  GOTO_EXIT_ON_ERROR;
 			}
 		      internal_class->is_mvcc_class = !mvcc_is_mvcc_disabled_class (class_oid);
+		      internal_class->has_online_index =
+			transient_row_locks_class_has_online_index (thread_p, class_oid);
 
 		      if (internal_class->num_lob_attrs)
 			{
@@ -11633,11 +11636,16 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  xasl->list_id->tuple_cnt++;
 
 		  if (mvcc_upddel_reev_data.transient_row_lock && need_locking && class_oid != NULL
-		      && internal_class->is_mvcc_class && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
+		      && internal_class->is_mvcc_class && !internal_class->has_online_index
+		      && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
 		    {
 		      /* the delete is published: late arrivals settle on our MVCCID self-lock, which the
-		       * prepare record persists across 2PC, so the row lock is redundant from here */
-		      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, X_LOCK);
+		       * prepare record persists across 2PC, so the row lock is redundant from here.  It ends
+		       * when this statement stops forcing rows, not now -- see transient_row_locks in
+		       * query_transient_row_lock.hpp.
+		       * A class under an online index build keeps the lock to commit -- the build's own entry
+		       * state names no owner, so the row lock is what serializes two writers there. */
+		      (void) transient_row_locks_add (thread_p, &transient_row_locks, oid, class_oid);
 		    }
 		}
 	    }
@@ -11695,6 +11703,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
     }
 
+  transient_row_locks_release (thread_p, &transient_row_locks);
+  transient_row_locks_clear (thread_p, &transient_row_locks);
+
   qexec_close_scan (thread_p, specp);
 
   qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
@@ -11746,6 +11757,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   return NO_ERROR;
 
 exit_on_error:
+  transient_row_locks_clear (thread_p, &transient_row_locks);
+
   if (scan_open)
     {
       qexec_end_scan (thread_p, specp);
