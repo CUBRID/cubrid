@@ -66,6 +66,7 @@
  * only owned here — all use goes through activation brackets */
 class client_session_context;
 extern void csc_retire_and_delete (client_session_context *ctx);
+extern bool csc_bracket_is_active (void);	/* client_session_context.cpp */
 #endif
 
 #if !defined(SERVER_MODE)
@@ -2166,22 +2167,28 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE *
  * name (in)	 : name of the variable
  * value (in/out): variable value
  * Note: This function gets a reference to a session variable from the session
- * state object. Because it gets the actual pointer, it is not thread safe
- * and it should only be called in the stand alone mode
+ * state object. Because it gets the actual pointer, it is only safe where the
+ * session is exclusively owned by the calling thread: stand alone mode, or the
+ * merged server's folded client half under its activation bracket
  */
 int
 session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE ** result)
 {
-  SESSION_ID id;
   SESSION_STATE *state_p = NULL;
   size_t name_len;
   const char *name_str;
   SESSION_VARIABLE *var;
 
 #if defined (SERVER_MODE)
-  /* do not call this function in a multi-threaded context */
-  assert (false);
-  return ER_FAILED;
+  /* merged server: the folded client half (csession_get_variable) takes a
+   * no-copy reference under its activation bracket, where the session is
+   * exclusively owned by the requesting thread (the SA shape); any other
+   * multi-threaded caller is still a bug */
+  if (!csc_bracket_is_active ())
+    {
+      assert (false);
+      return ER_FAILED;
+    }
 #endif
 
   assert (name != NULL);
@@ -2191,15 +2198,11 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB
   name_str = db_get_string (name);
   name_len = (name_str != NULL) ? strlen (name_str) : 0;
 
-  if (session_get_session_id (thread_p, &id) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  state_p = sessions.states_hashmap.find (thread_p, id);
+  /* conn_entry-cached in SERVER_MODE (no hashmap entry mutex taken; find ()
+   * would return with it held), same lookup + expired error in SA */
+  state_p = session_get_session_state (thread_p);
   if (state_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_FAILED;
     }
 
