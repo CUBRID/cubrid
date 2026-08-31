@@ -835,6 +835,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_CAS_ACCESS_CONTROL "cas_access_control"
 #define PRM_NAME_CAS_ACCESS_CONTROL_FILE "cas_access_control_file"
 #define PRM_NAME_CAS_ACCESS_CONTROL_DEFAULT_ALLOW "cas_access_control_default_allow"
+#define PRM_NAME_CAS_STRIPPED_COLUMN_NAME "cas_stripped_column_name"
 
 // #endregion 
 
@@ -5761,6 +5762,18 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false /* = the broker's DENY default policy */ }},
    {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_STRIPPED_COLUMN_NAME,
+   PRM_NAME_CAS_STRIPPED_COLUMN_NAME,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true /* = the broker's STRIPPED_COLUMN_NAME=ON default */ }},
+   {false, {.b = true}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,

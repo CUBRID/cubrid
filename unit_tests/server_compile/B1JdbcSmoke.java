@@ -257,6 +257,15 @@ public class B1JdbcSmoke {
             throw new RuntimeException("getColumns expected 2 columns, got " + cols);
         }
 
+        // wf160: cas_stripped_column_name=ON (broker STRIPPED_COLUMN_NAME parity) —
+        // a select-list column the user wrote qualified must come back bare
+        rs = stmt.executeQuery("SELECT y.v FROM b1_smoke y ORDER BY y.id");
+        String label = rs.getMetaData().getColumnName(1);
+        rs.close();
+        if (!"v".equals(label)) {
+            throw new RuntimeException("qualified select-list column label not stripped: got '" + label + "'");
+        }
+
         // 9. type battery: bind -> store -> fetch round-trip per major type
         step("types");
         stmt.executeUpdate("CREATE TABLE b2_types (c_int INT, c_big BIGINT, c_num NUMERIC(15,4),"
