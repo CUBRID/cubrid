@@ -8427,6 +8427,11 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
 	{
 	  continue;
 	}
+
+      if (QO_NODE_IS_SEMI_ANTI_JOIN (QO_SEG_HEAD (s1)) || QO_NODE_IS_SEMI_ANTI_JOIN (QO_SEG_HEAD (s2)))
+	{
+	  continue;
+	}
       r1 = QO_SEG_IDX (s1);
       while (root_arr[r1] != r1)
 	{
@@ -8521,11 +8526,6 @@ qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
 	      node2 = QO_SEG_HEAD (seg2);
 
 	      if (QO_NODE_IDX (node1) == QO_NODE_IDX (node2))
-		{
-		  continue;
-		}
-
-	      if (QO_NODE_IS_SEMI_ANTI_JOIN (node1) || QO_NODE_IS_SEMI_ANTI_JOIN (node2))
 		{
 		  continue;
 		}
