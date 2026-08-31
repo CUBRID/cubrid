@@ -195,7 +195,6 @@ cas_server_refresh_session_config (T_APPL_SERVER_INFO * slot)
   shm->session_timeout = prm_get_integer_value (PRM_ID_CAS_SESSION_TIMEOUT);
   shm->max_string_length = prm_get_integer_value (PRM_ID_CAS_MAX_STRING_LENGTH);
   shm->query_timeout = prm_get_integer_value (PRM_ID_CAS_MAX_QUERY_TIMEOUT);
-  shm->stripped_column_name = prm_get_bool_value (PRM_ID_CAS_STRIPPED_COLUMN_NAME) ? ON : OFF;
 }
 
 /* per adopted session: point the CAS globals at this thread's slot */
@@ -211,7 +210,9 @@ cas_server_session_slot_begin (int client_type, int client_version, const char *
   slot->con_status = CON_STATUS_IN_TRAN;	/* connect starts in-tran (cas_common_main.c:136) */
   slot->cur_keep_con = KEEP_CON_ON;
   cas_server_refresh_session_config (slot);
-  stripped_column_name = shm_appl->stripped_column_name;	/* cas_common_main.c:486 equivalent */
+  /* cas_common_main.c:486 equivalent — straight to TLS, never through the
+   * shared read-only stub (concurrent slot_begins would race on it) */
+  stripped_column_name = prm_get_bool_value (PRM_ID_CAS_STRIPPED_COLUMN_NAME) ? ON : OFF;
   slot->cur_statement_pooling = shm_appl->statement_pooling ? ON : OFF;
   slot->cci_default_autocommit = shm_appl->cci_default_autocommit;
   slot->auto_commit_mode = FALSE;
