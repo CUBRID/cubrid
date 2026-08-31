@@ -168,6 +168,10 @@ namespace cubmethod
 
     /* If this struct is for execute_call, the following variables are packed */
     prepare_call_info *call_info;
+    /* true only when unpack() allocated call_info; the query handler's execute
+     * path instead aliases its own m_prepare_call_info member, which must never
+     * be deleted here (pre-fold this was a compile-time CS/SERVER split) */
+    bool owns_call_info;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
