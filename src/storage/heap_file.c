@@ -9832,6 +9832,19 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 	  new parallel_query::callable_task (wm,
 					     std::bind (heap_capacity_parallel_worker, std::placeholders::_1,
 							&args[i]));
+	if (task == NULL)
+	  {
+	    /* this project's operator new is a noexcept wrapper over malloc, so OOM yields NULL with
+	     * no constructor run and no exception. Tasks already pushed still reference the local
+	     * args/accums/slices, so join them before unwinding, then decline to serial. */
+	    wm->wait_workers ();
+	    if (collector.partsect_ftab != NULL)
+	      {
+		db_private_free_and_init (thread_p, collector.partsect_ftab);
+	      }
+	    wm->release_workers ();
+	    return NO_ERROR;
+	  }
 	wm->push_task (task);
       }
 
