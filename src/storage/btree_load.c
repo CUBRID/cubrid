@@ -359,6 +359,9 @@ static int btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args)
 static int btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, SORT_PUT_FUNC * out_func, void *out_args);
 static SORT_STATUS btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
 static int compare_driver (const void *first, const void *second, void *arg);
+#if !defined(NDEBUG)
+static int compare_driver_by_value (char *mem1, char *mem2, TP_DOMAIN * key_type);
+#endif /* !defined(NDEBUG) */
 static int list_add (BTREE_NODE ** list, VPID * pageid);
 static void list_remove_first (BTREE_NODE ** list);
 static void list_clear (BTREE_NODE * list);
@@ -6182,6 +6185,56 @@ nofit:
   return SORT_REC_DOESNT_FIT;
 }
 
+#if !defined(NDEBUG)
+/*
+ * compare_driver_by_value () - compare two single column sort keys through DB_VALUE
+ *   return: DB_LT, DB_EQ, DB_GT or DB_UNK
+ *   mem1(in): key image of the first sort record
+ *   mem2(in): key image of the second sort record
+ *   key_type(in): domain of the key
+ *
+ * Note: This is the path compare_driver () took before it started to compare the disk images
+ *       directly. It is kept to cross check the new path in the debug build.
+ */
+static int
+compare_driver_by_value (char *mem1, char *mem2, TP_DOMAIN * key_type)
+{
+  OR_BUF buf_val1, buf_val2;
+  DB_VALUE val1, val2;
+  int c;
+
+  or_init (&buf_val1, mem1, -1);
+  or_init (&buf_val2, mem2, -1);
+
+  if (key_type->type->data_readval (&buf_val1, &val1, key_type, -1, false, NULL, 0) != NO_ERROR)
+    {
+      assert (false);
+      return DB_UNK;
+    }
+
+  if (key_type->type->data_readval (&buf_val2, &val2, key_type, -1, false, NULL, 0) != NO_ERROR)
+    {
+      assert (false);
+      return DB_UNK;
+    }
+
+  c = btree_compare_key (&val1, &val2, key_type, 0, 1, NULL);
+
+  /* Clear the values if it is required */
+  if (DB_NEED_CLEAR (&val1))
+    {
+      pr_clear_value (&val1);
+    }
+
+  if (DB_NEED_CLEAR (&val2))
+    {
+      pr_clear_value (&val2);
+    }
+
+  return c;
+}
+#endif /* !defined(NDEBUG) */
+
 /*
  * compare_driver () -
  *   return:
@@ -6324,39 +6377,31 @@ compare_driver (const void *first, const void *second, void *arg)
     }
   else
     {
-      OR_BUF buf_val1, buf_val2;
-      DB_VALUE val1, val2;
+      /* The key of a sort record is written by data_writeval () and read back by data_readval (), so the
+       * matching comparison function is the data_ one. The index_ family is for the key image stored on a
+       * b+tree page, which is a different thing (see bt_load_store_overflow_key ()).
+       * data_cmpdisk () does not apply the descending order by itself. Flipping is up to the caller, the
+       * same way the query sort does it in qfile_compare_partial_sort_record (). */
+      assert (key_type->type->get_data_cmpdisk_function () != NULL);
 
-      or_init (&buf_val1, mem1, -1);
-      or_init (&buf_val2, mem2, -1);
+      c = key_type->type->data_cmpdisk (mem1, mem2, key_type, 0, 1, NULL);
 
-      if (key_type->type->data_readval (&buf_val1, &val1, key_type, -1, false, NULL, 0) != NO_ERROR)
+      /* for single-column desc index */
+      if (key_type->is_desc)
 	{
-	  assert (false);
-	  return DB_UNK;
+	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
 	}
 
-      if (key_type->type->data_readval (&buf_val2, &val2, key_type, -1, false, NULL, 0) != NO_ERROR)
-	{
-	  assert (false);
-	  return DB_UNK;
-	}
-
-      c = btree_compare_key (&val1, &val2, key_type, 0, 1, NULL);
-
-      /* Clear the values if it is required */
-      if (DB_NEED_CLEAR (&val1))
-	{
-	  pr_clear_value (&val1);
-	}
-
-      if (DB_NEED_CLEAR (&val2))
-	{
-	  pr_clear_value (&val2);
-	}
+#if !defined(NDEBUG)
+      /* cross check against the path this branch replaced (both sides already flipped for desc) */
+      assert (c == compare_driver_by_value (mem1, mem2, key_type));
+#endif /* !defined(NDEBUG) */
     }
 
-  assert (c == DB_LT || c == DB_EQ || c == DB_GT);
+  /* A failed string allocation or a corrupted NUMERIC can return DB_UNK (-2). The sort engine reads a
+   * negative value as "less than" and the OID tie break below only runs on DB_EQ, so a leaked DB_UNK
+   * silently breaks the order. */
+  assert_release (c == DB_LT || c == DB_EQ || c == DB_GT);
 
   /* compare OID for non-unique index */
   if (c == DB_EQ)
