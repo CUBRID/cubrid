@@ -42,6 +42,9 @@
 #include "execute_statement.h"
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
+#include "schema_system_catalog_constants.h"
+#include "sp_catalog.hpp"
+#include "sp_constants.hpp"
 
 using namespace cubpl;
 
@@ -130,8 +133,14 @@ namespace cubmethod
       case METHOD_CALLBACK_GET_GLOBAL_SEMANTICS:
 	error = get_global_semantics (unpacker);
 	break;
+      case METHOD_CALLBACK_GET_CODE_BY_NAME:
+	error = get_code_by_name (unpacker);
+	break;
       case METHOD_CALLBACK_CHANGE_RIGHTS:
 	error = change_rights (unpacker);
+	break;
+      case METHOD_CALLBACK_CHECK_EXECUTE_AUTH:
+	error = check_execute_auth (unpacker);
 	break;
       default:
 	assert (false);
@@ -732,30 +741,201 @@ namespace cubmethod
       }
   }
 
-  // TODO: move it to proper place
   static int
-  get_user_defined_procedure_function_info (global_semantics_question &question, global_semantics_response_udpf &res)
+  find_routine_of_type (const char *uniq_name, bool wants_function, MOP &routine_mop, bool err_when_not_found)
   {
-    DB_OBJECT *mop_p;
-    DB_VALUE return_type;
+
     int err = NO_ERROR;
+    MOP found;
     int save;
-    const char *name = question.name.c_str ();
+    DB_VALUE val;
+
+    found = jsp_find_stored_procedure (uniq_name);
+    if (found)
+      {
+	AU_SAVE_AND_DISABLE (save);
+	err = db_get (found, SP_ATTR_SP_TYPE, &val);
+	if (err == NO_ERROR)
+	  {
+	    int sp_type = db_get_int (&val);
+	    if ((sp_type == SP_TYPE_FUNCTION) == wants_function)
+	      {
+		routine_mop = found;
+	      }
+	    else if (err_when_not_found)
+	      {
+		err = ER_SP_INVALID_TYPE;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, uniq_name, wants_function ? "procedure" : "function");
+	      }
+	  }
+	AU_RESTORE (save);
+      }
+    else
+      {
+	assert (er_errid () != NO_ERROR);
+	if (err_when_not_found)
+	  {
+	    err = er_errid();
+	  }
+	else
+	  {
+	    er_clear();
+	  }
+      }
+
+    return err;
+  }
+
+  static void
+  split_str (const std::string &name, size_t &start_pos, std::string &out_name)
+  {
+    size_t dot_pos = name.find ('.', start_pos);
+    if (dot_pos != std::string::npos)
+      {
+	out_name = name.substr (start_pos, dot_pos - start_pos);
+	start_pos = dot_pos + 1;        // for the next call
+      }
+    else
+      {
+	out_name = name.substr (start_pos);
+      }
+  }
+
+  static void
+  prepend_user_name (std::string &name, char *buf, int buf_size)
+  {
+    char uniq_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+    std::string pkg, temp;
+    size_t start_pos = 0;
+    split_str (name, start_pos, pkg);
+    assert (start_pos); // name has a dot
+    sm_user_specified_name (pkg.c_str(), uniq_name, sizeof (uniq_name)); // prepend the current user name
+    temp = uniq_name;
+    temp += ".";
+    temp += name.substr (start_pos);
+    sm_downcase_name (temp.c_str(), buf, buf_size);
+  }
+
+  static int
+  get_user_defined_routine_info (global_semantics_question &question, global_semantics_response_udpf &res)
+  {
+    int err = NO_ERROR, match_cnt = 0;
+    int save;
+    char uniq_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+    std::string &name = question.name;
+    bool wants_function = (question.type == GSQT_FUNCTION);
+    MOP routine_mop = NULL;
+
+    int dot_cnt = std::count (name.begin (), name.end(), '.');
+    switch (dot_cnt)
+      {
+      case 0: // case <name>
+	sm_user_specified_name (name.c_str(), uniq_name, sizeof (uniq_name));
+	break;
+
+      case 2: // case <owner>.<package>.<name>
+	sm_downcase_name (name.c_str(), uniq_name, sizeof (uniq_name));
+	break;
+
+      case 1: // case <user>.<name> or <pkg>.<name>. decide a single case
+
+	// first, try <user>.<name> case: search a routine with the name intact
+      {
+	MOP routine_mop1 = NULL;
+	sm_downcase_name (name.c_str(), uniq_name, sizeof (uniq_name));
+
+	err = find_routine_of_type (uniq_name, wants_function, routine_mop1, false);
+	if (err == NO_ERROR)
+	  {
+	    if (routine_mop1)
+	      {
+		routine_mop = routine_mop1;
+		match_cnt++;
+	      }
+	  }
+	else
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg();
+	    return err;
+	  }
+      }
+
+	// second, try <pkg>.<name> case: search a routine with the name prefixed with the current owner
+      {
+	MOP routine_mop2 = NULL;
+	prepend_user_name (name, uniq_name, sizeof (uniq_name));
+
+	err = find_routine_of_type (uniq_name, wants_function, routine_mop2, false);
+	if (err == NO_ERROR)
+	  {
+	    if (routine_mop2)
+	      {
+		routine_mop = routine_mop2;
+		match_cnt++;
+	      }
+	  }
+	else
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg();
+	    return err;
+	  }
+      }
+
+      if (match_cnt == 0)
+	{
+	  err = res.err_id = ER_FAILED;
+	  res.err_msg = "Failed to get attribute information";
+	  return err;
+	}
+      else if (match_cnt == 2)
+	{
+	  err = res.err_id = ER_FAILED;
+#define ERR_MSG_TEMPLATE        ("Ambiguous: '%s' matches both <user>.<name> pattern and <package>.<name> pattern")
+	  char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
+	  snprintf (buffer, sizeof (buffer), ERR_MSG_TEMPLATE, name.c_str());
+#undef ERR_MSG_TEMPLATE
+	  res.err_msg = buffer;
+	  return err;
+	}
+
+	// NOTE: at this point of execution, routine_mop is non-null with a single match.
+
+      break;
+
+      default:
+	res.err_id = ER_FAILED;
+	res.err_msg = "Invalid parameter";
+	return ER_FAILED;
+      }
+
+    if (!routine_mop)
+      {
+
+	// after the above case 0 and 2
+
+	err = find_routine_of_type (uniq_name, wants_function, routine_mop, true);
+	if (err == NO_ERROR)
+	  {
+	    assert (routine_mop);
+	  }
+	else
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg ();
+	    return err;
+	  }
+      }
+
+    // Now, the routine is found
 
     AU_SAVE_AND_DISABLE (save);
     {
-      // TODO
-      mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
-      if (mop_p == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  err = er_errid ();
-	  goto exit;
-	}
-
       DB_VALUE temp;
+      DB_VALUE return_type;
       int num_args = -1;
-      err = db_get (mop_p, SP_ATTR_ARG_COUNT, &temp);
+      err = db_get (routine_mop, SP_ATTR_ARG_COUNT, &temp);
       if (err == NO_ERROR)
 	{
 	  num_args = db_get_int (&temp);
@@ -771,7 +951,7 @@ namespace cubmethod
 
       DB_VALUE args;
       /* arg_mode, arg_type */
-      err = db_get (mop_p, SP_ATTR_ARGS, &args);
+      err = db_get (routine_mop, SP_ATTR_ARGS, &args);
       if (err == NO_ERROR)
 	{
 	  DB_SET *param_set = db_get_set (&args);
@@ -794,9 +974,25 @@ namespace cubmethod
 		      param_info.type = db_get_int (&arg_type);
 		    }
 
-		  if (db_get (arg_mop_p, SP_ARG_ATTR_DEFAULT_VALUE, &has_default) == NO_ERROR)
+		  // a parameter "has a default" iff it is optional; the default value itself may be NULL
+		  // (for ':= NULL'), so it must not be inferred from the default_value column being null
+		  if (db_get (arg_mop_p, SP_ARG_ATTR_IS_OPTIONAL, &has_default) == NO_ERROR)
 		    {
-		      param_info.has_default = DB_IS_NULL (&has_default) ? 0 : 1;
+		      param_info.has_default =
+			      (!DB_IS_NULL (&has_default) && db_get_int (&has_default) != 0) ? 1 : 0;
+		    }
+		  if (param_info.has_default)
+		    {
+		      DB_VALUE dflt;
+		      if (db_get (arg_mop_p, SP_ARG_ATTR_DEFAULT_VALUE, &dflt) == NO_ERROR)
+			{
+			  const char *dv = DB_IS_NULL (&dflt) ? NULL : db_get_string (&dflt);
+			  if (dv != NULL)
+			    {
+			      param_info.default_value.assign (dv);
+			    }
+			  pr_clear_value (&dflt);
+			}
 		    }
 
 		  pr_clear_value (&mode);
@@ -813,10 +1009,53 @@ namespace cubmethod
 	  pr_clear_value (&args);
 	}
 
-      if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type) == NO_ERROR)
+      if (db_get (routine_mop, SP_ATTR_RETURN_TYPE, &return_type) == NO_ERROR)
 	{
 	  res.ret.type = db_get_int (&return_type);
 	  pr_clear_value (&return_type);
+	}
+
+      DB_VALUE lang_val;
+      int lang = -1;
+      if (db_get (routine_mop, SP_ATTR_LANG, &lang_val) == NO_ERROR)
+	{
+	  lang = db_get_int (&lang_val);
+	  pr_clear_value (&lang_val);
+	}
+
+      if (lang == SP_LANG_PLCSQL)
+	{
+	  if (jsp_check_execute_authorization (routine_mop) != NO_ERROR)
+	    {
+	      err = er_errid ();
+	      if (err == NO_ERROR)
+		{
+		  err = ER_FAILED;
+		}
+	      goto exit;
+	    }
+
+	  DB_VALUE target_class_val;
+	  if (db_get (routine_mop, SP_ATTR_TARGET_CLASS, &target_class_val) == NO_ERROR)
+	    {
+	      const char *tc = db_get_string (&target_class_val);
+	      if (tc != NULL)
+		{
+		  res.target_class.assign (tc);
+		}
+	      pr_clear_value (&target_class_val);
+	    }
+
+	  DB_VALUE unique_name_val;
+	  if (db_get (routine_mop, SP_ATTR_UNIQUE_NAME, &unique_name_val) == NO_ERROR)
+	    {
+	      const char *un = db_get_string (&unique_name_val);
+	      if (un != NULL)
+		{
+		  res.unique_name.assign (un);
+		}
+	      pr_clear_value (&unique_name_val);
+	    }
 	}
     }
 
@@ -863,94 +1102,145 @@ exit:
     return result;
   }
 
+  /*
+   * separate name into qualifier and id and make them lowercase.
+   * prepend qualifier with owner name if necessary.
+   */
   static int
-  get_column_info (global_semantics_question &question, global_semantics_response_column &res)
+  normalize_id (const std::string &name, std::string &qualifier, std::string &id)
   {
-    int err = NO_ERROR;
-
-    const std::string &name = question.name;
-    if (name.empty () == true)
+    if (name.empty ())
       {
-	err = res.err_id = ER_FAILED;
-	res.err_msg = "Invalid parameter";
+	return ER_FAILED;
       }
 
     std::string owner_name;
     std::string class_name;
-    std::string attr_name;
 
-    auto split_str = [] (const std::string& name, size_t &prev, size_t &cur, std::string& out_name)
-    {
-      cur = name.find ('.', prev);
-      if (cur != std::string::npos)
-	{
-	  out_name = name.substr (prev, cur - prev);
-	  prev = cur + 1;
-	}
-      else
-	{
-	  out_name = name.substr (prev);
-	}
-    };
-
-    size_t prev = 0, cur = 0;
+    size_t start_pos = 0;
     int dot_cnt = std::count (name.begin (), name.end(), '.');
-    if (dot_cnt == 2) // with owner name
+    if (dot_cnt == 2)
       {
-	split_str (name, prev, cur, owner_name);
+	split_str (name, start_pos, owner_name);
 	owner_name += ".";
       }
+    else if (dot_cnt != 1)
+      {
+	return ER_FAILED;
+      }
 
-    split_str (name, prev, cur, class_name);
-    split_str (name, prev, cur, attr_name);
+    split_str (name, start_pos, class_name);
+    split_str (name, start_pos, id);
 
     std::string class_name_with_owner = owner_name + class_name;
-    char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-    sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH);
+    char realname[DB_MAX_IDENTIFIER_LENGTH + 1] = { '\0' };
+    sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH + 1);
 
-    transform (attr_name.begin(), attr_name.end(), attr_name.begin(), ::tolower);
-    DB_ATTRIBUTE *attr = db_get_attribute_by_name (realname, attr_name.c_str ());
-    if (attr == NULL)
+    qualifier = realname;
+    transform (id.begin(), id.end(), id.begin(), ::tolower);
+
+    return NO_ERROR;
+  }
+
+  static int
+  get_id_type_info (global_semantics_question &question, global_semantics_response_id_type &res)
+  {
+    int err, match_cnt;
+    std::string qualifier;
+    std::string id;
+
+    err = normalize_id (question.name, qualifier, id);
+    if (err != NO_ERROR)
+      {
+	res.err_id = ER_FAILED;
+	res.err_msg = "Invalid parameter";
+	return err;
+      }
+
+    match_cnt = 0;
+    DB_ATTRIBUTE *attr = db_get_attribute_by_name (qualifier.c_str(), id.c_str ());
+    if (attr)
+      {
+	match_cnt++;
+      }
+    MOP pkg_var = sp_find_pkg_var (qualifier.c_str(), id.c_str ());
+    if (pkg_var)
+      {
+	match_cnt++;
+      }
+
+    if (match_cnt == 0)
       {
 	err = res.err_id = ER_FAILED;
 	res.err_msg = "Failed to get attribute information";
+	return err;
+      }
+    else if (match_cnt == 2)
+      {
+	err = res.err_id = ER_FAILED;
+#define ERR_MSG_TEMPLATE        ("Ambiguous: '%s' matches both a table column and a package variable")
+	char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
+	snprintf (buffer, sizeof (buffer), ERR_MSG_TEMPLATE, question.name.c_str());
+#undef ERR_MSG_TEMPLATE
+	res.err_msg = buffer;
+	return err;
+      }
+
+    int db_type, prec;
+    short scale;
+
+    if (attr)
+      {
+	DB_DOMAIN *domain = db_attribute_domain (attr);
+	db_type = TP_DOMAIN_TYPE (domain);
+	prec = db_domain_precision (domain);
+	scale = db_domain_scale (domain);
+      }
+    else if (pkg_var)
+      {
+	int save;
+	DB_VALUE value;
+
+	AU_SAVE_AND_DISABLE (save);
+
+	err = db_get (pkg_var, PKG_VAR_ATTR_DATA_TYPE, &value);
+	if (err != NO_ERROR)
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg();
+	    AU_RESTORE (save);
+	    return err;
+	  }
+	db_type = db_get_int (&value);
+
+	err = db_get (pkg_var, PKG_VAR_ATTR_PREC, &value);
+	if (err != NO_ERROR)
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg();
+	    AU_RESTORE (save);
+	    return err;
+	  }
+	prec = db_get_int (&value);
+
+	err = db_get (pkg_var, PKG_VAR_ATTR_SCALE, &value);
+	if (err != NO_ERROR)
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg();
+	    AU_RESTORE (save);
+	    return err;
+	  }
+	scale = (short) db_get_int (&value);
+
+	AU_RESTORE (save);
       }
     else
       {
-	DB_DOMAIN *domain = db_attribute_domain (attr);
-	int precision = db_domain_precision (domain);
-	short scale = db_domain_scale (domain);
-	char charset = db_domain_codeset (domain);
-	int db_type = TP_DOMAIN_TYPE (domain);
-	int set_type = DB_TYPE_NULL;
-
-	if (TP_IS_SET_TYPE (db_type))
-	  {
-	    set_type = get_set_domain (domain, precision, scale, charset);
-	  }
-
-	char auto_increment = db_attribute_is_auto_increment (attr);
-	char unique_key = db_attribute_is_unique (attr);
-	char primary_key = db_attribute_is_primary_key (attr);
-	char reverse_index = db_attribute_is_reverse_indexed (attr);
-	char reverse_unique = db_attribute_is_reverse_unique (attr);
-	char foreign_key = db_attribute_is_foreign_key (attr);
-	char shared = db_attribute_is_shared (attr);
-
-	const char *c_attr_name = db_attribute_name (attr);
-
-	std::string attr_name_string (c_attr_name? c_attr_name : "");
-	std::string class_name_string (realname? realname : "");
-
-	std::string default_value_string = get_column_default_as_string (attr);
-
-	column_info info (db_type, set_type, scale, precision, charset,
-			  attr_name_string, default_value_string,
-			  auto_increment, unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared,
-			  attr_name_string, class_name_string, false);
-
-	res.c_info = std::move (info);
+	assert (false); // unreachable
       }
+
+    res.t_info = type_info (db_type, scale, prec);
 
     return err;
   }
@@ -969,16 +1259,16 @@ exit:
       {
 	switch (question.type)
 	  {
-	  case 1: // PROCEDURE
-	  case 2: // FUNCTION
+	  case GSQT_PROCEDURE:
+	  case GSQT_FUNCTION:
 	  {
 	    auto res_ptr = std::make_unique <global_semantics_response_udpf> ();
 	    res_ptr->idx = i++;
-	    error = get_user_defined_procedure_function_info (question, *res_ptr);
+	    error = get_user_defined_routine_info (question, *res_ptr);
 	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
-	  case 3: // SERIAL
+	  case GSQT_SERIAL:
 	  {
 	    auto res_ptr = std::make_unique <global_semantics_response_serial> ();
 	    res_ptr->idx = i++;
@@ -986,11 +1276,11 @@ exit:
 	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
-	  case 4: // COLUMN
+	  case GSQT_ID_TYPE:
 	  {
-	    auto res_ptr = std::make_unique <global_semantics_response_column> ();
+	    auto res_ptr = std::make_unique <global_semantics_response_id_type> ();
 	    res_ptr->idx = i++;
-	    error = get_column_info (question, *res_ptr);
+	    error = get_id_type_info (question, *res_ptr);
 	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
@@ -1054,6 +1344,153 @@ exit:
     // no response
 
     return error;
+  }
+
+  int
+  callback_handler::get_code_by_name (packing_unpacker &unpacker)
+  {
+    // Look up the object code (ocode) of a stored procedure or package by its generated Java class
+    // name (Proc_/Func_/Pckg_...), so a PL/CSQL unit can resolve another unit it calls directly.
+    // The lookup runs on the client where the catalog objects live; it mirrors the server-side
+    // logic sp_get_code_by_name used to perform, but with plain client object APIs.
+    std::string class_name;
+    std::string req_compile_id;
+    unpacker.unpack_all (class_name, req_compile_id);
+
+    int status = SP_CODE_FETCH_NOT_FOUND;
+    std::string compile_id;
+    std::string ocode;
+
+    // a referenced unit's code must be loadable regardless of the caller's privileges
+    int save;
+    AU_SAVE_AND_DISABLE (save);
+
+    // generated package class names start with "Pckg_"; SP/function classes do not
+    bool is_pkg = (class_name.compare (0, 5, "Pckg_") == 0);
+
+    DB_VALUE key;
+    MOP code_mop = NULL;
+
+    if (!is_pkg)
+      {
+	// stored procedure / function: _db_stored_procedure_code keyed by name (= class name)
+	db_make_string (&key, class_name.c_str ());
+	code_mop = db_find_unique (db_find_class (CT_STORED_PROC_CODE_NAME), SP_CODE_ATTR_NAME, &key);
+	pr_clear_value (&key);
+	if (code_mop != NULL)
+	  {
+	    DB_VALUE v;
+	    if (db_get (code_mop, SP_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
+	      {
+		const char *s = db_get_string (&v);
+		if (s != NULL)
+		  {
+		    compile_id.assign (s);
+		  }
+		pr_clear_value (&v);
+	      }
+	  }
+      }
+    else
+      {
+	// package: _db_package_code keyed by the generated class name, like the SP case
+	db_make_string (&key, class_name.c_str ());
+	code_mop = db_find_unique (db_find_class (CT_PACKAGE_CODE_NAME), PKG_CODE_ATTR_NAME, &key);
+	pr_clear_value (&key);
+	if (code_mop != NULL)
+	  {
+	    DB_VALUE v;
+	    if (db_get (code_mop, PKG_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
+	      {
+		const char *s = db_get_string (&v);
+		if (s != NULL)
+		  {
+		    compile_id.assign (s);
+		  }
+		pr_clear_value (&v);
+	      }
+	  }
+      }
+
+    // db_find_unique sets ER_OBJ_OBJECT_NOT_FOUND when the key is absent; that is a normal
+    // "not found" here, not an error to report back
+    if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+      {
+	er_clear ();
+      }
+
+    if (code_mop == NULL)
+      {
+	status = SP_CODE_FETCH_NOT_FOUND;
+      }
+    else if (!req_compile_id.empty () && req_compile_id == compile_id)
+      {
+	// the caller already has the current version: skip shipping the (large) ocode
+	status = SP_CODE_FETCH_UNCHANGED;
+      }
+    else
+      {
+	DB_VALUE v;
+	if (db_get (code_mop, is_pkg ? PKG_CODE_ATTR_OCODE : SP_CODE_ATTR_OCODE, &v) == NO_ERROR)
+	  {
+	    const char *s = db_get_string (&v);
+	    if (s != NULL)
+	      {
+		ocode.assign (s);
+	      }
+	    pr_clear_value (&v);
+	  }
+	status = SP_CODE_FETCH_CHANGED;
+      }
+
+    AU_RESTORE (save);
+
+    // reply framing the PL server (ClassAccess) expects: error, status, then compile_id + ocode
+    // only when the code actually changed
+    if (status == SP_CODE_FETCH_CHANGED)
+      {
+	return xs_pack_and_queue (NO_ERROR, status, compile_id, ocode);
+      }
+    return xs_pack_and_queue (NO_ERROR, status);
+  }
+
+  int
+  callback_handler::check_execute_auth (packing_unpacker &unpacker)
+  {
+    // Runtime EXECUTE check for a directly-called PL/CSQL routine/package member. This mirrors the
+    // compile-time check in get_user_defined_routine_info, re-evaluated here at run time so that a
+    // grant revoked after the caller was compiled takes effect. Au_user is the definer (pushed via
+    // METHOD_CALLBACK_CHANGE_RIGHTS), which is the correct principal for a definer's-rights routine.
+    std::string unique_name;
+    unpacker.unpack_all (unique_name);
+
+    int auth_error = NO_ERROR;
+    int save;
+
+    AU_SAVE_AND_DISABLE (save);
+
+    MOP routine_mop = jsp_find_stored_procedure (unique_name.c_str ());
+    if (routine_mop == NULL)
+      {
+	// dropped between the caller's compilation and this execution
+	auth_error = er_errid ();
+	if (auth_error == NO_ERROR)
+	  {
+	    auth_error = ER_SP_NOT_EXIST;
+	  }
+      }
+    else if (jsp_check_execute_authorization (routine_mop) != NO_ERROR)
+      {
+	auth_error = er_errid ();
+	if (auth_error == NO_ERROR)
+	  {
+	    auth_error = ER_FAILED;
+	  }
+      }
+
+    AU_RESTORE (save);
+
+    return xs_pack_and_queue (auth_error);
   }
 
 //////////////////////////////////////////////////////////////////////////

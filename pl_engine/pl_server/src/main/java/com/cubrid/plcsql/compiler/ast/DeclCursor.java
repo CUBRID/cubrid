@@ -114,10 +114,13 @@ public class DeclCursor extends DeclId {
         List<String> parameters = new ArrayList<>();
         for (DeclParamIn dpi : paramList.nodes) {
             Type ty = dpi.typeSpec.type;
-            parameters.add(String.format("%s:%d:%d:%d", dpi.name, ty.dbType, ty.prec, ty.scale));
+            parameters.add(
+                    String.format(
+                            "%s:%d:%d:%d", dpi.name.toLowerCase(), ty.dbType, ty.prec, ty.scale));
         }
 
-        resp.addPkgCursor(name, recordTypeSpec.type.plcName, comment, parameters);
+        resp.addPkgCursor(
+                name.toLowerCase(), recordTypeSpec.type.plcName.toLowerCase(), comment, parameters);
     }
 
     // --------------------------------------------------

@@ -98,6 +98,8 @@ typedef sp_directive SP_DIRECTIVE_ENUM;
 struct sp_code_info
 {
   std::string name;
+  std::string compile_id;
+  MOP sp_of;                    /* the routine this code belongs to */
   std::string created_time;
   MOP owner;
   int is_static;
@@ -113,7 +115,7 @@ struct sp_info
 {
   std::string unique_name;
   std::string sp_name;
-  std::string pkg_name;
+  MOP pkg_of;                   /* the package this routine belongs to, NULL if standalone */
   SP_TYPE_ENUM sp_type;
   DB_TYPE return_type;
   bool is_system_generated;
@@ -131,7 +133,7 @@ struct sp_info
   sp_info ()
   : unique_name {}
   , sp_name {}
-  , pkg_name {}
+  , pkg_of {nullptr}
   , sp_type {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
   , return_type {DB_TYPE::DB_TYPE_NULL}
   , is_system_generated {false}
@@ -153,9 +155,9 @@ typedef sp_info SP_INFO;
 int sp_builtin_install ();
 
 // insert into system catalogs
-int sp_add_stored_procedure (SP_INFO &info);
+int sp_add_stored_procedure (MOP *mop_p, SP_INFO &info);
 int sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info);
-int sp_add_stored_procedure_code (SP_CODE_INFO &info);
+int sp_add_stored_procedure_code (MOP *mop_p, SP_CODE_INFO &info);
 
 // update into system catalogs
 int sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info);
@@ -167,5 +169,8 @@ std::string sp_args_get_entry_name (int index);
 // misc
 void sp_normalize_name (std::string &s);
 void sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth);
+
+// package
+MOP sp_find_pkg_var (const char *pkg_unique_name, const char *name);
 
 #endif // _SP_CATALOG_HPP_

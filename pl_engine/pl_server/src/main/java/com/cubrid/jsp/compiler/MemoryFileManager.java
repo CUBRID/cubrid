@@ -32,20 +32,67 @@
 package com.cubrid.jsp.compiler;
 
 import com.cubrid.jsp.code.CompiledCode;
+import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import javax.tools.FileObject;
 import javax.tools.ForwardingJavaFileManager;
 import javax.tools.JavaFileManager;
 import javax.tools.JavaFileObject;
+import javax.tools.StandardLocation;
 
 public class MemoryFileManager extends ForwardingJavaFileManager<JavaFileManager> {
 
     private List<CompiledCode> codeList = new ArrayList<CompiledCode>();
 
+    // .class files of referenced SPs/packages, injected into the CLASS_PATH so javac can resolve
+    // direct calls to them
+    private final List<CatalogClassFile> injectedClasses;
+
     protected MemoryFileManager(JavaFileManager fileManager) {
+        this(fileManager, Collections.<CatalogClassFile>emptyList());
+    }
+
+    protected MemoryFileManager(
+            JavaFileManager fileManager, List<CatalogClassFile> injectedClasses) {
         super(fileManager);
+        this.injectedClasses = injectedClasses;
+    }
+
+    @Override
+    public String inferBinaryName(JavaFileManager.Location location, JavaFileObject file) {
+        if (file instanceof CatalogClassFile) {
+            return ((CatalogClassFile) file).getBinaryName();
+        }
+        return super.inferBinaryName(location, file);
+    }
+
+    @Override
+    public Iterable<JavaFileObject> list(
+            JavaFileManager.Location location,
+            String packageName,
+            Set<JavaFileObject.Kind> kinds,
+            boolean recurse)
+            throws IOException {
+        Iterable<JavaFileObject> superList = super.list(location, packageName, kinds, recurse);
+
+        if (injectedClasses.isEmpty()
+                || location != StandardLocation.CLASS_PATH
+                || !kinds.contains(JavaFileObject.Kind.CLASS)
+                || !JavaCodeWriter.JAVA_PKG_OF_GENERATED.equals(packageName)) {
+            return superList;
+        }
+
+        // all injected classes belong to the single generated package
+        List<JavaFileObject> merged = new ArrayList<JavaFileObject>();
+        for (JavaFileObject o : superList) {
+            merged.add(o);
+        }
+        merged.addAll(injectedClasses);
+        return merged;
     }
 
     @Override
@@ -56,7 +103,7 @@ public class MemoryFileManager extends ForwardingJavaFileManager<JavaFileManager
             FileObject sibling)
             throws IOException {
         try {
-            CompiledCode c = new CompiledCode(className);
+            CompiledCode c = new CompiledCode(className, false);
 
             // register CompiledCode in GlobalClassStore
             codeList.add(c);

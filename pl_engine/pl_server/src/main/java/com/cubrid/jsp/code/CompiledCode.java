@@ -44,16 +44,19 @@ public class CompiledCode extends SimpleJavaFileObject {
 
     private byte[] byteCode = null;
 
-    public CompiledCode(String className) throws java.net.URISyntaxException {
-        super(new URI(className), Kind.CLASS);
+    public CompiledCode(String name, boolean fromJar) throws java.net.URISyntaxException {
+        super(new URI(name), Kind.CLASS);
 
-        int idx = className.indexOf(".");
-        if (idx != -1) {
-            this.className = className.substring(0, idx);
+        assert name.endsWith(".class") == fromJar;
 
+        if (fromJar) {
+            // it does not start with a package name but ends with ".class"
+            this.className = name.substring(0, name.length() - ".class".length());
         } else {
-            this.className = className;
+            // it starts with a package name "com.cubrid.generated..."
+            this.className = name;
         }
+
         this.baos = new ByteArrayOutputStream();
     }
 

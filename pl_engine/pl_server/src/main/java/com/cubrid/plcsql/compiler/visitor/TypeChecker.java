@@ -256,11 +256,6 @@ public class TypeChecker extends AstVisitor<Type> {
             // forward declaration
             assert node.recordTypeSpec != null;
             visitTypeSpec(node.recordTypeSpec);
-
-            if (node.bodyDecl != null) {
-                assert node.bodyDecl instanceof DeclCursor;
-                visitDeclCursor((DeclCursor) node.bodyDecl);
-            }
         }
         return null;
     }
@@ -571,6 +566,7 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
         assert node.decl != null;
         checkRoutineCall(node.decl, node.args.nodes);
+        setCoercionOfOmittedDefaults(node.decl, node.args.nodes.size());
         dependencies.add(new Dependency(Dependency.OBJ_TYPE_FUNCTION, node.name, spOwner));
         return node.decl.retTypeSpec.type;
     }
@@ -1249,6 +1245,7 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitStmtGlobalProcCall(StmtGlobalProcCall node) {
         assert node.decl != null;
         checkRoutineCall(node.decl, node.args.nodes);
+        setCoercionOfOmittedDefaults(node.decl, node.args.nodes.size());
         dependencies.add(new Dependency(Dependency.OBJ_TYPE_PROCEDURE, node.name, spOwner));
         return null;
     }
@@ -1444,11 +1441,6 @@ public class TypeChecker extends AstVisitor<Type> {
 
         routineDefNestLevel--;
 
-        if (node.bodyDecl != null) {
-            assert node.body == null;
-            visit(node.bodyDecl);
-        }
-
         return null;
     }
 
@@ -1508,6 +1500,21 @@ public class TypeChecker extends AstVisitor<Type> {
         return sb.toString();
     }
 
+    // A global call's parameter list is built from the server's answer and its defaults
+    // are parsed lazily, so their coercions must be set here
+    private void setCoercionOfOmittedDefaults(DeclRoutine decl, int argCnt) {
+        int paramCnt = decl.paramList.nodes.size();
+        for (int i = argCnt; i < paramCnt; i++) {
+            DeclParam dp = decl.paramList.nodes.get(i);
+            if (dp instanceof DeclParamIn && ((DeclParamIn) dp).hasDefault()) {
+                // typechecking has already been done when the callee was created.
+                // this is only to set a proper coercions to the default values which was
+                // created later than the main AST
+                visitDeclParamIn((DeclParamIn) dp);
+            }
+        }
+    }
+
     private void checkRoutineCall(DeclRoutine decl, List<Expr> args) {
         int len = args.size();
         for (int i = 0; i < len; i++) {
@@ -1523,7 +1530,7 @@ public class TypeChecker extends AstVisitor<Type> {
                         Misc.getLineColumnOf(arg.ctx), // s214
                         String.format(
                                 "argument %d to the call of %s has an incompatible type %s",
-                                i + 1, Misc.detachPkgName(decl.name), argType.plcName));
+                                i + 1, decl.name, argType.plcName));
             } else {
                 if (declParam instanceof DeclParamOut && c.getReversion(iStore) == null) {
                     throw new SemanticError(

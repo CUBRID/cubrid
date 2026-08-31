@@ -19,6 +19,11 @@
 #ifndef _SP_CONSTANTS_HPP_
 #define _SP_CONSTANTS_HPP_
 
+#define PLCSQL_COMPILE_ID_LEN           (39)    // 19 (max long len) * 2 + 1 (delimiter)
+// A generated class name is <kind>_<owner-len>_<owner>_<name>, and <owner>.<name> must fit in
+// SP_ATTR_UNIQUE_NAME_LEN, so its upper bound is about 264. This leaves room to spare.
+#define PLCSQL_TARGET_CLASS_LEN        (512)
+
 #define PKG_ATTR_LIST    \
     MAP_LIST_ITEM(UNIQUE_NAME) \
     MAP_LIST_ITEM(PKG_NAME) \
@@ -69,19 +74,29 @@ enum index_pkg_attr
 #define PKG_CODE_ATTR_LIST    \
     MAP_LIST_ITEM(PKG_UNIQUE_NAME) \
     MAP_LIST_ITEM(NAME) \
+    MAP_LIST_ITEM(COMPILE_ID) \
+    MAP_LIST_ITEM(PKG_OF) \
     MAP_LIST_ITEM(STYPE) \
     MAP_LIST_ITEM(SCODE_SPEC) \
     MAP_LIST_ITEM(SCODE_BODY) \
     MAP_LIST_ITEM(OTYPE) \
     MAP_LIST_ITEM(OCODE)
 
+// unique name of the package this code is for. It is the key of this table, and not pkg_of,
+// because CREATE PACKAGE BODY without a spec leaves a row with no package and no class yet.
 #define PKG_CODE_ATTR_PKG_UNIQUE_NAME       "pkg_unique_name"
+// generated Java class name of the package; NULL until the spec is compiled
 #define PKG_CODE_ATTR_NAME                  "name"
+#define PKG_CODE_ATTR_COMPILE_ID            "compile_id"
+// the package this code belongs to (reverse of _db_package.code); NULL until the spec is created
+#define PKG_CODE_ATTR_PKG_OF                "pkg_of"
 #define PKG_CODE_ATTR_STYPE                 "stype"
 #define PKG_CODE_ATTR_SCODE_SPEC            "scode_spec"
 #define PKG_CODE_ATTR_SCODE_BODY            "scode_body"
 #define PKG_CODE_ATTR_OTYPE                 "otype"
 #define PKG_CODE_ATTR_OCODE                 "ocode"
+
+#define PKG_CODE_ATTR_PKG_UNIQUE_NAME_LEN   (255)
 
 enum index_pkg_code_attr
 {
@@ -181,11 +196,12 @@ enum index_pkg_record_type_attr
     MAP_LIST_ITEM(ARG_COUNT) \
     MAP_LIST_ITEM(ARGS) \
     MAP_LIST_ITEM(LANG) \
-    MAP_LIST_ITEM(PKG_NAME) \
+    MAP_LIST_ITEM(PKG_OF) \
     MAP_LIST_ITEM(IS_SYSTEM_GENERATED) \
     MAP_LIST_ITEM(DIRECTIVE) \
     MAP_LIST_ITEM(TARGET_CLASS) \
     MAP_LIST_ITEM(TARGET_METHOD) \
+    MAP_LIST_ITEM(CODE) \
     MAP_LIST_ITEM(OWNER) \
     MAP_LIST_ITEM(SQL_DATA_ACCESS) \
     MAP_LIST_ITEM(COMMENT) \
@@ -199,11 +215,15 @@ enum index_pkg_record_type_attr
 #define SP_ATTR_ARG_COUNT               "arg_count"
 #define SP_ATTR_ARGS                    "args"
 #define SP_ATTR_LANG                    "lang"
-#define SP_ATTR_PKG_NAME                "pkg_name"
+// the package this routine is a member of, NULL for a standalone routine
+#define SP_ATTR_PKG_OF                  "pkg_of"
 #define SP_ATTR_IS_SYSTEM_GENERATED     "is_system_generated"
 #define SP_ATTR_DIRECTIVE               "directive"
 #define SP_ATTR_TARGET_CLASS            "target_class"
 #define SP_ATTR_TARGET_METHOD           "target_method"
+// the _db_stored_procedure_code row holding this routine's code (reverse of its sp_of),
+// NULL for a Java SP and for a package member (a member's code belongs to its package)
+#define SP_ATTR_CODE                    "code"
 #define SP_ATTR_OWNER                   "owner"
 #define SP_ATTR_SQL_DATA_ACCESS         "sql_data_access"
 #define SP_ATTR_COMMENT                 "comment"
@@ -212,7 +232,6 @@ enum index_pkg_record_type_attr
 
 #define SP_ATTR_UNIQUE_NAME_LEN         (255)
 #define SP_ATTR_SP_NAME_LEN             (255)
-#define SP_ATTR_PKG_NAME_LEN            (255)
 #define SP_ATTR_TARGET_CLASS_LEN        (1024)
 #define SP_ATTR_TARGET_METHOD_LEN       (4096)
 #define SP_ATTR_COMMENT_LEN             (1024)
@@ -257,6 +276,8 @@ enum index_sp_arg_attr
 
 #define SP_CODE_ATTR_LIST    \
     MAP_LIST_ITEM(NAME) \
+    MAP_LIST_ITEM(COMPILE_ID) \
+    MAP_LIST_ITEM(SP_OF) \
     MAP_LIST_ITEM(CREATED_TIME) \
     MAP_LIST_ITEM(OWNER) \
     MAP_LIST_ITEM(IS_STATIC) \
@@ -267,6 +288,9 @@ enum index_sp_arg_attr
     MAP_LIST_ITEM(OCODE)
 
 #define SP_CODE_ATTR_NAME                   "name"
+#define SP_CODE_ATTR_COMPILE_ID             "compile_id"
+// the routine this code belongs to (reverse of _db_stored_procedure.code)
+#define SP_CODE_ATTR_SP_OF                  "sp_of"
 #define SP_CODE_ATTR_CREATED_TIME           "created_time"
 #define SP_CODE_ATTR_OWNER                  "owner"
 #define SP_CODE_ATTR_IS_STATIC              "is_static"
@@ -275,6 +299,7 @@ enum index_sp_arg_attr
 #define SP_CODE_ATTR_SCODE                  "scode"
 #define SP_CODE_ATTR_OTYPE                  "otype"
 #define SP_CODE_ATTR_OCODE                  "ocode"
+
 
 enum index_sp_code_attr
 {
@@ -402,7 +427,20 @@ enum METHOD_CALLBACK_RESPONSE
   METHOD_CALLBACK_CHANGE_RIGHTS = 200,
 
   // CLASS ACCESS
-  METHOD_CALLBACK_GET_CODE_ATTR = 201
+  METHOD_CALLBACK_GET_CODE_ATTR = 201,
+  METHOD_CALLBACK_GET_CODE_BY_NAME = 202,
+
+  // runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member
+  METHOD_CALLBACK_CHECK_EXECUTE_AUTH = 203
+};
+
+// result of looking up object code by (generated) class name (shared by the CAS handler that
+// answers METHOD_CALLBACK_GET_CODE_BY_NAME and the PL server that consumes the reply)
+enum SP_CODE_FETCH_STATUS
+{
+  SP_CODE_FETCH_NOT_FOUND = 0,	// no SP/package with the given class name (e.g. dropped)
+  SP_CODE_FETCH_UNCHANGED = 1,	// stored compile_id equals the requested one
+  SP_CODE_FETCH_CHANGED = 2	// object code returned along with its compile_id
 };
 
 enum METHOD_ARG_MODE
