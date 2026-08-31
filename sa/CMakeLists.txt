@@ -295,6 +295,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_manager.c
   ${QUERY_DIR}/query_opfunc.c
   ${QUERY_DIR}/query_reevaluation.cpp
+  ${QUERY_DIR}/query_transient_row_lock.cpp
   ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
@@ -320,6 +321,7 @@ set(QUERY_HEADERS
   ${QUERY_DIR}/query_analytic.hpp
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
+  ${QUERY_DIR}/query_transient_row_lock.hpp
   ${QUERY_DIR}/scan_json_table.hpp
   ${QUERY_DIR}/memoize.hpp
   )
