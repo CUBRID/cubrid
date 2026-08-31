@@ -751,7 +751,12 @@ $set 19 MSGCAT_UTIL_SET_SPACEDB
 41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
 42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
 43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
-50 -----------------------------------------------------------------------------------------------------------------\n
+50 [CLASS NAME: %1$s]\n
+51 NAME                             TYPE             USED_SIZE    ALLOC_SIZE   USED_USE%%\n
+52 NAME                             TYPE             USED_PAGE    ALLOC_PAGE   USED_USE%%\n
+53 %1$-32s %2$-12s %3$13s %4$13s %5$10s%%\n
+54 TOTAL                                         %1$13s %2$13s %3$10s%%\n
+59 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: 데이터베이스 디스크 공간 정보 출력\n\
 사용법: %1$s spacedb [옵션] <데이터베이스 이름>\n\
@@ -764,6 +769,8 @@ spacedb: 데이터베이스 디스크 공간 정보 출력\n\
                                출력 단위(page, mega, giga, tera, human readable) 설정; 기본값: H\n\
   -s, --summarize              볼륨 용도별 합계 결과 출력\n\
   -p, --purpose                각 볼륨의 목적별 (데이터/인덱스/임시) 사용량을 출력\n
+61 View 클래스는 spacedb 대상이 아닙니다.\n
+62 경고: 클래스 "%1$s"가 변경 중이므로 건너뛰었습니다.\n
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 추정되는 페이지 개수 = %1$d\n

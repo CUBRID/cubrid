@@ -754,7 +754,12 @@ $set 19 MSGCAT_UTIL_SET_SPACEDB
 41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
 42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
 43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
-50 -----------------------------------------------------------------------------------------------------------------\n
+50 [CLASS NAME: %1$s]\n
+51 NAME                             TYPE             USED_SIZE    ALLOC_SIZE   USED_USE%%\n
+52 NAME                             TYPE             USED_PAGE    ALLOC_PAGE   USED_USE%%\n
+53 %1$-32s %2$-12s %3$13s %4$13s %5$10s%%\n
+54 TOTAL                                         %1$13s %2$13s %3$10s%%\n
+59 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Display usage/free space of the database.\n\
 usage: %1$s spacedb [OPTION] database-name\n\
@@ -767,6 +772,8 @@ valid options:\n\
                                set the display unit (page, mega, giga, tera, human readable); default: H\n\
   -s, --summarize              display only a summary for each volume purpose\n\
   -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+61 View classes are not applicable to spacedb.\n
+62 WARNING: class "%1$s" is being modified, skipped.\n
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Estimated Number of Pages = %1$d\n

@@ -60,6 +60,7 @@
 #include "locator_cl.h"
 #include "dynamic_array.h"
 #include "util_func.h"
+#include "intl_support.h"
 #include "xasl.h"
 #include "log_volids.hpp"
 #include "tde.h"
@@ -921,6 +922,19 @@ error_exit:
 
 
 /*
+ * calc_used_pct () - compute used / alloc as a percentage, guarding division by zero.
+ *
+ * return     : (used / alloc) * 100, or 0.0 if alloc == 0
+ * used (in)  : used count (e.g. pages)
+ * alloc (in) : total allocated count
+ */
+static double
+calc_used_pct (INT64 used, INT64 alloc)
+{
+  return (alloc > 0) ? ((double) used / (double) alloc) * 100.0 : 0.0;
+}
+
+/*
  * spacedb() - spacedb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */
@@ -931,9 +945,18 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
+  char *only_table[1];
+  /* Worst-case sized to fit any UTF-8 case-folded form of a valid identifier.
+   * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER bounds the max byte expansion of
+   * intl_identifier_lower(), so a 254-byte input (the maximum allowed by the
+   * SM_MAX_IDENTIFIER_LENGTH strlen check below) cannot overflow this buffer. */
+  char lower_table_name[INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER * SM_MAX_IDENTIFIER_LENGTH + 1];
   const char *database_name;
+  char **table_array = NULL;
   const char *output_file = NULL;
+  const char *table_name = NULL;
   int i;
+  int table_array_length = 0;
   const char *size_unit;
   T_SPACEDB_SIZE_UNIT size_unit_type;
 
@@ -946,6 +969,9 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   SPACEDB_ONEVOL **volsp = NULL;
   SPACEDB_FILES files[SPACEDB_FILE_COUNT];
   SPACEDB_FILES *filesp = NULL;
+  SPACEDB_TABLE_SIZES_HEADER *table_sizes = NULL;
+  int actual_table_count = 0;
+  int spacedb_error = NO_ERROR;
 
   char size_str_1[64];
   char size_str_2[64];
@@ -973,6 +999,13 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   size_unit = utility_get_option_string_value (arg_map, SPACE_SIZE_UNIT_S, 0);
   summarize = utility_get_option_bool_value (arg_map, SPACE_SUMMARIZE_S);
   purpose = utility_get_option_bool_value (arg_map, SPACE_PURPOSE_S);
+  table_name = utility_get_option_string_value (arg_map, SPACE_CLASS_NAME_S, 0);
+  if (table_name != NULL && strlen (table_name) >= SM_MAX_IDENTIFIER_LENGTH)
+    {
+      PRINT_AND_LOG_ERR_MSG ("The table name is too long. "
+			     "It must be less than %d characters.\n", SM_MAX_IDENTIFIER_LENGTH);
+      goto error_exit;
+    }
 
   size_unit_type = SPACEDB_SIZE_UNIT_HUMAN_READABLE;
 
@@ -1052,8 +1085,17 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       /* we need detailed space info for file usage. set filesp to non-NULL value */
       filesp = files;
     }
+  if (table_name != NULL)
+    {
+      intl_identifier_lower (table_name, lower_table_name);
+      only_table[0] = lower_table_name;
+      table_array = only_table;
+      table_array_length = 1;
+    }
 
-  if (netcl_spacedb (all, volsp, filesp) != NO_ERROR)
+  spacedb_error =
+    netcl_spacedb (all, volsp, filesp, &table_sizes, &actual_table_count, table_array, table_array_length);
+  if (spacedb_error != NO_ERROR)
     {
       ASSERT_ERROR ();
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (ER_WARNING_SEVERITY));
@@ -1175,7 +1217,111 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	       boot_get_lob_path ());
     }
 
+  /* Client-side mirror of FILE_TYPE values needed by spacedb output.
+   * Server packs FILE_TYPE enum values (from file_manager.h, server-only)
+   * into the ftype field. The client only needs these three to render the
+   * table-type column and detect the busy sentinel. Must stay in sync with
+   * src/storage/file_manager.h's FILE_TYPE enum. */
+  enum
+  {
+    SPACEDB_FILE_HEAP = 1,	/* FILE_HEAP */
+    SPACEDB_FILE_BTREE = 4,	/* FILE_BTREE */
+    SPACEDB_FILE_UNKNOWN = 13	/* FILE_UNKNOWN_TYPE — busy-class sentinel */
+  };
+
+  /* print table_size */
+  if (table_array_length > 0)
+    {
+      for (int table_num = 0; table_num < actual_table_count; table_num++)
+	{
+	  if (table_sizes[table_num].file_count == 0)
+	    {
+	      fprintf (outfp, "%s\n",
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VIEW_SKIPPED));
+	      continue;
+	    }
+	  /* Busy sentinel: file_count == 1 and header[0].ftype ==
+	   * SPACEDB_FILE_UNKNOWN — server skipped this class because DDL
+	   * was holding SCH_M_LOCK. */
+	  if (table_sizes[table_num].file_count == 1 && table_sizes[table_num].header[0].ftype == SPACEDB_FILE_UNKNOWN)
+	    {
+	      fprintf (outfp,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_TABLE_BUSY),
+		       table_sizes[table_num].header[0].name);
+	      continue;
+	    }
+
+	  const char *class_name = table_sizes[table_num].header[0].name;
+	  INT64 total_used_npage = 0;
+	  INT64 total_alloc_npage = 0;
+	  char total_used_pct_str[32];
+
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB,
+				   SPACEDB_MSG_FILES_TABLE_SIZE_CLASS_NAME), class_name);
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_END_UNDERLINE));
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB,
+					  (size_unit_type == SPACEDB_SIZE_UNIT_PAGE
+					   ? SPACEDB_MSG_FILES_TABLE_SIZE_PAGE : SPACEDB_MSG_FILES_TABLE_SIZE_SIZE)));
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_END_UNDERLINE));
+
+	  for (int file_num = 0; file_num < table_sizes[table_num].file_count; file_num++)
+	    {
+	      const SPACEDB_TABLE_SIZES *ts = &table_sizes[table_num].header[file_num];
+	      char used_pct_str[32];
+	      int used_npage;
+	      int alloc_npage;
+	      const char *ftype_str;
+
+	      used_npage = ts->data_used_page + ts->ovf_used_page;
+	      alloc_npage = ts->data_alloced_page + ts->ovf_alloced_page;
+	      ftype_str = (ts->ftype == SPACEDB_FILE_HEAP) ? "HEAP"
+		: (ts->ftype == SPACEDB_FILE_BTREE) ? "BTREE" : "UNKNOWN";
+	      snprintf (used_pct_str, sizeof (used_pct_str), "%.1f", calc_used_pct (used_npage, alloc_npage));
+
+	      fprintf (outfp,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB,
+				       SPACEDB_MSG_FILES_TABLE_SIZE_FORMAT), ts->name, ftype_str,
+		       SPACEDB_TO_SIZE_ARG (1, used_npage), SPACEDB_TO_SIZE_ARG (2, alloc_npage), used_pct_str);
+
+	      total_used_npage += used_npage;
+	      total_alloc_npage += alloc_npage;
+	    }
+
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_END_UNDERLINE));
+	  snprintf (total_used_pct_str, sizeof (total_used_pct_str), "%.1f",
+		    calc_used_pct (total_used_npage, total_alloc_npage));
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_TABLE_SIZE_TOTAL),
+		   SPACEDB_TO_SIZE_ARG (1, total_used_npage),
+		   SPACEDB_TO_SIZE_ARG (2, total_alloc_npage), total_used_pct_str);
+	  fprintf (outfp, "\n");
+	}
+    }
+
   db_shutdown ();
+  if (table_sizes != NULL)
+    {
+      for (i = 0; i < actual_table_count; i++)
+	{
+	  if (table_sizes[i].header != NULL)
+	    {
+	      free_and_init (table_sizes[i].header);
+	    }
+	}
+      free_and_init (table_sizes);
+    }
+  if (table_array != NULL && table_array != only_table)
+    {
+      for (i = 0; i < table_array_length; i++)
+	{
+	  if (table_array[i] != NULL)
+	    {
+	      free_and_init (table_array[i]);
+	    }
+	}
+      free_and_init (table_array);
+    }
   if (outfp != stdout)
     {
       fclose (outfp);
@@ -1194,6 +1340,28 @@ print_space_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
 error_exit:
+  if (table_sizes != NULL)
+    {
+      for (i = 0; i < actual_table_count; i++)
+	{
+	  if (table_sizes[i].header != NULL)
+	    {
+	      free_and_init (table_sizes[i].header);
+	    }
+	}
+      free_and_init (table_sizes);
+    }
+  if (table_array != NULL && table_array != only_table)
+    {
+      for (i = 0; i < table_array_length; i++)
+	{
+	  if (table_array[i] != NULL)
+	    {
+	      free_and_init (table_array[i]);
+	    }
+	}
+      free_and_init (table_array);
+    }
   if (outfp != stdout && outfp != NULL)
     {
       fclose (outfp);

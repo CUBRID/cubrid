@@ -596,6 +596,24 @@ struct spacedb_files
   DKNPAGES npage_reserved;
 };
 
+typedef struct spacedb_table_sizes SPACEDB_TABLE_SIZES;
+struct spacedb_table_sizes
+{
+  char name[DB_MAX_IDENTIFIER_LENGTH];
+  int ftype;			/* FILE_TYPE */
+  int data_used_page;
+  int data_alloced_page;
+  int ovf_used_page;
+  int ovf_alloced_page;
+};
+
+typedef struct spacedb_table_sizes_header SPACEDB_TABLE_SIZES_HEADER;
+struct spacedb_table_sizes_header
+{
+  int file_count;
+  SPACEDB_TABLE_SIZES *header;
+};
+
 /************************************************************************/
 /* client & catalog common                                              */
 /************************************************************************/

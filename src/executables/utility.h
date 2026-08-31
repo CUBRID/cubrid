@@ -281,8 +281,16 @@ typedef enum
   SPACEDB_MSG_FILES_HEADER_SIZE = 42,
   SPACEDB_MSG_FILES_FORMAT = 43,
 
-  SPACEDB_MSG_END_UNDERLINE = 50,
-  SPACEDB_MSG_USAGE = 60
+  SPACEDB_MSG_FILES_TABLE_SIZE_CLASS_NAME = 50,
+  SPACEDB_MSG_FILES_TABLE_SIZE_SIZE = 51,
+  SPACEDB_MSG_FILES_TABLE_SIZE_PAGE = 52,
+  SPACEDB_MSG_FILES_TABLE_SIZE_FORMAT = 53,
+  SPACEDB_MSG_FILES_TABLE_SIZE_TOTAL = 54,
+
+  SPACEDB_MSG_END_UNDERLINE = 59,
+  SPACEDB_MSG_USAGE = 60,
+  SPACEDB_MSG_VIEW_SKIPPED = 61,
+  SPACEDB_MSG_TABLE_BUSY = 62
 } MSGCAT_SPACEDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_ESTIMATEDB_DATA */
@@ -1210,6 +1218,8 @@ typedef struct _ha_config
 #define SPACE_SUMMARIZE_L                       "summarize"
 #define SPACE_PURPOSE_S                         'p'
 #define SPACE_PURPOSE_L                         "purpose"
+#define SPACE_CLASS_NAME_S                      'n'
+#define SPACE_CLASS_NAME_L                      "class-name"
 
 /* lockdb option list */
 #define LOCK_OUTPUT_FILE_S                      'o'

@@ -55,11 +55,14 @@
 #include "xserver_interface.h"
 #include "oid.h"
 #include "heap_file.h"
+#include "object_representation_sr.h"
 #include "bit.h"
 #include "util_func.h"
 #include "vacuum.h"
 #include "btree_load.h"
 #include "critical_section.h"
+#include "locator_sr.h"
+#include "overflow_file.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
@@ -685,6 +688,18 @@ static int file_compare_vfids (const void *first, const void *second);
 static int file_compare_track_items (const void *first, const void *second);
 
 static void file_print_name_of_class (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p);
+
+static int file_spacedb_get_file_page_count (THREAD_ENTRY * thread_p, const VFID * vfid, int *used_page_p,
+					     int *alloced_page_p);
+static int file_spacedb_get_btree_ovf_vfid (THREAD_ENTRY * thread_p, const BTID * btid, VFID * ovf_vfid_p);
+static int file_spacedb_get_heap_ovf_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid_p);
+static bool file_spacedb_is_view_class (THREAD_ENTRY * thread_p, const OID * class_oid);
+static int file_spacedb_set_busy_sentinel (SPACEDB_TABLE_SIZES_HEADER * entry, const char *class_name);
+static int file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
+					const char *class_name, SPACEDB_TABLE_SIZES_HEADER * entry);
+static int file_spacedb_fill_tables_from_oids (THREAD_ENTRY * thread_p, const OID * class_oids, int oid_count,
+					       SPACEDB_TABLE_SIZES_HEADER ** table_sizes_p, int *actual_count_p);
+static void file_spacedb_free_table_sizes (SPACEDB_TABLE_SIZES_HEADER * table_sizes, int count);
 
 /************************************************************************/
 /* File manipulation section                                            */
@@ -7899,40 +7914,621 @@ file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int i
 /*
  * file_spacedb () - get space usage information
  *
- * return        : error code
- * thread_p (in) : thread entry
- * spacedb (out) : output space usage information
+ * return                  : error code
+ * thread_p (in)           : thread entry
+ * spacedb (out)           : if not NULL, output detailed file space usage information
+ * table_array (in)        : table-size request list. "*" collects all user tables; a single trailing-wildcard
+ *                           pattern collects matched tables; explicit table names are supported in debug builds.
+ * table_array_length (in) : number of entries in table_array
+ * table_sizes_p (out)     : table-size information for matched tables
+ * actual_count_p (out)    : number of entries filled in table_sizes_p
  */
 int
-file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
+file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_array, int table_array_length,
+	      SPACEDB_TABLE_SIZES_HEADER ** table_sizes_p, int *actual_count_p)
 {
   int i;
   int error_code = NO_ERROR;
 
-  /* init */
-  memset (spacedb, 0, sizeof (SPACEDB_FILES) * SPACEDB_FILE_COUNT);
+  *table_sizes_p = NULL;
+  *actual_count_p = 0;
 
-  /* temporary files stats are already cached. */
-  spacedb[SPACEDB_TEMP_FILE] = file_Tempcache.spacedb_temp;
-
-  /* use file tracker to get info on permanent purpose files */
-  error_code = file_tracker_spacedb (thread_p, spacedb);
-  if (error_code != NO_ERROR)
+  if (spacedb != NULL)
     {
-      ASSERT_ERROR ();
+      /* init */
+      memset (spacedb, 0, sizeof (SPACEDB_FILES) * SPACEDB_FILE_COUNT);
+
+      /* temporary files stats are already cached. */
+      spacedb[SPACEDB_TEMP_FILE] = file_Tempcache.spacedb_temp;
+
+      /* use file tracker to get info on permanent purpose files */
+      error_code = file_tracker_spacedb (thread_p, spacedb);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      /* compute total */
+      memset (&spacedb[SPACEDB_TOTAL_FILE], 0, sizeof (spacedb[SPACEDB_TOTAL_FILE]));
+      for (i = 0; i < SPACEDB_TOTAL_FILE; i++)
+	{
+	  spacedb[SPACEDB_TOTAL_FILE].nfile += spacedb[i].nfile;
+	  spacedb[SPACEDB_TOTAL_FILE].npage_ftab += spacedb[i].npage_ftab;
+	  spacedb[SPACEDB_TOTAL_FILE].npage_user += spacedb[i].npage_user;
+	  spacedb[SPACEDB_TOTAL_FILE].npage_reserved += spacedb[i].npage_reserved;
+	}
+    }
+
+  if (table_array_length == 1 && strcmp (table_array[0], "*") == 0)	/* collect all */
+    {
+      OID *user_class_oids = NULL;
+
+      error_code = locator_get_user_class_oids (thread_p, &user_class_oids, actual_count_p);
+      if (error_code != NO_ERROR || *actual_count_p == 0)
+	{
+	  return error_code;
+	}
+
+      error_code = file_spacedb_fill_tables_from_oids (thread_p, user_class_oids, *actual_count_p,
+						       table_sizes_p, actual_count_p);
+      free_and_init (user_class_oids);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  else if (table_array_length == 1 && table_array[0][0] != '\0'	/* guard empty string */
+	   && table_array[0][strlen (table_array[0]) - 1] == '*')	/* trailing-wildcard pattern */
+    {
+      OID *matched_oids = NULL;
+
+      error_code = locator_find_class_oids_by_pattern (thread_p, table_array[0], &matched_oids, actual_count_p);
+      if (error_code != NO_ERROR || *actual_count_p == 0)
+	{
+	  return error_code;
+	}
+
+      error_code = file_spacedb_fill_tables_from_oids (thread_p, matched_oids, *actual_count_p,
+						       table_sizes_p, actual_count_p);
+      free_and_init (matched_oids);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  else if (table_array_length > 0)
+    {
+      *table_sizes_p = (SPACEDB_TABLE_SIZES_HEADER *) malloc (table_array_length * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+      if (*table_sizes_p == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) table_array_length * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memset (*table_sizes_p, 0, table_array_length * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+
+      *actual_count_p = 0;
+      for (int table_num = 0; table_num < table_array_length; table_num++)
+	{
+	  LC_FIND_CLASSNAME find_result;
+	  OID class_oid;
+	  int old_wait;
+
+	  OID_SET_NULL (&class_oid);
+	  /* Use LK_ZERO_WAIT so xlocator's internal LK_UNCOND_LOCK doesn't
+	   * block on pending DDL. On conflict xlocator returns
+	   * LC_CLASSNAME_ERROR and we write a busy sentinel from the input
+	   * name. */
+	  old_wait = xlogtb_reset_wait_msecs (thread_p, LK_ZERO_WAIT);
+	  find_result = xlocator_find_class_oid (thread_p, table_array[table_num], &class_oid, IS_LOCK);
+	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait);
+
+	  if (find_result == LC_CLASSNAME_ERROR)
+	    {
+	      /* xlocator_find_class_oid returns LC_CLASSNAME_ERROR both for a
+	       * zero-wait lock conflict (pending DDL) and for genuine server
+	       * errors (csect failure, interrupt, lock-manager errors).  Only the
+	       * former is benign here; disambiguate via er_errid() so real errors
+	       * are propagated instead of being hidden as a "busy" skip. */
+	      int er = er_errid ();
+	      bool is_lock_conflict = (er == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG || er == ER_LK_OBJECT_TIMEOUT_CLASS_MSG
+				       || er == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG
+				       || er == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG
+				       || er == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG
+				       || er == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG);
+
+	      if (!is_lock_conflict)
+		{
+		  /* genuine server error — do not mask it */
+		  error_code = (er != NO_ERROR) ? er : ER_FAILED;
+		  *actual_count_p = 0;
+		  file_spacedb_free_table_sizes (*table_sizes_p, table_num);
+		  *table_sizes_p = NULL;
+		  return error_code;
+		}
+
+	      /* confirmed zero-wait lock conflict with pending DDL — treat as busy. */
+	      er_clear ();
+	      error_code = file_spacedb_set_busy_sentinel (&(*table_sizes_p)[table_num], table_array[table_num]);
+	      if (error_code != NO_ERROR)
+		{
+		  *actual_count_p = 0;
+		  file_spacedb_free_table_sizes (*table_sizes_p, table_num);
+		  *table_sizes_p = NULL;
+		  return error_code;
+		}
+	      *actual_count_p = table_num + 1;
+	      continue;
+	    }
+
+	  if (OID_ISNULL (&class_oid))
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_array[table_num]);
+	      *actual_count_p = 0;
+	      file_spacedb_free_table_sizes (*table_sizes_p, table_num);
+	      *table_sizes_p = NULL;
+	      error_code = ER_LC_UNKNOWN_CLASSNAME;
+	      return error_code;
+	    }
+
+	  error_code =
+	    file_spacedb_fill_one_table (thread_p, &class_oid, table_array[table_num], &(*table_sizes_p)[table_num]);
+	  if (error_code != NO_ERROR)
+	    {
+	      *actual_count_p = 0;
+	      file_spacedb_free_table_sizes (*table_sizes_p, table_num + 1);
+	      *table_sizes_p = NULL;
+	      return error_code;
+	    }
+
+	  *actual_count_p = table_num + 1;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * file_spacedb_free_table_sizes () - free nested spacedb table size entries
+ *
+ * return         : void
+ * table_sizes(in): array to free
+ * count (in)     : number of valid entries
+ */
+static void
+file_spacedb_free_table_sizes (SPACEDB_TABLE_SIZES_HEADER * table_sizes, int count)
+{
+  if (table_sizes == NULL)
+    {
+      return;
+    }
+
+  for (int i = 0; i < count; i++)
+    {
+      if (table_sizes[i].header != NULL)
+	{
+	  free_and_init (table_sizes[i].header);
+	}
+    }
+
+  free_and_init (table_sizes);
+}
+
+/*
+  * file_spacedb_get_file_page_count () - Get used and allocated page counts from a file header.
+  *
+  * return          : error code
+  * thread_p (in)   : thread entry
+  * vfid (in)       : file identifier
+  * used_page_p(out): used page count
+  * alloced_page_p(out): allocated page count
+  */
+static int
+file_spacedb_get_file_page_count (THREAD_ENTRY * thread_p, const VFID * vfid, int *used_page_p, int *alloced_page_p)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  int error_code = NO_ERROR;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
 
-  /* compute total */
-  memset (&spacedb[SPACEDB_TOTAL_FILE], 0, sizeof (spacedb[SPACEDB_TOTAL_FILE]));
-  for (i = 0; i < SPACEDB_TOTAL_FILE; i++)
+  fhead = (FILE_HEADER *) page_fhead;
+  *used_page_p = fhead->n_page_user + fhead->n_page_ftab;
+  *alloced_page_p = fhead->n_page_total;
+
+  pgbuf_unfix_and_init (thread_p, page_fhead);
+  return NO_ERROR;
+}
+
+/*
+  * file_spacedb_get_btree_ovf_vfid () - Get overflow file identifier from a btree root page.
+  *
+  * return           : error code
+  * thread_p (in)    : thread entry
+  * btid (in)        : btree identifier
+  * ovf_vfid_p (out) : overflow file identifier
+  */
+static int
+file_spacedb_get_btree_ovf_vfid (THREAD_ENTRY * thread_p, const BTID * btid, VFID * ovf_vfid_p)
+{
+  VPID root_vpid;
+  PAGE_PTR root_page = NULL;
+  BTREE_ROOT_HEADER *root_header = NULL;
+  int error_code = NO_ERROR;
+
+  VFID_SET_NULL (ovf_vfid_p);
+
+  root_vpid.volid = btid->vfid.volid;
+  root_vpid.pageid = btid->root_pageid;
+
+  root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (root_page == NULL)
     {
-      spacedb[SPACEDB_TOTAL_FILE].nfile += spacedb[i].nfile;
-      spacedb[SPACEDB_TOTAL_FILE].npage_ftab += spacedb[i].npage_ftab;
-      spacedb[SPACEDB_TOTAL_FILE].npage_user += spacedb[i].npage_user;
-      spacedb[SPACEDB_TOTAL_FILE].npage_reserved += spacedb[i].npage_reserved;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, root_page, PAGE_BTREE);
+#endif /* !NDEBUG */
+
+  root_header = btree_get_root_header (thread_p, root_page);
+  if (root_header == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      pgbuf_unfix_and_init (thread_p, root_page);
+      return error_code;
+    }
+
+  VFID_COPY (ovf_vfid_p, &root_header->ovfid);
+
+  pgbuf_unfix_and_init (thread_p, root_page);
+  return NO_ERROR;
+}
+
+/*
+ * file_spacedb_is_view_class () - Returns true if class_oid refers to a class
+ *                                 without a heap file (i.e. a view).
+ *
+ * return        : true iff the class has no heap (view)
+ * thread_p (in) : thread entry
+ * class_oid (in): class OID to test
+ *
+ * Note: Reads the class record directly via heap_get_class_record to avoid
+ *       polluting the HFID cache (heap_hfid_cache_get asserts non-null HFID,
+ *       which views cannot satisfy).
+ *
+ *       HFID-null is used as the view discriminator.
+ *
+ *       Read failure is not propagated: the caller (file_spacedb) supplies
+ *       OIDs just resolved via xlocator_find_class_oid, so the record read
+ *       is expected to succeed. Any transient I/O error will be re-hit and
+ *       reported by the downstream file_spacedb_fill_one_table() path.
+ */
+static bool
+file_spacedb_is_view_class (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  HFID hfid;
+  bool is_view = false;
+
+  if (heap_scancache_quick_start_root_hfid (thread_p, &scan_cache) != NO_ERROR)
+    {
+      return false;
+    }
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
+    {
+      or_class_hfid (&recdes, &hfid);
+      if (HFID_IS_NULL (&hfid))
+	{
+	  is_view = true;
+	}
+    }
+  /* Read failure is intentionally not propagated — caller-supplied OIDs are
+   * trusted (just resolved via xlocator_find_class_oid); any transient I/O
+   * error is re-encountered and reported downstream by
+   * file_spacedb_fill_one_table(). See function header for details. */
+  heap_scancache_end (thread_p, &scan_cache);
+  return is_view;
+}
+
+/*
+ * file_spacedb_set_busy_sentinel () - Populate a header slot with a busy
+ *                                     sentinel that the client renders as
+ *                                     a "class is being modified" notice.
+ *
+ * return        : NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
+ * entry  (out)  : header slot to populate
+ * class_name(in): name to display in the client notice
+ *
+ * Note: Sentinel encoding — file_count == 1, header[0].name = class_name,
+ *       header[0].ftype = FILE_UNKNOWN_TYPE. Piggybacks on existing
+ *       pack/unpack of header[] (no protocol change).
+ */
+static int
+file_spacedb_set_busy_sentinel (SPACEDB_TABLE_SIZES_HEADER * entry, const char *class_name)
+{
+  entry->header = (SPACEDB_TABLE_SIZES *) malloc (sizeof (SPACEDB_TABLE_SIZES));
+  if (entry->header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SPACEDB_TABLE_SIZES));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (entry->header, 0, sizeof (SPACEDB_TABLE_SIZES));
+  snprintf (entry->header[0].name, DB_MAX_IDENTIFIER_LENGTH, "%s", class_name);
+  entry->header[0].ftype = FILE_UNKNOWN_TYPE;
+  entry->file_count = 1;
+  return NO_ERROR;
+}
+
+/*
+ * file_spacedb_get_heap_ovf_vfid () - Get overflow VFID for a heap file,
+ *                                     distinguishing "no overflow" from I/O error.
+ *
+ * return           : error code (NO_ERROR if no overflow file exists)
+ * thread_p (in)    : thread entry
+ * hfid (in)        : heap file identifier
+ * ovf_vfid_p (out) : overflow file identifier (VFID_ISNULL if absent)
+ *
+ * Note: heap_ovf_find_vfid() returns NULL for both "no overflow file" and
+ *       I/O errors. We disambiguate via er_errid().
+ */
+static int
+file_spacedb_get_heap_ovf_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid_p)
+{
+  VFID_SET_NULL (ovf_vfid_p);
+
+  if (heap_ovf_find_vfid (thread_p, hfid, ovf_vfid_p, false, PGBUF_UNCONDITIONAL_LATCH) == NULL)
+    {
+      int error_code = er_errid ();
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      VFID_SET_NULL (ovf_vfid_p);
     }
   return NO_ERROR;
+}
+
+/*
+  * file_spacedb_fill_one_table () - Fill space usage info for a single table.
+  *
+  * return        : error code
+  * thread_p (in) : thread entry
+  * class_oid (in): class OID
+  * class_name(in): class name (used for output label)
+  * entry (out)   : SPACEDB_TABLE_SIZES_HEADER slot to fill
+  */
+static int
+file_spacedb_fill_one_table (THREAD_ENTRY * thread_p, const OID * class_oid,
+			     const char *class_name, SPACEDB_TABLE_SIZES_HEADER * entry)
+{
+  OR_CLASSREP *class_rep = NULL;
+  HFID hfid = HFID_INITIALIZER;
+  size_t alloc_size = 0;
+  int idx_incache = -1;
+  int error_code = NO_ERROR;
+
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+
+  entry->file_count = 0;
+  entry->header = NULL;
+
+  /* Conditional class lock. If DDL (DROP/RENAME/ALTER) holds SCH_M_LOCK,
+   * skip via a busy sentinel rather than blocking. spacedb is best-effort. */
+  if (lock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK, LK_COND_LOCK) != LK_GRANTED)
+    {
+      return file_spacedb_set_busy_sentinel (entry, class_name);
+    }
+
+  /* The caller has already resolved class_oid from the classname table or via
+   * xlocator_find_class_oid(), so the class is guaranteed to exist. A NULL
+   * HFID here therefore implies the class is a view (VCLASS) — views have a
+   * catalog entry but no heap file. Detect view from the class record directly
+   * to avoid invoking heap_get_class_info, which would assert in
+   * heap_hfid_cache_get for null-HFID classes. Leave entry zeroed
+   * (file_count == 0) as a sentinel; the client uses this to emit a
+   * view-skipped notice. */
+  if (file_spacedb_is_view_class (thread_p, class_oid))
+    {
+      goto exit;
+    }
+
+  error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+  if (HFID_IS_NULL (&hfid))
+    {
+      /* VCLASS (view): no hfid, but error_code==NO_ERROR */
+      goto exit;
+    }
+
+  class_rep = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_incache);
+  if (class_rep == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit;
+    }
+
+  entry->file_count = class_rep->n_indexes + 1;
+  alloc_size = (size_t) entry->file_count * sizeof (*entry->header);
+  entry->header = (SPACEDB_TABLE_SIZES *) malloc (alloc_size);
+  if (entry->header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+  memset (entry->header, 0, alloc_size);
+
+  {
+    SPACEDB_TABLE_SIZES *table_size = &entry->header[0];
+    VFID ovf_vfid = VFID_INITIALIZER;
+
+    snprintf (table_size->name, DB_MAX_IDENTIFIER_LENGTH, "%s", class_name);
+    table_size->ftype = FILE_HEAP;
+
+    error_code =
+      file_spacedb_get_file_page_count (thread_p, &hfid.vfid, &table_size->data_used_page,
+					&table_size->data_alloced_page);
+    if (error_code != NO_ERROR)
+      {
+	goto exit;
+      }
+
+    error_code = file_spacedb_get_heap_ovf_vfid (thread_p, &hfid, &ovf_vfid);
+    if (error_code != NO_ERROR)
+      {
+	goto exit;
+      }
+    if (!VFID_ISNULL (&ovf_vfid))
+      {
+	error_code =
+	  file_spacedb_get_file_page_count (thread_p, &ovf_vfid, &table_size->ovf_used_page,
+					    &table_size->ovf_alloced_page);
+	if (error_code != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+      }
+  }
+
+  for (int index_num = 0; index_num < class_rep->n_indexes; index_num++)
+    {
+      OR_INDEX *index_p = &class_rep->indexes[index_num];
+      SPACEDB_TABLE_SIZES *table_size = &entry->header[index_num + 1];
+      VFID ovf_vfid = VFID_INITIALIZER;
+
+      snprintf (table_size->name, DB_MAX_IDENTIFIER_LENGTH, "%s", index_p->btname);
+      table_size->ftype = FILE_BTREE;
+
+      error_code =
+	file_spacedb_get_file_page_count (thread_p, &index_p->btid.vfid, &table_size->data_used_page,
+					  &table_size->data_alloced_page);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      error_code = file_spacedb_get_btree_ovf_vfid (thread_p, &index_p->btid, &ovf_vfid);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      if (!VFID_ISNULL (&ovf_vfid))
+	{
+	  error_code =
+	    file_spacedb_get_file_page_count (thread_p, &ovf_vfid, &table_size->ovf_used_page,
+					      &table_size->ovf_alloced_page);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+    }
+
+exit:
+  if (class_rep != NULL)
+    {
+      heap_classrepr_free_and_init (class_rep, &idx_incache);
+    }
+
+  if (error_code != NO_ERROR && entry->header != NULL)
+    {
+      free_and_init (entry->header);
+      entry->file_count = 0;
+    }
+
+  /* Decrement the IS_LOCK reference count acquired at function entry.
+   * force=true bypasses the isolation-level filter that would otherwise
+   * silently skip IS_LOCK release; internally release_flag=false keeps
+   * any prior holder's lock intact via reference counting (count > 0
+   * preserves the entry per lock_manager.c:3983-3996). */
+  lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK, true);
+
+  return error_code;
+}
+
+/*
+ * file_spacedb_fill_tables_from_oids () - Allocate and populate a table-sizes
+ *                                         array from a list of class OIDs.
+ *
+ * return                : error code
+ * thread_p (in)         : thread entry
+ * class_oids (in)       : array of class OIDs (oid_count > 0)
+ * oid_count (in)        : number of OIDs in class_oids
+ * table_sizes_p (out)   : allocated table-sizes array; NULL on error
+ * actual_count_p (out)  : number of populated entries (== oid_count on success)
+ *
+ * Note: Caller retains ownership of class_oids.
+ */
+static int
+file_spacedb_fill_tables_from_oids (THREAD_ENTRY * thread_p, const OID * class_oids, int oid_count,
+				    SPACEDB_TABLE_SIZES_HEADER ** table_sizes_p, int *actual_count_p)
+{
+  int error_code = NO_ERROR;
+
+  assert (oid_count > 0);
+
+  *table_sizes_p = NULL;
+  *actual_count_p = 0;
+
+  *table_sizes_p = (SPACEDB_TABLE_SIZES_HEADER *) malloc (oid_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+  if (*table_sizes_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) oid_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (*table_sizes_p, 0, oid_count * sizeof (SPACEDB_TABLE_SIZES_HEADER));
+
+  int valid = 0;
+  for (int i = 0; i < oid_count; i++)
+    {
+      char *class_name = NULL;
+
+      error_code = heap_get_class_name (thread_p, &class_oids[i], &class_name);
+      if (error_code != NO_ERROR || class_name == NULL)
+	{
+	  /* Class dropped between OID collection and fill — silent skip
+	   * (rare DDL race). The slot is left zeroed and compacted out. */
+	  er_clear ();
+	  if (class_name != NULL)
+	    {
+	      free_and_init (class_name);
+	    }
+	  continue;
+	}
+
+      error_code = file_spacedb_fill_one_table (thread_p, &class_oids[i], class_name, &(*table_sizes_p)[valid]);
+      free_and_init (class_name);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      valid++;
+    }
+
+  *actual_count_p = valid;
+  return NO_ERROR;
+
+error:
+  file_spacedb_free_table_sizes (*table_sizes_p, oid_count);
+  *table_sizes_p = NULL;
+  return error_code;
 }
 
 /************************************************************************/

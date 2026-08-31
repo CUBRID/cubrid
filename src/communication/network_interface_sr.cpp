@@ -10736,16 +10736,18 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
   SPACEDB_ALL all[SPACEDB_ALL_COUNT];
   SPACEDB_ONEVOL *vols = NULL;
   SPACEDB_FILES files[SPACEDB_FILE_COUNT];
-
-  int get_vols = 0;
-  int get_files = 0;
   SPACEDB_ONEVOL **volsp = NULL;
   SPACEDB_FILES *filesp = NULL;
-
+  SPACEDB_TABLE_SIZES_HEADER *table_sizes = NULL;
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *data_reply = NULL;
+  int get_vols = 0;
+  int get_files = 0;
   int data_reply_length = 0;
+  int table_array_length = 0;
+  int actual_table_count = 0;
+  char **table_array = NULL;
 
   char *ptr;
 
@@ -10763,34 +10765,80 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
     {
       filesp = files;
     }
-
-  /* get info from disk manager */
-  error_code = disk_spacedb (thread_p, all, volsp);
-  if (error_code != NO_ERROR)
+  ptr = or_unpack_string_array (ptr, &table_array, &table_array_length);
+  if (table_array_length > 0)
     {
-      ASSERT_ERROR ();
-    }
-  else if (get_files)
-    {
-      /* get info from file manager */
-      error_code = file_spacedb (thread_p, filesp);
-      if (error_code != NO_ERROR)
+      if (table_array == NULL)
 	{
-	  ASSERT_ERROR ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (char *) * table_array_length);
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      else
+	{
+	  for (int i = 0; i < table_array_length; i++)
+	    {
+	      if (table_array[i] == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+			  "spacedb: NULL table name in request");
+		  error_code = ER_GENERIC_ERROR;
+		  break;
+		}
+	      if (strlen (table_array[i]) >= SM_MAX_IDENTIFIER_LENGTH)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+			  "spacedb: table name exceeds maximum identifier length");
+		  error_code = ER_GENERIC_ERROR;
+		  break;
+		}
+	    }
 	}
     }
 
   if (error_code == NO_ERROR)
     {
-      /* success. pack space info */
-      data_reply_length = or_packed_spacedb_size (all, vols, filesp);
+      /* get info from disk manager */
+      error_code = disk_spacedb (thread_p, all, volsp);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+      else if (get_files || table_array_length > 0)
+	{
+	  /* get info from file manager */
+	  error_code = file_spacedb (thread_p, filesp, table_array, table_array_length,
+				     &table_sizes, &actual_table_count);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	    }
+	}
+    }
+
+  if (error_code == NO_ERROR)
+    {
+      data_reply_length += or_packed_spacedb_size (all, vols, filesp);
+      data_reply_length += OR_INT_SIZE;	/* actual_table_count */
+      data_reply_length += or_packed_spacedb_table_sizes_size (table_sizes, actual_table_count);
       data_reply = (char *) malloc (data_reply_length);
-      ptr = or_pack_spacedb (data_reply, all, vols, filesp);
-      assert (ptr - data_reply == data_reply_length);
+      if (data_reply == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) data_reply_length);
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  data_reply_length = 0;
+	  (void) return_error_to_client (thread_p, rid);
+	}
+      else
+	{
+	  ptr = or_pack_spacedb (data_reply, all, vols, filesp);
+	  ptr = or_pack_int (ptr, actual_table_count);
+	  ptr = or_pack_spacedb_table_sizes (ptr, table_sizes, actual_table_count);
+	  assert (ptr - data_reply == data_reply_length);
+	}
     }
   else
     {
-      /* error */
       (void) return_error_to_client (thread_p, rid);
     }
 
@@ -10810,6 +10858,23 @@ netsr_spacedb (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
   if (vols != NULL)
     {
       free_and_init (vols);
+    }
+
+  if (table_array != NULL)
+    {
+      for (int i = 0; i < table_array_length; i++)
+	{
+	  db_private_free_and_init (NULL, table_array[i]);
+	}
+      db_private_free_and_init (NULL, table_array);
+    }
+  if (table_sizes != NULL)
+    {
+      for (int i = 0; i < actual_table_count; i++)
+	{
+	  free_and_init (table_sizes[i].header);
+	}
+      free_and_init (table_sizes);
     }
 }
 
