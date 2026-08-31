@@ -46,10 +46,15 @@ namespace cubpl
     : tran_id (tid)
   {
     signature.assign (sig->ext.sp.target_class_name).append (".").append (sig->ext.sp.target_method_name);
-    compile_id.assign (sig->ext.sp.compile_id);
     auth.assign (sig->auth);
     lang = sig->type;
     result_type = sig->result_type;
+    if (lang == PL_TYPE_PLCSQL)
+      {
+	// PL/CSQL SPs have compile_id.
+	assert (sig->ext.sp.compile_id != NULL);
+	compile_id.assign (sig->ext.sp.compile_id);
+      }
 
     pl_arg &arg = sig->arg;
     num_args = arg.arg_size;
@@ -62,7 +67,7 @@ namespace cubpl
 	arg_type[i] = arg.arg_type[i];
       }
 
-    transaction_control = (lang == SP_LANG_PLCSQL) ? true : tc;
+    transaction_control = (lang == PL_TYPE_PLCSQL) ? true : tc;
   }
 
   void

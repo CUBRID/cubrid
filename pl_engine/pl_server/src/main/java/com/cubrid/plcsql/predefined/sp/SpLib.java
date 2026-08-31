@@ -261,12 +261,18 @@ public class SpLib {
 
         // get exception line number in the generated Java class
         int exceptionJavaLine = 0;
-        for (StackTraceElement e : stackTrace) {
+        for (int i = stackTrace.length - 1; i >= 0; i--) {
+            // scan bottom to top
+            StackTraceElement e = stackTrace[i];
             if (e.getFileName().equals(fileName)) {
-                exceptionJavaLine = e.getLineNumber();
-                break;
+                exceptionJavaLine = e.getLineNumber(); // update it
+            } else {
+                if (exceptionJavaLine > 0) {
+                    break; // exceptionJavaLine is the last value with the matching file name
+                }
             }
         }
+
         if (exceptionJavaLine == 0) {
             return UNKNOWN_LINE_COLUMN;
         }
