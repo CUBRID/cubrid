@@ -48,7 +48,7 @@ namespace cubmethod
    * its OID, set elements likewise — what the legacy wire unpack produced.
    * (a virtual MOP has no identifier OID and stays as-is; the legacy wire
    * shipped those as VOBJ, out of this seam's reach.) */
-  static void
+  void
   method_result_to_server_semantics (DB_VALUE &value)
   {
     switch (DB_VALUE_DOMAIN_TYPE (&value))
