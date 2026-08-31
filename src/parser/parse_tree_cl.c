@@ -17602,7 +17602,9 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  PT_NODE *extra = NULL;
 	  int version = declared_cnt;
-	  int i as_attr_list = parser_copy_tree_list (parser, as_attr_list);
+	  int i;
+	  
+	  as_attr_list = parser_copy_tree_list (parser, as_attr_list);
 	  for (i = declared_cnt; i < actual_cnt; i++)
 	    {
 	      const char *generated_name;
