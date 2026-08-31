@@ -9692,58 +9692,37 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 }
 
 /*
- * heap_capacity_max_vpid_page () - largest-VPID allocated data page across all sectors (O(nsects)).
- *   Approximates the serial "last page" for avg_freespace_nolast (serial drops its chain-tail page,
- *   this drops the largest-VPID page). The file-table header page is excluded.
- *   return: true and *max_vpid set if a data page exists, else false.
+ * heap_capacity_vpid_is_counted () - is this VPID one of the allocated data pages in the snapshot?
+ *   return: true if the page's bit is set in the collector's sector bitmaps.
+ *   collector(in): heap data sectors enumerated for this parallel run
+ *   vpid(in): page to look for
  *
- * Note: picked from the same collector the workers split, so the page is guaranteed to be one of
- *       the pages counted into num_pages / sum_freespace - which is what makes
- *       (sum_freespace - last_page_freespace) / (num_pages - 1) self-consistent. Reading the heap
- *       header's estimates.last_vpid instead would need an extra page fix and could name a page
- *       outside the counted set (stale estimate), skewing that average.
+ * Note: the workers accumulate exactly the pages of this collector, so only a page that passes this
+ *       check may have its free space subtracted from the sums in avg_freespace_nolast.
  */
 static bool
-heap_capacity_max_vpid_page (const HFID * hfid, const FILE_FTAB_COLLECTOR * collector, VPID * max_vpid)
+heap_capacity_vpid_is_counted (const FILE_FTAB_COLLECTOR * collector, const VPID * vpid)
 {
-  bool found = false;
-  VPID best_vpid = VPID_INITIALIZER;
-
   for (int i = 0; i < collector->nsects; i++)
     {
-      FILE_ALLOC_BITMAP bitmap = collector->partsect_ftab[i].page_bitmap;
       const VSID *vsid = &collector->partsect_ftab[i].vsid;
+      PAGEID first_pageid;
 
-      while (bitmap != FILE_EMPTY_PAGE_BITMAP)
+      if (vsid->volid != vpid->volid)
 	{
-	  /* highest set bit = largest still-allocated page offset within this sector */
-	  int off = FILE_ALLOC_BITMAP_NBITS - 1 - bit64_count_leading_zeros (bitmap);
-	  VPID cand_vpid;
-
-	  cand_vpid.volid = vsid->volid;
-	  cand_vpid.pageid = SECTOR_FIRST_PAGEID (vsid->sectid) + off;
-
-	  if (cand_vpid.volid == hfid->vfid.volid && cand_vpid.pageid == hfid->vfid.fileid)
-	    {
-	      /* the file-table header page is not a heap data page; try the next-highest */
-	      bitmap = bit64_clear (bitmap, off);
-	      continue;
-	    }
-	  if (!found || cand_vpid.volid > best_vpid.volid
-	      || (cand_vpid.volid == best_vpid.volid && cand_vpid.pageid > best_vpid.pageid))
-	    {
-	      found = true;
-	      best_vpid = cand_vpid;
-	    }
-	  break;
+	  continue;
 	}
+
+      first_pageid = SECTOR_FIRST_PAGEID (vsid->sectid);
+      if (vpid->pageid < first_pageid || vpid->pageid >= first_pageid + DISK_SECTOR_NPAGES)
+	{
+	  continue;
+	}
+
+      return bit64_is_set (collector->partsect_ftab[i].page_bitmap, (int) (vpid->pageid - first_pageid));
     }
 
-  if (found)
-    {
-      *max_vpid = best_vpid;
-    }
-  return found;
+  return false;
 }
 
 /*
@@ -9828,13 +9807,23 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
     ftab_set fs;
     fs.convert (&collector);
 
-    /* compute the "last page" (largest-VPID) once, from the same collector the workers split.
-     * have_last_page is false when that snapshot held no heap data page at all - no sectors, empty
-     * bitmaps, or the file header page as the only allocated page (possible if a concurrent
-     * truncate/delete freed the pages after the snapshot). last_page_vpid then stays NULL and must
-     * not be fixed, so the reduce step below excludes nothing from avg_freespace_nolast. */
+    /* The page serial leaves out of avg_freespace_nolast is the heap's chain tail, so take it from
+     * the heap header rather than guessing: the largest VPID is not the tail in general, because
+     * removing the tail moves last_vpid back to its prev_vpid and file_alloc may reuse a lower page.
+     * It must also be one of the pages the workers count, or subtracting its free space would not
+     * match their sums - hence the containment check. When either step fails, last_page_vpid is not
+     * usable and the reduce step below simply excludes nothing. */
     VPID last_page_vpid = VPID_INITIALIZER;
-    bool have_last_page = heap_capacity_max_vpid_page (hfid, &collector, &last_page_vpid);
+    bool have_last_page = false;
+
+    if (heap_get_last_vpid (thread_p, hfid, &last_page_vpid) == NO_ERROR && !VPID_ISNULL (&last_page_vpid))
+      {
+	have_last_page = heap_capacity_vpid_is_counted (&collector, &last_page_vpid);
+      }
+    else
+      {
+	er_clear ();
+      }
 
     std::vector < ftab_set > slices = fs.split (n_workers);
     fs.clear ();
