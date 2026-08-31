@@ -32,13 +32,14 @@
 #include "work_space.h" /* WS_OID */
 
 #if defined (SERVER_MODE)
-/* merged server: OBJECT values follow the client half's MOP convention only
- * while this thread wears the client hat (in-process callback dispatch); a
- * server-hat caller keeps the server convention (#119 mode-dependent
+/* merged server: OBJECT values follow the client half's MOP convention on
+ * any bracketed session thread — the session's server half also handles MOP
+ * values received across the folded seam (e.g. packing SP arguments during
+ * execution) and owns the same workspace (D7, wf173 class); only a genuine
+ * (hatless) server thread keeps the server convention (#119 mode-dependent
  * call-convention family) */
-extern thread_local unsigned int db_on_server;	/* network_interface_sr.cpp */
 extern bool csc_bracket_is_active (void);	/* client_session_context.cpp */
-#define VALUE_IS_CLIENT_HALF() (csc_bracket_is_active () && !db_on_server)
+#define VALUE_IS_CLIENT_HALF() (csc_bracket_is_active ())
 #endif
 
 #include <cstring>

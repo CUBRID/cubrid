@@ -993,6 +993,63 @@ scenario_method_env (const char *server_name)
   });
 }
 
+/* wf173 smoke scenario — INSERT ... ON DUPLICATE KEY UPDATE on a UNIQUE
+ * OBJECT-domain column: the client half's do_find_unique_constraint_violations
+ * passes a MOP-carrying key DB_VALUE across the folded seam into
+ * xbtree_find_unique (pre-fold the wire pack normalized it to an OID), and
+ * mr_cmpval_object's hat-based contract assert killed the server
+ * (object_primitive.c:5351, wf169 shard_6). */
+static bool
+scenario_odku_object_key (const char *server_name)
+{
+  return in_process_session (0, server_name, "DBA", "", 0, [] (int sid)
+  {
+    scenario_try (sid, "DROP CLASS wf173_b");
+    scenario_try (sid, "DROP CLASS wf173_a");
+    /* DONT_REUSE_OID: the referenced class must be referable so the nested
+     * INSERT yields a real OBJECT value for the unique obj column */
+    if (!scenario_exec (sid, "CREATE CLASS wf173_a (id INT) DONT_REUSE_OID", NULL, 0)
+	|| !scenario_exec (sid, "CREATE CLASS wf173_b (i INT, obj wf173_a UNIQUE)", NULL, 0)
+	|| !scenario_exec (sid, "INSERT INTO wf173_b VALUES (1, (INSERT INTO wf173_a VALUES (1)))", NULL, 0)
+	|| !scenario_exec (sid, "INSERT INTO wf173_b VALUES (2, (INSERT INTO wf173_a VALUES (2)))", NULL, 0))
+      {
+	return false;
+      }
+    if (!scenario_exec (sid, "INSERT INTO wf173_b VALUES (3, (INSERT INTO wf173_a VALUES (3)))"
+			" ON DUPLICATE KEY UPDATE obj = NULL", NULL, 0))
+      {
+	return false;
+      }
+    int v = 0;
+    /* CAST: COUNT(*) is BIGINT and scenario_exec's probe reads an INTEGER */
+    if (!scenario_exec (sid, "SELECT CAST (COUNT(*) AS INTEGER) FROM wf173_b", &v, 0))
+      {
+	return false;
+      }
+    if (v != 3)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL odku row count %d expected 3", sid, v);
+	return false;
+      }
+    tracer_log ("M0_TRACER: S%d odku unique-object key crossed the fold, %d rows", sid, v);
+    if (!scenario_exec (sid, "DROP CLASS wf173_b", NULL, 0) || !scenario_exec (sid, "DROP CLASS wf173_a", NULL, 0))
+      {
+	return false;
+      }
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    if (db_end_session () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL db_end_session msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    return true;
+  });
+}
+
 static void
 tracer_main (char *server_name, char *sql, char *out_path)
 {
@@ -1030,6 +1087,10 @@ tracer_main (char *server_name, char *sql, char *out_path)
       else if (strcmp (scenario, "method_env") == 0)
 	{
 	  ok = scenario_method_env (server_name);
+	}
+      else if (strcmp (scenario, "odku_object_key") == 0)
+	{
+	  ok = scenario_odku_object_key (server_name);
 	}
       else
 	{

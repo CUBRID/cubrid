@@ -68,8 +68,11 @@
 
 #if defined (SERVER_MODE)
 extern thread_local unsigned int db_on_server;	/* defined in network_interface_sr.cpp */
+extern bool csc_bracket_is_active (void);	/* client_session_context.cpp */
 #else
 extern unsigned int db_on_server;
+/* single-workspace builds have no bracket; keeps the pre-fold conditions */
+#define csc_bracket_is_active() false
 #endif
 
 #define MR_CMP(d1, d2)                                     \
@@ -5163,9 +5166,11 @@ mr_index_writeval_object (OR_BUF * buf, DB_VALUE * value)
     {
       /* un-gated (SERVER_MODE used to leave oidp NULL here) */
 #if defined (SERVER_MODE)
-      /* SA executes these client bodies with db_on_server toggled; the
-       * context-discipline invariant only holds in the merged server binary */
-      assert (!db_on_server);
+      /* a bracketed session's server half may reach this client body with
+       * in-memory MOP values (pre-fold the wire pack normalized them to
+       * OIDs); that thread owns the session workspace (D7), so only a
+       * hatless genuine server thread violates the contract (wf173 class) */
+      assert (!db_on_server || csc_bracket_is_active ());
 #endif
       obj = db_get_object (value);
       oidp = WS_OID (obj);
@@ -5195,7 +5200,10 @@ mr_data_writeval_object (OR_BUF * buf, DB_VALUE * value)
   OID *oidp = NULL;
   int rc = NO_ERROR;
 
-  if (db_on_server || pr_Inhibit_oid_promotion)
+  /* a bracketed session's server half may have to write a MOP value received
+   * across the folded seam — the client body below handles both OID and
+   * OBJECT inputs and writes the same bytes for OIDs (wf173 class) */
+  if ((db_on_server && !csc_bracket_is_active ()) || pr_Inhibit_oid_promotion)
     {
       if (DB_VALUE_TYPE (value) == DB_TYPE_OID)
 	{
@@ -5347,8 +5355,11 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
    * old SERVER_MODE-only body, and it must also handle virtual db_object types
    * for client-context threads */
 #if defined (SERVER_MODE)
-  /* a genuine server thread only ever compares OID-tagged values */
-  assert (!db_on_server
+  /* a genuine server thread only ever compares OID-tagged values; a bracketed
+   * session's server half may compare in-memory MOP values it received across
+   * the folded seam (e.g. xbtree_find_unique on an ODKU key — pre-fold the
+   * wire pack normalized them to OIDs) and owns their workspace (wf173) */
+  assert (!db_on_server || csc_bracket_is_active ()
 	  || (DB_VALUE_DOMAIN_TYPE (value1) == DB_TYPE_OID && DB_VALUE_DOMAIN_TYPE (value2) == DB_TYPE_OID));
 #endif
   DB_VALUE_COMPARE_RESULT c;

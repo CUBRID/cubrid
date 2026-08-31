@@ -1172,9 +1172,11 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
 	    {
 	      /* un-gated — reached only with a real MOP (client context) */
 #if defined (SERVER_MODE)
-	      /* SA executes these client bodies with db_on_server toggled; the
-	       * context-discipline invariant only holds in the merged server binary */
-	      assert (!db_on_server);
+	      /* a bracketed session's server half may reach this client body with
+	       * in-memory MOP values (pre-fold the wire pack normalized them to
+	       * OIDs); that thread owns the session workspace (D7), so only a
+	       * hatless genuine server thread violates the contract (wf173 class) */
+	      assert (!db_on_server || csc_bracket_is_active ());
 #endif
 	      new_dm->class_oid = class_obj->oid_info.oid;
 	    }
@@ -1900,12 +1902,16 @@ struct tp_session_domains
   TP_DOMAIN *midxkey_domains[TP_NUM_MIDXKEY_DOMAIN_LIST];
 };
 
-/* is a bracketed client-half thread running?  (the only context whose
- * domains may embed workspace MOPs) */
+/* is a bracketed session thread running?  (the only context whose domains
+ * may embed workspace MOPs).  The hat (db_on_server) is deliberately not
+ * part of the test: the session's server half receives MOP-carrying domains
+ * across the folded seam and owns the same workspace (D7), and routing its
+ * interning to the process lists would recreate the cross-session UAF this
+ * gate exists to prevent (B4-D9/F1; wf173 class) */
 STATIC_INLINE bool
 tp_domain_client_session_active (void)
 {
-  return !db_on_server && csc_bracket_is_active ();
+  return csc_bracket_is_active ();
 }
 
 /* does any domain in this chain (recursively) embed a workspace MOP? */
@@ -2128,11 +2134,11 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_SUB:
 
 #if defined (SERVER_MODE)
-      /* the server half never interns these (no MOPs to compare — fall
-       * through, no match); the folded client half runs the client
-       * comparator below on its own session lists (B4-D9), or every
-       * resolve inserts a fresh duplicate */
-      if (db_on_server || !csc_bracket_is_active ())
+      /* genuine server threads never intern these (no MOPs to compare —
+       * fall through, no match); any bracketed session thread (either hat)
+       * runs the client comparator below on its own session lists (B4-D9),
+       * or every resolve inserts a fresh duplicate (wf173 class) */
+      if (!csc_bracket_is_active ())
 	{
 	  break;
 	}
@@ -2893,9 +2899,11 @@ tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_m
 	{
 	  /* un-gated — class_mop is only non-NULL in client context. */
 #if defined (SERVER_MODE)
-	  /* SA executes these client bodies with db_on_server toggled; the
-	   * context-discipline invariant only holds in the merged server binary */
-	  assert (!db_on_server);
+	  /* a bracketed session's server half may reach this client body with
+	   * in-memory MOP values (pre-fold the wire pack normalized them to
+	   * OIDs); that thread owns the session workspace (D7), so only a
+	   * hatless genuine server thread violates the contract (wf173 class) */
+	  assert (!db_on_server || csc_bracket_is_active ());
 #endif
 	  /*
 	   * We have a mixture of OID & MOPS, it probably isn't necessary to be
@@ -3409,9 +3417,11 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	    DB_OBJECT *mop;
 
 #if defined (SERVER_MODE)
-	    /* SA executes these client bodies with db_on_server toggled; the
-	     * context-discipline invariant only holds in the merged server binary */
-	    assert (!db_on_server);
+	    /* a bracketed session's server half may reach this client body with
+	     * in-memory MOP values (pre-fold the wire pack normalized them to
+	     * OIDs); that thread owns the session workspace (D7), so only a
+	     * hatless genuine server thread violates the contract (wf173 class) */
+	    assert (!db_on_server || csc_bracket_is_active ());
 #endif
 
 	    domain = &tp_Object_domain;
@@ -4372,7 +4382,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
        * client-context threads — unlike the OID/OBJECT cases above there is
        * no server-side meaning to fall back to */
 #if defined (SERVER_MODE)
-      assert (!db_on_server);
+      assert (!db_on_server || csc_bracket_is_active ());
 #endif
 
       val_tmpl = (DB_OTMPL *) db_get_pointer (value);
@@ -8975,10 +8985,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
     case DB_TYPE_OBJECT:
 #if defined (SERVER_MODE)
-      /* the server half has no workspace, so an OBJECT target stays
-       * incompatible exactly as when this case was compiled out pre-fold;
-       * the folded client half runs the client body below */
-      if (db_on_server || !csc_bracket_is_active ())
+      /* a genuine server thread has no workspace, so an OBJECT target stays
+       * incompatible exactly as when this case was compiled out pre-fold; any
+       * bracketed session thread (either hat — its server half receives
+       * OBJECT values across the folded seam, wf173 class) runs the client
+       * body below on the workspace it owns */
+      if (!csc_bracket_is_active ())
 	{
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
@@ -9186,11 +9198,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	}
       else
-      /* OBJECT-to-VOBJ needs the workspace: client half only — the server
-       * half keeps treating an OBJECT as its OID representation below */
+      /* OBJECT-to-VOBJ needs the workspace: bracketed session threads only
+       * (either hat, wf173 class) — a genuine server thread keeps treating
+       * an OBJECT as its OID representation below */
       if (original_type == DB_TYPE_OBJECT
 #if defined (SERVER_MODE)
-	  && !db_on_server && csc_bracket_is_active ()
+	  && csc_bracket_is_active ()
 #endif /* SERVER_MODE */
 	 )
 	{
@@ -10658,9 +10671,11 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	  if (vtype1 == DB_TYPE_OBJECT)
 	    {
 #if defined (SERVER_MODE)
-	      /* SA executes these client bodies with db_on_server toggled; the
-	       * context-discipline invariant only holds in the merged server binary */
-	      assert (!db_on_server);
+	      /* a bracketed session's server half may reach this client body with
+	       * in-memory MOP values (pre-fold the wire pack normalized them to
+	       * OIDs); that thread owns the session workspace (D7), so only a
+	       * hatless genuine server thread violates the contract (wf173 class) */
+	      assert (!db_on_server || csc_bracket_is_active ());
 #endif
 	      if (vtype2 == DB_TYPE_OID)
 		{
@@ -10680,9 +10695,11 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	  else if (vtype2 == DB_TYPE_OBJECT)
 	    {
 #if defined (SERVER_MODE)
-	      /* SA executes these client bodies with db_on_server toggled; the
-	       * context-discipline invariant only holds in the merged server binary */
-	      assert (!db_on_server);
+	      /* a bracketed session's server half may reach this client body with
+	       * in-memory MOP values (pre-fold the wire pack normalized them to
+	       * OIDs); that thread owns the session workspace (D7), so only a
+	       * hatless genuine server thread violates the contract (wf173 class) */
+	      assert (!db_on_server || csc_bracket_is_active ());
 #endif
 	      if (vtype1 == DB_TYPE_OID)
 		{
