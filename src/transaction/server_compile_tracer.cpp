@@ -883,6 +883,63 @@ scenario_plcsql_nested (const char *server_name)
   });
 }
 
+/* #165 smoke scenario — session variables cross the fold: EXECUTE ... USING
+ * @v compiles through do_set_user_host_variables -> db_get_variable, whose
+ * fold takes a no-copy reference from session_state under the activation
+ * bracket — the path that used to die on the SA-only assert
+ * (session_sr.c:307); the plain SELECT leg covers server-side evaluation of
+ * the same variable. */
+static bool
+scenario_session_var (const char *server_name)
+{
+  return in_process_session (0, server_name, "DBA", "", 0, [] (int sid)
+  {
+    if (!scenario_exec (sid, "SET @wf165_v = 41", NULL, 0)
+	|| !scenario_exec (sid, "PREPARE wf165_st FROM 'SELECT ? + 1'", NULL, 0))
+      {
+	return false;
+      }
+    int v = 0;
+    if (!scenario_exec (sid, "EXECUTE wf165_st USING @wf165_v", &v, 0))
+      {
+	return false;
+      }
+    if (v != 42)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL execute-using returned %d expected 42", sid, v);
+	return false;
+      }
+    int w = 0;
+    if (!scenario_exec (sid, "SELECT @wf165_v + 1", &w, 0))
+      {
+	return false;
+      }
+    if (w != 42)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL select of session variable returned %d expected 42", sid, w);
+	return false;
+      }
+    tracer_log ("M0_TRACER: S%d session variable crossed the fold on both legs, value %d", sid, v);
+
+    if (!scenario_exec (sid, "DEALLOCATE PREPARE wf165_st", NULL, 0)
+	|| !scenario_exec (sid, "DROP VARIABLE @wf165_v", NULL, 0))
+      {
+	return false;
+      }
+    if (db_commit_transaction () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL commit msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    if (db_end_session () != NO_ERROR)
+      {
+	tracer_log ("M0_TRACER: S%d FAIL db_end_session msg=[%s]", sid, er_msg () ? er_msg () : "");
+	return false;
+      }
+    return true;
+  });
+}
+
 static void
 tracer_main (char *server_name, char *sql, char *out_path)
 {
@@ -912,6 +969,10 @@ tracer_main (char *server_name, char *sql, char *out_path)
       else if (strcmp (scenario, "plcsql_nested") == 0)
 	{
 	  ok = scenario_plcsql_nested (server_name);
+	}
+      else if (strcmp (scenario, "session_var") == 0)
+	{
+	  ok = scenario_session_var (server_name);
 	}
       else
 	{

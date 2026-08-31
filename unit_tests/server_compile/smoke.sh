@@ -59,6 +59,8 @@ if [ $# -eq 0 ]; then
   # case 9 nests two PL/CSQL functions (libcas depth 2) and catches an inner
   #        NO_DATA_FOUND: the caught callback error must not poison the outer
   #        query's er state (A7 review)
+  # case 10 sets a session variable and reads it back through EXECUTE ... USING
+  #        (the folded no-copy reference path, #165) and a plain SELECT
   set -- "SELECT 1" "SELECT COUNT(*) FROM db_class" \
     "SELECT COUNT(*) FROM _db_class a, _db_class b WHERE a.class_of = b.class_of" \
     "SELECT ? + ? @BIND=30,12 @EXPECT=42" \
@@ -66,7 +68,8 @@ if [ $# -eq 0 ]; then
     "SELECT COUNT(*) FROM db_class @SESSIONS=4 @EXPECT=74" \
     "DDL AUTH @SCENARIO=ddl_auth" \
     "PLCSQL @SCENARIO=plcsql" \
-    "PLCSQL NESTED @SCENARIO=plcsql_nested"
+    "PLCSQL NESTED @SCENARIO=plcsql_nested" \
+    "SESSION VAR @SCENARIO=session_var"
 fi
 
 # This script restarts cub_master via `cubrid service stop` (see below), which
