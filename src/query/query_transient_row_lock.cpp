@@ -22,8 +22,10 @@
 
 #include "query_transient_row_lock.hpp"
 
+#include "heap_file.h"
 #include "lock_manager.h"
 #include "memory_alloc.h"
+#include "object_representation_sr.h"
 
 #define TRANSIENT_ROW_LOCKS_INITIAL_CAPACITY 64
 
@@ -113,4 +115,51 @@ transient_row_locks_clear (THREAD_ENTRY *thread_p, TRANSIENT_ROW_LOCKS *locks)
     }
   locks->count = 0;
   locks->capacity = 0;
+}
+
+/*
+ * transient_row_locks_class_has_online_index () - is an index of this class being built online?
+ *   return: true when at least one index is in OR_ONLINE_INDEX_BUILDING_IN_PROGRESS
+ *   thread_p(in): thread entry
+ *   class_oid(in): the class
+ *
+ * Note: an online build keeps its own state on each index entry -- INSERT_FLAG, DELETE_FLAG, or
+ *	 neither -- and that state carries no MVCCID: it names neither the transaction that left it nor
+ *	 whether that transaction ended.  The row lock is what keeps two writers from reading the same
+ *	 entry under different assumptions, so a class under an online build keeps it to commit.
+ *
+ *	 One answer per class holds for the whole statement, and not because the build holds a strong
+ *	 lock throughout -- it demotes to IX for the load precisely so DML is not blocked.  It holds
+ *	 because the status is published by a schema change under SCH_M, and a DML statement holds IX on
+ *	 the class to commit: no statement spans that publication.  A caller that cannot read the class
+ *	 representation is told to keep the lock.
+ */
+bool
+transient_row_locks_class_has_online_index (THREAD_ENTRY *thread_p, const OID *class_oid)
+{
+  OR_CLASSREP *classrep = NULL;
+  int idx_in_cache = -1;
+  bool found = false;
+  int i;
+
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+
+  classrep = heap_classrepr_get (thread_p, (OID *) class_oid, NULL, NULL_REPRID, &idx_in_cache);
+  if (classrep == NULL)
+    {
+      return true;
+    }
+
+  for (i = 0; i < classrep->n_indexes; i++)
+    {
+      if (classrep->indexes[i].index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  found = true;
+	  break;
+	}
+    }
+
+  heap_classrepr_free_and_init (classrep, &idx_in_cache);
+
+  return found;
 }

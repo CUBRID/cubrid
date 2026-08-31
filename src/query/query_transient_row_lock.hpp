@@ -20,8 +20,8 @@
 // Transient row lock bookkeeping for the delete/update force phase
 //
 // A statement that scans its targets without a row lock takes one at the force phase and gives it up
-// before commit.  The set of rows whose locks the statement still holds needs somewhere to live, and
-// that is here.
+// before commit.  Two things about that release need somewhere to live: the set of rows whose locks
+// this statement still holds, and the one class shape that keeps its locks to commit.
 //
 
 #ifndef _QUERY_TRANSIENT_ROW_LOCK_HPP_
@@ -56,5 +56,6 @@ extern int transient_row_locks_add (THREAD_ENTRY * thread_p, TRANSIENT_ROW_LOCKS
 				    const OID * class_oid);
 extern void transient_row_locks_release (THREAD_ENTRY * thread_p, TRANSIENT_ROW_LOCKS * locks);
 extern void transient_row_locks_clear (THREAD_ENTRY * thread_p, TRANSIENT_ROW_LOCKS * locks);
+extern bool transient_row_locks_class_has_online_index (THREAD_ENTRY * thread_p, const OID * class_oid);
 
 #endif /* _QUERY_TRANSIENT_ROW_LOCK_HPP_ */

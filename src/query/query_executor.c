@@ -376,6 +376,8 @@ struct upddel_class_info_internal
   OID prev_class_oid;		/* previous class oid */
   bool is_mvcc_class;		/* whether MVCC applies to class_oid; set when the class changes, because
 				 * mvcc_is_mvcc_disabled_class () is too slow to ask per row */
+  bool has_online_index;	/* an index of class_oid is being built online; set when the class changes,
+				 * because reading the class representation is too slow to ask per row */
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
   bool is_attr_info_inited;	/* true if attr_info has valid data */
   int needs_pruning;		/* partition pruning information */
@@ -11449,6 +11451,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			  GOTO_EXIT_ON_ERROR;
 			}
 		      internal_class->is_mvcc_class = !mvcc_is_mvcc_disabled_class (class_oid);
+		      internal_class->has_online_index =
+			transient_row_locks_class_has_online_index (thread_p, class_oid);
 
 		      if (internal_class->num_lob_attrs)
 			{
@@ -11594,12 +11598,15 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  xasl->list_id->tuple_cnt++;
 
 		  if (need_locking && class_oid != NULL && internal_class->is_mvcc_class
+		      && !internal_class->has_online_index
 		      && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
 		    {
 		      /* the delete is published: late arrivals settle on our MVCCID self-lock, which the
 		       * prepare record persists across 2PC, so the row lock is redundant from here.  It ends
 		       * when this statement stops forcing rows, not now -- see transient_row_locks in
-		       * query_transient_row_lock.hpp. */
+		       * query_transient_row_lock.hpp.
+		       * A class under an online index build keeps the lock to commit -- the build's own entry
+		       * state names no owner, so the row lock is what serializes two writers there. */
 		      (void) transient_row_locks_add (thread_p, &transient_row_locks, oid, class_oid);
 		    }
 		}
