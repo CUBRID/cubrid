@@ -266,6 +266,30 @@ public class B1JdbcSmoke {
             throw new RuntimeException("qualified select-list column label not stripped: got '" + label + "'");
         }
 
+        // OFF + refresh lifecycle: a session begun after the runtime flip must
+        // see the qualified name; flipping back restores stripping
+        stmt.executeUpdate("SET SYSTEM PARAMETERS 'cas_stripped_column_name=no'");
+        try {
+            Connection off = connect();
+            rs = off.createStatement().executeQuery("SELECT y.v FROM b1_smoke y ORDER BY y.id");
+            label = rs.getMetaData().getColumnName(1);
+            rs.close();
+            off.close();
+            if (!"y.v".equals(label)) {
+                throw new RuntimeException("cas_stripped_column_name=no not honored by new session: got '" + label + "'");
+            }
+        } finally {
+            stmt.executeUpdate("SET SYSTEM PARAMETERS 'cas_stripped_column_name=yes'");
+        }
+        Connection on = connect();
+        rs = on.createStatement().executeQuery("SELECT y.v FROM b1_smoke y ORDER BY y.id");
+        label = rs.getMetaData().getColumnName(1);
+        rs.close();
+        on.close();
+        if (!"v".equals(label)) {
+            throw new RuntimeException("cas_stripped_column_name=yes restore not honored: got '" + label + "'");
+        }
+
         // 9. type battery: bind -> store -> fetch round-trip per major type
         step("types");
         stmt.executeUpdate("CREATE TABLE b2_types (c_int INT, c_big BIGINT, c_num NUMERIC(15,4),"
