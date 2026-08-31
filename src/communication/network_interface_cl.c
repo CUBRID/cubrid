@@ -11550,6 +11550,11 @@ error:
 
   {
     DB_VALUE ret_value;
+
+    /* the error path skips execute () and still clears this — clearing stack
+     * garbage frees a wild pointer (mspace abort, workspace#176 결함 8) */
+    db_make_null (&ret_value);
+
     cubpl::executor executor ((cubpl::pl_signature &) sig);
     req_error = executor.fetch_args_peek (args);
     if (req_error == NO_ERROR)
