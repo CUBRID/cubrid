@@ -358,7 +358,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 		   || as_info->cur_sql_log_mode == SQL_LOG_MODE_NOTICE)
 	    {
 	      /* check timeout */
-	      if ((run_time_sec * 1000 + run_time_msec) < shm_appl->long_transaction_time)
+	      if ((run_time_sec * 1000 + run_time_msec) < CAS_SHM_CFG (long_transaction_time))
 		{
 		  abandon = true;
 		}
@@ -390,7 +390,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	    }
 	  saved_log_fpos = cas_ftell (log_fp);
 
-	  if ((saved_log_fpos / 1000) > shm_appl->sql_log_max_size)
+	  if ((saved_log_fpos / 1000) > CAS_SHM_CFG (sql_log_max_size))
 	    {
 	      cas_log_close (true);
 	      cas_log_backup (FID_SQL_LOG_DIR);
@@ -959,7 +959,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
     }
 
   fseek (fp, 0, SEEK_END);
-  if ((ftell (fp) / ONE_K) > shm_appl->access_log_max_size)
+  if ((ftell (fp) / ONE_K) > CAS_SHM_CFG (access_log_max_size))
     {
       time_t cur_time = time (NULL);
       struct tm ct;
@@ -1173,7 +1173,7 @@ cas_slow_log_end ()
       long slow_log_fpos;
       slow_log_fpos = cas_ftell (slow_log_fp);
 
-      if ((slow_log_fpos / 1000) > shm_appl->sql_log_max_size)
+      if ((slow_log_fpos / 1000) > CAS_SHM_CFG (sql_log_max_size))
 	{
 	  cas_slow_log_close ();
 	  cas_log_backup (FID_SLOW_LOG_DIR);

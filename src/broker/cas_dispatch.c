@@ -61,6 +61,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+/* protocol violation bound for a single request body (mirrors
+ * driver_session.cpp REQUEST_BODY_MAX) */
+#define CAS_DISPATCH_REQUEST_BODY_MAX (16 * 1024 * 1024)
+
 static void set_db_parameter (void);
 
 static T_SERVER_FUNC server_fn_table[] = {
@@ -181,7 +185,7 @@ net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_IN
 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
-      net_timeout_set (shm_appl->session_timeout);
+      net_timeout_set (CAS_SHM_CFG (session_timeout));
     }
   else
     {
@@ -517,15 +521,28 @@ cas_process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
       set_db_parameter ();
     }
 
-  if (shm_appl->session_timeout < 0)
+  if (CAS_SHM_CFG (session_timeout) < 0)
     net_timeout_set (NET_DEFAULT_TIMEOUT);
   else
-    net_timeout_set (MIN (shm_appl->session_timeout, NET_DEFAULT_TIMEOUT));
+    net_timeout_set (MIN (CAS_SHM_CFG (session_timeout), NET_DEFAULT_TIMEOUT));
 
   if (cas_shard_flag == ON && req_info->client_version == 0)
     {
       assert (0);
       req_info->client_version = CAS_PROTO_CURRENT_VER;
+    }
+
+  /* the driver-sent body length lands in cub_server's address space now:
+   * refuse negative/oversized values before allocating or reading (same
+   * bound as driver_session's connect-phase REQUEST_BODY_MAX) */
+  if (*(client_msg_header.msg_body_size_ptr) < 0
+      || *(client_msg_header.msg_body_size_ptr) > CAS_DISPATCH_REQUEST_BODY_MAX)
+    {
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
+      cas_log_write_and_end (0, true, "COMMUNICATION ERROR invalid message body size %d",
+			     *(client_msg_header.msg_body_size_ptr));
+      return FN_CLOSE_CONN;
     }
 
   read_msg = (char *) MALLOC (*(client_msg_header.msg_body_size_ptr));

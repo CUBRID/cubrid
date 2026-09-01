@@ -879,6 +879,7 @@ channel_done:
 
 	  auto ch = std::make_shared<channel> ();
 	  ch->fd = fd;
+	  bool admitted = true;
 	  {
 	    std::lock_guard<std::mutex> guard (m->channels_mutex);
 	    /* reap finished channel threads (a dead entry appears once per
@@ -898,10 +899,40 @@ channel_done:
 		    ++it;
 		  }
 	      }
-	    ch->id = m->next_channel_id++;
-	    m->channels.emplace (ch->id, ch);
+	    /* an unauthenticated local peer can connect repeatedly; bound the
+	     * pre-admission channels so thread exhaustion cannot take the
+	     * server down (reviewed: PR 7837) */
+	    if (m->channels.size () >= (std::size_t) NUM_NORMAL_TRANS + 16)
+	      {
+		admitted = false;
+	      }
+	    else
+	      {
+		ch->id = m->next_channel_id++;
+		m->channels.emplace (ch->id, ch);
+	      }
 	  }
-	  ch->thread = std::thread (channel_thread_run, m, ch);
+	  if (!admitted)
+	    {
+	      close (fd);
+	      ch->fd = -1;
+	      continue;
+	    }
+	  try
+	    {
+	      ch->thread = std::thread (channel_thread_run, m, ch);
+	    }
+	  catch (const std::system_error &)
+	    {
+	      /* out of threads is a refused connection, not std::terminate */
+	      {
+		std::lock_guard<std::mutex> guard (m->channels_mutex);
+		m->channels.erase (ch->id);
+	      }
+	      std::lock_guard<std::mutex> send_guard (ch->send_mutex);
+	      close (ch->fd);
+	      ch->fd = -1;
+	    }
 	}
     }
 
@@ -1021,6 +1052,7 @@ channel_done:
       /* wake every adopted session (their loops block on the client fd) and
        * wait for the sign-offs — sessions must unregister their trans while
        * the server infrastructure is still up */
+      bool drained = false;
       {
 	std::unique_lock<std::mutex> lock (m->registry_mutex);
 	for (auto &pair : m->registry)
@@ -1033,9 +1065,20 @@ channel_done:
 		(void) logtb_set_tran_index_interrupt (NULL, pair.second.tran_index, true);
 	      }
 	  }
-	m->registry_cv.wait_for (lock, std::chrono::seconds (30), [m] { return m->registry.empty (); });
-	assert (m->registry.empty ());
+	drained = m->registry_cv.wait_for (lock, std::chrono::seconds (30), [m] { return m->registry.empty (); });
+	assert (drained);
       }
+
+      if (!drained)
+	{
+	  /* a stuck session still references the manager; freeing it here
+	   * would be a use-after-free in release builds.  The process is
+	   * shutting down — leak the manager instead of racing it. */
+	  er_log_debug (ARG_FILE_LINE, "adoption: sessions still registered after 30s; leaking manager\n");
+	  unlink (m->socket_path.c_str ());
+	  adoption_Manager = NULL;
+	  return;
+	}
 
       /* a sign-off may still be inside the manager after its registry erase
        * (SESSION_END notify); don't free the manager under it (codex F2) */

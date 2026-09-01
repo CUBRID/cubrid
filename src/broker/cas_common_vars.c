@@ -42,6 +42,7 @@ int cas_shard_flag = OFF;
 /* Shared memory variables */
 CAS_TLS int shm_as_index;
 T_SHM_APPL_SERVER *shm_appl;
+CAS_TLS T_CAS_SESSION_CFG cas_session_cfg;
 CAS_TLS T_APPL_SERVER_INFO *as_info;
 
 /* Transaction and query timing */

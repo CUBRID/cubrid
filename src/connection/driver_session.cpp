@@ -724,7 +724,7 @@ namespace cubconn
       /* cas_post_db_connect's producer half (B2-D6): the access log line and
        * the SQL log's connect unit, now that the session id is final */
       as_info->session_id = db_get_session_id ();
-      if (shm_appl->access_log == ON)
+      if (CAS_SHM_CFG (access_log) == ON)
 	{
 	  (void) cas_server_access_log (&session_start, shm_as_index, (int) params.client_ip, info.db_name,
 					info.db_user, NEW_CONNECTION);

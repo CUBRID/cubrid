@@ -42,6 +42,10 @@
 #define ADOPTION_PROTOCOL_ONLY
 #include "adoption.hpp"
 
+#include <pthread.h>
+#include <semaphore.h>
+#include <signal.h>
+
 #define WIRE_ERR_MSG_MAX 2048
 #define WIRE_DEFAULT_BROKER_PORT 33000
 /* server render cap is 32 MiB (CSQL_CAPTURE_LIMIT); allow framing headroom */
@@ -66,6 +70,52 @@ static bool wire_Time_on = true;
 static bool wire_Echo_on = false;
 static bool wire_Trace_on = false;
 static bool wire_Interactive = false;
+
+/* SIGINT cancel plumbing (PR 7837 review): the signal handler may only call
+ * async-signal-safe functions, so it posts a semaphore and this dedicated
+ * thread performs the socket work.  The main thread is parked inside the
+ * blocked roundtrip while a cancel is in flight, so wire_Fd/wire_Token are
+ * stable when the thread reads them. */
+static sem_t wire_Cancel_sem;
+static volatile sig_atomic_t wire_Cancel_thread_up = 0;
+
+static void wire_cancel_send (void);
+
+static void *
+wire_cancel_thread_run (void *arg)
+{
+  (void) arg;
+  for (;;)
+    {
+      while (sem_wait (&wire_Cancel_sem) != 0 && errno == EINTR)
+	;
+      wire_cancel_send ();
+    }
+  return NULL;
+}
+
+static void
+wire_cancel_thread_start (void)
+{
+  pthread_t tid;
+
+  if (wire_Cancel_thread_up)
+    {
+      return;
+    }
+  if (sem_init (&wire_Cancel_sem, 0, 0) != 0)
+    {
+      return;
+    }
+  pthread_attr_t attr;
+  pthread_attr_init (&attr);
+  pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED);
+  if (pthread_create (&tid, &attr, wire_cancel_thread_run, NULL) == 0)
+    {
+      wire_Cancel_thread_up = 1;
+    }
+  pthread_attr_destroy (&attr);
+}
 
 /* ------------------------------------------------------------------ */
 /* low-level i/o                                                      */
@@ -516,6 +566,7 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
   wire_copy (wire_User, sizeof (wire_User), user_name != NULL ? user_name : "");
   wire_copy (wire_Passwd, sizeof (wire_Passwd), passwd != NULL ? passwd : "");
   wire_Client_type = client_type;
+  wire_cancel_thread_start ();
   return NO_ERROR;
 }
 
@@ -926,8 +977,18 @@ csql_wire_tran (char op)
 /* cancel                                                             */
 /* ------------------------------------------------------------------ */
 
+/* async-signal-safe: called from the SIGINT handler */
 void
 csql_wire_cancel (void)
+{
+  if (wire_Cancel_thread_up)
+    {
+      (void) sem_post (&wire_Cancel_sem);
+    }
+}
+
+static void
+wire_cancel_send (void)
 {
   if (wire_Fd < 0 || wire_Token == 0)
     {
