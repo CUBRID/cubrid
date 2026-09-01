@@ -2146,6 +2146,8 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
 #if defined (CS_MODE)
 	sig.auth = db_private_strdup (NULL, auth_name);
+#endif
+#if defined (CS_MODE) || defined (SERVER_MODE)
 	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_DETERMINISTIC)
 	  {
 	    sig.is_deterministic = true;

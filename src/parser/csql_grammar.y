@@ -460,10 +460,13 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /* maximum expression nesting depth accepted from user input; a generous fixed
- * constant - legitimate statements nest at most a few hundred levels, while
+ * constant - the upstream regression suite chains ~5,000 ANDed predicates in
+ * one statement (a legitimate stress shape the legacy client accepted), while
  * unbounded nesting overflows the C stack of the recursive tree walkers
- * downstream of the parser */
-#define PT_MAX_NESTING_DEPTH 1024
+ * downstream of the parser.  Compile runs on the driver-session threads
+ * (default 8MB pthread stacks, the legacy CAS equivalent), and the D6
+ * sigaltstack keeps a genuine overflow diagnosable. */
+#define PT_MAX_NESTING_DEPTH 16384
 
 static int
 pt_nesting_depth_max3 (const PT_NODE * arg1, const PT_NODE * arg2, const PT_NODE * arg3)
