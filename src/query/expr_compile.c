@@ -1326,13 +1326,20 @@ expr_scan_pred_interp_leaf (const PRED_EXPR * pr, bool comp0)
   return pred;
 }
 
-/* build the compiled tree; NULL only on allocation failure */
+/* build the compiled tree; NULL on allocation failure or on a tree deeper than
+ * depth_limit.  The depth guard mirrors max_recursion_sql_depth: the interpreted
+ * eval_pred () counts its per-row recursion and rejects a query past the limit
+ * (ER_MAX_RECURSION_SQL_DEPTH), while the compiled walker deliberately skips that
+ * accounting -- so a tree deep enough to be rejected must not compile at all.
+ * Declining here keeps the whole filter on eval_pred (), which enforces the limit
+ * exactly as a build without this feature does, and also bounds this builder's own
+ * compile-time recursion. */
 static EXPR_PRED *
-expr_scan_pred_build (const PRED_EXPR * pr)
+expr_scan_pred_build (const PRED_EXPR * pr, int depth, int depth_limit)
 {
   EXPR_PRED *pred = NULL, *lhs = NULL, *rhs = NULL;
 
-  if (pr == NULL)
+  if (pr == NULL || depth >= depth_limit)
     {
       return NULL;
     }
@@ -1344,12 +1351,12 @@ expr_scan_pred_build (const PRED_EXPR * pr)
 	{
 	  return expr_scan_pred_interp_leaf (pr, false);
 	}
-      lhs = expr_scan_pred_build (pr->pe.m_pred.lhs);
+      lhs = expr_scan_pred_build (pr->pe.m_pred.lhs, depth + 1, depth_limit);
       if (lhs == NULL)
 	{
 	  return NULL;
 	}
-      rhs = expr_scan_pred_build (pr->pe.m_pred.rhs);
+      rhs = expr_scan_pred_build (pr->pe.m_pred.rhs, depth + 1, depth_limit);
       if (rhs == NULL)
 	{
 	  expr_pred_free (lhs);
@@ -1369,7 +1376,7 @@ expr_scan_pred_build (const PRED_EXPR * pr)
       return pred;
 
     case T_NOT_TERM:
-      lhs = expr_scan_pred_build (pr->pe.m_not_term);
+      lhs = expr_scan_pred_build (pr->pe.m_not_term, depth + 1, depth_limit);
       if (lhs == NULL)
 	{
 	  return NULL;
@@ -1484,7 +1491,7 @@ expr_scan_pred_fetch_leaves (const EXPR_PRED * pred)
 void *
 expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr)
 {
-  EXPR_PRED *pred = expr_scan_pred_build (pr);
+  EXPR_PRED *pred = expr_scan_pred_build (pr, 0, prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH));
 
   if (pred == NULL)
     {
