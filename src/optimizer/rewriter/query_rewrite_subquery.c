@@ -480,7 +480,8 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 
       node->info.query.q.select.hint |=
 	(subq->info.query.q.select.hint
-	 & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE | PT_HINT_ORDERED | PT_HINT_LEADING));
+	 & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE | PT_HINT_ORDERED
+	     | PT_HINT_LEADING | PT_HINT_PARALLEL | PT_HINT_LK_TIMEOUT));
 
       inner_spec->info.spec.join_type = (info.is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
       inner_spec->info.spec.on_cond = info.on_cond;
