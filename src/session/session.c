@@ -3361,7 +3361,16 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
 	{
 	  // TODO: should this be an error?
 	  pl_session_ref_ptr = nullptr;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  /* first error wins: when a parallel-query worker dies on a real
+	   * error, the sibling-shutdown interrupt marks the PL session, and
+	   * this call runs again on the teardown path — overwriting the
+	   * standing error here turns "Data overflow" into "Has been
+	   * interrupted" for the folded caller (workspace#176 결함 17; the
+	   * legacy CAS never saw this server-side er over the wire). */
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	    }
 	  error = ER_INTERRUPTED;
 	}
 
