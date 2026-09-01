@@ -27,8 +27,8 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) */
 
-#include "px_hash_join_task_manager.hpp"
 #include "px_merge_join_partition.hpp"
+#include "px_task_manager.hpp"
 #include "query_list.h"
 #include "thread_entry_task.hpp"
 
@@ -38,9 +38,8 @@ namespace parallel_query
 {
   namespace merge_join
   {
-    /* until a common px task scaffolding is factored out, reuse the hash join one */
-    using task_manager = hash_join::task_manager;
-    using task_execution_guard = hash_join::task_execution_guard;
+    using parallel_query::task_manager;
+    using parallel_query::task_execution_guard;
 
     /* shared, read-only state of one parallel merge run (owned by the coordinator) */
     struct merge_manager

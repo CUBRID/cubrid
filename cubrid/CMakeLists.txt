@@ -422,6 +422,7 @@ set(PARALLEL_QUERY_SOURCES
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
   ${PARALLEL_QUERY_DIR}/px_sort.c
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.cpp
+  ${PARALLEL_QUERY_DIR}/px_task_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_parallel.cpp
   )
 
@@ -431,6 +432,7 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
   ${PARALLEL_QUERY_DIR}/px_sort.h
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
+  ${PARALLEL_QUERY_DIR}/px_task_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   ${PARALLEL_QUERY_DIR}/px_parallel.hpp
   )
