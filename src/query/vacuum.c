@@ -1616,7 +1616,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 
   /* OOS pages emptied by this page's committed record removals (duplicates allowed — the batch
    * reclaim dedupes). Accumulated across the whole record loop and reclaimed ONCE at `end`,
-   * after the home page is unfixed (R3): the reclaim work — an OOS stats header WRITE latch and
+   * after the home page is unfixed: the reclaim work — an OOS stats header WRITE latch and
    * a dealloc sysop per emptied page — must not extend the home page WRITE latch hold time, and
    * page-batch scope makes the dedupe effective for adjacent records sharing OOS pages. */
   VACUUM_OOS_TOUCHED_PAGES oos_touched_pages;
@@ -1948,7 +1948,7 @@ end:
     }
 
   /* The home page is now unfixed: reclaim the OOS pages this batch emptied, once per heap-page
-   * batch (R3) — transactions touching the heap page never wait behind the reclaim's header
+   * batch — transactions touching the heap page never wait behind the reclaim's header
    * latch and dealloc sysops. If the batch ended with an error (interrupt included), the
    * candidate list is simply dropped; the sysop-abort paths already truncated their own entries,
    * so a surviving list holds committed work only. Dropping is safe: reclaim is idempotent and
@@ -2455,7 +2455,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  * helper (in)			: Vacuum heap helper.
  * oos_touched_pages_out (out)	: OOS pages emptied by this record's committed deletes are
  *				  appended here (duplicates allowed). The caller reclaims them
- *				  once per heap-page batch, AFTER the home page is unfixed (R3) —
+ *				  once per heap-page batch, AFTER the home page is unfixed —
  *				  never here, where the home page WRITE latch is still held.
  */
 static int
@@ -2558,7 +2558,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 
       /* Delete OOS records (if any) before committing the sysop. Emptied pages accumulate in
        * oos_touched_pages_out; the caller reclaims them once per heap-page batch, after the home
-       * page is unfixed (R3). */
+       * page is unfixed. */
       if (has_oos)
 	{
 	  size_t n_touched_before = oos_touched_pages_out->size ();
@@ -2656,7 +2656,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 	  log_sysop_commit (thread_p);
 
 	  /* Deletes are committed. The emptied pages sit in oos_touched_pages_out; the caller
-	   * reclaims them once per heap-page batch, after the home page is unfixed (R3). */
+	   * reclaims them once per heap-page batch, after the home page is unfixed. */
 	}
       else
 	{

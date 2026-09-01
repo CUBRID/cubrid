@@ -386,7 +386,7 @@ TEST (OosBestspaceTest, BestspaceInsertDeleteCycle)
 // ===========================================================================
 // TEST: BestspaceStaleHintToNonOosPageIsRejected
 //
-// Regression for the reviewer-reproduced release corruption path (PR #7617 B1): a bestspace
+// Regression for a corruption path reproduced in release builds: a bestspace
 // hint may point at a page that reclaim deallocated and another file already REALLOCATED for a
 // different purpose. Such a page fixes successfully again (the ER_PB_BAD_PAGEID net only covers
 // the still-deallocated window), so the lookup must re-validate ptype == PAGE_OOS before

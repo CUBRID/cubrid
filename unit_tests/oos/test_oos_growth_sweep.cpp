@@ -25,8 +25,8 @@
 // Every scenario first simulates the HINT-LOSS regime (bestspace hash cache and header best[]
 // hints cleared): with hints alive, an emptied page is simply reused through bestspace and no
 // growth happens at all. The leak this feature closes appears exactly when hints are gone —
-// the cache is capped at 1000 entries and best[] at 10, so a large delete burst (the reviewer's
-// 14,000-row reproduction) loses track of almost every emptied page.
+// the cache is capped at 1000 entries and best[] at 10, so a large delete burst (e.g. 14,000
+// rows) loses track of almost every emptied page.
 
 #include "gtest/gtest.h"
 #include <cstdio>
