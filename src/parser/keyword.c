@@ -1004,15 +1004,17 @@ static KEYWORD_RECORD *
 pt_find_keyword (const char *text)
 {
 #if !defined (SERVER_MODE)
-  static KEYWORDS_TABLE_SRCH_INFO
+  static
+    KEYWORDS_TABLE_SRCH_INFO
     kinfo;
 #endif
   int
     i,
     len,
     cmp;
-  KEYWORD_RECORD
-    dummy;
+  /* *INDENT-OFF* */
+  KEYWORD_RECORD dummy;
+  /* *INDENT-ON* */
 
 #if defined (SERVER_MODE)
   pt_sort_keyword_tables ();
@@ -1026,7 +1028,8 @@ pt_find_keyword (const char *text)
     }
 #endif
 #else /* SERVER_MODE */
-  static bool
+  static
+    bool
     keyword_sorted = false;
 
   if (keyword_sorted == false)
@@ -1161,15 +1164,17 @@ FUNCTION_MAP *
 pt_find_function_name (const char *text)
 {
 #if !defined (SERVER_MODE)
-  static KEYWORDS_TABLE_SRCH_INFO
+  static
+    KEYWORDS_TABLE_SRCH_INFO
     finfo;
 #endif
   int
     i,
     len,
     cmp;
-  FUNCTION_MAP
-    dummy;
+  /* *INDENT-OFF* */
+  FUNCTION_MAP dummy;
+  /* *INDENT-ON* */
 
 #if defined (SERVER_MODE)
   pt_sort_keyword_tables ();
@@ -1183,7 +1188,8 @@ pt_find_function_name (const char *text)
     }
 #endif
 #else /* SERVER_MODE */
-  static bool
+  static
+    bool
     function_keyword_sorted = false;
 
   if (function_keyword_sorted == false)
