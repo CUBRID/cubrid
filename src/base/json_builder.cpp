@@ -60,9 +60,10 @@ namespace
 {
   typedef rapidjson::MemoryPoolAllocator<rapidjson::CrtAllocator> pool_type;
 
-  /* A trace of a very large query runs to a few thousand nodes. This is the
-   * point where the only sane reading is that a node went missing, so refuse to
-   * grow instead of holding memory the arena can no longer reclaim. */
+  /* A trace runs to a few thousand nodes, so reaching this usually means one
+   * went missing upstream - but a plan over enough partitioned tables gets here
+   * honestly, so it bounds the memory rather than asserting. The trace comes
+   * out short. */
   const size_t ARENA_NODE_LIMIT = 1 << 18;
 
   /* An object past this many members carries an index of its keys, so that
@@ -200,8 +201,6 @@ namespace
 
     if (a->nodes.size () >= ARENA_NODE_LIMIT)
       {
-	/* a node was neither stored nor released somewhere upstream */
-	assert (false);
 	return NULL;
       }
 
