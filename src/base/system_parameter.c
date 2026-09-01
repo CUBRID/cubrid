@@ -7589,7 +7589,6 @@ prm_check_environment (void)
 static SYSPRM_ERR
 sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_list)
 {
-  SYSPRM_PARAM *prm = NULL;
   const SYSPRM_ASSIGN_VALUE *assignment = NULL;
   bool set_require_like_escape, set_no_backslash_escape;
   bool is_require_like_escape = false, is_no_backslash_escape = false;
@@ -7614,16 +7613,19 @@ sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_l
       return PRM_ERR_NO_ERROR;
     }
 
+  /* the current values must be the SESSION-effective ones: in the fold a
+   * prior SET of no_backslash_escapes lands in session storage, so reading
+   * the raw process value here sees the boot default and vetoes a legal
+   * combination (workspace#176 결함 13; CS/SA read the same process value
+   * either way).  prm_get_bool_value is the session read-through. */
   if (!set_no_backslash_escape)
     {
-      prm = GET_PRM (PRM_ID_NO_BACKSLASH_ESCAPES);
-      is_no_backslash_escape = PRM_GET_BOOL (prm->value);
+      is_no_backslash_escape = prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES);
     }
 
   if (!set_require_like_escape)
     {
-      prm = GET_PRM (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER);
-      is_require_like_escape = PRM_GET_BOOL (prm->value);
+      is_require_like_escape = prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER);
     }
 
   if (is_require_like_escape == true && is_no_backslash_escape == true)
