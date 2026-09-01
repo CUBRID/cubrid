@@ -244,7 +244,8 @@ vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
   if (error_code != NO_ERROR)
     {
       vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
-			     "Could not reclaim empty OOS pages of file %d|%d (error %d); leaving them for a later cycle.",
+			     "Could not reclaim empty OOS pages of file %d|%d (error %d); "
+			     "leaving them for a later cycle.",
 			     VFID_AS_ARGS (oos_vfid), error_code);
       er_clear ();
     }
@@ -471,8 +472,9 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
 	{
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			       "Failed to delete OOS record %d|%d|%d.", oos_oid.volid, oos_oid.pageid, oos_oid.slotid);
-	  /* The caller's abort restores these deletes — keep its batch list committed-only. */
-	  if (touched_pages_out != NULL)
+	  /* The caller's abort restores these deletes — keep its batch list committed-only. (An
+	   * OOM inside oos_delete_chain may already have cleared the list; never grow it.) */
+	  if (touched_pages_out != NULL && touched_pages_out->size () > n_touched_on_entry)
 	    {
 	      touched_pages_out->resize (n_touched_on_entry);
 	    }

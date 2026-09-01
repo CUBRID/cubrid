@@ -1512,6 +1512,12 @@ oos_reclaim_lsa_gate_passes (const LOG_LSA &page_lsa, const LOG_LSA &horizon,
  *      from "emptied by a still-active deleter", whose abort replays RVOOS_DELETE undo into the
  *      page. Every write of a live undo source carries a page LSA at or above that source's
  *      head LSA, so a page passing the gate cannot be an undo target of anyone still running.
+ *
+ * Why not the heap's OLD_PAGE_PREVENT_DEALLOC protocol: readers reach OOS chunk pages only via
+ * the head OOS OIDs of heap record versions, and vacuum empties a chain's pages only after the
+ * owning version is invisible to every active snapshot — no reader can legally be walking them.
+ * The dealloc tolerance on lookups is defense in depth for stale hints, not a substitute for
+ * pinning, and PREVENT_DEALLOC would reintroduce a waiting edge into a zero-wait path.
  */
 static int
 oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid,
@@ -1721,7 +1727,7 @@ oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vect
   int n_deferred = 0;
   for (const VPID &vpid : candidates)
     {
-      OOS_RECLAIM_RESULT result;
+      OOS_RECLAIM_RESULT result = OOS_RECLAIM_SKIPPED;
       err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, horizon, result, NULL_LSA);
       if (err != NO_ERROR)
 	{
@@ -1892,7 +1898,7 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
     {
       const VPID &vpid = pages[ (start + i) % pages.size ()];
 
-      OOS_RECLAIM_RESULT result;
+      OOS_RECLAIM_RESULT result = OOS_RECLAIM_SKIPPED;
       err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, horizon, result,
 					   rollback_delete_lsa);
       if (err != NO_ERROR)
