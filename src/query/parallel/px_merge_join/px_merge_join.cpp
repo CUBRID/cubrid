@@ -159,8 +159,11 @@ namespace parallel_query
       manager.m_outputs.assign (range_cnt, NULL);
       for (int i = 0; i < range_cnt; i++)
 	{
+	  /* range 0's list becomes the gathered result (base-reuse below), so it must carry the caller's
+	   * ls_flag (e.g. QFILE_FLAG_RESULT_FILE); the rest are plain lists appended into it. */
+	  int out_flag = (i == 0) ? ls_flag : QFILE_FLAG_ALL;
 	  manager.m_outputs[i] = qfile_open_list (thread_p, &type_list, NULL, outer_list_id->query_id,
-						  QFILE_FLAG_ALL, NULL);
+						  out_flag, NULL);
 	  if (manager.m_outputs[i] == NULL)
 	    {
 	      destroy_lists (thread_p, manager.m_outputs);
@@ -193,17 +196,13 @@ namespace parallel_query
 	  }
       }
 
-      /* gather: concatenate the per-range outputs in range order — same tuple order as serial */
-      QFILE_LIST_ID *merged = qfile_open_list (thread_p, &type_list, NULL, outer_list_id->query_id, ls_flag, NULL);
+      /* gather: reuse range 0's list as the base and append ranges 1..n-1 in order — avoids copying
+       * the whole of range 0 (the dominant cost). Tuple order identical to serial. */
       free_and_init (type_list.domp);
-      if (merged == NULL)
-	{
-	  destroy_lists (thread_p, manager.m_outputs);
-	  px_worker_manager->release_workers ();
-	  return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
-	}
+      QFILE_LIST_ID *merged = manager.m_outputs[0];
+      manager.m_outputs[0] = NULL;	/* ownership transferred; destroy_lists must skip it */
 
-      for (int i = 0; i < range_cnt && error == NO_ERROR; i++)
+      for (int i = 1; i < range_cnt && error == NO_ERROR; i++)
 	{
 	  if (manager.m_outputs[i]->tuple_cnt > 0)
 	    {
