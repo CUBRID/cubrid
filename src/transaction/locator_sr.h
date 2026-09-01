@@ -61,6 +61,20 @@ enum
 
 extern bool locator_Dont_check_foreign_key;
 
+/* Where a statement takes the row lock for a modified object, and how long it keeps it.
+ * The select phase may have taken it already; otherwise the force phase does, and then either holds it
+ * to commit or -- once the change is published and a late arrival can settle on the MVCCID self-lock --
+ * gives it up when the statement ends. */
+typedef enum
+{
+  LOCATOR_LOCK_AT_SELECT,	/* the select phase locked the object; the force phase must not lock again */
+  LOCATOR_LOCK_AT_FORCE,	/* the force phase locks the object and holds the lock to commit */
+  LOCATOR_LOCK_AT_FORCE_TRANSIENT	/* the force phase locks the object and gives it up at statement end */
+} LOCATOR_LOCK_POLICY;
+
+extern bool locator_class_has_online_index (THREAD_ENTRY * thread_p, const OID * class_oid);
+
+
 extern int locator_initialize (THREAD_ENTRY * thread_p);
 extern void locator_finalize (THREAD_ENTRY * thread_p);
 extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa);
@@ -80,7 +94,7 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * h
 					 int pruning_type, PRUNING_CONTEXT * pcontext,
 					 FUNC_PRED_UNPACK_INFO * func_preds, MVCC_REEV_DATA * mvcc_reev_data,
 					 UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor,
-					 bool need_locking);
+					 LOCATOR_LOCK_POLICY lock_policy);
 extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, RECDES * new_recdes,
 							     const int copyarea_length_hint, int lob_create_flag);
@@ -98,7 +112,7 @@ extern DISK_ISVALID locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID *
 						 const char *btname, bool repair);
 extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 				 HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data,
-				 bool need_locking);
+				 LOCATOR_LOCK_POLICY lock_policy);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 					int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
 					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock,
@@ -120,7 +134,8 @@ extern SCAN_CODE locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thr
 							      RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 							      int ispeeking, int old_chn,
 							      MVCC_REEV_DATA * mvcc_reev_data,
-							      NON_EXISTENT_HANDLING non_ex_handling_type);
+							      NON_EXISTENT_HANDLING non_ex_handling_type,
+							      bool transient);
 extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 				     HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, LOCK lock_mode,
 				     int ispeeking, int chn);
