@@ -111,6 +111,12 @@ static void
 oos_reclaim_note_delete (const VFID &oos_vfid);
 
 static void
+oos_reclaim_note_delete_locked (const VFID &oos_vfid);
+
+static void
+oos_reclaim_note_recovery_delete_locked (const VFID *oos_vfid, const LOG_LSA *rollback_delete_lsa);
+
+static void
 oos_reclaim_clear_all_states (void);
 
 static void
@@ -421,7 +427,8 @@ oos_stats_add_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid, VPID *vpid, i
 }
 
 static int
-oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid)
+oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid,
+				 bool rearm_growth_sweep = false, const LOG_LSA *rollback_delete_lsa = NULL)
 {
   OOS_STATS_ENTRY *ent;
 
@@ -430,6 +437,10 @@ oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid)
   (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
 
   ent = (OOS_STATS_ENTRY *) mht_get (oos_Bestspace->vpid_ht, vpid);
+  if (rearm_growth_sweep)
+    {
+      oos_reclaim_note_recovery_delete_locked (ent == NULL ? NULL : &ent->vfid, rollback_delete_lsa);
+    }
   if (ent == NULL)
     {
       pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
@@ -1287,10 +1298,9 @@ oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 // until that deleter finishes; a grower arriving while another sweep runs on the same file
 // allocates without waiting (see oos_reclaim_sweep_step, "Concurrency"); a sweep failure is
 // absorbed so reclaim never fails an INSERT (see oos_alloc_page_with_reclaim); a page emptied
-// by a path that does not pass oos_delete (an INSERT rollback's RVOOS_INSERT undo, a failure
-// midway through deleting an OOS value chain) raises no counter hint — the boot rule after a
-// restart or the file's next OOS value chain delete re-arms the gate, and the next growth's
-// sweep recovers the page.
+// by a failure midway through deleting an OOS value chain raises no counter hint — the boot
+// rule after a restart or the file's next OOS value chain delete re-arms the gate, and the next
+// growth's sweep recovers the page.
 // ****************************************************************************
 
 /* Per-page verdict of oos_try_reclaim_page_internal, for batch/sweep callers that must tell
@@ -1348,19 +1358,14 @@ struct oos_vfid_order
  * per live OOS file. Guarded by oos_Bestspace->bestspace_mutex (the reclaim bookkeeping shares
  * the bestspace cache's lifecycle and its lock). */
 static std::map<VFID, oos_reclaim_file_state, oos_vfid_order> oos_Reclaim_states;
+/* The greatest rollback-delete CLR is enough: earlier CLR LSAs pass the ordinary strict gate
+ * once the horizon reaches this one. */
+static LOG_LSA oos_Last_rollback_delete_lsa = NULL_LSA;
 
-/*
- * oos_reclaim_note_delete () - Count one successfully deleted OOS value chain toward the file's
- *   pending-delete counter, immediately at delete time (committed or not). Never fails: if the
- *   entry cannot be created, it stays absent and the boot rule keeps the growth gate armed.
- */
+/* Caller holds bestspace_mutex. */
 static void
-oos_reclaim_note_delete (const VFID &oos_vfid)
+oos_reclaim_note_delete_locked (const VFID &oos_vfid)
 {
-  assert (oos_Bestspace != NULL);
-
-  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
-
   try
     {
       auto it = oos_Reclaim_states.find (oos_vfid);
@@ -1377,10 +1382,47 @@ oos_reclaim_note_delete (const VFID &oos_vfid)
     }
   catch (std::bad_alloc &)
     {
-      /* Entry stays absent — the boot rule treats that as sweep-needed, so the hint is not
-       * lost, only coarser. */
+      /* Entry stays absent — the boot rule keeps the growth gate armed. */
+    }
+}
+
+/* LOG_RCV has no owning VFID. Without a bestspace entry, conservatively re-arm every known
+ * file; files without reclaim state remain armed by the boot rule. rollback_delete_lsa, when
+ * present, identifies a redo-only CLR. Caller holds bestspace_mutex. */
+static void
+oos_reclaim_note_recovery_delete_locked (const VFID *oos_vfid, const LOG_LSA *rollback_delete_lsa)
+{
+  if (rollback_delete_lsa != NULL
+      && (LSA_ISNULL (&oos_Last_rollback_delete_lsa)
+	  || LSA_LT (&oos_Last_rollback_delete_lsa, rollback_delete_lsa)))
+    {
+      oos_Last_rollback_delete_lsa = *rollback_delete_lsa;
     }
 
+  if (oos_vfid != NULL)
+    {
+      oos_reclaim_note_delete_locked (*oos_vfid);
+      return;
+    }
+
+  for (auto &state : oos_Reclaim_states)
+    {
+      state.second.pending_deletes++;
+    }
+}
+
+/*
+ * oos_reclaim_note_delete () - Count one successfully deleted OOS value chain toward the file's
+ *   pending-delete counter, immediately at delete time (committed or not). Never fails: if the
+ *   entry cannot be created, it stays absent and the boot rule keeps the growth gate armed.
+ */
+static void
+oos_reclaim_note_delete (const VFID &oos_vfid)
+{
+  assert (oos_Bestspace != NULL);
+
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  oos_reclaim_note_delete_locked (oos_vfid);
   pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
 }
 
@@ -1435,6 +1477,7 @@ static void
 oos_reclaim_clear_all_states (void)
 {
   oos_Reclaim_states.clear ();
+  LSA_SET_NULL (&oos_Last_rollback_delete_lsa);
 }
 
 /*
@@ -1510,6 +1553,18 @@ oos_page_is_reclaimable_empty (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr)
   return pgbuf_get_page_ptype (thread_p, page_ptr) == PAGE_OOS && spage_number_of_records (page_ptr) == 0;
 }
 
+/* An INSERT rollback's CLR is redo-only, but its page LSA may equal the append horizon. Equality
+ * is safe only after the live-writer horizon reaches that exact LSA; an abort still in progress
+ * keeps the horizon at its earlier transaction head. */
+static bool
+oos_reclaim_lsa_gate_passes (const LOG_LSA &page_lsa, const LOG_LSA &horizon,
+			     const LOG_LSA &rollback_delete_lsa)
+{
+  return LSA_LT (&page_lsa, &horizon)
+	 || (!LSA_ISNULL (&rollback_delete_lsa) && LSA_EQ (&page_lsa, &horizon)
+	     && LSA_EQ (&page_lsa, &rollback_delete_lsa));
+}
+
 /*
  * oos_try_reclaim_page_internal () - Try to return one fully emptied OOS data page to the file
  *   manager's partial sector table so file_alloc can reuse it, no matter what state the (capped,
@@ -1537,6 +1592,7 @@ oos_page_is_reclaimable_empty (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr)
  *   horizon(in): LSA gate horizon, sampled once by the caller BEFORE examining any page
  *		  (oos_reclaim_sample_horizon)
  *   result(out): per-page verdict; meaningful only when NO_ERROR is returned
+ *   rollback_delete_lsa(in): latest redo-only INSERT-rollback CLR, or NULL_LSA
  *
  * Safety argument (why the emptiness check cannot race a writer, and why undo can never reach a
  * deallocated page):
@@ -1554,14 +1610,15 @@ oos_page_is_reclaimable_empty (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr)
  *      be unfixed before that commit (pgbuf_dealloc_page requires a single fixer); read-only
  *      sync sampling may slip into that gap, which is why the hint eviction happens after the
  *      commit and why lookups tolerate deallocated hints (OLD_PAGE_MAYBE_DEALLOCATED).
- *   4. The LSA gate: the page is deallocated only when its page LSA is older than the horizon —
- *      the smallest head LSA of any active transaction or active system-worker sysop, sampled
- *      before any page was examined. Emptiness alone cannot tell "emptied by committed deletes"
- *      from "emptied by a still-active deleter", and the latter's abort replays RVOOS_DELETE
- *      undo (re-inserting the chunks) into the page. Every write a live undo source made
- *      carries a page LSA at or above that source's head LSA, so a page passing the gate cannot
- *      be an undo target of anyone still running. Gated pages are classified deferred and become
- *      reclaimable once the writer commits or aborts.
+ *   4. The LSA gate: the page is deallocated only when its page LSA is older than the horizon,
+ *      except for the exact redo-only rollback CLR accepted by oos_reclaim_lsa_gate_passes. The
+ *      horizon is the smallest head LSA of any active transaction or active system-worker sysop,
+ *      sampled before any page was examined. Emptiness alone cannot tell "emptied by committed
+ *      deletes" from "emptied by a still-active deleter", and the latter's abort replays
+ *      RVOOS_DELETE undo (re-inserting the chunks) into the page. Every write a live undo source
+ *      made carries a page LSA at or above that source's head LSA, so a page passing the gate
+ *      cannot be an undo target of anyone still running. Gated pages are classified deferred and
+ *      become reclaimable once the writer commits or aborts.
  *
  * Why not the heap's OLD_PAGE_PREVENT_DEALLOC protocol (heap_remove_page_on_vacuum): readers
  * reach OOS chunk pages only by following head OOS OIDs out of heap record versions, and vacuum
@@ -1575,7 +1632,8 @@ oos_page_is_reclaimable_empty (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr)
  */
 static int
 oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid,
-			       const VPID &hdr_vpid, const LOG_LSA &horizon, OOS_RECLAIM_RESULT &result)
+			       const VPID &hdr_vpid, const LOG_LSA &horizon, OOS_RECLAIM_RESULT &result,
+			       const LOG_LSA &rollback_delete_lsa)
 {
   int err = NO_ERROR;
 
@@ -1604,7 +1662,8 @@ oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, con
     }
 
   bool is_empty = oos_page_is_reclaimable_empty (thread_p, page_ptr);
-  bool lsa_gate_passes = is_empty && LSA_LT (pgbuf_get_lsa (page_ptr), &horizon);
+  bool lsa_gate_passes = is_empty
+			 && oos_reclaim_lsa_gate_passes (*pgbuf_get_lsa (page_ptr), horizon, rollback_delete_lsa);
   pgbuf_unfix_and_init (thread_p, page_ptr);
   if (!is_empty)
     {
@@ -1655,7 +1714,7 @@ oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, con
       return NO_ERROR;
     }
 
-  if (!LSA_LT (pgbuf_get_lsa (page_ptr), &horizon))
+  if (!oos_reclaim_lsa_gate_passes (*pgbuf_get_lsa (page_ptr), horizon, rollback_delete_lsa))
     {
       /* Binding LSA-gate verdict (safety item 4), right after the emptiness re-validation and
        * under the header latch: the last writer may still be active — defer, do not dealloc. */
@@ -1812,7 +1871,7 @@ oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vect
   for (const VPID &vpid : candidates)
     {
       OOS_RECLAIM_RESULT result;
-      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, horizon, result);
+      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, horizon, result, NULL_LSA);
       if (err != NO_ERROR)
 	{
 	  /* Stop immediately — an interrupt must not wait out the rest of the list — and let
@@ -1913,6 +1972,8 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
   INT64 pending_at_start = 0;
   VPID cursor;
   VPID_SET_NULL (&cursor);
+  LOG_LSA rollback_delete_lsa;
+  LSA_SET_NULL (&rollback_delete_lsa);
   bool claimed = false;
 
   assert (oos_Bestspace != NULL);
@@ -1935,6 +1996,10 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 	  pending_at_start = it->second.pending_deletes;
 	  cursor = it->second.sweep_cursor;
 	  claimed = true;
+	}
+      if (claimed)
+	{
+	  rollback_delete_lsa = oos_Last_rollback_delete_lsa;
 	}
     }
   catch (std::bad_alloc &)
@@ -2021,7 +2086,8 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 	}
 
       OOS_RECLAIM_RESULT result;
-      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, horizon, result);
+      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, horizon, result,
+					   rollback_delete_lsa);
       if (err != NO_ERROR)
 	{
 	  /* Stop immediately (an interrupt must not wait out the lap). Cursor and counter stay
@@ -3367,10 +3433,14 @@ oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
     }
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
-  /* Remove stale bestspace cache entry for this page (rollback path) */
+  /* Evict the stale hint and re-arm reclaim atomically. Only a runtime rollback's page LSA is
+   * redo-only and eligible for the narrow equality case in the reclaim gate. */
   VPID page_vpid;
   pgbuf_get_vpid (rcv->pgptr, &page_vpid);
-  (void) oos_stats_del_bestspace_by_vpid (thread_p, &page_vpid);
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  const LOG_LSA *rollback_delete_lsa = LOG_ISRESTARTED () && tdes != NULL && LOG_ISTRAN_ABORTED (tdes)
+				       ? pgbuf_get_lsa (rcv->pgptr) : NULL;
+  (void) oos_stats_del_bestspace_by_vpid (thread_p, &page_vpid, true, rollback_delete_lsa);
 
   return NO_ERROR;
 }

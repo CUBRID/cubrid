@@ -220,6 +220,45 @@ TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
   remove_file_and_commit (oos_vfid);
 }
 
+// An INSERT rollback can empty an allocated page. Repeated rollbacks must keep reusing that page
+// after bestspace hints are lost instead of growing the file once per transaction.
+TEST (OosGrowthSweepTest, InsertRollbackRearmsGrowthSweep)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  OID live_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, live_oid), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_EQ (count_user_pages (oos_vfid), 2);
+
+  OID aborted_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, aborted_oid), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 3);
+  ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
+
+  for (int i = 0; i < 3; i++)
+    {
+      simulate_hint_loss (oos_vfid);
+
+      OID retry_oid = OID_INITIALIZER;
+      ASSERT_EQ (insert_page_filling_record (oos_vfid, retry_oid), NO_ERROR);
+      ASSERT_EQ (count_user_pages (oos_vfid), 3)
+	  << "rollback cycle " << i << " stranded an empty page";
+      ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
+    }
+
+  simulate_hint_loss (oos_vfid);
+  OID committed_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, committed_oid), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 3);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  assert_value_intact (live_oid);
+  assert_value_intact (committed_oid);
+
+  remove_file_and_commit (oos_vfid);
+}
+
 // ===========================================================================
 // TEST: SweepIsIncrementalWithCursorContinuation (test plan case 4)
 //
