@@ -10,25 +10,22 @@ import java.sql.Savepoint;
 import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
-
 import javax.sql.XAConnection;
 import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
 
 /**
- * B1JdbcSmoke - the track-B standard smoke over the real JDBC driver
- * (workspace#122 D5): connect -> DDL -> DML -> cancel -> reconnect, against a
- * DIRECT_HANDOFF broker, i.e. the driver's wire lands 1-hop on cub_server's
- * folded CAS speaker (stage B1).
+ * B1JdbcSmoke - the track-B standard smoke over the real JDBC driver (workspace#122 D5): connect ->
+ * DDL -> DML -> cancel -> reconnect, against a DIRECT_HANDOFF broker, i.e. the driver's wire lands
+ * 1-hop on cub_server's folded CAS speaker (stage B1).
  *
- * Stage B2 (workspace#139) accumulates the "JDBC actually works" battery on
- * top: handoff stability across the driver's internal CHECK_CAS (B2-D11),
- * statement pooling, the autocommit state machine, savepoints, isolation,
- * schema info (DatabaseMetaData), a bind/fetch type battery, batches,
- * generated keys, LOB, query timeout, and XA 2PC (B2-D12).
+ * <p>Stage B2 (workspace#139) accumulates the "JDBC actually works" battery on top: handoff
+ * stability across the driver's internal CHECK_CAS (B2-D11), statement pooling, the autocommit
+ * state machine, savepoints, isolation, schema info (DatabaseMetaData), a bind/fetch type battery,
+ * batches, generated keys, LOB, query timeout, and XA 2PC (B2-D12).
  *
- * usage: java B1JdbcSmoke <broker_port> <dbname> <dbuser> <dbpasswd>
- * prints "B1_JDBC: SUCCESS" and exits 0 only if every step behaved.
+ * <p>usage: java B1JdbcSmoke <broker_port> <dbname> <dbuser> <dbpasswd> prints "B1_JDBC: SUCCESS"
+ * and exits 0 only if every step behaved.
  */
 public class B1JdbcSmoke {
     static String url;
@@ -44,10 +41,9 @@ public class B1JdbcSmoke {
     }
 
     /**
-     * The server-issued cancel token rides in the connect reply's pid slot
-     * (B1-D5) and the driver keeps it as UConnection.casProcessId. Every
-     * handoff issues a distinct token, so a change across requests proves the
-     * driver silently discarded the first connection (a second handoff).
+     * The server-issued cancel token rides in the connect reply's pid slot (B1-D5) and the driver
+     * keeps it as UConnection.casProcessId. Every handoff issues a distinct token, so a change
+     * across requests proves the driver silently discarded the first connection (a second handoff).
      */
     static int casToken(Connection c) throws Exception {
         java.lang.reflect.Field f = c.getClass().getDeclaredField("u_con");
@@ -60,14 +56,20 @@ public class B1JdbcSmoke {
 
     public static void main(String[] args) throws Exception {
         if (args.length != 4 && args.length != 5) {
-            System.err.println("usage: B1JdbcSmoke <broker_port> <dbname> <dbuser> <dbpasswd> [ssl]");
+            System.err.println(
+                    "usage: B1JdbcSmoke <broker_port> <dbname> <dbuser> <dbpasswd> [ssl]");
             System.exit(2);
         }
         sslMode = args.length == 5 && "ssl".equals(args[4]);
         boolean roMode = args.length == 5 && "ro".equals(args[4]);
         Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
-        url = "jdbc:cubrid:127.0.0.1:" + args[0] + ":" + args[1] + ":::"
-                + (sslMode ? "?useSSL=true" : "");
+        url =
+                "jdbc:cubrid:127.0.0.1:"
+                        + args[0]
+                        + ":"
+                        + args[1]
+                        + ":::"
+                        + (sslMode ? "?useSSL=true" : "");
         user = args[2];
         pass = args[3];
 
@@ -89,11 +91,14 @@ public class B1JdbcSmoke {
                 ros.executeUpdate("CREATE TABLE b3_ro_probe (id INT)");
             } catch (SQLException e) {
                 refused = true;
-                System.out.println("B1_JDBC: ro write raised: " + e.getErrorCode()
-                        + " " + e.getMessage().trim());
+                System.out.println(
+                        "B1_JDBC: ro write raised: "
+                                + e.getErrorCode()
+                                + " "
+                                + e.getMessage().trim());
                 if (e.getErrorCode() != -581) {
-                    throw new RuntimeException("expected ER_DB_NO_MODIFICATIONS (-581), got "
-                            + e.getErrorCode());
+                    throw new RuntimeException(
+                            "expected ER_DB_NO_MODIFICATIONS (-581), got " + e.getErrorCode());
                 }
             }
             if (!refused) {
@@ -122,7 +127,7 @@ public class B1JdbcSmoke {
         // 2. DDL (autocommit on by default)
         step("ddl");
         Statement stmt = con.createStatement();
-        for (String t : new String[] { "b1_smoke", "b2_types", "b2_gk", "b2_lob" }) {
+        for (String t : new String[] {"b1_smoke", "b2_types", "b2_gk", "b2_lob"}) {
             try {
                 stmt.executeUpdate("DROP TABLE IF EXISTS " + t);
             } catch (SQLException ignored) {
@@ -131,8 +136,12 @@ public class B1JdbcSmoke {
         stmt.executeUpdate("CREATE TABLE b1_smoke (id INT PRIMARY KEY, v VARCHAR(32))");
 
         if (casToken(con) != token0) {
-            throw new RuntimeException("handoff not stable: token changed " + token0 + " -> " + casToken(con)
-                    + " (the driver reconnected after CHECK_CAS)");
+            throw new RuntimeException(
+                    "handoff not stable: token changed "
+                            + token0
+                            + " -> "
+                            + casToken(con)
+                            + " (the driver reconnected after CHECK_CAS)");
         }
 
         // 3. DML: bound inserts, count, update, verify
@@ -176,7 +185,8 @@ public class B1JdbcSmoke {
             rs = ps.executeQuery();
             rs.next();
             if (rs.getInt(1) != 2) {
-                throw new RuntimeException("pooling round " + round + ": expected 2, got " + rs.getInt(1));
+                throw new RuntimeException(
+                        "pooling round " + round + ": expected 2, got " + rs.getInt(1));
             }
             rs.close();
             ps.close(); // returns the handle to the driver's pool
@@ -216,13 +226,15 @@ public class B1JdbcSmoke {
         rs = stmt.executeQuery("SELECT COUNT(*) FROM b1_smoke WHERE id IN (10, 11)");
         rs.next();
         if (rs.getInt(1) != 1) {
-            throw new RuntimeException("savepoint: expected only id 10 to survive, got " + rs.getInt(1) + " rows");
+            throw new RuntimeException(
+                    "savepoint: expected only id 10 to survive, got " + rs.getInt(1) + " rows");
         }
         rs.close();
         rs = stmt.executeQuery("SELECT id FROM b1_smoke WHERE id IN (10, 11)");
         rs.next();
         if (rs.getInt(1) != 10) {
-            throw new RuntimeException("savepoint: survivor is id " + rs.getInt(1) + ", expected 10");
+            throw new RuntimeException(
+                    "savepoint: survivor is id " + rs.getInt(1) + ", expected 10");
         }
         rs.close();
         stmt.executeUpdate("DELETE FROM b1_smoke WHERE id = 10");
@@ -263,7 +275,8 @@ public class B1JdbcSmoke {
         String label = rs.getMetaData().getColumnName(1);
         rs.close();
         if (!"v".equals(label)) {
-            throw new RuntimeException("qualified select-list column label not stripped: got '" + label + "'");
+            throw new RuntimeException(
+                    "qualified select-list column label not stripped: got '" + label + "'");
         }
 
         // OFF + refresh lifecycle: a session begun after the runtime flip must
@@ -276,7 +289,10 @@ public class B1JdbcSmoke {
             rs.close();
             off.close();
             if (!"y.v".equals(label)) {
-                throw new RuntimeException("cas_stripped_column_name=no not honored by new session: got '" + label + "'");
+                throw new RuntimeException(
+                        "cas_stripped_column_name=no not honored by new session: got '"
+                                + label
+                                + "'");
             }
         } finally {
             stmt.executeUpdate("SET SYSTEM PARAMETERS 'cas_stripped_column_name=yes'");
@@ -287,21 +303,24 @@ public class B1JdbcSmoke {
         rs.close();
         on.close();
         if (!"v".equals(label)) {
-            throw new RuntimeException("cas_stripped_column_name=yes restore not honored: got '" + label + "'");
+            throw new RuntimeException(
+                    "cas_stripped_column_name=yes restore not honored: got '" + label + "'");
         }
 
         // 9. type battery: bind -> store -> fetch round-trip per major type
         step("types");
-        stmt.executeUpdate("CREATE TABLE b2_types (c_int INT, c_big BIGINT, c_num NUMERIC(15,4),"
-                + " c_flt FLOAT, c_dbl DOUBLE, c_chr CHAR(8), c_vch VARCHAR(64),"
-                + " c_dt DATE, c_tm TIME, c_ts TIMESTAMP, c_dtt DATETIME, c_bit BIT VARYING(64))");
-        PreparedStatement tins = con.prepareStatement("INSERT INTO b2_types VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+        stmt.executeUpdate(
+                "CREATE TABLE b2_types (c_int INT, c_big BIGINT, c_num NUMERIC(15,4),"
+                        + " c_flt FLOAT, c_dbl DOUBLE, c_chr CHAR(8), c_vch VARCHAR(64),"
+                        + " c_dt DATE, c_tm TIME, c_ts TIMESTAMP, c_dtt DATETIME, c_bit BIT VARYING(64))");
+        PreparedStatement tins =
+                con.prepareStatement("INSERT INTO b2_types VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
         BigDecimal num = new BigDecimal("12345.6789");
         Date dt = Date.valueOf("2026-08-29");
         Time tm = Time.valueOf("13:14:15");
         Timestamp ts = Timestamp.valueOf("2026-08-29 13:14:15");
         Timestamp dtt = Timestamp.valueOf("2026-08-29 13:14:15.123");
-        byte[] bits = new byte[] { (byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF };
+        byte[] bits = new byte[] {(byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF};
         tins.setInt(1, -42);
         tins.setLong(2, 9007199254740993L);
         tins.setBigDecimal(3, num);
@@ -395,8 +414,9 @@ public class B1JdbcSmoke {
         // 11. generated keys (fn_get_generated_keys)
         step("generated_keys");
         stmt.executeUpdate("CREATE TABLE b2_gk (id INT AUTO_INCREMENT PRIMARY KEY, v VARCHAR(10))");
-        PreparedStatement gins = con.prepareStatement("INSERT INTO b2_gk (v) VALUES (?)",
-                Statement.RETURN_GENERATED_KEYS);
+        PreparedStatement gins =
+                con.prepareStatement(
+                        "INSERT INTO b2_gk (v) VALUES (?)", Statement.RETURN_GENERATED_KEYS);
         gins.setString(1, "gk");
         gins.executeUpdate();
         rs = gins.getGeneratedKeys();
@@ -457,7 +477,8 @@ public class B1JdbcSmoke {
             throw new RuntimeException("SLEEP(10) was not timed out");
         }
         if (tElapsed > 15000) {
-            throw new RuntimeException("query timeout took " + tElapsed + "ms - hang, not the CS-parity 10s");
+            throw new RuntimeException(
+                    "query timeout took " + tElapsed + "ms - hang, not the CS-parity 10s");
         }
         tstmt.close();
         // the session must still work
@@ -471,53 +492,54 @@ public class B1JdbcSmoke {
         if (sslMode) {
             System.out.println("B1_JDBC: step xa (skipped in ssl mode)");
         } else {
-        step("xa");
-        // getXAConnection reads serverName/portNumber/databaseName only —
-        // setUrl is not parsed on the XA path (CUBRIDXADataSource.java:70-73)
-        cubrid.jdbc.driver.CUBRIDXADataSource xds = new cubrid.jdbc.driver.CUBRIDXADataSource();
-        xds.setServerName("127.0.0.1");
-        xds.setPortNumber(Integer.parseInt(args[0]));
-        xds.setDatabaseName(args[1]);
-        XAConnection xacon = xds.getXAConnection(user, pass);
-        XAResource xares = xacon.getXAResource();
-        Connection xc = xacon.getConnection();
-        Xid xid = new Xid() {
-            public int getFormatId() {
-                return 0x42;
-            }
+            step("xa");
+            // getXAConnection reads serverName/portNumber/databaseName only —
+            // setUrl is not parsed on the XA path (CUBRIDXADataSource.java:70-73)
+            cubrid.jdbc.driver.CUBRIDXADataSource xds = new cubrid.jdbc.driver.CUBRIDXADataSource();
+            xds.setServerName("127.0.0.1");
+            xds.setPortNumber(Integer.parseInt(args[0]));
+            xds.setDatabaseName(args[1]);
+            XAConnection xacon = xds.getXAConnection(user, pass);
+            XAResource xares = xacon.getXAResource();
+            Connection xc = xacon.getConnection();
+            Xid xid =
+                    new Xid() {
+                        public int getFormatId() {
+                            return 0x42;
+                        }
 
-            public byte[] getGlobalTransactionId() {
-                return "b2smoke-gtrid".getBytes();
-            }
+                        public byte[] getGlobalTransactionId() {
+                            return "b2smoke-gtrid".getBytes();
+                        }
 
-            public byte[] getBranchQualifier() {
-                return "b2smoke-bqual".getBytes();
+                        public byte[] getBranchQualifier() {
+                            return "b2smoke-bqual".getBytes();
+                        }
+                    };
+            xares.start(xid, XAResource.TMNOFLAGS);
+            Statement xstmt = xc.createStatement();
+            xstmt.executeUpdate("INSERT INTO b1_smoke VALUES (100, 'xa_row')");
+            xstmt.close();
+            xares.end(xid, XAResource.TMSUCCESS);
+            int vote = xares.prepare(xid);
+            if (vote != XAResource.XA_OK && vote != XAResource.XA_RDONLY) {
+                throw new RuntimeException("xa prepare voted " + vote);
             }
-        };
-        xares.start(xid, XAResource.TMNOFLAGS);
-        Statement xstmt = xc.createStatement();
-        xstmt.executeUpdate("INSERT INTO b1_smoke VALUES (100, 'xa_row')");
-        xstmt.close();
-        xares.end(xid, XAResource.TMSUCCESS);
-        int vote = xares.prepare(xid);
-        if (vote != XAResource.XA_OK && vote != XAResource.XA_RDONLY) {
-            throw new RuntimeException("xa prepare voted " + vote);
-        }
-        if (vote == XAResource.XA_OK) {
-            xares.commit(xid, false);
-        }
-        Xid[] recovered = xares.recover(XAResource.TMSTARTRSCAN | XAResource.TMENDRSCAN);
-        if (recovered == null) {
-            throw new RuntimeException("xa recover returned null");
-        }
-        xc.close();
-        xacon.close();
-        rs = stmt.executeQuery("SELECT v FROM b1_smoke WHERE id = 100");
-        if (!rs.next() || !"xa_row".equals(rs.getString(1))) {
-            throw new RuntimeException("xa-committed row not visible");
-        }
-        rs.close();
-        stmt.executeUpdate("DELETE FROM b1_smoke WHERE id = 100");
+            if (vote == XAResource.XA_OK) {
+                xares.commit(xid, false);
+            }
+            Xid[] recovered = xares.recover(XAResource.TMSTARTRSCAN | XAResource.TMENDRSCAN);
+            if (recovered == null) {
+                throw new RuntimeException("xa recover returned null");
+            }
+            xc.close();
+            xacon.close();
+            rs = stmt.executeQuery("SELECT v FROM b1_smoke WHERE id = 100");
+            if (!rs.next() || !"xa_row".equals(rs.getString(1))) {
+                throw new RuntimeException("xa-committed row not visible");
+            }
+            rs.close();
+            stmt.executeUpdate("DELETE FROM b1_smoke WHERE id = 100");
         }
 
         // 15. prepared-handle cap: cas_max_prepared_stmt_count=64 (set by
@@ -533,8 +555,11 @@ public class B1JdbcSmoke {
                     held[i] = capCon.prepareStatement("SELECT 1 + " + i + " FROM db_root");
                 } catch (SQLException e) {
                     failedAt = i + 1;
-                    System.out.println("B1_JDBC: stmt cap raised at handle " + failedAt + ": "
-                            + e.getMessage().trim());
+                    System.out.println(
+                            "B1_JDBC: stmt cap raised at handle "
+                                    + failedAt
+                                    + ": "
+                                    + e.getMessage().trim());
                     break;
                 }
             }
@@ -547,7 +572,8 @@ public class B1JdbcSmoke {
             capCon.close();
         }
         if (failedAt != 65) {
-            throw new RuntimeException("stmt cap expected to fail at handle 65, failed at " + failedAt);
+            throw new RuntimeException(
+                    "stmt cap expected to fail at handle 65, failed at " + failedAt);
         }
 
         // 16. SHOW SESSION STATUS: the server view replacing the broker's
@@ -564,7 +590,8 @@ public class B1JdbcSmoke {
         }
         rs.close();
         if (sessionRows < 1 || !foundSelf) {
-            throw new RuntimeException("SHOW SESSION STATUS: rows=" + sessionRows + " foundSelf=" + foundSelf);
+            throw new RuntimeException(
+                    "SHOW SESSION STATUS: rows=" + sessionRows + " foundSelf=" + foundSelf);
         }
 
         // 17. cancel: long-running SLEEP interrupted out-of-band ("QC" via the
@@ -572,14 +599,16 @@ public class B1JdbcSmoke {
         // connection must survive the cancelled statement
         step("cancel");
         final Statement slow = con.createStatement();
-        Thread canceller = new Thread(() -> {
-            try {
-                Thread.sleep(1500);
-                slow.cancel();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
+        Thread canceller =
+                new Thread(
+                        () -> {
+                            try {
+                                Thread.sleep(1500);
+                                slow.cancel();
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        });
         canceller.start();
         long begin = System.currentTimeMillis();
         boolean cancelled = false;
@@ -617,7 +646,7 @@ public class B1JdbcSmoke {
             throw new RuntimeException("reconnect read expected row2, got " + rs.getString(1));
         }
         rs.close();
-        for (String t : new String[] { "b2_lob", "b2_gk", "b2_types", "b1_smoke" }) {
+        for (String t : new String[] {"b2_lob", "b2_gk", "b2_types", "b1_smoke"}) {
             stmt.executeUpdate("DROP TABLE " + t);
         }
         stmt.close();
@@ -632,8 +661,14 @@ public class B1JdbcSmoke {
         } else {
             step("alt_hosts");
             int deadPort = Integer.parseInt(args[0]) + 17;
-            String altUrl = "jdbc:cubrid:127.0.0.1:" + deadPort + ":" + args[1]
-                    + ":::?altHosts=127.0.0.1:" + args[0] + "&rcTime=600";
+            String altUrl =
+                    "jdbc:cubrid:127.0.0.1:"
+                            + deadPort
+                            + ":"
+                            + args[1]
+                            + ":::?altHosts=127.0.0.1:"
+                            + args[0]
+                            + "&rcTime=600";
             Connection alt = DriverManager.getConnection(altUrl, user, pass);
             Statement astmt = alt.createStatement();
             ResultSet ars = astmt.executeQuery("SELECT 1 FROM db_root");

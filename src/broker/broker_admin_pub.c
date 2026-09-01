@@ -620,8 +620,7 @@ admin_add_cmd (int master_shm_id, const char *broker)
     }
   if (shm_br->br_info[br_index].direct_handoff == ON)
     {
-      sprintf (admin_err_msg, "Cannot add appl server: broker [%s] is a direct-handoff front (no CAS pool)\n",
-	       broker);
+      sprintf (admin_err_msg, "Cannot add appl server: broker [%s] is a direct-handoff front (no CAS pool)\n", broker);
       uw_shm_detach (shm_br);
       return -1;
     }

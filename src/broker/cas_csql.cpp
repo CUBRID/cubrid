@@ -46,6 +46,8 @@
 #include "cas_protocol.h"
 
 #include "csql.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 typedef std::vector<std::pair<char, std::string>> csql_chunk_vec;
 
@@ -91,7 +93,7 @@ csql_capture_write (void *cookie, const char *buf, size_t size)
 }
 
 static FILE *
-csql_capture_open (csql_capture_cookie * cap)
+csql_capture_open (csql_capture_cookie *cap)
 {
   cookie_io_functions_t io;
 
@@ -107,7 +109,7 @@ csql_capture_open (csql_capture_cookie * cap)
 }
 
 static void
-csql_fill_arg_from_flags (CSQL_ARGUMENT * csql_arg, int flags)
+csql_fill_arg_from_flags (CSQL_ARGUMENT *csql_arg, int flags)
 {
   memset (csql_arg, 0, sizeof (*csql_arg));
   csql_arg->cs_mode = true;
@@ -176,14 +178,14 @@ csql_arg_str_ok (void *arg, char **value, int *size)
 }
 
 static void
-csql_reply_chunks (T_NET_BUF * net_buf, int status, const csql_chunk_vec & chunks)
+csql_reply_chunks (T_NET_BUF *net_buf, int status, const csql_chunk_vec &chunks)
 {
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, status, NULL);
   /* the thin client's exit paths mirror the fat client's
    * db_commit_is_needed () decisions from this byte */
   net_buf_cp_byte (net_buf, db_commit_is_needed ()? 1 : 0);
-  for (const auto & c : chunks)
+  for (const auto &c : chunks)
     {
       net_buf_cp_byte (net_buf, c.first);
       net_buf_cp_int (net_buf, (int) c.second.size (), NULL);
@@ -193,7 +195,7 @@ csql_reply_chunks (T_NET_BUF * net_buf, int status, const csql_chunk_vec & chunk
 }
 
 FN_RETURN
-fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
 {
   int sub_code = 0;
   int cas_err = CAS_ER_ARGS;	/* the shared error epilogue's code (arg_error keeps it) */
@@ -224,113 +226,113 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
   /* the folded csql body and the render capture are C++; keep a bad_alloc
    * (huge result, OOM under the cap) from escaping into the C dispatcher */
   try
-  {
-    if (sub_code == CAS_CSQL_SUB_EXECUTE)
-      {
-	int flags = 0, input_type = 0, line_no = -1, string_width = 0;
-	char *delims = NULL, *column_widths = NULL, *in_file_name = NULL, *text = NULL;
-	int sz = 0;
-	CSQL_ARGUMENT csql_arg;
-	CSQL_SERVER_EXEC_OPTS opts;
+    {
+      if (sub_code == CAS_CSQL_SUB_EXECUTE)
+	{
+	  int flags = 0, input_type = 0, line_no = -1, string_width = 0;
+	  char *delims = NULL, *column_widths = NULL, *in_file_name = NULL, *text = NULL;
+	  int sz = 0;
+	  CSQL_ARGUMENT csql_arg;
+	  CSQL_SERVER_EXEC_OPTS opts;
 
-	if (argc < 9 || !csql_arg_int_ok (argv[1]) || !csql_arg_int_ok (argv[2]) || !csql_arg_int_ok (argv[3])
-	    || !csql_arg_int_ok (argv[4]) || !csql_arg_str_ok (argv[5], &delims, &sz)
-	    || !csql_arg_str_ok (argv[6], &column_widths, &sz) || !csql_arg_str_ok (argv[7], &in_file_name, &sz)
-	    || !csql_arg_str_ok (argv[8], &text, &sz))
-	  {
-	    goto arg_error;
-	  }
-	net_arg_get_int (&flags, argv[1]);
-	net_arg_get_int (&input_type, argv[2]);
-	net_arg_get_int (&line_no, argv[3]);
-	net_arg_get_int (&string_width, argv[4]);
+	  if (argc < 9 || !csql_arg_int_ok (argv[1]) || !csql_arg_int_ok (argv[2]) || !csql_arg_int_ok (argv[3])
+	      || !csql_arg_int_ok (argv[4]) || !csql_arg_str_ok (argv[5], &delims, &sz)
+	      || !csql_arg_str_ok (argv[6], &column_widths, &sz) || !csql_arg_str_ok (argv[7], &in_file_name, &sz)
+	      || !csql_arg_str_ok (argv[8], &text, &sz))
+	    {
+	      goto arg_error;
+	    }
+	  net_arg_get_int (&flags, argv[1]);
+	  net_arg_get_int (&input_type, argv[2]);
+	  net_arg_get_int (&line_no, argv[3]);
+	  net_arg_get_int (&string_width, argv[4]);
 
-	csql_fill_arg_from_flags (&csql_arg, flags);
-	csql_arg.string_width = string_width;
-	if (strlen (delims) >= 2)
-	  {
-	    csql_arg.column_delimiter = delims[0];
-	    csql_arg.column_enclosure = delims[1];
-	  }
-	if (in_file_name[0] != '\0')
-	  {
-	    csql_arg.in_file_name = in_file_name;
-	  }
+	  csql_fill_arg_from_flags (&csql_arg, flags);
+	  csql_arg.string_width = string_width;
+	  if (strlen (delims) >= 2)
+	    {
+	      csql_arg.column_delimiter = delims[0];
+	      csql_arg.column_enclosure = delims[1];
+	    }
+	  if (in_file_name[0] != '\0')
+	    {
+	      csql_arg.in_file_name = in_file_name;
+	    }
 
-	memset (&opts, 0, sizeof (opts));
-	opts.input_type = input_type;
-	opts.line_no = line_no;
-	opts.is_interactive = (flags & CAS_CSQL_FLAG_INTERACTIVE) != 0;
-	opts.is_echo_on = (flags & CAS_CSQL_FLAG_ECHO) != 0;
-	opts.is_time_on = (flags & CAS_CSQL_FLAG_TIME_ON) != 0;
-	opts.query_trace = (flags & CAS_CSQL_FLAG_QUERY_TRACE) != 0;
-	opts.column_widths = (column_widths[0] != '\0') ? column_widths : NULL;
+	  memset (&opts, 0, sizeof (opts));
+	  opts.input_type = input_type;
+	  opts.line_no = line_no;
+	  opts.is_interactive = (flags & CAS_CSQL_FLAG_INTERACTIVE) != 0;
+	  opts.is_echo_on = (flags & CAS_CSQL_FLAG_ECHO) != 0;
+	  opts.is_time_on = (flags & CAS_CSQL_FLAG_TIME_ON) != 0;
+	  opts.query_trace = (flags & CAS_CSQL_FLAG_QUERY_TRACE) != 0;
+	  opts.column_widths = (column_widths[0] != '\0') ? column_widths : NULL;
 
-	cas_log_write (0, true, "csql_request execute");
-	status = csql_server_execute_request (&csql_arg, &opts, text, out_fp, err_fp);
-      }
-    else if (sub_code == CAS_CSQL_SUB_SESSION_CMD)
-      {
-	int flags = 0, string_width = 0;
-	char *column_widths = NULL, *line = NULL;
-	int sz = 0;
-	CSQL_ARGUMENT csql_arg;
-	CSQL_SERVER_EXEC_OPTS opts;
+	  cas_log_write (0, true, "csql_request execute");
+	  status = csql_server_execute_request (&csql_arg, &opts, text, out_fp, err_fp);
+	}
+      else if (sub_code == CAS_CSQL_SUB_SESSION_CMD)
+	{
+	  int flags = 0, string_width = 0;
+	  char *column_widths = NULL, *line = NULL;
+	  int sz = 0;
+	  CSQL_ARGUMENT csql_arg;
+	  CSQL_SERVER_EXEC_OPTS opts;
 
-	if (argc < 5 || !csql_arg_int_ok (argv[1]) || !csql_arg_int_ok (argv[2])
-	    || !csql_arg_str_ok (argv[3], &column_widths, &sz) || !csql_arg_str_ok (argv[4], &line, &sz))
-	  {
-	    goto arg_error;
-	  }
-	net_arg_get_int (&flags, argv[1]);
-	net_arg_get_int (&string_width, argv[2]);
+	  if (argc < 5 || !csql_arg_int_ok (argv[1]) || !csql_arg_int_ok (argv[2])
+	      || !csql_arg_str_ok (argv[3], &column_widths, &sz) || !csql_arg_str_ok (argv[4], &line, &sz))
+	    {
+	      goto arg_error;
+	    }
+	  net_arg_get_int (&flags, argv[1]);
+	  net_arg_get_int (&string_width, argv[2]);
 
-	csql_fill_arg_from_flags (&csql_arg, flags);
-	csql_arg.string_width = string_width;
+	  csql_fill_arg_from_flags (&csql_arg, flags);
+	  csql_arg.string_width = string_width;
 
-	memset (&opts, 0, sizeof (opts));
-	opts.input_type = 1;	/* STRING semantics */
-	opts.line_no = -1;
-	opts.is_echo_on = (flags & CAS_CSQL_FLAG_ECHO) != 0;
-	opts.is_time_on = (flags & CAS_CSQL_FLAG_TIME_ON) != 0;
-	opts.query_trace = (flags & CAS_CSQL_FLAG_QUERY_TRACE) != 0;
-	opts.column_widths = (column_widths[0] != '\0') ? column_widths : NULL;
+	  memset (&opts, 0, sizeof (opts));
+	  opts.input_type = 1;	/* STRING semantics */
+	  opts.line_no = -1;
+	  opts.is_echo_on = (flags & CAS_CSQL_FLAG_ECHO) != 0;
+	  opts.is_time_on = (flags & CAS_CSQL_FLAG_TIME_ON) != 0;
+	  opts.query_trace = (flags & CAS_CSQL_FLAG_QUERY_TRACE) != 0;
+	  opts.column_widths = (column_widths[0] != '\0') ? column_widths : NULL;
 
-	cas_log_write (0, true, "csql_request session_cmd");
-	status = csql_server_session_cmd_request (&csql_arg, &opts, line, out_fp, err_fp);
-      }
-    else if (sub_code == CAS_CSQL_SUB_TRAN)
-      {
-	char op = 0;
+	  cas_log_write (0, true, "csql_request session_cmd");
+	  status = csql_server_session_cmd_request (&csql_arg, &opts, line, out_fp, err_fp);
+	}
+      else if (sub_code == CAS_CSQL_SUB_TRAN)
+	{
+	  char op = 0;
 
-	if (argc < 2 || !csql_arg_char_ok (argv[1]))
-	  {
-	    goto arg_error;
-	  }
-	net_arg_get_char (op, argv[1]);
-	if (op == 'C')
-	  {
-	    status = (db_commit_transaction () < 0) ? 1 : 0;
-	  }
-	else if (op == 'A')
-	  {
-	    status = (db_abort_transaction () < 0) ? 1 : 0;
-	  }
-	else
-	  {
-	    goto arg_error;
-	  }
-	cas_log_write (0, true, "csql_request tran %c", op);
-      }
-    else
-      {
-	goto arg_error;
-      }
-  }
+	  if (argc < 2 || !csql_arg_char_ok (argv[1]))
+	    {
+	      goto arg_error;
+	    }
+	  net_arg_get_char (op, argv[1]);
+	  if (op == 'C')
+	    {
+	      status = (db_commit_transaction () < 0) ? 1 : 0;
+	    }
+	  else if (op == 'A')
+	    {
+	      status = (db_abort_transaction () < 0) ? 1 : 0;
+	    }
+	  else
+	    {
+	      goto arg_error;
+	    }
+	  cas_log_write (0, true, "csql_request tran %c", op);
+	}
+      else
+	{
+	  goto arg_error;
+	}
+    }
   catch (const std::bad_alloc &)
-  {
-    goto mem_error;
-  }
+    {
+      goto mem_error;
+    }
 
   fclose (out_fp);
   fclose (err_fp);

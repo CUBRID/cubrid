@@ -1,20 +1,20 @@
 /*
- *  Copyright 2016 CUBRID Corporation
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Copyright 2016 CUBRID Corporation
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
-
 /*
  * cas_dispatch.c - the CAS request dispatch, extracted from cas.c /
  *                  cas_common_main.c (stage B1, #117)
@@ -58,6 +58,12 @@
 #include "cas_function.h"
 #include "cas_net_buf.h"
 #include "cas_execute.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
+/* protocol violation bound for a single request body (mirrors
+ * driver_session.cpp REQUEST_BODY_MAX) */
+#define CAS_DISPATCH_REQUEST_BODY_MAX (16 * 1024 * 1024)
 
 static void set_db_parameter (void);
 
@@ -179,7 +185,7 @@ net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_IN
 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
-      net_timeout_set (shm_appl->session_timeout);
+      net_timeout_set (CAS_SHM_CFG (session_timeout));
     }
   else
     {
@@ -515,15 +521,28 @@ cas_process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
       set_db_parameter ();
     }
 
-  if (shm_appl->session_timeout < 0)
+  if (CAS_SHM_CFG (session_timeout) < 0)
     net_timeout_set (NET_DEFAULT_TIMEOUT);
   else
-    net_timeout_set (MIN (shm_appl->session_timeout, NET_DEFAULT_TIMEOUT));
+    net_timeout_set (MIN (CAS_SHM_CFG (session_timeout), NET_DEFAULT_TIMEOUT));
 
   if (cas_shard_flag == ON && req_info->client_version == 0)
     {
       assert (0);
       req_info->client_version = CAS_PROTO_CURRENT_VER;
+    }
+
+  /* the driver-sent body length lands in cub_server's address space now:
+   * refuse negative/oversized values before allocating or reading (same
+   * bound as driver_session's connect-phase REQUEST_BODY_MAX) */
+  if (*(client_msg_header.msg_body_size_ptr) < 0
+      || *(client_msg_header.msg_body_size_ptr) > CAS_DISPATCH_REQUEST_BODY_MAX)
+    {
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
+      cas_log_write_and_end (0, true, "COMMUNICATION ERROR invalid message body size %d",
+			     *(client_msg_header.msg_body_size_ptr));
+      return FN_CLOSE_CONN;
     }
 
   read_msg = (char *) MALLOC (*(client_msg_header.msg_body_size_ptr));

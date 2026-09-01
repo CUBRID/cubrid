@@ -1470,4 +1470,5 @@ unicode_decompose_string (const char *str_in, const int size_in, char *str_out, 
 
   *size_out = CAST_STRLEN (dest_cursor - str_out);
 }
+
 /* end of former !SERVER_MODE region */

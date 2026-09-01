@@ -53,6 +53,8 @@
 #include "execute_statement.h"
 #include "log_lsa.hpp"
 #include "object_primitive.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define WS_SET_FOUND_DELETED(mop) WS_SET_DELETED(mop)
 #define MAX_FETCH_SIZE 64

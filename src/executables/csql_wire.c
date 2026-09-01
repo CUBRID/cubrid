@@ -1,20 +1,20 @@
 /*
- *  Copyright 2016 CUBRID Corporation
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Copyright 2016 CUBRID Corporation
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
-
 /*
  * csql_wire.c - thin csql transport (wf122/B5 D6R); see csql_wire.h
  */
@@ -42,6 +42,10 @@
 #define ADOPTION_PROTOCOL_ONLY
 #include "adoption.hpp"
 
+#include <pthread.h>
+#include <semaphore.h>
+#include <signal.h>
+
 #define WIRE_ERR_MSG_MAX 2048
 #define WIRE_DEFAULT_BROKER_PORT 33000
 /* server render cap is 32 MiB (CSQL_CAPTURE_LIMIT); allow framing headroom */
@@ -66,6 +70,52 @@ static bool wire_Time_on = true;
 static bool wire_Echo_on = false;
 static bool wire_Trace_on = false;
 static bool wire_Interactive = false;
+
+/* SIGINT cancel plumbing (PR 7837 review): the signal handler may only call
+ * async-signal-safe functions, so it posts a semaphore and this dedicated
+ * thread performs the socket work.  The main thread is parked inside the
+ * blocked roundtrip while a cancel is in flight, so wire_Fd/wire_Token are
+ * stable when the thread reads them. */
+static sem_t wire_Cancel_sem;
+static volatile sig_atomic_t wire_Cancel_thread_up = 0;
+
+static void wire_cancel_send (void);
+
+static void *
+wire_cancel_thread_run (void *arg)
+{
+  (void) arg;
+  for (;;)
+    {
+      while (sem_wait (&wire_Cancel_sem) != 0 && errno == EINTR)
+	;
+      wire_cancel_send ();
+    }
+  return NULL;
+}
+
+static void
+wire_cancel_thread_start (void)
+{
+  pthread_t tid;
+
+  if (wire_Cancel_thread_up)
+    {
+      return;
+    }
+  if (sem_init (&wire_Cancel_sem, 0, 0) != 0)
+    {
+      return;
+    }
+  pthread_attr_t attr;
+  pthread_attr_init (&attr);
+  pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED);
+  if (pthread_create (&tid, &attr, wire_cancel_thread_run, NULL) == 0)
+    {
+      wire_Cancel_thread_up = 1;
+    }
+  pthread_attr_destroy (&attr);
+}
 
 /* ------------------------------------------------------------------ */
 /* low-level i/o                                                      */
@@ -516,6 +566,7 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
   wire_copy (wire_User, sizeof (wire_User), user_name != NULL ? user_name : "");
   wire_copy (wire_Passwd, sizeof (wire_Passwd), passwd != NULL ? passwd : "");
   wire_Client_type = client_type;
+  wire_cancel_thread_start ();
   return NO_ERROR;
 }
 
@@ -801,8 +852,7 @@ wire_roundtrip (wire_body * b)
 	    {
 	      char *con_buf = NULL;
 	      int con_size = 0;
-	      if ((*csql_text_utf8_to_console) (reply + pos, clen, &con_buf, &con_size) == NO_ERROR
-		  && con_buf != NULL)
+	      if ((*csql_text_utf8_to_console) (reply + pos, clen, &con_buf, &con_size) == NO_ERROR && con_buf != NULL)
 		{
 		  fwrite (con_buf, 1, (size_t) con_size, fp);
 		  free (con_buf);
@@ -853,8 +903,7 @@ csql_wire_execute (const CSQL_ARGUMENT * csql_arg, int input_type, int line_no, 
       || wire_arg_int (&b, CAS_CSQL_SUB_EXECUTE) != NO_ERROR
       || wire_arg_int (&b, wire_flags_from_arg (csql_arg)) != NO_ERROR
       || wire_arg_int (&b, input_type) != NO_ERROR
-      || wire_arg_int (&b, line_no) != NO_ERROR
-      || wire_arg_int (&b, csql_arg->string_width) != NO_ERROR)
+      || wire_arg_int (&b, line_no) != NO_ERROR || wire_arg_int (&b, csql_arg->string_width) != NO_ERROR)
     {
       free (b.buf);
       wire_set_error (ER_FAILED, "out of memory");
@@ -928,8 +977,18 @@ csql_wire_tran (char op)
 /* cancel                                                             */
 /* ------------------------------------------------------------------ */
 
+/* async-signal-safe: called from the SIGINT handler */
 void
 csql_wire_cancel (void)
+{
+  if (wire_Cancel_thread_up)
+    {
+      (void) sem_post (&wire_Cancel_sem);
+    }
+}
+
+static void
+wire_cancel_send (void)
 {
   if (wire_Fd < 0 || wire_Token == 0)
     {

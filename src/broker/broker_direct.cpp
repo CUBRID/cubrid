@@ -1,20 +1,20 @@
 /*
- *  Copyright 2016 CUBRID Corporation
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Copyright 2016 CUBRID Corporation
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
-
 /*
  * broker_direct.cpp - broker side of the server connection handoff (stage B1)
  *
@@ -697,7 +697,7 @@ namespace brd
     /* cas_common_main.c:225-233 verbatim: int 0, then active cas_info */
     int zero = 0;
     char cas_info[CAS_INFO_SIZE] =
-      { CAS_INFO_STATUS_ACTIVE, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT };
+    { CAS_INFO_STATUS_ACTIVE, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT };
     (void) send_all (pc->fd, &zero, sizeof (int));
     (void) send_all (pc->fd, cas_info, sizeof (cas_info));
   }
@@ -784,7 +784,7 @@ namespace brd
 		  std::lock_guard<std::mutex> guard (m->park_inbox_mutex);
 		  inbox.swap (m->park_inbox);
 		}
-		for (parked_client * pc : inbox)
+		for (parked_client *pc : inbox)
 		  {
 		    struct epoll_event ev;
 		    ev.events = EPOLLIN;
@@ -874,9 +874,9 @@ namespace brd
 using namespace brd;
 
 int
-brd_init (const char *broker_name, int max_slots, T_SHM_APPL_SERVER * shm_appl, const char *ssl_db,
-	  T_MAX_HEAP_NODE * job_queue, int job_queue_size, pthread_mutex_t * job_queue_mutex,
-	  pthread_cond_t * job_queue_cond)
+brd_init (const char *broker_name, int max_slots, T_SHM_APPL_SERVER *shm_appl, const char *ssl_db,
+	  T_MAX_HEAP_NODE *job_queue, int job_queue_size, pthread_mutex_t *job_queue_mutex,
+	  pthread_cond_t *job_queue_cond)
 {
   assert (brd_Manager == NULL);
   manager *m = new manager ();
@@ -937,7 +937,7 @@ brd_final (void)
 }
 
 void
-brd_park_client (SOCKET clt_sock_fd, const T_MAX_HEAP_NODE * job)
+brd_park_client (SOCKET clt_sock_fd, const T_MAX_HEAP_NODE *job)
 {
   manager *m = brd_Manager;
   if (m == NULL)
@@ -998,7 +998,7 @@ brd_park_client (SOCKET clt_sock_fd, const T_MAX_HEAP_NODE * job)
 }
 
 void
-brd_dispatch_job (T_MAX_HEAP_NODE * job)
+brd_dispatch_job (T_MAX_HEAP_NODE *job)
 {
   manager *m = brd_Manager;
   if (m == NULL)
@@ -1195,7 +1195,7 @@ brd_cancel (unsigned int token, const unsigned char *clt_ip, unsigned short clt_
     if (!found && std::next (range.first) == range.second)
       {
 	auto it = range.first;
-	if (!(clt_port > 0 && it->second.clt_port != clt_port && std::memcmp (it->second.clt_ip, clt_ip, 4) != 0))
+	if (! (clt_port > 0 && it->second.clt_port != clt_port && std::memcmp (it->second.clt_ip, clt_ip, 4) != 0))
 	  {
 	    db_name = it->second.db_name;
 	    found = true;

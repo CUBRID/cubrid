@@ -43,6 +43,8 @@
 #include "tde.h"
 
 #include <assert.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 //--------------------------------------------------------------------------------
 void object_printer::describe_comment_for_session_cmd (const char *comment)

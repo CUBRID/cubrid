@@ -295,7 +295,7 @@ css_session_status_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE 
   const int SESSION_STATUS_COLUMN_COUNT = 18;
   int error = NO_ERROR;
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
-  cubconn::adoption::session_stat_row *rows = NULL;
+  cubconn::adoption::session_stat_row * rows = NULL;
   std::size_t max_rows, n;
 
   (void) show_type;
@@ -311,7 +311,7 @@ css_session_status_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE 
   ctx = showstmt_alloc_array_context (thread_p, (int) n, SESSION_STATUS_COLUMN_COUNT);
   if (ctx == NULL)
     {
-      delete[] rows;
+      delete[]rows;
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
@@ -361,7 +361,7 @@ css_session_status_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE 
       error = db_make_string_copy (&vals[idx++], r.last_activity);
     }
 
-  delete[] rows;
+  delete[]rows;
   if (error != NO_ERROR)
     {
       showstmt_free_array_context (thread_p, ctx);
@@ -711,9 +711,12 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       }
     if (cubconn::adoption::start (adoption_db_name) != NO_ERROR)
       {
-	/* driver-direct connections are unavailable; the legacy paths are
-	 * unaffected, so the server still comes up */
-	er_log_debug (ARG_FILE_LINE, "css_init: adoption endpoint failed to start\n");
+	/* the adoption socket is the only driver data path (B4): a server
+	 * without it is alive but unreachable — refuse to come up half-dead
+	 * (reviewed: PR 7837) */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+		"the driver adoption endpoint failed to start; check the socket directory and stale sockets");
+	goto shutdown;
       }
   }
 

@@ -40,6 +40,8 @@
 #include "virtual_object.h"
 #include "dbtype.h"
 #include "boot.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define MAX_STACK_OBJECTS 500
 

@@ -29,6 +29,8 @@
 #include "cas_optimization.h"
 #include "cas_common_vars.h"
 #include "optimizer.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* CAS_TLS: in the merged server one driver-session thread speaks for one
  * session, and the CAS original kept this per-process */

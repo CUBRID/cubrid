@@ -53,3 +53,7 @@ extern "C"
 #endif
 
 #include "dbtype_function.i"
+#ifdef __cplusplus		/* SA/CS compile this TU as plain C (COMPAT_SOURCES_C) */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+#endif

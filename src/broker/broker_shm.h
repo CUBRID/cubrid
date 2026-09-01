@@ -197,7 +197,7 @@ typedef INT64 int64_t;
 #endif
 
 typedef struct br_acl_ip_info BR_ACL_IP_INFO;
-struct br_acl_ip_info	/* renamed from ip_info: the tag collided with connection_sr.h in merged-server TUs (stage B1) */
+struct br_acl_ip_info		/* renamed from ip_info: the tag collided with connection_sr.h in merged-server TUs (stage B1) */
 {
   unsigned char address_list[ACL_MAX_IP_COUNT * IP_BYTE_COUNT];
   time_t last_access_time[ACL_MAX_IP_COUNT];

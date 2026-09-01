@@ -1,20 +1,20 @@
 /*
- *  Copyright 2016 CUBRID Corporation
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Copyright 2016 CUBRID Corporation
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
-
 /*
  * cas_conn_helpers.c - per-connection loop helpers, extracted VERBATIM from
  *                      cas_common_main.c (stage B1, #117)
@@ -48,6 +48,8 @@
 #include "broker_process_size.h"
 #include "ddl_log.h"		/* logddl_set_start_time */
 #include "cas_db_inc.h"		/* db_set/get_connect_status */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 int
 restart_is_needed (void)
@@ -108,12 +110,12 @@ net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header)
 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
-      net_timeout_set (shm_appl->session_timeout);
+      net_timeout_set (CAS_SHM_CFG (session_timeout));
     }
   else
     {
       net_timeout_set (DEFAULT_CHECK_INTERVAL);
-      timeout = shm_appl->session_timeout;
+      timeout = CAS_SHM_CFG (session_timeout);
       remained_timeout = timeout;
     }
 
@@ -167,7 +169,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
       /* holdable results have the same lifespan of a normal session */
-      net_timeout_set (shm_appl->session_timeout);
+      net_timeout_set (CAS_SHM_CFG (session_timeout));
     }
   else
     {

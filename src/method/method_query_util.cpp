@@ -472,7 +472,7 @@ namespace cubmethod
     return std::string (val_str);
   }
 
-/* unguarded — client half now compiled into server */
+  /* unguarded — client half now compiled into server */
   int
   get_stmt_type (std::string sql)
   {
@@ -798,5 +798,5 @@ namespace cubmethod
 
     return (set_domain_count != 1) ? DB_TYPE_NULL : set_type;
   }
-/* end of former !SERVER_MODE region */
+  /* end of former !SERVER_MODE region */
 }

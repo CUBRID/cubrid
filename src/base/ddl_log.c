@@ -51,6 +51,8 @@
 #include "util_func.h"
 #include "hide_password.h"
 #include "db.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define DDL_LOG_MSG 	            (256)
 #define DDL_LOG_PATH    	    "log/ddl_audit"

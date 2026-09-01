@@ -39,6 +39,8 @@
 #include "cas_common_vars.h"
 #include "dbtype.h"
 #include "cas_common_execute.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define SRV_HANDLE_ALLOC_SIZE		256
 
@@ -64,7 +66,7 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   T_SRV_HANDLE **new_srv_handle_table = NULL;
   T_SRV_HANDLE *srv_handle;
 
-  if (cas_shard_flag == OFF && current_handle_count >= shm_appl->max_prepared_stmt_count)
+  if (cas_shard_flag == OFF && current_handle_count >= CAS_SHM_CFG (max_prepared_stmt_count))
     {
       return ERROR_INFO_SET (CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED, CAS_ERROR_INDICATOR);
     }

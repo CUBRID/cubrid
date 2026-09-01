@@ -144,6 +144,8 @@ typedef int (*QO_WALK_FUNCTION) (QO_PLAN *, void *);
 /* per-thread: plan/info accounting and the plan free list live for the
  * optimizations running on one thread (see csql_parser_tls.h) */
 #include "csql_parser_tls.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static CSQL_PARSER_TLS int infos_allocated = 0;
 static CSQL_PARSER_TLS int infos_deallocated = 0;

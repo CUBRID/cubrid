@@ -95,6 +95,8 @@ static const float QP_QRES_LIST_INC_RATE = 1.25f;
 static char *db_Execution_plan = NULL;
 static int db_Execution_plan_length = -1;
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static DB_QUERY_RESULT *allocate_query_result (void);
 static void free_query_result (DB_QUERY_RESULT * q_res);

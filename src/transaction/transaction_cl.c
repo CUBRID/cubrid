@@ -62,6 +62,8 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SERVER_MODE)
 extern int csc_er_stack_floor (void);	/* client_session_context.cpp */

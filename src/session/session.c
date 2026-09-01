@@ -65,7 +65,7 @@
 /* the merged client half's session context (client_session_context.hpp);
  * only owned here — all use goes through activation brackets */
 class client_session_context;
-extern void csc_retire_and_delete (client_session_context *ctx);
+extern void csc_retire_and_delete (client_session_context * ctx);
 extern bool csc_bracket_is_active (void);	/* client_session_context.cpp */
 #endif
 

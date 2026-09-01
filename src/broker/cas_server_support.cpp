@@ -1,20 +1,20 @@
 /*
- *  Copyright 2016 CUBRID Corporation
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Copyright 2016 CUBRID Corporation
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
-
 /*
  * cas_server_support.cpp - the environment the folded CAS speaker expects,
  *                          supplied by cub_server (stage B1, #117)
@@ -58,6 +58,8 @@
 #include "cas_sql_log2.h"
 #include "cas_ssl.h"
 #include "system_parameter.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* ------------------------------------------------------------------ */
 /* shm stubs                                                          */
@@ -169,32 +171,33 @@ cas_server_speaker_boot_init (const char *db_name)
 }
 
 /* per session: refresh the CAS-owned config from the cas_* system parameters
- * (B2-D7, #116 D9 split).  The shm stub's numeric fields are shared plain
- * ints; writing the same prm-derived values from every session begin is
- * benign (dynamic changes take effect for sessions started afterwards). */
+ * (B2-D7, #116 D9 split) into this thread's own snapshot — every speaker
+ * reads CAS_SHM_CFG(), so no session writes a field another session is
+ * reading (PR 7837 review; dynamic changes take effect for sessions started
+ * afterwards, as before). */
 static void
-cas_server_refresh_session_config (T_APPL_SERVER_INFO * slot)
+cas_server_refresh_session_config (T_APPL_SERVER_INFO *slot)
 {
-  T_SHM_APPL_SERVER *shm = &cas_Shm_stub;
+  T_CAS_SESSION_CFG *cfg = &cas_session_cfg;
 
   slot->cur_sql_log_mode = (char) prm_get_integer_value (PRM_ID_CAS_SQL_LOG);
   slot->cur_slow_log_mode = prm_get_bool_value (PRM_ID_CAS_SLOW_LOG) ? SLOW_LOG_MODE_ON : SLOW_LOG_MODE_OFF;
 
-  shm->sql_log_max_size = prm_get_integer_value (PRM_ID_CAS_SQL_LOG_MAX_SIZE);
-  shm->access_log = prm_get_bool_value (PRM_ID_CAS_ACCESS_LOG) ? ON : OFF;
-  shm->access_log_max_size = prm_get_integer_value (PRM_ID_CAS_ACCESS_LOG_MAX_SIZE);
-  shm->long_query_time = prm_get_integer_value (PRM_ID_CAS_LONG_QUERY_TIME);
-  shm->long_transaction_time = prm_get_integer_value (PRM_ID_CAS_LONG_TRANSACTION_TIME);
+  cfg->sql_log_max_size = prm_get_integer_value (PRM_ID_CAS_SQL_LOG_MAX_SIZE);
+  cfg->access_log = prm_get_bool_value (PRM_ID_CAS_ACCESS_LOG) ? ON : OFF;
+  cfg->access_log_max_size = prm_get_integer_value (PRM_ID_CAS_ACCESS_LOG_MAX_SIZE);
+  cfg->long_query_time = prm_get_integer_value (PRM_ID_CAS_LONG_QUERY_TIME);
+  cfg->long_transaction_time = prm_get_integer_value (PRM_ID_CAS_LONG_TRANSACTION_TIME);
 
-  shm->jdbc_cache = prm_get_bool_value (PRM_ID_CAS_JDBC_CACHE) ? ON : OFF;
-  shm->jdbc_cache_only_hint = prm_get_bool_value (PRM_ID_CAS_JDBC_CACHE_HINT_ONLY) ? ON : OFF;
-  shm->jdbc_cache_life_time = prm_get_integer_value (PRM_ID_CAS_JDBC_CACHE_LIFE_TIME);
-  shm->statement_pooling = prm_get_bool_value (PRM_ID_CAS_STATEMENT_POOLING) ? ON : OFF;
-  shm->cci_default_autocommit = prm_get_bool_value (PRM_ID_CAS_CCI_DEFAULT_AUTOCOMMIT) ? ON : OFF;
-  shm->max_prepared_stmt_count = prm_get_integer_value (PRM_ID_CAS_MAX_PREPARED_STMT_COUNT);
-  shm->session_timeout = prm_get_integer_value (PRM_ID_CAS_SESSION_TIMEOUT);
-  shm->max_string_length = prm_get_integer_value (PRM_ID_CAS_MAX_STRING_LENGTH);
-  shm->query_timeout = prm_get_integer_value (PRM_ID_CAS_MAX_QUERY_TIMEOUT);
+  cfg->jdbc_cache = prm_get_bool_value (PRM_ID_CAS_JDBC_CACHE) ? ON : OFF;
+  cfg->jdbc_cache_only_hint = prm_get_bool_value (PRM_ID_CAS_JDBC_CACHE_HINT_ONLY) ? ON : OFF;
+  cfg->jdbc_cache_life_time = prm_get_integer_value (PRM_ID_CAS_JDBC_CACHE_LIFE_TIME);
+  cfg->statement_pooling = prm_get_bool_value (PRM_ID_CAS_STATEMENT_POOLING) ? ON : OFF;
+  cfg->cci_default_autocommit = prm_get_bool_value (PRM_ID_CAS_CCI_DEFAULT_AUTOCOMMIT) ? ON : OFF;
+  cfg->max_prepared_stmt_count = prm_get_integer_value (PRM_ID_CAS_MAX_PREPARED_STMT_COUNT);
+  cfg->session_timeout = prm_get_integer_value (PRM_ID_CAS_SESSION_TIMEOUT);
+  cfg->max_string_length = prm_get_integer_value (PRM_ID_CAS_MAX_STRING_LENGTH);
+  cfg->query_timeout = prm_get_integer_value (PRM_ID_CAS_MAX_QUERY_TIMEOUT);
 }
 
 /* per adopted session: point the CAS globals at this thread's slot */
@@ -213,8 +216,8 @@ cas_server_session_slot_begin (int client_type, int client_version, const char *
   /* cas_common_main.c:486 equivalent — straight to TLS, never through the
    * shared read-only stub (concurrent slot_begins would race on it) */
   stripped_column_name = prm_get_bool_value (PRM_ID_CAS_STRIPPED_COLUMN_NAME) ? ON : OFF;
-  slot->cur_statement_pooling = shm_appl->statement_pooling ? ON : OFF;
-  slot->cci_default_autocommit = shm_appl->cci_default_autocommit;
+  slot->cur_statement_pooling = CAS_SHM_CFG (statement_pooling) ? ON : OFF;
+  slot->cci_default_autocommit = CAS_SHM_CFG (cci_default_autocommit);
   slot->auto_commit_mode = FALSE;
   slot->cur_sql_log2 = 0;
   slot->isolation_level = CAS_USE_DEFAULT_DB_PARAM;
@@ -485,7 +488,7 @@ cas_server_acl_check (const char *broker, const char *dbname, const char *dbuser
 
   if (rules != NULL)
     {
-      for (const cas_acl_rule & rule : *rules)
+      for (const cas_acl_rule &rule : *rules)
 	{
 	  if (rule.dbname != "*"
 	      && (rule.dbname.size () != dbname_len || strncasecmp (rule.dbname.c_str (), dbname, dbname_len) != 0))
@@ -532,26 +535,26 @@ cas_server_access_log (struct timeval *start_time, int as_index, int client_ip_a
 /* ------------------------------------------------------------------ */
 
 int
-uw_sem_init (sem_t * sem)
+uw_sem_init (sem_t *sem)
 {
   /* pshared=0: both sides of this lock live in cub_server now */
   return sem_init (sem, 0, 1);
 }
 
 int
-uw_sem_wait (sem_t * sem)
+uw_sem_wait (sem_t *sem)
 {
   return sem_wait (sem);
 }
 
 int
-uw_sem_post (sem_t * sem)
+uw_sem_post (sem_t *sem)
 {
   return sem_post (sem);
 }
 
 int
-uw_sem_destroy (sem_t * sem)
+uw_sem_destroy (sem_t *sem)
 {
   return sem_destroy (sem);
 }

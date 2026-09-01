@@ -30,6 +30,8 @@
 #include "cas_common_vars.h"
 #include "cas_common.h"
 #include "porting.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* Shard ID variables */
 int shm_shard_id = SHARD_ID_UNSUPPORTED;
@@ -40,6 +42,7 @@ int cas_shard_flag = OFF;
 /* Shared memory variables */
 CAS_TLS int shm_as_index;
 T_SHM_APPL_SERVER *shm_appl;
+CAS_TLS T_CAS_SESSION_CFG cas_session_cfg;
 CAS_TLS T_APPL_SERVER_INFO *as_info;
 
 /* Transaction and query timing */

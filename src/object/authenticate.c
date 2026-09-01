@@ -79,6 +79,8 @@
 #if defined(SA_MODE)
 #include "catalog_class.h"
 #endif /* SA_MODE */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* Macro to determine if a name is system catalog class */
 

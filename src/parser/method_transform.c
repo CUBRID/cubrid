@@ -31,6 +31,8 @@
 #include "parser_message.h"
 #include "view_transform.h"
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 typedef struct meth_lambda METH_LAMBDA;
 struct meth_lambda

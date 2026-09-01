@@ -56,6 +56,8 @@
 #include "dbtype.h"
 #include "execute_statement.h"
 #include "client_session_context.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 #if defined (SERVER_MODE)

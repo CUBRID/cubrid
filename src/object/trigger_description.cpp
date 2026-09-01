@@ -35,6 +35,8 @@
 #include "schema_manager.h"
 #include "trigger_manager.h"
 #include "work_space.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* safe string free */
 #define STRFREE_W(string)                               \

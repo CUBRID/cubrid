@@ -50,6 +50,8 @@ static int use_utility_theads = 0;
 
 #define DB_IS_UTILITY_THREAD() ((ws_Heap_id == 0 || use_utility_theads == 0) ? false : (pthread_self () != ws_Heap_Owner_id))
 #endif /* !SERVER_MODE */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 bool
 db_is_utility_thread ()

@@ -43,6 +43,8 @@
 #include "dbtype.h"
 #include "error_code.h"
 #include "db.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 enum
 {

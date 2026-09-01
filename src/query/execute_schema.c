@@ -399,6 +399,8 @@ static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * state
 #else
 int ib_thread_count = 0;
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * Function Group :

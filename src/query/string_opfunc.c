@@ -11098,6 +11098,7 @@ error_exit:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
   return error_status;
 }
+
 /* end of former !SERVER_MODE region */
 
 /*
@@ -11826,6 +11827,7 @@ db_get_time_item (const DB_VALUE * src_date, const int item_type, DB_VALUE * res
 
   return NO_ERROR;
 }
+
 /* end of former !SERVER_MODE region */
 
 

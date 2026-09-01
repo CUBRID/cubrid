@@ -44,6 +44,8 @@
 #include "memory_alloc.h"
 #include "system_parameter.h"
 #include "ddl_log.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -102,7 +104,8 @@ typedef struct
   int plcsql_nest_level;
 } CSQL_EDIT_CONTENTS;
 
-static CSQL_BODY_TLS CSQL_EDIT_CONTENTS csql_Edit_contents = { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0 };
+static CSQL_BODY_TLS CSQL_EDIT_CONTENTS csql_Edit_contents =
+  { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0 };
 
 
 static bool is_identifier_letter (const char c);

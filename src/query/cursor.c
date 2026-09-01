@@ -43,6 +43,8 @@
 #include "virtual_object.h"
 #include "network_interface_cl.h"
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define CURSOR_BUFFER_SIZE              DB_PAGESIZE
 #define CURSOR_BUFFER_AREA_SIZE         IO_MAX_PAGE_SIZE

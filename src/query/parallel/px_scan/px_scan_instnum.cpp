@@ -43,7 +43,7 @@
 
 namespace parallel_scan
 {
-/* unguarded — client half now compiled into server */
+  /* unguarded — client half now compiled into server */
   /* returns true if any TYPE_CONSTANT regu var in this subtree points at iv (the inst_num() value). */
   static bool regu_subtree_refs_instnum (REGU_VARIABLE *r, DB_VALUE *iv);
   static bool pred_refs_instnum (PRED_EXPR *p, DB_VALUE *iv);
@@ -215,7 +215,7 @@ namespace parallel_scan
       }
     return is_plain_instnum_buildlist (x, nullptr);
   }
-/* end of former !SERVER_MODE region */
+  /* end of former !SERVER_MODE region */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
   instnum_mode

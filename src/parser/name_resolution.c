@@ -60,6 +60,8 @@
 
 #include <cas_cci.h>
 #include <broker_cas_protocol.h>	/* CAS_*_DBMS_* values returned by cci_get_dbms_type */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 extern "C"
 {
@@ -1272,7 +1274,11 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		}
 
 	      /* remote table's column list */
+#if defined(MMON_DEBUG_LEVEL)	/* memory_wrapper new-macro active: plain new is the noexcept file/line form */
+	      rmt_tbl_cols = new S_REMOTE_TBL_COLS;
+#else
 	      rmt_tbl_cols = new (std::nothrow) S_REMOTE_TBL_COLS;
+#endif
 	      if (rmt_tbl_cols == NULL)
 		{
 		  PT_ERRORf (parser, table, "Failed to get column information for memory allocation error", ER_DBLINK);

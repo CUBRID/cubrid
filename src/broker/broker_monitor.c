@@ -1184,24 +1184,24 @@ appl_monitor (char *br_vector, double elapsed_time)
 		{
 #endif
 #if defined (WINDOWS)
-	      print_appl_header (shm_appl->use_pdh_flag);
+		  print_appl_header (shm_appl->use_pdh_flag);
 #else
-	      print_appl_header (false);
+		  print_appl_header (false);
 #endif
-	      current_time = time (NULL);
+		  current_time = time (NULL);
 
-	      /* CAS INFORMATION DISPLAY */
-	      appl_offset = 0;
+		  /* CAS INFORMATION DISPLAY */
+		  appl_offset = 0;
 
-	      for (k = 0; k < i; k++)
-		{
-		  appl_offset += shm_br->br_info[k].appl_server_max_num;
-		}
-	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
-		{
-		  appl_info_display (shm_appl, &(shm_appl->as_info[j]), i, j, &(appl_mnt_olds[appl_offset + j]),
-				     current_time, elapsed_time);
-		}		/* CAS INFORMATION DISPLAY */
+		  for (k = 0; k < i; k++)
+		    {
+		      appl_offset += shm_br->br_info[k].appl_server_max_num;
+		    }
+		  for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
+		    {
+		      appl_info_display (shm_appl, &(shm_appl->as_info[j]), i, j, &(appl_mnt_olds[appl_offset + j]),
+					 current_time, elapsed_time);
+		    }		/* CAS INFORMATION DISPLAY */
 #if !defined (WINDOWS)
 		}
 #endif

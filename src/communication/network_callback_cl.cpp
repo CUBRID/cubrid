@@ -20,6 +20,8 @@
 
 #include "network_interface_cl.h" /* net_client_send_data */
 #include "method_callback.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 // +1 (one more slot): method_error need this when ER_SP_TOO_MANY_NESTED_CALL occurs in method_dispatch
 #if defined (SERVER_MODE)
