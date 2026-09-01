@@ -142,8 +142,8 @@ sm_define_view_class_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -205,8 +205,8 @@ sm_define_view_direct_super_class_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -278,8 +278,8 @@ sm_define_view_vclass_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -389,8 +389,8 @@ sm_define_view_attribute_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -472,8 +472,8 @@ sm_define_view_attr_setdomain_elm_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -545,8 +545,8 @@ sm_define_view_method_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -629,8 +629,8 @@ sm_define_view_method_arg_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -713,8 +713,8 @@ sm_define_view_meth_arg_setdomain_elm_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -777,8 +777,8 @@ sm_define_view_meth_file_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -908,8 +908,8 @@ sm_define_view_index_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -981,8 +981,8 @@ sm_define_view_index_key_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1057,8 +1057,8 @@ sm_define_view_auth_spec (void)
         CT_STORED_PROC_NAME,
 	AU_USER_CLASS_NAME
         );
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1130,8 +1130,8 @@ sm_define_view_trigger_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1210,8 +1210,8 @@ sm_define_view_partition_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1327,8 +1327,8 @@ sm_define_view_stored_procedure_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1407,8 +1407,8 @@ sm_define_view_stored_procedure_args_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1443,8 +1443,8 @@ sm_define_view_serial_spec (void)
         "WHERE "
           "[serial].[class_name] IS NULL",
         CT_SERIAL_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1487,8 +1487,8 @@ sm_define_view_ha_apply_info_spec (void)
 	  /* CT_HA_APPLY_INFO_NAME */
           "[%s] AS [log_stat] ",
         CT_HA_APPLY_INFO_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1525,8 +1525,8 @@ sm_define_view_collation_spec (void)
 	  "[coll].[coll_id]",
 	CT_COLLATION_NAME,
 	CT_CHARSET_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1568,8 +1568,8 @@ sm_define_view_user_spec (void)
 	  ") SETNEQ {}",
 	CT_USER_NAME,
 	CT_USER_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1599,8 +1599,8 @@ sm_define_view_authorization_spec (void)
 	  ") SETNEQ {}",
 	CT_AUTHORIZATION_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1628,8 +1628,8 @@ sm_define_view_charset_spec (void)
 	  "[ch].[charset_id]",
 	CT_CHARSET_NAME,
 	CT_COLLATION_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1679,8 +1679,8 @@ sm_define_view_synonym_spec (void)
 	CT_SYNONYM_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1750,8 +1750,8 @@ sm_define_view_server_spec (void)
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -1775,8 +1775,8 @@ sm_define_view_histogram_spec (void)
 	  "[h].[class_of], "
 	  "[h].[key_attr]",
 	CT_HISTOGRAM_NAME);
-  assert(n > 0 && n < sizeof(stmt));
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
