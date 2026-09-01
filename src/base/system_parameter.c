@@ -91,6 +91,7 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 extern bool csc_bracket_is_active (void);	/* client_session_context.cpp — merged client half's scope rules */
+extern thread_local unsigned int db_on_server;	/* hat: set inside enter_server brackets */
 #endif // SERVER_MODE
 #include "string_regex.hpp"
 #if !defined (SERVER_MODE)
@@ -7876,11 +7877,15 @@ sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments, bool ch
 #if defined (SERVER_MODE)
       if (check)
 	{
-	  if (csc_bracket_is_active ())
+	  if (csc_bracket_is_active () && !db_on_server)
 	    {
 	      /* the merged client half applies with the legacy client rule —
 	       * the server rule below silently dropped client-only writes
-	       * (SET 'ansi_quotes=...' reported success and wrote nothing) */
+	       * (SET 'ansi_quotes=...' reported success and wrote nothing).
+	       * Hat ON (db_on_server) is the folded sysprm_change_server_
+	       * parameters leg: that is the legacy SERVER-side apply, and the
+	       * client rule here silently dropped FOR_SERVER-only writes
+	       * (group_concat_max_len — workspace#176 결함 11). */
 	      if (!PRM_IS_FOR_CLIENT (prm))
 		{
 		  /* skip this assignment */
@@ -12467,7 +12472,29 @@ sysprm_print_parameters_for_qry_string (void)
     {
       if (PRM_PRINT_QRY_STRING (i))
 	{
+#if defined (SERVER_MODE)
+	  /* the printed value must be the SESSION-effective one: this string
+	   * is the plan-cache key component, and prm->value is the shared
+	   * process value — printing it aliases cache keys across sessions
+	   * whose SET SYSTEM PARAMETERS differ, so one session's compiled
+	   * plan (date-lang names, timezone folding) serves every other
+	   * (workspace#176 결함 10).  The legacy CAS printed its per-process
+	   * value, which WAS the session-effective value. */
+	  SYSPRM_PARAM session_prm = *GET_PRM (i);
+	  if (PRM_SESSION_READTHROUGH ((PARAM_ID) i) && BO_IS_SERVER_RESTARTED ())
+	    {
+	      SESSION_PARAM *sprm =
+		session_get_session_parameter (thread_get_thread_entry_info (), (PARAM_ID) i);
+	      if (sprm != NULL)
+		{
+		  session_prm.value.is_null = false;
+		  session_prm.value.v = sprm->value;
+		}
+	    }
+	  n = prm_print (&session_prm, ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
+#else
 	  n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
+#endif
 	  ptr += n;
 	  len -= n;
 
@@ -12478,7 +12505,7 @@ sysprm_print_parameters_for_qry_string (void)
     }
   *ptr = '\0';
 
-  /* TODO: 
+  /* TODO:
    *     If we pass the buffer and its size as arguments,
    *    we can reduce the cost of allocating new memory and copying it here.
    */
