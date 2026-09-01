@@ -24799,7 +24799,13 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       goto error;
     }
 
-  if (rc == NO_ERROR && context->do_supplemental_log == true)
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  if (context->do_supplemental_log == true)
     {
       (void) log_append_supplemental_lsa (thread_p,
 					  thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE :
@@ -25715,7 +25721,8 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
  *   class_oid (in)     : the class OID for which the entry will be returned
  *   hfid_out (out)     : output heap file identifier
  *   ftype_out (out)    : output heap file type
- *   classname_out (out): output classname
+ *   classname_out (out): output classname. The string is owned by the cache entry and is freed when the entry is
+ *                        deleted and reclaimed; callers must not retain it beyond the entry's lifetime.
  *   success  (out)     : true if found from cache
  */
 int
@@ -25740,8 +25747,24 @@ heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * 
 
   if (entry)
     {
+      /* The cache is publish-then-fill: heap_hfid_cache_get () exposes the entry in the hash through
+       * lf_hash_find_or_insert () first and fills it afterwards, publishing classname last (CAS). If classname is
+       * not set yet, the entry is still being filled by a concurrent thread; treat it as a cache miss. Reading
+       * classname before hfid mirrors the writer's order (hfid store, then classname CAS), so a non-NULL
+       * classname guarantees a valid hfid. ftype, however, is resolved only after classname is published, so it
+       * may still be unknown; report a miss rather than an unknown type when the caller asked for it. */
+      char *classname_local = entry->classname;
+
+      if (classname_local == NULL || HFID_IS_NULL (&entry->hfid)
+	  || (ftype_out != NULL && entry->ftype == FILE_UNKNOWN_TYPE))
+	{
+	  /* *success remains false */
+	  lf_tran_end_with_mb (t_entry);
+	  return NO_ERROR;
+	}
+
       assert (entry->hfid.hpgid != NULL_PAGEID && entry->hfid.vfid.fileid != NULL_FILEID
-	      && entry->hfid.vfid.volid != NULL_VOLID && entry->classname != NULL);
+	      && entry->hfid.vfid.volid != NULL_VOLID);
 
       if (hfid_out != NULL)
 	{
@@ -25753,7 +25776,7 @@ heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * 
 	}
       if (classname_out != NULL)
 	{
-	  *classname_out = entry->classname;
+	  *classname_out = classname_local;
 	}
 
       *success = true;

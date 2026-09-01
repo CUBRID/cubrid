@@ -18164,6 +18164,27 @@ pt_print_with_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 }
 
 /*
+ * pt_name_list_has_name () - check whether a PT_NAME list already contains
+ *                            an identifier (case-insensitive)
+ *   return: true if found
+ *   name_list(in): list of PT_NAME nodes
+ *   name(in): identifier to look for
+ */
+static bool
+pt_name_list_has_name (PT_NODE * name_list, const char *name)
+{
+  for (; name_list != NULL; name_list = name_list->next)
+    {
+      if (name_list->node_type == PT_NAME && name_list->info.name.original != NULL
+	  && !pt_str_compare (name_list->info.name.original, name, CASE_INSENSITIVE))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
  * pt_print_with_cte ()
  * return :
  * parser (in) :
@@ -18173,6 +18194,46 @@ static PARSER_VARCHAR *
 pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
+  PT_NODE *as_attr_list = p->info.cte.as_attr_list;
+
+  /* rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and re-parsed
+   * from scratch at runtime; that re-parse derives the CTE's exposed column count directly from how many
+   * items the header below prints. A rewrite/optimization applied to non_recursive_part after as_attr_list
+   * was computed (e.g. adding a hidden order-by carry column while merging a ROWNUM-filtered outer query
+   * with an ORDER BY inner subquery) can grow the actual select list past as_attr_list's cached length, so
+   * pad a local copy of the header here instead of printing a header/body pair that a fresh parse would
+   * reject as mismatched. */
+  if (parser->flag.is_parsing_static_sql)
+    {
+      PT_NODE *select_list = pt_get_select_list (parser, p->info.cte.non_recursive_part);
+      int actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
+      int declared_cnt = pt_length_of_list (as_attr_list);
+
+      if (actual_cnt > declared_cnt)
+	{
+	  PT_NODE *extra = NULL;
+	  int version = declared_cnt;
+	  int i;
+
+	  as_attr_list = parser_copy_tree_list (parser, as_attr_list);
+	  for (i = declared_cnt; i < actual_cnt; i++)
+	    {
+	      const char *generated_name;
+
+	      /* keep clear of any user-declared name so the header printed below can't collide with it once
+	       * this text is re-parsed (an "ambiguous reference" at semantic check, not a crash, but wrong) */
+	      do
+		{
+		  generated_name = mq_generate_name (parser, "hidden_col", &version);
+		}
+	      while (pt_name_list_has_name (p->info.cte.as_attr_list, generated_name));
+
+	      extra = parser_append_node (pt_name (parser, generated_name), extra);
+	    }
+
+	  as_attr_list = parser_append_node (extra, as_attr_list);
+	}
+    }
 
   /* name of cte */
   r1 = pt_print_bytes_l (parser, p->info.cte.name);
@@ -18180,7 +18241,7 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 
   /* attribute list */
   q = pt_append_nulstring (parser, q, "(");
-  r1 = pt_print_bytes_l (parser, p->info.cte.as_attr_list);
+  r1 = pt_print_bytes_l (parser, as_attr_list);
   q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, ")");
 
