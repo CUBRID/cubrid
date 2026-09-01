@@ -732,10 +732,16 @@ metadata_of_threads (void)
 static SHOWSTMT_METADATA *
 metadata_of_page_buffer_status (void)
 {
+  /* note: the counter columns (Hit_rate, Num_hit, Num_page_request, Num_pages_created, Num_pages_written,
+   * Pages_written_rate, Num_pages_read, Pages_read_rate, Num_flusher_waiting_threads) are deprecated and always
+   * report NULL. They were maintained on the page fix hot path and duplicate statistics already provided by
+   * cubrid statdump (Num_data_page_fetches / Num_data_page_ioreads / Num_data_page_iowrites /
+   * Data_page_buffer_hit_ratio).
+   * The columns are kept so that the result set layout does not change. */
   static const SHOWSTMT_COLUMN cols[] = {
-    {"Hit_rate", "numeric(13,10)"},
-    {"Num_hit", "bigint"},
-    {"Num_page_request", "bigint"},
+    {"Hit_rate", "numeric(13,10)"},	/* deprecated, always NULL */
+    {"Num_hit", "bigint"},	/* deprecated, always NULL */
+    {"Num_page_request", "bigint"},	/* deprecated, always NULL */
     {"Pool_size", "int"},
     {"Page_size", "int"},
     {"Free_pages", "int"},
@@ -746,12 +752,12 @@ metadata_of_page_buffer_status (void)
     {"Num_data_pages", "int"},
     {"Num_system_pages", "int"},
     {"Num_temp_pages", "int"},
-    {"Num_pages_created", "bigint"},
-    {"Num_pages_written", "bigint"},
-    {"Pages_written_rate", "numeric(20,10)"},
-    {"Num_pages_read", "bigint"},
-    {"Pages_read_rate", "numeric(20,10)"},
-    {"Num_flusher_waiting_threads", "int"}
+    {"Num_pages_created", "bigint"},	/* deprecated, always NULL */
+    {"Num_pages_written", "bigint"},	/* deprecated, always NULL */
+    {"Pages_written_rate", "numeric(20,10)"},	/* deprecated, always NULL */
+    {"Num_pages_read", "bigint"},	/* deprecated, always NULL */
+    {"Pages_read_rate", "numeric(20,10)"},	/* deprecated, always NULL */
+    {"Num_flusher_waiting_threads", "int"}	/* deprecated, always NULL */
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {

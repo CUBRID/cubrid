@@ -325,6 +325,7 @@ static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_C
 static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                                       size_t min_args, size_t max_args, size_t mod2);
 
+static PT_NODE *parser_reverse_link (PT_NODE * list);
 static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
 static PT_NODE *parser_make_link_or (PT_NODE * list, PT_NODE * node);
 
@@ -6907,7 +6908,9 @@ insert_stmt_value_clause
 insert_expression_value_clause
 	: of_value_values insert_value_clause_list
 		{{
-			$$ = $2;
+			/* insert_value_clause_list prepends to avoid walking to the tail on every row,
+			 * so the rows arrive back to front and are put back in the original order here. */
+			$$ = parser_reverse_link ($2);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| DEFAULT opt_values
@@ -6953,7 +6956,12 @@ into_clause_opt
 insert_value_clause_list
 	: insert_value_clause_list ',' insert_value_clause
 		{{
-			$$ = parser_make_link ($1, $3);
+			/* parser_make_link walks to the tail on every row,
+			 * which makes building a multi-row VALUES quadratic in the number of rows.
+			 * Prepended instead, so the list is built back to front,
+			 * and insert_expression_value_clause puts it back in the original order. */
+			$3->next = $1;
+			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| insert_value_clause
@@ -22760,6 +22768,22 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
 }
 
 static PT_NODE *
+parser_reverse_link (PT_NODE * list)
+{
+  PT_NODE *prev = NULL, *curr = list, *next;
+
+  while (curr != NULL)
+    {
+      next = curr->next;
+      curr->next = prev;
+      prev = curr;
+      curr = next;
+    }
+
+  return prev;
+}
+
+static PT_NODE *
 parser_make_link (PT_NODE * list, PT_NODE * node)
 {
   parser_append_node (node, list);
@@ -25386,7 +25410,18 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
         node->type_enum = char_type;
         node->info.value.string_type = ' ';
 
-        PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
+	/* A fresh plain literal prints as the quoted string and nothing else:
+	 * everything that could change the printed form is still unset here.
+	 * Set info.value.text here instead of running the tree printer per literal.
+	 * The char_type test guards a future caller; this file defines NCHAR as CHAR. */
+	if (char_type == PT_TYPE_CHAR && parser->custom_print == 0 && parser->flag.dont_prt_long_string == 0)
+	  {
+	    node->info.value.text = pt_print_quoted_value_text (parser, (const char *) string, length);
+	  }
+	else
+	  {
+	    PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
+	  }
       }
 
   return node;
