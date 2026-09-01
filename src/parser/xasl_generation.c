@@ -13141,7 +13141,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
     {
       return NULL;
     }
-  new (sig_array) cubpl::pl_signature_array ();
+  placement_new (sig_array);	/* raw placement-new is malformed by the memory_wrapper new-macro */
 
   sig_array->num_sigs = pt_length_of_list (cselect);
 
@@ -13150,7 +13150,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 
   for (int i = 0; i < sig_array->num_sigs; i++)
     {
-      new (&sig_array->sigs[i]) cubpl::pl_signature ();
+      placement_new (&sig_array->sigs[i]);
     }
 
   for (PT_NODE * node = cselect; node != NULL; node = node->next)
