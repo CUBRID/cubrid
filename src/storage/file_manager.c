@@ -6928,16 +6928,17 @@ end:
 }
 
 /*
- * file_check_vpid () - check vpid is one of the file's user pages
+ * file_check_vpid_internal () - check vpid is one of the file's user pages
  *
  * return           : DISK_INVALID if page does not belong to file, DISK_ERROR for errors and DISK_VALID for successful
  *                    check
  * thread_p (in)    : thread entry
  * vfid (in)        : file identifier
  * vpid_lookup (in) : checked VPID
+ * assert_on_invalid (in): assert when the page does not belong to the file
  */
-DISK_ISVALID
-file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
+static DISK_ISVALID
+file_check_vpid_internal (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup, bool assert_on_invalid)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead;
@@ -6986,7 +6987,10 @@ file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
       else
 	{
 	  /* not ok */
-	  assert_release (false);
+	  if (assert_on_invalid)
+	    {
+	      assert_release (false);
+	    }
 	  isvalid = DISK_INVALID;
 	  goto exit;
 	}
@@ -7009,7 +7013,10 @@ file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
       if (!found)
 	{
 	  /* not ok */
-	  assert_release (false);
+	  if (assert_on_invalid)
+	    {
+	      assert_release (false);
+	    }
 	  isvalid = DISK_INVALID;
 	  goto exit;
 	}
@@ -7035,7 +7042,10 @@ file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
       if (!found)
 	{
 	  /* not ok */
-	  assert_release (false);
+	  if (assert_on_invalid)
+	    {
+	      assert_release (false);
+	    }
 	  isvalid = DISK_INVALID;
 	  goto exit;
 	}
@@ -7064,6 +7074,24 @@ exit:
       pgbuf_unfix (thread_p, page_fhead);
     }
   return isvalid;
+}
+
+/*
+ * file_check_vpid () - check vpid is one of the file's user pages and assert if it is not
+ */
+DISK_ISVALID
+file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
+{
+  return file_check_vpid_internal (thread_p, vfid, vpid_lookup, true);
+}
+
+/*
+ * file_is_vpid_in_file () - check vpid membership without asserting on an expected miss
+ */
+DISK_ISVALID
+file_is_vpid_in_file (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
+{
+  return file_check_vpid_internal (thread_p, vfid, vpid_lookup, false);
 }
 
 /*

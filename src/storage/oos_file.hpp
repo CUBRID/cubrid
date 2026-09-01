@@ -180,6 +180,7 @@ extern void oos_test_reclaim_force_sweep_in_progress (const VFID &oos_vfid);
 extern void oos_test_reclaim_release_sweep (const VFID &oos_vfid);
 extern int oos_test_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 extern int oos_test_reclaim_waiter_count ();
+extern void oos_test_fail_next_reclaim_write_fix ();
 #endif
 
 #endif /* _OOS_FILE_HPP_ */

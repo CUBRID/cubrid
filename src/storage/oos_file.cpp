@@ -180,6 +180,7 @@ static oos_debug_atomic_counters oos_Debug_counters = { };
 static std::atomic<int> oos_Test_fail_insert_many_after_publications { -1 };
 static std::atomic<bool> oos_Test_throw_bad_alloc_on_next_oid_publication { false };
 static std::atomic<int> oos_Test_reclaim_waiters { 0 };
+static std::atomic<bool> oos_Test_fail_next_reclaim_write_fix_armed { false };
 
 #define OOS_COUNTER_ADD(field, value) \
   do \
@@ -683,6 +684,23 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
       if (pgbuf_get_page_ptype (thread_p, *out_pgptr) != PAGE_OOS)
 	{
 	  oos_trace ("stale bestspace hint to reallocated non-OOS page vpid={vol=%d,page=%d} — evicting",
+		     candidate_vpid.volid, candidate_vpid.pageid);
+	  pgbuf_unfix_and_init (thread_p, *out_pgptr);
+	  oos_stats_evict_stale_hint (thread_p, &candidate_vpid, found_in_hash, bestspace, best_array_index);
+	  notfound_cnt++;
+	  continue;
+	}
+
+      DISK_ISVALID is_owned = file_is_vpid_in_file (thread_p, vfid, &candidate_vpid);
+      if (is_owned == DISK_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, *out_pgptr);
+	  found = OOS_FINDSPACE_ERROR;
+	  break;
+	}
+      if (is_owned != DISK_VALID)
+	{
+	  oos_trace ("stale bestspace hint to foreign OOS page vpid={vol=%d,page=%d} — evicting",
 		     candidate_vpid.volid, candidate_vpid.pageid);
 	  pgbuf_unfix_and_init (thread_p, *out_pgptr);
 	  oos_stats_evict_stale_hint (thread_p, &candidate_vpid, found_in_hash, bestspace, best_array_index);
@@ -1254,8 +1272,8 @@ oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 typedef enum
 {
   OOS_RECLAIM_RECLAIMED = 0,	/* page deallocated back to the file manager */
-  OOS_RECLAIM_DEFERRED,		/* empty, but LSA-gated from deallocation for now */
-  OOS_RECLAIM_SKIPPED		/* busy, re-filled, already deallocated, or not an OOS data page */
+  OOS_RECLAIM_DEFERRED,		/* empty and LSA-gated, or WRITE fix transiently unavailable */
+  OOS_RECLAIM_SKIPPED		/* READ-busy, re-filled, already deallocated, or not an OOS data page */
 } OOS_RECLAIM_RESULT;
 
 // ****************************************************************************
@@ -1458,6 +1476,15 @@ static int
 oos_reclaim_fix_candidate (THREAD_ENTRY *thread_p, const VPID &vpid, PGBUF_LATCH_MODE latch_mode,
 			   PAGE_PTR &page_out)
 {
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  if (latch_mode == PGBUF_LATCH_WRITE
+      && oos_Test_fail_next_reclaim_write_fix_armed.exchange (false, std::memory_order_relaxed))
+    {
+      page_out = NULL;
+      return NO_ERROR;
+    }
+#endif
+
   page_out = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, PGBUF_CONDITIONAL_LATCH);
   if (page_out == NULL)
     {
@@ -1495,10 +1522,10 @@ oos_reclaim_lsa_gate_passes (const LOG_LSA &page_lsa, const LOG_LSA &horizon,
  *   with the OOS stats header latch NOT held; phase 2 takes the header WRITE latch, re-validates
  *   under a zero-wait WRITE fix, and deallocates in its own immediately-committed sysop.
  *
- *   Idempotent and zero-wait: every "cannot reclaim right now" outcome — busy, already
- *   deallocated, re-filled — is OOS_RECLAIM_SKIPPED with NO_ERROR; an empty page whose last
- *   writer may still be active is OOS_RECLAIM_DEFERRED. The sticky-first-page invariant is the
- *   caller's job.
+ *   Idempotent and zero-wait: already-deallocated, re-filled, and READ-busy outcomes are
+ *   OOS_RECLAIM_SKIPPED with NO_ERROR. An empty page whose last writer may still be active, or
+ *   whose phase-2 WRITE fix is transiently unavailable, is OOS_RECLAIM_DEFERRED so a later
+ *   growth retries it. The sticky-first-page invariant is the caller's job.
  *
  *   return: NO_ERROR or error code (ER_INTERRUPTED propagates so reclaim loops stop immediately)
  *   thread_p(in): thread entry
@@ -1595,6 +1622,9 @@ oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, con
     }
   if (page_ptr == NULL)
     {
+      /* The page passed the READ phase but became busy before the WRITE phase. Keep reclaim
+       * debt armed so a later growth retries it instead of stranding a possibly empty page. */
+      result = OOS_RECLAIM_DEFERRED;
       return NO_ERROR;
     }
 
@@ -3618,6 +3648,12 @@ int
 oos_test_reclaim_waiter_count ()
 {
   return oos_Test_reclaim_waiters.load (std::memory_order_relaxed);
+}
+
+void
+oos_test_fail_next_reclaim_write_fix ()
+{
+  oos_Test_fail_next_reclaim_write_fix_armed.store (true, std::memory_order_relaxed);
 }
 #undef OOS_DEBUG_COUNTER_FIELDS
 #endif

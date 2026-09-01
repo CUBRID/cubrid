@@ -149,6 +149,37 @@ TEST (OosGrowthSweepTest, SweepReclaimsAfterCommittedDeleteBurst)
   remove_file_and_commit (oos_vfid);
 }
 
+TEST (OosGrowthSweepTest, TransientWriteLatchMissKeepsReclaimDebt)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  OID emptied_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, emptied_oid), NO_ERROR);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, emptied_oid), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_EQ (count_user_pages (oos_vfid), 2);
+
+  simulate_hint_loss (oos_vfid);
+  oos_test_fail_next_reclaim_write_fix ();
+
+  OID first_growth_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, first_growth_oid), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 3)
+      << "the forced phase-2 latch miss should make this growth allocate";
+
+  simulate_hint_loss (oos_vfid);
+
+  OID retry_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, retry_oid), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 3)
+      << "the transient phase-2 latch miss lost reclaim debt and stranded the empty page";
+  assert_value_intact (first_growth_oid);
+  assert_value_intact (retry_oid);
+
+  remove_file_and_commit (oos_vfid);
+}
+
 TEST (OosGrowthSweepTest, ConcurrentGrowerWaitsForActiveSweep)
 {
   VFID oos_vfid;
