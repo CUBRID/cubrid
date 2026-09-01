@@ -80,7 +80,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         javaTypesUsed.add("com.cubrid.plcsql.predefined.PlcsqlRuntimeError");
         javaTypesUsed.add("java.util.List");
 
-        CodeToResolve ctr = visitUnit(unit);
+        CodeToResolve ctr = visit(unit);
         ctr.resolve(0, codeLines, codeRangeMarkers);
 
         codeLines.add(
@@ -104,8 +104,20 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     }
 
     // -----------------------------------------------------------------
-    // Unit
+    // UnitPkg
     //
+
+    @Override
+    public CodeToResolve visitUnitPkg(UnitPkg node) {
+        // TODO package
+        assert false;
+        return null;
+    }
+
+    // -----------------------------------------------------------------
+    // UnitSp
+    //
+
     private static final String strGetConn =
             "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::\");";
 
@@ -167,7 +179,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             };
 
     @Override
-    public CodeToResolve visitUnit(Unit node) {
+    public CodeToResolve visitUnitSp(UnitSp node) {
 
         if (node.connectionRequired) {
             javaTypesUsed.add("java.sql.*");
@@ -178,7 +190,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 node.routine.decls == null
                         ? ""
                         : new CodeTemplate(
-                                "DeclClass of Unit",
+                                "DeclClass of UnitSp",
                                 Misc.UNKNOWN_LINE_COLUMN,
                                 tmplDeclBlock,
                                 "%'BLOCK'%",
@@ -244,7 +256,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String[] recordAssignFuncs = recordLines.toArray(DUMMY_STRING_ARRAY);
 
         // imports
-        // CAUTION: importsArray must be made after visiting all the subnodes of this Unit node
+        // CAUTION: importsArray must be made after visiting all the subnodes of this UnitSp node
         // because javaTypesUsed,
         //  which is the set of Java types to appear in the generated Java code, is built while
         // visiting the submodes
@@ -276,7 +288,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         : visitNodeList(node.routine.paramList).setDelimiter(",");
 
         return new CodeTemplate(
-                "Unit",
+                "UnitSp",
                 new int[] {1, 1},
                 tmplUnit,
                 "%'+MAIN-USER-CODE'%",
@@ -359,6 +371,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitDeclProc(DeclProc node) {
         return visitDeclRoutine(node);
+    }
+
+    @Override
+    public CodeToResolve visitDeclPackage(DeclPackage node) {
+        // TODO package
+        assert false;
+        return null;
     }
 
     @Override
@@ -1081,7 +1100,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
         LocalCallCodeSnippets code =
                 getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
-        String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
+        String block = node.prefixDeclBlock ? node.decl.scope.block + "." : "";
 
         CodeTemplate tmpl =
                 new CodeTemplate(
@@ -2245,7 +2264,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         assert recTy instanceof TypeRecord;
 
         String[] recordSetArgs =
-                getRecordSetArgs(node.record.name(), (TypeRecord) recTy, node.record.scope.level);
+                getRecordSetArgs(node.record.name, (TypeRecord) recTy, node.record.scope.level);
         Object setUsedExpr = getSetUsedExpr(node.usedExprList);
 
         String[] template =
@@ -2268,7 +2287,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+SET-USED-EXPR'%",
                         setUsedExpr,
                         "%'RECORD'%",
-                        node.record.name(),
+                        node.record.name,
                         "%'LABEL'%",
                         node.label == null ? "" : node.label + "_%'LEVEL'%:",
                         "%'+RECORD-FIELD-VALUES'%",
@@ -2435,7 +2454,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
         LocalCallCodeSnippets code =
                 getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
-        String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
+        String block = node.prefixDeclBlock ? node.decl.scope.block + "." : "";
 
         return Misc.isEmpty(node.decl.paramList)
                 ? new CodeTemplate(
@@ -2550,7 +2569,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         if (node.exName == null) {
             code = "throw e" + node.exHandlerDepth + ";";
         } else {
-            String block = node.exName.prefixDeclBlock ? node.exName.decl.scope().block + "." : "";
+            String block = node.exName.prefixDeclBlock ? node.exName.decl.scope.block + "." : "";
             code = String.format("throw %s new %s();", block, node.exName.name);
         }
 
@@ -2719,7 +2738,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             if ("OTHERS".equals(ex.name)) {
                 sbuf.append("PlcsqlRuntimeError");
             } else if (ex.prefixDeclBlock) {
-                sbuf.append("Decl_of_" + ex.decl.scope().block + "." + ex.name);
+                sbuf.append("Decl_of_" + ex.decl.scope.block + "." + ex.name);
             } else {
                 sbuf.append(ex.name);
             }
@@ -2923,7 +2942,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 if (e instanceof ExprId) {
                     ExprId var = (ExprId) e;
                     assert var.decl != null;
-                    var.prefixDeclBlock = var.decl.scope().declDone;
+                    var.prefixDeclBlock = var.decl.scope.declDone;
                 }
                 ret.addElement((CodeTemplate) visit(e));
             }
@@ -3263,7 +3282,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             if (param instanceof DeclParamOut) {
                 ExprId id = (ExprId) args.nodes.get(i);
-                DeclIdTypeSpeced declId = (DeclIdTypeSpeced) id.decl;
+                DeclIdTypeDeclared declId = (DeclIdTypeDeclared) id.decl;
                 sbuf.append(String.format("%s[] o%d", getJavaCodeOfType(declId.typeSpec()), i));
             } else {
                 sbuf.append(String.format("%s o%d", getJavaCodeOfType(param.typeSpec), i));

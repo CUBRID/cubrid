@@ -38,7 +38,7 @@ public class TypeVariadic extends Type {
     public final Type elem;
 
     private TypeVariadic(Type elem) {
-        super(Type.INVALID_IDX, null, null, null);
+        super(Type.INVALID_IDX, null, null, null, NO_DB_TYPE, NO_PREC, NO_SCALE);
         this.elem = elem;
     }
 

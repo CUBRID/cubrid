@@ -1172,12 +1172,13 @@ au_drop_member (MOP group, MOP member)
  */
 static const char *AU_OBJECT_CLASS_NAME[] =
 {
-  CT_CLASS_NAME,		/* AU_OBJECT_CLASS */
-  CT_TRIGGER_NAME,		/* AU_OBJECT_TRIGGER */
-  CT_SERIAL_NAME,		/* AU_OBJECT_SERIAL */
-  CT_SERVER_NAME,		/* AU_OBJECT_SERVER */
-  CT_SYNONYM_NAME,		/* AU_OBJECT_SYNONYM */
-  CT_STORED_PROC_NAME,		/* AU_OBJECT_PROCEDURE */
+  CT_CLASS_NAME,
+  CT_TRIGGER_NAME,
+  CT_SERIAL_NAME,
+  CT_SERVER_NAME,
+  CT_SYNONYM_NAME,
+  CT_STORED_PROC_NAME,
+  CT_PACKAGE_NAME,
   NULL
 };
 
@@ -1241,7 +1242,7 @@ au_drop_user (MOP user)
       goto error;
     }
 
-  /* check if user owns class/vclass/trigger/serial/synonym */
+  /* check if user owns class/vclass/trigger/serial/synonym/sp/package */
   for (i = 0; AU_OBJECT_CLASS_NAME[i] != NULL; i++)
     {
       sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", AU_OBJECT_CLASS_NAME[i]);

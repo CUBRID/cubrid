@@ -298,6 +298,9 @@ static PT_NODE *pt_apply_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p, vo
 static PT_NODE *pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_alter_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_sp_body (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
@@ -460,6 +463,9 @@ static PARSER_VARCHAR *pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE 
 static PARSER_VARCHAR *pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_create_package (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_drop_package (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_alter_package (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4487,6 +4493,8 @@ pt_show_priv (PT_PRIV_TYPE t)
       return "execute";
     case PT_EXECUTE_PROCEDURE_PRIV:
       return "execute on procedure";
+    case PT_EXECUTE_PACKAGE_PRIV:
+      return "execute on package";
     case PT_INDEX_PRIV:
       return "index";
     case PT_INSERT_PRIV:
@@ -5497,6 +5505,9 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_CREATE_SYNONYM] = pt_apply_create_synonym;
   pt_apply_func_array[PT_DROP_SYNONYM] = pt_apply_drop_synonym;
   pt_apply_func_array[PT_RENAME_SYNONYM] = pt_apply_rename_synonym;
+  pt_apply_func_array[PT_CREATE_PACKAGE] = pt_apply_create_package;
+  pt_apply_func_array[PT_DROP_PACKAGE] = pt_apply_drop_package;
+  pt_apply_func_array[PT_ALTER_PACKAGE] = pt_apply_alter_package;
   pt_apply_func_array[PT_SP_BODY] = pt_apply_sp_body;
 
   pt_apply_f = pt_apply_func_array;
@@ -5632,6 +5643,9 @@ pt_init_init_f (void)
   pt_init_func_array[PT_CREATE_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_DROP_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_RENAME_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_CREATE_PACKAGE] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_PACKAGE] = pt_init_func_null_function;
+  pt_init_func_array[PT_ALTER_PACKAGE] = pt_init_func_null_function;
   pt_init_func_array[PT_SP_BODY] = pt_init_func_null_function;
 
   pt_init_f = pt_init_func_array;
@@ -5760,6 +5774,9 @@ pt_init_print_f (void)
   pt_print_func_array[PT_CREATE_SYNONYM] = pt_print_create_synonym;
   pt_print_func_array[PT_DROP_SYNONYM] = pt_print_drop_synonym;
   pt_print_func_array[PT_RENAME_SYNONYM] = pt_print_rename_synonym;
+  pt_print_func_array[PT_CREATE_PACKAGE] = pt_print_create_package;
+  pt_print_func_array[PT_DROP_PACKAGE] = pt_print_drop_package;
+  pt_print_func_array[PT_ALTER_PACKAGE] = pt_print_alter_package;
   pt_print_func_array[PT_SP_BODY] = pt_print_sp_body;
 
   pt_print_f = pt_print_func_array;
@@ -20443,6 +20460,31 @@ pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   return p;
 }
 
+static PT_NODE *
+pt_apply_create_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.pkg.name, arg);
+  PT_APPLY_WALK (parser, p->info.pkg.block, arg);
+  PT_APPLY_WALK (parser, p->info.pkg.comment, arg);
+  return p;
+}
+
+static PT_NODE *
+pt_apply_drop_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.pkg.name, arg);
+  return p;
+}
+
+static PT_NODE *
+pt_apply_alter_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.pkg.name, arg);
+  PT_APPLY_WALK (parser, p->info.pkg.comment, arg);
+  PT_APPLY_WALK (parser, p->info.pkg.owner, arg);
+  return p;
+}
+
 static PARSER_VARCHAR *
 pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
 {
@@ -20612,6 +20654,90 @@ pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_varchar (parser, q, r1);
 
   parser->custom_print = save_custom;
+
+  return q;
+}
+
+static PARSER_VARCHAR *
+pt_print_create_package (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+
+  q = pt_append_nulstring (parser, q, "create ");
+  if (p->info.pkg.or_replace)
+    {
+      q = pt_append_nulstring (parser, q, "or replace ");
+    }
+  q = pt_append_nulstring (parser, q, "package ");
+  if (p->info.pkg.for_body)
+    {
+      q = pt_append_nulstring (parser, q, "body ");
+    }
+
+  r1 = pt_print_bytes (parser, p->info.pkg.name);
+  q = pt_append_varchar (parser, q, r1);
+
+  r1 = pt_print_bytes (parser, p->info.pkg.block);
+  q = pt_append_varchar (parser, q, r1);
+
+  if (p->info.pkg.comment)
+    {
+      r1 = pt_print_bytes (parser, p->info.pkg.comment);
+      q = pt_append_nulstring (parser, q, " comment ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  return q;
+}
+
+static PARSER_VARCHAR *
+pt_print_drop_package (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+
+  q = pt_append_nulstring (parser, q, "drop package ");
+  if (p->info.pkg.for_body)
+    {
+      q = pt_append_nulstring (parser, q, "body ");
+    }
+
+  r1 = pt_print_bytes_l (parser, p->info.pkg.name);
+  q = pt_append_varchar (parser, q, r1);
+
+  return q;
+}
+
+static PARSER_VARCHAR *
+pt_print_alter_package (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+
+  q = pt_append_nulstring (parser, q, "alter package ");
+  r1 = pt_print_bytes (parser, p->info.pkg.name);
+  q = pt_append_varchar (parser, q, r1);
+  if (p->info.pkg.recompile)
+    {
+      q = pt_append_nulstring (parser, q, " compile");
+    }
+  else
+    {
+      // altering owner or comment
+      assert (p->info.pkg.owner || p->info.pkg.comment);
+
+      if (p->info.pkg.owner)
+	{
+	  q = pt_append_nulstring (parser, q, " owner to ");
+	  r1 = pt_print_bytes (parser, p->info.pkg.owner);
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (p->info.pkg.comment)
+	{
+	  q = pt_append_nulstring (parser, q, " comment ");
+	  r1 = pt_print_bytes (parser, p->info.pkg.comment);
+	  q = pt_append_varchar (parser, q, r1);
+	}
+    }
 
   return q;
 }

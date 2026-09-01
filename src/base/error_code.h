@@ -27,7 +27,7 @@
  * details.
  * The error codes must also be added to compat/dbi_compat.h
  * ER_LAST_ERROR must also be updated.
- * In case of common,  
+ * In case of common,
  * cci repository source (src/cci/base_error_code.h) must be updated,
  * becuase CCI source and Engine source have been separated.
  */
@@ -1756,7 +1756,6 @@
 #define ER_AU_LOGIN_DISABLED                        -1369
 
 #define ER_AUTO_INCREMENT_SINGLE_COL_ONLY           -1370
-
 #define ER_SM_ATT_AT_LEAST_ONE_VISIBLE              -1371
 
 #define ER_METHOD_CALLBACK                          -1372
@@ -1773,9 +1772,17 @@
 
 #define ER_AU_CANT_ALTER_LOGIN                      -1378
 
-#define ER_LAST_ERROR                               -1379
+#define ER_PKG_ALREADY_EXIST                        -1379
+#define ER_PKG_BODY_ALREADY_EXIST                   -1380
+#define ER_PKG_NOT_EXIST                            -1381
+#define ER_PKG_BODY_NOT_EXIST                       -1382
+#define ER_PKG_COMPILE_ERROR                        -1383
+#define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1384
+#define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1385
+#define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1386
+#define ER_PKG_DUPLICATE_NAME                       -1387
 
-
+#define ER_LAST_ERROR                               -1388
 
 /*
  * CAUTION!
@@ -1784,7 +1791,7 @@
  * files are updated with matching error strings. See message_catalog.c for
  * details.
  * ER_LAST_ERROR must also be updated.
- * In case of common,  
+ * In case of common,
  * cci repository source (src/cci/base_error_code.h) must be updated,
  * becuase CCI source and Engine source have been separated.
  */

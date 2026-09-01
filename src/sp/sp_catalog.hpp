@@ -23,8 +23,8 @@
  * Note: _db_stored_proceudre, _db_stored_procedure_args
  */
 
-#ifndef _SP_DEFINITION_HPP_
-#define _SP_DEFINITION_HPP_
+#ifndef _SP_CATALOG_HPP_
+#define _SP_CATALOG_HPP_
 
 #include <string>
 #include <vector>
@@ -32,9 +32,6 @@
 #include "jsp_cl.h"
 #include "dbi.h"
 #include "sp_constants.hpp"
-
-#define SAVEPOINT_ADD_STORED_PROC "ADDSTOREDPROC"
-#define SAVEPOINT_CREATE_STORED_PROC "CREATESTOREDPROC"
 
 enum sp_source_code_type
 {
@@ -72,7 +69,7 @@ struct sp_arg_info
   bool is_optional;
   std::string comment;
 
-  sp_arg_info (const std::string& s_name) 
+  sp_arg_info (const std::string& s_name)
   : sp_name {s_name}
   , index_of {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
   , is_system_generated {false}
@@ -131,7 +128,7 @@ struct sp_info
   DB_DATETIME created_time;
   DB_DATETIME updated_time;
 
-  sp_info () 
+  sp_info ()
   : unique_name {}
   , sp_name {}
   , pkg_name {}
@@ -171,4 +168,4 @@ std::string sp_args_get_entry_name (int index);
 void sp_normalize_name (std::string &s);
 void sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth);
 
-#endif // _SP_DEFINITION_HPP_
+#endif // _SP_CATALOG_HPP_

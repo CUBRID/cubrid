@@ -110,6 +110,7 @@ extern int g_msg[1024];
 extern int msg_ptr;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
+extern int expecting_pkg_plcsql_text;
 extern int yylex(void);
 
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
@@ -576,6 +577,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <boolean> opt_cascade
 %type <boolean> opt_cascade_constraints
 %type <number> plcsql_text
+%type <number> opt_body
 %type <number> opt_replace
 %type <number> opt_of_inner_left_right
 %type <number> opt_class_type
@@ -709,6 +711,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> serial_name
 %type <node> synonym_name_without_dot
 %type <node> synonym_name
+%type <node> package_name_without_dot
+%type <node> package_name_list
+%type <node> proc_or_pkg_name_list
 %type <node> procedure_or_function_name_without_dot
 %type <node> procedure_or_function_name
 %type <node> procedure_or_function_name_list
@@ -752,7 +757,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> delete_stmt
 %type <node> author_cmd_list
 %type <node> authorized_cmd
-%type <node> authorized_execute_procedure_cmd
+%type <node> authorized_execute_proc_or_pkg_cmd
 %type <node> opt_password
 %type <node> opt_groups
 %type <node> opt_members
@@ -954,8 +959,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> grant_head
 %type <node> grant_cmd
 %type <node> revoke_cmd
-%type <node> grant_proc_cmd
-%type <node> revoke_proc_cmd
+%type <node> grant_proc_or_pkg_cmd
+%type <node> revoke_proc_or_pkg_cmd
 %type <node> opt_from_table_spec_list
 %type <node> method_file_list
 %type <node> incr_arg_name_list__inc
@@ -1140,6 +1145,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token BITSHIFT_LEFT
 %token BITSHIFT_RIGHT
 %token BLOB_
+%token BODY
 %token BOOLEAN_
 %token BOTH_
 %token BREADTH
@@ -1336,6 +1342,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token OUTER
 %token OUTPUT
 %token OVERLAPS
+%token PACKAGE
 %token PARAMETERS
 %token PARTIAL
 %token PARTITION
@@ -1874,6 +1881,7 @@ stmt
                         g_plcsql_text_pos = -1;
                         is_in_sp_func_type = false;
                         assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
+                        assert(expecting_pkg_plcsql_text == 0); // initialized in parser_main() or parse_one_statement()
 		}}
 	stmt_
 		{{
@@ -2952,6 +2960,47 @@ create_stmt
 		}}
 	| CREATE					/* 1 */
 	  opt_or_replace               		        /* 2 */
+	  PACKAGE					/* 3 */
+          opt_body                                      /* 4 */
+                {                                       /* 5 */
+		  PT_NODE *node = parser_new_node (this_parser, PT_CREATE_PACKAGE);
+		  parser_push_hint_node (node);
+                  expecting_pkg_plcsql_text = 1;
+		  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PACKAGE);
+                }
+	  package_name_without_dot                      /* 6 */
+	  is_or_as plcsql_text                          /* 7, 8 */
+	  opt_comment_spec				/* 9 */
+		{{
+                        pop_msg();
+
+                        PT_NODE *node = parser_pop_hint_node ();
+                        assert (node);
+
+                        // package blocks after IS/AS have the same syntax as SP body
+			PT_NODE *plcsql_block = parser_new_node (this_parser, PT_SP_BODY);
+			if (plcsql_block)
+			  {
+			    plcsql_block->info.sp_body.lang = SP_LANG_PLCSQL;
+                            if (g_query_string) {
+                                plcsql_block->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(
+                                        g_query_string + g_plcsql_text_pos, $8);
+                            } else {
+                                plcsql_block->info.sp_body.impl = NULL; // set later
+                            }
+			  }
+                        node->info.pkg.block = plcsql_block;
+
+                        node->info.pkg.or_replace = $2;
+                        node->info.pkg.for_body = $4;
+                        node->info.pkg.name = $6;
+                        node->info.pkg.comment = $9;
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| CREATE					/* 1 */
+	  opt_or_replace               		        /* 2 */
 	  PROCEDURE					/* 3 */
 		{ 					/* 4 */
 		  PT_NODE* node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
@@ -3258,6 +3307,17 @@ create_stmt
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+opt_body
+	: /* empty */
+		{{
+			$$ = 0;
+		}}
+	| BODY
+		{{
+			$$ = 1;
 		}}
 	;
 
@@ -4210,6 +4270,45 @@ alter_stmt
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		}}
+	| ALTER PACKAGE                 /* 1, 2 */
+	  package_name_without_dot      /* 3 */
+	  opt_owner_clause	        /* 4 */
+	  opt_comment_spec		/* 5 */
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_PACKAGE);
+
+			if (node != NULL)
+			  {
+			    node->info.pkg.name = $3;
+			    node->info.pkg.owner = $4;
+			    node->info.pkg.comment = $5;
+			    if ($4 == NULL && $5 == NULL)
+			      {
+			        PT_ERRORm (this_parser, node,
+			                   MSGCAT_SET_PARSER_SYNTAX,
+			                   MSGCAT_SYNTAX_INVALID_ALTER);
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| ALTER PACKAGE                 /* 1, 2 */
+	  package_name_without_dot      /* 3 */
+	  COMPILE	                /* 4 */
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_PACKAGE);
+
+			if (node != NULL)
+			  {
+			    node->info.pkg.name = $3;
+			    node->info.pkg.recompile = 1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	;
 
@@ -4654,7 +4753,24 @@ drop_stmt
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
 		}}
+        | DROP PACKAGE opt_body opt_if_exists package_name_list
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_DROP_PACKAGE);
+
+			if (node)
+			  {
+			    node->info.pkg.for_body = $3;
+			    node->info.pkg.if_exists = $4;
+			    node->info.pkg.name = $5;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+
 	| deallocate_or_drop PREPARE identifier
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_DEALLOCATE_PREPARE);
@@ -5727,6 +5843,26 @@ synonym_name
 		}
 	;
 
+package_name_without_dot
+	: user_specified_name_without_dot
+		{
+			$$ = $1;
+		}
+	;
+
+package_name_list
+	: package_name_list ',' package_name_without_dot
+		{{
+			$$ = parser_make_link ($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| package_name_without_dot
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
 procedure_or_function_name_without_dot
 	: user_specified_name_without_dot
 		{
@@ -5742,17 +5878,30 @@ procedure_or_function_name
 	;
 
 procedure_or_function_name_list
-	: procedure_or_function_name_list ',' procedure_or_function_name
+	: procedure_or_function_name_list ',' procedure_or_function_name_without_dot
 		{{
 			$$ = parser_make_link($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| procedure_or_function_name
+	| procedure_or_function_name_without_dot
 		{{
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	;
+
+proc_or_pkg_name_list
+        : proc_or_pkg_name_list ',' user_specified_name_without_dot
+		{{
+			$$ = parser_make_link($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+        | user_specified_name_without_dot
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+        ;
 
 opt_partition_spec
 	: /* empty */
@@ -8337,7 +8486,7 @@ auth_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-        | revoke_proc_cmd procedure_or_function_name_list from_id_list
+        | revoke_proc_or_pkg_cmd proc_or_pkg_name_list from_id_list
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_REVOKE);
 
@@ -8368,18 +8517,18 @@ grant_cmd
 		{ pop_msg(); }
 		{ $$ = $3; }
 
-grant_proc_cmd
+grant_proc_or_pkg_cmd
         : GRANT
 		{ push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); }
-	  authorized_execute_procedure_cmd
+	  authorized_execute_proc_or_pkg_cmd
 		{ pop_msg(); }
 		{ $$ = $3; }
 	;
 
-revoke_proc_cmd
+revoke_proc_or_pkg_cmd
         : REVOKE
 		{ push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); }
-	  authorized_execute_procedure_cmd
+	  authorized_execute_proc_or_pkg_cmd
 		{ pop_msg(); }
 		{ $$ = $3; }
 	;
@@ -8427,7 +8576,7 @@ grant_head
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-        | grant_proc_cmd procedure_or_function_name_list to_id_list
+        | grant_proc_or_pkg_cmd proc_or_pkg_name_list to_id_list
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_GRANT);
 
@@ -8491,13 +8640,24 @@ author_cmd_list
 		}}
 	;
 
-authorized_execute_procedure_cmd
+authorized_execute_proc_or_pkg_cmd
         : EXECUTE ON_ PROCEDURE
                 {{
 			PT_NODE *node = parser_new_node (this_parser, PT_AUTH_CMD);
 			if (node)
 			  {
 			    node->info.auth_cmd.auth_cmd = PT_EXECUTE_PROCEDURE_PRIV;
+                            node->info.auth_cmd.attr_mthd_list = NULL;
+			  }
+                        $$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                }}
+        | EXECUTE ON_ PACKAGE
+                {{
+			PT_NODE *node = parser_new_node (this_parser, PT_AUTH_CMD);
+			if (node)
+			  {
+			    node->info.auth_cmd.auth_cmd = PT_EXECUTE_PACKAGE_PRIV;
                             node->info.auth_cmd.attr_mthd_list = NULL;
 			  }
                         $$ = node;
@@ -23803,6 +23963,7 @@ parser_main (PARSER_CONTEXT * parser)
 
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_pkg_plcsql_text = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -23920,6 +24081,7 @@ parse_one_statement (int state)
 
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_pkg_plcsql_text = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;

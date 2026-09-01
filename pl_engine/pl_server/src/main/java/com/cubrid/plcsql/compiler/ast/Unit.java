@@ -30,87 +30,23 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.sql.*;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class Unit extends AstNode {
-
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitUnit(this);
-    }
+public abstract class Unit extends AstNode {
 
     public final boolean connectionRequired;
-    public final DeclRoutine routine;
     public final String owner;
     public final String compileSeqNo;
 
     public Unit(
-            ParserRuleContext ctx,
-            boolean connectionRequired,
-            DeclRoutine routine,
-            String owner,
-            String compileSeqNo) {
+            ParserRuleContext ctx, boolean connectionRequired, String owner, String compileSeqNo) {
         super(ctx);
 
-        assert routine.scope.level == 1;
-
         this.connectionRequired = connectionRequired;
-        this.routine = routine;
         this.owner = owner;
         this.compileSeqNo = compileSeqNo;
     }
 
-    public String getJavaSignature() {
-
-        String ret;
-        if (routine.paramList == null) {
-            ret = String.format("%s.%s()", getClassName(), routine.name);
-        } else {
-            boolean first = true;
-            StringBuffer sbuf = new StringBuffer();
-            for (DeclParam dp : routine.paramList.nodes) {
-                if (first) {
-                    first = false;
-                } else {
-                    sbuf.append(", ");
-                }
-
-                sbuf.append(dp.toJavaSignature());
-            }
-
-            ret = String.format("%s.%s(%s)", getClassName(), routine.name, sbuf.toString());
-        }
-
-        if (routine.isProcedure()) {
-            return ret;
-        } else {
-            return (ret + " return " + routine.retTypeSpec.type.fullJavaType);
-        }
-    }
-
-    public String getClassName() {
-
-        if (className == null) {
-            String kindStr = routine.isProcedure() ? "Proc" : "Func";
-            className =
-                    String.format(
-                            "%s_%d_%s_%s_%s_%d",
-                            kindStr,
-                            owner.length(),
-                            owner,
-                            routine.name,
-                            compileSeqNo,
-                            System.currentTimeMillis());
-        }
-
-        return className;
-    }
-
-    // ------------------------------------------
-    // Private
-    // ------------------------------------------
-
-    private String className;
+    public abstract String getClassName();
 }

@@ -4434,7 +4434,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 
   AU_SAVE_AND_DISABLE (save);
 
-  cls = db_find_class (SP_CLASS_NAME);
+  cls = db_find_class (CT_STORED_PROC_NAME);
   if (cls == NULL)
     {
       AU_RESTORE (save);
@@ -4621,7 +4621,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 
   AU_SAVE_AND_DISABLE (save);
 
-  cls = db_find_class (SP_CLASS_NAME);
+  cls = db_find_class (CT_STORED_PROC_NAME);
   if (cls == NULL)
     {
       AU_RESTORE (save);
@@ -4719,7 +4719,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
   AU_SAVE_AND_DISABLE (save);
 
   db_make_string (&value, code_name);
-  obj = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_CODE_ATTR_NAME, &value);
+  obj = db_find_unique (db_find_class (CT_STORED_PROC_CODE_NAME), SP_CODE_ATTR_NAME, &value);
   if (obj == NULL)
     {
       err = ER_FAILED;
@@ -6060,7 +6060,7 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
 	  err = au_export_grants (ctxt, output_ctx, cl->op, DB_OBJECT_CLASS);
 	}
 
-      sp_list = db_get_all_objects (db_find_class (SP_CLASS_NAME));
+      sp_list = db_get_all_objects (db_find_class (CT_STORED_PROC_NAME));
       for (cls = sp_list; cls; cls = cls->next)
 	{
 	  if (!(ctxt.is_dba_user || ctxt.is_dba_group_member))

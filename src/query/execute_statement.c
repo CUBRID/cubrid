@@ -3557,6 +3557,9 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_DROP_SERVER:
 	case PT_RENAME_SERVER:
 	case PT_ALTER_SERVER:
+	case PT_CREATE_PACKAGE:
+	case PT_DROP_PACKAGE:
+	case PT_ALTER_PACKAGE:
 
 	  /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
 	  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
@@ -3810,6 +3813,18 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_ALTER_SERVER:
 	  error = do_alter_server (parser, statement);
+	  break;
+
+	case PT_CREATE_PACKAGE:
+	  error = jsp_create_package (parser, statement);
+	  break;
+
+	case PT_DROP_PACKAGE:
+	  error = jsp_drop_package (parser, statement);
+	  break;
+
+	case PT_ALTER_PACKAGE:
+	  error = jsp_alter_package (parser, statement);
 	  break;
 
 	default:
@@ -4273,6 +4288,11 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_SYNONYM:
     case PT_DROP_SYNONYM:
     case PT_RENAME_SYNONYM:
+
+    case PT_CREATE_PACKAGE:
+    case PT_DROP_PACKAGE:
+    case PT_ALTER_PACKAGE:
+
       /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
       db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
       break;
@@ -4502,6 +4522,16 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_RENAME_SYNONYM:
       err = do_rename_synonym (parser, statement);
       break;
+    case PT_CREATE_PACKAGE:
+      err = jsp_create_package (parser, statement);
+      break;
+    case PT_DROP_PACKAGE:
+      err = jsp_drop_package (parser, statement);
+      break;
+    case PT_ALTER_PACKAGE:
+      err = jsp_alter_package (parser, statement);
+      break;
+
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
@@ -16702,6 +16732,22 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
       objtype = CDC_TABLE;
 
       break;
+
+    case PT_CREATE_PACKAGE:
+      ddl_type = CDC_CREATE;
+      objtype = CDC_PACKAGE;
+      break;
+
+    case PT_DROP_PACKAGE:
+      ddl_type = CDC_DROP;
+      objtype = CDC_PACKAGE;
+      break;
+
+    case PT_ALTER_PACKAGE:
+      ddl_type = CDC_ALTER;
+      objtype = CDC_PACKAGE;
+      break;
+
     default:
       return NO_ERROR;
     }
@@ -17028,6 +17074,16 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_UPDATE:
       repl_stmt.statement_type = CUBRID_STMT_UPDATE;
+      break;
+
+    case PT_CREATE_PACKAGE:
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_PACKAGE;
+      break;
+    case PT_DROP_PACKAGE:
+      repl_stmt.statement_type = CUBRID_STMT_DROP_PACKAGE;
+      break;
+    case PT_ALTER_PACKAGE:
+      repl_stmt.statement_type = CUBRID_STMT_ALTER_PACKAGE;
       break;
 
     case PT_DROP_VARIABLE:	/* DROP VARIABLE statements are not replicated intentionally. */

@@ -215,7 +215,7 @@ $set 5 MSGCAT_SET_ERROR
 143 Encountered a class with no owner.
 144 Unable to access user object.
 145 Cannot issue grant/revoke commands to yourself.
-146 Cannot issue GRANT/REVOKE to owner of a %1$s.
+146 Cannot issue GRANT to owner of a %1$s.
 147 No GRANT option.
 148 Cannot obtain write lock on authorization object.
 149 Cannot create instance of authorization object.
@@ -1483,8 +1483,17 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1378 Cannot change the login capability of user "%1$s".
 
-1379 Last Error
+1379 Package "%1$s" already exists.
+1380 Package Body "%1$s" already exists.
+1381 Package "%1$s" does not exist.
+1382 Package Body "%1$s" does not exist.
+1383 Package compile error: %1$s
+1384 The owner or a member of DBA group can %1$s a package.
+1385 Dropping a system generated package is not allowed.
+1386 Package Procedure's unique name exceeds 255 characters.
+1387 Duplicate package name '%1$s' in the name list.
 
+1388 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1652,6 +1661,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Maximum length of a server user is %1$d bytes.
 138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
+140 invalid create package.\n  CREATE [OR REPLACE] PACKAGE [<schema_name>.]<package_name> {IS|AS} <package_item> {<package_item>}... END [<package_name>] [COMMENT 'comment_string']
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1998,6 +2008,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 
+339 Package "%1$s" does not exist.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -2296,3 +2307,4 @@ $set 17 MSGCAT_SET_GLOSSARY
 4 server
 5 synonym
 6 procedure
+7 package

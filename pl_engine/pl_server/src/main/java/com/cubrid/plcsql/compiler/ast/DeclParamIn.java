@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -46,8 +47,13 @@ public class DeclParamIn extends DeclParam {
         return visitor.visitDeclParamIn(this);
     }
 
-    public DeclParamIn(ParserRuleContext ctx, String name, TypeSpec typeSpec, Expr defaultVal) {
-        super(ctx, name, typeSpec);
+    public DeclParamIn(
+            ParserRuleContext ctx,
+            String name,
+            String comment,
+            TypeSpec typeSpec,
+            Expr defaultVal) {
+        super(ctx, name, comment, typeSpec);
         this.defaultVal = defaultVal;
     }
 
@@ -56,7 +62,33 @@ public class DeclParamIn extends DeclParam {
         return "in-parameter";
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || o.getClass() != DeclParamIn.class) {
+            return false;
+        }
+
+        DeclParamIn other = (DeclParamIn) o;
+        return this.name.equals(other.name) && this.typeSpec.type == other.typeSpec.type;
+    }
+
+    @Override
+    public int hashCode() {
+        return name.hashCode() + typeSpec.type.hashCode();
+    }
+
+    @Override
     public String toJavaSignature() {
         return String.format("%s", typeSpec.type.fullJavaType);
+    }
+
+    @Override
+    public int getMode() {
+        return ServerConstants.SP_PARAM_MODE_IN;
+    }
+
+    @Override
+    public String getDefaultValStr() {
+        return (defaultVal == null) ? null : defaultVal.ctx.getText();
     }
 }

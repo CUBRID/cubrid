@@ -174,7 +174,8 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
 	  return er_errid ();
 	}
 
-      inst_mop = jsp_find_stored_procedure (unique_name, DB_AUTH_NONE);
+      inst_mop = (obj_type == DB_OBJECT_PACKAGE)
+		 ? jsp_find_package (unique_name, DB_AUTH_NONE) : jsp_find_stored_procedure (unique_name, DB_AUTH_NONE);
       if (inst_mop == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -218,8 +219,8 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
 	  " WHERE [au].[grantee].[name] = ? AND [au].[grantor].[name] = ?"
 	  " AND [au].[object_of] = (%s) AND [au].[auth_type] = ?";
   char obj_fetch_query[256];
-  const char *class_unique_name = NULL;
-  char sp_unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  const char *unique_name_p = NULL;
+  char unique_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
   char error_msg[ERR_MSG_SIZE];
 
   for (i = 0; i < COUNT_FOR_VARIABLES; i++)
@@ -235,8 +236,8 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      class_unique_name = sm_get_ch_name (obj_mop);
-      if (class_unique_name == NULL)
+      unique_name_p = sm_get_ch_name (obj_mop);
+      if (unique_name_p == NULL)
 	{
 	  assert (false);
 	  error = ER_UNEXPECTED;
@@ -247,8 +248,8 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
       sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
       break;
     case DB_OBJECT_PROCEDURE:
-      sp_unique_name[0] = '\0';
-      if (jsp_get_unique_name (obj_mop, sp_unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+      unique_name_buf[0] = '\0';
+      if (jsp_get_unique_name (obj_mop, unique_name_buf, DB_MAX_IDENTIFIER_LENGTH) == NULL)
 	{
 	  assert (false);
 	  error = ER_UNEXPECTED;
@@ -257,6 +258,18 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
 	}
 
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PACKAGE:
+      unique_name_buf[0] = '\0';
+      if (jsp_get_unique_name (obj_mop, unique_name_buf, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+	{
+	  assert (false);
+	  error = ER_UNEXPECTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get package name of mop.");
+	  goto exit;
+	}
+
+      sprintf (obj_fetch_query, sql_query, "SELECT [pkg] FROM " CT_PACKAGE_NAME "[pkg] WHERE [unique_name] = ?");
       break;
     default:
       assert (false);
@@ -315,10 +328,11 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      db_make_string (&val[INDEX_FOR_OBJECT_NAME], class_unique_name);
+      db_make_string (&val[INDEX_FOR_OBJECT_NAME], unique_name_p);
       break;
     case DB_OBJECT_PROCEDURE:
-      db_make_string (&val[INDEX_FOR_OBJECT_NAME], sp_unique_name);
+    case DB_OBJECT_PACKAGE:
+      db_make_string (&val[INDEX_FOR_OBJECT_NAME], unique_name_buf);
       break;
     default:
       assert (false);
@@ -595,6 +609,9 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
       break;
+    case DB_OBJECT_PACKAGE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [pkg] FROM " CT_PACKAGE_NAME "[pkg] WHERE [unique_name] = ?");
+      break;
     default:
       assert (false);
       error = ER_FAILED;
@@ -767,6 +784,9 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PACKAGE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [pkg] FROM " CT_PACKAGE_NAME "[pkg] WHERE [unique_name] = ?");
       break;
     default:
       assert (false);

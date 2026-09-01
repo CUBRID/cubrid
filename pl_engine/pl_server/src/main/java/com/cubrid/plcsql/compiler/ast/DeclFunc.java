@@ -43,25 +43,58 @@ public class DeclFunc extends DeclRoutine {
     public DeclFunc(
             ParserRuleContext ctx,
             String name,
+            String comment,
             StmtLoop.LoopOptimizables loopOptimizables,
             NodeList<DeclParam> paramList,
+            int directive,
             TypeSpec retTypeSpec,
             NodeList<Decl> decls,
             Body body) {
-        super(ctx, name, loopOptimizables, paramList, retTypeSpec, decls, body);
+        super(ctx, name, comment, loopOptimizables, paramList, directive, retTypeSpec, decls, body);
     }
 
     public DeclFunc(
             ParserRuleContext ctx,
             String name,
+            String comment,
             StmtLoop.LoopOptimizables loopOptimizables,
             NodeList<DeclParam> paramList,
+            int directive,
             TypeSpec retTypeSpec) {
-        super(ctx, name, loopOptimizables, paramList, retTypeSpec, null, null);
+        super(
+                ctx,
+                name,
+                comment,
+                loopOptimizables,
+                paramList,
+                directive,
+                retTypeSpec,
+                null,
+                new Body());
     }
 
     @Override
     public String kind() {
         return "function";
+    }
+
+    @Override
+    public boolean givesBodyOf(Decl d) {
+
+        if (d == null || d.getClass() != DeclFunc.class) {
+            return false;
+        }
+
+        DeclFunc other = (DeclFunc) d;
+
+        // name and parameters must be the same
+        if (!this.name.equals(other.name)
+                || !this.paramList.equals(other.paramList)
+                || this.retTypeSpec.type != other.retTypeSpec.type) {
+            return false;
+        }
+
+        // this must have a body and the other may not
+        return (this.body != null && other.body == null);
     }
 }
