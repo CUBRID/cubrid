@@ -4232,6 +4232,21 @@ logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 }
 
 /*
+ * logtb_has_active_savepoint () - Is a savepoint declared, so a partial rollback can reach back to here?
+ *
+ * return: true if this transaction has declared a savepoint
+ *
+ *   thread_p(in): thread entry
+ */
+bool
+logtb_has_active_savepoint (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  return tdes != NULL && !LSA_ISNULL (&tdes->savept_lsa);
+}
+
+/*
  * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends: S_LOCK on its
  *				MVCCID self-lock, then release.
  *

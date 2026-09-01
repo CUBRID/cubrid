@@ -13033,6 +13033,12 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 
       if (MVCCID_IS_VALID (owner_mvccid))
 	{
+	  if (context->scan_cache != NULL && context->scan_cache->cache_last_fix_page
+	      && context->home_page_watcher.pgptr != NULL)
+	    {
+	      /* Prevent caching home page watcher in scan_cache: the wait below must not hold a page fixed. */
+	      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+	    }
 	  heap_clean_get_context (thread_p, context);
 	  if (logtb_wait_for_tran_end (thread_p, owner_mvccid) != NO_ERROR)
 	    {
@@ -13782,7 +13788,9 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 	  goto end;
 	}
 
-      if (fetch_val_list (thread_p, mvcc_cond_reeval->rest_regu_list, NULL, cls_oid, (OID *) oid_inst, NULL, PEEK)
+      /* Copy, do not peek: these values feed assignments the caller computes after this returns, and a record
+       * read out of another class's heap points into a page that end: unfixes below. */
+      if (fetch_val_list (thread_p, mvcc_cond_reeval->rest_regu_list, NULL, cls_oid, (OID *) oid_inst, NULL, false)
 	  != NO_ERROR)
 	{
 	  ev_res = V_ERROR;

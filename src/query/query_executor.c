@@ -11284,7 +11284,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   MVCC_REEV_DATA mvcc_reev_data;
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
-  bool need_locking;
+  bool locks_at_force;		/* the select phase took no row lock, so the force phase takes it -- and this
+				 * statement is the one that gives it back */
   bool reev_disabled = false;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
@@ -11350,12 +11351,12 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
     {
       /* already locked in select phase. Avoid locking again the same instances at delete phase. */
-      need_locking = false;
+      locks_at_force = false;
     }
   else
     {
       /* not locked in select phase, need locking at update phase */
-      need_locking = true;
+      locks_at_force = true;
 
       /* No reevaluation class means no predicate to re-check -- pt_to_delete_xasl () keeps the
        * select-phase lock for one it cannot replay -- so a changed version is deleted, not skipped.
@@ -11621,7 +11622,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, NULL, NULL, 0, LC_FLUSH_DELETE,
 					      op_type, internal_class->scan_cache, &force_count, false,
 					      REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL,
-					      &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking);
+					      &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, locks_at_force);
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;
@@ -11634,9 +11635,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		{
 		  xasl->list_id->tuple_cnt++;
 
-		  if (mvcc_upddel_reev_data.transient_row_lock && need_locking && class_oid != NULL
-		      && internal_class->is_mvcc_class && !internal_class->has_online_index
-		      && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
+		  if (locks_at_force && class_oid != NULL && internal_class->is_mvcc_class
+		      && !internal_class->has_online_index && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
 		    {
 		      /* the delete is published: late arrivals settle on our MVCCID self-lock, which the
 		       * prepare record persists across 2PC, so the row lock is redundant from here.  It ends
@@ -11702,7 +11702,16 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
     }
 
-  transient_row_locks_release (thread_p, &transient_row_locks);
+  /* Early release rests on the delete being decided only when we end.  A savepoint declared before now
+   * breaks that: a partial rollback can undo it while a writer parked on our MVCCID holds the row. */
+  if (!logtb_has_active_savepoint (thread_p))
+    {
+      /* TODO: logtb_has_active_savepoint () does not tell a user savepoint from a DDL/trigger system
+       *       savepoint, so a transaction that ran DDL earlier keeps its locks to commit here -- correct
+       *       but it forgoes the release.  CBRD-27238 (UPDATE) adds a user-savepoint-only flag on tdes for
+       *       both paths to read instead. */
+      transient_row_locks_release (thread_p, &transient_row_locks);
+    }
   transient_row_locks_clear (thread_p, &transient_row_locks);
 
   qexec_close_scan (thread_p, specp);
