@@ -345,8 +345,14 @@ namespace
     for (rapidjson::Value::ConstMemberIterator m = container->MemberBegin (); m != container->MemberEnd (); ++m, ++slot)
       {
 	size_t free_cell = 0;
-	(void) index_probe (ix, container, m->name.GetString (), m->name.GetStringLength (), &free_cell);
-	ix->cells[free_cell] = slot + 1;
+	if (index_probe (ix, container, m->name.GetString (), m->name.GetStringLength (), &free_cell)
+	    == INDEX_NOT_FOUND)
+	  {
+	    ix->cells[free_cell] = slot + 1;
+	  }
+	/* A repeat has no cell of its own; the first position stays the answer.
+	 * It still counts towards the load, so used keeps matching the member
+	 * count. Only trace_json_loads () can produce one - JSON text may. */
 	ix->used++;
       }
   }
@@ -677,9 +683,15 @@ trace_json_loads (const char *text)
   bool parsed;
 
   {
-    /* parse into the arena, so the parsed data outlives this call */
+    /* Parse into the arena, so the parsed data outlives this call.
+     *
+     * The text is untrusted - plan_string is whatever was last written to the
+     * trace_plan session variable - so neither flag is tuning. Iterative keeps
+     * the nesting off the C stack, which the default parser overflows.
+     * Validate refuses a string that is not UTF-8, the same rule
+     * trace_json_string () applies on the way in. */
     rapidjson::Document doc (&n->arena->pool);
-    doc.Parse (text);
+    doc.Parse<rapidjson::kParseIterativeFlag | rapidjson::kParseValidateEncodingFlag> (text);
     parsed = !doc.HasParseError ();
     if (parsed)
       {

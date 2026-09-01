@@ -172,6 +172,57 @@ TEST_CASE ("An object keeps its keys straight once it carries an index", "[json_
     }
 }
 
+TEST_CASE ("An index over a container that repeats a key", "[json_builder]")
+{
+  /* Only trace_json_loads () produces one, since JSON text may. A repeat has
+   * no cell of its own to take, and must not take the one the probe was going
+   * to hand the next new key - that key would drop out of the index. */
+  const int members = 200;
+
+  /* whether a position is lost there depends on how the key set hashes, so
+   * walk a spread of them rather than lean on one */
+  for (int shape = 0; shape < 12; shape++)
+    {
+      auto key_at = [shape] (int i)
+      {
+	return "SUBQUERY (uncorrelated) " + std::to_string (shape) + "." + std::to_string (i);
+      };
+      const int repeated = shape * 17 % members;
+
+      std::string text = "{";
+      for (int i = 0; i < members; i++)
+	{
+	  text += "\"" + key_at (i) + "\": " + std::to_string (i) + ", ";
+	}
+      text += "\"" + key_at (repeated) + "\": 999}";
+
+      trace_json_t *root = trace_json_loads (text.c_str ());
+      REQUIRE (root != NULL);
+
+      /* every key again, so that one dropped out of the index shows up as a
+       * member stored a second time rather than as a value replaced */
+      for (int i = 0; i < members; i++)
+	{
+	  REQUIRE (trace_json_object_set_new (root, key_at (i).c_str (), trace_json_integer (-i - 1)) == 0);
+	}
+
+      std::string out = dump_and_release (root);
+      for (int i = 0; i < members; i++)
+	{
+	  std::string key = "\"" + key_at (i) + "\"";
+	  size_t first = out.find (key);
+	  REQUIRE (first != std::string::npos);
+	  size_t second = out.find (key, first + key.size ());
+	  /* the repeated one keeps the second copy the text gave it, and the
+	   * store replaced the first; every other key appears once */
+	  REQUIRE ((second != std::string::npos) == (i == repeated));
+	  REQUIRE (out.compare (first, key.size () + 2 + std::to_string (-i - 1).size (),
+				key + ": " + std::to_string (-i - 1)) == 0);
+	}
+      REQUIRE (trace_json_owned_count () == 0);
+    }
+}
+
 TEST_CASE ("A container of the wrong kind is left alone", "[json_builder]")
 {
   /* the multi-spec SCAN of a class hierarchy hands an array to code that goes
@@ -380,6 +431,37 @@ TEST_CASE ("trace_json_loads round trips a dump", "[json_builder]")
   REQUIRE (trace_json_loads ("{ not json") == NULL);
   REQUIRE (trace_json_loads (NULL) == NULL);
   REQUIRE (trace_json_owned_count () == 0);
+}
+
+TEST_CASE ("trace_json_loads takes the text it is given as untrusted", "[json_builder]")
+{
+  /* it parses whatever was last written to the trace_plan session variable */
+
+  SECTION ("nesting does not go on the C stack")
+  {
+    /* a server thread runs on thread_stacksize, 1 MB by default, and the
+     * recursive parser needs about fifty bytes a level */
+    const int depth = 200000;
+    std::string text (depth, '[');
+    text.append (depth, ']');
+
+    trace_json_t *deep = trace_json_loads (text.c_str ());
+    REQUIRE (deep != NULL);
+    trace_json_decref (deep);
+    REQUIRE (trace_json_owned_count () == 0);
+
+    /* the same nesting with nothing closing it: the parser recurses on the
+     * opening bracket, so this reaches just as deep before it fails */
+    REQUIRE (trace_json_loads (std::string (depth, '[').c_str ()) == NULL);
+    REQUIRE (trace_json_owned_count () == 0);
+  }
+
+  SECTION ("a string that is not UTF-8 is refused, as it is on the way in")
+  {
+    REQUIRE (trace_json_loads ("{\"Query Plan\": \"\xc7\xd1\xb1\xb9\"}") == NULL);
+    REQUIRE (trace_json_loads ("{\"\xc7\xd1\xb1\xb9\": 1}") == NULL);
+    REQUIRE (trace_json_owned_count () == 0);
+  }
 }
 
 TEST_CASE ("trace_json_dumps refuses a node it cannot write", "[json_builder]")
