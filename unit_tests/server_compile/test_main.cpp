@@ -46,6 +46,7 @@
 #include "cas_common_vars.h"	// shm_as_index (per-session slot id, B2-D1)
 #include "cas_dispatch.h"	// cas_server_session_slot_begin/end
 #include "cas_protocol.h"
+#undef FREE			// cas_common.h FREE(PTR) vs page_buffer.h FREE — this TU uses neither
 #include "client_session_context.hpp"
 #include "csql.h"		// csql_server_*_request (B5 PR1)
 #include "message_catalog.h"	// msgcat_init (B5 PR1 test needs the csql catalog)
