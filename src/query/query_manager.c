@@ -2326,6 +2326,15 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
     }
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  /* The mark must not outlive the transaction that set it. qmgr_check_dblink_trans() clears it on the
+   * commit and abort paths that go through xtran_server_commit()/xtran_server_abort(), but a transaction
+   * can also end through log_abort() alone - log_2pc_attach_client() aborts the attaching client that
+   * way before freeing its index. Clearing it here covers that too, since log_abort_local() reaches this
+   * function, as do log_commit_local() and logtb_release_tran_index(). Without it the mark reaches
+   * whoever is assigned the index next. */
+  tran_entry_p->is_dblink_sink_aborted = false;
+
   /* if the transaction is aborting, clear relative cache entries */
   if (tran_entry_p->modified_classes_p)
     {
