@@ -26893,12 +26893,34 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	      continue;
 	    }
 
+#if defined (SERVER_MODE)
+	  /* Parallel UNION branches executing this query share tdes (and therefore
+	   * log_upd_stats.classes_cos_hash / unique_stats_hash) across worker threads that adopt the
+	   * main thread's tran_index. All accesses to those per-tran hash tables below must be
+	   * serialized with the same lock logtb_get_mvcc_snapshot() uses, or concurrent mht_get()/
+	   * mht_put() calls on the shared hash can corrupt it (observed as an infinite spin) or let one
+	   * worker see COS_LOADED before another worker's statistics write becomes visible (observed as
+	   * count(*) wrongly returning -1). */
+	  THREAD_ENTRY *main_thread_p = NULL;
+	  if (thread_p->m_px_orig_thread_entry != NULL)
+	    {
+	      main_thread_p = thread_get_main_thread (thread_p);
+	      pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+	    }
+#endif /* SERVER_MODE */
+
 	  LOG_TRAN_CLASS_COS *class_cos = logtb_tran_find_class_cos (thread_p, &ACCESS_SPEC_CLS_OID (spec),
 								     true);
 	  if (class_cos == NULL)
 	    {
 	      agg_ptr->flag.agg_optimized = false;
 	      *is_scan_needed = true;
+#if defined (SERVER_MODE)
+	      if (main_thread_p != NULL)
+		{
+		  pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+		}
+#endif /* SERVER_MODE */
 	      continue;
 	    }
 
@@ -26911,16 +26933,36 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		{
 		  agg_ptr->flag.agg_optimized = false;
 		  *is_scan_needed = true;
+#if defined (SERVER_MODE)
+		  if (main_thread_p != NULL)
+		    {
+		      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+		    }
+#endif /* SERVER_MODE */
 		  continue;
 		}
 
 	      if (!tdes->mvccinfo.snapshot.valid)
 		{
+#if defined (SERVER_MODE)
+		  /* logtb_get_mvcc_snapshot() takes main_thread_p->m_px_lock_mutex itself; release it
+		   * here first to avoid a self-deadlock, then reacquire before touching class_cos again. */
+		  if (main_thread_p != NULL)
+		    {
+		      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+		    }
+#endif /* SERVER_MODE */
 		  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
 		    {
 		      error = er_errid ();
 		      return (error == NO_ERROR ? ER_FAILED : error);
 		    }
+#if defined (SERVER_MODE)
+		  if (main_thread_p != NULL)
+		    {
+		      pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+		    }
+#endif /* SERVER_MODE */
 		}
 
 	      /* 
@@ -26933,6 +26975,12 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		  if (logtb_load_global_statistics_to_tran (thread_p) != NO_ERROR)
 		    {
 		      error = er_errid ();
+#if defined (SERVER_MODE)
+		      if (main_thread_p != NULL)
+			{
+			  pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+			}
+#endif /* SERVER_MODE */
 		      return (error == NO_ERROR ? ER_FAILED : error);
 		    }
 		}
@@ -26941,9 +26989,22 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		{
 		  agg_ptr->flag.agg_optimized = false;
 		  *is_scan_needed = true;
+#if defined (SERVER_MODE)
+		  if (main_thread_p != NULL)
+		    {
+		      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+		    }
+#endif /* SERVER_MODE */
 		  continue;
 		}
 	    }
+
+#if defined (SERVER_MODE)
+	  if (main_thread_p != NULL)
+	    {
+	      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	    }
+#endif /* SERVER_MODE */
 	}
 
       if (thread_is_on_trace (thread_p))
