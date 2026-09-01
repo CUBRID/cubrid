@@ -1963,7 +1963,7 @@ pt_check_orderbynum_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 PT_NODE *
 pt_check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  if (node->node_type == PT_SELECT)
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
       *continue_walk = PT_STOP_WALK;
     }
@@ -1984,7 +1984,9 @@ pt_check_subquery_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 {
   bool *has_subquery = (bool *) arg;
 
-  if (node->node_type == PT_SELECT)
+  /* a UNION / DIFFERENCE / INTERSECTION subquery is one query node too; PT_SELECT alone would let
+   * 'x IN (SELECT ... UNION SELECT ...)' pass undetected */
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
       if (node->info.query.is_subquery == PT_IS_SUBQUERY)
 	{

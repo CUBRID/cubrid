@@ -222,7 +222,7 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
   PT_NODE *subq, *inner_spec, *on_cond, *cnf, *spec, *save_next, *new_expr = NULL;
   UINTPTR ref;
   int n_outer = 0;
-  bool has_direct_join = false;
+  bool has_direct_join = false, has_subquery = false;
 
   info->subq = NULL;
   info->on_cond = NULL;
@@ -303,6 +303,15 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
       if (lhs == NULL || lhs->next != NULL || PT_IS_COLLECTION_TYPE (lhs->type_enum)
 	  || item == NULL || item->next != NULL || item->flag.is_hidden_column
 	  || PT_IS_COLLECTION_TYPE (item->type_enum))
+	{
+	  return false;
+	}
+
+      /* like the subquery WHERE and select list, the lhs joins the ON; a subquery inside it would land
+       * where the grammar forbids one */
+      has_subquery = false;
+      (void) parser_walk_tree (parser, lhs, pt_check_subquery_pre, NULL, pt_check_subquery_post, &has_subquery);
+      if (has_subquery)
 	{
 	  return false;
 	}
