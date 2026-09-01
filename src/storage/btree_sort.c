@@ -403,6 +403,7 @@ static int btsort_compute_parallel_degree (bool no_logging_build, int n_data_pag
 static int btsort_check_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
 static int btsort_start_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, BTSORT_PARAM * sort_param);
 static int btsort_end_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, BTSORT_PARAM * sort_param);
+static void btsort_retire_px_temp_files (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, int parallel_num);
 #endif /* SERVER_MODE */
 
 /*
@@ -990,6 +991,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
 
   /* for parallel sort */
   BTSORT_PARAM *px_sort_param = NULL;
+  bool px_runs_handed_over = false;
 #if defined(SERVER_MODE)
   pthread_mutex_t px_mtx;	/* px_status mutex */
   pthread_cond_t complete_cond;	/* complete condition */
@@ -1167,6 +1169,8 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, void *get_arg, BT
 	  goto cleanup;
 	}
 
+      /* the merge queue / shard build own (and retire) the worker runs from here on */
+      px_runs_handed_over = true;
       error = btsort_end_parallelism (thread_p, px_sort_param, sort_param);
       if (error != NO_ERROR)
 	{
@@ -1190,6 +1194,11 @@ cleanup:
 #if defined(SERVER_MODE)
   if (sort_param->px_parallel_num > 1)
     {
+      if (!px_runs_handed_over)
+	{
+	  btsort_retire_px_temp_files (thread_p, px_sort_param, sort_param->px_parallel_num);
+	}
+
       if (px_sort_param != NULL)
 	{
 	  for (int i = 0; i < sort_param->px_parallel_num; i++)
@@ -1287,6 +1296,17 @@ btsort_listfile_execute (cubthread::entry & thread_ref, BTSORT_PARAM * sort_para
 cleanup:
   bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args_p, NULL, NULL);
   bt_load_clear_pred_and_unpack (thread_p, sort_args_p, func_unpack_info);
+
+  /* the files beyond the result run are dead here; main never retires worker temps on success */
+  for (int k = 0; k < sort_param->tot_tempfiles; k++)
+    {
+      if (k != sort_param->px_result_file_idx && sort_param->temp[k].volid != NULL_VOLID)
+	{
+	  (void) file_temp_retire (thread_p, &sort_param->temp[k]);
+	  VFID_SET_NULL (&sort_param->temp[k]);
+	  file_find_nth_cursor_reset (&sort_param->temp_cursor[k]);
+	}
+    }
 
   if (sort_param->px_orig_thread_p->on_trace)
     {
@@ -4774,6 +4794,40 @@ btsort_start_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param,
     }
 
   return error;
+}
+
+/*
+ * btsort_retire_px_temp_files () - Retire every temp file the workers still hold
+ *   return: void
+ *   px_sort_param(in): worker parameters
+ *   parallel_num(in): number of workers
+ *
+ * Note: Only while the workers still own their runs (before btsort_end_parallelism ()); afterwards
+ *       a run may be staged into the main parameters or into the merge queue and retiring it here
+ *       would retire it twice.
+ */
+static void
+btsort_retire_px_temp_files (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, int parallel_num)
+{
+  int i, k;
+
+  if (px_sort_param == NULL)
+    {
+      return;
+    }
+
+  for (i = 0; i < parallel_num; i++)
+    {
+      for (k = 0; k < px_sort_param[i].tot_tempfiles; k++)
+	{
+	  if (px_sort_param[i].temp[k].volid != NULL_VOLID)
+	    {
+	      (void) file_temp_retire (thread_p, &px_sort_param[i].temp[k]);
+	      VFID_SET_NULL (&px_sort_param[i].temp[k]);
+	      file_find_nth_cursor_reset (&px_sort_param[i].temp_cursor[k]);
+	    }
+	}
+    }
 }
 
 /*
