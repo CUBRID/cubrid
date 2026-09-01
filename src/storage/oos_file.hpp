@@ -175,6 +175,11 @@ extern void oos_test_disarm_insert_publication_failures ();
 /* Simulates a process restart for the reclaim bookkeeping: the next growth of each file falls
  * under the boot rule. */
 extern void oos_test_reclaim_reset_side_map ();
+/* Deterministic concurrency seams for the growth-gate single-flight contract. */
+extern void oos_test_reclaim_force_sweep_in_progress (const VFID &oos_vfid);
+extern void oos_test_reclaim_release_sweep (const VFID &oos_vfid);
+extern int oos_test_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
+extern int oos_test_reclaim_waiter_count ();
 #endif
 
 #endif /* _OOS_FILE_HPP_ */

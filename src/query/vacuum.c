@@ -2474,8 +2474,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
    * cannot leave it half-done (heap slot vacuumed but its OOS chunks still referenced, or vice versa).
    * Single-page REC_HOME needs no sysop: its single log record is already atomic, so it rides the bulk
    * path.  record_type alone is only a proxy for the footprint -- OOS is the orthogonal axis that can push
-   * an otherwise single-page REC_HOME into the sysop path.  See
-   * docs/adr/0001-synchronous-oos-reclaim-in-vacuum-sysop.md. */
+   * an otherwise single-page REC_HOME into the sysop path. */
   bool has_oos = (!VFID_ISNULL (&helper->oos_vfid)
 		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
 		  && heap_recdes_contains_oos (&helper->record));

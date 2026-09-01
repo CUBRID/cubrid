@@ -22,7 +22,10 @@
 // growth path is never entered.
 
 #include "gtest/gtest.h"
+#include <chrono>
+#include <future>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "file_manager.h"
@@ -142,6 +145,35 @@ TEST (OosGrowthSweepTest, SweepReclaimsAfterCommittedDeleteBurst)
   ASSERT_EQ (count_user_pages (oos_vfid), pages_full)
       << "growth gate did not reuse an emptied page — the file grew";
   assert_value_intact (oid3);
+
+  remove_file_and_commit (oos_vfid);
+}
+
+TEST (OosGrowthSweepTest, ConcurrentGrowerWaitsForActiveSweep)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  oos_test_reclaim_force_sweep_in_progress (oos_vfid);
+  auto concurrent_sweep = std::async (std::launch::async, [&] ()
+  {
+    return oos_test_reclaim_sweep_step (thread_p, oos_vfid);
+  });
+
+  const auto waiter_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (1);
+  while (oos_test_reclaim_waiter_count () == 0
+	 && concurrent_sweep.wait_for (std::chrono::milliseconds (0)) == std::future_status::timeout
+	 && std::chrono::steady_clock::now () < waiter_deadline)
+    {
+      std::this_thread::yield ();
+    }
+
+  EXPECT_EQ (oos_test_reclaim_waiter_count (), 1);
+  EXPECT_EQ (concurrent_sweep.wait_for (std::chrono::milliseconds (0)), std::future_status::timeout)
+      << "a concurrent grower bypassed the active reclaim sweep";
+
+  oos_test_reclaim_release_sweep (oos_vfid);
+  ASSERT_EQ (concurrent_sweep.get (), NO_ERROR);
 
   remove_file_and_commit (oos_vfid);
 }
