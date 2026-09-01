@@ -10976,8 +10976,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		       * state names no owner, so the row lock is what serializes two writers there.
 		       * A partition-pruned update keeps it -- the row may have moved to another class, so the
 		       * OID the unlock would name is not the one that was locked. */
-		      (void) transient_row_locks_add (thread_p, &transient_row_locks, oid,
-						      internal_class->class_oid);
+		      (void) transient_row_locks_add (thread_p, &transient_row_locks, oid, internal_class->class_oid);
 		    }
 		}
 	    }

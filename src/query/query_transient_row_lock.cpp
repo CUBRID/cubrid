@@ -27,6 +27,7 @@
 #include "memory_alloc.h"
 #include "object_representation_sr.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define TRANSIENT_ROW_LOCKS_INITIAL_CAPACITY 64
