@@ -716,6 +716,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 	 * (reviewed: PR 7837) */
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
 		"the driver adoption endpoint failed to start; check the socket directory and stale sockets");
+	status = ER_FAILED;
 	goto shutdown;
       }
   }
