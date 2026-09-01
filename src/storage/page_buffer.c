@@ -7338,7 +7338,27 @@ er_set_return:
     }
   else
     {
+      /* Zero wait: LK_ZERO_WAIT or LK_FORCE_ZERO_WAIT -- from the transaction, or from the thread-scoped override
+       * the no-wait latch probes use after the previous commit -- and the 0 that
+       * logtb_find_current_wait_msecs () returns when the thread has no transaction descriptor. The timeout is the
+       * expected outcome in all three cases, but an error still has to be
+       * set: this ER_FAILED travels up through pgbuf_block_bcb () and pgbuf_latch_bcb_upon_fix (), neither of which
+       * sets one, and comes out of pgbuf_fix () as a plain NULL. Callers then run ASSERT_ERROR_AND_SET () and assert
+       * on er_errid () != NO_ERROR -- which is how a page latch timeout aborted the server inside
+       * btree_split_node_and_advance (). Same reasoning as the interrupt path in pgbuf_block_bcb ().
+       *
+       * ER_LK_PAGE_TIMEOUT, the same error the zero-wait rejection in pgbuf_latch_bcb_upon_fix () sets and the one
+       * er_errid () ends up with in the wait_msecs > 0 branch above: callers that treat latch contention as benign
+       * test for exactly this code (bestspace.cpp's contended path clears it and retries), so a different code would
+       * turn a retryable contention into a hard failure. */
       PGBUF_BCB_UNLOCK (bufptr);
+
+      (void) logtb_find_client_name_host_pid (thread_p->tran_index, &client_prog_name, &client_user_name,
+					      &client_host_name, &client_pid);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_PAGE_TIMEOUT, 8, thread_p->tran_index, client_user_name,
+	      client_host_name, client_pid, (save_request_latch_mode == PGBUF_LATCH_READ ? "READ" : "WRITE"),
+	      bufptr->vpid.volid, bufptr->vpid.pageid, NULL);
     }
 
   return ER_FAILED;
