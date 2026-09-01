@@ -69,7 +69,11 @@ public class Context {
     private FileClassLoaderDynamic fileClassLoader = null; // file
 
     // Whether SP is able to process TCL (commit, rollback). (default: false)
-    private boolean transactionControl = false;
+    // volatile: written by the executing thread on every invocation and read from
+    // CUBRIDServerSideConnection.commit()/rollback(). One Context can be associated with more
+    // than one thread, so the reader needs the writer's value to be visible; there is no
+    // compound action here, so a plain write/read barrier is enough.
+    private volatile boolean transactionControl = false;
 
     // Connection Properties
     private static Properties DEFAULT_CONNECTION_INFO = new Properties();

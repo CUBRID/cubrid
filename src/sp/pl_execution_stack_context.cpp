@@ -26,6 +26,7 @@
 
 #include "log_impl.h"
 #include "thread_entry.hpp"
+#include "thread_manager.hpp"	/* thread_get_thread_entry_info () */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -71,6 +72,12 @@ namespace cubpl
 
   execution_stack::~execution_stack ()
   {
+    /* A px stack counts its depth in a thread_local (see create_px_stack ()), so it must be
+     * destroyed on the thread that created it. It is: cubpl::executor is an automatic object
+     * (fetch.c), its constructor opens the stack and this destructor closes it in the same
+     * scope, so the stack cannot outlive the frame or cross a thread. */
+    assert (!is_px_worker_stack () || m_thread_p == thread_get_thread_entry_info ());
+
     // use local variable
     session *sess = get_session ();
     if (sess)
