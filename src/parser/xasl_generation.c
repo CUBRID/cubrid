@@ -22615,6 +22615,103 @@ pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * pt_update_must_abort_reevaluation () - can the update phase re-check this statement's predicate?
+ *   return: true when it cannot, so reevaluation is abandoned for the statement
+ *   parser(in): context
+ *   statement(in): update parse tree
+ *   aptr_statement(in/out): the SELECT generated for it; flagged for locking where one is needed
+ *   from(in): the UPDATE's own spec list
+ *   where(in): the UPDATE's search condition
+ *   has_partitioned(in): a class being updated is partitioned
+ *
+ * Note: the same tests as pt_delete_must_abort_reevaluation (), in the same order and for the reasons
+ *	 given there; only what the UPDATE side adds is said again here.  What it adds is the assignment
+ *	 list -- an UPDATE recomputes its assignments, so an assignment reads rows the way a predicate
+ *	 term does, and the specs it flags count wherever the DELETE side counts flagged specs.
+ */
+static bool
+pt_update_must_abort_reevaluation (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * aptr_statement,
+				   PT_NODE * from, PT_NODE * where, bool has_partitioned)
+{
+  PT_NODE *cl_name_node = NULL;
+
+  /* pt_to_upd_del_query () asks for the select-phase lock where it adds the GROUP BY, so the rows are
+   * already locked and this one abandons reevaluation without asking again. */
+  if (aptr_statement->info.query.q.select.group_by != NULL)
+    {
+      return true;
+    }
+
+  /*   UPDATE part_t SET v = 1 WHERE pk = 1;
+   *   UPDATE t SET v = 1 WHERE pk IN (SELECT k FROM side_t WHERE k = 1); */
+  if (has_partitioned || pt_has_reev_in_subquery (parser, aptr_statement))
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
+  /*   UPDATE t SET v = 1 WHERE pk > 0 LIMIT 1; */
+  if (statement->info.update.limit != NULL)
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
+  /* a spec reading a derived table has no heap of its own to re-read.  The flag is not what says so,
+   * no more than it does on the DELETE side: the rewrite that puts a derived table there takes the
+   * heap and the flag together, so the spec that most needs this test is the one that no longer
+   * carries it.  An OID equality turns the target's own scan into a scan over a set -- FROM t becomes
+   * FROM table({:obj}) -- and leaves the UPDATE's spec flagged while the SELECT's is not.
+   *   UPDATE t SET v = 1 WHERE t = :obj;
+   *   UPDATE t a, (SELECT 1 AS k) x SET a.v = 1 WHERE a.pk = x.k; */
+  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
+    {
+      if (cl_name_node->info.spec.derived_table != NULL)
+	{
+	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+	  return true;
+	}
+    }
+
+  /*   UPDATE ALL h_base SET v = 2 WHERE v = 1; */
+  for (cl_name_node = from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
+    {
+      if (!(cl_name_node->info.spec.flag & (PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV)))
+	{
+	  continue;
+	}
+      if (cl_name_node->info.spec.flat_entity_list != NULL && cl_name_node->info.spec.flat_entity_list->next != NULL)
+	{
+	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+	  return true;
+	}
+    }
+
+  /* the assignment list is read alongside the condition.  A single-target join UPDATE does not arrive
+   * here -- the GROUP BY rewrite above took it -- but that rewrite is gated on upd_del_class_cnt == 1,
+   * so a two-target join UPDATE would.
+   *   UPDATE t a, side_t b SET a.v = 1, b.v = 1 WHERE a.pk = b.k;
+   *   UPDATE t a, side_t b SET a.v = b.v, b.v = 1 WHERE a.pk = 1 AND b.k = 1; */
+  if (pt_cond_spans_multiple_specs (parser, from, where)
+      || pt_cond_spans_multiple_specs (parser, from, statement->info.update.assignment))
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
+  /* the assignments need no test of their own here: one that reads a spec flags it, and one that does
+   * not is a constant the latest version can take as it stands.
+   *   UPDATE t SET v = 1 WHERE ROWNUM <= 3; */
+  if ((where != NULL || aptr_statement->info.query.q.select.where != NULL) && pt_reev_reads_no_spec (from))
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * pt_to_update_xasl () - Converts an update parse tree to
  * 			  an XASL graph for an update
  *   return:
@@ -22806,36 +22903,8 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
       goto cleanup;
     }
 
-  if (aptr_statement->info.query.q.select.group_by != NULL)
-    {
-      /* remove reevaluation flags if we have GROUP BY because the locking will be made at SELECT stage */
-      abort_reevaluation = true;
-    }
-  else if (has_partitioned || pt_has_reev_in_subquery (parser, aptr_statement))
-    {
-      /* if we have at least one class partitioned then perform locking at SELECT stage */
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      abort_reevaluation = true;
-    }
-  else
-    {
-      /* if at least one table involved in reevaluation is a derived table then abort reevaluation and force locking on
-       * select */
-      for (p = aptr_statement->info.query.q.select.from; p != NULL; p = p->next)
-	{
-	  if (p->info.spec.derived_table != NULL
-	      && (p->info.spec.flag | PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV))
-	    {
-	      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	      abort_reevaluation = true;
-	      break;
-	    }
-	}
-    }
-
-  /* These two lines disable reevaluation on UPDATE. To activate it just remove them */
-  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-  abort_reevaluation = true;
+  abort_reevaluation =
+    pt_update_must_abort_reevaluation (parser, statement, aptr_statement, from, where, has_partitioned);
 
   if (abort_reevaluation)
     {
@@ -23299,9 +23368,22 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	    }
 
 	  /* set the position in SELECT list */
+	  assert (cl < update->num_reev_classes);
+	  if (cl >= update->num_reev_classes)
+	    {
+	      break;
+	    }
 	  update->mvcc_reev_classes[cl++] = cls_idx;
 	}
     }
+
+  /* The count above was taken over the UPDATE statement's spec list, but only a class that owns an
+   * OID - CLASS OID pair in the generated SELECT can be reevaluated at all. A class the SELECT dropped
+   * leaves an entry unfilled, so the executor must be told how many entries this loop actually wrote.
+   * As on the DELETE side, dropping every flagged class would tell the executor this statement reads no
+   * row of its own; the target class always owns a pair, so no shape has been found that does. */
+  assert (cl > 0 || update->num_reev_classes == 0);
+  update->num_reev_classes = cl;
 
   /* fill in XASL cache related information */
   /* OID of the user who is creating this XASL */

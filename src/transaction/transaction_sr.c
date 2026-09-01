@@ -344,7 +344,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
  *              transaction can have.
  */
 int
-xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name, LOG_LSA * savept_lsa)
+xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name, bool is_user_savepoint, LOG_LSA * savept_lsa)
 {
   LOG_LSA *lsa;
   int error_code = NO_ERROR;
@@ -367,6 +367,16 @@ xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name, LOG_LS
       if (error_code != NO_ERROR)
 	{
 	  LSA_SET_NULL (savept_lsa);
+	}
+      else if (is_user_savepoint)
+	{
+	  /* A partial rollback to a user savepoint can undo a published delete/update, so the transient row lock
+	   * has to stay held to commit.  A DDL/trigger system savepoint cannot, and does not arm this. */
+	  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+	  if (tdes != NULL)
+	    {
+	      tdes->has_user_savepoint = true;
+	    }
 	}
     }
 

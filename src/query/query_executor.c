@@ -10368,6 +10368,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
+  TRANSIENT_ROW_LOCKS transient_row_locks = TRANSIENT_ROW_LOCKS_INITIALIZER;
 
   thread_p->no_logging = (bool) update->no_logging;
 
@@ -10377,7 +10378,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
    * update starts, not later */
   (void) logtb_get_mvcc_snapshot (thread_p);
 
-  mvcc_upddel_reev_data.copyarea = NULL;
   mvcc_reev_data.set_update_reevaluation (mvcc_upddel_reev_data);
   class_oid_cnt = update->num_classes;
   mvcc_reev_class_cnt = update->num_reev_classes;
@@ -10431,6 +10431,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
     {
       /* not locked in select phase, need locking at update phase */
       need_locking = true;
+
+      /* a version that changed after the statement snapshot is re-checked and the assignments recomputed
+       * against it, never stamped unevaluated, so the row lock only has to span the publish */
+      mvcc_upddel_reev_data.transient_row_lock = true;
     }
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
@@ -10566,7 +10570,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      upd_cls = &update->classes[class_oid_idx];
 	      internal_class = &internal_classes[class_oid_idx];
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      if (mvcc_reev_class_idx < mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
 		{
 		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
 		}
@@ -10619,6 +10624,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		      er_log_debug (ARG_FILE_LINE, "qexec_execute_update: class OID is not correct\n");
 		      GOTO_EXIT_ON_ERROR;
 		    }
+		  internal_class->is_mvcc_class = !mvcc_is_mvcc_disabled_class (class_oid);
+		  internal_class->has_online_index = transient_row_locks_class_has_online_index (thread_p, class_oid);
 
 		  /* temporary disable set filters when needs prunning */
 		  if (mvcc_reev_class != NULL)
@@ -10883,9 +10890,17 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      internal_class = &internal_classes[class_oid_idx];
 	      upd_cls = &update->classes[class_oid_idx];
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      /* The classes are walked right to left here, so the reevaluation cursor walks down with them.  It
+	       * starts above them -- a class that appears only on the right-hand side of an assignment carries a
+	       * class_index past the last updated class -- so step it down to this class first.  Walking it up,
+	       * as this loop used to, matched the first class and then read past the array. */
+	      while (mvcc_reev_class_idx >= 0 && mvcc_reev_classes[mvcc_reev_class_idx].class_index > class_oid_idx)
 		{
-		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
+		  mvcc_reev_class_idx--;
+		}
+	      if (mvcc_reev_class_idx >= 0 && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+		{
+		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx--];
 		}
 	      else
 		{
@@ -10948,6 +10963,21 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      if (force_count)
 		{
 		  xasl->list_id->tuple_cnt++;
+
+		  if (mvcc_upddel_reev_data.transient_row_lock && need_locking && pcontext == NULL
+		      && internal_class->class_oid != NULL && internal_class->is_mvcc_class
+		      && !internal_class->has_online_index && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
+		    {
+		      /* the update is published: late arrivals settle on our MVCCID self-lock, which the
+		       * prepare record persists across 2PC, so the row lock is redundant from here.  It ends
+		       * when this statement stops forcing rows, not now -- see transient_row_locks in
+		       * query_transient_row_lock.hpp.
+		       * A class under an online index build keeps the lock to commit -- the build's own entry
+		       * state names no owner, so the row lock is what serializes two writers there.
+		       * A partition-pruned update keeps it -- the row may have moved to another class, so the
+		       * OID the unlock would name is not the one that was locked. */
+		      (void) transient_row_locks_add (thread_p, &transient_row_locks, oid, internal_class->class_oid);
+		    }
 		}
 	    }
 	continue_scan:
@@ -10984,6 +11014,14 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	    }
 	}
     }
+
+  /* Early release rests on the update being decided only when we end.  A user savepoint breaks that: a
+   * partial rollback can undo it while a writer parked on our MVCCID holds the row. */
+  if (!logtb_has_active_savepoint (thread_p))
+    {
+      transient_row_locks_release (thread_p, &transient_row_locks);
+    }
+  transient_row_locks_clear (thread_p, &transient_row_locks);
 
   qexec_close_scan (thread_p, specp);
 
@@ -11044,6 +11082,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   return NO_ERROR;
 
 exit_on_error:
+
+  /* the statement failed: the transaction unwinds and releases these with everything else */
+  transient_row_locks_clear (thread_p, &transient_row_locks);
 
   if (scan_open)
     {
@@ -11325,6 +11366,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       /* No reevaluation class means no predicate to re-check -- pt_to_delete_xasl () keeps the
        * select-phase lock for one it cannot replay -- so a changed version is deleted, not skipped.
        * The skip below is for the subclass that turns out to carry no access spec. */
+      mvcc_upddel_reev_data.transient_row_lock = true;
     }
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
@@ -11665,14 +11707,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
     }
 
-  /* Early release rests on the delete being decided only when we end.  A savepoint declared before now
-   * breaks that: a partial rollback can undo it while a writer parked on our MVCCID holds the row. */
+  /* Early release rests on the delete being decided only when we end.  A user savepoint breaks that: a
+   * partial rollback can undo it while a writer parked on our MVCCID holds the row. */
   if (!logtb_has_active_savepoint (thread_p))
     {
-      /* TODO: logtb_has_active_savepoint () does not tell a user savepoint from a DDL/trigger system
-       *       savepoint, so a transaction that ran DDL earlier keeps its locks to commit here -- correct
-       *       but it forgoes the release.  CBRD-27238 (UPDATE) adds a user-savepoint-only flag on tdes for
-       *       both paths to read instead. */
       transient_row_locks_release (thread_p, &transient_row_locks);
     }
   transient_row_locks_clear (thread_p, &transient_row_locks);

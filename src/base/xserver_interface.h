@@ -144,7 +144,8 @@ extern TRAN_STATE xtran_server_commit (THREAD_ENTRY * thrd, bool retain_lock);
 extern TRAN_STATE xtran_server_abort (THREAD_ENTRY * thrd);
 extern int xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa);
 extern TRAN_STATE xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LSA * topop_lsa);
-extern int xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name, LOG_LSA * savept_lsa);
+extern int xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name, bool is_user_savepoint,
+				   LOG_LSA * savept_lsa);
 extern TRAN_STATE xtran_server_partial_abort (THREAD_ENTRY * thread_p, const char *savept_name, LOG_LSA * savept_lsa);
 extern int xtran_server_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info, int size);
 extern int xtran_server_get_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *buffer, int size);
