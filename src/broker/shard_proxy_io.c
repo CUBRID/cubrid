@@ -1749,8 +1749,8 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	  snprintf (err_msg, sizeof (err_msg), "Authorization error.(Address is rejected)");
 	  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR, CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg);
 
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. " "(db_name:[%s], db_user:[%s], db_passwd:[%s]).",
-		     db_name, db_user, db_passwd);
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authorization error. (Address is rejected) " "(db_name:[%s], db_user:[%s]).",
+		     db_name, db_user);
 
 	  if (shm_as_p->access_log == ON)
 	    {
@@ -4828,8 +4828,7 @@ authorization_error:
   snprintf (err_msg, sizeof (err_msg), "Authorization error.");
   proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR, CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg);
 
-  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. " "(db_name:[%s], db_user:[%s], db_passwd:[%s]).", db_name,
-	     db_user, db_passwd);
+  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. " "(db_name:[%s], db_user:[%s]).", db_name, db_user);
 
   return -1;
 }
