@@ -3762,7 +3762,25 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent)
     {
       if (agg_list->operand_prog_state != 1)
 	{
-	  fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): interpreted (not covered)\n", indent, ' ');
+	  /* "not covered" is a diagnostic: this list had compilable candidates and the
+	   * compiler left them interpreted.  A list that never offered a candidate --
+	   * COUNT(*)/GROUPBY_NUM-only, or nothing participates -- is not a missed
+	   * coverage, so it prints nothing (the same policy the output list uses).
+	   * The compiler marks candidates by assigning operand_prog_base >= 0. */
+	  bool had_candidates = false;
+
+	  for (agg = agg_list; agg != NULL; agg = agg->next)
+	    {
+	      if (agg->operand_prog_base >= 0)
+		{
+		  had_candidates = true;
+		  break;
+		}
+	    }
+	  if (had_candidates)
+	    {
+	      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): interpreted (not covered)\n", indent, ' ');
+	    }
 	}
       else
 	{
