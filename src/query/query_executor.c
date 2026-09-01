@@ -11598,8 +11598,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  xasl->list_id->tuple_cnt++;
 
 		  if (need_locking && class_oid != NULL && internal_class->is_mvcc_class
-		      && !internal_class->has_online_index
-		      && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
+		      && !internal_class->has_online_index && logtb_ensure_mvccid_self_lock (thread_p) == NO_ERROR)
 		    {
 		      /* the delete is published: late arrivals settle on our MVCCID self-lock, which the
 		       * prepare record persists across 2PC, so the row lock is redundant from here.  It ends

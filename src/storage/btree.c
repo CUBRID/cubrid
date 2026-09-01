@@ -1531,8 +1531,8 @@ static int btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT *
 static int btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR leaf_page,
 				     BTREE_INSERT_HELPER * insert_helper, BTREE_SEARCH_KEY_HELPER * search_key);
 static bool btree_key_find_active_delete_owner (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
-					       BTREE_INSERT_HELPER * insert_helper, RECDES * record,
-					       int offset_after_key, MVCCID * owner_mvccid);
+						BTREE_INSERT_HELPER * insert_helper, RECDES * record,
+						int offset_after_key, MVCCID * owner_mvccid);
 static int btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 						    PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key,
 						    bool * restart, void *other_args);
@@ -32110,9 +32110,10 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
        * see that, only the entry can.  Hand the owner to btree_key_wait_for_tran_end (), which drops the
        * latch, waits under the transaction's lock timeout and asks for a restart -- the same primitive the
        * unique-key probe waits on.  No private budget here, and the heap-side settle keeps no count either. */
+#if defined (SERVER_MODE)
       if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
 	  && btree_key_find_active_delete_owner (thread_p, btid_int, insert_helper, &record, offset_after_key,
-						&settle_owner_mvccid))
+						 &settle_owner_mvccid))
 	{
 	  error_code = btree_key_wait_for_tran_end (thread_p, settle_owner_mvccid, NULL, leaf_page, NULL, restart);
 	  if (error_code != NO_ERROR)
@@ -32121,6 +32122,7 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
 	    }
 	  goto exit;
 	}
+#endif /* SERVER_MODE */
 
       assert (false);
       btree_set_unknown_key_error (thread_p, btid_int->sys_btid, key, "btree_key_find_and_insert_delete_mvccid");
