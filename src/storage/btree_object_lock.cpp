@@ -33,8 +33,8 @@
 #if defined (SERVER_MODE)
 
 static void btree_key_release_locked_object_and_pages (THREAD_ENTRY *thread_p,
-						      BTREE_FIND_UNIQUE_HELPER *find_unique_helper,
-						      PAGE_PTR *leaf_page, PAGE_PTR *overflow_page);
+    BTREE_FIND_UNIQUE_HELPER *find_unique_helper,
+    PAGE_PTR *leaf_page, PAGE_PTR *overflow_page);
 
 /*
  * btree_key_wait_out_conflicting_writer () - Wait out the transaction inserting or deleting the key's
