@@ -3012,8 +3012,13 @@ create_stmt
                                 /* DETERMINISTIC | NOT DETERMINISTIC is allowed only for functions */
                                 PT_ERROR (this_parser, node, "DETERMINISTIC can be specified only for FUNCTION");
                               }
-                            node->info.sp.parallel_enable =
-                              ((int) TO_NUMBER (CONTAINER_AT_2 ($7)) & (0x01 << SP_OPTION_PARALLEL_ENABLE)) ? 1 : 0;
+                            if (((int) TO_NUMBER (CONTAINER_AT_2 ($7)) & (0x01 << SP_OPTION_PARALLEL_ENABLE)) != 0)
+                              {
+                                /* PARALLEL_ENABLE is allowed only for functions: a procedure never appears in a
+                                 * query expression, so the declaration could not take effect anywhere */
+                                PT_ERROR (this_parser, node, "PARALLEL_ENABLE can be specified only for FUNCTION");
+                              }
+                            node->info.sp.parallel_enable = 0;
 			    node->info.sp.param_list = $6;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
 			    node->info.sp.ret_data_type = NULL;
