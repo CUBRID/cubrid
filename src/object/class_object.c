@@ -168,11 +168,16 @@ static int classobj_partition_info_size (SM_PARTITION * partition_info);
 int
 classobj_area_init (void)
 {
+#if defined (SERVER_MODE)
   if (Template_area != NULL)
     {
-      /* process-shared area (#123 D5); later sessions reuse it */
+      /* process-shared area (#123 D5); later sessions reuse it.  CS/SA keep
+       * the upstream unconditional re-create: their shutdown path frees every
+       * area (area_final) without resetting this pointer, so an in-process
+       * re-boot (copylogdb reconnect loop) would reuse a freed area */
       return NO_ERROR;
     }
+#endif
 
   Template_area = area_create ("Schema templates", sizeof (SM_TEMPLATE), 4);
   if (Template_area == NULL)

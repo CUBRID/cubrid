@@ -1785,11 +1785,16 @@ const PR_TYPE *tp_Type_resultset = &tp_ResultSet;
 int
 pr_area_init (void)
 {
+#if defined (SERVER_MODE)
   if (Value_area != NULL)
     {
-      /* process-shared area (#123 D5); later sessions reuse it */
+      /* process-shared area (#123 D5); later sessions reuse it.  CS/SA keep
+       * the upstream unconditional re-create: their shutdown path frees every
+       * area (area_final) without resetting this pointer, so an in-process
+       * re-boot (copylogdb reconnect loop) would reuse a freed area */
       return NO_ERROR;
     }
+#endif
 
   Value_area = area_create ("Value containers", sizeof (DB_VALUE), VALUE_AREA_COUNT);
   if (Value_area == NULL)

@@ -3925,11 +3925,16 @@ ws_need_flush (void)
 int
 ws_area_init (void)
 {
+#if defined (SERVER_MODE)
   if (Objlist_area != NULL)
     {
-      /* process-shared area (#123 D5); later sessions reuse it */
+      /* process-shared area (#123 D5); later sessions reuse it.  CS/SA keep
+       * the upstream unconditional re-create: their shutdown path frees every
+       * area (area_final) without resetting this pointer, so an in-process
+       * re-boot (copylogdb reconnect loop) would reuse a freed area */
       return NO_ERROR;
     }
+#endif
 
   Objlist_area = area_create ("Object list links", sizeof (DB_OBJLIST), OBJLIST_AREA_COUNT);
   if (Objlist_area == NULL)
