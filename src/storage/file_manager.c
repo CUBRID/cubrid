@@ -482,6 +482,7 @@ struct file_tempcache
 #endif				/* !NDEBUG */
 
   FILE_TEMPCACHE_TRAN_ENTRY *tran_files;	/* transaction temporary files */
+  int ntran_files;		/* number of entries in tran_files */
 
   /* space info */
   SPACEDB_FILES spacedb_temp;
@@ -765,6 +766,7 @@ STATIC_INLINE int file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID
 /************************************************************************/
 
 static int file_tempcache_init (void);
+static int file_tempcache_expand (int total_indices);
 static void file_tempcache_final (void);
 STATIC_INLINE void file_tempcache_lock (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_tempcache_unlock (void) __attribute__ ((ALWAYS_INLINE));
@@ -863,6 +865,59 @@ file_manager_init (void)
   assert (FILE_DESCRIPTORS_SIZE == sizeof (FILE_DESCRIPTORS));
 
   return file_tempcache_init ();
+}
+
+/*
+ * file_manager_get_tran_index_capacity () - highest number of transaction indices
+ *                                           the file manager tables can hold
+ *
+ * return : number of indices, or 0 when there is nothing to check
+ *
+ * Note: Used to check that the file manager followed the transaction table after
+ *     logtb_expand_trantable() grew it. Zero means the check does not apply:
+ *     either the tables are not allocated yet, which is the state before
+ *     file_manager_init(), or this is a standalone build, where
+ *     file_get_tempcache_entry_index() always answers zero and the single entry
+ *     tran_files holds is all there is to hold - the transaction index does not
+ *     select it, so the transaction table growing past it means nothing.
+ */
+int
+file_manager_get_tran_index_capacity (void)
+{
+#if !defined (SERVER_MODE)
+  return 0;
+#else /* !defined (SERVER_MODE) */
+  return file_Tempcache.tran_files == NULL ? 0 : file_Tempcache.ntran_files;
+#endif /* !defined (SERVER_MODE) */
+}
+
+/*
+ * file_manager_expand_tran_entries () - grow the file manager tables indexed by
+ *                                       transaction index
+ *
+ * return : ER_OUT_OF_VIRTUAL_MEMORY or NO_ERROR
+ *
+ *   total_indices(in): new number of transaction indices
+ *
+ * Note: The temporary file cache keeps one list per transaction index and is
+ *     sized when the transaction table is first defined. logtb_expand_trantable()
+ *     grows the transaction table past that during recovery, so the cache has to
+ *     follow or it is indexed past its end.
+ *
+ *     Growing moves the pthread_mutex_t embedded in each list. That is safe only
+ *     because the expanding thread is the sole user of the file manager during
+ *     recovery, the same premise lock_expand_tran_lock_table() relies on.
+ */
+int
+file_manager_expand_tran_entries (int total_indices)
+{
+#if !defined (SERVER_MODE)
+  return NO_ERROR;
+#else /* !defined (SERVER_MODE) */
+  assert (log_Gl.rcv_phase != LOG_RESTARTED);
+
+  return file_tempcache_expand (total_indices);
+#endif /* !defined (SERVER_MODE) */
 }
 
 /*
@@ -9234,11 +9289,64 @@ file_tempcache_init (void)
       file_Tempcache.tran_files[i].owner_mutex = -1;
 #endif
     }
+  file_Tempcache.ntran_files = ntrans;
 
   /* stats */
   memset (&file_Tempcache.spacedb_temp, 0, sizeof (file_Tempcache.spacedb_temp));
 
   /* all ok */
+  return NO_ERROR;
+}
+
+/*
+ * file_tempcache_expand () - grow the per transaction temporary file lists
+ *
+ * return : ER_OUT_OF_VIRTUAL_MEMORY or NO_ERROR
+ *
+ *   total_indices(in): new number of transaction indices
+ *
+ * Note: tran_files is indexed by transaction index, so it has to cover every
+ *     index the transaction table can hand out. realloc is the only failure
+ *     point, so a failure leaves the cache untouched.
+ *
+ *     Growing in place moves the existing entries and the mutex each one carries.
+ *     See lock_expand_tran_lock_slots () for what makes that safe during recovery.
+ */
+static int
+file_tempcache_expand (int total_indices)
+{
+  FILE_TEMPCACHE_TRAN_ENTRY *new_tran_files;
+  int ntrans = total_indices + 1;	/* the spare slot file_tempcache_init () keeps */
+  int memsize;
+  int i;
+
+  if (file_Tempcache.tran_files == NULL || ntrans <= file_Tempcache.ntran_files)
+    {
+      /* not initialized yet, or already large enough */
+      return NO_ERROR;
+    }
+
+  memsize = ntrans * sizeof (FILE_TEMPCACHE_TRAN_ENTRY);
+  new_tran_files = (FILE_TEMPCACHE_TRAN_ENTRY *) realloc (file_Tempcache.tran_files, memsize);
+  if (new_tran_files == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  file_Tempcache.tran_files = new_tran_files;
+
+  for (i = file_Tempcache.ntran_files; i < ntrans; i++)
+    {
+      memset (&file_Tempcache.tran_files[i], 0, sizeof (FILE_TEMPCACHE_TRAN_ENTRY));
+      pthread_mutex_init (&file_Tempcache.tran_files[i].mutex, NULL);
+#if !defined (NDEBUG)
+      file_Tempcache.tran_files[i].owner_mutex = -1;
+#endif
+    }
+
+  file_Tempcache.ntran_files = ntrans;
+  file_Tempcache.nfree_entries_max = ntrans * 8;	/* same per transaction budget as init */
+
   return NO_ERROR;
 }
 
@@ -9251,7 +9359,6 @@ static void
 file_tempcache_final (void)
 {
   int tran = 0;
-  int ntrans;
 
   /* file_Tempcache.tran_files cannot be NULL if file_Tempcache is initialized */
   if (file_Tempcache.tran_files == NULL)
@@ -9259,16 +9366,11 @@ file_tempcache_final (void)
       return;
     }
 
-#if defined (SERVER_MODE)
-  ntrans = logtb_get_number_of_total_tran_indices ();
-#else
-  ntrans = 1;
-#endif
-
   file_tempcache_lock ();
 
-  /* free all transaction lists... they should be empty anyway, but be conservative */
-  for (tran = 0; tran < ntrans; tran++)
+  /* Walk what was actually allocated. Reading the transaction index count again here
+   * would miss any growth this cache did not follow, and walk past the array. */
+  for (tran = 0; tran < file_Tempcache.ntran_files; tran++)
     {
       file_tempcache_lock_tran_entry (&file_Tempcache.tran_files[tran]);
       if (file_Tempcache.tran_files[tran].head != NULL)
@@ -9280,6 +9382,7 @@ file_tempcache_final (void)
       pthread_mutex_destroy (&file_Tempcache.tran_files[tran].mutex);
     }
   free_and_init (file_Tempcache.tran_files);
+  file_Tempcache.ntran_files = 0;
 
   /* temporary volumes are removed, we don't have to destroy files */
   file_tempcache_free_entry_list (&file_Tempcache.cached_not_numerable);

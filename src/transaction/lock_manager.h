@@ -218,6 +218,8 @@ struct lk_res
 extern void lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid, LOCK lock);
 #endif /* SERVER_MODE */
 extern int lock_initialize (void);
+extern int lock_expand_tran_lock_table (int total_indices);
+extern int lock_get_tran_index_capacity (void);
 extern void lock_finalize (void);
 extern int lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock);
 extern int lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
