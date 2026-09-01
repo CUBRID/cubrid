@@ -12997,6 +12997,12 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 	{
 	  MVCCID deleter_mvccid = MVCC_GET_DELID (recdes_header);
 
+	  if (context->scan_cache != NULL && context->scan_cache->cache_last_fix_page
+	      && context->home_page_watcher.pgptr != NULL)
+	    {
+	      /* Prevent caching home page watcher in scan_cache: the wait below must not hold a page fixed. */
+	      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+	    }
 	  heap_clean_get_context (thread_p, context);
 	  if (logtb_wait_for_tran_end (thread_p, deleter_mvccid) != NO_ERROR)
 	    {
