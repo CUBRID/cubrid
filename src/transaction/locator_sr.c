@@ -13205,6 +13205,14 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
   LOCK lock_mode = X_LOCK;
   int err = NO_ERROR;
 
+  if (mvcc_reev_data != NULL)
+    {
+      /* The verdict below belongs to this fetch alone. An object whose last version is visible is not
+       * reevaluated at all, so without this a previous object's V_FALSE would be read back as this one's
+       * and the caller would skip an object that never failed anything. */
+      mvcc_reev_data->filter_result = V_TRUE;
+    }
+
   if (recdes == NULL && mvcc_reev_data != NULL)
     {
       /* peek if only for reevaluation */
@@ -13275,6 +13283,20 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	      /* Skip the re-evaluation if last version is visible. It should be the same as the visible version
 	       * which was already evaluated. */
 	      goto exit;
+	    }
+	  else
+	    {
+	      /* the DELETE path sets this when the statement has no reevaluation class to re-check with */
+	      bool skips_unevaluated_version =
+		(mvcc_reev_data->type == REEV_DATA_UPDDEL && mvcc_reev_data->upddel_reev_data != NULL
+		 && mvcc_reev_data->upddel_reev_data->skip_unevaluated_version);
+
+	      if (skips_unevaluated_version)
+		{
+		  mvcc_reev_data->filter_result = V_FALSE;
+		  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+		  goto exit;
+		}
 	    }
 	}
       ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
@@ -13684,15 +13706,29 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
   cls_oid = &mvcc_cond_reeval->cls_oid;
   if (!is_upddel)
     {
-      /* the class is different than the class to be updated/deleted, so use the latest version of row */
+      /* Not the class being updated/deleted: re-read its own row out of its own heap.  Evaluating this
+       * class's filters against the target's record instead is what let a join DELETE act on rows whose
+       * predicate no longer held.  The read carries no snapshot, so a version a concurrent transaction
+       * deleted still reads; a failure here means the slot itself is gone. */
       recdesp = &temp_recdes;
-      oid_inst = oid;
-      if (heap_scancache_quick_start_with_class_hfid (thread_p, &local_scan_cache, &scan_cache->node.hfid) != NO_ERROR)
+      oid_inst = mvcc_cond_reeval->inst_oid;
+      if (oid_inst == NULL || OID_ISNULL (oid_inst))
+	{
+	  /* the plan flagged this class for reevaluation but the scan bound no row of it to re-read.  The
+	   * caller asserts an error is set on V_ERROR, so say what went wrong rather than return silently. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+
+      if (heap_scancache_quick_start_with_class_hfid (thread_p, &local_scan_cache, &mvcc_cond_reeval->cls_hfid)
+	  != NO_ERROR)
 	{
 	  ev_res = V_ERROR;
 	  goto end;
 	}
       scan_cache_inited = true;
+
       scan_code = heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, PEEK, NULL_CHN);
       if (scan_code != S_SUCCESS)
 	{
@@ -13716,7 +13752,9 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 	  goto end;
 	}
 
-      if (fetch_val_list (thread_p, mvcc_cond_reeval->rest_regu_list, NULL, cls_oid, (OID *) oid_inst, NULL, PEEK)
+      /* Copy, do not peek: these values feed assignments the caller computes after this returns, and a record
+       * read out of another class's heap points into a page that end: unfixes below. */
+      if (fetch_val_list (thread_p, mvcc_cond_reeval->rest_regu_list, NULL, cls_oid, (OID *) oid_inst, NULL, false)
 	  != NO_ERROR)
 	{
 	  ev_res = V_ERROR;
