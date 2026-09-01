@@ -1630,9 +1630,12 @@ cleanup:
 #if defined(SERVER_MODE)
   if (sort_param->px_parallel_num > 1)
     {
-      for (int i = 0; i < sort_param->px_parallel_num; i++)
+      if (px_sort_param != NULL)
 	{
-	  sort_return_used_resources (thread_p, &px_sort_param[i], PX_THREAD_IN_PARALLEL);
+	  for (int i = 0; i < sort_param->px_parallel_num; i++)
+	    {
+	      sort_return_used_resources (thread_p, &px_sort_param[i], PX_THREAD_IN_PARALLEL);
+	    }
 	}
 
       sort_return_used_resources (thread_p, sort_param, PX_MAIN_IN_PARALLEL);
