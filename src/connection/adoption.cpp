@@ -450,6 +450,18 @@ namespace cubconn
        * type (#121 D1/D7); the decrement runs in the session thread's
        * css_free_conn, keyed by the same type via conn->client_type */
       int client_type = synthesize_client_type (body.access_mode, body.replica_only);
+      {
+	/* legacy parity (wf143 HA gate): a remote thin csql rides the broker
+	 * TCP path, but it is the legacy csql client, not a driver behind a
+	 * RW broker — a standby must admit it (reads work, writes get the
+	 * server-side RO error), exactly as the fat csql did.  Its in-band
+	 * mark is the fixed URL field of db_info (csql_wire.c). */
+	const char *url = body.db_info + SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE + SRV_CON_DBPASSWD_SIZE;
+	if (strncmp (url, "thin_csql", SRV_CON_URL_SIZE) == 0)
+	  {
+	    client_type = DB_CLIENT_TYPE_CSQL;
+	  }
+      }
       if (css_increment_num_conn ((BOOT_CLIENT_TYPE) client_type) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
@@ -877,7 +889,18 @@ channel_done:
 	      break;
 	    }
 
-	  auto ch = std::make_shared<channel> ();
+	  std::shared_ptr<channel> ch;
+	  try
+	    {
+	      ch = std::make_shared<channel> ();
+	    }
+	  catch (const std::bad_alloc &)
+	    {
+	      /* per-connection allocation failure is a refused connection,
+	       * not std::terminate (reviewed: PR 7837) */
+	      close (fd);
+	      continue;
+	    }
 	  ch->fd = fd;
 	  bool admitted = true;
 	  {
@@ -908,8 +931,15 @@ channel_done:
 	      }
 	    else
 	      {
-		ch->id = m->next_channel_id++;
-		m->channels.emplace (ch->id, ch);
+		try
+		  {
+		    ch->id = m->next_channel_id++;
+		    m->channels.emplace (ch->id, ch);
+		  }
+		catch (const std::bad_alloc &)
+		  {
+		    admitted = false;
+		  }
 	      }
 	  }
 	  if (!admitted)

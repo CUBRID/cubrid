@@ -267,11 +267,15 @@ wire_read_connect_reply (int fd, int length)
       wire_set_error (ER_FAILED, "connection closed during connect");
       return ER_FAILED;
     }
-  if (length < 0)
+  if (length < 0 || length != CAS_CONNECTION_REPLY_SIZE)
     {
-      /* error frame: [indicator][code][msg] */
+      /* error frame: [indicator][code][msg].  The server-side admission
+       * reject (driver_session send_error_reply) encodes the same frame
+       * with a POSITIVE length, so any size that is not the 36-byte
+       * connect reply is decoded as an error, not dropped (wf143 HA gate:
+       * a standby's rejection used to surface as "unexpected reply size") */
       char head[8];
-      int body_len = -length;
+      int body_len = length < 0 ? -length : length;
       if (body_len < 8 || wire_read_exact (fd, head, 8) != NO_ERROR)
 	{
 	  wire_set_error (ER_FAILED, "malformed connect error frame");
@@ -297,11 +301,6 @@ wire_read_connect_reply (int fd, int length)
       return code != 0 ? code : ER_FAILED;
     }
 
-  if (length != CAS_CONNECTION_REPLY_SIZE)
-    {
-      wire_set_error (ER_FAILED, "unexpected connect reply size");
-      return ER_FAILED;
-    }
   char body[CAS_CONNECTION_REPLY_SIZE];
   if (wire_read_exact (fd, body, sizeof (body)) != NO_ERROR)
     {
