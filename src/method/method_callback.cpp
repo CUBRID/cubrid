@@ -362,7 +362,11 @@ namespace cubmethod
   {
     if (m_oid_handler == nullptr)
       {
+#if defined(MMON_DEBUG_LEVEL)	/* memory_wrapper new-macro active: plain new is the noexcept file/line form */
+	m_oid_handler = new oid_handler (m_error_ctx);
+#else
 	m_oid_handler = new (std::nothrow) oid_handler (m_error_ctx);
+#endif
 	if (m_oid_handler == nullptr)
 	  {
 	    assert (false);
@@ -1080,7 +1084,11 @@ exit:
 	  }
       }
 
+#if defined(MMON_DEBUG_LEVEL)	/* memory_wrapper new-macro active: plain new is the noexcept file/line form */
+    query_handler *handler = new query_handler (m_error_ctx, idx);
+#else
     query_handler *handler = new (std::nothrow) query_handler (m_error_ctx, idx);
+#endif
     if (handler == nullptr)
       {
 	assert (false);
