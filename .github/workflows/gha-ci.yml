@@ -369,10 +369,6 @@ jobs:
           awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' \
             /proc/net/dev > "$RUNNER_TEMP/rx0"
 
-          # The workspace is owned by runner uid 1001; git refuses it (dubious ownership).
-          chown root:root "$GITHUB_WORKSPACE"
-          ls -ld "$GITHUB_WORKSPACE"
-
       - name: 1. Is this SHA already published
         id: reuse
         env:
@@ -403,7 +399,8 @@ jobs:
 
           # cubridci#112 moved this into the image: a --shared clone off $BUILD_MIRROR,
           # only the delta fetched from GitHub, the mirror never written to, 5 retries.
-          # Not shallow -- the serial is `git rev-list --count` and shallow stamps 0001.
+          # The verb never goes shallow: build.sh reads the serial off `git rev-list
+          # --count`, and a shallow clone stamps every package 0001.
           # The tree lands in ./cubrid, so step 3 stays one level up.
           /entrypoint.sh checkout "$SHA"
 
