@@ -13752,7 +13752,9 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 	  goto end;
 	}
 
-      if (fetch_val_list (thread_p, mvcc_cond_reeval->rest_regu_list, NULL, cls_oid, (OID *) oid_inst, NULL, PEEK)
+      /* Copy, do not peek: these values feed assignments the caller computes after this returns, and a record
+       * read out of another class's heap points into a page that end: unfixes below. */
+      if (fetch_val_list (thread_p, mvcc_cond_reeval->rest_regu_list, NULL, cls_oid, (OID *) oid_inst, NULL, false)
 	  != NO_ERROR)
 	{
 	  ev_res = V_ERROR;
