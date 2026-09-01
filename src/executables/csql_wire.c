@@ -41,6 +41,7 @@
 
 #define ADOPTION_PROTOCOL_ONLY
 #include "adoption.hpp"
+#include "db.h"			/* db_Connect_status — the legacy connected contract */
 
 #include <pthread.h>
 #include <semaphore.h>
@@ -565,6 +566,10 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
   wire_copy (wire_User, sizeof (wire_User), user_name != NULL ? user_name : "");
   wire_copy (wire_Passwd, sizeof (wire_Passwd), passwd != NULL ? passwd : "");
   wire_Client_type = client_type;
+  /* the legacy client set db_Connect_status in db_restart; the wire
+   * connection is its thin equivalent, and csql session commands gate on
+   * this global (csql_session.c CMD_CHECK_CONNECT) */
+  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
   wire_cancel_thread_start ();
   return NO_ERROR;
 }
@@ -572,6 +577,7 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
 void
 csql_wire_disconnect (void)
 {
+  db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
   wire_close_fd ();
 }
 
