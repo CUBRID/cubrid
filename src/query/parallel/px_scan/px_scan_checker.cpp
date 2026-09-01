@@ -21,13 +21,12 @@
  */
 
 #include "px_scan_checker.hpp"
+#include "px_scan_instnum.hpp"
 
 #include "dbtype_def.h"
 #include "error_manager.h"
 #include "regu_var.hpp"
-#include "schema_manager.h"
 #include "storage_common.h"
-#include "work_space.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -63,6 +62,17 @@ namespace parallel_scan
       case PT_VARIANCE:
       case PT_VAR_POP:
       case PT_VAR_SAMP:
+      case PT_AGG_BIT_AND:
+      case PT_AGG_BIT_OR:
+      case PT_AGG_BIT_XOR:
+      case PT_JSON_ARRAYAGG:
+      case PT_JSON_OBJECTAGG:
+      case PT_GROUP_CONCAT:
+      case PT_MEDIAN:
+      case PT_PERCENTILE_CONT:
+      case PT_PERCENTILE_DISC:
+      case PT_CUME_DIST:
+      case PT_PERCENT_RANK:
 	return true;
       default:
 	return false;
@@ -83,6 +93,7 @@ namespace parallel_scan
   {
     return (flags & flag) != 0;
   }
+
 
   using rv_list_node = struct regu_variable_list_node;
 
@@ -336,38 +347,6 @@ namespace parallel_scan
 	   (arg->case_sensitive);
   }
 
-  /* filtered index → serial: bug-prone + low usage, excluded as a constraint. function indexes are plain B-tree keys, not blocked. */
-  static bool
-  is_filtered_index (const INDX_INFO *indexptr)
-  {
-    if (indexptr == NULL)
-      {
-	return false;
-      }
-    if (OID_ISNULL (&indexptr->class_oid))
-      {
-	return false;
-      }
-    MOP class_mop = ws_mop (&indexptr->class_oid, NULL);
-    if (class_mop == NULL)
-      {
-	return false;
-      }
-    SM_CLASS_CONSTRAINT *cons = sm_class_constraints (class_mop);
-    for (; cons != NULL; cons = cons->next)
-      {
-	if (BTID_IS_EQUAL (&cons->index_btid, &indexptr->btid))
-	  {
-	    if (cons->filter_predicate != NULL)
-	      {
-		return true;
-	      }
-	    break;
-	  }
-      }
-    return false;
-  }
-
   template <>
   possible_flags check<false> (ACCESS_SPEC_TYPE *arg)
   {
@@ -409,12 +388,6 @@ namespace parallel_scan
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
-
-		/* filtered index: bug-prone + low usage, excluded. */
-		if (is_filtered_index (arg->indexptr))
-		  {
-		    set_flag (result, CANNOT_PARALLEL_SCAN);
-		  }
 	      }
 	  }
 	else
@@ -448,20 +421,12 @@ namespace parallel_scan
 	    result |= check<false> (arg->s.cls_node.cls_regu_list_range);
 	    result |= check<false> (arg->where_range);
 	  }
-	if (!arg->s.cls_node.cls_regu_list_pred && !arg->s.cls_node.cls_regu_list_rest)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
       }
     else if (arg->type == TARGET_LIST)
       {
 	result |= check<false> (arg->s.list_node.list_regu_list_pred);
 	result |= check<false> (arg->s.list_node.list_regu_list_rest);
 	result |= check<false> (arg->where_pred);
-	if (!arg->s.list_node.list_regu_list_pred && !arg->s.list_node.list_regu_list_rest)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
       }
     return result;
   }
@@ -532,6 +497,15 @@ namespace parallel_scan
 	set_flag (result, CANNOT_LIST_MERGE);
       }
 
+    if (sibling->after_join_pred)
+      {
+	temp = check<is_outptr_list> (sibling->after_join_pred);
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
+      }
+
     if (sibling->if_pred)
       {
 	temp = check<is_outptr_list> (sibling->if_pred);
@@ -541,7 +515,8 @@ namespace parallel_scan
 	  }
       }
 
-    if (sibling->instnum_pred || sibling->instnum_val)
+    if ((sibling->instnum_pred || sibling->instnum_val) && !is_renumberable_instnum (sibling)
+	&& !is_atomic_instnum_eligible (sibling))
       {
 	set_flag (result, CANNOT_LIST_MERGE);
       }
@@ -578,16 +553,15 @@ namespace parallel_scan
       case BUILDLIST_PROC:
 	break;
       case BUILDVALUE_PROC:
+	/* agg-less buildvalue too: MERGEABLE_LIST would misread proc.buildlist in result_handler init. */
+	set_flag (result, CANNOT_LIST_MERGE);
 	if (arg->proc.buildvalue.agg_list)
 	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
 	    buildvalue_opt = true;
 	    AGGREGATE_TYPE *agg_it = arg->proc.buildvalue.agg_list;
-	    int agg_cnt = 0;
 	    temp = 0;
 	    for (; agg_it; agg_it = agg_it->next)
 	      {
-		agg_cnt++;
 		if (!is_buildvalue_opt_supported_function (agg_it->function))
 		  {
 		    buildvalue_opt = false;
@@ -599,10 +573,6 @@ namespace parallel_scan
 		    buildvalue_opt = false;
 		    break;
 		  }
-	      }
-	    if (agg_cnt != arg->outptr_list->valptr_cnt)
-	      {
-		buildvalue_opt = false;
 	      }
 	  }
 	break;
@@ -710,6 +680,15 @@ namespace parallel_scan
 	buildvalue_opt = false;
       }
 
+    if (arg->after_join_pred)
+      {
+	temp = check<is_outptr_list> (arg->after_join_pred);
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
+      }
+
     if (arg->if_pred)
       {
 	temp = check<is_outptr_list> (arg->if_pred);
@@ -721,8 +700,11 @@ namespace parallel_scan
 
     if (arg->instnum_pred || arg->instnum_val)
       {
-	set_flag (result, CANNOT_LIST_MERGE);
 	buildvalue_opt = false;
+	if (!is_renumberable_instnum (arg) && !is_atomic_instnum_eligible (arg))
+	  {
+	    set_flag (result, CANNOT_LIST_MERGE);
+	  }
       }
 
     if (arg->outptr_list)
@@ -825,7 +807,9 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
+	/* regu-linked subqueries force-blocked from parallelism (CBRD-26722) except uncorrelated
+	 * scalar ones (precomp_owner_regu set), which recurse so inner scans parallelize. */
+	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE) && xaslp->precomp_owner_regu == NULL)
 	  {
 	    process_xasl_node_recursive_force_cannot_parallel (xaslp);
 	  }
@@ -858,9 +842,13 @@ namespace parallel_scan
     result |= check<false> (arg);
 
     const bool block_index_spec =
-	    (arg->instnum_pred || arg->instnum_val)
+	    ((arg->instnum_pred || arg->instnum_val) && !is_renumberable_instnum (arg))
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_SKIP_SORT)
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_USES_LIMIT_OPT);
+
+    /* atomic draw keeps an arbitrary N rows: fine on a heap, but a temp list is usually a sorted
+     * top-N idiom, so keep list specs serial. Renumbering (instnum_pred == NULL) is unaffected. */
+    const bool block_list_spec = (arg->instnum_pred != nullptr);
 
     const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST);
 
@@ -873,11 +861,15 @@ namespace parallel_scan
       }
     else
       {
-	if (block_index_spec)
+	if (block_index_spec || block_list_spec)
 	  {
 	    for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 	      {
-		if (specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX)
+		if (block_index_spec && specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX)
+		  {
+		    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+		  }
+		if (block_list_spec && specp->type == TARGET_LIST)
 		  {
 		    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
 		  }

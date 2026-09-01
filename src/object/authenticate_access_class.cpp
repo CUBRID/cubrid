@@ -93,7 +93,7 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
       return error;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   error = au_fetch_class_force (class_mop, &class_, AU_FETCH_UPDATE);
   if (error != NO_ERROR)
@@ -293,7 +293,7 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   class_new_name = NULL;
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   if (class_new_name)
     {
@@ -788,8 +788,8 @@ fetch_instance (MOP op, MOBJ *obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION_
       return error;
     }
 
-  /* DO NOT PUT ANY RETURNS FROM HERE UNTIL THE AU_ENABLE */
-  AU_DISABLE (save);
+  /* DO NOT PUT ANY RETURNS FROM HERE UNTIL THE AU_RESTORE */
+  AU_SAVE_AND_DISABLE (save);
 
   pin = ws_pin (op, 1);
   if (op->is_vid)
@@ -860,7 +860,7 @@ fetch_instance (MOP op, MOBJ *obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION_
       *obj_ptr = obj;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }

@@ -161,6 +161,32 @@ typedef enum
   DT_TZM
 } TIMESTAMP_FORMAT;
 
+typedef enum
+{
+  UUID_UNSUPPORTED = 0,
+  UUID_V1 = UUID_UNSUPPORTED,	/* not supported */
+  UUID_V2 = UUID_UNSUPPORTED,	/* not supported */
+  UUID_V3 = UUID_UNSUPPORTED,	/* not supported */
+  UUID_V4 = 4,
+  UUID_V5 = UUID_UNSUPPORTED,	/* not supported */
+  UUID_V6 = UUID_UNSUPPORTED,	/* not supported */
+  UUID_V7 = 7,
+  UUID_V8 = UUID_UNSUPPORTED,	/* not supported */
+} UUID_VERSION;
+
+typedef struct UUID_STATE UUID_STATE;
+
+struct UUID_STATE
+{
+  UINT64 *last_ms;
+  UINT8 *seq;
+};
+
+#define GUID_STANDARD_BYTES_LENGTH 16
+#define GUID_V7_TS_BYTES_LENGTH 6
+#define GUID_V7_SEQ_BITS 8
+#define GUID_V7_SEQ_MAX ((1 << GUID_V7_SEQ_BITS) - 1)
+
 #define  LIKE_WILDCARD_MATCH_MANY '%'
 #define LIKE_WILDCARD_MATCH_ONE '_'
 
@@ -201,6 +227,7 @@ extern int db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * p
 				       DB_VALUE * sub_string, DB_VALUE * result);
 extern int db_string_elt (DB_VALUE * result, DB_VALUE * args[], int const num_args);
 extern int db_string_escape_str (const char *src_str, size_t src_size, char **res_string, size_t * dest_size);
+extern int db_uuid_format (DB_VALUE const *val, DB_VALUE * result);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count);
@@ -356,10 +383,8 @@ extern int db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_V
 extern int db_like_bound (const DB_VALUE * const src_pattern, const DB_VALUE * const src_escape,
 			  DB_VALUE * const result_bound, const bool compute_lower_bound);
 extern int db_hex (const DB_VALUE * param, DB_VALUE * result);
-#if !defined (CS_MODE)
-/* todo(rem): this does not belong here */
-extern int db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result);
-#endif /* !defined (CS_MODE) */
+extern int db_uuidv4 (DB_VALUE * result);
+extern int db_uuid_bin (UUID_VERSION version, UUID_STATE * uuid_state, uint64_t epoch_ms, DB_VALUE * result);
 extern int db_ascii (const DB_VALUE * param, DB_VALUE * result);
 extern int db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_base, DB_VALUE * result);
 extern void init_builtin_calendar_names (LANG_LOCALE_DATA * lld);

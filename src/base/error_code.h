@@ -1765,7 +1765,15 @@
 
 #define ER_PARTITION_TABLE_NAME_OVERFLOW            -1374
 
-#define ER_LAST_ERROR                               -1375
+#define ER_QSTR_INVALID_UUID_FORMAT                 -1375
+
+#define ER_IMPLICITLY_ABORT_FOR_LOGIN_METHOD        -1376
+
+#define ER_BT_LOAD_NOTIFY_VACUUM_LIMIT              -1377
+
+#define ER_AU_CANT_ALTER_LOGIN                      -1378
+
+#define ER_LAST_ERROR                               -1379
 
 
 

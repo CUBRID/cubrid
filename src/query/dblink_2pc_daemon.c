@@ -46,6 +46,7 @@
 
 #include <assert.h>
 #include <chrono>
+#include <errno.h>
 #include <stddef.h>
 #include <string.h>
 #include <time.h>
@@ -85,6 +86,181 @@ private:
 static cubthread::daemon * dblink_2pc_Daemon = NULL;
 static dblink_2pc_daemon_context_manager * dblink_2pc_Daemon_context_manager = NULL;
 /* *INDENT-ON* */
+
+/*
+ * Decision completion
+ *
+ * Lets the commit path wait until the daemon has delivered this transaction's decisions, so that
+ * the remote changes are visible to the next statement of the same session.  See the contract in
+ * dblink_2pc_daemon.h; the whole implementation is kept together here on purpose.
+ */
+
+/*
+ * dblink_2pc_completion_create - Create a completion for num_participants decisions.
+ *
+ * return: the completion, or NULL if it could not be created
+ */
+DBLINK_2PC_COMPLETION *
+dblink_2pc_completion_create (int num_participants)
+{
+  DBLINK_2PC_COMPLETION *completion;
+
+  assert (num_participants > 0);
+
+  completion = (DBLINK_2PC_COMPLETION *) malloc (sizeof (DBLINK_2PC_COMPLETION));
+  if (completion == NULL)
+    {
+      return NULL;
+    }
+
+  if (pthread_mutex_init (&completion->mutex, NULL) != 0)
+    {
+      free (completion);
+      return NULL;
+    }
+
+  if (pthread_cond_init (&completion->cond, NULL) != 0)
+    {
+      (void) pthread_mutex_destroy (&completion->mutex);
+      free (completion);
+      return NULL;
+    }
+
+  completion->remaining = num_participants;
+  completion->refcount = 1;	/* the commit path; each queue entry adds its own */
+
+  return completion;
+}
+
+/*
+ * dblink_2pc_completion_ref - Take a reference before attaching the completion to a queue entry.
+ */
+void
+dblink_2pc_completion_ref (DBLINK_2PC_COMPLETION * completion)
+{
+  if (completion == NULL)
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&completion->mutex);
+  assert (completion->refcount > 0);
+  completion->refcount++;
+  pthread_mutex_unlock (&completion->mutex);
+}
+
+/*
+ * dblink_2pc_completion_unref - Drop one reference, freeing the completion with the last one.
+ *
+ * Note: internal on purpose.  Every reference is released by the operation that used it -
+ *       dblink_2pc_completion_settle() for an entry's, dblink_2pc_completion_wait_and_release()
+ *       for the commit path's - so no caller outside this file has to get the pairing right.
+ */
+static void
+dblink_2pc_completion_unref (DBLINK_2PC_COMPLETION * completion)
+{
+  int refcount;
+
+  if (completion == NULL)
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&completion->mutex);
+  assert (completion->refcount > 0);
+  refcount = --completion->refcount;
+  pthread_mutex_unlock (&completion->mutex);
+
+  if (refcount == 0)
+    {
+      (void) pthread_cond_destroy (&completion->cond);
+      (void) pthread_mutex_destroy (&completion->mutex);
+      free (completion);
+    }
+}
+
+/*
+ * dblink_2pc_completion_settle - Settle one entry and consume its reference.
+ *
+ * Note: the signal is sent while the mutex is held; the completion cannot be freed underneath us
+ *       because this call still owns a reference until it releases one at the end.
+ */
+void
+dblink_2pc_completion_settle (DBLINK_2PC_COMPLETION * completion)
+{
+  if (completion == NULL)
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&completion->mutex);
+  assert (completion->remaining > 0);
+  if (completion->remaining > 0)
+    {
+      if (--completion->remaining == 0)
+	{
+	  pthread_cond_signal (&completion->cond);
+	}
+    }
+  pthread_mutex_unlock (&completion->mutex);
+
+  dblink_2pc_completion_unref (completion);
+}
+
+/*
+ * dblink_2pc_completion_wait_and_release - Wait for every decision to be settled, up to
+ *                                          timeout_msec, then release the commit path's reference.
+ *
+ * return: true if all were settled, false on timeout
+ *
+ * Note: waiting and releasing are one call because the reference is what keeps the completion -
+ *       and the mutex waited on below - alive for the duration of the wait.  Settling the last
+ *       entry can otherwise drop the final reference, and with it destroy the mutex and the
+ *       condition variable, right after it signals them.  Holding them apart would leave that
+ *       ordering to every caller; here it cannot be got wrong.
+ *
+ *       A timeout_msec of 0 or less yields a deadline in the past, so the loop below polls once
+ *       rather than blocking.
+ */
+bool
+dblink_2pc_completion_wait_and_release (DBLINK_2PC_COMPLETION * completion, int timeout_msec)
+{
+  struct timespec deadline;
+  bool settled;
+
+  if (completion == NULL)
+    {
+      return false;
+    }
+
+  /* pthread_cond_timedwait takes an absolute CLOCK_REALTIME deadline, so compute it once and let
+   * the loop below re-check it on every wakeup - that absorbs spurious wakeups and keeps the total
+   * wait at the bound however many times we wake, which recomputing a relative timeout would not. */
+  clock_gettime (CLOCK_REALTIME, &deadline);
+  deadline.tv_sec += timeout_msec / 1000;
+  deadline.tv_nsec += (long) (timeout_msec % 1000) * 1000000L;
+  if (deadline.tv_nsec >= 1000000000L)
+    {
+      deadline.tv_sec++;
+      deadline.tv_nsec -= 1000000000L;
+    }
+
+  pthread_mutex_lock (&completion->mutex);
+  while (completion->remaining > 0)
+    {
+      if (pthread_cond_timedwait (&completion->cond, &completion->mutex, &deadline) == ETIMEDOUT)
+	{
+	  break;
+	}
+    }
+  settled = (completion->remaining == 0);
+  pthread_mutex_unlock (&completion->mutex);
+
+  /* the reference taken by create() for this commit path, held across the wait above */
+  dblink_2pc_completion_unref (completion);
+
+  return settled;
+}
 
 /*
  * global_tran_queue_expand - Expand queue by GLOBAL_TRAN_QUEUE_GROW_SIZE entries
@@ -160,7 +336,8 @@ dblink_2pc_recovery_callback (const DBLINK_GLOBAL_TRAN_ROW * row_data)
   snprintf (participant.password, sizeof (participant.password), "%s", row_data->password);
 
   /* Enqueue to daemon for processing (one entry per participant) */
-  (void) dblink_2pc_daemon_enqueue (row_data->gtrid, state, &participant);
+  /* Recovery replays decisions nobody is waiting for - the sessions that produced them are gone. */
+  (void) dblink_2pc_daemon_enqueue (row_data->gtrid, state, &participant, NULL);
 
   return true;			/* continue to next row */
 }
@@ -168,11 +345,34 @@ dblink_2pc_recovery_callback (const DBLINK_GLOBAL_TRAN_ROW * row_data)
 void
 dblink_2pc_daemon_recovery_with_thread (THREAD_ENTRY * thread_p)
 {
+  int tran_index, error;
+
   if (thread_p == NULL)
     {
       return;
     }
-  (void) dblink_global_tran_scan_for_recovery (thread_p, dblink_2pc_recovery_callback);
+
+  /* Run the recovery scan under its own transaction (rather than the caller's system/recovery
+   * tran index) so that the class lock taken by the heap scan is released via the normal
+   * commit/abort path. The system tran index is never committed/aborted or unlocked, so a scan
+   * performed directly on it would leak its class lock until server shutdown. */
+  tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL,
+					TRAN_LOCK_INFINITE_WAIT, TRAN_READ_COMMITTED);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      return;
+    }
+
+  error = dblink_global_tran_scan_for_recovery (thread_p, dblink_2pc_recovery_callback);
+  if (error == NO_ERROR)
+    {
+      xtran_server_commit (thread_p, false);
+    }
+  else
+    {
+      (void) xtran_server_abort (thread_p);
+    }
+  logtb_free_tran_index (thread_p, tran_index);
 }
 
 static void
@@ -218,10 +418,24 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 
       if (ret != NO_ERROR)
 	{
-	  /* Error: re-enqueue this single participant for retry */
-	  (void) dblink_2pc_daemon_enqueue (e.gtrid, send_state, &e.participant);
+	  /* Error: re-enqueue this single participant for retry.  The completion travels with the entry and
+	   * keeps its slot, so the commit path stays blocked until the retry succeeds or its bound
+	   * expires - it must not be woken by a decision that was not delivered.
+	   *
+	   * If the entry cannot go back on the queue, settle it here instead: it took a reference and a
+	   * slot when it was queued, and it no longer exists to release them.  Leaving them behind would
+	   * make the commit path wait out its whole bound and leak the completion.  The decision itself is
+	   * not lost - its _db_global_tran row is still there for recovery to replay. */
+	  if (dblink_2pc_daemon_enqueue (e.gtrid, send_state, &e.participant, e.completion) != NO_ERROR)
+	    {
+	      dblink_2pc_completion_settle (e.completion);
+	    }
 	  return;
 	}
+
+      /* Delivered: the remote changes are visible now, so release the commit path before doing the
+       * catalog cleanup below.  That cleanup is recovery bookkeeping and nobody waits on it. */
+      dblink_2pc_completion_settle (e.completion);
 
       thread_p = &thread_ref;
       /* P5: Crash after (6) send decision, before (7) DELETE - recovery: daemon resends decision then DELETE */
@@ -274,7 +488,8 @@ dblink_2pc_daemon_dequeue (GLOBAL_TRAN_QUEUE_ENTRY * e)
 }
 
 int
-dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant)
+dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant,
+			   DBLINK_2PC_COMPLETION * completion)
 {
   assert (participant != NULL);
 
@@ -303,6 +518,7 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * parti
   global_tran_queue[global_tran_queue_tail].gtrid = gtrid;
   global_tran_queue[global_tran_queue_tail].state = state;
   global_tran_queue[global_tran_queue_tail].participant = *participant;
+  global_tran_queue[global_tran_queue_tail].completion = completion;
   global_tran_queue_tail = (global_tran_queue_tail + 1) % global_tran_queue_size;
   global_tran_queue_count++;
 
@@ -315,6 +531,8 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * parti
 
   return NO_ERROR;
 }
+
+REGISTER_DAEMON (dblink_2pc_daemon);
 
 void
 dblink_2pc_daemon_init (void)
@@ -381,8 +599,32 @@ dblink_2pc_daemon_stop (void)
       dblink_2pc_Daemon_context_manager = NULL;
     }
 
+  /* Settle whatever is still queued before the queue goes away.  These decisions were not delivered
+   * and recovery will replay them from _db_global_tran, but their completions must not be left counting
+   * entries that no longer exist: any commit path still blocked here would otherwise sit out its
+   * full bound, and the completions themselves would never be freed.
+   *
+   * This depends on the ordering above: destroy_daemon() joins the daemon thread, so by now no entry
+   * is in flight - the one being processed at stop time either completed (and settled itself) or
+   * failed and went back on the queue, where the loop below finds it.  Draining before the join
+   * would miss it.
+   *
+   * A completion settled here can wake its commit path with everything "settled" even though nothing was
+   * delivered.  That is accepted: the caller ignores the result and treats it exactly like the
+   * timeout, and recovery redelivers.  Waking it is better than making it wait out the bound while
+   * the server goes down. */
   if (global_tran_queue != NULL)
     {
+      pthread_mutex_lock (&global_tran_queue_mutex);
+      for (i = 0; i < global_tran_queue_count; i++)
+	{
+	  int nth = (global_tran_queue_head + i) % global_tran_queue_size;
+
+	  dblink_2pc_completion_settle (global_tran_queue[nth].completion);
+	  global_tran_queue[nth].completion = NULL;
+	}
+      pthread_mutex_unlock (&global_tran_queue_mutex);
+
       free_and_init (global_tran_queue);
     }
   global_tran_queue_size = 0;

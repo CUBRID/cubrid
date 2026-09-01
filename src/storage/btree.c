@@ -55,6 +55,7 @@
 #include "perf_monitor.h"
 #include "regu_var.hpp"
 #include "fault_injection.h"
+#include "memory_hash.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
 
@@ -328,6 +329,9 @@ typedef enum
 #define LOFFS4  6		/* RECDES Data Offset */
 
 /* B+tree statistical information environment */
+/* uniform key reservoir feeding the Duj1 prefix distinct estimator (CBRD-26903) */
+#define BTREE_STATS_DUJ1_SAMPLE 4096
+
 typedef struct btree_stats_env BTREE_STATS_ENV;
 struct btree_stats_env
 {
@@ -338,6 +342,15 @@ struct btree_stats_env
 
   DB_VALUE prev_key_val;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   int same_prefix_len;		/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+
+  bool collect_prefix_sample;	/* the current sampled leaf feeds the prefix hash reservoir */
+  INT64 sample_seen;		/* keys offered to the reservoir so far */
+  int sample_size;		/* filled reservoir slots, <= BTREE_STATS_DUJ1_SAMPLE */
+  UINT64 *prefix_sample;	/* [pkeys_val_num][BTREE_STATS_DUJ1_SAMPLE] prefix hashes */
+  VPID *sampled_leaves;		/* leaves already offered, so a revisited leaf (the AR descent
+				 * draws with replacement) cannot duplicate its keys in the
+				 * reservoir and deflate the Duj1 singleton count */
+  int sampled_leaf_cnt;
 };
 
 typedef struct show_index_scan_ctx SHOW_INDEX_SCAN_CTX;
@@ -1256,6 +1269,11 @@ static int btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid, PA
 static int btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDXKEY * midxkey);
 static int btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSHOT * mvcc_snapshot);
 static int btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
+static int btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level,
+						   bool * exhausted, int *count);
+static int btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2);
+static int btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level);
+static int btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static int btree_get_stats_with_fullscan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static DISK_ISVALID btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
 					  const char *btname, PAGE_PTR page_ptr, VPID * page_vpid);
@@ -1396,6 +1414,36 @@ static int btree_key_append_object_to_overflow (THREAD_ENTRY * thread_p, BTID_IN
 						BTREE_OBJECT_INFO * object_info, BTREE_INSERT_HELPER * insert_helper);
 static int btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * first_ovfl_vpid,
 					       PAGE_PTR * overflow_page);
+
+/* CBRD-24094: OID-ordered overflow chains with a separator directory. */
+static int btree_ovf_dir_write_header (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page,
+				       const VPID * next_vpid, const VPID * dir_vpid);
+static int btree_ovf_dir_format_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page,
+				      const RECDES * contents, const VPID * next_vpid, const VPID * dir_vpid);
+static int btree_ovf_dir_create_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const RECDES * contents,
+				      const VPID * next_vpid, const VPID * dir_vpid, VPID * near_vpid,
+				      VPID * new_vpid, PAGE_PTR * new_page);
+static int btree_ovf_dir_locate (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * dir_head_vpid,
+				 const OID * oid, PGBUF_LATCH_MODE latch_mode, PAGE_PTR * dir_page_out,
+				 int *entry_idx_out);
+static int btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, const VPID * dir_vpid,
+				    PGBUF_LATCH_MODE latch_mode, PAGE_PTR * prev_page);
+static int btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
+				   const VPID * first_ovf_vpid, BTREE_OP_PURPOSE purpose,
+				   BTREE_MVCC_INFO * match_mvccinfo, PAGE_PTR * found_page, PAGE_PTR * prev_page,
+				   int *offset_to_object, BTREE_MVCC_INFO * object_mvcc_info);
+static int btree_ovf_dir_insert_entry (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR dir_page,
+				       int insert_pos, const BTREE_OVF_DIR_ENTRY * entry);
+static int btree_ovf_dir_remove_entry (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * dir_head_vpid,
+				       const VPID * removed_data_vpid);
+static int btree_ovf_dir_destroy (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * dir_head_vpid);
+static int btree_ovf_dir_grow_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+				     BTREE_INSERT_HELPER * insert_helper, BTREE_OBJECT_INFO * object_info,
+				     PAGE_PTR target_page, PAGE_PTR dir_page, int dir_idx);
+static int btree_ovf_dir_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+					BTREE_INSERT_HELPER * insert_helper, BTREE_OBJECT_INFO * object_info,
+					const VPID * first_ovf_vpid);
+static DISK_ISVALID btree_ovf_dir_check (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid);
 
 static int btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR leaf_pg,
 				       LEAF_REC * leafrec_pnt, BTREE_DELETE_HELPER * delete_helper,
@@ -4102,6 +4150,26 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
 		    int key_type, int key_len, bool during_loading, OID * class_oid, OID * oid,
 		    BTREE_MVCC_INFO * mvcc_info, RECDES * rec)
 {
+  return btree_write_record_ex (thread_p, btid, node_rec, key, node_type, key_type, key_len, during_loading, class_oid,
+				oid, mvcc_info, rec, NULL, NULL);
+}
+
+/*
+ * btree_write_record_ex () - btree_write_record () with a replaceable overflow-key writer
+ *   return: error code
+ *   store_ovf_key_fn(in): stores the overflow key and returns its first VPID; NULL selects
+ *                         btree_store_overflow_key ()
+ *   store_ovf_key_arg(in): opaque argument handed back to store_ovf_key_fn
+ *
+ * Note: See btree_write_record ().  The hook exists so the parallel no-logging index build can take overflow-key
+ * pages from its own provider pool while sharing every other byte of the record format.
+ */
+int
+btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
+		       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading, OID * class_oid,
+		       OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec,
+		       BTREE_STORE_OVF_KEY_FUNC store_ovf_key_fn, void *store_ovf_key_arg)
+{
   VPID key_vpid;
   OR_BUF buf;
   int error_code = NO_ERROR;
@@ -4192,7 +4260,14 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
 	  btree_leaf_set_flag (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY);
 	}
 
-      error_code = btree_store_overflow_key (thread_p, btid, key, key_len, node_type, &key_vpid);
+      if (store_ovf_key_fn != NULL)
+	{
+	  error_code = (*store_ovf_key_fn) (thread_p, store_ovf_key_arg, key, key_len, node_type, &key_vpid);
+	}
+      else
+	{
+	  error_code = btree_store_overflow_key (thread_p, btid, key, key_len, node_type, &key_vpid);
+	}
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -6866,6 +6941,50 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
       goto exit_on_error;
     }
 
+  if (env->collect_prefix_sample && env->prefix_sample != NULL)
+    {
+      /* uniform reservoir over the sampled keys: every key offers one slot decision shared by
+       * all levels, so the reservoir is one row sample carrying each level's prefix hash */
+      int slot;
+
+      env->sample_seen++;
+      if (env->sample_size < BTREE_STATS_DUJ1_SAMPLE)
+	{
+	  slot = env->sample_size++;
+	}
+      else
+	{
+	  INT64 pos = (INT64) (drand48 () * env->sample_seen);
+	  slot = (pos < BTREE_STATS_DUJ1_SAMPLE) ? (int) pos : -1;
+	}
+      if (slot >= 0)
+	{
+	  UINT64 hash = 0;
+	  unsigned int val_hash;
+
+	  prev_k_index = 0;
+	  prev_k_ptr = NULL;
+	  for (k = 0; k < env->pkeys_val_num; k++)
+	    {
+	      ret = pr_midxkey_get_element_nocopy (midxkey, k, &elem, &prev_k_index, &prev_k_ptr);
+	      if (ret != NO_ERROR)
+		{
+		  assert_release (false);
+		  goto exit_on_error;
+		}
+	      /* the NULL marker must not collide with any value hash, so values are bounded away
+	       * from it (mht_valhash reduces modulo its ht_size argument) */
+	      val_hash = DB_IS_NULL (&elem) ? 0xFFFFFFFFU : mht_valhash (&elem, 0xFFFFFFFEU);
+	      hash = hash * 1099511628211ULL + val_hash;
+	      env->prefix_sample[(size_t) k * BTREE_STATS_DUJ1_SAMPLE + slot] = hash;
+	      if (elem.need_clear == true)
+		{
+		  pr_clear_value (&elem);
+		}
+	    }
+	}
+    }
+
   prev_i_index = 0;
   prev_i_ptr = NULL;
   for (i = 0; i < env->pkeys_val_num; i++)
@@ -7123,6 +7242,437 @@ exit_on_error:
   goto end;
 }
 
+/* seek budget of the prefix skip scan: with more distinct leading values than this the leaf
+ * sampling is reliable anyway (transitions are spread over the leaves), so the scan bails out.
+ * Deeper levels get the previous level's distinct count on top of it -- enumerating level k
+ * costs one seek per (k + 1)-column combination, so a budget relative to what is already known
+ * lets an exact count through whenever the per-level increment is small, no matter how large
+ * the shallower levels are -- capped at the MAX below to keep the whole scan bounded. */
+#define BTREE_STATS_PREFIX_SEEK_BUDGET 1024
+#define BTREE_STATS_PREFIX_SEEK_BUDGET_MAX (16 * BTREE_STATS_PREFIX_SEEK_BUDGET)
+
+/*
+ * btree_get_stats_prefix_skip_scan_level () - exact distinct count of the (level + 1)-column
+ *     prefixes by skip scan
+ *   return: NO_ERROR
+ *   env(in/out): stats environment already filled by the AR sampling
+ *   level(in): pkeys level to enumerate (prefix of level + 1 leading columns)
+ *   budget(in): seek budget for this level
+ *   exhausted(out): set when the seek budget ran out before the rightmost leaf
+ *   count(out): distinct prefixes enumerated -- exact unless exhausted, then a lower bound
+ *
+ * Note: (CBRD-26903) enumerates the distinct (level + 1)-column prefixes by repeatedly seeking
+ * past the current prefix group: the seek key is the current key truncated to the prefix with
+ * column level + 1 raised to a sentinel (min_max_val) that compares past every key sharing the
+ * prefix in tree order -- MAX_COLUMN for an ascending sentinel column, MIN_COLUMN for a
+ * descending one (btree_compare_key () inverts the comparison by the diff column's direction).
+ * Each seek is one btree_locate_key (), O(height) page fixes per distinct prefix, independent
+ * of how many rows or leaves the prefix spans. Completing within the seek budget yields the
+ * exact distinct count (the failure mode of leaf sampling); exhausting it means the prefix has
+ * many distinct values, exactly the regime where the sampled estimate is sound, so the scan
+ * keeps it and only applies what it saw as a lower bound.
+ *
+ * The first enumerated group is not counted when its prefix is entirely NULL, matching the
+ * fullscan semantics exactly: there the initial pkeys_val is NULL, so only a first-in-scan-order
+ * all-NULL prefix fails to register a transition; an all-NULL group reached later (descending
+ * leading column) does transition and is counted by both.
+ */
+static int
+btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level, int budget,
+					bool * exhausted, int *count)
+{
+  BTID_INT *btid_int;
+  PAGE_PTR page = NULL;
+  BTREE_NODE_HEADER *header = NULL;
+  TP_DOMAIN *sentinel_dom;
+  MIN_MAX_COLUMN_TYPE sentinel_type;
+  VPID vpid;
+  INT16 slot_id;
+  int key_cnt;
+  RECDES rec;
+  LEAF_REC leaf_pnt;
+  DB_VALUE cur_key, seek_key, elem;
+  bool clear_cur_key = false;
+  bool found;
+  bool prefix_all_null;
+  int offset;
+  int prev_index;
+  char *prev_ptr;
+  int groups = 0;
+  int distinct = 0;
+  int seeks = 0;
+  int col;
+  int ret = NO_ERROR;
+
+  assert (env != NULL);
+  assert (env->stat_info != NULL);
+  assert (level >= 0 && level < env->pkeys_val_num - 1);
+
+  *exhausted = false;
+  *count = 0;
+
+  btid_int = &(env->btree_scan.btid_int);
+
+  /* the sentinel column decides the seek direction in tree order */
+  sentinel_dom = btid_int->key_type->setdomain;
+  for (col = 0; col < level + 1 && sentinel_dom != NULL; col++)
+    {
+      sentinel_dom = sentinel_dom->next;
+    }
+  if (sentinel_dom == NULL)
+    {
+      assert_release (false);
+      return NO_ERROR;
+    }
+  sentinel_type = sentinel_dom->is_desc ? MIN_COLUMN : MAX_COLUMN;
+
+  db_make_null (&cur_key);
+  db_make_null (&seek_key);
+
+  page = btree_find_leftmost_leaf (thread_p, btid_int->sys_btid, &vpid, NULL);
+  if (page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      return ret;
+    }
+  slot_id = 1;
+
+  while (true)
+    {
+      key_cnt = btree_node_number_of_keys (thread_p, page);
+      if (slot_id > key_cnt)
+	{
+	  /* move to the right neighbor leaf */
+	  PAGE_PTR next_page;
+
+	  header = btree_get_node_header (thread_p, page);
+	  if (header == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  vpid = header->next_vpid;
+	  if (VPID_ISNULL (&vpid))
+	    {
+	      /* walked past the rightmost leaf: the enumeration is complete */
+	      pgbuf_unfix_and_init (thread_p, page);
+	      break;
+	    }
+	  /* couple the latches: fix the sibling before releasing the current leaf, or a
+	   * concurrent merge could deallocate it in between (UPDATE STATISTICS holds only
+	   * SCH_S_LOCK, so DML runs concurrently) */
+	  next_page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  pgbuf_unfix_and_init (thread_p, page);
+	  if (next_page == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (ret);
+	      goto exit_on_error;
+	    }
+	  page = next_page;
+	  slot_id = 1;
+	  continue;
+	}
+
+      if (spage_get_record (thread_p, page, slot_id, &rec, PEEK) != S_SUCCESS)
+	{
+	  goto exit_on_error;
+	}
+      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+	{
+	  slot_id++;
+	  continue;
+	}
+
+      btree_clear_key_value (&clear_cur_key, &cur_key);
+      if (btree_read_record (thread_p, btid_int, page, &rec, &cur_key, (void *) &leaf_pnt, BTREE_LEAF_NODE,
+			     &clear_cur_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* the first-in-scan-order group is not counted when its whole prefix is NULL */
+      prefix_all_null = true;
+      prev_index = 0;
+      prev_ptr = NULL;
+      for (col = 0; col <= level; col++)
+	{
+	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (&cur_key), col, &elem, &prev_index, &prev_ptr) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  if (!DB_IS_NULL (&elem))
+	    {
+	      prefix_all_null = false;
+	    }
+	  if (elem.need_clear == true)
+	    {
+	      pr_clear_value (&elem);
+	    }
+	  if (!prefix_all_null)
+	    {
+	      break;
+	    }
+	}
+      if (groups > 0 || !prefix_all_null)
+	{
+	  distinct++;
+	}
+      groups++;
+
+      if (++seeks > budget)
+	{
+	  *exhausted = true;	/* many distinct prefixes: the sampled estimate is fine */
+	  break;
+	}
+
+      /* seek past every key sharing this prefix. The seek key is the current key truncated
+       * to the prefix with the sentinel raised on column level + 1: it compares past every
+       * key sharing this prefix in tree order and before any following prefix group. The
+       * sentinel only applies to UNBOUND columns, so the trailing columns must be nulled
+       * out, not merely overridden (the truncation mirrors pr_midxkey_unique_prefix ()). */
+      {
+	DB_MIDXKEY *cur_midxkey = db_get_midxkey (&cur_key);
+	DB_MIDXKEY trunc_midxkey;
+	int precision = cur_midxkey->domain->precision;
+	int trunc_size;
+
+	trunc_size = or_multi_get_next_element_offset (cur_midxkey->buf, precision, level);
+	if (trunc_size < 0)
+	  {
+	    /* offset table saturated: header plus the prefix elements' bytes */
+	    TP_DOMAIN *col_dom = cur_midxkey->domain->setdomain;
+
+	    trunc_size = or_multi_header_size (precision);
+	    for (col = 0; col <= level && col_dom != NULL; col++, col_dom = col_dom->next)
+	      {
+		if (or_multi_is_not_null (cur_midxkey->buf, col))
+		  {
+		    trunc_size += pr_midxkey_element_disk_size (cur_midxkey->buf + trunc_size, col_dom);
+		  }
+	      }
+	  }
+
+	trunc_midxkey.buf = (char *) db_private_alloc (NULL, trunc_size);
+	if (trunc_midxkey.buf == NULL)
+	  {
+	    ASSERT_ERROR_AND_SET (ret);
+	    goto exit_on_error;
+	  }
+	memcpy (trunc_midxkey.buf, cur_midxkey->buf, trunc_size);
+	for (col = level + 1; col < precision; col++)
+	  {
+	    or_multi_set_null (trunc_midxkey.buf, col);
+	    or_multi_put_next_element_offset (trunc_midxkey.buf, precision, trunc_size, col);
+	  }
+	or_multi_put_size_offset (trunc_midxkey.buf, precision, trunc_size);
+
+	trunc_midxkey.size = trunc_size;
+	trunc_midxkey.ncolumns = cur_midxkey->ncolumns;
+	trunc_midxkey.domain = cur_midxkey->domain;
+	trunc_midxkey.min_max_val.position = level + 1;
+	trunc_midxkey.min_max_val.type = sentinel_type;
+
+	pr_clear_value (&seek_key);
+	db_make_midxkey (&seek_key, &trunc_midxkey);
+	seek_key.need_clear = true;
+      }
+
+      btree_clear_key_value (&clear_cur_key, &cur_key);
+      pgbuf_unfix_and_init (thread_p, page);
+
+      ret = btree_locate_key (thread_p, btid_int, &seek_key, &vpid, &slot_id, &page, &found);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+      assert (!found);		/* no stored key carries the sentinel */
+      if (slot_id <= 0)
+	{
+	  /* BTREE_KEY_SMALLER: the seek key compares smaller than every key in the landed leaf
+	   * (possible when a concurrent deletion removes the whole current prefix group); slot 0
+	   * is the page header, so normalize to the first key slot */
+	  slot_id = 1;
+	}
+    }
+
+  if (page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page);
+    }
+  btree_clear_key_value (&clear_cur_key, &cur_key);
+  pr_clear_value (&seek_key);
+
+  *count = distinct;
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  if (page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page);
+    }
+  btree_clear_key_value (&clear_cur_key, &cur_key);
+  pr_clear_value (&seek_key);
+
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * btree_get_stats_compare_prefix_hash () - qsort comparator for the prefix hash reservoir
+ */
+static int
+btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2)
+{
+  UINT64 h1 = *(const UINT64 *) hash1;
+  UINT64 h2 = *(const UINT64 *) hash2;
+
+  return (h1 < h2) ? -1 : (h1 > h2) ? 1 : 0;
+}
+
+/*
+ * btree_get_stats_duj1_estimate () - distinct prefix estimate of one pkeys level from the
+ *     uniform key reservoir
+ *   return: estimated distinct count
+ *   env(in): stats environment with a filled prefix hash reservoir
+ *   level(in): pkeys level to estimate
+ *
+ * Note: (CBRD-26903) unsmoothed first-order jackknife ("Duj1", Haas/Naughton/Seshadri/Stokes,
+ * VLDB 1995): D = n*d / (n - f1 + f1*n/N), with d the distinct and f1 the once-occurring
+ * values in a uniform n-key sample of an N-key population. Unlike scaling the transition
+ * count of the sampled leaves, it is insensitive to the visit order of the samples.
+ */
+static int
+btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level)
+{
+  UINT64 *sample = env->prefix_sample + ((size_t) level * BTREE_STATS_DUJ1_SAMPLE);
+  int n = env->sample_size;
+  int i, run, d = 0, f1 = 0;
+  double total_keys, estimate;
+
+  assert (n > 0 && n <= BTREE_STATS_DUJ1_SAMPLE);
+
+  qsort (sample, n, sizeof (UINT64), btree_get_stats_compare_prefix_hash);
+  run = 1;
+  for (i = 1; i <= n; i++)
+    {
+      if (i < n && sample[i] == sample[i - 1])
+	{
+	  run++;
+	  continue;
+	}
+      d++;
+      if (run == 1)
+	{
+	  f1++;
+	}
+      run = 1;
+    }
+
+  total_keys = MAX ((double) env->stat_info->keys, (double) n);
+  estimate = ((double) n * d) / ((double) n - f1 + f1 * ((double) n / total_keys));
+  estimate = MAX (estimate, (double) d);
+  estimate = MIN (estimate, total_keys);
+
+  return (int) estimate;
+}
+
+/*
+ * btree_get_stats_prefix_skip_scan () - exact distinct prefix counts by per-level skip scans
+ *   return: NO_ERROR
+ *   env(in/out): stats environment already filled by the AR sampling
+ *
+ * Note: (CBRD-26903) runs the prefix skip scan level by level, shallow to deep, with a seek
+ * budget relative to the previous level's (exact or estimated) distinct count: a level is worth
+ * enumerating whenever its increment over the level above fits the base budget, no matter how
+ * many distinct prefixes the shallower levels hold. An exhausted level takes the reservoir
+ * (Duj1) estimate with the enumerated part as a lower bound, and enumeration keeps going while
+ * the relative budget stays under the cap. The last level (the whole key) is never enumerated
+ * nor estimated: enumeration degenerates to visiting every key, and the reservoir holds b-tree
+ * keys, which are unique, so its Duj1 estimate reproduces the sampled key count.
+ *
+ * The levels the skip scan could not enumerate are estimated from the key reservoir with the
+ * Duj1 estimator: the transition count of the sampled leaves is corrupted by their random
+ * visit order (the state carried across non-adjacent leaves fabricates a prefix transition at
+ * almost every jump, inflating few-zone prefixes; one dominant value deflates them instead).
+ */
+static int
+btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
+{
+  BTID_INT *btid_int;
+  bool exhausted, have_sample;
+  int level, prev_final = 0, budget, count, i;
+  int ret = NO_ERROR;
+
+  assert (env != NULL);
+  assert (env->stat_info != NULL);
+
+  btid_int = &(env->btree_scan.btid_int);
+
+  if (env->pkeys_val_num <= 1 || TP_DOMAIN_TYPE (btid_int->key_type) != DB_TYPE_MIDXKEY
+      || btid_int->key_type->setdomain == NULL)
+    {
+      /* single-column index: duplicates share one key record, so every record is a distinct key
+       * and the leaf sampling has no clustered-prefix failure mode */
+      return NO_ERROR;
+    }
+
+  have_sample = (env->prefix_sample != NULL && env->sample_size > 0);
+
+  /* The last level (the whole key) is never touched: enumerating it means visiting every key,
+   * and estimating it is pointless -- the reservoir holds b-tree keys, which are unique, so its
+   * Duj1 estimate degenerates to the key count the AR sampling already produced. */
+  for (level = 0; level < env->pkeys_val_num - 1; level++)
+    {
+      budget = BTREE_STATS_PREFIX_SEEK_BUDGET + prev_final;
+      if (budget > BTREE_STATS_PREFIX_SEEK_BUDGET_MAX)
+	{
+	  break;		/* enumeration priced out; deeper levels are estimated below */
+	}
+      exhausted = false;
+      ret = btree_get_stats_prefix_skip_scan_level (thread_p, env, level, budget, &exhausted, &count);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
+      if (!exhausted)
+	{
+	  env->stat_info->pkeys[level] = count;	/* exact */
+	}
+      else if (have_sample)
+	{
+	  /* what the exhausted skip scan enumerated is still a valid lower bound */
+	  env->stat_info->pkeys[level] = MAX (btree_get_stats_duj1_estimate (env, level), count);
+	}
+      else if (env->stat_info->pkeys[level] < count)
+	{
+	  env->stat_info->pkeys[level] = count;
+	}
+      prev_final = env->stat_info->pkeys[level];
+    }
+
+  /* levels the budget cap priced out of enumeration keep a reservoir estimate instead */
+  for (; have_sample && level < env->pkeys_val_num - 1; level++)
+    {
+      env->stat_info->pkeys[level] = btree_get_stats_duj1_estimate (env, level);
+    }
+
+  /* prefix distinct counts are non-decreasing by definition; the key count bounds them all */
+  for (i = 1; i < env->pkeys_val_num; i++)
+    {
+      if (env->stat_info->pkeys[i] < env->stat_info->pkeys[i - 1])
+	{
+	  env->stat_info->pkeys[i] = env->stat_info->pkeys[i - 1];
+	}
+    }
+  if (env->stat_info->keys < env->stat_info->pkeys[env->pkeys_val_num - 1])
+    {
+      env->stat_info->keys = env->stat_info->pkeys[env->pkeys_val_num - 1];
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * btree_get_stats_with_AR_sampling () - Do Acceptance/Rejection Sampling
  *   return: NO_ERROR
@@ -7168,6 +7718,25 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
       assert (header != NULL);
       assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
 #endif
+
+      if (env->prefix_sample != NULL && env->sampled_leaves != NULL)
+	{
+	  /* only a first visit feeds the reservoir: the AR descent draws leaves with
+	   * replacement, and re-offering a leaf's keys would plant duplicate occurrences */
+	  env->collect_prefix_sample = true;
+	  for (i = 0; i < env->sampled_leaf_cnt; i++)
+	    {
+	      if (VPID_EQ (&(env->sampled_leaves[i]), &BTS->C_vpid))
+		{
+		  env->collect_prefix_sample = false;
+		  break;
+		}
+	    }
+	  if (env->collect_prefix_sample)
+	    {
+	      env->sampled_leaves[env->sampled_leaf_cnt++] = BTS->C_vpid;
+	    }
+	}
 
       if (key_cnt > 0)
 	{
@@ -7430,6 +7999,13 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       db_make_null (&(env->pkeys_val[i]));
     }
 
+  env->collect_prefix_sample = false;
+  env->sample_seen = 0;
+  env->sample_size = 0;
+  env->prefix_sample = NULL;
+  env->sampled_leaves = NULL;
+  env->sampled_leaf_cnt = 0;
+
   root_vpid.pageid = env->stat_info->btid.root_pageid;	/* read root page */
   root_vpid.volid = env->stat_info->btid.vfid.volid;
 
@@ -7506,7 +8082,36 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
     }
   else
     {
+      if (env->pkeys_val_num > 1 && dom_type == DB_TYPE_MIDXKEY)
+	{
+	  /* (CBRD-26903) reservoir feeding the Duj1 estimate of the non-enumerable levels */
+	  env->prefix_sample =
+	    (UINT64 *) db_private_alloc (thread_p,
+					 (size_t) env->pkeys_val_num * BTREE_STATS_DUJ1_SAMPLE * sizeof (UINT64));
+	  if (env->prefix_sample == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (ret);
+	      goto exit_on_error;
+	    }
+	  env->sampled_leaves = (VPID *) db_private_alloc (thread_p, STATS_SAMPLING_THRESHOLD * sizeof (VPID));
+	  if (env->sampled_leaves == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (ret);
+	      goto exit_on_error;
+	    }
+	}
+
       ret = btree_get_stats_with_AR_sampling (thread_p, env);
+      if (ret == NO_ERROR)
+	{
+	  /* (CBRD-26903) leaf sampling estimates the distinct prefixes from the transitions
+	   * seen in the sampled leaves, which their random visit order corrupts in both
+	   * directions (a dominant leading value collapses the count, a few-zone prefix
+	   * inflates it). The sorted order makes an exact, bounded correction possible:
+	   * skip-scan the distinct prefixes level by level, and re-estimate the levels too
+	   * wide to enumerate from the key reservoir (Duj1). */
+	  ret = btree_get_stats_prefix_skip_scan (thread_p, env);
+	}
     }
 
   pr_clear_value (&(env->prev_key_val));
@@ -7566,6 +8171,15 @@ end:
   if (root_page_ptr)
     {
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
+    }
+
+  if (env->prefix_sample != NULL)
+    {
+      db_private_free_and_init (thread_p, env->prefix_sample);
+    }
+  if (env->sampled_leaves != NULL)
+    {
+      db_private_free_and_init (thread_p, env->sampled_leaves);
     }
 
   /* clear partial key-values */
@@ -7960,6 +8574,38 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
     }
   else
     {				/* a leaf page */
+      /* CBRD-24094: validate the directory-format overflow OID directory (routing invariants) of every key that has an
+       * overflow chain. The generic checks only walk the chain sequentially and cannot see the directory. */
+      for (i = 1; i <= key_cnt; i++)
+	{
+	  LEAF_REC leaf_pnt;
+	  bool dummy_clear = false;
+	  int dummy_offset = 0;
+
+	  VPID_SET_NULL (&leaf_pnt.ovfl);
+	  leaf_pnt.key_len = 0;
+	  if (spage_get_record (thread_p, pg_ptr, i, &rec, PEEK) != S_SUCCESS)
+	    {
+	      valid = DISK_ERROR;
+	      goto error;
+	    }
+	  if (btree_read_record (thread_p, btid, pg_ptr, &rec, NULL, &leaf_pnt, BTREE_LEAF_NODE, &dummy_clear,
+				 &dummy_offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+	    {
+	      valid = DISK_ERROR;
+	      goto error;
+	    }
+	  if (!VPID_ISNULL (&leaf_pnt.ovfl) && !BTREE_IS_UNIQUE (btid->unique_pk))
+	    {
+	      /* Unique chains keep the legacy format and have no directory to validate. */
+	      valid = btree_ovf_dir_check (thread_p, btid, &leaf_pnt.ovfl);
+	      if (valid != DISK_VALID)
+		{
+		  goto error;
+		}
+	    }
+	}
+
       /* form the INFO structure from the header information */
       INFO->height = 1;
       INFO->tot_key_cnt = key_cnt;
@@ -9054,9 +9700,11 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
 	  if (!VPID_ISNULL (&ovfl_vpid))
 	    {			/* overflow pages exist */
 	      int free_space_ovfl, oid_cnt_ovfl, pg_cnt_per_key;
+	      VPID dir_vpid;
 
 	      oid_cnt_ovfl = 0;
 	      pg_cnt_per_key = 0;
+	      VPID_SET_NULL (&dir_vpid);
 	      cpc->ovfl_oid_pg.dis_key_cnt += 1;
 	      do
 		{
@@ -9069,6 +9717,18 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
 #if !defined (NDEBUG)
 		  (void) pgbuf_check_page_ptype (thread_p, ovfp, PAGE_BTREE);
 #endif /* !NDEBUG */
+
+		  if (pg_cnt_per_key == 0 && !BTREE_IS_UNIQUE (env->btree_scan.btid_int.unique_pk))
+		    {
+		      /* CBRD-24094: the directory pages of this chain hang off the first data page header, not the
+		       * next_vpid chain. Remember the directory head so they are counted as overflow pages too. */
+		      BTREE_OVF_DIR_HEADER *dir_hdr = btree_ovf_dir_get_header (thread_p, ovfp);
+
+		      if (dir_hdr != NULL)
+			{
+			  VPID_COPY (&dir_vpid, &dir_hdr->dir_vpid);
+			}
+		    }
 
 		  free_space_ovfl = spage_get_free_space (thread_p, ovfp);
 
@@ -9091,6 +9751,32 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPA
 		  pg_cnt_per_key++;
 		}
 	      while (!VPID_ISNULL (&ovfl_vpid));
+
+	      /* Directory pages: same accounting as data pages. Space is space, and check_index_ovfps.sh relies on
+	       * these counters to find overflow-heavy indexes, so under-reporting is the worst direction. */
+	      while (!VPID_ISNULL (&dir_vpid))
+		{
+		  ovfp = pgbuf_fix (thread_p, &dir_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+		  if (ovfp == NULL)
+		    {
+		      goto exit_on_error;
+		    }
+
+#if !defined (NDEBUG)
+		  (void) pgbuf_check_page_ptype (thread_p, ovfp, PAGE_BTREE);
+#endif /* !NDEBUG */
+
+		  free_space_ovfl = spage_get_free_space (thread_p, ovfp);
+		  btree_get_next_overflow_vpid (thread_p, ovfp, &dir_vpid);
+		  pgbuf_unfix_and_init (thread_p, ovfp);
+
+		  cpc->ovfl_oid_pg.tot_free_space += free_space_ovfl;
+		  cpc->ovfl_oid_pg.tot_space += DB_PAGESIZE;
+		  cpc->ovfl_oid_pg.tot_used_space = (cpc->ovfl_oid_pg.tot_space - cpc->ovfl_oid_pg.tot_free_space);
+
+		  cpc->ovfl_oid_pg.tot_pg_cnt += 1;
+		  pg_cnt_per_key++;
+		}
 
 	      if (cpc->ovfl_oid_pg.max_pg_cnt_per_key < pg_cnt_per_key)
 		{
@@ -10056,7 +10742,7 @@ btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
 			    PAGE_PTR ovfl_page, VPID * next_ovfl_vpid)
 {
   LOG_DATA_ADDR ovf_addr;
-  BTREE_OVERFLOW_HEADER ovf_header_info;
+  BTREE_OVF_DIR_HEADER ovf_header_info;	/* Big enough for either header format (CBRD-24094). */
   RECDES overflow_header_record;
 
   LOG_LSA prev_lsa;
@@ -10077,21 +10763,24 @@ btree_modify_overflow_link (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
   /* Create record with new overflow header info and update page. */
 
   /* We need undoredo logging. */
-  overflow_header_record.area_size = sizeof (BTREE_OVERFLOW_HEADER);
+  overflow_header_record.area_size = sizeof (BTREE_OVF_DIR_HEADER);
   overflow_header_record.data = rv_undo_data;
   if (spage_get_record (thread_p, ovfl_page, HEADER, &overflow_header_record, COPY) != S_SUCCESS)
     {
       assert_release (false);
       return ER_FAILED;
     }
-  rv_undo_data_length = sizeof (BTREE_OVERFLOW_HEADER);
+  rv_undo_data_length = overflow_header_record.length;
 
-  /* Update overflow header info. */
+  /* Update the next link in place, preserving the header record length and any extended (directory-format) fields such as the
+   * directory link (CBRD-24094). */
+  assert (overflow_header_record.length <= (int) sizeof (ovf_header_info));
+  memcpy (&ovf_header_info, overflow_header_record.data, overflow_header_record.length);
   VPID_COPY (&ovf_header_info.next_vpid, next_ovfl_vpid);
 
   /* Create record with new overflow header info and update page. */
   overflow_header_record.data = (char *) &ovf_header_info;
-  overflow_header_record.length = sizeof (BTREE_OVERFLOW_HEADER);
+  /* overflow_header_record.length is preserved. */
 
   if (spage_update (thread_p, ovfl_page, HEADER, &overflow_header_record) != SP_SUCCESS)
     {
@@ -11326,6 +12015,10 @@ btree_node_mergeable (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR L_page,
  * search_key (in)	     : Search key result.
  * leaf_rec (in)	     : Leaf record.
  * first_ovfl_vpid (in)	     : VPID of first overflow.
+ *
+ * Note: CBRD-24094: for a non-unique index this is only reached when the key has no overflow chain yet, and the
+ *	 new page is created in the directory (OID-ordered chain) format. A unique index keeps the legacy format
+ *	 and may also prepend to an existing chain.
  */
 static int
 btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_page,
@@ -11374,6 +12067,21 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
     {
       ASSERT_ERROR ();
       goto error;
+    }
+
+  if (!BTREE_IS_UNIQUE (btid_int->unique_pk))
+    {
+      /* CBRD-24094: upgrade the header to the directory (OID-ordered chain) format; no directory yet. */
+      VPID null_dir_vpid;
+
+      assert (VPID_ISNULL (first_ovfl_vpid));
+      VPID_SET_NULL (&null_dir_vpid);
+      ret = btree_ovf_dir_write_header (thread_p, btid_int, ovfl_page, first_ovfl_vpid, &null_dir_vpid);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
     }
 
 #if !defined (NDEBUG)
@@ -11569,6 +12277,8 @@ btree_rv_write_log_record (char *log_rec, int *log_length, RECDES * recp, BTREE_
 
 /*
  * btree_find_free_overflow_oids_page () - Find overflow page that has enough free space to store a new object.
+ *					     Legacy chains only, i.e. unique indexes (CBRD-24094: non-unique chains
+ *					     route through the OID directory instead).
  *
  * return		: Error code.
  * thread_p (in)	: Thread entry.
@@ -11620,6 +12330,1830 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VP
 
   btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
   return NO_ERROR;
+}
+
+/*
+ * CBRD-24094: OID-ordered overflow chains with a separator directory.
+ *
+ * Non-unique indexes create overflow OID pages with an extended header (BTREE_OVF_DIR_HEADER); the format is a
+ * function of the index type (unique indexes keep the legacy header), so no header sniffing is needed. Objects are
+ * kept globally OID-ordered across the chain and a directory of separator entries (one per data page, stored in
+ * directory pages reachable through the data page headers) routes any OID lookup to its data page directly. This
+ * turns the per-object O(chain length) linear scans of btree_find_oid_and_its_page () and
+ * btree_find_free_overflow_oids_page () into O(D + log E) lookups, D being the directory pages walked (1 for
+ * chains of up to ~1000 data pages) and E the entries of the directory page searched.
+ *
+ * Invariants:
+ * - A data page owns the OID range [its separator, next separator); the first page also catches anything below its
+ *   separator. Separators are fixed at page creation: inserts are routed by separator and deletions only remove
+ *   objects, so a separator never becomes invalid.
+ * - The directory exists if and only if the chain has grown to two or more data pages. Every directory-format data page header
+ *   stores the (immutable) directory head VPID, stamped at page creation.
+ * - Directory entries are sorted by separator and their order matches the chain (next_vpid) order.
+ * - All structural changes happen under the key's leaf write latch, inside a system operation, and are logged with
+ *   the generic RVBT_RECORD_MODIFY_UNDOREDO / RVBT_RECORD_MODIFY_NO_UNDO record modifications (no new recovery
+ *   handlers).
+ * - Legacy (8 byte header) chains keep using the linear code paths unchanged.
+ */
+
+/*
+ * btree_ovf_dir_write_header () - Write a directory-format overflow header (undoredo logged, UPDATE_ALL).
+ *
+ * return	  : Error code.
+ * thread_p (in)  : Thread entry.
+ * btid_int (in)  : B-tree info.
+ * page (in)	  : Overflow data or directory page.
+ * next_vpid (in) : Next page link.
+ * dir_vpid (in)  : Directory head link (NULL VPID for directory pages and single-page chains).
+ */
+static int
+btree_ovf_dir_write_header (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page, const VPID * next_vpid,
+			    const VPID * dir_vpid)
+{
+  BTREE_OVF_DIR_HEADER dir_header;
+  RECDES old_header_record;
+  RECDES new_header_record;
+  LOG_DATA_ADDR addr;
+  char rv_undo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
+  char *rv_undo_data = PTR_ALIGN (rv_undo_data_buffer, BTREE_MAX_ALIGN);
+  int rv_undo_data_length;
+
+  assert (page != NULL && next_vpid != NULL && dir_vpid != NULL);
+  assert (log_check_system_op_is_started (thread_p));
+
+  if (spage_get_record (thread_p, page, HEADER, &old_header_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  assert (old_header_record.length <= (int) sizeof (BTREE_OVF_DIR_HEADER));
+  memcpy (rv_undo_data, old_header_record.data, old_header_record.length);
+  rv_undo_data_length = old_header_record.length;
+
+  /* Clear the struct padding so the full 16 bytes written to the page and the WAL are deterministic. */
+  memset (&dir_header, 0, sizeof (dir_header));
+  VPID_COPY (&dir_header.next_vpid, next_vpid);
+  VPID_COPY (&dir_header.dir_vpid, dir_vpid);
+
+  new_header_record.type = REC_HOME;
+  new_header_record.data = (char *) &dir_header;
+  new_header_record.length = sizeof (dir_header);
+
+  if (spage_update (thread_p, page, HEADER, &new_header_record) != SP_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  addr.offset = HEADER;
+  addr.pgptr = page;
+  addr.vfid = &btid_int->sys_btid->vfid;
+  BTREE_RV_SET_OVERFLOW_NODE (&addr);
+  LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_ALL);
+  log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, rv_undo_data_length,
+			    (int) sizeof (dir_header), rv_undo_data, &dir_header);
+  pgbuf_set_dirty (thread_p, page, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+/*
+ * btree_ovf_dir_format_page () - Initialize a freshly allocated directory-format overflow page: header, contents record and
+ *				 logging. The "create new overflow page" redo record replays a legacy header plus
+ *				 the record; a second (UPDATE_ALL) header log upgrades it to the directory format, so recovery
+ *				 replays the exact same two steps and no new recovery code is needed.
+ *
+ * return	  : Error code.
+ * thread_p (in)  : Thread entry.
+ * btid_int (in)  : B-tree info.
+ * page (in)	  : New page (fixed).
+ * contents (in)  : Record for slot 1 (objects for data pages, entries for directory pages).
+ * next_vpid (in) : Next page link.
+ * dir_vpid (in)  : Directory head link.
+ */
+static int
+btree_ovf_dir_format_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page, const RECDES * contents,
+			   const VPID * next_vpid, const VPID * dir_vpid)
+{
+  BTREE_OVERFLOW_HEADER ovf_header_info;
+  LOG_DATA_ADDR addr;
+  char rv_redo_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  char *rv_redo_data = PTR_ALIGN (rv_redo_data_buffer, BTREE_MAX_ALIGN);
+  char *rv_redo_data_ptr = rv_redo_data;
+  int rv_redo_data_length = 0;
+  int error_code;
+
+  assert (page != NULL && contents != NULL && contents->length > 0);
+  assert (log_check_system_op_is_started (thread_p));
+
+  VPID_COPY (&ovf_header_info.next_vpid, next_vpid);
+  error_code = btree_init_overflow_header (thread_p, page, &ovf_header_info);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  if (spage_insert_at (thread_p, page, 1, (RECDES *) contents) != SP_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  addr.offset = 0;
+  addr.pgptr = page;
+  addr.vfid = &btid_int->sys_btid->vfid;
+  LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_INSERT);
+  BTREE_RV_SET_OVERFLOW_NODE (&addr);
+  /* No debug info on purpose: contents may be a directory record, not an object record. */
+  OR_PUT_VPID_ALIGNED (rv_redo_data_ptr, (VPID *) next_vpid);
+  rv_redo_data_ptr += DISK_VPID_ALIGNED_SIZE;
+  memcpy (rv_redo_data_ptr, contents->data, contents->length);
+  rv_redo_data_ptr += contents->length;
+  /* Contents can be close to a full page, so compute the length directly (BTREE_RV_GET_DATA_LENGTH asserts
+   * against the small BTREE_RV_BUFFER_SIZE). */
+  rv_redo_data_length = CAST_BUFLEN (rv_redo_data_ptr - rv_redo_data);
+  assert (rv_redo_data_length <= IO_MAX_PAGE_SIZE);
+  log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &addr, rv_redo_data_length, rv_redo_data);
+
+  /* Upgrade the header to the directory format (separately logged; replay order is preserved). */
+  error_code = btree_ovf_dir_write_header (thread_p, btid_int, page, next_vpid, dir_vpid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  pgbuf_set_dirty (thread_p, page, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * btree_ovf_dir_create_page () - Allocate and format a new directory-format overflow page.
+ *
+ * return	  : Error code.
+ * thread_p (in)  : Thread entry.
+ * btid_int (in)  : B-tree info.
+ * contents (in)  : Record for slot 1.
+ * next_vpid (in) : Next page link.
+ * dir_vpid (in)  : Directory head link.
+ * near_vpid (in) : Allocation hint.
+ * new_vpid (out) : VPID of the new page.
+ * new_page (out) : New page, fixed.
+ */
+static int
+btree_ovf_dir_create_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const RECDES * contents,
+			   const VPID * next_vpid, const VPID * dir_vpid, VPID * near_vpid, VPID * new_vpid,
+			   PAGE_PTR * new_page)
+{
+  int error_code;
+
+  assert (new_page != NULL && *new_page == NULL);
+
+  *new_page = btree_get_new_page (thread_p, btid_int, new_vpid, near_vpid);
+  if (*new_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  error_code = btree_ovf_dir_format_page (thread_p, btid_int, *new_page, contents, next_vpid, dir_vpid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      pgbuf_unfix_and_init (thread_p, *new_page);
+      return error_code;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * btree_ovf_dir_locate () - Find the directory page and entry index covering an OID: the rightmost entry whose
+ *			     separator does not exceed the OID (entry 0 catches anything below all separators).
+ *
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * btid_int (in)       : B-tree info.
+ * dir_head_vpid (in)  : Directory head page VPID.
+ * oid (in)	       : OID to route.
+ * latch_mode (in)     : Latch mode for directory pages.
+ * dir_page_out (out)  : Directory page containing the covering entry (fixed).
+ * entry_idx_out (out) : Covering entry index within dir_page_out.
+ */
+static int
+btree_ovf_dir_locate (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * dir_head_vpid, const OID * oid,
+		      PGBUF_LATCH_MODE latch_mode, PAGE_PTR * dir_page_out, int *entry_idx_out)
+{
+  PAGE_PTR dir_page = NULL;
+  PAGE_PTR next_page = NULL;
+  VPID next_vpid;
+  RECDES dir_record, next_record;
+  BTREE_OVF_DIR_ENTRY *entries;
+  int num_entries, min, max, mid, idx;
+  int error_code = NO_ERROR;
+  bool head_catch_all;
+  PERF_UTIME_TRACKER ovf_fix_time_track;
+
+  assert (dir_head_vpid != NULL && !VPID_ISNULL (dir_head_vpid));
+  assert (dir_page_out != NULL && *dir_page_out == NULL && entry_idx_out != NULL);
+
+  PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+  dir_page = pgbuf_fix (thread_p, dir_head_vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+  if (dir_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  thread_p->read_ovfl_pages_count++;	/* For Vacuum only: directory pages are overflow reads too. */
+
+  /* Advance while the next directory page's first separator does not exceed the OID. */
+  while (true)
+    {
+      error_code = btree_get_next_overflow_vpid (thread_p, dir_page, &next_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  return error_code;
+	}
+      if (VPID_ISNULL (&next_vpid))
+	{
+	  break;
+	}
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+      next_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+      if (next_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  return error_code;
+	}
+      thread_p->read_ovfl_pages_count++;
+      if (spage_get_record (thread_p, next_page, 1, &next_record, PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, next_page);
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  return ER_FAILED;
+	}
+      if (next_record.length < (int) sizeof (BTREE_OVF_DIR_ENTRY))
+	{
+	  /* Page content comes from disk: never read entries[0] past a short record, release builds included. */
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, next_page);
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  return ER_FAILED;
+	}
+      if (!OID_GT (&((BTREE_OVF_DIR_ENTRY *) next_record.data)[0].sep_oid, (OID *) oid))
+	{
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  dir_page = next_page;
+	  next_page = NULL;
+	  continue;
+	}
+      pgbuf_unfix_and_init (thread_p, next_page);
+      break;
+    }
+
+  if (spage_get_record (thread_p, dir_page, 1, &dir_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      pgbuf_unfix_and_init (thread_p, dir_page);
+      return ER_FAILED;
+    }
+  entries = (BTREE_OVF_DIR_ENTRY *) dir_record.data;
+  num_entries = (int) (dir_record.length / sizeof (BTREE_OVF_DIR_ENTRY));
+  assert (num_entries > 0);
+
+  /* CBRD-24094: the very first data page (entry 0 of the head directory page) is the catch-all: it owns every
+   * OID below the next separator, so its stored separator is not a real lower bound and must be treated as
+   * -infinity. Anchoring it this way keeps the binary search correct even after the catch-all page absorbs OIDs
+   * smaller than its own separator (OID reuse / multi-volume allocation, where OID order differs from insert
+   * order) and later splits -- a split point below the stale first separator would otherwise leave the
+   * directory record unsorted and mis-route the lookup, raising a spurious ER_BTREE_UNKNOWN_KEY. */
+  head_catch_all = VPID_EQ (pgbuf_get_vpid_ptr (dir_page), dir_head_vpid);
+
+  /* Rightmost entry with separator <= oid; 0 when the OID is below all separators. */
+  idx = 0;
+  min = 0;
+  max = num_entries - 1;
+  while (min <= max)
+    {
+      mid = (min + max) / 2;
+      if (!(head_catch_all && mid == 0) && OID_GT (&entries[mid].sep_oid, (OID *) oid))
+	{
+	  max = mid - 1;
+	}
+      else
+	{
+	  idx = mid;
+	  min = mid + 1;
+	}
+    }
+
+  *dir_page_out = dir_page;
+  *entry_idx_out = idx;
+  return NO_ERROR;
+}
+
+/*
+ * btree_ovf_dir_find_prev () - Find the directory page preceding a given directory page (singly linked list walk
+ *				from the head). Used by rare backward steps and page unlinks.
+ *
+ * return	      : Error code.
+ * thread_p (in)      : Thread entry.
+ * dir_head_vpid (in) : Directory head page VPID.
+ * dir_vpid (in)      : Directory page whose preceding page is wanted (must not be the head).
+ * latch_mode (in)    : Latch mode.
+ * prev_page (out)    : Preceding directory page, fixed.
+ */
+static int
+btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, const VPID * dir_vpid,
+			 PGBUF_LATCH_MODE latch_mode, PAGE_PTR * prev_page)
+{
+  PAGE_PTR cur_page = NULL;
+  VPID next_vpid;
+  int error_code;
+
+  assert (!VPID_EQ (dir_head_vpid, dir_vpid));
+  assert (prev_page != NULL && *prev_page == NULL);
+
+  cur_page = pgbuf_fix (thread_p, dir_head_vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  if (cur_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  while (true)
+    {
+      error_code = btree_get_next_overflow_vpid (thread_p, cur_page, &next_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, cur_page);
+	  return error_code;
+	}
+      if (VPID_ISNULL (&next_vpid))
+	{
+	  /* Not found; broken directory. */
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, cur_page);
+	  return ER_FAILED;
+	}
+      if (VPID_EQ (&next_vpid, dir_vpid))
+	{
+	  *prev_page = cur_page;
+	  return NO_ERROR;
+	}
+      pgbuf_unfix_and_init (thread_p, cur_page);
+      cur_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+      if (cur_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+    }
+}
+
+/*
+ * btree_ovf_dir_find_oid () - Find an object in a directory-format overflow chain using the directory.
+ *
+ * return		  : Error code.
+ * thread_p (in)	  : Thread entry.
+ * btid_int (in)	  : B-tree info.
+ * oid (in)		  : Object OID.
+ * leaf_page (in)	  : Leaf page (used as "previous page" of the first data page).
+ * first_ovf_vpid (in)	  : VPID of the chain's first data (overflow OID) page.
+ * purpose (in)		  : Purpose/context for the search.
+ * match_mvccinfo (in)	  : Non-null value to be matched or null if it does not matter.
+ * found_page (out)	  : Page where the object was found (fixed).
+ * prev_page (out)	  : If not NULL, previous chain page of found_page (leaf_page for the first data page).
+ * offset_to_object (out) : Offset to object in found page's record or NOT_FOUND.
+ * object_mvcc_info (out) : Output MVCC info when found.
+ */
+static int
+btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
+			const VPID * first_ovf_vpid, BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
+			PAGE_PTR * found_page, PAGE_PTR * prev_page, int *offset_to_object,
+			BTREE_MVCC_INFO * object_mvcc_info)
+{
+  BTREE_OVF_DIR_HEADER *dir_hdr;
+  VPID dir_head_vpid, target_vpid, prev_vpid;
+  PAGE_PTR first_ovf_page = NULL;
+  PAGE_PTR dir_page = NULL;
+  PAGE_PTR target_page = NULL;
+  PAGE_PTR prev_data_page = NULL;
+  RECDES dir_record, data_record;
+  BTREE_OVF_DIR_ENTRY *entries;
+  int num_entries, idx;
+  int error_code = NO_ERROR;
+  OID first_oid_in_page;
+  PERF_UTIME_TRACKER ovf_fix_time_track;
+
+  assert (first_ovf_vpid != NULL && !VPID_ISNULL (first_ovf_vpid));
+  assert (found_page != NULL && *found_page == NULL);
+  assert (prev_page == NULL || *prev_page == NULL);
+  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
+
+  *offset_to_object = NOT_FOUND;
+
+  thread_p->read_ovfl_pages_count = 0;	/* For Vacuum only; directory fixes below count too. */
+
+  PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+  first_ovf_page = pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+  if (first_ovf_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  thread_p->read_ovfl_pages_count++;
+
+  dir_hdr = btree_ovf_dir_get_header (thread_p, first_ovf_page);
+  if (dir_hdr == NULL)
+    {
+      assert_release (false);
+      pgbuf_unfix_and_init (thread_p, first_ovf_page);
+      return ER_FAILED;
+    }
+  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
+
+  if (VPID_ISNULL (&dir_head_vpid))
+    {
+      /* Single-page chain. */
+      error_code =
+	btree_find_oid_from_ovfl (thread_p, btid_int, first_ovf_page, oid, purpose, match_mvccinfo,
+				  offset_to_object, object_mvcc_info);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, first_ovf_page);
+	  return error_code;
+	}
+      if (*offset_to_object != NOT_FOUND)
+	{
+	  *found_page = first_ovf_page;
+	  first_ovf_page = NULL;
+	  if (prev_page != NULL)
+	    {
+	      *prev_page = leaf_page;
+	    }
+	}
+      else
+	{
+	  pgbuf_unfix_and_init (thread_p, first_ovf_page);
+	}
+      return NO_ERROR;
+    }
+
+  pgbuf_unfix_and_init (thread_p, first_ovf_page);
+
+  error_code = btree_ovf_dir_locate (thread_p, btid_int, &dir_head_vpid, oid, PGBUF_LATCH_READ, &dir_page, &idx);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  while (true)
+    {
+      if (spage_get_record (thread_p, dir_page, 1, &dir_record, PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+      entries = (BTREE_OVF_DIR_ENTRY *) dir_record.data;
+      num_entries = (int) (dir_record.length / sizeof (BTREE_OVF_DIR_ENTRY));
+      assert (idx >= 0 && idx < num_entries);
+
+      VPID_COPY (&target_vpid, &entries[idx].vpid);
+
+      /* Fix the previous data page first (chain latch order) when the caller needs it. */
+      if (prev_page != NULL)
+	{
+	  VPID_SET_NULL (&prev_vpid);
+	  if (idx > 0)
+	    {
+	      VPID_COPY (&prev_vpid, &entries[idx - 1].vpid);
+	    }
+	  else if (!VPID_EQ (pgbuf_get_vpid_ptr (dir_page), &dir_head_vpid))
+	    {
+	      /* Previous data page is the last entry of the preceding directory page. */
+	      PAGE_PTR prev_dir_page = NULL;
+	      RECDES prev_record;
+	      int prev_num_entries;
+
+	      error_code =
+		btree_ovf_dir_find_prev (thread_p, &dir_head_vpid, pgbuf_get_vpid_ptr (dir_page), PGBUF_LATCH_READ,
+					 &prev_dir_page);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto error;
+		}
+	      if (spage_get_record (thread_p, prev_dir_page, 1, &prev_record, PEEK) != S_SUCCESS)
+		{
+		  assert_release (false);
+		  pgbuf_unfix_and_init (thread_p, prev_dir_page);
+		  error_code = ER_FAILED;
+		  goto error;
+		}
+	      prev_num_entries = (int) (prev_record.length / sizeof (BTREE_OVF_DIR_ENTRY));
+	      VPID_COPY (&prev_vpid, &((BTREE_OVF_DIR_ENTRY *) prev_record.data)[prev_num_entries - 1].vpid);
+	      pgbuf_unfix_and_init (thread_p, prev_dir_page);
+	    }
+
+	  if (!VPID_ISNULL (&prev_vpid))
+	    {
+	      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+	      prev_data_page = pgbuf_fix (thread_p, &prev_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+	      if (prev_data_page == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  goto error;
+		}
+	    }
+	}
+
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+      target_page = pgbuf_fix (thread_p, &target_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+      if (target_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error;
+	}
+
+      error_code =
+	btree_find_oid_from_ovfl (thread_p, btid_int, target_page, oid, purpose, match_mvccinfo, offset_to_object,
+				  object_mvcc_info);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      thread_p->read_ovfl_pages_count++;
+
+      if (*offset_to_object != NOT_FOUND)
+	{
+	  *found_page = target_page;
+	  if (prev_page != NULL)
+	    {
+	      *prev_page = (prev_data_page != NULL) ? prev_data_page : leaf_page;
+	    }
+	  else
+	    {
+	      assert (prev_data_page == NULL);
+	    }
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  return NO_ERROR;
+	}
+
+      /* Miss. Same-OID runs (reusable OIDs with several un-vacuumed versions) may straddle backwards across page
+       * boundaries when separators repeat or a run's tail was vacuumed. Step back while the searched OID does not
+       * exceed the page's first object. */
+      if (spage_get_record (thread_p, target_page, 1, &data_record, PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+      BTREE_GET_OID (data_record.data, &first_oid_in_page);
+      pgbuf_unfix_and_init (thread_p, target_page);
+      if (prev_data_page != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, prev_data_page);
+	}
+
+      if (OID_GT (oid, &first_oid_in_page))
+	{
+	  /* The object would have been in this page. Not in the chain. */
+	  break;
+	}
+
+      /* Step back one entry. */
+      if (idx > 0)
+	{
+	  idx--;
+	}
+      else if (VPID_EQ (pgbuf_get_vpid_ptr (dir_page), &dir_head_vpid))
+	{
+	  /* Leftmost page already searched. */
+	  break;
+	}
+      else
+	{
+	  PAGE_PTR prev_dir_page = NULL;
+
+	  error_code =
+	    btree_ovf_dir_find_prev (thread_p, &dir_head_vpid, pgbuf_get_vpid_ptr (dir_page), PGBUF_LATCH_READ,
+				     &prev_dir_page);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error;
+	    }
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  dir_page = prev_dir_page;
+	  if (spage_get_record (thread_p, dir_page, 1, &dir_record, PEEK) != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto error;
+	    }
+	  idx = (int) (dir_record.length / sizeof (BTREE_OVF_DIR_ENTRY)) - 1;
+	}
+    }
+
+  /* Not found. */
+  pgbuf_unfix_and_init (thread_p, dir_page);
+  return NO_ERROR;
+
+error:
+  assert_release (error_code != NO_ERROR);
+  if (target_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, target_page);
+    }
+  if (prev_data_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_data_page);
+    }
+  if (dir_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, dir_page);
+    }
+  return error_code;
+}
+
+/*
+ * btree_ovf_dir_insert_entry () - Insert a directory entry at a position of a directory page. Handles a full
+ *				      directory page by appending a new tail directory page or splitting.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * btid_int (in)   : B-tree info.
+ * dir_page (in)   : Directory page (fixed, write latched).
+ * insert_pos (in) : Entry position within dir_page's record.
+ * entry (in)	   : Entry to insert.
+ */
+static int
+btree_ovf_dir_insert_entry (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR dir_page, int insert_pos,
+			    const BTREE_OVF_DIR_ENTRY * entry)
+{
+  RECDES dir_record;
+  char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  const int entry_size = (int) sizeof (BTREE_OVF_DIR_ENTRY);
+  int num_entries, offset;
+  VPID next_dir_vpid;
+  VPID null_vpid;
+  LOG_DATA_ADDR addr;
+  char rv_undo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
+  char *rv_undo_data = PTR_ALIGN (rv_undo_data_buffer, BTREE_MAX_ALIGN);
+  char *rv_undo_data_ptr = rv_undo_data;
+  char rv_redo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
+  char *rv_redo_data = PTR_ALIGN (rv_redo_data_buffer, BTREE_MAX_ALIGN);
+  char *rv_redo_data_ptr = rv_redo_data;
+  int rv_undo_data_length, rv_redo_data_length;
+  int error_code;
+
+  assert (log_check_system_op_is_started (thread_p));
+
+  VPID_SET_NULL (&null_vpid);
+
+  dir_record.area_size = DB_PAGESIZE;
+  dir_record.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
+  if (spage_get_record (thread_p, dir_page, 1, &dir_record, COPY) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  num_entries = (int) (dir_record.length / entry_size);
+  assert (insert_pos >= 0 && insert_pos <= num_entries);
+
+  if (spage_max_space_for_new_record (thread_p, dir_page) > entry_size)
+    {
+      /* Grow the record in place. */
+      offset = insert_pos * entry_size;
+      memmove (dir_record.data + offset + entry_size, dir_record.data + offset, dir_record.length - offset);
+      memcpy (dir_record.data + offset, entry, entry_size);
+      dir_record.length += entry_size;
+
+      rv_undo_data_ptr = log_rv_pack_undo_record_changes (rv_undo_data_ptr, offset, 0, entry_size, NULL);
+      rv_redo_data_ptr =
+	log_rv_pack_redo_record_changes (rv_redo_data_ptr, offset, 0, entry_size, dir_record.data + offset);
+
+      if (spage_update (thread_p, dir_page, 1, &dir_record) != SP_SUCCESS)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+
+      addr.offset = 1;
+      addr.pgptr = dir_page;
+      addr.vfid = &btid_int->sys_btid->vfid;
+      BTREE_RV_SET_OVERFLOW_NODE (&addr);
+      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
+      BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
+      BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, rv_undo_data_length,
+				rv_redo_data_length, rv_undo_data, rv_redo_data);
+      pgbuf_set_dirty (thread_p, dir_page, DONT_FREE);
+      return NO_ERROR;
+    }
+
+  /* Directory page is full. */
+  error_code = btree_get_next_overflow_vpid (thread_p, dir_page, &next_dir_vpid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  if (insert_pos == num_entries && VPID_ISNULL (&next_dir_vpid))
+    {
+      /* Append a new tail directory page holding the entry. */
+      RECDES new_record;
+      VPID new_dir_vpid;
+      PAGE_PTR new_dir_page = NULL;
+
+      new_record.type = REC_HOME;
+      new_record.data = (char *) entry;
+      new_record.length = entry_size;
+      new_record.area_size = entry_size;
+
+      error_code =
+	btree_ovf_dir_create_page (thread_p, btid_int, &new_record, &null_vpid, &null_vpid,
+				   pgbuf_get_vpid_ptr (dir_page), &new_dir_vpid, &new_dir_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      pgbuf_unfix_and_init (thread_p, new_dir_page);
+
+      return btree_ovf_dir_write_header (thread_p, btid_int, dir_page, &new_dir_vpid, &null_vpid);
+    }
+  else
+    {
+      /* Split the directory page: move the upper half to a new page, then insert into the proper half. */
+      RECDES upper_record;
+      RECDES lower_record;
+      VPID new_dir_vpid;
+      PAGE_PTR new_dir_page = NULL;
+      int half = num_entries / 2;
+
+      assert (num_entries >= 2);
+
+      upper_record.type = REC_HOME;
+      upper_record.data = dir_record.data + half * entry_size;
+      upper_record.length = (num_entries - half) * entry_size;
+      upper_record.area_size = upper_record.length;
+
+      error_code =
+	btree_ovf_dir_create_page (thread_p, btid_int, &upper_record, &next_dir_vpid, &null_vpid,
+				   pgbuf_get_vpid_ptr (dir_page), &new_dir_vpid, &new_dir_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      /* Truncate the lower half in place. Partial record changes are capped at 255 bytes, so log the whole
+       * record images (splits are rare). */
+      lower_record.type = REC_HOME;
+      lower_record.data = dir_record.data;
+      lower_record.length = half * entry_size;
+      lower_record.area_size = lower_record.length;
+
+      if (spage_update (thread_p, dir_page, 1, &lower_record) != SP_SUCCESS)
+	{
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, new_dir_page);
+	  return ER_FAILED;
+	}
+      addr.offset = 1;
+      addr.pgptr = dir_page;
+      addr.vfid = &btid_int->sys_btid->vfid;
+      BTREE_RV_SET_OVERFLOW_NODE (&addr);
+      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_ALL);
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, dir_record.length,
+				lower_record.length, dir_record.data, lower_record.data);
+      pgbuf_set_dirty (thread_p, dir_page, DONT_FREE);
+
+      error_code = btree_ovf_dir_write_header (thread_p, btid_int, dir_page, &new_dir_vpid, &null_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, new_dir_page);
+	  return error_code;
+	}
+
+      /* Both halves have room now; a single recursion inserts in place. */
+      if (insert_pos <= half)
+	{
+	  error_code = btree_ovf_dir_insert_entry (thread_p, btid_int, dir_page, insert_pos, entry);
+	}
+      else
+	{
+	  error_code = btree_ovf_dir_insert_entry (thread_p, btid_int, new_dir_page, insert_pos - half, entry);
+	}
+      pgbuf_unfix_and_init (thread_p, new_dir_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+      return error_code;
+    }
+}
+
+/*
+ * btree_ovf_dir_remove_entry () - Remove the directory entry of a removed data page. Unlinks (or pulls up into
+ *				      the immutable head) emptied directory pages.
+ *				      The entry is located by a linear scan over the directory pages: entries are
+ *				      keyed by separator, not by vpid, and this path only runs when a delete empties
+ *				      a data page, against at most a handful of directory pages.
+ *
+ * return		  : Error code.
+ * thread_p (in)	  : Thread entry.
+ * btid_int (in)	  : B-tree info.
+ * dir_head_vpid (in)	  : Directory head page VPID.
+ * removed_data_vpid (in) : VPID of the removed data page.
+ */
+static int
+btree_ovf_dir_remove_entry (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * dir_head_vpid,
+			    const VPID * removed_data_vpid)
+{
+  PAGE_PTR cur_page = NULL;
+  PAGE_PTR prev_page = NULL;
+  RECDES dir_record;
+  char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  BTREE_OVF_DIR_ENTRY *entries;
+  const int entry_size = (int) sizeof (BTREE_OVF_DIR_ENTRY);
+  int num_entries, pos, offset;
+  VPID cur_vpid, next_dir_vpid;
+  VPID null_vpid;
+  LOG_DATA_ADDR addr;
+  char rv_undo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
+  char *rv_undo_data = PTR_ALIGN (rv_undo_data_buffer, BTREE_MAX_ALIGN);
+  char *rv_undo_data_ptr = rv_undo_data;
+  char rv_redo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
+  char *rv_redo_data = PTR_ALIGN (rv_redo_data_buffer, BTREE_MAX_ALIGN);
+  char *rv_redo_data_ptr = rv_redo_data;
+  int rv_undo_data_length, rv_redo_data_length;
+  int error_code = NO_ERROR;
+
+  assert (log_check_system_op_is_started (thread_p));
+
+  VPID_SET_NULL (&null_vpid);
+  VPID_COPY (&cur_vpid, dir_head_vpid);
+
+  cur_page = pgbuf_fix (thread_p, &cur_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (cur_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  while (true)
+    {
+      dir_record.area_size = DB_PAGESIZE;
+      dir_record.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
+      if (spage_get_record (thread_p, cur_page, 1, &dir_record, COPY) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+      entries = (BTREE_OVF_DIR_ENTRY *) dir_record.data;
+      num_entries = (int) (dir_record.length / entry_size);
+
+      for (pos = 0; pos < num_entries; pos++)
+	{
+	  if (VPID_EQ (&entries[pos].vpid, removed_data_vpid))
+	    {
+	      break;
+	    }
+	}
+      if (pos < num_entries)
+	{
+	  break;
+	}
+
+      error_code = btree_get_next_overflow_vpid (thread_p, cur_page, &next_dir_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      if (VPID_ISNULL (&next_dir_vpid))
+	{
+	  /* Entry not found; broken directory. */
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+      if (prev_page != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, prev_page);
+	}
+      prev_page = cur_page;
+      cur_page = pgbuf_fix (thread_p, &next_dir_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (cur_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  cur_page = prev_page;
+	  prev_page = NULL;
+	  goto error;
+	}
+      VPID_COPY (&cur_vpid, &next_dir_vpid);
+    }
+
+  if (num_entries > 1)
+    {
+      /* Remove the entry in place. */
+      offset = pos * entry_size;
+
+      rv_undo_data_ptr =
+	log_rv_pack_undo_record_changes (rv_undo_data_ptr, offset, entry_size, 0, dir_record.data + offset);
+      rv_redo_data_ptr = log_rv_pack_redo_record_changes (rv_redo_data_ptr, offset, entry_size, 0, NULL);
+
+      memmove (dir_record.data + offset, dir_record.data + offset + entry_size,
+	       dir_record.length - offset - entry_size);
+      dir_record.length -= entry_size;
+
+      if (spage_update (thread_p, cur_page, 1, &dir_record) != SP_SUCCESS)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+      addr.offset = 1;
+      addr.pgptr = cur_page;
+      addr.vfid = &btid_int->sys_btid->vfid;
+      BTREE_RV_SET_OVERFLOW_NODE (&addr);
+      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
+      BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
+      BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, rv_undo_data_length,
+				rv_redo_data_length, rv_undo_data, rv_redo_data);
+      pgbuf_set_dirty (thread_p, cur_page, DONT_FREE);
+      pgbuf_unfix_and_init (thread_p, cur_page);
+      if (prev_page != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, prev_page);
+	}
+      return NO_ERROR;
+    }
+
+  /* The directory page becomes empty. */
+  error_code = btree_get_next_overflow_vpid (thread_p, cur_page, &next_dir_vpid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  if (prev_page == NULL)
+    {
+      /* Head page: the head VPID is immutable (stamped in all data page headers), so pull the next page's record
+       * up into the head and remove the next page instead. */
+      PAGE_PTR next_page = NULL;
+      RECDES next_record;
+      char next_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+      VPID next_next_vpid;
+
+      /* An empty head with no successor would mean the chain lost its last data page, which is handled by
+       * directory destruction, not by entry removal. */
+      assert (!VPID_ISNULL (&next_dir_vpid));
+
+      next_page = pgbuf_fix (thread_p, &next_dir_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (next_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error;
+	}
+      next_record.area_size = DB_PAGESIZE;
+      next_record.data = PTR_ALIGN (next_rec_buf, BTREE_MAX_ALIGN);
+      if (spage_get_record (thread_p, next_page, 1, &next_record, COPY) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, next_page);
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+      error_code = btree_get_next_overflow_vpid (thread_p, next_page, &next_next_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, next_page);
+	  goto error;
+	}
+      pgbuf_unfix_and_init (thread_p, next_page);
+
+      next_record.type = REC_HOME;
+      if (spage_update (thread_p, cur_page, 1, &next_record) != SP_SUCCESS)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+      addr.offset = 1;
+      addr.pgptr = cur_page;
+      addr.vfid = &btid_int->sys_btid->vfid;
+      BTREE_RV_SET_OVERFLOW_NODE (&addr);
+      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_ALL);
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, dir_record.length,
+				next_record.length, dir_record.data, next_record.data);
+      pgbuf_set_dirty (thread_p, cur_page, DONT_FREE);
+
+      error_code = btree_ovf_dir_write_header (thread_p, btid_int, cur_page, &next_next_vpid, &null_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      pgbuf_unfix_and_init (thread_p, cur_page);
+
+      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &next_dir_vpid, FILE_BTREE);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      return NO_ERROR;
+    }
+  else
+    {
+      /* Unlink the emptied non-head directory page. */
+      error_code = btree_ovf_dir_write_header (thread_p, btid_int, prev_page, &next_dir_vpid, &null_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      pgbuf_unfix_and_init (thread_p, prev_page);
+      pgbuf_unfix_and_init (thread_p, cur_page);
+
+      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &cur_vpid, FILE_BTREE);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      return NO_ERROR;
+    }
+
+error:
+  assert_release (error_code != NO_ERROR);
+  if (cur_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, cur_page);
+    }
+  if (prev_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
+    }
+  return error_code;
+}
+
+/*
+ * btree_ovf_dir_destroy () - Deallocate all directory pages of a destroyed chain.
+ *
+ * return	      : Error code.
+ * thread_p (in)      : Thread entry.
+ * btid_int (in)      : B-tree info.
+ * dir_head_vpid (in) : Directory head page VPID.
+ */
+static int
+btree_ovf_dir_destroy (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * dir_head_vpid)
+{
+  PAGE_PTR cur_page = NULL;
+  VPID cur_vpid, next_vpid;
+  int error_code;
+
+  assert (log_check_system_op_is_started (thread_p));
+
+  VPID_COPY (&cur_vpid, dir_head_vpid);
+  while (!VPID_ISNULL (&cur_vpid))
+    {
+      cur_page = pgbuf_fix (thread_p, &cur_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (cur_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      error_code = btree_get_next_overflow_vpid (thread_p, cur_page, &next_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, cur_page);
+	  return error_code;
+	}
+      pgbuf_unfix_and_init (thread_p, cur_page);
+
+      error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &cur_vpid, FILE_BTREE);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      VPID_COPY (&cur_vpid, &next_vpid);
+    }
+  return NO_ERROR;
+}
+
+/*
+ * btree_ovf_dir_check () - CBRD-24094 consistency check for a directory (OID-ordered) overflow chain's separator
+ *   directory. checkdb's generic btree check only walks the chain sequentially (next_vpid) and cannot see the
+ *   directory's routing invariants, so this validates them explicitly. In a single lockstep pass over the data
+ *   chain and the directory it verifies:
+ *     - directory entry count equals the data-page count and entry order matches the chain (next_vpid) order;
+ *     - each directory entry's vpid is the matching data page;
+ *     - separators are non-descending (equal neighbors are legal: a split run of one reusable OID's
+ *       un-vacuumed duplicates).
+ *   Object OID ranges are intentionally NOT compared against separators: same-OID runs may straddle
+ *   backwards across page boundaries and btree_ovf_dir_find_oid () steps back on a miss, so a page holding
+ *   an object below its separator is a valid state, not corruption. What the binary search depends on --
+ *   separator ordering and the directory/chain structure -- is what is validated here.
+ *   Single-data-page chains (no directory) are trivially valid; a legacy (8 byte) header on a non-unique
+ *   chain is reported as corruption (the format is a function of the index type).
+ *
+ * return		: DISK_VALID, DISK_INVALID or DISK_ERROR.
+ * thread_p (in)	: Thread entry.
+ * btid_int (in)	: B-tree info.
+ * first_ovf_vpid (in)	: VPID of the chain's first data (overflow OID) page.
+ */
+static DISK_ISVALID
+btree_ovf_dir_check (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid)
+{
+  BTREE_OVF_DIR_HEADER *dir_hdr;
+  VPID dir_head_vpid, data_vpid, dir_vpid;
+  PAGE_PTR data_page = NULL;
+  PAGE_PTR dir_page = NULL;
+  RECDES data_rec, dir_rec;
+  BTREE_OVF_DIR_ENTRY *entries;
+  int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
+  int dir_idx, dir_num;		/* cursor within the current directory page */
+  int i = 0;			/* data page index in the chain */
+  OID prev_sep, cur_sep;
+  int num_obj;
+  char err_buf[LINE_MAX];
+  DISK_ISVALID valid = DISK_INVALID;
+
+  assert (first_ovf_vpid != NULL && !VPID_ISNULL (first_ovf_vpid));
+
+  data_page = pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (data_page == NULL)
+    {
+      return DISK_ERROR;
+    }
+  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
+
+  dir_hdr = btree_ovf_dir_get_header (thread_p, data_page);
+  if (dir_hdr == NULL)
+    {
+      /* A non-unique chain must be directory-format; a legacy (8 byte) header here is corruption. */
+      snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: non-unique chain has a legacy header at %d|%d\n",
+		VPID_AS_ARGS (first_ovf_vpid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+      pgbuf_unfix_and_init (thread_p, data_page);
+      return DISK_INVALID;
+    }
+  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
+  if (VPID_ISNULL (&dir_head_vpid))
+    {
+      /* No directory is legal only while the chain has a single data page (a fresh chain; a shrunken chain
+       * keeps its directory). A successor here means lookups would silently stop at this page. */
+      VPID next_vpid;
+
+      if (btree_get_next_overflow_vpid (thread_p, data_page, &next_vpid) != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, data_page);
+	  return DISK_ERROR;
+	}
+      pgbuf_unfix_and_init (thread_p, data_page);
+      if (!VPID_ISNULL (&next_vpid))
+	{
+	  snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: multi-page chain without a directory link at %d|%d\n",
+		    VPID_AS_ARGS (first_ovf_vpid));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	  return DISK_INVALID;
+	}
+      return DISK_VALID;
+    }
+
+  /* Open the directory head. */
+  VPID_COPY (&dir_vpid, &dir_head_vpid);
+  dir_page = pgbuf_fix (thread_p, &dir_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (dir_page == NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, data_page);
+      return DISK_ERROR;
+    }
+  if (spage_get_record (thread_p, dir_page, 1, &dir_rec, PEEK) != S_SUCCESS)
+    {
+      goto end;
+    }
+  entries = (BTREE_OVF_DIR_ENTRY *) dir_rec.data;
+  dir_num = (int) (dir_rec.length / sizeof (BTREE_OVF_DIR_ENTRY));
+  dir_idx = 0;
+  if (dir_num <= 0)
+    {
+      /* A valid directory page always holds at least one entry (empty pages are deallocated). Reject it here:
+       * an empty record would otherwise make the advance loop below consume no entries, and a corrupt cyclic
+       * next_vpid could then loop forever. */
+      snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: empty directory page record %d|%d\n",
+		VPID_AS_ARGS (&dir_vpid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+      valid = DISK_INVALID;
+      goto end;
+    }
+
+  /* Lockstep walk: data chain and directory entries advance together. */
+  while (data_page != NULL)
+    {
+      /* Fetch the next directory entry (advancing to the next directory page when the current one is exhausted). */
+      while (dir_idx >= dir_num)
+	{
+	  VPID next_dir_vpid;
+
+	  if (btree_get_next_overflow_vpid (thread_p, dir_page, &next_dir_vpid) != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  if (VPID_ISNULL (&next_dir_vpid))
+	    {
+	      /* Directory has fewer entries than data pages. */
+	      snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: directory has fewer entries than data pages "
+			"(chain first=%d|%d)\n", VPID_AS_ARGS (first_ovf_vpid));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	      valid = DISK_INVALID;
+	      goto end;
+	    }
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  VPID_COPY (&dir_vpid, &next_dir_vpid);
+	  dir_page = pgbuf_fix (thread_p, &dir_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (dir_page == NULL)
+	    {
+	      valid = DISK_ERROR;
+	      goto end;
+	    }
+	  if (spage_get_record (thread_p, dir_page, 1, &dir_rec, PEEK) != S_SUCCESS)
+	    {
+	      goto end;
+	    }
+	  entries = (BTREE_OVF_DIR_ENTRY *) dir_rec.data;
+	  dir_num = (int) (dir_rec.length / sizeof (BTREE_OVF_DIR_ENTRY));
+	  dir_idx = 0;
+	  if (dir_num <= 0)
+	    {
+	      /* See the head-page check above: reject empty directory records so this loop always consumes
+	       * entries and terminates even on a corrupt cyclic next_vpid. */
+	      snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: empty directory page record %d|%d\n",
+			VPID_AS_ARGS (&dir_vpid));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	      valid = DISK_INVALID;
+	      goto end;
+	    }
+	}
+
+      COPY_OID (&cur_sep, &entries[dir_idx].sep_oid);
+
+      /* Entry order/vpid must match the chain order. */
+      if (!VPID_EQ (&entries[dir_idx].vpid, pgbuf_get_vpid_ptr (data_page)))
+	{
+	  snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: directory entry %d vpid %d|%d != data page %d|%d\n", i,
+		    VPID_AS_ARGS (&entries[dir_idx].vpid), VPID_AS_ARGS (pgbuf_get_vpid_ptr (data_page)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	  valid = DISK_INVALID;
+	  goto end;
+	}
+
+      /* Every data page must carry the directory-format header and point at this chain's directory head:
+       * btree_overflow_remove_object () reads dir_vpid from whichever page it empties, so a stray value would
+       * silently update the wrong directory. */
+      dir_hdr = btree_ovf_dir_get_header (thread_p, data_page);
+      if (dir_hdr == NULL || !VPID_EQ (&dir_hdr->dir_vpid, &dir_head_vpid))
+	{
+	  snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: data page %d|%d has a %s directory link\n",
+		    VPID_AS_ARGS (pgbuf_get_vpid_ptr (data_page)), (dir_hdr == NULL) ? "legacy header, no" : "stray");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	  valid = DISK_INVALID;
+	  goto end;
+	}
+
+      /* Read this data page's object range (objects are OID-ordered: min = first, max = last). */
+      if (spage_get_record (thread_p, data_page, 1, &data_rec, PEEK) != S_SUCCESS)
+	{
+	  goto end;
+	}
+      num_obj = data_rec.length / obj_size;
+      if (num_obj <= 0)
+	{
+	  snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: empty data page %d|%d\n",
+		    VPID_AS_ARGS (pgbuf_get_vpid_ptr (data_page)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	  valid = DISK_INVALID;
+	  goto end;
+	}
+      /* Separators must be non-descending, EXCEPT the head catch-all (entry 0 of the head directory page,
+       * i.e. chain index 0): btree_ovf_dir_locate() treats it as -infinity, so its stored separator is a
+       * don't-care and may legitimately exceed later separators once the catch-all page absorbs smaller OIDs
+       * and splits (the int_idx / OID-reuse case). The first compared pair is therefore sep_1 <= sep_2 (i >= 2).
+       * Equal adjacent separators can arise when a run of one reusable OID's un-vacuumed duplicates splits
+       * across pages; the lookup's backward step handles them.
+       *
+       * Object OID ranges are intentionally NOT checked against separators. Reusable / un-vacuumed OID runs can
+       * straddle backwards across a page boundary, so btree_ovf_dir_find_oid() steps back to the previous page on a
+       * miss; an object legitimately sitting in an earlier page than its separator implies is a valid state, not
+       * corruption. Only separator ordering (which the binary search depends on) and the directory/chain structure
+       * are invariants here. */
+      if (i >= 2 && OID_GT (&prev_sep, &cur_sep))
+	{
+	  snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: separators descending at entry %d\n", i);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	  valid = DISK_INVALID;
+	  goto end;
+	}
+
+      COPY_OID (&prev_sep, &cur_sep);
+
+      /* Advance to the next data page. */
+      if (btree_get_next_overflow_vpid (thread_p, data_page, &data_vpid) != NO_ERROR)
+	{
+	  goto end;
+	}
+      pgbuf_unfix_and_init (thread_p, data_page);
+      dir_idx++;
+      i++;
+      if (!VPID_ISNULL (&data_vpid))
+	{
+	  data_page = pgbuf_fix (thread_p, &data_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (data_page == NULL)
+	    {
+	      valid = DISK_ERROR;
+	      goto end;
+	    }
+	}
+    }
+
+  /* All data pages consumed. The directory must have no leftover entries. */
+  if (dir_idx < dir_num)
+    {
+      snprintf (err_buf, LINE_MAX,
+		"btree_ovf_dir_check: directory has more entries than data pages (chain first=%d|%d)\n",
+		VPID_AS_ARGS (first_ovf_vpid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+      valid = DISK_INVALID;
+      goto end;
+    }
+  else
+    {
+      VPID next_dir_vpid;
+
+      if (btree_get_next_overflow_vpid (thread_p, dir_page, &next_dir_vpid) != NO_ERROR)
+	{
+	  goto end;
+	}
+      if (!VPID_ISNULL (&next_dir_vpid))
+	{
+	  snprintf (err_buf, LINE_MAX,
+		    "btree_ovf_dir_check: extra directory pages beyond data pages (chain first=%d|%d)\n",
+		    VPID_AS_ARGS (first_ovf_vpid));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	  valid = DISK_INVALID;
+	  goto end;
+	}
+    }
+
+  valid = DISK_VALID;
+
+end:
+  if (data_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, data_page);
+    }
+  if (dir_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, dir_page);
+    }
+  return valid;
+}
+
+/*
+ * btree_ovf_dir_grow_chain () - Add a new data page to a directory chain whose routed target page is full: either append a
+ *				new rightmost page (ascending insert pattern) or split the target page. Creates the
+ *				directory when the chain grows from one page to two. Runs inside a system operation.
+ *
+ * return	      : Error code.
+ * thread_p (in)      : Thread entry.
+ * btid_int (in)      : B-tree info.
+ * key (in)	      : Key value (for the "created overflow page" notification).
+ * insert_helper (in) : B-tree insert helper.
+ * object_info (in)   : Object to insert.
+ * target_page (in)   : Routed data page (fixed, full). Caller keeps ownership.
+ * dir_page (in)      : Directory page covering the target entry (fixed, write latched), or NULL when the chain has
+ *			no directory yet (single-page chain). Caller keeps ownership.
+ * dir_idx (in)	      : Target's entry index within dir_page (ignored when dir_page is NULL).
+ */
+static int
+btree_ovf_dir_grow_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+			  BTREE_INSERT_HELPER * insert_helper, BTREE_OBJECT_INFO * object_info, PAGE_PTR target_page,
+			  PAGE_PTR dir_page, int dir_idx)
+{
+  BTREE_OVF_DIR_HEADER *target_hdr;
+  VPID target_next_vpid, target_vpid, dir_head_vpid;
+  VPID q_vpid = VPID_INITIALIZER;
+  VPID d_vpid = VPID_INITIALIZER;
+  VPID null_vpid;
+  PAGE_PTR q_page = NULL;
+  PAGE_PTR d_page = NULL;
+  RECDES target_record;
+  RECDES q_record;
+  char target_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  char q_rec_buf[128 + BTREE_MAX_ALIGN];
+  int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
+  int num_objects, split_at;
+  OID last_oid, sep_oid, target_first_oid;
+  OID *notification_class_oid;
+  bool grow_right;
+  bool save_sysop_started;
+  int error_code = NO_ERROR;
+
+  assert (btree_is_insert_object_purpose (insert_helper->purpose));
+  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
+
+  VPID_SET_NULL (&null_vpid);
+
+  target_hdr = btree_ovf_dir_get_header (thread_p, target_page);
+  if (target_hdr == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  VPID_COPY (&target_next_vpid, &target_hdr->next_vpid);
+  VPID_COPY (&dir_head_vpid, &target_hdr->dir_vpid);
+  pgbuf_get_vpid (target_page, &target_vpid);
+  assert ((dir_page == NULL) == VPID_ISNULL (&dir_head_vpid));
+
+  target_record.area_size = DB_PAGESIZE;
+  target_record.data = PTR_ALIGN (target_rec_buf, BTREE_MAX_ALIGN);
+  if (spage_get_record (thread_p, target_page, 1, &target_record, COPY) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  num_objects = target_record.length / obj_size;
+  assert (num_objects >= 2);
+  BTREE_GET_OID (target_record.data, &target_first_oid);
+  BTREE_GET_OID (target_record.data + (num_objects - 1) * obj_size, &last_oid);
+
+  /* Strictly greater: an OID equal to the last one (a reusable-OID duplicate) must not become a new rightmost
+   * page's separator, which could duplicate an existing separator. It goes through the split path instead.
+   * Note that only the rightmost page can grow right; a routed page with a successor (e.g. the head catch-all)
+   * always splits. */
+  grow_right = VPID_ISNULL (&target_next_vpid) && OID_GT (&object_info->oid, &last_oid);
+
+  /* Notification (parity with legacy overflow page creation). */
+  if (!OID_ISNULL (&object_info->class_oid))
+    {
+      notification_class_oid = &object_info->class_oid;
+    }
+  else
+    {
+      notification_class_oid = &btid_int->topclass_oid;
+    }
+  BTREE_SET_CREATED_OVERFLOW_PAGE_NOTIFICATION (thread_p, key, &object_info->oid, notification_class_oid,
+						btid_int->sys_btid);
+
+  save_sysop_started = insert_helper->is_system_op_started;
+  if (!insert_helper->is_system_op_started)
+    {
+      log_sysop_start (thread_p);
+      insert_helper->is_system_op_started = true;
+    }
+
+  if (grow_right)
+    {
+      /* The new page holds just the new (rightmost) object; loader-like fill for ascending OIDs. */
+      assert (obj_size <= 128);	/* q_rec_buf below holds exactly one fixed-size object */
+      q_record.type = REC_HOME;
+      q_record.area_size = 128;
+      q_record.data = PTR_ALIGN (q_rec_buf, BTREE_MAX_ALIGN);
+      q_record.length = 0;
+      BTREE_MVCC_INFO_SET_FIXED_SIZE (&object_info->mvcc_info);
+      btree_record_append_object (thread_p, btid_int, &q_record, BTREE_OVERFLOW_NODE, object_info, NULL, NULL);
+      COPY_OID (&sep_oid, &object_info->oid);
+      split_at = -1;
+    }
+  else
+    {
+      split_at = num_objects / 2;
+      q_record.type = REC_HOME;
+      q_record.data = target_record.data + split_at * obj_size;
+      q_record.length = (num_objects - split_at) * obj_size;
+      q_record.area_size = q_record.length;
+      BTREE_GET_OID (q_record.data, &sep_oid);
+    }
+
+  if (dir_page == NULL)
+    {
+      /* Directory birth: allocate the new data page first so both VPIDs are known for the directory record. */
+      BTREE_OVF_DIR_ENTRY dir_entries[2];
+      RECDES dir_rec;
+
+      q_page = btree_get_new_page (thread_p, btid_int, &q_vpid, &target_vpid);
+      if (q_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error;
+	}
+
+      memset (dir_entries, 0, sizeof (dir_entries));
+      COPY_OID (&dir_entries[0].sep_oid, &target_first_oid);
+      VPID_COPY (&dir_entries[0].vpid, &target_vpid);
+      COPY_OID (&dir_entries[1].sep_oid, &sep_oid);
+      VPID_COPY (&dir_entries[1].vpid, &q_vpid);
+
+      dir_rec.type = REC_HOME;
+      dir_rec.data = (char *) dir_entries;
+      dir_rec.length = sizeof (dir_entries);
+      dir_rec.area_size = dir_rec.length;
+
+      error_code =
+	btree_ovf_dir_create_page (thread_p, btid_int, &dir_rec, &null_vpid, &null_vpid, &target_vpid, &d_vpid,
+				   &d_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      pgbuf_unfix_and_init (thread_p, d_page);
+      VPID_COPY (&dir_head_vpid, &d_vpid);
+
+      error_code = btree_ovf_dir_format_page (thread_p, btid_int, q_page, &q_record, &target_next_vpid, &dir_head_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+  else
+    {
+      error_code =
+	btree_ovf_dir_create_page (thread_p, btid_int, &q_record, &target_next_vpid, &dir_head_vpid, &target_vpid,
+				   &q_vpid, &q_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+
+  if (!grow_right)
+    {
+      /* Truncate the target to the lower half. Partial record changes are capped at 255 bytes, so log whole
+       * record images (undo: old record; redo: its prefix). */
+      RECDES lower_record;
+      LOG_DATA_ADDR addr;
+
+      lower_record.type = REC_HOME;
+      lower_record.data = target_record.data;
+      lower_record.length = split_at * obj_size;
+      lower_record.area_size = lower_record.length;
+
+      if (spage_update (thread_p, target_page, 1, &lower_record) != SP_SUCCESS)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+      addr.offset = 1;
+      addr.pgptr = target_page;
+      addr.vfid = &btid_int->sys_btid->vfid;
+      BTREE_RV_SET_OVERFLOW_NODE (&addr);
+      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_ALL);
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, target_record.length,
+				lower_record.length, target_record.data, lower_record.data);
+      pgbuf_set_dirty (thread_p, target_page, DONT_FREE);
+    }
+
+  /* Link target -> new page, keeping the directory pointer stamped. */
+  error_code = btree_ovf_dir_write_header (thread_p, btid_int, target_page, &q_vpid, &dir_head_vpid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  /* Register the new page in the directory (unless the directory was just created with both entries). */
+  if (dir_page != NULL)
+    {
+      BTREE_OVF_DIR_ENTRY new_entry;
+
+      memset (&new_entry, 0, sizeof (new_entry));
+      COPY_OID (&new_entry.sep_oid, &sep_oid);
+      VPID_COPY (&new_entry.vpid, &q_vpid);
+      error_code = btree_ovf_dir_insert_entry (thread_p, btid_int, dir_page, dir_idx + 1, &new_entry);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+
+  if (!grow_right)
+    {
+      /* Insert the new object into the proper half (both have room now). */
+      PAGE_PTR dest_page = OID_LT (&object_info->oid, &sep_oid) ? target_page : q_page;
+
+      error_code = btree_key_append_object_to_overflow (thread_p, btid_int, dest_page, object_info, insert_helper);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+
+  pgbuf_unfix_and_init (thread_p, q_page);
+
+  if (!save_sysop_started)
+    {
+      btree_insert_sysop_end (thread_p, insert_helper);
+    }
+
+  if (insert_helper->insert_list != NULL)
+    {
+      insert_helper->insert_list->m_ovf_appends_new_page++;
+    }
+  return NO_ERROR;
+
+error:
+  assert_release (error_code != NO_ERROR);
+  if (q_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, q_page);
+    }
+  if (d_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, d_page);
+    }
+  if (!save_sysop_started && insert_helper->is_system_op_started)
+    {
+      assert (insert_helper->purpose != BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
+      log_sysop_abort (thread_p);
+      insert_helper->is_system_op_started = false;
+    }
+  return error_code;
+}
+
+/*
+ * btree_ovf_dir_append_object () - Insert an object into a directory (OID-ordered) overflow chain: route by the directory,
+ *				   insert in OID order, and grow the chain when the routed page is full.
+ *
+ * return		  : Error code.
+ * thread_p (in)	  : Thread entry.
+ * btid_int (in)	  : B-tree info.
+ * key (in)		  : Key value.
+ * insert_helper (in)	  : B-tree insert helper.
+ * object_info (in)	  : Object to insert.
+ * first_ovf_vpid (in)	  : VPID of the chain's first data page.
+ */
+static int
+btree_ovf_dir_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+			     BTREE_INSERT_HELPER * insert_helper, BTREE_OBJECT_INFO * object_info,
+			     const VPID * first_ovf_vpid)
+{
+  BTREE_OVF_DIR_HEADER *dir_hdr;
+  VPID dir_head_vpid, first_vpid, target_vpid;
+  PAGE_PTR first_ovf_page = NULL;
+  PAGE_PTR dir_page = NULL;
+  PAGE_PTR target_page = NULL;
+  RECDES dir_record;
+  int idx;
+  int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
+  int error_code = NO_ERROR;
+  PERF_UTIME_TRACKER ovf_fix_time_track;
+
+  assert (first_ovf_vpid != NULL && !VPID_ISNULL (first_ovf_vpid));
+  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
+
+  PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+  first_ovf_page = pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+  if (first_ovf_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  dir_hdr = btree_ovf_dir_get_header (thread_p, first_ovf_page);
+  if (dir_hdr == NULL)
+    {
+      assert_release (false);
+      pgbuf_unfix_and_init (thread_p, first_ovf_page);
+      return ER_FAILED;
+    }
+  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
+  VPID_COPY (&first_vpid, first_ovf_vpid);
+
+  if (VPID_ISNULL (&dir_head_vpid))
+    {
+      /* Single-page chain. */
+      if (spage_max_space_for_new_record (thread_p, first_ovf_page) > obj_size)
+	{
+	  error_code =
+	    btree_key_append_object_to_overflow (thread_p, btid_int, first_ovf_page, object_info, insert_helper);
+	  pgbuf_unfix_and_init (thread_p, first_ovf_page);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  if (insert_helper->insert_list != NULL)
+	    {
+	      insert_helper->insert_list->m_ovf_appends++;
+	    }
+	  return NO_ERROR;
+	}
+      error_code =
+	btree_ovf_dir_grow_chain (thread_p, btid_int, key, insert_helper, object_info, first_ovf_page, NULL, -1);
+      pgbuf_unfix_and_init (thread_p, first_ovf_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+      return error_code;
+    }
+
+  /* Route through the directory. */
+  error_code =
+    btree_ovf_dir_locate (thread_p, btid_int, &dir_head_vpid, &object_info->oid, PGBUF_LATCH_WRITE, &dir_page, &idx);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      pgbuf_unfix_and_init (thread_p, first_ovf_page);
+      return error_code;
+    }
+  if (spage_get_record (thread_p, dir_page, 1, &dir_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      pgbuf_unfix_and_init (thread_p, dir_page);
+      pgbuf_unfix_and_init (thread_p, first_ovf_page);
+      return ER_FAILED;
+    }
+  VPID_COPY (&target_vpid, &((BTREE_OVF_DIR_ENTRY *) dir_record.data)[idx].vpid);
+
+  if (VPID_EQ (&target_vpid, &first_vpid))
+    {
+      target_page = first_ovf_page;
+      first_ovf_page = NULL;
+    }
+  else
+    {
+      pgbuf_unfix_and_init (thread_p, first_ovf_page);
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+      target_page = pgbuf_fix (thread_p, &target_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+      if (target_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  return error_code;
+	}
+    }
+
+  if (spage_max_space_for_new_record (thread_p, target_page) > obj_size)
+    {
+      pgbuf_unfix_and_init (thread_p, dir_page);
+      error_code = btree_key_append_object_to_overflow (thread_p, btid_int, target_page, object_info, insert_helper);
+      pgbuf_unfix_and_init (thread_p, target_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      if (insert_helper->insert_list != NULL)
+	{
+	  insert_helper->insert_list->m_ovf_appends++;
+	}
+      return NO_ERROR;
+    }
+
+  error_code =
+    btree_ovf_dir_grow_chain (thread_p, btid_int, key, insert_helper, object_info, target_page, dir_page, idx);
+  pgbuf_unfix_and_init (thread_p, target_page);
+  pgbuf_unfix_and_init (thread_p, dir_page);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  return error_code;
 }
 
 /*
@@ -11685,6 +14219,14 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
     {
       /* Not found. */
       return NO_ERROR;
+    }
+
+  /* CBRD-24094: a non-unique index's overflow chain is always OID-ordered and routes through the OID directory.
+   * Only unique indexes keep the legacy format (linear scan below); the format is a function of the index type. */
+  if (!BTREE_IS_UNIQUE (btid_int->unique_pk))
+    {
+      return btree_ovf_dir_find_oid (thread_p, btid_int, oid, leaf_page, &leaf_rec_info->ovfl, purpose,
+				     match_mvccinfo, found_page, prev_page, offset_to_object, object_mvcc_info);
     }
 
   thread_p->read_ovfl_pages_count = 0;	// For Vacuum only.
@@ -15318,10 +17860,13 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
 	  goto error;
 	}
 
-      slot_id = (int) (drand48 () * key_cnt);
-      slot_id = MAX (slot_id, 1);
+      /* (CBRD-26903) pick a child slot uniformly over [1, key_cnt]: drand48 () is in [0, 1), so the
+       * truncation yields [0, key_cnt - 1] and the +1 shift makes every child reachable. The former
+       * MAX (slot_id, 1) form never selected the last slot, so the rightmost subtree of every level
+       * was excluded from the sample (and the first child was picked with a doubled weight). */
+      slot_id = (int) (drand48 () * key_cnt) + 1;
 
-      assert (slot_id > 0);
+      assert (slot_id > 0 && slot_id <= key_cnt);
       if (spage_get_record (thread_p, P_page, slot_id, &rec, PEEK) != S_SUCCESS)
 	{
 	  goto error;
@@ -23665,6 +26210,114 @@ btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
     }
 }
 
+#if defined (SERVER_MODE)
+/*
+ * btree_is_active_other_inserter () - Is insert_mvccid an in-progress insert by another transaction?
+ *
+ * return	      : true if some other transaction is still inserting under insert_mvccid.
+ * thread_p (in)      : Thread entry.
+ * insert_mvccid (in) : Candidate inserter MVCCID (e.g. BTREE_MVCC_INFO_INSID of the record).
+ *
+ * Note: guards the "wait for the inserter to end" paths. False when the id is invalid, is our own
+ *	 insert, or the inserter has already ended -- in those cases there is nothing to wait on.
+ */
+static bool
+btree_is_active_other_inserter (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
+{
+  return MVCCID_IS_NORMAL (insert_mvccid) && !logtb_is_current_mvccid (thread_p, insert_mvccid)
+    && log_Gl.mvcc_table.is_active (insert_mvccid);
+}
+
+/*
+ * btree_wait_for_inserter_end () - Block until the transaction inserting under insert_mvccid ends:
+ *				    S_LOCK on its MVCCID self-lock, then release.
+ *
+ * return	      : NO_ERROR once the inserter has ended. An error if the lock failed, or if the
+ *			self-lock invariant is breached (grant while the inserter is still active) --
+ *			the wait was a no-op and waiting again cannot recover it, so fail the
+ *			statement rather than spin.
+ * thread_p (in)      : Thread entry.
+ * insert_mvccid (in) : MVCCID of the in-progress inserter to wait out.
+ *
+ * Note: call with no page latch held.
+ */
+static int
+btree_wait_for_inserter_end (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
+{
+  int error_code;
+
+  if (lock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_CANNOT_GET_LOCK;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+      return error_code;
+    }
+  lock_unlock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK);
+
+  if (log_Gl.mvcc_table.is_active (insert_mvccid))
+    {
+      /* Invariant breach: no-op grant while the inserter is still active. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+      assert (false);
+      return ER_CANNOT_GET_LOCK;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * btree_key_wait_for_insert_mvccid () - Wait for the transaction inserting a conflicting object to
+ *					 end, then signal a restart from root.
+ *
+ * return	       : Error code (NO_ERROR on success, with *restart set to true).
+ * thread_p (in)       : Thread entry.
+ * insert_mvccid (in)  : MVCCID of the in-progress inserter to wait on.
+ * find_unique_helper (in/out) : Find-unique state; any object it has locked is released first.
+ * leaf_page (in/out)  : Leaf node page latch; unfixed before suspending and left NULL.
+ * overflow_page (in/out) : Optional overflow node page latch (..._of_non_unique () scans overflow pages);
+ *			    unfixed before suspending and left NULL. NULL when there is no overflow page.
+ * restart (out)       : Set to true so the caller re-reads the key from root.
+ *
+ * Note: shared by ..._of_unique () and ..._of_non_unique (); blocks on the inserter transaction
+ *	 (S_LOCK then release) since appended rows take no per-row X-lock, then restarts from root.
+ *	 All page latches must be released before blocking on the lock (never wait while holding a latch).
+ */
+static int
+btree_key_wait_for_insert_mvccid (THREAD_ENTRY * thread_p, MVCCID insert_mvccid,
+				  BTREE_FIND_UNIQUE_HELPER * find_unique_helper, PAGE_PTR * leaf_page,
+				  PAGE_PTR * overflow_page, bool * restart)
+{
+  int error_code = NO_ERROR;
+
+  /* Release any previously locked object before suspending. */
+  if (!OID_ISNULL (&find_unique_helper->locked_oid))
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_unique_helper->locked_oid,
+					       &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
+      OID_SET_NULL (&find_unique_helper->locked_oid);
+    }
+  /* Release page latches before blocking on the lock. */
+  if (overflow_page != NULL && *overflow_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, *overflow_page);
+    }
+  pgbuf_unfix_and_init (thread_p, *leaf_page);
+
+  error_code = btree_wait_for_inserter_end (thread_p, insert_mvccid);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* Inserter has ended; the page may have changed during the wait, so re-read the key from root. */
+  *restart = true;
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
 /*
  * btree_key_find_and_lock_unique_of_unique () - Find key and lock its first object (if not deleted or dirty).
  *
@@ -23788,11 +26441,22 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	case DELETE_RECORD_INSERT_IN_PROGRESS:
 	case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SA_MODE)
-	  /* Impossible. */
+	  /* Impossible: standalone mode has no other active transactions. */
 	  assert_release (false);
 	  error_code = ER_FAILED;
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
+	  if (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	    {
+	      /* Conflicting object still being inserted: wait for that transaction to end, then restart. */
+	      MVCCID insert_mvccid = BTREE_MVCC_INFO_INSID (&mvcc_info);
+	      if (btree_is_active_other_inserter (thread_p, insert_mvccid))
+		{
+		  return btree_key_wait_for_insert_mvccid (thread_p, insert_mvccid, find_unique_helper, leaf_page,
+							   NULL, restart);
+		}
+	      /* No active inserter (e.g. our own in-progress insert) -- fall through to the row-lock path. */
+	    }
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
@@ -24100,11 +26764,22 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	case DELETE_RECORD_INSERT_IN_PROGRESS:
 	case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SA_MODE)
-	  /* Impossible. */
+	  /* Impossible: standalone mode has no other active transactions. */
 	  assert_release (false);
 	  error_code = ER_FAILED;
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
+	  if (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	    {
+	      /* Conflicting object still being inserted: wait for that transaction to end, then restart. */
+	      MVCCID insert_mvccid = BTREE_MVCC_INFO_INSID (&mvcc_info);
+	      if (btree_is_active_other_inserter (thread_p, insert_mvccid))
+		{
+		  return btree_key_wait_for_insert_mvccid (thread_p, insert_mvccid, find_unique_helper, leaf_page,
+							   &overflow_page, restart);
+		}
+	      /* No active inserter (e.g. our own in-progress insert) -- fall through to the row-lock path. */
+	    }
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
@@ -26672,6 +29347,44 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * btree_fk_release_pages_and_locks () - Release the page latches and any locked object held by an
+ *                                       FK-existence scan before it suspends on a conflicting transaction.
+ *
+ * thread_p (in)       : Thread entry.
+ * bts (in/out)        : FK-existence scan; marked interrupted, with its current and overflow pages unfixed.
+ * fk_arg (in)         : FK-existence scan argument carrying the optional overflow page.
+ * find_fk_obj (in/out): FK-find state; any object it has locked is released.
+ * class_oid (in)      : Class OID of the locked object.
+ *
+ * Note: shared by the INSERT_IN_PROGRESS and DELETE_IN_PROGRESS paths of btree_fk_object_does_exist ();
+ *       both must drop all latches before blocking on the conflicting transaction. The two paths differ
+ *       only in how they then wait (transaction self-lock vs. object lock), which stays at the call site.
+ */
+static void
+btree_fk_release_pages_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_FK_EXIST_ARG * fk_arg,
+				  BTREE_FIND_FK_OBJECT * find_fk_obj, OID * class_oid)
+{
+  bts->is_interrupted = true;
+  /* TODO: it's not clear at this stage; to be safe, put cur_key in decompressed state. */
+  btree_check_decompress_key (bts);
+  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+  pgbuf_unfix_and_init (thread_p, bts->C_page);
+  if (fk_arg->ovfl_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, fk_arg->ovfl_page);
+    }
+  /* Make sure another object was not already fixed. */
+  if (!OID_ISNULL (&find_fk_obj->locked_object))
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_fk_obj->locked_object, class_oid,
+					       find_fk_obj->lock_mode);
+      OID_SET_NULL (&find_fk_obj->locked_object);
+    }
+}
+#endif /* SERVER_MODE */
+
 /*
  * btree_fk_object_does_exist () - Check whether current object exists (it must not be deleted and successfully locked).
  *
@@ -26719,10 +29432,33 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 
     case DELETE_RECORD_INSERT_IN_PROGRESS:
 #if defined (SERVER_MODE)
-      /* Recently inserted. This can be ignored, since it is not inserted yet. To successfully insert, the inserter
-       * should also obtain lock on primary key object (which is already held by current transaction). Current
-       * transaction can consider that this object doesn't exist yet. */
-      return NO_ERROR;
+      /* Referenced row still being inserted. */
+      {
+	MVCCID fk_insert_mvccid = BTREE_MVCC_INFO_INSID (mvcc_info);
+	int fk_wait_error;
+
+	if (!btree_is_active_other_inserter (thread_p, fk_insert_mvccid))
+	  {
+	    /* Inserter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the stale
+	     * INSERT_IN_PROGRESS as "not found" (mirrors the unique-scan recheck). */
+	    btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
+	    *stop = true;
+	    return NO_ERROR;
+	  }
+
+	/* Wait for that transaction to end before deciding whether the FK reference holds: release all page
+	 * latches and any locked object, then wait out the inserter. */
+	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
+	fk_wait_error = btree_wait_for_inserter_end (thread_p, fk_insert_mvccid);
+	if (fk_wait_error != NO_ERROR)
+	  {
+	    return fk_wait_error;
+	  }
+
+	/* Inserter ended; trigger re-check. */
+	*stop = true;
+	return NO_ERROR;
+      }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
       /* Impossible: no other active transactions. */
       assert_release (false);
@@ -26791,26 +29527,8 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   /* Object may exist but could not be locked conditionally. */
   /* Unconditional lock on object. */
   /* Must release fixed pages first. */
-  bts->is_interrupted = true;
+  btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
 
-  /* TODO: 
-   * It's not clear at this stage.
-   * To be safe, we put cur_key in decompressed state. */
-  btree_check_decompress_key (bts);
-  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
-  pgbuf_unfix_and_init (thread_p, bts->C_page);
-  if (fk_arg->ovfl_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, fk_arg->ovfl_page);
-    }
-
-  /* Make sure another object was not already fixed. */
-  if (!OID_ISNULL (&find_fk_obj->locked_object))
-    {
-      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_fk_obj->locked_object, class_oid,
-					       find_fk_obj->lock_mode);
-      OID_SET_NULL (&find_fk_obj->locked_object);
-    }
   lock_result = lock_object (thread_p, oid, class_oid, find_fk_obj->lock_mode, LK_UNCOND_LOCK);
   if (lock_result != LK_GRANTED)
     {
@@ -27627,7 +30345,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	btree_get_max_new_data_size (thread_p, btid_int, *crt_page, node_type, max_key_len, insert_helper, false);
 
       /* Split is needed if there is a risk that inserted data doesn't fit the root node. */
-      need_split = (max_new_data_size > spage_get_free_space_without_saving (thread_p, *crt_page, NULL));
+      need_split = (max_new_data_size > spage_get_free_space_without_saving (thread_p, *crt_page));
 
       /* If root node should suffer changes, its latch must be promoted to exclusive. */
       if (insert_helper->nonleaf_latch_mode == PGBUF_LATCH_READ
@@ -27900,7 +30618,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   max_new_data_size =
     btree_get_max_new_data_size (thread_p, btid_int, child_page, node_type, max_key_len, insert_helper, false);
 
-  need_split = max_new_data_size > spage_get_free_space_without_saving (thread_p, child_page, NULL);
+  need_split = max_new_data_size > spage_get_free_space_without_saving (thread_p, child_page);
 
   /* If split is needed, we first need to make sure current node is latched exclusively. A new entry must be added.
    * Promoting latch from read to write may be required if the node is not already latched exclusively. Node is not
@@ -28552,7 +31270,7 @@ btree_key_insert_does_leaf_need_split (THREAD_ENTRY * thread_p, BTID_INT * btid_
   if (search_key->result == BTREE_KEY_FOUND)
     {
       /* Does a new object fit the page? */
-      return (BTREE_OBJECT_MAX_SIZE > spage_get_free_space_without_saving (thread_p, leaf_page, NULL));
+      return (BTREE_OBJECT_MAX_SIZE > spage_get_free_space_without_saving (thread_p, leaf_page));
     }
   else
     {
@@ -29332,6 +32050,14 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   assert (insert_helper != NULL);
   assert (btree_is_insert_object_purpose (insert_helper->purpose));
   assert (append_object != NULL);
+
+  /* CBRD-24094: a non-unique index's overflow chain is always OID-ordered and appends through the OID directory.
+   * Only unique indexes keep the legacy format (first-fit linear scan below). */
+  if (!BTREE_IS_UNIQUE (btid_int->unique_pk) && !VPID_ISNULL (&leaf_record_info->ovfl))
+    {
+      return btree_ovf_dir_append_object (thread_p, btid_int, key, insert_helper, append_object,
+					  &leaf_record_info->ovfl);
+    }
 
   /* Is there enough space in existing overflow pages? */
   error_code = btree_find_free_overflow_oids_page (thread_p, btid_int, &leaf_record_info->ovfl, &overflow_page);
@@ -31594,7 +34320,15 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	}
       else
 	{
-	  /* Key/oid should be found. */
+	  /* Key/oid should be found. Dump the identifying facts unconditionally before the debug abort -- when this
+	   * replays during recovery the database is unrecoverable and must at least say why. Ordering: in release
+	   * builds assert_release only er_sets an ER_FAILED_ASSERTION notification and falls through, so
+	   * btree_set_unknown_key_error must stay AFTER it for er_errid () to end up as ER_BTREE_UNKNOWN_KEY. */
+	  _er_log_debug (ARG_FILE_LINE,
+			 "btree_key_delete_remove_object: object to remove was not found in its key -- "
+			 "this is unrecoverable if replayed during recovery. \n"
+			 BTREE_DELETE_HELPER_MSG ("\t") "\t" BTREE_ID_MSG "\n",
+			 BTREE_DELETE_HELPER_AS_ARGS (delete_helper), BTID_AS_ARGS (btid_int->sys_btid));
 	  assert_release (false);
 	  btree_set_unknown_key_error (thread_p, btid_int->sys_btid, key,
 				       "btree_key_delete_remove_object: key was not found.");
@@ -32395,9 +35129,25 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
     {
       /* Only one object. */
       /* Remove page completely. */
+      BTREE_OVF_DIR_HEADER *dir_hdr;
+      VPID dir_head_vpid;
 
       /* Safe guard: only first object can be deleted. */
       assert (offset_to_object == 0);
+
+      /* CBRD-24094: a non-unique chain must keep its OID directory in sync with the removed data page. */
+      VPID_SET_NULL (&dir_head_vpid);
+      if (!BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  dir_hdr = btree_ovf_dir_get_header (thread_p, *overflow_page);
+	  if (dir_hdr == NULL)
+	    {
+	      /* Non-unique chains are always directory-format. */
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+	  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
+	}
 
       /* Get VPID of next overflow page. */
       error_code = btree_get_next_overflow_vpid (thread_p, *overflow_page, &next_overflow_vpid);
@@ -32457,6 +35207,28 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
 	{
 	  /* Update link in an overflow page. */
 	  error_code = btree_modify_overflow_link (thread_p, btid_int, delete_helper, prev_page, &next_overflow_vpid);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error;
+	    }
+	}
+
+      /* CBRD-24094: maintain the OID directory of directory chains. The directory is torn down only when the
+       * chain's last data page goes away; a chain shrinking to a single data page keeps its one-entry directory
+       * on purpose (hysteresis: a key oscillating around the two-page boundary would otherwise rebuild and
+       * destroy the directory on every transition). */
+      if (!VPID_ISNULL (&dir_head_vpid))
+	{
+	  if (prev_page == leaf_page && VPID_ISNULL (&next_overflow_vpid))
+	    {
+	      /* The chain lost its last data page: tear the whole directory down. */
+	      error_code = btree_ovf_dir_destroy (thread_p, btid_int, &dir_head_vpid);
+	    }
+	  else
+	    {
+	      error_code = btree_ovf_dir_remove_entry (thread_p, btid_int, &dir_head_vpid, &overflow_vpid);
+	    }
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -34098,8 +36870,11 @@ btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
       return PERF_PAGE_BTREE_GENERIC;
     }
 
-  if (header_record.length == sizeof (BTREE_OVERFLOW_HEADER))
+  if (header_record.length == sizeof (BTREE_OVERFLOW_HEADER) || header_record.length == sizeof (BTREE_OVF_DIR_HEADER))
     {
+      /* CBRD-24094: directory (OID-ordered) overflow data/directory pages carry the 16-byte
+       * BTREE_OVF_DIR_HEADER; classify them as overflow pages too. Without this they fall through to the
+       * root-header branch and trip its size assertion. */
       return PERF_PAGE_BTREE_OVF;
     }
   else if (header_record.length == sizeof (BTREE_NODE_HEADER))
@@ -34449,7 +37224,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       bool key_already_in_page = false;
       int new_ent_size = btree_get_max_new_data_size (thread_p, btid_int, *leaf_page, BTREE_LEAF_NODE, key_len,
 						      &helper->insert_helper, key_already_in_page);
-      if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page, NULL))
+      if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page))
 	{
 	  /* no more space in page */
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RETRY);
@@ -35255,6 +38030,28 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  /* We have to restart to ensure the key is correctly handled. */
 	  search_key->result = BTREE_KEY_NOTFOUND;
 	  goto end;
+	}
+
+      /* We cannot insert a new key longer than this node's max_key_len in place. It would break the invariant that
+       * a parent's max_key_len is always greater than or equal to its child's: the delete traversal that brought us
+       * here, unlike the insert traversal, does not update max_key_len on the nodes in the path from root. Restart
+       * and insert the key with DELETE_FLAG through the normal insert traversal instead. */
+      if (search_key->result != BTREE_KEY_FOUND)
+	{
+	  BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, *leaf_page);
+
+	  if (node_header == NULL)
+	    {
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto end;
+	    }
+
+	  if (node_header->max_key_len < helper->insert_helper.key_len_in_page)
+	    {
+	      search_key->result = BTREE_KEY_NOTFOUND;
+	      goto end;
+	    }
 	}
 
       /* Set DELETE_FLAG in the helper structure. */
@@ -36347,6 +39144,14 @@ btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSE
       return true;
     }
 
+  /* An MVCC-class inserter holds an X_LOCK on its own MVCCID (the transaction self-lock) instead of a
+   * per-row X_LOCK on the appended object; that self-lock serializes the unique insert, so accept it here. */
+  MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
+  if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
+    {
+      return true;
+    }
+
   return false;
 }
 
@@ -36373,6 +39178,19 @@ btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, const BTREE_DELE
   has_instance_lock = lock_has_lock_on_object (BTREE_DELETE_OID (delete_helper),
 					       BTREE_DELETE_CLASS_OID (delete_helper), X_LOCK);
   if (has_instance_lock > 0)
+    {
+      return true;
+    }
+
+  /* An MVCC inserter holds an X self-lock on its MVCCID instead of a per-row X_LOCK; accept that here for a
+   * rollback that deletes the row. Key on the DELETED RECORD's insert MVCCID, not the transaction's current one:
+   * a sub-MVCCID-stamped row (selupd INCR/DECR) does not match the current main id, and reading the current id
+   * can assign a fresh MVCCID as a side effect. A sub-MVCCID row is only ever undo-deleted by the sub's own
+   * abort, while its id is still current and self-locked; any other case correctly returns false and the
+   * caller's assert catches it. */
+  MVCCID rec_insid = BTREE_MVCC_INFO_INSID (BTREE_DELETE_MVCC_INFO (delete_helper));
+  if (MVCCID_IS_NORMAL (rec_insid) && logtb_is_current_mvccid (thread_p, rec_insid)
+      && lock_has_lock_on_transaction_mvccid (thread_p, rec_insid, X_LOCK) > 0)
     {
       return true;
     }

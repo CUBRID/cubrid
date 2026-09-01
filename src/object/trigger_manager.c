@@ -1002,7 +1002,7 @@ trigger_to_object (TR_TRIGGER * trigger)
   int save, err;
   MOBJ obj;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   object_p = NULL;
   obt_p = NULL;
@@ -1161,7 +1161,7 @@ error:
       dbt_abort_object (obt_p);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return object_p;
 }
 
@@ -1181,7 +1181,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
   SM_CLASS *class_;
   const char *tmp;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* initialize the trigger to a known default state */
   trigger->owner = NULL;
@@ -1440,11 +1440,11 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
     }
   db_value_clear (&value);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 
 error:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   assert (er_errid () != NO_ERROR);
   return er_errid ();
@@ -1928,7 +1928,7 @@ register_user_trigger (DB_OBJECT * object)
   DB_VALUE value;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (Au_user != NULL && (error = obj_inst_lock (Au_user, 1)) == NO_ERROR
       && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
@@ -1972,7 +1972,7 @@ register_user_trigger (DB_OBJECT * object)
       /* if an error is set, probably must abort the transaction */
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   if (error == NO_ERROR)
     {
@@ -2013,7 +2013,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
       (void) remove_trigger_list (&tr_User_triggers, trigger);
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (Au_user != NULL && (error = obj_inst_lock (Au_user, 1)) == NO_ERROR
       && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
@@ -2040,7 +2040,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
       /* else, should have "trigger not found" error ? */
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   /* don't bother updating the cache now if its a rollback */
   if (error == NO_ERROR && !rollback)
@@ -2078,11 +2078,11 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       return NO_ERROR;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error = obj_get (Au_user, "triggers", &value);
   if (error != NO_ERROR)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -2149,7 +2149,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       *trigger_list = NULL;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -2179,7 +2179,7 @@ tr_update_user_cache (void)
     }
 
   int save;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (Au_user != NULL && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
@@ -2234,7 +2234,7 @@ tr_update_user_cache (void)
       tr_User_triggers = NULL;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -2870,7 +2870,7 @@ tr_delete_schema_cache (TR_SCHEMA_CACHE * cache, DB_OBJECT * class_object)
   TR_TRIGGER *trigger;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* make a value container for marking the trigger object as invalid */
   db_make_int (&value, (int) TR_STATUS_INVALID);
@@ -2915,7 +2915,7 @@ tr_delete_schema_cache (TR_SCHEMA_CACHE * cache, DB_OBJECT * class_object)
       tr_free_schema_cache (cache);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 }
 
@@ -2949,7 +2949,7 @@ tr_delete_triggers_for_class (TR_SCHEMA_CACHE ** cache, DB_OBJECT * class_object
       return NO_ERROR;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   while (didwork)
     {
@@ -2992,7 +2992,7 @@ tr_delete_triggers_for_class (TR_SCHEMA_CACHE ** cache, DB_OBJECT * class_object
   tr_free_schema_cache (*cache);
   *cache = NULL;
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -3023,23 +3023,23 @@ trigger_table_add (const char *name, DB_OBJECT * trigger)
   DB_VALUE value;
   int max, save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (Au_root == NULL)
     {
-      return NO_ERROR;
+      goto end;
     }
 
   error = obj_inst_lock (Au_root, 1);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   error = obj_get (Au_root, "triggers", &value);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   if (DB_IS_NULL (&value))
@@ -3127,7 +3127,7 @@ end:
       table = NULL;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -3252,7 +3252,7 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
     }
 
   /* change the name */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (Au_root == NULL)
     {
@@ -3319,7 +3319,7 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
   set_free (table);
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -3337,7 +3337,7 @@ trigger_table_drop (const char *name)
   DB_VALUE value;
   int max, i, found, save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (Au_root == NULL)
     {
@@ -3412,7 +3412,7 @@ trigger_table_drop (const char *name)
   set_free (table);
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -4103,16 +4103,12 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       goto error;
     }
 
-  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+  if (tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_TRIGGER) != NO_ERROR)
     {
-      /* protect against multiple flushes to server */
-      if (tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_TRIGGER) != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      has_savepoint = true;
+      goto error;
     }
+
+  has_savepoint = true;
 
   if (tr_set_trigger_timestamps (trigger) != NO_ERROR)
     {
@@ -4187,14 +4183,9 @@ error:
 
   if (trigger != NULL)
     {
-      if (object != NULL)
+      if (tr_object_map_added)
 	{
-	  if (tr_object_map_added)
-	    {
-	      (void) mht_rem (tr_object_map, trigger->object, NULL, NULL);
-	    }
-
-	  (void) trigger_table_drop (trigger->name);
+	  (void) mht_rem (tr_object_map, trigger->object, NULL, NULL);
 	}
       remove_trigger_list (&tr_Uncommitted_triggers, trigger);
       tr_drop_deferred_activities (trigger->object, NULL);
@@ -4234,11 +4225,11 @@ tr_find_all_triggers (DB_OBJLIST ** list)
   int error;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   error = find_all_triggers (false, false, list);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -4267,7 +4258,7 @@ tr_find_trigger (const char *name)
   int save;
 
   object = NULL;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
@@ -4323,7 +4314,7 @@ tr_find_trigger (const char *name)
     }
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return object;
 }
 
@@ -4344,7 +4335,7 @@ tr_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_mop, const cha
   int error = NO_ERROR;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* check for sensible parameters and ALTER authorization for class */
   if (!check_target (event, class_mop, attribute))
@@ -4356,7 +4347,7 @@ tr_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_mop, const cha
       error = find_event_triggers (event, class_mop, attribute, active, list);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -4382,7 +4373,7 @@ tr_check_authorization (DB_OBJECT * trigger_object, int alter_flag)
   TR_TRIGGER *trigger;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
 
@@ -4398,7 +4389,7 @@ tr_check_authorization (DB_OBJECT * trigger_object, int alter_flag)
 	}
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -4437,7 +4428,7 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 	}
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* remove it from the class or user cache */
   if (trigger->class_mop == NULL)
@@ -4473,18 +4464,21 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 	       * if this isn't a rollback, delete the object, otherwise
 	       * it will already be marked as deleted as part of the normal transaction cleanup
 	       */
-	      db_drop (trigger->object);
-
-	      /*
-	       * flush, decache object; no need to check if the object was indeed deleted;
-	       * it is supposed that the last version of the object was locked and deleted
-	       * because only the last version can be locked; previous versions are in the log
-	       */
-	      error = locator_flush_instance (trigger->object);
-	      if (error == NO_ERROR)
+	      error = db_drop (trigger->object);
+	      /* if the object has been deleted, just ignore the error */
+	      if (error == NO_ERROR || error == ER_HEAP_UNKNOWN_OBJECT)
 		{
-		  ws_decache (trigger->object);
-		  ws_clear_hints (trigger->object, false);
+		  /*
+		   * flush, decache object; no need to check if the object was indeed deleted;
+		   * it is supposed that the last version of the object was locked and deleted
+		   * because only the last version can be locked; previous versions are in the log
+		   */
+		  error = locator_flush_instance (trigger->object);
+		  if (error == NO_ERROR)
+		    {
+		      ws_decache (trigger->object);
+		      ws_clear_hints (trigger->object, false);
+		    }
 		}
 	    }
 
@@ -4493,7 +4487,7 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 	}
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   if (need_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
     {
@@ -4521,7 +4515,7 @@ tr_drop_trigger (DB_OBJECT * obj, bool call_from_api)
   int save;
 
   /* Do we need to disable authorization just for check_authorization ? */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /*
    * Turn off the "fetch" flag to tr_map_trigger so we don't attempt to validate the trigger by compiling
@@ -4559,13 +4553,11 @@ tr_drop_trigger (DB_OBJECT * obj, bool call_from_api)
 
       if (error == NO_ERROR)
 	{
-	  bool need_savepoint = (TM_TRAN_ISOLATION () >= TRAN_REP_READ);
-
-	  error = tr_drop_trigger_internal (trigger, 0, need_savepoint);
+	  error = tr_drop_trigger_internal (trigger, 0, true);
 	}
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   if (trigger_name)
     {
@@ -5358,7 +5350,7 @@ tr_prepare_statement (TR_STATE ** state_p, DB_TRIGGER_EVENT event, DB_OBJECT * c
    * Later when we actually evaluate the trigger condition/action, we will temporarily set the effective user
    * to the owner of the trigger.
    */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* locate the list of triggers for this event */
   triggers = NULL;
@@ -5461,7 +5453,7 @@ tr_prepare_statement (TR_STATE ** state_p, DB_TRIGGER_EVENT event, DB_OBJECT * c
 	}
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 
 error_return:
@@ -5470,7 +5462,7 @@ error_return:
       tr_free_trigger_list (triggers);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   ASSERT_ERROR_AND_SET (error);
   return error;
@@ -5498,7 +5490,7 @@ tr_prepare (TR_STATE ** state_p, TR_TRIGLIST * triggers)
    * of the current user.  This will only only be necessary if we
    * have to fetch the trigger's owning class for some reason here.
    */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* pass in the first trigger name for the recursion error message */
   name = (triggers != NULL) ? triggers->trigger->name : NULL;
@@ -5513,7 +5505,7 @@ tr_prepare (TR_STATE ** state_p, TR_TRIGLIST * triggers)
       merge_trigger_list (&state->triggers, triggers, 0);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -5552,7 +5544,7 @@ tr_prepare_class (TR_STATE ** state_p, TR_SCHEMA_CACHE * cache, MOP class_mop, D
    * Disable authorization here since trigger scheduling is independent * of the current user.
    * This will only only be necessary if we have to fetch the trigger's owning class for some reason here.
    */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (tr_validate_schema_cache (cache, class_mop) != NO_ERROR)
     {
@@ -5580,7 +5572,7 @@ tr_prepare_class (TR_STATE ** state_p, TR_SCHEMA_CACHE * cache, MOP class_mop, D
       assert (false);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6215,7 +6207,7 @@ tr_trigger_name (DB_OBJECT * trigger_object, char **name)
   int save;
 
   *name = NULL;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6227,7 +6219,7 @@ tr_trigger_name (DB_OBJECT * trigger_object, char **name)
       *name = ws_copy_string (trigger->name);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6250,7 +6242,7 @@ tr_trigger_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS * status)
   int save;
 
   *status = TR_STATUS_INACTIVE;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6262,7 +6254,7 @@ tr_trigger_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS * status)
       *status = trigger->status;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6285,7 +6277,7 @@ tr_trigger_priority (DB_OBJECT * trigger_object, double *priority)
   int save;
 
   *priority = TR_LOWEST_PRIORITY;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6297,7 +6289,7 @@ tr_trigger_priority (DB_OBJECT * trigger_object, double *priority)
       *priority = trigger->priority;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6320,7 +6312,7 @@ tr_trigger_event (DB_OBJECT * trigger_object, DB_TRIGGER_EVENT * event)
   int save;
 
   *event = TR_EVENT_NULL;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6332,7 +6324,7 @@ tr_trigger_event (DB_OBJECT * trigger_object, DB_TRIGGER_EVENT * event)
       *event = trigger->event;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6356,7 +6348,7 @@ tr_trigger_class (DB_OBJECT * trigger_object, DB_OBJECT ** class_mop_p)
   int save;
 
   *class_mop_p = NULL;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6368,7 +6360,7 @@ tr_trigger_class (DB_OBJECT * trigger_object, DB_OBJECT ** class_mop_p)
       *class_mop_p = trigger->class_mop;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6392,7 +6384,7 @@ tr_trigger_attribute (DB_OBJECT * trigger_object, char **attribute)
   int save;
 
   *attribute = NULL;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6404,7 +6396,7 @@ tr_trigger_attribute (DB_OBJECT * trigger_object, char **attribute)
       *attribute = ws_copy_string (trigger->attribute);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6428,7 +6420,7 @@ tr_trigger_condition (DB_OBJECT * trigger_object, char **condition)
   int save;
 
   *condition = NULL;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6440,7 +6432,7 @@ tr_trigger_condition (DB_OBJECT * trigger_object, char **condition)
       *condition = ws_copy_string (trigger->condition->source);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6464,7 +6456,7 @@ tr_trigger_condition_time (DB_OBJECT * trigger_object, DB_TRIGGER_TIME * tr_time
   int save;
 
   *tr_time = TR_TIME_NULL;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6476,7 +6468,7 @@ tr_trigger_condition_time (DB_OBJECT * trigger_object, DB_TRIGGER_TIME * tr_time
       *tr_time = trigger->condition->time;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6500,7 +6492,7 @@ tr_trigger_action (DB_OBJECT * trigger_object, char **action)
   char buf[TR_MAX_PRINT_STRING + 32];
 
   *action = NULL;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6539,7 +6531,7 @@ tr_trigger_action (DB_OBJECT * trigger_object, char **action)
 	}
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6562,7 +6554,7 @@ tr_trigger_action_time (DB_OBJECT * trigger_object, DB_TRIGGER_TIME * tr_time)
   int save;
 
   *tr_time = TR_TIME_NULL;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6574,7 +6566,7 @@ tr_trigger_action_time (DB_OBJECT * trigger_object, DB_TRIGGER_TIME * tr_time)
       *tr_time = trigger->action->time;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6596,7 +6588,7 @@ tr_trigger_action_type (DB_OBJECT * trigger_object, DB_TRIGGER_ACTION * type)
   int save;
 
   *type = TR_ACT_NULL;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6608,7 +6600,7 @@ tr_trigger_action_type (DB_OBJECT * trigger_object, DB_TRIGGER_ACTION * type)
       *type = trigger->action->type;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6631,7 +6623,7 @@ tr_trigger_comment (DB_OBJECT * trigger_object, char **comment)
   int save;
 
   *comment = NULL;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -6643,7 +6635,7 @@ tr_trigger_comment (DB_OBJECT * trigger_object, char **comment)
       *comment = ws_copy_string (trigger->comment);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -6886,7 +6878,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   char *new_name = NULL;
   char *old_name = NULL;
   bool has_savepoint = false;
-  bool is_abort = false;
   int save = 0;
   int error = NO_ERROR;
 
@@ -6903,7 +6894,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
       return error;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (!check_authorization (trigger, true))
     {
@@ -6925,18 +6916,14 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
       goto end;
     }
 
-  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
+  if (error != NO_ERROR)
     {
-      /* protect against multiple flushes to server */
-      error = tran_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto end;
-	}
-
-      has_savepoint = true;
+      ASSERT_ERROR ();
+      goto end;
     }
+
+  has_savepoint = true;
 
   error = trigger_table_rename (trigger_object, new_name);
   if (error != NO_ERROR)
@@ -6951,7 +6938,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-      is_abort = true;
       goto end;
     }
   pr_clear_value (&value);
@@ -6961,7 +6947,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-      is_abort = true;
       goto end;
     }
   pr_clear_value (&value);
@@ -6970,7 +6955,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-      is_abort = true;
       goto end;
     }
 
@@ -6980,7 +6964,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  is_abort = true;
 	  goto end;
 	}
     }
@@ -6993,26 +6976,12 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   trigger->name = new_name;
 
 end:
-  if (is_abort && error != NO_ERROR)
+  if (new_name != NULL && trigger->name != new_name)
     {
-      /* 
-       * Archive old comments:
-       * 1. hmm, couldn't set the new name, put the old one back,
-       *    we might need to abort the transaction here ?
-       * 2. if we can't do this, the transaction better abort
-       */
-      if (trigger_table_rename (trigger_object, old_name) != NO_ERROR)
-	{
-	  assert (false);
-	}
-
-      if (new_name)
-	{
-	  free_and_init (new_name);
-	}
+      free_and_init (new_name);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
     {
@@ -7042,7 +7011,7 @@ tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_f
   DB_VALUE value;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -7087,7 +7056,7 @@ tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_f
 	}
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -7109,7 +7078,7 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api
   DB_VALUE value;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
   if (trigger == NULL)
@@ -7153,7 +7122,7 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api
 	}
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -7178,7 +7147,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
   int save;
   char *oldcomment = NULL;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* fetch and check the trigger */
   trigger = tr_map_trigger (trigger_object, 1);
@@ -7222,7 +7191,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 	}
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -7549,9 +7518,9 @@ tr_update_trigger_timestamp (DB_OBJECT * obj)
   int save;
   int error = NO_ERROR;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error = db_update_obj_timestamp (obj);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
