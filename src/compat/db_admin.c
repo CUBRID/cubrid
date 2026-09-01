@@ -36,6 +36,9 @@
 #include "authenticate.h"
 #if !defined (SERVER_MODE)
 #include "client_support.h"
+#else
+#include "server_support.h"	/* css_ha_server_state */
+#include "boot_sr.h"		/* boot_db_name */
 #endif
 #include "porting.h"
 #include "system_parameter.h"
@@ -466,6 +469,15 @@ db_get_database_name (void)
     {
       name = ws_copy_string ((const char *) db_Database_name);
     }
+#if defined (SERVER_MODE)
+  else if (boot_db_name () != NULL)
+    {
+      /* wf122/B5: a folded-server session never runs db_restart, so the
+       * session context's database_name stays empty — fall back to the
+       * server's own booted database (csql ;database renders through here) */
+      name = ws_copy_string (boot_db_name ());
+    }
+#endif
 
   return ((char *) name);
 }
@@ -3126,7 +3138,9 @@ db_get_ha_server_state (char *buffer, int maxlen)
 
   CHECK_CONNECT_ERROR ();
 
-#if defined(CS_MODE)
+#if defined(CS_MODE) || defined(SERVER_MODE)
+  /* wf122/B5: the folded server renders csql ;database itself — report the
+   * server's own HA state instead of the legacy non-CS placeholder */
   ha_state = css_ha_server_state ();
 #else
   ha_state = HA_SERVER_STATE_NA;
