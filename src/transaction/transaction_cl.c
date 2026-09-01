@@ -1128,7 +1128,7 @@ tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type)
 	}
     }
 
-  if (tran_server_savepoint (savept_name, &savept_lsa) != NO_ERROR)
+  if (tran_server_savepoint (savept_name, savepoint_type == USER_SAVEPOINT, &savept_lsa) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();

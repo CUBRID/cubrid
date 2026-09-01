@@ -3713,7 +3713,7 @@ tran_server_end_topop (LOG_RESULT_TOPOP result, LOG_LSA * topop_lsa)
  * NOTE:
  */
 int
-tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa)
+tran_server_savepoint (const char *savept_name, bool is_user_savepoint, LOG_LSA * savept_lsa)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
@@ -3724,7 +3724,7 @@ tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa)
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (savept_name, &strlen);
+  request_size = length_const_string (savept_name, &strlen) + OR_INT_SIZE;
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -3733,6 +3733,7 @@ tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa)
     }
 
   ptr = pack_const_string_with_length (request, savept_name, strlen);
+  ptr = or_pack_int (ptr, is_user_savepoint ? 1 : 0);
   req_error = net_client_request (NET_SERVER_TM_SERVER_SAVEPOINT, request, request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
@@ -3749,7 +3750,7 @@ tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xtran_server_savepoint (thread_p, savept_name, savept_lsa);
+  success = xtran_server_savepoint (thread_p, savept_name, is_user_savepoint, savept_lsa);
 
   exit_server (*thread_p);
 

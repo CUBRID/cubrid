@@ -3536,14 +3536,18 @@ stran_server_savepoint (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 {
   int success;
   char *savept_name;
+  int is_user_savepoint;
   LOG_LSA topop_lsa;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
   ptr = or_unpack_string_nocopy (request, &savept_name);
+  ptr = or_unpack_int (ptr, &is_user_savepoint);
 
-  success = (xtran_server_savepoint (thread_p, savept_name, &topop_lsa) == NO_ERROR) ? NO_ERROR : ER_FAILED;
+  success =
+	  (xtran_server_savepoint (thread_p, savept_name, is_user_savepoint != 0, &topop_lsa) == NO_ERROR)
+	  ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

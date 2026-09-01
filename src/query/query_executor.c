@@ -11015,7 +11015,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	}
     }
 
-  transient_row_locks_release (thread_p, &transient_row_locks);
+  /* Early release rests on the update being decided only when we end.  A user savepoint breaks that: a
+   * partial rollback can undo it while a writer parked on our MVCCID holds the row. */
+  if (!logtb_has_active_savepoint (thread_p))
+    {
+      transient_row_locks_release (thread_p, &transient_row_locks);
+    }
   transient_row_locks_clear (thread_p, &transient_row_locks);
 
   qexec_close_scan (thread_p, specp);
@@ -11702,14 +11707,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
     }
 
-  /* Early release rests on the delete being decided only when we end.  A savepoint declared before now
-   * breaks that: a partial rollback can undo it while a writer parked on our MVCCID holds the row. */
+  /* Early release rests on the delete being decided only when we end.  A user savepoint breaks that: a
+   * partial rollback can undo it while a writer parked on our MVCCID holds the row. */
   if (!logtb_has_active_savepoint (thread_p))
     {
-      /* TODO: logtb_has_active_savepoint () does not tell a user savepoint from a DDL/trigger system
-       *       savepoint, so a transaction that ran DDL earlier keeps its locks to commit here -- correct
-       *       but it forgoes the release.  CBRD-27238 (UPDATE) adds a user-savepoint-only flag on tdes for
-       *       both paths to read instead. */
       transient_row_locks_release (thread_p, &transient_row_locks);
     }
   transient_row_locks_clear (thread_p, &transient_row_locks);

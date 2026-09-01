@@ -188,7 +188,7 @@ extern TRAN_STATE tran_server_2pc_prepare_global_tran (int gtrid);
 extern int tran_server_start_topop (LOG_LSA * topop_lsa);
 extern TRAN_STATE tran_server_end_topop (LOG_RESULT_TOPOP result, LOG_LSA * topop_lsa);
 #endif
-extern int tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa);
+extern int tran_server_savepoint (const char *savept_name, bool is_user_savepoint, LOG_LSA * savept_lsa);
 extern TRAN_STATE tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa);
 extern const char *tran_get_tranlist_state_name (TRAN_STATE state);
 #ifdef __cplusplus

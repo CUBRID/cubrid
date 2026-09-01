@@ -491,6 +491,9 @@ struct log_tdes
   LOG_LSA posp_nxlsa;		/* Next address of a postpone record to be executed. Most of the time is the first
 				 * address of a postpone log record */
   LOG_LSA savept_lsa;		/* Address of last savepoint */
+  bool has_user_savepoint;	/* a user SAVEPOINT is declared: a partial rollback can undo published work without
+				 * ending the transaction.  Unlike savept_lsa this ignores DDL/trigger system
+				 * savepoints.  Set once, cleared at transaction end. */
   LOG_LSA topop_lsa;		/* Address of last top operation */
   LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
   LOG_LSA commit_abort_lsa;	/* Address of the commit/abort operation. Used by checkpoint to decide whether to

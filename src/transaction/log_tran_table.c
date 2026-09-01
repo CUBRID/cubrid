@@ -1528,6 +1528,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->undo_nxlsa);
   LSA_SET_NULL (&tdes->posp_nxlsa);
   LSA_SET_NULL (&tdes->savept_lsa);
+  tdes->has_user_savepoint = false;
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
   LSA_SET_NULL (&tdes->commit_abort_lsa);
@@ -1656,6 +1657,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->undo_nxlsa);
   LSA_SET_NULL (&tdes->posp_nxlsa);
   LSA_SET_NULL (&tdes->savept_lsa);
+  tdes->has_user_savepoint = false;
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
   LSA_SET_NULL (&tdes->commit_abort_lsa);
@@ -4243,7 +4245,7 @@ logtb_has_active_savepoint (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-  return tdes != NULL && !LSA_ISNULL (&tdes->savept_lsa);
+  return tdes != NULL && tdes->has_user_savepoint;
 }
 
 /*
