@@ -263,6 +263,40 @@ TEST_CASE ("A failed store still takes the value over", "[json_builder]")
   REQUIRE (trace_json_owned_count () == 0);
 }
 
+TEST_CASE ("A node a container already took is refused", "[json_builder]")
+{
+  /* The partition array of a multi-spec SCAN reached here: one spec fills it,
+   * the next one finds the handle still standing and stores it again. A
+   * container takes a node over by moving it, so the second store would pull
+   * the array out from under the spec it belongs to and leave a null there. */
+  trace_json_t *root = trace_json_object ();
+  trace_json_t *first = trace_json_object ();
+  trace_json_t *second = trace_json_object ();
+  REQUIRE (trace_json_object_set_new (root, "t1", first) == 0);
+  REQUIRE (trace_json_object_set_new (root, "t2", second) == 0);
+
+  trace_json_t *parts = trace_json_array ();
+  REQUIRE (trace_json_array_append_new (parts, trace_json_string ("p0")) == 0);
+  REQUIRE (trace_json_object_set_new (first, "PARTITION", parts) == 0);
+
+  REQUIRE (trace_json_object_set_new (second, "PARTITION", parts) == -1);
+  REQUIRE (trace_json_array_append_new (parts, trace_json_string ("p1")) == 0);
+
+  /* the array is still where it was stored, and still open to its owner */
+  REQUIRE (dump_and_release (root)
+	   == "{\n  \"t1\": {\n    \"PARTITION\": [\n      \"p0\",\n      \"p1\"\n    ]\n  },\n  \"t2\": {}\n}");
+  REQUIRE (trace_json_owned_count () == 0);
+
+  /* the same node under the same key twice: the store would be RapidJSON
+   * assigning a value to itself */
+  trace_json_t *object = trace_json_object ();
+  trace_json_t *value = trace_json_integer (42);
+  REQUIRE (trace_json_object_set_new (object, "rows", value) == 0);
+  REQUIRE (trace_json_object_set_new (object, "rows", value) == -1);
+  REQUIRE (dump_and_release (object) == "{\n  \"rows\": 42\n}");
+  REQUIRE (trace_json_owned_count () == 0);
+}
+
 TEST_CASE ("Repeating a key replaces its value", "[json_builder]")
 {
   trace_json_t *root = trace_json_object ();

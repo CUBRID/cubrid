@@ -47,9 +47,13 @@
  * The consequence is that one node that is neither stored nor released keeps the
  * arena open for as long as the thread lives, and every later tree built on that
  * thread piles up in it. The interface is built so that cannot happen by
- * accident: every entry point that can fail releases what it was given, and
- * arena_get () refuses to grow the arena past a bound rather than let it run
- * away unnoticed.
+ * accident: an entry point that fails with a node it was given to store
+ * releases it, and node_new () refuses to grow the arena past a bound rather
+ * than let it run away unnoticed.
+ *
+ * The exception is a node the caller never owned in the first place - the
+ * container itself, or one another container has already taken. Those are
+ * refused and left where they are, since there is nothing to release.
  */
 
 namespace
@@ -477,6 +481,15 @@ trace_json_object_set_new (trace_json_t *object, const char *key, trace_json_t *
       return -1;
     }
 
+  if (v->owner != NULL)
+    {
+      /* A container has already taken this node. Taking it over again moves the
+       * data - RapidJSON stores a member by moving it - so the first container
+       * would be left holding a null. Nothing to release either: the node
+       * stopped being the caller's when that container took it. */
+      return -1;
+    }
+
   node_impl *o = as_node (object);
 
   if (o->arena != v->arena)
@@ -588,6 +601,12 @@ trace_json_array_append_new (trace_json_t *array, trace_json_t *value)
       /* the container and the value are the same node, so there is nothing to
        * take over; releasing it here would pull the ground out from under the
        * handle the caller still holds */
+      return -1;
+    }
+
+  if (v->owner != NULL)
+    {
+      /* already taken over by a container; see trace_json_object_set_new () */
       return -1;
     }
 

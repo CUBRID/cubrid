@@ -2891,6 +2891,10 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
   for (spec = spec_list_p; spec != NULL; spec = spec->next)
     {
       scan = trace_json_object ();
+      /* left standing, the next spec stores the same array again - and a
+       * container takes a node over by moving it, so that pulls it out from
+       * under the spec it belongs to */
+      part_scan_array = NULL;
       type = spec->type;
 
       if (type == TARGET_CLASS)

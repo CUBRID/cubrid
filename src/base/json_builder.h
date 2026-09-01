@@ -43,7 +43,10 @@
  *
  *       A node stays usable after it has been stored, which is what the plan
  *       dump relies on: it puts an empty object in its parent and then keeps
- *       adding members through the handle it already has.
+ *       adding members through the handle it already has. What it cannot do is
+ *       store that node a second time: a container takes a node over by moving
+ *       its data, so the first one would be left holding a null. The setters
+ *       refuse it.
  */
 
 #ifndef _JSON_BUILDER_H_
@@ -76,8 +79,10 @@ extern "C"
   /* NULL for a NULL pointer or for bytes that are not valid UTF-8 */
   extern trace_json_t *trace_json_string (const char *value);
 
-  /* Both take the value over, on success and on failure alike. A key that is
-   * already present has its value replaced. */
+  /* Both take the value over, on success and on failure alike, as long as it is
+   * a node the caller still owns; a node a container has already taken, or the
+   * container itself, is refused and left alone. A key that is already present
+   * has its value replaced. */
   extern int trace_json_object_set_new (trace_json_t * object, const char *key, trace_json_t * value);
   extern int trace_json_array_append_new (trace_json_t * array, trace_json_t * value);
 
