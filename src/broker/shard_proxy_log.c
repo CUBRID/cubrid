@@ -314,7 +314,8 @@ proxy_access_log (struct timeval *start_time, int client_ip_addr, const char *db
   char *script = NULL;
   char *clt_ip;
   char *clt_appl = NULL;
-  struct tm ct1, ct2;
+  struct tm ct1 = { };
+  struct tm ct2 = { };
   time_t t1, t2;
   char *p;
   char err_str[4];
