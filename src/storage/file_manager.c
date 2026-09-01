@@ -6928,17 +6928,16 @@ end:
 }
 
 /*
- * file_check_vpid_internal () - check vpid is one of the file's user pages
+ * file_is_vpid_in_file () - check whether vpid is one of the file's user pages
  *
  * return           : DISK_INVALID if page does not belong to file, DISK_ERROR for errors and DISK_VALID for successful
  *                    check
  * thread_p (in)    : thread entry
  * vfid (in)        : file identifier
  * vpid_lookup (in) : checked VPID
- * assert_on_invalid (in): assert when the page does not belong to the file
  */
-static DISK_ISVALID
-file_check_vpid_internal (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup, bool assert_on_invalid)
+DISK_ISVALID
+file_is_vpid_in_file (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead;
@@ -6987,10 +6986,6 @@ file_check_vpid_internal (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
       else
 	{
 	  /* not ok */
-	  if (assert_on_invalid)
-	    {
-	      assert_release (false);
-	    }
 	  isvalid = DISK_INVALID;
 	  goto exit;
 	}
@@ -7013,10 +7008,6 @@ file_check_vpid_internal (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
       if (!found)
 	{
 	  /* not ok */
-	  if (assert_on_invalid)
-	    {
-	      assert_release (false);
-	    }
 	  isvalid = DISK_INVALID;
 	  goto exit;
 	}
@@ -7042,10 +7033,6 @@ file_check_vpid_internal (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
       if (!found)
 	{
 	  /* not ok */
-	  if (assert_on_invalid)
-	    {
-	      assert_release (false);
-	    }
 	  isvalid = DISK_INVALID;
 	  goto exit;
 	}
@@ -7054,7 +7041,6 @@ file_check_vpid_internal (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
       if (FILE_USER_PAGE_IS_MARKED_DELETED (vpid_in_table))
 	{
 	  /* not ok */
-	  assert_release (false);
 	  isvalid = DISK_INVALID;
 	  goto exit;
 	}
@@ -7082,16 +7068,15 @@ exit:
 DISK_ISVALID
 file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
 {
-  return file_check_vpid_internal (thread_p, vfid, vpid_lookup, true);
-}
+  DISK_ISVALID isvalid = file_is_vpid_in_file (thread_p, vfid, vpid_lookup);
 
-/*
- * file_is_vpid_in_file () - check vpid membership without asserting on an expected miss
- */
-DISK_ISVALID
-file_is_vpid_in_file (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
-{
-  return file_check_vpid_internal (thread_p, vfid, vpid_lookup, false);
+  if (isvalid == DISK_INVALID)
+    {
+      /* Preserve the legacy consistency-check contract: debug builds abort, while release builds log
+       * ER_FAILED_ASSERTION as a notification. */
+      assert_release (false);
+    }
+  return isvalid;
 }
 
 /*
