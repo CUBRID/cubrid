@@ -16,27 +16,17 @@
  *
  */
 
-// Growth-gate incremental sweep (CBRD-26786): a delete burst must not make the OOS file grow on
-// re-insert — when the file is about to allocate a new page while deletes are pending, the sweep
-// walks the sector bitmap from its cursor, reclaims the first safely-empty page, and the
-// allocation reuses it. These tests observe only external behavior: the file's user page count
-// (oos_get_stats_by_vfid) and value integrity (oos_read).
-//
-// Every scenario first simulates the HINT-LOSS regime (bestspace hash cache and header best[]
-// hints cleared): with hints alive, an emptied page is simply reused through bestspace and no
-// growth happens at all. The leak this feature closes appears exactly when hints are gone —
-// the cache is capped at 1000 entries and best[] at 10, so a large delete burst (e.g. 14,000
-// rows) loses track of almost every emptied page.
+// Growth-gate incremental sweep (CBRD-26786): when the OOS file is about to allocate a new page
+// while deletes are pending, it reclaims one empty page instead. Every test first calls
+// simulate_hint_loss: with bestspace hints alive an emptied page is reused directly and the
+// growth path is never entered.
 
 #include "gtest/gtest.h"
-#include <cstdio>
-#include <cstring>
 #include <string>
 #include <vector>
 
 #include "file_manager.h"
 #include "page_buffer.h"
-#include "slotted_page.h"
 #include "storage_common.h"
 #include "xserver_interface.h"
 #include "oos_file.hpp"
@@ -62,10 +52,8 @@ namespace
     return info.num_user_pages;
   }
 
-  // Simulate the hint-loss regime: evict the file's hash-cache entries and clear every header
-  // hint (best[], the second-best ring, and num_other_high_best so the tier-3 sync scan does not
-  // fire either). After this, an insert that fits no live hinted page must take the growth
-  // fallback — the seam under test.
+  // num_other_high_best must also be zeroed, or the tier-3 sync scan refills the hints and the
+  // insert never reaches the growth path.
   void simulate_hint_loss (const VFID &oos_vfid)
   {
     (void) bridge_oos_stats_del_bestspace_by_vfid (thread_p, &oos_vfid);
@@ -121,22 +109,6 @@ namespace
     recdes_free_data_area (&rec_out);
   }
 
-  void assert_page_allocated (const VPID &vpid, bool expect_allocated)
-  {
-    PAGE_PTR page_ptr = NULL;
-    ASSERT_EQ (pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
-	       &page_ptr), NO_ERROR);
-    if (expect_allocated)
-      {
-	ASSERT_NE (page_ptr, nullptr);
-	pgbuf_unfix (thread_p, page_ptr);
-      }
-    else
-      {
-	ASSERT_EQ (page_ptr, nullptr);
-      }
-  }
-
   // Leave no committed orphan file behind: a later binary's file-tracker dump would try to
   // resolve this file's synthetic owner class OID against a non-heap page and assert.
   void remove_file_and_commit (const VFID &oos_vfid)
@@ -147,13 +119,6 @@ namespace
 
 } // namespace
 
-// ===========================================================================
-// TEST: SweepReclaimsAfterCommittedDeleteBurst (test plan case 1)
-//
-// Delete burst + commit + hint loss, then re-insert: the growth gate reclaims
-// an emptied page and reuses it in place, so the file's page count does not
-// move and the new value reads back intact.
-// ===========================================================================
 TEST (OosGrowthSweepTest, SweepReclaimsAfterCommittedDeleteBurst)
 {
   VFID oos_vfid;
@@ -181,14 +146,6 @@ TEST (OosGrowthSweepTest, SweepReclaimsAfterCommittedDeleteBurst)
   remove_file_and_commit (oos_vfid);
 }
 
-// ===========================================================================
-// TEST: SweepLeavesAbortRestoredChunksAlone (test plan case 2)
-//
-// An aborted delete restores its chunks; the counter's false positive only
-// costs one wasted lap: the next growth sweeps, finds the restored page
-// non-empty, settles the counter, and grows normally. The restored value
-// stays intact.
-// ===========================================================================
 TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
 {
   VFID oos_vfid;
@@ -209,8 +166,7 @@ TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
 
   simulate_hint_loss (oos_vfid);
 
-  // The wasted lap finds only the restored (non-empty) page, reclaims nothing, and growth
-  // proceeds: page count rises by one and the restored value is untouched.
+  // The wasted lap reclaims nothing, so growth proceeds and the count rises by one.
   OID oid2 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid2), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 3);
@@ -220,8 +176,7 @@ TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
   remove_file_and_commit (oos_vfid);
 }
 
-// An INSERT rollback can empty an allocated page. Repeated rollbacks must keep reusing that page
-// after bestspace hints are lost instead of growing the file once per transaction.
+// An INSERT rollback also empties an allocated page; repeated rollbacks must keep reusing it.
 TEST (OosGrowthSweepTest, InsertRollbackRearmsGrowthSweep)
 {
   VFID oos_vfid;
@@ -259,14 +214,6 @@ TEST (OosGrowthSweepTest, InsertRollbackRearmsGrowthSweep)
   remove_file_and_commit (oos_vfid);
 }
 
-// ===========================================================================
-// TEST: SweepIsIncrementalWithCursorContinuation (test plan case 4)
-//
-// Three emptied pages, three growth events: each sweep stops at its FIRST
-// reclaimed page (the net page count never moves — a full sweep would drop it
-// by two on the first insert) and the next sweep continues from the cursor.
-// The fourth growth completes a clean lap and the file finally grows.
-// ===========================================================================
 TEST (OosGrowthSweepTest, SweepIsIncrementalWithCursorContinuation)
 {
   VFID oos_vfid;
@@ -288,8 +235,7 @@ TEST (OosGrowthSweepTest, SweepIsIncrementalWithCursorContinuation)
 
   simulate_hint_loss (oos_vfid);
 
-  // Each growth event reclaims exactly one page and reuses it: net page count is stable.
-  // (An eager full sweep would deallocate all three at once — the count would drop to 2.)
+  // An eager full sweep would deallocate all three at once and the count would drop to 2.
   for (int i = 0; i < 3; i++)
     {
       OID oid = OID_INITIALIZER;
@@ -298,7 +244,6 @@ TEST (OosGrowthSweepTest, SweepIsIncrementalWithCursorContinuation)
 	  << "insert " << i << " changed the page count — sweep was not incremental";
     }
 
-  // No empty page is left: the next growth's lap comes up dry and the file grows.
   OID oid_growth = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid_growth), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), pages_full + 1);
@@ -306,13 +251,6 @@ TEST (OosGrowthSweepTest, SweepIsIncrementalWithCursorContinuation)
   remove_file_and_commit (oos_vfid);
 }
 
-// ===========================================================================
-// TEST: SweepCounterResetsOnCleanLapAndRearms (test plan case 5)
-//
-// A lap that reclaims nothing resets the counter: later growth proceeds
-// without touching any page. New deletes re-arm the gate — the reset must not
-// wedge the mechanism.
-// ===========================================================================
 TEST (OosGrowthSweepTest, SweepCounterResetsOnCleanLapAndRearms)
 {
   VFID oos_vfid;
@@ -334,7 +272,6 @@ TEST (OosGrowthSweepTest, SweepCounterResetsOnCleanLapAndRearms)
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid3), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 3);
 
-  // Re-arm: a fresh committed delete makes the next growth reclaim again instead of growing.
   ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid2), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   simulate_hint_loss (oos_vfid);
@@ -349,13 +286,6 @@ TEST (OosGrowthSweepTest, SweepCounterResetsOnCleanLapAndRearms)
   remove_file_and_commit (oos_vfid);
 }
 
-// ===========================================================================
-// TEST: SweepDefersUncommittedDeletesButAllowsGrowth (test plan case 6)
-//
-// Pages emptied by a still-uncommitted delete are LSA-gated: the sweep defers
-// them and the file GROWS (an insert never waits for the writer to finish).
-// After the commit, the next growth reclaims a deferred page.
-// ===========================================================================
 TEST (OosGrowthSweepTest, SweepDefersUncommittedDeletesButAllowsGrowth)
 {
   VFID oos_vfid;
@@ -372,7 +302,6 @@ TEST (OosGrowthSweepTest, SweepDefersUncommittedDeletesButAllowsGrowth)
   ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid2), NO_ERROR);
   simulate_hint_loss (oos_vfid);
 
-  // Deferred-only lap: nothing is reclaimed, growth is allowed — the count rises.
   OID oid3 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid3), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 4)
@@ -392,14 +321,6 @@ TEST (OosGrowthSweepTest, SweepDefersUncommittedDeletesButAllowsGrowth)
   remove_file_and_commit (oos_vfid);
 }
 
-// ===========================================================================
-// TEST: BootRuleSweepsUnconditionallyAfterRestart (test plan case 7)
-//
-// A restart loses the counter and cursor. The boot rule makes the first
-// growth of an unknown file sweep regardless, and keeps sweeping across
-// growths until a lap completes — so every empty page of the previous boot is
-// recovered, not just the first.
-// ===========================================================================
 TEST (OosGrowthSweepTest, BootRuleSweepsUnconditionallyAfterRestart)
 {
   VFID oos_vfid;
@@ -421,7 +342,6 @@ TEST (OosGrowthSweepTest, BootRuleSweepsUnconditionallyAfterRestart)
   oos_test_reclaim_reset_side_map ();
   simulate_hint_loss (oos_vfid);
 
-  // Both previous-boot pages are recovered across the next growths, then the file grows.
   OID oid_a = OID_INITIALIZER, oid_b = OID_INITIALIZER, oid_c = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid_a), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 3)
@@ -435,13 +355,6 @@ TEST (OosGrowthSweepTest, BootRuleSweepsUnconditionallyAfterRestart)
   remove_file_and_commit (oos_vfid);
 }
 
-// ===========================================================================
-// TEST: SweepSkipsRefilledPageAndNeverReclaimsHeader (test plan case 8)
-//
-// A page emptied and then refilled (through live bestspace hints) is skipped
-// by the sweep with its record intact; and with every data page empty, the
-// sticky first page (OOS_HDR_STATS) is never a reclaim candidate.
-// ===========================================================================
 TEST (OosGrowthSweepTest, SweepSkipsRefilledPageAndNeverReclaimsHeader)
 {
   VFID oos_vfid;
@@ -479,7 +392,11 @@ TEST (OosGrowthSweepTest, SweepSkipsRefilledPageAndNeverReclaimsHeader)
   OID oid4 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid4), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 3);
-  assert_page_allocated (hdr_vpid, true);
+  PAGE_PTR hdr_check = NULL;
+  ASSERT_EQ (pgbuf_fix_if_not_deallocated (thread_p, &hdr_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
+	     &hdr_check), NO_ERROR);
+  ASSERT_NE (hdr_check, nullptr);
+  pgbuf_unfix (thread_p, hdr_check);
   assert_value_intact (oid4);
 
   remove_file_and_commit (oos_vfid);

@@ -386,15 +386,10 @@ TEST (OosBestspaceTest, BestspaceInsertDeleteCycle)
 // ===========================================================================
 // TEST: BestspaceStaleHintToNonOosPageIsRejected
 //
-// Regression for a corruption path reproduced in release builds: a bestspace
-// hint may point at a page that reclaim deallocated and another file already REALLOCATED for a
-// different purpose. Such a page fixes successfully again (the ER_PB_BAD_PAGEID net only covers
-// the still-deallocated window), so the lookup must re-validate ptype == PAGE_OOS before
-// trusting the page — otherwise the inserter writes into the other file's page.
-//
+// A stale bestspace hint may point at a page that reclaim deallocated and another file has since
+// REALLOCATED; such a page fixes successfully, so the lookup must re-validate ptype == PAGE_OOS.
 // The file's own file-table header page (PAGE_FTAB, vpid = {vfid.fileid, vfid.volid}) stands in
-// for "reallocated for another purpose": plant a hint to it and verify the lookup evicts the
-// hint and hands out a real OOS page instead.
+// for "reallocated for another purpose".
 // ===========================================================================
 TEST (OosBestspaceTest, BestspaceStaleHintToNonOosPageIsRejected)
 {
@@ -408,7 +403,6 @@ TEST (OosBestspaceTest, BestspaceStaleHintToNonOosPageIsRejected)
   fhead_vpid.volid = oos_vfid.volid;
   fhead_vpid.pageid = oos_vfid.fileid;
 
-  // Plant the poisoned hint with plenty of advertised free space.
   ASSERT_NE (bridge_oos_stats_add_bestspace (thread_p, &oos_vfid, &fhead_vpid, DB_PAGESIZE / 2), nullptr);
 
   VPID found_vpid{NULL_PAGEID, NULL_VOLID};

@@ -101,21 +101,13 @@ extern int oos_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
 #endif /* CUBRID_UNIT_TEST_ENABLED */
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
-/* Batch empty-page reclaim for an explicit candidate list (vacuum's fast path): deallocates the
- * fully emptied candidates back to the file manager's partial sector table. Per-file checks
- * (sticky first page lookup, legacy-numerable batch skip), candidate dedupe (sorted and
- * uniqued in place), and the LSA gate horizon sample run once per batch; non-empty candidates
- * are rejected without touching the OOS stats header latch. Idempotent and zero-wait per page:
- * busy / already-deallocated / re-filled / sticky-first-page candidates are skipped, and an
- * empty page whose last writer may still be active is deferred by the LSA gate — a later call
- * reclaims it once the writer finishes (the full safety argument lives on the reclaim
- * primitive in oos_file.cpp). Stops at the first error — notably ER_INTERRUPTED — and
- * propagates it; skipped,
- * deferred, or unprocessed candidates simply stay allocated, recorded on disk (sector bitmap +
- * page emptiness) for a future reclaim pass (ultimately the growth-gate sweep that runs before
- * the file grows). Call only AFTER the deletes that emptied
- * the pages are committed (a live undo could otherwise restore chunks onto a deallocated
- * page). */
+/* Batch empty-page reclaim for an explicit candidate list (vacuum's fast path). Candidates are
+ * sorted and deduped in place. Idempotent and zero-wait per page: busy, already-deallocated,
+ * re-filled and sticky-first-page candidates are skipped, and a page whose last writer may still
+ * be active is deferred until a later call. Stops at the first error (notably ER_INTERRUPTED)
+ * and propagates it; unprocessed candidates stay allocated for a future pass.
+ * Call only AFTER the deletes that emptied the pages are committed — a live undo could otherwise
+ * restore chunks onto a deallocated page. */
 extern int oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vector<VPID> &candidates);
 /* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. */
 extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid);
@@ -180,9 +172,8 @@ struct oos_debug_counters
 extern void oos_test_fail_insert_many_after_publications (int publication_count);
 extern void oos_test_throw_bad_alloc_on_next_oid_publication ();
 extern void oos_test_disarm_insert_publication_failures ();
-/* Simulates a process restart for the growth-gate reclaim bookkeeping: drops every file's
- * pending-delete counter, sweep cursor, and swept-this-boot flag, so each file's next growth
- * falls under the boot rule (one unconditional sweep lap). */
+/* Simulates a process restart for the reclaim bookkeeping: the next growth of each file falls
+ * under the boot rule. */
 extern void oos_test_reclaim_reset_side_map ();
 #endif
 

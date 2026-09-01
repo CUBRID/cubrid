@@ -197,15 +197,8 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
     {
       log_sysop_commit (thread_p);
 
-      /* Deletes are committed; pages this batch emptied can now be returned to the file manager.
-       * Must run after the commit — an aborted sysop would restore the chunks, and undo cannot
-       * re-insert into a deallocated page. Only an interrupt comes back as an error; it has
-       * already stopped the reclaim loop. Handle it here rather than through this function's
-       * error return: the caller's diagnostics describe rolled-back deletes, while these deletes
-       * ARE committed — the emptied pages merely stay allocated until the growth-gate sweep
-       * returns them (one per allocation) instead of letting the OOS file grow, and the caller's
-       * block-completion contract forbids failing the block anyway. The worker notices the
-       * interrupt again at its own next check. */
+      /* Must run after the commit: an aborted sysop would restore the chunks, and undo cannot
+       * re-insert into a deallocated page. */
       int reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, oos_vfid, &touched_pages);
       if (reclaim_err != NO_ERROR)
 	{
@@ -225,12 +218,9 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
 }
 
 /*
- * vacuum_oos_reclaim_empty_pages () - Hand the pages touched by a committed OOS delete batch to
- *   oos_reclaim_empty_pages, which deallocates the fully emptied ones back to the file manager's
- *   partial sector table (per-file checks and dedupe live there). Vacuum error policy: an
- *   interrupt stops the reclaim loop immediately and is propagated so the caller can wind down;
- *   any other failure is logged as a warning and absorbed — the affected pages simply stay
- *   allocated and become candidates for a later cycle. Clears *touched_pages.
+ * vacuum_oos_reclaim_empty_pages () - Reclaim the empty pages of a committed OOS delete batch.
+ *   Only ER_INTERRUPTED is propagated; other failures are absorbed (the pages stay allocated,
+ *   candidates for a later cycle).
  *
  * return                 : NO_ERROR or ER_INTERRUPTED.
  * thread_p (in)          : Thread entry.
@@ -450,18 +440,19 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
  *   opens and commits its own. Same rule ("OOS deletes happen in exactly one sysop"), different
  *   nesting level - so one must start a sysop and the other must not.
  *
- * return		   : Error code.
- * thread_p (in)	   : Thread entry.
- * oos_vfid (in)	   : OOS file of the record's heap (must be valid).
- * record (in)		   : Heap record whose OOS references are deleted.
- * touched_pages_out (out) : Optional; pages that lost chunks are appended so the caller can hand
- *			     them to vacuum_oos_reclaim_empty_pages AFTER its sysop commits.
+ * return	  : Error code.
+ * thread_p (in)  : Thread entry.
+ * oos_vfid (in)  : OOS file of the record's heap (must be valid).
+ * record (in)	  : Heap record whose OOS references are deleted.
+ * touched_pages_out (out) : Optional; pages that lost chunks are appended, for reclaim AFTER the
+ *			     caller's sysop commits. On error, this call's appends are removed.
  */
 int
 vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
 				     VACUUM_OOS_TOUCHED_PAGES *touched_pages_out)
 {
   assert (!VFID_ISNULL (oos_vfid));
+  size_t n_touched_on_entry = touched_pages_out != NULL ? touched_pages_out->size () : 0;
   std::vector<OID> oos_oids;
   int error_code = heap_recdes_get_oos_oids (record, oos_oids);
   if (error_code != NO_ERROR)
@@ -480,6 +471,11 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
 	{
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			       "Failed to delete OOS record %d|%d|%d.", oos_oid.volid, oos_oid.pageid, oos_oid.slotid);
+	  /* The caller's abort restores these deletes — keep its batch list committed-only. */
+	  if (touched_pages_out != NULL)
+	    {
+	      touched_pages_out->resize (n_touched_on_entry);
+	    }
 	  return error_code;
 	}
     }

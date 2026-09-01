@@ -540,16 +540,13 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	}
     }
 
-  /* Reclaim the churn's residue through the real batch path. Commit first: the LSA gate defers
-   * pages whose deleter is still a live undo source (this transaction). */
+  /* Commit first: the LSA gate defers pages whose deleter is still a live undo source. */
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_FALSE (touched_pages.empty ());
   err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &touched_pages);
   ASSERT_EQ (err, NO_ERROR);
 
-  /* After 25 update+vacuum cycles plus the batch reclaim, the file must be back at (or below)
-   * its initial footprint — an assertion that actually detects whether reclaim ran, unlike a
-   * loose "+ 2" bound. */
+  /* After the churn plus the batch reclaim, the file must be back at its initial footprint. */
   int pages_after_churn = -1;
   err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_churn);
   ASSERT_EQ (err, NO_ERROR);
@@ -626,10 +623,7 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
 	}
     }
 
-  /* Reclaim through the real batch path — every data page was emptied, so the page count must
-   * DROP to the sticky first page alone (the effectiveness this feature exists for; a bound that
-   * merely tolerates growth cannot detect a reclaim that silently never ran). Commit first: the
-   * LSA gate defers pages whose deleter is still a live undo source. */
+  /* Commit first: the LSA gate defers pages whose deleter is still a live undo source. */
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_FALSE (touched_pages.empty ());
   err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &touched_pages);

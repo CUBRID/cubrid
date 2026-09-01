@@ -148,10 +148,7 @@ TEST (OosFileDestroyTest, OosFileDestroyCacheCleared)
 // ===========================================================================
 // TEST: OosPageReclaimBasic
 //
-// Create file, insert to allocate a page, then exercise oos_reclaim_empty_pages:
-// a non-empty candidate is skipped (record survives), an emptied page is
-// deallocated (duplicate candidates are deduped), and reclaiming an
-// already-deallocated page again is an idempotent no-op.
+// Create file, insert to allocate a page, then exercise oos_reclaim_empty_pages.
 // ===========================================================================
 TEST (OosFileDestroyTest, OosPageReclaimBasic)
 {
@@ -183,10 +180,8 @@ TEST (OosFileDestroyTest, OosPageReclaimBasic)
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_TRUE (exists);
 
-  // Empty the page, then reclaim deallocates it. The duplicate candidate exercises the
-  // batch dedupe. Commit first: reclaim's contract is "only after the deletes are
-  // committed" — otherwise this transaction's rollback at teardown would replay the
-  // RVOOS_DELETE undo onto a deallocated page.
+  // Commit before reclaiming: reclaim requires committed deletes, or this transaction's teardown
+  // rollback replays the RVOOS_DELETE undo onto a deallocated page. {vpid, vpid} exercises dedupe.
   err = oos_delete (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
@@ -216,10 +211,8 @@ TEST (OosFileDestroyTest, OosPageReclaimBasic)
 // ===========================================================================
 // TEST: OosPageReclaimLsaGateDefersUncommitted
 //
-// The LSA gate: a page emptied by a NOT-yet-committed delete must not be
-// deallocated — this transaction's abort would have to undo the chunk deletes
-// back into the page. After the commit ends the undo source, the next reclaim
-// call deallocates the page.
+// A page emptied by a not-yet-committed delete must not be deallocated: the deleter's abort
+// would restore the chunks into it. After the commit, the next reclaim call deallocates it.
 // ===========================================================================
 TEST (OosFileDestroyTest, OosPageReclaimLsaGateDefersUncommitted)
 {
@@ -241,8 +234,7 @@ TEST (OosFileDestroyTest, OosPageReclaimLsaGateDefersUncommitted)
 
   VPID vpid = {oid.pageid, oid.volid};
 
-  // Empty the page but do NOT commit: this transaction is a live undo source, so the gate
-  // must classify the page deferred instead of deallocating it.
+  // Deliberately uncommitted: this transaction is still a live undo source.
   err = oos_delete (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
@@ -256,7 +248,6 @@ TEST (OosFileDestroyTest, OosPageReclaimLsaGateDefersUncommitted)
   ASSERT_NE (page_ptr, nullptr);	// still allocated — deferred, not reclaimed
   pgbuf_unfix (thread_p, page_ptr);
 
-  // Commit ends the undo source; the next reclaim call deallocates the page.
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
 
   candidates = {vpid};
@@ -276,8 +267,7 @@ TEST (OosFileDestroyTest, OosPageReclaimLsaGateDefersUncommitted)
 // ===========================================================================
 // TEST: OosPageReclaimStickyFirstPage
 //
-// The sticky first page (OOS_HDR_STATS) must never be deallocated: a forced
-// reclaim call returns NO_ERROR and leaves the page alive.
+// The sticky first page (OOS_HDR_STATS) must never be deallocated, even if forced.
 // ===========================================================================
 TEST (OosFileDestroyTest, OosPageReclaimStickyFirstPage)
 {

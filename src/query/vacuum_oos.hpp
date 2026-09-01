@@ -32,9 +32,8 @@
 
 #include <vector>
 
-/* Pages that lost OOS chunks during one delete batch (duplicates allowed). Feeds
- * vacuum_oos_reclaim_empty_pages after the batch's sysop commits. A plain typedef so vacuum.c
- * (GNU-indent formatted) can declare one without exposing template syntax to the formatter. */
+/* Pages that lost OOS chunks during one delete batch (duplicates allowed). A plain typedef so
+ * vacuum.c (GNU-indent formatted) can declare one without exposing template syntax. */
 typedef std::vector<VPID> VACUUM_OOS_TOUCHED_PAGES;
 
 /* Forward-walk OOS reclamation helpers. */
@@ -59,9 +58,6 @@ extern void vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_
     const VFID *heap_vfid, VACUUM_OOS_VFID_MEMO *oos_vfid_memo);
 extern int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
     PGSLOTID slotid, INT16 record_type, VFID *oos_vfid);
-/* touched_pages_out: pass the batch accumulator so the emptied pages reach
- * vacuum_oos_reclaim_empty_pages; pass NULL only when the caller consciously leaves reclaim to
- * the growth-gate sweep. No default — a silently omitted argument silently skips reclaim. */
 extern int vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
     VACUUM_OOS_TOUCHED_PAGES *touched_pages_out);
 extern int vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,

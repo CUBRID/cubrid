@@ -696,12 +696,9 @@ heap_oos_test_disarm_fail_before_vfid_lookup ()
  * heap_recdes_contains_oos, so a missing OOS file or a failed OID extraction at this point
  * indicates real corruption — log and propagate.
  *
- * Empty-page reclaim (oos_reclaim_empty_pages) is deliberately NOT wired here, unlike the
- * vacuum callers: this runs inside a live user transaction whose abort replays the per-chunk
- * undo records, and undo cannot re-insert chunks into a page that was already deallocated.
- * Deferring the dealloc to a transaction postpone would still leave a same-transaction insert
- * free to refill the page before commit deallocates it. Pages emptied here simply stay
- * allocated; they remain visible to bestspace and reusable by later inserts.
+ * Empty-page reclaim (oos_reclaim_empty_pages) must NOT be wired here: this runs inside a live
+ * user transaction whose abort replays the per-chunk undo, and undo cannot re-insert chunks
+ * into a deallocated page. Pages emptied here stay allocated.
  *
  * op_ctx (in): short operation tag for diagnostics, e.g. "update home", "delete relocation".
  */
