@@ -46,7 +46,7 @@ static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NOD
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static bool qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons);
 static bool qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
-static void qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query);
+static void qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query);
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_rewrite_oid_equality (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * pred, int *seqno);
 static PT_NODE *qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -99,7 +99,7 @@ qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE **
 
       /* shrink the GROUP BY first, so that qo_reduce_order_by () judges the ORDER BY against the
        * grouping key that will actually run */
-      qo_reduce_group_by (parser, (*nodep));
+      qo_remove_useless_groupby_columns (parser, (*nodep));
 
       if (qo_reduce_order_by (parser, (*nodep)) != NO_ERROR)
 	{
@@ -1346,7 +1346,7 @@ qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * c
 }
 
 /*
- * qo_reduce_group_by () - remove the GROUP BY columns that are functionally determined
+ * qo_remove_useless_groupby_columns () - remove the GROUP BY columns that are functionally determined
  *			   by a key of the same table
  *   return: void
  *   parser(in): parser global context info for reentrancy
@@ -1377,7 +1377,7 @@ qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * c
  *   only its first occurrence.
  */
 static void
-qo_reduce_group_by (PARSER_CONTEXT * parser, PT_NODE * query)
+qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   PT_NODE *group, *next, *spec, *col, *dup;
   DB_OBJECT *classop;
