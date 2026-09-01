@@ -450,6 +450,22 @@ TEST_CASE ("trace_json_pack refuses a format that is not an object", "[json_buil
   REQUIRE (trace_json_owned_count () == 0);
 }
 
+TEST_CASE ("trace_json_pack does not read past the value that failed", "[json_builder]")
+{
+  /* The walk stops where it fails and a va_list needs the format to be walked,
+   * so the argument behind a NULL "o" is never read and never released. Left
+   * owned it holds the thread's pool open, which is what
+   * qo_plan_join_print_json () checks its two operands to avoid. */
+  trace_json_t *survivor = trace_json_object ();
+  REQUIRE (trace_json_object_set_new (survivor, "table", trace_json_string ("t2")) == 0);
+
+  REQUIRE (trace_json_pack ("{s:[o,o]}", "NESTED LOOPS (inner join)", (trace_json_t *) NULL, survivor) == NULL);
+  REQUIRE (trace_json_owned_count () == 1);
+
+  trace_json_decref (survivor);
+  REQUIRE (trace_json_owned_count () == 0);
+}
+
 TEST_CASE ("trace_json_loads round trips a dump", "[json_builder]")
 {
   const char *text = "{\n  \"table\": \"t1\",\n  \"cost\": 12\n}";

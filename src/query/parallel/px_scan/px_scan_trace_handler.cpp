@@ -394,7 +394,7 @@ namespace parallel_scan
 	snprintf (filteredkeys_buf, sizeof (filteredkeys_buf), "%lu..%lu", min_qualified_keys, max_qualified_keys);
 	snprintf (rows_buf, sizeof (rows_buf), "%lu..%lu", min_key_qualified_rows, max_key_qualified_rows);
 	parallel_obj = trace_json_pack ("{s:I, s:s, s:s, s:s, s:s, s:s}",
-					"parallel_workers", parallel_workers,
+					"parallel_workers", (trace_json_int_t) parallel_workers,
 					"time", time_buf,
 					"readkeys", readkeys_buf,
 					"filteredkeys", filteredkeys_buf,
@@ -440,7 +440,7 @@ namespace parallel_scan
 	snprintf (readrows_buf, sizeof (readrows_buf), "%lu..%lu", min_read_rows, max_read_rows);
 	snprintf (rows_buf, sizeof (rows_buf), "%lu..%lu", min_qualified_rows, max_qualified_rows);
 	parallel_obj = trace_json_pack ("{s:I, s:s, s:s, s:s, s:s}",
-					"parallel_workers", parallel_workers,
+					"parallel_workers", (trace_json_int_t) parallel_workers,
 					"time", time_buf,
 					"readrows", readrows_buf,
 					"rows", rows_buf,

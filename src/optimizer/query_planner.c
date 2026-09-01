@@ -13232,6 +13232,17 @@ qo_plan_join_print_json (QO_PLAN * plan)
   outer = qo_plan_print_json (plan->plan_un.join.outer);
   inner = qo_plan_print_json (plan->plan_un.join.inner);
 
+  if (outer == NULL || inner == NULL)
+    {
+      /* A plan type this dump has nothing to say about. The pack stops at the
+       * NULL one and never reads the argument behind it, so the operand that
+       * did come out is released here: left owned, one node holds the thread's
+       * node pool open for good. */
+      trace_json_decref (outer);
+      trace_json_decref (inner);
+      return NULL;
+    }
+
   sprintf (buf, "%s (%s)", method, type);
 
   join = trace_json_pack ("{s:[o,o]}", buf, outer, inner);

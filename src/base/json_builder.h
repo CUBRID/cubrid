@@ -95,9 +95,13 @@ extern "C"
 
   extern trace_json_t *trace_json_loads (const char *text);
 
-  /* supports the subset of the pack language the callers use: an object of "s"
-   * keys whose values are o, s, i, I, f, b or an array of o. Every "o" argument
-   * is taken over, on success and on failure alike. */
+  /* Supports the subset of the pack language the callers use: an object of "s"
+   * keys whose values are o, s, i, I, f, b or an array of o.
+   *
+   * Every "o" the walk reads is taken over, on success and on failure alike.
+   * It stops at the first value it cannot place, and cannot read past there -
+   * a va_list needs the format to be walked. So a caller that can hand in a
+   * NULL "o" accounts for the arguments after it itself, before it calls. */
   extern trace_json_t *trace_json_pack (const char *fmt, ...);
 
   /* How many nodes on this thread the caller still owns. It is zero once every
