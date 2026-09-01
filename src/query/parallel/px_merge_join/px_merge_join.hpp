@@ -37,10 +37,11 @@ namespace parallel_query
     /* Attempts the parallel range-partitioned merge (JOIN_INNER only). executed comes back false
      * (with NO_ERROR) whenever the gate, the partitioning, or the worker reservation says no —
      * the caller must then run the serial qexec_merge_list. On executed == true, *result_list_id
-     * holds the merged list, tuple-for-tuple identical to the serial merge output. */
+     * holds the merged list, tuple-for-tuple identical to the serial merge output, and
+     * executed_parallelism the number of merge tasks that ran (for trace); untouched otherwise. */
     int try_parallel_merge (THREAD_ENTRY *thread_p, QFILE_LIST_ID *outer_list_id, QFILE_LIST_ID *inner_list_id,
 			    QFILE_LIST_MERGE_INFO *merge_infop, int ls_flag, QFILE_LIST_ID **result_list_id,
-			    bool &executed);
+			    bool &executed, int &executed_parallelism);
   } /* namespace merge_join */
 } /* namespace parallel_query */
 

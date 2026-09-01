@@ -7341,11 +7341,16 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 
 #if SERVER_MODE && !WINDOWS
       /* enabled by the parallel_merge_join system parameter (default off); falls through to the serial merge */
+      int px_merge_parallelism = 0;
       if (parallel_query::merge_join::try_parallel_merge (thread_p, outer_xasl->list_id, inner_xasl->list_id,
 							  merge_infop, ls_flag, &list_id,
-							  px_merge_executed) != NO_ERROR)
+							  px_merge_executed, px_merge_parallelism) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
+	}
+      if (px_merge_executed)
+	{
+	  xasl->executed_parallelism = px_merge_parallelism;
 	}
 #endif /* SERVER_MODE && !WINDOWS */
 

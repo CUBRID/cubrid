@@ -3241,6 +3241,12 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, proc);
 	}
 
+      /* "merge" prefix: "parallel workers" on this node already means the px subquery executor */
+      if (xasl_p->executed_parallelism > 1)
+	{
+	  json_object_set_new (proc, "parallel merge workers", json_integer (xasl_p->executed_parallelism));
+	}
+
       json_object_set_new (proc, "outer", outer);
       json_object_set_new (proc, "inner", inner);
       break;
@@ -3806,20 +3812,22 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case MERGELIST_PROC:
+      fprintf (fp, "MERGELIST");
+      /* "merge" prefix: "parallel workers" on this node already means the px subquery executor */
+      if (xasl_p->executed_parallelism > 1)
+	{
+	  fprintf (fp, " (parallel merge workers: %d)", xasl_p->executed_parallelism);
+	}
       if (xasl_p->px_executor)
 	{
-	  fprintf (fp,
-		   "MERGELIST (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+	  fprintf (fp, " (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)",
 		   xasl_p->px_executor->get_parallelism () + 1,
 		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
 		   (long long int) xasl_p->px_executor->get_stats ().fetches,
 		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
 		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
 	}
-      else
-	{
-	  fprintf (fp, "MERGELIST\n");
-	}
+      fprintf (fp, "\n");
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.outer_xasl, indent);
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.inner_xasl, indent);
       break;

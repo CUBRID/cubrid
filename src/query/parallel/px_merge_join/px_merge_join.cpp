@@ -73,7 +73,7 @@ namespace parallel_query
     int
     try_parallel_merge (THREAD_ENTRY *thread_p, QFILE_LIST_ID *outer_list_id, QFILE_LIST_ID *inner_list_id,
 			QFILE_LIST_MERGE_INFO *merge_infop, int ls_flag, QFILE_LIST_ID **result_list_id,
-			bool &executed)
+			bool &executed, int &executed_parallelism)
     {
       int error = NO_ERROR;
 
@@ -227,6 +227,8 @@ namespace parallel_query
 
       *result_list_id = merged;
       executed = true;
+      /* range_cnt, not degree: every range runs as a pool worker task, the main thread only waits */
+      executed_parallelism = range_cnt;
       return NO_ERROR;
     }
   } /* namespace merge_join */
