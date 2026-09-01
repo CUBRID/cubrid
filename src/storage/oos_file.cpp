@@ -21,6 +21,7 @@
 #endif
 #include <algorithm>
 #include <cassert>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <new>
@@ -1904,62 +1905,96 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
       return err;
     }
 
-  std::vector<VPID> pages;
-  err = oos_collect_data_page_vpids (thread_p, &oos_vfid, pages);
+  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+  err = file_get_all_data_sectors (thread_p, &oos_vfid, &collector);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
       return err;
     }
-  std::sort (pages.begin (), pages.end (), oos_vpid_lt);
 
-  std::size_t start = 0;
-  if (!VPID_ISNULL (&cursor) && !pages.empty ())
+  scope_exit collector_freer ([&] ()
+  {
+    if (collector.partsect_ftab != NULL)
+      {
+	db_private_free_and_init (thread_p, collector.partsect_ftab);
+      }
+  });
+
+  /* Sort sectors, not expanded page IDs. FILE_PARTIAL_SECTOR intentionally starts with VSID,
+   * so disk_compare_vsids can compare these entries directly. */
+  if (collector.nsects > 1)
     {
-      auto after_cursor = std::upper_bound (pages.begin (), pages.end (), cursor, oos_vpid_lt);
-      start = (after_cursor == pages.end ()) ? 0 : (std::size_t) (after_cursor - pages.begin ());
+      std::qsort (collector.partsect_ftab, collector.nsects, sizeof (*collector.partsect_ftab), disk_compare_vsids);
     }
 
   LOG_LSA horizon;
   oos_reclaim_sample_horizon (thread_p, horizon);
 
   INT64 n_deferred = 0;
-  for (std::size_t i = 0; i < pages.size (); i++)
+  const int n_partitions = VPID_ISNULL (&cursor) ? 1 : 2;
+  for (int partition = 0; partition < n_partitions; partition++)
     {
-      const VPID &vpid = pages[ (start + i) % pages.size ()];
-
-      OOS_RECLAIM_RESULT result = OOS_RECLAIM_SKIPPED;
-      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, horizon, result,
-					   rollback_delete_lsa);
-      if (err != NO_ERROR)
+      /* The first partition visits VPIDs after the cursor; the second wraps and visits the
+       * cursor and all preceding VPIDs. Since sectors and bits are ascending, this preserves
+       * the old sorted-vector circular order exactly. */
+      for (int sector_index = 0; sector_index < collector.nsects; sector_index++)
 	{
-	  return err;
-	}
-      if (result == OOS_RECLAIM_RECLAIMED)
-	{
-	  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
-	  auto it = oos_Reclaim_states.find (oos_vfid);
-	  if (it != oos_Reclaim_states.end ())
+	  const FILE_PARTIAL_SECTOR &partsect = collector.partsect_ftab[sector_index];
+	  for (int bit = 0; bit < FILE_ALLOC_BITMAP_NBITS; bit++)
 	    {
-	      it->second.sweep_cursor = vpid;
-	    }
-	  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+	      if ((partsect.page_bitmap & (((FILE_ALLOC_BITMAP) 1) << bit)) == 0)
+		{
+		  continue;
+		}
 
-	  oos_trace ("growth-gate sweep on file %d|%d: reclaimed page {volid=%d, pageid=%d}, "
-		     "%lld deferred so far", VFID_AS_ARGS (&oos_vfid), vpid.volid, vpid.pageid,
-		     (long long) n_deferred);
-	  return NO_ERROR;
-	}
-      if (result == OOS_RECLAIM_DEFERRED)
-	{
-	  n_deferred++;
+	      VPID vpid;
+	      vpid.volid = partsect.vsid.volid;
+	      vpid.pageid = SECTOR_FIRST_PAGEID (partsect.vsid.sectid) + bit;
+
+	      if (!VPID_ISNULL (&cursor))
+		{
+		  const bool is_after_cursor = oos_vpid_lt (cursor, vpid);
+		  if (is_after_cursor != (partition == 0))
+		    {
+		      continue;
+		    }
+		}
+
+	      OOS_RECLAIM_RESULT result = OOS_RECLAIM_SKIPPED;
+	      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, horizon, result,
+						   rollback_delete_lsa);
+	      if (err != NO_ERROR)
+		{
+		  return err;
+		}
+	      if (result == OOS_RECLAIM_RECLAIMED)
+		{
+		  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+		  auto it = oos_Reclaim_states.find (oos_vfid);
+		  if (it != oos_Reclaim_states.end ())
+		    {
+		      it->second.sweep_cursor = vpid;
+		    }
+		  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+
+		  oos_trace ("growth-gate sweep on file %d|%d: reclaimed page {volid=%d, pageid=%d}, "
+			     "%lld deferred so far", VFID_AS_ARGS (&oos_vfid), vpid.volid, vpid.pageid,
+			     (long long) n_deferred);
+		  return NO_ERROR;
+		}
+	      if (result == OOS_RECLAIM_DEFERRED)
+		{
+		  n_deferred++;
+		}
+	    }
 	}
     }
 
   oos_reclaim_settle_lap (oos_vfid, pending_at_start, n_deferred);
 
   oos_trace ("growth-gate sweep on file %d|%d: full lap over %d page(s), 0 reclaimed, %lld deferred",
-	     VFID_AS_ARGS (&oos_vfid), (int) pages.size (), (long long) n_deferred);
+	     VFID_AS_ARGS (&oos_vfid), collector.npages, (long long) n_deferred);
   return NO_ERROR;
 }
 

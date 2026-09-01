@@ -207,7 +207,7 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
 				 "OOS empty-page reclaim interrupted (file %d|%d); deletes stay committed, "
 				 "emptied pages stay allocated until the growth-gate sweep reclaims them.",
 				 VFID_AS_ARGS (oos_vfid));
-	  er_clear ();
+	  error_code = reclaim_err;
 	}
     }
   else
@@ -265,18 +265,22 @@ vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
  * heap_vfid (in)         : The heap file these bytes belong to.
  * oos_vfid_memo (in/out) : The one-entry "heap file -> OOS file" cache for this block.
  *
- * NOTE: if anything goes wrong, we never fail the vacuum block. We log loudly, clear the error, and
- * return, leaving the OOS bytes on disk (a small, logged leak). Failing the block would trip a
- * shutdown-only assert in vacuum_finished_block_vacuum and could wedge vacuum entirely.
+ * return                 : NO_ERROR or ER_INTERRUPTED.
+ *
+ * NOTE: ordinary cleanup failures never fail the vacuum block. We log loudly, clear the error, and
+ * leave the OOS bytes on disk (a small, logged leak). A shutdown interruption is propagated after
+ * closing any sysop so vacuum_process_log_block can stop through its accepted interruption path.
  */
-void
+int
 vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int undo_data_size,
 				 const VFID *heap_vfid, VACUUM_OOS_VFID_MEMO *oos_vfid_memo)
 {
+  int error_code = NO_ERROR;
+
   if (undo_data == NULL || undo_data_size <= (int) sizeof (INT16))
     {
       /* Too small to hold an old row image, so there is nothing to reclaim. */
-      return;
+      return NO_ERROR;
     }
 
   RECDES undo_recdes;
@@ -294,7 +298,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
    */
   if (! ((undo_recdes.type == REC_HOME || undo_recdes.type == REC_NEWHOME) && heap_recdes_contains_oos (&undo_recdes)))
     {
-      return;
+      return NO_ERROR;
     }
 
   /* Copy the undo image into our own buffer BEFORE we fix any page below. That image usually points
@@ -314,7 +318,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
 			   "leaving OOS unreclaimed (bounded leak) heap_vfid=%d|%d",
 			   undo_recdes.length, VFID_AS_ARGS (heap_vfid));
       er_clear ();
-      return;
+      return NO_ERROR;
     }
   memcpy (stable_copy, undo_recdes.data, undo_recdes.length);
   parse_recdes.data = stable_copy;
@@ -342,14 +346,21 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
 
       if (oos_err != NO_ERROR)
 	{
-	  /* vacuum_forward_walk_oos_delete_atomic already aborted its own sysop, so any partial deletes
-	   * were rolled back. What leaks is only the OOS records we never got to delete. */
-	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-			       "forward-walk oos cleanup failed; leaving OOS unreclaimed "
-			       "(bounded leak) heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
-			       VFID_AS_ARGS (heap_vfid), VFID_AS_ARGS (&oos_vfid), oos_err);
-	  er_clear ();
-	  /* DO NOT propagate; the block must complete. */
+	  if (oos_err == ER_INTERRUPTED)
+	    {
+	      error_code = oos_err;
+	    }
+	  else
+	    {
+	      /* vacuum_forward_walk_oos_delete_atomic already aborted its own sysop, so any partial deletes
+	       * were rolled back. What leaks is only the OOS records we never got to delete. */
+	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+				   "forward-walk oos cleanup failed; leaving OOS unreclaimed "
+				   "(bounded leak) heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
+				   VFID_AS_ARGS (heap_vfid), VFID_AS_ARGS (&oos_vfid), oos_err);
+	      er_clear ();
+	      /* DO NOT propagate; the block must complete. */
+	    }
 	}
     }
   else
@@ -366,6 +377,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
     }
 
   db_private_free_and_init (thread_p, stable_copy);
+  return error_code;
 }
 
 /*

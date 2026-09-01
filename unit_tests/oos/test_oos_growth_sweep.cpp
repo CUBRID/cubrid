@@ -22,6 +22,7 @@
 // growth path is never entered.
 
 #include "gtest/gtest.h"
+#include <algorithm>
 #include <chrono>
 #include <future>
 #include <string>
@@ -81,6 +82,13 @@ namespace
     oos_hdr->estimates.head_second_best = 0;
     oos_hdr->estimates.tail_second_best = 0;
     oos_hdr->estimates.num_other_high_best = 0;
+
+    LOG_DATA_ADDR addr;
+    addr.vfid = NULL;
+    addr.pgptr = hdr_page;
+    addr.offset = 0;
+    log_skip_logging (thread_p, &addr);
+    pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
   }
 
   // A single-chunk record that nearly fills a page, so every insert without a reusable empty
@@ -310,6 +318,59 @@ TEST (OosGrowthSweepTest, SweepIsIncrementalWithCursorContinuation)
   OID oid_growth = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid_growth), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), pages_full + 1);
+
+  remove_file_and_commit (oos_vfid);
+}
+
+TEST (OosGrowthSweepTest, SweepCursorWrapsAcrossSectorBoundary)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  /* The sticky header consumes one sector bit, so this many single-page records guarantees
+   * that the OOS data pages span at least two sectors. */
+  std::vector<OID> oids (FILE_ALLOC_BITMAP_NBITS + 2, OID_INITIALIZER);
+  for (OID &oid : oids)
+    {
+      ASSERT_EQ (insert_page_filling_record (oos_vfid, oid), NO_ERROR);
+    }
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  auto oid_less = [] (const OID &left, const OID &right)
+  {
+    return OID_LT (&left, &right);
+  };
+  auto extremes = std::minmax_element (oids.begin (), oids.end (), oid_less);
+  const OID low_oid = *extremes.first;
+  const OID high_oid = *extremes.second;
+  ASSERT_NE (SECTOR_FROM_PAGEID (low_oid.pageid), SECTOR_FROM_PAGEID (high_oid.pageid));
+
+  const int pages_full = count_user_pages (oos_vfid);
+  ASSERT_EQ (pages_full, (int) oids.size () + 1);  // records + sticky header
+
+  /* Reclaim the highest VPID first. Its VPID becomes the saved sweep cursor. */
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, high_oid), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  simulate_hint_loss (oos_vfid);
+
+  OID high_replacement = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, high_replacement), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), pages_full);
+  ASSERT_EQ (high_replacement.pageid, high_oid.pageid);
+
+  /* The only empty page is now below the cursor in another sector. The next sweep must walk
+   * past the end of the sorted sector bitmap, wrap, and reclaim it before allocating. */
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, low_oid), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  simulate_hint_loss (oos_vfid);
+
+  OID low_replacement = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, low_replacement), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), pages_full)
+      << "the sector-bitmap cursor failed to wrap and the OOS file grew";
+  ASSERT_EQ (low_replacement.pageid, low_oid.pageid);
+  assert_value_intact (high_replacement);
+  assert_value_intact (low_replacement);
 
   remove_file_and_commit (oos_vfid);
 }

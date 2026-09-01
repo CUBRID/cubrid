@@ -3613,7 +3613,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   *   - Other heap ops log no undo image, so the undo_data_size check above already skips them. */
 	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	    {
-	      vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	      error_code =
+		vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	      if (error_code != NO_ERROR)
+		{
+		  vacuum_check_shutdown_interruption (thread_p, error_code);
+		  goto end;
+		}
 	    }
 	}
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
@@ -3752,7 +3758,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   * record survives only in this delete's undo image; its OOS records are reclaimed here. This is
 	   * deliberately OUTSIDE the LOG_IS_MVCC_HEAP_OPERATION block (no slot to collect — the slot was
 	   * physically deleted). The undo image is always the forward REC_NEWHOME pre-image. */
-	  vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	  error_code =
+	    vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	  if (error_code != NO_ERROR)
+	    {
+	      vacuum_check_shutdown_interruption (thread_p, error_code);
+	      goto end;
+	    }
 	}
       else
 	{
