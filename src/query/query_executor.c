@@ -12381,11 +12381,13 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   int error = NO_ERROR;
   bool need_clear = 0;
   OID unique_oid;
+  OID unique_class_oid;
   int local_op_type = SINGLE_ROW_UPDATE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
   int ispeeking;
 
   OID_SET_NULL (&unique_oid);
+  OID_SET_NULL (&unique_class_oid);
 
   local_scan_cache = scan_cache;
 
@@ -12407,12 +12409,29 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   /* get attribute values */
   ispeeking = ((local_scan_cache != NULL && local_scan_cache->cache_last_fix_page) ? PEEK : COPY);
 
-  scan_code =
-    heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
+  /* A duplicate whose delete is in progress carries no row lock once the deleter has published, and the
+   * visible version hides that delete -- updating it would overwrite a record the deleter still has to
+   * undo. Fetch through the lock path instead: it waits the deleter out and re-reads. */
+  scan_code = heap_get_class_oid (thread_p, &unique_oid, &unique_class_oid);
   if (scan_code != S_SUCCESS)
     {
-      assert (er_errid () == ER_INTERRUPTED);
-      error = ER_FAILED;
+      ASSERT_ERROR_AND_SET (error);
+      goto exit_on_error;
+    }
+
+  scan_code =
+    locator_lock_and_get_object (thread_p, &unique_oid, &unique_class_oid, &rec_descriptor, local_scan_cache, X_LOCK,
+				 ispeeking, NULL_CHN, LOG_WARNING_IF_DELETED);
+  if (scan_code == S_DOESNT_EXIST)
+    {
+      /* the deleter committed: the key is free, so this row is no longer a duplicate and the caller inserts */
+      er_clear ();
+      *force_count = 0;
+      return NO_ERROR;
+    }
+  if (scan_code != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
       goto exit_on_error;
     }
 
