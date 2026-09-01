@@ -2066,7 +2066,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
   if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_OR_DERIVED))
     {
       /* counted at the node scan (qo_node_add_sarg ()); the origin factor is discounted in
-       * qo_or_derived_compensate () so the join output estimate stays unchanged */
+       * qo_derived_term_compensate () so the join output estimate stays unchanged */
       QO_TERM_SET_FLAG (term, QO_TERM_OR_DERIVED);
     }
 

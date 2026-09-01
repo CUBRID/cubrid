@@ -4804,12 +4804,12 @@ qo_or_extract_build_for_spec (PARSER_CONTEXT * parser, PT_NODE * disjunct, UINTP
  *	 The derived factor's selectivity is counted at the node scan (qo_node_add_sarg ()), so
  *	 the scan cardinality reflects the filter and the join order can react to it; to keep the
  *	 join output estimate unchanged, the origin factor's join selectivity is discounted by
- *	 the same share in qo_or_derived_compensate () -- the approach of PostgreSQL's
+ *	 the same share in qo_derived_term_compensate () -- the approach of PostgreSQL's
  *	 consider_new_or_clause ().  Keeping the copy as a plain data filter only pays off when
  *	 it is no costlier than column-vs-constant compares.  Each derived factor is therefore
- *	 marked PT_EXPR_INFO_OR_DERIVED (plus _EXPENSIVE by shape) and linked to its origin
- *	 factor; the marks reach the plan as QO_TERM flags, where make_pred_from_plan () drops a
- *	 costly copy that no index adopted.
+ *	 marked PT_EXPR_INFO_OR_DERIVED (plus _EXPENSIVE by shape); the marks reach the plan as
+ *	 QO_TERM flags, where qo_derived_term_origin () re-identifies the origin structurally
+ *	 and make_pred_from_plan () drops a costly copy that no index adopted.
  */
 void
 qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE ** wherep)
@@ -4973,7 +4973,7 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
       qo_rewrite_terms (parser, spec_list, &new_terms);
 
       /* mark what survived the rewrites: qo_analyze_term () carries the marks into the term
-       * flags, so qo_or_derived_compensate () can pay the node-counted share back to the origin
+       * flags, so qo_derived_term_compensate () can pay the node-counted share back to the origin
        * factor and make_pred_from_plan () can drop the costly ones no index adopted.  Classify
        * on the rewritten shape -- that is what a scan would actually evaluate */
       for (derived = new_terms; derived != NULL; derived = derived->next)
