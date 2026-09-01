@@ -61,6 +61,15 @@ static const char *proxy_log_level_str[] = {
   "DBG"
 };
 
+#if !defined(WINDOWS)
+static void
+proxy_log_secure_file_permission (const char *filepath)
+{
+  /* best-effort: a missing file (ENOENT) simply means there is nothing to fix yet */
+  (void) chmod (filepath, 0600);
+}
+#endif /* !WINDOWS */
+
 static char *
 make_proxy_log_filename (char *filepath_buf, size_t buf_size, const char *br_name, int proxy_index)
 {
@@ -112,8 +121,16 @@ proxy_log_open (char *br_name, int proxy_index)
 
       if (log_fp != NULL)
 	{
+	  char backup_filepath[BROKER_PATH_MAX];
+
 	  /* make sure a pre-existing log file (created before this fix) is not left world-readable */
 	  fchmod (fileno (log_fp), 0600);
+
+	  /* also fix up an already rotated backup that may still carry pre-fix, world-readable permissions */
+	  if (snprintf (backup_filepath, BROKER_PATH_MAX - 1, "%s.bak", log_filepath) > 0)
+	    {
+	      proxy_log_secure_file_permission (backup_filepath);
+	    }
 	}
 #endif /* !WINDOWS */
     }
@@ -163,6 +180,11 @@ proxy_log_backup (void)
 
   unlink (backup_filepath);
   rename (log_filepath, backup_filepath);
+
+#if !defined(WINDOWS)
+  /* rename() preserves the source file's mode; re-assert 0600 in case it was ever created insecurely */
+  proxy_log_secure_file_permission (backup_filepath);
+#endif /* !WINDOWS */
 }
 
 void
