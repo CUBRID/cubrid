@@ -624,6 +624,7 @@ static bool pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * coveri
 static int pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static int pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl);
 static DB_VALUE **pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type);
+static bool pt_cond_spans_multiple_specs (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond);
 static int pt_mvcc_flag_specs_cond_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond);
 static int pt_mvcc_flag_specs_assign_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * assign_list);
 static int pt_mvcc_set_spec_assign_reev_extra_indexes (PARSER_CONTEXT * parser, PT_NODE * spec_assign,
@@ -21074,6 +21075,81 @@ exit_on_error:
 }
 
 /*
+ * pt_reev_reads_no_spec () - is there no spec for force-time reevaluation to re-read?
+ *   return: true when the flagging pass flagged none of the statement's own specs
+ *   spec_list(in): the statement's spec list
+ */
+static bool
+pt_reev_reads_no_spec (PT_NODE * spec_list)
+{
+  PT_NODE *spec;
+
+  for (spec = spec_list; spec != NULL; spec = spec->next)
+    {
+      if (spec->info.spec.flag & (PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * pt_cond_spans_multiple_specs () - does any single conjunct reference more than one spec?
+ *   return: true if some term relates two or more specs
+ *   parser(in): parser context
+ *   spec_list(in): the statement's spec list
+ *   cond(in): a list of AND-ed conditions, or NULL
+ *
+ *  Note: Force-time reevaluation visits one spec at a time and matches it against that spec's own
+ *	  range/key/data filters.  A term confined to a single spec survives that; a term relating
+ *	  two specs does not, because no per-scan filter can carry the other spec's row.  Counting
+ *	  the specs a statement mentions is a coarser test than this and pulls in statements whose
+ *	  terms are all independent.
+ */
+static bool
+pt_cond_spans_multiple_specs (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond)
+{
+  PT_NODE *term, *spec, *node, *real_refs, *saved_next;
+  int nspecs;
+  bool spans = false;
+
+  if (spec_list == NULL || cond == NULL)
+    {
+      return false;
+    }
+
+  for (term = cond; term != NULL && !spans; term = term->next)
+    {
+      saved_next = term->next;
+      term->next = NULL;
+
+      nspecs = 0;
+      for (spec = spec_list; spec != NULL; spec = spec->next)
+	{
+	  real_refs = spec->info.spec.referenced_attrs;
+	  spec->info.spec.referenced_attrs = NULL;
+	  node = mq_get_references (parser, term, spec);
+	  spec->info.spec.referenced_attrs = real_refs;
+	  if (node != NULL)
+	    {
+	      parser_free_tree (parser, node);
+	      nspecs++;
+	    }
+	}
+
+      term->next = saved_next;
+      if (nspecs > 1)
+	{
+	  spans = true;
+	}
+    }
+
+  return spans;
+}
+
+/*
  * pt_mvcc_flag_specs_cond_reev () - flag specs that are involved in condition
  *   return: NO_ERROR or error code.
  *   parser(in):
@@ -21730,6 +21806,108 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 }
 
 /*
+ * pt_delete_must_abort_reevaluation () - can the delete phase re-check this statement's predicate?
+ *   return: true when it cannot, so reevaluation is abandoned for the statement
+ *   parser(in): context
+ *   statement(in): delete parse tree
+ *   aptr_statement(in/out): the SELECT generated for it; flagged for locking where one is needed
+ *   from(in): the DELETE's own spec list
+ *   where(in): the DELETE's search condition
+ *   has_partitioned(in): a class being deleted from is partitioned
+ *
+ * Note: reevaluation matches one spec at a time against that spec's own range/key/data filters.  Each
+ *	 test below is a shape those filters cannot decide, and an earlier test hides a later one -- the
+ *	 subquery test hides the derived-table test for every derived table that holds a spec.
+ */
+static bool
+pt_delete_must_abort_reevaluation (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * aptr_statement,
+				   PT_NODE * from, PT_NODE * where, bool has_partitioned)
+{
+  PT_NODE *cl_name_node = NULL;
+
+  /* the rows are already locked at select, so this one abandons reevaluation without asking for a lock */
+  if (aptr_statement->info.query.q.select.group_by != NULL)
+    {
+      return true;
+    }
+
+  /* the flagging pass skips a partitioned class entirely, and a predicate under a subquery cannot be
+   * replayed as a scan filter.  Any spec below a subquery counts, which is why an inline view held back
+   * by the NO_MERGE hint stops here rather than at the derived-table test.
+   *   DELETE FROM part_t WHERE pk = 1;
+   *   DELETE FROM t WHERE pk IN (SELECT k FROM side_t WHERE k = 1); */
+  if (has_partitioned || pt_has_reev_in_subquery (parser, aptr_statement))
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
+  /* the candidate list holds exactly n rows and a rejected one is never replaced, so the statement would
+   * delete fewer while rows that still qualify are left behind.
+   *   DELETE FROM t WHERE pk > 0 LIMIT 1; */
+  if (statement->info.delete_.limit != NULL)
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
+  /* a spec reading a derived table has no heap of its own to re-read.  The flag is not what says so: the
+   * rewrite that puts a derived table there takes the heap and the flag together, so the spec that most
+   * needs this test is the one that no longer carries it.  An OID equality turns the target's own scan
+   * into a scan over a set -- FROM t becomes FROM table({:obj}) -- and leaves the DELETE's spec flagged
+   * while the SELECT's is not.  Only a derived table that contains no spec of its own gets this far --
+   * one that does is a spec below a subquery, and the test above already took it.
+   *   DELETE FROM t WHERE t = :obj;
+   *   DELETE a FROM t a, (SELECT 1 AS k) x WHERE a.pk = x.k; */
+  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
+    {
+      if (cl_name_node->info.spec.derived_table != NULL)
+	{
+	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+	  return true;
+	}
+    }
+
+  /* a spec over a class and its subclasses reports OIDs no single spec carries, so
+   * qexec_upddel_mvcc_set_filters () cannot resolve them back to an access spec.
+   *   DELETE FROM ALL h_base WHERE v = 1; */
+  for (cl_name_node = from; cl_name_node != NULL; cl_name_node = cl_name_node->next)
+    {
+      if (!(cl_name_node->info.spec.flag & PT_SPEC_FLAG_MVCC_COND_REEV))
+	{
+	  continue;
+	}
+      if (cl_name_node->info.spec.flat_entity_list != NULL && cl_name_node->info.spec.flat_entity_list->next != NULL)
+	{
+	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+	  return true;
+	}
+    }
+
+  /* no per-scan filter can carry the other spec's row.  What decides is whether a single term crosses,
+   * not how many specs the statement mentions.
+   *   DELETE a FROM t a, side_t b WHERE a.pk = b.k; */
+  if (pt_cond_spans_multiple_specs (parser, from, where))
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
+  /* a search condition that flagged no spec of its own cannot be replayed as a scan filter, so there is
+   * no row to re-check it against.  Locking at select for it is what leaves "no reevaluation class"
+   * meaning "this statement reads no row of its own" -- the reading qexec_execute_delete () relies on.
+   * The generated SELECT is asked too, since the flagging pass reads only the statement's own WHERE.
+   *   DELETE FROM t WHERE ROWNUM <= 3; */
+  if ((where != NULL || aptr_statement->info.query.q.select.where != NULL) && pt_reev_reads_no_spec (from))
+    {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * pt_to_delete_xasl () - Converts an delete parse tree to
  *                        an XASL graph for an delete
  *   return:
@@ -21898,31 +22076,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto error_return;
 	}
 
-      if (aptr_statement->info.query.q.select.group_by != NULL)
-	{
-	  /* remove reevaluation flags if we have GROUP BY because the locking will be made at SELECT stage */
-	  abort_reevaluation = true;
-	}
-      else
-	{
-	  /* if at least one table involved in reevaluation is a derived table then abort reevaluation and force
-	   * locking on select */
-	  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL;
-	       cl_name_node = cl_name_node->next)
-	    {
-	      if (cl_name_node->info.spec.derived_table != NULL
-		  && (cl_name_node->info.spec.flag | PT_SPEC_FLAG_MVCC_COND_REEV))
-		{
-		  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-		  abort_reevaluation = true;
-		  break;
-		}
-	    }
-	}
-
-      /* These two lines disable reevaluation on UPDATE. To activate it just remove them */
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      abort_reevaluation = true;
+      abort_reevaluation =
+	pt_delete_must_abort_reevaluation (parser, statement, aptr_statement, from, where, has_partitioned);
 
       if (abort_reevaluation)
 	{
@@ -22192,9 +22347,23 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (PT_IS_SPEC_FLAG_SET (node, PT_SPEC_FLAG_MVCC_COND_REEV))
 	    {
 	      /* set the position in SELECT list */
+	      assert (j < delete_->num_reev_classes);
+	      if (j >= delete_->num_reev_classes)
+		{
+		  break;
+		}
 	      delete_->mvcc_reev_classes[j++] = i;
 	    }
 	}
+
+      /* The count above was taken over the DELETE statement's spec list, but only a class that owns an
+       * OID - CLASS OID pair in the generated SELECT can be reevaluated at all. A class the SELECT dropped
+       * (an outer-joined table none of whose columns the outer query reads) leaves an entry unfilled, so the
+       * executor must be told how many entries this loop actually wrote.  Dropping every one of them would
+       * tell it this statement reads no row of its own; the target class always owns a pair, so no shape
+       * has been found that does. */
+      assert (j > 0 || delete_->num_reev_classes == 0);
+      delete_->num_reev_classes = j;
 
       /* OID of the user who is creating this XASL */
       if ((oid = ws_identifier (db_get_user ())) != NULL)
@@ -22307,12 +22476,24 @@ pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
     {
       level++;
     }
-  else if (tree->node_type == PT_SPEC
-	   && (tree->info.spec.flag | PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV) && level > 1)
+  else if (tree->node_type == PT_SPEC && level > 1)
     {
+      /* Any spec below a subquery, flagged or not.  Reevaluation flags are only ever set on the
+       * statement's own spec list (pt_mvcc_flag_specs_cond_reev walks `from`), so a spec down here
+       * can never carry one -- testing for the flag would make this unreachable.
+       *
+       * Do not try to spare the uncorrelated ones.  It looks safe -- a subquery that does not read
+       * the current row is evaluated once and its result stands for the statement -- and it does
+       * open the constant-scalar-assignment case.  But x18, x22 and r5, all WHERE k IN (SELECT ...),
+       * fail with it: the materialized list lives in the select's scan state and the force phase
+       * cannot re-check the predicate against it.  Correlation is not the property that decides. */
       level = -1;
       *continue_walk = PT_STOP_WALK;
     }
+
+  /* the walk carries the level through arg; without this the local copy is discarded on
+   * every node, level never leaves 0, and the level > 1 test above can never be reached */
+  *(int *) arg = level;
 
   return tree;
 }
@@ -22341,6 +22522,8 @@ pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg
     {
       level--;
     }
+
+  *(int *) arg = level;
 
   return tree;
 }
