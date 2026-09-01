@@ -102,6 +102,7 @@ area_call_failure_function (AREA * area)
       (*(area->failure_function)) ();
     }
 }
+
 static int area_insert_block (AREA * area, AREA_BLOCK * new_block);
 static AREA_BLOCK *area_find_block (AREA * area, const void *ptr);
 

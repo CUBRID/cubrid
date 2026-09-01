@@ -1,20 +1,20 @@
 /*
- *  Copyright 2016 CUBRID Corporation
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Copyright 2016 CUBRID Corporation
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
-
 /*
  * cas_server_support.cpp - the environment the folded CAS speaker expects,
  *                          supplied by cub_server (stage B1, #117)
@@ -58,6 +58,8 @@
 #include "cas_sql_log2.h"
 #include "cas_ssl.h"
 #include "system_parameter.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* ------------------------------------------------------------------ */
 /* shm stubs                                                          */
@@ -173,7 +175,7 @@ cas_server_speaker_boot_init (const char *db_name)
  * ints; writing the same prm-derived values from every session begin is
  * benign (dynamic changes take effect for sessions started afterwards). */
 static void
-cas_server_refresh_session_config (T_APPL_SERVER_INFO * slot)
+cas_server_refresh_session_config (T_APPL_SERVER_INFO *slot)
 {
   T_SHM_APPL_SERVER *shm = &cas_Shm_stub;
 
@@ -485,7 +487,7 @@ cas_server_acl_check (const char *broker, const char *dbname, const char *dbuser
 
   if (rules != NULL)
     {
-      for (const cas_acl_rule & rule : *rules)
+      for (const cas_acl_rule &rule : *rules)
 	{
 	  if (rule.dbname != "*"
 	      && (rule.dbname.size () != dbname_len || strncasecmp (rule.dbname.c_str (), dbname, dbname_len) != 0))
@@ -532,26 +534,26 @@ cas_server_access_log (struct timeval *start_time, int as_index, int client_ip_a
 /* ------------------------------------------------------------------ */
 
 int
-uw_sem_init (sem_t * sem)
+uw_sem_init (sem_t *sem)
 {
   /* pshared=0: both sides of this lock live in cub_server now */
   return sem_init (sem, 0, 1);
 }
 
 int
-uw_sem_wait (sem_t * sem)
+uw_sem_wait (sem_t *sem)
 {
   return sem_wait (sem);
 }
 
 int
-uw_sem_post (sem_t * sem)
+uw_sem_post (sem_t *sem)
 {
   return sem_post (sem);
 }
 
 int
-uw_sem_destroy (sem_t * sem)
+uw_sem_destroy (sem_t *sem)
 {
   return sem_destroy (sem);
 }

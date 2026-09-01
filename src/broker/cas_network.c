@@ -58,6 +58,8 @@
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
 #endif /* WINDOWS */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define SELECT_MASK	fd_set
 

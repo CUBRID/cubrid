@@ -770,5 +770,3 @@ cas_register_to_proxy (SOCKET proxy_sock_fd)
 
   return 0;
 }
-
-

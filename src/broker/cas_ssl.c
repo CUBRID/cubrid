@@ -62,6 +62,8 @@
 #include "cas_common_vars.h"	/* CAS_TLS: session-local SSL state in the merged server (B2-D9) */
 #include "cas_log.h"
 #include "cas_ssl.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define CERTF "cas_ssl_cert.crt"
 #define KEYF "cas_ssl_cert.key"

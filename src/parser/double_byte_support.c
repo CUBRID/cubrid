@@ -27,6 +27,8 @@
 #include <stdio.h>
 #include "parser.h"
 #include "language_support.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define MAX_UNGET_SIZE 16
 #define WSPACE_CHAR 0xa1a1

@@ -146,6 +146,8 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   NULL
 };
 #endif /* !SERVER_MODE */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static const char *boot_Client_no_user_string = "(nouser)";
 static const char *boot_Client_id_unknown_string = "(unknown)";
@@ -1204,7 +1206,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
    * that follows).  Unregistration needs no counterpart: it is a folded
    * server call plus this session's own state. */
   static std::mutex boot_Restart_mutex;
-  std::lock_guard<std::mutex> boot_restart_guard (boot_Restart_mutex);
+  std::lock_guard < std::mutex > boot_restart_guard (boot_Restart_mutex);
 #endif
 
   assert (client_credential != NULL);

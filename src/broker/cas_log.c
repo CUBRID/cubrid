@@ -49,6 +49,8 @@
 #include "hide_password.h"
 #include "cas_optimization.h"
 #include "cas_common_vars.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined(WINDOWS)
 typedef int mode_t;

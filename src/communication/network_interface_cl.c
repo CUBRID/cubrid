@@ -94,6 +94,8 @@
 #include "locator_cl.h"
 #include "execute_schema.h"
 #include "authenticate.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap

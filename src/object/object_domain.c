@@ -3949,6 +3949,7 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 
   return dropped;
 }
+
 /* end of former !SERVER_MODE region */
 
 
@@ -3983,7 +3984,7 @@ tp_domain_check_class (TP_DOMAIN * domain, int *change)
 #if defined (SERVER_MODE)
       && csc_bracket_is_active ()
 #endif /* SERVER_MODE */
-     )
+    )
     {
       if (domain != NULL && domain->type == tp_Type_object && domain->class_mop != NULL)
 	{
@@ -9208,14 +9209,14 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	}
       else
-      /* OBJECT-to-VOBJ needs the workspace: bracketed session threads only
-       * (either hat, wf173 class) — a genuine server thread keeps treating
-       * an OBJECT as its OID representation below */
-      if (original_type == DB_TYPE_OBJECT
+	/* OBJECT-to-VOBJ needs the workspace: bracketed session threads only
+	 * (either hat, wf173 class) — a genuine server thread keeps treating
+	 * an OBJECT as its OID representation below */
+	if (original_type == DB_TYPE_OBJECT
 #if defined (SERVER_MODE)
-	  && csc_bracket_is_active ()
+	    && csc_bracket_is_active ()
 #endif /* SERVER_MODE */
-	 )
+	)
 	{
 	  if (vid_object_to_vobj (db_get_object (src), target) < 0)
 	    {

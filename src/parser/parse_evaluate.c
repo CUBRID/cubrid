@@ -61,6 +61,8 @@
 #else
 static MHT_TABLE *pt_Label_table = NULL;
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static int pt_is_table_op (const PT_OP_TYPE op);
 static PT_NODE *pt_query_to_set_table (PARSER_CONTEXT * parser, PT_NODE * node);

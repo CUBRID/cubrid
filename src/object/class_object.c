@@ -51,6 +51,8 @@
 #include "dbtype.h"
 #include "printer.hpp"
 #include "string_opfunc.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

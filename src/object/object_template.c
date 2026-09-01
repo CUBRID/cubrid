@@ -62,6 +62,8 @@
 #include "network_interface_cl.h"
 
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define OBJ_INTERNAL_SAVEPOINT_NAME "*template-unique*"
 

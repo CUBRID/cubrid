@@ -77,6 +77,8 @@
 #endif /* WINDOWS */
 
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
 

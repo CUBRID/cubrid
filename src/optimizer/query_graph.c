@@ -59,6 +59,8 @@
 #include "network_interface_cl.h"
 #include "dbtype.h"
 #include "xasl.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SERVER_MODE)
 /* merged client half: the session's optimizer-level override

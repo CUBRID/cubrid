@@ -28,6 +28,8 @@
 #include "message_catalog.h"
 #include "schema_manager.h"
 #include "set_object.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 au_class_cache::au_class_cache (int depth)
 {

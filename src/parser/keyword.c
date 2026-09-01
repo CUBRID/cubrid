@@ -37,6 +37,8 @@
 #include "dbtype.h"
 #include "string_opfunc.h"
 #include "chartype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* It is not required for the keywords to be alphabetically sorted, as they
  * will be sorted when needed. See pt_find_keyword.
@@ -963,7 +965,9 @@ verify_test (bool is_keywords, KEYWORDS_TABLE_SRCH_INFO & info)
  * after (never inside) the once block, behind an atomic exchange. */
 static KEYWORDS_TABLE_SRCH_INFO srv_kinfo;
 static KEYWORDS_TABLE_SRCH_INFO srv_finfo;
-static std::once_flag keyword_tables_once;
+static
+  std::once_flag
+  keyword_tables_once;
 
 static void
 pt_sort_keyword_tables (void)
@@ -1000,10 +1004,15 @@ static KEYWORD_RECORD *
 pt_find_keyword (const char *text)
 {
 #if !defined (SERVER_MODE)
-  static KEYWORDS_TABLE_SRCH_INFO kinfo;
+  static KEYWORDS_TABLE_SRCH_INFO
+    kinfo;
 #endif
-  int i, len, cmp;
-  KEYWORD_RECORD dummy;
+  int
+    i,
+    len,
+    cmp;
+  KEYWORD_RECORD
+    dummy;
 
 #if defined (SERVER_MODE)
   pt_sort_keyword_tables ();
@@ -1017,7 +1026,8 @@ pt_find_keyword (const char *text)
     }
 #endif
 #else /* SERVER_MODE */
-  static bool keyword_sorted = false;
+  static bool
+    keyword_sorted = false;
 
   if (keyword_sorted == false)
     {
@@ -1055,7 +1065,8 @@ pt_find_keyword (const char *text)
 int
 pt_identifier_or_keyword (const char *text)
 {
-  KEYWORD_RECORD *keyword_rec;
+  KEYWORD_RECORD *
+    keyword_rec;
 
   keyword_rec = pt_find_keyword (text);
 
@@ -1078,7 +1089,8 @@ pt_identifier_or_keyword (const char *text)
 bool
 pt_is_reserved_word (const char *text)
 {
-  KEYWORD_RECORD *keyword_rec;
+  KEYWORD_RECORD *
+    keyword_rec;
 
   keyword_rec = pt_find_keyword (text);
 
@@ -1105,7 +1117,8 @@ pt_is_reserved_word (const char *text)
 bool
 pt_is_keyword (const char *text)
 {
-  KEYWORD_RECORD *keyword_rec;
+  KEYWORD_RECORD *
+    keyword_rec;
 
   keyword_rec = pt_find_keyword (text);
 
@@ -1148,10 +1161,15 @@ FUNCTION_MAP *
 pt_find_function_name (const char *text)
 {
 #if !defined (SERVER_MODE)
-  static KEYWORDS_TABLE_SRCH_INFO finfo;
+  static KEYWORDS_TABLE_SRCH_INFO
+    finfo;
 #endif
-  int i, len, cmp;
-  FUNCTION_MAP dummy;
+  int
+    i,
+    len,
+    cmp;
+  FUNCTION_MAP
+    dummy;
 
 #if defined (SERVER_MODE)
   pt_sort_keyword_tables ();
@@ -1165,7 +1183,8 @@ pt_find_function_name (const char *text)
     }
 #endif
 #else /* SERVER_MODE */
-  static bool function_keyword_sorted = false;
+  static bool
+    function_keyword_sorted = false;
 
   if (function_keyword_sorted == false)
     {
@@ -1185,7 +1204,8 @@ pt_find_function_name (const char *text)
     }
 #endif /* !SERVER_MODE */
 
-  char temp[DB_MAX_IDENTIFIER_LENGTH];
+  char
+    temp[DB_MAX_IDENTIFIER_LENGTH];
 
   dummy.keyword = temp;
 #if defined (SERVER_MODE)

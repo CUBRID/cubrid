@@ -53,3 +53,5 @@ extern "C"
 #endif
 
 #include "dbtype_function.i"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"

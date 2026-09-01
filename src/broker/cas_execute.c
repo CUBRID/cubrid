@@ -84,6 +84,8 @@
 #include "cas_optimization.h"
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)

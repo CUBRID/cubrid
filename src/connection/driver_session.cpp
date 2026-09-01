@@ -1,20 +1,20 @@
 /*
- *  Copyright 2016 CUBRID Corporation
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Copyright 2016 CUBRID Corporation
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
-
 /*
  * driver_session.cpp - adopted driver connection session thread (stage B1)
  *
@@ -80,6 +80,8 @@
 #include "cas_net_buf.h"
 #include "cas_protocol.h"
 #include "cas_ssl.h"		// server-side TLS termination (B2-D9)
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 extern thread_local unsigned int db_on_server;	/* network_interface_sr.cpp */
 
@@ -338,7 +340,7 @@ namespace cubconn
       p += sizeof (int);
 
       char cas_info[CAS_INFO_SIZE] =
-	{ CAS_INFO_STATUS_ACTIVE, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT };
+      { CAS_INFO_STATUS_ACTIVE, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT };
       std::memcpy (p, cas_info, CAS_INFO_SIZE);
       p += CAS_INFO_SIZE;
 
@@ -371,7 +373,7 @@ namespace cubconn
       std::size_t msg_len = (msg != NULL && msg[0] != '\0') ? std::strlen (msg) + 1 : 0;
       int len = htonl ((int) (2 * sizeof (int) + msg_len));
       char cas_info[CAS_INFO_SIZE] =
-	{ status, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT };
+      { status, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT };
 
       if (write_full (fd, &len, sizeof (int)) != NO_ERROR || write_full (fd, cas_info, CAS_INFO_SIZE) != NO_ERROR)
 	{
@@ -402,7 +404,7 @@ namespace cubconn
     apply_driver_session_id (const char (&session_20b)[20])
     {
       static const char empty_key[SERVER_SESSION_KEY_SIZE] =
-	{ (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF };
+      { (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF };
 
       (void) session_20b;
       db_set_server_session_key (empty_key);
@@ -582,8 +584,10 @@ namespace cubconn
 	       * land here — reply what park_finish_health_check replies */
 	      int hc_zero = 0;
 	      char hc_cas_info[CAS_INFO_SIZE] =
-		      { CAS_INFO_STATUS_ACTIVE, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT,
-			CAS_INFO_RESERVED_DEFAULT };
+	      {
+		CAS_INFO_STATUS_ACTIVE, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT,
+		CAS_INFO_RESERVED_DEFAULT
+	      };
 	      (void) write_full (params.client_fd, &hc_zero, sizeof (hc_zero));
 	      (void) write_full (params.client_fd, hc_cas_info, sizeof (hc_cas_info));
 	    }
@@ -754,7 +758,7 @@ namespace cubconn
 	}
       (void) ux_end_session ();
 
-    retire:
+retire:
       if (as_info != NULL)
 	{
 	  /* the CAS process closed its logs at exit; a session closes its own

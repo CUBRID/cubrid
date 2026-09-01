@@ -354,6 +354,7 @@ dk_print_deduplicate_key_info (char *buf, int buf_size, int deduplicate_level)
   assert (len < buf_size);
   return buf;
 }
+
 /* end of former !SERVER_MODE region */
 //=============================================================================
 char *

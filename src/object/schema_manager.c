@@ -208,6 +208,8 @@ static const char *method_file_extension = ".o";
 #if !defined(WINDOWS)
 #include <nlist.h>
 #endif /* !WINDOWS */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 const char TEXT_CONSTRAINT_PREFIX[] = "#text_";

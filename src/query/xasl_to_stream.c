@@ -65,6 +65,8 @@ struct xts_visited_ptr
 /* The serialization state below lives for a single xts_map_*_to_stream call
  * on one thread, so per-thread scope multiplexes it (see csql_parser_tls.h) */
 #include "csql_parser_tls.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* linear byte stream to store the given XASL tree */
 static CSQL_PARSER_TLS char *xts_Stream_buffer = NULL;	/* pointer to the stream */

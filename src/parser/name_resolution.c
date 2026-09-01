@@ -60,6 +60,8 @@
 
 #include <cas_cci.h>
 #include <broker_cas_protocol.h>	/* CAS_*_DBMS_* values returned by cci_get_dbms_type */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 extern "C"
 {

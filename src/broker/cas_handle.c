@@ -39,6 +39,8 @@
 #include "cas_common_vars.h"
 #include "dbtype.h"
 #include "cas_common_execute.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define SRV_HANDLE_ALLOC_SIZE		256
 

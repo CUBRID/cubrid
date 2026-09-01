@@ -59,6 +59,8 @@
 #include "util_func.h"
 #include "xasl.h"
 #include "query_cl.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define BUF_SIZE 1024
 

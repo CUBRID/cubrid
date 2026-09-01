@@ -7845,6 +7845,7 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
 
   return err;
 }
+
 /* end of former !SERVER_MODE region */
 
 /*
@@ -12493,8 +12494,7 @@ sysprm_print_parameters_for_qry_string (void)
 	  SYSPRM_PARAM session_prm = *GET_PRM (i);
 	  if (PRM_SESSION_READTHROUGH ((PARAM_ID) i) && BO_IS_SERVER_RESTARTED ())
 	    {
-	      SESSION_PARAM *sprm =
-		session_get_session_parameter (thread_get_thread_entry_info (), (PARAM_ID) i);
+	      SESSION_PARAM *sprm = session_get_session_parameter (thread_get_thread_entry_info (), (PARAM_ID) i);
 	      if (sprm != NULL)
 		{
 		  session_prm.value.is_null = false;
@@ -12681,6 +12681,7 @@ sysprm_init_intl_param (void)
 
   return error;
 }
+
 /* end of former !SERVER_MODE region */
 
 /*

@@ -1,20 +1,20 @@
 /*
- *  Copyright 2016 CUBRID Corporation
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Copyright 2016 CUBRID Corporation
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
-
 /*
  * cas_dispatch.h - the CAS request dispatch (extracted from cas.c, stage B1)
  */
@@ -38,8 +38,7 @@ extern "C"
 
 /* one full request: header read, dispatch through server_fn_table, reply.
  * Serves both the cub_cas process loop and the in-server CAS speaker. */
-  extern FN_RETURN cas_process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-					SOCKET srv_sock_fd);
+  extern FN_RETURN cas_process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOCKET srv_sock_fd);
 
 /* the shard reconnect cluster (moved from cas.c; cas.c's main loop and
  * process_request share this state) */

@@ -1,4 +1,21 @@
 #!/bin/bash
+#
+#
+#  Copyright 2016 CUBRID Corporation
+# 
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+# 
+#       http://www.apache.org/licenses/LICENSE-2.0
+# 
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# 
+
 # smoke_jdbc.sh - track-B standard smoke: the real JDBC driver over a
 # DIRECT_HANDOFF broker (workspace#122 D5) - connect -> DDL/DML -> cancel ->
 # reconnect, 1-hop onto cub_server's folded CAS speaker (stage B1).

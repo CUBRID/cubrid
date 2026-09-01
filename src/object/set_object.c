@@ -3190,6 +3190,7 @@ set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercio
   (void) ws_pin (set->owner, pin);
   return (issome);
 }
+
 /* end of former !SERVER_MODE region */
 
 /*
@@ -5466,6 +5467,7 @@ setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion)
       return 0;
     }
 }
+
 /* end of former !SERVER_MODE region */
 
 /*

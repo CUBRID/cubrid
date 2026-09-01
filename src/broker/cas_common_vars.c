@@ -30,6 +30,8 @@
 #include "cas_common_vars.h"
 #include "cas_common.h"
 #include "porting.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* Shard ID variables */
 int shm_shard_id = SHARD_ID_UNSUPPORTED;

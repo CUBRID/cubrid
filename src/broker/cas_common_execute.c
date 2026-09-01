@@ -33,6 +33,8 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <stdio.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 /* Shared cas_u_type array for CAS and CGW */

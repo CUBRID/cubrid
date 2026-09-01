@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +15,6 @@
  *  limitations under the License.
  *
  */
-
 /*
  * test_main.cpp - the client parser works inside a
  *                 SERVER_MODE binary
@@ -177,7 +177,8 @@ test_ws_context_bracket (void)
  * that used to be process-global: hint table (with arguments), the grammar's
  * save/restore stacks (subquery, group/order by), lexer string/number
  * buffers, and host-variable counters. */
-static const char *const concurrent_stmts[] = {
+static const char *const concurrent_stmts[] =
+{
   "SELECT 1",
   "SELECT /*+ ORDERED USE_NL(a b) */ a.i, b.j FROM a, b WHERE a.i = b.i",
   "SELECT x, COUNT(*) FROM t WHERE x IN (SELECT y FROM u WHERE u.k > 10) GROUP BY x ORDER BY 2",
@@ -275,7 +276,8 @@ test_nesting_depth_guard (void)
     const char *label;
     int terms;
     bool expect_ok;
-  } plus_cases[] = {
+  } plus_cases[] =
+  {
     {"at-limit (16384)", 16384, true},
     {"over-limit (16385)", 16385, false},
   };
@@ -636,7 +638,8 @@ test_synthesize_client_type (void)
     int access_mode;
     int replica_only;
     int expected;
-  } cases[] = {
+  } cases[] =
+  {
     {READ_WRITE_ACCESS_MODE, 0, DB_CLIENT_TYPE_BROKER},
     {READ_WRITE_ACCESS_MODE, 1, DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY},
     {READ_ONLY_ACCESS_MODE, 0, DB_CLIENT_TYPE_READ_ONLY_BROKER},
@@ -714,7 +717,8 @@ test_admission_check (void)
     bool is_replica;
     bool repl_delayed;
     bool admitted;
-  } cases[] = {
+  } cases[] =
+  {
     /* reject rows (the reset table's connect-time pre-application) */
     {DB_CLIENT_TYPE_BROKER, HA_SERVER_STATE_STANDBY, false, false, false, false},	/* RW x standby */
     {DB_CLIENT_TYPE_SLAVE_ONLY_BROKER, HA_SERVER_STATE_ACTIVE, false, false, false, false},	/* SO x active */
@@ -875,7 +879,8 @@ test_adoption_wire_helpers (void)
 static int
 test_util_channel_allowlist (void)
 {
-  static const int allowed[] = {
+  static const int allowed[] =
+  {
     DB_CLIENT_TYPE_ADMIN_UTILITY, DB_CLIENT_TYPE_LOG_COPIER, DB_CLIENT_TYPE_LOG_APPLIER,
     DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS, DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2,
     DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4, DB_CLIENT_TYPE_LOADDB_UTILITY

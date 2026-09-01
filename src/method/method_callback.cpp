@@ -46,6 +46,8 @@
 #if defined (SERVER_MODE)
 #include "client_session_context.hpp"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 using namespace cubpl;
 

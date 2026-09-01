@@ -103,6 +103,8 @@ static int csql_thin_client_type (const CSQL_ARGUMENT * csql_arg);
 #include "boot_sr.h"
 #include "catalog_class.h"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)

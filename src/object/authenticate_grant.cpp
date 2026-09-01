@@ -46,6 +46,8 @@
 #if defined(SA_MODE)
 #include "catalog_class.h"
 #endif /* SA_MODE */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static int au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
 static int au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option);

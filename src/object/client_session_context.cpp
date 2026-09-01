@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +15,6 @@
  *  limitations under the License.
  *
  */
-
 /*
  * client_session_context.cpp - see client_session_context.hpp
  */
@@ -29,6 +29,8 @@
 #include <cstring>
 
 #include "object_domain.h"	// tp_session_domains_final (B4-D9)
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static thread_local client_session_context *tl_Csc_active = NULL;
 

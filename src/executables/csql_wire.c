@@ -1,20 +1,20 @@
 /*
- *  Copyright 2016 CUBRID Corporation
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ * Copyright 2016 CUBRID Corporation
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
-
 /*
  * csql_wire.c - thin csql transport (wf122/B5 D6R); see csql_wire.h
  */
@@ -801,8 +801,7 @@ wire_roundtrip (wire_body * b)
 	    {
 	      char *con_buf = NULL;
 	      int con_size = 0;
-	      if ((*csql_text_utf8_to_console) (reply + pos, clen, &con_buf, &con_size) == NO_ERROR
-		  && con_buf != NULL)
+	      if ((*csql_text_utf8_to_console) (reply + pos, clen, &con_buf, &con_size) == NO_ERROR && con_buf != NULL)
 		{
 		  fwrite (con_buf, 1, (size_t) con_size, fp);
 		  free (con_buf);
@@ -853,8 +852,7 @@ csql_wire_execute (const CSQL_ARGUMENT * csql_arg, int input_type, int line_no, 
       || wire_arg_int (&b, CAS_CSQL_SUB_EXECUTE) != NO_ERROR
       || wire_arg_int (&b, wire_flags_from_arg (csql_arg)) != NO_ERROR
       || wire_arg_int (&b, input_type) != NO_ERROR
-      || wire_arg_int (&b, line_no) != NO_ERROR
-      || wire_arg_int (&b, csql_arg->string_width) != NO_ERROR)
+      || wire_arg_int (&b, line_no) != NO_ERROR || wire_arg_int (&b, csql_arg->string_width) != NO_ERROR)
     {
       free (b.buf);
       wire_set_error (ER_FAILED, "out of memory");

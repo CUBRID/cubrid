@@ -780,7 +780,7 @@ set_cas_info_size (void)
 #if defined(WINDOWS)
 
 LONG WINAPI
-CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
+CreateMiniDump (struct _EXCEPTION_POINTERS *pException)
 {
   TCHAR DumpFile[MAX_PATH] = { 0, };
   TCHAR DumpPath[MAX_PATH] = { 0, };
@@ -1050,7 +1050,3 @@ cas_finish_session (SOCKET client_sock_fd, bool ssl_client)
       cas_ssl_close (client_sock_fd);
     }
 }
-
-
-
-

@@ -27,6 +27,8 @@
 #include "porting.h"
 #include "cas_protocol.h"
 #include "cas_common_vars.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define SET_BIT(C,B)	((C) |= (B))
 #define CLEAR_BIT(C,B)	((C) &= ~(B))
