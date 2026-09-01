@@ -11669,6 +11669,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
    * breaks that: a partial rollback can undo it while a writer parked on our MVCCID holds the row. */
   if (!logtb_has_active_savepoint (thread_p))
     {
+      /* TODO: logtb_has_active_savepoint () does not tell a user savepoint from a DDL/trigger system
+       *       savepoint, so a transaction that ran DDL earlier keeps its locks to commit here -- correct
+       *       but it forgoes the release.  CBRD-27238 (UPDATE) adds a user-savepoint-only flag on tdes for
+       *       both paths to read instead. */
       transient_row_locks_release (thread_p, &transient_row_locks);
     }
   transient_row_locks_clear (thread_p, &transient_row_locks);
