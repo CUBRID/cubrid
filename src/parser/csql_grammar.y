@@ -382,6 +382,7 @@ static PT_NODE *parser_get_alter_node (void);
 
 static void parser_save_attr_def_one (PT_NODE * node);
 static PT_NODE *parser_get_attr_def_one (void);
+static void parser_reject_non_normal_attr_storage (PARSER_CONTEXT * parser, PT_NODE * node);
 
 static void parser_push_orderby_node (PT_NODE * node);
 static PT_NODE *parser_top_orderby_node (void);
@@ -6402,6 +6403,8 @@ alter_modify_clause_for_alter_list
 
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list->
 				info.attr_def.attr_type = PT_META_ATTR;
+			    parser_reject_non_normal_attr_storage
+			      (this_parser, node->info.alter.alter_clause.attr_mthd.attr_def_list);
 			  }
 		}}
 	;
@@ -6425,6 +6428,7 @@ alter_change_clause_for_alter_list
 			    att = node->info.alter.alter_clause.attr_mthd.attr_def_list;
 			    att->info.attr_def.attr_type =
 			      node->info.alter.alter_clause.attr_mthd.attr_old_name->info.name.meta_class;
+			    parser_reject_non_normal_attr_storage (this_parser, att);
 			  }
 		}}
 	;
@@ -23370,6 +23374,20 @@ static PT_NODE *
 parser_get_attr_def_one ()
 {
   return parser_attr_def_one_saved;
+}
+
+static void
+parser_reject_non_normal_attr_storage (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (node == NULL || node->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
+      || (node->info.attr_def.attr_type != PT_SHARED && node->info.attr_def.attr_type != PT_META_ATTR))
+    {
+      return;
+    }
+
+  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_STORAGE,
+	      node->info.attr_def.attr_name->info.name.original);
+  node->info.attr_def.attr_storage = PT_ATTR_STORAGE_UNSET;
 }
 
 static PT_NODE *parser_orderby_node_stack_default[STACK_SIZE];
