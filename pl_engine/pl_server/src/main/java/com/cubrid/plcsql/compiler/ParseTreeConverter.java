@@ -2913,6 +2913,26 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 isSpFunc = (ctx.PROCEDURE() == null);
             }
 
+            // The option list accepts the specifications in any order and any number, so reject
+            // repetitions here. Placed after the branch above on purpose: a local routine rejects
+            // AUTHID and PARALLEL_ENABLE outright there, and what is left for it to check is a
+            // repeated DETERMINISTIC.
+            if (ctx.authid_spec().size() > 1) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.authid_spec().get(1)), // s441
+                        "AUTHID is specified more than once");
+            }
+            if (ctx.deterministic_spec().size() > 1) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.deterministic_spec().get(1)), // s442
+                        "DETERMINISTIC is specified more than once");
+            }
+            if (ctx.parallel_enable_spec().size() > 1) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.parallel_enable_spec().get(1)), // s443
+                        "PARALLEL_ENABLE is specified more than once");
+            }
+
             // push a temporary symbol table, in order not to corrupt the current symbol table with
             // the
             // parameters
