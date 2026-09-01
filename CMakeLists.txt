@@ -810,7 +810,7 @@ if(WIN32)
 endif(WIN32)
 
 # for cmserver
-if(WITH_CMSERVER AND UNIX AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server/CMakeLists.txt)
+if(WITH_CCI AND WITH_CMSERVER AND UNIX AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server/CMakeLists.txt)
   add_subdirectory(cubridmanager/server)
 endif()
 # create empty directories
