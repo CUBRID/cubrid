@@ -29585,7 +29585,11 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	   * 2: PT_AUTHID_OWNER + PT_DETERMINISTIC
 	   * 3: PT_AUTHID_CALLER + PT_DETERMINISTIC
 	   */
-#if defined (CS_MODE)
+	  /* the folded compile is the legacy CS client (workspace#176 결함 16:
+	   * a non-deterministic SP must keep its subquery out of the result
+	   * cache — caching it returns stale SP results and leaks a
+	   * SUBQUERY_CACHE trace line the legacy client never produced) */
+#if defined (CS_MODE) || defined (SERVER_MODE)
 	  if (regu_src->value.sp_ptr->sig->is_deterministic == false)
 	    {
 	      return ER_FAILED;

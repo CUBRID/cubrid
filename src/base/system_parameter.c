@@ -9169,8 +9169,16 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
     {
       set_min = true;
     }
-#if defined(CS_MODE)
+#if defined(CS_MODE) || defined(SERVER_MODE)
+#if defined(SERVER_MODE)
+  /* the merged client half validates values with the legacy client rules —
+   * lang names, collation, timezone (workspace#176 결함 15: an invalid
+   * 'intl_number_lang=tr_t' must be -839, not silently accepted).  Outside
+   * a bracket the server keeps its legacy behavior (no such checks). */
+  if (!set_default && csc_bracket_is_active ())
+#else
   if (!set_default)
+#endif
     {
       if (prm->id == PRM_ID_INTL_NUMBER_LANG || prm->id == PRM_ID_INTL_DATE_LANG)
 	{

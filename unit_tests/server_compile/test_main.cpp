@@ -262,7 +262,7 @@ test_concurrent_parse (void)
 }
 
 /* user input must not build a tree deep enough to overflow the recursive
- * tree walkers (#128 D5): nesting past the parser's fixed limit (1024) is a
+ * tree walkers (#128 D5): nesting past the parser's fixed limit (16384) is a
  * statement error, while a moderately nested statement still parses.  The
  * guard must hold at the exact boundary and on the constructs that build
  * PT_EXPR chains outside parser_make_expression (COALESCE, CASE). */
@@ -276,8 +276,8 @@ test_nesting_depth_guard (void)
     int terms;
     bool expect_ok;
   } plus_cases[] = {
-    {"at-limit (1024)", 1024, true},
-    {"over-limit (1025)", 1025, false},
+    {"at-limit (16384)", 16384, true},
+    {"over-limit (16385)", 16385, false},
   };
 
   for (auto &c : plus_cases)
@@ -300,26 +300,26 @@ test_nesting_depth_guard (void)
    * through parser_make_expression - the guard must still see it */
   {
     std::string wide = "SELECT COALESCE(1";
-    for (int i = 0; i < 2000; i++)
+    for (int i = 0; i < 20000; i++)
       {
 	wide += ",1";
       }
     wide += ")";
     if (!parse_to_string (wide.c_str ()).empty ())
       {
-	fprintf (stderr, "FAIL: 2001-arg COALESCE parsed without error\n");
+	fprintf (stderr, "FAIL: 20001-arg COALESCE parsed without error\n");
 	return 1;
       }
 
     std::string sane = "SELECT COALESCE(1";
-    for (int i = 0; i < 200; i++)
+    for (int i = 0; i < 2000; i++)
       {
 	sane += ",1";
       }
     sane += ")";
     if (parse_to_string (sane.c_str ()).empty ())
       {
-	fprintf (stderr, "FAIL: 201-arg COALESCE was rejected\n");
+	fprintf (stderr, "FAIL: 2001-arg COALESCE was rejected\n");
 	return 1;
       }
   }
@@ -327,7 +327,7 @@ test_nesting_depth_guard (void)
   /* deeply nested searched CASE - the when-clause and chain constructors
    * also bypass parser_make_expression */
   {
-    const int levels = 1100;
+    const int levels = 17000;
     std::string deep;
     deep.reserve (levels * 32);
     deep = "SELECT ";

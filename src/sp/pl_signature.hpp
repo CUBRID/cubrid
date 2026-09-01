@@ -91,7 +91,10 @@ namespace cubpl
     char *auth;
     int result_type; // DB_TYPE
 
-#if defined (CS_MODE)
+#if defined (CS_MODE) || defined (SERVER_MODE)
+    /* compile-side only, never packed — the folded compile (SERVER_MODE) is
+     * the legacy CS client and needs it for the subquery-cache eligibility
+     * check (workspace#176 결함 16) */
     bool is_deterministic; // DETERMINISTIC
 #endif
 
