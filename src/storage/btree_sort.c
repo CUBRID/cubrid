@@ -1190,9 +1190,12 @@ cleanup:
 #if defined(SERVER_MODE)
   if (sort_param->px_parallel_num > 1)
     {
-      for (int i = 0; i < sort_param->px_parallel_num; i++)
+      if (px_sort_param != NULL)
 	{
-	  btsort_return_used_resources (thread_p, &px_sort_param[i], BTSORT_PX_THREAD_IN_PARALLEL);
+	  for (int i = 0; i < sort_param->px_parallel_num; i++)
+	    {
+	      btsort_return_used_resources (thread_p, &px_sort_param[i], BTSORT_PX_THREAD_IN_PARALLEL);
+	    }
 	}
 
       btsort_return_used_resources (thread_p, sort_param, BTSORT_PX_MAIN_IN_PARALLEL);
