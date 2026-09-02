@@ -456,9 +456,10 @@ extern SCAN_CODE heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid, R
 extern bool heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
 extern bool heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
 extern int heap_get_num_data_pages (THREAD_ENTRY * thread_p, const HFID * hfid, int *num_pages);
-extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length);
+extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, INT64 * nobjs,
+				 int *avg_length);
 
-extern int heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length);
+extern int heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, INT64 * nobjs, int *avg_length);
 extern int heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid);
 
 extern int heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **class_name);

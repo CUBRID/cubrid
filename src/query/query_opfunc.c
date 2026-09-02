@@ -8894,7 +8894,8 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
   bool scan_cache_opened = false;
-  int npages, nobjs, avg_length;
+  int npages, avg_length;
+  INT64 nobjs;
   int error = NO_ERROR;
   int str_len;
 

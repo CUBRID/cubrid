@@ -2438,7 +2438,7 @@ db_get_btree_statistics (DB_CONSTRAINT * cons, int *num_leaf_pages, int *num_tot
 
   *num_leaf_pages = stat.leafs;
   *num_total_pages = stat.pages;
-  *num_keys = stat.keys;
+  *num_keys = STATS_CLAMP_TO_INT (stat.keys);	/* public API stays int; saturate past 2^31 (CBRD-27140) */
   *height = stat.height;
 
   return NO_ERROR;
