@@ -88,10 +88,13 @@ namespace parallel_scan
   {
     std::lock_guard<std::mutex> lock (m_stats_mutex);
     m_stats.clear();
+    m_topnsort_used.store (false, std::memory_order_relaxed);   // per-reopen reset, matches m_stats.clear()
   }
 
   void accumulative_trace_storage::add_stats (trace_handler &trace_handler)
   {
+    // accumulative m_topnsort_used: no in-place reset; storage freed+realloc'd per top-level exec in qexec_clear_access_spec_list. worker per-reopen reset = trace_handler::clear().
+    m_topnsort_used = m_topnsort_used || trace_handler.is_topnsort_used();
     if (!m_is_initialized)
       {
 	m_stats.resize (trace_handler.m_stats.size());
@@ -280,6 +283,10 @@ namespace parallel_scan
 	  {
 	    fprintf (fp, ", loose: true");
 	  }
+	if (m_topnsort_used)
+	  {
+	    fprintf (fp, ", topnsort: true");
+	  }
 	fprintf (fp, ", gather: %s", result_type_str);
 	fprintf (fp, ")");
 	if (!any_covered)
@@ -292,6 +299,10 @@ namespace parallel_scan
       {
 	fprintf (fp, ", readrows: %lu..%lu", min_read_rows, max_read_rows);
 	fprintf (fp, ", rows: %lu..%lu", min_qualified_rows, max_qualified_rows);
+	if (m_topnsort_used)
+	  {
+	    fprintf (fp, ", topnsort: true");
+	  }
 	fprintf (fp, ", gather: %s", result_type_str);
 	fprintf (fp, ")");
       }
@@ -418,6 +429,10 @@ namespace parallel_scan
 	  {
 	    json_object_set_new (parallel_obj, "loose", json_true ());
 	  }
+	if (m_topnsort_used)
+	  {
+	    json_object_set_new (parallel_obj, "topnsort", json_true ());
+	  }
       }
     else
       {
@@ -430,6 +445,10 @@ namespace parallel_scan
 				  "readrows", readrows_buf,
 				  "rows", rows_buf,
 				  "gather", result_type_str);
+	if (m_topnsort_used)
+	  {
+	    json_object_set_new (parallel_obj, "topnsort", json_true ());
+	  }
       }
     json_object_set_new (scan, scan_type_label, parallel_obj);
   }
@@ -442,7 +461,7 @@ namespace parallel_scan
   void trace_storage_for_sibling_xasl::merge_xasl_tree (xasl_node *xasl_tree)
   {
     std::lock_guard<std::mutex> lock (m_mutex);
-    xasl_node *xptr1, *xptr2, *dst_node, *src_node;
+    xasl_node *xptr1, *dst_node, *src_node;
 
     /* for main xasl correlated subquery */
     for (xptr1 = xasl_tree->dptr_list; xptr1 != nullptr; xptr1 = xptr1->next)
@@ -470,15 +489,14 @@ namespace parallel_scan
 	dst_node->sq_cache->enabled = dst_node->sq_cache->enabled ? true : src_node->sq_cache->enabled;
       }
 
-    /* for nl join */
-    for (xptr1 = xasl_tree->scan_ptr; xptr1 != nullptr; xptr1 = xptr1->scan_ptr)
-      {
-	xasl_merge_stats (xptr1, m_main_xasl_tree);
-	for (xptr2 = xptr1->dptr_list; xptr2 != nullptr; xptr2 = xptr2->next)
-	  {
-	    xasl_merge_stats (xptr2, m_main_xasl_tree);
-	  }
-      }
+    /* for nl join
+     *
+     * xasl_merge_stats () already walks the whole subtree of its source node, which includes
+     * the rest of the scan_ptr chain and every level's dptr_list. Merging the chain head once
+     * therefore covers all nested levels exactly once. Walking the chain here as well would
+     * re-merge the node at scan_ptr depth k once per ancestor, inflating readkeys/filteredkeys/
+     * rows/fetch/ioread by a factor of (k-1). */
+    xasl_merge_stats (xasl_tree->scan_ptr, m_main_xasl_tree);
   }
 
 }

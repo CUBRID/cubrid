@@ -4790,7 +4790,7 @@ la_flush_repl_items (bool immediate)
 
 	      sb.clear ();
 	      db_sprint_value (&flush_err->pkey_value, sb);
-	      snprintf (pkey_str, sizeof (pkey_str) - 1, sb.get_buffer ());
+	      snprintf (pkey_str, sizeof (pkey_str) - 1, "%s", sb.get_buffer ());
 
 	      if (LC_IS_FLUSH_INSERT (flush_err->operation) == true)
 		{
@@ -5420,7 +5420,7 @@ la_update_query_execute (const char *sql, bool au_disable)
   if (au_disable)
     {
       /* in order to update 'db_ha_info', disable authorization temporarily */
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
     }
 
   res = db_execute (sql, &result, &query_error);
@@ -5437,7 +5437,7 @@ la_update_query_execute (const char *sql, bool au_disable)
 
   if (au_disable)
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
     }
 
   return res;
@@ -5462,7 +5462,7 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
   if (au_disable)
     {
       /* in order to update 'db_ha_info', disable authorization temporarily */
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
     }
 
   res = db_execute_with_values (sql, &result, &query_error, arg_count, vals);
@@ -5479,7 +5479,7 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
 
   if (au_disable)
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
     }
 
   return res;
@@ -5747,7 +5747,6 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
   int errid;
   LA_APPLY *apply;
   int apply_repl_log_cnt = 0;
-  char error_string[1024];
   char buf[256];
   static unsigned int total_repl_items = 0;
   bool release_pb = false;
@@ -5854,8 +5853,11 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
 	      sb.clear ();
 	      db_sprint_value (la_get_item_pk_value (item), sb);
-	      sprintf (error_string, "[%s,%s] %s", item->class_name, sb.get_buffer (), db_error_string (1));
-	      er_log_debug (ARG_FILE_LINE, "Internal system failure: %s", error_string);
+	      const char *pk_string = sb.get_buffer ();
+	      const char *pk_ellipsis = strlen (pk_string) > 255 ? "..." : "";
+
+	      er_log_debug (ARG_FILE_LINE, "Internal system failure: [%s,%.255s%s] %s", item->class_name, pk_string,
+			    pk_ellipsis, db_error_string (1));
 
 	      if (ER_IS_SERVER_DOWN_ERROR (errid))
 		{

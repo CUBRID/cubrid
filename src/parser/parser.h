@@ -63,6 +63,7 @@ extern "C"
   } VIEW_HANDLING;
 
   extern void csql_yyset_lineno (int line_number);
+  extern int csql_yyget_lineno (void);
   extern size_t json_table_column_count;
 
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
@@ -77,6 +78,7 @@ extern "C"
   extern PT_NODE **parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer,
 						     const bool no_escapes_strings);
   extern PT_NODE **parser_parse_string_use_sys_charset (PARSER_CONTEXT * parser, const char *buffer);
+  extern int parser_copy_memory_input (PARSER_CONTEXT * parser, char *buffer, int max_size);
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern PT_NODE **parser_parse_binary (PARSER_CONTEXT * parser, const char *buffer, size_t size);
 #endif
@@ -136,6 +138,7 @@ extern "C"
   extern const unsigned char *pt_get_varchar_bytes (const PARSER_VARCHAR * string);
   extern int pt_get_varchar_length (const PARSER_VARCHAR * string);
 
+  extern const char *pt_print_quoted_value_text (PARSER_CONTEXT * parser, const char *str, int length);
   extern PARSER_VARCHAR *pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_bytes_spec_list (PARSER_CONTEXT * parser, const PT_NODE * node);
@@ -180,6 +183,8 @@ extern "C"
   extern PT_NODE *pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query);
   extern PT_HINT_ENUM pt_get_hint_from_query (PARSER_CONTEXT * parser, PT_NODE * query);
 
+  extern PT_NODE *pt_make_expression_default_expr (PARSER_CONTEXT * parser, PT_NODE * node,
+						   DB_DEFAULT_EXPR_TYPE expr_type);
   extern PT_NODE *pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr);
   extern PT_OP_TYPE pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type);
 
@@ -368,6 +373,7 @@ extern "C"
   extern PT_NODE *pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where);
   extern PT_NODE *pt_where_type_keep_true (PARSER_CONTEXT * parser, PT_NODE * where);
   extern bool pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * statement);
+  extern bool pt_true_search_condition (PARSER_CONTEXT * parser, const PT_NODE * statement);
   extern const char *mq_generate_name (PARSER_CONTEXT * parser, const char *root, int *version);
   extern int mq_is_real_class_of_vclass (PARSER_CONTEXT * parser, const PT_NODE * s_class, const PT_NODE * d_class);
   extern void pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt);
@@ -410,6 +416,8 @@ extern "C"
   extern PT_NODE *pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e);
 
   extern int pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes);
+  extern int pt_find_attribute_with_func_index_expr (PARSER_CONTEXT * parser, const PT_NODE * name,
+						     const PT_NODE * attributes, bool check_func_index_exprs);
 
   extern PT_NODE *pt_make_string_value (PARSER_CONTEXT * parser, const char *value_string);
 
@@ -638,7 +646,6 @@ extern "C"
   extern bool pt_list_has_logical_nodes (PT_NODE * list);
   extern bool pt_is_pseudo_const (PT_NODE * expr);
   extern bool pt_is_op_hv_late_bind (PT_OP_TYPE op);
-  extern PT_OP_TYPE pt_op_type_from_default_expr (DB_DEFAULT_EXPR_TYPE expr_type);
   extern void pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern void pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern void pt_init_assignments_helper (PARSER_CONTEXT * parser, PT_ASSIGNMENTS_HELPER * helper,
@@ -703,6 +710,8 @@ extern "C"
 								DB_DEFAULT_EXPR * default_expr);
   extern void pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size,
 						     DB_DEFAULT_EXPR * default_expr);
+  extern PT_NODE *pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser,
+								const DB_DEFAULT_EXPR * default_expr);
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);
@@ -719,6 +728,7 @@ extern "C"
 
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
+  extern int pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name);
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }

@@ -2074,6 +2074,13 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 		    if (dsize1 == 1)
 		      {
 			match = tp_domain_match (domain->setdomain, transient->setdomain, exact);
+
+			if (match && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient))
+			    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (transient->setdomain))
+			    && domain->setdomain->collation_flag != transient->setdomain->collation_flag)
+			  {
+			    match = 0;
+			  }
 		      }
 		    else
 		      {
@@ -2083,7 +2090,10 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 			for (d1 = domain->setdomain, d2 = transient->setdomain; d1 != NULL && d2 != NULL;
 			     d1 = d1->next, d2 = d2->next)
 			  {
-			    if (!tp_domain_match (d1, d2, exact))
+			    if (!tp_domain_match (d1, d2, exact)
+				|| (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient))
+				    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d2))
+				    && d1->collation_flag != d2->collation_flag))
 			      {
 				match = 0;
 				break;	/* immediately exit for loop */
@@ -2151,7 +2161,12 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 
 	    if (match)
 	      {
-		break;
+		if (!TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient)) || domain->is_desc == transient->is_desc)
+		  {
+		    break;
+		  }
+
+		match = 0;
 	      }
 
 	    *ins_pos = domain;
@@ -5415,21 +5430,9 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      {
-	int prec = DB_VALUE_PRECISION (result);
-	int data_size = strlen (str_float);
-
-	db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
-		      str_float, data_size, db_get_string_codeset (result), db_get_string_collation (result));
-	result->need_clear = true;
-	result->data.ch.medium.length = data_size;	/* ASCII float string: char_count == byte_count */
-
-	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
-	  {
-	    pr_clear_value (result);
-	    return;
-	  }
-      }
+      db_make_char (result, DB_VALUE_PRECISION (result), str_float, strlen (str_float), db_get_string_codeset (result),
+		    db_get_string_collation (result));
+      result->need_clear = true;
       break;
 
     case DB_TYPE_VARCHAR:
@@ -5484,21 +5487,9 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      {
-	int prec = DB_VALUE_PRECISION (result);
-	int data_size = strlen (str_double);
-
-	db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
-		      str_double, data_size, db_get_string_codeset (result), db_get_string_collation (result));
-	result->need_clear = true;
-	result->data.ch.medium.length = data_size;	/* ASCII double string: char_count == byte_count */
-
-	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
-	  {
-	    pr_clear_value (result);
-	    return;
-	  }
-      }
+      db_make_char (result, DB_VALUE_PRECISION (result), str_double, strlen (str_double),
+		    db_get_string_codeset (result), db_get_string_collation (result));
+      result->need_clear = true;
       break;
 
     case DB_TYPE_VARCHAR:

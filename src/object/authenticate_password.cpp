@@ -256,7 +256,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
   char pbuf[AU_MAX_PASSWORD_BUF + 4];
 
   /* check if the current user has permission to change the password */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   if (!ws_is_same_object (Au_user, user) && !au_is_dba_group_member (Au_user))
     {
       error = ER_AU_UPDATE_FAILURE;
@@ -357,7 +357,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
     }
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 

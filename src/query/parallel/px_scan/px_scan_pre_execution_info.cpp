@@ -17,10 +17,12 @@
  */
 
 /*
- * px_scan_join_info.cpp
+ * px_scan_pre_execution_info.cpp
  */
 
-#include "px_scan_join_info.hpp"
+#include "px_scan_pre_execution_info.hpp"
+
+#include "object_primitive.h"
 #include "xasl.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -28,12 +30,22 @@
 
 namespace parallel_scan
 {
-  join_info::join_info()
+  pre_execution_info::pre_execution_info()
     :  m_scan_infos ()
+    , m_precomp_vals ()
   {
   }
 
-  void join_info::capture_join_info (xasl_node *head)
+  pre_execution_info::~pre_execution_info()
+  {
+    /* each precomputed scalar value cloned in via pr_clone_value -- clear exactly once. */
+    for (auto &entry : m_precomp_vals)
+      {
+	pr_clear_value (&entry.second);
+      }
+  }
+
+  void pre_execution_info::capture_pre_execution_info (xasl_node *head)
   {
     xasl_node *xptr = head;
     ACCESS_SPEC_TYPE *specp;
@@ -75,14 +87,52 @@ namespace parallel_scan
 	m_scan_infos[xptr->header.id] = scan_info;
       }
   }
-  void join_info::record_join_info (XASL_ID xasl_id, xasl_node *xptr)
+
+  /* snapshot each uncorrelated scalar subquery (precomp_owner_regu set) in aptr lists across the scan_ptr chain, keyed by header.id; main thread, before workers; idempotent (emplace skips existing). */
+  void pre_execution_info::capture_precomp_vals (xasl_node *head)
+  {
+    for (xasl_node *xptr = head; xptr != NULL; xptr = xptr->scan_ptr)
+      {
+	for (xasl_node *subq = xptr->aptr_list; subq != NULL; subq = subq->next)
+	  {
+	    if (subq->precomp_owner_regu == NULL)
+	      {
+		continue;
+	      }
+	    if (subq->single_tuple == NULL || subq->single_tuple->valp == NULL
+		|| subq->single_tuple->valp->val == NULL)
+	      {
+		continue;
+	      }
+	    if (m_precomp_vals.find (subq->header.id) != m_precomp_vals.end ())
+	      {
+		continue;
+	      }
+	    DB_VALUE v;
+	    pr_clone_value (subq->single_tuple->valp->val, &v);
+	    m_precomp_vals.emplace (subq->header.id, v);
+	  }
+      }
+  }
+
+  const DB_VALUE *pre_execution_info::find_precomp_val (XASL_NODE_ID subquery_id) const
+  {
+    auto it = m_precomp_vals.find (subquery_id);
+    if (it == m_precomp_vals.end ())
+      {
+	return NULL;
+      }
+    return &it->second;
+  }
+
+  void pre_execution_info::record_pre_execution_info (XASL_NODE_ID xasl_id, xasl_node *xptr)
   {
     std::lock_guard<std::mutex> lock (m_mutex);
     scan_info &scan_info = m_scan_infos[xasl_id];
     scan_info.status = xptr->curr_spec->s_id.status;
     scan_info.qualified_block = xptr->curr_spec->s_id.qualified_block;
   }
-  void join_info::apply_join_info (xasl_node *xasl)
+  void pre_execution_info::apply_pre_execution_info (xasl_node *xasl)
   {
     xasl_node *xptr;
     ACCESS_SPEC_TYPE *specp;

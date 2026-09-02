@@ -1,5 +1,4 @@
 /*
- *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,33 +28,26 @@
  *
  */
 
-package com.cubrid.jsp.code;
+package com.cubrid.plcsql.compiler.ast;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.cubrid.plcsql.compiler.StaticSql;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.ArrayList;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class MemoryClassCache {
+public class StmtOpenForStatic extends StmtOpenFor {
 
-    private Map<String, MemoryClass> classMap = null;
-
-    // singleton
-    private static class LazyHolder {
-        private static final MemoryClassCache INSTANCE = new MemoryClassCache(null);
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtOpenForStatic(this);
     }
 
-    public static MemoryClassCache getInstance() {
-        return LazyHolder.INSTANCE;
-    }
-
-    public MemoryClassCache(MemoryClassCache parent) {
-        this.classMap = new ConcurrentHashMap<>();
-    }
-
-    public MemoryClass getByClassName(String className) {
-        return classMap.get(className);
-    }
-
-    public void put(MemoryClass mCls) {
-        classMap.put(mCls.getClassName(), mCls);
+    public StmtOpenForStatic(ParserRuleContext ctx, ExprId id, StaticSql staticSql) {
+        super(
+                ctx,
+                false,
+                id,
+                new ExprStr(staticSql.ctx, staticSql.rewritten),
+                new ArrayList<>(staticSql.hostExprs.keySet()));
     }
 }

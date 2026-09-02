@@ -31,20 +31,18 @@
 
 package com.cubrid.jsp.classloader;
 
-import java.net.URL;
+import java.nio.file.attribute.FileTime;
 
-public class ServerClassLoader extends BaseClassLoader {
+public class FileClassLoaderDynamic extends FileClassLoader {
 
-    // singleton
-    private static class LazyHolder {
-        private static final ServerClassLoader INSTANCE = new ServerClassLoader();
+    public final FileTime lastModifiedTimeOfDynamicPath;
+
+    public FileClassLoaderDynamic(FileTime lastModifiedTime) {
+        super(ClassPathHelper.getDynamicPath(), FileClassLoaderStatic.getInstance());
+        this.lastModifiedTimeOfDynamicPath = lastModifiedTime;
     }
 
-    public static ServerClassLoader getInstance() {
-        return LazyHolder.INSTANCE;
-    }
-
-    private ServerClassLoader() {
-        super(ClassLoaderManager.getStaticPath(), new URL[0], null);
+    public FileClassLoaderDynamic() {
+        this(ClassPathHelper.getLastModifiedTimeOfDynamicPath());
     }
 }

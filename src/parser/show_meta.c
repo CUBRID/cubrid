@@ -223,7 +223,6 @@ metadata_of_slotted_page_header (void)
     {"Total_free_area", "int"},
     {"Contiguous_free_area", "int"},
     {"Free_space_offset", "int"},
-    {"Need_update_best_hint", "int"},
     {"Is_saving", "int"},
     {"Flags", "int"}
   };
@@ -304,21 +303,11 @@ metadata_of_heap_header (SHOW_ONLY_ALL flag)
     {"Header_page_id", "int"},
     {"Overflow_vfid", "varchar(64)"},
     {"Next_vpid", "varchar(64)"},
+    {"Last_vpid", "varchar(64)"},
     {"Unfill_space", "int"},
-    {"Estimates_num_pages", "bigint"},
-    {"Estimates_num_recs", "bigint"},
-    {"Estimates_avg_rec_len", "int"},
-    {"Estimates_num_high_best", "int"},
-    {"Estimates_num_others_high_best", "int"},
-    {"Estimates_head", "int"},
-    {"Estimates_best_list", "varchar(512)"},
-    {"Estimates_num_second_best", "int"},
-    {"Estimates_head_second_best", "int"},
-    {"Estimates_tail_second_best", "int"},
-    {"Estimates_num_substitutions", "int"},
-    {"Estimates_second_best_list", "varchar(256)"},
-    {"Estimates_last_vpid", "varchar(64)"},
-    {"Estimates_full_search_vpid", "varchar(64)"}
+    {"Num_pages", "bigint"},
+    {"Num_recs", "bigint"},
+    {"Avg_rec_len", "int"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
@@ -701,10 +690,16 @@ metadata_of_threads (void)
 static SHOWSTMT_METADATA *
 metadata_of_page_buffer_status (void)
 {
+  /* note: the counter columns (Hit_rate, Num_hit, Num_page_request, Num_pages_created, Num_pages_written,
+   * Pages_written_rate, Num_pages_read, Pages_read_rate, Num_flusher_waiting_threads) are deprecated and always
+   * report NULL. They were maintained on the page fix hot path and duplicate statistics already provided by
+   * cubrid statdump (Num_data_page_fetches / Num_data_page_ioreads / Num_data_page_iowrites /
+   * Data_page_buffer_hit_ratio).
+   * The columns are kept so that the result set layout does not change. */
   static const SHOWSTMT_COLUMN cols[] = {
-    {"Hit_rate", "numeric(13,10)"},
-    {"Num_hit", "bigint"},
-    {"Num_page_request", "bigint"},
+    {"Hit_rate", "numeric(13,10)"},	/* deprecated, always NULL */
+    {"Num_hit", "bigint"},	/* deprecated, always NULL */
+    {"Num_page_request", "bigint"},	/* deprecated, always NULL */
     {"Pool_size", "int"},
     {"Page_size", "int"},
     {"Free_pages", "int"},
@@ -715,12 +710,12 @@ metadata_of_page_buffer_status (void)
     {"Num_data_pages", "int"},
     {"Num_system_pages", "int"},
     {"Num_temp_pages", "int"},
-    {"Num_pages_created", "bigint"},
-    {"Num_pages_written", "bigint"},
-    {"Pages_written_rate", "numeric(20,10)"},
-    {"Num_pages_read", "bigint"},
-    {"Pages_read_rate", "numeric(20,10)"},
-    {"Num_flusher_waiting_threads", "int"}
+    {"Num_pages_created", "bigint"},	/* deprecated, always NULL */
+    {"Num_pages_written", "bigint"},	/* deprecated, always NULL */
+    {"Pages_written_rate", "numeric(20,10)"},	/* deprecated, always NULL */
+    {"Num_pages_read", "bigint"},	/* deprecated, always NULL */
+    {"Pages_read_rate", "numeric(20,10)"},	/* deprecated, always NULL */
+    {"Num_flusher_waiting_threads", "int"}	/* deprecated, always NULL */
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
@@ -818,9 +813,9 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error = au_fetch_class_force (cls, &sm_class, AU_FETCH_READ);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   if (error == NO_ERROR)
     {
       if (sm_get_class_type (sm_class) != SM_CLASS_CT)
@@ -1108,9 +1103,9 @@ pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error = au_fetch_class_force (cls, &sm_class, AU_FETCH_READ);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   if (error == NO_ERROR)
     {
       if (sm_get_class_type (sm_class) != SM_CLASS_CT)

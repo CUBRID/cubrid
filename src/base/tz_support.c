@@ -5030,9 +5030,9 @@ put_timezone_checksum (char *checksum)
 
   db_make_string (&value, checksum);
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
   err_status = db_put_internal (Au_root, "timezone_checksum", &value);
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   return err_status;
 }

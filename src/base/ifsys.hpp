@@ -54,7 +54,7 @@ namespace cubbase
 
       static bool set_rps_for_queue (const char *ifname, int rxq, int cpu);
       static bool set_xps_for_queue (const char *ifname, int txq, int cpu);
-      static void maybe_set_rps_sock_flow_entries (int ncores);
+      static bool maybe_set_rps_sock_flow_entries (int ncores);
 
     private:
       static bool file_exists (const std::string &path);

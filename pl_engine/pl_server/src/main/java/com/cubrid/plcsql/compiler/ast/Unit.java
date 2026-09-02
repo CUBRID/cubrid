@@ -41,25 +41,25 @@ public class Unit extends AstNode {
         return visitor.visitUnit(this);
     }
 
-    public final boolean autonomousTransaction;
     public final boolean connectionRequired;
     public final DeclRoutine routine;
-    public final String revision;
+    public final String owner;
+    public final String compileSeqNo;
 
     public Unit(
             ParserRuleContext ctx,
-            boolean autonomousTransaction,
             boolean connectionRequired,
             DeclRoutine routine,
-            String revision) {
+            String owner,
+            String compileSeqNo) {
         super(ctx);
 
         assert routine.scope.level == 1;
 
-        this.autonomousTransaction = autonomousTransaction;
         this.connectionRequired = connectionRequired;
         this.routine = routine;
-        this.revision = revision;
+        this.owner = owner;
+        this.compileSeqNo = compileSeqNo;
     }
 
     public String getJavaSignature() {
@@ -96,8 +96,13 @@ public class Unit extends AstNode {
             String kindStr = routine.isProcedure() ? "Proc" : "Func";
             className =
                     String.format(
-                            "%s_%s_%s_%d",
-                            kindStr, routine.name, revision, new java.util.Date().getTime());
+                            "%s_%d_%s_%s_%s_%d",
+                            kindStr,
+                            owner.length(),
+                            owner,
+                            routine.name,
+                            compileSeqNo,
+                            System.currentTimeMillis());
         }
 
         return className;

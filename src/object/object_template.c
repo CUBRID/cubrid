@@ -1135,7 +1135,7 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
   int error = NO_ERROR;
   DB_VALUE val;
   DB_DATA_STATUS data_status;
-  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
+  char auto_increment_name[DB_MAX_IDENTIFIER_LENGTH];
   MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
   const char *class_name;
@@ -1170,7 +1170,12 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 	    }
 
 	  /* get original class's serial object */
-	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, class_name, att->header.name);
+	  error = set_auto_increment_serial_name (auto_increment_name, class_name, att->header.name);
+	  if (error != NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      goto auto_increment_error;
+	    }
 	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
 	  if (serial_mop == NULL)
 	    {

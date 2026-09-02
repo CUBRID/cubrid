@@ -607,6 +607,26 @@ mvcctable::reset_start_mvccid ()
   m_current_status_lowest_active_mvccid.store (log_Gl.hdr.mvcc_next_id);
 }
 
+void
+mvcctable::rv_reactivate_mvccid (MVCCID mvccid)
+{
+  /* Restart-only, single-threaded -- same non-thread-safe contract as reset_start_mvccid, and like it, both the
+   * current status and the current history entry (the one is_active reads) must carry the id. */
+  m_current_trans_status.m_active_mvccs.rv_reactivate_mvccid (mvccid);
+
+  assert (m_trans_status_history_position < HISTORY_MAX_SIZE);
+  m_trans_status_history[m_trans_status_history_position].m_active_mvccs.rv_reactivate_mvccid (mvccid);
+
+  /* The active set alone is not enough for readers: mvcc_is_id_in_snapshot short-circuits on this watermark and never
+   * consults the active set below it, so the in-doubt row would still read as committed. Lowering is conservative for
+   * vacuum and temporary -- complete_mvcc raises it again at the 2PC decision. advance_oldest_active only moves the
+   * watermark forward, so store directly. */
+  if (MVCC_ID_PRECEDES (mvccid, m_current_status_lowest_active_mvccid.load ()))
+    {
+      m_current_status_lowest_active_mvccid.store (mvccid);
+    }
+}
+
 MVCCID
 mvcctable::get_global_oldest_visible () const
 {

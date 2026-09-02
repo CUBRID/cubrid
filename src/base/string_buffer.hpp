@@ -138,6 +138,8 @@ void string_buffer::operator+= (const char ch)
 
 template<typename... Args> int string_buffer::operator() (Args &&... args)
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-security"
   int len = snprintf (NULL, 0, std::forward<Args> (args)...);
 
   assert (len >= 0);
@@ -145,6 +147,7 @@ template<typename... Args> int string_buffer::operator() (Args &&... args)
   m_ext_block.extend_to (m_len + size_t (len) + 2);
 
   snprintf (m_ext_block.get_ptr () + m_len, m_ext_block.get_size () - m_len, std::forward<Args> (args)...);
+#pragma GCC diagnostic pop
   m_len += len;
 
   return len;

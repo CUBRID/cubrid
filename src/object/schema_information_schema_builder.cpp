@@ -19,9 +19,11 @@
 #include "schema_information_schema_builder.hpp"
 
 #include "authenticate.h"
+#include "class_object.h"
 #include "dbi.h"
 #include "schema_information_schema_definition.hpp"
 #include "schema_manager.h"
+#include "schema_template.h"
 
 namespace cubschema
 {
@@ -48,6 +50,13 @@ namespace cubschema
 
     int error_code = NO_ERROR;
 
+    SM_TEMPLATE *tmpl = smt_edit_class_mop (class_mop, AU_ALTER);
+    if (tmpl == nullptr)
+      {
+	ASSERT_ERROR_AND_SET (error_code);
+	return error_code;
+      }
+
     const std::vector <attribute> &attributes = def.attributes;
     for (const auto &attr: attributes)
       {
@@ -57,10 +66,10 @@ namespace cubschema
 	switch (attr.kind)
 	  {
 	  case attribute_kind::COLUMN:
-	    error_code = db_add_attribute (class_mop, name, type, NULL);
+	    error_code = smt_add_attribute (tmpl, name, type, NULL);
 	    break;
 	  case attribute_kind::QUERY_SPEC:
-	    error_code = db_add_query_spec (class_mop, name);
+	    error_code = smt_add_query_spec (tmpl, name);
 	    break;
 	  default:
 	    error_code = ER_FAILED;
@@ -70,8 +79,17 @@ namespace cubschema
 	if (error_code != NO_ERROR)
 	  {
 	    assert (false);
+	    smt_quit (tmpl);
 	    return error_code;
 	  }
+      }
+
+    error_code = sm_update_class (tmpl, NULL);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	smt_quit (tmpl);
+	return error_code;
       }
 
     const authorization &auth = def.auth;

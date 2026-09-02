@@ -105,6 +105,8 @@ namespace cubconn::connection
 	std::size_t m_claim;
       } m_freelist;
 
+      void drain_contexts ();
+
       void try_to_lock_resource ();
 
       bool initialize_freelist (std::uint32_t max_connections);

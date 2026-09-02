@@ -349,7 +349,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
   MOP *mop_list = NULL;
   int save, err;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   {
     classobj_p = db_find_class (SP_CLASS_NAME);
@@ -636,7 +636,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
     // args (_db_stored_procedure_args) sp_of oid end
   }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 
 error:
@@ -655,7 +655,7 @@ error:
       tran_abort_upto_system_savepoint (SAVEPOINT_ADD_STORED_PROC);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 }
@@ -670,7 +670,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
   int err;
 
   db_make_null (&value);
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   classobj_p = db_find_class (SP_ARG_CLASS_NAME);
   if (classobj_p == NULL)
@@ -773,7 +773,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
 
   *mop_p = object_p;
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 
 error:
@@ -782,7 +782,7 @@ error:
       dbt_abort_object (obt_p);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return err;
 }
 
@@ -795,7 +795,7 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
   int save;
   int err;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   classobj_p = db_find_class (SP_CODE_CLASS_NAME);
   if (classobj_p == NULL)
@@ -890,7 +890,7 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 
 error:
@@ -899,7 +899,7 @@ error:
       dbt_abort_object (obt_p);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return err;
 }
 
@@ -912,7 +912,7 @@ sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info)
   int save;
   int err;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   obt_p = dbt_edit_object (code_mop);
   if (obt_p == NULL)
@@ -968,7 +968,7 @@ sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info)
       goto error;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 
 error:
@@ -977,7 +977,7 @@ error:
       dbt_abort_object (obt_p);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return err;
 }
 

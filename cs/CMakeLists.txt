@@ -274,6 +274,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
+  ${QUERY_DIR}/like_match_lockstep.i
   ${QUERY_DIR}/query_monitoring.hpp
 )
 
@@ -430,10 +431,12 @@ set(API_HEADERS
 
 set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_checker.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.cpp
   )
 
 set(PARALLEL_SCAN_HEADERS
   ${PARALLEL_SCAN_DIR}/px_scan_checker.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -454,6 +457,10 @@ set (HISTOGRAM_HEADERS
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_bucketizer.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_sampler_sr.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/reservoir_sampler.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/hyperloglog.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)

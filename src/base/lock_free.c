@@ -56,6 +56,7 @@ LF_TRAN_SYSTEM hfid_table_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM xcache_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM fpcache_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM dwb_slots_Ts = LF_TRAN_SYSTEM_INITIALIZER;
+LF_TRAN_SYSTEM serial_Cache_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 
 static bool tran_systems_initialized = false;
 
@@ -515,6 +516,11 @@ lf_initialize_transaction_systems (int max_threads)
       goto error;
     }
 
+  if (lf_tran_system_init (&serial_Cache_Ts, max_threads) != NO_ERROR)
+    {
+      goto error;
+    }
+
   tran_systems_initialized = true;
   return NO_ERROR;
 
@@ -540,6 +546,7 @@ lf_destroy_transaction_systems (void)
   lf_tran_system_destroy (&xcache_Ts);
   lf_tran_system_destroy (&fpcache_Ts);
   lf_tran_system_destroy (&dwb_slots_Ts);
+  lf_tran_system_destroy (&serial_Cache_Ts);
 
   tran_systems_initialized = false;
 }

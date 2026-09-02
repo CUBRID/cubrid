@@ -1025,6 +1025,13 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       goto error_exit;
     }
 
+  /*
+   * createdb applies the DB charset before tp_init(), so tp_apply_sys_charset()
+   * was a no-op at that point. Re-apply it here so built-in string domains
+   * match the DB charset before the system catalog is created.
+   */
+  tp_apply_sys_charset ();
+
   if (tran_lock_wait_msecs > 0)
     {
       tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
@@ -1680,7 +1687,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	}
 
       er_log_debug (ARG_FILE_LINE, "trying to connect '%s@%s'\n", db->name, hostlist[n]);
-      error = net_client_init (db->name, hostlist[n]);
+      error = net_client_init (db->name, hostlist[n], client_type);
       if (error != NO_ERROR)
 	{
 	  if (error == ERR_CSS_TCP_CONNECT_TIMEDOUT)
@@ -1917,7 +1924,7 @@ boot_destroy_catalog_classes (void)
   cc_save = catcls_Enable;
   catcls_Enable = false;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* drop method of _db_authorization */
   error_code = db_drop_class_method (locator_find_class (CT_AUTHORIZATION_NAME), "check_authorization");
@@ -1961,7 +1968,7 @@ boot_destroy_catalog_classes (void)
 
 exit_on_error:
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   /* restore catcls_Enable */
   catcls_Enable = cc_save;

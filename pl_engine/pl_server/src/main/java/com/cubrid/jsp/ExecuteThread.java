@@ -31,7 +31,7 @@
 
 package com.cubrid.jsp;
 
-import com.cubrid.jsp.classloader.ClassLoaderManager;
+import com.cubrid.jsp.classloader.ClassPathHelper;
 import com.cubrid.jsp.code.CompiledCode;
 import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.SourceCode;
@@ -68,7 +68,6 @@ import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.Base64;
 import java.util.List;
-import java.util.Map;
 import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
 
@@ -133,8 +132,6 @@ public class ExecuteThread extends Thread {
             while (!Thread.interrupted()) {
                 try {
                     header = listenCommand();
-                    ContextManager.registerThread(
-                            Thread.currentThread().getId(), ctx.getSessionId());
                     switch (header.code) {
                             /*
                              * the following two request codes are for processing java stored procedure
@@ -254,7 +251,6 @@ public class ExecuteThread extends Thread {
                         }
                     }
                 } finally {
-                    ContextManager.deregisterThread(Thread.currentThread().getId());
                     ctx = null;
                 }
             }
@@ -346,18 +342,13 @@ public class ExecuteThread extends Thread {
         try {
             jaos = new JarArchiveOutputStream(new BufferedOutputStream(jarStream));
 
-            for (Map.Entry<String, CompiledCode> entry : codeSet.getCodeList()) {
-                JarArchiveEntry jae =
-                        new JarArchiveEntry(entry.getValue().getClassNameWithExtention());
-                byte[] arr = entry.getValue().getByteCode();
+            for (CompiledCode cc : codeSet.codeMap.values()) {
+                JarArchiveEntry jae = new JarArchiveEntry(cc.getClassNameWithExtention());
+                byte[] arr = cc.getByteCode();
                 jae.setSize(arr.length);
                 jaos.putArchiveEntry(jae);
                 jaos.write(arr);
                 jaos.flush();
-                // ByteArrayInputStream bis = new
-                // ByteArrayInputStream(entry.getValue().getByteCode());
-                // IOUtils.copy(bis, jaos);
-                // bis.close();
 
                 jaos.closeArchiveEntry();
             }
@@ -435,7 +426,7 @@ public class ExecuteThread extends Thread {
                 // write to persistent
                 if (mode == 0) {
                     Path jarPath =
-                            ClassLoaderManager.getDynamicPath().resolve(info.className + ".jar");
+                            ClassPathHelper.getDynamicPath().resolve(info.className + ".jar");
                     OutputStream jarStream = Files.newOutputStream(jarPath);
                     writeJar(codeSet, jarStream);
                     data = Files.readAllBytes(jarPath);

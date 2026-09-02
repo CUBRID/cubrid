@@ -1,5 +1,4 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,31 +28,23 @@
  *
  */
 
-package com.cubrid.jsp;
+package com.cubrid.plcsql.compiler.ast;
 
-import java.util.HashMap;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class TargetMethodCache {
-    private HashMap<String, TargetMethod> methods;
+public class StmtOpenForDynamic extends StmtOpenFor {
 
-    public TargetMethodCache() {
-        methods = new HashMap<String, TargetMethod>();
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtOpenForDynamic(this);
     }
 
-    public TargetMethod get(String signature) throws Exception {
-        TargetMethod method = null;
-
-        method = methods.get(signature);
-        if (method == null) {
-            // TODO (CBRD-25370) : disabled temporary
-            // method = new TargetMethod(signature);
-            methods.put(signature, method);
-        }
-
-        return method;
-    }
-
-    public void clear() {
-        methods.clear();
+    public StmtOpenForDynamic(
+            ParserRuleContext ctx,
+            ExprId id,
+            Expr dynamicSql,
+            NodeList<? extends Expr> usedExprList) {
+        super(ctx, true, id, dynamicSql, (usedExprList == null) ? null : usedExprList.nodes);
     }
 }
