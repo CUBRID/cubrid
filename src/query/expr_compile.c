@@ -298,6 +298,13 @@ expr_k_div_int (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_ZERO_DIVIDE, 0);
       return ER_FAILED;
     }
+  /* INT_MIN / -1 has no representable result: the machine divide raises SIGFPE, so it is
+   * caught before dividing exactly as the interpreted qdata_divide_int () does (CBRD-27229) */
+  if (unlikely (OR_CHECK_INT_DIV_OVERFLOW (i1, i2)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+      return ER_FAILED;
+    }
   db_make_int (step->out, i1 / i2);
   EXPR_ARITH_EPILOGUE ();
 }
@@ -361,6 +368,11 @@ expr_k_div_bigint (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   if (bi2 == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_ZERO_DIVIDE, 0);
+      return ER_FAILED;
+    }
+  if (unlikely (OR_CHECK_BIGINT_DIV_OVERFLOW (bi1, bi2)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
       return ER_FAILED;
     }
   db_make_bigint (step->out, bi1 / bi2);
