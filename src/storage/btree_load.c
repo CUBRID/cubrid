@@ -6324,8 +6324,9 @@ compare_driver (const void *first, const void *second, void *arg)
     }
   else
     {
-      /* The sort record key is written by data_writeval (), so data_cmpdisk () is the matching reader. */
-      assert (key_type->type->get_data_cmpdisk_function () != NULL);
+      /* The sort record key is written by data_writeval (), so data_cmpdisk () is the matching reader.
+       * The index_ family is a different byte layout, for the key image on a b+tree page. */
+      assert (tp_valid_indextype (TP_DOMAIN_TYPE (key_type)));
 
       c = key_type->type->data_cmpdisk (mem1, mem2, key_type, 0, 1, NULL);
 
