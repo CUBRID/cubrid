@@ -199,7 +199,8 @@ public class Context {
         this.transactionControl = tc;
     }
 
-    public boolean canTransactionControl() {
+    // synchronized: reads connectionInfo, which getConnection() sets under this monitor.
+    public synchronized boolean canTransactionControl() {
         if (transactionControl) {
             return true;
         }
