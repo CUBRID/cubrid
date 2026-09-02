@@ -4099,6 +4099,12 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
       return error_code;
     }
 
+  /* The header is held in WRITE for microseconds, so a second reserver almost never meets it. Widen that window on
+   * demand, to make the contention reproducible for tests. While the injection is on this fires for every
+   * reservation, temporary and permanent volumes alike, so tests should enable it only around what they measure.
+   * FI_TEST is a no-op in NDEBUG builds. */
+  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLHEADER_HOLD, 0);
+
   disk_log ("disk_reserve_sectors_in_volume", "reserve %d sectors in volume %d.", context->nsects_lastvol_remaining,
 	    volid);
 
