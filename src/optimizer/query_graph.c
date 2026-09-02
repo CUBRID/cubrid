@@ -205,6 +205,8 @@ static void qo_estimate_statistics (MOP class_mop, CLASS_STATS *);
 static void qo_node_free (QO_NODE *);
 static void qo_node_dump (QO_NODE *, FILE *);
 static void qo_node_add_sarg (QO_NODE *, QO_TERM *);
+static QO_TERM *qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken);
+static void qo_derived_term_compensate (QO_ENV * env);
 
 static void qo_seg_free (QO_SEGMENT *);
 
@@ -251,6 +253,7 @@ static void qo_free_index (QO_ENV * env, QO_INDEX *);
 static QO_INDEX *qo_alloc_index (QO_ENV * env, int);
 static void qo_free_node_index_info (QO_ENV * env, QO_NODE_INDEX * node_indexp);
 static void qo_free_attr_info (QO_ENV * env, QO_ATTR_INFO * info);
+static DB_VALUE *qo_copy_histogram_value (PARSER_CONTEXT * parser, DB_VALUE * src);
 static QO_ATTR_INFO *qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg);
 static QO_ATTR_INFO *qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_str);
 static void qo_free_class_info (QO_ENV * env, QO_CLASS_INFO *);
@@ -543,6 +546,10 @@ qo_optimize_helper (QO_ENV * env)
       term = qo_add_term (conj, PREDICATE_TERM, env);
       conj->next = next;
     }
+
+  /* every WHERE term now has its selectivity: reconcile each derived duplicate with the
+   * predicate that implies it */
+  qo_derived_term_compensate (env);
 
   /* check join-edge for ansi(explicit) join */
   for (n = 1; n < env->nnodes; n++)
@@ -2056,6 +2063,19 @@ qo_analyze_term (QO_TERM * term, int term_type)
       QO_TERM_SET_FLAG (term, QO_TERM_LIKE_HAS_DERIVED_RANGE);
     }
 
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_OR_DERIVED))
+    {
+      /* counted at the node scan (qo_node_add_sarg ()); the origin factor is discounted in
+       * qo_derived_term_compensate () so the join output estimate stays unchanged */
+      QO_TERM_SET_FLAG (term, QO_TERM_OR_DERIVED);
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_OR_DERIVED_EXPENSIVE))
+    {
+      /* make_pred_from_plan () drops it from the data filter unless an index adopted it */
+      QO_TERM_SET_FLAG (term, QO_TERM_OR_DERIVED_EXPENSIVE);
+    }
+
   /* only interesting in one predicate term; if 'term' has 'or_next', it was derived from OR term */
   /* also cases that are too complicated and unusual to consider here: (cond and/or cond) is true/false (cond and/or
    * cond) =/!= (cond and/or cond).
@@ -2813,6 +2833,17 @@ wrapup:
       QO_TERM_SELECTIVITY (term) = -1.0;
       break;
     }				/* switch (term_type) */
+
+  /* an OR-derived implied duplicate earns its keep only when it rejects most rows: when it does
+   * not, keep it out of key ranges/filters as well -- an index scan repeated per outer row over
+   * most of the index costs more than it saves, and an implied duplicate must never steer the
+   * plan by itself (make_pred_from_plan () applies the same bound to the data filter it may
+   * remain as) */
+  if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (term) > 0.5)
+    {
+      QO_TERM_SET_FLAG (term, QO_TERM_NON_IDX_SARG_COLL);
+      QO_TERM_CAN_USE_INDEX (term) = 0;
+    }
 
   bitset_delset (&lhs_segs);
   bitset_delset (&rhs_segs);
@@ -5209,6 +5240,71 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 }
 
 /*
+ * qo_copy_histogram_value () - parser-arena copy of a cached histogram blob
+ *   return: the copy, or NULL when there is nothing usable to copy
+ *   parser(in):
+ *   src(in): DB_VALUE owned by the workspace class cache (smclass->histogram)
+ *
+ * Note: PT_NAME.histogram used to alias the cache-owned blob directly, but the cache frees the
+ *	 blob on any statistics refresh or class decache (sm_get_class_with_statistics () when
+ *	 the server reports newer statistics, sm_get_statistics_force (),
+ *	 sm_update_statistics (), install_new_representation (), classobj_free_class ()) while
+ *	 the annotation is consumed only later, by the term analysis.  A self-join's later FROM
+ *	 entities re-fetch the very class the earlier entities annotated, so term selectivity
+ *	 read freed memory: usually a silently wrong join selectivity, and a crash when the
+ *	 block had been reused.  Copy the blob into the parser arena, whose lifetime covers the
+ *	 whole optimization, so the annotation owns what it points to.  The buffer is arena
+ *	 memory, so the copy carries no need_clear and is freed with the parser.
+ */
+static DB_VALUE *
+qo_copy_histogram_value (PARSER_CONTEXT * parser, DB_VALUE * src)
+{
+  DB_VALUE *copy;
+  const char *src_buf;
+  char *buf;
+  int bit_len = 0, size;
+  DB_TYPE src_type;
+
+  if (src == NULL || DB_IS_NULL (src))
+    {
+      return NULL;
+    }
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src);
+  if (src_type != DB_TYPE_BIT && src_type != DB_TYPE_VARBIT)
+    {
+      /* not a histogram blob shape; annotating nothing beats annotating a guess */
+      return NULL;
+    }
+
+  src_buf = db_get_bit (src, &bit_len);
+  if (src_buf == NULL || bit_len <= 0)
+    {
+      return NULL;
+    }
+  size = (bit_len + 7) / 8;
+
+  copy = (DB_VALUE *) parser_alloc (parser, (int) sizeof (DB_VALUE));
+  buf = (char *) parser_alloc (parser, size);
+  if (copy == NULL || buf == NULL)
+    {
+      return NULL;		/* same effect as having no histogram */
+    }
+
+  memcpy (buf, src_buf, size);
+  if (src_type == DB_TYPE_BIT)
+    {
+      db_make_bit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+  else
+    {
+      db_make_varbit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+
+  return copy;
+}
+
+/*
  * qo_get_attr_info () - Find the ATTR_STATS information about each actual
  *			 attribute that underlies this segment
  *   return: QO_ATTR_INFO *
@@ -5356,7 +5452,10 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	    {
 	      if (hist_stats->attr_ids[h] == attr_id)
 		{
-		  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[h];
+		  /* own a copy: the cache-owned blob can be freed before the term analysis
+		   * consumes this annotation (see qo_copy_histogram_value ()) */
+		  QO_SEG_PT_NODE (seg)->info.name.histogram =
+		    qo_copy_histogram_value (QO_ENV_PARSER (env), hist_stats->histogram[h]);
 		  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[h];
 		  break;
 		}
@@ -7997,6 +8096,19 @@ qo_discover_partitions (QO_ENV * env)
        */
       if (bitset_cardinality (&(QO_PARTITION_NODES (part))) > _WORDSIZE - 2 - LOG2_SIZEOF_POINTER)
 	{
+	  /* The join_info vector is indexed by a subset bitmask of the partition's nodes, so it holds
+	   * 2**nodes entries and its byte size stops fitting in a signed int past this many nodes.
+	   * Optimization gives up on the whole query here and the statement runs with the syntactic
+	   * join order, which is a legitimate fallback -- but it used to happen without a word to the
+	   * user, so a 28-table query silently lost cost-based join ordering and index selection while
+	   * a 27-table one kept it. Report it: the warning lands in the error log, and the plan dump
+	   * (SET OPTIMIZATION LEVEL) says the plan was not generated instead of printing nothing. */
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QO_SET_SIZE_EXCEEDED, 0);
+	  er_log_debug (ARG_FILE_LINE,
+			"cost-based optimization skipped: a join partition has %d tables, "
+			"more than the %d the join_info vector can index\n",
+			bitset_cardinality (&(QO_PARTITION_NODES (part))), _WORDSIZE - 2 - LOG2_SIZEOF_POINTER);
+
 	  if (buddy)
 	    {
 	      free_and_init (buddy);
@@ -8672,6 +8784,226 @@ qo_node_free (QO_NODE * node)
 }
 
 /*
+ * qo_derived_term_origin () - the predicate a derived restriction was extracted from
+ *   return: the origin term, or NULL when no candidate exists at all
+ *   env(in):
+ *   derived(in): a term flagged QO_TERM_OR_DERIVED or QO_TERM_LIKE_DERIVED_RANGE
+ *   idx(in): index of derived, so it cannot pair with itself
+ *   taken(in/out): bitset of terms already paired, so several derived terms spread over the
+ *		    origins available instead of piling onto the first one
+ *
+ * Note: the pairing is recovered structurally rather than carried on the parse nodes: the
+ *	 rewrite passes that run between the extraction and this point rebuild predicates
+ *	 without preserving annotations of their own.
+ *
+ *	 An OR-derived restriction comes from a multi-spec OR factor, so its origin is a
+ *	 disjunction spanning several specs whose segments cover the derived term's own -- the
+ *	 segments, not just the node, because a query can hold more than one such factor over
+ *	 the same tables and only the columns tell them apart.  A LIKE-derived range comes from
+ *	 the prefix of a LIKE on the same segment, which carries the paired
+ *	 QO_TERM_LIKE_HAS_DERIVED_RANGE flag; segments rather than identity because
+ *	 qo_apply_range_intersection () may fold several derived ranges into one term.
+ *
+ *	 Candidates can still tie -- two LIKEs on one column leave a single merged range that
+ *	 either could have produced.  Any of them may be taken: the compensation divides the
+ *	 derived selectivity out of exactly one origin, and since every consumer multiplies the
+ *	 terms, the product is the same whichever origin absorbs it.  Only the split across join
+ *	 levels differs, so the choice just has to be deterministic; preferring an origin no
+ *	 other derived term has taken keeps the division off a single term, where repeated
+ *	 divisions could reach the clamp and stop cancelling.
+ */
+static QO_TERM *
+qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken)
+{
+  int j;
+  QO_TERM *candidate, *origin = NULL;
+  PT_NODE *pt;
+
+  for (j = 0; j < env->nterms; j++)
+    {
+      candidate = QO_ENV_TERM (env, j);
+      if (j == idx)
+	{
+	  continue;
+	}
+
+      if (QO_TERM_IS_FLAGED (derived, QO_TERM_LIKE_DERIVED_RANGE))
+	{
+	  if (!QO_TERM_IS_FLAGED (candidate, QO_TERM_LIKE_HAS_DERIVED_RANGE)
+	      || !bitset_intersects (&(QO_TERM_SEGS (candidate)), &(QO_TERM_SEGS (derived))))
+	    {
+	      continue;
+	    }
+	}
+      else
+	{
+	  if (QO_TERM_IS_FLAGED (candidate, QO_TERM_OR_DERIVED)
+	      || bitset_cardinality (&(QO_TERM_NODES (candidate))) < 2
+	      || !bitset_subset (&(QO_TERM_NODES (candidate)), &(QO_TERM_NODES (derived)))
+	      || !bitset_subset (&(QO_TERM_SEGS (candidate)), &(QO_TERM_SEGS (derived))))
+	    {
+	      continue;		/* the origin spans several specs and covers the derived one */
+	    }
+	  pt = QO_TERM_PT_EXPR (candidate);
+	  if (pt == NULL || pt->node_type != PT_EXPR || (pt->info.expr.op != PT_OR && pt->or_next == NULL))
+	    {
+	      continue;		/* the origin is a disjunction */
+	    }
+	}
+
+      if (origin == NULL || (BITSET_MEMBER (*taken, QO_TERM_IDX (origin)) && !BITSET_MEMBER (*taken, j)))
+	{
+	  origin = candidate;	/* first match, or one no other derived term has taken */
+	}
+    }
+
+  return origin;
+}
+
+/*
+ * qo_derived_term_compensate () - reconcile each derived duplicate with the predicate that
+ *				   implies it, so one constraint is counted once
+ *   env(in):
+ *
+ * Note: two rewrites add a term that is implied by a predicate already in the tree -- a
+ *	 single-spec restriction extracted from a multi-spec OR factor
+ *	 (qo_extract_or_restrictions ()) and the prefix range derived from a LIKE
+ *	 (qo_rewrite_like_for_index_scan ()).  Both are counted in their node's cardinality by
+ *	 qo_node_add_sarg (), which is what lets the plan react to the filtering; the origin
+ *	 predicate must then contribute only what it rejects ON TOP of the derived term, or the
+ *	 same constraint is charged twice.  That share is the conditional selectivity
+ *	 sel (origin) / sel (derived).
+ *
+ *	 Containment also bounds the estimates: the origin implies the derived term, so
+ *	 sel (origin) <= sel (derived) must hold.  A violation is an inconsistency between two
+ *	 estimates of the same rows, and the derived side is the one to correct -- it is a
+ *	 widened stand-in the estimator probes indirectly, whereas the origin is the predicate
+ *	 as written.  Measured: for `a LIKE 'aaa%9'` over 100k rows the LIKE was sized at 10
+ *	 rows (exact) while its prefix range collapsed to 1, so lowering the LIKE to the range
+ *	 would have thrown away the better estimate.
+ */
+static void
+qo_derived_term_compensate (QO_ENV * env)
+{
+  int i, j, n = env->nterms;
+  int *pair;			/* origin of each derived term, -1 when it has none */
+  double *implied;		/* per origin: product of the terms it implies, -1 when none */
+  double *before;		/* per origin: its selectivity before any division */
+  QO_TERM *derived, *origin;
+  BITSET taken;
+
+  if (n <= 0)
+    {
+      return;
+    }
+
+  pair = (int *) malloc (n * sizeof (int));
+  implied = (double *) malloc (n * sizeof (double));
+  before = (double *) malloc (n * sizeof (double));
+  if (pair == NULL || implied == NULL || before == NULL)
+    {
+      /* Out of memory: leave every duplicate inert rather than half-compensated.  A selectivity
+       * of 1 costs the plan the filter's benefit but can never charge it twice. */
+      for (i = 0; i < n; i++)
+	{
+	  derived = QO_ENV_TERM (env, i);
+	  if (QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED | QO_TERM_LIKE_DERIVED_RANGE))
+	    {
+	      QO_TERM_SELECTIVITY (derived) = 1.0;
+	    }
+	}
+      free (pair);
+      free (implied);
+      free (before);
+      return;
+    }
+
+  for (i = 0; i < n; i++)
+    {
+      pair[i] = -1;
+      implied[i] = -1.0;
+      before[i] = QO_TERM_SELECTIVITY (QO_ENV_TERM (env, i));
+    }
+
+  bitset_init (&taken, env);
+
+  /* pass 1: pair each derived term with the predicate that implies it, and collect what each
+   * origin is left accounting for */
+  for (i = 0; i < n; i++)
+    {
+      derived = QO_ENV_TERM (env, i);
+      if (!QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED | QO_TERM_LIKE_DERIVED_RANGE)
+	  || QO_TERM_SELECTIVITY (derived) <= 0.0)
+	{
+	  continue;		/* an empty derived range leaves nothing to divide by */
+	}
+
+      origin = qo_derived_term_origin (env, derived, i, &taken);
+      if (origin == NULL || QO_TERM_SELECTIVITY (origin) < 0.0)
+	{
+	  /* No predicate to charge this duplicate against -- its origin was reshaped or folded
+	   * away by a later rewrite.  Every consumer multiplies the terms it holds, so leaving a
+	   * real selectivity here would charge the constraint a second time wherever both are
+	   * counted.  A selectivity of 1 makes the term inert in each of those products; keep it
+	   * out of key ranges too, the same treatment an OR-derived duplicate gets when it
+	   * rejects too few rows to pay for itself. */
+	  QO_TERM_SELECTIVITY (derived) = 1.0;
+	  QO_TERM_SET_FLAG (derived, QO_TERM_NON_IDX_SARG_COLL);
+	  QO_TERM_CAN_USE_INDEX (derived) = 0;
+	  continue;
+	}
+
+      j = QO_TERM_IDX (origin);
+      pair[i] = j;
+      bitset_add (&taken, j);
+      implied[j] = (implied[j] < 0.0) ? QO_TERM_SELECTIVITY (derived) : implied[j] * QO_TERM_SELECTIVITY (derived);
+    }
+
+  /* pass 2: one division per origin, against everything it implies at once.  Per-derived
+   * division would compare the next derived term against a selectivity already divided down,
+   * and correct a deficit that is not there -- the containment bound holds between each derived
+   * term and the origin as it was, not as it is left mid-way. */
+  for (j = 0; j < n; j++)
+    {
+      if (implied[j] < 0.0 || before[j] <= 0.0)
+	{
+	  continue;
+	}
+
+      if (implied[j] < before[j])
+	{
+	  /* Containment says the origin's rows are a subset of what its derived terms match, so
+	   * together they cannot come out more selective than it.  An estimate that says
+	   * otherwise is wrong on the derived side -- the origin is the predicate as written,
+	   * while a derived term is a widened stand-in the estimator probes indirectly (a prefix
+	   * range collapsing to one row is the case seen in practice).  Correct the deficit on
+	   * the first term paired here, which also keeps the division below at or under 1. */
+	  for (i = 0; i < n; i++)
+	    {
+	      if (pair[i] == j)
+		{
+		  derived = QO_ENV_TERM (env, i);
+		  QO_TERM_SELECTIVITY (derived) *= before[j] / implied[j];
+		  implied[j] = before[j];
+		  break;
+		}
+	    }
+	}
+
+      QO_TERM_SELECTIVITY (QO_ENV_TERM (env, j)) = before[j] / implied[j];
+      if (QO_TERM_SELECTIVITY (QO_ENV_TERM (env, j)) > 1.0)
+	{
+	  QO_TERM_SELECTIVITY (QO_ENV_TERM (env, j)) = 1.0;
+	}
+    }
+
+  bitset_delset (&taken);
+  free (pair);
+  free (implied);
+  free (before);
+}
+
+/*
  * qo_node_add_sarg () -
  *   return:
  *   node(in):
@@ -8683,12 +9015,11 @@ qo_node_add_sarg (QO_NODE * node, QO_TERM * sarg)
   double sel_limit;
 
   bitset_add (&(QO_NODE_SARGS (node)), QO_TERM_IDX (sarg));
-  /* Skip LIKE-derived range in row-count: subset-correlated with the retained
-   * LIKE. Still kept in QO_NODE_SARGS for index key-range use. */
-  if (!QO_TERM_IS_FLAGED (sarg, QO_TERM_LIKE_DERIVED_RANGE))
-    {
-      QO_NODE_SELECTIVITY (node) *= QO_TERM_SELECTIVITY (sarg);
-    }
+  /* Every sarg counts here, derived duplicates included: this node's cardinality is where the
+   * filtering informs the join order and the access path.  qo_derived_term_compensate () has
+   * already reduced each origin predicate to what it rejects on top of the term it implies, so
+   * counting both sides charges the constraint exactly once. */
+  QO_NODE_SELECTIVITY (node) *= QO_TERM_SELECTIVITY (sarg);
   sel_limit = (QO_NODE_NCARD (node) == 0) ? 0 : (1.0 / (double) QO_NODE_NCARD (node));
   if (QO_NODE_SELECTIVITY (node) < sel_limit)
     {

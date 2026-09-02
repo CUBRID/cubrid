@@ -191,10 +191,10 @@
 #endif
 
 /* XASL scan block function */
-typedef SCAN_CODE (*XSAL_SCAN_FUNC) (THREAD_ENTRY * thread_p, XASL_NODE *, XASL_STATE *, QFILE_TUPLE_RECORD *, void *);
+typedef SCAN_CODE (*XASL_SCAN_FUNC) (THREAD_ENTRY * thread_p, XASL_NODE *, XASL_STATE *, QFILE_TUPLE_RECORD *, void *);
 
 /* pointer to XASL scan function */
-typedef XSAL_SCAN_FUNC *XASL_SCAN_FNC_PTR;
+typedef XASL_SCAN_FUNC *XASL_SCAN_FNC_PTR;
 
 enum groupby_dimension_flag
 {
@@ -8448,7 +8448,7 @@ qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * 
     {
       for (xasl_node * xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr, ptr++)
 	{
-	  *ptr = ((XSAL_SCAN_FUNC) qexec_execute_scan);
+	  *ptr = ((XASL_SCAN_FUNC) qexec_execute_scan);
 	}
       ptr = (XASL_SCAN_FNC_PTR) scan_func_ptr;
     }
@@ -16583,7 +16583,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 
 	  /* allocate xasl scan function vector */
-	  func_vector = (XASL_SCAN_FNC_PTR) db_private_alloc (thread_p, level * sizeof (XSAL_SCAN_FUNC));
+	  func_vector = (XASL_SCAN_FNC_PTR) db_private_alloc (thread_p, level * sizeof (XASL_SCAN_FUNC));
 	  if (func_vector == NULL)
 	    {
 	      qexec_clear_mainblock_iterations (thread_p, xasl);
@@ -16593,7 +16593,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  /* determine the type of XASL block associated functions */
 	  if (xasl->merge_spec)
 	    {
-	      func_vector[0] = (XSAL_SCAN_FUNC) qexec_merge_fnc;
+	      func_vector[0] = (XASL_SCAN_FUNC) qexec_merge_fnc;
 	      /* monitor */
 	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_MJOINS);
 	    }
@@ -16611,11 +16611,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		   * dkh. */
 		  if (level == 0)
 		    {
-		      func_vector[level] = (XSAL_SCAN_FUNC) qexec_intprt_fnc;
+		      func_vector[level] = (XASL_SCAN_FUNC) qexec_intprt_fnc;
 		    }
 		  else
 		    {
-		      func_vector[level] = (XSAL_SCAN_FUNC) qexec_execute_scan;
+		      func_vector[level] = (XASL_SCAN_FUNC) qexec_execute_scan;
 		      /* monitor */
 		      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_NLJOINS);
 		    }
@@ -21178,6 +21178,28 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
 	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 
+	  /* COUNT skips the distinct/sort block below, so handle count(distinct) here. Fetch the
+	   * operand even when the list file does not exist yet: fetch_peek_dbval resolves its regu
+	   * domain, which GROUP BY uses when it re-creates the list file for every group. */
+	  if (agg_p->option == Q_DISTINCT)
+	    {
+	      /* count(*) cannot take DISTINCT */
+	      assert (agg_p->function == PT_COUNT);
+	      if (fetch_peek_dbval (thread_p, &agg_p->operands->value, vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	      if (dbval == NULL || DB_IS_NULL (dbval))
+		{
+		  *resolved = 0;
+		}
+	      else if (agg_p->list_id != NULL && agg_p->list_id->type_list.type_cnt > 0
+		       && TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
+		{
+		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
+		}
+	    }
+
 	  continue;
 	}
 
@@ -21326,7 +21348,8 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 
 		default:
 		  assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
-			  || agg_p->operands->value.type == TYPE_INARITH);
+			  || agg_p->operands->value.type == TYPE_INARITH
+			  || agg_p->operands->value.type == TYPE_POS_VALUE);
 
 		  /* try to cast dbval to double, datetime then time */
 		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
@@ -21375,6 +21398,12 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		      return error;
 		    }
 
+		  /* clear errors from failed casts if any cast attempt succeeds. */
+		  if (er_errid () != NO_ERROR)
+		    {
+		      er_clear ();
+		    }
+
 		  /* update domain */
 		  agg_p->domain = tmp_domain_p;
 		  agg_p->accumulator_domain.value_dom = tmp_domain_p;
@@ -21383,6 +21412,23 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	      break;
 	    default:
 	      break;
+	    }
+
+	  /* set the distinct/sort list file domain before finalize; a *variable* readval
+	   * is a no-op and would silently drop all values. */
+	  if ((agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL) && agg_p->list_id != NULL
+	      && agg_p->list_id->type_list.type_cnt > 0
+	      && TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
+	    {
+	      if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
+		{
+		  /* values are written after coercion to agg_p->domain. */
+		  agg_p->list_id->type_list.domp[0] = agg_p->domain;
+		}
+	      else
+		{
+		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
+		}
 	    }
 
 	  /* initialize accumulators */

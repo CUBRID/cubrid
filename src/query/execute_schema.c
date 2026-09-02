@@ -5509,6 +5509,7 @@ int
 do_drop_partitioned_class (MOP class_, int drop_sub_flag, bool is_cascade_constraints)
 {
   DB_OBJLIST *objs;
+  DB_OBJLIST *users_snapshot = NULL;
   SM_CLASS *smclass, *subclass;
   MOP delobj;
   int error = NO_ERROR;
@@ -5538,7 +5539,19 @@ do_drop_partitioned_class (MOP class_, int drop_sub_flag, bool is_cascade_constr
       goto fail_return;
     }
 
-  for (objs = smclass->users; objs;)
+  /* smclass->users is owned by the parent SM_CLASS, and sm_delete_class_mop () below can decache the parent
+   * (a client-side abort, or a re-fetch that re-caches it), which releases the whole class object through
+   * classobj_free_class () and frees the list with it. Walk a private copy instead; the MOPs it holds stay
+   * valid because a decache only clears MOP->object (CBRD-27053). */
+  users_snapshot = ml_copy (smclass->users);
+  if (users_snapshot == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_OBJLIST));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto fail_return;
+    }
+
+  for (objs = users_snapshot; objs;)
     {
       error = au_fetch_class (objs->op, &subclass, AU_FETCH_READ, AU_SELECT);
       if (error != NO_ERROR)
@@ -5567,6 +5580,11 @@ do_drop_partitioned_class (MOP class_, int drop_sub_flag, bool is_cascade_constr
   error = NO_ERROR;
 
 fail_return:
+  if (users_snapshot != NULL)
+    {
+      ml_free (users_snapshot);
+    }
+
   return error;
 }
 
@@ -8147,12 +8165,14 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   error = check_default_on_update_clause (parser, attribute);
   if (error != NO_ERROR)
     {
+      tp_domain_free (attr_db_domain);
       goto error_exit;
     }
 
   error = get_att_order_from_def (attribute, &add_first, &add_after_attr);
   if (error != NO_ERROR)
     {
+      tp_domain_free (attr_db_domain);
       goto error_exit;
     }
 
