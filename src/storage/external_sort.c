@@ -1443,6 +1443,14 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->limit = limit;
   sort_param->tot_tempfiles = 0;
 
+  /* the cleanup path reads these, and the allocations below can jump to it */
+  sort_param->px_type = parallel_type;
+  sort_param->px_extra_arg = px_extra_arg;
+  sort_param->px_sector_scan = NULL;
+  sort_param->px_error_published = false;
+  sort_param->px_parallel_num = 1;
+  sort_param->px_worker_manager = NULL;
+
   /* initialize memory allocable fields */
   for (i = 0; i < SORT_MAX_TOT_FILES; i++)
     {
@@ -1522,10 +1530,6 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tmp_file_pgs = MAX (1, sort_param->tmp_file_pgs);
 
   sort_param->tde_encrypted = includes_tde_class;
-  sort_param->px_type = parallel_type;
-  sort_param->px_extra_arg = px_extra_arg;
-  sort_param->px_sector_scan = NULL;
-  sort_param->px_error_published = false;
 
   tde_er_log ("sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
 
