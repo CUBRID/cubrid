@@ -109,8 +109,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // The connection is taken before the body, outside its exception handlers; a refusal there
     // (a PARALLEL_ENABLE routine) would otherwise reach the caller as an anonymous PROGRAM_ERROR.
     private static final String strGetConn =
-            "final Connection conn; try { conn = DriverManager.getConnection(\"jdbc:default:connection::\"); }"
-                    + " catch (SQLException e) { Server.log(e); throw new SQL_ERROR(e.getMessage()); }";
+            "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::\");";
 
     private static final String[] tmplMainUserCode =
             new String[] {
