@@ -132,6 +132,21 @@ namespace cubquery
       }
   }
 
+  mvcc_update_reev_data::mvcc_update_reev_data ()
+    : mvcc_cond_reev_list (NULL)
+    , curr_upddel (NULL)
+    , curr_extra_assign_cnt (0)
+    , curr_extra_assign_reev (NULL)
+    , curr_assigns (NULL)
+    , curr_attrinfo (NULL)
+    , cons_pred (NULL)
+    , copyarea (NULL)
+    , vd (NULL)
+    , new_recdes (NULL)
+    , skip_unevaluated_version (false)
+  {
+  }
+
   void
   mvcc_scan_reev_data::set_filters (upddel_mvcc_cond_reeval &ureev)
   {

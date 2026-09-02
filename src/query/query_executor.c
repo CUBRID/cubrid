@@ -373,6 +373,10 @@ struct upddel_class_info_internal
   HEAP_SCANCACHE *scan_cache;
 
   OID prev_class_oid;		/* previous class oid */
+  bool is_mvcc_class;		/* whether MVCC applies to class_oid; set when the class changes, because
+				 * mvcc_is_mvcc_disabled_class () is too slow to ask per row */
+  bool has_online_index;	/* an index of class_oid is being built online; set when the class changes,
+				 * because reading the class representation is too slow to ask per row */
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
   bool is_attr_info_inited;	/* true if attr_info has valid data */
   int needs_pruning;		/* partition pruning information */
@@ -697,7 +701,7 @@ static void qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_
 static int qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * class_,
 					     UPDDEL_CLASS_INFO_INTERNAL * class_info, int op_type, OID * current_oid);
 static int qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
-					  UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class, OID * class_oid);
+					  UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class, OID * class_oid, bool * has_spec);
 static int qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
 					     AGGREGATE_TYPE * aggregate_list, HIERARCHY_AGGREGATE_HELPER ** helpers,
 					     int *helpers_countp);
@@ -10216,8 +10220,11 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
       return ER_FAILED;
     }
 
-  /* Make sure reev data is initialized, or else it will crash later */
-  memset (reev_data, 0, sizeof (MVCC_UPDDEL_REEV_DATA));
+  /* start from the struct's empty state, so a field this function does not fill cannot carry over */
+  *reev_data = MVCC_UPDDEL_REEV_DATA ();
+
+  /* the value descriptor is bound on every path, including the one that carries no reevaluation class */
+  reev_data->vd = &xasl_state->vd;
 
   if (num_reev_classes == 0)
     {
@@ -10242,6 +10249,7 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
       cond_reev_class = &cond_reev_classes[idx];
       cond_reev_class->class_index = mvcc_reev_indexes[idx];
       OID_SET_NULL (&cond_reev_class->cls_oid);
+      HFID_SET_NULL (&cond_reev_class->cls_hfid);
       cond_reev_class->inst_oid = NULL;
       cond_reev_class->rest_attrs = NULL;
       cond_reev_class->rest_regu_list = NULL;
@@ -10282,7 +10290,6 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
   reev_data->curr_attrinfo = NULL;
   reev_data->copyarea = NULL;
   reev_data->cons_pred = cons_pred;
-  reev_data->vd = &xasl_state->vd;
 
   if (qexec_create_mvcc_reev_assignments (thread_p, aptr, has_delete, internal_classes, num_classes, num_assigns,
 					  assigns, mvcc_reev_assigns) != NO_ERROR)
@@ -10358,7 +10365,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   MVCC_REEV_DATA mvcc_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
-  bool need_locking;
+  LOCATOR_LOCK_POLICY lock_policy;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
   thread_p->no_logging = (bool) update->no_logging;
@@ -10417,12 +10424,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
     {
       /* already locked in select phase. Avoid locking again the same instances at update phase */
-      need_locking = false;
+      lock_policy = LOCATOR_LOCK_AT_SELECT;
     }
   else
     {
       /* not locked in select phase, need locking at update phase */
-      need_locking = true;
+      lock_policy = LOCATOR_LOCK_AT_FORCE;
     }
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
@@ -10615,9 +10622,19 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		  /* temporary disable set filters when needs prunning */
 		  if (mvcc_reev_class != NULL)
 		    {
-		      error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid);
+		      bool has_spec = false;
+
+		      error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid, &has_spec);
 		      if (error != NO_ERROR)
 			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		      if (!has_spec)
+			{
+			  /* No access spec for this class: the filters of mvcc_reev_class stay uninitialized, so the
+			   * update phase has nothing to re-evaluate with. Fail the statement, as before the delete
+			   * path started distinguishing this case. */
+			  error = ER_FAILED;
 			  GOTO_EXIT_ON_ERROR;
 			}
 		    }
@@ -10711,7 +10728,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 						  0, LC_FLUSH_DELETE, current_op_type, internal_class->scan_cache,
 						  &force_count, false, REPL_INFO_TYPE_RBR_NORMAL,
 						  DB_NOT_PARTITIONED_CLASS, NULL, NULL, &mvcc_reev_data,
-						  UPDATE_INPLACE_NONE, NULL, need_locking);
+						  UPDATE_INPLACE_NONE, NULL, lock_policy);
 
 		  if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		    {
@@ -10784,9 +10801,17 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      /* class has changed to a new subclass */
 	      if (class_oid && !OID_EQ (&mvcc_reev_class->cls_oid, class_oid))
 		{
-		  error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid);
+		  bool has_spec = false;
+
+		  error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid, &has_spec);
 		  if (error != NO_ERROR)
 		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  if (!has_spec)
+		    {
+		      /* see the other call site: without an access spec there is nothing to re-evaluate with */
+		      error = ER_FAILED;
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
@@ -10892,7 +10917,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 					      &upd_cls->att_id[internal_class->subclass_idx * upd_cls->num_attrs],
 					      upd_cls->num_attrs, LC_FLUSH_UPDATE, op_type, internal_class->scan_cache,
 					      &force_count, false, repl_info, internal_class->needs_pruning, pcontext,
-					      NULL, &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking);
+					      NULL, &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, lock_policy);
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;
@@ -11221,7 +11246,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   MVCC_REEV_DATA mvcc_reev_data;
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
-  bool need_locking;
+  LOCATOR_LOCK_POLICY base_lock_policy;	/* what the select phase left for the force phase to do */
+  bool outermost_transient_scope;	/* a statement nested in another one keeps its locks to commit */
+  LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* the same, narrowed by the current class */
+  bool reev_disabled = false;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
   /* remote DELETE + local subquery sink: evaluate the WHERE subquery locally and push one remote
@@ -11231,6 +11259,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     {
       return qexec_execute_remote_delete_subquery (thread_p, xasl, xasl_state);
     }
+
+  /* from here every exit runs through one of the two lock_transient_scope_end () calls below */
+  outermost_transient_scope = lock_transient_scope_start (thread_p);
 
   thread_p->no_logging = (bool) delete_->no_logging;
 
@@ -11243,8 +11274,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   class_oid_cnt = delete_->num_classes;
   mvcc_reev_class_cnt = delete_->num_reev_classes;
   mvcc_reev_data.set_update_reevaluation (mvcc_upddel_reev_data);
-
-  mvcc_upddel_reev_data.copyarea = NULL;
 
   /* Allocate memory for oids, hfids and attributes cache info of all classes used in update */
   error = qexec_create_internal_classes (thread_p, delete_->classes, class_oid_cnt, &internal_classes);
@@ -11288,12 +11317,16 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
     {
       /* already locked in select phase. Avoid locking again the same instances at delete phase. */
-      need_locking = false;
+      base_lock_policy = LOCATOR_LOCK_AT_SELECT;
     }
   else
     {
       /* not locked in select phase, need locking at update phase */
-      need_locking = true;
+      base_lock_policy = LOCATOR_LOCK_AT_FORCE;
+
+      /* No reevaluation class means no predicate to re-check -- pt_to_delete_xasl () keeps the
+       * select-phase lock for one it cannot replay -- so a changed version is deleted, not skipped.
+       * The skip below is for the subclass that turns out to carry no access spec. */
     }
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
@@ -11393,6 +11426,13 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	      class_oid = db_get_oid (valp);
 
+	      if (mvcc_reev_class != NULL)
+		{
+		  /* this class's own row, the way the UPDATE path binds it.  Binding it later, from the
+		   * loop over the classes being deleted, would hand every entry the target's OID. */
+		  mvcc_reev_class->inst_oid = oid;
+		}
+
 	      if (class_oid_idx < class_oid_cnt)
 		{
 		  internal_class = &internal_classes[class_oid_idx];
@@ -11413,6 +11453,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			  er_log_debug (ARG_FILE_LINE, "qexec_execute_delete: class OID is not correct\n");
 			  GOTO_EXIT_ON_ERROR;
 			}
+		      internal_class->is_mvcc_class = !mvcc_is_mvcc_disabled_class (class_oid);
+		      internal_class->has_online_index = locator_class_has_online_index (thread_p, class_oid);
 
 		      if (internal_class->num_lob_attrs)
 			{
@@ -11430,21 +11472,35 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 		}
 
-	      if (mvcc_reev_class != NULL)
+	      if (mvcc_reev_class != NULL && !reev_disabled)
 		{
 		  /* class has changed to a new subclass */
 		  if (class_oid && !OID_EQ (&mvcc_reev_class->cls_oid, class_oid))
 		    {
-		      error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid);
+		      bool has_spec = false;
+
+		      error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid, &has_spec);
 		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
+			}
+		      if (!has_spec)
+			{
+			  /* No access spec for this row's subclass, so no filters to re-check with -- see
+			   * qexec_upddel_mvcc_set_filters ().  Skip the version rather than delete what the
+			   * predicate never saw.  mvcc_reev_class_cnt bounds this loop over the value list's
+			   * OID pairs and must stay as it is. */
+			  reev_disabled = true;
+			  mvcc_reev_class = NULL;
+			  mvcc_upddel_reev_data.curr_upddel = NULL;
+			  mvcc_upddel_reev_data.mvcc_cond_reev_list = NULL;
+			  mvcc_upddel_reev_data.skip_unevaluated_version = true;
 			}
 		    }
 		}
 	    }
 
-	  if (mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL)
+	  if (!reev_disabled && mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL)
 	    {
 	      /* If scan order was not set then do it. This operation must be run only once. We do it here and not at
 	       * the beginning of this function because the class OIDs must be set for classes involved in reevaluation
@@ -11460,7 +11516,20 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      oid = internal_class->oid;
 	      class_oid = internal_class->class_oid;
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      /* Whether the row locks this statement takes end with it belongs to the class, not the row,
+	       * so it is answered per class here rather than once for the statement -- a DELETE naming more
+	       * than one class gets a different answer for each.  A class under an online index build keeps
+	       * them to commit (the build's own entry state names no owner, so the row lock is what
+	       * serializes two writers there) and so does a class MVCC does not apply to. */
+	      lock_policy = base_lock_policy;
+	      if (lock_policy == LOCATOR_LOCK_AT_FORCE && outermost_transient_scope
+		  && internal_class->is_mvcc_class && !internal_class->has_online_index)
+		{
+		  lock_policy = LOCATOR_LOCK_AT_FORCE_TRANSIENT;
+		}
+
+	      if (!reev_disabled && mvcc_reev_class_idx < mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
 		{
 		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
 		}
@@ -11469,6 +11538,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  mvcc_reev_class = NULL;
 		}
 	      mvcc_upddel_reev_data.curr_upddel = mvcc_reev_class;
+	      /* inst_oid was bound per class while scanning; do not overwrite it with the target's */
 
 	      if (oid == NULL)
 		{
@@ -11528,7 +11598,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, NULL, NULL, 0, LC_FLUSH_DELETE,
 					      op_type, internal_class->scan_cache, &force_count, false,
 					      REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL,
-					      &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking);
+					      &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, lock_policy);
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;
@@ -11596,6 +11666,19 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
     }
 
+  /* Early release rests on the delete being decided only when we end.  A savepoint declared before now
+   * breaks that: a partial rollback can undo it while a writer parked on our MVCCID holds the row. */
+  /* The deletes are published: late arrivals settle on our MVCCID self-lock, which the prepare record
+   * persists across 2PC, so these row locks are redundant from here.  They end with the statement -- not
+   * with each row, since a row released early would be open while the same statement forces the next, and
+   * a writer entering that window would work a heap version this statement has already erased from the
+   * index.
+   * TODO: logtb_has_active_savepoint () does not tell a user savepoint from a DDL/trigger system
+   *       savepoint, so a transaction that ran DDL earlier keeps its locks to commit here -- correct but
+   *       it forgoes the release.  CBRD-27238 (UPDATE) adds a user-savepoint-only flag on tdes for both
+   *       paths to read instead. */
+  lock_transient_scope_end (thread_p, !logtb_has_active_savepoint (thread_p));
+
   qexec_close_scan (thread_p, specp);
 
   qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
@@ -11647,6 +11730,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   return NO_ERROR;
 
 exit_on_error:
+  /* the statement failed, so its rows keep their locks to commit.  Drop the counts, though -- they name
+   * no statement, and the next statement to release would give back requests it never took. */
+  lock_transient_scope_end (thread_p, false);
+
   if (scan_open)
     {
       qexec_end_scan (thread_p, specp);
@@ -11981,7 +12068,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	    locator_attribute_info_force (thread_p, &pruned_hfid, &unique_oid, NULL, NULL, 0, LC_FLUSH_DELETE,
 					  local_op_type, local_scan_cache, &force_count, false,
 					  REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-					  UPDATE_INPLACE_NONE, NULL, false);
+					  UPDATE_INPLACE_NONE, NULL, LOCATOR_LOCK_AT_SELECT);
 
 	  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 	    {
@@ -12294,11 +12381,13 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   int error = NO_ERROR;
   bool need_clear = 0;
   OID unique_oid;
+  OID unique_class_oid;
   int local_op_type = SINGLE_ROW_UPDATE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
   int ispeeking;
 
   OID_SET_NULL (&unique_oid);
+  OID_SET_NULL (&unique_class_oid);
 
   local_scan_cache = scan_cache;
 
@@ -12320,12 +12409,29 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   /* get attribute values */
   ispeeking = ((local_scan_cache != NULL && local_scan_cache->cache_last_fix_page) ? PEEK : COPY);
 
-  scan_code =
-    heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
+  /* A duplicate whose delete is in progress carries no row lock once the deleter has published, and the
+   * visible version hides that delete -- updating it would overwrite a record the deleter still has to
+   * undo. Fetch through the lock path instead: it waits the deleter out and re-reads. */
+  scan_code = heap_get_class_oid (thread_p, &unique_oid, &unique_class_oid);
   if (scan_code != S_SUCCESS)
     {
-      assert (er_errid () == ER_INTERRUPTED);
-      error = ER_FAILED;
+      ASSERT_ERROR_AND_SET (error);
+      goto exit_on_error;
+    }
+
+  scan_code =
+    locator_lock_and_get_object (thread_p, &unique_oid, &unique_class_oid, &rec_descriptor, local_scan_cache, X_LOCK,
+				 ispeeking, NULL_CHN, LOG_WARNING_IF_DELETED);
+  if (scan_code == S_DOESNT_EXIST)
+    {
+      /* the deleter committed: the key is free, so this row is no longer a duplicate and the caller inserts */
+      er_clear ();
+      *force_count = 0;
+      return NO_ERROR;
+    }
+  if (scan_code != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
       goto exit_on_error;
     }
 
@@ -12409,7 +12515,8 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   error =
     locator_attribute_info_force (thread_p, hfid, &unique_oid, attr_info, odku->attr_ids, odku->num_assigns,
 				  LC_FLUSH_UPDATE, local_op_type, local_scan_cache, force_count, false, repl_info,
-				  pruning_type, pcontext, NULL, NULL, UPDATE_INPLACE_NONE, &rec_descriptor, false);
+				  pruning_type, pcontext, NULL, NULL, UPDATE_INPLACE_NONE, &rec_descriptor,
+				  LOCATOR_LOCK_AT_SELECT);
   if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
     {
       er_clear ();
@@ -13541,7 +13648,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      if (locator_attribute_info_force (thread_p, &insert->class_hfid, &oid, &attr_info, NULL, 0, operation,
 						scan_cache_op_type, &scan_cache, &force_count, false,
 						REPL_INFO_TYPE_RBR_NORMAL, insert->pruning_type, pcontext,
-						func_indx_preds, NULL, UPDATE_INPLACE_NONE, NULL, false) != NO_ERROR)
+						func_indx_preds, NULL, UPDATE_INPLACE_NONE, NULL,
+						LOCATOR_LOCK_AT_SELECT) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -13721,7 +13829,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      if (locator_attribute_info_force (thread_p, &insert->class_hfid, &oid, &attr_info, NULL, 0, operation,
 						scan_cache_op_type, &scan_cache, &force_count, false,
 						REPL_INFO_TYPE_RBR_NORMAL, insert->pruning_type, pcontext, NULL, NULL,
-						UPDATE_INPLACE_NONE, NULL, false) != NO_ERROR)
+						UPDATE_INPLACE_NONE, NULL, LOCATOR_LOCK_AT_SELECT) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -14374,7 +14482,7 @@ exit_on_error:
  *   attrid(in) :
  *   n_increment(in)    :
  *   pruning_type(in)	:
- *   need_locking(in)	: true, if need locking
+ *   lock_policy(in)	: where the row lock is taken and how long it is kept
  */
 static int
 qexec_execute_increment (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, const HFID * class_hfid,
@@ -14435,7 +14543,7 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, const OID * oid, const OID * c
       error =
 	locator_attribute_info_force (thread_p, class_hfid, &copy_oid, &attr_info, &attrid, 1, area_op, op_type,
 				      &scan_cache, &force_count, false, REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL,
-				      NULL, NULL, UPDATE_INPLACE_NONE, NULL, false);
+				      NULL, NULL, UPDATE_INPLACE_NONE, NULL, LOCATOR_LOCK_AT_SELECT);
       if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 	{
 	  assert (force_count == 0);
@@ -14752,7 +14860,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      scan_code =
 		locator_lock_and_get_object_with_evaluation (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
 							     NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
-							     LOG_WARNING_IF_DELETED);
+							     LOG_WARNING_IF_DELETED, false);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();
@@ -26234,6 +26342,8 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * quer
       class_->class_oid = NULL;
       class_->needs_pruning = DB_NOT_PARTITIONED_CLASS;
       class_->subclass_idx = -1;
+      class_->is_mvcc_class = false;
+      class_->has_online_index = false;
       class_->scan_cache = NULL;
       OID_SET_NULL (&class_->prev_class_oid);
       class_->is_attr_info_inited = 0;
@@ -26416,9 +26526,11 @@ qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNA
  */
 static int
 qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
-			       UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class, OID * class_oid)
+			       UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class, OID * class_oid, bool * has_spec)
 {
   ACCESS_SPEC_TYPE *curr_spec = NULL;
+
+  *has_spec = false;
 
   while (aptr_list != NULL && curr_spec == NULL)
     {
@@ -26432,11 +26544,20 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 
   if (curr_spec == NULL)
     {
-      return ER_FAILED;
+      /* The plan does not scan this class -- a path expression in the predicate makes the statement read
+       * an inner query's list instead -- so it carries no filters to re-evaluate with. Not an error;
+       * the caller decides what to do without reevaluation. */
+      return NO_ERROR;
     }
 
   mvcc_reev_class->init (curr_spec->s_id);
   mvcc_reev_class->cls_oid = *class_oid;
+  if (heap_get_class_info (thread_p, class_oid, &mvcc_reev_class->cls_hfid, NULL, NULL) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+  *has_spec = true;
 
   return NO_ERROR;
 }

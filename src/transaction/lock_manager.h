@@ -95,6 +95,7 @@ struct lk_entry
   int instant_lock_count;	/* number of instant lock requests */
   int bind_index_in_tran;
   XASL_ID xasl_id;
+  int transient_count;		/* requests on this entry that the statement gives up before commit */
 #else				/* not SERVER_MODE */
   int dummy;
 #endif				/* not SERVER_MODE */
@@ -223,6 +224,13 @@ extern int lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, c
 extern int lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
 				   int cond_flag, int wait_msecs);
 extern int lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag);
+extern int lock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
+				  int cond_flag);
+extern void lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock);
+extern bool lock_transient_scope_start (THREAD_ENTRY * thread_p);
+extern void lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release);
+extern void lock_release_transient_object_locks (THREAD_ENTRY * thread_p);
+extern void lock_forget_transient_object_locks (THREAD_ENTRY * thread_p);
 extern int lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int cond_flag);
 extern void lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
 extern int lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);

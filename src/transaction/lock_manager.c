@@ -377,6 +377,8 @@ struct lk_tran_lock
   LK_ENTRY *lk_entry_pool;	/* local pool of lock entries which can be used with no synchronization. */
   int lk_entry_pool_count;	/* Current count of lock entries in local pool. */
   int inst_hold_count;		/* # of entries in inst_hold_list */
+  int transient_scope;		/* statements now taking transient row locks, so nesting is visible */
+  int transient_total;		/* counted requests outstanding, so an empty walk can be skipped */
   int class_hold_count;		/* # of entries in class_hold_list */
 
   LK_ENTRY *waiting;		/* waiting lock entry */
@@ -557,6 +559,8 @@ static bool lock_wakeup_deadlock_victim_aborted (int tran_index);
 static void lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
 static int lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
 static void lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * from_whom);
+static int lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
+				  int cond_flag, bool mark_transient);
 static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock);
 static int lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index);
 static int lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
@@ -789,6 +793,7 @@ lock_uninit_entry (void *entry)
 
   entry_ptr->tran_index = -1;
   entry_ptr->thrd_entry = NULL;
+  entry_ptr->transient_count = 0;
 
   return NO_ERROR;
 }
@@ -984,6 +989,7 @@ lock_initialize_entry (LK_ENTRY * entry_ptr)
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
+  entry_ptr->transient_count = 0;
   entry_ptr->bind_index_in_tran = -1;
   XASL_ID_SET_NULL (&entry_ptr->xasl_id);
 }
@@ -1004,6 +1010,7 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index, LK_RES *
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
+  entry_ptr->transient_count = 0;
 
   lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
 }
@@ -1025,6 +1032,7 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p,
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
+  entry_ptr->transient_count = 0;
 
   lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
 }
@@ -1045,6 +1053,7 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * 
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
+  entry_ptr->transient_count = 0;
 }
 
 /* initialize lock resource as allocated state */
@@ -6247,10 +6256,12 @@ lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, const OID * 
  *   class_oid(in): Identifier of the class instance of the given object
  *   lock(in): Requested lock mode
  *   cond_flag(in):
+ *   mark_transient(in): count this request among the ones the statement gives up when it ends
  *
  */
-int
-lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag)
+static int
+lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag,
+		       bool mark_transient)
 {
 #if !defined (SERVER_MODE)
   LK_SET_STANDALONE_XLOCK (lock);
@@ -6427,6 +6438,14 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (oid, class_oid), lock,
 					   wait_msecs, &inst_entry, class_entry);
+      if (mark_transient && granted == LK_GRANTED && inst_entry != NULL)
+	{
+	  /* the caller gives this request up when its statement ends.  Counted rather than flagged: a second
+	   * request on the same entry only raises count, and the release has to give back exactly what was
+	   * taken -- see lock_release_transient_object_locks */
+	  inst_entry->transient_count++;
+	  lk_Gl.tran_lock_table[tran_index].transient_total++;
+	}
       goto end;
     }
 
@@ -6447,6 +6466,234 @@ end:
   return granted;
 #endif /* !SERVER_MODE */
 }
+
+/*
+ * lock_object () - Lock an object
+ *   return: one of following values
+ *   thread_p(in): thread entry
+ *   oid(in): identifier of the object
+ *   class_oid(in): identifier of the class of the object
+ *   lock(in): requested lock mode
+ *   cond_flag(in): conditional or unconditional
+ */
+int
+lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag)
+{
+  return lock_object_with_flag (thread_p, oid, class_oid, lock, cond_flag, false);
+}
+
+/*
+ * lock_object_transient () - Lock an object the caller gives up when its statement ends
+ *   return: one of following values
+ *   thread_p(in): thread entry
+ *   oid(in): identifier of the object
+ *   class_oid(in): identifier of the class of the object
+ *   lock(in): requested lock mode
+ *   cond_flag(in): conditional or unconditional
+ *
+ * Note: the entry is marked so lock_release_transient_object_locks () can find it by walking the
+ *	transaction's hold list, which costs no hash lookup.  Only the instance entry is marked -- a class
+ *	lock taken on the way is not -- and releasing it decrements the count this request added, so a lock
+ *	the transaction already held survives.
+ */
+int
+lock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag)
+{
+  return lock_object_with_flag (thread_p, oid, class_oid, lock, cond_flag, true);
+}
+
+/*
+ * lock_transient_scope_start () - Enter a statement that may take transient row locks
+ *   return: true when this is the outermost such statement
+ *   thread_p(in): thread entry
+ *
+ * Note: the counts live on the transaction, not on the statement that made them, so a statement running
+ *	inside another one would give back the outer statement's locks when it ended -- opening exactly the
+ *	window a statement-scoped release exists to close.  Only the outermost statement takes transient
+ *	locks; one nested in it keeps its own to commit, the way every statement did before.
+ */
+bool
+lock_transient_scope_start (THREAD_ENTRY * thread_p)
+{
+#if !defined (SERVER_MODE)
+  return true;
+#else /* !SERVER_MODE */
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
+
+  return (++tran_lock->transient_scope) == 1;
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_transient_scope_end () - Leave such a statement, giving its locks back if it was the outermost
+ *   return: void
+ *   thread_p(in): thread entry
+ *   release(in): give the counted requests back, rather than only forgetting the counts
+ */
+void
+lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release)
+{
+#if !defined (SERVER_MODE)
+  return;
+#else /* !SERVER_MODE */
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
+
+  assert (tran_lock->transient_scope > 0);
+  if (tran_lock->transient_scope > 0 && --tran_lock->transient_scope > 0)
+    {
+      /* an outer statement is still running and the counts are its to give back */
+      return;
+    }
+
+  if (release)
+    {
+      lock_release_transient_object_locks (thread_p);
+    }
+  else
+    {
+      lock_forget_transient_object_locks (thread_p);
+    }
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_unlock_object_transient () - Give back one request that was counted transient
+ *   return: void
+ *   thread_p(in): thread entry
+ *   oid(in): the object
+ *   class_oid(in): its class
+ *   lock(in): the mode that was granted
+ *
+ * Note: used where the caller undoes an acquisition it just made, so the count it added has to go with
+ *	it -- otherwise the statement's release would give back a request nobody is holding.
+ */
+void
+lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock)
+{
+#if !defined (SERVER_MODE)
+  return;
+#else /* !SERVER_MODE */
+  LK_ENTRY *entry_ptr;
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
+  if (entry_ptr == NULL)
+    {
+      return;
+    }
+
+  assert (!OID_IS_ROOTOID (oid) && (class_oid == NULL || !OID_IS_ROOTOID (class_oid)));
+  assert (entry_ptr->transient_count > 0);
+  if (entry_ptr->transient_count > 0)
+    {
+      entry_ptr->transient_count--;
+      if (lk_Gl.tran_lock_table[tran_index].transient_total > 0)
+	{
+	  lk_Gl.tran_lock_table[tran_index].transient_total--;
+	}
+    }
+  lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_release_transient_object_locks () - Give up the instance lock requests counted transient
+ *   return: void
+ *   thread_p(in): thread entry
+ *
+ * Note: the hold list is walked rather than each object looked up, so what a lock costs to give back
+ *	is what commit pays for it and does not grow with the size of the lock table.  The walk is over
+ *	everything the transaction holds rather than over what this statement took, so a statement that
+ *	took nothing would still pay for the locks the transaction holds for other reasons -- the running
+ *	total is there to answer that case without walking at all.  An entry the escalation reclaimed is
+ *	already off this list, so nothing has to be said about it here.
+ *
+ *	The walk takes no hold_mutex, on the same ground the other walks of this list state: a transaction
+ *	runs one thread at a time, so no one else is changing the list while we are on it.
+ */
+void
+lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
+{
+#if !defined (SERVER_MODE)
+  return;
+#else /* !SERVER_MODE */
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry_ptr, *next_ptr;
+  int tran_index, i, n;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tran_lock = &lk_Gl.tran_lock_table[tran_index];
+
+  if (tran_lock->transient_total == 0)
+    {
+      /* nothing was counted, so the list has nothing for us -- a statement that took no transient lock
+       * does not pay for the locks the transaction holds for other reasons */
+      return;
+    }
+
+  for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL; entry_ptr = next_ptr)
+    {
+      /* the entry may be gone once its last request is given back, so take the link first */
+      next_ptr = entry_ptr->tran_next;
+
+      n = entry_ptr->transient_count;
+      if (n > 0)
+	{
+	  /* every counted request also raised count, so this cannot outrun what the entry holds; were it
+	   * to, the release that empties the entry would free it under the ones still to come */
+	  assert (n <= entry_ptr->count);
+	  n = MIN (n, entry_ptr->count);
+	  entry_ptr->transient_count = 0;
+	  for (i = 0; i < n; i++)
+	    {
+	      /* give back exactly what this statement took; a request it did not take stays */
+	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
+	    }
+	}
+    }
+
+  /* an entry the escalation reclaimed took its count with it, so the total can only have run high;
+   * clearing it here keeps that from costing a walk later */
+  tran_lock->transient_total = 0;
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_forget_transient_object_locks () - Drop the transient counts without releasing anything
+ *   return: void
+ *   thread_p(in): thread entry
+ *
+ * Note: a statement that failed leaves its locks to commit, the way it did before any of them were
+ *	counted.  The counts have to go, though: they name no statement, so the next statement to release
+ *	would give back requests it never took.
+ */
+void
+lock_forget_transient_object_locks (THREAD_ENTRY * thread_p)
+{
+#if !defined (SERVER_MODE)
+  return;
+#else /* !SERVER_MODE */
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry_ptr;
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tran_lock = &lk_Gl.tran_lock_table[tran_index];
+
+  if (tran_lock->transient_total == 0)
+    {
+      return;
+    }
+
+  for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL; entry_ptr = entry_ptr->tran_next)
+    {
+      entry_ptr->transient_count = 0;
+    }
+  tran_lock->transient_total = 0;
+#endif /* !SERVER_MODE */
+}
+
 
 /*
  * lock_transaction_mvccid - Acquire a transaction self-lock keyed by an MVCCID
@@ -6475,7 +6722,7 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
   int granted;
   LK_ENTRY *tran_entry = NULL;
 
-  /* callers pre-filter via logtb_get_current_mvccid / btree_is_active_other_inserter, so a non-normal
+  /* callers pre-filter via logtb_get_current_mvccid / logtb_is_active_other_mvccid, so a non-normal
    * MVCCID is not an expected input; the early return below is a safe no-op fallback. */
   assert (MVCCID_IS_NORMAL (mvccid));
   if (!MVCCID_IS_NORMAL (mvccid))
@@ -7388,6 +7635,10 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
+
+  /* the transaction is over, so no statement of it is inside a transient scope any more */
+  tran_lock->transient_scope = 0;
+  tran_lock->transient_total = 0;
 
   /* remove all instance locks */
   entry_ptr = tran_lock->inst_hold_list;

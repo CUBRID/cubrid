@@ -18015,7 +18015,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
     locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid, attr_info, atts_id, updated_n_attrs_id,
 				  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, upd_scancache, &force_count, false,
 				  REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-				  UPDATE_INPLACE_OLD_MVCCID, NULL, false);
+				  UPDATE_INPLACE_OLD_MVCCID, NULL, LOCATOR_LOCK_AT_SELECT);
   if (error != NO_ERROR)
     {
       if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -23575,6 +23575,17 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   else
     {
       is_mvcc_op = true;
+    }
+
+  /* late arrivals settle a DELETE_IN_PROGRESS row against the deleter's MVCCID self-lock, so it must be
+   * held before the DELID stamp becomes observable */
+  if (is_mvcc_op)
+    {
+      rc = logtb_ensure_mvccid_self_lock (thread_p);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
     }
 #else /* SERVER_MODE */
   is_mvcc_op = false;
