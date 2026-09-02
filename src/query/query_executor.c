@@ -4632,7 +4632,7 @@ qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL
 /*
  * qexec_hash_gby_abandon_cutoff () - cumulative unique-ratio above which hash aggregation
  *                                    should be abandoned, given the tuples hashed so far
- *   return: cutoff ratio in [FLOOR_RATIO .. START_RATIO]
+ *   return: cutoff ratio in [FLOOR_RATIO .. START_RATIO]; START_RATIO up to TUPLE_THRESHOLD tuples
  *   tuple_count(in): number of tuples hashed so far
  *
  * Note: the observed ratio (group_count / tuple_count) is an online estimate of how much the
@@ -4648,6 +4648,14 @@ qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL
 static float
 qexec_hash_gby_abandon_cutoff (int tuple_count)
 {
+  if (tuple_count <= HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD)
+    {
+      /* the budget-exceeded check can fire before TUPLE_THRESHOLD tuples (wide keys or a small
+       * max_agg_hash_size); extrapolating the log curve there would push the cutoff above 1.0
+       * and make abandoning impossible, so hold it at the strict start value instead */
+      return HASH_AGGREGATE_VH_SELECTIVITY_START_RATIO;
+    }
+
   if (tuple_count >= HASH_AGGREGATE_VH_SELECTIVITY_FLOOR_TUPLES)
     {
       return HASH_AGGREGATE_VH_SELECTIVITY_FLOOR_RATIO;
