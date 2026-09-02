@@ -298,6 +298,7 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
       /* the IN forms carry no join predicate of their own, so synthesize 'lhs = select-list item'. */
       PT_NODE *lhs = cnf_node->info.expr.arg1;
       PT_NODE *item = subq->info.query.q.select.list;
+      bool dup_eq = false;
 
       /* v1 is single column: '(a, b) IN (SELECT x, y ...)' would need one equality per pair. */
       if (lhs == NULL || lhs->next != NULL || PT_IS_COLLECTION_TYPE (lhs->type_enum)
@@ -332,8 +333,40 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
       new_expr->info.expr.op = PT_EQ;
       new_expr->info.expr.arg1 = lhs;	/* still owned by cnf_node until the caller commits */
       new_expr->info.expr.arg2 = item;	/* likewise by the subquery select list */
-      new_expr->next = on_cond;
-      on_cond = new_expr;
+
+      /* if the subquery WHERE already holds this equality, do not add it again */
+      if (lhs->node_type == PT_NAME && item->node_type == PT_NAME)
+	{
+	  for (cnf = on_cond; cnf != NULL && !dup_eq; cnf = cnf->next)
+	    {
+	      if (cnf->or_next != NULL)
+		{
+		  continue;
+		}
+	      if (pt_compare_sort_spec_expr (parser, cnf, new_expr)
+		  || (cnf->node_type == PT_EXPR && cnf->info.expr.op == PT_EQ
+		      && pt_compare_sort_spec_expr (parser, cnf->info.expr.arg1, item)
+		      && pt_compare_sort_spec_expr (parser, cnf->info.expr.arg2, lhs)))
+		{
+		  dup_eq = true;
+		}
+	    }
+	}
+
+      if (dup_eq)
+	{
+	  /* the subquery WHERE already joins the lhs to the item; drop the copy */
+	  new_expr->info.expr.arg1 = NULL;
+	  new_expr->info.expr.arg2 = NULL;
+	  parser_free_tree (parser, new_expr);
+	  new_expr = NULL;
+	  info->is_in_form = false;
+	}
+      else
+	{
+	  new_expr->next = on_cond;
+	  on_cond = new_expr;
+	}
     }
 
   /* v1: the ON as a whole may name one outer spec only. Naming two puts the inner behind both, and when no
