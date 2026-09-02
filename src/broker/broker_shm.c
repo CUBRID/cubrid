@@ -50,7 +50,7 @@
 #include "host_lookup.h"
 #include "error_code.h"
 #include "system_parameter.h"
-#include "query_rewrite.h"
+#include "query_replace.h"
 
 #if defined(WINDOWS)
 #include "broker_list.h"
@@ -399,7 +399,7 @@ uw_shm_destroy (int shm_key)
 #else
   int mid;
 
-  /* remove the paired query rewrite segment before the early returns below, so it is
+  /* remove the paired query replace segment before the early returns below, so it is
    * reclaimed even when the appl server segment is already gone.  qr_shm_destroy validates
    * magic/owner_shm_id, so another broker's segment is never touched. */
   qr_shm_destroy (shm_key, QR_SHMODE);
@@ -517,13 +517,13 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
   strcpy (shm_as_p->slow_log_dir, br_info_p->slow_log_dir);
   strcpy (shm_as_p->err_log_dir, br_info_p->err_log_dir);
   strcpy (shm_as_p->broker_name, br_info_p->name);
-  strcpy (shm_as_p->query_rewrite_rule, br_info_p->query_rewrite_rule);
-  shm_as_p->query_rewrite_shm_key = 0;
-  shm_as_p->query_rewrite_generation = 0;
+  strcpy (shm_as_p->query_replace_rule, br_info_p->query_replace_rule);
+  shm_as_p->query_replace_shm_key = 0;
+  shm_as_p->query_replace_generation = 0;
 
   if (br_info_p->shard_flag == OFF && br_info_p->appl_server != APPL_SERVER_CAS_CGW)
     {
-      /* build the query rewrite rule segment for this broker. a missing/unreadable
+      /* build the query replace rule segment for this broker. a missing/unreadable
          rule directory only disables the feature (qr_shm_create returns 0), it does not fail broker startup. */
       qr_shm_create (br_info_p, shm_as_p);
     }
@@ -669,9 +669,9 @@ broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_in
   as_info_p->num_long_queries = 0;
   as_info_p->num_long_transactions = 0;
   as_info_p->num_error_queries = 0;
-  as_info_p->num_query_rewrite_prepare = 0;
-  as_info_p->num_query_rewrite_execute = 0;
-  as_info_p->num_query_rewrite_fallback = 0;
+  as_info_p->num_query_replace_prepare = 0;
+  as_info_p->num_query_replace_execute = 0;
+  as_info_p->num_query_replace_fallback = 0;
   as_info_p->num_interrupts = 0;
   as_info_p->num_connect_requests = 0;
   as_info_p->num_connect_rejected = 0;

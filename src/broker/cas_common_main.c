@@ -62,7 +62,7 @@
 #include "broker_acl.h"
 #include "cas_ssl.h"
 #include "broker_util.h"
-#include "query_rewrite.h"
+#include "query_replace.h"
 
 #if !defined(WINDOWS)
 #include "broker_recv_fd.h"

@@ -80,7 +80,7 @@
 #include "cas_optimization.h"
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
-#include "query_rewrite.h"
+#include "query_replace.h"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -620,7 +620,7 @@ ux_database_shutdown (bool request_server)
 
 int
 ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-	    unsigned int query_seq_num, int rewrite_rule_idx)
+	    unsigned int query_seq_num, int replace_rule_idx)
 {
   int stmt_id;
   T_SRV_HANDLE *srv_handle = NULL;
@@ -811,32 +811,32 @@ prepare_result_set:
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
 
-  /* query rewrite: the replacement (NEW) query was prepared above, so num_markers
-   * is the authoritative K_rewrite.  obtain K_orig from the original query, validate
+  /* query replace: the replacement (NEW) query was prepared above, so num_markers
+   * is the authoritative K_replace.  obtain K_orig from the original query, validate
    * the BIND_MAP, and record both counts on the handle.  on an invalid mapping
    * the rule is unusable: fail the prepare so fn_prepare_internal falls back to
-   * the original query.  (rewrite_rule_idx is always -1 for CCI_PREPARE_CALL.) */
-  if (rewrite_rule_idx >= 0)
+   * the original query.  (replace_rule_idx is always -1 for CCI_PREPARE_CALL.) */
+  if (replace_rule_idx >= 0)
     {
       /* marker counts and BIND_MAP validity depend only on the rule's immutable
        * texts: compute + validate once per rule per CAS process, then reuse.
        * only successful validations are cached; a rule that fails validation is disabled
        * by fn_prepare_internal, so lookup does not return it again. */
-      int k_orig = qr_get_valid_k_orig (rewrite_rule_idx, num_markers);
+      int k_orig = qr_get_valid_k_orig (replace_rule_idx, num_markers);
 
       if (k_orig < 0)
 	{
-	  k_orig = get_num_markers ((char *) qr_get_orig_query (rewrite_rule_idx));
+	  k_orig = get_num_markers ((char *) qr_get_orig_query (replace_rule_idx));
 
-	  if (!qr_validate_markers (rewrite_rule_idx, k_orig, num_markers))
+	  if (!qr_validate_markers (replace_rule_idx, k_orig, num_markers))
 	    {
 	      err_code = ERROR_INFO_SET (CAS_ER_NUM_BIND, CAS_ERROR_INDICATOR);
 	      goto prepare_error;
 	    }
-	  qr_set_valid_k_orig (rewrite_rule_idx, k_orig, num_markers);
+	  qr_set_valid_k_orig (replace_rule_idx, k_orig, num_markers);
 	}
 
-      srv_handle->rewrite_rule_idx = rewrite_rule_idx;
+      srv_handle->replace_rule_idx = replace_rule_idx;
       srv_handle->num_orig_markers = k_orig;
     }
 
@@ -846,7 +846,7 @@ prepare_result_set:
   net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 
   net_buf_cp_byte (net_buf, stmt_type);
-  net_buf_cp_int (net_buf, (rewrite_rule_idx >= 0) ? srv_handle->num_orig_markers : num_markers, NULL);
+  net_buf_cp_int (net_buf, (replace_rule_idx >= 0) ? srv_handle->num_orig_markers : num_markers, NULL);
 
   q_result = (T_QUERY_RESULT *) malloc (sizeof (T_QUERY_RESULT));
   if (q_result == NULL)
@@ -1228,19 +1228,19 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
 
-  /* query rewrite self-healing: the handle was demoted to the original query
+  /* query replace self-healing: the handle was demoted to the original query
    * after a replacement-query execute failure and reached here via the
    * is_prepared == FALSE path, which recompiles srv_handle->sql_stmt but does
    * not update q_result.  Adopt the freshly compiled statement as prepared so
    * subsequent executes reuse it instead of recompiling every time.
    * Must run before the has_stmt_result_set() test below, which would otherwise
    * decide from the stale stmt_type left by the replacement query's prepare. */
-  if (srv_handle->rewrite_fallback)
+  if (srv_handle->replace_fallback)
     {
       srv_handle->q_result->stmt_id = stmt_id;
       srv_handle->q_result->stmt_type = stmt_type;
       srv_handle->is_prepared = TRUE;
-      srv_handle->rewrite_fallback = 0;
+      srv_handle->replace_fallback = 0;
     }
 
   if (has_stmt_result_set (srv_handle->q_result->stmt_type) == true)
@@ -1308,7 +1308,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 	  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 	  net_buf_cp_byte (net_buf, srv_handle->q_result->stmt_type);
 	  net_buf_cp_int (net_buf,
-			  (srv_handle->rewrite_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers,
+			  (srv_handle->replace_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers,
 			  NULL);
 	  err_code =
 	    prepare_column_list_info_set (session, srv_handle->prepare_flag, srv_handle->q_result, net_buf,
@@ -1592,13 +1592,13 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   srv_handle->cur_result = (void *) srv_handle->q_result;
   srv_handle->cur_result_index = 1;
 
-  /* query rewrite self-healing: adopt the recompiled original as prepared (see
+  /* query replace self-healing: adopt the recompiled original as prepared (see
    * ux_execute).  q_result->stmt_id/stmt_type were already set above for the
    * is_prepared == FALSE path, so only the handle flag needs flipping. */
-  if (srv_handle->rewrite_fallback)
+  if (srv_handle->replace_fallback)
     {
       srv_handle->is_prepared = TRUE;
-      srv_handle->rewrite_fallback = 0;
+      srv_handle->replace_fallback = 0;
     }
 
   if (do_commit_after_execute (*srv_handle))
@@ -1653,7 +1653,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 	  net_buf_cp_byte (net_buf, srv_handle->q_result[0].stmt_type);
 	  net_buf_cp_int (net_buf,
-			  (srv_handle->rewrite_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers,
+			  (srv_handle->replace_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers,
 			  NULL);
 	  err_code =
 	    prepare_column_list_info_set (session, srv_handle->prepare_flag, &srv_handle->q_result[0], net_buf,
@@ -2165,7 +2165,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
   DB_OBJECT *ins_obj_p;
   T_BROKER_VERSION client_version = req_info->client_version;
   int retried_query_num = 0;
-  void **remap_argv = NULL;	/* rewritten bind vector (query rewrite); freed after make_bind_value */
+  void **remap_argv = NULL;	/* rewritten bind vector (query replace); freed after make_bind_value */
   int failed_rows = 0;		/* rows that errored in this batch */
   int qr_rep_err = 0;		/* representative error: the first failed row's */
   int input_stride;		/* bind values consumed per row */
@@ -2199,9 +2199,9 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
   num_markers = srv_handle->num_markers;
   if (num_markers < 1)
     {
-      if (srv_handle->rewrite_rule_idx >= 0 && srv_handle->num_orig_markers > 0)
+      if (srv_handle->replace_rule_idx >= 0 && srv_handle->num_orig_markers > 0)
 	{
-	  /* query rewrite BIND_MAP case (1): the replacement query has no marker (e.g. a rule
+	  /* query replace BIND_MAP case (1): the replacement query has no marker (e.g. a rule
 	   * that pins the original's marker to a constant) while the driver still bound K_orig
 	   * values per row.  fall through: the batch loop below uses num_orig_markers as the
 	   * input stride to derive the row count and executes the replacement once per row
@@ -2228,18 +2228,18 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
   /* when the prepared statement was rewritten, the driver lays out the bind
    * values by the ORIGINAL query's markers (K_orig = num_orig_markers) for each
    * row, but this handle executes the replacement query whose markers
-   * (K_rewrite = num_markers) may be reordered/reduced.  rebuild the per-row
+   * (K_replace = num_markers) may be reordered/reduced.  rebuild the per-row
    * bind vector into the replacement layout before make_bind_value
    */
-  if (srv_handle->rewrite_rule_idx >= 0)
+  if (srv_handle->replace_rule_idx >= 0)
     {
       int num_orig_binds = srv_handle->num_orig_markers;
-      int num_rewrite_binds = srv_handle->num_markers;
+      int num_replace_binds = srv_handle->num_markers;
       const short *src_orig_pos;
 
-      assert (num_rewrite_binds <= QR_MAX_BINDS);
+      assert (num_replace_binds <= QR_MAX_BINDS);
 
-      src_orig_pos = qr_get_bind_src (srv_handle->rewrite_rule_idx);
+      src_orig_pos = qr_get_bind_src (srv_handle->replace_rule_idx);
       if (src_orig_pos != NULL)
 	{
 	  int total_pairs = argc / 2;
@@ -2252,7 +2252,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 	  rows = total_pairs / num_orig_binds;
 
-	  remap_argv = (void **) MALLOC (sizeof (void *) * 2 * num_rewrite_binds * rows);
+	  remap_argv = (void **) MALLOC (sizeof (void *) * 2 * num_replace_binds * rows);
 	  if (remap_argv == NULL)
 	    {
 	      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -2261,9 +2261,9 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
 	  for (r = 0; r < rows; r++)
 	    {
-	      for (j = 0; j < num_rewrite_binds; j++)
+	      for (j = 0; j < num_replace_binds; j++)
 		{
-		  int dst = 2 * (r * num_rewrite_binds + j);
+		  int dst = 2 * (r * num_replace_binds + j);
 		  int src = 2 * (r * num_orig_binds + (src_orig_pos[j] - 1));
 
 		  remap_argv[dst] = argv[src];	/* type  */
@@ -2272,17 +2272,17 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 
 	  argv = remap_argv;
-	  argc = 2 * num_rewrite_binds * rows;
+	  argc = 2 * num_replace_binds * rows;
 	}
     }
 
   num_bind_params = num_bind = argc / 2;
 
   /* values consumed per row.  normally the replacement query's marker count, but a
-   * markerless replacement (K_rewrite == 0) still receives K_orig values per row from the
+   * markerless replacement (K_replace == 0) still receives K_orig values per row from the
    * driver, so consume those to derive the row count while binding nothing. */
   input_stride = num_markers;
-  if (srv_handle->rewrite_rule_idx >= 0 && num_markers == 0 && srv_handle->num_orig_markers > 0)
+  if (srv_handle->replace_rule_idx >= 0 && num_markers == 0 && srv_handle->num_orig_markers > 0)
     {
       input_stride = srv_handle->num_orig_markers;
       if ((num_bind % input_stride) != 0)
@@ -2429,7 +2429,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
     exec_db_error:
       err_code = db_error_code ();
 
-      /* query rewrite: only real errors count toward the demote decision -- db_error_code()
+      /* query replace: only real errors count toward the demote decision -- db_error_code()
        * can report 0 on this path, and qr_exec_error_tier() expects a genuine error code. */
       if (err_code < 0)
 	{
@@ -2494,13 +2494,13 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	}
     }
 
-  /* query rewrite: decide whether this batch's failures should demote the rule.
+  /* query replace: decide whether this batch's failures should demote the rule.
    * demote = disable for future prepares + self-heal this handle to the original
    * (num_query>=2 && every row failed, or the per-rule N-strike streak; see
    * qr_exec_error_tier).  the current batch's per-row errors are already in net_buf.
    * NOTE: unlike single execute, a self-healed handle re-executed via executeArray
    * recompiles the original per call (no prepared-plan reuse in this path). */
-  if (srv_handle->rewrite_rule_idx >= 0)
+  if (srv_handle->replace_rule_idx >= 0)
     {
       if (num_query == 0)
 	{
@@ -2509,26 +2509,26 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	}
       else if (failed_rows == 0)
 	{
-	  qr_record_exec_result (srv_handle->rewrite_rule_idx, true, QR_ERR_DATA, false);
-	  as_info->num_query_rewrite_execute++;	/* counted once per batch */
+	  qr_record_exec_result (srv_handle->replace_rule_idx, true, QR_ERR_DATA, false);
+	  as_info->num_query_replace_execute++;	/* counted once per batch */
 	}
       else
 	{
 	  QR_ERR_TIER tier = qr_exec_error_tier (qr_rep_err);
 	  bool all_rows = (num_query >= 2 && failed_rows == num_query);
 
-	  if (qr_record_exec_result (srv_handle->rewrite_rule_idx, false, tier, all_rows))
+	  if (qr_record_exec_result (srv_handle->replace_rule_idx, false, tier, all_rows))
 	    {
 	      char msg[QR_RELPATH_LEN + 128];
 
 	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			     "[REWRITE-FAILED] execute_array %d/%d rows failed, disabled", failed_rows, num_query);
-	      snprintf (msg, sizeof (msg), "query rewrite rule disabled: %s reason=execute_array failed",
-			qr_get_rulepath (srv_handle->rewrite_rule_idx));
+			     "[REPLACE-FAILED] execute_array %d/%d rows failed, disabled", failed_rows, num_query);
+	      snprintf (msg, sizeof (msg), "query replace rule disabled: %s reason=execute_array failed",
+			qr_get_rulepath (srv_handle->replace_rule_idx));
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, msg);
 
-	      qr_set_disabled (srv_handle->rewrite_rule_idx);
-	      as_info->num_query_rewrite_fallback++;
+	      qr_set_disabled (srv_handle->replace_rule_idx);
+	      as_info->num_query_replace_fallback++;
 
 	      /* defer the handle swap to fn_execute_array, which applies it after all logging
 	       * so sql.log/slow-log still name the replacement query that really ran. */
@@ -2536,7 +2536,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 	  else if (num_query - failed_rows > 0)
 	    {
-	      as_info->num_query_rewrite_execute++;
+	      as_info->num_query_replace_execute++;
 	    }
 	}
     }
@@ -3477,7 +3477,7 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
       session = (DB_SESSION *) srv_handle->session;
       stmt_id = srv_handle->q_result->stmt_id;
       /* report K_orig to the driver when the query was rewritten */
-      num_markers = (srv_handle->rewrite_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers;
+      num_markers = (srv_handle->replace_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers;
     }
 
   param = NULL;

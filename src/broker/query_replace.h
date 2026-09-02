@@ -17,18 +17,18 @@
  */
 
 /*
- * query_rewrite.h - replace a query received from the driver with a
+ * query_replace.h - replace a query received from the driver with a
  *                       predefined one at prepare time.
  *
  *   The broker builds a shared memory segment from the rule files under the
- *   QUERY_REWRITE_RULE directory at start/ON time, and `cubrid broker qr`
+ *   QUERY_REPLACE_RULE directory at start/ON time, and `cubrid broker qr`
  *   mutates it in place afterwards.  Each CAS attaches read-only (SHM_RDONLY)
  *   for lookup.  All pointers inside the segment are stored as byte offsets so
  *   that the segment can be mapped at any address.
  */
 
-#ifndef _QUERY_REWRITE_H_
-#define _QUERY_REWRITE_H_
+#ifndef _QUERY_REPLACE_H_
+#define _QUERY_REPLACE_H_
 
 #ident "$Id$"
 
@@ -45,9 +45,9 @@ extern "C"
 
 #define QR_NAME_LEN		32	/* db name / user name buffer */
 #define QR_MAX_BINDS		256	/* max markers in a single query */
-#define QR_MAX_QUERY_LEN	32768	/* hard ceiling for QUERY_REWRITE_MAX_QUERY_LEN */
+#define QR_MAX_QUERY_LEN	32768	/* hard ceiling for QUERY_REPLACE_MAX_QUERY_LEN */
 #define QR_DEFAULT_HASH_SIZE	1024
-#define QR_MAX_RULE_COUNT	200	/* hard ceiling for QUERY_REWRITE_MAX_RULES */
+#define QR_MAX_RULE_COUNT	200	/* hard ceiling for QUERY_REPLACE_MAX_RULES */
 #define QR_RELPATH_LEN		520	/* "user@dbname/file" pool slot for the source path */
 #define QR_SHMODE		0600	/* owner-only: the segment holds the rule files' SQL verbatim */
 #define QR_RULE_SUFFIX		".rule"	/* only files with this suffix are loaded as rules */
@@ -57,18 +57,18 @@ extern "C"
 #define QR_ORIGIN_STARTUP	0	/* loaded by the startup directory scan */
 #define QR_ORIGIN_ADDED		1	/* added/reloaded at runtime (cubrid broker qr) */
 
-/* one rewrite rule stored in the shared memory segment.
+/* one replace rule stored in the shared memory segment.
  * query strings are kept in the trailing string pool and referenced by offset.
- * marker counts (K_orig / K_rewrite) are NOT stored here: the broker has no SQL
+ * marker counts (K_orig / K_replace) are NOT stored here: the broker has no SQL
  * parser, so they are computed once at CAS prepare time via get_num_markers()
- * and cached process-locally (see query_rewrite.c). */
+ * and cached process-locally (see query_replace.c). */
   typedef struct t_qr_rule T_QR_RULE;
   struct t_qr_rule
   {
     char db_name[QR_NAME_LEN];	/* upper-cased target db name   */
     char user_name[QR_NAME_LEN];	/* upper-cased target user name */
     int orig_off;		/* offset of normalized original query in string pool */
-    int rewrite_off;		/* offset of replacement query in string pool */
+    int replace_off;		/* offset of replacement query in string pool */
     int name_off;		/* offset of source file relative path "user@dbname/file" */
     int num_map_entries;	/* number of BIND_MAP entries, -1 = omitted */
     int next_idx;		/* next rule index in hash chain, -1 = end    */
@@ -79,7 +79,7 @@ extern "C"
     int disabled;		/* shared admin disable flag (cubrid broker qr disable) */
     int origin;			/* QR_ORIGIN_STARTUP / QR_ORIGIN_ADDED */
     int admin_seq;		/* bumped by `qr enable`; CAS compares to invalidate its process-local failure-disable */
-    /* src_orig_pos[rewrite_pos-1] = original marker pos; unused when num_map_entries == -1 */
+    /* src_orig_pos[replace_pos-1] = original marker pos; unused when num_map_entries == -1 */
     short src_orig_pos[QR_MAX_BINDS];
   };
 
@@ -93,7 +93,7 @@ extern "C"
     int next_idx;		/* next dbuser index in hash chain, -1 = end */
   };
 
-/* header located at the beginning of the rewrite shared memory segment */
+/* header located at the beginning of the replace shared memory segment */
   typedef struct t_qr_shm_header T_QR_SHM_HEADER;
   struct t_qr_shm_header
   {
@@ -114,8 +114,8 @@ extern "C"
     int hash_size;
     int min_query_len;		/* shortest normalized original query length */
     int max_query_len;		/* longest normalized original query length  */
-    int max_rules;		/* reserved slot capacity (QUERY_REWRITE_MAX_RULES) */
-    int cfg_max_query_len;	/* per-query length cap (QUERY_REWRITE_MAX_QUERY_LEN) */
+    int max_rules;		/* reserved slot capacity (QUERY_REPLACE_MAX_RULES) */
+    int cfg_max_query_len;	/* per-query length cap (QUERY_REPLACE_MAX_QUERY_LEN) */
     int pool_slot;		/* fixed per-rule string pool slot size in bytes */
     int bucket_off;		/* offset of int bucket[hash_size]   */
     int rule_off;		/* offset of T_QR_RULE rule[rule_count] */
@@ -144,13 +144,13 @@ extern "C"
   extern void qr_final ();
   extern void qr_load_dbuser_has_rules (const char *db_name, const char *user_name);
   extern int qr_lookup (const char *sql_stmt, int sql_len);
-  extern const char *qr_get_rewrite_query (int rule_idx);
+  extern const char *qr_get_replace_query (int rule_idx);
   extern const char *qr_get_orig_query (int rule_idx);
   extern const char *qr_get_rulepath (int rule_idx);
   extern short *qr_get_bind_src (int rule_idx);
-  extern int qr_validate_markers (int rule_idx, int k_orig, int k_rewrite);
-  extern int qr_get_valid_k_orig (int rule_idx, int k_rewrite);
-  extern void qr_set_valid_k_orig (int rule_idx, int k_orig, int k_rewrite);
+  extern int qr_validate_markers (int rule_idx, int k_orig, int k_replace);
+  extern int qr_get_valid_k_orig (int rule_idx, int k_replace);
+  extern void qr_set_valid_k_orig (int rule_idx, int k_orig, int k_replace);
 
   extern void qr_set_disabled (int rule_idx);
   extern int qr_is_disabled (int rule_idx);
@@ -180,4 +180,4 @@ extern "C"
 }
 #endif
 
-#endif				/* _QUERY_REWRITE_H_ */
+#endif				/* _QUERY_REPLACE_H_ */

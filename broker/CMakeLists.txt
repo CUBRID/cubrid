@@ -22,7 +22,7 @@ set(BROKER_DEFS _XOPEN_SOURCE ASYNC_MODE CAS_BROKER)
 set(CUB_BROKER_SOURCES
   ${BROKER_DIR}/broker.c
   ${BROKER_DIR}/broker_shm.c
-  ${BROKER_DIR}/query_rewrite.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/broker_process_size.c
@@ -54,7 +54,7 @@ endif(UNIX)
 # cub_broker use WinMain() on Windows platform
 add_executable(cub_broker WIN32 ${CUB_BROKER_SOURCES})
 target_compile_definitions(cub_broker PRIVATE ${BROKER_DEFS})
-# query_rewrite.c includes parse_tree.h -> string_regex.hpp -> re2/re2.h
+# query_replace.c includes parse_tree.h -> string_regex.hpp -> re2/re2.h
 target_include_directories(cub_broker PRIVATE ${EP_INCLUDES})
 if(WIN32)
   target_link_libraries(cub_broker LINK_PRIVATE ws2_32)
@@ -79,7 +79,7 @@ set(BROKER_MONITOR_SOURCES
   ${BROKER_DIR}/broker_monitor.c
   ${BROKER_DIR}/broker_config.c
   ${BROKER_DIR}/broker_shm.c
-  ${BROKER_DIR}/query_rewrite.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/broker_process_size.c
@@ -131,7 +131,7 @@ set(BROKER_CHANGER_SOURCES
   ${BROKER_DIR}/broker_changer.c
   ${BROKER_DIR}/broker_admin_pub.c
   ${BROKER_DIR}/broker_shm.c
-  ${BROKER_DIR}/query_rewrite.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_process_size.c
   ${BROKER_DIR}/broker_config.c
@@ -184,7 +184,7 @@ set(CUBRID_BROKER_SOURCES
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/broker_admin_pub.c
-  ${BROKER_DIR}/query_rewrite.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_process_size.c
   ${BROKER_DIR}/broker_max_heap.c
   ${BROKER_DIR}/broker_filename.c
@@ -264,7 +264,7 @@ set(CAS_COMMON_LIB_SOURCES
   ${BROKER_DIR}/broker_filename.c
   ${BROKER_DIR}/broker_acl.c
   ${BROKER_DIR}/broker_shm.c
-  ${BROKER_DIR}/query_rewrite.c
+  ${BROKER_DIR}/query_replace.c
 )
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -383,7 +383,7 @@ set(CUB_PROXY_SOURCES
   ${BROKER_DIR}/shard_proxy_function.c
   ${BROKER_DIR}/broker_process_size.c
   ${BROKER_DIR}/broker_shm.c
-  ${BROKER_DIR}/query_rewrite.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_filename.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
@@ -484,7 +484,7 @@ if(WITH_CCI)
     ${BROKER_DIR}/broker_tester.c
     ${BROKER_DIR}/broker_config.c
     ${BROKER_DIR}/broker_shm.c
-    ${BROKER_DIR}/query_rewrite.c
+    ${BROKER_DIR}/query_replace.c
     ${BROKER_DIR}/broker_error.c
     ${BROKER_DIR}/broker_util.c
     ${BROKER_DIR}/broker_filename.c
@@ -527,7 +527,7 @@ set(BROKER_LOG_TOP_SOURCES
   ${BROKER_DIR}/broker_log_top_tran.c
   ${BROKER_DIR}/broker_config.c
   ${BROKER_DIR}/broker_shm.c
-  ${BROKER_DIR}/query_rewrite.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/broker_filename.c
@@ -577,7 +577,7 @@ set(BROKERADMIN_SOURCES
   ${BROKER_DIR}/broker_admin_so.c
   ${BROKER_DIR}/broker_admin_pub.c
   ${BROKER_DIR}/broker_shm.c
-  ${BROKER_DIR}/query_rewrite.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/broker_config.c

@@ -71,7 +71,7 @@
 #include "broker_error.h"
 #include "cas_sql_log2.h"
 #include "broker_acl.h"
-#include "query_rewrite.h"
+#include "query_replace.h"
 #include "chartype.h"
 #include "cubrid_getopt.h"
 #include "dbtype_def.h"
@@ -1327,7 +1327,7 @@ admin_info_cmd (int master_shm_id)
  * `cubrid broker qr <add|reload|disable|enable> <broker-name> <user@dbname/file>`.
  *
  * status lists the rules (broker optional); the other subcommands require a broker and a
- * rulepath, and act on the running broker's rewrite segment (see query_rewrite.c).
+ * rulepath, and act on the running broker's replace segment (see query_replace.c).
  */
 int
 admin_qr_cmd (int master_shm_id, QRCMD subcmd, const char *subcmd_str, const char *broker_name, const char *rulepath)
@@ -1358,7 +1358,7 @@ admin_qr_cmd (int master_shm_id, QRCMD subcmd, const char *subcmd_str, const cha
 	  fprintf (stdout, "%% %s\n", shm_br->br_info[i].name);
 	  if (shm_br->br_info[i].shard_flag == ON || shm_br->br_info[i].appl_server == APPL_SERVER_CAS_CGW)
 	    {
-	      fprintf (stdout, "  query rewrite not applicable\n");
+	      fprintf (stdout, "  query replace not applicable\n");
 	    }
 	  else if (shm_br->br_info[i].service_flag != ON)
 	    {
@@ -1402,17 +1402,17 @@ admin_qr_cmd (int master_shm_id, QRCMD subcmd, const char *subcmd_str, const cha
 	}
       else if (shm_br->br_info[i].shard_flag == ON || shm_br->br_info[i].appl_server == APPL_SERVER_CAS_CGW)
 	{
-	  snprintf (admin_err_msg, sizeof (admin_err_msg), "query rewrite is not applicable for broker [%s]",
+	  snprintf (admin_err_msg, sizeof (admin_err_msg), "query replace is not applicable for broker [%s]",
 		    broker_name);
 	  rc = -1;
 	  goto error;
 	}
-      else if (shm_br->br_info[i].query_rewrite_rule[0] == '\0')
+      else if (shm_br->br_info[i].query_replace_rule[0] == '\0')
 	{
 	  /* the subcommands below resolve .qr.lock and the rule file under this directory,
 	   * so it must be configured */
 	  snprintf (admin_err_msg, sizeof (admin_err_msg),
-		    "query rewrite is not enabled for broker [%s]; set QUERY_REWRITE_RULE in cubrid_broker.conf",
+		    "query replace is not enabled for broker [%s]; set QUERY_REPLACE_RULE in cubrid_broker.conf",
 		    broker_name);
 	  rc = -1;
 	  goto error;

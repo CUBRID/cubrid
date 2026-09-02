@@ -142,10 +142,10 @@ typedef enum
   FIELD_STMT_POOL_RATIO,
   FIELD_NUMBER_OF_CONNECTION_REJECTED,
   FIELD_UNUSABLE_DATABASES,
-  FIELD_REWRITE_PREPARE,
-  FIELD_REWRITE_EXECUTE,
-  FIELD_REWRITE_FALLBACK,
-  FIELD_LAST = FIELD_REWRITE_FALLBACK
+  FIELD_REPLACE_PREPARE,
+  FIELD_REPLACE_EXECUTE,
+  FIELD_REPLACE_FALLBACK,
+  FIELD_LAST = FIELD_REPLACE_FALLBACK
 } FIELD_NAME;
 
 typedef enum
@@ -245,9 +245,9 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_STMT_POOL_RATIO, 20, "STMT-POOL-RATIO(%)", FIELD_RIGHT_ALIGN},
   {FIELD_NUMBER_OF_CONNECTION_REJECTED, 9, "#REJECT", FIELD_RIGHT_ALIGN},
   {FIELD_UNUSABLE_DATABASES, 100, "UNUSABLE_DATABASES", FIELD_LEFT_ALIGN},
-  {FIELD_REWRITE_PREPARE, 12, "REWRITE-P", FIELD_RIGHT_ALIGN},
-  {FIELD_REWRITE_EXECUTE, 12, "REWRITE-E", FIELD_RIGHT_ALIGN},
-  {FIELD_REWRITE_FALLBACK, 12, "REWRITE-FB", FIELD_RIGHT_ALIGN}
+  {FIELD_REPLACE_PREPARE, 12, "REPLACE-P", FIELD_RIGHT_ALIGN},
+  {FIELD_REPLACE_EXECUTE, 12, "REPLACE-E", FIELD_RIGHT_ALIGN},
+  {FIELD_REPLACE_FALLBACK, 12, "REPLACE-FB", FIELD_RIGHT_ALIGN}
 };
 
 /* structure for appl monitoring */
@@ -415,7 +415,7 @@ static int refresh_sec = 0;
 static int last_access_sec = 0;
 static bool tty_mode = false;
 static bool full_info_flag = false;
-static bool query_rewrite_flag = false;	/* -r : show query rewrite columns */
+static bool query_replace_flag = false;	/* -r : show query replace columns */
 static int state_interval = 1;
 static char service_filter_value = SERVICE_UNKNOWN;
 
@@ -769,7 +769,7 @@ print_usage (void)
   printf ("\t-P brief mode (show proxy info)\n");
   printf ("\t-s refresh time in sec\n");
   printf ("\t-f full info\n");
-  printf ("\t-r display query rewrite counts (with default or -b view)\n");
+  printf ("\t-r display query replace counts (with default or -b view)\n");
 #endif
 }
 
@@ -789,7 +789,7 @@ get_args (int argc, char *argv[], char *br_vector)
   refresh_sec = 0;
   last_access_sec = 0;
   full_info_flag = false;
-  query_rewrite_flag = false;
+  query_replace_flag = false;
   state_interval = 1;
   service_filter_value = SERVICE_UNKNOWN;
   while ((c = getopt (argc, argv, optchars)) != EOF)
@@ -819,7 +819,7 @@ get_args (int argc, char *argv[], char *br_vector)
 	  full_info_flag = true;
 	  break;
 	case 'r':
-	  query_rewrite_flag = true;
+	  query_replace_flag = true;
 	  break;
 	case 'c':
 	  monitor_flag |= CLIENT_MONITOR_FLAG_MASK;
@@ -853,7 +853,7 @@ get_args (int argc, char *argv[], char *br_vector)
 
   /* -r is only valid with the default (per-CAS) or -b (broker summary) view.
    * reject -f, -q and any other monitoring view. */
-  if (query_rewrite_flag
+  if (query_replace_flag
       && ((monitor_flag & ~BROKER_MONITOR_FLAG_MASK) != 0 || full_info_flag == true || display_job_queue == true))
     {
       fprintf (stderr, "-r cannot be used with -f, -q, -u, -c, -m, -S or -P\n");
@@ -1132,7 +1132,7 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
       print_value (FIELD_RESTART, &(as_info_p->num_restarts), FIELD_T_INT);
     }
 
-  if (query_rewrite_flag)
+  if (query_replace_flag)
     {
       INT64 qr_prepare, qr_execute, qr_fallback;
 
@@ -1140,12 +1140,12 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
 	{
 	  /* show the delta accumulated during the -s refresh interval.  the very first
 	   * pass has a zeroed snapshot, so a single-shot run shows the cumulative count. */
-	  qr_prepare = as_info_p->num_query_rewrite_prepare - appl_mnt_old->num_qr_prepare;
-	  qr_execute = as_info_p->num_query_rewrite_execute - appl_mnt_old->num_qr_execute;
-	  qr_fallback = as_info_p->num_query_rewrite_fallback - appl_mnt_old->num_qr_fallback;
-	  appl_mnt_old->num_qr_prepare = as_info_p->num_query_rewrite_prepare;
-	  appl_mnt_old->num_qr_execute = as_info_p->num_query_rewrite_execute;
-	  appl_mnt_old->num_qr_fallback = as_info_p->num_query_rewrite_fallback;
+	  qr_prepare = as_info_p->num_query_replace_prepare - appl_mnt_old->num_qr_prepare;
+	  qr_execute = as_info_p->num_query_replace_execute - appl_mnt_old->num_qr_execute;
+	  qr_fallback = as_info_p->num_query_replace_fallback - appl_mnt_old->num_qr_fallback;
+	  appl_mnt_old->num_qr_prepare = as_info_p->num_query_replace_prepare;
+	  appl_mnt_old->num_qr_execute = as_info_p->num_query_replace_execute;
+	  appl_mnt_old->num_qr_fallback = as_info_p->num_query_replace_fallback;
 	  appl_mnt_old->qr_prepare_delta = qr_prepare;
 	  appl_mnt_old->qr_execute_delta = qr_execute;
 	  appl_mnt_old->qr_fallback_delta = qr_fallback;
@@ -1159,9 +1159,9 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
 	  qr_execute = appl_mnt_old->qr_execute_delta;
 	  qr_fallback = appl_mnt_old->qr_fallback_delta;
 	}
-      print_value (FIELD_REWRITE_PREPARE, &qr_prepare, FIELD_T_INT64);
-      print_value (FIELD_REWRITE_EXECUTE, &qr_execute, FIELD_T_INT64);
-      print_value (FIELD_REWRITE_FALLBACK, &qr_fallback, FIELD_T_INT64);
+      print_value (FIELD_REPLACE_PREPARE, &qr_prepare, FIELD_T_INT64);
+      print_value (FIELD_REPLACE_EXECUTE, &qr_execute, FIELD_T_INT64);
+      print_value (FIELD_REPLACE_FALLBACK, &qr_fallback, FIELD_T_INT64);
     }
   print_newline ();
   if (as_info_p->uts_status == UTS_STATUS_BUSY)
@@ -1388,11 +1388,11 @@ print_monitor_header (MONITOR_TYPE mnt_type)
 	}
     }
 
-  if (query_rewrite_flag && mnt_type == MONITOR_T_BROKER)
+  if (query_replace_flag && mnt_type == MONITOR_T_BROKER)
     {
-      buf_offset = print_title (buf, buf_offset, FIELD_REWRITE_PREPARE, NULL);
-      buf_offset = print_title (buf, buf_offset, FIELD_REWRITE_EXECUTE, NULL);
-      buf_offset = print_title (buf, buf_offset, FIELD_REWRITE_FALLBACK, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_PREPARE, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_EXECUTE, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_FALLBACK, NULL);
     }
 
   str_out ("%s", buf);
@@ -1485,9 +1485,9 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items, T_BROKER_INFO * br_info_p, T_
       mnt_item_p->num_insert_query += as_info_p->num_insert_queries;
       mnt_item_p->num_update_query += as_info_p->num_update_queries;
       mnt_item_p->num_delete_query += as_info_p->num_delete_queries;
-      mnt_item_p->num_qr_prepare += as_info_p->num_query_rewrite_prepare;
-      mnt_item_p->num_qr_execute += as_info_p->num_query_rewrite_execute;
-      mnt_item_p->num_qr_fallback += as_info_p->num_query_rewrite_fallback;
+      mnt_item_p->num_qr_prepare += as_info_p->num_query_replace_prepare;
+      mnt_item_p->num_qr_execute += as_info_p->num_query_replace_execute;
+      mnt_item_p->num_qr_fallback += as_info_p->num_query_replace_fallback;
       mnt_item_p->num_others_query =
 	(mnt_item_p->num_qx - mnt_item_p->num_select_query - mnt_item_p->num_insert_query -
 	 mnt_item_p->num_update_query - mnt_item_p->num_delete_query);
@@ -1733,13 +1733,13 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur, BR_MONITORING_ITEM * mn
 	    }
 	}
 
-      if (query_rewrite_flag && mnt_type == MONITOR_T_BROKER)
+      if (query_replace_flag && mnt_type == MONITOR_T_BROKER)
 	{
 	  /* delta accumulated during the -s refresh interval (cumulative on a
 	   * single-shot run, like #SELECT/#INSERT) */
-	  print_value (FIELD_REWRITE_PREPARE, &mnt_item.num_qr_prepare, FIELD_T_UINT64);
-	  print_value (FIELD_REWRITE_EXECUTE, &mnt_item.num_qr_execute, FIELD_T_UINT64);
-	  print_value (FIELD_REWRITE_FALLBACK, &mnt_item.num_qr_fallback, FIELD_T_UINT64);
+	  print_value (FIELD_REPLACE_PREPARE, &mnt_item.num_qr_prepare, FIELD_T_UINT64);
+	  print_value (FIELD_REPLACE_EXECUTE, &mnt_item.num_qr_execute, FIELD_T_UINT64);
+	  print_value (FIELD_REPLACE_FALLBACK, &mnt_item.num_qr_fallback, FIELD_T_UINT64);
 	}
 
       print_newline ();
@@ -1995,11 +1995,11 @@ print_appl_header (bool use_pdh_flag)
 
     }
 
-  if (query_rewrite_flag)
+  if (query_replace_flag)
     {
-      buf_offset = print_title (buf, buf_offset, FIELD_REWRITE_PREPARE, NULL);
-      buf_offset = print_title (buf, buf_offset, FIELD_REWRITE_EXECUTE, NULL);
-      buf_offset = print_title (buf, buf_offset, FIELD_REWRITE_FALLBACK, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_PREPARE, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_EXECUTE, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_FALLBACK, NULL);
     }
 
   for (i = 0; i < buf_offset; i++)
