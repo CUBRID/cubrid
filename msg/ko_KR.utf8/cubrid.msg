@@ -1466,7 +1466,9 @@ $ LOADDB
 
 1370 CDC: 클라이언트에 전달한 추출 위치 (%1$lld|%2$d) 때문에 archive log 볼륨 %3$d 를 보존합니다.
 
-1371 마지막 에러
+1371 WITH FULLSCAN이 샘플링 방식으로 전환되었습니다. (class "%1$s", heap pages : %2$d, stats_fullscan_max_pages : %3$d)
+
+1372 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

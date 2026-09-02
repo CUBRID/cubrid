@@ -558,8 +558,9 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
 	{
 	  er_clear ();		/* clear the error a failed probe may have raised; it does not fail the update */
 	  with_fullscan = STATS_WITH_SAMPLING;
-	  er_log_debug (ARG_FILE_LINE, "update stats: %s WITH FULLSCAN -> sampling (pages %d, max %d)\n",
-			class_name_p, npages, max_pages);
+
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STATS_FULLSCAN_TO_SAMPLING, 3, class_name_p, npages,
+		  max_pages);
 	}
     }
 

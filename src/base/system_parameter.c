@@ -6640,7 +6640,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_STATS_FULLSCAN_MAX_PAGES,
    PRM_NAME_STATS_FULLSCAN_MAX_PAGES,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    &prm_stats_fullscan_max_pages_flag,
    (void *) &prm_stats_fullscan_max_pages_default,
