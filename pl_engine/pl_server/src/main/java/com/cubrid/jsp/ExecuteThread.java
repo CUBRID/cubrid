@@ -109,19 +109,8 @@ public class ExecuteThread extends Thread {
      */
     private boolean serverSideSqlForbidden = false;
 
-    /*
-     * Set when this invocation actually asked for the server-side connection and was refused.
-     * The stored procedure sees an ordinary SQLException and may swallow it, so the result path
-     * consults this instead of trusting the value the procedure returns.
-     */
-    private boolean serverSideSqlRefused = false;
-
     public boolean isServerSideSqlForbidden() {
         return serverSideSqlForbidden;
-    }
-
-    public void markServerSideSqlRefused() {
-        serverSideSqlRefused = true;
     }
 
     private StoredProcedure storedProcedure = null;
@@ -296,7 +285,6 @@ public class ExecuteThread extends Thread {
     private Header listenCommand() throws Exception {
         /* per-invocation state; makeStoredProcedure () sets the forbidden flag from the payload */
         serverSideSqlForbidden = false;
-        serverSideSqlRefused = false;
 
         ByteBuffer inputBuffer = receiveBuffer();
 
@@ -533,16 +521,6 @@ public class ExecuteThread extends Thread {
 
     private void sendResult(Value result, StoredProcedure procedure)
             throws IOException, ExecuteException, TypeMismatchException {
-        if (serverSideSqlRefused) {
-            /*
-             * The procedure asked for the server-side connection and was refused. Report that
-             * instead of its return value: catching the SQLException must not turn the violation
-             * into a successful call.
-             */
-            sendErrorNoServerSql(SERVER_SIDE_SQL_REFUSED_MSG);
-            return;
-        }
-
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
 
@@ -581,19 +559,7 @@ public class ExecuteThread extends Thread {
 
     public static final String SERVER_SIDE_SQL_REFUSED_MSG =
             "cannot execute SQL on the server-side connection: the stored procedure is declared"
-                    + " PARALLEL_ENABLE, or it is running in a parallel worker";
-
-    private void sendErrorNoServerSql(String exception) throws IOException {
-        resultBuffer.clear();
-        packer.setBuffer(resultBuffer);
-
-        packer.packInt(RequestCode.ERROR_NO_SERVER_SQL);
-        packer.align(DataUtilities.MAX_ALIGNMENT);
-        packer.packString(exception);
-
-        resultBuffer = packer.getBuffer();
-        writeBuffer(resultBuffer);
-    }
+                    + " PARALLEL_ENABLE";
 
     private void sendError(String exception) throws IOException {
         resultBuffer.clear();

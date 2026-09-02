@@ -47,9 +47,6 @@ typedef enum
   SP_CODE_ERROR = 0x04,
   SP_CODE_INTERNAL_JDBC = 0x08,
   SP_CODE_DESTROY = 0x10,
-  /* the PL server refused jdbc:default:connection for this invocation; distinct from
-   * SP_CODE_ERROR so the server can raise its own error rather than trusting a message string */
-  SP_CODE_ERROR_NO_SERVER_SQL = 0x20,
 
   SP_CODE_COMPILE = 0x80,
 

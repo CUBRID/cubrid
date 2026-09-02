@@ -50,17 +50,14 @@ public class DBMS_OUTPUT {
     /*
      * DBMS_OUTPUT does not travel the server-side connection, but it reaches the session-shared
      * MessageBuffer, which parallel workers must not touch concurrently. Refuse it under the same
-     * contract as server-side SQL: sticky, so the invocation fails even if the procedure catches
-     * this exception.
+     * contract as server-side SQL.
      */
     private static void refuseIfServerSideSqlForbidden() {
         Thread current = Thread.currentThread();
         if (current instanceof ExecuteThread
                 && ((ExecuteThread) current).isServerSideSqlForbidden()) {
-            ((ExecuteThread) current).markServerSideSqlRefused();
             throw new RuntimeException(
-                    "cannot use DBMS_OUTPUT: the stored procedure is declared PARALLEL_ENABLE,"
-                            + " or it is running in a parallel worker");
+                    "cannot use DBMS_OUTPUT: the stored procedure is declared PARALLEL_ENABLE");
         }
     }
 

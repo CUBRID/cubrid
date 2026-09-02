@@ -96,14 +96,12 @@ public class CUBRIDServerSideDriver implements Driver {
         if (current instanceof ExecuteThread
                 && ((ExecuteThread) current).isServerSideSqlForbidden()) {
             /*
-             * A PARALLEL_ENABLE stored procedure, or any procedure running on a parallel worker,
-             * must not open the server-side default connection: that Connection is cached on the
-             * session's Context, so concurrent workers would share one object and corrupt its
-             * state. Refuse here, before the object exists. An external connection
-             * (jdbc:cubrid://...) is a separate session and is not affected - this driver only
-             * accepts jdbc:default:connection.
+             * A PARALLEL_ENABLE stored procedure must not open the server-side default
+             * connection: that Connection is cached on the session's Context, so concurrent
+             * workers would share one object and corrupt its state. Refuse here, before the
+             * object exists. An external connection (jdbc:cubrid://...) is a separate session
+             * and is not affected - this driver only accepts jdbc:default:connection.
              */
-            ((ExecuteThread) current).markServerSideSqlRefused();
             throw new SQLException(ExecuteThread.SERVER_SIDE_SQL_REFUSED_MSG);
         }
 

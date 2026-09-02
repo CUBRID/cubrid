@@ -1483,7 +1483,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1378 Cannot change the login capability of user "%1$s".
 
-1379 Stored procedure/function "%1$s" cannot execute SQL on the server-side connection or use DBMS_OUTPUT in a parallel context.
+1379 A stored procedure/function declared PARALLEL_ENABLE cannot execute SQL on the server-side connection or use DBMS_OUTPUT.
 
 1380 Last Error
 

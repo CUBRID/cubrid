@@ -46,7 +46,6 @@ namespace cubpl
      * while it runs a job inline, so "set and not me" is exactly "I am a px worker". */
     m_is_px_worker = (thread_p != nullptr && thread_p->m_px_orig_thread_entry != nullptr
 		      && thread_p->m_px_orig_thread_entry != thread_p);
-    m_client_callback_rejected = false;
     m_client_header.id = sess->get_id ();
     m_java_header.id = sess->get_id ();
   }
@@ -56,13 +55,10 @@ namespace cubpl
   {
     /* Answer the callback ourselves with METHOD_RESPONSE_ERROR instead of going out to CAS. Java
      * is waiting for a reply to this very request, so replying keeps the protocol in sync and the
-     * SP sees a plain SQLException. The sticky flag then fails the whole call once the result
-     * arrives, so an SP that catches that exception cannot swallow the violation. */
-    m_client_callback_rejected = true;
-
+     * SP sees a plain SQLException; what it does with that exception is its own business. */
     cubmem::block blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_PARALLEL_ENABLE_NO_SQL,
 				   std::string ("cannot execute SQL on the server-side connection: the stored procedure is"
-				       " declared PARALLEL_ENABLE, or it is running in a parallel worker"),
+				       " declared PARALLEL_ENABLE"),
 				   ARG_FILE_LINE));
     int error = send_data_to_java (blk);
     blk.freemem ();

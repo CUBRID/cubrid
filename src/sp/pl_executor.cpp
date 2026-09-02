@@ -441,14 +441,8 @@ exit:
 	  {
 	    error_code = response_callback_command ();
 	  }
-	else if (start_code == SP_CODE_RESULT || start_code == SP_CODE_ERROR
-		 || start_code == SP_CODE_ERROR_NO_SERVER_SQL)
+	else if (start_code == SP_CODE_RESULT || start_code == SP_CODE_ERROR)
 	  {
-	    if (start_code == SP_CODE_ERROR_NO_SERVER_SQL)
-	      {
-		m_stack->mark_client_callback_rejected ();
-		start_code = SP_CODE_ERROR;
-	      }
 	    error_code = response_result (start_code, value);
 	  }
 	else
@@ -474,15 +468,6 @@ exit:
   int
   executor::response_result (int code, DB_VALUE &returnval)
   {
-    if (m_stack->was_client_callback_rejected ())
-      {
-	/* The SP tried the server-side connection; it was handed an SQLException per callback, but
-	 * the call as a whole fails here whether or not the SP caught it. */
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PARALLEL_ENABLE_NO_SQL, 1, m_sig.name);
-	m_stack->set_error_message (std::string (er_msg ()));
-	return ER_SP_PARALLEL_ENABLE_NO_SQL;
-      }
-
     // check queue
     if (m_stack->get_data_queue().empty() == true)
       {

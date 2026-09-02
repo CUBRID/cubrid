@@ -86,9 +86,6 @@ namespace cubpl
        * and code that runs after the SP returns must reach the same verdict as code that ran
        * before it. */
       bool m_is_px_worker;
-      /* sticky: set when a callback was refused, so the call fails even if the SP catches the
-       * SQLException it was handed. */
-      bool m_client_callback_rejected;
 
       int reject_client_callback ();
 
@@ -155,19 +152,6 @@ namespace cubpl
       void set_parallel_enabled_sp (bool is_parallel_enabled)
       {
 	m_is_parallel_enabled_sp = is_parallel_enabled;
-      }
-
-      bool was_client_callback_rejected () const
-      {
-	return m_client_callback_rejected;
-      }
-
-      /* The PL server refused the connection before any callback was attempted, so the guard in
-       * send_data_to_client_recv () never ran. Arm the same sticky flag from that report, so the
-       * invocation fails in response_result () whatever the SP did with its exception. */
-      void mark_client_callback_rejected ()
-      {
-	m_client_callback_rejected = true;
       }
 
       /* The two entry points below are the single chokepoint for everything this stack sends to
