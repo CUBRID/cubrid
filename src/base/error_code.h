@@ -1757,7 +1757,9 @@
 
 #define ER_CDC_ARCHIVE_KEPT                         -1370
 
-#define ER_LAST_ERROR                               -1371
+#define ER_STATS_FULLSCAN_TO_SAMPLING               -1371
+
+#define ER_LAST_ERROR                               -1372
 
 
 /*
