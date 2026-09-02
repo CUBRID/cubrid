@@ -1176,20 +1176,27 @@ namespace parallel_scan
       }
 
     int error = pr_clone_value (value, &tmp);
-    if (error != NO_ERROR)
+    if (error == NO_ERROR && DB_IS_NULL (&tmp))
       {
-	pr_clear_value (&tmp);
-	db_change_private_heap (thread_p, coord_heap);
-	return error;
+	/* pr_clone_value () swallows the setval error: value is not NULL here, so a NULL clone means
+	 * the allocation on the destination heap failed and tmp was left domain-initialized. */
+	error = er_errid ();
+	if (error == NO_ERROR)
+	  {
+	    assert (false);
+	    error = ER_FAILED;
+	  }
       }
 
-    /* release the old buffer on the source heap */
+    /* Release the old buffer on the source heap even when the clone failed: the query is failing
+     * and the value is not needed, but leaving it where the caller no longer expects it would be
+     * released by the wrong allocator during teardown. A NULL clone owns nothing on any heap. */
     db_change_private_heap (thread_p, to_heap0 ? coord_heap : 0);
     pr_clear_value (value);
     *value = tmp;
     db_change_private_heap (thread_p, coord_heap);
 
-    return NO_ERROR;
+    return error;
   }
 
   template <FUNC_CODE F>
@@ -1269,93 +1276,116 @@ namespace parallel_scan
       }
   }
 
+  SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::rehome_dispatch (THREAD_ENTRY *thread_p,
+      AGGREGATE_TYPE *orig_agg_p, agg_rehome_dir dir)
+  {
+    SCAN_CODE rc;
+    switch (orig_agg_p->function)
+      {
+      case PT_COUNT_STAR:
+	rc = rehome_node<PT_COUNT_STAR> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_COUNT:
+	rc = rehome_node<PT_COUNT> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_MIN:
+	rc = rehome_node<PT_MIN> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_MAX:
+	rc = rehome_node<PT_MAX> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_SUM:
+	rc = rehome_node<PT_SUM> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_AVG:
+	rc = rehome_node<PT_AVG> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_STDDEV:
+	rc = rehome_node<PT_STDDEV> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_STDDEV_POP:
+	rc = rehome_node<PT_STDDEV_POP> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_STDDEV_SAMP:
+	rc = rehome_node<PT_STDDEV_SAMP> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_VARIANCE:
+	rc = rehome_node<PT_VARIANCE> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_VAR_POP:
+	rc = rehome_node<PT_VAR_POP> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_VAR_SAMP:
+	rc = rehome_node<PT_VAR_SAMP> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_AGG_BIT_AND:
+	rc = rehome_node<PT_AGG_BIT_AND> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_AGG_BIT_OR:
+	rc = rehome_node<PT_AGG_BIT_OR> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_AGG_BIT_XOR:
+	rc = rehome_node<PT_AGG_BIT_XOR> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_GROUP_CONCAT:
+	rc = rehome_node<PT_GROUP_CONCAT> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_MEDIAN:
+	rc = rehome_node<PT_MEDIAN> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_PERCENTILE_CONT:
+	rc = rehome_node<PT_PERCENTILE_CONT> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_PERCENTILE_DISC:
+	rc = rehome_node<PT_PERCENTILE_DISC> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_JSON_ARRAYAGG:
+	rc = rehome_node<PT_JSON_ARRAYAGG> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_JSON_OBJECTAGG:
+	rc = rehome_node<PT_JSON_OBJECTAGG> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_CUME_DIST:
+	rc = rehome_node<PT_CUME_DIST> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_PERCENT_RANK:
+	rc = rehome_node<PT_PERCENT_RANK> (thread_p, orig_agg_p, dir);
+	break;
+      default:
+	assert (false);
+	rc = S_ERROR;
+	break;
+      }
+    return rc;
+  }
+
   /* Re-home every accumulator in the original aggregate list. All three directions walk the same
    * per-function dispatch, so what is borrowed before the workers start is exactly what is
    * restored -- or discarded -- afterwards, and a value the merge never owned is never touched.
-   * See rehome_agg_value() for the heap-ownership contract. */
+   * See rehome_agg_value() for the heap-ownership contract.
+   * A failed move (allocation on the destination heap) leaves the earlier nodes on the destination
+   * heap and the failing node NULL, so they are moved back before returning: the caller only sees
+   * a list that is wholly on the heap it started from and can unwind without a heap switch. */
   SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::rehome_agg_list (THREAD_ENTRY *thread_p, agg_rehome_dir dir)
   {
     for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
       {
-	SCAN_CODE rc;
-	switch (orig_agg_p->function)
+	if (rehome_dispatch (thread_p, orig_agg_p, dir) == S_ERROR)
 	  {
-	  case PT_COUNT_STAR:
-	    rc = rehome_node<PT_COUNT_STAR> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_COUNT:
-	    rc = rehome_node<PT_COUNT> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_MIN:
-	    rc = rehome_node<PT_MIN> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_MAX:
-	    rc = rehome_node<PT_MAX> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_SUM:
-	    rc = rehome_node<PT_SUM> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_AVG:
-	    rc = rehome_node<PT_AVG> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_STDDEV:
-	    rc = rehome_node<PT_STDDEV> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_STDDEV_POP:
-	    rc = rehome_node<PT_STDDEV_POP> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_STDDEV_SAMP:
-	    rc = rehome_node<PT_STDDEV_SAMP> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_VARIANCE:
-	    rc = rehome_node<PT_VARIANCE> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_VAR_POP:
-	    rc = rehome_node<PT_VAR_POP> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_VAR_SAMP:
-	    rc = rehome_node<PT_VAR_SAMP> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_AGG_BIT_AND:
-	    rc = rehome_node<PT_AGG_BIT_AND> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_AGG_BIT_OR:
-	    rc = rehome_node<PT_AGG_BIT_OR> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_AGG_BIT_XOR:
-	    rc = rehome_node<PT_AGG_BIT_XOR> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_GROUP_CONCAT:
-	    rc = rehome_node<PT_GROUP_CONCAT> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_MEDIAN:
-	    rc = rehome_node<PT_MEDIAN> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_PERCENTILE_CONT:
-	    rc = rehome_node<PT_PERCENTILE_CONT> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_PERCENTILE_DISC:
-	    rc = rehome_node<PT_PERCENTILE_DISC> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_JSON_ARRAYAGG:
-	    rc = rehome_node<PT_JSON_ARRAYAGG> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_JSON_OBJECTAGG:
-	    rc = rehome_node<PT_JSON_OBJECTAGG> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_CUME_DIST:
-	    rc = rehome_node<PT_CUME_DIST> (thread_p, orig_agg_p, dir);
-	    break;
-	  case PT_PERCENT_RANK:
-	    rc = rehome_node<PT_PERCENT_RANK> (thread_p, orig_agg_p, dir);
-	    break;
-	  default:
-	    assert (false);
-	    rc = S_ERROR;
-	    break;
-	  }
-	if (rc == S_ERROR)
-	  {
+	    /* DISCARD never fails, so the direction to undo is always a move. Undo up to and
+	     * including the failing node: its value is NULL and skipped, but for STDDEV/VARIANCE the
+	     * value may have moved before value2 failed. Best effort -- a node that fails to move back
+	     * is left NULL, which owns nothing on either heap. */
+	    assert (dir != agg_rehome_dir::DISCARD);
+	    agg_rehome_dir undo = (dir == agg_rehome_dir::BORROW) ? agg_rehome_dir::RESTORE : agg_rehome_dir::BORROW;
+	    for (AGGREGATE_TYPE *undo_p = m_orig_agg_list; undo_p != NULL; undo_p = undo_p->next)
+	      {
+		(void) rehome_dispatch (thread_p, undo_p, undo);
+		if (undo_p == orig_agg_p)
+		  {
+		    break;
+		  }
+	      }
 	    return S_ERROR;
 	  }
       }

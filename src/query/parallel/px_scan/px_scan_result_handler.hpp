@@ -275,6 +275,7 @@ namespace parallel_scan
       bool accumulate_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_node, DB_VALUE *db_value_p);
       template <FUNC_CODE F>
       SCAN_CODE rehome_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p, agg_rehome_dir dir);
+      SCAN_CODE rehome_dispatch (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p, agg_rehome_dir dir);
       template <FUNC_CODE F>
       void finalize_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p, AGGREGATE_TYPE *cur_agg_p);
       int m_parallelism;
