@@ -97,9 +97,20 @@
 #define MJ_CPU_OVERHEAD_FACTOR 20
 #define HJ_BUILD_CPU_OVERHEAD_FACTOR 40
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
-#define HJ_MEM_ALLOC_CONSTANT 1500	/* Heuristic offset to prefer NL join over hash join:
-					   ~1500 cost observed for NL with ~3000 rows,
-					   preventing hash join selection for small inputs */
+/* Fixed set-up cost of one hash join (hash table allocation, partition bookkeeping), in the
+ * same unit as the per-row terms above.  Calibrated on the release build against a
+ * buffer-resident 10,000-row table (cbrd_25060 data): a hash join of 1,000 x 1,000 rows took
+ * 3 ms of which ~0.6 ms was not explained by the two scans and the per-row build/probe
+ * work, and one unit of this model is ~6 us (a pk probe = 0.29 units = 2.1 us, a hash
+ * build+probe row pair = 0.15 units = 0.95 us), so the set-up is ~100 units.
+ *
+ * The previous value, 1500 ("~1500 cost observed for NL with ~3000 rows, preventing hash
+ * join selection for small inputs"), was a policy offset rather than a cost: it made a
+ * hash join look like 15,000 extra probe-rows.  It was harmless while a nested-loop probe
+ * was priced at ~0.5 per row, but once the repeated-probe saturation priced the probe at
+ * its real ~0.29 the offset alone decided 10,000-row joins for nested loop: cbrd_25060
+ * NL 3040 vs hash 3298 with the offset, 1796 without, measured 32 ms vs 13 ms. */
+#define HJ_MEM_ALLOC_CONSTANT 100
 #define HJ_FILE_IO_WEIGHT 0.5	/* per-row IO weight for partitioned hash-join spill */
 #define HJ_PARTITION_FILL_FACTOR 0.8	/* must match PARTITION_FILL_FACTOR in query_hash_join.c:
 					   the executor spills to a partitioned hash join once the build
