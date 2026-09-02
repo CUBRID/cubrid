@@ -345,7 +345,8 @@ static void sort_px_free_shard_inputs (SORT_PX_MERGE_INPUT ** shard_inputs, int 
 static void sort_put_result_index_leaf (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
 static BT_LOAD_PX_OUTCOME sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 							SORT_PARAM * sort_param, int parallel_num);
-static void sort_retire_px_temp_files (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, int parallel_num);
+static void sort_retire_px_temp_files (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, int parallel_num,
+				       bool keep_result_run);
 
 /*
  * sort_spage_initialize () - Initialize a slotted page
@@ -1609,6 +1610,10 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	  goto cleanup;
 	}
 
+      /* the workers are joined and every file but their result runs is dead. Retire before
+       * sort_merge_queue_setup_ctx () reuses the worker parameters and overwrites temp[]. */
+      sort_retire_px_temp_files (thread_p, px_sort_param, sort_param->px_parallel_num, true);
+
       /* the merge queue / shard build own (and retire) the worker runs from here on */
       px_runs_handed_over = true;
       error = sort_end_parallelism (thread_p, px_sort_param, sort_param);
@@ -1640,7 +1645,7 @@ cleanup:
     {
       if (!px_runs_handed_over)
 	{
-	  sort_retire_px_temp_files (thread_p, px_sort_param, sort_param->px_parallel_num);
+	  sort_retire_px_temp_files (thread_p, px_sort_param, sort_param->px_parallel_num, false);
 	}
 
       if (px_sort_param != NULL)
@@ -1827,17 +1832,6 @@ cleanup:
 		  db_private_free_and_init (thread_p, state->tplrec.tpl);
 		}
 	    }
-	}
-    }
-
-  /* the files beyond the result run are dead here; main never retires worker temps on success */
-  for (int k = 0; k < sort_param->tot_tempfiles; k++)
-    {
-      if (k != sort_param->px_result_file_idx && sort_param->temp[k].volid != NULL_VOLID)
-	{
-	  (void) file_temp_retire (thread_p, &sort_param->temp[k]);
-	  VFID_SET_NULL (&sort_param->temp[k]);
-	  file_find_nth_cursor_reset (&sort_param->temp_cursor[k]);
 	}
     }
 
@@ -6912,17 +6906,18 @@ sort_run_final_single (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 }
 
 /*
- * sort_retire_px_temp_files () - Retire every temp file the workers still hold
+ * sort_retire_px_temp_files () - Retire the temp files the workers still hold
  *   return: void
- *   px_sort_param(in): worker parameters
+ *   px_sort_param(in/out): worker parameters
  *   parallel_num(in): number of workers
+ *   keep_result_run(in): keep each worker's result run, which the merge queue takes over
  *
- * Note: Only while the workers still own their runs (before sort_end_parallelism ()); afterwards
- *       a run may be staged into the main parameters or into the merge queue and retiring it here
- *       would retire it twice.
+ * Note: Call this only while the workers still own their runs. Once sort_end_parallelism () has
+ *       handed them over, a run may sit in the merge queue or in the main parameters and retiring
+ *       it here would retire it twice.
  */
 static void
-sort_retire_px_temp_files (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, int parallel_num)
+sort_retire_px_temp_files (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, int parallel_num, bool keep_result_run)
 {
   int i, k;
 
@@ -6935,12 +6930,24 @@ sort_retire_px_temp_files (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, 
     {
       for (k = 0; k < px_sort_param[i].tot_tempfiles; k++)
 	{
-	  if (px_sort_param[i].temp[k].volid != NULL_VOLID)
+	  if (keep_result_run && k == px_sort_param[i].px_result_file_idx)
 	    {
-	      (void) file_temp_retire (thread_p, &px_sort_param[i].temp[k]);
-	      VFID_SET_NULL (&px_sort_param[i].temp[k]);
-	      file_find_nth_cursor_reset (&px_sort_param[i].temp_cursor[k]);
+	      continue;
 	    }
+	  if (px_sort_param[i].temp[k].volid == NULL_VOLID)
+	    {
+	      continue;
+	    }
+
+	  if (file_temp_retire (thread_p, &px_sort_param[i].temp[k]) != NO_ERROR)
+	    {
+	      /* keep the identifier: file_temp_retire () already took the file off the transaction list */
+	      ASSERT_ERROR ();
+	      continue;
+	    }
+
+	  VFID_SET_NULL (&px_sort_param[i].temp[k]);
+	  file_find_nth_cursor_reset (&px_sort_param[i].temp_cursor[k]);
 	}
     }
 }
