@@ -99,6 +99,7 @@ namespace cubload
     int estimated_size;
     bool verbose;
     bool disable_statistics;
+    bool disable_histogram;
     int periodic_commit;
     bool verbose_commit;
     bool no_oid_hint;

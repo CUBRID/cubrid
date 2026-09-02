@@ -6672,7 +6672,10 @@ ldr_update_statistics (void)
 		   class_name);
 	  fflush (stdout);
 	}
-      err = sm_update_statistics (table->class_, STATS_WITH_SAMPLING);
+      /* same statistics UPDATE STATISTICS ON <class> would produce: class statistics plus, unless
+       * --no-histogram, the histograms of every histogrammable column from one heap scan */
+      err = do_update_class_statistics (table->class_, STATS_WITH_SAMPLING, -1, 0,
+					ldr_Current_context->args->disable_histogram, NULL);
     }
   return err;
 }

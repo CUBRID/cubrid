@@ -4914,8 +4914,6 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (class_type == SM_CLASS_CT)
 	    {
-	      bool stats_updated = false;
-
 	      if (statement->info.update_stats.drop_histogram)
 		{
 		  DB_OBJECT *obj;
@@ -4944,55 +4942,18 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    }
 		  /* the histograms are gone; fall through to the plain statistics update below */
 		}
-	      else if (!statement->info.update_stats.no_histogram)
+
+	      if (error == NO_ERROR)
 		{
-		  DB_OBJECT *obj;
-		  PT_HISTOGRAM_INFO histogram_info;
-		  int save;
-
-		  AU_SAVE_AND_DISABLE (save);
-		  obj = db_find_class (sm_get_ch_name (class_mop));
-		  if (obj == NULL)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      AU_RESTORE (save);
-		      return er_errid ();
-		    }
-
-		  /* the all-columns histogram build refreshes the class statistics itself, reusing the NDV and
-		   * row count of its single heap scan; running sm_update_statistics () beforehand would scan the
-		   * class once more only to have its result overwritten right away. Run the combined path first
-		   * and fall back to the plain statistics update only when it could not. */
-		  histogram_info.target_columns = NULL;
-		  histogram_info.bucket_count =
-		    (statement->info.update_stats.bucket_count > 0) ? statement->info.update_stats.bucket_count : -1;
-		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
-		  histogram_info.random_seed = statement->info.update_stats.random_seed;
 		  int hist_skipped = 0;
 
-		  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
-							   DO_HISTOGRAM_CREATE, &hist_skipped);
+		  /* DROP HISTOGRAM must not rebuild what it just dropped: refresh the class statistics only */
+		  error = do_update_class_statistics (class_mop, statement->info.update_stats.with_fullscan,
+						      statement->info.update_stats.bucket_count,
+						      statement->info.update_stats.random_seed,
+						      statement->info.update_stats.no_histogram
+						      || statement->info.update_stats.drop_histogram, &hist_skipped);
 		  n_hist_skipped += hist_skipped;
-		  if (error == NO_ERROR)
-		    {
-		      stats_updated = true;
-		    }
-		  else if (error == ER_OBJ_INVALID_ARGUMENTS)
-		    {
-		      /* nothing histogrammable on this class; fall through to the plain statistics update */
-		      error = NO_ERROR;
-		    }
-		  else
-		    {
-		      AU_RESTORE (save);
-		      return error;
-		    }
-		  AU_RESTORE (save);
-		}
-
-	      if (error == NO_ERROR && !stats_updated)
-		{
-		  error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
 		}
 
 	      if (error == NO_ERROR)

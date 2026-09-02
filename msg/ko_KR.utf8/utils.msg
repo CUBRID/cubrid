@@ -512,7 +512,8 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
   -v, --verbose                  많은 상태 정보를 출력; 기본값: 출력하지 않음\n\
   -c, --periodic-commit=COUNT    주기적인 커밋에 대한 카운트; 기본값: 10240\n\
       --no-oid                   OID 사용 안 함\n\
-      --no-statistics            로딩 후에 통계 정보 갱신하지 않음\n\
+      --no-statistics            로딩 후에 통계 정보(히스토그램 포함)를 갱신하지 않음\n\
+      --no-histogram             로딩 후에 클래스 통계 정보만 갱신하고 히스토그램은 생성하지 않음\n\
   -s, --schema-file=FILE[:LINE]  파일[:라인] 정보로 스키마 생성\n\
   -i, --index-file=FILE[:LINE]   파일[:라인] 정보로 인덱스 생성\n\
       --trigger-file=FILE[:LINE] 파일[:라인] 정보로 트리거 생성\n\

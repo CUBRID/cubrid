@@ -11111,7 +11111,7 @@ loaddb_interrupt ()
 }
 
 int
-loaddb_update_stats (bool verbose)
+loaddb_update_stats (bool verbose, bool no_histogram)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -11162,7 +11162,13 @@ loaddb_update_stats (bool verbose)
 		  fflush (stdout);
 		}
 	    }
-	  stats_update_statistics (classop, STATS_WITH_SAMPLING);
+	  /* same statistics UPDATE STATISTICS ON <class> would produce: class statistics plus, unless
+	   * --no-histogram, the histograms of every histogrammable column from one heap scan */
+	  rc = do_update_class_statistics (classop, STATS_WITH_SAMPLING, -1, 0, no_histogram, NULL);
+	  if (rc != NO_ERROR)
+	    {
+	      break;
+	    }
 	}
     }
 

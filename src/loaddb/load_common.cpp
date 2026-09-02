@@ -175,6 +175,7 @@ namespace cubload
     , estimated_size (0)
     , verbose (false)
     , disable_statistics (false)
+    , disable_histogram (false)
     , periodic_commit (0)
     , verbose_commit (false)
     , no_oid_hint (false)
@@ -208,6 +209,7 @@ namespace cubload
     serializator.pack_int (estimated_size);
     serializator.pack_bool (verbose);
     serializator.pack_bool (disable_statistics);
+    serializator.pack_bool (disable_histogram);
     serializator.pack_int (periodic_commit);
     serializator.pack_bool (verbose_commit);
     serializator.pack_bool (no_oid_hint);
@@ -246,6 +248,7 @@ namespace cubload
     deserializator.unpack_int (estimated_size);
     deserializator.unpack_bool (verbose);
     deserializator.unpack_bool (disable_statistics);
+    deserializator.unpack_bool (disable_histogram);
     deserializator.unpack_int (periodic_commit);
     deserializator.unpack_bool (verbose_commit);
     deserializator.unpack_bool (no_oid_hint);
@@ -292,6 +295,7 @@ namespace cubload
     size += serializator.get_packed_int_size (size); // estimated_size
     size += serializator.get_packed_bool_size (size); // verbose
     size += serializator.get_packed_bool_size (size); // disable_statistics
+    size += serializator.get_packed_bool_size (size); // disable_histogram
     size += serializator.get_packed_int_size (size); // periodic_commit
     size += serializator.get_packed_bool_size (size); // verbose_commit
     size += serializator.get_packed_bool_size (size); // no_oid_hint
