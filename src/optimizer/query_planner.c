@@ -109,8 +109,16 @@
  * hash join look like 15,000 extra probe-rows.  It was harmless while a nested-loop probe
  * was priced at ~0.5 per row, but once the repeated-probe saturation priced the probe at
  * its real ~0.29 the offset alone decided 10,000-row joins for nested loop: cbrd_25060
- * NL 3040 vs hash 3298 with the offset, 1796 without, measured 32 ms vs 13 ms. */
-#define HJ_MEM_ALLOC_CONSTANT 100
+ * NL 3040 vs hash 3298 with the offset, 1796 without, measured 32 ms vs 13 ms.
+ *
+ * The value is NOT the measured 100: on JOB the offset also stands in for the risk that a
+ * nested loop's probe count is under-estimated (1a: NL estimated 23,032, hash chain 22,415
+ * at 100 -- hash ran 303 ms against NL's 14 ms; 15d +18%), so a margin over the set-up
+ * cost is kept.  800 is the largest value that still lets the measured 10,000-row join pick
+ * hash (hash 1796 + C < NL 3040 needs C < 1244) while 1a's two hash joins stay above its
+ * nested loop (22,415 + 2 * (C - 100) > 23,032 needs C > 408).  Re-measure JOB when either
+ * bound moves. */
+#define HJ_MEM_ALLOC_CONSTANT 800
 #define HJ_FILE_IO_WEIGHT 0.5	/* per-row IO weight for partitioned hash-join spill */
 #define HJ_PARTITION_FILL_FACTOR 0.8	/* must match PARTITION_FILL_FACTOR in query_hash_join.c:
 					   the executor spills to a partitioned hash join once the build
