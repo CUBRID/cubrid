@@ -2375,10 +2375,18 @@ qo_iscan_cost (QO_PLAN * planp)
 	}
     }
 
-  /* IO cost to fetch objects */
+  /* IO cost to fetch objects.  A covering scan fetches no heap page, so it contributes no
+   * per-probe object IO here: its pages are the leaf pages charged below as `leaves` (the
+   * landing leaf on the fixed side, the rest per probe), exactly like the non-covering scan's
+   * leaf share.  Seeding it with 1.0 instead put a phantom page on the variable side that
+   * qo_nljoin_cost () then saturated against the index size while the non-covering
+   * alternative saturated its real heap page against the heap size -- on a small table (heap
+   * pages < index pages) the covering probe priced ABOVE the same probe fetching the heap
+   * (r_outer_join: UNIQUE covering idx 60 vs non-covering idx_a 59) and covering drivers lost
+   * exact ties to sequential scans (bug_bts_13884, bug_bts_9935_03). */
   if (qo_is_index_covering_scan (planp))
     {
-      object_IO = 1.0;
+      object_IO = 0.0;
       heap_access = 0;
     }
   else
@@ -2409,10 +2417,10 @@ qo_iscan_cost (QO_PLAN * planp)
    * b+tree descent lands on) is read once and stays buffer-resident across probes, so it is
    * fixed; only the extra `leaves - 1` pages a wider range scans recur on every probe and go
    * to the variable (per-outer-row) side, together with `iss_leaves` (ISS skip reads). A
-   * single-leaf probe (leaves == 1, e.g. unique/pk or a
-   * small index) therefore adds nothing to the variable side, keeping exactly the original
-   * cost and not eroding the small-input NL preference (HJ_MEM_ALLOC_CONSTANT). */
-  object_IO = MAX (1.0, object_IO) + (leaves - first_leaf) + iss_leaves;
+   * single-leaf probe (leaves == 1, e.g. unique/pk or a small index) therefore adds nothing
+   * to the variable side.  The MAX (1.0, ...) heap-page floor applies to non-covering scans
+   * only -- a covering probe touches no heap page (see the covering branch above). */
+  object_IO = (qo_is_index_covering_scan (planp) ? 0.0 : MAX (1.0, object_IO)) + (leaves - first_leaf) + iss_leaves;
 
   /* Every index scan pays a root-to-leaf descent: about ceil (log2 (rows)) key compares plus
    * (height + 1) page-boundary steps of 50 operator units each (height here is the local
@@ -3646,8 +3654,10 @@ qo_nljoin_cost (QO_PLAN * planp)
        * revisited across probes just like heap pages -- the index is smaller than the heap and
        * its upper levels are already on the fixed side, so it caches at least as well; leaving
        * the leaf share unsaturated made a covering index scan (all leaf, no heap) price above
-       * the equivalent heap-fetching scan and grow linearly with the index width. Anything a
-       * later step adds to variable_io_cost (e.g. subquery IO) stays per probe by design. */
+       * the equivalent heap-fetching scan and grow linearly with the index width.  A covering
+       * scan carries no heap share and no phantom page (qo_iscan_cost ()), so its per-probe IO
+       * is the non-covering probe's minus the heap page -- never more.  Anything a later step
+       * adds to variable_io_cost (e.g. subquery IO) stays per probe by design. */
       heap_io = MIN (inner->iscan_heap_io, inner->variable_io_cost);
       leaf_io = inner->variable_io_cost - heap_io;
 
