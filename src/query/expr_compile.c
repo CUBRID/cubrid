@@ -431,10 +431,11 @@ expr_k_mul_double (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
  * The interpreted helpers pick DIFFERENT numeric implementations by operand mix:
  * a pure NUMERIC x NUMERIC pair goes through the float_numeric_db_value_* family,
  * while a pair with a coerced SHORT/INTEGER/BIGINT side goes through the plain
- * numeric_db_value_* family (multiplication is float for BOTH mixes and takes the
- * raw integer side without any pre-coercion).  step->aux == 1 selects the pure
- * (float) call so the kernels stay exact mirrors -- the two families produce
- * different result scales (visible in division). */
+ * numeric_db_value_* family -- multiplication included: qdata_multiply_numeric ()
+ * coerces the integer side to NUMERIC and calls the plain numeric_db_value_mul (),
+ * only the NUMERIC x NUMERIC case of qdata_multiply_numeric_to_dbval () is float.
+ * The kernels stay exact mirrors because the two families produce different result
+ * scales (visible in division) and the plain family rejects a raw integer operand. */
 
 /* The operand mix decides the family once, at compile time, so each family gets its own
  * kernel instead of a per-row test on step->aux. */
@@ -443,6 +444,7 @@ static int \
 name (EXPR_STEP * step, EXPR_EVAL_CTX * ctx) \
 { \
   EXPR_ARITH_PROLOGUE (a, b); \
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_NUMERIC); \
   if (call (a, b, step->out) != NO_ERROR) \
     { \
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0); \
@@ -455,13 +457,16 @@ EXPR_NUMERIC_BINOP_KERNEL (expr_k_add_numeric_float, float_numeric_db_value_add,
 EXPR_NUMERIC_BINOP_KERNEL (expr_k_add_numeric_plain, numeric_db_value_add, ER_QPROC_OVERFLOW_ADDITION)
 EXPR_NUMERIC_BINOP_KERNEL (expr_k_sub_numeric_float, float_numeric_db_value_sub, ER_QPROC_OVERFLOW_SUBTRACTION)
 EXPR_NUMERIC_BINOP_KERNEL (expr_k_sub_numeric_plain, numeric_db_value_sub, ER_QPROC_OVERFLOW_SUBTRACTION)
+/* a mixed pair (one side coerced from SHORT/INTEGER/BIGINT): the plain call, as in
+ * qdata_multiply_numeric () */
+  EXPR_NUMERIC_BINOP_KERNEL (expr_k_mul_numeric_plain, numeric_db_value_mul, ER_QPROC_OVERFLOW_MULTIPLICATION)
+/* the pure NUMERIC x NUMERIC pair: the float call of qdata_multiply_numeric_to_dbval (); the
+ * fixed64 entry handles the single-word common case bit-identically and declines everything
+ * else back to the reference */
      static int expr_k_mul_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
-  /* multiplication is the float call for every operand mix (qdata_multiply_numeric_
-   * to_dbval () falls through SHORT/INTEGER/BIGINT/NUMERIC into one case); the
-   * fixed64 entry handles the single-word common case bit-identically and declines
-   * everything else back to the reference */
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_NUMERIC);
   if (!float_numeric_db_value_mul_fixed64 (a, b, step->out) && float_numeric_db_value_mul (a, b, step->out) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
@@ -475,6 +480,7 @@ static int \
 name (EXPR_STEP * step, EXPR_EVAL_CTX * ctx) \
 { \
   EXPR_ARITH_PROLOGUE (a, b); \
+  EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_NUMERIC); \
   if (numeric_db_value_is_zero (b)) \
     { \
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_ZERO_DIVIDE, 0); \
@@ -546,12 +552,18 @@ expr_k_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 /* All EXTRACT kernels produce an INTEGER, so their slot never owns heap memory: no per-row
  * clear, and the NULL path sets the flag directly.  The field is a compile-time constant
  * used as an index into the decoded array, so no per-row field test remains either. */
-#define EXPR_EXTRACT_PROLOGUE(src) \
+#define EXPR_EXTRACT_PROLOGUE(src, t) \
   DB_VALUE *src = *step->arg1p; \
   if (DB_IS_NULL (src)) \
     { \
       PRIM_SET_NULL (step->out); \
       return NO_ERROR; \
+    } \
+  /* the operand type was fixed at compile time; a value of another type (see \
+   * EXPR_ARITH_REQUIRE_TYPE) goes to the interpreter instead of a raw db_get_* read */ \
+  if (unlikely (DB_VALUE_DOMAIN_TYPE (src) != (t))) \
+    { \
+      return expr_arith_row_interp (step, ctx); \
     }
 
 /* mirror of the T_EXTRACT path (db_string_extract_dbval () DB_TYPE_DATE case) */
@@ -561,7 +573,7 @@ expr_k_extract_date (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   DB_DATE date;
   int extvar[NUM_MISC_OPERANDS];
 
-  EXPR_EXTRACT_PROLOGUE (src);
+  EXPR_EXTRACT_PROLOGUE (src, DB_TYPE_DATE);
 
   date = *db_get_date (src);
   db_date_decode (&date, &extvar[MONTH], &extvar[DAY], &extvar[YEAR]);
@@ -576,7 +588,7 @@ expr_k_extract_time (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   DB_TIME time;
   int extvar[NUM_MISC_OPERANDS];
 
-  EXPR_EXTRACT_PROLOGUE (src);
+  EXPR_EXTRACT_PROLOGUE (src, DB_TYPE_TIME);
 
   time = *db_get_time (src);
   db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
@@ -591,7 +603,7 @@ expr_k_extract_datetime (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   DB_DATETIME *datetime_p;
   int extvar[NUM_MISC_OPERANDS];
 
-  EXPR_EXTRACT_PROLOGUE (src);
+  EXPR_EXTRACT_PROLOGUE (src, DB_TYPE_DATETIME);
 
   datetime_p = db_get_datetime (src);
   db_datetime_decode (datetime_p, &extvar[MONTH], &extvar[DAY], &extvar[YEAR], &extvar[HOUR], &extvar[MINUTE],
@@ -611,7 +623,7 @@ expr_k_extract_timestamp_date (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   DB_TIME time;
   int extvar[NUM_MISC_OPERANDS];
 
-  EXPR_EXTRACT_PROLOGUE (src);
+  EXPR_EXTRACT_PROLOGUE (src, DB_TYPE_TIMESTAMP);
 
   utime = db_get_timestamp (src);
   (void) db_timestamp_decode_ses (utime, &date, &time);
@@ -628,7 +640,7 @@ expr_k_extract_timestamp_time (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   DB_TIME time;
   int extvar[NUM_MISC_OPERANDS];
 
-  EXPR_EXTRACT_PROLOGUE (src);
+  EXPR_EXTRACT_PROLOGUE (src, DB_TYPE_TIMESTAMP);
 
   utime = db_get_timestamp (src);
   (void) db_timestamp_decode_ses (utime, &date, &time);
@@ -697,6 +709,10 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
       return V_UNKNOWN; \
     }
 
+/* A leaf reads both values with the db_get_* of the type it was resolved for.  Whether the
+ * values can drift from that type (the recursive-CTE case EXPR_ARITH_REQUIRE_TYPE guards
+ * against) is known when the predicate is compiled, so the type check is not paid here but
+ * by the caller, and only for operands that can drift -- see pred->need_type_guard. */
 #define EXPR_PRED_CMP_LEAF(name, get, op) \
 static DB_LOGICAL \
 name (const EXPR_PRED * pred) \
@@ -826,6 +842,20 @@ expr_pred_eval (const EXPR_PRED * pred)
   switch (pred->kind)
     {
     case EXPR_PRED_COMP:
+      if (unlikely (pred->need_type_guard) && pred->fast_type != DB_TYPE_UNKNOWN)
+	{
+	  /* an operand that can drift from its compile-time type (a recursive CTE refills an
+	   * INTEGER-domain slot with a BIGINT): db_get_int () on a BIGINT would compare the low
+	   * half -- a silently wrong answer -- so such a row takes the generic comparison, which
+	   * coerces the sides the way eval_value_rel_cmp () does */
+	  DB_VALUE *v1 = *pred->arg1p, *v2 = *pred->arg2p;
+
+	  if (!DB_IS_NULL (v1) && !DB_IS_NULL (v2)
+	      && (DB_VALUE_DOMAIN_TYPE (v1) != pred->fast_type || DB_VALUE_DOMAIN_TYPE (v2) != pred->fast_type))
+	    {
+	      return expr_pred_generic_cmp (pred);
+	    }
+	}
       return pred->eval (pred);
 
     case EXPR_PRED_COMP_TORDER:
@@ -843,24 +873,38 @@ expr_pred_eval (const EXPR_PRED * pred)
 	    return (DB_IS_NULL (v1) && DB_IS_NULL (v2)) ? V_TRUE : V_FALSE;
 	  }
 
-	switch (pred->fast_type)
+	/* the direct reads are only valid while both values are of the resolved type (see the
+	 * EXPR_PRED_COMP case above); otherwise the total-order comparison with coercion */
+	if (unlikely (pred->need_type_guard) && pred->fast_type != DB_TYPE_UNKNOWN
+	    && (DB_VALUE_DOMAIN_TYPE (v1) != pred->fast_type || DB_VALUE_DOMAIN_TYPE (v2) != pred->fast_type))
 	  {
-	  case DB_TYPE_INTEGER:
-	    result = (db_get_int (v1) == db_get_int (v2)) ? DB_EQ : DB_NE;
-	    break;
-	  case DB_TYPE_BIGINT:
-	    result = (db_get_bigint (v1) == db_get_bigint (v2)) ? DB_EQ : DB_NE;
-	    break;
-	  case DB_TYPE_DOUBLE:
-	    result = (db_get_double (v1) == db_get_double (v2)) ? DB_EQ : DB_NE;
-	    break;
-	  default:
 	    result = tp_value_compare_with_error (v1, v2, 1, 1, &comparable);
 	    if (!comparable)
 	      {
 		return V_ERROR;
 	      }
-	    break;
+	  }
+	else
+	  {
+	    switch (pred->fast_type)
+	      {
+	      case DB_TYPE_INTEGER:
+		result = (db_get_int (v1) == db_get_int (v2)) ? DB_EQ : DB_NE;
+		break;
+	      case DB_TYPE_BIGINT:
+		result = (db_get_bigint (v1) == db_get_bigint (v2)) ? DB_EQ : DB_NE;
+		break;
+	      case DB_TYPE_DOUBLE:
+		result = (db_get_double (v1) == db_get_double (v2)) ? DB_EQ : DB_NE;
+		break;
+	      default:
+		result = tp_value_compare_with_error (v1, v2, 1, 1, &comparable);
+		if (!comparable)
+		  {
+		    return V_ERROR;
+		  }
+		break;
+	      }
 	  }
 	if (result == DB_UNK)
 	  {
@@ -951,20 +995,89 @@ expr_pred_free (EXPR_PRED * pred)
   free_and_init (pred);
 }
 
-/* run one deferred branch region for the current row */
+/* run one deferred region for the current row.  Regions nest (a CASE inside a lazy right
+ * operand, a lazy operand inside a CASE branch), so only the steps at the region's own
+ * depth run here -- a nested region's steps are run by the kernel that owns it. */
 static int
-expr_run_region (EXPR_PROG * prog, int start, int n, EXPR_EVAL_CTX * ctx)
+expr_run_region (EXPR_PROG * prog, int start, int n, int depth, EXPR_EVAL_CTX * ctx)
 {
   int i, error;
 
   for (i = start; i < start + n; i++)
     {
+      if (prog->steps[i].region_depth != depth)
+	{
+	  continue;
+	}
       error = prog->steps[i].kernel (&prog->steps[i], ctx);
       if (unlikely (error != NO_ERROR))
 	{
 	  return error;
 	}
     }
+  return NO_ERROR;
+}
+
+/* ---- lazy right-hand operands: mirror of the fetch order of fetch_peek_arith () ---- */
+
+/* The interpreted arithmetic (and NULLIF) arm fetches the right operand only when the left
+ * one is not NULL, and the NVL arm fetches it only when the left one IS NULL, so a right
+ * operand that would fail (a division by zero, an overflow, a failing cast) never fails
+ * when it is not needed.  These kernels wrap the plain kernel: they decide from the left
+ * operand, run the right operand's deferred region when it is needed, and hand over. */
+static int
+expr_k_lazy_arith (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  int error;
+
+  if (DB_IS_NULL (*step->arg1p))
+    {
+      PRIM_SET_NULL (step->out);
+      return NO_ERROR;
+    }
+  error = expr_run_region (ctx->prog, step->t_start, step->t_n, step->region_depth + 1, ctx);
+  if (unlikely (error != NO_ERROR))
+    {
+      return error;
+    }
+  return step->inner (step, ctx);
+}
+
+static int
+expr_k_lazy_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  int error;
+
+  if (DB_IS_NULL (*step->arg1p))
+    {
+      pr_clear_value (step->out);	/* the cleared slot IS the NULL result */
+      return NO_ERROR;
+    }
+  error = expr_run_region (ctx->prog, step->t_start, step->t_n, step->region_depth + 1, ctx);
+  if (unlikely (error != NO_ERROR))
+    {
+      return error;
+    }
+  return step->inner (step, ctx);
+}
+
+static int
+expr_k_lazy_nvl (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_VALUE *a = *step->arg1p;
+  int error;
+
+  if (!DB_IS_NULL (a))
+    {
+      *step->out_cell = a;
+      return NO_ERROR;
+    }
+  error = expr_run_region (ctx->prog, step->t_start, step->t_n, step->region_depth + 1, ctx);
+  if (unlikely (error != NO_ERROR))
+    {
+      return error;
+    }
+  *step->out_cell = *step->arg2p;
   return NO_ERROR;
 }
 
@@ -983,13 +1096,13 @@ expr_run_region (EXPR_PROG * prog, int start, int n, EXPR_EVAL_CTX * ctx)
     } \
   if (pred == V_TRUE) \
     { \
-      error = expr_run_region (ctx->prog, step->t_start, step->t_n, ctx); \
+      error = expr_run_region (ctx->prog, step->t_start, step->t_n, step->region_depth + 1, ctx); \
       sel = (error == NO_ERROR) ? *step->arg1p : NULL; \
     } \
   else \
     { \
       /* V_FALSE and V_UNKNOWN both select the ELSE side, as in fetch_peek_arith () */ \
-      error = expr_run_region (ctx->prog, step->f_start, step->f_n, ctx); \
+      error = expr_run_region (ctx->prog, step->f_start, step->f_n, step->region_depth + 1, ctx); \
       sel = (error == NO_ERROR) ? *step->arg2p : NULL; \
     } \
   if (unlikely (error != NO_ERROR)) \
@@ -1136,7 +1249,136 @@ expr_new_step (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int out_cell)
   step->kernel = kernel;
   step->aux = out_cell;		/* out_cell is carried in aux until pointers are materialized */
   step->deferred = (bctx->in_branch > 0);
+  step->region_depth = bctx->in_branch;
   return step;
+}
+
+/* Reserve a step together with the cell it publishes.  Reserving them one after the other
+ * left a step in the program when only the cell ran out of room (kernel set, operands and
+ * out cell unset): the rejected node's caller went on, the step was materialized against
+ * cells[-1] and the kernel dereferenced NULL on the first row.  Neither is emitted unless
+ * both fit, so a rejected node leaves nothing behind. */
+static EXPR_STEP *
+expr_new_step_with_cell (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int *cell_out)
+{
+  EXPR_STEP *step;
+  int cell;
+
+  if (bctx->n_steps >= EXPR_MAX_STEPS || bctx->n_cells >= EXPR_MAX_STEPS)
+    {
+      *cell_out = -1;
+      return NULL;
+    }
+  cell = expr_new_cell (bctx, NULL);
+  step = expr_new_step (bctx, kernel, cell);
+  assert (cell >= 0 && step != NULL);
+  step->out_cell = (DB_VALUE **) (intptr_t) cell;	/* index; fixed up in materialize */
+  *cell_out = cell;
+  return step;
+}
+
+/* build-time position, taken before a node (or a root) is compiled so that everything the
+ * attempt emitted can be dropped again when it is rejected */
+typedef struct expr_build_mark EXPR_BUILD_MARK;
+struct expr_build_mark
+{
+  int n_steps, n_cells, n_cse, n_slots;
+};
+
+static void
+expr_build_mark (const EXPR_BUILD_CTX * bctx, EXPR_BUILD_MARK * mark)
+{
+  mark->n_steps = bctx->n_steps;
+  mark->n_cells = bctx->n_cells;
+  mark->n_cse = bctx->n_cse;
+  mark->n_slots = bctx->n_slots;
+}
+
+/* drop every step, cell, CSE entry and slot emitted since the mark: the predicate trees
+ * those steps own go too, and so do their hoisting flags, so a later step landing on the
+ * same index starts clean */
+static void
+expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
+{
+  int j;
+
+  for (j = mark->n_steps; j < bctx->n_steps; j++)
+    {
+      expr_pred_free ((EXPR_PRED *) bctx->steps[j].pred);
+      bctx->steps[j].pred = NULL;
+      bctx->step_prologue[j] = false;
+      bctx->step_exec_prologue[j] = false;
+    }
+  bctx->n_steps = mark->n_steps;
+  bctx->n_cells = mark->n_cells;
+  bctx->n_cse = mark->n_cse;
+  bctx->n_slots = mark->n_slots;
+}
+
+/* can this step fail for a non-NULL input?  Publishing a host variable or a fetched leaf,
+ * coercing to NUMERIC and the pure pointer selects cannot; every computing kernel can (an
+ * overflow, a division by zero, a failing cast, a comparison that raises), and so can any
+ * step that owns a region, through the steps inside it. */
+static bool
+expr_step_is_fallible (const EXPR_STEP * step)
+{
+  if (step->t_n > 0 || step->f_n > 0)
+    {
+      return true;
+    }
+  return !(step->kernel == expr_k_hostvar || step->kernel == expr_k_leaf_fetch || step->kernel == expr_k_coerce_numeric
+	   || step->kernel == expr_k_nvl || step->kernel == expr_k_extract_date || step->kernel == expr_k_extract_time
+	   || step->kernel == expr_k_extract_datetime || step->kernel == expr_k_extract_timestamp_date
+	   || step->kernel == expr_k_extract_timestamp_time);
+}
+
+static bool
+expr_steps_fallible (const EXPR_BUILD_CTX * bctx, int start)
+{
+  int j;
+
+  for (j = start; j < bctx->n_steps; j++)
+    {
+      if (expr_step_is_fallible (&bctx->steps[j]))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* Turn the steps emitted since start into a deferred region owned by the node about to be
+ * emitted.  The interpreted path never evaluates these operands unless the left side asks
+ * for them, so they must not run in the main loop: they are pushed one region level down
+ * (nested regions inside them move with them).  Their CSE entries are dropped as well -- a
+ * later node must not read a cell that is only published when this region runs. */
+static void
+expr_build_defer_region (EXPR_BUILD_CTX * bctx, int start, int cse_mark, int *region_start, int *region_n)
+{
+  int j, first = -1, n = 0;
+
+  for (j = start; j < bctx->n_steps; j++)
+    {
+      if (bctx->step_prologue[j] || bctx->step_exec_prologue[j])
+	{
+	  /* a hoisted step (a literal coerced once, a host variable published once per
+	   * execution) reads nothing the row decides and cannot fail: it stays hoisted, out of
+	   * the region, instead of being re-run on every row the region runs */
+	  continue;
+	}
+      bctx->steps[j].deferred = true;
+      bctx->steps[j].region_depth++;
+      if (first < 0)
+	{
+	  first = j;
+	}
+      n++;
+    }
+  bctx->n_cse = cse_mark;
+  /* the non-hoisted steps of the range stay contiguous after the prologue remap, so the
+   * region is [first, first + n) in build order */
+  *region_start = (first < 0) ? start : first;
+  *region_n = n;
 }
 
 /* CSE lookup: identical construct already compiled in this list? */
@@ -1215,7 +1457,7 @@ expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type, bool numeric_pure)
 	case DB_TYPE_DOUBLE:
 	  return expr_k_mul_double;
 	case DB_TYPE_NUMERIC:
-	  return expr_k_mul_numeric;
+	  return numeric_pure ? expr_k_mul_numeric : expr_k_mul_numeric_plain;
 	default:
 	  return NULL;
 	}
@@ -1263,6 +1505,16 @@ expr_node_type (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
       return (regu->domain != NULL) ? TP_DOMAIN_TYPE (regu->domain) : DB_TYPE_UNKNOWN;
     }
   return expr_leaf_type (bctx, regu);
+}
+
+/* can the value published for this node have a DB_TYPE other than the node's compile-time
+ * type?  Only the leaves that read a slot filled by someone else per row (a list-file slot of
+ * a recursive CTE, a host variable) can; heap attributes, inline literals and the compiled
+ * kernels' own results cannot. */
+static bool
+expr_regu_may_drift (const REGU_VARIABLE * regu)
+{
+  return regu != NULL && (regu->type == TYPE_CONSTANT || regu->type == TYPE_POSITION || regu->type == TYPE_POS_VALUE);
 }
 
 /* generic tp_value_compare () is only used for same-type pairs the interpreted path
@@ -1630,12 +1882,15 @@ expr_scan_pred_free (void *compiled)
 
 /* compile a PRED_EXPR into an EXPR_PRED tree; NULL when any construct is unsupported.
  * Operand sub-expressions compile through expr_compile_node (), so their steps run
- * unconditionally -- exactly when eval_pred () would fetch them. */
+ * unconditionally in the main loop.  eval_pred () fetches a term's operands only when it
+ * reaches the term, and its AND/OR loops stop at the first deciding term, so the right
+ * side of an AND/OR is only compiled when none of its operand steps can fail (a failing
+ * step there would raise an error the interpreted path never reaches). */
 static EXPR_PRED *
 expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_something)
 {
   EXPR_PRED *pred = NULL, *lhs = NULL, *rhs = NULL;
-  int c1, c2;
+  int c1, c2, rhs_start;
 
   if (pr == NULL)
     {
@@ -1654,10 +1909,19 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 	{
 	  return NULL;
 	}
+      rhs_start = bctx->n_steps;
       rhs = expr_compile_pred (bctx, pr->pe.m_pred.rhs, compiled_something);
       if (rhs == NULL)
 	{
 	  expr_pred_free (lhs);
+	  return NULL;
+	}
+      if (expr_steps_fallible (bctx, rhs_start))
+	{
+	  /* the left term may decide the AND/OR before eval_pred () ever fetches these
+	   * operands; the whole predicate stays interpreted (see the header comment) */
+	  expr_pred_free (lhs);
+	  expr_pred_free (rhs);
 	  return NULL;
 	}
       pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
@@ -1820,6 +2084,10 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 	pred->arg2p = EXPR_ARG_ENCODE (c2);
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
+	/* a heap attribute, an inline literal and a compiled arithmetic node always carry the
+	 * type they were compiled for; a list slot (TYPE_CONSTANT/TYPE_POSITION -- a recursive
+	 * CTE refills it with another type) or a host variable can drift and is verified per row */
+	pred->need_type_guard = expr_regu_may_drift (et->lhs) || expr_regu_may_drift (et->rhs);
 	/* bind the (type, operator) leaf now so the row loop makes one indirect call
 	 * instead of testing the type and then the operator */
 	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
@@ -1854,6 +2122,15 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
    * mr_readval_string_internal assertion.  Decline the node and let the interpreter run
    * it, which is exactly what a build without this feature does. */
   if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+    {
+      return -1;
+    }
+
+  /* A COLLATE modifier flags the node: the interpreted path then does not cast it but
+   * re-labels the value's codeset/collation with the domain's (the T_CAST arm and the
+   * epilogue of fetch_peek_dbval ()).  No kernel mirrors that, so the node stays
+   * interpreted -- costs nothing, the flag is rare. */
+  if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION))
     {
       return -1;
     }
@@ -1906,12 +2183,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	  {
 	    return cell;
 	  }
-	cell = expr_new_cell (bctx, NULL);
-	if (cell < 0)
-	  {
-	    return -1;
-	  }
-	step = expr_new_step (bctx, expr_k_hostvar, cell);
+	step = expr_new_step_with_cell (bctx, expr_k_hostvar, &cell);
 	if (step == NULL)
 	  {
 	    return -1;
@@ -1919,12 +2191,10 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	step->aux = regu->value.val_pos;
 	step->regu = regu;
 	step->domain = NULL;
-	/* remember which cell this step publishes (out_cell materialized later) */
 	step->out = NULL;
 	step->arg1p = NULL;
 	/* stash the cell index in a parallel array via cse */
 	expr_cse_add (bctx, NULL, TYPE_POS_VALUE, regu->value.val_pos, -1, -1, cell);
-	step->out_cell = (DB_VALUE **) (intptr_t) cell;	/* index; fixed up in materialize */
 	/* the bound value array is fixed for a whole execution: publish once per
 	 * execution, not per row */
 	bctx->step_exec_prologue[step - bctx->steps] = (bctx->in_branch == 0);
@@ -1942,18 +2212,12 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	  {
 	    return cell;
 	  }
-	cell = expr_new_cell (bctx, NULL);
-	if (cell < 0)
-	  {
-	    return -1;
-	  }
-	step = expr_new_step (bctx, expr_k_leaf_fetch, cell);
+	step = expr_new_step_with_cell (bctx, expr_k_leaf_fetch, &cell);
 	if (step == NULL)
 	  {
 	    return -1;
 	  }
 	step->regu = regu;
-	step->out_cell = (DB_VALUE **) (intptr_t) cell;
 	expr_cse_add (bctx, regu, -1, -1, -1, -1, cell);
 	*compiled_something = true;	/* a shared leaf is already a win */
 	return cell;
@@ -2002,17 +2266,16 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		  {
 		    return -1;
 		  }
-		cell = expr_new_cell (bctx, NULL);
 		/* an INTEGER result needs no trailing auto-cast (verified no-op) */
 		step =
-		  expr_new_step (bctx, (rtype == DB_TYPE_INTEGER) ? expr_k_predicate : expr_k_predicate_cast, cell);
-		if (cell < 0 || step == NULL)
+		  expr_new_step_with_cell (bctx, (rtype == DB_TYPE_INTEGER) ? expr_k_predicate : expr_k_predicate_cast,
+					   &cell);
+		if (step == NULL)
 		  {
 		    expr_pred_free (cpred);
 		    return -1;
 		  }
 		step->pred = cpred;
-		step->out_cell = (DB_VALUE **) (intptr_t) cell;
 		step->out = (DB_VALUE *) 1;
 		bctx->n_slots++;
 		step->domain = (rtype == DB_TYPE_INTEGER) ? NULL : regu->domain;
@@ -2023,9 +2286,10 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	      }
 
 	    /* T_CASE / T_IF / T_DECODE: branches compile into DEFERRED regions the kernel runs
-	     * only when selected; v1 rejects a nested CASE inside a branch (regions
-	     * must not nest).  The predicate compiles FIRST, outside the regions --
-	     * eval_pred () also evaluates it unconditionally. */
+	     * only when selected; a CASE nested inside a branch is still rejected (kept from
+	     * v1 -- lazy operand regions may nest, see expr_build_defer_region ()).  The
+	     * predicate compiles FIRST, outside the regions -- eval_pred () also evaluates
+	     * it unconditionally. */
 	    {
 	      DB_TYPE t1, t2;
 	      int t_start, t_n, f_start, f_n, c1b, c2b, cse_mark;
@@ -2064,9 +2328,8 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	      t1 = expr_node_type (bctx, arith->leftptr);
 	      t2 = expr_node_type (bctx, arith->rightptr);
 
-	      cell = expr_new_cell (bctx, NULL);
-	      step = expr_new_step (bctx, expr_k_case_select, cell);	/* replaced below when a cast is needed */
-	      if (cell < 0 || step == NULL)
+	      step = expr_new_step_with_cell (bctx, expr_k_case_select, &cell);	/* replaced below when a cast is needed */
+	      if (step == NULL)
 		{
 		  expr_pred_free (cpred);
 		  return -1;
@@ -2074,7 +2337,6 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	      step->pred = cpred;
 	      step->arg1p = EXPR_ARG_ENCODE (c1b);
 	      step->arg2p = EXPR_ARG_ENCODE (c2b);
-	      step->out_cell = (DB_VALUE **) (intptr_t) cell;
 	      step->t_start = t_start;
 	      step->t_n = t_n;
 	      step->f_start = f_start;
@@ -2105,13 +2367,9 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	  {
 	    /* T_NVL / T_IFNULL / T_COALESCE share one interpreted block */
 	    DB_TYPE t1, t2;
+	    int r_start, r_cse, r_n;
+	    bool lazy;
 
-	    c1 = expr_compile_node (bctx, arith->leftptr, compiled_something);
-	    c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
-	    if (c1 < 0 || c2 < 0)
-	      {
-		return -1;
-	      }
 	    /* the pointer-select is only transparent when both branches already carry
 	     * the result domain's type AND that type is non-parameterized (the
 	     * interpreted tp_value_cast () is then a verified no-op); a parameterized
@@ -2124,21 +2382,45 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		return -1;
 	      }
 
+	    c1 = expr_compile_node (bctx, arith->leftptr, compiled_something);
+	    if (c1 < 0)
+	      {
+		return -1;
+	      }
+	    /* the interpreted arm fetches the right operand only for a NULL left one: when
+	     * its steps can fail they become a region the lazy kernel runs on that condition */
+	    r_start = bctx->n_steps;
+	    r_cse = bctx->n_cse;
+	    c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
+	    if (c2 < 0)
+	      {
+		return -1;
+	      }
+	    lazy = expr_steps_fallible (bctx, r_start);
+
 	    cell = expr_cse_find (bctx, NULL, T_NVL, c1, c2, -1);
 	    if (cell >= 0)
 	      {
 		return cell;
 	      }
-	    cell = expr_new_cell (bctx, NULL);
-	    step = expr_new_step (bctx, expr_k_nvl, cell);
-	    if (cell < 0 || step == NULL)
+	    if (lazy)
+	      {
+		expr_build_defer_region (bctx, r_start, r_cse, &r_start, &r_n);
+	      }
+	    step = expr_new_step_with_cell (bctx, lazy ? expr_k_lazy_nvl : expr_k_nvl, &cell);
+	    if (step == NULL)
 	      {
 		return -1;
 	      }
 	    step->arg1p = EXPR_ARG_ENCODE (c1);
 	    step->arg2p = EXPR_ARG_ENCODE (c2);
-	    step->out_cell = (DB_VALUE **) (intptr_t) cell;
 	    step->regu = regu;
+	    if (lazy)
+	      {
+		step->inner = expr_k_nvl;
+		step->t_start = r_start;
+		step->t_n = r_n;
+	      }
 	    expr_cse_add (bctx, NULL, T_NVL, c1, c2, -1, cell);
 	    *compiled_something = true;
 	    return cell;
@@ -2193,14 +2475,12 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	      {
 		return cell;
 	      }
-	    cell = expr_new_cell (bctx, NULL);
-	    step = expr_new_step (bctx, extract_kernel, cell);
-	    if (cell < 0 || step == NULL)
+	    step = expr_new_step_with_cell (bctx, extract_kernel, &cell);
+	    if (step == NULL)
 	      {
 		return -1;
 	      }
 	    step->arg1p = EXPR_ARG_ENCODE (c1);
-	    step->out_cell = (DB_VALUE **) (intptr_t) cell;
 	    step->out = (DB_VALUE *) 1;
 	    bctx->n_slots++;
 	    step->aux = (int) arith->misc_operand;
@@ -2216,6 +2496,8 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	     * interpreted domain-infer arm and cross-type coercion stay interpreted */
 	    DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
 	    DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
+	    int r_start, r_cse, r_n;
+	    bool lazy;
 
 	    if (regu->domain == NULL || t1 != t2 || t1 == DB_TYPE_UNKNOWN
 		|| !(t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
@@ -2224,29 +2506,46 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		return -1;
 	      }
 	    c1 = expr_compile_node (bctx, arith->leftptr, compiled_something);
-	    c2 = (c1 >= 0) ? expr_compile_node (bctx, arith->rightptr, compiled_something) : -1;
-	    if (c1 < 0 || c2 < 0)
+	    if (c1 < 0)
 	      {
 		return -1;
 	      }
+	    /* T_NULLIF shares the arithmetic fetch arm: the right operand is fetched only
+	     * for a non-NULL left one (lazy region when its steps can fail) */
+	    r_start = bctx->n_steps;
+	    r_cse = bctx->n_cse;
+	    c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
+	    if (c2 < 0)
+	      {
+		return -1;
+	      }
+	    lazy = expr_steps_fallible (bctx, r_start);
 	    cell = expr_cse_find (bctx, regu->domain, T_NULLIF, c1, c2, -1);
 	    if (cell >= 0)
 	      {
 		return cell;
 	      }
-	    cell = expr_new_cell (bctx, NULL);
-	    step = expr_new_step (bctx, expr_k_nullif, cell);
-	    if (cell < 0 || step == NULL)
+	    if (lazy)
+	      {
+		expr_build_defer_region (bctx, r_start, r_cse, &r_start, &r_n);
+	      }
+	    step = expr_new_step_with_cell (bctx, lazy ? expr_k_lazy_nullif : expr_k_nullif, &cell);
+	    if (step == NULL)
 	      {
 		return -1;
 	      }
 	    step->arg1p = EXPR_ARG_ENCODE (c1);
 	    step->arg2p = EXPR_ARG_ENCODE (c2);
-	    step->out_cell = (DB_VALUE **) (intptr_t) cell;
 	    step->out = (DB_VALUE *) 1;
 	    bctx->n_slots++;
 	    step->domain = regu->domain;
 	    step->regu = regu;
+	    if (lazy)
+	      {
+		step->inner = expr_k_nullif;
+		step->t_start = r_start;
+		step->t_n = r_n;
+	      }
 	    expr_cse_add (bctx, regu->domain, T_NULLIF, c1, c2, -1, cell);
 	    *compiled_something = true;
 	    return cell;
@@ -2264,14 +2563,12 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	      {
 		return cell;
 	      }
-	    cell = expr_new_cell (bctx, NULL);
-	    step = expr_new_step (bctx, expr_k_cast, cell);
-	    if (cell < 0 || step == NULL)
+	    step = expr_new_step_with_cell (bctx, expr_k_cast, &cell);
+	    if (step == NULL)
 	      {
 		return -1;
 	      }
 	    step->arg1p = EXPR_ARG_ENCODE (c1);
-	    step->out_cell = (DB_VALUE **) (intptr_t) cell;
 	    step->domain = regu->domain;
 	    step->regu = regu;
 	    step->out = (DB_VALUE *) 1;	/* needs an owned slot; materialized later */
@@ -2297,120 +2594,121 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	    return -1;
 	  }
 
-	c1 = expr_compile_node (bctx, arith->leftptr, compiled_something);
-	c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
-	if (c1 < 0 || c2 < 0)
-	  {
-	    return -1;
-	  }
+	/* Operands whose compile-time type differs from the kernel type get a per-row
+	 * coercion step (mirror of the qdata tmp coercion) -- NUMERIC only; other mixes are
+	 * left to the interpreted path.  Only a SHORT/INTEGER/BIGINT side may mix with
+	 * NUMERIC (float/double operands take the double path in the interpreted helpers).
+	 * Every operator coerces the integer side, multiplication included
+	 * (qdata_multiply_numeric ()); the mix is decided here, before any step is emitted. */
+	{
+	  DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
+	  DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
+	  bool numeric_pure = false, lazy;
+	  int r_start, r_cse, r_n;
 
-	/* operands whose compile-time type differs from the kernel type get a
-	 * per-row coercion step (mirror of the qdata tmp coercion) -- NUMERIC only;
-	 * other mixes are left to the interpreted path.  Only a SHORT/INTEGER/BIGINT
-	 * side may mix with NUMERIC (float/double operands take the double path in the
-	 * interpreted helpers).  Multiplication takes the raw integer side WITHOUT a
-	 * coercion step -- qdata_multiply_numeric_to_dbval () feeds it straight into
-	 * the float multiplication. */
-	bool numeric_pure = false;
+	  if (rtype == DB_TYPE_NUMERIC)
+	    {
+	      if ((t1 != DB_TYPE_NUMERIC && t1 != DB_TYPE_SHORT && t1 != DB_TYPE_INTEGER && t1 != DB_TYPE_BIGINT)
+		  || (t2 != DB_TYPE_NUMERIC && t2 != DB_TYPE_SHORT && t2 != DB_TYPE_INTEGER && t2 != DB_TYPE_BIGINT))
+		{
+		  return -1;
+		}
+	      numeric_pure = (t1 == DB_TYPE_NUMERIC && t2 == DB_TYPE_NUMERIC);
+	    }
+	  else if (t1 != rtype || t2 != rtype)
+	    {
+	      /* non-NUMERIC kernels require both operands to already be of the kernel
+	       * type; the interpreted path would otherwise coerce per row */
+	      return -1;
+	    }
 
-	if (rtype == DB_TYPE_NUMERIC)
-	  {
-	    DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
-	    DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
+	  c1 = expr_compile_node (bctx, arith->leftptr, compiled_something);
+	  if (c1 < 0)
+	    {
+	      return -1;
+	    }
+	  if (rtype == DB_TYPE_NUMERIC && t1 != DB_TYPE_NUMERIC)
+	    {
+	      step = expr_new_step_with_cell (bctx, expr_k_coerce_numeric, &cell);
+	      if (step == NULL)
+		{
+		  return -1;
+		}
+	      step->arg1p = EXPR_ARG_ENCODE (c1);
+	      step->out = (DB_VALUE *) 1;
+	      bctx->n_slots++;
+	      /* an inline literal never changes: coerce it once, not per row (a
+	       * TYPE_CONSTANT dbvalptr CAN change between rows -- not hoistable); a host
+	       * variable is fixed per execution: coerce it once per execution */
+	      bctx->step_prologue[step - bctx->steps] = (arith->leftptr->type == TYPE_DBVAL && bctx->in_branch == 0);
+	      bctx->step_exec_prologue[step - bctx->steps] =
+		(arith->leftptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
+	      c1 = cell;
+	    }
 
-	    if ((t1 != DB_TYPE_NUMERIC && t1 != DB_TYPE_SHORT && t1 != DB_TYPE_INTEGER && t1 != DB_TYPE_BIGINT)
-		|| (t2 != DB_TYPE_NUMERIC && t2 != DB_TYPE_SHORT && t2 != DB_TYPE_INTEGER && t2 != DB_TYPE_BIGINT))
-	      {
-		return -1;
-	      }
-	    numeric_pure = (t1 == DB_TYPE_NUMERIC && t2 == DB_TYPE_NUMERIC);
+	  /* fetch_peek_arith () fetches the right operand only when the left one is not NULL,
+	   * so a right side that can fail is compiled into a region the lazy kernel runs on
+	   * that condition; a right side that cannot fail stays in the main loop */
+	  r_start = bctx->n_steps;
+	  r_cse = bctx->n_cse;
+	  c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
+	  if (c2 < 0)
+	    {
+	      return -1;
+	    }
+	  if (rtype == DB_TYPE_NUMERIC && t2 != DB_TYPE_NUMERIC)
+	    {
+	      step = expr_new_step_with_cell (bctx, expr_k_coerce_numeric, &cell);
+	      if (step == NULL)
+		{
+		  return -1;
+		}
+	      step->arg1p = EXPR_ARG_ENCODE (c2);
+	      step->out = (DB_VALUE *) 1;
+	      bctx->n_slots++;
+	      bctx->step_prologue[step - bctx->steps] = (arith->rightptr->type == TYPE_DBVAL && bctx->in_branch == 0);
+	      bctx->step_exec_prologue[step - bctx->steps] =
+		(arith->rightptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
+	      c2 = cell;
+	    }
+	  lazy = expr_steps_fallible (bctx, r_start);
 
-	    if (t1 != DB_TYPE_NUMERIC && arith->opcode != T_MUL)
-	      {
-		step = expr_new_step (bctx, expr_k_coerce_numeric, -1);
-		cell = expr_new_cell (bctx, NULL);
-		if (step == NULL || cell < 0)
-		  {
-		    return -1;
-		  }
-		step->arg1p = EXPR_ARG_ENCODE (c1);
-		step->out_cell = (DB_VALUE **) (intptr_t) cell;
-		step->out = (DB_VALUE *) 1;
-		bctx->n_slots++;
-		/* an inline literal never changes: coerce it once, not per row (a
-		 * TYPE_CONSTANT dbvalptr CAN change between rows -- not hoistable); a host
-		 * variable is fixed per execution: coerce it once per execution */
-		bctx->step_prologue[step - bctx->steps] = (arith->leftptr->type == TYPE_DBVAL && bctx->in_branch == 0);
-		bctx->step_exec_prologue[step - bctx->steps] =
-		  (arith->leftptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
-		c1 = cell;
-	      }
-	    if (t2 != DB_TYPE_NUMERIC && arith->opcode != T_MUL)
-	      {
-		step = expr_new_step (bctx, expr_k_coerce_numeric, -1);
-		cell = expr_new_cell (bctx, NULL);
-		if (step == NULL || cell < 0)
-		  {
-		    return -1;
-		  }
-		step->arg1p = EXPR_ARG_ENCODE (c2);
-		step->out_cell = (DB_VALUE **) (intptr_t) cell;
-		step->out = (DB_VALUE *) 1;
-		bctx->n_slots++;
-		bctx->step_prologue[step - bctx->steps] = (arith->rightptr->type == TYPE_DBVAL && bctx->in_branch == 0);
-		bctx->step_exec_prologue[step - bctx->steps] =
-		  (arith->rightptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
-		c2 = cell;
-	      }
-	  }
-	else
-	  {
-	    /* non-NUMERIC kernels require both operands to already be of the kernel
-	     * type; the interpreted path would otherwise coerce per row */
-	    DB_TYPE t1 = expr_leaf_type (bctx, arith->leftptr);
-	    DB_TYPE t2 = expr_leaf_type (bctx, arith->rightptr);
-
-	    if (arith->leftptr->type == TYPE_INARITH || arith->leftptr->type == TYPE_OUTARITH)
-	      {
-		t1 = (arith->leftptr->domain != NULL) ? TP_DOMAIN_TYPE (arith->leftptr->domain) : DB_TYPE_UNKNOWN;
-	      }
-	    if (arith->rightptr->type == TYPE_INARITH || arith->rightptr->type == TYPE_OUTARITH)
-	      {
-		t2 = (arith->rightptr->domain != NULL) ? TP_DOMAIN_TYPE (arith->rightptr->domain) : DB_TYPE_UNKNOWN;
-	      }
-	    if (t1 != rtype || t2 != rtype)
-	      {
-		return -1;
-	      }
-	  }
-
-	cell = expr_cse_find (bctx, NULL, arith->opcode, c1, c2, (int) rtype);
-	if (cell >= 0)
-	  {
-	    return cell;
-	  }
-	/* the operand mix is known now: bind the family-specific kernel */
-	kernel = expr_arith_kernel (arith->opcode, rtype, numeric_pure);
-	cell = expr_new_cell (bctx, NULL);
-	step = expr_new_step (bctx, kernel, cell);
-	if (cell < 0 || step == NULL)
-	  {
-	    return -1;
-	  }
-	step->arg1p = EXPR_ARG_ENCODE (c1);
-	step->arg2p = EXPR_ARG_ENCODE (c2);
-	step->out_cell = (DB_VALUE **) (intptr_t) cell;
-	/* the trailing coercion is a verified no-op for a non-parameterized result domain
-	 * whose type the kernel already produces (tp_value_cast_internal returns straight
-	 * away when desired_type == original_type, !is_parameterized and src == dest), so
-	 * skip the call; NUMERIC is parameterized (precision/scale) and keeps it */
-	step->domain = (rtype == DB_TYPE_NUMERIC) ? regu->domain : NULL;
-	step->regu = regu;
-	step->out = (DB_VALUE *) 1;	/* owned slot */
-	bctx->n_slots++;
-	expr_cse_add (bctx, NULL, arith->opcode, c1, c2, (int) rtype, cell);
-	*compiled_something = true;
-	return cell;
+	  cell = expr_cse_find (bctx, NULL, arith->opcode, c1, c2, (int) rtype);
+	  if (cell >= 0)
+	    {
+	      return cell;
+	    }
+	  /* the operand mix is known now: bind the family-specific kernel */
+	  kernel = expr_arith_kernel (arith->opcode, rtype, numeric_pure);
+	  if (lazy)
+	    {
+	      expr_build_defer_region (bctx, r_start, r_cse, &r_start, &r_n);
+	    }
+	  step = expr_new_step_with_cell (bctx, lazy ? expr_k_lazy_arith : kernel, &cell);
+	  if (step == NULL)
+	    {
+	      return -1;
+	    }
+	  step->arg1p = EXPR_ARG_ENCODE (c1);
+	  step->arg2p = EXPR_ARG_ENCODE (c2);
+	  /* the trailing coercion is a verified no-op for a non-parameterized result domain
+	   * whose type the kernel already produces (tp_value_cast_internal returns straight
+	   * away when desired_type == original_type, !is_parameterized and src == dest), so
+	   * skip the call; NUMERIC is parameterized (precision/scale) and keeps it */
+	  step->domain = (rtype == DB_TYPE_NUMERIC) ? regu->domain : NULL;
+	  step->regu = regu;
+	  step->out = (DB_VALUE *) 1;	/* owned slot */
+	  bctx->n_slots++;
+	  if (lazy)
+	    {
+	      step->inner = kernel;
+	      step->t_start = r_start;
+	      step->t_n = r_n;
+	    }
+	  expr_cse_add (bctx, NULL, arith->opcode, c1, c2, (int) rtype, cell);
+	  *compiled_something = true;
+	  return cell;
+	}
       }
 
     default:
@@ -2461,15 +2759,14 @@ static int
 expr_emit_fallback (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
 {
   EXPR_STEP *step;
-  int cell = expr_new_cell (bctx, NULL);
+  int cell;
 
-  step = expr_new_step (bctx, expr_k_fallback, cell);
-  if (cell < 0 || step == NULL)
+  step = expr_new_step_with_cell (bctx, expr_k_fallback, &cell);
+  if (step == NULL)
     {
       return -1;
     }
   step->regu = regu;
-  step->out_cell = (DB_VALUE **) (intptr_t) cell;
   return cell;
 }
 
@@ -2512,15 +2809,18 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
 
   for (i = 0; i < in_roots; i++)
     {
-      int snap_steps = bctx->n_steps, snap_cells = bctx->n_cells, snap_cse = bctx->n_cse, snap_slots = bctx->n_slots;
-      int cell = expr_compile_node (bctx, roots[i], &compiled_something);
+      EXPR_BUILD_MARK mark;
+      int cell;
+
+      expr_build_mark (bctx, &mark);
+      cell = expr_compile_node (bctx, roots[i], &compiled_something);
 
       if (cell >= 0 && only_compute_roots)
 	{
 	  bool has_compute = false;
 	  int j;
 
-	  for (j = snap_steps; j < bctx->n_steps; j++)
+	  for (j = mark.n_steps; j < bctx->n_steps; j++)
 	    {
 	      if (bctx->steps[j].kernel != expr_k_leaf_fetch && bctx->steps[j].kernel != expr_k_hostvar)
 		{
@@ -2533,19 +2833,16 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
 	      /* nothing computed: discard this root's steps and keep the consumer's
 	       * interpreted per-root path (its CSE entries go too, so a later root
 	       * cannot reference a cell no step publishes) */
-	      for (j = snap_steps; j < bctx->n_steps; j++)
-		{
-		  expr_pred_free ((EXPR_PRED *) bctx->steps[j].pred);
-		  bctx->steps[j].pred = NULL;
-		  bctx->step_prologue[j] = false;
-		  bctx->step_exec_prologue[j] = false;
-		}
-	      bctx->n_steps = snap_steps;
-	      bctx->n_cells = snap_cells;
-	      bctx->n_cse = snap_cse;
-	      bctx->n_slots = snap_slots;
 	      cell = -1;
 	    }
+	}
+
+      if (cell < 0)
+	{
+	  /* a rejected root leaves nothing behind: the steps its subtrees emitted before
+	   * the rejection would otherwise be materialized against a cell no one reserved
+	   * (the fallback below covers the whole root through the interpreter) */
+	  expr_build_rewind (bctx, &mark);
 	}
 
       if (cell < 0 && allow_fallback_roots)
@@ -2895,6 +3192,14 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_mul_numeric, "mul_numeric"},
     {
+    expr_k_mul_numeric_plain, "mul_numeric*"},
+    {
+    expr_k_lazy_arith, "lazy"},
+    {
+    expr_k_lazy_nullif, "lazy_nullif"},
+    {
+    expr_k_lazy_nvl, "lazy_nvl"},
+    {
     expr_k_div_numeric_float, "div_numeric"},
     {
     expr_k_div_numeric_plain, "div_numeric*"},
@@ -3006,9 +3311,10 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
     {
       const EXPR_STEP *step = &prog->steps[i];
 
+      /* a lazy step is listed under the kernel it wraps; the region it guards follows */
       fprintf (fp, "%*c[%c%2d] %-14s", indent, ' ',
 	       (i < prog->n_prologue) ? 'P' : (i < prog->n_prologue + prog->n_exec_prologue) ? 'E'
-	       : step->deferred ? 'D' : ' ', i, expr_kernel_name (step->kernel));
+	       : step->deferred ? 'D' : ' ', i, expr_kernel_name (step->inner != NULL ? step->inner : step->kernel));
       if (step->arg1p != NULL)
 	{
 	  fprintf (fp, " c%d", (int) (step->arg1p - prog->cells));
@@ -3042,10 +3348,14 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 	  expr_pred_dump (fp, (const EXPR_PRED *) step->pred, prog);
 	}
       else if (step->kernel == expr_k_add_numeric_float || step->kernel == expr_k_sub_numeric_float
-	       || step->kernel == expr_k_div_numeric_float)
+	       || step->kernel == expr_k_mul_numeric || step->kernel == expr_k_div_numeric_float)
 	{
 	  /* the float family: both operands were already NUMERIC (no coercion step) */
 	  fprintf (fp, " pure");
+	}
+      if (step->inner != NULL)
+	{
+	  fprintf (fp, " lazy rhs=[%d..%d)", step->t_start, step->t_start + step->t_n);
 	}
       fprintf (fp, "\n");
     }
