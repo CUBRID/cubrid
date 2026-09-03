@@ -680,6 +680,42 @@ namespace parallel_scan
 	    return S_ERROR;
 	  }
 
+	/* merge splices worker FILE_TEMP pages into dest by VPID chaining (qfile_connect_list), so dest
+	 * borrows pages from files that are retired at query end - but the list cache outlives the query.
+	 * For a cacheable result, re-materialize the merged rows into a single query-owned FILE_QUERY_AREA
+	 * file now, while the worker pages are still valid, so the cached list is self-contained. */
+	if (dest->tuple_cnt > 0 && XASL_IS_FLAGED (m_.orig_xasl, XASL_TO_BE_CACHED))
+	  {
+	    if (dest->last_pgptr != nullptr)
+	      {
+		qfile_close_list (thread_p, dest);
+	      }
+	    /* qfile_duplicate_list copies pages byte-identically but leaves last_offset/lasttpl_len unset;
+	     * keep the merged list's values so a later reopen-as-append writes at the right offset. */
+	    int last_offset = dest->last_offset;
+	    int lasttpl_len = dest->lasttpl_len;
+	    QFILE_LIST_ID *self_owned = qfile_duplicate_list (thread_p, dest, QFILE_FLAG_RESULT_FILE);
+	    if (self_owned == nullptr)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return S_ERROR;
+	      }
+	    qfile_destroy_list (thread_p, dest);
+	    if (qfile_copy_list_id (dest, self_owned, true, QFILE_SKIP_DEPENDENT) != NO_ERROR)
+	      {
+		/* dest was already memcpy'd to reference self_owned's file, so free only the struct
+		 * and let the normal error teardown of dest clean the file up. */
+		QFILE_FREE_AND_INIT_LIST_ID (self_owned);
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return S_ERROR;
+	      }
+	    dest->last_offset = last_offset;
+	    dest->lasttpl_len = lasttpl_len;
+	    QFILE_FREE_AND_INIT_LIST_ID (self_owned);
+	  }
+
 	if (m_.instnum_mode != parallel_scan::instnum_mode::NONE)
 	  {
 	    /* a later block of the same scan may run serially and resume from instnum_val, so leave the
