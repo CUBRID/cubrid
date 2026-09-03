@@ -726,6 +726,7 @@ if(UNIX)
   target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubrid PUBLIC stdc++fs)
   target_link_libraries(cubrid PUBLIC rt)
+  target_link_options(cubrid PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
 
   # Add TBB
   target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})

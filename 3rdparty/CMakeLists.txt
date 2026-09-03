@@ -372,9 +372,9 @@ list(APPEND EP_INCLUDES ${LZ4_INCLUDES})
 #                  ${WITH_LIBOPENSSL_ROOT_PATH}/include
 # on Windows:
 # * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/3rdparty
-set(LIBOPENSSL_TARGET libopenssl)
 if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
   if(UNIX)
+    set(LIBOPENSSL_TARGET libopenssl)
     #compile OpenSSL library given an internet url to a OpenSSL archive
     #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
     set(LIBOPENSSL_LIBS ${3RDPARTY_LIBS_DIR}/lib/libssl.a ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
