@@ -134,6 +134,7 @@ typedef struct pr_type
 
     void set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg);
     data_cmpdisk_function_type get_data_cmpdisk_function () const;
+    index_cmpdisk_function_type get_index_cmpdisk_function () const;	/* CBRD-27365: VAR/DIRECT list columns compare in the index encoding */
 
     void set_cmpval_function (cmpval_function_type cmpval_arg);
     cmpval_function_type get_cmpval_function () const;

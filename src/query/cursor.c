@@ -58,7 +58,7 @@ static void cursor_reset_current_slot (CURSOR_ID * cursor_id_p);
 static bool cursor_has_set_vobjs (DB_SET * set);
 static int cursor_fixup_set_vobjs (DB_VALUE * value);
 static int cursor_fixup_vobjs (DB_VALUE * val);
-static int cursor_get_tuple_value_to_dbvalue (OR_BUF * buf, TP_DOMAIN * dom, QFILE_TUPLE_VALUE_FLAG val_flag,
+static int cursor_get_tuple_value_to_dbvalue (QFILE_TUPLE_RECORD * slot, int index, TP_DOMAIN * dom,
 					      DB_VALUE * db_value, bool copy);
 static int cursor_get_tuple_value_from_list (CURSOR_ID * c_id, int index, DB_VALUE * value, char *tuple);
 static int cursor_get_first_tuple_value (char *tuple, QFILE_TUPLE_VALUE_TYPE_LIST * type_list, DB_VALUE * value,
@@ -355,21 +355,21 @@ cursor_copy_vobj_to_dbvalue (struct or_buf *buffer_p, DB_VALUE * value_p)
 }
 
 /*
- * cursor_get_tuple_value_to_dbvalue () - The given tuple value which is in disk
- *   representation form is copied/peeked to the db_value structure
+ * cursor_get_tuple_value_to_dbvalue () - decode column index of the slot's tuple into db_value
  *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
- *    buf(in)          : Pointer to the tuple value
- *    dom(in)           : Domain for the tpl column
- *    val_flag(in)      : Flag to indicate if tuple value is bound
- *    db_value(out)     : Set to the tuple value
- *    copy(in)          : Indicator for copy/peek
+ *    slot(in)         : tuple slot bound to the list's layout
+ *    index(in)        : column
+ *    dom(in)          : Domain for the tpl column
+ *    db_value(out)    : Set to the tuple value
+ *    copy(in)         : Indicator for copy/peek
  */
 static int
-cursor_get_tuple_value_to_dbvalue (OR_BUF * buffer_p, TP_DOMAIN * domain_p, QFILE_TUPLE_VALUE_FLAG value_flag,
-				   DB_VALUE * value_p, bool is_copy)
+cursor_get_tuple_value_to_dbvalue (QFILE_TUPLE_RECORD * slot, int index, TP_DOMAIN * domain_p, DB_VALUE * value_p,
+				   bool is_copy)
 {
   const PR_TYPE *pr_type;
   DB_TYPE type;
+  bool is_null;
 
   pr_type = domain_p->type;
   if (pr_type == NULL)
@@ -378,22 +378,37 @@ cursor_get_tuple_value_to_dbvalue (OR_BUF * buffer_p, TP_DOMAIN * domain_p, QFIL
     }
 
   type = pr_type->id;
-  if (value_flag == V_UNBOUND)
+
+  /* VOBJs must be handled separately: a set column is VAR/SCRATCH, read it from its aligned copy */
+  if (type == DB_TYPE_VOBJ)
+    {
+      OR_BUF buffer;
+      const char *body;
+      int length;
+
+      body = qfile_slot_locate_aligned (slot, index, &length, &is_null);
+      if (is_null)
+	{
+	  db_value_domain_init (value_p, type, domain_p->precision, domain_p->scale);
+	  return NO_ERROR;
+	}
+      if (body == NULL)
+	{
+	  return ER_FAILED;
+	}
+      or_init (&buffer, (char *) body, length);
+      return cursor_copy_vobj_to_dbvalue (&buffer, value_p);
+    }
+
+  /* for all other types, the shared accessor decodes with the prim routines */
+  if (qfile_slot_read_value (slot, index, domain_p, value_p, is_copy, &is_null) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  if (is_null)
     {
       db_value_domain_init (value_p, type, domain_p->precision, domain_p->scale);
       return NO_ERROR;
-    }
-
-  /* VOBJs must be handled separately */
-  if (type == DB_TYPE_VOBJ)
-    {
-      return cursor_copy_vobj_to_dbvalue (buffer_p, value_p);
-    }
-
-  /* for all other types, we can use the prim routines */
-  if (pr_type->data_readval (buffer_p, value_p, domain_p, -1, is_copy, NULL, 0) != NO_ERROR)
-    {
-      return ER_FAILED;
     }
 
   /*
@@ -418,10 +433,6 @@ cursor_get_tuple_value_from_list (CURSOR_ID * cursor_id_p, int index, DB_VALUE *
 {
   QFILE_TUPLE_VALUE_TYPE_LIST *type_list_p;
   QFILE_TUPLE_RECORD *slot;
-  OR_BUF buffer;
-  const char *body;
-  int length;
-  bool is_null;
 
   if (cursor_id_p == NULL)
     {
@@ -442,11 +453,8 @@ cursor_get_tuple_value_from_list (CURSOR_ID * cursor_id_p, int index, DB_VALUE *
     }
   assert (slot->tpl == tuple_p);
 
-  body = qfile_slot_locate (slot, index, &length, &is_null);
-  or_init (&buffer, (char *) body, length);
-
-  return cursor_get_tuple_value_to_dbvalue (&buffer, type_list_p->domp[index], is_null ? V_UNBOUND : V_BOUND,
-					    value_p, cursor_id_p->is_copy_tuple_value);
+  return cursor_get_tuple_value_to_dbvalue (slot, index, type_list_p->domp[index], value_p,
+					    cursor_id_p->is_copy_tuple_value);
 }
 
 /*
@@ -463,17 +471,13 @@ cursor_get_first_tuple_value (char *tuple_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_
 			      bool is_copy)
 {
   QFILE_TUPLE_RECORD slot = { NULL, 0 };
-  OR_BUF buffer;
-  const char *body;
-  int length;
-  bool is_null;
+  int rc;
 
   qfile_slot_fill (&slot, tuple_p, type_list_p);
-  body = qfile_slot_locate (&slot, 0, &length, &is_null);
-  or_init (&buffer, (char *) body, length);
+  rc = cursor_get_tuple_value_to_dbvalue (&slot, 0, type_list_p->domp[0], value_p, is_copy);
+  qfile_slot_clear (&slot);	/* a VOBJ read may have allocated the stack slot's scratch */
 
-  return cursor_get_tuple_value_to_dbvalue (&buffer, type_list_p->domp[0], is_null ? V_UNBOUND : V_BOUND, value_p,
-					    is_copy);
+  return rc;
 }
 
 /*
@@ -796,9 +800,9 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
       /* fetch first OID */
       type = TP_DOMAIN_TYPE (cursor_id_p->list_id.type_list.domp[0]);
       qfile_slot_set_tuple (&slot, current_tuple);
-      tuple_p = (char *) qfile_slot_locate (&slot, 0, &length, &is_null);
+      tuple_p = (char *) qfile_slot_locate_aligned (&slot, 0, &length, &is_null);
 
-      if (is_null)
+      if (is_null || tuple_p == NULL)
 	{
 	  continue;
 	}
@@ -814,6 +818,7 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
       /* move to next tuple */
       current_tuple = (char *) current_tuple + current_tuple_length;
     }
+  qfile_slot_clear (&slot);
 
   return cursor_fetch_oids (cursor_id_p, oid_index, cursor_id_p->prefetch_lock_mode,
 			    ((cursor_id_p->prefetch_lock_mode == DB_FETCH_WRITE)
@@ -856,14 +861,14 @@ cursor_prefetch_column_oids (CURSOR_ID * cursor_id_p)
 	  col_num = cursor_id_p->oid_col_no[col_index];
 	  type = TP_DOMAIN_TYPE (cursor_id_p->list_id.type_list.domp[col_num]);
 
-	  tuple_p = (char *) qfile_slot_locate (&slot, col_num, &length, &is_null);
-
-	  if (is_null)
+	  if (type != DB_TYPE_OBJECT && type != DB_TYPE_VOBJ)
 	    {
 	      continue;
 	    }
 
-	  if (type != DB_TYPE_OBJECT && type != DB_TYPE_VOBJ)
+	  tuple_p = (char *) qfile_slot_locate_aligned (&slot, col_num, &length, &is_null);
+
+	  if (is_null || tuple_p == NULL)
 	    {
 	      continue;
 	    }
@@ -888,6 +893,7 @@ cursor_prefetch_column_oids (CURSOR_ID * cursor_id_p)
 
       current_tuple = (char *) current_tuple + current_tuple_length;
     }
+  qfile_slot_clear (&slot);
 
   return cursor_fetch_oids (cursor_id_p, oid_index, DB_FETCH_READ, DB_FETCH_QUERY_READ);
 }
@@ -1202,6 +1208,7 @@ cursor_open (CURSOR_ID * cursor_id_p, QFILE_LIST_ID * list_id_p, bool updatable,
   cursor_id_p->tuple_record.tpl = NULL;
   cursor_id_p->tuple_record.scratch = NULL;
   cursor_id_p->tuple_record.scratch_size = 0;
+  cursor_id_p->tuple_record.scratch_used = 0;
   cursor_id_p->on_overflow = false;
   cursor_id_p->buffer_tuple_count = 0;
   cursor_id_p->current_tuple_no = -1;
@@ -1220,6 +1227,7 @@ cursor_open (CURSOR_ID * cursor_id_p, QFILE_LIST_ID * list_id_p, bool updatable,
   cursor_id_p->current_slot.size = 0;	/* non-owning: current_tuple_p lives in the page buffer or tuple_record */
   cursor_id_p->current_slot.scratch = NULL;
   cursor_id_p->current_slot.scratch_size = 0;
+  cursor_id_p->current_slot.scratch_used = 0;
   qfile_slot_bind (&cursor_id_p->current_slot, &cursor_id_p->list_id.type_list);
   cursor_id_p->is_copy_tuple_value = true;	/* copy */
   cursor_reset_current_slot (cursor_id_p);

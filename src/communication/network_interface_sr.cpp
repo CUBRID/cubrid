@@ -5629,6 +5629,8 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 	      continue;
 	    }
 
+	  /* a string column is VAR/DIRECT: the body is the index encoding, whose compression prefix is the same one
+	   * or_get_varchar_compression_lengths () reads from the data encoding */
 	  tuple_p = (char *) qfile_slot_locate (&tuple_record, i, &val_length, &is_null);
 	  if (!is_null)
 	    {

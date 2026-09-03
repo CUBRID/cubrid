@@ -1431,14 +1431,16 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
       current_context = &contexts[part_index];
 
       outer_part_list_id[part_index] =
-	qfile_open_list (thread_p, &outer_list_id->type_list, NULL, outer_list_id->query_id, QFILE_FLAG_ALL, NULL);
+	qfile_open_list (thread_p, &outer_list_id->type_list, NULL, outer_list_id->query_id,
+			 QFILE_FLAG_ALL | QFILE_LIST_BACKWARD_FLAG (outer_list_id), NULL);
       if (outer_part_list_id[part_index] == NULL)
 	{
 	  goto error_exit;
 	}
 
       inner_part_list_id[part_index] =
-	qfile_open_list (thread_p, &inner_list_id->type_list, NULL, inner_list_id->query_id, QFILE_FLAG_ALL, NULL);
+	qfile_open_list (thread_p, &inner_list_id->type_list, NULL, inner_list_id->query_id,
+			 QFILE_FLAG_ALL | QFILE_LIST_BACKWARD_FLAG (inner_list_id), NULL);
       if (inner_part_list_id[part_index] == NULL)
 	{
 	  goto error_exit;
@@ -1765,7 +1767,8 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       if (temp_part_list_id[part_id] == NULL)
 	{
 	  temp_part_list_id[part_id] =
-	    qfile_open_list (thread_p, &list_id->type_list, NULL, list_id->query_id, QFILE_FLAG_ALL, NULL);
+	    qfile_open_list (thread_p, &list_id->type_list, NULL, list_id->query_id,
+			     QFILE_FLAG_ALL | QFILE_LIST_BACKWARD_FLAG (list_id), NULL);
 	  if (temp_part_list_id[part_id] == NULL)
 	    {
 	      break;		/* error_exit */
@@ -2898,9 +2901,7 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
   int *value_indexes;
   bool need_coerce_domains;
 
-  QFILE_TUPLE tuple_value;
-  OR_BUF buf;
-  int value_size, value_index, key_index;
+  int value_index, key_index;
   bool value_is_null;
 
   TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
@@ -2935,28 +2936,21 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
     {
       {
 	  value_index = value_indexes[key_index];
-	  tuple_value = (QFILE_TUPLE) qfile_slot_locate (tuple_record, value_index, &value_size, &value_is_null);
-
-	  /* Skip the tuple if any value is NULL */
-	  if (value_is_null)
-	    {
-	      goto skip_next;
-	    }
-
-	  assert (value_size > 0);
-	  or_init (&buf, tuple_value, value_size);
-
 	  pr_clear_value (key->values[key_index]);
 
 	  if (need_coerce_domains && coerce_domains[key_index] != NULL
 	      && coerce_domains[key_index] != domains[key_index])
 	    {
-	      error =
-		domains[key_index]->type->data_readval (&buf, &pre_coerce_value, domains[key_index], -1, false, NULL,
-							0);
+	      error = qfile_slot_read_value (tuple_record, value_index, domains[key_index], &pre_coerce_value, false,
+					     &value_is_null);
 	      if (error != NO_ERROR)
 		{
 		  goto error_exit;
+		}
+	      /* Skip the tuple if any value is NULL */
+	      if (value_is_null)
+		{
+		  goto skip_next;
 		}
 
 	      if (coerce_domains[key_index]->type->id == DB_TYPE_NUMERIC
@@ -2986,12 +2980,16 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	    }
 	  else
 	    {
-	      error =
-		domains[key_index]->type->data_readval (&buf, key->values[key_index], domains[key_index], -1, false,
-							NULL, 0);
+	      error = qfile_slot_read_value (tuple_record, value_index, domains[key_index], key->values[key_index], false,
+					     &value_is_null);
 	      if (error != NO_ERROR)
 		{
 		  goto error_exit;
+		}
+	      /* Skip the tuple if any value is NULL */
+	      if (value_is_null)
+		{
+		  goto skip_next;
 		}
 	    }
 
@@ -3040,7 +3038,7 @@ hjoin_locate_tuple_hash_key (QFILE_TUPLE_RECORD * tuple_record)
 
   body = (QFILE_TUPLE) qfile_slot_locate (tuple_record, 0, &len, &is_null);
   assert (!is_null);
-  assert (len == (int) QFILE_LEGACY_VALUE_ENCODED_SIZE (tp_Integer.disksize));
+  assert (len == tp_Integer.disksize);	/* FIXED INT column: the body is the aligned 4-byte value itself */
 
   return body;
 }

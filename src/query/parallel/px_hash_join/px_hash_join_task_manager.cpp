@@ -414,7 +414,8 @@ namespace parallel_query
 	      if (temp_part_list_id[part_id] == nullptr)
 		{
 		  temp_part_list_id[part_id] =
-			  qfile_open_list (&thread_ref, &list_id->type_list, nullptr, list_id->query_id, QFILE_FLAG_ALL, nullptr);
+			  qfile_open_list (&thread_ref, &list_id->type_list, nullptr, list_id->query_id,
+					   QFILE_FLAG_ALL | QFILE_LIST_BACKWARD_FLAG (list_id), nullptr);
 		  if (temp_part_list_id[part_id] == nullptr)
 		    {
 		      assert_release_error (er_errid () != NO_ERROR);

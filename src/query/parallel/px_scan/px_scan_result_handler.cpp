@@ -155,6 +155,7 @@ namespace parallel_scan
       {
 	tl.tpl_buf.tpl = nullptr;
 	tl.tpl_buf.size = 0;
+	qfile_tuple_walk_construct (&tl.walk);
       }
     else
       {
@@ -218,6 +219,7 @@ namespace parallel_scan
 	    db_private_free_and_init (thread_p, tl.tpl_buf.tpl);
 	    tl.tpl_buf.size = 0;
 	  }
+	qfile_tuple_walk_clear (&tl.walk);
       }
     else
       {
@@ -819,28 +821,24 @@ namespace parallel_scan
 	      }
 
 	    /* domain-driven sequential walk (D-182-16, thread contract D-181-10): this reader never touches the
-	     * writer-owned layout descriptor; the atomic domains drive the deform */
-	    qfile_tuple_walk_init (&walk, tl.tpl_buf.tpl);
+	     * writer-owned layout descriptor; the atomic domains drive the deform. The header size and the column
+	     * count are fixed at qfile_open_list () and read only after the header was published (m_valid). */
+	    qfile_tuple_walk_init (&tl.walk, tl.tpl_buf.tpl, list_id_header_p->m_list_id_p->type_list.hdr_size,
+				   list_id_header_p->m_type_cnt);
 
 	    for (val_list_iterator = dest->valp, val_list_index = 0; val_list_iterator
 		 && val_list_index < dest->val_cnt; val_list_iterator = val_list_iterator->next, val_list_index++)
 	      {
 		domain_p = (TP_DOMAIN *)list_id_header_p->m_type_list[val_list_index]->load (std::memory_order_acquire);
-		if (qfile_tuple_walk_next (&walk, domain_p, &body, &len, &is_null) != NO_ERROR)
-		  {
-		    return S_ERROR;
-		  }
 		pr_clear_value (val_list_iterator->val);
-		if (is_null)
-		  {
-		    db_make_null (val_list_iterator->val);
-		    continue;
-		  }
-		or_init (&buf, (char *) body, len);
-		err_code = domain_p->type->data_readval (&buf, val_list_iterator->val, domain_p, -1, false, NULL, 0);
+		err_code = qfile_tuple_walk_read_value (&tl.walk, domain_p, val_list_iterator->val, false, &is_null);
 		if (err_code != NO_ERROR)
 		  {
 		    return S_ERROR;
+		  }
+		if (is_null)
+		  {
+		    db_make_null (val_list_iterator->val);
 		  }
 	      }
 	    return S_SUCCESS;
@@ -1839,26 +1837,8 @@ namespace parallel_scan
 	if (agg_node->sort_list != NULL)
 	  {
 	    /* GROUP_CONCAT(ORDER BY): push first operand value to list_id */
-	    DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
-	    const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
-	    if (pr_type_p == nullptr)
-	      {
-		return false;
-	      }
-	    int dbval_size = pr_data_writeval_disk_size (db_value_p);
-	    if (dbval_size > tl_tpl_buf.size)
-	      {
-		char *new_tpl = (char *) db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
-		if (new_tpl == nullptr)
-		  {
-		    return false;
-		  }
-		tl_tpl_buf.tpl = new_tpl;
-		tl_tpl_buf.size = dbval_size;
-	      }
-	    or_init (&tl_or_buf, tl_tpl_buf.tpl, dbval_size);
-	    pr_type_p->data_writeval (&tl_or_buf, db_value_p);
-	    if (qfile_add_item_to_list (thread_p, tl_tpl_buf.tpl, dbval_size, agg_node->list_id) != NO_ERROR)
+	    /* the list assembler encodes the value for the list's column layout (CBRD-27365) */
+	    if (qfile_add_values_tuple_to_list (thread_p, agg_node->list_id, &db_value_p, 1) != NO_ERROR)
 	      {
 		return false;
 	      }
@@ -2025,28 +2005,8 @@ namespace parallel_scan
 	    return false;
 	  }
 	write_val_p = &median_cast_val;
-	DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (write_val_p);
-	const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
-	if (pr_type_p == nullptr)
-	  {
-	    pr_clear_value (&median_cast_val);
-	    return false;
-	  }
-	int dbval_size = pr_data_writeval_disk_size (write_val_p);
-	if (dbval_size > tl_tpl_buf.size)
-	  {
-	    char *new_tpl = (char *) db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
-	    if (new_tpl == nullptr)
-	      {
-		pr_clear_value (&median_cast_val);
-		return false;
-	      }
-	    tl_tpl_buf.tpl = new_tpl;
-	    tl_tpl_buf.size = dbval_size;
-	  }
-	or_init (&tl_or_buf, tl_tpl_buf.tpl, dbval_size);
-	pr_type_p->data_writeval (&tl_or_buf, write_val_p);
-	if (qfile_add_item_to_list (thread_p, tl_tpl_buf.tpl, dbval_size, agg_node->list_id) != NO_ERROR)
+	/* the list assembler encodes the value for the list's column layout (CBRD-27365) */
+	if (qfile_add_values_tuple_to_list (thread_p, agg_node->list_id, &write_val_p, 1) != NO_ERROR)
 	  {
 	    pr_clear_value (&median_cast_val);
 	    return false;
@@ -2156,26 +2116,8 @@ namespace parallel_scan
 	     * they pollute the distinct value set (matches serial
 	     * qdata_evaluate_aggregate_list, which inserts only db_values[0]).
 	     * db_value_p (operand[0]) was already fetched and NULL-checked above. */
-	    DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
-	    const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
-	    if (pr_type_p == nullptr)
-	      {
-		return false;
-	      }
-	    int dbval_size = pr_data_writeval_disk_size (db_value_p);
-	    if (dbval_size > tl_tpl_buf.size)
-	      {
-		char *new_tpl = (char *) db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
-		if (new_tpl == nullptr)
-		  {
-		    return false;
-		  }
-		tl_tpl_buf.tpl = new_tpl;
-		tl_tpl_buf.size = dbval_size;
-	      }
-	    or_init (&tl_or_buf, tl_tpl_buf.tpl, dbval_size);
-	    pr_type_p->data_writeval (&tl_or_buf, db_value_p);
-	    if (qfile_add_item_to_list (thread_p, tl_tpl_buf.tpl, dbval_size, agg_node->list_id) != NO_ERROR)
+	    /* the list assembler encodes the value for the list's column layout (CBRD-27365) */
+	    if (qfile_add_values_tuple_to_list (thread_p, agg_node->list_id, &db_value_p, 1) != NO_ERROR)
 	      {
 		return false;
 	      }

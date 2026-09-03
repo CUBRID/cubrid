@@ -494,24 +494,17 @@ qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * 
   for (val_list_iterator = val_list->valp, val_list_index = 0; val_list_iterator
        && val_list_index < val_list->val_cnt; val_list_iterator = val_list_iterator->next, val_list_index++)
     {
-      body = qfile_slot_locate (tplrec, val_list_index, &len, &is_null);
-
       pr_clear_value (val_list_iterator->val);
 
-      if (is_null)
-	{
-	  db_make_null (val_list_iterator->val);
-	  continue;
-	}
-      or_init (&buf, (char *) body, len);
-
-      err_code = type_list->domp[val_list_index]->type->data_readval (&buf, val_list_iterator->val,
-								      type_list->domp[val_list_index],
-								      -1, false /* Don't copy */ ,
-								      NULL, 0);
+      err_code = qfile_slot_read_value (tplrec, val_list_index, type_list->domp[val_list_index], val_list_iterator->val,
+					false /* Don't copy */ , &is_null);
       if (err_code != NO_ERROR)
 	{
 	  return err_code;
+	}
+      if (is_null)
+	{
+	  db_make_null (val_list_iterator->val);
 	}
     }
   return NO_ERROR;

@@ -5419,8 +5419,15 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
 
   if (count > 0)
     {
-      int hdr_size = (listid->type_list.hdr_size == 4 || listid->type_list.hdr_size == 8)
-	? listid->type_list.hdr_size : QFILE_TL_HDR_SIZE_LEGACY;
+      int hdr_size = listid->type_list.hdr_size;
+
+      if (hdr_size != QFILE_TUPLE_HDR_SIZE_FORWARD && hdr_size != QFILE_TUPLE_HDR_SIZE_BACKWARD)
+	{
+	  /* not a list id packed by this build (lockstep policy, ADR 0016 section 1.6): refuse rather than misread */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto error;
+	}
 
       /* own [domp | col] block; the descriptor is recomputed here from the unpacked domains (D-181-9) */
       if (qfile_type_list_alloc (&listid->type_list, count, hdr_size) != NO_ERROR)

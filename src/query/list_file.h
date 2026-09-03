@@ -143,6 +143,8 @@ extern void qfile_finalize (void);
 extern void qfile_destroy_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern void qfile_close_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern int qfile_add_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl);
+extern int qfile_add_tuple_to_list_from (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl,
+					 int src_hdr_size);
 extern int qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl,
 					    QFILE_TUPLE_POSITION * tuple_pos);
 extern int qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, PAGE_PTR ovfl_tpl_pg,
@@ -168,7 +170,8 @@ extern bool qfile_is_sort_list_covered (SORT_LIST * covering_list, SORT_LIST * c
 /* Sorting related routines */
 extern SORT_STATUS qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * info, RECDES * key,
 					QFILE_LIST_SCAN_ID * input_scan, QFILE_TUPLE_RECORD * tplrec);
-extern QFILE_TUPLE qfile_generate_sort_tuple (SORTKEY_INFO * info, SORT_REC * sort_rec, RECDES * output_recdes);
+extern QFILE_TUPLE qfile_generate_sort_tuple (SORTKEY_INFO * info, SORT_REC * sort_rec, RECDES * output_recdes,
+					      const QFILE_TUPLE_VALUE_TYPE_LIST * out_tl);
 extern int qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg);
 extern int qfile_compare_all_sort_record (const void *pk0, const void *pk1, void *arg);
 extern int qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * listid, SORTKEY_INFO * info);
@@ -223,7 +226,6 @@ extern int qfile_add_values_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_I
 extern int qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 				       QFILE_TUPLE_RECORD * outer_rec, QFILE_TUPLE_RECORD * inner_rec,
 				       QFILE_LIST_MERGE_INFO * merge_info_p, QFILE_TUPLE_RECORD * big_rec);
-extern int qfile_add_item_to_list (THREAD_ENTRY * thread_p, char *item, int item_size, QFILE_LIST_ID * list_id);
 extern QFILE_LIST_ID *qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file,
 					      QFILE_LIST_ID * rhs_file, int flag);
 extern int qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id);

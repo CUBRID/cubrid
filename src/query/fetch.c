@@ -3988,7 +3988,6 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
   int length;
   const PR_TYPE *pr_type;
   OR_BUF buf;
-  QFILE_TUPLE_VALUE_FLAG flag;
   char *ptr;
   bool is_null;
   REGU_VARIABLE *head_regu = NULL, *regu = NULL;

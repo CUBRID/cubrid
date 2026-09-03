@@ -776,6 +776,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
   indx_cov->tplrec->tpl = NULL;
   indx_cov->tplrec->scratch = NULL;
   indx_cov->tplrec->scratch_size = 0;
+  indx_cov->tplrec->scratch_used = 0;
   qfile_slot_bind (indx_cov->tplrec, &indx_cov->list_id->type_list);
 
   indx_cov->lsid = (QFILE_LIST_SCAN_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_SCAN_ID));
