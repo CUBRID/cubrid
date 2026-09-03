@@ -225,10 +225,12 @@ Available command:\n\
     restart\n\
     info\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      -r [-b] [-t] [-s <sec>] [<expr>]\n\
     on          broker-name\n\
     off         broker-name\n\
     reset       broker-name\n\
     acl         <status|reload> [broker-name]\n\
+    qr          <status [broker-name]> | <add|reload|disable|enable> broker-name user@dbname/file\n\
     getid       -b <broker-name> [-f] shard-key\n\
     test        broker-name [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
 27 cubrid utility, version %1$s\n\
