@@ -36,7 +36,7 @@
 /* value pointer staging for the private-buffer tuple writers: stack for the usual column counts */
 #define QDATA_TUPLE_VALS_STACK 64
 static int qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n,
-				       const qfile_tuple_value_type_list * tl, qfile_tuple_record * tuple_record_p);
+				       qfile_tuple_value_type_list * tl, qfile_tuple_record * tuple_record_p);
 
 #include "system_parameter.h"
 #include "error_manager.h"
@@ -363,7 +363,7 @@ qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
  */
 int
 qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p,
-				 const qfile_tuple_value_type_list * tl, qfile_tuple_record * tuple_record_p)
+				 qfile_tuple_value_type_list * tl, qfile_tuple_record * tuple_record_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   DB_VALUE *vals_buf[QDATA_TUPLE_VALS_STACK], **vals = vals_buf;
@@ -411,7 +411,7 @@ end:
  *   return: NO_ERROR, or ER_code
  */
 static int
-qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n, const qfile_tuple_value_type_list * tl,
+qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n, qfile_tuple_value_type_list * tl,
 			    qfile_tuple_record * tuple_record_p)
 {
   int size;
@@ -447,7 +447,7 @@ qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n, co
 }
 
 int
-qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, const qfile_tuple_value_type_list * tl,
+qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfile_tuple_value_type_list * tl,
 			      qfile_tuple_record * tuple_record_p)
 {
   QPROC_DB_VALUE_LIST val_list_iterator;
@@ -582,7 +582,7 @@ exit_with_status:
  *   tl(in): finalized layout descriptor of the destination list
  */
 QPROC_TPLDESCR_STATUS
-qdata_size_tuple_desc (const qfile_tuple_value_type_list * tl, qfile_tuple_descriptor * tuple_desc_p)
+qdata_size_tuple_desc (qfile_tuple_value_type_list * tl, qfile_tuple_descriptor * tuple_desc_p)
 {
   /* the compressed string, if any, is deallocated later, after copying the db_value into the tuple */
   tuple_desc_p->tpl_size =

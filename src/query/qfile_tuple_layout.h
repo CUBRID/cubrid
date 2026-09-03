@@ -421,10 +421,18 @@ qfile_slot_read_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN * dom,
    * then), the OBJECT/OID pair (OBJECT columns are VAR/SCRATCH, decoded from an aligned copy with either domain) and a
    * DB_TYPE_NULL decoding domain (a regu whose domain the compiler left unresolved, e.g. the ISS/covering plan probe of
    * CTP _19_apricot/_03_index_skip_scan/_05: mr_data_readval_null leaves the value NULL exactly as the legacy reader did). */
-  assert (TP_DOMAIN_TYPE (rec->tl->domp[col]) == DB_TYPE_VARIABLE || TP_DOMAIN_TYPE (dom) == DB_TYPE_VARIABLE
-	  || TP_DOMAIN_TYPE (dom) == DB_TYPE_NULL || TP_DOMAIN_TYPE (dom) == DB_TYPE_OID
-	  || TP_DOMAIN_TYPE (dom) == DB_TYPE_OBJECT
-	  || (dom->type->has_computed_disk_size () ? QFILE_COL_VAR : QFILE_COL_FIXED) == c->kind);
+#if !defined(NDEBUG)
+  if (TP_DOMAIN_TYPE (rec->tl->domp[col]) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (dom) != DB_TYPE_VARIABLE
+      && TP_DOMAIN_TYPE (dom) != DB_TYPE_NULL && TP_DOMAIN_TYPE (dom) != DB_TYPE_OID
+      && TP_DOMAIN_TYPE (dom) != DB_TYPE_OBJECT)
+    {
+      QFILE_COL_LAYOUT dc;
+
+      qfile_col_layout_of_domain (dom, &dc);
+      /* the decoding domain must read the bytes the column stored: same kind, same fixed width, same var access */
+      assert (dc.kind == c->kind && (c->kind == QFILE_COL_VAR ? dc.var_access == c->var_access : dc.size == c->size));
+    }
+#endif
 
   return qfile_col_read_body (c, body, len, dom, value, copy);
 }
@@ -552,24 +560,53 @@ qfile_tuple_check_col_type (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, int col, con
     }
   ctype = TP_DOMAIN_TYPE (tl->domp[col]);
   vtype = DB_VALUE_DOMAIN_TYPE (val);
-  assert (ctype == DB_TYPE_VARIABLE || ctype == vtype || (pr_is_string_type (ctype) && pr_is_string_type (vtype))
+  assert (ctype != DB_TYPE_VARIABLE);	/* resolved by the size pass (qfile_tuple_resolve_column) */
+  assert (ctype == vtype || (pr_is_string_type (ctype) && pr_is_string_type (vtype))
 	  || ((TP_IS_SET_TYPE (ctype) || ctype == DB_TYPE_VOBJ) && (TP_IS_SET_TYPE (vtype) || vtype == DB_TYPE_VOBJ))
 	  || ((ctype == DB_TYPE_OBJECT || ctype == DB_TYPE_OID) && (vtype == DB_TYPE_OBJECT || vtype == DB_TYPE_OID)));
 }
 #endif
 
 /*
+ * qfile_tuple_resolve_column () - an unresolved (DB_TYPE_VARIABLE) column receives its first bound value: fix the
+ *   column's domain from that value and recompute the layout (mutator-owns-finalize, D-181-6; D-199-13).
+ *   return: true when the descriptor changed
+ *   The format is not self-describing, so a column's layout must be settled before its first bound value is written;
+ *   the executor's regu-driven resolution (qfile_update_domains_on_type_list) can lag behind by several tuples when
+ *   the regu domain itself is still DB_TYPE_VARIABLE, and every tuple written meanwhile would be laid out as VAR.
+ *   Earlier tuples hold NULL in this column, so re-finalizing does not change how they are read (#186).
+ */
+inline bool
+qfile_tuple_resolve_column (QFILE_TUPLE_VALUE_TYPE_LIST * tl, int col, const DB_VALUE * val)
+{
+  TP_DOMAIN *dom;
+
+  if (TP_DOMAIN_TYPE (tl->domp[col]) != DB_TYPE_VARIABLE || val == NULL || DB_IS_NULL (val))
+    {
+      return false;
+    }
+  dom = tp_domain_resolve_value (val, NULL);
+  if (dom == NULL || TP_DOMAIN_TYPE (dom) == DB_TYPE_VARIABLE)
+    {
+      return false;
+    }
+  tl->domp[col] = dom;
+  return true;
+}
+
+/*
  * qfile_tuple_size () - assembler size pass.
  *   return: exact tuple length (header included, multiple of 4), or ER_FAILED
+ *   tl(in/out): layout descriptor of the destination list; an unresolved column is resolved from its first bound value
  *   src(in/out): a val source gets its body size stored in len
  *   has_null(out): at least one column is NULL
  */
 inline int
-qfile_tuple_size (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * src, int n, bool * has_null)
+qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * src, int n, bool * has_null)
 {
   const QFILE_COL_LAYOUT *c;
   int i, size;
-  bool hn = false;
+  bool hn = false, changed = false;
 
   assert (tl != NULL && tl->finalized && tl->type_cnt == n);
 
@@ -578,8 +615,15 @@ qfile_tuple_size (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * 
       if (src[i].is_null)
 	{
 	  hn = true;
-	  break;
 	}
+      else if (src[i].val != NULL)
+	{
+	  changed |= qfile_tuple_resolve_column (tl, i, src[i].val);
+	}
+    }
+  if (changed)
+    {
+      qfile_type_list_finalize (tl);
     }
   size = tl->data_off[hn ? 1 : 0];
 
@@ -771,11 +815,11 @@ qfile_tuple_fill (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, const QFILE_TUPLE_COL_
  *   DB_VALUE after the first computation, so this matches the legacy cost).
  */
 inline int
-qfile_tuple_size_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE ** vals, int n, bool * has_null)
+qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE ** vals, int n, bool * has_null)
 {
   const QFILE_COL_LAYOUT *c;
   int i, len, size;
-  bool hn = false;
+  bool hn = false, changed = false;
 
   assert (tl != NULL && tl->finalized && tl->type_cnt == n);
 
@@ -784,8 +828,15 @@ qfile_tuple_size_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE *
       if (DB_IS_NULL (vals[i]))
 	{
 	  hn = true;
-	  break;
 	}
+      else
+	{
+	  changed |= qfile_tuple_resolve_column (tl, i, vals[i]);
+	}
+    }
+  if (changed)
+    {
+      qfile_type_list_finalize (tl);
     }
   size = tl->data_off[hn ? 1 : 0];
 

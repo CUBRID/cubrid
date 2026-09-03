@@ -171,7 +171,7 @@ extern bool qfile_is_sort_list_covered (SORT_LIST * covering_list, SORT_LIST * c
 extern SORT_STATUS qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * info, RECDES * key,
 					QFILE_LIST_SCAN_ID * input_scan, QFILE_TUPLE_RECORD * tplrec);
 extern QFILE_TUPLE qfile_generate_sort_tuple (SORTKEY_INFO * info, SORT_REC * sort_rec, RECDES * output_recdes,
-					      const QFILE_TUPLE_VALUE_TYPE_LIST * out_tl);
+					      QFILE_TUPLE_VALUE_TYPE_LIST * out_tl);
 extern int qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg);
 extern int qfile_compare_all_sort_record (const void *pk0, const void *pk1, void *arg);
 extern int qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * listid, SORTKEY_INFO * info);

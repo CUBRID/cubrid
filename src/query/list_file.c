@@ -3349,7 +3349,7 @@ qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD * tuple_slot
  */
 QFILE_TUPLE
 qfile_generate_sort_tuple (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p, RECDES * output_recdes_p,
-			   const QFILE_TUPLE_VALUE_TYPE_LIST * out_tl)
+			   QFILE_TUPLE_VALUE_TYPE_LIST * out_tl)
 {
   QFILE_TUPLE_COL_SRC src_buf[QFILE_COL_SRC_STACK], *src;
   int nkeys = key_info_p->nkeys;
