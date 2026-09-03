@@ -2406,6 +2406,11 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   memcpy (log_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr));
 
   hdr_ptr = (LOG_HEADER *) (log_pgptr->area);
+
+  /* Which archive cdc still needs is a decision about this server's own log, so the copy the
+   * standby keeps must not inherit it. */
+  LOG_HDR_CDC_ARV_NUM_RESET (hdr_ptr);
+
   if (entry->copy_from_first_phy_page == true)
     {
       hdr_ptr->nxarv_phy_pageid = (LOG_PHY_PAGEID) nxarv_phy_pageid;
