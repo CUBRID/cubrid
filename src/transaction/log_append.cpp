@@ -251,22 +251,6 @@ void
 log_append_final_zip ()
 {
 #if !defined (SERVER_MODE)
-  /* Allocated on demand by the reader, which reads compressed records whether or not this process
-   * appends any, so it is released ahead of the log_Zip_support gate below. */
-  if (log_unzip_undo != NULL)
-    {
-      log_zip_free (log_unzip_undo);
-      log_unzip_undo = NULL;
-    }
-#endif
-
-  if (!log_Zip_support)
-    {
-      return;
-    }
-
-#if defined (SERVER_MODE)
-#else
   if (log_zip_undo)
     {
       log_zip_free (log_zip_undo);
@@ -276,6 +260,11 @@ log_append_final_zip ()
     {
       log_zip_free (log_zip_redo);
       log_zip_redo = NULL;
+    }
+  if (log_unzip_undo)
+    {
+      log_zip_free (log_unzip_undo);
+      log_unzip_undo = NULL;
     }
   if (log_data_ptr)
     {
