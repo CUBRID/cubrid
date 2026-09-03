@@ -1478,8 +1478,13 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
 	}
       if (error_code != NO_ERROR)
 	{
+	  // Statistics are a post-load convenience: the objects (and any index/trigger files) are already
+	  // committed, so a statistics failure -- including a transient lock conflict on a catalog class --
+	  // must not report the whole load as failed.  Log it and roll back only the statistics transaction,
+	  // the way SA mode (ldr_update_statistics) already treats it, instead of setting a non-zero exit.
 	  print_er_msg ();
-	  *exit_status = 3;
+	  (void) db_abort_transaction ();
+	  error_code = NO_ERROR;
 	}
       else			// NO_ERROR
 	{
