@@ -7397,8 +7397,11 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* make this the resultant list file */
-  qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_PROHIBIT_DEPENDENT);
+  /* make this the resultant list file. MOVE_DEPENDENT: the parallel merge gathers its ranges by
+   * splicing their page chains (qfile_connect_list), so list_id may carry a dependent_list_id chain
+   * whose ownership must transfer here. The serial paths produce no dependent chain, for which MOVE
+   * and PROHIBIT behave identically. */
+  qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_MOVE_DEPENDENT);
   QFILE_FREE_AND_INIT_LIST_ID (list_id);
 
   return NO_ERROR;
