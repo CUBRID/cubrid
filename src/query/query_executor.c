@@ -18138,6 +18138,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
     bf2df_str_domain.type = &bf2df_str_type;
     bf2df_str_type.set_data_cmpdisk_function (bf2df_str_cmpdisk);
+    /* CBRD-27365: a string list column is VAR/DIRECT and its sort key compares with the index comparator
+     * (qfile_col_cmpdisk_function); the index encoding has the same [len byte][bytes] prefix bf2df_str_cmpdisk reads */
+    bf2df_str_type.set_index_cmpdisk_function (bf2df_str_cmpdisk);
     bf2df_str_type.set_cmpval_function (bf2df_str_cmpval);
 
     /* init sort list */

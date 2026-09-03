@@ -211,6 +211,12 @@ pr_type::get_index_cmpdisk_function () const
 }
 
 void
+pr_type::set_index_cmpdisk_function (index_cmpdisk_function_type index_cmpdisk_arg)
+{
+  f_index_cmpdisk = index_cmpdisk_arg;
+}
+
+void
 pr_type::set_cmpval_function (cmpval_function_type cmpval_arg)
 {
   f_cmpval = cmpval_arg;
