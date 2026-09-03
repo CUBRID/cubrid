@@ -682,10 +682,9 @@ createdb (UTIL_FUNCTION_ARG * arg)
     {
       au_dump_to_file (output_file);
     }
-  if (!tf_Metaclass_class.mc_n_variable)
-    {
-      tf_compile_meta_classes ();
-    }
+
+  tf_compile_meta_classes ();
+
   if ((catcls_Enable != true) && (catcls_compile_catalog_classes (NULL) != NO_ERROR))
     {
       util_log_write_errstr ("%s\n", db_error_string (3));

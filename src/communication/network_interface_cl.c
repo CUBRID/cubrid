@@ -99,8 +99,8 @@
 
 #if defined (CS_MODE)
 #define NET_DEFER_END_QUERIES_MAX 5
-static QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX];
-static int net_Deferred_end_queries_count = 0;
+static CUB_THREAD_LOCAL QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX];
+static CUB_THREAD_LOCAL int net_Deferred_end_queries_count = 0;
 #endif /* CS_MODE */
 
 /*
@@ -4000,6 +4000,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  *tran_state = (TRAN_STATE) temp_int;
 
+	  assert (server_credential != NULL);
 	  ptr = or_unpack_string (ptr, &server_credential->db_full_name);
 	  ptr = or_unpack_string (ptr, &server_credential->host_name);
 	  ptr = or_unpack_string (ptr, &server_credential->lob_path);
@@ -8284,7 +8285,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
     }
   else
     {
-      perfmon_Iscollecting_stats = false;
+      disable_perfmon_start_stats ();
     }
 
   free_and_init (reply);
@@ -8335,7 +8336,7 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
     }
   else
     {
-      perfmon_Iscollecting_stats = false;
+      disable_perfmon_start_stats ();
     }
 
   free_and_init (reply);

@@ -121,7 +121,7 @@
 #define BOOT_NO_OPT_CAP                 0
 #define BOOT_CHECK_HA_DELAY_CAP         NET_CAP_HA_REPL_DELAY
 
-static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
+static CUB_THREAD_LOCAL BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
   /* process_id */ -1,
   /* root_class_oid */ {NULL_PAGEID, NULL_SLOTID, NULL_VOLID},
@@ -652,6 +652,7 @@ boot_restart_failure_cleanup (DB_INFO * db,
     }
   else
     {
+#if !defined(SA_MODE)
       if (boot_Server_credential.db_full_name)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
@@ -660,14 +661,14 @@ boot_restart_failure_cleanup (DB_INFO * db,
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
 	}
+#endif
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
-      set_final ();
       tr_final ();
       au_final ();
       sm_final ();
-      ws_final ();
+      ws_final (false);
       es_final ();
       tp_final ();
 
@@ -1061,7 +1062,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   oid_set_root (&rootclass_oid);
   OID_INIT_TEMPID ();
 
-  error_code = ws_init ();
+  error_code = ws_init (false);
   if (error_code == NO_ERROR)
     {
       sm_create_root (&rootclass_oid, &rootclass_hfid);
@@ -1204,7 +1205,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  error_code = ws_init ();
+  error_code = ws_init (false);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1279,7 +1280,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   oid_set_root (&boot_Server_credential.root_class_oid);
   OID_INIT_TEMPID ();
 
-  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid);
+  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, false);
   au_init ();			/* initialize authorization globals */
 
   /* start authorization and make sure the logged in user has access */
@@ -1360,6 +1361,266 @@ error:
 
   return error_code;
 }
+
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+pthread_mutex_t g_db_restart_client_sub_mutex = PTHREAD_MUTEX_INITIALIZER;
+int
+boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
+{
+  int error_code;
+
+  /* **************************************************************** */
+  int tran_index;
+  TRAN_ISOLATION tran_isolation;
+  int tran_lock_wait_msecs;
+  TRAN_STATE transtate;
+
+  assert (client_credential != NULL);
+
+  /* If the client is restarted, shutdown the client */
+  if (BOOT_IS_CLIENT_RESTARTED ())
+    {
+      (void) boot_shutdown_client (true);
+    }
+
+  if (!boot_Is_client_all_final)
+    {
+      boot_client_all_finalize (ALL_FINALIZATION);
+    }
+
+  //lang_init();
+  //tz_load();
+  //msgcat_init();
+  //sysprm_load_and_init_client(NULL, NULL);
+  //er_init()
+  //area_init ();
+  //locator_initialize_areas ();
+  //perfmon_initialize (1);
+
+  er_clear ();
+
+  /* read only mode? */
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) || BOOT_READ_ONLY_CLIENT_TYPE (client_credential->client_type))
+    {
+      db_disable_modification ();
+    }
+
+  //db_clear_host_status ();
+
+  error_code = net_client_sub_init ();
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  //if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
+  //  {
+  //    db_set_host_status (boot_Host_connected, DB_HS_NON_PREFFERED_HOSTS);
+  //  }  
+
+  //sysprm_tune_client_parameters ();  
+  //error_code = tp_init ();
+  //if (error_code != NO_ERROR)
+  //  {
+  //    goto error;
+  //  }
+
+  // tp_init ();
+  // tsc_init ();  
+
+  error_code = ws_init (true);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  tran_isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
+  tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
+
+  er_log_debug (ARG_FILE_LINE,
+		"boot_restart_client: register client { type %d db %s user %s password **** "
+		"program %s login %s host %s pid %d }\n", client_credential->client_type,
+		client_credential->get_db_name (), client_credential->get_db_user (),
+		client_credential->get_program_name (),
+		client_credential->get_login_name (), client_credential->get_host_name (),
+		client_credential->process_id);
+
+  tran_index =
+    boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate, &boot_Server_credential);
+
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+
+#if 0
+  //============================================
+  if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+  if (lang_set_language (boot_Server_credential.db_lang) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+
+  /* Reset the pagesize according to server.. */
+  if (db_set_page_size (boot_Server_credential.page_size, boot_Server_credential.log_page_size) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+
+  /* Reset the disk_level according to server.. */
+  if (rel_disk_compatible () != boot_Server_credential.disk_compatibility)
+    {
+      rel_set_disk_compatible (boot_Server_credential.disk_compatibility);
+    }
+  //============================================  
+
+  if (sysprm_init_intl_param () != NO_ERROR)
+    {
+      error_code = er_errid ();
+      goto error;
+    }
+#endif //
+
+  /* Initialize client modules for execution */
+  boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
+
+  //oid_set_root (&boot_Server_credential.root_class_oid);
+  //OID_INIT_TEMPID ();
+
+  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, true);
+  au_init ();			/* initialize authorization globals */
+
+  /* start authorization and make sure the logged in user has access */
+  error_code = au_start ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  //error_code = boot_client_find_and_cache_class_oids ();
+
+  // need session? 
+  /* FIX-ME) Locks are used to prevent concurrency until thread-safe handling 
+   * for system parameter global variables is fully implemented."
+   */
+  pthread_mutex_lock (&g_db_restart_client_sub_mutex);
+  sysprm_load_session_parameters ();
+  (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
+  pthread_mutex_unlock (&g_db_restart_client_sub_mutex);
+#if 0
+  //error_code = boot_check_locales (&client_credential);
+  //if (error_code != NO_ERROR)
+  //  {
+  //    goto error;
+  //  }
+
+  //error_code = boot_check_timezone_checksum (&client_credential);
+  //if (error_code != NO_ERROR)
+  //  {
+  //    goto error;
+  //  }
+#endif
+
+  //tr_init ();
+
+  /* TODO: how about to call es_init() only for normal client? */
+  //if (boot_Server_credential.lob_path[0] != '\0')
+  //  {
+  //    error_code = es_init (boot_Server_credential.lob_path);
+  //    if (error_code != NO_ERROR)
+  //    {
+  //      goto error;
+  //    }
+  //    }
+  //  else
+  //    {
+  //      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
+  //    }
+
+  /* Does not care if was committed/aborted .. */
+  (void) tran_commit (false);
+
+  error_code = reset_isolation_and_wait_times ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  //  error_code = showstmt_metadata_init ();
+  //  json_set_alloc_funcs (malloc, free);    
+
+  return NO_ERROR;
+
+error:
+  /* Protect against falsely returning NO_ERROR to caller */
+  if (error_code == NO_ERROR)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+    }
+
+  boot_finalize_client_sub ();
+  return error_code;
+}
+
+void
+boot_finalize_client_sub ()
+{
+  net_client_sub_final ();
+
+  //showstmt_metadata_final ();
+  tran_free_savepoint_list ();
+
+  //tr_final ();
+  au_final ();
+  sm_final ();
+  ws_final (true);
+  //es_final ();
+  //tp_final ();
+
+  //locator_free_areas ();
+  //sysprm_final ();
+  //perfmon_finalize ();
+  //area_final ();
+  //msgcat_final ();
+  //er_final (ER_ALL_FINAL);
+
+  //lang_final ();
+  //tz_unload ();
+  boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
+  //boot_Is_client_all_final = true;
+
+  sysprm_free_session_parameters (&cached_session_parameters);
+
+  if (boot_Server_credential.db_full_name)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
+    }
+  if (boot_Server_credential.host_name)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.host_name);
+    }
+  if (boot_Server_credential.lob_path)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.lob_path);
+    }
+  if (boot_Server_credential.db_lang)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.db_lang);
+    }
+}
+#endif // #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 
 /*
  * boot_shutdown_client () - shutdown client
@@ -1533,6 +1794,7 @@ boot_client_all_finalize (int final_level)
 
   if (BOOT_IS_CLIENT_RESTARTED () || boot_Is_client_all_final == false)
     {
+#if !defined(SA_MODE)
       if (boot_Server_credential.db_full_name)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
@@ -1549,11 +1811,11 @@ boot_client_all_finalize (int final_level)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.db_lang);
 	}
+#endif
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
       sm_flush_static_methods ();
-      set_final ();
       parser_final ();
 
       if (final_level != OPTIONAL_FINALIZATION)
@@ -1562,7 +1824,7 @@ boot_client_all_finalize (int final_level)
 	  au_final ();
 	  sm_final ();
 	  method_callback_final ();
-	  ws_final ();
+	  ws_final (false);
 	  es_final ();
 	  tp_final ();
 	}

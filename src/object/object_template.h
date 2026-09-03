@@ -190,13 +190,6 @@ typedef struct obj_template
 } OBJ_TEMPLATE, *OBT;
 
 /*
- * State used when creating templates, to indicate whether unique constraint
- * checking is enabled.
- * This state can be modifed using obt_enable_unique_checking()
- */
-extern bool obt_Check_uniques;
-
-/*
  * State variable used when creating object template, to indicate whether enable
  * auto increment feature
  */
@@ -222,7 +215,9 @@ extern int obt_set_obt (OBJ_TEMPLATE * template_ptr, const char *attname, OBJ_TE
 extern void obt_set_label (OBJ_TEMPLATE * template_ptr, DB_VALUE * label);
 extern void obt_disable_unique_checking (OBJ_TEMPLATE * template_ptr);
 extern void obt_disable_serializable_conflict_checking (OBJ_TEMPLATE * template_ptr);
+#if defined (SA_MODE)
 extern bool obt_enable_unique_checking (bool new_state);
+#endif
 extern void obt_set_force_flush (OBJ_TEMPLATE * template_ptr);
 extern void obt_reset_force_flush (OBJ_TEMPLATE * template_ptr);
 extern int obt_update (OBJ_TEMPLATE * template_ptr, MOP * newobj);
