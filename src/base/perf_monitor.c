@@ -317,7 +317,6 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_LSA_LIST_REMOVED, "Num_prior_lsa_list_removed"),
 
   /* prior list, charged to whoever paid for it */
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_LIST_MAXED_WAIT, "log_prior_list_maxed_wait"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_DRAIN_FLUSH, "log_prior_drain_flush"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_DRAIN_READER_GUARD, "log_prior_drain_reader_guard"),
 

@@ -1554,13 +1554,9 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 #if defined(SERVER_MODE)
 	  if (!log_is_in_crash_recovery ())
 	    {
-	      PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
-
-	      PERF_UTIME_TRACKER_START (thread_p, &time_track);
 	      log_wakeup_log_flush_daemon ();
 
 	      thread_sleep (1);	/* 1msec */
-	      PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_LIST_MAXED_WAIT);
 	    }
 	  else
 	    {

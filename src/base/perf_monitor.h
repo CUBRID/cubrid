@@ -393,7 +393,6 @@ typedef enum
   PSTAT_PRIOR_LSA_LIST_REMOVED,
 
   /* prior list, charged to whoever paid for it */
-  PSTAT_LOG_PRIOR_LIST_MAXED_WAIT,
   PSTAT_LOG_PRIOR_DRAIN_FLUSH,
   PSTAT_LOG_PRIOR_DRAIN_READER_GUARD,
 
