@@ -113,6 +113,13 @@ public class ExecuteThread extends Thread {
         return serverSideSqlForbidden;
     }
 
+    /* true when the invocation running on the calling thread is a PARALLEL_ENABLE routine */
+    public static boolean isServerSideSqlForbiddenOnCurrentThread() {
+        Thread current = Thread.currentThread();
+        return current instanceof ExecuteThread
+                && ((ExecuteThread) current).isServerSideSqlForbidden();
+    }
+
     private StoredProcedure storedProcedure = null;
     private PrepareArgs prepareArgs = null;
 

@@ -1,5 +1,6 @@
 package com.cubrid.jsp.jdbc;
 
+import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.impl.SUConnection;
@@ -48,6 +49,16 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         isClosed = false;
     }
 
+    /*
+     * Connection-less OID: carries the value only. Used for an OID argument of a PARALLEL_ENABLE
+     * routine, which must not open the server-side default connection. Every operation that
+     * needs the server (requestHandler ()) throws SQLException instead of NPE.
+     */
+    public CUBRIDServerSideOID(SOID o) {
+        oid = o;
+        isClosed = false;
+    }
+
     public CUBRIDServerSideOID(CUBRIDOID o) {
         connection = (CUBRIDServerSideConnection) o.getConnection();
         byte[] oidBytes = o.getOID();
@@ -55,9 +66,16 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         isClosed = false;
     }
 
+    private SUConnection requestHandler() throws SQLException {
+        if (requestHandler == null) {
+            throw new SQLException(ExecuteThread.SERVER_SIDE_SQL_REFUSED_MSG);
+        }
+        return requestHandler;
+    }
+
     public ResultSet getValues(String attrNames[]) throws SQLException {
         try {
-            SUStatement stmtImpl = requestHandler.getByOID(this, attrNames);
+            SUStatement stmtImpl = requestHandler().getByOID(this, attrNames);
             return new CUBRIDServerSideResultSet(stmtImpl);
         } catch (IOException e) {
             // TODO: is correct?
@@ -75,7 +93,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
             throw new IllegalArgumentException();
         }
         try {
-            requestHandler.putByOID(this, attrNames, values);
+            requestHandler().putByOID(this, attrNames, values);
         } catch (IOException e) {
             // TODO: is correct?
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -85,7 +103,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
 
     public void remove() throws SQLException {
         try {
-            requestHandler.oidCmd(this, CUBRIDServerSideConstants.DROP_BY_OID);
+            requestHandler().oidCmd(this, CUBRIDServerSideConstants.DROP_BY_OID);
         } catch (IOException e) {
             // TODO: is correct?
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -96,7 +114,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
     public boolean isInstance() throws SQLException {
         try {
             Object instance_obj =
-                    requestHandler.oidCmd(this, CUBRIDServerSideConstants.IS_INSTANCE);
+                    requestHandler().oidCmd(this, CUBRIDServerSideConstants.IS_INSTANCE);
             if (instance_obj == null) {
                 return false;
             }
@@ -110,7 +128,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
 
     public void setReadLock() throws SQLException {
         try {
-            requestHandler.oidCmd(this, CUBRIDServerSideConstants.GET_READ_LOCK_BY_OID);
+            requestHandler().oidCmd(this, CUBRIDServerSideConstants.GET_READ_LOCK_BY_OID);
         } catch (IOException e) {
             // TODO: is correct?
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -120,7 +138,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
 
     public void setWriteLock() throws SQLException {
         try {
-            requestHandler.oidCmd(this, CUBRIDServerSideConstants.GET_WRITE_LOCK_BY_OID);
+            requestHandler().oidCmd(this, CUBRIDServerSideConstants.GET_WRITE_LOCK_BY_OID);
         } catch (IOException e) {
             // TODO: is correct?
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -134,7 +152,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         }
 
         try {
-            requestHandler.addElementToSet(this, attrName, value);
+            requestHandler().addElementToSet(this, attrName, value);
         } catch (IOException e) {
             // TODO: is correct?
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -148,7 +166,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         }
 
         try {
-            requestHandler.dropElementInSet(this, attrName, value);
+            requestHandler().dropElementInSet(this, attrName, value);
         } catch (IOException e) {
             // TODO: is correct?
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -162,7 +180,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         }
 
         try {
-            requestHandler.insertElementIntoSequence(this, attrName, index, value);
+            requestHandler().insertElementIntoSequence(this, attrName, index, value);
         } catch (IOException e) {
             // TODO: is correct?
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -176,7 +194,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         }
 
         try {
-            requestHandler.putElementInSequence(this, attrName, index, value);
+            requestHandler().putElementInSequence(this, attrName, index, value);
         } catch (IOException e) {
             // TODO: is correct?
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -190,7 +208,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         }
 
         try {
-            requestHandler.dropElementInSequence(this, attrName, index);
+            requestHandler().dropElementInSequence(this, attrName, index);
         } catch (IOException e) {
             // TODO: is correct?
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -230,7 +248,7 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         try {
             String tablename =
                     (String)
-                            requestHandler.oidCmd(
+                            requestHandler().oidCmd(
                                     this, CUBRIDServerSideConstants.GET_CLASS_NAME_BY_OID);
             return tablename;
         } catch (IOException e) {

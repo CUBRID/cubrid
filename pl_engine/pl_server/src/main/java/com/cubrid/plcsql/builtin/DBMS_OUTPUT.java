@@ -53,9 +53,7 @@ public class DBMS_OUTPUT {
      * contract as server-side SQL.
      */
     private static void refuseIfServerSideSqlForbidden() {
-        Thread current = Thread.currentThread();
-        if (current instanceof ExecuteThread
-                && ((ExecuteThread) current).isServerSideSqlForbidden()) {
+        if (ExecuteThread.isServerSideSqlForbiddenOnCurrentThread()) {
             throw new RuntimeException(
                     "cannot use DBMS_OUTPUT: the stored procedure is declared PARALLEL_ENABLE");
         }

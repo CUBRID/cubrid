@@ -92,9 +92,7 @@ public class CUBRIDServerSideDriver implements Driver {
             return null;
         }
 
-        Thread current = Thread.currentThread();
-        if (current instanceof ExecuteThread
-                && ((ExecuteThread) current).isServerSideSqlForbidden()) {
+        if (ExecuteThread.isServerSideSqlForbiddenOnCurrentThread()) {
             /*
              * A PARALLEL_ENABLE stored procedure must not open the server-side default
              * connection: that Connection is cached on the session's Context, so concurrent
