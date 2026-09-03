@@ -1799,6 +1799,7 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       return NO_ERROR;
 
     case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
       /* continue */
       break;
 
@@ -4089,6 +4090,7 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       return;
 
     case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
       /* continue */
       break;
 
