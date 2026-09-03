@@ -976,7 +976,7 @@ namespace cubmethod
 	    col_name = (char *) db_query_format_name (col);
 
 	    // written_col_name keeps the name exactly as the user wrote it in the SELECT list
-	    // (e.g. "T.col"). It lets findColumn still accept the qualified name for backward compatibility.
+	    // (e.g. "T.col"). It lets findColumn still accept the qualified name for backward compatibility (CBRD-27242).
 	    written_col_name = (char *) db_query_format_original_name (col);
 	    if (written_col_name == NULL || strchr (written_col_name, '*') != NULL)
 	      {

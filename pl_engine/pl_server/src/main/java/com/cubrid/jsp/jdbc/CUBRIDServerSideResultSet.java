@@ -450,7 +450,8 @@ public class CUBRIDServerSideResultSet implements ResultSet {
         // The server sends down two names for the column:
         //   - colName: the alias if an AS clause was given, otherwise the column name with the
         //     table qualifier stripped off ("col"). This is the standard JDBC name.
-        //   - writtenColName: the name exactly as the user wrote it ("T.col").
+        //   - writtenColName: the name exactly as the user wrote it ("T.col"), which is to keep
+        //     the old behavior that deviates from JDBC standard about column names (CBRD-27242).
         // We first try an exact match against colName ("col") to honor the JDBC convention, then
         // fall back to an exact match against writtenColName ("T.col") for backward compatibility.
 
