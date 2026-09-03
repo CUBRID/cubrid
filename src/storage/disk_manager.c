@@ -4429,7 +4429,12 @@ error:
   /* abort any changes */
   log_sysop_abort (thread_p);
 
+  /* The IO entries cover the volume extension half of this function; the latch entry covers the page fix half
+   * (disk_get_volheader (), disk_stab_cursor_fix ()). What is left is a logic failure - see
+   * disk_reserve_sectors_in_volume (), which returns ER_FAILED when the cache promised sectors the sector table
+   * does not have. That is the case disk_check () below can actually repair. */
   if (error_code == ER_INTERRUPTED	/* interrupted error */
+      || PGBUF_IS_LATCH_REFUSED_ERROR (error_code)	/* a page fix was refused, or its wait timed out */
       || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE
       || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ )
     {
