@@ -32,6 +32,7 @@
 #include <assert.h>
 
 #include "list_file.h"
+#include "qfile_tuple_layout.h"
 
 #include "binaryheap.h"
 #include "db_value_printer.hpp"
@@ -3446,7 +3447,7 @@ qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tuple_record_p, int tuple_size)
 	{
 	  db_private_free_and_init (NULL, tuple_record_p->tpl);
 	}
-      tuple_record_p->tpl = tuple;
+      qfile_slot_set_tuple (tuple_record_p, tuple);
     }
 
   if (tuple_record_p->tpl == NULL)
@@ -5313,7 +5314,7 @@ qfile_retrieve_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, Q
     {
       if (peek)
 	{
-	  tuple_record_p->tpl = scan_id_p->curr_tpl;
+	  qfile_slot_set_tuple (tuple_record_p, scan_id_p->curr_tpl);
 	}
       else
 	{
@@ -5337,7 +5338,7 @@ qfile_retrieve_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, Q
 	    {
 	      return S_ERROR;
 	    }
-	  tuple_record_p->tpl = scan_id_p->tplrec.tpl;
+	  qfile_slot_set_tuple (tuple_record_p, scan_id_p->tplrec.tpl);
 	}
       else
 	{
@@ -5512,6 +5513,9 @@ qfile_open_list_scan (QFILE_LIST_ID * list_id_p, QFILE_LIST_SCAN_ID * scan_id_p)
 
   scan_id_p->tplrec.size = 0;
   scan_id_p->tplrec.tpl = NULL;
+  scan_id_p->tplrec.scratch = NULL;
+  scan_id_p->tplrec.scratch_size = 0;
+  qfile_slot_bind (&scan_id_p->tplrec, &scan_id_p->list_id.type_list);
 
   return NO_ERROR;
 }
@@ -5630,6 +5634,7 @@ qfile_close_scan (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
       db_private_free_and_init (thread_p, scan_id_p->tplrec.tpl);
       scan_id_p->tplrec.size = 0;
     }
+  qfile_slot_clear (&scan_id_p->tplrec);
 
   qfile_clear_list_id (&scan_id_p->list_id);
 
@@ -7189,7 +7194,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
 	  /* tuple_p is not a tuple pointer inside the current page, it is a copy made by qfile_scan_list_next(), so
 	   * avoid fetching it twice, and make sure it doesn't get freed at cleanup stage of this function. For
 	   * reference see how qfile_retrieve_tuple() handles overflow pages. */
-	  tuple_rec.tpl = tuple_p;
+	  qfile_slot_set_tuple (&tuple_rec, tuple_p);
 	  tuple_rec.size = QFILE_GET_TUPLE_LENGTH (tuple_p);
 	}
       else

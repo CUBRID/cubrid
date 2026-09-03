@@ -81,7 +81,7 @@ extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_l
 extern int qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list,
 				       qfile_tuple_value_type_list * type_list);
 extern int qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * func, val_descr * vd, OID * obj_oid,
-				    QFILE_TUPLE tpl);
+				    QFILE_TUPLE_RECORD * tplrec);
 extern int qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list,
 					 qfile_tuple_value_type_list * type_list);
 extern int qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfile_tuple_record * tplrec);

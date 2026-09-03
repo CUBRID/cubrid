@@ -21,6 +21,7 @@
  */
 
 #include "px_hash_join_task_manager.hpp"
+#include "qfile_tuple_layout.h"
 
 #include "error_manager.h"		/* assert_release_error, er_errid, er_set, ... */
 #include "fetch.h"			/* fetch_val_list */
@@ -271,7 +272,7 @@ namespace parallel_query
 	  tuple_index = -1;
 
 	  /* first tuple */
-	  tuple_record.tpl = (char *) page + QFILE_PAGE_HEADER_SIZE;
+	  qfile_slot_set_tuple (&tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE);
 
 	  /* overflow page */
 	  if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
@@ -286,7 +287,7 @@ namespace parallel_query
 		  break;	/* error_exit */
 		}
 
-	      tuple_record.tpl = overflow_record.tpl;
+	      qfile_slot_set_tuple (&tuple_record, overflow_record.tpl);
 	    }
 
 	  assert (has_error == false);
@@ -982,7 +983,7 @@ cleanup:
 	  tuple_index = -1;
 
 	  /* first tuple */
-	  probe->tuple_record.tpl = (char *) page + QFILE_PAGE_HEADER_SIZE;
+	  qfile_slot_set_tuple (&probe->tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE);
 
 	  /* overflow page */
 	  if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
@@ -998,7 +999,7 @@ cleanup:
 		  break;	/* error_exit */
 		}
 
-	      probe->tuple_record.tpl = probe_overflow_record.tpl;
+	      qfile_slot_set_tuple (&probe->tuple_record, probe_overflow_record.tpl);
 	    }
 
 	  assert (has_error == false);
@@ -1280,7 +1281,7 @@ cleanup:
 	  tuple_index = -1;
 
 	  /* first tuple */
-	  probe->tuple_record.tpl = (char *) page + QFILE_PAGE_HEADER_SIZE;
+	  qfile_slot_set_tuple (&probe->tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE);
 
 	  /* overflow page */
 	  if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
@@ -1296,7 +1297,7 @@ cleanup:
 		  break;	/* error_exit */
 		}
 
-	      probe->tuple_record.tpl = probe_overflow_record.tpl;
+	      qfile_slot_set_tuple (&probe->tuple_record, probe_overflow_record.tpl);
 	    }
 
 	  assert (has_error == false);

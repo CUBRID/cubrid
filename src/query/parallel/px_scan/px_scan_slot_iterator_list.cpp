@@ -21,6 +21,7 @@
  */
 
 #include "px_scan_slot_iterator_list.hpp"
+#include "qfile_tuple_layout.h"
 #include "fetch.h"
 #include "list_file.h"
 #include "object_representation.h"
@@ -118,6 +119,7 @@ namespace parallel_scan
     while (m_curr_tplno < m_tuple_count)
       {
 	QFILE_TUPLE tpl;
+	QFILE_TUPLE_RECORD tpl_slot = { NULL, 0 };
 
 	if (has_overflow_page)
 	  {
@@ -136,10 +138,11 @@ namespace parallel_scan
 
 	m_curr_tpl += QFILE_GET_TUPLE_LENGTH (m_curr_tpl);
 	m_curr_tplno++;
+	qfile_slot_set_tuple (&tpl_slot, tpl);
 
 	if (m_val_list)
 	  {
-	    if (fetch_val_list (thread_p, m_scan_pred.regu_list, m_vd, nullptr, nullptr, tpl, PEEK) != NO_ERROR)
+	    if (fetch_val_list (thread_p, m_scan_pred.regu_list, m_vd, nullptr, nullptr, &tpl_slot, PEEK) != NO_ERROR)
 	      {
 		return S_ERROR;
 	      }
@@ -172,7 +175,7 @@ namespace parallel_scan
 
 	if (m_val_list && m_rest_regu_list)
 	  {
-	    if (fetch_val_list (thread_p, m_rest_regu_list, m_vd, nullptr, nullptr, tpl, PEEK) != NO_ERROR)
+	    if (fetch_val_list (thread_p, m_rest_regu_list, m_vd, nullptr, nullptr, &tpl_slot, PEEK) != NO_ERROR)
 	      {
 		return S_ERROR;
 	      }
@@ -180,7 +183,7 @@ namespace parallel_scan
 
 	if (m_tplrecp)
 	  {
-	    m_tplrecp->tpl = tpl;
+	    qfile_slot_set_tuple (m_tplrecp, tpl);
 	  }
 
 	return S_SUCCESS;

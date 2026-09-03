@@ -61,10 +61,10 @@
 #include "memory_wrapper.hpp"
 
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
-			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
-static int fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl);
+			     QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** peek_dbval);
+static int fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * tplrec);
 static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
-							  val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl,
+							  val_descr * vd, OID * obj_oid, QFILE_TUPLE_RECORD * tplrec,
 							  DB_VALUE ** min, DB_VALUE ** max);
 
 static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
@@ -78,12 +78,12 @@ static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VAL
  *   regu_var(in/out): Regulator Variable of an ARITH node.
  *   vd(in): Value Descriptor
  *   obj_oid(in): Object Identifier
- *   tpl(in): Tuple
+ *   tplrec(in): tuple slot (record + layout descriptor)
  *   peek_dbval(out): Set to the value resulting from the fetch operation
  */
 static int
-fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl,
-		  DB_VALUE ** peek_dbval)
+fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
+		  QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** peek_dbval)
 {
   ARITH_TYPE *arithptr;
   DB_VALUE *peek_left, *peek_right, *peek_third, *peek_fourth;
@@ -139,13 +139,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_TO_TIMESTAMP_TZ:
 
       /* fetch lhs, rhs, and third value */
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
       if (!DB_IS_NULL (peek_left))
 	{
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -156,7 +156,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  if (arithptr->thirdptr != NULL)
 	    {
-	      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+	      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -168,7 +168,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_DATE_FORMAT:
     case T_TIME_FORMAT:
     case T_FORMAT:
-      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -210,7 +210,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_CURRENT_VALUE:
     case T_CHR:
       /* fetch lhs and rhs value */
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -223,7 +223,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE
 		  || QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (regu_var->domain)))
 		{
-		  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+		  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 		    {
 		      goto error;
 		    }
@@ -232,7 +232,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       else
 	{
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -243,13 +243,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_LTRIM:
     case T_RTRIM:
       /* fetch lhs and rhs value */
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
       if (arithptr->rightptr != NULL)
 	{
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -258,20 +258,20 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
     case T_FROM_UNIXTIME:
 
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
       if (arithptr->rightptr != NULL)
 	{
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	    {
 	      goto error;
 	    }
 	}
       if (arithptr->thirdptr != NULL)
 	{
-	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -282,50 +282,50 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_CONCAT_WS:
     case T_FIELD:
     case T_INDEX_CARDINALITY:
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
       if (arithptr->rightptr != NULL)
 	{
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	    {
 	      goto error;
 	    }
 	}
-      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_CONV:
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
 	  goto error;
 	}
-      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_LOCATE:
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
 	  goto error;
 	}
       if (arithptr->thirdptr != NULL)
 	{
-	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -333,7 +333,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_CONCAT:
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -343,7 +343,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    {
 	      if (arithptr->rightptr != NULL)
 		{
-		  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+		  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 		    {
 		      goto error;
 		    }
@@ -354,7 +354,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  if (arithptr->rightptr != NULL)
 	    {
-	      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -369,11 +369,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_LEFT:
     case T_RIGHT:
       /* fetch both lhs and rhs value */
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -385,7 +385,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_DEFINE_VARIABLE:
     case T_FROM_TZ:
       /* fetch both lhs and rhs value */
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  if (is_argument_wrapped_with_cast_op (arithptr->leftptr))
 	    {
@@ -394,7 +394,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  goto error;
 	}
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
 	  if (is_argument_wrapped_with_cast_op (arithptr->rightptr))
 	    {
@@ -407,7 +407,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
     case T_MAKETIME:
     case T_NEW_TIME:
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  if (is_argument_wrapped_with_cast_op (arithptr->leftptr))
 	    {
@@ -416,7 +416,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  goto error;
 	}
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
 	  if (is_argument_wrapped_with_cast_op (arithptr->rightptr))
 	    {
@@ -425,7 +425,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  goto error;
 	}
-      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
 	{
 	  if (is_argument_wrapped_with_cast_op (arithptr->thirdptr))
 	    {
@@ -517,7 +517,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_ESTIMATED_DATA_FREE:
     case T_COLLECTION_TO_STRING:
       /* fetch rhs value */
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -534,7 +534,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_FROMDAYS:
     case T_EVALUATE_VARIABLE:
       /* fetch rhs value */
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
 	  if (is_argument_wrapped_with_cast_op (arithptr->rightptr))
 	    {
@@ -551,7 +551,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_TIMETOSEC:
     case T_SECTOTIME:
       /* fetch rhs value */
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
 	  if (is_argument_wrapped_with_cast_op (arithptr->rightptr))
 	    {
@@ -566,7 +566,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_DEFAULT:
       if (arithptr->rightptr)
 	{
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -576,13 +576,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_TIMESTAMP:
     case T_LIKE_LOWER_BOUND:
     case T_LIKE_UPPER_BOUND:
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
       if (arithptr->rightptr)
 	{
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -616,13 +616,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
     case T_BLOB_TO_BIT:
     case T_CLOB_TO_CHAR:
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
       if (!DB_IS_NULL (peek_left) && arithptr->rightptr)
 	{
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -632,33 +632,33 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_BIT_TO_BLOB:
     case T_CHAR_TO_CLOB:
     case T_LOB_LENGTH:
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_TO_ENUMERATION_VALUE:
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_WIDTH_BUCKET:
-      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
 
       /* get peek_righ, peed_third we use PT_BETWEEN with PT_BETWEEN_GE_LT to represent the two args. */
-      if (fetch_peek_min_max_value_of_width_bucket_func (thread_p, arithptr->rightptr, vd, obj_oid, tpl, &peek_right,
+      if (fetch_peek_min_max_value_of_width_bucket_func (thread_p, arithptr->rightptr, vd, obj_oid, tplrec, &peek_right,
 							 &peek_third) != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_fourth) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_fourth) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2585,14 +2585,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	case V_FALSE:
 	case V_UNKNOWN:	/* unknown pred result, including cases of NULL pred operands */
-	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	    {
 	      goto error;
 	    }
 	  break;
 
 	case V_TRUE:
-	  if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -2649,14 +2649,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	target_domain = regu_var->domain;
 
-	if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	  {
 	    goto error;
 	  }
 
 	if (DB_IS_NULL (peek_left) || target_domain == NULL)
 	  {
-	    if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	    if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	      {
 		goto error;
 	      }
@@ -2688,7 +2688,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	target_domain = regu_var->domain;
 
-	if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	  {
 	    goto error;
 	  }
@@ -2697,12 +2697,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  {
 	    TP_DOMAIN *arg1, *arg2, *arg3, tmp_arg1, tmp_arg2, tmp_arg3;
 
-	    if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	    if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	      {
 		goto error;
 	      }
 
-	    if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+	    if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
 	      {
 		goto error;
 	      }
@@ -2728,7 +2728,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  {
 	    if (peek_third == NULL)
 	      {
-		if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+		if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
 		  {
 		    goto error;
 		  }
@@ -2739,7 +2739,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  {
 	    if (peek_right == NULL)
 	      {
-		if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+		if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 		  {
 		    goto error;
 		  }
@@ -3977,13 +3977,13 @@ error:
  *   vd(in): Value Descriptor
  *   cls_oid(in): Class Identifier
  *   obj_oid(in): Object Identifier
- *   tpl(in): Tuple
+ *   tplrec(in): tuple slot (record + layout descriptor)
  *   peek_dbval(out): Set to the value ref resulting from the fetch operation
  *
  */
 int
 fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * class_oid,
-		       OID * obj_oid, QFILE_TUPLE tpl, DB_VALUE ** peek_dbval)
+		       OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** peek_dbval)
 {
   int length;
   const PR_TYPE *pr_type;
@@ -4083,7 +4083,8 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
       *peek_dbval = regu_var->vfetch_to;
 
-      flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tpl, regu_var->value.pos_descr.pos_no, &ptr, &length);
+      flag =
+	(QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tplrec->tpl, regu_var->value.pos_descr.pos_no, &ptr, &length);
       if (flag == V_BOUND)
 	{
 	  pr_type = regu_var->value.pos_descr.dom->type;
@@ -4190,7 +4191,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	  goto exit_on_error;
 	}
 
-      error = fetch_peek_dbval (thread_p, regu, vd, class_oid, obj_oid, tpl, peek_dbval);
+      error = fetch_peek_dbval (thread_p, regu, vd, class_oid, obj_oid, tplrec, peek_dbval);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -4199,7 +4200,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
     case TYPE_INARITH:		/* compute and fetch arithmetic expr. value */
     case TYPE_OUTARITH:
-      error = fetch_peek_arith (thread_p, regu_var, vd, obj_oid, tpl, peek_dbval);
+      error = fetch_peek_arith (thread_p, regu_var, vd, obj_oid, tplrec, peek_dbval);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -4232,7 +4233,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	    goto exit_on_error;
 	  }
 
-	error = executor.fetch_args_peek (regu_var->value.sp_ptr->args, vd, obj_oid, tpl);
+	error = executor.fetch_args_peek (regu_var->value.sp_ptr->args, vd, obj_oid, tplrec);
 	if (error != NO_ERROR || er_errid () != NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1,
@@ -4279,7 +4280,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 
-      error = qdata_evaluate_function (thread_p, regu_var, vd, obj_oid, tpl);
+      error = qdata_evaluate_function (thread_p, regu_var, vd, obj_oid, tplrec);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -4395,7 +4396,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 		  }
 		else
 		  {
-		    error = fetch_peek_dbval (thread_p, &funcp->operand->value, vd, NULL, obj_oid, tpl, &index);
+		    error = fetch_peek_dbval (thread_p, &funcp->operand->value, vd, NULL, obj_oid, tplrec, &index);
 		    if (error != NO_ERROR)
 		      {
 			goto exit_on_error;
@@ -4646,13 +4647,13 @@ exit_on_error:
  * fetch_peek_dbval_pos () -
  *   return: NO_ERROR or ER_code
  *   regu_var(in/out): Regulator Variable
- *   tpl(in): Tuple
+ *   tplrec(in): tuple slot (record + layout descriptor)
  *   pos(in):
  *   peek_dbval(out): Set to the value ref resulting from the fetch operation
  *   next_tpl(out): Set to the next tuple ref
  */
 static int
-fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
+fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * tplrec)
 {
   const PR_TYPE *pr_type;
   QFILE_TUPLE_VALUE_POSITION *pos_descr;
@@ -4667,7 +4668,7 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
 
 
 
-  or_init (&iterator, tpl, QFILE_GET_TUPLE_LENGTH (tpl));
+  or_init (&iterator, tplrec->tpl, QFILE_GET_TUPLE_LENGTH (tplrec->tpl));
   or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
 
   regup = regu_list;
@@ -4708,13 +4709,13 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
  *   regu_var(in): Regulator Variable of an ARITH node.
  *   vd(in): Value Descriptor
  *   obj_oid(in): Object Identifier
- *   tpl(in): Tuple
+ *   tplrec(in): tuple slot (record + layout descriptor)
  *   min(out): the lower bound of width_bucket
  *   max(out): the upper bound of width_bucket
  */
 static int
 fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd,
-					       OID * obj_oid, QFILE_TUPLE tpl, DB_VALUE ** min, DB_VALUE ** max)
+					       OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** min, DB_VALUE ** max)
 {
   int er_status = NO_ERROR;
   PRED_EXPR *pred_expr;
@@ -4759,7 +4760,7 @@ fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VAR
     }
 
   /* lower bound, error info is already set in fetch_peek_dbval */
-  er_status = fetch_peek_dbval (thread_p, eval_term1->et.et_comp.rhs, vd, NULL, obj_oid, tpl, min);
+  er_status = fetch_peek_dbval (thread_p, eval_term1->et.et_comp.rhs, vd, NULL, obj_oid, tplrec, min);
   if (er_status != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
@@ -4781,7 +4782,7 @@ fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VAR
     }
 
   /* upper bound, error info is already set in fetch_peek_dbval */
-  er_status = fetch_peek_dbval (thread_p, eval_term2->et.et_comp.rhs, vd, NULL, obj_oid, tpl, max);
+  er_status = fetch_peek_dbval (thread_p, eval_term2->et.et_comp.rhs, vd, NULL, obj_oid, tplrec, max);
   if (er_status != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
@@ -4806,7 +4807,7 @@ error:
  *   vd(in): Value Descriptor
  *   cls_oid(in): Class Identifier
  *   obj_oid(in): Object Identifier
- *   tpl(in): Tuple
+ *   tplrec(in): tuple slot (record + layout descriptor)
  *   dbval(out): Set to the value resulting from the fetch operation
  *
  * This routine uses the value description indicated by the regulator variable
@@ -4828,14 +4829,14 @@ error:
  */
 int
 fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * class_oid, OID * obj_oid,
-		  QFILE_TUPLE tpl, DB_VALUE * dbval)
+		  QFILE_TUPLE_RECORD * tplrec, DB_VALUE * dbval)
 {
   int result;
   DB_VALUE *readonly_val, copy_val, *tmp;
 
   db_make_null (&copy_val);
 
-  result = fetch_peek_dbval (thread_p, regu_var, vd, class_oid, obj_oid, tpl, &readonly_val);
+  result = fetch_peek_dbval (thread_p, regu_var, vd, class_oid, obj_oid, tplrec, &readonly_val);
   if (result != NO_ERROR)
     {
       return result;
@@ -4883,12 +4884,12 @@ fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
  *   vd(in): Value Descriptor
  *   class_oid(in): Class Identifier
  *   obj_oid(in): Object Identifier
- *   tpl(in): Tuple
+ *   tplrec(in): tuple slot (record + layout descriptor)
  *   peek(int):
  */
 int
 fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, val_descr * vd, OID * class_oid,
-		OID * obj_oid, QFILE_TUPLE tpl, int peek)
+		OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, int peek)
 {
   regu_variable_list_node *regup;
   int rc;
@@ -4898,7 +4899,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
     {
       if (regu_list && regu_list->value.type == TYPE_POSITION)
 	{
-	  rc = fetch_peek_dbval_pos (regu_list, tpl);
+	  rc = fetch_peek_dbval_pos (regu_list, tplrec);
 	  return rc;
 	}
       for (regup = regu_list; regup != NULL; regup = regup->next)
@@ -4911,7 +4912,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 	    {
 	      pr_clear_value (regup->value.vfetch_to);
 	    }
-	  rc = fetch_peek_dbval (thread_p, &regup->value, vd, class_oid, obj_oid, tpl, &tmp);
+	  rc = fetch_peek_dbval (thread_p, &regup->value, vd, class_oid, obj_oid, tplrec, &tmp);
 
 	  if (rc != NO_ERROR)
 	    {
@@ -4934,7 +4935,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 	    {
 	      pr_clear_value (regup->value.vfetch_to);
 	    }
-	  if (fetch_copy_dbval (thread_p, &regup->value, vd, class_oid, obj_oid, tpl, regup->value.vfetch_to) !=
+	  if (fetch_copy_dbval (thread_p, &regup->value, vd, class_oid, obj_oid, tplrec, regup->value.vfetch_to) !=
 	      NO_ERROR)
 	    {
 	      return ER_FAILED;
@@ -4971,7 +4972,7 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
  *   vd(in): Value Descriptor
  *   class_oid(in): Class Identifier
  *   obj_oid(in): Object Identifier
- *   tpl(in): Tuple
+ *   tplrec(in): tuple slot (record + layout descriptor)
  *   peek(int):
  */
 static bool

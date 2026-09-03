@@ -278,6 +278,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
+  ${QUERY_DIR}/qfile_tuple_layout.c
   ${QUERY_DIR}/dblink_scan.c
   ${QUERY_DIR}/dblink_2pc.c
   ${QUERY_DIR}/dblink_2pc_daemon.c

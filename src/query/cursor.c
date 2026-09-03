@@ -39,6 +39,7 @@
 #include "work_space.h"
 #include "set_object.h"
 #include "cursor.h"
+#include "qfile_tuple_layout.h"
 #include "parser_support.h"
 #include "virtual_object.h"
 #include "network_interface_cl.h"
@@ -1215,6 +1216,8 @@ cursor_open (CURSOR_ID * cursor_id_p, QFILE_LIST_ID * list_id_p, bool updatable,
   VPID_SET_NULL (&cursor_id_p->header_vpid);
   cursor_id_p->tuple_record.size = 0;
   cursor_id_p->tuple_record.tpl = NULL;
+  cursor_id_p->tuple_record.scratch = NULL;
+  cursor_id_p->tuple_record.scratch_size = 0;
   cursor_id_p->on_overflow = false;
   cursor_id_p->buffer_tuple_count = 0;
   cursor_id_p->current_tuple_no = -1;
@@ -1228,6 +1231,7 @@ cursor_open (CURSOR_ID * cursor_id_p, QFILE_LIST_ID * list_id_p, bool updatable,
   cursor_id_p->buffer_filled_size = 0;
   cursor_id_p->list_id = empty_list_id;
   cursor_id_p->prefetch_lock_mode = DB_FETCH_READ;
+  qfile_slot_bind (&cursor_id_p->tuple_record, &cursor_id_p->list_id.type_list);
   cursor_id_p->is_copy_tuple_value = true;	/* copy */
   cursor_initialize_current_tuple_value_position (cursor_id_p);
 
@@ -1359,6 +1363,7 @@ cursor_free (CURSOR_ID * cursor_id_p)
     }
 
   free_and_init (cursor_id_p->tuple_record.tpl);
+  qfile_slot_clear (&cursor_id_p->tuple_record);
   free_and_init (cursor_id_p->oid_set);
 
   if (cursor_id_p->mop_set != NULL)

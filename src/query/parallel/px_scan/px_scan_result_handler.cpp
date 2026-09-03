@@ -1916,7 +1916,7 @@ namespace parallel_scan
 	else
 	  {
 	    if (fetch_peek_dbval (thread_p, &second_operand->value, tl_vd, NULL, NULL,
-				  tl_tpl_buf.tpl, &db_value2_p) != NO_ERROR)
+				  &tl_tpl_buf, &db_value2_p) != NO_ERROR)
 	      {
 		return false;
 	      }
@@ -2084,7 +2084,7 @@ namespace parallel_scan
 	else
 	  {
 	    int err_code = fetch_peek_dbval (thread_p, &agg_node->operands->value, tl_vd, NULL, NULL,
-					     tl_tpl_buf.tpl, &db_value_p);
+					     &tl_tpl_buf, &db_value_p);
 	    if (err_code != NO_ERROR)
 	      {
 		return false;

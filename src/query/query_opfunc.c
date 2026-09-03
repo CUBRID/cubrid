@@ -31,6 +31,7 @@
 #include <assert.h>
 
 #include "query_opfunc.h"
+#include "qfile_tuple_layout.h"
 
 #include "system_parameter.h"
 #include "error_manager.h"
@@ -203,28 +204,28 @@ static int qdata_divide_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE *
 static DB_VALUE *qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 							      VAL_DESCR * val_desc_p);
 static int qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABLE * func,
-					VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE tuple);
+					VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec);
 static int qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-					    OID * obj_oid_p, QFILE_TUPLE tuple);
+					    OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec);
 static int qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-					OID * obj_oid_p, QFILE_TUPLE tuple);
+					OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec);
 
 static int qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABLE * func,
 				       VAL_DESCR * val_desc_p);
 
 static int qdata_insert_substring_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-					    OID * obj_oid_p, QFILE_TUPLE tuple);
+					    OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec);
 
 static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		      QFILE_TUPLE tuple);
+		      QFILE_TUPLE_RECORD * tplrec);
 static int qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-			    OID * obj_oid_p, QFILE_TUPLE tuple);
+			    OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec);
 
 static int qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-				  OID * obj_oid_p, QFILE_TUPLE tuple);
+				  OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec);
 
 static int qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
-						     VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE tuple,
+						     VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec,
 						     int (*function_to_call) (DB_VALUE *, DB_VALUE * const *,
 									      int const));
 
@@ -6690,7 +6691,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
  */
 static int
 qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABLE * regu_func_p,
-			     VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE tuple)
+			     VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec)
 {
   DB_VALUE dbval, *result_p = NULL;
   DB_COLLECTION *collection_p = NULL;
@@ -6750,7 +6751,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
   n = 0;
   while (operand)
     {
-      if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &dbval) != NO_ERROR)
+      if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tplrec, &dbval) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -6814,7 +6815,7 @@ error:
  */
 static int
 qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-				 OID * obj_oid_p, QFILE_TUPLE tuple)
+				 OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec)
 {
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_GENERIC_FUNCTION_FAILURE, 0);
   return ER_FAILED;
@@ -6832,7 +6833,7 @@ qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functi
  */
 static int
 qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-			     OID * obj_oid_p, QFILE_TUPLE tuple)
+			     OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec)
 {
   OID class_oid;
   OID *instance_oid_p;
@@ -6840,7 +6841,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
   DB_TYPE type;
   int err;
 
-  if (fetch_peek_dbval (thread_p, &function_p->operand->value, val_desc_p, NULL, obj_oid_p, tuple, &val_p) != NO_ERROR)
+  if (fetch_peek_dbval (thread_p, &function_p->operand->value, val_desc_p, NULL, obj_oid_p, tplrec, &val_p) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -6894,7 +6895,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
  */
 int
 qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_p, val_descr * val_desc_p,
-			 OID * obj_oid_p, QFILE_TUPLE tuple)
+			 OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec)
 {
   FUNCTION_TYPE *funcp;
 
@@ -6907,16 +6908,16 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
   switch (funcp->ftype)
     {
     case F_SET:
-      return qdata_convert_dbvals_to_set (thread_p, DB_TYPE_SET, function_p, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_dbvals_to_set (thread_p, DB_TYPE_SET, function_p, val_desc_p, obj_oid_p, tplrec);
 
     case F_MULTISET:
-      return qdata_convert_dbvals_to_set (thread_p, DB_TYPE_MULTISET, function_p, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_dbvals_to_set (thread_p, DB_TYPE_MULTISET, function_p, val_desc_p, obj_oid_p, tplrec);
 
     case F_SEQUENCE:
-      return qdata_convert_dbvals_to_set (thread_p, DB_TYPE_SEQUENCE, function_p, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_dbvals_to_set (thread_p, DB_TYPE_SEQUENCE, function_p, val_desc_p, obj_oid_p, tplrec);
 
     case F_VID:
-      return qdata_convert_dbvals_to_set (thread_p, DB_TYPE_VOBJ, function_p, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_dbvals_to_set (thread_p, DB_TYPE_VOBJ, function_p, val_desc_p, obj_oid_p, tplrec);
 
     case F_TABLE_SET:
       return qdata_convert_table_to_set (thread_p, DB_TYPE_SET, function_p, val_desc_p);
@@ -6928,110 +6929,110 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
       return qdata_convert_table_to_set (thread_p, DB_TYPE_SEQUENCE, function_p, val_desc_p);
 
     case F_GENERIC:
-      return qdata_evaluate_generic_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_evaluate_generic_function (thread_p, funcp, val_desc_p, obj_oid_p, tplrec);
 
     case F_CLASS_OF:
-      return qdata_get_class_of_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_get_class_of_function (thread_p, funcp, val_desc_p, obj_oid_p, tplrec);
 
     case F_INSERT_SUBSTRING:
-      return qdata_insert_substring_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_insert_substring_function (thread_p, funcp, val_desc_p, obj_oid_p, tplrec);
 
     case F_ELT:
-      return qdata_elt (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_elt (thread_p, funcp, val_desc_p, obj_oid_p, tplrec);
 
     case F_BENCHMARK:
-      return qdata_benchmark (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_benchmark (thread_p, funcp, val_desc_p, obj_oid_p, tplrec);
 
     case F_JSON_ARRAY:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_array);
 
     case F_JSON_ARRAY_APPEND:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_array_append);
 
     case F_JSON_ARRAY_INSERT:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_array_insert);
 
     case F_JSON_CONTAINS:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_contains);
 
     case F_JSON_CONTAINS_PATH:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_contains_path);
 
     case F_JSON_DEPTH:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_depth);
 
     case F_JSON_EXTRACT:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_extract);
 
     case F_JSON_GET_ALL_PATHS:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_get_all_paths);
 
     case F_JSON_INSERT:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_insert);
 
     case F_JSON_KEYS:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_keys);
 
     case F_JSON_LENGTH:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_length);
 
     case F_JSON_MERGE:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_merge_preserve);
 
     case F_JSON_MERGE_PATCH:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_merge_patch);
 
     case F_JSON_OBJECT:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_object);
 
     case F_JSON_PRETTY:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_pretty);
 
     case F_JSON_QUOTE:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_quote);
 
     case F_JSON_REMOVE:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_remove);
 
     case F_JSON_REPLACE:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_replace);
 
     case F_JSON_SEARCH:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_search);
 
     case F_JSON_SET:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_set);
 
     case F_JSON_TYPE:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_type_dbval);
 
     case F_JSON_UNQUOTE:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_unquote);
 
     case F_JSON_VALID:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tplrec,
 						       db_evaluate_json_valid);
 
     case F_REGEXP_COUNT:
@@ -7039,7 +7040,7 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
     case F_REGEXP_LIKE:
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
-      return qdata_regexp_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_regexp_function (thread_p, funcp, val_desc_p, obj_oid_p, tplrec);
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -7249,7 +7250,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
     }
 
   /* we start with tpl itself */
-  tuple_rec.tpl = tpl;
+  qfile_slot_set_tuple (&tuple_rec, tpl);
 
   do
     {
@@ -7372,7 +7373,7 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
       return false;
     }
 
-  tuple_rec.tpl = tpl;
+  qfile_slot_set_tuple (&tuple_rec, tpl);
 
   /* get the parent node */
   if (qexec_get_tuple_column_value (tuple_rec.tpl, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
@@ -7408,13 +7409,13 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
   if (tuple_rec.tpl != NULL)
     {
       /* fetch val list from the parent tuple */
-      if (fetch_val_list (thread_p, xptr->proc.connect_by.prior_regu_list_pred, vd, NULL, NULL, tuple_rec.tpl, PEEK) !=
+      if (fetch_val_list (thread_p, xptr->proc.connect_by.prior_regu_list_pred, vd, NULL, NULL, &tuple_rec, PEEK) !=
 	  NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
 	}
-      if (fetch_val_list (thread_p, xptr->proc.connect_by.prior_regu_list_rest, vd, NULL, NULL, tuple_rec.tpl, PEEK) !=
+      if (fetch_val_list (thread_p, xptr->proc.connect_by.prior_regu_list_rest, vd, NULL, NULL, &tuple_rec, PEEK) !=
 	  NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
@@ -7425,7 +7426,7 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
       qexec_replace_prior_regu_vars_prior_expr (thread_p, regu_p, xptr, xptr);
 
       /* evaluate the modified regu_p */
-      if (fetch_copy_dbval (thread_p, regu_p, vd, NULL, NULL, tuple_rec.tpl, result_val_p) != NO_ERROR)
+      if (fetch_copy_dbval (thread_p, regu_p, vd, NULL, NULL, &tuple_rec, result_val_p) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
@@ -7593,7 +7594,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
     }
 
   /* we start with tpl itself */
-  tuple_rec.tpl = tpl;
+  qfile_slot_set_tuple (&tuple_rec, tpl);
 
   len_result_path = SYS_CONNECT_BY_PATH_MEM_STEP;
   result_path = (char *) db_private_alloc (thread_p, sizeof (char) * len_result_path);
@@ -7622,19 +7623,19 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
       else
 	{
 	  /* fetch value list */
-	  if (fetch_val_list (thread_p, xptr->proc.connect_by.regu_list_pred, vd, NULL, NULL, tuple_rec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, xptr->proc.connect_by.regu_list_pred, vd, NULL, NULL, &tuple_rec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  if (fetch_val_list (thread_p, xptr->proc.connect_by.regu_list_rest, vd, NULL, NULL, tuple_rec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, xptr->proc.connect_by.regu_list_rest, vd, NULL, NULL, &tuple_rec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      goto error;
 	    }
 
 	  /* evaluate argument expression */
-	  if (fetch_peek_dbval (thread_p, regu_p, vd, NULL, NULL, tuple_rec.tpl, &arg_dbval_p) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, regu_p, vd, NULL, NULL, &tuple_rec, &arg_dbval_p) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -8419,7 +8420,7 @@ qdata_regu_list_to_regu_array (function_node * function_p, const int array_size,
  */
 static int
 qdata_insert_substring_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-				 OID * obj_oid_p, QFILE_TUPLE tuple)
+				 OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec)
 {
   DB_VALUE *args[NUM_F_INSERT_SUBSTRING_ARGS];
   REGU_VARIABLE *regu_array[NUM_F_INSERT_SUBSTRING_ARGS];
@@ -8447,7 +8448,7 @@ qdata_insert_substring_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functi
 
   for (i = 0; i < NUM_F_INSERT_SUBSTRING_ARGS; i++)
     {
-      error_status = fetch_peek_dbval (thread_p, regu_array[i], val_desc_p, NULL, obj_oid_p, tuple, &args[i]);
+      error_status = fetch_peek_dbval (thread_p, regu_array[i], val_desc_p, NULL, obj_oid_p, tplrec, &args[i]);
       if (error_status != NO_ERROR)
 	{
 	  goto error;
@@ -8475,7 +8476,7 @@ error:
  */
 static int
 qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-	   QFILE_TUPLE tuple)
+	   QFILE_TUPLE_RECORD * tplrec)
 {
   DB_VALUE *index = NULL;
   REGU_VARIABLE_LIST operand;
@@ -8490,7 +8491,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
   assert (function_p->value);
   assert (function_p->operand);
 
-  error_status = fetch_peek_dbval (thread_p, &function_p->operand->value, val_desc_p, NULL, obj_oid_p, tuple, &index);
+  error_status = fetch_peek_dbval (thread_p, &function_p->operand->value, val_desc_p, NULL, obj_oid_p, tplrec, &index);
   if (error_status != NO_ERROR)
     {
       goto error_exit;
@@ -8541,7 +8542,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
       goto fast_exit;
     }
 
-  error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &operand_value);
+  error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tplrec, &operand_value);
   if (error_status != NO_ERROR)
     {
       goto error_exit;
@@ -8564,7 +8565,7 @@ error_exit:
 //
 static int
 qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		 QFILE_TUPLE tuple)
+		 QFILE_TUPLE_RECORD * tplrec)
 {
   assert (function_p);
 
@@ -8588,7 +8589,7 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
   DB_VALUE *count_value = NULL;
   DB_VALUE *target_value = NULL;
 
-  int error = fetch_peek_dbval (thread_p, count_reguvar, val_desc_p, NULL, obj_oid_p, tuple, &count_value);
+  int error = fetch_peek_dbval (thread_p, count_reguvar, val_desc_p, NULL, obj_oid_p, tplrec, &count_value);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -8635,7 +8636,7 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
       //
       // node that they still may be other optimizations that are not so easily disabled
       fetch_force_not_const_recursive (*target_reguvar);
-      error = fetch_peek_dbval (thread_p, target_reguvar, val_desc_p, NULL, obj_oid_p, tuple, &target_value);
+      error = fetch_peek_dbval (thread_p, target_reguvar, val_desc_p, NULL, obj_oid_p, tplrec, &target_value);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -8662,7 +8663,7 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
  */
 static int
 qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-		       OID * obj_oid_p, QFILE_TUPLE tuple)
+		       OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec)
 {
   DB_VALUE *value;
   REGU_VARIABLE_LIST operand;
@@ -8688,7 +8689,7 @@ qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_
     operand = function_p->operand;
     while (operand != NULL)
       {
-	error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+	error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tplrec, &value);
 	if (error_status != NO_ERROR)
 	  {
 	    goto exit;
@@ -8747,7 +8748,7 @@ exit:
 
 static int
 qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-					  OID * obj_oid_p, QFILE_TUPLE tuple,
+					  OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec,
 					  int (*function_to_call) (DB_VALUE *, DB_VALUE * const *, int const))
 {
   DB_VALUE *value;
@@ -8775,7 +8776,7 @@ qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE
   operand = function_p->operand;
   while (operand != NULL)
     {
-      error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+      error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tplrec, &value);
       if (error_status != NO_ERROR)
 	{
 	  goto exit;
@@ -9517,7 +9518,7 @@ qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, QFILE_LIST_SCA
   regu_var.value.pos_descr.dom = domain;
   regu_var.vfetch_to = &f_fetch_value;
 
-  error = fetch_peek_dbval (thread_p, &regu_var, NULL, NULL, NULL, tuple_record.tpl, &f_value);
+  error = fetch_peek_dbval (thread_p, &regu_var, NULL, NULL, NULL, &tuple_record, &f_value);
   if (error != NO_ERROR)
     {
       error = ER_FAILED;
@@ -9546,7 +9547,7 @@ qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, QFILE_LIST_SCA
       regu_var.vfetch_to = &c_fetch_value;
 
       /* get value */
-      error = fetch_peek_dbval (thread_p, &regu_var, NULL, NULL, NULL, tuple_record.tpl, &c_value);
+      error = fetch_peek_dbval (thread_p, &regu_var, NULL, NULL, NULL, &tuple_record, &c_value);
       if (error != NO_ERROR)
 	{
 	  error = ER_FAILED;

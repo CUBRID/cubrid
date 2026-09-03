@@ -21,6 +21,7 @@
  */
 
 #include "query_hash_join.h"
+#include "qfile_tuple_layout.h"
 
 #include "dbtype.h"		/* db_make_null */
 #include "error_manager.h"	/* er_errid, NO_ERROR, assert_release_error */
@@ -4098,7 +4099,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 
       if (entry != NULL)
 	{
-	  tuple_record->tpl = (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry);
+	  qfile_slot_set_tuple (tuple_record, (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry));
 	  tuple_record->size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_record->tpl);
 	}
       else
@@ -4212,7 +4213,7 @@ hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_
 
   if (!probe->is_ready)
     {
-      if (fetch_val_list (thread_p, probe->regu_list_pred, val_descr, NULL, NULL, probe->tuple_record.tpl, PEEK)
+      if (fetch_val_list (thread_p, probe->regu_list_pred, val_descr, NULL, NULL, &probe->tuple_record, PEEK)
 	  != NO_ERROR)
 	{
 	  return V_ERROR;
@@ -4222,7 +4223,7 @@ hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_
 
   if (!build->is_ready)
     {
-      if (fetch_val_list (thread_p, build->regu_list_pred, val_descr, NULL, NULL, build->tuple_record.tpl, PEEK)
+      if (fetch_val_list (thread_p, build->regu_list_pred, val_descr, NULL, NULL, &build->tuple_record, PEEK)
 	  != NO_ERROR)
 	{
 	  return V_ERROR;

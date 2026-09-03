@@ -28,6 +28,7 @@
 
 #ifdef __cplusplus
 #include <atomic>
+#include <stdint.h>
 #include "thread_compat.hpp"
 #endif
 
@@ -285,12 +286,23 @@ typedef enum
 
 typedef char *QFILE_TUPLE;	/* list file tuple */
 
-/* tuple record descriptor */
+/* tuple record descriptor == tuple slot (CBRD-27365, ADR 0016 D-182-2).
+ * The record keeps its historical owning/non-owning meaning (size > 0: private buffer owned by the record,
+ * size == 0: tpl PEEKs into a list page). The slot fields bind the layout descriptor of the list the tuple
+ * belongs to and cache the deform position (PG tts_nvalid/off); they are reset by qfile_slot_set_tuple (),
+ * the only sanctioned way to point the record at another tuple (D-182-5). */
+struct qfile_tuple_value_type_list;
 typedef struct qfile_tuple_record QFILE_TUPLE_RECORD;
 struct qfile_tuple_record
 {
   char *tpl;			/* tuple pointer */
   int size;			/* area _allocated_ for tuple pointer */
+  const struct qfile_tuple_value_type_list *tl;	/* layout descriptor, bound once per scan (D-182-6) */
+  int16_t nvalid;		/* columns deformed so far (PG tts_nvalid) */
+  int16_t fast_limit;		/* end of the constant-offset prefix for this tuple (D-182-4) */
+  int32_t off;			/* start offset of column nvalid, from tuple start (PG off) */
+  char *scratch;		/* aligned copy area for VAR/SCRATCH columns, lazily allocated (D-182-10) */
+  int scratch_size;
 };
 
 typedef enum

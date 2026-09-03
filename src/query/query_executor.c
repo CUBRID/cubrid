@@ -32,6 +32,7 @@
 #include <sys/timeb.h>
 
 #include "query_executor.h"
+#include "qfile_tuple_layout.h"
 
 #include "binaryheap.h"
 #include "deduplicate_key.h"
@@ -458,7 +459,8 @@ static void qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * 
 static int qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool is_final);
 static int qexec_gby_init_group_dim (GROUPBY_STATE * gbstate);
 static void qexec_gby_clear_group_dim (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate);
-static void qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_TUPLE tpl, int peek);
+static void qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_TUPLE_RECORD * tplrec,
+				 int peek);
 static int qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				     BUILDLIST_PROC_NODE * proc, QFILE_TUPLE_RECORD * tplrec,
 				     QFILE_TUPLE_DESCRIPTOR * tpldesc, QFILE_LIST_ID * groupby_list,
@@ -496,7 +498,8 @@ static int qexec_analytic_start_group (THREAD_ENTRY * thread_p, XASL_STATE * xas
 				       ANALYTIC_FUNCTION_STATE * func_state, const RECDES * key, bool reinit);
 static int qexec_analytic_finalize_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 					  ANALYTIC_FUNCTION_STATE * func_state, bool is_same_group);
-static void qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, QFILE_TUPLE tpl,
+static void qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
+				      QFILE_TUPLE_RECORD * tplrec,
 				      int peek);
 static void qexec_clear_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state);
 static void qexec_clear_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
@@ -726,7 +729,7 @@ static int qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC
 					 bool not_use_membuf);
 static void qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc);
 static int qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VARIABLE_LIST regu_list,
-				 QFILE_TUPLE tpl, AGGREGATE_HASH_KEY * key);
+				 QFILE_TUPLE_RECORD * tplrec, AGGREGATE_HASH_KEY * key);
 static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * context,
 					    AGGREGATE_HASH_KEY * key, bool * found);
 static int qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE * default_val);
@@ -4577,7 +4580,7 @@ qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
  *   peek(in)   :
  */
 static void
-qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_TUPLE tpl, int peek)
+qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_TUPLE_RECORD * tplrec, int peek)
 {
   XASL_STATE *xasl_state = gbstate->xasl_state;
   int i;
@@ -4588,7 +4591,7 @@ qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_TUP
     }
 
   /* Read the incoming tuple into DB_VALUEs and do the necessary aggregation...  */
-  if (fetch_val_list (thread_p, gbstate->g_regu_list, &gbstate->xasl_state->vd, NULL, NULL, tpl, peek) != NO_ERROR)
+  if (fetch_val_list (thread_p, gbstate->g_regu_list, &gbstate->xasl_state->vd, NULL, NULL, tplrec, peek) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -4771,7 +4774,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  pr_clear_value (regu_var_p->value.vfetch_to);
 		}
 
-	      rc = fetch_peek_dbval (thread_p, &regu_var_p->value, &xasl_state->vd, NULL, NULL, tplrec->tpl, &tmp);
+	      rc = fetch_peek_dbval (thread_p, &regu_var_p->value, &xasl_state->vd, NULL, NULL, tplrec, &tmp);
 	      if (rc != NO_ERROR)
 		{
 		  pr_clear_value (regu_var_p->value.vfetch_to);
@@ -5074,6 +5077,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
   QFILE_LIST_ID *list_idp;
 
   QFILE_TUPLE_RECORD dummy;
+  QFILE_TUPLE_RECORD data_slot = { NULL, 0 };	/* slot over the sorted input tuple (PR-1a) */
   int status;
 
   info = (GROUPBY_STATE *) arg;
@@ -5166,6 +5170,8 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	  data = info->gby_rec.data;
 	}
 
+      qfile_slot_set_tuple (&data_slot, data);
+
       if (info->input_recs == 0)
 	{
 	  /*
@@ -5181,7 +5187,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	      bool found = false;
 
 	      /* build key for current */
-	      if (qexec_build_agg_hkey (thread_p, info->xasl_state, info->g_hk_regu_list, data,
+	      if (qexec_build_agg_hkey (thread_p, info->xasl_state, info->g_hk_regu_list, &data_slot,
 					info->agg_hash_context->temp_key) != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -5240,7 +5246,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	      bool found = false;
 
 	      /* build key for current */
-	      if (qexec_build_agg_hkey (thread_p, info->xasl_state, info->g_hk_regu_list, data,
+	      if (qexec_build_agg_hkey (thread_p, info->xasl_state, info->g_hk_regu_list, &data_slot,
 					info->agg_hash_context->temp_key) != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -5306,7 +5312,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	}
 
       /* aggregate tuple */
-      qexec_gby_agg_tuple (thread_p, info, data, peek);
+      qexec_gby_agg_tuple (thread_p, info, &data_slot, peek);
 
       info->input_recs++;
 
@@ -5489,7 +5495,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
 	      /* load values in list and aggregate first tuple */
 	      qdata_load_agg_hvalue_in_agg_list (value, gbstate.g_dim[0].d_agg_list, false);
-	      qexec_gby_agg_tuple (thread_p, &gbstate, value->first_tuple.tpl, PEEK);
+	      qexec_gby_agg_tuple (thread_p, &gbstate, &value->first_tuple, PEEK);
 
 	      /* finalize */
 	      qexec_gby_finalize_group_dim (thread_p, &gbstate, NULL);
@@ -17784,12 +17790,12 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 	  /* fetch regu_variable values from parent tuple; obs: prior_regu_list was split into pred and rest for
 	   * possible future optimizations. */
-	  if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+	  if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL, &tuple_rec,
 			      PEEK) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
-	  if (fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+	  if (fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL, &tuple_rec,
 			      PEEK) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
@@ -18072,12 +18078,12 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  db_make_string (index_valp, son_index);
 
 		  if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL,
-				      tpl_lst2tmp.tpl, PEEK) != NO_ERROR)
+				      &tpl_lst2tmp, PEEK) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		  if (fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL,
-				      tpl_lst2tmp.tpl, PEEK) != NO_ERROR)
+				      &tpl_lst2tmp, PEEK) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
@@ -18858,7 +18864,7 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
     }
 
   /* we start with tpl itself */
-  tuple_rec.tpl = tpl;
+  qfile_slot_set_tuple (&tuple_rec, tpl);
 
   do
     {
@@ -19790,7 +19796,7 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* fetch LEVEL pseudocolumn value */
       if (xasl->level_val)
 	{
-	  if (fetch_peek_dbval (thread_p, xasl->level_regu, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+	  if (fetch_peek_dbval (thread_p, xasl->level_regu, &xasl_state->vd, NULL, NULL, &tuple_rec,
 				&dbvalp) != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -19800,7 +19806,7 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* fetch CONNECT_BY_ISLEAF pseudocolumn value */
       if (xasl->isleaf_val)
 	{
-	  if (fetch_peek_dbval (thread_p, xasl->isleaf_regu, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+	  if (fetch_peek_dbval (thread_p, xasl->isleaf_regu, &xasl_state->vd, NULL, NULL, &tuple_rec,
 				&dbvalp) != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -19810,7 +19816,7 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* fetch CONNECT_BY_ISCYCLE pseudocolumn value */
       if (xasl->iscycle_val)
 	{
-	  if (fetch_peek_dbval (thread_p, xasl->iscycle_regu, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+	  if (fetch_peek_dbval (thread_p, xasl->iscycle_regu, &xasl_state->vd, NULL, NULL, &tuple_rec,
 				&dbvalp) != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -19818,14 +19824,14 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* fetch pred part of xasl->connect_by_ptr->val_list from the tuple */
-      if (fetch_val_list (thread_p, connect_by->after_cb_regu_list_pred, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+      if (fetch_val_list (thread_p, connect_by->after_cb_regu_list_pred, &xasl_state->vd, NULL, NULL, &tuple_rec,
 			  PEEK) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
       /* fetch the rest of xasl->connect_by_ptr->val_list from the tuple */
-      if (fetch_val_list (thread_p, connect_by->after_cb_regu_list_rest, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+      if (fetch_val_list (thread_p, connect_by->after_cb_regu_list_rest, &xasl_state->vd, NULL, NULL, &tuple_rec,
 			  PEEK) != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -21154,7 +21160,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
   /* fetch values */
   if (regu_list != NULL)
     {
-      if (fetch_val_list (thread_p, regu_list, vd, NULL, NULL, tplrec->tpl, true) != NO_ERROR)
+      if (fetch_val_list (thread_p, regu_list, vd, NULL, NULL, tplrec, true) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -21678,7 +21684,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 	  qexec_gby_finalize_group_dim (thread_p, &gbstate, NULL);
 	}
 
-      qexec_gby_agg_tuple (thread_p, &gbstate, tuple_rec.tpl, COPY);
+      qexec_gby_agg_tuple (thread_p, &gbstate, &tuple_rec, COPY);
 
       gbstate.input_recs++;
     }
@@ -22729,6 +22735,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
   QFILE_LIST_ID *list_idp;
 
   QFILE_TUPLE_RECORD dummy;
+  QFILE_TUPLE_RECORD data_slot = { NULL, 0 };	/* slot over the sorted input tuple (PR-1a) */
   int status;
 
   analytic_state = (ANALYTIC_STATE *) arg;
@@ -22811,6 +22818,8 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	{
 	  peek = PEEK;		/* avoid unnecessary COPY */
 	}
+
+      qfile_slot_set_tuple (&data_slot, data);
 
       /*
        * process current sorted tuple
@@ -22902,7 +22911,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	}
 
       /* aggregate tuple across all functions */
-      qexec_analytic_add_tuple (thread_p, analytic_state, data, peek);
+      qexec_analytic_add_tuple (thread_p, analytic_state, &data_slot, peek);
 
       /* one more input record of beer on the wall */
       analytic_state->input_recs++;
@@ -23153,7 +23162,8 @@ cleanup:
  *   peek(in):
  */
 static void
-qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, QFILE_TUPLE tpl, int peek)
+qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, QFILE_TUPLE_RECORD * tplrec,
+			  int peek)
 {
   XASL_STATE *xasl_state = analytic_state->xasl_state;
   QFILE_LIST_ID *list_id = analytic_state->interm_file;
@@ -23164,7 +23174,7 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_sta
       return;
     }
 
-  if (fetch_val_list (thread_p, analytic_state->a_regu_list, &xasl_state->vd, NULL, NULL, tpl, peek) != NO_ERROR)
+  if (fetch_val_list (thread_p, analytic_state->a_regu_list, &xasl_state->vd, NULL, NULL, tplrec, peek) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -24190,7 +24200,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
 	}
 
       /* fetch values from intermediate file */
-      rc = fetch_val_list (thread_p, analytic_state->a_regu_list, &xasl_state->vd, NULL, NULL, tplrec_scan.tpl, PEEK);
+      rc = fetch_val_list (thread_p, analytic_state->a_regu_list, &xasl_state->vd, NULL, NULL, &tplrec_scan, PEEK);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -28381,7 +28391,8 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
  * qexec_copy_agg_key().
  */
 static int
-qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VARIABLE_LIST regu_list, QFILE_TUPLE tpl,
+qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VARIABLE_LIST regu_list,
+		      QFILE_TUPLE_RECORD * tplrec,
 		      AGGREGATE_HASH_KEY * key)
 {
   int rc = NO_ERROR;
@@ -28391,15 +28402,15 @@ qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VAR
   key->val_count = 0;
   while (regu_list != NULL)
     {
-      if (tpl == NULL)
+      if (tplrec == NULL)
 	{
-	  /* tpl is NULL when called during the processing phase */
+	  /* tplrec is NULL when called during the processing phase */
 	  key->values[key->val_count] = regu_list->value.vfetch_to;
 	}
       else
 	{
 	  rc =
-	    fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tpl,
+	    fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, NULL, NULL, tplrec,
 			      &key->values[key->val_count]);
 	  if (rc != NO_ERROR)
 	    {

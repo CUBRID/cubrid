@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "qfile_tuple_layout.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -6766,7 +6767,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, isidp->indx_cov.regu_val_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	      if (fetch_val_list (thread_p, isidp->indx_cov.regu_val_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 		  NO_ERROR)
 		{
 		  return S_ERROR;
@@ -7168,7 +7169,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;
@@ -7231,7 +7232,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the rest of the values from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -7240,7 +7241,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->tplrecp)
 	{
 	  llsidp->tplrecp->size = tplrec.size;
-	  llsidp->tplrecp->tpl = tplrec.tpl;
+	  qfile_slot_set_tuple (llsidp->tplrecp, tplrec.tpl);
 	}
 
       return S_SUCCESS;
@@ -7864,7 +7865,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* fetch the values for the predicate from the tuple */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	      if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 		  NO_ERROR)
 		{
 		  return S_ERROR;
@@ -7923,7 +7924,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* fetch the rest of the values from the tuple */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 		  NO_ERROR)
 		{
 		  return S_ERROR;
@@ -7933,7 +7934,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (llsidp->tplrecp)
 	    {
 	      llsidp->tplrecp->size = tplrec.size;
-	      llsidp->tplrecp->tpl = tplrec.tpl;
+	      qfile_slot_set_tuple (llsidp->tplrecp, tplrec.tpl);
 	    }
 
 	  return S_SUCCESS;
@@ -8024,7 +8025,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
       /* fetch the value for the predicate from the tuple */
       if (s_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, s_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, s_id->vd, NULL, NULL, &tplrec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;
@@ -8088,7 +8089,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 	  /* fetch the rest of the values from the tuple */
 	  if (s_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, s_id->vd, NULL, NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, s_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -8097,7 +8098,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 	  if (llsidp->tplrecp)
 	    {
 	      llsidp->tplrecp->size = tplrec.size;
-	      llsidp->tplrecp->tpl = tplrec.tpl;
+	      qfile_slot_set_tuple (llsidp->tplrecp, tplrec.tpl);
 	    }
 	  return S_SUCCESS;
 	}
@@ -8798,7 +8799,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;
@@ -8904,7 +8905,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;
@@ -8967,7 +8968,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the rest of the values from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -8976,7 +8977,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->tplrecp)
 	{
 	  llsidp->tplrecp->size = tplrec.size;
-	  llsidp->tplrecp->tpl = tplrec.tpl;
+	  qfile_slot_set_tuple (llsidp->tplrecp, tplrec.tpl);
 	}
 
       return S_SUCCESS;
