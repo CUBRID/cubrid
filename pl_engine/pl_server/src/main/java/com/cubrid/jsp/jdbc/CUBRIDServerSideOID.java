@@ -248,8 +248,8 @@ public class CUBRIDServerSideOID implements CUBRIDOID {
         try {
             String tablename =
                     (String)
-                            requestHandler().oidCmd(
-                                    this, CUBRIDServerSideConstants.GET_CLASS_NAME_BY_OID);
+                            requestHandler()
+                                    .oidCmd(this, CUBRIDServerSideConstants.GET_CLASS_NAME_BY_OID);
             return tablename;
         } catch (IOException e) {
             // TODO: is correct?
