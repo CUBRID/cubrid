@@ -4687,10 +4687,26 @@ do_update_class_statistics (DB_OBJECT * classop, bool with_fullscan, int bucket_
 			    bool no_histogram, int *out_histogram_skipped)
 {
   int error = NO_ERROR;
+  SM_CLASS *class_ = NULL;
 
   if (out_histogram_skipped != NULL)
     {
       *out_histogram_skipped = 0;
+    }
+
+  /* only a heap class has statistics. A view (or any other non-CT class) reaches here from loaddb, whose
+   * class registry lists every %class header of the object file, and must be skipped the way UPDATE
+   * STATISTICS skips it: the histogram sampler would scan its NULL heap and fail with "fetching
+   * deallocated pageid -1". The force fetch matches sm_update_statistics (); it fails cleanly on a
+   * dropped class. */
+  error = au_fetch_class_force (classop, &class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (class_->class_type != SM_CLASS_CT)
+    {
+      return NO_ERROR;
     }
 
   if (!no_histogram)
