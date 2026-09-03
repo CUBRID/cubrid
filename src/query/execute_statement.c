@@ -21923,6 +21923,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *server_object = NULL;
   DB_VALUE value, passwd;
   PT_ALTER_SERVER_INFO *alter;
+  MOP new_owner = NULL;
   int save;
 
   CHECK_MODIFICATION_ERROR ();
@@ -21930,6 +21931,33 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&value);
   alter = &(statement->info.alter_server);
   server_name = alter->server_name->info.name.original;
+
+  if (alter->xbits.bit_owner)
+    {
+      assert (alter->owner_name->node_type == PT_NAME);
+      pt = (char *) alter->owner_name->info.name.original;
+      assert (pt && *pt);
+
+      new_owner = db_find_user (pt);
+      if (new_owner == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  if (ER_IS_SERVER_DOWN_ERROR (error))
+	    {
+	      error = ER_NET_CANT_CONNECT_SERVER;
+	    }
+	  return error;
+	}
+
+      /* Checked ahead of server_find (): with autocommit off, refusing inside the branch below would
+       * leave the earlier CHANGE items in the transaction, and would also have looked the server up. */
+      error = server_check_owner (new_owner);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
 
   server_object = server_find (alter->server_name, alter->current_owner_name);
   if (server_object == NULL)
@@ -22119,22 +22147,6 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (alter->xbits.bit_owner)
     {
-      assert (alter->owner_name->node_type == PT_NAME);
-      pt = (char *) alter->owner_name->info.name.original;
-      assert (pt && *pt);
-
-      MOP user = db_find_user (pt);
-      if (user == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  if (ER_IS_SERVER_DOWN_ERROR (error))
-	    {
-	      error = ER_NET_CANT_CONNECT_SERVER;
-	    }
-	  goto end;
-	}
-
       if (server_find (alter->server_name, alter->owner_name))
 	{
 	  char buf[2048];
@@ -22155,7 +22167,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
 
-      db_make_object (&value, user);
+      db_make_object (&value, new_owner);
       error = db_put (server_object, SERVER_ATTR_OWNER, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -22598,7 +22610,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
 	    {
 	      goto err;
 	    }
-	  /* check if user is creator or DBA  */
+	  /* check if user is the owner, a member of the owning group, or a DBA */
 	  if (au_is_server_authorized_user (&values[1]))
 	    {
 	      rec_cnt++;
