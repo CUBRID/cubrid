@@ -34,6 +34,7 @@
 #include "jansson.h"
 
 #include "parser.h"
+#include "object_domain.h"
 #include "object_primitive.h"
 #include "optimizer.h"
 #include "query_planner.h"
@@ -86,13 +87,38 @@
  * (fanout=1 / unique / pk) probe adds ZERO and keeps exactly the original cost (blast-radius
  * safe). Added to object_IO on top of the existing page-based cost, so a high-fanout inner
  * index scan of a nested loop is no longer priced like a single-row probe. */
-#define FETCH_HEAP_COST 0.25	/* per-extra heap-row fetch (non-covering only) */
+/* Per page-boundary step of a root-to-leaf b+tree descent: pgbuf_fix + header/slot parsing on
+ * an already buffer-resident page (the read itself is charged once, in fixed_io_cost). A
+ * calibration value, not a derived one -- chosen so that on the JOB/TPC-H validation set a
+ * multi-million-probe nested loop keeps a nonzero per-probe charge after the repeated-probe
+ * saturation, without overturning genuinely cheap unique-key probes. Revisit together with
+ * ISCAN_OID_ACCESS_OVERHEAD if either is recalibrated. */
+#define BTREE_DESCENT_PAGE_OVERHEAD 50
 #define MJ_CPU_OVERHEAD_FACTOR 20
 #define HJ_BUILD_CPU_OVERHEAD_FACTOR 40
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
-#define HJ_MEM_ALLOC_CONSTANT 1500	/* Heuristic offset to prefer NL join over hash join:
-					   ~1500 cost observed for NL with ~3000 rows,
-					   preventing hash join selection for small inputs */
+/* Fixed set-up cost of one hash join (hash table allocation, partition bookkeeping), in the
+ * same unit as the per-row terms above.  Calibrated on the release build against a
+ * buffer-resident 10,000-row table (cbrd_25060 data): a hash join of 1,000 x 1,000 rows took
+ * 3 ms of which ~0.6 ms was not explained by the two scans and the per-row build/probe
+ * work, and one unit of this model is ~6 us (a pk probe = 0.29 units = 2.1 us, a hash
+ * build+probe row pair = 0.15 units = 0.95 us), so the set-up is ~100 units.
+ *
+ * The previous value, 1500 ("~1500 cost observed for NL with ~3000 rows, preventing hash
+ * join selection for small inputs"), was a policy offset rather than a cost: it made a
+ * hash join look like 15,000 extra probe-rows.  It was harmless while a nested-loop probe
+ * was priced at ~0.5 per row, but once the repeated-probe saturation priced the probe at
+ * its real ~0.29 the offset alone decided 10,000-row joins for nested loop: cbrd_25060
+ * NL 3040 vs hash 3298 with the offset, 1796 without, measured 32 ms vs 13 ms.
+ *
+ * The value is NOT the measured 100: on JOB the offset also stands in for the risk that a
+ * nested loop's probe count is under-estimated (1a: NL estimated 23,032, hash chain 22,415
+ * at 100 -- hash ran 303 ms against NL's 14 ms; 15d +18%), so a margin over the set-up
+ * cost is kept.  800 is the largest value that still lets the measured 10,000-row join pick
+ * hash (hash 1796 + C < NL 3040 needs C < 1244) while 1a's two hash joins stay above its
+ * nested loop (22,415 + 2 * (C - 100) > 23,032 needs C > 408).  Re-measure JOB when either
+ * bound moves. */
+#define HJ_MEM_ALLOC_CONSTANT 800
 #define HJ_FILE_IO_WEIGHT 0.5	/* per-row IO weight for partitioned hash-join spill */
 #define HJ_PARTITION_FILL_FACTOR 0.8	/* must match PARTITION_FILL_FACTOR in query_hash_join.c:
 					   the executor spills to a partitioned hash join once the build
@@ -102,6 +128,13 @@
 					   SERVER/SA-only (query_hash_scan.h) so it cannot be sizeof'd in the
 					   client-side optimizer; a static_assert there guards against drift. */
 #define ISCAN_IO_HIT_RATIO 0.5
+#define QO_EFFECTIVE_CACHE_PAGES 32768.0	/* pages assumed cachable for the repeated-probe (Mackert-Lohman)
+						   correction in qo_nljoin_cost (); matches the data_buffer_pages
+						   default (512M / 16K). The real parameter is server-only, so the
+						   client-side optimizer cannot read it. */
+#define SORT_MERGE_FAN_IN 4.0	/* the executor merges at most SORT_MAX_HALF_FILES (4) runs per pass
+				   (external_sort.c); that file is server-only, so the value cannot be
+				   included here -- keep in sync manually. */
 #define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
@@ -195,6 +228,7 @@ static void qo_sort_cost (QO_PLAN *);
 static void qo_mjoin_cost (QO_PLAN *);
 static void qo_nljoin_cost (QO_PLAN *);
 static void qo_hjoin_cost (QO_PLAN *);
+static double qo_mackert_lohman_pages (double T, double N);
 static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
@@ -465,6 +499,7 @@ static double qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 static double qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
 static double qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr);
+static DB_VALUE *qo_in_list_elem_value (QO_ENV * env, PT_NODE * elem);
 
 static double qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 static double qo_rlike_selectivity (QO_ENV * env, PT_NODE * pt_expr);
@@ -527,6 +562,9 @@ qo_plan_malloc (QO_ENV * env)
   plan->use_iscan_descending = false;
   plan->need_final_sort = false;
   plan->limit_nljoin_guessed_card = 0.0;
+  plan->iscan_index_rows = 0.0;
+  plan->iscan_heap_io = 0.0;
+  plan->iscan_descent_cpu = 0.0;
 
   return plan;
 }
@@ -2172,7 +2210,8 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
   double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access, heap_rows;
-  double heap_fanout = 0.0, iss_leaves = 0.0, first_leaf = 0.0;
+  double iss_leaves = 0.0, first_leaf = 0.0;
+  double descent_cpu;
   double object_IO, index_IO;
   double heap_sel;
   QO_TERM *termp;
@@ -2355,31 +2394,73 @@ qo_iscan_cost (QO_PLAN * planp)
 	}
     }
 
-  /* IO cost to fetch objects */
+  /* IO cost to fetch objects.  A covering scan fetches no heap page, so it contributes no
+   * per-probe object IO here: its pages are the leaf pages charged below as `leaves` (the
+   * landing leaf on the fixed side, the rest per probe), exactly like the non-covering scan's
+   * leaf share.  Seeding it with 1.0 instead put a phantom page on the variable side that
+   * qo_nljoin_cost () then saturated against the index size while the non-covering
+   * alternative saturated its real heap page against the heap size -- on a small table (heap
+   * pages < index pages) the covering probe priced ABOVE the same probe fetching the heap
+   * (r_outer_join: UNIQUE covering idx 60 vs non-covering idx_a 59) and covering drivers lost
+   * exact ties to sequential scans (bug_bts_13884, bug_bts_9935_03). */
   if (qo_is_index_covering_scan (planp))
     {
-      object_IO = 1.0;
+      object_IO = 0.0;
       heap_access = 0;
     }
   else
     {
       heap_rows = (double) QO_NODE_NCARD (nodep) * heap_sel;
-      object_IO = opages * heap_sel;
-      /* Cap the per-row heap-fetch surcharge at the table's page count: fetching more rows
-       * than there are heap pages cannot touch more distinct pages (the rows share pages),
-       * so an unbounded per-row charge would overprice a wide scan whose non-indexed filter
-       * (sargs) is applied only after the fetch. */
-      heap_fanout = (heap_rows > 1.0) ? MAX (0.0, MIN (heap_rows, opages) - 1.0) * FETCH_HEAP_COST : 0.0;
+      /* Uncorrelated heap-fetch model (no clustering/correlation statistic): use Mackert-Lohman
+       * to estimate the distinct pages that heap_rows random probes touch in an opages-page heap,
+       * consistent with the NL repeated-probe model in qo_nljoin_cost ().  ML tracks the Cardenas
+       * exact formula to within 5%; the previous MIN (heap_rows, opages) overestimated by up to
+       * 58% near k ~= T.  Unique/pk probes (heap_rows <= 1) give ML ~= 1.0, which meets the
+       * MAX (1.0, ...) floor below and keeps their cost unchanged. */
+      object_IO = qo_mackert_lohman_pages ((double) opages, heap_rows);
       heap_access = heap_rows * (double) ISCAN_OID_ACCESS_OVERHEAD;
+
+      /* index-condition-only rows per probe (before non-index filters): the heap pages of these
+       * rows are visited regardless of whether a later filter rejects the row; consumed by
+       * qo_nljoin_cost () as the per-probe fetch count of the repeated-probe correction */
+      planp->iscan_index_rows = MAX (1.0, (double) QO_NODE_NCARD (nodep) * sel);
+
+      /* heap-page share of the per-probe IO: the MAX (1.0, ...) base charged below plus the
+       * fanout surcharge. qo_nljoin_cost () applies the repeated-probe (Mackert-Lohman)
+       * saturation to this share only; the leaf/ISS terms added below model index pages the
+       * correction does not cover and must keep accruing per probe. Covering scans fetch no
+       * heap pages and leave this at 0 (no saturation applies). */
+      planp->iscan_heap_io = MAX (1.0, object_IO);
     }
   /* Split the leaf-page IO across the fixed/variable sides. The first leaf page (the one the
    * b+tree descent lands on) is read once and stays buffer-resident across probes, so it is
    * fixed; only the extra `leaves - 1` pages a wider range scans recur on every probe and go
-   * to the variable (per-outer-row) side, together with `iss_leaves` (ISS skip reads) and the
-   * per-fanout heap-fetch surcharge. A single-leaf probe (leaves == 1, e.g. unique/pk or a
-   * small index) therefore adds nothing to the variable side, keeping exactly the original
-   * cost and not eroding the small-input NL preference (HJ_MEM_ALLOC_CONSTANT). */
-  object_IO = MAX (1.0, object_IO) + (leaves - first_leaf) + iss_leaves + heap_fanout;
+   * to the variable (per-outer-row) side, together with `iss_leaves` (ISS skip reads). A
+   * single-leaf probe (leaves == 1, e.g. unique/pk or a small index) therefore adds nothing
+   * to the variable side.  The MAX (1.0, ...) heap-page floor applies to non-covering scans
+   * only -- a covering probe touches no heap page (see the covering branch above). */
+  object_IO = (qo_is_index_covering_scan (planp) ? 0.0 : MAX (1.0, object_IO)) + (leaves - first_leaf) + iss_leaves;
+
+  /* Every index scan pays a root-to-leaf descent: about ceil (log2 (rows)) key compares plus
+   * (height + 1) page-boundary steps of 50 operator units each (height here is the local
+   * cum_stats.height - 1, so the descent of a single-page index costs 1 * 50 * QO_CPU_WEIGHT
+   * = 0.125 and a two-level one 0.25).
+   *
+   * Publish it separately (iscan_descent_cpu) instead of folding it into variable_cpu_cost:
+   * only qo_nljoin_cost () charges it, once per probe on the inner side -- after the
+   * repeated-probe correction saturates the heap IO, this per-probe term is what keeps a
+   * multi-million-probe nested loop from looking free. The driving side of a join and a
+   * standalone scan descend once per execution, not once per row, so charging the descent
+   * into their variable cpu taxed index scans with no qo_sscan_cost () counterpart: on a tiny
+   * or statistics-less table the flat share dwarfed the whole sequential alternative
+   * (NCARD * QO_CPU_WEIGHT = 0.01 at 4 rows, 0.0 with no statistics) and systematically
+   * flipped exact plan ties to sscan -- covering scans degraded to heap scans, key ranges
+   * were dropped, and 1-2 page catalog probes paid 50-100 operator units. Large tables never
+   * noticed (0.009% of the scan cost at 2.5M rows), which is why JOB improved while the
+   * regression TCs failed. */
+  descent_cpu =
+    (ceil (log2 ((double) QO_NODE_NCARD (nodep) + 1.0)) +
+     (height + 1.0) * (double) BTREE_DESCENT_PAGE_OVERHEAD) * (double) QO_CPU_WEIGHT;
 
   /* index scan requires more CPU cost than sequential scan */
   planp->fixed_cpu_cost = 0.0;
@@ -2387,6 +2468,7 @@ qo_iscan_cost (QO_PLAN * planp)
    * buffer-resident) plus the single leaf page the descent lands on. */
   planp->fixed_io_cost = index_IO + first_leaf;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
+  planp->iscan_descent_cpu = descent_cpu;
   planp->variable_io_cost = object_IO;
   planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * heap_sel);
 
@@ -2905,7 +2987,7 @@ qo_sort_cost (QO_PLAN * planp)
 
       if (order != QO_UNORDERED && order != subplanp->order)
 	{
-	  double sort_io, tcard;
+	  double sort_io;
 
 	  sort_io = 0.0;	/* init */
 
@@ -2920,24 +3002,18 @@ qo_sort_cost (QO_PLAN * planp)
 		}
 	      else
 		{
-		  /* There are too many records to permit an in-memory sort, so io costs will be increased.  Assume
-		   * that the io costs increase by the number of pages required to hold the intermediate result.  CPU
-		   * costs increase as above. Model courtesy of Ender.
-		   */
-		  sort_io = pages * log3 (pages / 4.0);
+		  /* External merge sort: the initial pass writes every page once into runs of the
+		   * sort-buffer size, then each merge pass costs one full sweep over the data
+		   * (reviewer calibration against 1M..100M-row DISTINCT sorts matches the 1x-per-pass
+		   * charge; pricing read+write as 2x moved the estimate away from the measurements).
+		   * The executor merges at most SORT_MERGE_FAN_IN runs per pass, so the number of
+		   * passes is ceil (log_fan_in (runs)) -- the old log3 (pages / 4) model used a fixed
+		   * fan-in of 3 over the raw page count and patched its overpricing with an arbitrary
+		   * *0.1 cache guess. */
+		  double runs = MAX (pages / MAX (2.0, (double) prm_get_integer_value (PRM_ID_SR_NBUFFERS)), 1.0);
+		  double merge_passes = ceil (log (runs) / log (SORT_MERGE_FAN_IN));
 
-		  /* guess: apply IO caching for big size sort list. Disk IO cost cannot be greater than the 10% number
-		   * of the requested IO pages
-		   */
-		  if (subplanp->plan_type == QO_PLANTYPE_SCAN)
-		    {
-		      tcard = (double) QO_NODE_TCARD (subplanp->plan_un.scan.node);
-		      tcard *= 0.1;
-		      if (pages >= tcard)
-			{	/* big size sort list */
-			  sort_io *= 0.1;
-			}
-		    }
+		  sort_io = pages * (1.0 + merge_passes);	/* initial run formation + merge passes */
 		}
 	    }
 
@@ -3457,6 +3533,49 @@ qo_can_apply_limit_card (QO_ENV * env)
  *   return:
  *   planp(in):
  */
+/*
+ * qo_mackert_lohman_pages () - distinct pages that N random probes touch in a T-page object
+ *   return: estimated page count
+ *   T(in): object size in pages
+ *   N(in): number of probed rows (probes x rows per probe)
+ *
+ * Note: Mackert-Lohman approximation through a b-page buffer. Used for the repeated-probe
+ *	 saturation of a nested loop's inner index scan: both the heap side and the leaf side
+ *	 revisit the same pages across probes, so each side saturates near its own object size
+ *	 (T = heap pages resp. index pages) instead of accruing per probe forever.
+ */
+static double
+qo_mackert_lohman_pages (double T, double N)
+{
+  /* effective cache: matches the data_buffer_pages default (server-only parameter, not
+   * visible to the client-side optimizer) */
+  double b = QO_EFFECTIVE_CACHE_PAGES;
+  double lim, pages_fetched;
+
+  T = MAX (1.0, T);
+  if (T <= b)
+    {
+      pages_fetched = (2.0 * T * N) / (2.0 * T + N);
+      if (pages_fetched > T)
+	{
+	  pages_fetched = T;
+	}
+    }
+  else
+    {
+      lim = (2.0 * T * b) / (2.0 * T - b);
+      if (N <= lim)
+	{
+	  pages_fetched = (2.0 * T * N) / (2.0 * T + N);
+	}
+      else
+	{
+	  pages_fetched = b + (N - lim) * (T - b) / T;
+	}
+    }
+  return pages_fetched;
+}
+
 static void
 qo_nljoin_cost (QO_PLAN * planp)
 {
@@ -3524,12 +3643,48 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       guessed_result_cardinality = (outer->info)->cardinality;
     }
-  inner_cpu_cost = guessed_result_cardinality * inner->variable_cpu_cost;
+  /* iscan_descent_cpu is the per-probe root-to-leaf descent (zero for non-iscan inners):
+   * the inner side really descends once per outer row, so it is charged here and only here --
+   * see the publishing comment in qo_iscan_cost (). */
+  inner_cpu_cost = guessed_result_cardinality * (inner->variable_cpu_cost + inner->iscan_descent_cpu);
 
   /* inner side IO cost of nested-loop block join */
   if (qo_is_iscan (inner))
     {
-      inner_io_cost = guessed_result_cardinality * inner->variable_io_cost * (1 - ISCAN_IO_HIT_RATIO);
+      /* Repeated index probes mostly revisit pages that earlier probes already pulled into the
+       * buffer pool. Mackert-Lohman approximation: the total heap pages fetched by ALL probes
+       * together saturates near the inner table size while it fits in the cache, instead of
+       * charging every probe its full uncached page count. This replaces the flat
+       * (1 - ISCAN_IO_HIT_RATIO) discount, which under-corrected small outers (a handful of
+       * probes over a hot table are all cache hits) and thereby made hash join + full scan or
+       * a bad leading order beat an actually-cheap NL re-probe. */
+      double N, heap_fetched, leaf_fetched;
+      double heap_io, leaf_io;
+
+      /* probes x rows matching the index conditions per probe (BEFORE non-index filters --
+       * those rows' pages are fetched regardless of whether the filter later rejects them).
+       * Using the filtered join cardinality here under-counted the fetches of strongly-filtered
+       * joins and made orders containing them look too cheap. */
+      N = guessed_result_cardinality * MAX (1.0, inner->iscan_index_rows);
+
+      /* Saturate the heap side and the leaf side separately, each against its own object size:
+       * the heap share (iscan_heap_io, recorded by qo_iscan_cost) against the inner table's
+       * pages, and the leaf/ISS share against the probed index's total pages. Leaf pages are
+       * revisited across probes just like heap pages -- the index is smaller than the heap and
+       * its upper levels are already on the fixed side, so it caches at least as well; leaving
+       * the leaf share unsaturated made a covering index scan (all leaf, no heap) price above
+       * the equivalent heap-fetching scan and grow linearly with the index width.  A covering
+       * scan carries no heap share and no phantom page (qo_iscan_cost ()), so its per-probe IO
+       * is the non-covering probe's minus the heap page -- never more.  Anything a later step
+       * adds to variable_io_cost (e.g. subquery IO) stays per probe by design. */
+      heap_io = MIN (inner->iscan_heap_io, inner->variable_io_cost);
+      leaf_io = inner->variable_io_cost - heap_io;
+
+      heap_fetched = qo_mackert_lohman_pages ((double) QO_NODE_TCARD (inner->plan_un.scan.node), N);
+      leaf_fetched = qo_mackert_lohman_pages ((double) inner->plan_un.scan.index->cum_stats.pages, N);
+
+      inner_io_cost = MIN (guessed_result_cardinality * heap_io, heap_fetched)
+	+ MIN (guessed_result_cardinality * leaf_io, leaf_fetched);
     }
   else
     {
@@ -4295,11 +4450,11 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   tb = bf + ba;
   if (ta > 0 && tb > 0 && QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
     {
-      if (ta * RBO_CHECK_LIMIT_RATIO <= tb)
+      if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_LIMIT_RATIO <= tb))
 	{
 	  return PLAN_COMP_LT;
 	}
-      else if (ta > tb * RBO_CHECK_LIMIT_RATIO)
+      else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_LIMIT_RATIO))
 	{
 	  return PLAN_COMP_GT;
 	}
@@ -10480,6 +10635,112 @@ qo_not_selectivity (QO_ENV * env, double sel)
  *
  * Note: This uses the System R algorithm
  */
+/*
+ * qo_expr_ndv_bound () - upper bound on the distinct values an expression can produce
+ *   return: the bound, or 0.0 when no column with statistics was found
+ *   env(in):
+ *   node(in): the expression side of an equality
+ *   depth(in): recursion guard
+ *
+ * A function cannot create distinct values, only merge them: NDV (f (c)) <= NDV (c), and for
+ * several columns NDV (f (c1, c2)) <= NDV (c1) * NDV (c2).  The product of the referenced
+ * columns' NDVs is therefore an upper bound on the expression's own NDV, which makes
+ * 1 / bound a provable LOWER bound on the average selectivity of "expr = const".  Columns
+ * without statistics are skipped, so the result stays an upper bound of what we can prove.
+ */
+static double
+qo_expr_ndv_bound (QO_ENV * env, PT_NODE * node, int depth)
+{
+  double bound = 0.0, ndv;
+  bool success = false;
+  int icard;
+
+  if (node == NULL || depth > 8)
+    {
+      return 0.0;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_DOT_:
+    case PT_NAME:
+      histogram_get_column_ndv (node, &ndv, &success);
+      if (!success)
+	{
+	  /* no histogram: the index cardinality is the same count when an index exists */
+	  icard = qo_index_cardinality (env, node);
+	  if (icard <= 0)
+	    {
+	      return 0.0;
+	    }
+	  ndv = (double) icard;
+	}
+      return ndv;
+
+    case PT_EXPR:
+      {
+	PT_NODE *args[3];
+	int i;
+
+	args[0] = node->info.expr.arg1;
+	args[1] = node->info.expr.arg2;
+	args[2] = node->info.expr.arg3;
+	for (i = 0; i < 3; i++)
+	  {
+	    ndv = qo_expr_ndv_bound (env, args[i], depth + 1);
+	    if (ndv > 0.0)
+	      {
+		bound = (bound > 0.0) ? bound * ndv : ndv;
+	      }
+	  }
+	return bound;
+      }
+
+    case PT_FUNCTION:
+      {
+	PT_NODE *arg;
+
+	for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
+	  {
+	    ndv = qo_expr_ndv_bound (env, arg, depth + 1);
+	    if (ndv > 0.0)
+	      {
+		bound = (bound > 0.0) ? bound * ndv : ndv;
+	      }
+	  }
+	return bound;
+      }
+
+    default:
+      /* literals and everything else contribute no distinct values of their own */
+      return 0.0;
+    }
+}
+
+/*
+ * qo_expr_equal_selectivity () - selectivity of "expression = const"
+ *   return: 1 / (NDV bound of the expression), floored at DEFAULT_EQUAL_SELECTIVITY
+ *   env(in):
+ *   node(in): the expression side
+ *
+ * PC_OTHER is the residual bucket of qo_classify (), not a semantic category, so a tuned
+ * constant for it improves one half of the cases and hurts the other.  Instead derive the
+ * estimate from the columns the expression reads: 1 / NDV-bound is a provable lower bound on
+ * the average selectivity, and the historical default remains the floor so an expression over
+ * a high-cardinality column keeps its previous estimate.
+ */
+static double
+qo_expr_equal_selectivity (QO_ENV * env, PT_NODE * node)
+{
+  double bound = qo_expr_ndv_bound (env, node, 0);
+
+  if (bound <= 0.0)
+    {
+      return DEFAULT_EQUAL_SELECTIVITY;
+    }
+  return MAX (1.0 / bound, DEFAULT_EQUAL_SELECTIVITY);
+}
+
 static double
 qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
@@ -10630,9 +10891,20 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_SUBQUERY:
 	case PC_SET:
 	case PC_OTHER:
-	  /* const = const */
-
-	  selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	  /* const = const; an expression side (PC_OTHER, e.g. UPPER (col) = ?) is estimated from
+	   * the distinct values its columns can carry (see qo_expr_equal_selectivity ()) */
+	  if (pc_lhs == PC_OTHER)
+	    {
+	      selectivity = qo_expr_equal_selectivity (env, lhs);
+	    }
+	  else if (pc_rhs == PC_OTHER)
+	    {
+	      selectivity = qo_expr_equal_selectivity (env, rhs);
+	    }
+	  else
+	    {
+	      selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    }
 	  break;
 
 	case PC_MULTI_ATTR:
@@ -11332,6 +11604,27 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 }
 
 /*
+ * qo_in_list_elem_value () - the DB_VALUE of an IN-list element when it is a plain constant
+ *			      or a bound host variable
+ *   return: the value, or NULL when the element cannot be resolved to a value
+ *   env(in):
+ *   elem(in): one element of the IN-list set function
+ */
+static DB_VALUE *
+qo_in_list_elem_value (QO_ENV * env, PT_NODE * elem)
+{
+  switch (qo_classify (elem))
+    {
+    case PC_CONST:
+      return &elem->info.value.db_value;
+    case PC_HOST_VAR:
+      return &env->parser->host_variables[elem->info.host_var.index];
+    default:
+      return NULL;
+    }
+}
+
+/*
  * qo_all_some_in_selectivity () - Compute the selectivity of an in predicate
  *   return: double
  *   env(in): Pointer to an environment structure
@@ -11355,6 +11648,123 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   /* determine the class of each side of the range */
   pc_lhs = qo_classify (arg1);
   pc_rhs = qo_classify (arg2);
+
+  /* attr IN (const, const, ...): the values are mutually exclusive, so the selectivity is the
+   * SUM of the per-value equality selectivities. When the column has a histogram, sum the exact
+   * per-value probes (this reflects the real value frequencies -- e.g. an IN list of common
+   * values is far more selective-heavy than the flat 1/ndv assumption). */
+  if (pc_lhs == PC_ATTR && pc_rhs == PC_SET && !pt_is_function (arg2) && arg2->node_type == PT_VALUE)
+    {
+      /* a constant IN list is folded into one set VALUE before it reaches the optimizer, so the
+       * element-node loop below never sees it; probe the folded elements the same way */
+      DB_SET *in_set = db_get_set (&arg2->info.value.db_value);
+      int set_size = (in_set != NULL) ? db_set_size (in_set) : -1;
+
+      if (set_size > 0)
+	{
+	  double sum = 0.0;
+	  bool all_probed = true;
+	  int i, j;
+
+	  for (i = 0; i < set_size && all_probed; i++)
+	    {
+	      DB_VALUE elem_value, prev_value;
+	      double one = 0.0;
+	      bool success = false, duplicated = false;
+
+	      if (db_set_get (in_set, i, &elem_value) != NO_ERROR)
+		{
+		  all_probed = false;
+		  break;
+		}
+
+	      /* a duplicated element (col IN (1, 1)) must contribute only once: the per-value
+	       * equalities are mutually exclusive -- and their selectivities addable -- only for
+	       * DISTINCT values */
+	      for (j = 0; j < i && !duplicated; j++)
+		{
+		  if (db_set_get (in_set, j, &prev_value) != NO_ERROR)
+		    {
+		      break;
+		    }
+		  duplicated = (tp_value_compare (&elem_value, &prev_value, 1, 0) == DB_EQ);
+		  pr_clear_value (&prev_value);
+		}
+
+	      if (!duplicated)
+		{
+		  histogram_get_equal_selectivity (arg1, &elem_value, &one, &success);
+		  if (success)
+		    {
+		      sum += one;
+		    }
+		  else
+		    {
+		      all_probed = false;
+		    }
+		}
+	      pr_clear_value (&elem_value);
+	    }
+
+	  if (all_probed)
+	    {
+	      return MIN (MAX (sum, 0.0), 1.0);
+	    }
+	}
+      /* fall through to the generic estimate below */
+    }
+
+  if (pc_lhs == PC_ATTR && pc_rhs == PC_SET && pt_is_function (arg2))
+    {
+      double sum = 0.0;
+      bool all_probed = true;
+      PT_NODE *elem;
+
+      for (elem = arg2->info.function.arg_list; elem != NULL; elem = elem->next)
+	{
+	  DB_VALUE *elem_value = qo_in_list_elem_value (env, elem);
+	  PT_NODE *prev;
+	  double one = 0.0;
+	  bool success = false, duplicated = false;
+
+	  if (elem_value == NULL)
+	    {
+	      all_probed = false;
+	      break;
+	    }
+
+	  /* a duplicated literal (col IN (1, 1)) must contribute only once: the per-value
+	   * equalities are mutually exclusive -- and their selectivities addable -- only for
+	   * DISTINCT values */
+	  for (prev = arg2->info.function.arg_list; prev != elem && !duplicated; prev = prev->next)
+	    {
+	      DB_VALUE *prev_value = qo_in_list_elem_value (env, prev);
+
+	      if (prev_value != NULL && tp_value_compare (elem_value, prev_value, 1, 0) == DB_EQ)
+		{
+		  duplicated = true;
+		}
+	    }
+	  if (duplicated)
+	    {
+	      continue;
+	    }
+
+	  histogram_get_equal_selectivity (arg1, elem_value, &one, &success);
+	  if (!success)
+	    {
+	      all_probed = false;
+	      break;
+	    }
+	  sum += one;
+	}
+
+      if (all_probed)
+	{
+	  return MIN (MAX (sum, 0.0), 1.0);
+	}
+      /* fall through to the generic estimate below when a value had no histogram probe */
+    }
 
   /* The only interesting cases are: attr IN set or (attr,attr) IN set or attr IN subquery */
   if ((pc_lhs == PC_MULTI_ATTR || pc_lhs == PC_ATTR) && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY))
@@ -11415,9 +11825,10 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	    }
 	}
 
-      /* compute selectivity--cap at 0.5 */
+      /* IN values are mutually exclusive equalities, so their selectivities add; the sum is
+       * naturally bounded by 1.0 (the former hard cap of 0.5 had no distributional basis). */
       double in_selectivity = list_card * equal_selectivity;
-      return in_selectivity > 0.5 ? 0.5 : in_selectivity;
+      return MIN (in_selectivity, 1.0);
     }
 
   return DEFAULT_IN_SELECTIVITY;
