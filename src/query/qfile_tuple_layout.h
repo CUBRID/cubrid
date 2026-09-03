@@ -166,9 +166,11 @@ extern int qfile_type_list_copy (QFILE_TUPLE_VALUE_TYPE_LIST * dest, const QFILE
 extern void qfile_type_list_finalize (QFILE_TUPLE_VALUE_TYPE_LIST * tl);
 #if !defined(NDEBUG)
 extern bool qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * tl);
+#endif
 
 /*
  * qfile_type_list_is_resolved () - false while any column is still DB_TYPE_VARIABLE (its layout is not settled yet)
+ *   Runtime predicate (the recursive-CTE common-list optimization gate, D-192-2), not debug-only.
  */
 inline bool
 qfile_type_list_is_resolved (const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
@@ -184,7 +186,6 @@ qfile_type_list_is_resolved (const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
     }
   return true;
 }
-#endif
 
 /*
  * qfile_slot_bind () - bind the layout descriptor of the list this record will read tuples from.
