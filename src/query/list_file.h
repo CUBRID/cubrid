@@ -252,9 +252,6 @@ extern void qfile_end_scan_fix (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * s_
 extern void qfile_close_scan (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * s_id);
 
 /* Miscellaneous */
-extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value (QFILE_TUPLE tpl, int index, char **tpl_val, int *val_size);
-extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value_r (QFILE_TUPLE tpl, int index, char **tpl_val, int *val_size);
-extern int qfile_locate_tuple_next_value (OR_BUF * iterator, OR_BUF * buf, QFILE_TUPLE_VALUE_FLAG * flag);
 extern bool qfile_has_next_page (PAGE_PTR page_p);
 extern int qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 					      valptr_list_node * valptr_list_p);

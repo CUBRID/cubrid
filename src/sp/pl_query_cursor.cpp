@@ -17,6 +17,7 @@
  */
 
 #include "pl_query_cursor.hpp"
+#include "qfile_tuple_layout.h"
 
 #include "dbtype.h"
 #include "dbtype_def.h"
@@ -167,32 +168,20 @@ namespace cubpl
 	for (i = 0; i < list_id->type_list.type_cnt; i++)
 	  {
 	    DB_VALUE *value = &m_current_tuple[i];
-	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
-	    if (flag == V_BOUND)
+	    TP_DOMAIN *domain = list_id->type_list.domp[i];
+	    bool is_null;
+	    if (domain == NULL || domain->type == NULL)
 	      {
-		TP_DOMAIN *domain = list_id->type_list.domp[i];
-		if (domain == NULL || domain->type == NULL)
-		  {
-		    scan_code = S_ERROR;
-		    break;
-		  }
-
-		const PR_TYPE *pr_type = domain->type;
-		if (pr_type == NULL)
-		  {
-		    scan_code = S_ERROR;
-		    break;
-		  }
-
-		or_init (&buf, ptr, length);
-
-		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
-		  {
-		    scan_code = S_ERROR;
-		    break;
-		  }
+		scan_code = S_ERROR;
+		break;
 	      }
-	    else
+
+	    if (qfile_slot_read_value (&tuple_record, i, domain, value, true, &is_null) != NO_ERROR)
+	      {
+		scan_code = S_ERROR;
+		break;
+	      }
+	    if (is_null)
 	      {
 		db_make_null (value);
 	      }

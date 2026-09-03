@@ -27,6 +27,7 @@
 #include "object_primitive.h"
 #include "query_opfunc.h"
 #include "list_file.h"
+#include "qfile_tuple_layout.h"
 #include "dbtype_def.h"
 #include "object_representation.h"
 #include <chrono>
@@ -79,6 +80,7 @@ namespace parallel_scan
 	    list_id_p->type_list.domp[i] = valp->dom;
 	  }
       }
+    qfile_type_list_finalize (&list_id_p->type_list);	/* mutator-owns-finalize (D-181-6, px writer's own list) */
     return NO_ERROR;
   }
 
@@ -720,8 +722,11 @@ namespace parallel_scan
 	VPID next_vpid;
 	int err_code;
 	TP_DOMAIN *domain_p;
-	OR_BUF iterator, buf;
-	QFILE_TUPLE_VALUE_FLAG flag;
+	OR_BUF buf;
+	QFILE_TUPLE_WALK walk;
+	const char *body;
+	int len;
+	bool is_null;
 	QPROC_DB_VALUE_LIST val_list_iterator;
 	int val_list_index;
 
@@ -809,20 +814,25 @@ namespace parallel_scan
 		  }
 	      }
 
-	    or_init (&iterator, tl.tpl_buf.tpl, QFILE_GET_TUPLE_LENGTH (tl.tpl_buf.tpl));
-	    or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
+	    /* domain-driven sequential walk (D-182-16, thread contract D-181-10): this reader never touches the
+	     * writer-owned layout descriptor; the atomic domains drive the deform */
+	    qfile_tuple_walk_init (&walk, tl.tpl_buf.tpl);
 
 	    for (val_list_iterator = dest->valp, val_list_index = 0; val_list_iterator
 		 && val_list_index < dest->val_cnt; val_list_iterator = val_list_iterator->next, val_list_index++)
 	      {
-		qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+		domain_p = (TP_DOMAIN *)list_id_header_p->m_type_list[val_list_index]->load (std::memory_order_acquire);
+		if (qfile_tuple_walk_next (&walk, domain_p, &body, &len, &is_null) != NO_ERROR)
+		  {
+		    return S_ERROR;
+		  }
 		pr_clear_value (val_list_iterator->val);
-		if (flag == V_UNBOUND)
+		if (is_null)
 		  {
 		    db_make_null (val_list_iterator->val);
 		    continue;
 		  }
-		domain_p = (TP_DOMAIN *)list_id_header_p->m_type_list[val_list_index]->load (std::memory_order_acquire);
+		or_init (&buf, (char *) body, len);
 		err_code = domain_p->type->data_readval (&buf, val_list_iterator->val, domain_p, -1, false, NULL, 0);
 		if (err_code != NO_ERROR)
 		  {

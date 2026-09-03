@@ -241,8 +241,14 @@ typedef enum
 
 /* READERS/WRITERS FOR QFILE_TUPLE FIELDS */
 
+/* CBRD-27365 (ADR 0016 D-180-1): bit 31 of the length word is reserved for the has-null flag of the
+ * new tuple format. Every length read masks it out; the legacy format never sets it, so this is a no-op
+ * until PR-2 starts writing the flag. */
+#define QFILE_TUPLE_LENGTH_HAS_NULL_BIT         0x80000000
+#define QFILE_TUPLE_LENGTH_MASK                 0x7FFFFFFF
+
 #define QFILE_GET_TUPLE_LENGTH(tpl) \
-  OR_GET_INT ((tpl) + QFILE_TUPLE_LENGTH_OFFSET)
+  ((int) ((unsigned int) OR_GET_INT ((tpl) + QFILE_TUPLE_LENGTH_OFFSET) & QFILE_TUPLE_LENGTH_MASK))
 
 #define QFILE_GET_PREV_TUPLE_LENGTH(tpl) \
   OR_GET_INT ((tpl) + QFILE_TUPLE_PREV_LENGTH_OFFSET)
@@ -264,18 +270,6 @@ typedef enum
 
 #define QFILE_PUT_TUPLE_VALUE_LENGTH(ptr,val) \
   OR_PUT_INT ((ptr) + QFILE_TUPLE_VALUE_LENGTH_OFFSET, (val))
-
-#define QFILE_GET_TUPLE_VALUE_HEADER_POSITION(tpl,ind,valp) \
-  do \
-    { \
-      int _k; \
-      (valp) = (char*) (tpl) + QFILE_TUPLE_LENGTH_SIZE; \
-      for (_k = 0; _k < (ind); _k++) \
-        { \
-          (valp) += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH ((valp)); \
-        } \
-    } \
-  while (0)
 
 /* Special flag set in the TUPLE_CNT field to indicate an overflow page */
 #define QFILE_OVERFLOW_TUPLE_COUNT_FLAG -2
@@ -319,12 +313,53 @@ struct qfile_tuple_value_header
   int val_len;			/* length of tuple value */
 };
 
-/* Type list structure */
+/* Per-column layout entry of the tuple layout descriptor (CBRD-27365, ADR 0016 D-181-3).
+ * 8 bytes; PG CompactAttribute precedent. Growing it means revisiting D-181-3. */
+typedef struct qfile_col_layout QFILE_COL_LAYOUT;
+struct qfile_col_layout
+{
+  int16_t off;			/* constant offset from data_off; -1 when not cached (after the first VAR column or > INT16_MAX) */
+  int16_t size;			/* FIXED: disksize (max 12). VAR: -1 */
+  uint8_t kind;			/* QFILE_COL_FIXED | QFILE_COL_VAR */
+  uint8_t var_access;		/* VAR only: QFILE_VAR_DIRECT | QFILE_VAR_SCRATCH */
+  uint8_t alignby;		/* FIXED: 2 | 4. VAR: 1 */
+  uint8_t _pad;
+};
+
+/* Type list structure == tuple layout descriptor (CBRD-27365, ADR 0016 D-181-1/2/5).
+ *
+ * Two states. An INPUT type list (locals built by the executor before qfile_open_list) only fills domp/type_cnt
+ * and has finalized == false; the descriptor fields below are not read. A FINALIZED type list (every
+ * QFILE_LIST_ID) was allocated by qfile_type_list_alloc () as ONE block [domp[type_cnt] | col[type_cnt]]
+ * (so the existing free (domp) sites are untouched) and had qfile_type_list_finalize () run after its last
+ * domp mutation (mutator-owns-finalize, D-181-6). Copies inherit the block by memcpy (qfile_type_list_copy).
+ *
+ * PR-1b (format invariant): the descriptor is computed and cross-checked but the legacy per-value
+ * [flag][len] headers are still what the accessors walk. hdr_size is QFILE_TUPLE_LENGTH_SIZE for every list
+ * until PR-2 introduces the forward-only 4-byte header. */
 typedef struct qfile_tuple_value_type_list QFILE_TUPLE_VALUE_TYPE_LIST;
 struct qfile_tuple_value_type_list
 {
-  TP_DOMAIN **domp;		/* array of column domains */
+  TP_DOMAIN **domp;		/* array of column domains; head of the [domp | col] block when finalized */
   int type_cnt;			/* number of data types */
+  QFILE_COL_LAYOUT *col;	/* == (QFILE_COL_LAYOUT *) (domp + type_cnt); convenience pointer, not a separate allocation */
+  int first_non_cached_col;	/* min (first VAR column, first column with off > INT16_MAX); type_cnt if none */
+  int16_t data_off[2];		/* [0] = no-null, [1] = has-null : ALIGN4 (hdr_size + bitmap) */
+  int16_t bitmap_size;		/* (type_cnt + 7) >> 3 */
+  uint8_t hdr_size;		/* 4 | 8 ; 8 <=> backward capable (D-181-8, the only truth) */
+  bool finalized;
+};
+
+/* QFILE_COL_LAYOUT.kind / .var_access */
+enum
+{
+  QFILE_COL_FIXED = 0,
+  QFILE_COL_VAR = 1
+};
+enum
+{
+  QFILE_VAR_DIRECT = 0,
+  QFILE_VAR_SCRATCH = 1
 };
 
 /* tuple value position descriptor */
@@ -465,6 +500,13 @@ struct qfile_list_id
     { \
       (list_id)->type_list.type_cnt = 0; \
       (list_id)->type_list.domp = NULL; \
+      (list_id)->type_list.col = NULL; \
+      (list_id)->type_list.first_non_cached_col = 0; \
+      (list_id)->type_list.data_off[0] = 0; \
+      (list_id)->type_list.data_off[1] = 0; \
+      (list_id)->type_list.bitmap_size = 0; \
+      (list_id)->type_list.hdr_size = 0; \
+      (list_id)->type_list.finalized = false; \
       (list_id)->sort_list = NULL; \
       (list_id)->tuple_cnt = 0; \
       (list_id)->page_cnt = 0; \

@@ -44,6 +44,7 @@
 #include "oid.h"
 #include "porting_inline.hpp"
 #include "query_list.h"
+#include "qfile_tuple_layout.h"
 #include "set_object.h"
 #include "access_spec.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -5285,6 +5286,9 @@ or_pack_listid (char *ptr, void *listid_ptr)
   ptr += OR_INT_SIZE;
   OR_PUT_INT (ptr, listid->type_list.type_cnt);
   ptr += OR_INT_SIZE;
+  /* layout flags (CBRD-27365 D-181-9): the tuple header size cannot be derived from the domains */
+  OR_PUT_INT (ptr, listid->type_list.hdr_size);
+  ptr += OR_INT_SIZE;
 
   for (i = 0; i < listid->type_list.type_cnt; i++)
     {
@@ -5373,6 +5377,8 @@ or_unpack_listid (char *ptr, void *listid_ptr)
   ptr += OR_INT_SIZE;
   listid->type_list.type_cnt = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
+  listid->type_list.hdr_size = (uint8_t) OR_GET_INT (ptr);	/* layout flags (D-181-9) */
+  ptr += OR_INT_SIZE;
 
   return ptr;
 }
@@ -5413,11 +5419,14 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
 
   if (count > 0)
     {
-      listid->type_list.domp = (TP_DOMAIN **) malloc (sizeof (TP_DOMAIN *) * count);
+      int hdr_size = (listid->type_list.hdr_size == 4 || listid->type_list.hdr_size == 8)
+	? listid->type_list.hdr_size : QFILE_TL_HDR_SIZE_LEGACY;
 
-      if (listid->type_list.domp == NULL)
+      /* own [domp | col] block; the descriptor is recomputed here from the unpacked domains (D-181-9) */
+      if (qfile_type_list_alloc (&listid->type_list, count, hdr_size) != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (sizeof (TP_DOMAIN *) * count));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  count * (sizeof (TP_DOMAIN *) + sizeof (QFILE_COL_LAYOUT)));
 	  goto error;
 	}
 
@@ -5425,6 +5434,7 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
 	{
 	  ptr = or_unpack_domain (ptr, &listid->type_list.domp[i], NULL);
 	}
+      qfile_type_list_finalize (&listid->type_list);
     }
 
   *listid_ptr = (void *) listid;
@@ -5471,9 +5481,9 @@ or_listid_length (void *listid_ptr)
   length = DB_ALIGN (length, MAX_ALIGNMENT);	// aligned offset
   length += OR_INT64_SIZE;
 
-  /* 8 fixed item page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
-   * last_offset lasttpl_len type_list_type_cnt */
-  length += OR_INT_SIZE * 8;
+  /* 9 fixed item page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
+   * last_offset lasttpl_len type_list_type_cnt type_list_hdr_size */
+  length += OR_INT_SIZE * 9;
 
   for (i = 0; i < listid->type_list.type_cnt; i++)
     {

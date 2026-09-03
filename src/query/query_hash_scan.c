@@ -38,6 +38,7 @@
 #include "query_opfunc.h"
 #include "string_opfunc.h"
 #include "query_hash_scan.h"
+#include "qfile_tuple_layout.h"
 #include "db_value_printer.hpp"
 #include "dbtype.h"
 #include "chartype.h"
@@ -437,6 +438,10 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
       return false;
     }
 
+  QFILE_TUPLE_RECORD slot = { NULL, 0 };
+  int len;
+  bool is_null;
+
   db_make_null (&dbval);
 
   if (fp == NULL)
@@ -450,13 +455,14 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     {
       fprintf (fp, "data_size = [%d], data = { ", QFILE_GET_TUPLE_LENGTH ((QFILE_TUPLE) data));
 
-      tuple_p = (char *) data + QFILE_TUPLE_LENGTH_SIZE;
+      qfile_slot_fill (&slot, (char *) data, type_list_p);
 
       for (i = 0; i < type_list_p->type_cnt; i++)
 	{
-	  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_BOUND)
+	  tuple_p = (char *) qfile_slot_locate (&slot, i, &len, &is_null);
+	  if (!is_null)
 	    {
-	      or_init (&buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
+	      or_init (&buf, tuple_p, len);
 
 	      pr_type_p = type_list_p->domp[i]->type;
 	      pr_type_p->data_readval (&buf, &dbval, type_list_p->domp[i], -1, false /* Don't copy */ , NULL, 0);
@@ -477,8 +483,6 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
 	    {
 	      fprintf (stdout, " , ");
 	    }
-
-	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
 	}
 
       fprintf (fp, " }");

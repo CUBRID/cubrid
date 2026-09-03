@@ -151,8 +151,13 @@ OR_PUT_FLOAT (char *ptr, float val)
   memcpy (ptr, &ui, sizeof (ui));
 }
 
+/* CBRD-27365 (spec #180 D-180-4): 4-byte-aligned tuple values; read through memcpy, never a typed deref */
 #define OR_GET_FLOAT(ptr, value) \
-  (*(value) = ntohf (*(UINT32 *) (ptr)))
+  do { \
+    UINT32 _or_ui; \
+    memcpy (&_or_ui, (ptr), sizeof (_or_ui)); \
+    *(value) = ntohf (_or_ui); \
+  } while (0)
 
 STATIC_INLINE void
 OR_PUT_DOUBLE (char *ptr, double val)
@@ -162,7 +167,11 @@ OR_PUT_DOUBLE (char *ptr, double val)
 }
 
 #define OR_GET_DOUBLE(ptr, value) \
-  (*(value) = ntohd (*(UINT64 *) (ptr)))
+  do { \
+    UINT64 _or_ui; \
+    memcpy (&_or_ui, (ptr), sizeof (_or_ui)); \
+    *(value) = ntohd (_or_ui); \
+  } while (0)
 
 #if __WORDSIZE == 32
 #define OR_PUT_PTR(ptr, val)    OR_PUT_INT ((ptr), (val))

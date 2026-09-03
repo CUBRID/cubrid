@@ -51,6 +51,7 @@
 #include "network.h"
 #include "log_comm.h"
 #include "network_interface_sr.h"
+#include "qfile_tuple_layout.h"
 #include "page_buffer.h"
 #include "file_manager.h"
 #include "boot_sr.h"
@@ -5555,7 +5556,8 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
   OR_BUF buf;
   TP_DOMAIN **domains;
   const PR_TYPE *pr_type;
-  int i, flag, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
+  int i, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
+  bool is_null;
   char *tuple_p;
   bool found_compressible_string_domain, exceed_a_page;
 
@@ -5619,19 +5621,18 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 	  break;
 	}
 
-      tuple_p = tuple_record.tpl;
-      or_init (&buf, tuple_p, QFILE_GET_TUPLE_LENGTH (tuple_p));
-      tuple_p += QFILE_TUPLE_LENGTH_SIZE;
       for (i = 0; i < list_id->type_list.type_cnt; i++)
 	{
-	  flag = QFILE_GET_TUPLE_VALUE_FLAG (tuple_p);
-	  val_length = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
-	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
-
 	  pr_type = domains[i]->type;
-	  if (flag != V_UNBOUND && TP_IS_CHAR_TYPE (pr_type->id))
+	  if (!TP_IS_CHAR_TYPE (pr_type->id))
 	    {
-	      buf.ptr = tuple_p;
+	      continue;
+	    }
+
+	  tuple_p = (char *) qfile_slot_locate (&tuple_record, i, &val_length, &is_null);
+	  if (!is_null)
+	    {
+	      or_init (&buf, tuple_p, val_length);
 	      or_get_varchar_compression_lengths (&buf, &compressed_size, &decompressed_size);
 	      if (compressed_size != 0)
 		{
@@ -5645,8 +5646,6 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 		    }
 		}
 	    }
-
-	  tuple_p += val_length;
 	}
     }
 

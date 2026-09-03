@@ -2900,10 +2900,10 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
   int *value_indexes;
   bool need_coerce_domains;
 
-  QFILE_TUPLE tuple_record_end;
   QFILE_TUPLE tuple_value;
   OR_BUF buf;
   int value_size, value_index, key_index;
+  bool value_is_null;
 
   TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
   DB_VALUE pre_coerce_value;
@@ -2931,39 +2931,22 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 
   db_make_null (&pre_coerce_value);
 
-  tuple_record_end = tuple_record->tpl + QFILE_GET_TUPLE_LENGTH (tuple_record->tpl);
-
-  /* Skip the tuple header */
-  tuple_value = tuple_record->tpl + QFILE_TUPLE_LENGTH_SIZE;
-
-  for (value_index = 0; tuple_value < tuple_record_end; value_index++)
+  /* The same tuple value can be referenced by multiple keys (e.g. value_indexes = {0, 1, 1, 3}); value_indexes is
+   * non-decreasing, so the slot cache makes the successive locates O(1) (D-182-15). */
+  for (key_index = 0; key_index < key->val_count; key_index++)
     {
-      for (key_index = 0; key_index < key->val_count; key_index++)
-	{
-	  /*
-	   * The same tuple value can be referenced by multiple keys.
-	   *
-	   * e.g. value_indexes[0] = 0
-	   *      value_indexes[1] = 1
-	   *      value_indexes[2] = 1
-	   *      value_indexes[3] = 3
-	   */
-	  if (value_indexes[key_index] != value_index)
-	    {
-	      continue;
-	    }
+      {
+	  value_index = value_indexes[key_index];
+	  tuple_value = (QFILE_TUPLE) qfile_slot_locate (tuple_record, value_index, &value_size, &value_is_null);
 
 	  /* Skip the tuple if any value is NULL */
-	  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_value) == V_UNBOUND)
+	  if (value_is_null)
 	    {
 	      goto skip_next;
 	    }
 
-	  value_size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);
 	  assert (value_size > 0);
-
-	  /* Skip the tuple value header */
-	  or_init (&buf, tuple_value + QFILE_TUPLE_VALUE_HEADER_SIZE, value_size);
+	  or_init (&buf, tuple_value, value_size);
 
 	  pr_clear_value (key->values[key_index]);
 
@@ -3023,10 +3006,7 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 		  goto skip_next;
 		}
 	    }
-	}
-
-      /* Skip the current tuple value */
-      tuple_value += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);
+      }
     }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -3049,6 +3029,25 @@ error_exit:
 }
 
 /*
+ * hjoin_locate_tuple_hash_key() - body of the leading hash-key column (INT, always bound) through the slot (D-182-15)
+ *   return: pointer to the 4-byte hash key inside the tuple
+ *   tuple_record(in): tuple containing the hash key as its first column
+ */
+static QFILE_TUPLE
+hjoin_locate_tuple_hash_key (QFILE_TUPLE_RECORD * tuple_record)
+{
+  int len;
+  bool is_null;
+  QFILE_TUPLE body;
+
+  body = (QFILE_TUPLE) qfile_slot_locate (tuple_record, 0, &len, &is_null);
+  assert (!is_null);
+  assert (len == QFILE_LEGACY_VALUE_ENCODED_SIZE (tp_Integer.disksize));
+
+  return body;
+}
+
+/*
  * hjoin_update_tuple_hash_key() -
  *   return: None
  *   thread_p(in): Thread entry.
@@ -3063,11 +3062,7 @@ hjoin_update_tuple_hash_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple
   assert (thread_p != NULL);
   assert (tuple_record != NULL);
 
-  tuple_value = tuple_record->tpl + QFILE_TUPLE_LENGTH_SIZE;
-  assert (QFILE_GET_TUPLE_VALUE_FLAG (tuple_value) == V_BOUND);
-  assert (QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value) == MAX_ALIGNMENT);
-
-  tuple_value += QFILE_TUPLE_VALUE_HEADER_SIZE;
+  tuple_value = hjoin_locate_tuple_hash_key (tuple_record);
   assert (OR_GET_INT (tuple_value) == -1);
 
   OR_PUT_INT (tuple_value, hash_key);
@@ -3169,11 +3164,7 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 	      qfile_scan_list_next (thread_p, &build->list_scan_id, &build->tuple_record, PEEK)) == S_SUCCESS)
 	{
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_FETCH);
-	  tuple_value = build->tuple_record.tpl + QFILE_TUPLE_LENGTH_SIZE;
-	  assert (QFILE_GET_TUPLE_VALUE_FLAG (tuple_value) == V_BOUND);
-	  assert (QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value) == MAX_ALIGNMENT);
-
-	  tuple_value += QFILE_TUPLE_VALUE_HEADER_LENGTH;
+	  tuple_value = hjoin_locate_tuple_hash_key (&build->tuple_record);
 	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_FETCH);
 
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_HASH);
@@ -3507,11 +3498,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       else
 	{
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
-	  tuple_value = probe->tuple_record.tpl + QFILE_TUPLE_LENGTH_SIZE;
-	  assert (QFILE_GET_TUPLE_VALUE_FLAG (tuple_value) == V_BOUND);
-	  assert (QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value) == MAX_ALIGNMENT);
-
-	  tuple_value += QFILE_TUPLE_VALUE_HEADER_LENGTH;
+	  tuple_value = hjoin_locate_tuple_hash_key (&probe->tuple_record);
 	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
@@ -3819,11 +3806,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       else
 	{
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
-	  tuple_value = probe->tuple_record.tpl + QFILE_TUPLE_LENGTH_SIZE;
-	  assert (QFILE_GET_TUPLE_VALUE_FLAG (tuple_value) == V_BOUND);
-	  assert (QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value) == MAX_ALIGNMENT);
-
-	  tuple_value += QFILE_TUPLE_VALUE_HEADER_LENGTH;
+	  tuple_value = hjoin_locate_tuple_hash_key (&probe->tuple_record);
 	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
@@ -4099,7 +4082,8 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 
       if (entry != NULL)
 	{
-	  qfile_slot_set_tuple (tuple_record, (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry));
+	  /* in-memory hash entry payload: a raw tuple of the build list, bind it to that list's descriptor */
+	  qfile_slot_fill (tuple_record, (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry), &list_scan_id->list_id.type_list);
 	  tuple_record->size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_record->tpl);
 	}
       else
@@ -4316,11 +4300,11 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
 		   QFILE_TUPLE_RECORD * overflow_record)
 {
   QFILE_TUPLE_RECORD *tuple_record;
-  QFILE_TUPLE outer_record_end, inner_record_end, tuple_record_end;
-  QFILE_TUPLE tuple_value;
-  INT32 unbound_value[2] = { 0, 0 };	/* QFILE_TUPLE_VALUE_HEADER */
+  const char *value_body;
+  int value_len;
+  bool value_is_null;
   int available_size, realloc_size, offset, value_size;
-  int pos_index, value_index, skip_index;
+  int pos_index, value_index;
 
   int error = NO_ERROR;
 
@@ -4329,12 +4313,6 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
   assert (merge_info != NULL);
   assert (overflow_record != NULL);
 
-  QFILE_PUT_TUPLE_VALUE_FLAG ((char *) unbound_value, V_UNBOUND);
-  QFILE_PUT_TUPLE_VALUE_LENGTH ((char *) unbound_value, 0);
-
-  outer_record_end = outer_record->tpl + QFILE_GET_TUPLE_LENGTH (outer_record->tpl);
-  inner_record_end = inner_record->tpl + QFILE_GET_TUPLE_LENGTH (inner_record->tpl);
-
   offset = QFILE_TUPLE_LENGTH_SIZE;
 
   for (pos_index = 0; pos_index < merge_info->ls_pos_cnt; pos_index++)
@@ -4342,12 +4320,10 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
       if (merge_info->ls_outer_inner_list[pos_index] == QFILE_OUTER_LIST)
 	{
 	  tuple_record = outer_record;
-	  tuple_record_end = outer_record_end;
 	}
       else if (merge_info->ls_outer_inner_list[pos_index] == QFILE_INNER_LIST)
 	{
 	  tuple_record = inner_record;
-	  tuple_record_end = inner_record_end;
 	}
       else
 	{
@@ -4359,28 +4335,16 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
       if (tuple_record != NULL)
 	{
 	  value_index = merge_info->ls_pos_list[pos_index];
-
-	  tuple_value = tuple_record->tpl + QFILE_TUPLE_LENGTH_SIZE;
-	  for (skip_index = 0; skip_index < value_index; skip_index++)
-	    {
-	      tuple_value += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);
-	    }
-
-	  if (tuple_value >= tuple_record_end)
-	    {
-	      /* impossible case */
-	      assert (false);
-	      error = ER_TF_BUFFER_OVERFLOW;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      return error;
-	    }
+	  value_body = qfile_slot_locate (tuple_record, value_index, &value_len, &value_is_null);
 	}
       else
 	{
-	  tuple_value = (char *) unbound_value;
+	  value_body = NULL;
+	  value_len = 0;
+	  value_is_null = true;
 	}
 
-      value_size = QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);
+      value_size = QFILE_TUPLE_VALUE_HEADER_SIZE + value_len;
       available_size = overflow_record->size - offset;
 
       if (value_size > available_size)
@@ -4396,7 +4360,8 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
 	    }
 	}
 
-      memcpy (overflow_record->tpl + offset, tuple_value, value_size);
+      /* PR-1b assembler bridge: re-emit the legacy [flag][len][body] value (PR-2: tuple assembler, D-182-11) */
+      qfile_legacy_put_value (overflow_record->tpl + offset, value_body, value_len, value_is_null);
       offset += value_size;
     }				/* for (pos_index < merge_info->ls_pos_cnt) */
 

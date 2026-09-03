@@ -21,6 +21,7 @@
 //
 
 #include "query_aggregate.hpp"
+#include "qfile_tuple_layout.h"
 
 #include "arithmetic.h"
 #include "btree.h"                          // btree_find_min_or_max_key, btree_get_unique_statistics_for_count
@@ -1483,14 +1484,17 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			      break;
 			    }
 
-			  tuple_p = ((char *) tuple_record.tpl + QFILE_TUPLE_LENGTH_SIZE);
-			  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_UNBOUND)
-			    {
-			      continue;
-			    }
+			  {
+			    int len;
+			    bool is_null;
 
-			  or_init (&buf, (char *) tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE,
-				   QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
+			    tuple_p = (char *) qfile_slot_locate (&tuple_record, 0, &len, &is_null);
+			    if (is_null)
+			      {
+				continue;
+			      }
+			    or_init (&buf, tuple_p, len);
+			  }
 
 			  (void) pr_clear_value (&dbval);
 			  error = pr_type_p->data_readval (&buf, &dbval, list_id_p->type_list.domp[0], -1, true, NULL,
@@ -2590,26 +2594,27 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
 {
   QFILE_TUPLE_VALUE_FLAG flag;
   DB_VALUE int_val;
-  OR_BUF iterator, buf;
+  OR_BUF buf;
+  QFILE_TUPLE_WALK walk;
+  const char *body;
+  int len;
+  bool is_null;
   int i, rc;
 
-  /* initialize buffer */
+  /* domain-driven sequential walk (D-182-16): the caller owns the column domains */
   db_make_int (&int_val, 0);
-  or_init (&iterator, tuple, QFILE_GET_TUPLE_LENGTH (tuple));
-  rc = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
-  if (rc != NO_ERROR)
-    {
-      return rc;
-    }
+  qfile_tuple_walk_init (&walk, tuple);
 
   /* read key */
   for (i = 0; i < key->val_count; i++)
     {
-      rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+      rc = qfile_tuple_walk_next (&walk, key_dom[i], &body, &len, &is_null);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
+      flag = is_null ? V_UNBOUND : V_BOUND;
+      or_init (&buf, (char *) body, len);
 
       (void) pr_clear_value (key->values[i]);
       if (flag == V_BOUND)
@@ -2626,11 +2631,13 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
   for (i = 0; i < value->func_count; i++)
     {
       /* read value */
-      rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+      rc = qfile_tuple_walk_next (&walk, acc_dom[i]->value_dom, &body, &len, &is_null);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
+      flag = is_null ? V_UNBOUND : V_BOUND;
+      or_init (&buf, (char *) body, len);
 
       (void) pr_clear_value (value->accumulators[i].value);
       if (flag == V_BOUND)
@@ -2644,11 +2651,13 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
 	}
 
       /* read value2 */
-      rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+      rc = qfile_tuple_walk_next (&walk, acc_dom[i]->value2_dom, &body, &len, &is_null);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
+      flag = is_null ? V_UNBOUND : V_BOUND;
+      or_init (&buf, (char *) body, len);
 
       (void) pr_clear_value (value->accumulators[i].value2);
       if (flag == V_BOUND)
@@ -2662,11 +2671,13 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
 	}
 
       /* read tuple count */
-      rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+      rc = qfile_tuple_walk_next (&walk, &tp_Integer_domain, &body, &len, &is_null);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
+      flag = is_null ? V_UNBOUND : V_BOUND;
+      or_init (&buf, (char *) body, len);
 
       if (flag == V_BOUND)
 	{
@@ -2681,11 +2692,13 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
     }
 
   /* read tuple count */
-  rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+  rc = qfile_tuple_walk_next (&walk, &tp_Integer_domain, &body, &len, &is_null);
   if (rc != NO_ERROR)
     {
       return rc;
     }
+  flag = is_null ? V_UNBOUND : V_BOUND;
+  or_init (&buf, (char *) body, len);
 
   if (flag == V_BOUND)
     {
@@ -2859,6 +2872,7 @@ qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_no
   if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != TP_DOMAIN_TYPE (agg_p->domain))
     {
       agg_p->list_id->type_list.domp[0] = agg_p->domain;
+      qfile_type_list_finalize (&agg_p->list_id->type_list);	/* mutator-owns-finalize (D-181-6) */
       agg_p->sort_list->pos_descr.dom = agg_p->domain;
     }
 

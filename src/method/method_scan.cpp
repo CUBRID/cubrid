@@ -17,6 +17,7 @@
  */
 
 #include "method_scan.hpp"
+#include "qfile_tuple_layout.h"
 
 #include "dbtype.h" /* db_value_* */
 #include "list_file.h" /* qfile_ */
@@ -267,28 +268,20 @@ namespace cubscan
       SCAN_CODE scan_code = qfile_scan_list_next (m_thread_p, &m_scan_id, &tuple_record, PEEK);
       if (scan_code == S_SUCCESS)
 	{
-	  char *ptr;
-	  int length;
-	  OR_BUF buf;
+	  bool is_null;
 	  for (int i = 0; i < m_list_id->type_list.type_cnt; i++)
 	    {
-	      QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
-	      or_init (&buf, ptr, length);
-
 	      DB_VALUE *value = &m_arg_vector [i];
 	      TP_DOMAIN *domain = m_arg_dom_vector [i];
 	      const PR_TYPE *pr_type = domain->type;
 
 	      db_make_null (value);
-	      if (flag == V_BOUND)
+	      if (qfile_slot_read_value (&tuple_record, i, domain, value, true, &is_null) != NO_ERROR)
 		{
-		  if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
-		    {
-		      scan_code = S_ERROR;
-		      break;
-		    }
+		  scan_code = S_ERROR;
+		  break;
 		}
-	      else
+	      if (is_null)
 		{
 		  /* If value is NULL, properly initialize the result */
 		  db_value_domain_init (value, pr_type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);

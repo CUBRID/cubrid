@@ -185,7 +185,7 @@ namespace parallel_scan
 
 	if (m_tplrecp)
 	  {
-	    qfile_slot_set_tuple (m_tplrecp, tpl);
+	    qfile_slot_fill (m_tplrecp, tpl, &m_list_id->type_list);	/* output record: carry the binding too */
 	  }
 
 	return S_SUCCESS;

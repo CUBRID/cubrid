@@ -34,6 +34,7 @@
 #endif
 
 #include "fetch.h"
+#include "qfile_tuple_layout.h"
 
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -62,7 +63,6 @@
 
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 			     QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** peek_dbval);
-static int fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * tplrec);
 static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 							  val_descr * vd, OID * obj_oid, QFILE_TUPLE_RECORD * tplrec,
 							  DB_VALUE ** min, DB_VALUE ** max);
@@ -3990,6 +3990,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
   OR_BUF buf;
   QFILE_TUPLE_VALUE_FLAG flag;
   char *ptr;
+  bool is_null;
   REGU_VARIABLE *head_regu = NULL, *regu = NULL;
   int error = NO_ERROR;
   REGU_VALUE_LIST *reguval_list = NULL;
@@ -4083,23 +4084,16 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
       *peek_dbval = regu_var->vfetch_to;
 
-      flag =
-	(QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tplrec->tpl, regu_var->value.pos_descr.pos_no, &ptr, &length);
-      if (flag == V_BOUND)
+      /* slot value accessor: layout from the bound descriptor, decoding domain from the regu (D-182-7, D-196-3);
+       * a NULL column leaves the cleared vfetch_to as is (same as before) */
+      if (regu_var->value.pos_descr.dom->type == NULL)
 	{
-	  pr_type = regu_var->value.pos_descr.dom->type;
-	  if (pr_type == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  or_init (&buf, ptr, length);
-
-	  if (pr_type->data_readval (&buf, *peek_dbval, regu_var->value.pos_descr.dom, -1, false /* Don't copy */ ,
-				     NULL, 0) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
+	  goto exit_on_error;
+	}
+      if (qfile_slot_read_value (tplrec, regu_var->value.pos_descr.pos_no, regu_var->value.pos_descr.dom, *peek_dbval,
+				 false /* Don't copy */ , &is_null) != NO_ERROR)
+	{
+	  goto exit_on_error;
 	}
       break;
 
@@ -4644,66 +4638,6 @@ exit_on_error:
 }
 
 /*
- * fetch_peek_dbval_pos () -
- *   return: NO_ERROR or ER_code
- *   regu_var(in/out): Regulator Variable
- *   tplrec(in): tuple slot (record + layout descriptor)
- *   pos(in):
- *   peek_dbval(out): Set to the value ref resulting from the fetch operation
- *   next_tpl(out): Set to the next tuple ref
- */
-static int
-fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * tplrec)
-{
-  const PR_TYPE *pr_type;
-  QFILE_TUPLE_VALUE_POSITION *pos_descr;
-  REGU_VARIABLE *regu_var;
-  regu_variable_list_node *regup;
-  OR_BUF iterator, buf;
-  QFILE_TUPLE_VALUE_FLAG flag;
-
-  int rc;
-  int prev_pos = -1;
-  int i = 0;
-
-
-
-  or_init (&iterator, tplrec->tpl, QFILE_GET_TUPLE_LENGTH (tplrec->tpl));
-  or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
-
-  regup = regu_list;
-  while (regup != NULL)
-    {
-      rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
-      if (rc != NO_ERROR)
-	{
-	  return rc;
-	}
-      regu_var = &regup->value;
-      pos_descr = &regu_var->value.pos_descr;
-      assert_release (regu_var->type == TYPE_POSITION);
-      assert_release (pos_descr->pos_no >= prev_pos);
-      prev_pos = pos_descr->pos_no;
-      if (pos_descr->pos_no == i)
-	{
-	  pr_clear_value (regu_var->vfetch_to);
-	  pr_type = pos_descr->dom->type;
-	  if (flag == V_BOUND)
-	    {
-	      if (pr_type->data_readval (&buf, regu_var->vfetch_to, regu_var->domain, -1, false /* Don't copy */ ,
-					 NULL, 0) != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
-	    }
-	  regup = regup->next;
-	}
-      i++;
-    }
-  return NO_ERROR;
-}
-
-/*
  * fetch_peek_min_max_value_of_width_bucket_func () -
  *   return: NO_ERROR or ER_code
  *   regu_var(in): Regulator Variable of an ARITH node.
@@ -4897,11 +4831,8 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 
   if (peek)
     {
-      if (regu_list && regu_list->value.type == TYPE_POSITION)
-	{
-	  rc = fetch_peek_dbval_pos (regu_list, tplrec);
-	  return rc;
-	}
+      /* D-182-8: the TYPE_POSITION-only fast path (fetch_peek_dbval_pos) is gone; the slot cache gives the generic
+       * loop the same sequential cost */
       for (regup = regu_list; regup != NULL; regup = regup->next)
 	{
 	  if (regup->value.vfetch_to && unlikely (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to))))

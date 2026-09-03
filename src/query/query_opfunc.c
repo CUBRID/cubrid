@@ -577,25 +577,26 @@ qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * 
 {
   QPROC_DB_VALUE_LIST val_list_iterator;
   int val_list_index;
-  OR_BUF iterator, buf;
+  OR_BUF buf;
   int err_code;
-  QFILE_TUPLE_VALUE_FLAG flag;
+  const char *body;
+  int len;
+  bool is_null;
 
-  or_init (&iterator, tplrec->tpl, QFILE_GET_TUPLE_LENGTH (tplrec->tpl));
-  or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
-
+  /* sequential column reads through the slot cache are O(n) overall (D-182-7 bulk accessor) */
   for (val_list_iterator = val_list->valp, val_list_index = 0; val_list_iterator
        && val_list_index < val_list->val_cnt; val_list_iterator = val_list_iterator->next, val_list_index++)
     {
-      qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+      body = qfile_slot_locate (tplrec, val_list_index, &len, &is_null);
 
       pr_clear_value (val_list_iterator->val);
 
-      if (flag == V_UNBOUND)
+      if (is_null)
 	{
 	  db_make_null (val_list_iterator->val);
 	  continue;
 	}
+      or_init (&buf, (char *) body, len);
 
       err_code = type_list->domp[val_list_index]->type->data_readval (&buf, val_list_iterator->val,
 								      type_list->domp[val_list_index],
@@ -6407,12 +6408,9 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
 {
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_LIST_SCAN_ID scan_id;
-  OR_BUF buf;
   const PR_TYPE *pr_type_p;
-  QFILE_TUPLE_VALUE_FLAG flag;
-  int length;
+  bool is_null;
   TP_DOMAIN *domain_p;
-  char *ptr;
   INT64 tuple_count;
   int value_count, i;
   QPROC_DB_VALUE_LIST value_list;
@@ -6468,17 +6466,12 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
 	      return ER_FAILED;
 	    }
 
-	  flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
-	  or_init (&buf, ptr, length);
-	  if (flag == V_BOUND)
+	  if (qfile_slot_read_value (&tuple_record, i, domain_p, value_list->val, true, &is_null) != NO_ERROR)
 	    {
-	      if (pr_type_p->data_readval (&buf, value_list->val, domain_p, -1, true, NULL, 0) != NO_ERROR)
-		{
-		  qfile_close_scan (thread_p, &scan_id);
-		  return ER_FAILED;
-		}
+	      qfile_close_scan (thread_p, &scan_id);
+	      return ER_FAILED;
 	    }
-	  else
+	  if (is_null)
 	    {
 	      /* If value is NULL, properly initialize the result */
 	      db_value_domain_init (value_list->val, pr_type_p->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
@@ -7077,7 +7070,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
   int error;
   REGU_VARIABLE_LIST operand;
   TP_DOMAIN *domain_p;
-  char *ptr;
+  bool is_null;
 
   result_p = function_p->value.funcp->value;
   operand = function_p->value.funcp->operand;
@@ -7149,15 +7142,10 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
 	      return ER_FAILED;
 	    }
 
-	  if (qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &val_size) == V_BOUND)
+	  if (qfile_slot_read_value (&tuple_record, i, list_id_p->type_list.domp[i], &dbval, true, &is_null) != NO_ERROR)
 	    {
-	      or_init (&buf, ptr, val_size);
-
-	      if (pr_type_p->data_readval (&buf, &dbval, list_id_p->type_list.domp[i], -1, true, NULL, 0) != NO_ERROR)
-		{
-		  qfile_close_scan (thread_p, &scan_id);
-		  return ER_FAILED;
-		}
+	      qfile_close_scan (thread_p, &scan_id);
+	      return ER_FAILED;
 	    }
 
 	  /*
@@ -7250,12 +7238,12 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
     }
 
   /* we start with tpl itself */
-  qfile_slot_set_tuple (&tuple_rec, tpl);
+  qfile_slot_fill (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
 
   do
     {
       /* get the parent node */
-      if (qexec_get_tuple_column_value (tuple_rec.tpl, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
+      if (qexec_get_tuple_column_value (&tuple_rec, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
 					&p_pos_dbval, &tp_Bit_domain) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
@@ -7294,7 +7282,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
 
   if (i < xptr->val_list->val_cnt)
     {
-      if (qexec_get_tuple_column_value (tuple_rec.tpl, i, result_val_p, regu_p->domain) != NO_ERROR)
+      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, regu_p->domain) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
@@ -7373,10 +7361,10 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
       return false;
     }
 
-  qfile_slot_set_tuple (&tuple_rec, tpl);
+  qfile_slot_fill (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
 
   /* get the parent node */
-  if (qexec_get_tuple_column_value (tuple_rec.tpl, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
+  if (qexec_get_tuple_column_value (&tuple_rec, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
 				    &p_pos_dbval, &tp_Bit_domain) != NO_ERROR)
     {
       qfile_close_scan (thread_p, &s_id);
@@ -7594,7 +7582,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
     }
 
   /* we start with tpl itself */
-  qfile_slot_set_tuple (&tuple_rec, tpl);
+  qfile_slot_fill (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
 
   len_result_path = SYS_CONNECT_BY_PATH_MEM_STEP;
   result_path = (char *) db_private_alloc (thread_p, sizeof (char) * len_result_path);
@@ -7613,7 +7601,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	  /* get the required column */
 	  if (i < xptr->val_list->val_cnt)
 	    {
-	      if (qexec_get_tuple_column_value (tuple_rec.tpl, i, arg_dbval_p, regu_p->domain) != NO_ERROR)
+	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, regu_p->domain) != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -7711,7 +7699,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
       strcpy (result_path, path_tmp);
 
       /* get the parent node */
-      if (qexec_get_tuple_column_value (tuple_rec.tpl, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
+      if (qexec_get_tuple_column_value (&tuple_rec, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
 					&p_pos_dbval, &tp_Bit_domain) != NO_ERROR)
 	{
 	  goto error;

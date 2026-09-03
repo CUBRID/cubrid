@@ -141,6 +141,8 @@ typedef struct pr_type
     // is fixed/variable
     inline bool is_always_variable () const;
     inline bool is_size_computed () const;
+    inline bool has_index_readval () const;	/* CBRD-27365: VAR/DIRECT vs VAR/SCRATCH layout (D-180-5) */
+    inline bool has_computed_disk_size () const;	/* CBRD-27365: VAR column criterion (D-196-11) */
 
     // size functions
     inline int get_mem_size_of_mem (const void *mem, const tp_domain * domain = NULL) const;
@@ -447,6 +449,21 @@ pr_type::is_size_computed () const
 {
   assert ((f_data_lengthmem == NULL) == (f_data_lengthval == NULL));
   return f_data_lengthmem != NULL && f_data_lengthval != NULL;
+}
+
+bool
+pr_type::has_index_readval () const
+{
+  return f_index_readval != NULL;
+}
+
+/* True when the disk size of a value is not the constant disksize: either length function is present. Unlike
+ * is_size_computed () this does not require the pair to be consistent — DB_TYPE_OBJECT only has the value-side
+ * function (a virtual object serializes as a set), and its list file column must therefore be laid out as VAR. */
+bool
+pr_type::has_computed_disk_size () const
+{
+  return f_data_lengthmem != NULL || f_data_lengthval != NULL;
 }
 
 int

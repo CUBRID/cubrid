@@ -21,6 +21,7 @@
 //
 
 #include "query_analytic.hpp"
+#include "qfile_tuple_layout.h"
 
 #include "dbtype.h"
 #include "fetch.h"
@@ -208,6 +209,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	{
 	  /* values are written after coercion to func_p->domain. */
 	  func_p->list_id->type_list.domp[0] = func_p->domain;
+	  qfile_type_list_finalize (&func_p->list_id->type_list);	/* mutator-owns-finalize (D-181-6) */
 	}
     }
 
@@ -891,14 +893,17 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		      break;
 		    }
 
-		  tuple_p = ((char *) tuple_record.tpl + QFILE_TUPLE_LENGTH_SIZE);
-		  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_UNBOUND)
-		    {
-		      continue;
-		    }
+		  {
+		    int len;
+		    bool is_null;
 
-		  or_init (&buf, (char *) tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE,
-			   QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
+		    tuple_p = (char *) qfile_slot_locate (&tuple_record, 0, &len, &is_null);
+		    if (is_null)
+		      {
+			continue;
+		      }
+		    or_init (&buf, tuple_p, len);
+		  }
 		  if (pr_type_p->data_readval (&buf, &dbval, list_id_p->type_list.domp[0], -1, true, NULL, 0) !=
 		      NO_ERROR)
 		    {
