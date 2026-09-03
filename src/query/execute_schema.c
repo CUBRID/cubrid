@@ -4666,6 +4666,85 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
   return NO_ERROR;
 }
 
+/*
+ * do_update_class_statistics () - refresh one class's statistics the way UPDATE STATISTICS ON <class>
+ *   does: build the histograms of every histogrammable column in a single heap scan, refresh the class
+ *   statistics from that same scan and store both under one system savepoint. Falls back to the plain
+ *   statistics update when histograms are not wanted or the class has nothing to histogram.
+ *   return: NO_ERROR on success, error code otherwise
+ *   classop(in): class object
+ *   with_fullscan(in): true iff WITH FULLSCAN
+ *   bucket_count(in): WITH n BUCKETS; <= 0 selects the default_histogram_bucket_count parameter
+ *   random_seed(in): 1 iff WITH RANDOM SEED
+ *   no_histogram(in): true to refresh the class statistics only (WITH NO HISTOGRAM, loaddb --no-histogram)
+ *   out_histogram_skipped(out): columns skipped because their type has no histogram (may be NULL)
+ *
+ * NOTE: shared by the statement (do_update_stats) and by loaddb's post-load statistics update in both
+ *       SA and CS mode, so a freshly loaded class gets the same statistics the statement would produce.
+ */
+int
+do_update_class_statistics (DB_OBJECT * classop, bool with_fullscan, int bucket_count, int random_seed,
+			    bool no_histogram, int *out_histogram_skipped)
+{
+  int error = NO_ERROR;
+  SM_CLASS *class_ = NULL;
+
+  if (out_histogram_skipped != NULL)
+    {
+      *out_histogram_skipped = 0;
+    }
+
+  /* only a heap class has statistics. A view (or any other non-CT class) reaches here from loaddb, whose
+   * class registry lists every %class header of the object file, and must be skipped the way UPDATE
+   * STATISTICS skips it: the histogram sampler would scan its NULL heap and fail with "fetching
+   * deallocated pageid -1". The force fetch matches sm_update_statistics (); it fails cleanly on a
+   * dropped class. */
+  error = au_fetch_class_force (classop, &class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (class_->class_type != SM_CLASS_CT)
+    {
+      return NO_ERROR;
+    }
+
+  if (!no_histogram)
+    {
+      PT_HISTOGRAM_INFO histogram_info;
+      int hist_skipped = 0;
+      int save;
+
+      /* the all-columns histogram build refreshes the class statistics itself, reusing the NDV and
+       * row count of its single heap scan; running sm_update_statistics () beforehand would scan the
+       * class once more only to have its result overwritten right away. Run the combined path first
+       * and fall back to the plain statistics update only when it could not. */
+      histogram_info.target_table_spec = NULL;
+      histogram_info.target_columns = NULL;
+      histogram_info.bucket_count = (bucket_count > 0) ? bucket_count : -1;
+      histogram_info.with_fullscan = with_fullscan;
+      histogram_info.random_seed = random_seed;
+
+      /* _db_histogram is a system catalog class: it is written with authorization disabled */
+      AU_SAVE_AND_DISABLE (save);
+      error = update_or_drop_histogram_helper (NULL, classop, true /* quiet */ , &histogram_info,
+					       DO_HISTOGRAM_CREATE, &hist_skipped);
+      AU_RESTORE (save);
+
+      if (out_histogram_skipped != NULL)
+	{
+	  *out_histogram_skipped = hist_skipped;
+	}
+      if (error != ER_OBJ_INVALID_ARGUMENTS)
+	{
+	  return error;
+	}
+      /* nothing histogrammable on this class; fall through to the plain statistics update */
+    }
+
+  return sm_update_statistics (classop, with_fullscan);
+}
+
 
 
 

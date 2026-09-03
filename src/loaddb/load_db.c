@@ -1327,6 +1327,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->estimated_size = utility_get_option_int_value (arg_map, LOAD_ESTIMATED_SIZE_S);
   args->verbose = utility_get_option_bool_value (arg_map, LOAD_VERBOSE_S);
   args->disable_statistics = utility_get_option_bool_value (arg_map, LOAD_NO_STATISTICS_S);
+  args->disable_histogram = utility_get_option_bool_value (arg_map, LOAD_NO_HISTOGRAM_S);
   args->periodic_commit = utility_get_option_int_value (arg_map, LOAD_PERIODIC_COMMIT_S);
   args->verbose_commit = args->periodic_commit > 0;
   args->cs_mode = utility_get_option_bool_value (arg_map, LOAD_CS_MODE_S);
@@ -1468,11 +1469,22 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
 	  print_log_msg (1,
 			 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UPDATING_STATISTICS));
 	}
-      error_code = loaddb_update_stats (args->verbose);
+      error_code = loaddb_update_stats (args->verbose, args->disable_histogram);
+      if (error_code == NO_ERROR)
+	{
+	  // The class statistics and the histogram catalog rows were written in this client's transaction;
+	  // commit them here -- db_shutdown () commits only when commit_on_shutdown is set.
+	  error_code = db_commit_transaction ();
+	}
       if (error_code != NO_ERROR)
 	{
+	  // Statistics are a post-load convenience: the objects (and any index/trigger files) are already
+	  // committed, so a statistics failure -- including a transient lock conflict on a catalog class --
+	  // must not report the whole load as failed.  Log it and roll back only the statistics transaction,
+	  // the way SA mode (ldr_update_statistics) already treats it, instead of setting a non-zero exit.
 	  print_er_msg ();
-	  *exit_status = 3;
+	  (void) db_abort_transaction ();
+	  error_code = NO_ERROR;
 	}
       else			// NO_ERROR
 	{

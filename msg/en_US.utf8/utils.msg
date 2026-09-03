@@ -515,7 +515,8 @@ valid options:\n\
   -v, --verbose                  enable verbose status messages; default: disabled\n\
   -c, --periodic-commit=COUNT    insertion COUNT for periodic commit; default: 10240\n\
       --no-oid                   don't use OID\n\
-      --no-statistics            do not update the statistics while loading\n\
+      --no-statistics            do not update the statistics (nor the histograms) after loading\n\
+      --no-histogram             update the class statistics but do not build histograms after loading\n\
   -s, --schema-file=FILE[:LINE]  create schema from LINE with FILE\n\
   -i, --index-file=FILE[:LINE]   create index from LINE with FILE\n\
       --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\

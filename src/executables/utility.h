@@ -1387,6 +1387,8 @@ typedef struct _ha_config
 #define LOAD_SCHEMA_FILE_LIST_L                 "schema-file-list"
 #define LOAD_NO_LOGGING_INDEX_S                 11827
 #define LOAD_NO_LOGGING_INDEX_L                 "no-logging-index"
+#define LOAD_NO_HISTOGRAM_S                     11828
+#define LOAD_NO_HISTOGRAM_L                     "no-histogram"
 
 /* unloaddb option list */
 #define UNLOAD_INPUT_CLASS_FILE_S               'i'
