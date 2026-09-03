@@ -4463,7 +4463,10 @@ catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsi
   bool is_scan_inited = false;
   int old_chn;
   OR_VALUE *value_p = NULL;
-  RECDES record = RECDES_INITIALIZER;
+  /* Read into old_record and write from record, as catcls_update_instance () does: old_record.data belongs to the
+   * scan cache, record.data is this function's malloc. Reusing one RECDES for both let the error label free a
+   * scan-cache-owned buffer when the read succeeded but the parse below did not. */
+  RECDES record = RECDES_INITIALIZER, old_record = RECDES_INITIALIZER;
   HEAP_OPERATION_CONTEXT update_context;
 
   error = catcls_find_oid_by_class_name (thread_p, class_name, &oid);
@@ -4487,14 +4490,14 @@ catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsi
 
   is_scan_inited = true;
 
-  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &old_record, &scan, COPY, NULL_CHN) != S_SUCCESS)
     {
       ASSERT_ERROR_AND_SET (error);
       goto error;
     }
 
-  old_chn = or_chn (&record);
-  value_p = catcls_get_or_value_from_record (thread_p, &record, catalog_class_oid_p);
+  old_chn = or_chn (&old_record);
+  value_p = catcls_get_or_value_from_record (thread_p, &old_record, catalog_class_oid_p);
   if (value_p == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
