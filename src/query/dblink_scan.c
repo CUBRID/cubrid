@@ -749,6 +749,15 @@ dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VA
       goto error_exit;
     }
 
+  if (!auto_commit && result > 0)
+    {
+      /* the rows this statement changed stay uncommitted on the pooled connection until the local
+       * transaction ends, so a later sink failure that rolls this connection back would lose them.
+       * A statement that changed nothing leaves nothing to lose, so it must not raise the mark -
+       * doing so would refuse the transaction's commit over a rollback that discarded no work. */
+      qmgr_dblink_set_conn_dml (thread_p, conn_handle, true);
+    }
+
   if (auto_commit)
     {
       ret = cci_disconnect (conn_handle, &err_buf);
