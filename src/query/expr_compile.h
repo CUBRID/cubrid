@@ -100,9 +100,17 @@ struct expr_step
    * only for the branch the predicate selects, so a never-taken branch cannot raise an
    * error the interpreted path would not raise (e.g. "WHEN b <> 0 THEN a / b"). */
   void *pred;			/* EXPR_PRED *, owned by the program */
-  int t_start, t_n;		/* THEN branch step range */
+  int t_start, t_n;		/* THEN branch step range; a lazy right-hand region for the lazy kernels */
   int f_start, f_n;		/* ELSE branch step range */
-  bool deferred;		/* this step belongs to a branch region */
+  bool deferred;		/* this step belongs to a deferred region (branch or lazy right-hand side) */
+  int region_depth;		/* nesting level of the region this step belongs to (0 = main loop) */
+
+  /* lazy right-hand side (mirror of fetch_peek_arith ()'s operand fetch order): when the
+   * right operand's steps can fail, they are compiled into a deferred region that the
+   * lazy kernel runs only after the left operand decided they are needed -- NULL left for
+   * arithmetic and NULLIF skips them, non-NULL left for NVL skips them.  inner is the
+   * kernel that then computes the node from the two operand cells. */
+  EXPR_KERNEL_FN inner;
 };
 
 struct expr_prog
