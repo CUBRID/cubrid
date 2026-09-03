@@ -67,9 +67,7 @@ log_prior_inflight_is_registrable (const LOG_PRIOR_NODE *node)
       return false;
     }
 
-  const LOG_RECTYPE rectype = node->log_header.type;
-  return rectype == LOG_MVCC_UNDO_DATA || rectype == LOG_MVCC_UNDOREDO_DATA
-	 || rectype == LOG_MVCC_DIFF_UNDOREDO_DATA;
+  return LOG_IS_MVCC_OP_UNDO_RECORD_TYPE (node->log_header.type);
 }
 
 /* A registered node is freed by epoch reclamation, not by the drain. */
