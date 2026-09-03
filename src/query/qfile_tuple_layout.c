@@ -40,7 +40,8 @@
 /*
  * qfile_type_list_compute () - pure layout computation (D-181-6 finalize algorithm, spec #180 v1).
  *   Fills col[type_cnt] and the list-level fields from (domp, type_cnt, hdr_size). Idempotent.
- *   An unresolved DB_TYPE_VARIABLE column is laid out as VAR (its tuples so far hold NULL there, #186).
+ *   An unresolved DB_TYPE_VARIABLE column is laid out as VAR (its tuples so far hold NULL there: the assembler resolves
+ *   the column at its first bound value, D-199-13).
  */
 static void
 qfile_type_list_compute (TP_DOMAIN ** domp, int type_cnt, int hdr_size, QFILE_COL_LAYOUT * col,
@@ -294,7 +295,12 @@ qfile_slot_overwrite_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN *
   if (qfile_value_direct (c, value))
     {
       or_init (&buf, (char *) body, len);
-      return (t->index_writeval (&buf, value) == NO_ERROR) ? NO_ERROR : ER_FAILED;
+      if (t->index_writeval (&buf, value) != NO_ERROR || CAST_BUFLEN (buf.ptr - buf.buffer) != len)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+      return NO_ERROR;
     }
 
   /* VAR/SCRATCH: encode into a transient aligned copy, then overwrite the body */

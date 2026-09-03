@@ -5377,7 +5377,13 @@ or_unpack_listid (char *ptr, void *listid_ptr)
   ptr += OR_INT_SIZE;
   listid->type_list.type_cnt = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
-  listid->type_list.hdr_size = (uint8_t) OR_GET_INT (ptr);	/* layout flags (D-181-9) */
+  {
+    /* layout flags (D-181-9): keep an unexpected value out of range of the narrowing cast so the caller's check sees it */
+    int hdr_size = OR_GET_INT (ptr);
+
+    listid->type_list.hdr_size = (hdr_size == QFILE_TUPLE_HDR_SIZE_FORWARD || hdr_size == QFILE_TUPLE_HDR_SIZE_BACKWARD)
+      ? (uint8_t) hdr_size : 0;
+  }
   ptr += OR_INT_SIZE;
 
   return ptr;

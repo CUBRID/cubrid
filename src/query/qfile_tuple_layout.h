@@ -538,8 +538,23 @@ qfile_value_body_size (const QFILE_COL_LAYOUT * c, const DB_VALUE * value)
   else
     {
       val_size = pr_data_writeval_disk_size (v);
+      if (c->kind == QFILE_COL_VAR && c->var_access == QFILE_VAR_DIRECT)
+	{
+	  /* a DIRECT column stores the index_* encoding; a value without one would be written in the data_* encoding
+	   * and misread by every reader */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	  return ER_FAILED;
+	}
     }
-  assert (c->kind == QFILE_COL_VAR || val_size == c->size);
+  if (c->kind == QFILE_COL_FIXED && val_size != c->size)
+    {
+      /* the format is not self-describing (D-182-1): a value wider or narrower than the column's fixed width would
+       * overrun or underrun the tuple, so refuse it in release builds too (the legacy [flag][len] format tolerated it) */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_FAILED;
+    }
   return val_size;
 }
 
@@ -574,7 +589,9 @@ qfile_tuple_check_col_type (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, int col, con
  *   The format is not self-describing, so a column's layout must be settled before its first bound value is written;
  *   the executor's regu-driven resolution (qfile_update_domains_on_type_list) can lag behind by several tuples when
  *   the regu domain itself is still DB_TYPE_VARIABLE, and every tuple written meanwhile would be laid out as VAR.
- *   Earlier tuples hold NULL in this column, so re-finalizing does not change how they are read (#186).
+ *   Because the column is resolved at its FIRST bound value, every earlier tuple holds NULL there (0 bytes, no
+ *   padding), so re-finalizing does not change how those tuples are read. (#186 had claimed the executor guarantees
+ *   this; it does not - D-199-13 - which is why the assembler enforces it here.)
  */
 inline bool
 qfile_tuple_resolve_column (QFILE_TUPLE_VALUE_TYPE_LIST * tl, int col, const DB_VALUE * val)

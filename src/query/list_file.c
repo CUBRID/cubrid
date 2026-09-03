@@ -4233,7 +4233,10 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
   for (i = 0; i < n; i++)
     {
       SUBKEY_INFO *subkey = &key_info_p->key[i];
-      const TP_DOMAIN *cmp_dom = (subkey->col_dom->type->id == DB_TYPE_VARIABLE) ? types->domp[i] : subkey->col_dom;
+      /* an unresolved comparison domain falls back to the list domain of the KEY COLUMN (key i is column key[i].col,
+       * not column i: the former types->domp[i] picked the wrong column whenever the keys were not the leading ones) */
+      const TP_DOMAIN *cmp_dom = (subkey->col_dom->type->id == DB_TYPE_VARIABLE) ? types->domp[subkey->col]
+	: subkey->col_dom;
 
       subkey->sort_f = qfile_col_cmpdisk_function (&key_info_p->key_tl.col[i], cmp_dom);
     }
