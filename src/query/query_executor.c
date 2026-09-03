@@ -20555,12 +20555,15 @@ bf2df_str_compare (const unsigned char *s0, int l0, const unsigned char *s1, int
 	  return DB_LT;
 	}
 
-      /* both equal in this group, find next one */
-      if (*s0 == '.')
+      /* both equal in this group, find next one. A string that ended in this group must not be read past its end:
+       * the legacy list tuple format zero-padded every string value so the over-read saw 0x00, the CBRD-27365 format
+       * stores the next column (or nothing, in a sort key mini tuple) right after the last byte, so a 0x2E ('.') there
+       * turned "1" vs "1.1" into DB_UNK and broke the BF->DF order (CTP _03_adhoc_delete_update_3, -495). */
+      if (s0 < e0 && *s0 == '.')
 	{
 	  s0++;
 	}
-      if (*s1 == '.')
+      if (s1 < e1 && *s1 == '.')
 	{
 	  s1++;
 	}
