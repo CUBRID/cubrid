@@ -401,9 +401,12 @@ qfile_slot_read_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN * dom,
 
   c = &rec->tl->col[col];
   /* probe: the decoding domain should agree with the stored kind. Exceptions: an unresolved column (values are NULL
-   * then) and the OBJECT/OID pair (OBJECT columns are VAR/SCRATCH, decoded from an aligned copy with either domain). */
+   * then), the OBJECT/OID pair (OBJECT columns are VAR/SCRATCH, decoded from an aligned copy with either domain) and a
+   * DB_TYPE_NULL decoding domain (a regu whose domain the compiler left unresolved, e.g. the ISS/covering plan probe of
+   * CTP _19_apricot/_03_index_skip_scan/_05: mr_data_readval_null leaves the value NULL exactly as the legacy reader did). */
   assert (TP_DOMAIN_TYPE (rec->tl->domp[col]) == DB_TYPE_VARIABLE || TP_DOMAIN_TYPE (dom) == DB_TYPE_VARIABLE
-	  || TP_DOMAIN_TYPE (dom) == DB_TYPE_OID || TP_DOMAIN_TYPE (dom) == DB_TYPE_OBJECT
+	  || TP_DOMAIN_TYPE (dom) == DB_TYPE_NULL || TP_DOMAIN_TYPE (dom) == DB_TYPE_OID
+	  || TP_DOMAIN_TYPE (dom) == DB_TYPE_OBJECT
 	  || (dom->type->has_computed_disk_size () ? QFILE_COL_VAR : QFILE_COL_FIXED) == c->kind);
 
   return qfile_col_read_body (c, body, len, dom, value, copy);
