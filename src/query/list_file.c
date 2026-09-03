@@ -964,7 +964,6 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
     }
 
   fprintf (stdout, "\n{ ");
-  qfile_tuple_walk_construct (&walk);
   qfile_tuple_walk_init (&walk, tuple, type_list_p->hdr_size, type_list_p->type_cnt);
 
   for (i = 0; i < type_list_p->type_cnt; i++)
@@ -991,7 +990,6 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
     }
 
   fprintf (stdout, " }\n");
-  qfile_tuple_walk_clear (&walk);
 }
 #endif
 
@@ -3908,7 +3906,7 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
   bool null0, null1;
   int i, n, order;
   /* VAR/SCRATCH key bodies are unaligned in the mini tuple: compare aligned stack copies, heap beyond (D-182-10) */
-  char scratch0[QFILE_WRITE_SCRATCH_STACK + MAX_ALIGNMENT], scratch1[QFILE_WRITE_SCRATCH_STACK + MAX_ALIGNMENT];
+  char scratch0[QFILE_SCRATCH_STACK + MAX_ALIGNMENT], scratch1[QFILE_SCRATCH_STACK + MAX_ALIGNMENT];
   char *heap0 = NULL, *heap1 = NULL;
 
   n = key_info_p->nkeys;
@@ -3939,9 +3937,9 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
 		{
 		  char *a0, *a1;
 
-		  a0 = (l0 <= QFILE_WRITE_SCRATCH_STACK) ? PTR_ALIGN (scratch0, MAX_ALIGNMENT)
+		  a0 = (l0 <= QFILE_SCRATCH_STACK) ? PTR_ALIGN (scratch0, MAX_ALIGNMENT)
 		    : (heap0 = (char *) db_private_alloc (NULL, l0));
-		  a1 = (l1 <= QFILE_WRITE_SCRATCH_STACK) ? PTR_ALIGN (scratch1, MAX_ALIGNMENT)
+		  a1 = (l1 <= QFILE_SCRATCH_STACK) ? PTR_ALIGN (scratch1, MAX_ALIGNMENT)
 		    : (heap1 = (char *) db_private_alloc (NULL, l1));
 		  if (a0 == NULL || a1 == NULL)
 		    {
@@ -5254,9 +5252,6 @@ qfile_open_list_scan (QFILE_LIST_ID * list_id_p, QFILE_LIST_SCAN_ID * scan_id_p)
 
   scan_id_p->tplrec.size = 0;
   scan_id_p->tplrec.tpl = NULL;
-  scan_id_p->tplrec.scratch = NULL;
-  scan_id_p->tplrec.scratch_size = 0;
-  scan_id_p->tplrec.scratch_used = 0;
   qfile_slot_bind (&scan_id_p->tplrec, &scan_id_p->list_id.type_list);
   assert (qfile_type_list_check (&scan_id_p->list_id.type_list));	/* D-181-7: a domp mutation without finalize */
 
@@ -7087,7 +7082,7 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
       /* get the proper domain NOTE: col_dom is string type.  See qexec_initialize_analytic_state */
       pr_clear_value (&val0);
 
-      error = qfile_col_read_body (c, d0, l0, subkey->col_dom, &val0, false, NULL);
+      error = qfile_col_read_body (c, d0, l0, subkey->col_dom, &val0, false);
       if (error != NO_ERROR || DB_IS_NULL (&val0))
 	{
 	  goto end;
@@ -7109,13 +7104,13 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
   pr_clear_value (&val0);
   pr_clear_value (&val1);
 
-  error = qfile_col_read_body (c, d0, l0, subkey->col_dom, &val0, false, NULL);
+  error = qfile_col_read_body (c, d0, l0, subkey->col_dom, &val0, false);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
-  error = qfile_col_read_body (c, d1, l1, subkey->col_dom, &val1, false, NULL);
+  error = qfile_col_read_body (c, d1, l1, subkey->col_dom, &val1, false);
   if (error != NO_ERROR)
     {
       goto end;

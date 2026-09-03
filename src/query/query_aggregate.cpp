@@ -2579,7 +2579,6 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
   /* domain-driven sequential walk (D-182-16): the caller owns the column domains; the tuple was assembled with the
    * partial list's layout (key, then value/value2/count per function, then the tuple count) */
   db_make_int (&int_val, 0);
-  qfile_tuple_walk_construct (&walk);
   qfile_tuple_walk_init (&walk, tuple, hdr_size, key->val_count + 3 * value->func_count + 1);
 
   /* read key */
@@ -2654,7 +2653,6 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
   value->tuple_count = int_val.data.i;
 
 end:
-  qfile_tuple_walk_clear (&walk);
   return rc;
 }
 

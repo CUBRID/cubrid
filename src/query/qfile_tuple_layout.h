@@ -35,8 +35,9 @@
  *     encoding; for a VAR column it is the index_* encoding (DIRECT) or an unaligned data_* encoding (SCRATCH).
  *     Raw consumers may only dereference FIXED bodies (hash keys, counters); everything else decodes through
  *     qfile_slot_read_value () or copies through qfile_slot_locate_aligned ().
- *   - A value peeked (copy == false) out of a slot stays valid until the slot is pointed at another tuple: SCRATCH
- *     copies are bump-allocated per tuple from a scratch sized to the tuple (D-199-2).
+ *   - A VAR/SCRATCH body is decoded from a transient aligned copy (stack, heap beyond 256 bytes) with copy == true,
+ *     so the DB_VALUE owns its bytes and no slot owns a scratch area (D-199-2). Every reader of such values already
+ *     clears its DB_VALUE (fetch clears vfetch_to before each read; set/JSON values are heap objects anyway).
  */
 
 #ifndef _QFILE_TUPLE_LAYOUT_H_
@@ -177,7 +178,6 @@ qfile_slot_bind (QFILE_TUPLE_RECORD * rec, const QFILE_TUPLE_VALUE_TYPE_LIST * t
 {
   rec->tl = tl;
   rec->nvalid = -1;
-  rec->scratch_used = 0;
 }
 
 /*
@@ -191,7 +191,6 @@ qfile_slot_set_tuple (QFILE_TUPLE_RECORD * rec, char *tpl)
 {
   rec->tpl = tpl;
   rec->nvalid = -1;
-  rec->scratch_used = 0;
 }
 
 /*
@@ -206,7 +205,6 @@ qfile_slot_fill (QFILE_TUPLE_RECORD * rec, char *tpl, const QFILE_TUPLE_VALUE_TY
 }
 
 extern void qfile_slot_clear (QFILE_TUPLE_RECORD * rec);
-extern char *qfile_slot_scratch_grow (QFILE_TUPLE_RECORD * rec, int need);
 
 /*
  * qfile_slot_start () - start the position cache for the current tuple (D-182-4/5):
@@ -326,36 +324,12 @@ qfile_slot_locate (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool * is_n
   return tpl + off + hdr;
 }
 
-/*
- * qfile_slot_scratch () - bump-allocate an 8-byte aligned copy area of len bytes for the current tuple (D-199-2).
- *   The scratch is sized to the tuple on its first use per tuple, so the copies of one tuple never move while the
- *   slot points at it (a peeked SET/ELO value stays valid exactly as long as a peeked page tuple does).
- */
-inline char *
-qfile_slot_scratch (QFILE_TUPLE_RECORD * rec, int len)
-{
-  int need = DB_ALIGN (len, MAX_ALIGNMENT);
-  char *p;
-
-  if (rec->scratch_used == 0)
-    {
-      int tpl_len = DB_ALIGN (QFILE_GET_TUPLE_LENGTH (rec->tpl), MAX_ALIGNMENT);
-
-      if (tpl_len < need)
-	{
-	  tpl_len = need;
-	}
-      if (rec->scratch_size < tpl_len && qfile_slot_scratch_grow (rec, tpl_len) == NULL)
-	{
-	  return NULL;
-	}
-    }
-  assert (rec->scratch_used + need <= rec->scratch_size);	/* the bodies of one tuple never exceed its length */
-
-  p = rec->scratch + rec->scratch_used;
-  rec->scratch_used += need;
-  return p;
-}
+/* transient aligned staging for SCRATCH bodies (read and write side): stack for the usual sizes, heap beyond */
+#define QFILE_SCRATCH_STACK 256
+#define QFILE_SCRATCH_ACQUIRE(stack_buf, len) \
+  ((len) <= QFILE_SCRATCH_STACK ? PTR_ALIGN ((stack_buf), MAX_ALIGNMENT) : (char *) db_private_alloc (NULL, (len)))
+#define QFILE_SCRATCH_RELEASE(p, stack_buf) \
+  do { if ((p) != PTR_ALIGN ((stack_buf), MAX_ALIGNMENT)) { db_private_free (NULL, (p)); } } while (0)
 
 /*
  * qfile_col_read_body () - decode a stored body with the column's layout kind into *value.
@@ -363,7 +337,8 @@ qfile_slot_scratch (QFILE_TUPLE_RECORD * rec, int len)
  *   c(in): layout of the column the body was stored in
  *   body/len(in): what qfile_slot_locate () / qfile_tuple_walk_next () returned for a bound column
  *   dom(in): decoding domain (D-196-3)
- *   aligned(in): 8-byte aligned copy area of at least len bytes; required iff qfile_col_body_needs_copy ()
+ *   copy(in): readval copy flag; a SCRATCH body is always decoded with copy == true from a transient aligned copy
+ *             (D-199-2), so the value never aliases tuple bytes
  */
 inline bool
 qfile_col_body_needs_copy (const QFILE_COL_LAYOUT * c, const TP_DOMAIN * dom)
@@ -373,9 +348,12 @@ qfile_col_body_needs_copy (const QFILE_COL_LAYOUT * c, const TP_DOMAIN * dom)
 
 inline int
 qfile_col_read_body (const QFILE_COL_LAYOUT * c, const char *body, int len, const TP_DOMAIN * dom, DB_VALUE * value,
-		     bool copy, char *aligned)
+		     bool copy)
 {
   OR_BUF buf;
+  char stack_buf[QFILE_SCRATCH_STACK + MAX_ALIGNMENT];
+  char *aligned;
+  int rc;
 
   if (c->kind == QFILE_COL_FIXED)
     {
@@ -388,10 +366,16 @@ qfile_col_read_body (const QFILE_COL_LAYOUT * c, const char *body, int len, cons
       return dom->type->index_readval (&buf, value, dom, len, copy, NULL, 0);
     }
 
-  assert (aligned != NULL && PTR_ALIGN (aligned, MAX_ALIGNMENT) == aligned);
+  aligned = QFILE_SCRATCH_ACQUIRE (stack_buf, len);
+  if (aligned == NULL)
+    {
+      return ER_FAILED;
+    }
   memcpy (aligned, body, len);
   or_init (&buf, aligned, len);
-  return dom->type->data_readval (&buf, value, dom, -1, copy, NULL, 0);
+  rc = dom->type->data_readval (&buf, value, dom, -1, true, NULL, 0);
+  QFILE_SCRATCH_RELEASE (aligned, stack_buf);
+  return rc;
 }
 
 /*
@@ -407,7 +391,6 @@ qfile_slot_read_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN * dom,
 {
   const QFILE_COL_LAYOUT *c;
   const char *body;
-  char *aligned = NULL;
   int len;
 
   body = qfile_slot_locate (rec, col, &len, is_null);
@@ -423,46 +406,7 @@ qfile_slot_read_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN * dom,
 	  || TP_DOMAIN_TYPE (dom) == DB_TYPE_OID || TP_DOMAIN_TYPE (dom) == DB_TYPE_OBJECT
 	  || (dom->type->has_computed_disk_size () ? QFILE_COL_VAR : QFILE_COL_FIXED) == c->kind);
 
-  if (qfile_col_body_needs_copy (c, dom))
-    {
-      aligned = qfile_slot_scratch (rec, len);
-      if (aligned == NULL)
-	{
-	  return ER_FAILED;
-	}
-    }
-  return qfile_col_read_body (c, body, len, dom, value, copy, aligned);
-}
-
-/*
- * qfile_slot_locate_aligned () - position accessor for raw consumers of the data_* encoding (OID prefetch, VOBJ):
- *   like qfile_slot_locate () but a SCRATCH body is returned as its 8-byte aligned scratch copy, so the result can be
- *   read with the data_* functions or OR_GET_* macros. Not for DIRECT columns (index encoding).
- */
-inline const char *
-qfile_slot_locate_aligned (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool * is_null)
-{
-  const char *body = qfile_slot_locate (rec, col, body_len, is_null);
-  const QFILE_COL_LAYOUT *c;
-  char *aligned;
-
-  if (*is_null)
-    {
-      return body;
-    }
-  c = &rec->tl->col[col];
-  assert (c->kind == QFILE_COL_FIXED || c->var_access == QFILE_VAR_SCRATCH);
-  if (c->kind == QFILE_COL_FIXED)
-    {
-      return body;
-    }
-  aligned = qfile_slot_scratch (rec, *body_len);
-  if (aligned == NULL)
-    {
-      return NULL;
-    }
-  memcpy (aligned, body, *body_len);
-  return aligned;
+  return qfile_col_read_body (c, body, len, dom, value, copy);
 }
 
 /*
@@ -649,9 +593,6 @@ qfile_tuple_size (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * 
   return DB_ALIGN (size, QFILE_TUPLE_ALIGNMENT);
 }
 
-/* writer-side aligned staging for SCRATCH bodies: stack for the usual sizes, heap only beyond (cold types) */
-#define QFILE_WRITE_SCRATCH_STACK 256
-
 /*
  * qfile_tuple_put_value () - emit the body of one bound column at p in the encoding of its column (D-180-5/6.3).
  *   return: bytes written (header included for VAR) or ER_FAILED. "written size == computed size" is asserted.
@@ -694,7 +635,7 @@ qfile_tuple_put_value (char *p, const QFILE_COL_LAYOUT * c, const QFILE_TUPLE_CO
 
   {
     const PR_TYPE *t = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (src->val));
-    char stack_buf[QFILE_WRITE_SCRATCH_STACK + MAX_ALIGNMENT];
+    char stack_buf[QFILE_SCRATCH_STACK + MAX_ALIGNMENT];
     char *aligned;
     int rc;
 
@@ -716,8 +657,7 @@ qfile_tuple_put_value (char *p, const QFILE_COL_LAYOUT * c, const QFILE_TUPLE_CO
       }
 
     /* VAR/SCRATCH: data_writeval pads relative to the buffer address, so encode into an aligned area and copy */
-    aligned = (len <= QFILE_WRITE_SCRATCH_STACK) ? PTR_ALIGN (stack_buf, MAX_ALIGNMENT)
-      : (char *) db_private_alloc (NULL, len);
+    aligned = QFILE_SCRATCH_ACQUIRE (stack_buf, len);
     if (aligned == NULL)
       {
 	return ER_FAILED;
@@ -733,10 +673,7 @@ qfile_tuple_put_value (char *p, const QFILE_COL_LAYOUT * c, const QFILE_TUPLE_CO
 	assert_release (false);
 	rc = ER_FAILED;
       }
-    if (aligned != PTR_ALIGN (stack_buf, MAX_ALIGNMENT))
-      {
-	db_private_free (NULL, aligned);
-      }
+    QFILE_SCRATCH_RELEASE (aligned, stack_buf);
     return (rc == NO_ERROR) ? hdr + len : ER_FAILED;
   }
 }
@@ -940,8 +877,6 @@ extern int qfile_slot_overwrite_value (QFILE_TUPLE_RECORD * rec, int col, const 
  * Domain-driven sequential walk (D-182-16): for readers that cannot bind a descriptor (px XASL_SNAPSHOT reader,
  * thread contract D-181-10) or that own the column domains themselves (aggregate hash entry (de)serialization).
  * The caller supplies what the descriptor would: the header size of the list and its column count.
- * A walk owns an optional scratch for SCRATCH bodies (qfile_tuple_walk_read_value); release it with
- * qfile_tuple_walk_clear () when the walk object dies.
  */
 typedef struct qfile_tuple_walk QFILE_TUPLE_WALK;
 struct qfile_tuple_walk
@@ -952,9 +887,6 @@ struct qfile_tuple_walk
   int off;			/* offset of the next value (unaligned) */
   int col;			/* next column */
   int type_cnt;
-  char *scratch;
-  int scratch_size;
-  int scratch_used;
 };
 
 inline void
@@ -969,20 +901,7 @@ qfile_tuple_walk_init (QFILE_TUPLE_WALK * walk, const char *tpl, int hdr_size, i
   walk->off = DB_ALIGN (hdr_size + (has_null ? ((type_cnt + 7) >> 3) : 0), QFILE_TUPLE_ALIGNMENT);
   walk->col = 0;
   walk->type_cnt = type_cnt;
-  walk->scratch_used = 0;
 }
-
-/* a walk object starts with no scratch; qfile_tuple_walk_init () keeps an existing one */
-inline void
-qfile_tuple_walk_construct (QFILE_TUPLE_WALK * walk)
-{
-  walk->scratch = NULL;
-  walk->scratch_size = 0;
-  walk->scratch_used = 0;
-}
-
-extern void qfile_tuple_walk_clear (QFILE_TUPLE_WALK * walk);
-extern char *qfile_tuple_walk_scratch (QFILE_TUPLE_WALK * walk, int len);
 
 /*
  * qfile_tuple_walk_next () - advance to the next value, laid out as dom dictates.
@@ -1042,7 +961,6 @@ qfile_tuple_walk_read_value (QFILE_TUPLE_WALK * walk, const TP_DOMAIN * dom, DB_
 {
   QFILE_COL_LAYOUT c;
   const char *body;
-  char *aligned = NULL;
   int len;
 
   qfile_tuple_walk_next (walk, dom, &body, &len, is_null, &c);
@@ -1050,15 +968,7 @@ qfile_tuple_walk_read_value (QFILE_TUPLE_WALK * walk, const TP_DOMAIN * dom, DB_
     {
       return NO_ERROR;
     }
-  if (qfile_col_body_needs_copy (&c, dom))
-    {
-      aligned = qfile_tuple_walk_scratch (walk, len);
-      if (aligned == NULL)
-	{
-	  return ER_FAILED;
-	}
-    }
-  return qfile_col_read_body (&c, body, len, dom, value, copy, aligned);
+  return qfile_col_read_body (&c, body, len, dom, value, copy);
 }
 
 #endif /* _QFILE_TUPLE_LAYOUT_H_ */

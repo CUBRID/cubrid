@@ -305,9 +305,6 @@ struct qfile_tuple_record
   int16_t data_off;		/* tl->data_off[has_null] of this tuple */
   bool has_null;		/* has-null bit of this tuple's length word */
   int32_t off;			/* start offset (unaligned) of column nvalid, from tuple start (PG off) */
-  char *scratch;		/* aligned copy area for VAR/SCRATCH columns, lazily allocated (D-182-10) */
-  int scratch_size;
-  int scratch_used;		/* bump offset; reset per tuple so peeked values stay valid for the tuple's lifetime */
 };
 
 /* Per-column layout entry of the tuple layout descriptor (CBRD-27365, ADR 0016 D-181-3).

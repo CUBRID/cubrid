@@ -155,7 +155,6 @@ namespace parallel_scan
       {
 	tl.tpl_buf.tpl = nullptr;
 	tl.tpl_buf.size = 0;
-	qfile_tuple_walk_construct (&tl.walk);
       }
     else
       {
@@ -219,7 +218,6 @@ namespace parallel_scan
 	    db_private_free_and_init (thread_p, tl.tpl_buf.tpl);
 	    tl.tpl_buf.size = 0;
 	  }
-	qfile_tuple_walk_clear (&tl.walk);
       }
     else
       {

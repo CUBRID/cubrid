@@ -242,99 +242,14 @@ qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
 #endif /* !NDEBUG */
 
 /*
- * qfile_slot_clear () - release the slot-owned scratch area and unbind the descriptor.
- *   Called by the slot owner when the scan/cursor is closed (D-182-10). Does not touch rec->tpl / rec->size:
- *   the owned tuple buffer is still freed by the record owner as before.
+ * qfile_slot_clear () - unbind the descriptor. Called by the slot owner when the scan/cursor is closed.
+ *   Does not touch rec->tpl / rec->size: the owned tuple buffer is still freed by the record owner as before.
  */
 void
 qfile_slot_clear (QFILE_TUPLE_RECORD * rec)
 {
-  if (rec->scratch != NULL)
-    {
-      db_private_free (NULL, rec->scratch);
-      rec->scratch = NULL;
-    }
-  rec->scratch_size = 0;
-  rec->scratch_used = 0;
   rec->tl = NULL;
   rec->nvalid = -1;
-}
-
-/*
- * qfile_slot_scratch_grow () - (re)allocate the slot scratch to at least need bytes (8-byte aligned allocation).
- *   return: the scratch, or NULL (error set)
- *   Only called when no copy of the current tuple lives in the scratch (scratch_used == 0), so nothing moves.
- */
-char *
-qfile_slot_scratch_grow (QFILE_TUPLE_RECORD * rec, int need)
-{
-  char *p;
-
-  assert (rec->scratch_used == 0);
-
-  p = (char *) db_private_alloc (NULL, need);
-  if (p == NULL)
-    {
-      return NULL;
-    }
-  if (rec->scratch != NULL)
-    {
-      db_private_free (NULL, rec->scratch);
-    }
-  rec->scratch = p;
-  rec->scratch_size = need;
-  return p;
-}
-
-/*
- * qfile_tuple_walk_scratch () - bump-allocate an aligned copy area for a walk (same contract as qfile_slot_scratch).
- */
-char *
-qfile_tuple_walk_scratch (QFILE_TUPLE_WALK * walk, int len)
-{
-  int need = DB_ALIGN (len, MAX_ALIGNMENT);
-  char *p;
-
-  if (walk->scratch_used == 0)
-    {
-      int tpl_len = DB_ALIGN (walk->tpl_len, MAX_ALIGNMENT);
-
-      if (tpl_len < need)
-	{
-	  tpl_len = need;
-	}
-      if (walk->scratch_size < tpl_len)
-	{
-	  p = (char *) db_private_alloc (NULL, tpl_len);
-	  if (p == NULL)
-	    {
-	      return NULL;
-	    }
-	  if (walk->scratch != NULL)
-	    {
-	      db_private_free (NULL, walk->scratch);
-	    }
-	  walk->scratch = p;
-	  walk->scratch_size = tpl_len;
-	}
-    }
-  assert (walk->scratch_used + need <= walk->scratch_size);
-
-  p = walk->scratch + walk->scratch_used;
-  walk->scratch_used += need;
-  return p;
-}
-
-void
-qfile_tuple_walk_clear (QFILE_TUPLE_WALK * walk)
-{
-  if (walk->scratch != NULL)
-    {
-      db_private_free (NULL, walk->scratch);
-      walk->scratch = NULL;
-    }
-  walk->scratch_size = 0;
-  walk->scratch_used = 0;
 }
 
 /*
@@ -387,9 +302,11 @@ qfile_slot_overwrite_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN *
       return (t->index_writeval (&buf, value) == NO_ERROR) ? NO_ERROR : ER_FAILED;
     }
 
-  /* VAR/SCRATCH: encode into an aligned copy, then overwrite the body */
+  /* VAR/SCRATCH: encode into a transient aligned copy, then overwrite the body */
   {
-    char *aligned = qfile_slot_scratch (rec, len);
+    char stack_buf[QFILE_SCRATCH_STACK + MAX_ALIGNMENT];
+    char *aligned = QFILE_SCRATCH_ACQUIRE (stack_buf, len);
+    int rc = NO_ERROR;
 
     if (aligned == NULL)
       {
@@ -399,9 +316,13 @@ qfile_slot_overwrite_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN *
     if (t->data_writeval (&buf, value) != NO_ERROR || CAST_BUFLEN (buf.ptr - buf.buffer) != len)
       {
 	assert (false);
-	return ER_FAILED;
+	rc = ER_FAILED;
       }
-    memcpy ((char *) body, aligned, len);
-    return NO_ERROR;
+    else
+      {
+	memcpy ((char *) body, aligned, len);
+      }
+    QFILE_SCRATCH_RELEASE (aligned, stack_buf);
+    return rc;
   }
 }
