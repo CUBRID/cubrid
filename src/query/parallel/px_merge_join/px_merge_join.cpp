@@ -160,8 +160,9 @@ namespace parallel_query
       for (int i = 0; i < range_cnt; i++)
 	{
 	  /* range 0's list becomes the gathered result (base-reuse below), so it must carry the caller's
-	   * ls_flag (e.g. QFILE_FLAG_RESULT_FILE); the rest are plain lists appended into it. */
-	  int out_flag = (i == 0) ? ls_flag : QFILE_FLAG_ALL;
+	   * ls_flag (e.g. QFILE_FLAG_RESULT_FILE). All outputs are file-backed: the gather splices their
+	   * page chains by VPID (qfile_connect_list), which membuf pages cannot take part in. */
+	  int out_flag = ((i == 0) ? ls_flag : QFILE_FLAG_ALL) | QFILE_NOT_USE_MEMBUF;
 	  manager.m_outputs[i] = qfile_open_list (thread_p, &type_list, NULL, outer_list_id->query_id,
 						  out_flag, NULL);
 	  if (manager.m_outputs[i] == NULL)
@@ -196,17 +197,32 @@ namespace parallel_query
 	  }
       }
 
-      /* gather: reuse range 0's list as the base and append ranges 1..n-1 in order — avoids copying
-       * the whole of range 0 (the dominant cost). Tuple order identical to serial. */
+      /* gather: range 0's list is the base; ranges 1..n-1 are spliced onto its page chain in order by
+       * qfile_connect_list (next/prev VPID rewiring, no page copy). A connected list is then owned by
+       * merged's dependent chain, so it is dropped from m_outputs. Tuple order identical to serial. */
       free_and_init (type_list.domp);
       QFILE_LIST_ID *merged = manager.m_outputs[0];
       manager.m_outputs[0] = NULL;	/* ownership transferred; destroy_lists must skip it */
 
       for (int i = 1; i < range_cnt && error == NO_ERROR; i++)
 	{
-	  if (manager.m_outputs[i]->tuple_cnt > 0)
+	  QFILE_LIST_ID *&part = manager.m_outputs[i];
+	  if (part->tuple_cnt == 0)
 	    {
-	      error = qfile_append_list (thread_p, merged, manager.m_outputs[i]);
+	      continue;
+	    }
+	  if (merged->tuple_cnt == 0)
+	    {
+	      /* connect needs a non-empty base: page-copy the first non-empty range in (at most once) */
+	      error = qfile_append_list (thread_p, merged, part);
+	    }
+	  else
+	    {
+	      error = qfile_connect_list (thread_p, merged, part);
+	      if (error == NO_ERROR)
+		{
+		  part = NULL;	/* freed through merged's dependent_list_id chain */
+		}
 	    }
 	}
 
