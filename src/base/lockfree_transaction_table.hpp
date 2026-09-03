@@ -81,7 +81,7 @@ namespace lockfree
 	/* number of transactions between computing min_active_transaction_id */
 	static const id MATI_REFRESH_INTERVAL = 100;
 
-	void compute_min_active_tranid ();
+	id compute_min_active_tranid ();
 
 	system &m_sys;
 	descriptor *m_all;

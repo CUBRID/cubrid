@@ -86,7 +86,7 @@ namespace lockfree
       return m_global_tranid;
     }
 
-    void
+    id
     table::compute_min_active_tranid ()
     {
       // note: all transactions are actually claimed from boot. this code is optimized for this case. if we ever
@@ -101,6 +101,7 @@ namespace lockfree
 	    }
 	}
       m_min_active_tranid.store (minvalue);
+      return minvalue;
     }
 
     id
@@ -112,8 +113,9 @@ namespace lockfree
     id
     table::refresh_min_active_tranid ()
     {
-      compute_min_active_tranid ();
-      return m_min_active_tranid;
+      /* This scan's value, not the shared member: a concurrent compute () can publish an older scan's
+       * INVALID_TRANID over it, and that sentinel authorizes reclaiming the whole retired list. */
+      return compute_min_active_tranid ();
     }
 
     size_t
