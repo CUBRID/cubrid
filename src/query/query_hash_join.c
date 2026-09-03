@@ -262,6 +262,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
       assert (single_context->list_id->last_pgptr == NULL);
 
       qfile_destroy_list (thread_p, xasl->list_id);	/* may be unnecessary */
+      assert (!XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) || QFILE_LIST_IS_BACKWARD (single_context->list_id));
       qfile_copy_list_id (xasl->list_id, single_context->list_id, false, QFILE_MOVE_DEPENDENT);
       QFILE_FREE_AND_INIT_LIST_ID (single_context->list_id);
 
@@ -834,6 +835,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->qlist_merge_method = HASHJOIN_MERGE_CONNECT;
   manager->qlist_flag =
     (manager->qlist_merge_method == HASHJOIN_MERGE_CONNECT) ? QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF : QFILE_FLAG_ALL;
+  manager->qlist_flag |= XASL_LIST_BACKWARD_FLAG (xasl);	/* result lists are promoted to xasl->list_id (#184 A) */
 
   assert (manager->px_worker_manager == NULL);
 
@@ -3038,7 +3040,7 @@ hjoin_locate_tuple_hash_key (QFILE_TUPLE_RECORD * tuple_record)
 
   body = (QFILE_TUPLE) qfile_slot_locate (tuple_record, 0, &len, &is_null);
   assert (!is_null);
-  assert (len == QFILE_LEGACY_VALUE_ENCODED_SIZE (tp_Integer.disksize));
+  assert (len == (int) QFILE_LEGACY_VALUE_ENCODED_SIZE (tp_Integer.disksize));
 
   return body;
 }

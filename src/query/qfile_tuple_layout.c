@@ -297,7 +297,7 @@ qfile_slot_overwrite_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN *
 
   if (value == NULL || DB_IS_NULL (value) || is_null || dom == NULL || dom->type == NULL
       || TP_DOMAIN_TYPE (dom) != DB_VALUE_DOMAIN_TYPE (value)
-      || QFILE_LEGACY_VALUE_ENCODED_SIZE (pr_data_writeval_disk_size ((DB_VALUE *) value)) != len)
+      || (int) QFILE_LEGACY_VALUE_ENCODED_SIZE (pr_data_writeval_disk_size ((DB_VALUE *) value)) != len)
     {
       assert (false);
       return ER_FAILED;

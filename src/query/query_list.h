@@ -589,6 +589,9 @@ enum
 				 * PR-2a records the classification only; PR-2b derives type_list.hdr_size from it. */
 };
 
+/* hdr_size is the only truth about backward capability (D-181-8) */
+#define QFILE_LIST_IS_BACKWARD(list_id)    ((list_id)->type_list.hdr_size == 8)
+
 #define QFILE_SET_FLAG(var, flag)          ((var) |= (flag))
 #define QFILE_CLEAR_FLAG(var, flag)        ((var) &= (flag))
 #define QFILE_IS_FLAG_SET(var, flag)       ((var) & (flag))

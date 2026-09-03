@@ -2642,6 +2642,8 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
   assert (thread_p != NULL);
   assert (base_list_id != NULL);
   assert (append_list_id != NULL);
+  /* the joined pages share one tuple header size (#184 D5) */
+  assert (base_list_id->type_list.hdr_size == append_list_id->type_list.hdr_size);
 
   assert (base_list_id->last_pgptr == NULL);
   assert (append_list_id->last_pgptr == NULL);
@@ -2817,6 +2819,8 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
   assert (thread_p != NULL);
   assert (base_list_id != NULL);
   assert (append_list_id != NULL);
+  /* the joined pages share one tuple header size (#184 D5) */
+  assert (base_list_id->type_list.hdr_size == append_list_id->type_list.hdr_size);
 
   /* Check if qfile_close_list was called */
   assert (base_list_id->last_pgptr == NULL);
@@ -4831,6 +4835,8 @@ qfile_scan_prev (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
     {
       if (scan_id_p->curr_tplno > 0)
 	{
+	  /* prev_len exists only in the 8-byte header of a backward capable list (D-181-8, D-182-9) */
+	  assert (QFILE_LIST_IS_BACKWARD (&scan_id_p->list_id));
 	  scan_id_p->curr_offset -= QFILE_GET_PREV_TUPLE_LENGTH (scan_id_p->curr_tpl);
 	  scan_id_p->curr_tpl -= QFILE_GET_PREV_TUPLE_LENGTH (scan_id_p->curr_tpl);
 	  scan_id_p->curr_tplno--;

@@ -245,7 +245,8 @@ namespace parallel_scan
 	      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	      return;
 	    }
-	  list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF, NULL );
+	  list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id,
+				     QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF | XASL_LIST_BACKWARD_FLAG (curr_xasl), NULL);
 	  if (!list_id)
 	    {
 	      m_err_messages_p->move_top_error_message_to_this();
@@ -681,6 +682,9 @@ namespace parallel_scan
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return S_ERROR;
 	  }
+	/* the merged worker lists became the (top-most) xasl's result: it must be backward capable (#184 §3.3) */
+	assert (!XASL_IS_FLAGED (m_.orig_xasl, XASL_TOP_MOST_XASL) || dest->type_list.type_cnt == 0
+		|| QFILE_LIST_IS_BACKWARD (dest));
 
 	if (m_.instnum_mode != parallel_scan::instnum_mode::NONE)
 	  {
