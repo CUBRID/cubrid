@@ -47,6 +47,19 @@
 #define	DEFAULT_AS_MIN_NUM	5
 #define	DEFAULT_AS_MAX_NUM	40
 
+/* query replace (cubrid broker qr): build-time fixed reservation sizing.
+ * the maxima are the hard ceilings (QR_MAX_RULE_COUNT / QR_MAX_QUERY_LEN). */
+#define	DEFAULT_QR_MAX_RULES		50
+#define	MIN_QR_MAX_RULES		1
+#define	MAX_QR_MAX_RULES		200
+#define	DEFAULT_QR_MAX_QUERY_LEN	8192
+#define	MIN_QR_MAX_QUERY_LEN		1024
+#define	MAX_QR_MAX_QUERY_LEN		32768
+
+/* query replace: whether a non-SELECT (DML) replacement query is allowed.
+ * OFF (default) = SELECT-only; DDL/DCL/CALL are always rejected regardless. */
+#define	DEFAULT_QR_ALLOW_NON_SELECT	"OFF"
+
 #if defined (WINDOWS)
 #if __WORDSIZE == 64
 #define	DEFAULT_SERVER_MAX_SIZE	"80M"
@@ -232,6 +245,10 @@ struct t_broker_info
   char error_log_file[CONF_LOG_FILE_LEN];
   char source_env[CONF_LOG_FILE_LEN];
   char acl_file[CONF_LOG_FILE_LEN];
+  char query_replace_rule[BROKER_PATH_MAX];	/* directory of query replace rule files */
+  int query_replace_max_rules;	/* reserved slot capacity */
+  int query_replace_max_query_len;	/* per-query length cap */
+  char query_replace_allow_non_select;	/* allow DML replacement (build-time policy); DDL/CALL always rejected */
   char preferred_hosts[BROKER_INFO_NAME_MAX];
   char db_connection_file[BROKER_INFO_PATH_MAX];
 

@@ -26856,6 +26856,37 @@ cleanup:
   return error;
 }
 
+/* qexec_evaluate_aggregates_optimize () serializes access to the count-optimization state
+ * (tdes->log_upd_stats.classes_cos_hash / unique_stats_hash) that parallel UNION branch
+ * worker threads share via main_thread_p->m_px_lock_mutex; QEXEC_COUNT_OPT_PX_LOCK/UNLOCK
+ * collapse the repeated "#if defined (SERVER_MODE) ... #endif" guard at each lock/unlock
+ * site down to one line. main_thread_p is only ever declared under SERVER_MODE, but that is
+ * safe here: outside SERVER_MODE these macros expand to a no-op that never mentions their
+ * argument, so it need not exist. */
+#if defined (SERVER_MODE)
+#define QEXEC_COUNT_OPT_PX_LOCK(main_thread_p) \
+  do \
+    { \
+      if ((main_thread_p) != NULL) \
+	{ \
+	  pthread_mutex_lock (&(main_thread_p)->m_px_lock_mutex); \
+	} \
+    } \
+  while (0)
+#define QEXEC_COUNT_OPT_PX_UNLOCK(main_thread_p) \
+  do \
+    { \
+      if ((main_thread_p) != NULL) \
+	{ \
+	  pthread_mutex_unlock (&(main_thread_p)->m_px_lock_mutex); \
+	} \
+    } \
+  while (0)
+#else
+#define QEXEC_COUNT_OPT_PX_LOCK(main_thread_p) ((void) 0)
+#define QEXEC_COUNT_OPT_PX_UNLOCK(main_thread_p) ((void) 0)
+#endif /* SERVER_MODE */
+
 /*
  * qexec_evaluate_aggregates_optimize () - optimize aggregate evaluation
  * return : error code or NO_ERROR
@@ -26898,12 +26929,29 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	      continue;
 	    }
 
+#if defined (SERVER_MODE)
+	  /* Parallel UNION branches executing this query share tdes (and therefore
+	   * log_upd_stats.classes_cos_hash / unique_stats_hash) across worker threads that adopt the
+	   * main thread's tran_index. All accesses to those per-tran hash tables below must be
+	   * serialized with the same lock logtb_get_mvcc_snapshot() uses, or concurrent mht_get()/
+	   * mht_put() calls on the shared hash can corrupt it (observed as an infinite spin) or let one
+	   * worker see COS_LOADED before another worker's statistics write becomes visible (observed as
+	   * count(*) wrongly returning -1). */
+	  THREAD_ENTRY *main_thread_p = NULL;
+	  if (thread_p->m_px_orig_thread_entry != NULL)
+	    {
+	      main_thread_p = thread_get_main_thread (thread_p);
+	    }
+#endif /* SERVER_MODE */
+	  QEXEC_COUNT_OPT_PX_LOCK (main_thread_p);
+
 	  LOG_TRAN_CLASS_COS *class_cos = logtb_tran_find_class_cos (thread_p, &ACCESS_SPEC_CLS_OID (spec),
 								     true);
 	  if (class_cos == NULL)
 	    {
 	      agg_ptr->flag.agg_optimized = false;
 	      *is_scan_needed = true;
+	      QEXEC_COUNT_OPT_PX_UNLOCK (main_thread_p);
 	      continue;
 	    }
 
@@ -26916,16 +26964,21 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		{
 		  agg_ptr->flag.agg_optimized = false;
 		  *is_scan_needed = true;
+		  QEXEC_COUNT_OPT_PX_UNLOCK (main_thread_p);
 		  continue;
 		}
 
 	      if (!tdes->mvccinfo.snapshot.valid)
 		{
+		  /* logtb_get_mvcc_snapshot() takes main_thread_p->m_px_lock_mutex itself; release it
+		   * here first to avoid a self-deadlock, then reacquire before touching class_cos again. */
+		  QEXEC_COUNT_OPT_PX_UNLOCK (main_thread_p);
 		  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
 		    {
 		      error = er_errid ();
 		      return (error == NO_ERROR ? ER_FAILED : error);
 		    }
+		  QEXEC_COUNT_OPT_PX_LOCK (main_thread_p);
 		}
 
 	      /* 
@@ -26938,6 +26991,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		  if (logtb_load_global_statistics_to_tran (thread_p) != NO_ERROR)
 		    {
 		      error = er_errid ();
+		      QEXEC_COUNT_OPT_PX_UNLOCK (main_thread_p);
 		      return (error == NO_ERROR ? ER_FAILED : error);
 		    }
 		}
@@ -26946,9 +27000,12 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		{
 		  agg_ptr->flag.agg_optimized = false;
 		  *is_scan_needed = true;
+		  QEXEC_COUNT_OPT_PX_UNLOCK (main_thread_p);
 		  continue;
 		}
 	    }
+
+	  QEXEC_COUNT_OPT_PX_UNLOCK (main_thread_p);
 	}
 
       if (thread_is_on_trace (thread_p))
