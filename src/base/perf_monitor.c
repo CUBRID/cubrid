@@ -2084,6 +2084,8 @@ perfmon_stat_page_type_name (const int page_type)
       return "PAGE_EHASH";
     case PERF_PAGE_OVERFLOW:
       return "PAGE_OVERFLOW";
+    case PERF_PAGE_OOS:
+      return "PAGE_OOS";
     case PERF_PAGE_AREA:
       return "PAGE_AREA";
     case PERF_PAGE_CATALOG:

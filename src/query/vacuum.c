@@ -45,6 +45,7 @@
 #include "object_representation.h"
 #include "object_representation_sr.h"
 #include "overflow_file.h"
+#include "vacuum_oos.hpp"
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "resource_shared_pool.hpp"
@@ -520,6 +521,7 @@ struct vacuum_heap_helper
 
   HFID hfid;			/* Heap file identifier. */
   VFID overflow_vfid;		/* Overflow file identifier. */
+  VFID oos_vfid;		/* OOS file identifier (if any). */
   bool reusable;		/* True if heap file has reusable slots. */
 
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;	/* Result of vacuum check. */
@@ -1111,6 +1113,25 @@ xvacuum (THREAD_ENTRY * thread_p)
 #endif /* SA_MODE */
 }
 
+#if defined (CUBRID_UNIT_TEST_ENABLED)
+/*
+ * vacuum_wakeup_master_daemon () - Wake the vacuum master daemon for OOS tests.
+ */
+int
+vacuum_wakeup_master_daemon (void)
+{
+#if defined (SERVER_MODE)
+  if (vacuum_Master_daemon == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+  vacuum_Master_daemon->wakeup ();
+#endif /* SERVER_MODE */
+  return NO_ERROR;
+}
+#endif /* CUBRID_UNIT_TEST_ENABLED */
+
 /*
  * xvacuum_dump - Dump the contents of vacuum
  *
@@ -1621,6 +1642,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   helper.can_vacuum = VACUUM_RECORD_CANNOT_VACUUM;
   helper.initial_home_free_space = -1;
   VFID_SET_NULL (&helper.overflow_vfid);
+  VFID_SET_NULL (&helper.oos_vfid);
 
   /* Fix heap page. */
   if (was_interrupted)
@@ -2054,6 +2076,13 @@ retry_prepare:
 	  assert_release (false);
 	  return error_code;
 	}
+
+      error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record,
+							 helper->crt_slotid, helper->record_type, &helper->oos_vfid);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
       return NO_ERROR;
 
     case REC_BIGONE:
@@ -2163,6 +2192,13 @@ retry_prepare:
 	  assert_release (false);
 	  return ER_FAILED;
 	}
+
+      error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record,
+							 helper->crt_slotid, helper->record_type, &helper->oos_vfid);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
       break;
 
     default:
@@ -2219,8 +2255,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       /* Remove insert MVCCID and prev version lsa. */
       update_record = &helper->record;
       start_p = update_record->data;
-      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (start_p);
-      mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
+      repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (start_p);
+      mvcc_flags = OR_GET_MVCC_FLAGS (start_p);
 
       /* Skip bytes up to insid_offset. */
       existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
@@ -2238,7 +2274,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	}
 
       /* Clear flag for valid insert MVCCID and prev version lsa. */
-      repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+      repid_and_flag_bits &=
+	~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_RECORD_FLAG_SHIFT_BITS);
       OR_PUT_INT (start_p, repid_and_flag_bits);
 
       /* Expect new_data_p != existing_data_p in most of the cases. */
@@ -2266,6 +2303,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
     case REC_BIGONE:
       /* First overflow page is required. */
       assert (helper->forward_page != NULL);
+      assert (!RECORD_HEADER_HAS_OOS (&helper->mvcc_header));
 
       /* Replace current insert MVCCID with MVCCID_ALL_VISIBLE. Header must remain the same size. */
       MVCC_SET_INSID (&helper->mvcc_header, MVCCID_ALL_VISIBLE);
@@ -2297,8 +2335,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       assert (helper->record.type == REC_HOME);
       update_record = &helper->record;
       start_p = update_record->data;
-      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (start_p);
-      mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
+      repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (start_p);
+      mvcc_flags = OR_GET_MVCC_FLAGS (start_p);
 
       /* Skip bytes up to insid_offset */
       existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
@@ -2316,7 +2354,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	}
 
       /* Clear flag for valid insert MVCCID and prev version lsa. */
-      repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+      repid_and_flag_bits &=
+	~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_RECORD_FLAG_SHIFT_BITS);
       OR_PUT_INT (start_p, repid_and_flag_bits);
 
       /* Expect new_data_p != existing_data_p in most of the cases. */
@@ -2368,10 +2407,37 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
 
-  if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE)
+  /* Does removing this record touch more than the home page?  Two independent axes decide:
+   *
+   *   body footprint (record_type)       OOS footprint (heap_recdes_contains_oos)
+   *   ----------------------------       ----------------------------------------
+   *   REC_HOME       : home only  (1)    no OOS  : 0 extra pages
+   *   REC_RELOCATION : home + fwd  (2)   has OOS : N OOS pages (N>=1; multi-chunk -> more)
+   *   REC_BIGONE     : home + ovf  (>1)
+   *
+   *   total footprint = body + OOS  ==>  a sysop is needed iff it crosses the home page (total > 1):
+   *
+   *     record_type     OOS?   pages touched          path
+   *     -----------     ----   -------------          ---------------------------------
+   *     REC_HOME        no     home only              bulk log, NO sysop
+   *     REC_HOME        yes    home + OOS pages       one sysop   (this is `has_oos`)
+   *     REC_RELOCATION  any    home + fwd (+ OOS)     one sysop
+   *     REC_BIGONE      n/a    home + ovf chain       one sysop   (OOS must not coexist; abort below)
+   *
+   * The sysop bundles every per-page log record of a multi-page removal into one atomic unit, so a crash
+   * cannot leave it half-done (heap slot vacuumed but its OOS chunks still referenced, or vice versa).
+   * Single-page REC_HOME needs no sysop: its single log record is already atomic, so it rides the bulk
+   * path.  record_type alone is only a proxy for the footprint -- OOS is the orthogonal axis that can push
+   * an otherwise single-page REC_HOME into the sysop path.  See
+   * docs/adr/0001-synchronous-oos-reclaim-in-vacuum-sysop.md. */
+  bool has_oos = (!VFID_ISNULL (&helper->oos_vfid)
+		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
+		  && heap_recdes_contains_oos (&helper->record));
+
+  if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE || has_oos)
     {
-      /* HOME record of rel/big records are performed as a single operation: flush all existing vacuumed slots before
-       * starting a system op for current record */
+      /* Multi-page operations (rel/big/oos) are performed as a single operation: flush all existing
+       * vacuumed slots before starting a system op for current record */
       vacuum_heap_page_log_and_reset (thread_p, helper, false, false);
       log_sysop_start (thread_p);
     }
@@ -2428,6 +2494,17 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
+      /* Delete OOS records (if any) before committing the sysop. */
+      if (has_oos)
+	{
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record);
+	  if (oos_err != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      return oos_err;
+	    }
+	}
+
       log_sysop_commit (thread_p);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
@@ -2439,6 +2516,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       assert (helper->forward_page != NULL);
       /* Overflow first page is required. */
       assert (!VFID_ISNULL (&helper->overflow_vfid));
+      assert (!RECORD_HEADER_HAS_OOS (&helper->mvcc_header));
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
@@ -2468,7 +2546,29 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       break;
 
     case REC_HOME:
-      helper->n_bulk_vacuumed++;
+      if (has_oos)
+	{
+	  /* OOS-bearing REC_HOME: the heap-slot removal log and the OOS chunk deletes must share the one
+	   * sysop opened above so a crash between them cannot leave dangling OOS references. The bulk path
+	   * would split them across sysop boundaries. The slot was already cleared via spage_vacuum_slot;
+	   * commit (or abort on failure) that sysop here, mirroring the REC_RELOCATION/REC_BIGONE cases. */
+	  pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
+	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
+					     helper->reusable);
+
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record);
+	  if (oos_err != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      return oos_err;
+	    }
+
+	  log_sysop_commit (thread_p);
+	}
+      else
+	{
+	  helper->n_bulk_vacuumed++;
+	}
 
       perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_VACUUMS);
       break;
@@ -2804,12 +2904,12 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 	  /* Remove insert MVCCID */
 	  or_mvcc_get_header (&peek_record, &rec_header);
-	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header)];
+	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_RECORD_MVCC_FLAG_MASK];
 	  /* Clear insert MVCCID. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID);
 	  /* Clear previous version. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
-	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header)];
+	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_RECORD_MVCC_FLAG_MASK];
 
 	  /* Rebuild record */
 	  rebuild_record.type = peek_record.type;
@@ -3293,6 +3393,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   bool dummy_continue_check = false;
 #endif /* SA_MODE */
 
+  VACUUM_OOS_VFID_MEMO oos_vfid_memo;
+
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
       return NO_ERROR;
@@ -3437,6 +3539,19 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_WORKER,
 			 "collected oid %d|%d|%d, in file %d|%d, based on %lld|%d", OID_AS_ARGS (&heap_object_oid),
 			 VFID_AS_ARGS (&log_vacuum.vfid), LSA_AS_ARGS (&rcv_lsa));
+
+	  /* Free the old OOS values an UPDATE left behind. Only RVHF_UPDATE_NOTIFY_VACUUM should reach here:
+	   *
+	   *   - UPDATE writes new OOS OIDs. The old ones survive only in the undo image; the live slot no
+	   *     longer points at them, so vacuum's normal REMOVE path never sees them. Reading the undo
+	   *     image is the only way left to free them.
+	   *   - DELETE keeps the same OIDs, so REMOVE frees them already. Freeing them here too would be a
+	   *     double free and trip an assert -- so the check below lets UPDATE in but keeps DELETE out.
+	   *   - Other heap ops log no undo image, so the undo_data_size check above already skips them. */
+	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+	    {
+	      vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	    }
 	}
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
 	{
@@ -3567,6 +3682,14 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	      ASSERT_NO_ERROR ();
 	    }
 	  db_private_free_and_init (thread_p, es_uri);
+	}
+      else if (log_record_data.rcvindex == RVHF_DELETE_NEWHOME_NOTIFY_VACUUM)
+	{
+	  /* MVCC remove_old_forward forward REC_NEWHOME delete (heap_update_relocation). The old forward
+	   * record survives only in this delete's undo image; its OOS records are reclaimed here. This is
+	   * deliberately OUTSIDE the LOG_IS_MVCC_HEAP_OPERATION block (no slot to collect — the slot was
+	   * physically deleted). The undo image is always the forward REC_NEWHOME pre-image. */
+	  vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
 	}
       else
 	{
@@ -4069,9 +4192,13 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
     }
 
   /* We are here because the file that will be vacuumed is not dropped. */
-  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
+  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex)
+      && log_record_data->rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && log_record_data->rcvindex != RVES_NOTIFY_VACUUM
+      && log_record_data->rcvindex != RVHF_DELETE_NEWHOME_NOTIFY_VACUUM)
     {
-      /* No need to unpack undo data */
+      /* Vacuum needs the undo image only for these ops, so anything else returns now without
+       * unpacking it: BTREE ops, the two OOS forward-walk tags -- RVHF_UPDATE_NOTIFY_VACUUM and
+       * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM -- and ES (RVES_NOTIFY_VACUUM). */
       return NO_ERROR;
     }
 

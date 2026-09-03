@@ -37,7 +37,7 @@
 typedef struct mvcc_rec_header MVCC_REC_HEADER;
 struct mvcc_rec_header
 {
-  INT32 mvcc_flag:8;		/* MVCC flags */
+  INT32 mvcc_flag:8;		/* record flags; field name retained for compatibility */
   INT32 repid:24;		/* representation id */
   int chn;			/* cache coherency number */
   MVCCID mvcc_ins_id;		/* MVCC insert id */
@@ -75,11 +75,14 @@ struct mvcc_rec_header
 #define MVCC_GET_FLAG(header) \
   ((header)->mvcc_flag)
 
+#define RECORD_HEADER_HAS_OOS(header) \
+  (((header)->mvcc_flag & OR_RECORD_FLAG_HAS_OOS) != 0)
+
 #define MVCC_SET_FLAG(header, flag) \
   ((header)->mvcc_flag = (flag))
 
 #define MVCC_IS_ANY_FLAG_SET(rec_header_p) \
-  (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_MASK))
+  (MVCC_IS_FLAG_SET (rec_header_p, OR_RECORD_MVCC_FLAG_MASK))
 
 #define MVCC_IS_FLAG_SET(rec_header_p, flags) \
   ((rec_header_p)->mvcc_flag & (flags))
@@ -100,7 +103,7 @@ struct mvcc_rec_header
   ((rec_header_p)->mvcc_flag |= (flag))
 
 #define MVCC_CLEAR_ALL_FLAG_BITS(rec_header_p) \
-  (MVCC_CLEAR_FLAG_BITS (rec_header_p, OR_MVCC_FLAG_MASK))
+  (MVCC_CLEAR_FLAG_BITS (rec_header_p, OR_RECORD_MVCC_FLAG_MASK))
 
 #define MVCC_CLEAR_FLAG_BITS(rec_header_p, flag) \
   ((rec_header_p)->mvcc_flag &= ~(flag))
@@ -262,10 +265,15 @@ typedef enum mvcc_satisfies_vacuum_result MVCC_SATISFIES_VACUUM_RESULT;
    || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM)
 
 /* Is log record for a MVCC operation */
+/* TODO: the RVOOS_NOTIFY_VACUUM clause below currently has no emitter; it is left in
+ * place because the rcvindex is pinned at 134 for on-disk-format reasons (see recovery.h). Drop
+ * this clause together with the enum slot if/when we bump the log format. */
 #define LOG_IS_MVCC_OPERATION(rcvindex) \
   (LOG_IS_MVCC_HEAP_OPERATION (rcvindex) \
    || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
-   || ((rcvindex) == RVES_NOTIFY_VACUUM))
+   || ((rcvindex) == RVES_NOTIFY_VACUUM) \
+   || ((rcvindex) == RVOOS_NOTIFY_VACUUM) \
+   || ((rcvindex) == RVHF_DELETE_NEWHOME_NOTIFY_VACUUM))
 
 extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							       MVCC_SNAPSHOT * snapshot);
