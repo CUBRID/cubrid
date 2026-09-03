@@ -127,10 +127,6 @@ static int hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 static int hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
 			      QFILE_LIST_ID * list_id);
 
-/* Merge QFILE_LIST_ID */
-static int hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
-			      QFILE_TUPLE_RECORD * inner_record, QFILE_LIST_MERGE_INFO * merge_info,
-			      QFILE_TUPLE_RECORD * overflow_record);
 
 /* Dump */
 #if HASHJOIN_DUMP_HASH_TABLE
@@ -4084,7 +4080,8 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 	{
 	  /* in-memory hash entry payload: a raw tuple of the build list, bind it to that list's descriptor */
 	  qfile_slot_fill (tuple_record, (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry), &list_scan_id->list_id.type_list);
-	  tuple_record->size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_record->tpl);
+	  tuple_record->size = 0;	/* PEEK: the payload is owned by the hash table (the former value read the
+					 * tuple's prev_len word; nothing consumes size on this path) */
 	}
       else
 	{
@@ -4234,9 +4231,6 @@ hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 			      QFILE_TUPLE_RECORD * inner_record, QFILE_LIST_MERGE_INFO * merge_info,
 			      QFILE_TUPLE_RECORD * overflow_record)
 {
-  QFILE_TUPLE_DESCRIPTOR *tuple_descriptor;
-  int max_record_size, max_unbound_size;
-
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
@@ -4245,33 +4239,8 @@ hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
   assert (merge_info != NULL);
   assert (overflow_record != NULL);
 
-  max_unbound_size = QFILE_TUPLE_VALUE_HEADER_SIZE * (merge_info->ls_pos_cnt);
-
-  max_record_size = (outer_record != NULL) ? QFILE_GET_TUPLE_LENGTH (outer_record->tpl) : max_unbound_size;
-  max_record_size += (inner_record != NULL) ? QFILE_GET_TUPLE_LENGTH (inner_record->tpl) : max_unbound_size;
-  max_record_size = DB_ALIGN (max_record_size, MAX_ALIGNMENT);
-
-  if (max_record_size < QFILE_MAX_TUPLE_SIZE_IN_PAGE)
-    {
-      tuple_descriptor = &list_id->tpl_descr;
-      tuple_descriptor->tpl_size = max_record_size;
-      tuple_descriptor->tplrec1 = outer_record;
-      tuple_descriptor->tplrec2 = inner_record;
-      tuple_descriptor->merge_info = merge_info;
-
-      error = qfile_generate_tuple_into_list (thread_p, list_id, T_MERGE);
-    }
-  else
-    {
-      error = hjoin_merge_tuple (thread_p, outer_record, inner_record, merge_info, overflow_record);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      error = qfile_add_tuple_to_list (thread_p, list_id, overflow_record->tpl);
-    }
-
+  /* the tuple assembler's merge path (D-182-11): one deform per input, exact size, page or private buffer */
+  error = qfile_merge_tuple_add_list (thread_p, list_id, outer_record, inner_record, merge_info, overflow_record);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -4283,92 +4252,6 @@ hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 error_exit:
   assert_release_error (er_errid () != NO_ERROR);
   return er_errid ();
-}
-
-/*
- * hjoin_merge_tuple() -
- *   return: Error code (NO_ERROR if successful, error code otherwise).
- *   thread_p(in): Thread entry.
- *   outer_record(in): Outer tuple to merge. (can be NULL).
- *   inner_record(in): Inner tuple to merge. (can be NULL).
- *   merge_info(in): Information used to merge the joined result.
- *   overflow_record(in/out): Space used for merging tuples too large to fit on a single page.
- */
-static int
-hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
-		   QFILE_TUPLE_RECORD * inner_record, QFILE_LIST_MERGE_INFO * merge_info,
-		   QFILE_TUPLE_RECORD * overflow_record)
-{
-  QFILE_TUPLE_RECORD *tuple_record;
-  const char *value_body;
-  int value_len;
-  bool value_is_null;
-  int available_size, realloc_size, offset, value_size;
-  int pos_index, value_index;
-
-  int error = NO_ERROR;
-
-  assert (thread_p != NULL);
-  assert (outer_record != NULL || inner_record != NULL);
-  assert (merge_info != NULL);
-  assert (overflow_record != NULL);
-
-  offset = QFILE_TUPLE_LENGTH_SIZE;
-
-  for (pos_index = 0; pos_index < merge_info->ls_pos_cnt; pos_index++)
-    {
-      if (merge_info->ls_outer_inner_list[pos_index] == QFILE_OUTER_LIST)
-	{
-	  tuple_record = outer_record;
-	}
-      else if (merge_info->ls_outer_inner_list[pos_index] == QFILE_INNER_LIST)
-	{
-	  tuple_record = inner_record;
-	}
-      else
-	{
-	  /* impossible case */
-	  assert_release_error (false);
-	  return er_errid ();
-	}
-
-      if (tuple_record != NULL)
-	{
-	  value_index = merge_info->ls_pos_list[pos_index];
-	  value_body = qfile_slot_locate (tuple_record, value_index, &value_len, &value_is_null);
-	}
-      else
-	{
-	  value_body = NULL;
-	  value_len = 0;
-	  value_is_null = true;
-	}
-
-      value_size = QFILE_TUPLE_VALUE_HEADER_SIZE + value_len;
-      available_size = overflow_record->size - offset;
-
-      if (value_size > available_size)
-	{
-	  realloc_size = CEIL_PTVDIV (overflow_record->size + (value_size - available_size), DB_PAGESIZE) * DB_PAGESIZE;
-
-	  /* overflow_record is managed and cleaned up by the caller. */
-	  error = qfile_reallocate_tuple (overflow_record, realloc_size);
-	  if (error != NO_ERROR)
-	    {
-	      assert_release_error (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-	}
-
-      /* PR-1b assembler bridge: re-emit the legacy [flag][len][body] value (PR-2: tuple assembler, D-182-11) */
-      qfile_legacy_put_value (overflow_record->tpl + offset, value_body, value_len, value_is_null);
-      offset += value_size;
-    }				/* for (pos_index < merge_info->ls_pos_cnt) */
-
-  QFILE_PUT_TUPLE_LENGTH (overflow_record->tpl, offset);
-
-  ASSERT_NO_ERROR_OR_INTERRUPTED ();
-  return NO_ERROR;
 }
 
 /*

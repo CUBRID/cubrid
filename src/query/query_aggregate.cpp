@@ -2517,7 +2517,7 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
 			       DB_VALUE *temp_dbval_array, qfile_list_id *list_id)
 {
   DB_VALUE tuple_count;
-  int tuple_size = QFILE_TUPLE_LENGTH_SIZE;
+  int tuple_size;
   int col = 0, i;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   int error = NO_ERROR;
@@ -2526,7 +2526,6 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
   for (i = 0; i < key->val_count; i++)
     {
       list_id->tpl_descr.f_valp[col++] = key->values[i];
-      tuple_size += qdata_get_tuple_value_size_from_dbval (key->values[i]);
     }
 
   for (i = 0; i < value->func_count; i++)
@@ -2536,17 +2535,20 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
 
       db_make_int (&temp_dbval_array[i], value->accumulators[i].curr_cnt);
       list_id->tpl_descr.f_valp[col++] = &temp_dbval_array[i];
-
-      tuple_size += qdata_get_tuple_value_size_from_dbval (value->accumulators[i].value);
-      tuple_size += qdata_get_tuple_value_size_from_dbval (value->accumulators[i].value2);
-      tuple_size += qdata_get_tuple_value_size_from_dbval (&temp_dbval_array[i]);
     }
 
   db_make_int (&tuple_count, value->tuple_count);
   list_id->tpl_descr.f_valp[col++] = &tuple_count;
-  tuple_size += qdata_get_tuple_value_size_from_dbval (&tuple_count);
+  list_id->tpl_descr.f_cnt = col;
 
+  tuple_size = qfile_tuple_size_from_values (&list_id->type_list, list_id->tpl_descr.f_valp, col,
+					     &list_id->tpl_descr.has_null);
+  if (tuple_size < 0)
+    {
+      return ER_FAILED;
+    }
   list_id->tpl_descr.tpl_size = tuple_size;
+
   /* add to list file */
   if (tuple_size <= QFILE_MAX_TUPLE_SIZE_IN_PAGE)
     {
@@ -2554,7 +2556,7 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
     }
   else
     {
-      error = qfile_copy_tuple_descr_to_tuple (thread_p, &list_id->tpl_descr, &tplrec);
+      error = qfile_copy_tuple_descr_to_tuple (thread_p, &list_id->type_list, &list_id->tpl_descr, &tplrec);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;

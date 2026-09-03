@@ -21,10 +21,11 @@
  *
  * Shared by the server (list_file.c, fetch.c, ...), the SA build and the client cursor (cursor.c).
  *
- * PR-1b scope (format invariant): every reader of a list file tuple goes through the slot accessors below
- * (position / value) or, where no slot can exist, the domain-driven walk. The implementation still walks the
- * legacy per-value [flag 4B][len 4B][value] headers and only remembers the deform position (nvalid/off);
- * PR-2 swaps the implementation to the new format without touching the callers.
+ * PR-1b/PR-2a scope (format invariant): every reader of a list file tuple goes through the slot accessors below
+ * (position / value) or, where no slot can exist, the domain-driven walk; every writer goes through the tuple
+ * assembler (qfile_tuple_size / qfile_tuple_fill). The implementation still uses the legacy per-value
+ * [flag 4B][len 4B][value] headers and only remembers the deform position (nvalid/off); PR-2b swaps the
+ * implementation to the ADR 0016 format without touching the callers.
  *
  * Contract summary
  *   - A record used as a slot is BOUND to the layout descriptor (type_list) of the list its tuple belongs to.
@@ -44,8 +45,12 @@
 #include <string.h>
 
 #include "query_list.h"
+#include "dbtype.h"
+#include "error_manager.h"
+#include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "string_opfunc.h"	/* db_get_string_length (debug size probe) */
 
 /* Header size every list carries in PR-1b (legacy [len][prev_len]). PR-2 derives it from the backward flag
  * of qfile_open_list () (D-181-8). */
@@ -183,19 +188,298 @@ qfile_slot_read_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN * dom,
 }
 
 /*
- * qfile_legacy_put_value () - PR-1b assembler bridge: emit one legacy [flag 4B][len 4B][body] value.
- *   The copy-style writers (merge, sort key, hash join merge) consume (body, len, is_null) from the position accessor
- *   and re-emit the value with this; PR-2 replaces them with the tuple assembler (D-182-11).
+ * Tuple assembler (D-182-11): two passes over QFILE_TUPLE_COL_SRC[] (or a DB_VALUE *[] for the T_NORMAL descriptor
+ * path). qfile_tuple_size () returns the exact tuple length (header included) and records each val source's disk
+ * size in src[i].len; qfile_tuple_fill () writes exactly that many bytes at out. Every list tuple - page resident,
+ * private buffer, sort key body - is produced here, so the byte format lives in this one place.
+ *
+ * PR-2a implementation = legacy layout: [len 4B][prev_len 4B] then per column [flag 4B][len 4B][body padded to 8B].
+ * PR-2b swaps the bodies of these functions for the ADR 0016 format without touching the callers.
+ *
+ * tl is the layout descriptor of the list the tuple is written into (its domp[] decides the layout in PR-2b); the
+ * legacy layout only uses it for the debug type probe below. It may be NULL / unfinalized for the few writers that
+ * assemble a tuple before their list exists.
+ */
+
+/* legacy encoded size of a bound body of len bytes (header + MAX_ALIGNMENT padding) */
+#define QFILE_LEGACY_VALUE_SIZE(len) (QFILE_TUPLE_VALUE_HEADER_SIZE + DB_ALIGN ((len), MAX_ALIGNMENT))
+
+inline void
+qfile_col_src_set_value (QFILE_TUPLE_COL_SRC * src, const DB_VALUE * val)
+{
+  src->val = val;
+  src->data = NULL;
+  src->len = 0;
+  src->is_null = (val == NULL || DB_IS_NULL (val));
+}
+
+inline void
+qfile_col_src_set_raw (QFILE_TUPLE_COL_SRC * src, const char *data, int len, bool is_null)
+{
+  src->val = NULL;
+  src->data = data;
+  src->len = is_null ? 0 : len;
+  src->is_null = is_null;
+}
+
+/*
+ * qfile_value_disk_size () - disk size of a bound value as data_writeval will write it.
+ *   return: size, or ER_FAILED (debug builds only: string longer than its precision, see the legacy
+ *           qdata_get_tuple_value_size_from_dbval)
+ */
+inline int
+qfile_value_disk_size (const DB_VALUE * value)
+{
+  DB_VALUE *v = (DB_VALUE *) value;
+  int val_size = pr_data_writeval_disk_size (v);
+
+#if !defined(NDEBUG)
+  {
+    DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (v);
+    const PR_TYPE *type_p = pr_type_from_id (dbval_type);
+
+    if (type_p != NULL && type_p->is_size_computed () && pr_is_string_type (dbval_type))
+      {
+	int precision = DB_VALUE_PRECISION (v);
+	int string_length = db_get_string_length (v);
+
+	if (precision == TP_FLOATING_PRECISION_VALUE)
+	  {
+	    precision = DB_MAX_STRING_LENGTH;
+	  }
+	assert (string_length <= precision);
+	if (val_size < 0)
+	  {
+	    return ER_FAILED;
+	  }
+	else if (string_length > precision)
+	  {
+	    /* abnormal (asserted above); kept from the legacy code for backward compatibility */
+	    if (db_string_truncate (v, precision) != NO_ERROR)
+	      {
+		return ER_FAILED;
+	      }
+	    er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DATA_IS_TRUNCATED_TO_PRECISION, 2, precision,
+		    string_length);
+	    val_size = pr_data_writeval_disk_size (v);
+	  }
+      }
+  }
+#endif
+
+  return val_size;
+}
+
+#if !defined(NDEBUG)
+/*
+ * qfile_tuple_check_col_type () - writer-side probe (PR-1b handover 4): a value written into column col must have
+ *   the column's type, because the PR-2b layout of the column comes from tl->domp[col]. Compatible pairs that
+ *   share a disk representation are accepted; an unresolved DB_TYPE_VARIABLE column accepts anything.
  */
 inline void
-qfile_legacy_put_value (char *out, const char *body, int len, bool is_null)
+qfile_tuple_check_col_type (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, int col, const DB_VALUE * val)
 {
-  QFILE_PUT_TUPLE_VALUE_FLAG (out, is_null ? V_UNBOUND : V_BOUND);
-  QFILE_PUT_TUPLE_VALUE_LENGTH (out, len);
-  if (len > 0)
+  DB_TYPE ctype, vtype;
+
+  if (tl == NULL || !tl->finalized || tl->domp == NULL || col >= tl->type_cnt)
     {
-      memcpy (out + QFILE_TUPLE_VALUE_HEADER_SIZE, body, len);
+      return;
     }
+  ctype = TP_DOMAIN_TYPE (tl->domp[col]);
+  vtype = DB_VALUE_DOMAIN_TYPE (val);
+  assert (ctype == DB_TYPE_VARIABLE || ctype == vtype || (pr_is_string_type (ctype) && pr_is_string_type (vtype))
+	  || ((TP_IS_SET_TYPE (ctype) || ctype == DB_TYPE_VOBJ) && (TP_IS_SET_TYPE (vtype) || vtype == DB_TYPE_VOBJ))
+	  || ((ctype == DB_TYPE_OBJECT || ctype == DB_TYPE_OID) && (vtype == DB_TYPE_OBJECT || vtype == DB_TYPE_OID)));
+}
+#endif
+
+/*
+ * qfile_tuple_size () - assembler size pass.
+ *   return: exact tuple length (header included), or ER_FAILED
+ *   src(in/out): a val source gets its disk size stored in len
+ *   has_null(out): at least one column is NULL
+ */
+inline int
+qfile_tuple_size (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * src, int n, bool * has_null)
+{
+  int i, size = QFILE_TUPLE_LENGTH_SIZE;
+  bool hn = false;
+
+  assert (tl == NULL || !tl->finalized || tl->type_cnt == n);
+
+  for (i = 0; i < n; i++)
+    {
+      if (src[i].is_null)
+	{
+	  hn = true;
+	  size += QFILE_TUPLE_VALUE_HEADER_SIZE;
+	  continue;
+	}
+      if (src[i].val != NULL)
+	{
+	  src[i].len = qfile_value_disk_size (src[i].val);
+	  if (src[i].len < 0)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      size += QFILE_LEGACY_VALUE_SIZE (src[i].len);
+    }
+
+  *has_null = hn;
+  return size;
+}
+
+/*
+ * qfile_tuple_put_value () - emit one legacy [flag][len][body] column at p; return the bytes written.
+ */
+inline int
+qfile_tuple_put_value (char *p, const QFILE_TUPLE_COL_SRC * src)
+{
+  OR_BUF buf;
+  int len, padded;
+
+  if (src->is_null)
+    {
+      QFILE_PUT_TUPLE_VALUE_FLAG (p, V_UNBOUND);
+      QFILE_PUT_TUPLE_VALUE_LENGTH (p, 0);
+      return QFILE_TUPLE_VALUE_HEADER_SIZE;
+    }
+
+  len = src->len;
+  padded = DB_ALIGN (len, MAX_ALIGNMENT);
+  QFILE_PUT_TUPLE_VALUE_FLAG (p, V_BOUND);
+  QFILE_PUT_TUPLE_VALUE_LENGTH (p, padded);
+  p += QFILE_TUPLE_VALUE_HEADER_SIZE;
+
+  if (src->val != NULL)
+    {
+      const PR_TYPE *pr_type = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (src->val));
+
+      if (pr_type == NULL)
+	{
+	  return ER_FAILED;
+	}
+      or_init (&buf, p, len);
+      if (pr_type->data_writeval (&buf, (DB_VALUE *) src->val) != NO_ERROR || buf.ptr > buf.endptr)
+	{
+	  assert_release (false);	/* written size must equal the computed size (#183) */
+	  return ER_FAILED;
+	}
+    }
+  else if (len > 0)
+    {
+      memcpy (p, src->data, len);
+    }
+#if !defined(NDEBUG)
+  memset (p + len, 0, padded - len);	/* suppress valgrind UMW */
+#endif
+
+  return QFILE_TUPLE_VALUE_HEADER_SIZE + padded;
+}
+
+/*
+ * qfile_tuple_fill () - assembler fill pass: write the tuple that qfile_tuple_size () measured.
+ *   return: NO_ERROR or ER_FAILED
+ *   out(in): destination (list page or private buffer) with at least size bytes
+ */
+inline int
+qfile_tuple_fill (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, const QFILE_TUPLE_COL_SRC * src, int n, char *out,
+		  int size, bool has_null)
+{
+  char *p = out + QFILE_TUPLE_LENGTH_SIZE;
+  int i, w;
+
+  (void) has_null;		/* legacy layout has no null bitmap */
+  QFILE_PUT_TUPLE_LENGTH (out, size);
+
+  for (i = 0; i < n; i++)
+    {
+#if !defined(NDEBUG)
+      if (!src[i].is_null && src[i].val != NULL)
+	{
+	  qfile_tuple_check_col_type (tl, i, src[i].val);
+	}
+#else
+      (void) tl;
+#endif
+      w = qfile_tuple_put_value (p, &src[i]);
+      if (w < 0)
+	{
+	  return ER_FAILED;
+	}
+      p += w;
+    }
+
+  assert (CAST_BUFLEN (p - out) == size);
+  return NO_ERROR;
+}
+
+/*
+ * qfile_tuple_size_from_values () / qfile_tuple_fill_from_values () - T_NORMAL overload over the descriptor's
+ *   f_valp[] (no source array). The fill pass recomputes each disk size (D-190-3: the string size is cached in the
+ *   DB_VALUE after the first computation, so this matches the legacy cost).
+ */
+inline int
+qfile_tuple_size_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE ** vals, int n, bool * has_null)
+{
+  int i, len, size = QFILE_TUPLE_LENGTH_SIZE;
+  bool hn = false;
+
+  assert (tl == NULL || !tl->finalized || tl->type_cnt == n);
+
+  for (i = 0; i < n; i++)
+    {
+      if (DB_IS_NULL (vals[i]))
+	{
+	  hn = true;
+	  size += QFILE_TUPLE_VALUE_HEADER_SIZE;
+	  continue;
+	}
+      len = qfile_value_disk_size (vals[i]);
+      if (len < 0)
+	{
+	  return ER_FAILED;
+	}
+      size += QFILE_LEGACY_VALUE_SIZE (len);
+    }
+
+  *has_null = hn;
+  return size;
+}
+
+inline int
+qfile_tuple_fill_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE ** vals, int n, char *out, int size)
+{
+  QFILE_TUPLE_COL_SRC src;
+  char *p = out + QFILE_TUPLE_LENGTH_SIZE;
+  int i, w;
+
+  QFILE_PUT_TUPLE_LENGTH (out, size);
+
+  for (i = 0; i < n; i++)
+    {
+      qfile_col_src_set_value (&src, vals[i]);
+      if (!src.is_null)
+	{
+	  src.len = pr_data_writeval_disk_size (vals[i]);
+#if !defined(NDEBUG)
+	  qfile_tuple_check_col_type (tl, i, vals[i]);
+#endif
+	}
+      w = qfile_tuple_put_value (p, &src);
+      if (w < 0)
+	{
+	  return ER_FAILED;
+	}
+      p += w;
+    }
+#if defined(NDEBUG)
+  (void) tl;
+#endif
+
+  assert (CAST_BUFLEN (p - out) == size);
+  return NO_ERROR;
 }
 
 /*

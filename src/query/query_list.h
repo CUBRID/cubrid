@@ -404,33 +404,41 @@ struct qfile_list_merge_info
 typedef enum
 {
   T_UNKNOWN,			/* uninitialized: not used */
-  T_SINGLE_BOUND_ITEM,		/* called by qfile_add_item_to_list() */
-  T_NORMAL,			/* normal case */
-  T_SORTKEY,			/* called by ls_sort_put_next() */
-  T_MERGE			/* called by xs_add_mergetuple() */
+  T_NORMAL,			/* f_valp[]: one DB_VALUE per column (tuple descriptor path) */
+  T_COL_SRC			/* col_src[]: per-column sources (sort key output, merge output, raw item, counters) */
 } QFILE_TUPLE_TYPE;
 
-/* tuple descriptor */
+/*
+ * Tuple assembler column source (CBRD-27365 D-182-11). One entry per output column.
+ *   val != NULL : encode the DB_VALUE with its type's data_writeval
+ *   val == NULL : copy data[0..len) verbatim as the stored body (what qfile_slot_locate () returned)
+ * is_null makes the column NULL regardless of val/data. qfile_tuple_size () writes the disk size of a val source
+ * into len so qfile_tuple_fill () does not compute it again.
+ */
+typedef struct qfile_tuple_col_src QFILE_TUPLE_COL_SRC;
+struct qfile_tuple_col_src
+{
+  const DB_VALUE *val;
+  const char *data;
+  int len;
+  bool is_null;
+};
+
+/* tuple descriptor: the per-list staging area for qfile_generate_tuple_into_list () */
 typedef struct qfile_tuple_descriptor QFILE_TUPLE_DESCRIPTOR;
 struct qfile_tuple_descriptor
 {
-  /* T_SINGLE_BOUND_ITEM */
-  char *item;			/* pointer of item (i.e, single bound field tuple) */
-  int item_size;		/* item size */
+  int tpl_size;			/* exact tuple size, from the assembler size pass */
+  bool has_null;		/* size pass output, consumed by the fill pass */
 
   /* T_NORMAL */
-  int tpl_size;			/* tuple size */
   int f_cnt;			/* number of field */
-  DB_VALUE **f_valp;		/* pointer of field value pointer array */
+  DB_VALUE **f_valp;		/* pointer of field value pointer array (owned by the list) */
 
-  /* T_SORTKEY */
-  void *sortkey_info;		/* casted pointer of (SORTKEY_INFO *) */
-  void *sort_rec;		/* casted pointer of (SORT_REC *) */
-
-  /* T_MERGE */
-  QFILE_TUPLE_RECORD *tplrec1;	/* first tuple */
-  QFILE_TUPLE_RECORD *tplrec2;	/* second tuple */
-  QFILE_LIST_MERGE_INFO *merge_info;	/* tuple merge info */
+  /* T_COL_SRC */
+  QFILE_TUPLE_COL_SRC *col_src;	/* owned by the list; grown on demand by qfile_tpl_descr_col_src () */
+  int col_src_cap;
+  int col_src_cnt;
 };
 
 /*
@@ -521,16 +529,13 @@ struct qfile_list_id
       (list_id)->temp_vfid.fileid = NULL_PAGEID; \
       (list_id)->temp_vfid.volid = NULL_VOLID; \
       (list_id)->tfile_vfid = NULL; \
-      (list_id)->tpl_descr.item = NULL; \
-      (list_id)->tpl_descr.item_size = 0; \
       (list_id)->tpl_descr.tpl_size = 0; \
+      (list_id)->tpl_descr.has_null = false; \
       (list_id)->tpl_descr.f_cnt = 0; \
       (list_id)->tpl_descr.f_valp = NULL; \
-      (list_id)->tpl_descr.sortkey_info = NULL; \
-      (list_id)->tpl_descr.sort_rec = NULL; \
-      (list_id)->tpl_descr.tplrec1 = NULL; \
-      (list_id)->tpl_descr.tplrec2 = NULL; \
-      (list_id)->tpl_descr.merge_info = NULL; \
+      (list_id)->tpl_descr.col_src = NULL; \
+      (list_id)->tpl_descr.col_src_cap = 0; \
+      (list_id)->tpl_descr.col_src_cnt = 0; \
       (list_id)->is_domain_resolved = false; \
       (list_id)->is_result_cached = false; \
       (list_id)->dependent_list_id = NULL; \
@@ -579,7 +584,9 @@ enum
   QFILE_FLAG_ALL = 0x0100,
   QFILE_FLAG_DISTINCT = 0x0200,
   QFILE_FLAG_USE_KEY_BUFFER = 0x0400,
-  QFILE_NOT_USE_MEMBUF = 0x0800
+  QFILE_NOT_USE_MEMBUF = 0x0800,
+  QFILE_FLAG_BACKWARD = 0x1000	/* list may be scanned backward (qfile_scan_prev / cursor_prev_tuple), #184 A/B/C.
+				 * PR-2a records the classification only; PR-2b derives type_list.hdr_size from it. */
 };
 
 #define QFILE_SET_FLAG(var, flag)          ((var) |= (flag))

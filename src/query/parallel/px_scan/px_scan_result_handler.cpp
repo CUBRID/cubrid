@@ -890,7 +890,8 @@ namespace parallel_scan
 
 	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 
-	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, & (tl.writer_result_p->tpl_descr));
+	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, &tl.writer_result_p->type_list,
+							    &(tl.writer_result_p->tpl_descr));
 
 	if (unlikely (!m_.is_list_id_domain_resolved))
 	  {
@@ -1018,7 +1019,7 @@ namespace parallel_scan
 		tl.is_topn = false;
 		assert (tl.xasl->topn_items == nullptr);
 	      }
-	    err_code = qdata_copy_valptr_list_to_tuple (thread_p, input, tl.vd, &tl.tpl_buf);
+	    err_code = qdata_copy_valptr_list_to_tuple (thread_p, input, tl.vd, &tl.writer_result_p->type_list, &tl.tpl_buf);
 	    if (err_code != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
@@ -1075,7 +1076,7 @@ namespace parallel_scan
 	      }
 	  }
 	list_id_p = tl_list_id_header->m_list_id_p;
-	err_code = qdata_copy_val_list_to_tuple (thread_p, input, &tl_tpl_buf);
+	err_code = qdata_copy_val_list_to_tuple (thread_p, input, &list_id_p->type_list, &tl_tpl_buf);
 	prefetch (list_id_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 	if (unlikely (err_code != NO_ERROR))
 	  {

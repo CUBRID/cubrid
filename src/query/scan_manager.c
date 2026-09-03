@@ -8458,7 +8458,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
     }
 
   error = qdata_copy_valptr_list_to_tuple (thread_p, iscan_id->indx_cov.output_val_list, iscan_id->indx_cov.val_descr,
-					   tplrec);
+					   &iscan_id->indx_cov.list_id->type_list, tplrec);
   if (error != NO_ERROR)
     {
       return error;
