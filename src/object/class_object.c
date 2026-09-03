@@ -847,8 +847,8 @@ classobj_make_index_filter_pred_seq (SM_PREDICATE_INFO * filter_index_info)
 
   if (filter_index_info->pred_stream)
     {
-      db_make_char (&value, filter_index_info->pred_stream_size, filter_index_info->pred_stream,
-		    filter_index_info->pred_stream_size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&value, filter_index_info->pred_stream_size, filter_index_info->pred_stream,
+		       filter_index_info->pred_stream_size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
     }
   else
     {
@@ -3064,7 +3064,7 @@ classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
     }
 
   /* since pred string is not null, pred stream should be not null, also */
-  if (DB_VALUE_TYPE (&fvalue) != DB_TYPE_CHAR)
+  if (DB_VALUE_TYPE (&fvalue) != DB_TYPE_VARCHAR && DB_VALUE_TYPE (&fvalue) != DB_TYPE_CHAR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
@@ -3482,6 +3482,11 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 
 				default:
 				  break;
+				}
+
+			      if (er_errid () != NO_ERROR)
+				{
+				  goto structure_error;
 				}
 
 			      pr_clear_value (&avalue);
@@ -8498,8 +8503,8 @@ classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info)
   db_make_string (&val, func_index_info->expr_str);
   set_put_element (fi_seq, 0, &val);
 
-  db_make_char (&val, func_index_info->expr_stream_size, func_index_info->expr_stream,
-		func_index_info->expr_stream_size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&val, func_index_info->expr_stream_size, func_index_info->expr_stream,
+		   func_index_info->expr_stream_size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   set_put_element (fi_seq, 1, &val);
 
   db_make_int (&val, func_index_info->col_id);
