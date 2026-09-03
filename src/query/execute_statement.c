@@ -95,6 +95,7 @@
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
 #include "network.h"
+#include "msgcat_glossary.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -21474,6 +21475,40 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 
+/*
+ * server_check_owner () - Is the caller allowed to place a server object in this owner's namespace?
+ *   return: NO_ERROR, or ER_AU_NOT_OWNER
+ *   owner (in): the user object named as the owner
+ *
+ * Authorized is au_check_owner (): the owner is the caller, is a group the caller belongs to, or the
+ * caller is a DBA group member. server_find () filters catalog rows with that same predicate; the
+ * callers' duplicate-name checks depend on the two staying identical.
+ */
+static int
+server_check_owner (MOP owner)
+{
+  DB_VALUE owner_val;
+  bool authorized;
+  int save;
+
+  db_make_object (&owner_val, owner);
+
+  /* Disable authorization for the check itself: au_check_owner () reads Au_user's group list, and
+   * without this the group term silently drops out - server_find () gets it only by doing the same. */
+  AU_SAVE_AND_DISABLE (save);
+  authorized = au_is_server_authorized_user (&owner_val);
+  AU_RESTORE (save);
+
+  if (authorized)
+    {
+      return NO_ERROR;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_NOT_OWNER, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_SERVER));
+  return ER_AU_NOT_OWNER;
+}
+
+
 static int
 do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * passwd, MOP owner,
 			   const char **attr_names, char **attr_val, int attr_cnt)
@@ -21615,6 +21650,12 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1,
 		      create_server->owner_name->info.name.original);
 	    }
+	  return error;
+	}
+
+      error = server_check_owner (owner_obj);
+      if (error != NO_ERROR)
+	{
 	  return error;
 	}
     }
