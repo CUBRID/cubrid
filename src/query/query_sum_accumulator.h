@@ -44,33 +44,32 @@
  * once per group.
  *
  * SHORT/INTEGER/BIGINT/DOUBLE use a typed mode. The running sum is kept in
- * int_sum or dbl_sum, and sum_type records its accumulation type. Typed adds
- * preserve the legacy input-type range semantics (for example, SUM(SHORT)
- * overflows past 32767); INTEGER additions are exact and DOUBLE uses the same
- * IEEE operations in the same order. The optimization removes per-row
- * DB_VALUE dispatch, not the arithmetic.
+ * v.int_sum or v.dbl_sum, and sum_type records its accumulation type. Typed
+ * adds preserve the per-row input-type range semantics (for example,
+ * SUM(SHORT) overflows past 32767); INTEGER additions are exact and DOUBLE
+ * uses the same IEEE operations in the same order. The optimization removes
+ * per-row DB_VALUE dispatch, not the arithmetic.
  *
- * FLOAT uses sum_type DOUBLE, matching the legacy accumulation domain. A FLOAT
+ * FLOAT uses sum_type DOUBLE, matching the per-row accumulation domain. A FLOAT
  * sum may exceed FLT_MAX during accumulation; only the final demotion to FLOAT
  * can raise ER_IT_DATA_OVERFLOW.
  *
- * sum_type records the DB_TYPE used for accumulation: DB_TYPE_NUMERIC for word
- * mode, or the corresponding typed mode otherwise. It is valid only while
- * is_active is set.
+ * sum_type records the DB_TYPE used for accumulation and discriminates the
+ * union. It is valid only while is_active is set.
  */
-#define SUM_ACC_NUMERIC_WORDS  (14)	/* covers TWICE_NUM_MAX_PREC (256) decimal digits */
+#define SUM_ACC_NUMERIC_WORDS  (3)	/* the native NUMERIC width, keeping the running sum exact up to 57 digits */
 
 typedef struct sum_acc SUM_ACC;
 struct sum_acc
 {
-  /* SHORT/INTEGER/BIGINT type */
-  int64_t int_sum;
-  /* FLOAT/DOUBLE type */
-  double dbl_sum;
+  union
+  {
+    int64_t int_sum;		/* SHORT/INTEGER/BIGINT */
+    double dbl_sum;		/* FLOAT/DOUBLE */
+    uint64_t words[SUM_ACC_NUMERIC_WORDS];	/* sign-magnitude coefficient; big-endian, last word is the LSW */
+  } v;
 
-  /* NUMERIC type */
-  uint64_t words[SUM_ACC_NUMERIC_WORDS];	/* sign-magnitude coefficient; big-endian, last word is the LSW */
-  int used_words;		/* active low words */
+  /* NUMERIC mode */
   int scale;
   bool is_negative;		/* the typed sums carry their own sign */
 
@@ -84,13 +83,13 @@ struct sum_acc
  * apply their own policies on top and test those predicates instead.
  */
 
-/* Input types the accumulator supports; everything else stays legacy. */
+/* Input types the accumulator supports; everything else stays on the per-row add. */
 #define SUM_ACC_IS_SUPPORTED_TYPE(t) \
   ((t) == DB_TYPE_NUMERIC || (t) == DB_TYPE_INTEGER || (t) == DB_TYPE_BIGINT \
    || (t) == DB_TYPE_SHORT || (t) == DB_TYPE_DOUBLE || (t) == DB_TYPE_FLOAT)
 
 /* The sum_type used for each input type: NUMERIC keeps word mode, FLOAT widens
- * to DOUBLE (the legacy accumulation domain), and other typed inputs keep their
+ * to DOUBLE (the per-row accumulation domain), and other typed inputs keep their
  * own type; DB_TYPE_NULL = unsupported input. */
 static inline DB_TYPE
 sum_acc_sum_type_for (DB_TYPE t)
@@ -119,7 +118,7 @@ sum_acc_agg_sum_type_for (DB_TYPE t)
   return sum_acc_sum_type_for (t);
 }
 
-/* Analytic entry policy: FLOAT is excluded because the legacy analytic path
+/* Analytic entry policy: FLOAT is excluded because the per-row analytic path
  * accumulates in FLOAT, rounding after each add; DOUBLE accumulation cannot
  * reproduce those semantics.
  */

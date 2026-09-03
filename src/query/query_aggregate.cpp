@@ -305,9 +305,6 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
     case PT_AGG_BIT_XOR:
     case PT_AVG:
     case PT_SUM:
-      /* Merge in the word domain so no partial sum is rounded on the way in.
-       * The group still rounds exactly once at finalize, which keeps a parallel
-       * scan agreeing with the serial plan past DB_MAX_NUMERIC_PRECISION. */
       if (new_acc->sum_acc.is_active)
 	{
 	  if (acc->sum_acc.is_active)
@@ -609,7 +606,7 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	      return ER_FAILED;
 	    }
-	  /* unsupported types keep the legacy add into acc->value */
+	  /* unsupported types keep the per-row add into acc->value */
 	  if (qdata_add_dbval (acc->value, value, acc->value, domain->value_dom) != NO_ERROR)
 	    {
 	      return ER_FAILED;

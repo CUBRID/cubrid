@@ -2747,19 +2747,19 @@ qdata_sum_acc_start (SUM_ACC * acc, const DB_VALUE * dbv)
       numeric_sum_acc_load_dbv (acc, dbv);
       return NO_ERROR;
     case DB_TYPE_SHORT:
-      acc->int_sum = (int64_t) db_get_short (dbv);
+      acc->v.int_sum = (int64_t) db_get_short (dbv);
       break;
     case DB_TYPE_INTEGER:
-      acc->int_sum = (int64_t) db_get_int (dbv);
+      acc->v.int_sum = (int64_t) db_get_int (dbv);
       break;
     case DB_TYPE_BIGINT:
-      acc->int_sum = (int64_t) db_get_bigint (dbv);
+      acc->v.int_sum = (int64_t) db_get_bigint (dbv);
       break;
     case DB_TYPE_DOUBLE:
-      acc->dbl_sum = db_get_double (dbv);
+      acc->v.dbl_sum = db_get_double (dbv);
       break;
     case DB_TYPE_FLOAT:
-      acc->dbl_sum = (double) db_get_float (dbv);
+      acc->v.dbl_sum = (double) db_get_float (dbv);
       break;
     default:
       assert (false);
@@ -2775,7 +2775,7 @@ qdata_sum_acc_start (SUM_ACC * acc, const DB_VALUE * dbv)
 /*
  * qdata_sum_acc_add_dbv () - add one value to an active accumulator
  *   return: NO_ERROR, or ER_QPROC_OVERFLOW_ADDITION with the same overflow
- *           semantics as the legacy per-row addition
+ *           semantics as the per-row addition
  *   acc(in/out) : active accumulator; sum_type matches the value's type
  *   dbv(in)     : the value; not NULL-valued
  */
@@ -2799,35 +2799,35 @@ qdata_sum_acc_add_dbv (SUM_ACC * acc, const DB_VALUE * dbv)
     case DB_TYPE_NUMERIC:
       return numeric_sum_acc_add_dbv (acc, dbv);
     case DB_TYPE_SHORT:
-      acc->int_sum += (int64_t) db_get_short (dbv);
-      if (OR_CHECK_SHORT_OVERFLOW (acc->int_sum))
+      acc->v.int_sum += (int64_t) db_get_short (dbv);
+      if (OR_CHECK_SHORT_OVERFLOW (acc->v.int_sum))
 	{
 	  goto overflow;
 	}
       break;
     case DB_TYPE_INTEGER:
-      acc->int_sum += (int64_t) db_get_int (dbv);
-      if (OR_CHECK_INT_OVERFLOW (acc->int_sum))
+      acc->v.int_sum += (int64_t) db_get_int (dbv);
+      if (OR_CHECK_INT_OVERFLOW (acc->v.int_sum))
 	{
 	  goto overflow;
 	}
       break;
     case DB_TYPE_BIGINT:
-      if (__builtin_add_overflow (acc->int_sum, (int64_t) db_get_bigint (dbv), &acc->int_sum))
+      if (__builtin_add_overflow (acc->v.int_sum, (int64_t) db_get_bigint (dbv), &acc->v.int_sum))
 	{
 	  goto overflow;
 	}
       break;
     case DB_TYPE_DOUBLE:
-      acc->dbl_sum += db_get_double (dbv);
-      if (OR_CHECK_DOUBLE_OVERFLOW (acc->dbl_sum))
+      acc->v.dbl_sum += db_get_double (dbv);
+      if (OR_CHECK_DOUBLE_OVERFLOW (acc->v.dbl_sum))
 	{
 	  goto overflow;
 	}
       break;
     case DB_TYPE_FLOAT:
-      acc->dbl_sum += (double) db_get_float (dbv);
-      if (OR_CHECK_DOUBLE_OVERFLOW (acc->dbl_sum))
+      acc->v.dbl_sum += (double) db_get_float (dbv);
+      if (OR_CHECK_DOUBLE_OVERFLOW (acc->v.dbl_sum))
 	{
 	  goto overflow;
 	}
@@ -2909,28 +2909,28 @@ qdata_sum_acc_merge (SUM_ACC * acc, const SUM_ACC * other)
   switch ((DB_TYPE) acc->sum_type)
     {
     case DB_TYPE_SHORT:
-      acc->int_sum += other->int_sum;
-      if (acc->int_sum > DB_INT16_MAX || acc->int_sum < DB_INT16_MIN)
+      acc->v.int_sum += other->v.int_sum;
+      if (acc->v.int_sum > DB_INT16_MAX || acc->v.int_sum < DB_INT16_MIN)
 	{
 	  goto overflow;
 	}
       return NO_ERROR;
     case DB_TYPE_INTEGER:
-      acc->int_sum += other->int_sum;
-      if (acc->int_sum > DB_INT32_MAX || acc->int_sum < DB_INT32_MIN)
+      acc->v.int_sum += other->v.int_sum;
+      if (acc->v.int_sum > DB_INT32_MAX || acc->v.int_sum < DB_INT32_MIN)
 	{
 	  goto overflow;
 	}
       return NO_ERROR;
     case DB_TYPE_BIGINT:
-      if (__builtin_add_overflow (acc->int_sum, other->int_sum, &acc->int_sum))
+      if (__builtin_add_overflow (acc->v.int_sum, other->v.int_sum, &acc->v.int_sum))
 	{
 	  goto overflow;
 	}
       return NO_ERROR;
     case DB_TYPE_DOUBLE:
-      acc->dbl_sum += other->dbl_sum;
-      if (OR_CHECK_DOUBLE_OVERFLOW (acc->dbl_sum))
+      acc->v.dbl_sum += other->v.dbl_sum;
+      if (OR_CHECK_DOUBLE_OVERFLOW (acc->v.dbl_sum))
 	{
 	  goto overflow;
 	}
@@ -2968,16 +2968,16 @@ qdata_sum_acc_snapshot (const SUM_ACC * acc, DB_VALUE * result)
   switch ((DB_TYPE) acc->sum_type)
     {
     case DB_TYPE_SHORT:
-      db_make_short (result, (short) acc->int_sum);
+      db_make_short (result, (short) acc->v.int_sum);
       return NO_ERROR;
     case DB_TYPE_INTEGER:
-      db_make_int (result, (int) acc->int_sum);
+      db_make_int (result, (int) acc->v.int_sum);
       return NO_ERROR;
     case DB_TYPE_BIGINT:
-      db_make_bigint (result, (DB_BIGINT) acc->int_sum);
+      db_make_bigint (result, (DB_BIGINT) acc->v.int_sum);
       return NO_ERROR;
     case DB_TYPE_DOUBLE:
-      db_make_double (result, acc->dbl_sum);
+      db_make_double (result, acc->v.dbl_sum);
       return NO_ERROR;
     case DB_TYPE_NUMERIC:
       return numeric_sum_acc_snapshot (acc, result);
