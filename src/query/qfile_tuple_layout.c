@@ -224,13 +224,15 @@ qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
   int16_t data_off[2], bitmap_size;
   bool ok;
 
+  if (tl->type_cnt <= 0)
+    {
+      /* an empty list (e.g. an XASL list_id that never produced a tuple, or a cleared one) has nothing to lay out and
+       * may legitimately never have been finalized; no column can be read from it anyway */
+      return tl->domp == NULL && tl->col == NULL;
+    }
   if (!tl->finalized || !(tl->hdr_size == 4 || tl->hdr_size == 8))
     {
       return false;
-    }
-  if (tl->type_cnt <= 0)
-    {
-      return tl->domp == NULL && tl->col == NULL;
     }
   if (tl->col != (QFILE_COL_LAYOUT *) (tl->domp + tl->type_cnt))
     {

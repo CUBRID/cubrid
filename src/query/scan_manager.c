@@ -774,6 +774,9 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
     }
   indx_cov->tplrec->size = 0;
   indx_cov->tplrec->tpl = NULL;
+  indx_cov->tplrec->scratch = NULL;
+  indx_cov->tplrec->scratch_size = 0;
+  qfile_slot_bind (indx_cov->tplrec, &indx_cov->list_id->type_list);
 
   indx_cov->lsid = (QFILE_LIST_SCAN_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_SCAN_ID));
   if (indx_cov->lsid == NULL)
@@ -6752,8 +6755,9 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		{
 		  return S_ERROR;
 		}
-	      tplrec.tpl = isidp->multi_range_opt.tplrec.tpl;
+	      /* the dumped tuple has the covering list's layout: bind + set (D-182-5/6) */
 	      tplrec.size = isidp->multi_range_opt.tplrec.size;
+	      qfile_slot_fill (&tplrec, isidp->multi_range_opt.tplrec.tpl, &isidp->indx_cov.list_id->type_list);
 	    }
 	  else
 	    {
@@ -7850,7 +7854,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
 
   switch (scan_id->type)
     {
@@ -7997,7 +8001,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 {
   LLIST_SCAN_ID *llsidp;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   SCAN_CODE qp_scan;
 
   llsidp = &s_id->s.llsid;
