@@ -4096,8 +4096,9 @@ qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
  *   return: void
  *   thread_p(in):
  *   conn_handle(in): connection the DML ran on
- *   has_dml(in): true once a remote DML statement has executed a row on it, false again when that work
- *                has been undone and nothing else of this transaction is left there
+ *   has_dml(in): true once a remote DML statement of this transaction has changed rows on it. The
+ *                mark is not lowered again: an undo that leaves the connection clean tears it down
+ *                and drops its entry (dblink_dml_stmt_abort), so there is nothing left to clear
  *
  * Note: While the flag is set, rolling that connection's remote transaction back would discard work the
  *       transaction still expects to commit.

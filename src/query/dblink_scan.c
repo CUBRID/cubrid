@@ -1722,7 +1722,7 @@ dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VA
       *affected_rows = result;
     }
 
-  /* The connection is marked as carrying uncommitted work only once the whole statement succeeds
+  /* This statement's rows are recorded on the connection only once the whole statement succeeds
    * (dblink_dml_stmt_done); a statement that fails is undone by dblink_dml_stmt_abort(), so its own
    * rows must not count as work the transaction expects to commit. */
   state->rows_sent = true;
@@ -1764,9 +1764,9 @@ dblink_dml_stmt_done (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state)
  *   transaction end and 2PC prepare do not reach it again (mirrors the cleanup
  *   dblink_2pc_send_prepare does once a connection's fate is decided outside the normal
  *   end-of-transaction flow). That loses work only if the connection already carries this
- *   transaction's uncommitted DML - this statement has not marked it yet (only dblink_dml_stmt_done
- *   does, on success), so the mark speaks for the earlier statements alone - and only then is the
- *   transaction marked sink-aborted, so that its commit is refused.
+ *   transaction's uncommitted DML - the mark goes up when a statement succeeds, so this statement
+ *   has not raised it and it speaks for the transaction's earlier statements alone - and only then
+ *   is the transaction marked sink-aborted, so that its commit is refused.
  */
 void
 dblink_dml_stmt_abort (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state)
