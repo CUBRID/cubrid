@@ -25178,14 +25178,14 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
 	    {
 	      /* Counted where the window delivered the record. On S_DOESNT_FIT the caller grows the area and
 	       * comes back with the same version_lsa, and that retry is the same read, not a second one. */
-	      perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_HIT);
+	      perfmon_inc_stat (thread_p, PSTAT_PRIOR_INFLIGHT_WINDOW_HIT);
 	    }
 	  return window_scan;
 	}
 
       /* Not in the window either: type not staged, ring full when it was appended, or copied and released
        * just now. Re-read the watermark first - in that last case a page already has the record. */
-      perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_MISS);
+      perfmon_inc_stat (thread_p, PSTAT_PRIOR_INFLIGHT_WINDOW_MISS);
       copied_lsa = log_Gl.append.get_copied_lsa ();
 
       if (LSA_LE (&copied_lsa, version_lsa))
@@ -25194,7 +25194,7 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
 	  LOG_CS_ENTER (thread_p);
 	  logpb_prior_lsa_append_all_list (thread_p);
 	  LOG_CS_EXIT (thread_p);
-	  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_READER_GUARD);
+	  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_PRIOR_DRAIN_READER_GUARD);
 
 	  copied_lsa = log_Gl.append.get_copied_lsa ();
 	}

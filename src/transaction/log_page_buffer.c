@@ -4011,7 +4011,7 @@ logpb_flush_pages_direct (THREAD_ENTRY * thread_p)
 
   PERF_UTIME_TRACKER_START (thread_p, &time_track);
   logpb_prior_lsa_append_all_list (thread_p);
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_FLUSH);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_PRIOR_DRAIN_FLUSH);
 
   (void) logpb_flush_all_append_pages (thread_p);
   log_Stat.direct_flush_count++;

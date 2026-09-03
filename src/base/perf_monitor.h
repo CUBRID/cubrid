@@ -393,12 +393,12 @@ typedef enum
   PSTAT_PRIOR_LSA_LIST_REMOVED,
 
   /* prior list, charged to whoever paid for it */
-  PSTAT_LOG_PRIOR_DRAIN_FLUSH,
-  PSTAT_LOG_PRIOR_DRAIN_READER_GUARD,
+  PSTAT_PRIOR_DRAIN_FLUSH,
+  PSTAT_PRIOR_DRAIN_READER_GUARD,
 
   /* in-flight window: whether a reader found the version it wanted still staged */
-  PSTAT_LOG_INFLIGHT_WINDOW_HIT,
-  PSTAT_LOG_INFLIGHT_WINDOW_MISS,
+  PSTAT_PRIOR_INFLIGHT_WINDOW_HIT,
+  PSTAT_PRIOR_INFLIGHT_WINDOW_MISS,
 
   /* HA replication delay */
   PSTAT_HA_REPL_DELAY,

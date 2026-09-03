@@ -317,12 +317,12 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_LSA_LIST_REMOVED, "Num_prior_lsa_list_removed"),
 
   /* prior list, charged to whoever paid for it */
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_DRAIN_FLUSH, "log_prior_drain_flush"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_DRAIN_READER_GUARD, "log_prior_drain_reader_guard"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PRIOR_DRAIN_FLUSH, "prior_drain_flush"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PRIOR_DRAIN_READER_GUARD, "prior_drain_reader_guard"),
 
   /* in-flight window: whether a reader found the version it wanted still staged */
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_INFLIGHT_WINDOW_HIT, "Num_log_inflight_window_hit"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_INFLIGHT_WINDOW_MISS, "Num_log_inflight_window_miss"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_INFLIGHT_WINDOW_HIT, "Num_prior_inflight_window_hit"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_INFLIGHT_WINDOW_MISS, "Num_prior_inflight_window_miss"),
 
   /* HA replication delay */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HA_REPL_DELAY, "Time_ha_replication_delay"),
