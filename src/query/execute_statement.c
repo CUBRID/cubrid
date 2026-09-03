@@ -22630,7 +22630,9 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
       while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
       if (rec_cnt == 0)
 	{
-	  error = ER_DBLINK_SERVER_ALTER_NOT_ALLOWED;	// ER_DBLINK_CANNOT_UPDATE_SERVER
+	  /* "Not found" on purpose - a distinct error would reveal which names exist in another user's
+	   * namespace. Duplicate-name checks stay safe: each caller is authorized for the owner it looks up. */
+	  error = ER_DBLINK_SERVER_NOT_FOUND;
 	}
     }
 
