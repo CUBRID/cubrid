@@ -133,9 +133,18 @@ qfile_type_list_alloc (QFILE_TUPLE_VALUE_TYPE_LIST * tl, int type_cnt, int hdr_s
 int
 qfile_type_list_copy (QFILE_TUPLE_VALUE_TYPE_LIST * dest, const QFILE_TUPLE_VALUE_TYPE_LIST * src)
 {
-  assert (src->hdr_size == QFILE_TUPLE_HDR_SIZE_FORWARD || src->hdr_size == QFILE_TUPLE_HDR_SIZE_BACKWARD);
+  int hdr_size = src->hdr_size;
 
-  if (qfile_type_list_alloc (dest, src->type_cnt, src->hdr_size) != NO_ERROR)
+  if (hdr_size != QFILE_TUPLE_HDR_SIZE_FORWARD && hdr_size != QFILE_TUPLE_HDR_SIZE_BACKWARD)
+    {
+      /* a list id that was never opened (QFILE_CLEAR_LIST_ID leaves hdr_size 0; e.g. xasl->list_id copied out by
+       * qexec_get_xasl_list_id after an error exit, CTP _003_manipulation/1020.sql) or an INPUT type list: it holds no
+       * tuples, so the header is immaterial; qfile_open_list () decides it when the list is actually created */
+      assert (!src->finalized);
+      hdr_size = QFILE_TUPLE_HDR_SIZE_FORWARD;
+    }
+
+  if (qfile_type_list_alloc (dest, src->type_cnt, hdr_size) != NO_ERROR)
     {
       return ER_FAILED;
     }
