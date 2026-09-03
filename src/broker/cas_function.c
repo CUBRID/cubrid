@@ -309,9 +309,9 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   if (replace_rule_idx >= 0)
     {
       /* log both the original and the replacement query */
-      cas_log_write2_nonl ("[ORIG] ");
+      cas_log_write2_nonl_noflush ("[ORIG] ");
       cas_log_write_query_string_nonl (sql_stmt, sql_size - 1, NULL);
-      cas_log_write2_nonl (" [REPLACE] ");
+      cas_log_write2_nonl_noflush (" [REPLACE] ");
     }
   /* effective_sql may point into the read-only replace segment here; unlike the
    * compile-end counterpart below, this one writes with CAS_LOG_VISIBLE_PW and so never
