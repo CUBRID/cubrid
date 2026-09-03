@@ -2471,6 +2471,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         if (ctx.proc_call_name().DBMS_OUTPUT() != null && dbmsOutputProc.contains(name)) {
+
+            if (parallelEnabled) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx),
+                        "Stored functions declared with PARALLEL_ENABLE cannot use DBMS_OUTPUT package");
+            }
+
             // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease
             // migration from Oracle.
             // NOTE: users cannot define a procedure of this name because of '$'
