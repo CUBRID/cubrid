@@ -986,9 +986,8 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       size = list_id->type_list.type_cnt * sizeof (bool);
     }
 
-  /* build tuple descriptor */
-  status = qdata_generate_tuple_desc_for_valptr_list (thread_p, outptr_list, vd, &list_id->type_list,
-						      &(list_id->tpl_descr));
+  /* collect the tuple values */
+  status = qdata_generate_tuple_desc_for_valptr_list (thread_p, outptr_list, vd, &(list_id->tpl_descr));
   if (status == QPROC_TPLDESCR_FAILURE)
     {
       goto exit_on_error;
@@ -996,8 +995,20 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
   if (list_id->is_domain_resolved == false)
     {
-      /* Resolve DB_TYPE_VARIABLE domains. It will be done when generating the first tuple. */
+      /* Resolve DB_TYPE_VARIABLE domains from the values just fetched (finalizes the layout descriptor) BEFORE the
+       * size pass, so size and fill see the same layout (PR #258 review). Done for the RETRY statuses too: the
+       * private-buffer fallback writer needs the resolved descriptor as well. */
       if (qfile_update_domains_on_type_list (thread_p, list_id, outptr_list) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  if (status == QPROC_TPLDESCR_SUCCESS)
+    {
+      /* size pass with the (possibly just finalized) descriptor */
+      status = qdata_size_tuple_desc (&list_id->type_list, &list_id->tpl_descr);
+      if (status == QPROC_TPLDESCR_FAILURE)
 	{
 	  goto exit_on_error;
 	}
@@ -21235,6 +21246,13 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    case PT_AGG_BIT_AND:
 	    case PT_AGG_BIT_OR:
 	    case PT_AGG_BIT_XOR:
+	      /* qdata_bit_and/or/xor_dbval always produce a BIGINT accumulator whatever the operand type; the declared
+	       * INTEGER agg domain is applied when the result is projected. The accumulator domain must describe the
+	       * bytes actually stored in the hash GROUP BY partial list (CBRD-27365 PR-2a writer probe, D-190-12). */
+	      agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
+	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	      break;
+
 	    case PT_MIN:
 	    case PT_MAX:
 	      agg_p->accumulator_domain.value_dom = agg_p->domain;
@@ -22443,8 +22461,11 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
       func_state->group_list_id = func_p->group_list_id;
       func_p->group_list_id = NULL;
 
-      (void) qexec_add_intval_tuple (thread_p, func_p->order_list_id, func_p->curr_sort_key_tuple_count,
-				     func_p->value);
+      if (qexec_add_intval_tuple (thread_p, func_p->order_list_id, func_p->curr_sort_key_tuple_count, func_p->value)
+	  != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
 
       func_state->value_list_id = func_p->order_list_id;
       func_p->order_list_id = NULL;
@@ -22578,10 +22599,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
     }
   else
     {
-      analytic_state->key_info.nkeys = 0;
-      analytic_state->key_info.use_original = 1;
-      analytic_state->key_info.key = NULL;
-      analytic_state->key_info.error = NO_ERROR;
+      qfile_init_empty_sort_key_info (&analytic_state->key_info);
     }
 
   if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
@@ -24451,8 +24469,11 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	      a_func_list->curr_group_tuple_count_nn += a_func_list->curr_sort_key_tuple_count;
 	    }
 
-	  (void) qexec_add_intval_tuple (thread_p, a_func_list->order_list_id, a_func_list->curr_sort_key_tuple_count,
-					 a_func_list->value);
+	  if (qexec_add_intval_tuple (thread_p, a_func_list->order_list_id, a_func_list->curr_sort_key_tuple_count,
+				      a_func_list->value) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 
 	  if (!is_same_group)
 	    {
@@ -28017,8 +28038,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   proc->agg_hash_context->curr_part_key = NULL;
   proc->agg_hash_context->temp_part_value = NULL;
   proc->agg_hash_context->curr_part_value = NULL;
-  proc->agg_hash_context->sort_key.key = NULL;
-  proc->agg_hash_context->sort_key.nkeys = 0;
+  qfile_init_empty_sort_key_info (&proc->agg_hash_context->sort_key);
 
   /*
    * create temporary dbvalue array
@@ -28113,9 +28133,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /* register counter domain */
   type_list.domp[value_count++] = &tp_Integer_domain;
 
-  /* create sort key */
-  proc->agg_hash_context->sort_key.key = NULL;
-  proc->agg_hash_context->sort_key.nkeys = 0;
+  /* create sort key (the real keys are set by qexec_initialize_groupby_state) */
+  qfile_init_empty_sort_key_info (&proc->agg_hash_context->sort_key);
 
   /* create list files */
   proc->agg_hash_context->part_list_id =

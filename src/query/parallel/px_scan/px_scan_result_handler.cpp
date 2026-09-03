@@ -894,13 +894,17 @@ namespace parallel_scan
 
 	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 
-	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, &tl.writer_result_p->type_list,
-							    &(tl.writer_result_p->tpl_descr));
+	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, &(tl.writer_result_p->tpl_descr));
 
 	if (unlikely (!m_.is_list_id_domain_resolved))
 	  {
+	    /* resolve this worker's list domains from the collected values BEFORE the size pass (PR #258 review) */
 	    qfile_update_domains_on_type_list (thread_p, tl.writer_result_p, input);
 	    m_.is_list_id_domain_resolved = tl.writer_result_p->is_domain_resolved;
+	  }
+	if (status == QPROC_TPLDESCR_SUCCESS)
+	  {
+	    status = qdata_size_tuple_desc (&tl.writer_result_p->type_list, &tl.writer_result_p->tpl_descr);
 	  }
 	if (unlikely (!tl.val_list_domain_resolved))
 	  {
@@ -1080,6 +1084,17 @@ namespace parallel_scan
 	      }
 	  }
 	list_id_p = tl_list_id_header->m_list_id_p;
+	if (unlikely (!list_id_p->is_domain_resolved))
+	  {
+	    /* resolve the list domains from this value list BEFORE assembling the tuple, so the tuple is laid out with
+	     * the descriptor every later reader uses (PR #258 review) */
+	    (void) update_domains_on_type_list_by_val_list (thread_p, list_id_p, input);
+	    for (int i = 0; i < tl_list_id_header->m_type_cnt; i++)
+	      {
+		tl_list_id_header->m_type_list[i]->store ((TP_DOMAIN *) list_id_p->type_list.domp[i],
+		    std::memory_order_release);
+	      }
+	  }
 	err_code = qdata_copy_val_list_to_tuple (thread_p, input, &list_id_p->type_list, &tl_tpl_buf);
 	prefetch (list_id_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 	if (unlikely (err_code != NO_ERROR))
@@ -1095,15 +1110,6 @@ namespace parallel_scan
 	    m_err_messages_p->move_top_error_message_to_this();
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return false;
-	  }
-	if (unlikely (!tl_list_id_header->m_list_id_p->is_domain_resolved))
-	  {
-	    (void) update_domains_on_type_list_by_val_list (thread_p, tl_list_id_header->m_list_id_p, input);
-	    for (int i = 0; i < tl_list_id_header->m_type_cnt; i++)
-	      {
-		tl_list_id_header->m_type_list[i]->store ((TP_DOMAIN *)tl_list_id_header->m_list_id_p->type_list.domp[i],
-		    std::memory_order_release);
-	      }
 	  }
 	if (unlikely (!VPID_EQ (&old_last_vpid, &tl_list_id_header->m_list_id_p->last_vpid)
 		      && old_last_vpid.pageid != NULL_PAGEID))
@@ -1794,7 +1800,7 @@ namespace parallel_scan
 	/* per-row domain fallback: qexec_resolve_domains_for_aggregation may leave NULL domain for covering index NULL values. */
 	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	  {
-	    acc_dom->value_dom = agg_node->domain;
+	    acc_dom->value_dom = &tp_Bigint_domain;	/* qdata_bit_*_dbval accumulate in BIGINT (D-190-12) */
 	    acc_dom->value2_dom = &tp_Null_domain;
 	  }
 	DB_VALUE tmp_val;

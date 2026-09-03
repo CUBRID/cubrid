@@ -4152,6 +4152,23 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
   return key_info_p;
 }
 
+/* qfile_init_empty_sort_key_info () - a SORTKEY_INFO with no key (the "no sort needed" analytic path, the hash
+ *   GROUP BY partial-list sort before its keys are known). Every field the accessors and qfile_clear_sort_key_info
+ *   read is defined, including a finalized empty key mini tuple descriptor (D-182-14); the former hand-written
+ *   `nkeys = 0; key = NULL;` left key_tl uninitialized (CBRD-27365 PR-2a CTP: assert in qfile_tuple_size and
+ *   munmap_chunk(): invalid pointer in the clear).
+ */
+void
+qfile_init_empty_sort_key_info (SORTKEY_INFO * key_info_p)
+{
+  key_info_p->nkeys = 0;
+  key_info_p->use_original = 1;
+  key_info_p->key = NULL;
+  key_info_p->error = NO_ERROR;
+  (void) qfile_type_list_alloc (&key_info_p->key_tl, 0, QFILE_TL_HDR_SIZE_LEGACY);	/* no allocation for 0 columns */
+  qfile_type_list_finalize (&key_info_p->key_tl);
+}
+
 /* qfile_clear_sort_key_info () -
  *   return:
  *   info(in):

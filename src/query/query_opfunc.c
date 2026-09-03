@@ -524,17 +524,16 @@ qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * 
  *           QPROC_TPLDESCR_FAILURE
  *   valptr_list(in)    : Value pointer list
  *   vd(in)     : Value descriptor
- *   tl(in)     : layout descriptor of the destination list
  *   tdp(in)    : Tuple descriptor
  *
- * Note: Generate tuple descriptor for given valptr_list values.
+ * Note: Collect the valptr_list values into the tuple descriptor (f_valp / f_cnt). The size pass is a separate
+ * step, qdata_size_tuple_desc (), so the caller can resolve the list's late domains from these values in between.
  * Regu variables that are hidden columns are not copied
  * to the list file tuple
  */
 QPROC_TPLDESCR_STATUS
 qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
-					   val_descr * val_desc_p, const qfile_tuple_value_type_list * tl,
-					   qfile_tuple_descriptor * tuple_desc_p)
+					   val_descr * val_desc_p, qfile_tuple_descriptor * tuple_desc_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   REGU_VARIABLE *regu_var_p;
@@ -577,25 +576,36 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
       tuple_desc_p->f_cnt += 1;	/* increase field number */
     }
 
-  /* assembler size pass over the collected values (the compressed string, if any, is deallocated later, after copying
-   * the db_value into the tuple) */
+exit_with_status:
+
+  return status;
+}
+
+/*
+ * qdata_size_tuple_desc () - assembler size pass over the values collected by
+ *   qdata_generate_tuple_desc_for_valptr_list (). Call it AFTER the list's DB_TYPE_VARIABLE domains have been resolved
+ *   from those values (qfile_update_domains_on_type_list) so size and fill see the same layout descriptor.
+ *   return: QPROC_TPLDESCR_SUCCESS, QPROC_TPLDESCR_RETRY_BIG_REC or QPROC_TPLDESCR_FAILURE
+ *   tl(in): finalized layout descriptor of the destination list
+ */
+QPROC_TPLDESCR_STATUS
+qdata_size_tuple_desc (const qfile_tuple_value_type_list * tl, qfile_tuple_descriptor * tuple_desc_p)
+{
+  /* the compressed string, if any, is deallocated later, after copying the db_value into the tuple */
   tuple_desc_p->tpl_size =
     qfile_tuple_size_from_values (tl, tuple_desc_p->f_valp, tuple_desc_p->f_cnt, &tuple_desc_p->has_null);
   if (tuple_desc_p->tpl_size < 0)
     {
-      status = QPROC_TPLDESCR_FAILURE;
-      goto exit_with_status;
+      return QPROC_TPLDESCR_FAILURE;
     }
 
   /* BIG RECORD cannot use tuple descriptor */
   if (tuple_desc_p->tpl_size >= QFILE_MAX_TUPLE_SIZE_IN_PAGE)
     {
-      status = QPROC_TPLDESCR_RETRY_BIG_REC;
+      return QPROC_TPLDESCR_RETRY_BIG_REC;
     }
 
-exit_with_status:
-
-  return status;
+  return QPROC_TPLDESCR_SUCCESS;
 }
 
 /*
