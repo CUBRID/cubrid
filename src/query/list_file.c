@@ -3896,11 +3896,67 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
  * Note: These routines are used for relative comparisons of two sort
  *       records during sorting.
  */
+#if defined(__GNUC__)
+__attribute__ ((noinline))
+#endif
+static int qfile_compare_partial_sort_record_general (SORTKEY_INFO * key_info_p, SORT_REC * k0, SORT_REC * k1);
+
 int
 qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
 {
   SORTKEY_INFO *key_info_p = (SORTKEY_INFO *) arg;
-  SORT_REC *k0, *k1;
+  const QFILE_TUPLE_VALUE_TYPE_LIST *tl = &key_info_p->key_tl;
+  SORT_REC *k0 = *(SORT_REC **) pk0;
+  SORT_REC *k1 = *(SORT_REC **) pk1;
+  const char *t0, *t1, *b0, *b1;
+  int i, n, order;
+
+  /* Fast path (#193 perf review, D-193-4): every key is a FIXED column inside the constant-offset prefix and neither
+   * key tuple has a NULL, so each key body sits at tl->col[i].off from data_off[0] -- one length-word test per record
+   * and no slot state. The general path (NULLs, variable-width keys, SCRATCH copies) lives in a separate non-inlined
+   * function so its two 256-byte scratch buffers and slot records stay out of this frame: the comparator runs n log n
+   * times and its self time had doubled against the legacy pointer walk (perf M4: 19% -> 35%). */
+  t0 = PTR_ALIGN (&(k0->s.original.body[0]), MAX_ALIGNMENT);
+  t1 = PTR_ALIGN (&(k1->s.original.body[0]), MAX_ALIGNMENT);
+  n = key_info_p->nkeys;
+  if (tl->first_non_cached_col < n || QFILE_GET_TUPLE_HAS_NULL (t0) || QFILE_GET_TUPLE_HAS_NULL (t1))
+    {
+      return qfile_compare_partial_sort_record_general (key_info_p, k0, k1);
+    }
+  b0 = t0 + tl->data_off[0];
+  b1 = t1 + tl->data_off[0];
+  order = 0;
+  for (i = 0; i < n; i++)
+    {
+      const QFILE_COL_LAYOUT *c = &tl->col[i];
+      SUBKEY_INFO *key = &key_info_p->key[i];
+
+      if (key->use_cmp_dom)
+	{
+	  order = qfile_compare_with_interpolation_domain (c, b0 + c->off, c->size, b1 + c->off, c->size, key, key_info_p);
+	}
+      else
+	{
+	  order = (*key->sort_f) ((void *) (b0 + c->off), (void *) (b1 + c->off), key->col_dom, 0, 1, NULL);
+	}
+      if (key->is_desc)
+	{
+	  order = -order;
+	}
+      if (order != 0)
+	{
+	  break;
+	}
+    }
+  return order;
+}
+
+/*
+ * qfile_compare_partial_sort_record_general () - the full comparator: NULL keys, variable-width keys, SCRATCH copies.
+ */
+static int
+qfile_compare_partial_sort_record_general (SORTKEY_INFO * key_info_p, SORT_REC * k0, SORT_REC * k1)
+{
   QFILE_TUPLE_RECORD s0 = { NULL, 0 }, s1 = { NULL, 0 };
   const QFILE_COL_LAYOUT *c;
   const char *d0, *d1;
@@ -3913,9 +3969,6 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
 
   n = key_info_p->nkeys;
   order = 0;
-
-  k0 = *(SORT_REC **) pk0;
-  k1 = *(SORT_REC **) pk1;
 
   /* the P_sort_key body is a key mini tuple: read it through two stack slots bound to the key layout */
   qfile_slot_fill (&s0, PTR_ALIGN (&(k0->s.original.body[0]), MAX_ALIGNMENT), &key_info_p->key_tl);
