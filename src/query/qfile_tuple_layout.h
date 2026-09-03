@@ -207,8 +207,25 @@ qfile_slot_fill (QFILE_TUPLE_RECORD * rec, char *tpl, const QFILE_TUPLE_VALUE_TY
 extern void qfile_slot_clear (QFILE_TUPLE_RECORD * rec);
 
 /*
+ * qfile_prefix_end () - offset (from data_off) where the bytes of the constant prefix columns [0, lim) end, i.e. where
+ *   the walk for column lim starts. This is the UNALIGNED end of column lim-1: the writer aligns a column only when it
+ *   writes it, so a NULL column lim contributes no padding and the next bound column starts right here (the aligned
+ *   start col[lim].off is only valid when column lim itself is bound). lim <= first_non_cached_col.
+ */
+inline int
+qfile_prefix_end (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, int lim)
+{
+  assert (lim >= 0 && lim <= tl->first_non_cached_col);
+  if (lim == 0)
+    {
+      return 0;
+    }
+  return tl->col[lim - 1].off + tl->col[lim - 1].size;
+}
+
+/*
  * qfile_slot_start () - start the position cache for the current tuple (D-182-4/5):
- *   fast_limit = min (first non-cached column, first NULL column); nvalid = fast_limit; off = its start offset.
+ *   fast_limit = min (first non-cached column, first NULL column); nvalid = fast_limit; off = end of the prefix.
  */
 inline void
 qfile_slot_start (QFILE_TUPLE_RECORD * rec)
@@ -227,7 +244,7 @@ qfile_slot_start (QFILE_TUPLE_RECORD * rec)
     }
   rec->fast_limit = (int16_t) MIN (lim, INT16_MAX);
   rec->nvalid = rec->fast_limit;
-  rec->off = rec->data_off + (lim < tl->first_non_cached_col ? tl->col[lim].off : tl->first_non_cached_off);
+  rec->off = rec->data_off + qfile_prefix_end (tl, lim);
 }
 
 /*
@@ -274,7 +291,7 @@ qfile_slot_locate (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool * is_n
   else
     {
       i = rec->fast_limit;
-      off = rec->data_off + (i < tl->first_non_cached_col ? tl->col[i].off : tl->first_non_cached_off);
+      off = rec->data_off + qfile_prefix_end (tl, i);
     }
 
   bm = rec->has_null ? QFILE_TUPLE_BITMAP (tpl, tl->hdr_size) : NULL;

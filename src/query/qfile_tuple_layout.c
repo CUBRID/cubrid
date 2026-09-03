@@ -44,8 +44,7 @@
  */
 static void
 qfile_type_list_compute (TP_DOMAIN ** domp, int type_cnt, int hdr_size, QFILE_COL_LAYOUT * col,
-			 int *first_non_cached_col, int32_t * first_non_cached_off, int16_t data_off[2],
-			 int16_t * bitmap_size)
+			 int *first_non_cached_col, int16_t data_off[2], int16_t * bitmap_size)
 {
   int i, off = 0;
 
@@ -53,7 +52,6 @@ qfile_type_list_compute (TP_DOMAIN ** domp, int type_cnt, int hdr_size, QFILE_CO
   data_off[0] = (int16_t) DB_ALIGN (hdr_size, QFILE_TUPLE_ALIGNMENT);
   data_off[1] = (int16_t) DB_ALIGN (hdr_size + *bitmap_size, QFILE_TUPLE_ALIGNMENT);
   *first_non_cached_col = type_cnt;
-  *first_non_cached_off = 0;
 
   for (i = 0; i < type_cnt; i++)
     {
@@ -67,7 +65,6 @@ qfile_type_list_compute (TP_DOMAIN ** domp, int type_cnt, int hdr_size, QFILE_CO
       if (col[i].kind == QFILE_COL_VAR)
 	{
 	  *first_non_cached_col = i;
-	  *first_non_cached_off = off;	/* the VAR header starts right after the fixed prefix */
 	  continue;
 	}
 
@@ -76,16 +73,10 @@ qfile_type_list_compute (TP_DOMAIN ** domp, int type_cnt, int hdr_size, QFILE_CO
 	{
 	  /* D-181-4: give up the constant-offset cache from here on; correctness is unaffected */
 	  *first_non_cached_col = i;
-	  *first_non_cached_off = off;
 	  continue;
 	}
       col[i].off = (int16_t) off;
       off += col[i].size;
-    }
-
-  if (*first_non_cached_col == type_cnt)
-    {
-      *first_non_cached_off = off;	/* end of the values when every column is a cached FIXED one */
     }
 }
 
@@ -105,7 +96,6 @@ qfile_type_list_alloc (QFILE_TUPLE_VALUE_TYPE_LIST * tl, int type_cnt, int hdr_s
   tl->domp = NULL;
   tl->col = NULL;
   tl->first_non_cached_col = 0;
-  tl->first_non_cached_off = 0;
   tl->data_off[0] = 0;
   tl->data_off[1] = 0;
   tl->bitmap_size = 0;
@@ -162,7 +152,6 @@ qfile_type_list_copy (QFILE_TUPLE_VALUE_TYPE_LIST * dest, const QFILE_TUPLE_VALU
     }
 
   dest->first_non_cached_col = src->first_non_cached_col;
-  dest->first_non_cached_off = src->first_non_cached_off;
   dest->data_off[0] = src->data_off[0];
   dest->data_off[1] = src->data_off[1];
   dest->bitmap_size = src->bitmap_size;
@@ -187,12 +176,11 @@ qfile_type_list_finalize (QFILE_TUPLE_VALUE_TYPE_LIST * tl)
       assert (tl->domp != NULL);
       assert (tl->col == (QFILE_COL_LAYOUT *) (tl->domp + tl->type_cnt));
       qfile_type_list_compute (tl->domp, tl->type_cnt, tl->hdr_size, tl->col, &tl->first_non_cached_col,
-			       &tl->first_non_cached_off, tl->data_off, &tl->bitmap_size);
+			       tl->data_off, &tl->bitmap_size);
     }
   else
     {
       tl->first_non_cached_col = 0;
-      tl->first_non_cached_off = 0;
       tl->bitmap_size = 0;
       tl->data_off[0] = (int16_t) DB_ALIGN (tl->hdr_size, QFILE_TUPLE_ALIGNMENT);
       tl->data_off[1] = tl->data_off[0];
@@ -211,7 +199,6 @@ qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
 {
   QFILE_COL_LAYOUT *col;
   int first_non_cached_col;
-  int32_t first_non_cached_off;
   int16_t data_off[2], bitmap_size;
   bool ok;
 
@@ -237,12 +224,11 @@ qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
       return true;		/* cannot check; do not fail the caller for that */
     }
 
-  qfile_type_list_compute (tl->domp, tl->type_cnt, tl->hdr_size, col, &first_non_cached_col, &first_non_cached_off,
-			   data_off, &bitmap_size);
+  qfile_type_list_compute (tl->domp, tl->type_cnt, tl->hdr_size, col, &first_non_cached_col, data_off,
+			   &bitmap_size);
 
   ok = (memcmp (col, tl->col, tl->type_cnt * sizeof (QFILE_COL_LAYOUT)) == 0
-	&& first_non_cached_col == tl->first_non_cached_col && first_non_cached_off == tl->first_non_cached_off
-	&& data_off[0] == tl->data_off[0]
+	&& first_non_cached_col == tl->first_non_cached_col && data_off[0] == tl->data_off[0]
 	&& data_off[1] == tl->data_off[1] && bitmap_size == tl->bitmap_size);
 
   free (col);

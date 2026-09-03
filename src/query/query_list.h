@@ -337,8 +337,6 @@ struct qfile_tuple_value_type_list
   int type_cnt;			/* number of data types */
   QFILE_COL_LAYOUT *col;	/* == (QFILE_COL_LAYOUT *) (domp + type_cnt); convenience pointer, not a separate allocation */
   int first_non_cached_col;	/* min (first VAR column, first column with off > INT16_MAX); type_cnt if none */
-  int32_t first_non_cached_off;	/* offset from data_off where column first_non_cached_col starts when no column
-				 * before it is NULL (== end of the fixed prefix; tuple end when none) */
   int16_t data_off[2];		/* [0] = no-null, [1] = has-null : ALIGN4 (hdr_size + bitmap) */
   int16_t bitmap_size;		/* (type_cnt + 7) >> 3 */
   uint8_t hdr_size;		/* 4 | 8 ; 8 <=> backward capable (D-181-8, the only truth) */
@@ -506,7 +504,6 @@ struct qfile_list_id
       (list_id)->type_list.domp = NULL; \
       (list_id)->type_list.col = NULL; \
       (list_id)->type_list.first_non_cached_col = 0; \
-      (list_id)->type_list.first_non_cached_off = 0; \
       (list_id)->type_list.data_off[0] = 0; \
       (list_id)->type_list.data_off[1] = 0; \
       (list_id)->type_list.bitmap_size = 0; \
