@@ -18442,12 +18442,17 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		{
 		  /* future specific optimizations, changes, etc */
 		}
-	      else if (recursive_part->spec_list->s.list_node.xasl_node == non_recursive_part)
+	      else if (recursive_part->spec_list->s.list_node.xasl_node == non_recursive_part
+		       && qfile_type_list_is_resolved (&non_recursive_part->list_id->type_list))
 		{
 		  /* optimization: use non-recursive list id for both reading and writing
 		   * the recursive xasl will iterate through this list id while appending new results at its end
 		   * note: this works only if the cte(actually the non_recursive_part link) is the first spec used
 		   * for scanning during recursive iterations
+		   * note: not while a column is still DB_TYPE_VARIABLE (NULL-only so far, e.g. a NULL host variable in
+		   * the anchor): the list scan copies the layout descriptor when it opens, so an append that resolves
+		   * the column mid-scan would be read with the stale VAR layout (D-192-2, #191 R1). The copy path below
+		   * reopens the scan every iteration with the current descriptor instead.
 		   */
 		  save_recursive_list_id = recursive_part->list_id;
 		  recursive_part->list_id = non_recursive_part->list_id;

@@ -166,6 +166,24 @@ extern int qfile_type_list_copy (QFILE_TUPLE_VALUE_TYPE_LIST * dest, const QFILE
 extern void qfile_type_list_finalize (QFILE_TUPLE_VALUE_TYPE_LIST * tl);
 #if !defined(NDEBUG)
 extern bool qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * tl);
+
+/*
+ * qfile_type_list_is_resolved () - false while any column is still DB_TYPE_VARIABLE (its layout is not settled yet)
+ */
+inline bool
+qfile_type_list_is_resolved (const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
+{
+  int i;
+
+  for (i = 0; i < tl->type_cnt; i++)
+    {
+      if (TP_DOMAIN_TYPE (tl->domp[i]) == DB_TYPE_VARIABLE)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
 #endif
 
 /*

@@ -889,15 +889,17 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 
       if (type1 == DB_TYPE_VARIABLE)
 	{
-	  /* The domain of list1 is not resolved, because there is no tuple. */
-	  assert_release (list_id1_p->tuple_cnt == 0);
+	  /* list1's column is still unresolved. It may already hold tuples: a column stays DB_TYPE_VARIABLE only while
+	   * every value written to it was NULL (the assembler resolves it at its first bound value, D-199-13), and a
+	   * NULL occupies 0 bytes whatever the column's layout kind, so adopting list2's domain re-lays out nothing
+	   * that was written. (Recursive CTE anchor with a NULL host variable: the former assert_release (tuple_cnt
+	   * == 0) fired here, D-192-1.) */
 	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
 	  continue;
 	}
       else if (type2 == DB_TYPE_VARIABLE)
 	{
-	  /* The domain of list2 is not resolved, because there is no tuple. */
-	  assert_release (list_id2_p->tuple_cnt == 0);
+	  /* list2's column is unresolved (NULL-only so far); list1's domain stands. */
 	  continue;
 	}
 
