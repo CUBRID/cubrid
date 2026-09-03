@@ -7241,7 +7241,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->tplrecp)
 	{
 	  llsidp->tplrecp->size = tplrec.size;
-	  qfile_slot_set_tuple (llsidp->tplrecp, tplrec.tpl);
+	  qfile_slot_fill (llsidp->tplrecp, tplrec.tpl, tplrec.tl);	/* output record: carry the binding too */
 	}
 
       return S_SUCCESS;
@@ -7934,7 +7934,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (llsidp->tplrecp)
 	    {
 	      llsidp->tplrecp->size = tplrec.size;
-	      qfile_slot_set_tuple (llsidp->tplrecp, tplrec.tpl);
+	      qfile_slot_fill (llsidp->tplrecp, tplrec.tpl, tplrec.tl);	/* output record: carry the binding too */
 	    }
 
 	  return S_SUCCESS;
@@ -8098,7 +8098,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 	  if (llsidp->tplrecp)
 	    {
 	      llsidp->tplrecp->size = tplrec.size;
-	      qfile_slot_set_tuple (llsidp->tplrecp, tplrec.tpl);
+	      qfile_slot_fill (llsidp->tplrecp, tplrec.tpl, tplrec.tl);	/* output record: carry the binding too */
 	    }
 	  return S_SUCCESS;
 	}
@@ -8893,14 +8893,19 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE tpl = NULL;
 
   tplrec.size = 0;
   tplrec.tpl = (QFILE_TUPLE) NULL;
 
   llsidp = &scan_id->s.llsid;
 
-  while ((qp_scan = scan_hash_probe_next (thread_p, scan_id, &tplrec.tpl)) == S_SUCCESS)
+  /* the probed tuples are copies of list_id tuples; retarget the slot only through the setter (D-182-5/6) */
+  qfile_slot_bind (&tplrec, &llsidp->list_id->type_list);
+
+  while ((qp_scan = scan_hash_probe_next (thread_p, scan_id, &tpl)) == S_SUCCESS)
     {
+      qfile_slot_set_tuple (&tplrec, tpl);
 
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
@@ -8977,7 +8982,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->tplrecp)
 	{
 	  llsidp->tplrecp->size = tplrec.size;
-	  qfile_slot_set_tuple (llsidp->tplrecp, tplrec.tpl);
+	  qfile_slot_fill (llsidp->tplrecp, tplrec.tpl, tplrec.tl);	/* output record: carry the binding too */
 	}
 
       return S_SUCCESS;

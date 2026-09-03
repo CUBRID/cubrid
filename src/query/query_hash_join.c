@@ -4105,7 +4105,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       else
 	{
 	  /* not found */
-	  tuple_record->tpl = NULL;
+	  qfile_slot_set_tuple (tuple_record, NULL);
 	  tuple_record->size = 0;
 	}
       break;			/* HASH_METH_IN_MEM */
@@ -4140,7 +4140,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       else
 	{
 	  /* not found */
-	  tuple_record->tpl = NULL;
+	  qfile_slot_set_tuple (tuple_record, NULL);
 	  tuple_record->size = 0;
 	}
       break;			/* HASH_METH_HYBRID */
@@ -4170,7 +4170,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       else if (eh_search == EH_KEY_NOTFOUND)
 	{
 	  /* not found */
-	  tuple_record->tpl = NULL;
+	  qfile_slot_set_tuple (tuple_record, NULL);
 	  tuple_record->size = 0;
 	}
       else

@@ -5309,12 +5309,16 @@ qfile_retrieve_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, Q
 		      int peek)
 {
   int tuple_size;
+  const QFILE_TUPLE_VALUE_TYPE_LIST *tl = &scan_id_p->list_id.type_list;
 
+  /* filler-owns-bind: the record a scan fills is bound to the scan's layout descriptor here, so callers that
+   * pass a local record straight to the fetch path (scan_next_list_scan, hash join, analytic, ...) hold a
+   * bound slot (D-182-6). The COPY branches also reset the cache after refilling the owned buffer (D-182-5). */
   if (QFILE_GET_OVERFLOW_PAGE_ID (scan_id_p->curr_pgptr) == NULL_PAGEID)
     {
       if (peek)
 	{
-	  qfile_slot_set_tuple (tuple_record_p, scan_id_p->curr_tpl);
+	  qfile_slot_fill (tuple_record_p, scan_id_p->curr_tpl, tl);
 	}
       else
 	{
@@ -5327,6 +5331,7 @@ qfile_retrieve_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, Q
 		}
 	    }
 	  memcpy (tuple_record_p->tpl, scan_id_p->curr_tpl, tuple_size);
+	  qfile_slot_fill (tuple_record_p, tuple_record_p->tpl, tl);
 	}
     }
   else
@@ -5338,7 +5343,7 @@ qfile_retrieve_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, Q
 	    {
 	      return S_ERROR;
 	    }
-	  qfile_slot_set_tuple (tuple_record_p, scan_id_p->tplrec.tpl);
+	  qfile_slot_fill (tuple_record_p, scan_id_p->tplrec.tpl, tl);
 	}
       else
 	{
@@ -5346,6 +5351,7 @@ qfile_retrieve_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, Q
 	    {
 	      return S_ERROR;
 	    }
+	  qfile_slot_fill (tuple_record_p, tuple_record_p->tpl, tl);
 	}
     }
 

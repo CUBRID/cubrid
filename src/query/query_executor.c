@@ -5082,6 +5082,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
   info = (GROUPBY_STATE *) arg;
   list_idp = &(info->input_scan->list_id);
+  qfile_slot_bind (&data_slot, &list_idp->type_list);	/* the sorted tuples come from the input list (D-182-6) */
 
   data = NULL;
   page = NULL;
@@ -22740,6 +22741,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 
   analytic_state = (ANALYTIC_STATE *) arg;
   list_idp = &(analytic_state->input_scan->list_id);
+  qfile_slot_bind (&data_slot, &list_idp->type_list);	/* the sorted tuples come from the input list (D-182-6) */
 
   data = NULL;
 

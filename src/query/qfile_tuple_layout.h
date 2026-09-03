@@ -57,6 +57,20 @@ qfile_slot_set_tuple (QFILE_TUPLE_RECORD * rec, char *tpl)
   rec->off = 0;
 }
 
+/*
+ * qfile_slot_fill () - bind + set_tuple in one step for the code that FILLS a record from a list
+ *   (qfile_retrieve_tuple): the scan that hands a tuple out also binds the record to its own layout descriptor
+ *   (filler-owns-bind), so every record a scan fills is a usable slot without a separate bind at the caller.
+ *   Records filled outside a scan (a raw page tuple wrapped in a stack slot, a cursor) are bound explicitly.
+ */
+inline void
+qfile_slot_fill (QFILE_TUPLE_RECORD * rec, char *tpl, const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
+{
+  rec->tl = tl;
+  rec->fast_limit = 0;
+  qfile_slot_set_tuple (rec, tpl);
+}
+
 extern void qfile_slot_clear (QFILE_TUPLE_RECORD * rec);
 
 #endif /* _QFILE_TUPLE_LAYOUT_H_ */
