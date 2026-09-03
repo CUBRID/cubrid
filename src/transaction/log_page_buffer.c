@@ -3054,6 +3054,8 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
 void
 logpb_free_prior_node (LOG_PRIOR_NODE * node)
 {
+  assert (node->inflight_holder == NULL);
+
   if (node->data_header != NULL)
     {
       free_and_init (node->data_header);
