@@ -9244,6 +9244,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 			regu = pt_make_regu_arith (r1, r2, r3, op, domain);
 
+			/* nextval WRITE-latches the _db_serial page mid-scan; a fixed (PEEK)
+			 * enclosing scan holding that page READ deadlocks with it. currval
+			 * only READ-latches, so it stays fixed. */
+			if (op == T_NEXT_VALUE && parser->parent_proc_xasl != NULL)
+			  {
+			    XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+			  }
+
 			parser_free_tree (parser, cached_num_node_p);
 		      }
 		    else
