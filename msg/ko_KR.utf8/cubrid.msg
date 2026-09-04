@@ -1990,7 +1990,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 333 Stored Procedure를 호출하는 CALL 문은 INTO 절을 가질 수 없습니다.
 
 334 가상 클래스 속성은 visibility를 정의할 수 없습니다.
-335 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서 visibility를 정의할 수 있습니다.
+335 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서만 visibility를 정의할 수 있습니다.
 336 NUMERIC의 스케일 범위(-84부터 127)를 초과했습니다.
 337 파티션 이름이 너무 깁니다.
 
