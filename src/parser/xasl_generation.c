@@ -19749,7 +19749,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *aptr_statement = NULL;
   PT_NODE *from = NULL, *server_node = NULL, *entity_name = NULL;
   PT_DBLINK_INFO *pdblink = NULL;
-  PT_NODE *cond, *arg1, *arg2, *src_col;
+  PT_NODE *cond, *arg1, *arg2;
   const char *op_sql = NULL;
   const char *key_col = NULL;
 
@@ -19875,17 +19875,6 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   del->remote_key_col = pt_append_string (parser, NULL, key_col);
   del->remote_op = pt_append_string (parser, NULL, op_sql);
-
-  /* Source column type of the local subquery -- learnable only here, while the select list is still
-   * available; at execution time only the value itself is left. What the sink does with it: see the
-   * policy comment above dblink_dml_delete_remote_is_cubrid() in dblink_scan.c.
-   *
-   * The leading select-list node, deliberately not "first non-hidden": the executor binds
-   * s_id->val_list->valp, which is also the leading one (qexec_collect_remote_delete_key). Both rest on the
-   * same premise -- hidden columns added for ORDER BY / GROUP BY keys are appended -- so skipping hidden here
-   * alone would let the recorded type describe a different column than the value actually bound. */
-  src_col = pt_get_select_list (parser, arg2);
-  del->remote_src_type = (src_col != NULL) ? (int) pt_type_enum_to_db (src_col->type_enum) : (int) DB_TYPE_NULL;
 
   if (del->sink.table_name == NULL || del->remote_key_col == NULL || del->remote_op == NULL || pt_has_error (parser))
     {

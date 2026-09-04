@@ -1714,7 +1714,7 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
  *   num_bind(in)    : INSERT only -- number of ? placeholders (= SELECT column count)
  *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<", ">", "<=", ">=")
- *   src_type(in)    : DELETE only -- DB_TYPE of the local subquery's source column (DB_TYPE_NULL when
+ *   src_dom(in)     : DELETE only -- domain of the local subquery's source column (NULL when
  *                     unknown). Used to restore the pushed value's declared type; see the policy comment
  *                     above dblink_dml_delete_remote_is_cubrid()
  *   state(out)      : filled with conn_handle and stmt_handle on success
@@ -1732,7 +1732,7 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
 int
 dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user, const char *pwd,
 		 const char *table_name, char **attr_names, int num_attrs, int num_bind, const char *key_col,
-		 const char *op, int src_type, DBLINK_DML_STATE * state)
+		 const char *op, TP_DOMAIN * src_dom, DBLINK_DML_STATE * state)
 {
   int ret;
   T_CCI_ERROR err_buf;
@@ -1740,6 +1740,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
   const char *errctx;
   const char *cast_type = NULL;
   bool restore_type = false;
+  int src_type = (int) TP_DOMAIN_TYPE (src_dom);	/* DELETE only; the macro maps a NULL domain to DB_TYPE_NULL */
 
   state->conn_handle = -1;
   state->stmt_handle = -1;

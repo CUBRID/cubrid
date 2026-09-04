@@ -4259,8 +4259,6 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
     }
   ptr = or_pack_int (ptr, offset);
 
-  ptr = or_pack_int (ptr, delete_info->remote_src_type);
-
   return ptr;
 }
 
@@ -6597,8 +6595,7 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
 	   + PTR_SIZE		/* mvcc_cond_reev_classes */
 	   + xts_sizeof_remote_dml_sink ()	/* remote DELETE + local subquery sink fields */
 	   + PTR_SIZE		/* remote_key_col */
-	   + PTR_SIZE		/* remote_op */
-	   + OR_INT_SIZE);	/* remote_src_type */
+	   + PTR_SIZE);		/* remote_op */
 
   return size;
 }
