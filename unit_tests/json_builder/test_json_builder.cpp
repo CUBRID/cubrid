@@ -487,22 +487,32 @@ TEST_CASE ("trace_json_loads takes the text it is given as untrusted", "[json_bu
 {
   /* it parses whatever was last written to the trace_plan session variable */
 
-  SECTION ("nesting does not go on the C stack")
+  SECTION ("a document too deep to dump is refused")
   {
-    /* a server thread runs on thread_stacksize, 1 MB by default, and the
-     * recursive parser needs about fifty bytes a level */
-    const int depth = 200000;
-    std::string text (depth, '[');
-    text.append (depth, ']');
+    /* trace_json_dumps () recurses per level, so trace_json_loads () refuses a
+     * document too deep for a 1 MB server stack, as jansson did past its limit */
+    const int too_deep = 20000;
+    std::string text (too_deep, '[');
+    text.append (too_deep, ']');
 
-    trace_json_t *deep = trace_json_loads (text.c_str ());
-    REQUIRE (deep != NULL);
-    trace_json_decref (deep);
+    REQUIRE (trace_json_loads (text.c_str ()) == NULL);
     REQUIRE (trace_json_owned_count () == 0);
 
-    /* the same nesting with nothing closing it: the parser recurses on the
-     * opening bracket, so this reaches just as deep before it fails */
-    REQUIRE (trace_json_loads (std::string (depth, '[').c_str ()) == NULL);
+    /* the same nesting with nothing closing it is refused too */
+    REQUIRE (trace_json_loads (std::string (too_deep, '[').c_str ()) == NULL);
+    REQUIRE (trace_json_owned_count () == 0);
+
+    /* at the limit it still loads and dumps without overflowing */
+    const int at_limit = 2048;
+    std::string ok (at_limit, '[');
+    ok.append (at_limit, ']');
+
+    trace_json_t *within = trace_json_loads (ok.c_str ());
+    REQUIRE (within != NULL);
+    char *dumped = trace_json_dumps (within);
+    REQUIRE (dumped != NULL);
+    free (dumped);
+    trace_json_decref (within);
     REQUIRE (trace_json_owned_count () == 0);
   }
 

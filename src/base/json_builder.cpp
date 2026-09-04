@@ -71,6 +71,12 @@ namespace
    * wins and the index would only cost an allocation. */
   const rapidjson::SizeType OBJECT_INDEX_THRESHOLD = 128;
 
+  /* trace_json_dumps () walks the tree with a recursive Accept (), so a document
+   * deeper than a server thread's 1 MB stack can hold overflows it there.
+   * trace_json_loads () refuses one nested past this first, as jansson did past
+   * its JSON_PARSER_MAX_DEPTH. A real trace is a few dozen levels. */
+  const size_t LOADS_MAX_DEPTH = 2048;
+
   /*
    * The index is an open-addressed table of member positions - nothing else.
    * It stores no key: on a probe it compares against the member's own name in
@@ -385,6 +391,33 @@ namespace
     n->own = std::move (v);
     return as_handle (n);
   }
+
+  /* Counts nesting and nothing else, so the depth check runs the iterative
+   * parser without building a tree and stops the moment the limit is passed. */
+  // *INDENT-OFF*
+  struct depth_guard : public rapidjson::BaseReaderHandler<rapidjson::UTF8<>, depth_guard>
+  {
+    size_t depth = 0;
+    size_t limit;
+    explicit depth_guard (size_t lim) : limit (lim) {}
+
+    bool StartObject () { return ++depth <= limit; }
+    bool StartArray () { return ++depth <= limit; }
+    bool EndObject (rapidjson::SizeType) { --depth; return true; }
+    bool EndArray (rapidjson::SizeType) { --depth; return true; }
+  };
+  // *INDENT-ON*
+
+  /* Whether text is JSON nested no deeper than LOADS_MAX_DEPTH. A false return
+   * also covers text that is not JSON, which the real parse would reject too. */
+  bool
+  loads_depth_ok (const char *text)
+  {
+    depth_guard guard (LOADS_MAX_DEPTH);
+    rapidjson::Reader reader;
+    rapidjson::StringStream ss (text);
+    return reader.Parse<rapidjson::kParseIterativeFlag> (ss, guard);
+  }
 }				// namespace
 
 trace_json_t *
@@ -689,6 +722,12 @@ trace_json_loads (const char *text)
 {
   if (text == NULL)
     {
+      return NULL;
+    }
+
+  if (!loads_depth_ok (text))
+    {
+      /* too deep for the recursive dump, or not JSON; jansson returned NULL too */
       return NULL;
     }
 
