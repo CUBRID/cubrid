@@ -692,6 +692,7 @@ struct heap_oos_column_plan
   bool selected = false;
   OID oid = OID_INITIALIZER;
   DB_BIGINT length = 0;
+  LOG_LSA identity_stamp = NULL_LSA;	/* identity stamp of the inserted OOS value chain (CBRD-26950) */
 };
 static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
 						size_t * offset_size_ptr,
@@ -10450,16 +10451,16 @@ static int
 heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
 				bool * oos_owned_buffer)
 {
-  OID oos_oid;
+  oos_chain_ref oos_ref;
   DB_BIGINT oos_len;
   int error = NO_ERROR;
   THREAD_ENTRY *thread_p;
 
   *oos_owned_buffer = false;
 
-  /* raw->data still points at the heap record's OOS inline reference; parse it before attaching
+  /* raw->data still points at the heap record's OOS inline stub; parse it before attaching
    * any scratch/heap buffer to raw. */
-  error = heap_oos_parse_inline_ref (recdes, raw->data, &oos_oid, &oos_len);
+  error = heap_oos_parse_inline_ref (recdes, raw->data, &oos_ref, &oos_len);
   if (error != NO_ERROR)
     {
       raw->data = NULL;
@@ -10484,7 +10485,7 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
     }
 
   /* oos_read has already set an error. Release any heap buffer here; scratch is stack-backed. */
-  error = oos_read (thread_p, oos_oid, oos_buffer (raw->data, (std::size_t) oos_len));
+  error = oos_read (thread_p, oos_ref, oos_buffer (raw->data, (std::size_t) oos_len));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -10926,7 +10927,7 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
       return 0;
     }
 
-  /* Extract OOS length from inline data: [OOS OID (8B) + length (8B)] */
+  /* Extract OOS length from inline data: [OOS OID (8B) + length (8B) + identity stamp (8B)] */
   OR_BUF buf;
   OID oos_oid;
   int rc = NO_ERROR;
@@ -10939,7 +10940,7 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
    * would mis-size midxkey.buf and let the legitimate columns overrun it before the read path
    * raises ER_HEAP_OOS_BAD_INLINE_HEADER.  Return 0 so the buffer is sized from recdes->length
    * alone; the corruption is then surfaced when the value is actually read. */
-  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+  if (buf.endptr - buf.ptr < OR_OOS_INLINE_SIZE)
     {
       return 0;
     }
@@ -12647,7 +12648,9 @@ heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_A
 	}
 
       plan.length = (DB_BIGINT) payload.length;
-      oos_insert_request request = { oos_buffer (payload.data, (size_t) payload.length), &plan.oid };
+      oos_insert_request request = { oos_buffer (payload.data, (size_t) payload.length), &plan.oid,
+	&plan.identity_stamp
+      };
       payloads->push_back (payload);
       requests->push_back (request);
     }
@@ -13051,6 +13054,8 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       buf->ptr = *ptr_varvals;
       or_put_oid (buf, &oos_plan->oid);
       or_put_bigint (buf, oos_plan->length);
+      /* identity stamp of the chain, packed into one bigint so the stub stays 8-byte aligned (CBRD-26950) */
+      or_put_bigint (buf, oos_pack_identity_stamp (oos_plan->identity_stamp));
       *ptr_varvals = buf->ptr;
     }
   else if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
@@ -28297,11 +28302,11 @@ heap_recdes_contains_oos (const RECDES * record)
 }
 
 int
-heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
+heap_recdes_get_oos_refs (const RECDES * recdes, OOS_REF_VECTOR & oos_refs)
 {
   using namespace oos_log;
 
-  oos_oids.clear ();
+  oos_refs.clear ();
 
   if (!heap_recdes_contains_oos (recdes))
     {
@@ -28341,34 +28346,49 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
 
       if (OR_IS_OOS (offset))
 	{
-	  OID oid = OID_INITIALIZER;
-	  const char *oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, index);
-	  if (oid_ptr + OR_OID_SIZE > (char *) recdes->data + recdes->length)
+	  /* The stub is [head OOS OID (8B) | full length (8B) | identity stamp (8B, packed bigint)].
+	   * The stamp is the target identity oos_delete verifies before reclaiming the chain
+	   * (CBRD-26950); the length is not needed here and is skipped. */
+	  oos_chain_ref ref;
+	  const char *stub_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, index);
+	  if (stub_ptr + OR_OOS_INLINE_SIZE > (char *) recdes->data + recdes->length)
 	    {
-	      assert (false && "OID read would exceed record bounds");
+	      assert (false && "OOS inline stub read would exceed record bounds");
 	      return ER_FAILED;
 	    }
 	  OR_BUF buf;
-	  or_init (&buf, (char *) oid_ptr, OR_OID_SIZE);
-	  int err = or_get_oid (&buf, &oid);
+	  or_init (&buf, (char *) stub_ptr, OR_OOS_INLINE_SIZE);
+	  int err = or_get_oid (&buf, &ref.head_oid);
 	  if (err != NO_ERROR)
 	    {
 	      assert (false && "or_get_oid failed unexpectedly");
 	      return ER_FAILED;
 	    }
-	  if (OID_ISNULL (&oid))
+	  if (OID_ISNULL (&ref.head_oid))
 	    {
 	      assert (false && "OID read from OOS slot is null — corrupted record?");
 	      return ER_FAILED;
 	    }
-	  oos_debug ("there exists an OOS with OID %hd|%d|%hd at offset %d index %d", OID_AS_ARGS (&oid), offset,
-		     index);
-	  oos_oids.emplace_back (oid);
+	  DB_BIGINT packed_identity_stamp = 0;
+	  (void) or_get_bigint (&buf, &err);	/* the full length is not needed here */
+	  if (err == NO_ERROR)
+	    {
+	      packed_identity_stamp = or_get_bigint (&buf, &err);
+	    }
+	  if (err != NO_ERROR)
+	    {
+	      assert (false && "or_get_bigint failed unexpectedly");
+	      return ER_FAILED;
+	    }
+	  ref.identity_stamp = oos_unpack_identity_stamp (packed_identity_stamp);
+	  oos_debug ("there exists an OOS with OID %hd|%d|%hd identity_stamp %lld|%d at offset %d index %d",
+		     OID_AS_ARGS (&ref.head_oid), LSA_AS_ARGS (&ref.identity_stamp), offset, index);
+	  oos_refs.push_back (ref);
 	}
 
       if (OR_IS_LAST_ELEMENT (offset))
 	{
-	  if (oos_oids.empty ())
+	  if (oos_refs.empty ())
 	    {
 	      /* heap_recdes_contains_oos() already confirmed OOS flag is set, so finding no OOS OIDs is inconsistent */
 	      assert (false && "heap_recdes_contains_oos() passed but no OOS OIDs found");
@@ -28377,15 +28397,15 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
 #if !defined (NDEBUG)
 	  {
 	    std::string line = "{";
-	    for (size_t i = 0; i < oos_oids.size (); ++i)
+	    for (size_t i = 0; i < oos_refs.size (); ++i)
 	      {
 		char oid_buf[32];
 		if (i > 0)
 		  line.append (", ");
-		line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_oids[i]));
+		line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_refs[i].head_oid));
 	      }
 	    line += '}';
-	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_oids.size (), line.c_str ());
+	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_refs.size (), line.c_str ());
 	  }
 #endif
 	  return NO_ERROR;

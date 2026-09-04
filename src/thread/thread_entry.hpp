@@ -29,6 +29,7 @@
 
 #include "error_context.hpp"
 #include "lockfree_transaction_def.hpp"
+#include "log_lsa.hpp"      // for LOG_LSA (oos_published_ref)
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
@@ -319,7 +320,19 @@ namespace cubthread
 
       bool m_skip_end_resource_tracks_in_recycle;
 
-      std::vector<OID> oos_oids;
+      /* OOS value chains published by the current logical heap-record insert, in insert order: head
+       * OOS OID plus the identity stamp the chain was created with (CBRD-26950). The HA applier's
+       * stub fixup rewrites both fields of each OOS inline stub from these pairs, so the slave's
+       * stubs carry the stamps the slave itself issued and never depend on reading OOS storage. A
+       * NULL OID with a NULL stamp is the multi-chunk replication boundary marker. The layout
+       * mirrors oos_chain_ref (oos_file.hpp) but is kept separate so this header does not depend on
+       * storage headers. */
+      struct oos_published_ref
+      {
+	OID oid;
+	LOG_LSA identity_stamp;
+      };
+      std::vector<oos_published_ref> oos_oids;
 
 
       bool m_is_private_lru_enabled;

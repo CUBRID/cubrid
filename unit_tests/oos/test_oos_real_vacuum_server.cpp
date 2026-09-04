@@ -77,7 +77,7 @@ int bridge_oos_get_max_chunk_size_within_page ();
 
 static const int HEAP_HDR_SIZE = 8;	/* OR_MVCC_REP_SIZE + OR_CHN_SIZE */
 static const int VOT_ENTRY_SZ = 4;	/* OR_INT_SIZE (4-byte offset mode) */
-static const int OOS_INLINE_SZ = 16;	/* OR_OID_SIZE + OR_BIGINT_SIZE */
+static const int OOS_INLINE_SZ = OR_OOS_INLINE_SIZE;	/* OID + length + identity stamp */
 static const int MVCC_HEADER_SPARE = 2 * OR_MVCCID_SIZE;
 
 static int
@@ -124,7 +124,9 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
       OR_PUT_INT (vot + i * VOT_ENTRY_SZ, offset | flags);
     }
 
-  /* 4. OOS inline data: OID (8b) + length (8b) per column */
+  /* 4. OOS inline stub: OID (8b) + length (8b) + identity stamp (8b) per column. Every caller in
+   * this file embeds OIDs of really inserted chunks, so the true stamp is always readable
+   * (CBRD-26950). */
   char *oos_data = vot + vot_bytes;
   for (int i = 0; i < n_oos; i++)
     {
@@ -132,6 +134,16 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
       OR_PUT_OID (slot, &oos_oids[i]);
       INT64 len = oos_lengths[i];
       OR_PUT_BIGINT (slot + OR_OID_SIZE, &len);
+
+      LOG_LSA identity_stamp = NULL_LSA;
+      int stamp_err = oos_get_identity_stamp (thread_p, oos_oids[i], &identity_stamp);
+      if (stamp_err != NO_ERROR)
+	{
+	  recdes_free_data_area (&rec_out);
+	  return stamp_err;
+	}
+      INT64 packed_identity_stamp = oos_pack_identity_stamp (identity_stamp);
+      OR_PUT_BIGINT (slot + OR_OID_SIZE + OR_BIGINT_SIZE, &packed_identity_stamp);
     }
 
   return NO_ERROR;

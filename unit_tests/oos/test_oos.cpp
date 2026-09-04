@@ -48,8 +48,8 @@ namespace
 {
   /* Drive the static heap_attrvalue_read_oos_inline through the bridge with a
    * synthetic inline-OOS payload region. `inline_len` is the byte length of the
-   * variable region the reader sees (recdes->length); when < 16 the [OID|bigint]
-   * header is treated as truncated. oos_owned_buffer is pre-poisoned to true so the
+   * variable region the reader sees (recdes->length); when shorter than the 24-byte
+   * [OID|length|identity stamp] stub it is treated as truncated. oos_owned_buffer is pre-poisoned to true so the
    * error contract (reset to false) is actually exercised. */
   int probe_oos_inline (char *payload, int inline_len, bool *oos_owned_buffer)
   {
@@ -574,11 +574,11 @@ TEST (OosTest, ShouldInsertIntoDifferentPages)
 
 TEST (OosTest, OosInlineFormatWriteAndReadBack)
 {
-  /* Test that OR_OOS_INLINE_SIZE = OR_OID_SIZE + OR_BIGINT_SIZE = 16 bytes */
-  ASSERT_EQ (OR_OOS_INLINE_SIZE, OR_OID_SIZE + OR_BIGINT_SIZE);
-  ASSERT_EQ (OR_OOS_INLINE_SIZE, 16);
+  /* [OOS OID (8B) | full length (8B) | identity stamp (8B, a LOG_LSA packed into one bigint)] */
+  ASSERT_EQ (OR_OOS_INLINE_SIZE, OR_OID_SIZE + OR_BIGINT_SIZE + OR_OOS_IDENTITY_STAMP_SIZE);
+  ASSERT_EQ (OR_OOS_INLINE_SIZE, 24);
 
-  /* Simulate writing OOS inline data: [OOS OID (8B) + length (8B)] */
+  /* Simulate writing an OOS inline stub */
   char buf_data[OR_OOS_INLINE_SIZE];
   OR_BUF write_buf;
   or_init (&write_buf, buf_data, OR_OOS_INLINE_SIZE);
@@ -588,9 +588,11 @@ TEST (OosTest, OosInlineFormatWriteAndReadBack)
   test_oid.slotid = 7;
   test_oid.volid = 3;
   DB_BIGINT test_length = 160 * 1024; /* 160 KB */
+  const LOG_LSA test_identity_stamp (0xC0FFEE, 42);
 
   or_put_oid (&write_buf, &test_oid);
   or_put_bigint (&write_buf, test_length);
+  or_put_bigint (&write_buf, oos_pack_identity_stamp (test_identity_stamp));
 
   /* Verify we wrote exactly OR_OOS_INLINE_SIZE bytes */
   ASSERT_EQ (write_buf.ptr - buf_data, OR_OOS_INLINE_SIZE);
@@ -609,6 +611,11 @@ TEST (OosTest, OosInlineFormatWriteAndReadBack)
   DB_BIGINT read_length = or_get_bigint (&read_buf, &rc);
   ASSERT_EQ (rc, NO_ERROR);
   ASSERT_EQ (read_length, test_length);
+
+  const LOG_LSA read_identity_stamp = oos_unpack_identity_stamp (or_get_bigint (&read_buf, &rc));
+  ASSERT_EQ (rc, NO_ERROR);
+  ASSERT_TRUE (LSA_EQ (&read_identity_stamp, &test_identity_stamp));
+  ASSERT_EQ (read_buf.ptr - buf_data, OR_OOS_INLINE_SIZE);
 }
 
 TEST (OosTest, OosInlineFormatWithRealOosInsert)
@@ -631,12 +638,16 @@ TEST (OosTest, OosInlineFormatWithRealOosInsert)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oos_oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  /* Build inline OOS data: [OOS OID (8B) + length (8B)] */
+  /* Build the OOS inline stub: [OOS OID (8B) + length (8B) + identity stamp (8B)] */
+  LOG_LSA oos_identity_stamp = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &oos_identity_stamp), NO_ERROR);
+
   char inline_buf[OR_OOS_INLINE_SIZE];
   OR_BUF write_buf;
   or_init (&write_buf, inline_buf, OR_OOS_INLINE_SIZE);
   or_put_oid (&write_buf, &oos_oid);
   or_put_bigint (&write_buf, (DB_BIGINT) rec_in.length);
+  or_put_bigint (&write_buf, oos_pack_identity_stamp (oos_identity_stamp));
 
   /* Read back OID and length from inline data */
   OR_BUF read_buf;
@@ -694,11 +705,15 @@ TEST (OosTest, OosInlineLengthMatchesAcrossPages)
       ASSERT_EQ (err, NO_ERROR);
 
       /* Write inline format */
+      LOG_LSA oos_identity_stamp = NULL_LSA;
+      ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &oos_identity_stamp), NO_ERROR);
+
       char inline_buf[OR_OOS_INLINE_SIZE];
       OR_BUF write_buf;
       or_init (&write_buf, inline_buf, OR_OOS_INLINE_SIZE);
       or_put_oid (&write_buf, &oos_oid);
       or_put_bigint (&write_buf, (DB_BIGINT) rec_in.length);
+      or_put_bigint (&write_buf, oos_pack_identity_stamp (oos_identity_stamp));
 
       /* Read back length from inline data */
       OR_BUF read_buf;
@@ -760,8 +775,11 @@ TEST (OosTest, OosReadRejectsCallerLengthDisagreeingWithHeader)
       const int claimed_len = actual_size - 16;
       ASSERT_EQ (recdes_allocate_data_area (&rec_out, claimed_len), NO_ERROR);
 
+      oos_chain_ref ref;
+      ASSERT_EQ (test_oos_utils::oos_current_chain_ref (thread_p, oos_oid, ref), NO_ERROR);
+
       er_clear ();
-      int read_err = oos_read (thread_p, oos_oid,
+      int read_err = oos_read (thread_p, ref,
 			       oos_buffer (rec_out.data, static_cast<std::size_t> (claimed_len)));
       EXPECT_EQ (read_err, ER_HEAP_OOS_CORRUPTED_RECORD) << "actual_size=" << actual_size;
       EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD) << "actual_size=" << actual_size;
@@ -775,10 +793,10 @@ TEST (OosTest, OosReadRejectsCallerLengthDisagreeingWithHeader)
 // (not a silent NULL), and the allocator-untouched paths must report no owned buffer.
 TEST (OosTest, HeapAttrvalueReadOosInlineCorruptHeader)
 {
-  constexpr int kInlineHeaderSize = OR_OID_SIZE + OR_BIGINT_SIZE;	// 16 bytes
+  constexpr int kInlineHeaderSize = OR_OOS_INLINE_SIZE;	// 24 bytes: [OID | length | identity stamp]
   alignas (MAX_ALIGNMENT) char payload[64];
 
-  // Variable region shorter than the [OID|bigint] header.
+  // Variable region shorter than the stub.
   {
     bool owned = false;
     int err = probe_oos_inline (payload, kInlineHeaderSize - 1, &owned);
@@ -787,12 +805,13 @@ TEST (OosTest, HeapAttrvalueReadOosInlineCorruptHeader)
     EXPECT_FALSE (owned);
   }
 
-  // Full 16-byte header with a NULL OOS OID.
+  // Full 24-byte stub with a NULL OOS OID.
   {
     OR_BUF ob;
     or_init (&ob, payload, sizeof (payload));
     or_put_oid (&ob, NULL);		// writes a NULL OID
     or_put_bigint (&ob, 100);		// otherwise-valid length, so only the NULL OID triggers
+    or_put_bigint (&ob, oos_pack_identity_stamp (NULL_LSA));
 
     bool owned = false;
     int err = probe_oos_inline (payload, kInlineHeaderSize, &owned);
@@ -814,6 +833,7 @@ TEST (OosTest, HeapAttrvalueReadOosInlineCorruptHeader)
       or_init (&ob, payload, sizeof (payload));
       or_put_oid (&ob, &valid_oid);
       or_put_bigint (&ob, bad_len);
+      or_put_bigint (&ob, oos_pack_identity_stamp (NULL_LSA));
 
       bool owned = false;
       int err = probe_oos_inline (payload, kInlineHeaderSize, &owned);

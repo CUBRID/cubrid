@@ -712,7 +712,7 @@ static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID 
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
-			       VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages_out);
+			       VACUUM_OOS_EMPTIED_PAGES * oos_emptied_pages_out);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					    bool update_best_space_stat, bool unlatch_page);
@@ -1614,7 +1614,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   int error_code = NO_ERROR;	/* Error code. */
   int obj_index = 0;		/* Index used to iterate the object array. */
 
-  VACUUM_OOS_TOUCHED_PAGES oos_touched_pages;
+  VACUUM_OOS_EMPTIED_PAGES oos_emptied_pages;
 
   /* Assert expected arguments. */
   assert (heap_objects != NULL);
@@ -1777,7 +1777,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (helper.can_vacuum == VACUUM_RECORD_REMOVE)
 	    {
 	      /* Record has been deleted and it can be removed. */
-	      error_code = vacuum_heap_record (thread_p, &helper, &oos_touched_pages);
+	      error_code = vacuum_heap_record (thread_p, &helper, &oos_emptied_pages);
 	    }
 	  else if (helper.can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
 	    {
@@ -1942,10 +1942,10 @@ end:
 
   /* Reclaim only after the home page is unfixed: the reclaim takes the OOS stats header WRITE
    * latch and one dealloc sysop per page, which must not extend the home page latch hold. */
-  if (error_code == NO_ERROR && !oos_touched_pages.empty ())
+  if (error_code == NO_ERROR && !oos_emptied_pages.empty ())
     {
       assert (!VFID_ISNULL (&helper.oos_vfid));
-      error_code = vacuum_oos_reclaim_empty_pages (thread_p, &helper.oos_vfid, &oos_touched_pages);
+      error_code = vacuum_oos_reclaim_empty_pages (thread_p, &helper.oos_vfid, &oos_emptied_pages);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_check_shutdown_interruption (thread_p, error_code);
@@ -2439,19 +2439,19 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
- * oos_touched_pages_out (out) : Emptied OOS pages are appended (duplicates allowed); the caller
+ * oos_emptied_pages_out (out) : OOS pages the deletes emptied are appended, each once; the caller
  *				 reclaims them AFTER unfixing the home page, never here.
  */
 static int
 vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
-		    VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages_out)
+		    VACUUM_OOS_EMPTIED_PAGES * oos_emptied_pages_out)
 {
   /* Assert expected arguments. */
   assert (helper != NULL);
   assert (helper->can_vacuum == VACUUM_RECORD_REMOVE);
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
-  assert (oos_touched_pages_out != NULL);
+  assert (oos_emptied_pages_out != NULL);
 
   /* Does removing this record touch more than the home page?  Two independent axes decide:
    *
@@ -2543,7 +2543,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
       if (has_oos)
 	{
 	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
-							     oos_touched_pages_out);
+							     oos_emptied_pages_out);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
@@ -2619,7 +2619,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					     helper->reusable);
 
 	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
-							     oos_touched_pages_out);
+							     oos_emptied_pages_out);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);

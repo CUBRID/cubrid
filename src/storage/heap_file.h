@@ -757,10 +757,13 @@ extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const 
 // TODO: Rename heap_file.c to heap_file.cpp and enable C++ formatting in indent tool, then we can remove the following lines.
 
 // *INDENT-OFF*
-using OID_VECTOR = std::vector<OID>;
+struct oos_chain_ref;		// oos_file.hpp: head OOS OID + identity stamp
+using OOS_REF_VECTOR = std::vector<oos_chain_ref>;
 // *INDENT-ON*
 
-extern int heap_recdes_get_oos_oids (const RECDES * record, OID_VECTOR & oos_oids);
+/* Parses every OOS inline stub of record into a chain reference (head OOS OID + identity stamp),
+ * the value the delete paths hand to oos_delete (CBRD-26950). */
+extern int heap_recdes_get_oos_refs (const RECDES * record, OOS_REF_VECTOR & oos_refs);
 
 /* lob */
 extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -74,7 +74,7 @@ seed_oos_insert_publication_state (const OID &oid, const LOG_LSA &lsa)
 
   thread_p->oos_oids.clear ();
   tdes->oos_insert_lsa_queue.clear ();
-  thread_p->oos_oids.push_back (oid);
+  thread_p->oos_oids.push_back ({ oid, NULL_LSA });
   tdes->oos_insert_lsa_queue.push (lsa);
 }
 
@@ -84,7 +84,7 @@ assert_oos_insert_publication_state (const OID &oid, const LOG_LSA &lsa)
   LOG_TDES *tdes = get_current_tdes ();
   ASSERT_NE (tdes, nullptr);
   ASSERT_EQ (thread_p->oos_oids.size (), 1U);
-  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[0], &oid));
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[0].oid, &oid));
   ASSERT_EQ (tdes->oos_insert_lsa_queue.size (), 1U);
   EXPECT_TRUE (LSA_EQ (&tdes->oos_insert_lsa_queue.front (), &lsa));
 }
@@ -106,6 +106,9 @@ find_db_user_class_oid ()
   EXPECT_FALSE (OID_ISNULL (&class_oid));
   return class_oid;
 }
+
+/* Identity stamp the master wrote into a replicated stub; the slave must not keep it. */
+static const LOG_LSA MASTER_PLACEHOLDER_STAMP (765430, 7);
 
 static int
 build_replicated_heap_recdes (const OID &class_oid, const std::vector<OID> &placeholder_oids, RECDES &recdes)
@@ -162,6 +165,9 @@ build_replicated_heap_recdes (const OID &class_oid, const std::vector<OID> &plac
       OR_PUT_OID (inline_data + i * OR_OOS_INLINE_SIZE, &placeholder_oids[i]);
       INT64 length = 1000 + (INT64) i;
       OR_PUT_BIGINT (inline_data + i * OR_OOS_INLINE_SIZE + OR_OID_SIZE, &length);
+      /* the master's identity stamp, meaningless on the slave; the fixup must replace it */
+      INT64 master_identity_stamp = oos_pack_identity_stamp (MASTER_PLACEHOLDER_STAMP);
+      OR_PUT_BIGINT (inline_data + i * OR_OOS_INLINE_SIZE + OR_OID_SIZE + OR_BIGINT_SIZE, &master_identity_stamp);
     }
   return NO_ERROR;
 }
@@ -188,6 +194,28 @@ read_replicated_heap_oos_oid (RECDES &recdes, int n_variables, int index)
   OID oid = OID_INITIALIZER;
   OR_GET_OID (recdes.data + header_size + vot_bytes + index * OR_OOS_INLINE_SIZE, &oid);
   return oid;
+}
+
+static LOG_LSA
+read_replicated_heap_oos_identity_stamp (RECDES &recdes, int n_variables, int index)
+{
+  const int header_size = OR_MVCC_REP_SIZE + OR_CHN_SIZE;
+  const int vot_bytes = (n_variables + 1) * OR_SHORT_SIZE;
+  INT64 packed = 0;
+  OR_GET_BIGINT (recdes.data + header_size + vot_bytes + index * OR_OOS_INLINE_SIZE + OR_OID_SIZE + OR_BIGINT_SIZE,
+		 &packed);
+  return oos_unpack_identity_stamp (packed);
+}
+
+/* The published pair must name a chunk that really carries that stamp (CBRD-26950). */
+static void
+expect_published_pair_matches_storage (std::size_t index, const OID &expected_oid)
+{
+  ASSERT_LT (index, thread_p->oos_oids.size ());
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[index].oid, &expected_oid)) << "published entry " << index;
+  LOG_LSA stored = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, expected_oid, &stored), NO_ERROR) << "published entry " << index;
+  EXPECT_TRUE (LSA_EQ (&thread_p->oos_oids[index].identity_stamp, &stored)) << "published entry " << index;
 }
 
 static int
@@ -541,8 +569,8 @@ TEST (OosServerTest, OosSuccessfulPublicationWithoutReplicationTrackingKeepsOidO
   LOG_TDES *tdes = get_current_tdes ();
   ASSERT_NE (tdes, nullptr);
   ASSERT_EQ (thread_p->oos_oids.size (), 2U);
-  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[0], &oids[0]));
-  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[1], &oids[1]));
+  expect_published_pair_matches_storage (0, oids[0]);
+  expect_published_pair_matches_storage (1, oids[1]);
   EXPECT_TRUE (tdes->oos_insert_lsa_queue.is_empty ());
 }
 
@@ -569,8 +597,8 @@ TEST (OosServerTest, OosTrackedSingleChunkBatchKeepsPairedPublication)
   LOG_TDES *tdes = get_current_tdes ();
   ASSERT_NE (tdes, nullptr);
   ASSERT_EQ (thread_p->oos_oids.size (), 2U);
-  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[0], &oids[0]));
-  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[1], &oids[1]));
+  expect_published_pair_matches_storage (0, oids[0]);
+  expect_published_pair_matches_storage (1, oids[1]);
   EXPECT_EQ (tdes->oos_insert_lsa_queue.size (), 2U);
   EXPECT_FALSE (LSA_ISNULL (&tdes->oos_insert_lsa_queue.front ()));
 }
@@ -600,10 +628,12 @@ TEST (OosServerTest, OosTrackedMixedBatchPreservesDummyAndHeadPairing)
   LOG_TDES *tdes = get_current_tdes ();
   ASSERT_NE (tdes, nullptr);
   ASSERT_EQ (thread_p->oos_oids.size (), 4U);
-  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[0], &oids[0]));
-  EXPECT_TRUE (OID_ISNULL (&thread_p->oos_oids[1]));
-  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[2], &oids[1]));
-  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[3], &oids[2]));
+  expect_published_pair_matches_storage (0, oids[0]);
+  /* the multi-page chain boundary marker is a NULL OID with a NULL stamp */
+  EXPECT_TRUE (OID_ISNULL (&thread_p->oos_oids[1].oid));
+  EXPECT_TRUE (LSA_ISNULL (&thread_p->oos_oids[1].identity_stamp));
+  expect_published_pair_matches_storage (2, oids[1]);
+  expect_published_pair_matches_storage (3, oids[2]);
   EXPECT_EQ (tdes->oos_insert_lsa_queue.size (), 4U);
   EXPECT_FALSE (LSA_ISNULL (&tdes->oos_insert_lsa_queue.front ()));
 }
@@ -635,8 +665,13 @@ TEST (OosServerTest, ReplicaOosItemsAccumulateAndFixupConsumesInOrder)
   ASSERT_EQ (locator_oos_insert_force (thread_p, &mutable_class_oid, &oos_recdes1), NO_ERROR);
   ASSERT_EQ (locator_oos_insert_force (thread_p, &mutable_class_oid, &oos_recdes2), NO_ERROR);
   ASSERT_EQ (thread_p->oos_oids.size (), 2U);
-  const OID slave_oid1 = thread_p->oos_oids[0];
-  const OID slave_oid2 = thread_p->oos_oids[1];
+  const OID slave_oid1 = thread_p->oos_oids[0].oid;
+  const OID slave_oid2 = thread_p->oos_oids[1].oid;
+  const LOG_LSA slave_stamp1 = thread_p->oos_oids[0].identity_stamp;
+  const LOG_LSA slave_stamp2 = thread_p->oos_oids[1].identity_stamp;
+  /* the published stamps are the ones the slave's own inserts stored (CBRD-26950) */
+  expect_published_pair_matches_storage (0, slave_oid1);
+  expect_published_pair_matches_storage (1, slave_oid2);
 
   const OID placeholder1 = make_test_oid (2, 765431, 31);
   const OID placeholder2 = make_test_oid (2, 765432, 32);
@@ -654,6 +689,45 @@ TEST (OosServerTest, ReplicaOosItemsAccumulateAndFixupConsumesInOrder)
   const OID fixed_oid2 = read_replicated_heap_oos_oid (heap_recdes, n_variables, 1);
   EXPECT_TRUE (OID_EQ (&fixed_oid1, &slave_oid1));
   EXPECT_TRUE (OID_EQ (&fixed_oid2, &slave_oid2));
+
+  /* the fixup rewrites the stub's identity stamp to the locally issued one, not the master's, and
+   * does so from the published pairs alone */
+  const LOG_LSA fixed_stamp1 = read_replicated_heap_oos_identity_stamp (heap_recdes, n_variables, 0);
+  const LOG_LSA fixed_stamp2 = read_replicated_heap_oos_identity_stamp (heap_recdes, n_variables, 1);
+  EXPECT_TRUE (LSA_EQ (&fixed_stamp1, &slave_stamp1));
+  EXPECT_TRUE (LSA_EQ (&fixed_stamp2, &slave_stamp2));
+  EXPECT_FALSE (LSA_EQ (&fixed_stamp1, &MASTER_PLACEHOLDER_STAMP));
+  EXPECT_FALSE (LSA_EQ (&fixed_stamp2, &MASTER_PLACEHOLDER_STAMP));
+
+  /* the rewritten stubs now read back as live chain references through the extractor */
+  OOS_REF_VECTOR refs;
+  ASSERT_EQ (heap_recdes_get_oos_refs (&heap_recdes, refs), NO_ERROR);
+  ASSERT_EQ (refs.size (), 2U);
+  EXPECT_TRUE (OID_EQ (&refs[0].head_oid, &slave_oid1));
+  EXPECT_TRUE (LSA_EQ (&refs[0].identity_stamp, &slave_stamp1));
+  EXPECT_TRUE (OID_EQ (&refs[1].head_oid, &slave_oid2));
+  EXPECT_TRUE (LSA_EQ (&refs[1].identity_stamp, &slave_stamp2));
+}
+
+TEST (OosServerTest, ReplicaFixupRejectsTruncatedStub)
+{
+  const OID class_oid = find_db_user_class_oid ();
+  ASSERT_FALSE (OID_ISNULL (&class_oid));
+  thread_p->oos_oids = { { make_test_oid (1, 765440, 40), NULL_LSA } };
+
+  const OID placeholder = make_test_oid (2, 765441, 41);
+  RECDES recdes = RECDES_INITIALIZER;
+  ASSERT_EQ (build_replicated_heap_recdes (class_oid, { placeholder }, recdes), NO_ERROR);
+  scope_exit free_recdes ([&] () noexcept
+  {
+    recdes_free_data_area (&recdes);
+  });
+
+  /* cut the record short so the stub no longer fits; the fixup must reject rather than write past it */
+  recdes.length -= OR_BIGINT_SIZE;
+  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes), ER_HA_GENERIC_ERROR);
+  EXPECT_EQ (er_errid (), ER_HA_GENERIC_ERROR);
+  er_clear ();
 }
 
 TEST (OosServerTest, ReplicaFixupRejectsInsufficientOids)
@@ -661,7 +735,7 @@ TEST (OosServerTest, ReplicaFixupRejectsInsufficientOids)
   const OID class_oid = find_db_user_class_oid ();
   ASSERT_FALSE (OID_ISNULL (&class_oid));
   const OID accumulated_oid = make_test_oid (1, 765433, 33);
-  thread_p->oos_oids = { accumulated_oid };
+  thread_p->oos_oids = { { accumulated_oid, NULL_LSA } };
 
   const OID placeholder1 = make_test_oid (2, 765434, 34);
   const OID placeholder2 = make_test_oid (2, 765435, 35);
@@ -683,7 +757,7 @@ TEST (OosServerTest, ReplicaFixupRejectsExtraOids)
   ASSERT_FALSE (OID_ISNULL (&class_oid));
   const OID accumulated_oid1 = make_test_oid (1, 765436, 36);
   const OID accumulated_oid2 = make_test_oid (1, 765437, 37);
-  thread_p->oos_oids = { accumulated_oid1, accumulated_oid2 };
+  thread_p->oos_oids = { { accumulated_oid1, NULL_LSA }, { accumulated_oid2, NULL_LSA } };
 
   const OID placeholder = make_test_oid (2, 765438, 38);
   RECDES recdes = RECDES_INITIALIZER;
@@ -717,7 +791,7 @@ TEST (OosServerTest, ReplicaScalarPublicationAllocationFailureInvalidatesAccumul
     recdes_free_data_area (&recdes);
   });
 
-  thread_p->oos_oids = { make_test_oid (1, 765439, 39) };
+  thread_p->oos_oids = { { make_test_oid (1, 765439, 39), NULL_LSA } };
   LOG_TDES *tdes = get_current_tdes ();
   ASSERT_NE (tdes, nullptr);
   tdes->oos_insert_lsa_queue.clear ();
@@ -780,7 +854,9 @@ assert_read_many_payloads (const std::vector<std::string> &payloads, const std::
   for (std::size_t i = 0; i < payloads.size (); i++)
     {
       outputs[i].resize (payloads[i].size ());
-      oos_read_request request = { oids[i], oos_buffer (outputs[i].data (), outputs[i].size ()) };
+      oos_chain_ref ref;
+      ASSERT_EQ (test_oos_utils::oos_current_chain_ref (thread_p, oids[i], ref), NO_ERROR);
+      oos_read_request request = { ref, oos_buffer (outputs[i].data (), outputs[i].size ()) };
       requests.push_back (request);
     }
 
@@ -1043,20 +1119,20 @@ TEST (OosServerTest, OosInsertManyPreservesMixedSingleAndMultiChunkPublicationOr
   ASSERT_FALSE (thread_p->oos_oids.empty ());
   std::size_t pos = 0;
   ASSERT_LT (pos, thread_p->oos_oids.size ());
-  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[pos], &oids[0]));
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[pos].oid, &oids[0]));
   pos++;
 
   ASSERT_LT (pos, thread_p->oos_oids.size ());
-  if (OID_ISNULL (&thread_p->oos_oids[pos]))
+  if (OID_ISNULL (&thread_p->oos_oids[pos].oid))
     {
       pos++;
       ASSERT_LT (pos, thread_p->oos_oids.size ());
     }
-  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[pos], &oids[1]));
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[pos].oid, &oids[1]));
   pos++;
 
   ASSERT_LT (pos, thread_p->oos_oids.size ());
-  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[pos], &oids[2]));
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[pos].oid, &oids[2]));
   pos++;
   EXPECT_EQ (pos, thread_p->oos_oids.size ());
 
@@ -1288,12 +1364,13 @@ TEST (OosServerTest, OosGetLengthAroundMaxChunkSize)
 }
 
 // ============================================================================
-// TC: OOS inline format [OID(8B) + length(8B)]
+// TC: OOS inline format [OID(8B) + length(8B) + identity stamp(8B)]
 // ============================================================================
 TEST (OosServerTest, OosInlineFormatWriteAndReadBack)
 {
-  ASSERT_EQ (OR_OOS_INLINE_SIZE, OR_OID_SIZE + OR_BIGINT_SIZE);
-  ASSERT_EQ (OR_OOS_INLINE_SIZE, 16);
+  /* [OOS OID (8B) | full length (8B) | identity stamp (8B, a LOG_LSA packed into one bigint)] */
+  ASSERT_EQ (OR_OOS_INLINE_SIZE, OR_OID_SIZE + OR_BIGINT_SIZE + OR_OOS_IDENTITY_STAMP_SIZE);
+  ASSERT_EQ (OR_OOS_INLINE_SIZE, 24);
 
   char buf_data[OR_OOS_INLINE_SIZE];
   OR_BUF write_buf;
@@ -1304,9 +1381,11 @@ TEST (OosServerTest, OosInlineFormatWriteAndReadBack)
   test_oid.slotid = 7;
   test_oid.volid = 3;
   DB_BIGINT test_length = 160 * 1024;
+  const LOG_LSA test_identity_stamp (0xC0FFEE, 42);
 
   or_put_oid (&write_buf, &test_oid);
   or_put_bigint (&write_buf, test_length);
+  or_put_bigint (&write_buf, oos_pack_identity_stamp (test_identity_stamp));
 
   ASSERT_EQ (write_buf.ptr - buf_data, OR_OOS_INLINE_SIZE);
 
@@ -1323,6 +1402,11 @@ TEST (OosServerTest, OosInlineFormatWriteAndReadBack)
   DB_BIGINT read_length = or_get_bigint (&read_buf, &rc);
   ASSERT_EQ (rc, NO_ERROR);
   ASSERT_EQ (read_length, test_length);
+
+  const LOG_LSA read_identity_stamp = oos_unpack_identity_stamp (or_get_bigint (&read_buf, &rc));
+  ASSERT_EQ (rc, NO_ERROR);
+  ASSERT_TRUE (LSA_EQ (&read_identity_stamp, &test_identity_stamp));
+  ASSERT_EQ (read_buf.ptr - buf_data, OR_OOS_INLINE_SIZE);
 }
 
 TEST (OosServerTest, OosInlineFormatWithRealOosInsert)
@@ -1344,12 +1428,16 @@ TEST (OosServerTest, OosInlineFormatWithRealOosInsert)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oos_oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  /* Build inline OOS data: [OOS OID (8B) + length (8B)] */
+  /* Build the OOS inline stub: [OOS OID (8B) + length (8B) + identity stamp (8B)] */
+  LOG_LSA oos_identity_stamp = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &oos_identity_stamp), NO_ERROR);
+
   char inline_buf[OR_OOS_INLINE_SIZE];
   OR_BUF write_buf;
   or_init (&write_buf, inline_buf, OR_OOS_INLINE_SIZE);
   or_put_oid (&write_buf, &oos_oid);
   or_put_bigint (&write_buf, (DB_BIGINT) rec_in.length);
+  or_put_bigint (&write_buf, oos_pack_identity_stamp (oos_identity_stamp));
 
   /* Read back OID and length from inline data */
   OR_BUF read_buf;
@@ -1402,11 +1490,15 @@ TEST (OosServerTest, OosInlineLengthMatchesAcrossPages)
       err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oos_oid);
       ASSERT_EQ (err, NO_ERROR);
 
+      LOG_LSA oos_identity_stamp = NULL_LSA;
+      ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &oos_identity_stamp), NO_ERROR);
+
       char inline_buf[OR_OOS_INLINE_SIZE];
       OR_BUF write_buf;
       or_init (&write_buf, inline_buf, OR_OOS_INLINE_SIZE);
       or_put_oid (&write_buf, &oos_oid);
       or_put_bigint (&write_buf, (DB_BIGINT) rec_in.length);
+      or_put_bigint (&write_buf, oos_pack_identity_stamp (oos_identity_stamp));
 
       OR_BUF read_buf;
       or_init (&read_buf, inline_buf, OR_OOS_INLINE_SIZE);

@@ -21,7 +21,7 @@
  *
  * STORAGE PREFER_INLINE lowers a column's OOS demotion priority so the column stays
  * inline when possible. STORAGE FORCE_OUTLINE sends variable values larger than the
- * 16-byte OOS stub to OOS regardless of record size. STORAGE PREFER_OUTLINE is
+ * 24-byte OOS inline stub to OOS regardless of record size. STORAGE PREFER_OUTLINE is
  * equivalent to
  * STORAGE DEFAULT in this implementation. These tests assert the options' persistence:
  *   - SHOW CREATE TABLE          -> object_printer::describe_attribute emit
@@ -659,10 +659,12 @@ TEST_F (OosSqlStorage, ForceOutlineBypassesRecordGateOnlyAboveInlineStubSize)
 		     "  payload VARCHAR(4096) STORAGE FORCE_OUTLINE)");
   ASSERT_GE (rc, 0);
 
-  /* Packed VARCHAR includes its length prefix, terminator, and alignment: 14 characters occupy 16 bytes on disk,
-   * while 15 characters occupy 20 bytes. */
+  /* Packed VARCHAR includes its length prefix, terminator, and alignment: n characters occupy n + 2
+   * rounded up to 4 bytes on disk, so 22 characters occupy 24 bytes while 23 characters occupy 28.
+   * The profitability boundary is the 24-byte OOS inline stub (OID + length + identity stamp,
+   * CBRD-26950): a value is demoted only when it is strictly larger than the stub replacing it. */
   rc = exec_sql ("INSERT INTO t_oos_stg VALUES "
-		 "(1, REPEAT('x', 3000)), (2, 'y'), (3, REPEAT('z', 14)), (4, REPEAT('w', 15)), (5, NULL)");
+		 "(1, REPEAT('x', 3000)), (2, 'y'), (3, REPEAT('z', 22)), (4, REPEAT('w', 23)), (5, NULL)");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
@@ -683,19 +685,19 @@ TEST_F (OosSqlStorage, ForceOutlineBypassesRecordGateOnlyAboveInlineStubSize)
 
   rc = fetch_single_int ("SELECT LENGTH(payload) FROM t_oos_stg WHERE id = 3", &length);
   ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (length, 14);
+  EXPECT_EQ (length, 22);
 
   rc = fetch_single_int ("SELECT DISK_SIZE(payload) FROM t_oos_stg WHERE id = 3", &length);
   ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (length, 16);
+  EXPECT_EQ (length, 24);
 
   rc = fetch_single_int ("SELECT LENGTH(payload) FROM t_oos_stg WHERE id = 4", &length);
   ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (length, 15);
+  EXPECT_EQ (length, 23);
 
   rc = fetch_single_int ("SELECT DISK_SIZE(payload) FROM t_oos_stg WHERE id = 4", &length);
   ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_GT (length, 16);
+  EXPECT_GT (length, 24);
 
   int null_count = 0;
   rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_stg WHERE id = 5 AND payload IS NULL", &null_count);

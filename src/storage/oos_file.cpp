@@ -57,13 +57,14 @@ oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
 
 static int
 oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
-			const OOS_RECORD_HEADER &header, OID &oid);
+			const OOS_RECORD_HEADER &header, OID &oid, LOG_LSA &identity_stamp_out);
 static int
 oos_insert_record_in_fixed_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, PAGE_PTR page_ptr,
-				 const VPID &vpid, oos_buffer src, const OOS_RECORD_HEADER &header, OID &oid);
+				 const VPID &vpid, oos_buffer src, const OOS_RECORD_HEADER &header, OID &oid,
+				 LOG_LSA &identity_stamp_out);
 static int
 oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
-			 OID &oid);
+			 OID &oid, LOG_LSA &identity_stamp_out);
 static int
 oos_insert_single_page_batch (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 			      cubbase::span<oos_insert_request> requests,
@@ -78,14 +79,14 @@ static int
 oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 		       int total_data_length, cubbase::byte_span_writer &writer);
 static int
-oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, const OID &oid);
+oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, const oos_chain_ref &ref);
 static void
 oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p);
 static void
 oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid, RECDES *recdes_p);
 static int
-oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
-		  std::vector<VPID> *touched_vpids);
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
+		  std::vector<VPID> *emptied_vpids, bool *deleted_out);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
@@ -94,7 +95,7 @@ static bool
 oos_needs_repl_tracking (THREAD_ENTRY *thread_p);
 
 static void
-oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid);
+oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid, const LOG_LSA &identity_stamp);
 
 static void
 oos_cleanup_insert_publication_state_on_error (THREAD_ENTRY *thread_p) noexcept;
@@ -1259,7 +1260,7 @@ oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 //
 // INVARIANT: an OOS file reserves a new sector only when no safely reclaimable empty page
 // exists right now. Two paths deliver it: the vacuum fast path (oos_reclaim_empty_pages)
-// reclaims the pages a committed delete batch touched; the growth-gate sweep
+// reclaims the pages a committed delete batch emptied; the growth-gate sweep
 // (oos_reclaim_sweep_step, run from the single growth point oos_alloc_page_with_reclaim) is
 // the backstop that rediscovers the rest from the sector bitmap. Truth is on disk (sector
 // bitmap + page emptiness); the in-memory counter and cursor are hints whose loss costs one
@@ -2055,8 +2056,10 @@ oos_prepend_header (oos_buffer src, const OOS_RECORD_HEADER &oos_header, OOS_REC
   return NO_ERROR;
 }
 
+/* Publishes one inserted chain for replication: the head OOS OID and the identity stamp it was
+ * created with, so the HA applier can rewrite both fields of the slave's stub (CBRD-26950). */
 static void
-oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid)
+oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid, const LOG_LSA &identity_stamp)
 {
 #if defined(CUBRID_UNIT_TEST_ENABLED)
   if (oos_Test_throw_bad_alloc_on_next_oid_publication.exchange (false, std::memory_order_relaxed))
@@ -2064,7 +2067,7 @@ oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid)
       throw std::bad_alloc ();
     }
 #endif
-  thread_p->oos_oids.push_back (oid);
+  thread_p->oos_oids.push_back ({ oid, identity_stamp });
 }
 
 static void
@@ -2081,7 +2084,7 @@ oos_cleanup_insert_publication_state_on_error (THREAD_ENTRY *thread_p) noexcept
 }
 
 int
-oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid)
+oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid, LOG_LSA *identity_stamp_out)
 {
   oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, src.size=%zu",
 	     oos_vfid.fileid, oos_vfid.volid, src.size ());
@@ -2105,16 +2108,18 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
   // review whether it is possible to generate the segment headers inside the oos_insert_within_page() and
   // oos_insert_across_pages() functions.
 
+  LOG_LSA identity_stamp = NULL_LSA;
+
   try
     {
       if (src_len <= oos_get_max_chunk_size_within_page ())
 	{
-	  const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER};
-	  err = oos_insert_within_page (thread_p, oos_vfid, src, header, oid);
+	  const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER, NULL_LSA};
+	  err = oos_insert_within_page (thread_p, oos_vfid, src, header, oid, identity_stamp);
 	}
       else
 	{
-	  err = oos_insert_across_pages (thread_p, oos_vfid, src, oid);
+	  err = oos_insert_across_pages (thread_p, oos_vfid, src, oid, identity_stamp);
 	}
 
       if (err != NO_ERROR)
@@ -2122,7 +2127,7 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
 	  return err;
 	}
 
-      oos_publish_oos_oid (thread_p, oid);
+      oos_publish_oos_oid (thread_p, oid, identity_stamp);
     }
   catch (const std::bad_alloc &)
     {
@@ -2132,7 +2137,12 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
     }
 
   cleanup_publication_on_error.release ();
-  oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
+  if (identity_stamp_out != NULL)
+    {
+      *identity_stamp_out = identity_stamp;
+    }
+  oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d} identity_stamp=%lld|%d", OID_AS_ARGS (&oid),
+	     LSA_AS_ARGS (&identity_stamp));
   return NO_ERROR;
 }
 
@@ -2159,17 +2169,23 @@ oos_insert_single_page_batch (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     {
       oos_insert_request &request = requests[i];
       const int src_len = static_cast<int> (request.src.size ());
-      const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER};
+      const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER, NULL_LSA};
       OID oid;
+      LOG_LSA identity_stamp = NULL_LSA;
 
-      err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, request.src, header, oid);
+      err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, request.src, header, oid,
+					     identity_stamp);
       if (err != NO_ERROR)
 	{
 	  return err;
 	}
 
       *request.oid_out = oid;
-      oos_publish_oos_oid (thread_p, oid);
+      if (request.identity_stamp_out != NULL)
+	{
+	  *request.identity_stamp_out = identity_stamp;
+	}
+      oos_publish_oos_oid (thread_p, oid, identity_stamp);
     }
 
   int freespace_after = spage_max_space_for_new_record (thread_p, page_ptr);
@@ -2241,11 +2257,16 @@ oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos
 	  if (requests[pos].src.size () > (std::size_t) max_chunk_size)
 	    {
 	      OID oid;
-	      err = oos_insert_across_pages (thread_p, oos_vfid, requests[pos].src, oid);
+	      LOG_LSA identity_stamp = NULL_LSA;
+	      err = oos_insert_across_pages (thread_p, oos_vfid, requests[pos].src, oid, identity_stamp);
 	      if (err == NO_ERROR)
 		{
 		  *requests[pos].oid_out = oid;
-		  oos_publish_oos_oid (thread_p, oid);
+		  if (requests[pos].identity_stamp_out != NULL)
+		    {
+		      *requests[pos].identity_stamp_out = identity_stamp;
+		    }
+		  oos_publish_oos_oid (thread_p, oid, identity_stamp);
 		  pos++;
 		  publication_count++;
 		}
@@ -2305,7 +2326,7 @@ oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos
 //
 //   Per-transaction queue/vector invariant (for the slave applier to reassemble):
 //     oos_insert_lsa_queue : [..., dummy_lsa, tail_chunk_lsa]
-//     oos_oids             : [..., oid_Null_oid]
+//     oos_oids             : [..., {oid_Null_oid, NULL_LSA}]   (boundary marker)
 //
 //   The public insert API pushes the real head-chunk OID after this function returns,
 //   so the final pairing becomes oos_oids=[..., null, real_oid]
@@ -2316,7 +2337,8 @@ oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos
 //   auto-push in log_append_{undo,}redo_crumbs while this function runs.
 //
 static int
-oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid)
+oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid,
+			 LOG_LSA &identity_stamp_out)
 {
   int error_code = NO_ERROR;
   LOG_TDES *tdes = NULL;
@@ -2375,10 +2397,12 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
       total_inserted_length += static_cast<int> (chunk.size ());
 
       // Keep total_data_length in each chunk so the log applier can validate all pieces before reassembly.
-      OOS_RECORD_HEADER header{total_data_length, i, next_chunk_oid};
+      OOS_RECORD_HEADER header{total_data_length, i, next_chunk_oid, NULL_LSA};
 
       OID current_chunk_oid;
-      error_code = oos_insert_within_page (thread_p, oos_vfid, chunk, header, current_chunk_oid);
+      LOG_LSA chunk_identity_stamp = NULL_LSA;
+      error_code = oos_insert_within_page (thread_p, oos_vfid, chunk, header, current_chunk_oid,
+					   chunk_identity_stamp);
       if (error_code != NO_ERROR)
 	{
 	  oos_error ("could not insert chunk index=%d of length %zu.", i, chunk.size ());
@@ -2395,6 +2419,10 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
 	}
 
       next_chunk_oid = current_chunk_oid;
+      /* Chains are written tail first, so the loop ends at i == 0, the head chunk: this is the
+       * value the owning stub must carry. Each chunk carries the LSA of its own page, so no
+       * chain-wide value exists when the tail chunks are stamped. */
+      identity_stamp_out = chunk_identity_stamp;
     }
   assert (total_inserted_length == total_data_length);
 
@@ -2402,7 +2430,7 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
     {
       tdes->oos_insert_lsa_queue.push (dummy_lsa);
       tdes->oos_insert_lsa_queue.push (tail_chunk_lsa);
-      thread_p->oos_oids.push_back (oid_Null_oid);
+      thread_p->oos_oids.push_back ({ oid_Null_oid, NULL_LSA });
     }
 
   // update the out parameter 'oid' to give access to the first slot
@@ -2413,10 +2441,32 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
 
 static int
 oos_insert_record_in_fixed_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, PAGE_PTR page_ptr,
-				 const VPID &vpid, oos_buffer src, const OOS_RECORD_HEADER &header, OID &oid)
+				 const VPID &vpid, oos_buffer src, const OOS_RECORD_HEADER &header, OID &oid,
+				 LOG_LSA &identity_stamp_out)
 {
+  /* Issue the chunk's identity stamp (CBRD-26950): the page LSA read under the write latch the
+   * caller already holds and keeps through the slotted-page insert and this chunk's own log append
+   * below, so it is the page LSA immediately before this chunk's logging.
+   *
+   * Invariant 1: the stamp is the page LSA BEFORE this chunk's log append. Redo cannot learn the
+   * LSA of the record it is replaying, but the stamp is part of the logged chunk image, so redo
+   * (and the undo of a later delete) restores exactly what was written.
+   *
+   * Invariant 2: at least one logged page operation separates two incarnations of one slot. The
+   * first occupant's own logged insert already advances the page LSA past its stamp, and page LSAs
+   * never regress in normal operation, so a later occupant of the same slot always carries a
+   * different stamp. Today every chunk insert and every chunk delete is its own log record,
+   * including batch inserts; a future optimization that merges several inserts into one log record
+   * must preserve this.
+   *
+   * Invariant 3: NULL is an ordinary stamp value with no special handling. Only the offline log
+   * re-creation utility produces NULL page LSAs, and it also discards the log and therefore every
+   * pending reclamation request, so no stale OOS reference survives into the restarted LSA space. */
+  OOS_RECORD_HEADER stamped_header = header;
+  stamped_header.identity_stamp = *pgbuf_get_lsa (page_ptr);
+
   OOS_RECDES oos_recdes{};
-  int err = oos_prepend_header (src, header, oos_recdes);
+  int err = oos_prepend_header (src, stamped_header, oos_recdes);
   if (err != NO_ERROR)
     {
       oos_error ("oos_prepend_header failed");
@@ -2444,13 +2494,14 @@ oos_insert_record_in_fixed_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, P
   oid.volid = vpid.volid;
 
   oos_log_insert_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), &oid, &oos_recdes);
+  identity_stamp_out = stamped_header.identity_stamp;
   return NO_ERROR;
 }
 
 static int
 oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			const OOS_RECORD_HEADER &header,
-			OID &oid)
+			OID &oid, LOG_LSA &identity_stamp_out)
 {
   int err = NO_ERROR;
   VPID vpid;
@@ -2469,7 +2520,7 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer
       return err;
     }
   PAGE_PTR page_ptr = auto_page_ptr.get ();
-  err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, src, header, oid);
+  err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, src, header, oid, identity_stamp_out);
   if (err != NO_ERROR)
     {
       return err;
@@ -2594,11 +2645,14 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 
 
 /* Head-chunk validation shared by oos_read and oos_read_many: the caller's OID must be
- * the chain head (a mid-chain target means a corrupted inline OID), and the caller's
- * inline length (dest.size()) must agree with the chain header. */
+ * the chain head (a mid-chain target means a corrupted inline OID), the caller's
+ * inline length (dest.size()) must agree with the chain header, and the head chunk must
+ * carry the identity stamp the caller's reference was created with (CBRD-26950). */
 static int
-oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, const OID &oid)
+oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, const oos_chain_ref &ref)
 {
+  const OID &oid = ref.head_oid;
+
   assert (header.chunk_index == 0);
   if (header.chunk_index != 0)
     {
@@ -2615,6 +2669,17 @@ oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, con
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
       return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
+
+  /* A different stamp means the slot has begun a new slot incarnation since the reference was
+   * created: the bytes here belong to another chain and must never be returned as this value.
+   * NULL is an ordinary stamp value and is compared like any other. */
+  if (!LSA_EQ (&header.identity_stamp, &ref.identity_stamp))
+    {
+      oos_error ("OOS identity stamp mismatch: reference=%lld|%d head chunk=%lld|%d at oid={vol=%d,page=%d,slot=%d}",
+		 LSA_AS_ARGS (&ref.identity_stamp), LSA_AS_ARGS (&header.identity_stamp), OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
   return NO_ERROR;
 }
 
@@ -2623,10 +2688,11 @@ oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, con
  * mismatch (corruption) is rejected. byte_span_writer guards each chunk
  * against payload_len overflow inside the loop. */
 int
-oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
+oos_read (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, oos_buffer dest)
 {
   assert (dest.data () != nullptr && dest.size () > 0);
 
+  const OID &oid = ref.head_oid;
   const int expected_length = static_cast<int> (dest.size ());
 
   cubbase::byte_span_writer writer (dest);
@@ -2635,7 +2701,7 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
   int err = oos_read_within_page (thread_p, oid, writer, first_header);
   if (err == NO_ERROR)
     {
-      err = oos_check_head_header (first_header, expected_length, oid);
+      err = oos_check_head_header (first_header, expected_length, ref);
     }
   if (err != NO_ERROR)
     {
@@ -2680,11 +2746,11 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 
   for (std::size_t i = 0; i < requests.size (); i++)
     {
-      if (OID_ISNULL (&requests[i].oid) || requests[i].dest.data () == nullptr || requests[i].dest.size () == 0
-	  || requests[i].dest.size () > (std::size_t) INT_MAX)
+      if (OID_ISNULL (&requests[i].ref.head_oid) || requests[i].dest.data () == nullptr
+	  || requests[i].dest.size () == 0 || requests[i].dest.size () > (std::size_t) INT_MAX)
 	{
 	  oos_error ("oos_read_many rejected invalid request %zu (oid={vol=%d,page=%d,slot=%d}, data=%p, size=%zu)",
-		     i, OID_AS_ARGS (&requests[i].oid), requests[i].dest.data (), requests[i].dest.size ());
+		     i, OID_AS_ARGS (&requests[i].ref.head_oid), requests[i].dest.data (), requests[i].dest.size ());
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_GENERIC_ERROR;
 	}
@@ -2702,7 +2768,7 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 	      continue;
 	    }
 
-	  VPID vpid = { requests[i].oid.pageid, requests[i].oid.volid };
+	  VPID vpid = { requests[i].ref.head_oid.pageid, requests[i].ref.head_oid.volid };
 	  continuations.clear ();
 
 	  {
@@ -2723,7 +2789,7 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 	    /* Resolve every request whose head chunk lives on this fixed page. */
 	    for (std::size_t j = i; j < requests.size (); j++)
 	      {
-		const VPID request_vpid = { requests[j].oid.pageid, requests[j].oid.volid };
+		const VPID request_vpid = { requests[j].ref.head_oid.pageid, requests[j].ref.head_oid.volid };
 		if (done[j] || !VPID_EQ (&request_vpid, &vpid))
 		  {
 		    continue;
@@ -2734,10 +2800,10 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 		cubbase::byte_span_writer writer (requests[j].dest);
 		OOS_RECORD_HEADER header;
 
-		int err = oos_read_chunk_in_page (thread_p, page_ptr, requests[j].oid, writer, header);
+		int err = oos_read_chunk_in_page (thread_p, page_ptr, requests[j].ref.head_oid, writer, header);
 		if (err == NO_ERROR)
 		  {
-		    err = oos_check_head_header (header, static_cast<int> (requests[j].dest.size ()), requests[j].oid);
+		    err = oos_check_head_header (header, static_cast<int> (requests[j].dest.size ()), requests[j].ref);
 		  }
 		if (err != NO_ERROR)
 		  {
@@ -2751,7 +2817,7 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 		else if (!writer.full ())
 		  {
 		    oos_error ("OOS final length mismatch: written=%zu expected=%zu at oid={vol=%d,page=%d,slot=%d}",
-			       writer.written (), requests[j].dest.size (), OID_AS_ARGS (&requests[j].oid));
+			       writer.written (), requests[j].dest.size (), OID_AS_ARGS (&requests[j].ref.head_oid));
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
 		    return ER_HEAP_OOS_CORRUPTED_RECORD;
 		  }
@@ -2775,7 +2841,7 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 		  oos_error ("OOS final continuation length mismatch: written=%zu expected_remaining=%zu"
 			     " at oid={vol=%d,page=%d,slot=%d}",
 			     writer.written (), request.dest.size () - continuation.head_payload_size,
-			     OID_AS_ARGS (&request.oid));
+			     OID_AS_ARGS (&request.ref.head_oid));
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
 		  return ER_HEAP_OOS_CORRUPTED_RECORD;
 		}
@@ -3036,39 +3102,78 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
   log_append_undoredo_recdes (thread_p, RVOOS_DELETE, &log_addr, recdes_p, NULL);
 }
 
-// TODO: concurrency — this function assumes the caller holds a row-level lock (e.g., X_LOCK from heap layer)
-//       to prevent concurrent deletion of the same OOS chain. Verify this assumption when wiring callers.
-
 /*
- * oos_delete_chain () - delete all chunks in an OOS record chain (internal)
+ * oos_delete_chain () - delete all chunks in an OOS value chain after verifying the head's identity
+ *   (internal)
  *
  *   return: NO_ERROR or error code
  *   thread_p(in): thread entry
  *   oos_vfid(in): OOS file identifier
- *   oid(in): head OID of the OOS record chain
- *   touched_vpids(out): optional; every page a chunk was deleted from is appended (duplicates
- *			 allowed — the reclaim batch dedupes).
+ *   ref(in): head OID of the chain plus the identity stamp the caller's OOS inline stub carries
+ *   emptied_vpids(out): optional; every page that holds zero records after one of this chain's
+ *			 chunks was deleted from it is appended, once. A page that still holds
+ *			 other chunks is not a reclaim candidate and is not reported.
+ *   deleted_out(out): true when the chain was deleted, false when the call was a no-op
  *
  * NOTE: This is the inner workhorse called by oos_delete(). Each chunk
  *       deletion is logged individually with undo data, so transaction
  *       abort restores all deleted chunks in reverse order.
+ *
+ *       Target identity (CBRD-26950): the head chunk's stored identity stamp is compared with
+ *       ref.identity_stamp under the same write latch that deletes it, so there is no window
+ *       between the check and the delete in which the slot could be freed and reused. A
+ *       deallocated head page, a missing head slot and a stamp mismatch are all successful no-ops:
+ *       the chain the reference described is gone, and whatever occupies the location now belongs
+ *       to another slot incarnation or page incarnation. This is what makes a vacuum block retry,
+ *       or any duplicate deleter of the same chain, safe without a caller-side lock: the page latch
+ *       serializes them at the head, the first one deletes it, every later one no-ops there.
+ *       Pages of later chunks keep the plain fix because a verified head proves the chain is live
+ *       and its links are intact. NULL is an ordinary stamp value here.
  */
 static int
-oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
-		  std::vector<VPID> *touched_vpids)
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
+		  std::vector<VPID> *emptied_vpids, bool *deleted_out)
 {
   int error = NO_ERROR;
-  OID current_oid = oid;
+  OID current_oid = ref.head_oid;
+  bool is_head_chunk = true;
+
+  *deleted_out = false;
   while (!OID_ISNULL (&current_oid))
     {
       VPID vpid = {current_oid.pageid, current_oid.volid};
+      PAGE_PTR page_ptr = nullptr;
 
-      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page_ptr == nullptr)
+      if (is_head_chunk)
 	{
-	  ASSERT_ERROR_AND_SET (error);
-	  oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", current_oid.volid, current_oid.pageid);
-	  return error;
+	  /* The head fix must tolerate a vanished page: a retried delete may hold a stale OOS
+	   * reference whose whole page was reclaimed since (CBRD-26786). */
+	  error = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
+						&page_ptr);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      oos_error ("pgbuf_fix_if_not_deallocated failed for volid=%d, pageid=%d",
+			 current_oid.volid, current_oid.pageid);
+	      return error;
+	    }
+	  if (page_ptr == nullptr)
+	    {
+	      oos_debug ("delete no-op at oid={vol=%d,page=%d,slot=%d}: page deallocated (expected identity_stamp"
+			 " %lld|%d)", OID_AS_ARGS (&current_oid), LSA_AS_ARGS (&ref.identity_stamp));
+	      er_clear ();
+	      return NO_ERROR;
+	    }
+	}
+      else
+	{
+	  page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_ptr == nullptr)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", current_oid.volid, current_oid.pageid);
+	      return error;
+	    }
 	}
 
       scope_exit page_unfixer ([&] ()
@@ -3080,6 +3185,13 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
       SCAN_CODE code = spage_get_record (thread_p, page_ptr, current_oid.slotid, &oos_recdes, PEEK);
       if (code != S_SUCCESS)
 	{
+	  if (is_head_chunk && code == S_DOESNT_EXIST)
+	    {
+	      oos_debug ("delete no-op at oid={vol=%d,page=%d,slot=%d}: head chunk gone (expected identity_stamp"
+			 " %lld|%d)", OID_AS_ARGS (&current_oid), LSA_AS_ARGS (&ref.identity_stamp));
+	      er_clear ();
+	      return NO_ERROR;
+	    }
 	  ASSERT_ERROR_AND_SET (error);
 	  oos_error ("spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
 		     OID_AS_ARGS (&current_oid));
@@ -3096,6 +3208,22 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
 	}
       OOS_RECORD_HEADER header;
       std::memcpy (&header, oos_recdes.data, sizeof (OOS_RECORD_HEADER));
+
+      if (is_head_chunk)
+	{
+	  if (!LSA_EQ (&header.identity_stamp, &ref.identity_stamp))
+	    {
+	      /* The slot now belongs to a younger chain; this reference is stale. Deleting here is
+	       * exactly the data loss this check exists to prevent (CBRD-26950). */
+	      oos_debug ("delete no-op at oid={vol=%d,page=%d,slot=%d}: slot reused, expected identity_stamp"
+			 " %lld|%d, stored %lld|%d", OID_AS_ARGS (&current_oid), LSA_AS_ARGS (&ref.identity_stamp),
+			 LSA_AS_ARGS (&header.identity_stamp));
+	      er_clear ();
+	      return NO_ERROR;
+	    }
+	  is_head_chunk = false;
+	}
+
       OID next_chunk_oid = header.next_chunk_oid;
 
       oos_log_delete_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), current_oid.slotid,
@@ -3114,11 +3242,14 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
       /* Update bestspace cache — page now has more free space after delete */
       oos_stats_update (thread_p, page_ptr, &oos_vfid, 0);
 
-      if (touched_vpids != NULL)
+      /* Report the page only when this delete emptied it: oos_reclaim_empty_pages can deallocate
+       * nothing else, and a page empties at most once per delete, so this also keeps the list
+       * free of duplicates. */
+      if (emptied_vpids != NULL && spage_number_of_records (page_ptr) == 0)
 	{
 	  try
 	    {
-	      touched_vpids->push_back (vpid);
+	      emptied_vpids->push_back (vpid);
 	    }
 	  catch (std::bad_alloc &)
 	    {
@@ -3127,14 +3258,15 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
 	      oos_warn ("dropping empty-page reclaim hints for file %d|%d: out of memory growing "
 			"the candidate list; the growth-gate sweep will rediscover the pages",
 			VFID_AS_ARGS (&oos_vfid));
-	      touched_vpids->clear ();
-	      touched_vpids = NULL;
+	      emptied_vpids->clear ();
+	      emptied_vpids = NULL;
 	    }
 	}
 
       oos_debug ("deleted chunk at oid={vol=%d,page=%d,slot=%d}, next={vol=%d,page=%d,slot=%d}",
 		 OID_AS_ARGS (&current_oid), OID_AS_ARGS (&next_chunk_oid));
 
+      *deleted_out = true;
       current_oid = next_chunk_oid;
     }
 
@@ -3142,10 +3274,11 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
 }
 
 /*
- * oos_chunk_exists () - Probe whether the OOS chunk at oid still exists. Read-only companion to
- *   oos_delete for idempotent callers (e.g. vacuum forward-walk block retry, which must skip OIDs
- *   whose chunks a previously committed sysop already removed instead of tripping the
- *   S_DOESNT_EXIST hard error inside oos_delete_chain).
+ * oos_chunk_exists () - Occupancy probe: does SOME record still occupy the slot at oid? Kept for
+ *   tests and diagnostics. It proves occupancy, not identity: OOS OIDs are physical addresses and
+ *   freed slots are reused, so a "present" answer cannot tell the chunk a reference was created for
+ *   from a later occupant of the same slot. It must never gate a delete; oos_delete verifies target
+ *   identity itself, under the latch that performs the delete (CBRD-26950).
  *
  *   "Already gone" is narrowly defined:
  *     - pgbuf_fix_if_not_deallocated returns NO_ERROR with page_ptr==NULL (page deallocated), OR
@@ -3198,14 +3331,23 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
 }
 
 /*
- * oos_delete () - delete an OOS record (single-chunk or multi-chunk chain)
+ * oos_delete () - delete an OOS value chain (single-chunk or multi-chunk) after verifying that the
+ *   head chunk is still the one the caller's reference was created for
  *
  *   return: NO_ERROR or error code
  *   thread_p(in): thread entry
  *   oos_vfid(in): OOS file identifier
- *   oid(in): head OID of the OOS record
+ *   ref(in): head OOS OID plus the identity stamp stored in the caller's OOS inline stub
+ *   emptied_vpids(out): optional reclaim candidate list, see oos_file.hpp
  *
- * NOTE: No sysop is used. Each chunk deletion is logged individually
+ * NOTE: The delete happens only when the head chunk's stored identity stamp equals
+ *       ref.identity_stamp. A deallocated head page, a missing head slot (a block retry
+ *       re-deleting what an earlier committed sysop already reclaimed) and a stamp mismatch (the
+ *       slot was freed and reused by a live chain) are all successful no-ops that modify nothing,
+ *       leave the error stack clean and report no reclaim candidate. Without this identity check a
+ *       retried delete would destroy the reusing chain's data (CBRD-26950).
+ *
+ *       No sysop is used. Each chunk deletion is logged individually
  *       (RVOOS_DELETE with full record as undo data).
  *
  *       Why this is safe:
@@ -3230,17 +3372,92 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *       backstop for paths with no vacuum candidate list.
  */
 int
-oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
-	    std::vector<VPID> *touched_vpids)
+oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
+	    std::vector<VPID> *emptied_vpids)
 {
-  oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
+  oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}, expected identity_stamp=%lld|%d",
+	     OID_AS_ARGS (&ref.head_oid), LSA_AS_ARGS (&ref.identity_stamp));
 
-  int err = oos_delete_chain (thread_p, oos_vfid, oid, touched_vpids);
-  if (err == NO_ERROR)
+  bool deleted = false;
+  int err = oos_delete_chain (thread_p, oos_vfid, ref, emptied_vpids, &deleted);
+  if (err == NO_ERROR && deleted)
     {
       oos_reclaim_note_delete (oos_vfid);
     }
   return err;
+}
+
+/*
+ * oos_get_identity_stamp () - Read the identity stamp the head chunk at head_oid currently carries.
+ *
+ *   return: NO_ERROR, or an error when the page is deallocated or the slot is absent. Unlike
+ *           oos_delete, an absent target is an error here: the caller asks about a chunk it knows
+ *           to exist, to build a correct chain reference for a test or a diagnostic.
+ *   thread_p(in): thread entry
+ *   head_oid(in): OID of the head chunk
+ *   identity_stamp_out(out): the stamp stored in the chunk header
+ *
+ * NOTE: Production callers never read the stamp back from storage: they take it from the insert
+ *       request output when the chain is created and from the owning heap record's OOS inline stub
+ *       afterwards. This accessor is not a pre-delete probe; oos_delete verifies identity itself.
+ */
+int
+oos_get_identity_stamp (THREAD_ENTRY *thread_p, const OID &head_oid, LOG_LSA *identity_stamp_out)
+{
+  assert (identity_stamp_out != NULL);
+  LSA_SET_NULL (identity_stamp_out);
+
+  VPID vpid;
+  vpid.volid = head_oid.volid;
+  vpid.pageid = head_oid.pageid;
+
+  /* Tolerate a deallocated page the same way oos_get_length does: a vacuumed reference must report
+   * an error rather than trip the dead-page assert inside pgbuf_fix. */
+  PAGE_PTR page_ptr = NULL;
+  int err = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      oos_error ("oos_get_identity_stamp: pgbuf_fix failed at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&head_oid));
+      return err;
+    }
+  if (page_ptr == nullptr)
+    {
+      oos_error ("oos_get_identity_stamp: page deallocated at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&head_oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  scope_exit page_unfixer ([&]()
+  {
+    pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+  });
+
+  OOS_RECDES oos_recdes = RECDES_INITIALIZER;
+  SCAN_CODE code = spage_get_record (thread_p, page_ptr, head_oid.slotid, &oos_recdes, PEEK);
+  if (code != S_SUCCESS)
+    {
+      oos_error ("oos_get_identity_stamp: spage_get_record failed (code=%d) at oid={vol=%d,page=%d,slot=%d}",
+		 (int) code, OID_AS_ARGS (&head_oid));
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+      return er_errid ();
+    }
+
+  if (oos_recdes.length < OOS_RECORD_HEADER_SIZE)
+    {
+      oos_error ("oos_get_identity_stamp: OOS record smaller than header (len=%d) at oid={vol=%d,page=%d,slot=%d}",
+		 oos_recdes.length, OID_AS_ARGS (&head_oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
+
+  OOS_RECORD_HEADER header;
+  std::memcpy (&header, oos_recdes.data, OOS_RECORD_HEADER_SIZE);
+  *identity_stamp_out = header.identity_stamp;
+
+  return NO_ERROR;
 }
 
 // TODO: since this value never changes, we can make it a constant or static variable,
