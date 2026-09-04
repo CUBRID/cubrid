@@ -1142,25 +1142,66 @@ namespace parallel_scan
       }
   }
 
-  void clear_agg_accumulators_on_0_heap_id (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_list)
+  /* Move an accumulator value's buffer between the coordinator's private heap and heap 0
+   * (malloc), or release it on heap 0. Worker merges force the private heap to 0, so the original
+   * accumulator must sit on heap 0 while workers are alive and back on the coordinator heap once
+   * they are gone; otherwise the buffer is released by the wrong allocator. A partitioned scan
+   * runs one pass per partition, so this happens on every pass.
+   * Runs on the coordinator thread with its own private heap active, while no worker can reach
+   * the value. */
+  static int rehome_agg_value (THREAD_ENTRY *thread_p, DB_VALUE *value, agg_rehome_dir dir)
   {
-    HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
-    for (AGGREGATE_TYPE *agg_node = agg_list; agg_node != NULL; agg_node = agg_node->next)
+    if (value == NULL || DB_IS_NULL (value))
       {
-	if (agg_node->accumulator.value != nullptr)
+	return NO_ERROR;
+      }
+
+    if (dir == agg_rehome_dir::DISCARD)
+      {
+	HL_HEAPID coord_heap = db_change_private_heap (thread_p, 0);
+	pr_clear_value (value);
+	db_change_private_heap (thread_p, coord_heap);
+	return NO_ERROR;
+      }
+
+    DB_VALUE tmp;
+    db_make_null (&tmp);
+
+    /* clone on the destination heap */
+    bool to_heap0 = (dir == agg_rehome_dir::BORROW);
+    HL_HEAPID coord_heap = db_change_private_heap (thread_p, 0);
+    if (!to_heap0)
+      {
+	db_change_private_heap (thread_p, coord_heap);
+      }
+
+    int error = pr_clone_value (value, &tmp);
+    if (error == NO_ERROR && DB_IS_NULL (&tmp))
+      {
+	/* pr_clone_value () swallows the setval error: value is not NULL here, so a NULL clone means
+	 * the allocation on the destination heap failed and tmp was left domain-initialized. */
+	error = er_errid ();
+	if (error == NO_ERROR)
 	  {
-	    pr_clear_value (agg_node->accumulator.value);
-	  }
-	if (agg_node->accumulator.value2 != nullptr)
-	  {
-	    pr_clear_value (agg_node->accumulator.value2);
+	    assert (false);
+	    error = ER_FAILED;
 	  }
       }
-    db_change_private_heap (thread_p, save_heap);
+
+    /* Release the old buffer on the source heap even when the clone failed: the query is failing
+     * and the value is not needed, but leaving it where the caller no longer expects it would be
+     * released by the wrong allocator during teardown. A NULL clone owns nothing on any heap. */
+    db_change_private_heap (thread_p, to_heap0 ? coord_heap : 0);
+    pr_clear_value (value);
+    *value = tmp;
+    db_change_private_heap (thread_p, coord_heap);
+
+    return error;
   }
 
   template <FUNC_CODE F>
-  SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p)
+  SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::rehome_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p,
+      agg_rehome_dir dir)
   {
     /* COUNT_STAR/DISTINCT already finalized upstream; COUNT needs curr_cnt→BIGINT, others need value clone. */
     if constexpr (F == PT_COUNT_STAR)
@@ -1196,18 +1237,9 @@ namespace parallel_scan
 	    /* Non-order GROUP_CONCAT: re-home value only. value2 holds the separator
 	     * (metadata set on the main thread at init) and must NOT be re-homed --
 	     * cloning it leaks the separator buffer (mr_setval_char) on the txn heap. */
-	    DB_VALUE tmp;
-	    if (!DB_IS_NULL (orig_agg_p->accumulator.value))
+	    if (rehome_agg_value (thread_p, orig_agg_p->accumulator.value, dir) != NO_ERROR)
 	      {
-		db_make_null (&tmp);
-		if (pr_clone_value (orig_agg_p->accumulator.value, &tmp) != NO_ERROR)
-		  {
-		    return S_ERROR;
-		  }
-		HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
-		pr_clear_value (orig_agg_p->accumulator.value);
-		db_change_private_heap (thread_p, save_heap);
-		* (orig_agg_p->accumulator.value) = tmp;
+		return S_ERROR;
 	      }
 	    return S_SUCCESS;
 	  }
@@ -1225,40 +1257,139 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    DB_VALUE tmp;
-	    if (!DB_IS_NULL (orig_agg_p->accumulator.value))
+	    if (rehome_agg_value (thread_p, orig_agg_p->accumulator.value, dir) != NO_ERROR)
 	      {
-		db_make_null (&tmp);
-		if (pr_clone_value (orig_agg_p->accumulator.value, &tmp) != NO_ERROR)
-		  {
-		    return S_ERROR;
-		  }
-		HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
-		pr_clear_value (orig_agg_p->accumulator.value);
-		db_change_private_heap (thread_p, save_heap);
-		* (orig_agg_p->accumulator.value) = tmp;
+		return S_ERROR;
 	      }
 	    /* value2 carries a real accumulated result only for STDDEV/VARIANCE (sum of
 	     * squares), so re-home it only for that family. */
 	    if constexpr (F == PT_STDDEV || F == PT_STDDEV_POP || F == PT_STDDEV_SAMP
 			  || F == PT_VARIANCE || F == PT_VAR_POP || F == PT_VAR_SAMP)
 	      {
-		if (orig_agg_p->accumulator.value2 != NULL && !DB_IS_NULL (orig_agg_p->accumulator.value2))
+		if (rehome_agg_value (thread_p, orig_agg_p->accumulator.value2, dir) != NO_ERROR)
 		  {
-		    db_make_null (&tmp);
-		    if (pr_clone_value (orig_agg_p->accumulator.value2, &tmp) != NO_ERROR)
-		      {
-			return S_ERROR;
-		      }
-		    HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
-		    pr_clear_value (orig_agg_p->accumulator.value2);
-		    db_change_private_heap (thread_p, save_heap);
-		    * (orig_agg_p->accumulator.value2) = tmp;
+		    return S_ERROR;
 		  }
 	      }
 	    return S_SUCCESS;
 	  }
       }
+  }
+
+  SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::rehome_dispatch (THREAD_ENTRY *thread_p,
+      AGGREGATE_TYPE *orig_agg_p, agg_rehome_dir dir)
+  {
+    SCAN_CODE rc;
+    switch (orig_agg_p->function)
+      {
+      case PT_COUNT_STAR:
+	rc = rehome_node<PT_COUNT_STAR> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_COUNT:
+	rc = rehome_node<PT_COUNT> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_MIN:
+	rc = rehome_node<PT_MIN> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_MAX:
+	rc = rehome_node<PT_MAX> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_SUM:
+	rc = rehome_node<PT_SUM> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_AVG:
+	rc = rehome_node<PT_AVG> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_STDDEV:
+	rc = rehome_node<PT_STDDEV> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_STDDEV_POP:
+	rc = rehome_node<PT_STDDEV_POP> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_STDDEV_SAMP:
+	rc = rehome_node<PT_STDDEV_SAMP> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_VARIANCE:
+	rc = rehome_node<PT_VARIANCE> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_VAR_POP:
+	rc = rehome_node<PT_VAR_POP> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_VAR_SAMP:
+	rc = rehome_node<PT_VAR_SAMP> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_AGG_BIT_AND:
+	rc = rehome_node<PT_AGG_BIT_AND> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_AGG_BIT_OR:
+	rc = rehome_node<PT_AGG_BIT_OR> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_AGG_BIT_XOR:
+	rc = rehome_node<PT_AGG_BIT_XOR> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_GROUP_CONCAT:
+	rc = rehome_node<PT_GROUP_CONCAT> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_MEDIAN:
+	rc = rehome_node<PT_MEDIAN> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_PERCENTILE_CONT:
+	rc = rehome_node<PT_PERCENTILE_CONT> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_PERCENTILE_DISC:
+	rc = rehome_node<PT_PERCENTILE_DISC> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_JSON_ARRAYAGG:
+	rc = rehome_node<PT_JSON_ARRAYAGG> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_JSON_OBJECTAGG:
+	rc = rehome_node<PT_JSON_OBJECTAGG> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_CUME_DIST:
+	rc = rehome_node<PT_CUME_DIST> (thread_p, orig_agg_p, dir);
+	break;
+      case PT_PERCENT_RANK:
+	rc = rehome_node<PT_PERCENT_RANK> (thread_p, orig_agg_p, dir);
+	break;
+      default:
+	assert (false);
+	rc = S_ERROR;
+	break;
+      }
+    return rc;
+  }
+
+  /* Re-home every accumulator in the original aggregate list. All three directions walk the same
+   * per-function dispatch, so what is borrowed before the workers start is exactly what is
+   * restored -- or discarded -- afterwards, and a value the merge never owned is never touched.
+   * See rehome_agg_value() for the heap-ownership contract.
+   * A failed move (allocation on the destination heap) leaves the earlier nodes on the destination
+   * heap and the failing node NULL, so they are moved back before returning: the caller only sees
+   * a list that is wholly on the heap it started from and can unwind without a heap switch. */
+  SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::rehome_agg_list (THREAD_ENTRY *thread_p, agg_rehome_dir dir)
+  {
+    for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
+      {
+	if (rehome_dispatch (thread_p, orig_agg_p, dir) == S_ERROR)
+	  {
+	    /* DISCARD never fails, so the direction to undo is always a move. Undo up to and
+	     * including the failing node: its value is NULL and skipped, but for STDDEV/VARIANCE the
+	     * value may have moved before value2 failed. Best effort -- a node that fails to move back
+	     * is left NULL, which owns nothing on either heap. */
+	    assert (dir != agg_rehome_dir::DISCARD);
+	    agg_rehome_dir undo = (dir == agg_rehome_dir::BORROW) ? agg_rehome_dir::RESTORE : agg_rehome_dir::BORROW;
+	    for (AGGREGATE_TYPE *undo_p = m_orig_agg_list; undo_p != NULL; undo_p = undo_p->next)
+	      {
+		(void) rehome_dispatch (thread_p, undo_p, undo);
+		if (undo_p == orig_agg_p)
+		  {
+		    break;
+		  }
+	      }
+	    return S_ERROR;
+	  }
+      }
+    return S_END;
   }
 
   SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *dest)
@@ -1271,95 +1402,16 @@ namespace parallel_scan
 
     if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
       {
-	clear_agg_accumulators_on_0_heap_id (thread_p, m_orig_agg_list);
+	/* Release what the merge allocated on heap 0, and nothing else. A blanket clear would also
+	 * release accumulator.value2 of GROUP_CONCAT, which is not a merge result but the separator
+	 * unpacked from the XASL: it is owned by another heap, and for a cached XASL clone it has to
+	 * survive until decache (qexec_clear_agg_list skips it while clear_value2_at_clone_decache
+	 * is set). */
+	(void) rehome_agg_list (thread_p, agg_rehome_dir::DISCARD);
 	return S_ERROR;
       }
 
-    for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
-      {
-	SCAN_CODE rc;
-	switch (orig_agg_p->function)
-	  {
-	  case PT_COUNT_STAR:
-	    rc = read_node<PT_COUNT_STAR> (thread_p, orig_agg_p);
-	    break;
-	  case PT_COUNT:
-	    rc = read_node<PT_COUNT> (thread_p, orig_agg_p);
-	    break;
-	  case PT_MIN:
-	    rc = read_node<PT_MIN> (thread_p, orig_agg_p);
-	    break;
-	  case PT_MAX:
-	    rc = read_node<PT_MAX> (thread_p, orig_agg_p);
-	    break;
-	  case PT_SUM:
-	    rc = read_node<PT_SUM> (thread_p, orig_agg_p);
-	    break;
-	  case PT_AVG:
-	    rc = read_node<PT_AVG> (thread_p, orig_agg_p);
-	    break;
-	  case PT_STDDEV:
-	    rc = read_node<PT_STDDEV> (thread_p, orig_agg_p);
-	    break;
-	  case PT_STDDEV_POP:
-	    rc = read_node<PT_STDDEV_POP> (thread_p, orig_agg_p);
-	    break;
-	  case PT_STDDEV_SAMP:
-	    rc = read_node<PT_STDDEV_SAMP> (thread_p, orig_agg_p);
-	    break;
-	  case PT_VARIANCE:
-	    rc = read_node<PT_VARIANCE> (thread_p, orig_agg_p);
-	    break;
-	  case PT_VAR_POP:
-	    rc = read_node<PT_VAR_POP> (thread_p, orig_agg_p);
-	    break;
-	  case PT_VAR_SAMP:
-	    rc = read_node<PT_VAR_SAMP> (thread_p, orig_agg_p);
-	    break;
-	  case PT_AGG_BIT_AND:
-	    rc = read_node<PT_AGG_BIT_AND> (thread_p, orig_agg_p);
-	    break;
-	  case PT_AGG_BIT_OR:
-	    rc = read_node<PT_AGG_BIT_OR> (thread_p, orig_agg_p);
-	    break;
-	  case PT_AGG_BIT_XOR:
-	    rc = read_node<PT_AGG_BIT_XOR> (thread_p, orig_agg_p);
-	    break;
-	  case PT_GROUP_CONCAT:
-	    rc = read_node<PT_GROUP_CONCAT> (thread_p, orig_agg_p);
-	    break;
-	  case PT_MEDIAN:
-	    rc = read_node<PT_MEDIAN> (thread_p, orig_agg_p);
-	    break;
-	  case PT_PERCENTILE_CONT:
-	    rc = read_node<PT_PERCENTILE_CONT> (thread_p, orig_agg_p);
-	    break;
-	  case PT_PERCENTILE_DISC:
-	    rc = read_node<PT_PERCENTILE_DISC> (thread_p, orig_agg_p);
-	    break;
-	  case PT_JSON_ARRAYAGG:
-	    rc = read_node<PT_JSON_ARRAYAGG> (thread_p, orig_agg_p);
-	    break;
-	  case PT_JSON_OBJECTAGG:
-	    rc = read_node<PT_JSON_OBJECTAGG> (thread_p, orig_agg_p);
-	    break;
-	  case PT_CUME_DIST:
-	    rc = read_node<PT_CUME_DIST> (thread_p, orig_agg_p);
-	    break;
-	  case PT_PERCENT_RANK:
-	    rc = read_node<PT_PERCENT_RANK> (thread_p, orig_agg_p);
-	    break;
-	  default:
-	    assert (false);
-	    rc = S_ERROR;
-	    break;
-	  }
-	if (rc == S_ERROR)
-	  {
-	    return S_ERROR;
-	  }
-      }
-    return S_END;
+    return rehome_agg_list (thread_p, agg_rehome_dir::RESTORE);
   }
 
   void result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read_finalize (THREAD_ENTRY *thread_p)
@@ -2551,16 +2603,23 @@ namespace parallel_scan
 		      db_private_free_and_init (thread_p, cur_agg_p->info.dist_percent.const_array);
 		      cur_agg_p->info.dist_percent.list_len = 0;
 		    }
-		  if (cur_agg_p->accumulator.value != NULL)
-		    {
-		      pr_clear_value (cur_agg_p->accumulator.value);
-		    }
-		  if (cur_agg_p->accumulator.value2 != NULL)
-		    {
-		      pr_clear_value (cur_agg_p->accumulator.value2);
-		    }
+		  /* The clone's accumulator values are released right after this by
+		   * qexec_clear_xasl () in task::finalize, which honours
+		   * clear_value_at_clone_decache / clear_value2_at_clone_decache. Releasing
+		   * them here as well aborted the server on an interrupted GROUP_CONCAT:
+		   * value2 is the separator that arrived with the clone, not something this
+		   * worker allocated, so freeing it here hands a foreign pointer to the
+		   * worker's allocator. */
 		}
 	      break;
+	    }
+
+	  /* The host variable's domain is resolved only in worker clones that scan rows.
+	   * Copy the resolved domain to the main agg node before merging the accumulators. */
+	  if (orig_agg_p->opr_dbtype == DB_TYPE_VARIABLE && cur_agg_p->opr_dbtype != DB_TYPE_VARIABLE)
+	    {
+	      orig_agg_p->domain = cur_agg_p->domain;
+	      orig_agg_p->opr_dbtype = cur_agg_p->opr_dbtype;
 	    }
 
 	  switch (orig_agg_p->function)

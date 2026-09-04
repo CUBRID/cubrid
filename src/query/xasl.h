@@ -613,6 +613,10 @@ struct cte_proc_node
    || ((func_p)->function == PT_PERCENTILE_CONT) \
    || ((func_p)->function == PT_PERCENTILE_DISC))
 
+#define QPROC_IS_CONTINUOUS_INTERPOLATION_FUNC(func_p) \
+  (((func_p)->function == PT_MEDIAN) \
+   || ((func_p)->function == PT_PERCENTILE_CONT))
+
  /* pseudocolumns offsets in tuple (from end) */
 #define	PCOL_ISCYCLE_TUPLE_OFFSET	1
 #define	PCOL_ISLEAF_TUPLE_OFFSET	2

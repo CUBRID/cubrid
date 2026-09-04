@@ -40,11 +40,53 @@
 
 #include "dblink_scan.h"
 
+#include <pthread.h>
+
 /* State for _db_global_tran: 'P' = before Prepare, 'A' = Abort decision, 'C' = Commit decision */
 #define DBLINK_2PC_STATE_PREPARE   'P'
 #define DBLINK_2PC_STATE_ABORT    'A'
 #define DBLINK_2PC_STATE_COMMIT   'C'
 #define DBLINK_2PC_STATE_EMPTY    ' '
+
+/* Fallback bound for how long the commit path waits for the 2PC daemon to deliver its decisions
+ * before answering the client.  The wait is what makes the remote changes visible to the next
+ * statement of the same session; the bound is what keeps an unresponsive participant from stalling
+ * the commit response.
+ *
+ * It is the floor for every session.  A client that stated a longer deadline of its own gets that
+ * instead - see log_2pc_commit_first_phase() - but nothing waits less than this, including everything
+ * that does not come through a CAS, since csql and the utilities connect to the server directly and
+ * carry no deadline at all.
+ *
+ * Deliberately generous: a safety net for a participant that stopped responding, not a knob for
+ * trimming a slow one.  Tightening it makes healthy-but-busy transactions fall back, which brings
+ * the visibility gap back. */
+#define DBLINK_2PC_DECISION_WAIT_MSEC 1000
+
+/*
+ * Decision completion: one per coordinator transaction, shared by that transaction's queue entries.
+ *
+ * The commit path creates it with remaining = number of participants, enqueues one entry per
+ * participant carrying a pointer to it, then waits for remaining to reach 0.  The daemon calls
+ * dblink_2pc_completion_settle() once per participant, right after the decision is actually delivered.
+ *
+ * Lifetime is refcounted because neither side reliably outlives the other: the commit path may give
+ * up on the bound while entries are still queued, and an entry may be retried long after.  refcount
+ * starts at 1 for the commit path; each queue entry adds one.  The last release frees it.
+ *
+ * A reference is never released on its own: an entry's goes with its _settle(), and the commit
+ * path's goes with the wait that used it, in _wait_and_release().  That is deliberate - the commit
+ * path's reference is what keeps the mutex and the condition variable alive while it waits on them,
+ * so the release cannot be allowed to drift away from the wait it protects.
+ */
+typedef struct dblink_2pc_completion DBLINK_2PC_COMPLETION;
+struct dblink_2pc_completion
+{
+  pthread_mutex_t mutex;
+  pthread_cond_t cond;
+  int remaining;		/* participants whose decision is not delivered yet */
+  int refcount;			/* commit path (1) + entries still referencing this completion */
+};
 
 typedef struct global_tran_queue_entry GLOBAL_TRAN_QUEUE_ENTRY;
 struct global_tran_queue_entry
@@ -52,7 +94,51 @@ struct global_tran_queue_entry
   int gtrid;
   char state;			/* DBLINK_2PC_STATE_PREPARE / ABORT / COMMIT */
   DBLINK_CONN_INFO participant;	/* single participant (embedded) */
+  DBLINK_2PC_COMPLETION *completion;	/* commit path waiting on this decision, NULL if nobody waits */
 };
+
+/*
+ * Ownership rule for the two counters.  Attaching the completion to a queue entry takes a reference
+ * with _ref(); that entry is then settled with exactly one _settle(), which drops both remaining and
+ * the reference.  An entry is settled once it can no longer be retried - which is every case below
+ * except the second:
+ *
+ *   decision delivered      the daemon calls _settle()
+ *   delivery failed, and    nothing is called - the entry keeps its reference and its slot in
+ *   the retry is queued     remaining, and is re-enqueued for retry as it is today
+ *   delivery failed, and    the daemon calls _settle(): the entry is gone from the queue and nothing
+ *   the retry is refused    else will ever release what it holds.  The decision is not lost - its
+ *                           _db_global_tran row is still there for recovery to replay
+ *   never enqueued          the caller that took the reference calls _settle() itself, so a queue
+ *                           that refused the entry does not leave the commit path waiting for it
+ *
+ * Every function tolerates a NULL completion, so callers do not need to branch on allocation failure.
+ *
+ * Create a completion for num_participants decisions.  Returns NULL on allocation failure; that is not
+ * an error condition - the caller simply does not wait, and the daemon still delivers the decision.
+ */
+extern DBLINK_2PC_COMPLETION *dblink_2pc_completion_create (int num_participants);
+
+/* Take a reference before attaching the completion to a queue entry. */
+extern void dblink_2pc_completion_ref (DBLINK_2PC_COMPLETION * completion);
+
+/*
+ * Settle one entry - the Ownership rule above says when it is called.  Signals the completion when none
+ * are left, then consumes that entry's reference, so the caller must not touch the completion afterwards.
+ */
+extern void dblink_2pc_completion_settle (DBLINK_2PC_COMPLETION * completion);
+
+/*
+ * Wait until every participant's decision has been settled or timeout_msec elapses, then release the
+ * commit path's reference - so the caller must not touch the completion afterwards.
+ * Returns true if all were settled - which means there is nothing left to wait for, not that every
+ * decision reached its participant: server shutdown settles the entries it drops.  A false return
+ * is not an error either: the decisions remain queued and the daemon keeps delivering them.  Either
+ * way the caller just stops waiting, which is why callers ignore the result.
+ * A timeout_msec of 0 or less polls - it reports whether everything is already settled without
+ * blocking.
+ */
+extern bool dblink_2pc_completion_wait_and_release (DBLINK_2PC_COMPLETION * completion, int timeout_msec);
 
 /*
  * Enqueue one participant for daemon to persist to _db_global_tran and/or send decision.
@@ -61,9 +147,13 @@ struct global_tran_queue_entry
  * - After prepare (decision phase): state = DBLINK_2PC_STATE_ABORT or DBLINK_2PC_STATE_COMMIT
  *   -> daemon sends abort/commit decision to this participant.
  * participant is copied by the function; caller can free after return.
+ * completion may be NULL.  When it is not, the caller must already hold a reference for this entry
+ * (dblink_2pc_completion_ref); on failure the entry is not queued, so the caller settles that reference
+ * itself with dblink_2pc_completion_settle.
  * Returns NO_ERROR on success, ER_* on failure (e.g. queue full).
  */
-extern int dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant);
+extern int dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant,
+				      DBLINK_2PC_COMPLETION * completion);
 extern int dblink_2pc_daemon_dequeue (GLOBAL_TRAN_QUEUE_ENTRY * e);
 
 /* Start the send_2pc_decision daemon thread. Called during server boot.
