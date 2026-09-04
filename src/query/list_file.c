@@ -3313,8 +3313,12 @@ qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD * tuple_slot
       data = PTR_ALIGN (data, MAX_ALIGNMENT);
       length = CAST_BUFLEN (data - key_record_p->data);
 
-      /* every source is a raw body of a same-layout column, so the size is length arithmetic only (#200 item 7) */
-      size = qfile_tuple_size_raw (&key_info_p->key_tl, src, nkeys, &has_null);
+      size = qfile_tuple_size (&key_info_p->key_tl, src, nkeys, &has_null);
+      if (size < 0)
+	{
+	  QFILE_COL_SRC_RELEASE (src, src_buf);
+	  return ER_FAILED;
+	}
       length += size;
 
       if (length <= key_record_p->area_size)

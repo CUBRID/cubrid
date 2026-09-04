@@ -317,7 +317,8 @@ struct qfile_col_layout
   uint8_t kind;			/* QFILE_COL_FIXED | QFILE_COL_VAR */
   uint8_t var_access;		/* VAR only: QFILE_VAR_DIRECT | QFILE_VAR_SCRATCH */
   uint8_t alignby;		/* FIXED: 2 | 4. VAR: 1 */
-  uint8_t _pad;
+  uint8_t type_id;		/* DB_TYPE of domp[i] (DB_TYPE_VARIABLE while unresolved): lets the assembler decide "value has the
+				 * column's type" from this entry alone, without the domp[i] -> domain -> type load chain (#200 item 5) */
 };
 
 /* Type list structure == tuple layout descriptor (CBRD-27365, ADR 0016 D-181-1/2/5).

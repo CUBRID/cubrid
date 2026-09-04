@@ -76,8 +76,9 @@ qfile_col_layout_of_domain (const TP_DOMAIN * dom, QFILE_COL_LAYOUT * c)
   t = dom->type;
   id = TP_DOMAIN_TYPE (dom);
 
+  assert (id >= 0 && id <= DB_TYPE_LAST && id <= UINT8_MAX);
   c->off = -1;
-  c->_pad = 0;
+  c->type_id = (uint8_t) id;
 
   if (id == DB_TYPE_VARIABLE || t->has_computed_disk_size ())
     {
@@ -636,16 +637,17 @@ qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * src, i
 }
 
 /*
- * qfile_col_value_type () - the PR_TYPE that encodes value val into column col: the column's own type when the value
- *   has the column's type (the usual case, no table lookup), the value's type otherwise (compatible pairs such as
- *   CHAR into VARCHAR, resolved by pr_type_from_id). Only meaningful for a bound value.
+ * qfile_value_pr_type () - PR_TYPE of a bound value: the static id map indexed directly (one L1-resident load; the
+ *   out-of-line pr_type_from_id () adds a call and a range test per value, and the alternative domp[i] -> domain ->
+ *   type chain is three dependent loads - perf annotate of the Q01 size pass, #200 item 5).
  */
 inline const PR_TYPE *
-qfile_col_value_type (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, int col, const DB_VALUE * val)
+qfile_value_pr_type (const DB_VALUE * val)
 {
   DB_TYPE vt = DB_VALUE_DOMAIN_TYPE (val);
 
-  return (vt == TP_DOMAIN_TYPE (tl->domp[col])) ? tl->domp[col]->type : pr_type_from_id (vt);
+  assert (vt >= 0 && vt <= DB_TYPE_LAST && vt != DB_TYPE_TABLE);
+  return tp_Type_id_map[(int) vt];
 }
 
 /*
@@ -786,8 +788,7 @@ qfile_tuple_fill (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, const QFILE_TUPLE_COL_
 #endif
 	  off = aligned_off;
 	}
-      w = qfile_tuple_put_value (out + off, c, &src[i],
-				 (src[i].val != NULL) ? qfile_col_value_type (tl, i, src[i].val) : NULL);
+      w = qfile_tuple_put_value (out + off, c, &src[i], (src[i].val != NULL) ? qfile_value_pr_type (src[i].val) : NULL);
       if (w < 0)
 	{
 	  return ER_FAILED;
@@ -803,48 +804,6 @@ qfile_tuple_fill (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, const QFILE_TUPLE_COL_
 }
 
 /*
- * qfile_tuple_size_raw () - size pass for an all-raw source array (every src[i].val == NULL: stored bodies copied
- *   from another tuple of the same layout kinds, e.g. the P_sort_key mini tuple of qfile_build_sort_rec).
- *   return: exact tuple length (header included, multiple of 4)
- *   The body lengths are already known (src[i].len from qfile_slot_locate), so this is pure length arithmetic: no
- *   column resolution, no type lookup, no size computation (#200 item 7). data_off[] is a multiple of the tuple
- *   alignment and every alignby divides it, so the body can be summed from 0 and added to data_off afterwards.
- */
-inline int
-qfile_tuple_size_raw (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, const QFILE_TUPLE_COL_SRC * src, int n, bool * has_null)
-{
-  const QFILE_COL_LAYOUT *c;
-  int i, body = 0;
-  bool hn = false;
-
-  assert (tl != NULL && tl->finalized && tl->type_cnt == n);
-  assert (tl->data_off[0] % QFILE_TUPLE_ALIGNMENT == 0 && tl->data_off[1] % QFILE_TUPLE_ALIGNMENT == 0);
-
-  for (i = 0; i < n; i++)
-    {
-      assert (src[i].val == NULL);
-      if (src[i].is_null)
-	{
-	  hn = true;
-	  continue;
-	}
-      c = &tl->col[i];
-      if (c->kind == QFILE_COL_FIXED)
-	{
-	  assert (src[i].len == c->size);
-	  body = DB_ALIGN (body, c->alignby) + c->size;
-	}
-      else
-	{
-	  body += QFILE_VAR_HDR_SIZE (src[i].len) + src[i].len;
-	}
-    }
-
-  *has_null = hn;
-  return DB_ALIGN (tl->data_off[hn ? 1 : 0] + body, QFILE_TUPLE_ALIGNMENT);
-}
-
-/*
  * qfile_tuple_size_from_values () / qfile_tuple_fill_from_values () - T_NORMAL overload over the descriptor's
  *   f_valp[] (no source array). The size pass records each body length in lens[] (QFILE_TUPLE_DESCRIPTOR.f_len) and
  *   the fill pass consumes it, so a value's size is computed once per tuple (#200 item 5, CC-05/A60; the former fill
@@ -857,40 +816,32 @@ inline int
 qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE ** vals, int *lens, int n, bool * has_null)
 {
   const QFILE_COL_LAYOUT *c;
-  const TP_DOMAIN *dom;
-  int i, len, size;
-  bool hn = false, changed = false;
+  const DB_VALUE *v;
+  DB_TYPE vt;
+  int i, len, body;
+  bool hn;
 
   assert (tl != NULL && tl->finalized && tl->type_cnt == n);
   assert (lens != NULL);
+  assert (tl->data_off[0] % QFILE_TUPLE_ALIGNMENT == 0 && tl->data_off[1] % QFILE_TUPLE_ALIGNMENT == 0);
 
+restart:
+  /* one pass; data_off[] is a multiple of the tuple alignment and every alignby divides it, so the body is summed
+   * from 0 and data_off added at the end (the has-null verdict is only known after the pass) */
+  body = 0;
+  hn = false;
   for (i = 0; i < n; i++)
     {
-      if (DB_IS_NULL (vals[i]))
+      v = vals[i];
+      if (DB_IS_NULL (v))
 	{
 	  hn = true;
-	}
-      else
-	{
-	  changed |= qfile_tuple_resolve_column (tl, i, vals[i]);
-	}
-    }
-  if (changed)
-    {
-      qfile_type_list_finalize (tl);
-    }
-  size = tl->data_off[hn ? 1 : 0];
-
-  for (i = 0; i < n; i++)
-    {
-      if (DB_IS_NULL (vals[i]))
-	{
 	  lens[i] = 0;
 	  continue;
 	}
       c = &tl->col[i];
-      dom = tl->domp[i];
-      if (DB_VALUE_DOMAIN_TYPE (vals[i]) == TP_DOMAIN_TYPE (dom))
+      vt = DB_VALUE_DOMAIN_TYPE (v);
+      if (vt == (DB_TYPE) c->type_id)
 	{
 	  /* the value has the column's type: the column entry is the encoding (kind/var_access were derived from it) */
 	  if (c->kind == QFILE_COL_FIXED)
@@ -899,17 +850,23 @@ qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE ** vals
 	    }
 	  else if (c->var_access == QFILE_VAR_DIRECT)
 	    {
-	      len = dom->type->get_index_size_of_value (vals[i]);
+	      len = qfile_value_pr_type (v)->get_index_size_of_value (v);
 	    }
 	  else
 	    {
-	      len = dom->type->get_disk_size_of_value (vals[i]);
+	      len = qfile_value_pr_type (v)->get_disk_size_of_value (v);
 	    }
-	  assert (len == qfile_value_body_size (c, vals[i]));
+	  assert (len == qfile_value_body_size (c, v));
 	}
       else
 	{
-	  len = qfile_value_body_size (c, vals[i]);
+	  if (c->type_id == DB_TYPE_VARIABLE && qfile_tuple_resolve_column (tl, i, v))
+	    {
+	      /* late resolution (D-199-13): the layout changed under us; measure again with the settled descriptor */
+	      qfile_type_list_finalize (tl);
+	      goto restart;
+	    }
+	  len = qfile_value_body_size (c, v);
 	  if (len < 0)
 	    {
 	      return ER_FAILED;
@@ -918,16 +875,16 @@ qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE ** vals
       lens[i] = len;
       if (c->kind == QFILE_COL_FIXED)
 	{
-	  size = DB_ALIGN (size, c->alignby) + c->size;
+	  body = DB_ALIGN (body, c->alignby) + c->size;
 	}
       else
 	{
-	  size += QFILE_VAR_HDR_SIZE (len) + len;
+	  body += QFILE_VAR_HDR_SIZE (len) + len;
 	}
     }
 
   *has_null = hn;
-  return DB_ALIGN (size, QFILE_TUPLE_ALIGNMENT);
+  return DB_ALIGN (tl->data_off[hn ? 1 : 0] + body, QFILE_TUPLE_ALIGNMENT);
 }
 
 inline int
@@ -982,7 +939,7 @@ qfile_tuple_fill_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE *
 #endif
 	  off = aligned_off;
 	}
-      w = qfile_tuple_put_value (out + off, c, &src, qfile_col_value_type (tl, i, vals[i]));
+      w = qfile_tuple_put_value (out + off, c, &src, qfile_value_pr_type (vals[i]));
       if (w < 0)
 	{
 	  return ER_FAILED;
