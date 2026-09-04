@@ -282,9 +282,13 @@ qfile_slot_locate_walk (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool *
 	}
       else
 	{
+	  /* the format is not self-describing: a length header read out of the tuple is the only thing that keeps the
+	   * walk inside it, so check the invariant here as qfile_tuple_walk_next () does (debug only, SER-02) */
+	  assert (off < QFILE_GET_TUPLE_LENGTH (tpl));
 	  len = qfile_var_hdr_decode (tpl + off, &hdr);
 	  off += hdr + len;
 	}
+      assert (off <= QFILE_GET_TUPLE_LENGTH (tpl));
     }
 
   if (col <= INT16_MAX)
@@ -304,12 +308,15 @@ qfile_slot_locate_walk (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool *
   off = DB_ALIGN (off, c->alignby);
   if (c->kind == QFILE_COL_FIXED)
     {
+      assert (off + c->size <= QFILE_GET_TUPLE_LENGTH (tpl));
       *body_len = c->size;
       *is_null = false;
       return tpl + off;
     }
 
+  assert (off < QFILE_GET_TUPLE_LENGTH (tpl));
   len = qfile_var_hdr_decode (tpl + off, &hdr);
+  assert (off + hdr + len <= QFILE_GET_TUPLE_LENGTH (tpl));
   *body_len = len;
   *is_null = false;
   return tpl + off + hdr;
