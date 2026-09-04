@@ -77,11 +77,30 @@
 #define VALID_INNER(plan)	(plan->well_rooted || \
 				 (plan->plan_type == QO_PLANTYPE_SORT))
 
-#define TEMP_SETUP_COST 5.0
-#define QO_CPU_WEIGHT 0.0025
+#define TEMP_SETUP_COST (5.0 * qo_Cost_seq_page)	/* page-denominated list-file setup */
+/* Optimizer cost constants, cached once per query optimization from system parameters
+ * (qo_load_cost_params); see the PRM_ID_COST_* group. The macros alias the cached values
+ * so call sites are untouched. Defaults equal the historical literals -> unchanged plans
+ * for an unmodified parameter set. PostgreSQL exposes the same knobs (cpu_tuple_cost, the
+ * heap-fetch penalty, and the random/seq page-cost ratio); the optimizer runs client-side
+ * so each is PRM_FOR_CLIENT.  The defaults mirror the PRM_ID_COST_* entries of prm_Def;
+ * the float literals go through the same float widening as prm_get_float_value (), so the
+ * default test in qo_plan_dump_cost_params () compares exactly. */
+#define QO_COST_CPU_TUPLE_DEFAULT ((double) 0.0025f)
+#define QO_COST_HEAP_FETCH_PER_OID_DEFAULT 5.0
+#define QO_COST_INDEX_PAGE_HIT_RATIO_DEFAULT ((double) 0.5f)
+#define QO_COST_SEQ_PAGE_DEFAULT ((double) 1.0f)
+#define QO_COST_RANDOM_PAGE_DEFAULT ((double) 1.0f)
+static double qo_Cost_cpu_tuple = QO_COST_CPU_TUPLE_DEFAULT;
+static double qo_Cost_heap_fetch_per_oid = QO_COST_HEAP_FETCH_PER_OID_DEFAULT;
+static double qo_Cost_index_page_hit_ratio = QO_COST_INDEX_PAGE_HIT_RATIO_DEFAULT;
+static double qo_Cost_seq_page = QO_COST_SEQ_PAGE_DEFAULT;	/* PG seq_page_cost; per sequential heap/temp page */
+static double qo_Cost_random_page = QO_COST_RANDOM_PAGE_DEFAULT;	/* PG random_page_cost; per index/heap-fetch page */
+
+#define QO_CPU_WEIGHT qo_Cost_cpu_tuple
 /* Per-OID heap-access CPU penalty for NON-covering index scans (covering scans: 0).
  * Lowered 20 -> 5 to favor index scan when low/stale leading-column NDV inflates sel via 1/pkeys[0]. TODO: per-index clustering factor. */
-#define ISCAN_OID_ACCESS_OVERHEAD 5
+#define ISCAN_OID_ACCESS_OVERHEAD qo_Cost_heap_fetch_per_oid
 /* Per-extra-row iscan heap-fetch cost: charges (heap_rows - 1) * ratio, so a single-row
  * (fanout=1 / unique / pk) probe adds ZERO and keeps exactly the original cost (blast-radius
  * safe). Added to object_IO on top of the existing page-based cost, so a high-fanout inner
@@ -101,7 +120,7 @@
 					   added to sizeof (MHT_HLS_ENTRY) for the spill threshold. The struct is
 					   SERVER/SA-only (query_hash_scan.h) so it cannot be sizeof'd in the
 					   client-side optimizer; a static_assert there guards against drift. */
-#define ISCAN_IO_HIT_RATIO 0.5
+#define ISCAN_IO_HIT_RATIO qo_Cost_index_page_hit_ratio
 #define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
@@ -1753,7 +1772,7 @@ qo_sscan_cost (QO_PLAN * planp)
     {
       planp->variable_cpu_cost = (double) QO_NODE_NCARD (nodep) * (double) QO_CPU_WEIGHT;
     }
-  planp->variable_io_cost = (double) QO_NODE_TCARD (nodep);
+  planp->variable_io_cost = (double) QO_NODE_TCARD (nodep) * qo_Cost_seq_page;
   planp->info->scan_rows = MAX (1, QO_NODE_NCARD (nodep));
 
 #if TEST_DUMP_PLAN_SCAN_COST
@@ -2385,9 +2404,9 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_cpu_cost = 0.0;
   /* Fixed: the b+tree descent (n * height, upper levels shared across probes and assumed
    * buffer-resident) plus the single leaf page the descent lands on. */
-  planp->fixed_io_cost = index_IO + first_leaf;
+  planp->fixed_io_cost = (index_IO + first_leaf) * qo_Cost_random_page;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
-  planp->variable_io_cost = object_IO;
+  planp->variable_io_cost = object_IO * qo_Cost_random_page;
   planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * heap_sel);
 
 #if TEST_DUMP_PLAN_SCAN_COST
@@ -2901,7 +2920,7 @@ qo_sort_cost (QO_PLAN * planp)
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost + subplanp->variable_cpu_cost + TEMP_SETUP_COST;
       planp->fixed_io_cost = subplanp->fixed_io_cost + subplanp->variable_io_cost;
       planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT;
-      planp->variable_io_cost = pages;
+      planp->variable_io_cost = pages * qo_Cost_seq_page;
 
       if (order != QO_UNORDERED && order != subplanp->order)
 	{
@@ -2924,7 +2943,8 @@ qo_sort_cost (QO_PLAN * planp)
 		   * that the io costs increase by the number of pages required to hold the intermediate result.  CPU
 		   * costs increase as above. Model courtesy of Ender.
 		   */
-		  sort_io = pages * log3 (pages / 4.0);
+		  /* external sort spills to the temp file sequentially: seq page unit cost */
+		  sort_io = pages * log3 (pages / 4.0) * qo_Cost_seq_page;
 
 		  /* guess: apply IO caching for big size sort list. Disk IO cost cannot be greater than the 10% number
 		   * of the requested IO pages
@@ -3745,7 +3765,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
   inner_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
-  inner_build_io_cost = inner_pages;
+  inner_build_io_cost = inner_pages * qo_Cost_seq_page;
 
   /**
    * STEP 3: Calculate the cost when outer is used as build input.
@@ -3753,7 +3773,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
   outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   outer_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
-  outer_build_io_cost = outer_pages;
+  outer_build_io_cost = outer_pages * qo_Cost_seq_page;
 
   /* Partitioned hash join spills to disk once the build input exceeds the in-memory
    * hash limit. The executor switches to a partitioned (spilling) hash join at
@@ -3770,12 +3790,12 @@ qo_hjoin_cost (QO_PLAN * plan_p)
 
     if ((inner_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR)
       {
-	inner_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
+	inner_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT * qo_Cost_seq_page;
       }
 
     if ((outer_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR)
       {
-	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
+	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT * qo_Cost_seq_page;
       }
   }
 
@@ -4041,7 +4061,8 @@ qo_follow_cost (QO_PLAN * planp)
   planp->fixed_cpu_cost = head->fixed_cpu_cost;
   planp->fixed_io_cost = head->fixed_io_cost;
   planp->variable_cpu_cost = head->variable_cpu_cost + (cardinality * (double) QO_CPU_WEIGHT);
-  planp->variable_io_cost = head->variable_io_cost + fetch_ios;
+  /* follow fetches the target objects by OID: random page unit cost */
+  planp->variable_io_cost = head->variable_io_cost + fetch_ios * qo_Cost_random_page;
 
 #if TEST_DUMP_PLAN_FOLLOW_COST
   fprintf (stdout, "\nFollow Cost: \n");
@@ -5398,6 +5419,33 @@ qo_plans_stats (FILE * f)
 }
 
 /*
+ * qo_plan_dump_cost_params () - record the cost parameters the plan was priced with
+ *   return: nothing
+ *   output(in): The stream the plan is being dumped to
+ *
+ * Note: printed only when some cost parameter differs from its default, so an untuned
+ *	 configuration dumps exactly as before, while a tuned session's dump records what
+ *	 its costs were computed from -- without this a saved dump cannot be compared
+ *	 against one taken under different parameters.
+ */
+static void
+qo_plan_dump_cost_params (FILE * output)
+{
+  if (qo_Cost_cpu_tuple == QO_COST_CPU_TUPLE_DEFAULT
+      && qo_Cost_heap_fetch_per_oid == QO_COST_HEAP_FETCH_PER_OID_DEFAULT
+      && qo_Cost_index_page_hit_ratio == QO_COST_INDEX_PAGE_HIT_RATIO_DEFAULT
+      && qo_Cost_seq_page == QO_COST_SEQ_PAGE_DEFAULT && qo_Cost_random_page == QO_COST_RANDOM_PAGE_DEFAULT)
+    {
+      return;
+    }
+
+  fprintf (output,
+	   "\nCost parameters: cost_cpu_tuple %g, cost_heap_fetch_per_oid %g, cost_index_page_hit_ratio %g,"
+	   " cost_seq_page %g, cost_random_page %g\n", qo_Cost_cpu_tuple, qo_Cost_heap_fetch_per_oid,
+	   qo_Cost_index_page_hit_ratio, qo_Cost_seq_page, qo_Cost_random_page);
+}
+
+/*
  * qo_plan_dump () - Print a representation of the plan on the indicated
  *		     stream
  *   return: nothing
@@ -5413,6 +5461,8 @@ qo_plan_dump (QO_PLAN * plan, FILE * output)
     {
       output = stdout;
     }
+
+  qo_plan_dump_cost_params (output);
 
   if (plan == NULL)
     {
@@ -8553,6 +8603,22 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 }
 
 /*
+ * qo_load_cost_params () - cache the optimizer cost system parameters once per query
+ *   optimization so the per-tuple cost functions do not call prm_get_*_value () on every
+ *   invocation. A SET SYSTEM PARAMETERS between queries takes effect from the next
+ *   optimization; a value cannot change mid-plan.
+ */
+static void
+qo_load_cost_params (void)
+{
+  qo_Cost_cpu_tuple = (double) prm_get_float_value (PRM_ID_COST_CPU_TUPLE);
+  qo_Cost_heap_fetch_per_oid = (double) prm_get_integer_value (PRM_ID_COST_HEAP_FETCH_PER_OID);
+  qo_Cost_index_page_hit_ratio = (double) prm_get_float_value (PRM_ID_COST_INDEX_PAGE_HIT_RATIO);
+  qo_Cost_seq_page = (double) prm_get_float_value (PRM_ID_COST_SEQ_PAGE);
+  qo_Cost_random_page = (double) prm_get_float_value (PRM_ID_COST_RANDOM_PAGE);
+}
+
+/*
  * qo_planner_search () -
  *   return:
  *   env(in):
@@ -8565,6 +8631,8 @@ qo_planner_search (QO_ENV * env)
 
   planner = NULL;
   plan = NULL;
+
+  qo_load_cost_params ();
 
   planner = qo_alloc_planner (env);
   if (planner == NULL)

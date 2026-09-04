@@ -1366,3 +1366,11 @@ valid options:\n\
     -o, --output-file=FILE        출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
     -l, --list                    모든 파일 항목 출력\n\
     -c, --clean-invalid-file      유효하지 않은 파일 정리\n
+
+$set 61 MSGCAT_UTIL_SET_CALIBRATEDB
+60 \
+calibratedb: Measure host IO/CPU characteristics and print recommended optimizer cost parameters (report only).\n\
+usage: %1$s calibratedb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -n, --class-name=NAME        time the per-tuple CPU cost on the NAME class instead of a scratch table\n

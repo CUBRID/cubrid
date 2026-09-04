@@ -5829,6 +5829,25 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_OPT_COST:
       plan = db_get_string (&val1);
+
+      if (plan != NULL && p1->next == NULL && intl_mbs_casecmp (plan, "default") == 0)
+	{
+	  /* SET OPTIMIZATION COST DEFAULT: restore every optimizer cost system parameter to
+	   * its built-in default in one statement (PostgreSQL RESET-style convenience). */
+	  static const PARAM_ID opt_cost_prm[] = {
+	    PRM_ID_COST_CPU_TUPLE, PRM_ID_COST_SEQ_PAGE, PRM_ID_COST_RANDOM_PAGE,
+	    PRM_ID_COST_INDEX_PAGE_HIT_RATIO, PRM_ID_COST_HEAP_FETCH_PER_OID
+	  };
+	  size_t i;
+
+	  for (i = 0; i < sizeof (opt_cost_prm) / sizeof (opt_cost_prm[0]); i++)
+	    {
+	      (void) sysprm_set_to_default (opt_cost_prm[i], false);
+	    }
+	  pr_clear_value (&val1);
+	  return NO_ERROR;
+	}
+
       p2 = p1->next;
       pt_evaluate_tree (parser, p2, &val2, 1);
       if (pt_has_error (parser))
