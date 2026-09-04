@@ -1562,19 +1562,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // StmtCursorFetch
     //
 
-    private static String[] tmplCheckSelectListLength =
-            new String[] {"%'CURSOR'%.checkSelectListLength(%'INTO-VAR-COUNT'%);"
-                /*
-                "ResultSetMetaData rsmd_%'LEVEL'% = rs.getMetaData();",
-                "if (rsmd_%'LEVEL'% == null) {",
-                "  throw new SQL_ERROR(\"failed to get the result set meta data of the FETCH statement\");",
-                "}",
-                "if (%'INTO-VAR-COUNT'% != rsmd_%'LEVEL'%.getColumnCount()) {",
-                "  throw new SQL_ERROR(\"length of the SELECT list and the number of variables in the INTO clause do not match\");",
-                "}"
-                 */
-            };
-
     private static String[] tmplStmtCursorFetch =
             new String[] {
                 "try { // cursor fetch",
@@ -1639,7 +1626,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         : new CodeTemplate(
                                 "Select list length check in StmtCursorFetch",
                                 Misc.UNKNOWN_LINE_COLUMN,
-                                tmplCheckSelectListLength,
+                                "%'CURSOR'%.checkSelectListLength(%'INTO-VAR-COUNT'%);",
                                 "%'INTO-VAR-COUNT'%",
                                 Integer.toString(node.intoTargetList.size()));
 
