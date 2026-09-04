@@ -275,9 +275,10 @@ qfile_slot_locate_walk (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool *
 	  continue;
 	}
       c = &tl->col[i];
+      off = DB_ALIGN (off, c->alignby);
       if (c->kind == QFILE_COL_FIXED)
 	{
-	  off = DB_ALIGN (off, c->alignby) + c->size;
+	  off += c->size;
 	}
       else
 	{
@@ -300,11 +301,12 @@ qfile_slot_locate_walk (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool *
     }
 
   c = &tl->col[col];
+  off = DB_ALIGN (off, c->alignby);
   if (c->kind == QFILE_COL_FIXED)
     {
       *body_len = c->size;
       *is_null = false;
-      return tpl + DB_ALIGN (off, c->alignby);
+      return tpl + off;
     }
 
   len = qfile_var_hdr_decode (tpl + off, &hdr);
@@ -375,29 +377,15 @@ qfile_slot_overwrite_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN *
       return NO_ERROR;
     }
 
-  /* VAR/SCRATCH: encode into a transient aligned copy, then overwrite the body */
-  {
-    char stack_buf[QFILE_SCRATCH_STACK + MAX_ALIGNMENT];
-    char *aligned = QFILE_SCRATCH_ACQUIRE (stack_buf, len);
-    int rc = NO_ERROR;
-
-    if (aligned == NULL)
-      {
-	return ER_FAILED;
-      }
-    or_init (&buf, aligned, len);
-    if (t->data_writeval (&buf, value) != NO_ERROR || CAST_BUFLEN (buf.ptr - buf.buffer) != len)
-      {
-	assert (false);
-	rc = ER_FAILED;
-      }
-    else
-      {
-	memcpy ((char *) body, aligned, len);
-      }
-    QFILE_SCRATCH_RELEASE (aligned, stack_buf);
-    return rc;
-  }
+  /* VAR/SCRATCH: the body is 4-aligned in the tuple, overwrite it in place */
+  assert (PTR_ALIGN (body, QFILE_TUPLE_ALIGNMENT) == body);
+  or_init (&buf, (char *) body, len);
+  if (t->data_writeval (&buf, value) != NO_ERROR || CAST_BUFLEN (buf.ptr - buf.buffer) != len)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  return NO_ERROR;
 }
 
 /*

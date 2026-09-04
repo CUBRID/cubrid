@@ -3930,7 +3930,7 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
 
   /* Fast path: every key is a FIXED column inside the constant-offset prefix and neither key tuple has a NULL, so
    * each key body sits at tl->col[i].off from data_off[0]. The general path (NULLs, variable-width keys, SCRATCH
-   * copies) lives in a separate non-inlined function so its scratch buffers stay out of this hot frame. */
+   * keys) lives in a separate non-inlined function to keep this hot frame small. */
   t0 = PTR_ALIGN (&(k0->s.original.body[0]), MAX_ALIGNMENT);
   t1 = PTR_ALIGN (&(k1->s.original.body[0]), MAX_ALIGNMENT);
   n = key_info_p->nkeys;
@@ -3972,7 +3972,7 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
 
   /* Second tier: NULL-free keys with a variable-width DIRECT key (string family, NUMERIC, BIT). Walks the key mini
    * tuples: FIXED keys advance by align + size, DIRECT keys by their length header, and the body is compared where
-   * it lies. Only a SCRATCH key (SET, JSON, OBJECT: aligned copies needed) falls to the general path. */
+   * it lies. Only a SCRATCH key (SET, JSON, OBJECT: 4-aligned body) falls to the general path. */
   {
     int off0 = 0, off1 = 0;
     const char *d0, *d1;
@@ -4029,7 +4029,7 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
 }
 
 /*
- * qfile_compare_partial_sort_record_general () - the full comparator: NULL keys, variable-width keys, SCRATCH copies.
+ * qfile_compare_partial_sort_record_general () - the full comparator: NULL keys, variable-width keys, SCRATCH keys.
  */
 static QFILE_NOINLINE int
 qfile_compare_partial_sort_record_general (SORTKEY_INFO * key_info_p, SORT_REC * k0, SORT_REC * k1)
@@ -4041,9 +4041,6 @@ qfile_compare_partial_sort_record_general (SORTKEY_INFO * key_info_p, SORT_REC *
   int l0, l1;
   bool null0, null1;
   int i, n, order;
-  /* VAR/SCRATCH key bodies are unaligned: compare aligned copies (stack, heap beyond the stack limit) */
-  char scratch0[QFILE_SCRATCH_STACK + MAX_ALIGNMENT], scratch1[QFILE_SCRATCH_STACK + MAX_ALIGNMENT];
-  char *heap0 = NULL, *heap1 = NULL;
 
   n = key_info_p->nkeys;
   order = 0;
@@ -4066,33 +4063,10 @@ qfile_compare_partial_sort_record_general (SORTKEY_INFO * key_info_p, SORT_REC *
 	    }
 	  else
 	    {
-	      if (c->kind == QFILE_COL_VAR && c->var_access == QFILE_VAR_SCRATCH)
-		{
-		  char *a0, *a1;
-
-		  a0 = (l0 <= QFILE_SCRATCH_STACK) ? PTR_ALIGN (scratch0, MAX_ALIGNMENT)
-		    : (heap0 = (char *) db_private_alloc (NULL, l0));
-		  a1 = (l1 <= QFILE_SCRATCH_STACK) ? PTR_ALIGN (scratch1, MAX_ALIGNMENT)
-		    : (heap1 = (char *) db_private_alloc (NULL, l1));
-		  if (a0 == NULL || a1 == NULL)
-		    {
-		      key_info_p->error = ER_OUT_OF_VIRTUAL_MEMORY;
-		      break;
-		    }
-		  memcpy (a0, d0, l0);
-		  memcpy (a1, d1, l1);
-		  d0 = a0;
-		  d1 = a1;
-		}
+	      /* a SCRATCH key body is 4-aligned inside the key mini tuple (data_cmpdisk asserts INT_ALIGNMENT) */
+	      assert (c->kind != QFILE_COL_VAR || c->var_access != QFILE_VAR_SCRATCH
+		      || (PTR_ALIGN (d0, QFILE_TUPLE_ALIGNMENT) == d0 && PTR_ALIGN (d1, QFILE_TUPLE_ALIGNMENT) == d1));
 	      order = (*key_info_p->key[i].sort_f) ((void *) d0, (void *) d1, key_info_p->key[i].col_dom, 0, 1, NULL);
-	      if (heap0 != NULL)
-		{
-		  db_private_free_and_init (NULL, heap0);
-		}
-	      if (heap1 != NULL)
-		{
-		  db_private_free_and_init (NULL, heap1);
-		}
 	    }
 
 	  order = key_info_p->key[i].is_desc ? -order : order;

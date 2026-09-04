@@ -56,7 +56,9 @@ qfile_col_layout_of_domain (const TP_DOMAIN * dom, QFILE_COL_LAYOUT * c)
       c->kind = QFILE_COL_VAR;
       c->var_access = (t->has_index_readval () && id != DB_TYPE_OBJECT && id != DB_TYPE_OID && id != DB_TYPE_VARIABLE)
 	? QFILE_VAR_DIRECT : QFILE_VAR_SCRATCH;
-      c->alignby = 1;
+      /* a SCRATCH body is (de)coded in place by data_readval/data_writeval, which assert INT_ALIGNMENT: it sits at a
+       * 4-aligned offset behind a 4-byte length header. A DIRECT body (index_* encoding) is unaligned. */
+      c->alignby = (c->var_access == QFILE_VAR_SCRATCH) ? QFILE_TUPLE_ALIGNMENT : 1;
       return;
     }
 
@@ -89,18 +91,26 @@ qfile_var_hdr_decode (const char *p, int *hdr)
 }
 
 inline void
-qfile_var_hdr_encode (char *p, int len)
+qfile_var_hdr_encode (char *p, int len, int hdr)
 {
   unsigned int w;
 
-  assert (len >= 0);
-  if (len <= QFILE_VAR_HDR_SHORT_MAX)
+  assert (len >= 0 && (hdr == 4 || (hdr == 1 && len <= QFILE_VAR_HDR_SHORT_MAX)));
+  if (hdr == 1)
     {
       *p = (char) len;
       return;
     }
   w = htonl ((unsigned int) len | QFILE_TUPLE_LENGTH_HAS_NULL_BIT);
   memcpy (p, &w, 4);
+}
+
+/* length header size of a VAR column body: a SCRATCH column always uses the 4-byte form so that its 4-aligned header
+ * keeps the body 4-aligned; a DIRECT column uses the short form when it fits */
+inline int
+qfile_col_var_hdr_size (const QFILE_COL_LAYOUT * c, int len)
+{
+  return (c->alignby > 1) ? 4 : QFILE_VAR_HDR_SIZE (len);
 }
 
 /* first NULL column of a has-null tuple, capped at type_cnt */
@@ -247,13 +257,6 @@ qfile_slot_locate (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool * is_n
   return qfile_slot_locate_walk (rec, col, body_len, is_null);
 }
 
-/* transient aligned staging for SCRATCH bodies (read and write side): stack for the usual sizes, heap beyond */
-#define QFILE_SCRATCH_STACK 256
-#define QFILE_SCRATCH_ACQUIRE(stack_buf, len) \
-  ((len) <= QFILE_SCRATCH_STACK ? PTR_ALIGN ((stack_buf), MAX_ALIGNMENT) : (char *) db_private_alloc (NULL, (len)))
-#define QFILE_SCRATCH_RELEASE(p, stack_buf) \
-  do { if ((p) != PTR_ALIGN ((stack_buf), MAX_ALIGNMENT)) { db_private_free (NULL, (p)); } } while (0)
-
 /*
  * qfile_col_read_body () - decode a stored body with the column's layout kind into *value.
  *   return: NO_ERROR or the readval error
@@ -261,6 +264,7 @@ qfile_slot_locate (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool * is_n
  *   body/len(in): what qfile_slot_locate () / qfile_tuple_walk_next () returned for a bound column
  *   dom(in): decoding domain
  *   copy(in): readval copy flag; a SCRATCH body is always decoded with copy == true (value never aliases tuple bytes)
+ *   A SCRATCH body is decoded where it lies: the layout keeps it 4-aligned (qfile_col_layout_of_domain).
  */
 inline bool
 qfile_col_body_needs_copy (const QFILE_COL_LAYOUT * c, const TP_DOMAIN * dom)
@@ -273,9 +277,6 @@ qfile_col_read_body (const QFILE_COL_LAYOUT * c, const char *body, int len, cons
 		     bool copy)
 {
   OR_BUF buf;
-  char stack_buf[QFILE_SCRATCH_STACK + MAX_ALIGNMENT];
-  char *aligned;
-  int rc;
 
   if (c->kind == QFILE_COL_FIXED)
     {
@@ -288,16 +289,10 @@ qfile_col_read_body (const QFILE_COL_LAYOUT * c, const char *body, int len, cons
       return dom->type->index_readval (&buf, value, dom, len, copy, NULL, 0);
     }
 
-  aligned = QFILE_SCRATCH_ACQUIRE (stack_buf, len);
-  if (aligned == NULL)
-    {
-      return ER_FAILED;
-    }
-  memcpy (aligned, body, len);
-  or_init (&buf, aligned, len);
-  rc = dom->type->data_readval (&buf, value, dom, -1, true, NULL, 0);
-  QFILE_SCRATCH_RELEASE (aligned, stack_buf);
-  return rc;
+  /* VAR/SCRATCH: 4-aligned in the tuple, decoded in place; copy == true keeps the value from aliasing tuple bytes */
+  assert (PTR_ALIGN (body, QFILE_TUPLE_ALIGNMENT) == body);
+  or_init (&buf, (char *) body, len);
+  return dom->type->data_readval (&buf, value, dom, -1, true, NULL, 0);
 }
 
 /*
@@ -547,7 +542,7 @@ qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * src, i
 	}
       else
 	{
-	  size += QFILE_VAR_HDR_SIZE (src[i].len) + src[i].len;
+	  size = DB_ALIGN (size, c->alignby) + qfile_col_var_hdr_size (c, src[i].len) + src[i].len;
 	}
     }
 
@@ -582,8 +577,8 @@ qfile_tuple_put_value (char *p, const QFILE_COL_LAYOUT * c, const QFILE_TUPLE_CO
 
   if (c->kind == QFILE_COL_VAR)
     {
-      hdr = QFILE_VAR_HDR_SIZE (len);
-      qfile_var_hdr_encode (p, len);
+      hdr = qfile_col_var_hdr_size (c, len);
+      qfile_var_hdr_encode (p, len, hdr);
       body = p + hdr;
     }
 
@@ -614,44 +609,16 @@ qfile_tuple_put_value (char *p, const QFILE_COL_LAYOUT * c, const QFILE_TUPLE_CO
       return hdr + len;
     }
 
-  {
-    char stack_buf[QFILE_SCRATCH_STACK + MAX_ALIGNMENT];
-    char *aligned;
-    int rc;
-
-    if (c->kind == QFILE_COL_FIXED)
-      {
-	/* the destination is aligned by construction */
-	or_init (&buf, body, len);
-	rc = t->data_writeval (&buf, src->val);
-	if (rc != NO_ERROR || CAST_BUFLEN (buf.ptr - buf.buffer) != len)
-	  {
-	    assert_release (false);
-	    return ER_FAILED;
-	  }
-	return len;
-      }
-
-    /* VAR/SCRATCH: data_writeval pads relative to the buffer address, so encode into an aligned area and copy */
-    aligned = QFILE_SCRATCH_ACQUIRE (stack_buf, len);
-    if (aligned == NULL)
-      {
-	return ER_FAILED;
-      }
-    or_init (&buf, aligned, len);
-    rc = t->data_writeval (&buf, src->val);
-    if (rc == NO_ERROR && CAST_BUFLEN (buf.ptr - buf.buffer) == len)
-      {
-	memcpy (body, aligned, len);
-      }
-    else
-      {
-	assert_release (false);
-	rc = ER_FAILED;
-      }
-    QFILE_SCRATCH_RELEASE (aligned, stack_buf);
-    return (rc == NO_ERROR) ? hdr + len : ER_FAILED;
-  }
+  /* FIXED and VAR/SCRATCH: the destination is aligned by construction (data_writeval pads relative to the buffer
+   * address), so the value is encoded in place */
+  assert (PTR_ALIGN (body, c->alignby) == body);
+  or_init (&buf, body, len);
+  if (t->data_writeval (&buf, src->val) != NO_ERROR || CAST_BUFLEN (buf.ptr - buf.buffer) != len)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  return hdr + len;
 }
 
 /*
@@ -698,14 +665,13 @@ qfile_tuple_fill (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, const QFILE_TUPLE_COL_
 	  qfile_tuple_check_col_type (tl, i, src[i].val);
 	}
 #endif
-      if (c->kind == QFILE_COL_FIXED)
-	{
-	  int aligned_off = DB_ALIGN (off, c->alignby);
+      {
+	int aligned_off = DB_ALIGN (off, c->alignby);	/* FIXED / SCRATCH bodies are aligned; DIRECT (alignby 1) is not */
 #if !defined(NDEBUG)
-	  memset (out + off, 0, aligned_off - off);
+	memset (out + off, 0, aligned_off - off);
 #endif
-	  off = aligned_off;
-	}
+	off = aligned_off;
+      }
       w = qfile_tuple_put_value (out + off, c, &src[i], (src[i].val != NULL) ? qfile_value_pr_type (src[i].val) : NULL);
       if (w < 0)
 	{
@@ -792,7 +758,7 @@ restart:
 	}
       else
 	{
-	  body += QFILE_VAR_HDR_SIZE (len) + len;
+	  body = DB_ALIGN (body, c->alignby) + qfile_col_var_hdr_size (c, len) + len;
 	}
     }
 
@@ -844,14 +810,13 @@ qfile_tuple_fill_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE *
       assert (src.len == (qfile_value_direct (c, vals[i]) ? pr_index_writeval_disk_size (vals[i])
 			  : pr_data_writeval_disk_size (vals[i])));
 #endif
-      if (c->kind == QFILE_COL_FIXED)
-	{
-	  int aligned_off = DB_ALIGN (off, c->alignby);
+      {
+	int aligned_off = DB_ALIGN (off, c->alignby);
 #if !defined(NDEBUG)
-	  memset (out + off, 0, aligned_off - off);
+	memset (out + off, 0, aligned_off - off);
 #endif
-	  off = aligned_off;
-	}
+	off = aligned_off;
+      }
       w = qfile_tuple_put_value (out + off, c, &src, qfile_value_pr_type (vals[i]));
       if (w < 0)
 	{
@@ -929,9 +894,9 @@ qfile_tuple_walk_next (QFILE_TUPLE_WALK * walk, const TP_DOMAIN * dom, const cha
     }
 
   qfile_col_layout_of_domain (dom, &lc);
+  walk->off = DB_ALIGN (walk->off, lc.alignby);
   if (lc.kind == QFILE_COL_FIXED)
     {
-      walk->off = DB_ALIGN (walk->off, lc.alignby);
       *body = walk->tpl + walk->off;
       *len = lc.size;
       walk->off += lc.size;

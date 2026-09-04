@@ -233,9 +233,10 @@ typedef enum
  *   bitmap    : ceil (type_cnt / 8) bytes, bit i = byte[i >> 3] & (1 << (i & 7)), 1 = bound, 0 = NULL
  *   values    : logical column order from data_off = ALIGN4 (hdr_size + bitmap size). NULL = 0 bytes.
  *               FIXED column: ALIGN (alignby in {2,4}) then disksize bytes of data_writeval (8-byte values are read
- *               by memcpy). VAR column: no alignment, 1-byte (<= 127) or 4-byte (bit 7 of the first byte set,
- *               ntohl & 0x7FFFFFFF) body length header, then the body (index_* encoding for string/BIT/NUMERIC,
- *               data_* encoding copied through an aligned scratch for the rest).
+ *               by memcpy). VAR/DIRECT column (string/BIT/NUMERIC, index_* encoding): no alignment, 1-byte (<= 127)
+ *               or 4-byte (bit 7 of the first byte set, ntohl & 0x7FFFFFFF) body length header, then the body.
+ *               VAR/SCRATCH column (SET/JSON/OBJECT..., data_* encoding, needs INT_ALIGNMENT): ALIGN4, then the
+ *               4-byte length header, then the body (4-aligned, (de)coded in place).
  * Every tuple start is 4-byte aligned (page header 32 bytes, every tuple length a multiple of 4).
  * The accessors and the assembler live in qfile_tuple_layout.h; nothing else interprets these bytes.
  */
