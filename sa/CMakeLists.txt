@@ -110,6 +110,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/chartype.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/intl_support.c
+  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/string_buffer.cpp
@@ -626,6 +627,7 @@ set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED tr
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
 if(UNIX)
+  set_source_files_properties(${BASE_DIR}/json_builder.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -788,6 +790,7 @@ target_link_libraries(cubridsa
 if(UNIX)
   target_include_directories(cubridsa PUBLIC ${TBB_INCLUDES})
   target_link_libraries(cubridsa PRIVATE ${TBB_LIBS})
+  target_link_options(cubridsa PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
   add_dependencies(cubridsa ${TBB_TARGETS})
 endif(UNIX)
 
