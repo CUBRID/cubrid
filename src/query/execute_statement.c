@@ -463,6 +463,60 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
     {
       DB_DEFAULT_EXPR_TYPE default_expr_type = att->default_value.default_expr.default_expr_type;
 
+      if (default_expr_type == DB_DEFAULT_NONE && att->default_value.default_expr.default_expr_tree_stream != NULL
+	  && att->default_value.default_expr.default_expr_tree_stream_size > 0)
+	{
+	  /* STABLE residual DEFAULT expression: rehydrate the Compact DEFAULT Tree and evaluate it once per
+	   * statement, so the client (Local Evaluation) path fills the same statement-time value the server
+	   * path would.  The frozen DDL-time snapshot in att->default_value.value is refreshed in place, the
+	   * same way the legacy statement-determined expressions below refresh it. */
+	  PT_NODE *residual;
+
+	  if (eval_mode != DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY)
+	    {
+	      continue;
+	    }
+
+	  residual =
+	    pt_compact_default_tree_from_stream (parser, att->default_value.default_expr.default_expr_tree_stream,
+						 att->default_value.default_expr.default_expr_tree_stream_size);
+	  if (residual == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      error = ER_GENERIC_ERROR;
+	      break;
+	    }
+
+	  db_make_null (&default_value);
+	  pt_evaluate_tree (parser, residual, &default_value, 1);
+	  if (pt_has_error (parser))
+	    {
+	      pt_report_to_ersys (parser, PT_EXECUTION);
+	      pt_reset_error (parser);
+	      parser_free_tree (parser, residual);
+	      db_value_clear (&default_value);
+	      error = er_errid ();
+	      break;
+	    }
+	  parser_free_tree (parser, residual);
+
+	  pr_clear_value (&att->default_value.value);
+	  pr_clone_value (&default_value, &att->default_value.value);
+	  db_value_clear (&default_value);
+
+	  /* make sure the default value can be used for this attribute */
+	  dom_status = tp_value_cast (&att->default_value.value, &att->default_value.value, att->domain, false);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &att->default_value.value, att->domain);
+	      assert_release (error != NO_ERROR);
+
+	      break;
+	    }
+
+	  continue;
+	}
+
       if (default_expr_type != DB_DEFAULT_NONE)
 	{
 	  /* DB_IS_DEFAULT_DETERMINE_BY_STATEMENT same as !DB_IS_DEFAULT_DETERMINE_BY_ROW */
@@ -17686,6 +17740,17 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       PT_NODE *save_list;
       PT_MISC_TYPE save_type;
 
+      /* evaluate statement-level DEFAULTs before the insert fills omitted columns, as do_execute_merge does */
+      err = do_evaluate_statement_default_expr (parser, flat);
+      if (err != NO_ERROR)
+	{
+	  if (old_wait_msecs >= -1)
+	    {
+	      (void) tran_reset_wait_times (old_wait_msecs);
+	    }
+	  goto exit;
+	}
+
       /* save node list */
       save_type = values_list->info.node_list.list_type;
       save_list = values_list->info.node_list.list;
@@ -18529,6 +18594,10 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  err = do_evaluate_statement_default_expr (parser, flat);
 	  if (err != NO_ERROR)
 	    {
+	      if (old_wait_msecs >= -1)
+		{
+		  (void) tran_reset_wait_times (old_wait_msecs);
+		}
 	      goto exit;
 	    }
 

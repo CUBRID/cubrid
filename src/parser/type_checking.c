@@ -312,7 +312,15 @@ pt_get_op_volatility (PT_OP_TYPE op)
 
   if (!pt_get_expression_definition (op, &def) || def.overloads_count <= 0)
     {
-      return PT_VOLATILITY_UNSET;
+      switch (op)
+	{
+	case PT_CAST:
+	  /* PT_CAST has no entry in the expression-definition table; a cast
+	   * itself adds no volatility (its operand's propagates over it) */
+	  return PT_VOLATILITY_IMMUTABLE;
+	default:
+	  return PT_VOLATILITY_UNSET;
+	}
     }
   return def.overloads[0].volatility;
 }
@@ -320,19 +328,24 @@ pt_get_op_volatility (PT_OP_TYPE op)
 /*
  * pt_get_expr_tree_volatility () - effective volatility of an expression tree
  *   return: bottom-up MAX volatility over the tree
- *   parser(in): parser context
  *   node(in): expression tree (a single value, not a list)
+ *   unclassified_node(out): the first node found whose volatility is UNSET
+ *			     (unclassified operator, function, or a node type this
+ *			     walk does not understand); left untouched otherwise
  *
  * Literals are IMMUTABLE; an operator node is the MAX of its own volatility and
- * its operands'.  Anything not yet classified (functions, names, sub-trees this
- * walk does not understand) yields UNSET, which taints the whole result so the
- * caller will not fold it.  Used to decide whether a column DEFAULT expression
- * is an Immutable Expression-Derived Literal.
+ * its operands'.  Anything not yet classified yields UNSET, which taints the
+ * whole result so the caller will not fold it.  A pure query, like
+ * pt_get_op_volatility and pt_get_func_volatility: no diagnosis here -- the
+ * caller reports the recorded node.  Used to decide whether a column DEFAULT
+ * expression is an Immutable Expression-Derived Literal.
  */
 PT_VOLATILITY
-pt_get_expr_tree_volatility (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_get_expr_tree_volatility (PT_NODE * node, PT_NODE ** unclassified_node)
 {
   PT_VOLATILITY v;
+
+  assert (unclassified_node != NULL);
 
   if (node == NULL)
     {
@@ -350,12 +363,18 @@ pt_get_expr_tree_volatility (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  /* transparent wrapper: a function call is parsed as a PT_EXPR with a
 	   * PT_FUNCTION_HOLDER op holding the PT_FUNCTION in arg1 */
-	  return pt_get_expr_tree_volatility (parser, node->info.expr.arg1);
+	  return pt_get_expr_tree_volatility (node->info.expr.arg1, unclassified_node);
 	}
       v = pt_get_op_volatility (node->info.expr.op);
-      v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, node->info.expr.arg1));
-      v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, node->info.expr.arg2));
-      v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, node->info.expr.arg3));
+      if (v == PT_VOLATILITY_UNSET && *unclassified_node == NULL)
+	{
+	  /* record the unclassified operator itself; a parent tainted only through
+	   * MAX-propagation keeps its own (set) volatility and is not recorded */
+	  *unclassified_node = node;
+	}
+      v = pt_volatility_max (v, pt_get_expr_tree_volatility (node->info.expr.arg1, unclassified_node));
+      v = pt_volatility_max (v, pt_get_expr_tree_volatility (node->info.expr.arg2, unclassified_node));
+      v = pt_volatility_max (v, pt_get_expr_tree_volatility (node->info.expr.arg3, unclassified_node));
       return v;
 
     case PT_FUNCTION:
@@ -363,9 +382,13 @@ pt_get_expr_tree_volatility (PARSER_CONTEXT * parser, PT_NODE * node)
 	PT_NODE *arg;
 
 	v = pt_get_func_volatility (node->info.function.function_type);
+	if (v == PT_VOLATILITY_UNSET && *unclassified_node == NULL)
+	  {
+	    *unclassified_node = node;
+	  }
 	for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
 	  {
-	    v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, arg));
+	    v = pt_volatility_max (v, pt_get_expr_tree_volatility (arg, unclassified_node));
 	  }
 	return v;
       }
@@ -373,6 +396,10 @@ pt_get_expr_tree_volatility (PARSER_CONTEXT * parser, PT_NODE * node)
     default:
       /* names (column refs), host vars, sub-queries: not classified for DEFAULT
        * folding in this scope */
+      if (*unclassified_node == NULL)
+	{
+	  *unclassified_node = node;
+	}
       return PT_VOLATILITY_UNSET;
     }
 }
