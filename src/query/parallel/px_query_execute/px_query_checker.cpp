@@ -22,6 +22,7 @@
 
 #include "px_query_checker.hpp"
 #include "px_sp_eligibility.hpp"
+#include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include <set>
@@ -52,6 +53,8 @@ namespace parallel_query_execute
       void check_rlike_eval_term (RLIKE_EVAL_TERM *rlike_eval_term);
       void check_regu_var_list (REGU_VARIABLE_LIST regu_var_list);
       void check_analytic_eval_list (ANALYTIC_EVAL_TYPE *a_eval_list);
+      void check_agg_list (AGGREGATE_TYPE *agg_list);
+      void check_arith_list (ARITH_TYPE *arith_list);
       void check_xasl_node (XASL_NODE *xasl, XASL_NODE *owner);
       void check_access_spec_type (ACCESS_SPEC_TYPE *access_spec_type);
       std::set<XASL_NODE *> get_child_xasl_set_recursive (XASL_NODE *xasl);
@@ -331,6 +334,30 @@ namespace parallel_query_execute
       }
   }
 
+  void xasl_checker::check_agg_list (AGGREGATE_TYPE *agg_list)
+  {
+    for (AGGREGATE_TYPE *agg = agg_list; agg != nullptr; agg = agg->next)
+      {
+	check_regu_var_list (agg->operands);
+	if (agg->function == PT_PERCENTILE_CONT || agg->function == PT_PERCENTILE_DISC)
+	  {
+	    check_regu_var (agg->info.percentile.percentile_reguvar);
+	  }
+      }
+  }
+
+  void xasl_checker::check_arith_list (ARITH_TYPE *arith_list)
+  {
+    /* outarith_list is a single node (see qexec_clear_arith_list) */
+    if (arith_list)
+      {
+	check_regu_var (arith_list->leftptr);
+	check_regu_var (arith_list->rightptr);
+	check_regu_var (arith_list->thirdptr);
+	check_pred_expr (arith_list->pred);
+      }
+  }
+
   void xasl_checker::check_xasl_node (XASL_NODE *xasl, XASL_NODE *owner)
   {
     if (!xasl)
@@ -387,7 +414,17 @@ namespace parallel_query_execute
 	check_regu_var_list (xasl->proc.buildlist.g_scan_regu_list);
 	check_pred_expr (xasl->proc.buildlist.g_having_pred);
 	check_pred_expr (xasl->proc.buildlist.g_grbynum_pred);
+	check_agg_list (xasl->proc.buildlist.g_agg_list);
 	check_analytic_eval_list (xasl->proc.buildlist.a_eval_list);
+      }
+    else if (xasl->type == BUILDVALUE_PROC)
+      {
+	/* a buildvalue aggregate evaluates its argument itself (pt_to_aggregate_node stores the
+	 * argument regu as the operand, e.g. SUM (sp (c1)) carries a TYPE_SP operand), so an SP
+	 * hidden here would otherwise be dispatched to a px worker unseen */
+	check_agg_list (xasl->proc.buildvalue.agg_list);
+	check_arith_list (xasl->proc.buildvalue.outarith_list);
+	check_pred_expr (xasl->proc.buildvalue.having_pred);
       }
   }
 
