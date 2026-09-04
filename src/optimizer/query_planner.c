@@ -13954,7 +13954,7 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
   int bitset_index;
 
   bool has_ineligible_method_call = false;
-  BITSET *term_sets[2];
+  BITSET *term_sets[3];
   int set_index;
 
   if (plan == NULL || plan->info == NULL || plan->plan_type != QO_PLANTYPE_JOIN
@@ -14007,13 +14007,18 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 
   /* during/after join terms become the join predicates the parallel hash join workers
    * evaluate per row, so both sets must hold only parallel-eligible method calls.
+   * The plan's sarged_terms must be checked as well: for an inner join the residual
+   * (non-equi) join terms are never classified as during/after join terms but stay in
+   * sarged_terms, and qo_init_projection_info () moves any of them whose columns both
+   * children project into the hash join proc's after_join_pred, which the workers evaluate.
    * hash_terms are excluded on purpose: the key expressions are materialized into the
    * child buildlist outputs and the workers read them by tuple position, so an SP there
    * never executes on a worker (its evaluation is governed by the scan-path judge). */
   term_sets[0] = &plan->plan_un.join.during_join_terms;
   term_sets[1] = &plan->plan_un.join.after_join_terms;
+  term_sets[2] = &plan->sarged_terms;
 
-  for (set_index = 0; set_index < 2; set_index++)
+  for (set_index = 0; set_index < 3; set_index++)
     {
       if (bitset_is_empty (term_sets[set_index]))
 	{
