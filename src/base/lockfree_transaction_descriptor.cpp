@@ -73,7 +73,7 @@ namespace lockfree
 
       reclaim_retired_list ();
 
-      node.m_retire_tranid = m_tranid.load ();
+      node.m_retire_tranid = m_tranid.load (std::memory_order_relaxed);
       node.m_retired_next = NULL;
       // add to tail to keep delete ids ordered
       if (m_retired_tail == NULL)
@@ -122,13 +122,15 @@ namespace lockfree
 	  // a second promote is now a no-op, as it is in lf_tran_start (entry, true) once did_incr is set
 	  m_did_incr = true;
 	}
-      assert (m_tranid.load () != INVALID_TRANID);
+      assert (m_tranid.load (std::memory_order_relaxed) != INVALID_TRANID);
     }
 
     bool
     descriptor::is_tran_started () const
     {
-      return m_tranid.load () != INVALID_TRANID;
+      // relaxed: every caller is the owner asking about its own mark. get_transaction_id () is the only
+      // read from another thread, and it is the one that has to be ordered.
+      return m_tranid.load (std::memory_order_relaxed) != INVALID_TRANID;
     }
 
     void
@@ -144,8 +146,10 @@ namespace lockfree
     id
     descriptor::get_transaction_id () const
     {
-      // pairs with the release in end_tran ()
-      return m_tranid.load (std::memory_order_acquire);
+      // seq_cst, pairing with the publish in start_tran (): the reclaimer unlinks and then scans here, the
+      // owner publishes and then reads, and only a single total order over both stops each from missing the
+      // other. an acquire load does not join that order. same instruction as acquire on x86 and armv8.
+      return m_tranid.load (std::memory_order_seq_cst);
     }
 
     void

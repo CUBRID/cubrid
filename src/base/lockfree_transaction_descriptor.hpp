@@ -89,7 +89,10 @@ namespace lockfree
 	void reclaim_run (reclaimable_node *head, reclaimable_node *tail, size_t count);
 
 	table *m_table;
-	// the epoch mark: published by the owner, read by every reclaimer in compute_min_active_tranid ()
+	// the epoch mark: published by the owner, read by every reclaimer in compute_min_active_tranid ().
+	// start_tran () publishes seq_cst and get_transaction_id () reads seq_cst - the two sides of the one
+	// order x86 does not give away, and what lf_tran_start_with_mb () bought with a MEMORY_BARRIER ().
+	// end_tran () clears release; the owner's reads of its own mark are relaxed.
 	std::atomic<id> m_tranid;
 	id m_last_reclaim_minid;
 	reclaimable_node *m_retired_head;
