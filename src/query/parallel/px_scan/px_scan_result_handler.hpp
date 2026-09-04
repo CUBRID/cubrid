@@ -235,6 +235,16 @@ namespace parallel_scan
     QFILE_LIST_SCAN_ID list_scan_id;
   };
 
+  /* Where the original BUILDVALUE accumulators currently live. Worker merges force the private
+   * heap to 0, so a merged buffer comes from malloc, while everything outside a pass expects the
+   * accumulator on the coordinator's private heap -- qexec_clear_agg_list releases it there. */
+  enum class agg_rehome_dir
+  {
+    BORROW,	/* coordinator private heap -> heap 0, before the workers start */
+    RESTORE,	/* heap 0 -> coordinator private heap, once the workers are done */
+    DISCARD	/* release on heap 0 without cloning; the interrupt path */
+  };
+
   template <>
   class result_handler <RESULT_TYPE::BUILDVALUE_OPT>
   {
@@ -248,6 +258,11 @@ namespace parallel_scan
       void read_initialize (THREAD_ENTRY *thread_p);
       SCAN_CODE read (THREAD_ENTRY *thread_p, read_dest_type *dest);
       void read_finalize (THREAD_ENTRY *thread_p);
+      /* Move (or release) every original accumulator. BORROW is what the manager performs before
+       * it starts the workers; read () performs the matching RESTORE, or DISCARD when the pass was
+       * interrupted. All three walk the same per-function dispatch, so a value is only touched by
+       * the direction that owns it. */
+      SCAN_CODE rehome_agg_list (THREAD_ENTRY *thread_p, agg_rehome_dir dir);
       void write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, write_dest_type *agg_list, VAL_DESCR *vd,
 			     xasl_node *xasl_p);
       bool write (THREAD_ENTRY *thread_p);
@@ -259,7 +274,8 @@ namespace parallel_scan
       template <FUNC_CODE F>
       bool accumulate_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_node, DB_VALUE *db_value_p);
       template <FUNC_CODE F>
-      SCAN_CODE read_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p);
+      SCAN_CODE rehome_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p, agg_rehome_dir dir);
+      SCAN_CODE rehome_dispatch (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p, agg_rehome_dir dir);
       template <FUNC_CODE F>
       void finalize_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p, AGGREGATE_TYPE *cur_agg_p);
       int m_parallelism;
