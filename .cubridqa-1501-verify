@@ -1,0 +1,2 @@
+CUBRIDQA-1501 ticket 32 verification. Throwaway: checks that gha-ci: test_shell
+lands on this pull request head SHA. Not for merge.
