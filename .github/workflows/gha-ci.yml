@@ -1795,16 +1795,13 @@ jobs:
             echo
             echo "---"
             # BRID: a reused build left no log under this run. debug: that is
-            # what the suite mounted. The flat path is where a build published
-            # before this layout put it -- drop that arm with logs/ itself.
-            blog=""
-            if [ -f "$CI_ROOT/runs/$BRID/build/debug/build.log" ]; then
-              blog="$ARTIFACT_URL_BASE/runs/$BRID/build/debug/build.log"
-            elif [ -f "$CI_ROOT/logs/${BRID}-build.log" ]; then
-              blog="$ARTIFACT_URL_BASE/logs/${BRID}-build.log"
-            fi
+            # what the suite mounted. A build published before this layout has
+            # no log here, and the flat file it left names no mode -- linking
+            # it would open the release log next to a debug failure half the
+            # time, so that run gets no build-log link at all.
             line="[Artifacts]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/)"
-            [ -n "$blog" ] && line="$line · [build log]($blog)"
+            blog="runs/$BRID/build/debug/build.log"
+            [ -f "$CI_ROOT/$blog" ] && line="$line · [build log]($ARTIFACT_URL_BASE/$blog)"
             echo "$line"
             echo
             echo "Internal network only. The run directory is pruned 7 days after the run."
