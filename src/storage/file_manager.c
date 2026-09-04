@@ -12452,9 +12452,16 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
   assert (tde_algo != TDE_ALGORITHM_NONE);
 
   /* apply to heap file and heap overflow file */
-  error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  bool hfid_found;		/* always written by heap_get_class_info () */
+
+  error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, &hfid_found);
   if (error_code != NO_ERROR)
     {
+      goto exit;
+    }
+  if (!hfid_found)
+    {
+      /* no heap - nothing to apply the TDE algorithm to. */
       goto exit;
     }
 
