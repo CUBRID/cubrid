@@ -11864,6 +11864,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	      parser_walk_tree (parser, list, pt_get_server_name_list, snl, NULL, NULL);
 	    }
 	}
+
+      /* An ON DUPLICATE KEY UPDATE assignment can hold a subquery, so a table reference lives here too.
+       * Uncounted, the "local mixed remote DML" rejection below never fires and the statement goes out
+       * with @server stripped -- the remote then reads its own table of that name. */
+      if (remote_upd > 0 && node->info.insert.odku_assignments)
+	{
+	  parser_walk_tree (parser, node->info.insert.odku_assignments, pt_get_server_name_list, snl, NULL, NULL);
+	}
+
       sub_sel = NULL;
       break;
     case PT_DELETE:
