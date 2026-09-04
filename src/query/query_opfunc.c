@@ -9904,6 +9904,12 @@ qdata_update_interpolation_func_value_and_domain (DB_VALUE * src_val, DB_VALUE *
       goto end;
     }
 
+  /* clear errors from failed casts if any cast attempt succeeds. */
+  if (er_errid () != NO_ERROR)
+    {
+      er_clear ();
+    }
+
   *domain = tmp_domain;
 
 end:

@@ -1295,8 +1295,8 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		    case DB_TYPE_TIME:
 		      break;
 		    default:
-		      assert (agg_p->operands->value.type == TYPE_CONSTANT ||
-			      agg_p->operands->value.type == TYPE_DBVAL);
+		      assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
+			      || agg_p->operands->value.type == TYPE_POS_VALUE);
 
 		      /* try to cast dbval to double, datetime then time */
 		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
@@ -1326,6 +1326,12 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 			  pr_clear_value_vector (db_values);
 			  return error;
+			}
+
+		      /* clear errors from failed casts if any cast attempt succeeds. */
+		      if (er_errid () != NO_ERROR)
+			{
+			  er_clear ();
 			}
 
 		      /* update domain */
@@ -2114,6 +2120,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  TP_DOMAIN *double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
 	  /* compute AVG(X) = SUM(X)/COUNT(X) */
+	  (void) pr_clear_value (&dbval);
 	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
 	  error = qdata_divide_dbval (agg_p->accumulator.value, &dbval, &xavgval, double_domain_ptr);
 	  if (error != NO_ERROR)
@@ -2124,6 +2131,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  if (agg_p->function == PT_AVG)
 	    {
+	      (void) pr_clear_value (agg_p->accumulator.value);
 	      if (tp_value_coerce (&xavgval, agg_p->accumulator.value, double_domain_ptr) != DOMAIN_COMPATIBLE)
 		{
 		  ASSERT_ERROR_AND_SET (error);

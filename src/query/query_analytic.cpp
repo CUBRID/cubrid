@@ -217,6 +217,18 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    }
 	  break;
 
+	case PT_MEDIAN:
+	case PT_PERCENTILE_CONT:
+	  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&dbval)))
+	    {
+	      func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	    }
+	  else
+	    {
+	      func_p->domain = tp_domain_resolve_value (&dbval, NULL);
+	    }
+	  break;
+
 	default:
 	  func_p->domain = tp_domain_resolve_value (&dbval, NULL);
 	  break;
@@ -237,6 +249,14 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       func_p->opr_dbtype = TP_DOMAIN_TYPE (func_p->domain);
       db_value_domain_init (func_p->value, func_p->opr_dbtype, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+
+      /* set the distinct list file domain for finalize; a *variable* readval
+       * is a no-op and would silently drop all values. */
+      if (func_p->option == Q_DISTINCT && TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
+	{
+	  /* values are written after coercion to func_p->domain. */
+	  func_p->list_id->type_list.domp[0] = func_p->domain;
+	}
     }
 
   if (DB_IS_NULL (&dbval) && func_p->function != PT_ROW_NUMBER && func_p->function != PT_FIRST_VALUE
@@ -259,6 +279,18 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
   if (func_p->option == Q_DISTINCT)
     {
+      /* later rows may have different types because only the first row is coerced.
+       * coerce all values to the list domain for consistent duplicate elimination and finalize. */
+      if (TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) != DB_TYPE_VARIABLE
+	  && DB_VALUE_DOMAIN_TYPE (&dbval) != TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]))
+	{
+	  if (tp_value_coerce (&dbval, &dbval, func_p->list_id->type_list.domp[0]) != DOMAIN_COMPATIBLE)
+	    {
+	      error = ER_FAILED;
+	      goto exit;
+	    }
+	}
+
       /* handle distincts by adding to the temp list file */
       dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
       pr_type_p = pr_type_from_id (dbval_type);
@@ -766,6 +798,12 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function),
 			      "DOUBLE, DATETIME, TIME");
 		      goto exit;
+		    }
+
+		  /* clear errors from failed casts if any cast attempt succeeds. */
+		  if (er_errid () != NO_ERROR)
+		    {
+		      er_clear ();
 		    }
 
 		  /* update domain */

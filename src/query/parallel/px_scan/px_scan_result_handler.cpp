@@ -2627,6 +2627,14 @@ namespace parallel_scan
 	      break;
 	    }
 
+	  /* The host variable's domain is resolved only in worker clones that scan rows.
+	   * Copy the resolved domain to the main agg node before merging the accumulators. */
+	  if (orig_agg_p->opr_dbtype == DB_TYPE_VARIABLE && cur_agg_p->opr_dbtype != DB_TYPE_VARIABLE)
+	    {
+	      orig_agg_p->domain = cur_agg_p->domain;
+	      orig_agg_p->opr_dbtype = cur_agg_p->opr_dbtype;
+	    }
+
 	  switch (orig_agg_p->function)
 	    {
 	    case PT_COUNT_STAR:
