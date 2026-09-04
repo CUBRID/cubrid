@@ -7354,8 +7354,17 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
   char *msg_area = NULL;
   char io_time_val[CTIME_MAX];
   INT64 end_time;
+  bool make_end_time_strict = false;
 
-  end_time = (INT64) time (NULL);
+  /* logpb_backup () stamps this when the log content of the backup is frozen - the point a restore can actually
+   * reach - and does the strictness wait there, while transactions are still held off. Fall back to "now" only
+   * if nobody stamped it. */
+  end_time = session_p->bkup.bkuphdr->end_time;
+  if (end_time == -1)
+    {
+      end_time = (INT64) time (NULL);
+      make_end_time_strict = true;
+    }
 
   /*
    * Indicate end of backup and flush any buffered data.
@@ -7473,11 +7482,16 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
    *   accurately separate concurrent transactions.
    * -------------------------------------------------------------------------
    */
-  do
+  if (make_end_time_strict)
     {
-      thread_sleep (1000);
+      /* Only when the end time was stamped here. Waiting after the caller stamped it would guarantee nothing:
+       * transactions are already running again by now. */
+      do
+	{
+	  thread_sleep (1000);
+	}
+      while (end_time >= time (NULL));
     }
-  while (end_time >= time (NULL));
 
   return session_p;
 }
@@ -8839,9 +8853,11 @@ fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, 
 
 #if defined(SERVER_MODE)
   /* Backup Thread is reading data/log pages slowly to avoid IO burst */
-  if (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID
-      || (session_p->dbfile.volid == LOG_DBLOG_ARCHIVE_VOLID && LOG_CS_OWN_WRITE_MODE (thread_p)))
+  if (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID || session_p->dbfile.volid == LOG_DBLOG_ARCHIVE_VOLID)
     {
+      /* Log volumes are never paced. The archive arm also required LOG_CS_OWN_WRITE_MODE (); CBRD-27166 moved the
+       * transfer out of that critical section, and pacing it there would only stretch the window where archives
+       * cannot be removed. */
       ;				/* go ahead */
     }
   else

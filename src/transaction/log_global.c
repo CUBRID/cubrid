@@ -63,6 +63,7 @@ log_global::log_global ()
   , rcv_phase_lsa (NULL_LSA)
 #if defined(SERVER_MODE)
   , backup_in_progress (false)
+  , backup_first_arv_num_needed (-1)
 #else // not SERVER_MODE = SA_MODE
   , final_restored_lsa (NULL_LSA)
 #endif // not SERVER_MODE = SA_MODE
