@@ -168,7 +168,7 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
   /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. The OIDs above are already
    * sorted into page order, so one day we should group the OIDs that share a page and delete them
    * under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
-  VACUUM_OOS_TOUCHED_PAGES touched_pages;
+  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
 
   log_sysop_start (thread_p);
   for (const OID &oid : oos_oids)
@@ -187,7 +187,7 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
 	{
 	  continue;
 	}
-      error_code = oos_delete (thread_p, *oos_vfid, oid, &touched_pages);
+      error_code = oos_delete (thread_p, *oos_vfid, oid, &emptied_pages);
       if (error_code != NO_ERROR)
 	{
 	  break;
@@ -199,7 +199,7 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
 
       /* Must run after the commit: an aborted sysop would restore the chunks, and undo cannot
        * re-insert into a deallocated page. */
-      int reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, oos_vfid, &touched_pages);
+      int reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, oos_vfid, &emptied_pages);
       if (reclaim_err != NO_ERROR)
 	{
 	  assert (reclaim_err == ER_INTERRUPTED);
@@ -225,17 +225,17 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
  * return                 : NO_ERROR or ER_INTERRUPTED.
  * thread_p (in)          : Thread entry.
  * oos_vfid (in)          : OOS file the pages belong to.
- * touched_pages (in/out) : Pages the delete batch touched (duplicates allowed); cleared on return.
+ * emptied_pages (in/out) : Pages the delete batch emptied; cleared on return.
  */
 int
 vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
-				VACUUM_OOS_TOUCHED_PAGES *touched_pages)
+				VACUUM_OOS_EMPTIED_PAGES *emptied_pages)
 {
   assert (oos_vfid != NULL && !VFID_ISNULL (oos_vfid));
-  assert (touched_pages != NULL);
+  assert (emptied_pages != NULL);
 
-  int error_code = oos_reclaim_empty_pages (thread_p, *oos_vfid, *touched_pages);
-  touched_pages->clear ();
+  int error_code = oos_reclaim_empty_pages (thread_p, *oos_vfid, *emptied_pages);
+  emptied_pages->clear ();
 
   if (error_code == ER_INTERRUPTED)
     {
@@ -457,15 +457,15 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
  * thread_p (in)  : Thread entry.
  * oos_vfid (in)  : OOS file of the record's heap (must be valid).
  * record (in)	  : Heap record whose OOS references are deleted.
- * touched_pages_out (out) : Optional; pages that lost chunks are appended, for reclaim AFTER the
+ * emptied_pages_out (out) : Optional; pages the deletes emptied are appended, for reclaim AFTER the
  *			     caller's sysop commits. On error, this call's appends are removed.
  */
 int
 vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
-				     VACUUM_OOS_TOUCHED_PAGES *touched_pages_out)
+				     VACUUM_OOS_EMPTIED_PAGES *emptied_pages_out)
 {
   assert (!VFID_ISNULL (oos_vfid));
-  size_t n_touched_on_entry = touched_pages_out != NULL ? touched_pages_out->size () : 0;
+  size_t n_emptied_on_entry = emptied_pages_out != NULL ? emptied_pages_out->size () : 0;
   std::vector<OID> oos_oids;
   int error_code = heap_recdes_get_oos_oids (record, oos_oids);
   if (error_code != NO_ERROR)
@@ -479,16 +479,16 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
    * a page's values under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
   for (const OID &oos_oid : oos_oids)
     {
-      error_code = oos_delete (thread_p, *oos_vfid, oos_oid, touched_pages_out);
+      error_code = oos_delete (thread_p, *oos_vfid, oos_oid, emptied_pages_out);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			       "Failed to delete OOS record %d|%d|%d.", oos_oid.volid, oos_oid.pageid, oos_oid.slotid);
 	  /* The caller's abort restores these deletes — keep its batch list committed-only. (An
 	   * OOM inside oos_delete_chain may already have cleared the list; never grow it.) */
-	  if (touched_pages_out != NULL && touched_pages_out->size () > n_touched_on_entry)
+	  if (emptied_pages_out != NULL && emptied_pages_out->size () > n_emptied_on_entry)
 	    {
-	      touched_pages_out->resize (n_touched_on_entry);
+	      emptied_pages_out->resize (n_emptied_on_entry);
 	    }
 	  return error_code;
 	}

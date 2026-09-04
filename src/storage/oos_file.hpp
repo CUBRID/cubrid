@@ -117,10 +117,11 @@ extern int oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbas
  * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. */
 extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest);
 extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests);
-/* touched_vpids (optional): pages that lost a chunk are appended (with duplicates) so
- * batch-boundary callers can feed oos_reclaim_empty_pages after committing. */
+/* emptied_vpids (optional): every page this delete left with zero records is appended once, so
+ * batch-boundary callers can feed oos_reclaim_empty_pages after committing. Pages that still
+ * hold other chunks are not candidates and are not reported. */
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
-		       std::vector<VPID> *touched_vpids = NULL);
+		       std::vector<VPID> *emptied_vpids = NULL);
 /* Idempotency probe: *out_exists is true iff the chunk's slot is still present. A deallocated page
  * or a removed slot both report "gone" with NO_ERROR; any other failure is propagated. */
 extern int oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists);

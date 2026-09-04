@@ -85,7 +85,7 @@ static void
 oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid, RECDES *recdes_p);
 static int
 oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
-		  std::vector<VPID> *touched_vpids);
+		  std::vector<VPID> *emptied_vpids);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
@@ -1259,7 +1259,7 @@ oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 //
 // INVARIANT: an OOS file reserves a new sector only when no safely reclaimable empty page
 // exists right now. Two paths deliver it: the vacuum fast path (oos_reclaim_empty_pages)
-// reclaims the pages a committed delete batch touched; the growth-gate sweep
+// reclaims the pages a committed delete batch emptied; the growth-gate sweep
 // (oos_reclaim_sweep_step, run from the single growth point oos_alloc_page_with_reclaim) is
 // the backstop that rediscovers the rest from the sector bitmap. Truth is on disk (sector
 // bitmap + page emptiness); the in-memory counter and cursor are hints whose loss costs one
@@ -3046,8 +3046,9 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  *   thread_p(in): thread entry
  *   oos_vfid(in): OOS file identifier
  *   oid(in): head OID of the OOS record chain
- *   touched_vpids(out): optional; every page a chunk was deleted from is appended (duplicates
- *			 allowed — the reclaim batch dedupes).
+ *   emptied_vpids(out): optional; every page that holds zero records after one of this chain's
+ *			 chunks was deleted from it is appended, once. A page that still holds
+ *			 other chunks is not a reclaim candidate and is not reported.
  *
  * NOTE: This is the inner workhorse called by oos_delete(). Each chunk
  *       deletion is logged individually with undo data, so transaction
@@ -3055,7 +3056,7 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  */
 static int
 oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
-		  std::vector<VPID> *touched_vpids)
+		  std::vector<VPID> *emptied_vpids)
 {
   int error = NO_ERROR;
   OID current_oid = oid;
@@ -3114,11 +3115,14 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
       /* Update bestspace cache — page now has more free space after delete */
       oos_stats_update (thread_p, page_ptr, &oos_vfid, 0);
 
-      if (touched_vpids != NULL)
+      /* Report the page only when this delete emptied it: oos_reclaim_empty_pages can deallocate
+       * nothing else, and a page empties at most once per delete, so this also keeps the list
+       * free of duplicates. */
+      if (emptied_vpids != NULL && spage_number_of_records (page_ptr) == 0)
 	{
 	  try
 	    {
-	      touched_vpids->push_back (vpid);
+	      emptied_vpids->push_back (vpid);
 	    }
 	  catch (std::bad_alloc &)
 	    {
@@ -3127,8 +3131,8 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
 	      oos_warn ("dropping empty-page reclaim hints for file %d|%d: out of memory growing "
 			"the candidate list; the growth-gate sweep will rediscover the pages",
 			VFID_AS_ARGS (&oos_vfid));
-	      touched_vpids->clear ();
-	      touched_vpids = NULL;
+	      emptied_vpids->clear ();
+	      emptied_vpids = NULL;
 	    }
 	}
 
@@ -3231,11 +3235,11 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  */
 int
 oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
-	    std::vector<VPID> *touched_vpids)
+	    std::vector<VPID> *emptied_vpids)
 {
   oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
 
-  int err = oos_delete_chain (thread_p, oos_vfid, oid, touched_vpids);
+  int err = oos_delete_chain (thread_p, oos_vfid, oid, emptied_vpids);
   if (err == NO_ERROR)
     {
       oos_reclaim_note_delete (oos_vfid);

@@ -478,7 +478,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 
   /* Accumulate reclaim candidates across the whole churn, like vacuum_heap_page does per
    * heap-page batch. */
-  VACUUM_OOS_TOUCHED_PAGES touched_pages;
+  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
 
   /* Simulate UPDATE_ROUNDS of UPDATEs with vacuum cleanup */
   for (int round = 0; round < UPDATE_ROUNDS; round++)
@@ -497,7 +497,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	  err = build_heap_recdes_with_oos ({old_oid}, {oos_len}, heap_rec);
 	  ASSERT_EQ (err, NO_ERROR);
 
-	  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &touched_pages);
+	  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &emptied_pages);
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  recdes_free_data_area (&heap_rec);
@@ -542,8 +542,8 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 
   /* Commit first: the LSA gate defers pages whose deleter is still a live undo source. */
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
-  ASSERT_FALSE (touched_pages.empty ());
-  err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &touched_pages);
+  ASSERT_FALSE (emptied_pages.empty ());
+  err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &emptied_pages);
   ASSERT_EQ (err, NO_ERROR);
 
   /* After the churn plus the batch reclaim, the file must be back at its initial footprint. */
@@ -607,8 +607,8 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  VACUUM_OOS_TOUCHED_PAGES touched_pages;
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &touched_pages);
+  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &emptied_pages);
   ASSERT_EQ (err, NO_ERROR);
 
   /* All N OOS records must be gone */
@@ -625,8 +625,8 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
 
   /* Commit first: the LSA gate defers pages whose deleter is still a live undo source. */
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
-  ASSERT_FALSE (touched_pages.empty ());
-  err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &touched_pages);
+  ASSERT_FALSE (emptied_pages.empty ());
+  err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &emptied_pages);
   ASSERT_EQ (err, NO_ERROR);
 
   int pages_after_reclaim = -1;

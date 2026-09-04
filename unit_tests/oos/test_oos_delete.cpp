@@ -448,6 +448,130 @@ TEST (OosDeleteTest, OosDeleteSlotBecomesUnknown)
 }
 
 
+// ===========================================================================
+// Emptied-page candidate list (CBRD-26786 refinement, CBRD-26950 ticket 01)
+//
+// oos_delete reports a page to the optional candidate list only when the
+// delete left that page with zero records. Pages that still hold other
+// chunks are never reported, and no page is reported twice.
+// ===========================================================================
+
+// helper: collect the distinct VPIDs a chain occupies, walking the chunk headers
+static std::vector<VPID>
+collect_chain_vpids (const OID &head_oid)
+{
+  std::vector<VPID> vpids;
+  OID current = head_oid;
+  while (!OID_ISNULL (&current))
+    {
+      VPID vpid = {current.pageid, current.volid};
+      bool seen = false;
+      for (const VPID &v : vpids)
+	{
+	  if (VPID_EQ (&v, &vpid))
+	    {
+	      seen = true;
+	      break;
+	    }
+	}
+      if (!seen)
+	{
+	  vpids.push_back (vpid);
+	}
+      OOS_RECORD_HEADER header{};
+      if (peek_oos_header (current, header) != NO_ERROR)
+	{
+	  break;
+	}
+      current = header.next_chunk_oid;
+    }
+  return vpids;
+}
+
+static int
+count_vpid (const std::vector<VPID> &vpids, const VPID &vpid)
+{
+  int n = 0;
+  for (const VPID &v : vpids)
+    {
+      if (VPID_EQ (&v, &vpid))
+	{
+	  n++;
+	}
+    }
+  return n;
+}
+
+TEST (OosDeleteTest, EmptiedListSkipsPageThatStillHoldsRecords)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  RECDES rec_a{}, rec_b{};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("chunk a shares the page", rec_a), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("chunk b shares the page", rec_b), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_a (&rec_a, recdes_free_data_area);
+  test_oos_utils::auto_freed_recdes_ptr defer_b (&rec_b, recdes_free_data_area);
+
+  OID oid_a = OID_INITIALIZER, oid_b = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_a, oid_a), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_b, oid_b), NO_ERROR);
+  ASSERT_EQ (oid_a.pageid, oid_b.pageid);	// both small records land on one page
+
+  std::vector<VPID> emptied;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid_a, &emptied), NO_ERROR);
+  EXPECT_TRUE (emptied.empty ()) << "a page that still holds chunk b must not be a reclaim candidate";
+
+  // deleting the last record now empties the page: reported exactly once
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid_b, &emptied), NO_ERROR);
+  const VPID page = {oid_b.pageid, oid_b.volid};
+  EXPECT_EQ (emptied.size (), 1U);
+  EXPECT_EQ (count_vpid (emptied, page), 1);
+}
+
+TEST (OosDeleteTest, EmptiedListReportsEachPageOfMultiPageChainOnce)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
+  auto large_data = test_oos_utils::make_repeated_pattern_string (2 * max_chunk_size + 100);	// three chunks
+
+  RECDES rec_in{};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (large_data, rec_in), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
+
+  OID head_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, head_oid), NO_ERROR);
+
+  const std::vector<VPID> chain_vpids = collect_chain_vpids (head_oid);
+  ASSERT_GE (chain_vpids.size (), 2U);
+
+  std::vector<VPID> emptied;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, head_oid, &emptied), NO_ERROR);
+
+  // every page the chain occupied alone is now empty and reported once; nothing else is reported
+  for (const VPID &vpid : emptied)
+    {
+      EXPECT_EQ (count_vpid (emptied, vpid), 1) << "page " << vpid.volid << "|" << vpid.pageid << " reported twice";
+      EXPECT_EQ (count_vpid (chain_vpids, vpid), 1) << "page " << vpid.volid << "|" << vpid.pageid
+	  << " was not part of the chain";
+    }
+  for (const VPID &vpid : chain_vpids)
+    {
+      int free_space = get_free_space_of_oid_page (OID{vpid.pageid, 0, vpid.volid});
+      ASSERT_GE (free_space, 0);
+      // a page whose only records were this chain's chunks must be reported
+      VPID v = vpid;
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &v, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      ASSERT_NE (page_ptr, nullptr);
+      const int n_records = spage_number_of_records (page_ptr);
+      pgbuf_unfix (thread_p, page_ptr);
+      EXPECT_EQ (count_vpid (emptied, vpid), n_records == 0 ? 1 : 0);
+    }
+}
+
+
 // TODO: add recovery tests — verify undo (rollback restores deleted chunks) and redo (crash recovery re-deletes)
 //       for both single-chunk and multi-chunk records. Requires integration test infrastructure.
 
