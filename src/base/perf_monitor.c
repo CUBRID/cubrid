@@ -379,6 +379,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_EXECUTE, "heap_vacuum_execute"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_LOG, "heap_vacuum_log"),
 
+  /* OOS sector-bitmap enumeration. */
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_OOS_NUM_BITMAP_SNAPSHOT_SKIPS, "Num_oos_bitmap_snapshot_skips"),
+
   /* B-tree detailed statistics. */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_FIX_OVF_OIDS, "bt_fix_ovf_oids"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_UNIQUE_RLOCKS, "bt_unique_rlocks"),
