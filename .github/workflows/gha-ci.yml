@@ -123,9 +123,7 @@ env:
   STAMPS: /home/build-cache/gha-ci/runs/${{ github.run_id }}/stamps
   BUILD_SENTINEL: .complete
   BUILD_META: .gha-ci-build.meta
-  # Where a reader can open what a run left behind. roles/arc in
-  # circleci-k8s-ansible serves CI_ROOT at this address, read-only, on the
-  # internal network -- the two are one setting in two repositories.
+  # Paired with arc_artifact_server_node_port in circleci-k8s-ansible.
   ARTIFACT_URL_BASE: http://192.168.1.48:30080
 
 jobs:
@@ -356,9 +354,8 @@ jobs:
     env:
       # Same values as the CircleCI executor cubrid-build.
       BUILD_MIRROR: /home/build-cache/cubrid-mirror
-      # Per mode, under the run that produced it. A flat file keyed by run id
-      # only is one file for two matrix legs: whichever finishes last wins,
-      # and a reader chasing a debug failure opens the release build.
+      # Per mode: one path for two matrix legs is the later leg overwriting
+      # the earlier one.
       BUILD_LOG_DIR: /home/build-cache/gha-ci/runs/${{ github.run_id }}/build/${{ matrix.mode }}
       MODE: ${{ matrix.mode }}
       BUILD_ARGS: ${{ matrix.args }}
@@ -1797,9 +1794,8 @@ jobs:
             fi
             echo
             echo "---"
-            # BRID, not this run: a reused build wrote its log under the run
-            # that made it, and this run left none. debug, because that is the
-            # build the suite mounted; the release log sits beside it.
+            # BRID: a reused build left no log under this run. debug: that is
+            # what the suite mounted.
             echo "[Artifacts]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/) · [build log]($ARTIFACT_URL_BASE/runs/$BRID/build/debug/build.log)"
             echo
             echo "Internal network only. The run directory is pruned 7 days after the run."
