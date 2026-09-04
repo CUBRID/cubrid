@@ -793,6 +793,7 @@ target_link_libraries(cubridsa
 if(UNIX)
   target_include_directories(cubridsa PUBLIC ${TBB_INCLUDES})
   target_link_libraries(cubridsa PRIVATE ${TBB_LIBS})
+  target_link_options(cubridsa PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
   add_dependencies(cubridsa ${TBB_TARGETS})
 endif(UNIX)
 
