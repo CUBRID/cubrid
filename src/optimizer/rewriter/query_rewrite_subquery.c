@@ -77,7 +77,7 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
       return false;
     }
 
-  if (subq->info.query.q.select.hint & PT_HINT_NO_UNNEST)
+  if (subq->info.query.q.select.hint & (PT_HINT_NO_UNNEST | PT_HINT_QUERY_CACHE))
     {
       return false;
     }
