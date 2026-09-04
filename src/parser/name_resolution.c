@@ -12090,6 +12090,16 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      lkcol.col_list = table->info.dblink_table.sel_list;
 
 	      lkcol.tbl_name_node = spec->info.spec.range_var;
+
+	      /* pt_resolve_natural_join () runs after this and derives the join columns from
+	       * the spec's column list, so a natural-join participant needs every visible
+	       * column (star), not only the ones the statement references.  The flag is on
+	       * the right-hand spec; the preceding spec is the left-hand side. */
+	      if (spec->info.spec.natural || (spec->next && spec->next->info.spec.natural))
+		{
+		  check_for_already_exists (parser, &lkcol, lkcol.tbl_name_node->info.name.original, NULL);
+		}
+
 	      pt_get_cols_for_dblink (parser, &lkcol, query, spec->info.spec.on_cond);
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;
