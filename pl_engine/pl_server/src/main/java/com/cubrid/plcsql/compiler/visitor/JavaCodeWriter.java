@@ -1569,7 +1569,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  throw new SQL_ERROR(\"failed to get the result set meta data of the FETCH statement\");",
                 "}",
                 "if (%'INTO-VAR-COUNT'% != rsmd_%'LEVEL'%.getColumnCount()) {",
-                "  throw new SQL_ERROR(\"length of the SELECT list and the nuber of variables in the INTO clause do not match\");",
+                "  throw new SQL_ERROR(\"length of the SELECT list and the number of variables in the INTO clause do not match\");",
                 "}"
             };
 
