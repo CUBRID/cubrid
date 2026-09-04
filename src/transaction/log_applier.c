@@ -3977,6 +3977,8 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 	  OID oos_oid = OID_INITIALIZER;
 	  DB_BIGINT oos_length = 0;
 
+	  /* The stub is [head OOS OID (8B) | full length (8B) | identity stamp (8B)]; the SQL log
+	   * needs only the first two fields to look up the cached value. */
 	  if (vars[j] >= OR_OOS_INLINE_SIZE)
 	    {
 	      or_init (&inline_buf, buf->ptr, vars[j]);

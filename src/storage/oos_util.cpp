@@ -29,14 +29,15 @@
 #include "memory_wrapper.hpp"
 
 /*
- * oos_oid_in_vector () - True if oid appears in oids (linear scan; vector is small by design).
+ * oos_ref_in_vector () - True if oid appears as a head OOS OID in refs (linear scan; the vector
+ *   holds one heap record's parsed OOS inline stubs, so it is small by design).
  */
 bool
-oos_oid_in_vector (const std::vector<OID> &oids, const OID *oid)
+oos_ref_in_vector (const std::vector<oos_chain_ref> &refs, const OID *oid)
 {
-  for (const OID &candidate : oids)
+  for (const oos_chain_ref &candidate : refs)
     {
-      if (OID_EQ (&candidate, oid))
+      if (OID_EQ (&candidate.head_oid, oid))
 	{
 	  return true;
 	}

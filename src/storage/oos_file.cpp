@@ -79,7 +79,7 @@ static int
 oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 		       int total_data_length, cubbase::byte_span_writer &writer);
 static int
-oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, const OID &oid);
+oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, const oos_chain_ref &ref);
 static void
 oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p);
 static void
@@ -2643,11 +2643,14 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 
 
 /* Head-chunk validation shared by oos_read and oos_read_many: the caller's OID must be
- * the chain head (a mid-chain target means a corrupted inline OID), and the caller's
- * inline length (dest.size()) must agree with the chain header. */
+ * the chain head (a mid-chain target means a corrupted inline OID), the caller's
+ * inline length (dest.size()) must agree with the chain header, and the head chunk must
+ * carry the identity stamp the caller's reference was created with (CBRD-26950). */
 static int
-oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, const OID &oid)
+oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, const oos_chain_ref &ref)
 {
+  const OID &oid = ref.head_oid;
+
   assert (header.chunk_index == 0);
   if (header.chunk_index != 0)
     {
@@ -2664,6 +2667,17 @@ oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, con
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
       return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
+
+  /* A different stamp means the slot has begun a new slot incarnation since the reference was
+   * created: the bytes here belong to another chain and must never be returned as this value.
+   * NULL is an ordinary stamp value and is compared like any other. */
+  if (!LSA_EQ (&header.identity_stamp, &ref.identity_stamp))
+    {
+      oos_error ("OOS identity stamp mismatch: reference=%lld|%d head chunk=%lld|%d at oid={vol=%d,page=%d,slot=%d}",
+		 LSA_AS_ARGS (&ref.identity_stamp), LSA_AS_ARGS (&header.identity_stamp), OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
   return NO_ERROR;
 }
 
@@ -2672,10 +2686,11 @@ oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, con
  * mismatch (corruption) is rejected. byte_span_writer guards each chunk
  * against payload_len overflow inside the loop. */
 int
-oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
+oos_read (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, oos_buffer dest)
 {
   assert (dest.data () != nullptr && dest.size () > 0);
 
+  const OID &oid = ref.head_oid;
   const int expected_length = static_cast<int> (dest.size ());
 
   cubbase::byte_span_writer writer (dest);
@@ -2684,7 +2699,7 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
   int err = oos_read_within_page (thread_p, oid, writer, first_header);
   if (err == NO_ERROR)
     {
-      err = oos_check_head_header (first_header, expected_length, oid);
+      err = oos_check_head_header (first_header, expected_length, ref);
     }
   if (err != NO_ERROR)
     {
@@ -2729,11 +2744,11 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 
   for (std::size_t i = 0; i < requests.size (); i++)
     {
-      if (OID_ISNULL (&requests[i].oid) || requests[i].dest.data () == nullptr || requests[i].dest.size () == 0
-	  || requests[i].dest.size () > (std::size_t) INT_MAX)
+      if (OID_ISNULL (&requests[i].ref.head_oid) || requests[i].dest.data () == nullptr
+	  || requests[i].dest.size () == 0 || requests[i].dest.size () > (std::size_t) INT_MAX)
 	{
 	  oos_error ("oos_read_many rejected invalid request %zu (oid={vol=%d,page=%d,slot=%d}, data=%p, size=%zu)",
-		     i, OID_AS_ARGS (&requests[i].oid), requests[i].dest.data (), requests[i].dest.size ());
+		     i, OID_AS_ARGS (&requests[i].ref.head_oid), requests[i].dest.data (), requests[i].dest.size ());
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_GENERIC_ERROR;
 	}
@@ -2751,7 +2766,7 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 	      continue;
 	    }
 
-	  VPID vpid = { requests[i].oid.pageid, requests[i].oid.volid };
+	  VPID vpid = { requests[i].ref.head_oid.pageid, requests[i].ref.head_oid.volid };
 	  continuations.clear ();
 
 	  {
@@ -2772,7 +2787,7 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 	    /* Resolve every request whose head chunk lives on this fixed page. */
 	    for (std::size_t j = i; j < requests.size (); j++)
 	      {
-		const VPID request_vpid = { requests[j].oid.pageid, requests[j].oid.volid };
+		const VPID request_vpid = { requests[j].ref.head_oid.pageid, requests[j].ref.head_oid.volid };
 		if (done[j] || !VPID_EQ (&request_vpid, &vpid))
 		  {
 		    continue;
@@ -2783,10 +2798,10 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 		cubbase::byte_span_writer writer (requests[j].dest);
 		OOS_RECORD_HEADER header;
 
-		int err = oos_read_chunk_in_page (thread_p, page_ptr, requests[j].oid, writer, header);
+		int err = oos_read_chunk_in_page (thread_p, page_ptr, requests[j].ref.head_oid, writer, header);
 		if (err == NO_ERROR)
 		  {
-		    err = oos_check_head_header (header, static_cast<int> (requests[j].dest.size ()), requests[j].oid);
+		    err = oos_check_head_header (header, static_cast<int> (requests[j].dest.size ()), requests[j].ref);
 		  }
 		if (err != NO_ERROR)
 		  {
@@ -2800,7 +2815,7 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 		else if (!writer.full ())
 		  {
 		    oos_error ("OOS final length mismatch: written=%zu expected=%zu at oid={vol=%d,page=%d,slot=%d}",
-			       writer.written (), requests[j].dest.size (), OID_AS_ARGS (&requests[j].oid));
+			       writer.written (), requests[j].dest.size (), OID_AS_ARGS (&requests[j].ref.head_oid));
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
 		    return ER_HEAP_OOS_CORRUPTED_RECORD;
 		  }
@@ -2824,7 +2839,7 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 		  oos_error ("OOS final continuation length mismatch: written=%zu expected_remaining=%zu"
 			     " at oid={vol=%d,page=%d,slot=%d}",
 			     writer.written (), request.dest.size () - continuation.head_payload_size,
-			     OID_AS_ARGS (&request.oid));
+			     OID_AS_ARGS (&request.ref.head_oid));
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
 		  return ER_HEAP_OOS_CORRUPTED_RECORD;
 		}

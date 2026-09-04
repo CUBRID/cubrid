@@ -780,7 +780,9 @@ assert_read_many_payloads (const std::vector<std::string> &payloads, const std::
   for (std::size_t i = 0; i < payloads.size (); i++)
     {
       outputs[i].resize (payloads[i].size ());
-      oos_read_request request = { oids[i], oos_buffer (outputs[i].data (), outputs[i].size ()) };
+      oos_chain_ref ref;
+      ASSERT_EQ (test_oos_utils::oos_current_chain_ref (thread_p, oids[i], ref), NO_ERROR);
+      oos_read_request request = { ref, oos_buffer (outputs[i].data (), outputs[i].size ()) };
       requests.push_back (request);
     }
 
@@ -1288,12 +1290,13 @@ TEST (OosServerTest, OosGetLengthAroundMaxChunkSize)
 }
 
 // ============================================================================
-// TC: OOS inline format [OID(8B) + length(8B)]
+// TC: OOS inline format [OID(8B) + length(8B) + identity stamp(8B)]
 // ============================================================================
 TEST (OosServerTest, OosInlineFormatWriteAndReadBack)
 {
-  ASSERT_EQ (OR_OOS_INLINE_SIZE, OR_OID_SIZE + OR_BIGINT_SIZE);
-  ASSERT_EQ (OR_OOS_INLINE_SIZE, 16);
+  /* [OOS OID (8B) | full length (8B) | identity stamp (8B, a LOG_LSA packed into one bigint)] */
+  ASSERT_EQ (OR_OOS_INLINE_SIZE, OR_OID_SIZE + OR_BIGINT_SIZE + OR_OOS_IDENTITY_STAMP_SIZE);
+  ASSERT_EQ (OR_OOS_INLINE_SIZE, 24);
 
   char buf_data[OR_OOS_INLINE_SIZE];
   OR_BUF write_buf;
@@ -1304,9 +1307,11 @@ TEST (OosServerTest, OosInlineFormatWriteAndReadBack)
   test_oid.slotid = 7;
   test_oid.volid = 3;
   DB_BIGINT test_length = 160 * 1024;
+  const LOG_LSA test_identity_stamp (0xC0FFEE, 42);
 
   or_put_oid (&write_buf, &test_oid);
   or_put_bigint (&write_buf, test_length);
+  or_put_bigint (&write_buf, oos_pack_identity_stamp (test_identity_stamp));
 
   ASSERT_EQ (write_buf.ptr - buf_data, OR_OOS_INLINE_SIZE);
 
@@ -1323,6 +1328,11 @@ TEST (OosServerTest, OosInlineFormatWriteAndReadBack)
   DB_BIGINT read_length = or_get_bigint (&read_buf, &rc);
   ASSERT_EQ (rc, NO_ERROR);
   ASSERT_EQ (read_length, test_length);
+
+  const LOG_LSA read_identity_stamp = oos_unpack_identity_stamp (or_get_bigint (&read_buf, &rc));
+  ASSERT_EQ (rc, NO_ERROR);
+  ASSERT_TRUE (LSA_EQ (&read_identity_stamp, &test_identity_stamp));
+  ASSERT_EQ (read_buf.ptr - buf_data, OR_OOS_INLINE_SIZE);
 }
 
 TEST (OosServerTest, OosInlineFormatWithRealOosInsert)
@@ -1344,12 +1354,16 @@ TEST (OosServerTest, OosInlineFormatWithRealOosInsert)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oos_oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  /* Build inline OOS data: [OOS OID (8B) + length (8B)] */
+  /* Build the OOS inline stub: [OOS OID (8B) + length (8B) + identity stamp (8B)] */
+  LOG_LSA oos_identity_stamp = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &oos_identity_stamp), NO_ERROR);
+
   char inline_buf[OR_OOS_INLINE_SIZE];
   OR_BUF write_buf;
   or_init (&write_buf, inline_buf, OR_OOS_INLINE_SIZE);
   or_put_oid (&write_buf, &oos_oid);
   or_put_bigint (&write_buf, (DB_BIGINT) rec_in.length);
+  or_put_bigint (&write_buf, oos_pack_identity_stamp (oos_identity_stamp));
 
   /* Read back OID and length from inline data */
   OR_BUF read_buf;
@@ -1402,11 +1416,15 @@ TEST (OosServerTest, OosInlineLengthMatchesAcrossPages)
       err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oos_oid);
       ASSERT_EQ (err, NO_ERROR);
 
+      LOG_LSA oos_identity_stamp = NULL_LSA;
+      ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &oos_identity_stamp), NO_ERROR);
+
       char inline_buf[OR_OOS_INLINE_SIZE];
       OR_BUF write_buf;
       or_init (&write_buf, inline_buf, OR_OOS_INLINE_SIZE);
       or_put_oid (&write_buf, &oos_oid);
       or_put_bigint (&write_buf, (DB_BIGINT) rec_in.length);
+      or_put_bigint (&write_buf, oos_pack_identity_stamp (oos_identity_stamp));
 
       OR_BUF read_buf;
       or_init (&read_buf, inline_buf, OR_OOS_INLINE_SIZE);

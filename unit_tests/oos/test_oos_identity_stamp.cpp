@@ -34,7 +34,9 @@
 #include <vector>
 
 #include "error_manager.h"
+#include "heap_oos.hpp"
 #include "log_lsa.hpp"
+#include "object_representation.h"
 #include "oos_file.hpp"
 #include "oos_log.hpp"
 #include "page_buffer.h"
@@ -212,6 +214,157 @@ TEST (OosIdentityStampTest, AccessorFailsForAbsentChunk)
   never_used.slotid = 4000;
   EXPECT_NE (oos_get_identity_stamp (thread_p, never_used, &stored), NO_ERROR);
   EXPECT_NE (er_errid (), NO_ERROR);
+  er_clear ();
+}
+
+// ===========================================================================
+// Ticket 03: the stub packs the stamp into one bigint, and reads verify it
+// ===========================================================================
+
+TEST (OosIdentityStampTest, PackedStubStampRoundTripsEveryValue)
+{
+  const LOG_LSA samples[] =
+  {
+    NULL_LSA,
+    LOG_LSA (0, 0),
+    LOG_LSA (1, 1),
+    LOG_LSA (0xC0FFEE, 42),
+    LOG_LSA (123456789012345LL, 16383),
+    LOG_LSA (MAX_LOG_LSA_PAGEID, MAX_LOG_LSA_OFFSET),
+    LOG_LSA (7, -1),
+  };
+  for (const LOG_LSA &sample : samples)
+    {
+      const DB_BIGINT packed = oos_pack_identity_stamp (sample);
+      const LOG_LSA unpacked = oos_unpack_identity_stamp (packed);
+      EXPECT_TRUE (LSA_EQ (&unpacked, &sample)) << (long long) sample.pageid << "|" << (int) sample.offset
+	  << " packed to " << (long long) packed;
+    }
+  /* NULL_LSA (-1, -1) is all ones, so a zero-filled stub never decodes as NULL by accident. */
+  EXPECT_EQ (oos_pack_identity_stamp (NULL_LSA), (DB_BIGINT) -1);
+  const LOG_LSA zero = oos_unpack_identity_stamp (0);
+  EXPECT_FALSE (LSA_ISNULL (&zero));
+}
+
+TEST (OosIdentityStampTest, StubWriteThenParseRoundTripsAtTwentyFourBytes)
+{
+  /* The OOS inline stub as the heap writer stores it: [OID (8B) | full length (8B) | packed stamp (8B)]. */
+  ASSERT_EQ (OR_OOS_INLINE_SIZE, 24);
+
+  OID head_oid;
+  head_oid.volid = 3;
+  head_oid.pageid = 4242;
+  head_oid.slotid = 7;
+  const DB_BIGINT full_length = 160 * 1024;
+  const LOG_LSA stamps[] = { LOG_LSA (0xC0FFEE, 42), NULL_LSA };
+
+  for (const LOG_LSA &identity_stamp : stamps)
+    {
+      alignas (MAX_ALIGNMENT) char stub[OR_OOS_INLINE_SIZE];
+      OR_BUF write_buf;
+      or_init (&write_buf, stub, OR_OOS_INLINE_SIZE);
+      or_put_oid (&write_buf, &head_oid);
+      or_put_bigint (&write_buf, full_length);
+      or_put_bigint (&write_buf, oos_pack_identity_stamp (identity_stamp));
+      ASSERT_EQ (write_buf.ptr - stub, OR_OOS_INLINE_SIZE);
+
+      RECDES recdes = { OR_OOS_INLINE_SIZE, OR_OOS_INLINE_SIZE, REC_HOME, stub };
+      oos_chain_ref ref;
+      DB_BIGINT parsed_length = 0;
+      ASSERT_EQ (heap_oos_parse_inline_ref (&recdes, stub, &ref, &parsed_length), NO_ERROR);
+      EXPECT_TRUE (OID_EQ (&ref.head_oid, &head_oid));
+      EXPECT_EQ (parsed_length, full_length);
+      /* A NULL stamp parses like any other value (invariant 3). */
+      EXPECT_TRUE (LSA_EQ (&ref.identity_stamp, &identity_stamp));
+    }
+}
+
+TEST (OosIdentityStampTest, ReadWithMatchingReferenceReturnsTheValue)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  /* from_string_into_recdes stores the terminator too, so the chain is payload.size () + 1 bytes. */
+  const std::string payload = "value behind a verified reference";
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, payload, oid, issued), NO_ERROR);
+
+  oos_chain_ref ref;
+  ref.head_oid = oid;
+  ref.identity_stamp = issued;
+
+  std::string out (payload.size () + 1, '?');
+  ASSERT_EQ (oos_read (thread_p, ref, oos_buffer (out.data (), out.size ())), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), payload.c_str ());
+}
+
+TEST (OosIdentityStampTest, ReadWithMismatchedStampFailsAsCorruptedRecordAndLeavesChainIntact)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  const std::string payload = "never returned through a stale reference";
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, payload, oid, issued), NO_ERROR);
+
+  oos_chain_ref stale;
+  stale.head_oid = oid;
+  stale.identity_stamp = LOG_LSA (issued.pageid + 1, (std::int16_t) issued.offset);
+
+  std::string out (payload.size () + 1, '?');
+  EXPECT_EQ (oos_read (thread_p, stale, oos_buffer (out.data (), out.size ())), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+
+  /* A NULL stamp is an ordinary value: it mismatches a non-NULL one like any other. */
+  stale.identity_stamp = NULL_LSA;
+  EXPECT_EQ (oos_read (thread_p, stale, oos_buffer (out.data (), out.size ())), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+
+  /* The chain itself is untouched: the matching reference still reads it. */
+  oos_chain_ref live;
+  live.head_oid = oid;
+  live.identity_stamp = issued;
+  ASSERT_EQ (oos_read (thread_p, live, oos_buffer (out.data (), out.size ())), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), payload.c_str ());
+}
+
+TEST (OosIdentityStampTest, GroupedReadVerifiesEveryReference)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  std::vector<std::string> payloads = { std::string (700, 'p'), std::string (900, 'q') };
+  std::vector<OID> oids (payloads.size (), OID_INITIALIZER);
+  std::vector<LOG_LSA> stamps (payloads.size (), NULL_LSA);
+  for (std::size_t i = 0; i < payloads.size (); i++)
+    {
+      ASSERT_EQ (insert_with_stamp (oos_vfid, payloads[i], oids[i], stamps[i]), NO_ERROR);
+    }
+
+  std::vector<std::string> outputs (payloads.size ());
+  std::vector<oos_read_request> requests;
+  for (std::size_t i = 0; i < payloads.size (); i++)
+    {
+      outputs[i].assign (payloads[i].size () + 1, '?');
+      oos_chain_ref ref;
+      ref.head_oid = oids[i];
+      ref.identity_stamp = stamps[i];
+      requests.push_back ({ ref, oos_buffer (outputs[i].data (), outputs[i].size ()) });
+    }
+  ASSERT_EQ (oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ())),
+	     NO_ERROR);
+  for (std::size_t i = 0; i < payloads.size (); i++)
+    {
+      EXPECT_STREQ (outputs[i].c_str (), payloads[i].c_str ());
+    }
+
+  /* One stale reference in the group fails the group with the corrupted-record error. */
+  requests[1].ref.identity_stamp = LOG_LSA (stamps[1].pageid + 1, (std::int16_t) stamps[1].offset);
+  EXPECT_EQ (oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ())),
+	     ER_HEAP_OOS_CORRUPTED_RECORD);
   er_clear ();
 }
 

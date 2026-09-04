@@ -299,8 +299,8 @@ TEST_F (OosSqlBoundary, InsertSelect)
 // TC-13: mid-size variable columns participate in OOS demotion
 //
 // A variable column is OOS-eligible when its value is larger than the OOS stub
-// (OR_OOS_INLINE_SIZE = 16 B) it would be replaced with. This record is built
-// only from ~500 B columns: each is larger than the 16 B stub (so eligible) yet
+// (OR_OOS_INLINE_SIZE = 24 B since CBRD-26950) it would be replaced with. This record is built
+// only from ~500 B columns: each is larger than the 24 B stub (so eligible) yet
 // smaller than the legacy 512 B floor (so previously ineligible). The record as a
 // whole exceeds the DB_PAGESIZE/4 trigger, so the largest columns are demoted to
 // OOS one by one. This guards round-trip correctness of that newly activated path.
@@ -321,7 +321,7 @@ TEST_F (OosSqlBoundary, MidSizeColumnsEligibleForOos)
   db_commit_transaction ();
 
   // 10 columns x 500 B = ~5000 B payload > DB_PAGESIZE/4 (4096 at a 16 KB page).
-  // Each column: 500 B > OR_OOS_INLINE_SIZE (16) but < legacy 512 B floor.
+  // Each column: 500 B > OR_OOS_INLINE_SIZE (24) but < legacy 512 B floor.
   rc = exec_sql ("INSERT INTO t_oos_bnd VALUES (1, "
 		 "REPEAT(X'AA', 500), REPEAT(X'BB', 500), REPEAT(X'CC', 500), REPEAT(X'DD', 500), REPEAT(X'EE', 500), "
 		 "REPEAT(X'11', 500), REPEAT(X'22', 500), REPEAT(X'33', 500), REPEAT(X'44', 500), REPEAT(X'55', 500))");

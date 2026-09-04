@@ -58,7 +58,7 @@ typedef enum
 static VACUUM_OOS_VFID_LOOKUP_RESULT vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p,
     VACUUM_OOS_VFID_MEMO *memo, const VFID *heap_vfid, VFID *out_oos_vfid);
 static int vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
-    std::vector<OID> oos_oids);
+    OOS_REF_VECTOR oos_refs);
 
 /*
  * vacuum_oos_vfid_lookup () - Find the OOS file that belongs to a given heap file.
@@ -138,9 +138,9 @@ vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_MEMO *memo, cons
  *   points to. As vacuum walks the undo log, it finds the "pre-image" (how the row looked before an
  *   UPDATE); that old image may still reference OOS records nobody can reach anymore.
  *
- *   The OID list comes in BY VALUE so this helper owns its own copy. That matters: oos_delete can
- *   rotate (swap out) the log page that the caller's original undo_data points into, so we must work
- *   from a copy that does not live in that buffer.
+ *   The reference list comes in BY VALUE so this helper owns its own copy. That matters: oos_delete
+ *   can rotate (swap out) the log page that the caller's original undo_data points into, so we must
+ *   work from a copy that does not live in that buffer.
  *
  *   All the deletes run inside one "sysop" (system operation) - the engine's unit of
  *   all-or-nothing work for crash recovery - so the whole multi-chunk delete either fully happens
@@ -151,28 +151,29 @@ vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_MEMO *memo, cons
  *   other log record types must be excluded.
  */
 static int
-vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_vfid, std::vector<OID> oos_oids)
+vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_vfid, OOS_REF_VECTOR oos_refs)
 {
   int error_code = NO_ERROR;
 
-  /* Sort the OIDs by (volid, pageid, slotid). Deleting in this order means back-to-back oos_delete
-   * calls touch nearby pages, so a page we just loaded stays in the buffer pool (better locality).
-   * This matches how the heap itself is scanned. We own this vector (passed by value), so we can
-   * sort it in place. */
-  std::sort (oos_oids.begin (), oos_oids.end (),
-	     [] (const OID &a, const OID &b)
+  /* Sort the references by head OID (volid, pageid, slotid). Deleting in this order means
+   * back-to-back oos_delete calls touch nearby pages, so a page we just loaded stays in the buffer
+   * pool (better locality). This matches how the heap itself is scanned. We own this vector (passed
+   * by value), so we can sort it in place. */
+  std::sort (oos_refs.begin (), oos_refs.end (),
+	     [] (const oos_chain_ref &a, const oos_chain_ref &b)
   {
-    return oid_compare (&a, &b) < 0;
+    return oid_compare (&a.head_oid, &b.head_oid) < 0;
   });
 
-  /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. The OIDs above are already
-   * sorted into page order, so one day we should group the OIDs that share a page and delete them
-   * under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
+  /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. The references above are
+   * already sorted into page order, so one day we should group the ones that share a page and
+   * delete them under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
   VACUUM_OOS_EMPTIED_PAGES emptied_pages;
 
   log_sysop_start (thread_p);
-  for (const OID &oid : oos_oids)
+  for (const oos_chain_ref &ref : oos_refs)
     {
+      const OID &oid = ref.head_oid;
       /* This has to be safe to run twice. If the whole block is retried, an earlier forward-walk in
        * this block may have already committed its deletes, so an OID's chunk can already be gone. In
        * that case just skip it instead of failing inside oos_delete. We still report a real failure
@@ -293,7 +294,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
    * REC_BIGONE / REC_RELOCATION slot, which is only an 8-byte OID. If we handed one of those to
    * heap_recdes_contains_oos, it would read the OID's pageid as if it were an MVCC header. A pageid
    * that happens to have bit 27 set would look like the "has OOS" flag, and then
-   * heap_recdes_get_oos_oids would chase a garbage reference list and hit assert_release. So we
+   * heap_recdes_get_oos_refs would chase a garbage reference list and hit assert_release. So we
    * check the record type first - the same guard the eager-delete paths use (REC_HOME / REC_NEWHOME).
    */
   if (! ((undo_recdes.type == REC_HOME || undo_recdes.type == REC_NEWHOME) && heap_recdes_contains_oos (&undo_recdes)))
@@ -308,7 +309,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
    * there - usually zeros or another page's data - and quietly find nothing. (Seen live: the flags
    * byte at this address changed from 0x69 to 0x00 across the lookup.) The copy also fixes
    * alignment: the image starts at undo_data + sizeof (INT16), and the OR_BUF readers used by
-   * heap_recdes_get_oos_oids would assert on that unaligned pointer in debug builds. */
+   * heap_recdes_get_oos_refs would assert on that unaligned pointer in debug builds. */
   RECDES parse_recdes = undo_recdes;
   char *stable_copy = (char *) db_private_alloc (thread_p, undo_recdes.length);
   if (stable_copy == NULL)
@@ -336,12 +337,12 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
     }
   else if (lookup_result == VACUUM_OOS_VFID_FOUND)
     {
-      std::vector<OID> oos_oids;
-      int oos_err = heap_recdes_get_oos_oids (&parse_recdes, oos_oids);
+      OOS_REF_VECTOR oos_refs;
+      int oos_err = heap_recdes_get_oos_refs (&parse_recdes, oos_refs);
 
       if (oos_err == NO_ERROR)
 	{
-	  oos_err = vacuum_forward_walk_oos_delete_atomic (thread_p, &oos_vfid, std::move (oos_oids));
+	  oos_err = vacuum_forward_walk_oos_delete_atomic (thread_p, &oos_vfid, std::move (oos_refs));
 	}
 
       if (oos_err != NO_ERROR)
@@ -466,8 +467,8 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
 {
   assert (!VFID_ISNULL (oos_vfid));
   size_t n_emptied_on_entry = emptied_pages_out != NULL ? emptied_pages_out->size () : 0;
-  std::vector<OID> oos_oids;
-  int error_code = heap_recdes_get_oos_oids (record, oos_oids);
+  OOS_REF_VECTOR oos_refs;
+  int error_code = heap_recdes_get_oos_refs (record, oos_refs);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -477,8 +478,9 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
   /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. When a record references
    * several OOS values on the same page, one day we should sort/group them by page and delete all of
    * a page's values under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
-  for (const OID &oos_oid : oos_oids)
+  for (const oos_chain_ref &oos_ref : oos_refs)
     {
+      const OID &oos_oid = oos_ref.head_oid;
       error_code = oos_delete (thread_p, *oos_vfid, oos_oid, emptied_pages_out);
       if (error_code != NO_ERROR)
 	{

@@ -19,12 +19,14 @@
 #ifndef _OOS_FILE_HPP_
 #define _OOS_FILE_HPP_
 
+#include "dbtype_def.h"		/* DB_BIGINT */
 #include "log_lsa.hpp"
 #include "recovery.h"		/* LOG_RCV */
 #include "span.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+#include <cstdint>
 #include <vector>
 
 struct oos_record_header
@@ -53,6 +55,24 @@ struct oos_chain_ref
   LOG_LSA identity_stamp;
 };
 
+/* The OOS inline stub stores the identity stamp as one 64-bit integer written with the bigint
+ * helpers, so the stub stays 8-byte aligned at 24 bytes: OID (8) + full length (8) + stamp (8).
+ * The stock LSA helper spends 12 bytes and is not used. pageid takes the upper 48 bits and offset
+ * the lower 16, so NULL_LSA (-1, -1) packs to -1 and every LOG_LSA round-trips exactly. These two
+ * helpers are used only for the stub; the chunk header stores the raw LOG_LSA. */
+inline DB_BIGINT
+oos_pack_identity_stamp (const LOG_LSA &identity_stamp)
+{
+  return (DB_BIGINT) (((std::uint64_t) identity_stamp.pageid << 16)
+		      | ((std::uint64_t) identity_stamp.offset & 0xFFFFu));
+}
+
+inline LOG_LSA
+oos_unpack_identity_stamp (DB_BIGINT packed)
+{
+  return LOG_LSA ((std::int64_t) packed >> 16, (std::int16_t) ((std::uint64_t) packed & 0xFFFFu));
+}
+
 /* Alias for a RECDES whose first OOS_RECORD_HEADER_SIZE bytes are the OOS header.
  * Documentation only — no compile-time distinction from RECDES. */
 using OOS_RECDES = RECDES;
@@ -71,7 +91,7 @@ struct oos_insert_request
 
 struct oos_read_request
 {
-  OID oid;
+  oos_chain_ref ref;
   oos_buffer dest;
 };
 
@@ -136,9 +156,11 @@ extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer 
 /* Inserts requests in logical order; each request receives its head OOS OID and, when asked, the
  * head chunk's identity stamp. */
 extern int oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos_insert_request> requests);
-/* Reads exactly dest.size() bytes; the caller obtains the length from the
- * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. */
-extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest);
+/* Reads exactly dest.size() bytes of the chain ref names; the caller obtains the length from the
+ * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. The head chunk's
+ * identity stamp must equal ref.identity_stamp, otherwise the read fails with
+ * ER_HEAP_OOS_CORRUPTED_RECORD instead of returning another chain's bytes (CBRD-26950). */
+extern int oos_read (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, oos_buffer dest);
 extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests);
 /* emptied_vpids (optional): every page this delete left with zero records is appended once, so
  * batch-boundary callers can feed oos_reclaim_empty_pages after committing. Pages that still

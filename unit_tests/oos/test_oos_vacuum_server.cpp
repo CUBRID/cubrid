@@ -19,11 +19,11 @@
 /*
  * test_oos_vacuum_server.cpp - SERVER_MODE tests for actual vacuum OOS code paths
  *
- * Exercises the real vacuum_heap_oos_delete_within_sysop() -> heap_recdes_get_oos_oids() ->
+ * Exercises the real vacuum_heap_oos_delete_within_sysop() -> heap_recdes_get_oos_refs() ->
  * oos_delete() code path by crafting minimal heap RECDES with OOS inline data
  * and calling vacuum_heap_oos_delete_within_sysop() directly.
  *
- * Also tests heap_recdes_get_oos_oids() and heap_recdes_contains_oos()
+ * Also tests heap_recdes_get_oos_refs() and heap_recdes_contains_oos()
  * directly for OOS OID extraction from crafted heap records.
  */
 
@@ -45,20 +45,23 @@ int bridge_oos_get_max_chunk_size_within_page ();
 //   [4..7]         CHN: 0  (cache coherence number)
 //   --- header ends (8 bytes) ---
 //   [8..8+4N-1]    VOT: N int32 entries, each = (offset_from_vot_start | flags)
-//   [8+4N..]       OOS inline data: per column, OID (8b) + length (8b)
-//   --- total: 8 + 20*N bytes ---
+//   [8+4N..]       OOS inline stub: per column, OID (8b) + length (8b) + identity stamp (8b)
+//   --- total: 8 + 28*N bytes ---
 //
-// OR_VAR_OFFSET(obj, i) = header_size + (VOT[i] & ~0x3) = 8 + (4N + 16i)
+// OR_VAR_OFFSET(obj, i) = header_size + (VOT[i] & ~0x3) = 8 + (4N + 24i)
 //
 
 static const int HEAP_HDR_SIZE = 8;	/* OR_MVCC_REP_SIZE + OR_CHN_SIZE */
 static const int VOT_ENTRY_SZ = 4;	/* OR_INT_SIZE (4-byte offset mode) */
-static const int OOS_INLINE_SZ = 16;	/* OR_OID_SIZE + OR_BIGINT_SIZE */
+static const int OOS_INLINE_SZ = OR_OOS_INLINE_SIZE;	/* OID + length + identity stamp */
 
+/* Builds each stub with the identity stamp its head chunk currently carries, mirroring what the
+ * real insert path records (CBRD-26950). Pass synthetic_oids = true when the OIDs were never
+ * inserted: their stubs get a NULL stamp and storage is not probed. */
 static int
 build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
 			    const std::vector<INT64> &oos_lengths,
-			    RECDES &rec_out)
+			    RECDES &rec_out, bool synthetic_oids = false)
 {
   const int n_oos = (int) oos_oids.size ();
   assert (n_oos > 0);
@@ -99,7 +102,7 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
       OR_PUT_INT (vot + i * VOT_ENTRY_SZ, offset | flags);
     }
 
-  /* 4. OOS inline data: OID (8b) + length (8b) per column */
+  /* 4. OOS inline stub: OID (8b) + length (8b) + identity stamp (8b) per column */
   char *oos_data = vot + vot_bytes;
   for (int i = 0; i < n_oos; i++)
     {
@@ -107,6 +110,19 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
       OR_PUT_OID (slot, &oos_oids[i]);
       INT64 len = oos_lengths[i];
       OR_PUT_BIGINT (slot + OR_OID_SIZE, &len);
+
+      LOG_LSA identity_stamp = NULL_LSA;
+      if (!synthetic_oids)
+	{
+	  int stamp_err = oos_get_identity_stamp (thread_p, oos_oids[i], &identity_stamp);
+	  if (stamp_err != NO_ERROR)
+	    {
+	      recdes_free_data_area (&rec_out);
+	      return stamp_err;
+	    }
+	}
+      INT64 packed_identity_stamp = oos_pack_identity_stamp (identity_stamp);
+      OR_PUT_BIGINT (slot + OR_OID_SIZE + OR_BIGINT_SIZE, &packed_identity_stamp);
     }
 
   return NO_ERROR;
@@ -144,7 +160,7 @@ TEST_F (OosVacuumCodePathServer, HeapRecdesContainsOos)
   OID dummy_oid = {1, 2, 3};
   INT64 dummy_len = 100;
   RECDES rec {};
-  err = build_heap_recdes_with_oos ({dummy_oid}, {dummy_len}, rec);
+  err = build_heap_recdes_with_oos ({dummy_oid}, {dummy_len}, rec, true /* synthetic_oids */);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec, recdes_free_data_area);
 
@@ -165,9 +181,9 @@ TEST_F (OosVacuumCodePathServer, HeapRecdesContainsOos)
 }
 
 // ============================================================================
-// TC-V2: heap_recdes_get_oos_oids extracts single OOS OID
+// TC-V2: heap_recdes_get_oos_refs extracts a single chain reference
 // ============================================================================
-TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosOidsSingle)
+TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosRefsSingle)
 {
   int err;
 
@@ -189,20 +205,25 @@ TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosOidsSingle)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  /* Extract OOS OIDs via the function vacuum relies on */
-  OID_VECTOR extracted;
-  err = heap_recdes_get_oos_oids (&heap_rec, extracted);
+  /* Extract chain references via the function vacuum relies on */
+  OOS_REF_VECTOR extracted;
+  err = heap_recdes_get_oos_refs (&heap_rec, extracted);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ ((int) extracted.size (), 1);
-  ASSERT_EQ (extracted[0].pageid, oos_oid.pageid);
-  ASSERT_EQ (extracted[0].slotid, oos_oid.slotid);
-  ASSERT_EQ (extracted[0].volid, oos_oid.volid);
+  ASSERT_EQ (extracted[0].head_oid.pageid, oos_oid.pageid);
+  ASSERT_EQ (extracted[0].head_oid.slotid, oos_oid.slotid);
+  ASSERT_EQ (extracted[0].head_oid.volid, oos_oid.volid);
+
+  /* The extracted identity stamp must be the one the head chunk carries (CBRD-26950). */
+  LOG_LSA stored_identity_stamp = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &stored_identity_stamp), NO_ERROR);
+  ASSERT_TRUE (LSA_EQ (&extracted[0].identity_stamp, &stored_identity_stamp));
 }
 
 // ============================================================================
-// TC-V3: heap_recdes_get_oos_oids extracts multiple OOS OIDs
+// TC-V3: heap_recdes_get_oos_refs extracts multiple chain references
 // ============================================================================
-TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosOidsMultiple)
+TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosRefsMultiple)
 {
   int err;
 
@@ -228,16 +249,22 @@ TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosOidsMultiple)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  OID_VECTOR extracted;
-  err = heap_recdes_get_oos_oids (&heap_rec, extracted);
+  OOS_REF_VECTOR extracted;
+  err = heap_recdes_get_oos_refs (&heap_rec, extracted);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ ((int) extracted.size (), 2);
-  ASSERT_EQ (extracted[0].pageid, oid1.pageid);
-  ASSERT_EQ (extracted[0].slotid, oid1.slotid);
-  ASSERT_EQ (extracted[0].volid, oid1.volid);
-  ASSERT_EQ (extracted[1].pageid, oid2.pageid);
-  ASSERT_EQ (extracted[1].slotid, oid2.slotid);
-  ASSERT_EQ (extracted[1].volid, oid2.volid);
+  ASSERT_EQ (extracted[0].head_oid.pageid, oid1.pageid);
+  ASSERT_EQ (extracted[0].head_oid.slotid, oid1.slotid);
+  ASSERT_EQ (extracted[0].head_oid.volid, oid1.volid);
+  ASSERT_EQ (extracted[1].head_oid.pageid, oid2.pageid);
+  ASSERT_EQ (extracted[1].head_oid.slotid, oid2.slotid);
+  ASSERT_EQ (extracted[1].head_oid.volid, oid2.volid);
+
+  LOG_LSA stamp1 = NULL_LSA, stamp2 = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oid1, &stamp1), NO_ERROR);
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oid2, &stamp2), NO_ERROR);
+  ASSERT_TRUE (LSA_EQ (&extracted[0].identity_stamp, &stamp1));
+  ASSERT_TRUE (LSA_EQ (&extracted[1].identity_stamp, &stamp2));
 }
 
 // ============================================================================
