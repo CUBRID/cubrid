@@ -114,6 +114,23 @@ namespace test_oos_utils
     return oos_get_identity_stamp (thread_p, oid, &ref_out.identity_stamp);
   }
 
+
+  /* Deletes the chain at oid through the identity stamp its head chunk currently carries. Test-only
+   * shortcut: production callers pass the reference parsed from the owning heap record's OOS inline
+   * stub. A missing chunk fails inside oos_get_identity_stamp, preserving the old "deleting a gone
+   * chunk errors" observable where tests relied on it (CBRD-26950). */
+  inline int oos_delete_with_current_identity_stamp (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
+      std::vector<VPID> *emptied_vpids = NULL)
+  {
+    oos_chain_ref ref;
+    int err = oos_current_chain_ref (thread_p, oid, ref);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+    return oos_delete (thread_p, oos_vfid, ref, emptied_vpids);
+  }
+
   /* Reads OID into a fresh RECDES, sized via oos_get_length (tests have no heap-inline length),
    * through the chain reference its head chunk currently carries. */
   inline int oos_read_with_alloc (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)

@@ -85,8 +85,8 @@ oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
 static void
 oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid, RECDES *recdes_p);
 static int
-oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
-		  std::vector<VPID> *emptied_vpids);
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
+		  std::vector<VPID> *emptied_vpids, bool *deleted_out);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
@@ -3100,40 +3100,78 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
   log_append_undoredo_recdes (thread_p, RVOOS_DELETE, &log_addr, recdes_p, NULL);
 }
 
-// TODO: concurrency — this function assumes the caller holds a row-level lock (e.g., X_LOCK from heap layer)
-//       to prevent concurrent deletion of the same OOS chain. Verify this assumption when wiring callers.
-
 /*
- * oos_delete_chain () - delete all chunks in an OOS record chain (internal)
+ * oos_delete_chain () - delete all chunks in an OOS value chain after verifying the head's identity
+ *   (internal)
  *
  *   return: NO_ERROR or error code
  *   thread_p(in): thread entry
  *   oos_vfid(in): OOS file identifier
- *   oid(in): head OID of the OOS record chain
+ *   ref(in): head OID of the chain plus the identity stamp the caller's OOS inline stub carries
  *   emptied_vpids(out): optional; every page that holds zero records after one of this chain's
  *			 chunks was deleted from it is appended, once. A page that still holds
  *			 other chunks is not a reclaim candidate and is not reported.
+ *   deleted_out(out): true when the chain was deleted, false when the call was a no-op
  *
  * NOTE: This is the inner workhorse called by oos_delete(). Each chunk
  *       deletion is logged individually with undo data, so transaction
  *       abort restores all deleted chunks in reverse order.
+ *
+ *       Target identity (CBRD-26950): the head chunk's stored identity stamp is compared with
+ *       ref.identity_stamp under the same write latch that deletes it, so there is no window
+ *       between the check and the delete in which the slot could be freed and reused. A
+ *       deallocated head page, a missing head slot and a stamp mismatch are all successful no-ops:
+ *       the chain the reference described is gone, and whatever occupies the location now belongs
+ *       to another slot incarnation or page incarnation. This is what makes a vacuum block retry,
+ *       or any duplicate deleter of the same chain, safe without a caller-side lock: the page latch
+ *       serializes them at the head, the first one deletes it, every later one no-ops there.
+ *       Pages of later chunks keep the plain fix because a verified head proves the chain is live
+ *       and its links are intact. NULL is an ordinary stamp value here.
  */
 static int
-oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
-		  std::vector<VPID> *emptied_vpids)
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
+		  std::vector<VPID> *emptied_vpids, bool *deleted_out)
 {
   int error = NO_ERROR;
-  OID current_oid = oid;
+  OID current_oid = ref.head_oid;
+  bool is_head_chunk = true;
+
+  *deleted_out = false;
   while (!OID_ISNULL (&current_oid))
     {
       VPID vpid = {current_oid.pageid, current_oid.volid};
+      PAGE_PTR page_ptr = nullptr;
 
-      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page_ptr == nullptr)
+      if (is_head_chunk)
 	{
-	  ASSERT_ERROR_AND_SET (error);
-	  oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", current_oid.volid, current_oid.pageid);
-	  return error;
+	  /* The head fix must tolerate a vanished page: a retried delete may hold a stale OOS
+	   * reference whose whole page was reclaimed since (CBRD-26786). */
+	  error = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
+						&page_ptr);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      oos_error ("pgbuf_fix_if_not_deallocated failed for volid=%d, pageid=%d",
+			 current_oid.volid, current_oid.pageid);
+	      return error;
+	    }
+	  if (page_ptr == nullptr)
+	    {
+	      oos_debug ("delete no-op at oid={vol=%d,page=%d,slot=%d}: page deallocated (expected identity_stamp"
+			 " %lld|%d)", OID_AS_ARGS (&current_oid), LSA_AS_ARGS (&ref.identity_stamp));
+	      er_clear ();
+	      return NO_ERROR;
+	    }
+	}
+      else
+	{
+	  page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_ptr == nullptr)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", current_oid.volid, current_oid.pageid);
+	      return error;
+	    }
 	}
 
       scope_exit page_unfixer ([&] ()
@@ -3145,6 +3183,13 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
       SCAN_CODE code = spage_get_record (thread_p, page_ptr, current_oid.slotid, &oos_recdes, PEEK);
       if (code != S_SUCCESS)
 	{
+	  if (is_head_chunk && code == S_DOESNT_EXIST)
+	    {
+	      oos_debug ("delete no-op at oid={vol=%d,page=%d,slot=%d}: head chunk gone (expected identity_stamp"
+			 " %lld|%d)", OID_AS_ARGS (&current_oid), LSA_AS_ARGS (&ref.identity_stamp));
+	      er_clear ();
+	      return NO_ERROR;
+	    }
 	  ASSERT_ERROR_AND_SET (error);
 	  oos_error ("spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
 		     OID_AS_ARGS (&current_oid));
@@ -3161,6 +3206,22 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
 	}
       OOS_RECORD_HEADER header;
       std::memcpy (&header, oos_recdes.data, sizeof (OOS_RECORD_HEADER));
+
+      if (is_head_chunk)
+	{
+	  if (!LSA_EQ (&header.identity_stamp, &ref.identity_stamp))
+	    {
+	      /* The slot now belongs to a younger chain; this reference is stale. Deleting here is
+	       * exactly the data loss this check exists to prevent (CBRD-26950). */
+	      oos_debug ("delete no-op at oid={vol=%d,page=%d,slot=%d}: slot reused, expected identity_stamp"
+			 " %lld|%d, stored %lld|%d", OID_AS_ARGS (&current_oid), LSA_AS_ARGS (&ref.identity_stamp),
+			 LSA_AS_ARGS (&header.identity_stamp));
+	      er_clear ();
+	      return NO_ERROR;
+	    }
+	  is_head_chunk = false;
+	}
+
       OID next_chunk_oid = header.next_chunk_oid;
 
       oos_log_delete_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), current_oid.slotid,
@@ -3203,6 +3264,7 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
       oos_debug ("deleted chunk at oid={vol=%d,page=%d,slot=%d}, next={vol=%d,page=%d,slot=%d}",
 		 OID_AS_ARGS (&current_oid), OID_AS_ARGS (&next_chunk_oid));
 
+      *deleted_out = true;
       current_oid = next_chunk_oid;
     }
 
@@ -3210,10 +3272,11 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
 }
 
 /*
- * oos_chunk_exists () - Probe whether the OOS chunk at oid still exists. Read-only companion to
- *   oos_delete for idempotent callers (e.g. vacuum forward-walk block retry, which must skip OIDs
- *   whose chunks a previously committed sysop already removed instead of tripping the
- *   S_DOESNT_EXIST hard error inside oos_delete_chain).
+ * oos_chunk_exists () - Occupancy probe: does SOME record still occupy the slot at oid? Kept for
+ *   tests and diagnostics. It proves occupancy, not identity: OOS OIDs are physical addresses and
+ *   freed slots are reused, so a "present" answer cannot tell the chunk a reference was created for
+ *   from a later occupant of the same slot. It must never gate a delete; oos_delete verifies target
+ *   identity itself, under the latch that performs the delete (CBRD-26950).
  *
  *   "Already gone" is narrowly defined:
  *     - pgbuf_fix_if_not_deallocated returns NO_ERROR with page_ptr==NULL (page deallocated), OR
@@ -3266,14 +3329,23 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
 }
 
 /*
- * oos_delete () - delete an OOS record (single-chunk or multi-chunk chain)
+ * oos_delete () - delete an OOS value chain (single-chunk or multi-chunk) after verifying that the
+ *   head chunk is still the one the caller's reference was created for
  *
  *   return: NO_ERROR or error code
  *   thread_p(in): thread entry
  *   oos_vfid(in): OOS file identifier
- *   oid(in): head OID of the OOS record
+ *   ref(in): head OOS OID plus the identity stamp stored in the caller's OOS inline stub
+ *   emptied_vpids(out): optional reclaim candidate list, see oos_file.hpp
  *
- * NOTE: No sysop is used. Each chunk deletion is logged individually
+ * NOTE: The delete happens only when the head chunk's stored identity stamp equals
+ *       ref.identity_stamp. A deallocated head page, a missing head slot (a block retry
+ *       re-deleting what an earlier committed sysop already reclaimed) and a stamp mismatch (the
+ *       slot was freed and reused by a live chain) are all successful no-ops that modify nothing,
+ *       leave the error stack clean and report no reclaim candidate. Without this identity check a
+ *       retried delete would destroy the reusing chain's data (CBRD-26950).
+ *
+ *       No sysop is used. Each chunk deletion is logged individually
  *       (RVOOS_DELETE with full record as undo data).
  *
  *       Why this is safe:
@@ -3298,13 +3370,15 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *       backstop for paths with no vacuum candidate list.
  */
 int
-oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
+oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
 	    std::vector<VPID> *emptied_vpids)
 {
-  oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
+  oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}, expected identity_stamp=%lld|%d",
+	     OID_AS_ARGS (&ref.head_oid), LSA_AS_ARGS (&ref.identity_stamp));
 
-  int err = oos_delete_chain (thread_p, oos_vfid, oid, emptied_vpids);
-  if (err == NO_ERROR)
+  bool deleted = false;
+  int err = oos_delete_chain (thread_p, oos_vfid, ref, emptied_vpids, &deleted);
+  if (err == NO_ERROR && deleted)
     {
       oos_reclaim_note_delete (oos_vfid);
     }

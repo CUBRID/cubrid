@@ -173,22 +173,14 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
   log_sysop_start (thread_p);
   for (const oos_chain_ref &ref : oos_refs)
     {
-      const OID &oid = ref.head_oid;
       /* This has to be safe to run twice. If the whole block is retried, an earlier forward-walk in
-       * this block may have already committed its deletes, so an OID's chunk can already be gone. In
-       * that case just skip it instead of failing inside oos_delete. We still report a real failure
+       * this block may have already committed its deletes, so a chunk can already be gone, or its
+       * slot can already hold ANOTHER live chain (OOS OIDs are physical addresses and freed slots
+       * are reused). oos_delete tells these apart from the stub's identity stamp and no-ops on
+       * both, so a retry can never destroy the reusing chain (CBRD-26950). An occupancy probe
+       * cannot make that distinction and must not be used here. We still report a real failure
        * (I/O error, interrupt, etc.) as an error. */
-      bool exists;
-      error_code = oos_chunk_exists (thread_p, oid, &exists);
-      if (error_code != NO_ERROR)
-	{
-	  break;
-	}
-      if (!exists)
-	{
-	  continue;
-	}
-      error_code = oos_delete (thread_p, *oos_vfid, oid, &emptied_pages);
+      error_code = oos_delete (thread_p, *oos_vfid, ref, &emptied_pages);
       if (error_code != NO_ERROR)
 	{
 	  break;
@@ -481,7 +473,7 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
   for (const oos_chain_ref &oos_ref : oos_refs)
     {
       const OID &oos_oid = oos_ref.head_oid;
-      error_code = oos_delete (thread_p, *oos_vfid, oos_oid, emptied_pages_out);
+      error_code = oos_delete (thread_p, *oos_vfid, oos_ref, emptied_pages_out);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,

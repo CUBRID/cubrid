@@ -772,7 +772,9 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
 	  /* Same physical OOS referenced by both old and new recdes; keep it. */
 	  continue;
 	}
-      error_code = oos_delete (thread_p, oos_vfid, old_ref.head_oid);
+      /* Same no-op contract as vacuum: a stale OOS reference whose slot or page has begun a new
+       * incarnation is skipped, so immediate reclamation is equally retry-safe (CBRD-26950). */
+      error_code = oos_delete (thread_p, oos_vfid, old_ref);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

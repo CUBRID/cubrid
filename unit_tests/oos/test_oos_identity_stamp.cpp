@@ -42,6 +42,7 @@
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "storage_common.h"
+#include "xserver_interface.h"
 #include "test_oos_common.hpp"
 #include "test_oos_log.hpp"
 
@@ -75,15 +76,44 @@ namespace
   }
 } // namespace
 
+/* One OOS file per test. TearDown removes it and commits, so a test that has to commit (empty-page
+ * reclaim needs committed deletes) never leaves a committed orphan file behind: a later binary's
+ * file-tracker dump would try to resolve the synthetic owner class OID against a non-heap page. */
+class OosIdentityStampTest : public ::testing::Test
+{
+  protected:
+    VFID oos_vfid;
+
+    void SetUp () override
+    {
+      ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+    }
+
+    void TearDown () override
+    {
+      ASSERT_EQ (oos_remove_file (thread_p, oos_vfid), NO_ERROR);
+      ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+    }
+
+    /* Reads the whole chain through ref into a string; returns the oos_read result. */
+    int read_through (const oos_chain_ref &ref, std::string &out)
+    {
+      int len = oos_get_length (thread_p, ref.head_oid);
+      if (len < 0)
+	{
+	  return er_errid ();
+	}
+      out.assign ((std::size_t) len, '?');
+      return oos_read (thread_p, ref, oos_buffer (out.data (), out.size ()));
+    }
+};
+
 // ===========================================================================
 // Ticket 02: the stamp is issued at insert and readable through the accessor
 // ===========================================================================
 
-TEST (OosIdentityStampTest, InsertReportsTheStampTheHeadChunkCarries)
+TEST_F (OosIdentityStampTest, InsertReportsTheStampTheHeadChunkCarries)
 {
-  VFID oos_vfid;
-  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
-
   OID oid = OID_INITIALIZER;
   LOG_LSA issued = NULL_LSA;
   ASSERT_EQ (insert_with_stamp (oos_vfid, "identity stamp round trip", oid, issued), NO_ERROR);
@@ -94,10 +124,8 @@ TEST (OosIdentityStampTest, InsertReportsTheStampTheHeadChunkCarries)
 					  << " but the head chunk carries " << stored.pageid << "|" << stored.offset;
 }
 
-TEST (OosIdentityStampTest, FreshPageIssuesNonNullStamp)
+TEST_F (OosIdentityStampTest, FreshPageIssuesNonNullStamp)
 {
-  VFID oos_vfid;
-  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
 
   /* A page-filling record needs a page of its own, so this lands on a freshly allocated page whose
    * logged initialization already advanced its page LSA. NULL is an ordinary stamp value and gets no
@@ -108,17 +136,15 @@ TEST (OosIdentityStampTest, FreshPageIssuesNonNullStamp)
   EXPECT_FALSE (LSA_ISNULL (&issued));
 }
 
-TEST (OosIdentityStampTest, SuccessiveOccupantsOfOneSlotCarryDifferentStamps)
+TEST_F (OosIdentityStampTest, SuccessiveOccupantsOfOneSlotCarryDifferentStamps)
 {
-  VFID oos_vfid;
-  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
 
   OID first_oid = OID_INITIALIZER;
   LOG_LSA first_stamp = NULL_LSA;
   ASSERT_EQ (insert_with_stamp (oos_vfid, "first slot incarnation", first_oid, first_stamp), NO_ERROR);
 
   /* Reclaim the chunk; the slot is free again. */
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, first_oid), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, first_oid), NO_ERROR);
 
   /* A same-size insert reuses the freed slot (ANCHORED slotted page + bestspace), beginning a new
    * slot incarnation under the same OOS OID. */
@@ -136,10 +162,8 @@ TEST (OosIdentityStampTest, SuccessiveOccupantsOfOneSlotCarryDifferentStamps)
   EXPECT_TRUE (LSA_EQ (&second_stamp, &stored));
 }
 
-TEST (OosIdentityStampTest, MultiPageInsertReportsTheHeadChunkStamp)
+TEST_F (OosIdentityStampTest, MultiPageInsertReportsTheHeadChunkStamp)
 {
-  VFID oos_vfid;
-  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
 
   const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
   const std::string payload = test_oos_utils::make_repeated_pattern_string (2 * max_chunk_size + 100);
@@ -155,10 +179,8 @@ TEST (OosIdentityStampTest, MultiPageInsertReportsTheHeadChunkStamp)
   EXPECT_TRUE (LSA_EQ (&issued, &stored));
 }
 
-TEST (OosIdentityStampTest, BatchInsertReportsOneStampPerRequest)
+TEST_F (OosIdentityStampTest, BatchInsertReportsOneStampPerRequest)
 {
-  VFID oos_vfid;
-  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
 
   const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
   std::vector<std::string> payloads =
@@ -194,15 +216,13 @@ TEST (OosIdentityStampTest, BatchInsertReportsOneStampPerRequest)
   EXPECT_EQ (oos_get_identity_stamp (thread_p, extra_oid, &extra_stored), NO_ERROR);
 }
 
-TEST (OosIdentityStampTest, AccessorFailsForAbsentChunk)
+TEST_F (OosIdentityStampTest, AccessorFailsForAbsentChunk)
 {
-  VFID oos_vfid;
-  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
 
   OID oid = OID_INITIALIZER;
   LOG_LSA issued = NULL_LSA;
   ASSERT_EQ (insert_with_stamp (oos_vfid, "soon to be gone", oid, issued), NO_ERROR);
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid), NO_ERROR);
 
   LOG_LSA stored = NULL_LSA;
   EXPECT_NE (oos_get_identity_stamp (thread_p, oid, &stored), NO_ERROR);
@@ -221,7 +241,7 @@ TEST (OosIdentityStampTest, AccessorFailsForAbsentChunk)
 // Ticket 03: the stub packs the stamp into one bigint, and reads verify it
 // ===========================================================================
 
-TEST (OosIdentityStampTest, PackedStubStampRoundTripsEveryValue)
+TEST (OosIdentityStampPureTest, PackedStubStampRoundTripsEveryValue)
 {
   const LOG_LSA samples[] =
   {
@@ -246,7 +266,7 @@ TEST (OosIdentityStampTest, PackedStubStampRoundTripsEveryValue)
   EXPECT_FALSE (LSA_ISNULL (&zero));
 }
 
-TEST (OosIdentityStampTest, StubWriteThenParseRoundTripsAtTwentyFourBytes)
+TEST (OosIdentityStampPureTest, StubWriteThenParseRoundTripsAtTwentyFourBytes)
 {
   /* The OOS inline stub as the heap writer stores it: [OID (8B) | full length (8B) | packed stamp (8B)]. */
   ASSERT_EQ (OR_OOS_INLINE_SIZE, 24);
@@ -279,10 +299,8 @@ TEST (OosIdentityStampTest, StubWriteThenParseRoundTripsAtTwentyFourBytes)
     }
 }
 
-TEST (OosIdentityStampTest, ReadWithMatchingReferenceReturnsTheValue)
+TEST_F (OosIdentityStampTest, ReadWithMatchingReferenceReturnsTheValue)
 {
-  VFID oos_vfid;
-  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
 
   /* from_string_into_recdes stores the terminator too, so the chain is payload.size () + 1 bytes. */
   const std::string payload = "value behind a verified reference";
@@ -299,10 +317,8 @@ TEST (OosIdentityStampTest, ReadWithMatchingReferenceReturnsTheValue)
   EXPECT_STREQ (out.c_str (), payload.c_str ());
 }
 
-TEST (OosIdentityStampTest, ReadWithMismatchedStampFailsAsCorruptedRecordAndLeavesChainIntact)
+TEST_F (OosIdentityStampTest, ReadWithMismatchedStampFailsAsCorruptedRecordAndLeavesChainIntact)
 {
-  VFID oos_vfid;
-  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
 
   const std::string payload = "never returned through a stale reference";
   OID oid = OID_INITIALIZER;
@@ -331,10 +347,8 @@ TEST (OosIdentityStampTest, ReadWithMismatchedStampFailsAsCorruptedRecordAndLeav
   EXPECT_STREQ (out.c_str (), payload.c_str ());
 }
 
-TEST (OosIdentityStampTest, GroupedReadVerifiesEveryReference)
+TEST_F (OosIdentityStampTest, GroupedReadVerifiesEveryReference)
 {
-  VFID oos_vfid;
-  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
 
   std::vector<std::string> payloads = { std::string (700, 'p'), std::string (900, 'q') };
   std::vector<OID> oids (payloads.size (), OID_INITIALIZER);
@@ -366,6 +380,192 @@ TEST (OosIdentityStampTest, GroupedReadVerifiesEveryReference)
   EXPECT_EQ (oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ())),
 	     ER_HEAP_OOS_CORRUPTED_RECORD);
   er_clear ();
+}
+
+// ===========================================================================
+// Ticket 04: oos_delete requires target identity on every reclamation path
+// ===========================================================================
+
+TEST_F (OosIdentityStampTest, DeleteWithMismatchedStampIsCleanNoOpThatLeavesOccupantIntact)
+{
+  const std::string payload = "survives a stale delete";
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, payload, oid, issued), NO_ERROR);
+
+  oos_chain_ref stale;
+  stale.head_oid = oid;
+  stale.identity_stamp = LOG_LSA (issued.pageid + 1, (std::int16_t) issued.offset);
+
+  std::vector<VPID> emptied;
+  er_clear ();
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale, &emptied), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR) << "a skipped reclamation must leave no stray error";
+  EXPECT_TRUE (emptied.empty ()) << "a no-op reports no reclaim candidate";
+
+  oos_chain_ref live;
+  live.head_oid = oid;
+  live.identity_stamp = issued;
+  std::string out;
+  ASSERT_EQ (read_through (live, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), payload.c_str ());
+
+  /* A NULL stamp is an ordinary value: it mismatches like any other and is never a wildcard. */
+  stale.identity_stamp = NULL_LSA;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale, &emptied), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_TRUE (emptied.empty ());
+  ASSERT_EQ (read_through (live, out), NO_ERROR);
+
+  /* The matching reference reclaims the chain. */
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, live, &emptied), NO_ERROR);
+  EXPECT_NE (read_through (live, out), NO_ERROR);
+  er_clear ();
+}
+
+TEST_F (OosIdentityStampTest, DeleteOfGoneHeadIsCleanNoOp)
+{
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, "reclaimed once, retried twice", oid, issued), NO_ERROR);
+
+  oos_chain_ref ref;
+  ref.head_oid = oid;
+  ref.identity_stamp = issued;
+
+  std::vector<VPID> emptied;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, ref, &emptied), NO_ERROR);
+  const std::size_t candidates_after_real_delete = emptied.size ();
+
+  /* A vacuum block retry replays the same reclamation request after its effects committed: the head
+   * slot is gone. That is a success with a clean error stack and no new candidate, not a failure. */
+  for (int retry = 0; retry < 2; retry++)
+    {
+      er_clear ();
+      ASSERT_EQ (oos_delete (thread_p, oos_vfid, ref, &emptied), NO_ERROR) << "retry " << retry;
+      EXPECT_EQ (er_errid (), NO_ERROR) << "retry " << retry;
+      EXPECT_EQ (emptied.size (), candidates_after_real_delete) << "retry " << retry;
+    }
+}
+
+TEST_F (OosIdentityStampTest, StaleReferenceAfterSlotReuseKeepsTheLiveChain)
+{
+  /* The CBRD-26950 data loss: reclaim a chain, let a live row's insert reuse the same
+   * (volid|pageid|slotid), then replay the dead row's reclamation request. */
+  OID old_oid = OID_INITIALIZER;
+  LOG_LSA old_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, "dead row's value chain", old_oid, old_stamp), NO_ERROR);
+
+  oos_chain_ref stale_ref;
+  stale_ref.head_oid = old_oid;
+  stale_ref.identity_stamp = old_stamp;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale_ref), NO_ERROR);
+
+  const std::string live_payload = "live row's value chain";
+  OID new_oid = OID_INITIALIZER;
+  LOG_LSA new_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, live_payload, new_oid, new_stamp), NO_ERROR);
+  ASSERT_TRUE (OID_EQ (&new_oid, &old_oid)) << "the scenario requires physical slot reuse";
+  ASSERT_FALSE (LSA_EQ (&new_stamp, &old_stamp));
+
+  /* The block retry replays the stale OOS reference: it must no-op and never touch the live chain. */
+  std::vector<VPID> emptied;
+  er_clear ();
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale_ref, &emptied), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_TRUE (emptied.empty ());
+
+  oos_chain_ref live_ref;
+  live_ref.head_oid = new_oid;
+  live_ref.identity_stamp = new_stamp;
+  std::string out;
+  ASSERT_EQ (read_through (live_ref, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), live_payload.c_str ());
+}
+
+TEST_F (OosIdentityStampTest, StaleReferenceToDeallocatedAndReallocatedPageIsCleanNoOp)
+{
+  /* CBRD-26786 made page reallocation real: a stale OOS reference may point into a different page
+   * incarnation. Reuse that machinery: a page-filling chain gets a page of its own, its delete
+   * empties the page, and the committed empty page is deallocated by the reclaim batch. */
+  OID old_oid = OID_INITIALIZER;
+  LOG_LSA old_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, page_filling_payload (), old_oid, old_stamp), NO_ERROR);
+  oos_chain_ref stale_ref;
+  stale_ref.head_oid = old_oid;
+  stale_ref.identity_stamp = old_stamp;
+
+  std::vector<VPID> emptied;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale_ref, &emptied), NO_ERROR);
+  const VPID page = {old_oid.pageid, old_oid.volid};
+  ASSERT_EQ (emptied.size (), 1U);
+  ASSERT_TRUE (VPID_EQ (&emptied[0], &page));
+
+  /* Reclaim requires committed deletes (the LSA gate defers a live deleter's pages). */
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_EQ (oos_reclaim_empty_pages (thread_p, oos_vfid, emptied), NO_ERROR);
+  {
+    VPID probe = page;
+    PAGE_PTR page_ptr = NULL;
+    ASSERT_EQ (pgbuf_fix_if_not_deallocated (thread_p, &probe, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr),
+	       NO_ERROR);
+    ASSERT_EQ (page_ptr, nullptr) << "the fixture requires the page to be deallocated";
+  }
+
+  /* Deallocated page: a clean no-op with no candidate. */
+  emptied.clear ();
+  er_clear ();
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale_ref, &emptied), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_TRUE (emptied.empty ());
+
+  /* Reallocated page: the next growth reuses the reclaimed page, so the live row's chain begins a
+   * new page incarnation at the very same head OOS OID. The stale reference must still no-op and
+   * the new occupant must survive. */
+  const std::string live_payload = page_filling_payload ();
+  OID new_oid = OID_INITIALIZER;
+  LOG_LSA new_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, live_payload, new_oid, new_stamp), NO_ERROR);
+  ASSERT_TRUE (OID_EQ (&new_oid, &old_oid)) << "the scenario requires the reclaimed page and slot to be reused";
+  ASSERT_FALSE (LSA_EQ (&new_stamp, &old_stamp));
+
+  er_clear ();
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale_ref, &emptied), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_TRUE (emptied.empty ());
+
+  oos_chain_ref live_ref;
+  live_ref.head_oid = new_oid;
+  live_ref.identity_stamp = new_stamp;
+  std::string out;
+  ASSERT_EQ (read_through (live_ref, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), live_payload.c_str ());
+}
+
+TEST_F (OosIdentityStampTest, OccupancyProbeCannotTellOccupantsApart)
+{
+  /* Documents why the probe must never gate a delete: after slot reuse it still answers "occupied",
+   * while the identity check inside oos_delete recognises the stale reference. */
+  OID old_oid = OID_INITIALIZER;
+  LOG_LSA old_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, "first occupant", old_oid, old_stamp), NO_ERROR);
+  oos_chain_ref stale_ref;
+  stale_ref.head_oid = old_oid;
+  stale_ref.identity_stamp = old_stamp;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale_ref), NO_ERROR);
+
+  OID new_oid = OID_INITIALIZER;
+  LOG_LSA new_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, "later occupant", new_oid, new_stamp), NO_ERROR);
+  ASSERT_TRUE (OID_EQ (&new_oid, &old_oid));
+
+  bool exists = false;
+  ASSERT_EQ (oos_chunk_exists (thread_p, old_oid, &exists), NO_ERROR);
+  EXPECT_TRUE (exists) << "the probe sees an occupied slot and cannot say whose";
+
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale_ref), NO_ERROR);
+  ASSERT_EQ (oos_chunk_exists (thread_p, new_oid, &exists), NO_ERROR);
+  EXPECT_TRUE (exists) << "the identity-checked delete left the later occupant alone";
 }
 
 int

@@ -27,6 +27,7 @@
  * directly for OOS OID extraction from crafted heap records.
  */
 
+#include "heap_oos.hpp"
 #include "object_representation.h"
 #include "xserver_interface.h"
 #include "test_oos_server_common.hpp"
@@ -126,6 +127,42 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
     }
 
   return NO_ERROR;
+}
+
+/* Turns stub `index` of a record built by build_heap_recdes_with_oos into a stale OOS reference: same
+ * head OOS OID, a different identity stamp, as a dead row's undo image looks once the slot has begun a
+ * new slot incarnation (CBRD-26950). */
+static void
+make_stub_reference_stale (RECDES &rec, int n_oos, int index)
+{
+  char *stamp_ptr = rec.data + HEAP_HDR_SIZE + n_oos * VOT_ENTRY_SZ + index * OOS_INLINE_SZ + OR_OID_SIZE
+		    + OR_BIGINT_SIZE;
+  INT64 packed = 0;
+  OR_GET_BIGINT (stamp_ptr, &packed);
+  const LOG_LSA stored = oos_unpack_identity_stamp (packed);
+  const LOG_LSA stale (stored.pageid + 1, (std::int16_t) stored.offset);
+  packed = oos_pack_identity_stamp (stale);
+  OR_PUT_BIGINT (stamp_ptr, &packed);
+}
+
+/* Undo image as vacuum's forward walk receives it: an INT16 record type followed by the record body. */
+static std::vector<char>
+make_undo_image (const RECDES &rec)
+{
+  std::vector<char> undo (sizeof (INT16) + (std::size_t) rec.length);
+  INT16 type = rec.type;
+  std::memcpy (undo.data (), &type, sizeof (INT16));
+  std::memcpy (undo.data () + sizeof (INT16), rec.data, (std::size_t) rec.length);
+  return undo;
+}
+
+static bool
+chunk_is_present (const OID &oid)
+{
+  LOG_LSA stamp = NULL_LSA;
+  const bool present = (oos_get_identity_stamp (thread_p, oid, &stamp) == NO_ERROR);
+  er_clear ();
+  return present;
 }
 
 // ============================================================================
@@ -698,6 +735,161 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
       ASSERT_EQ (out.length, oos_size + 1);
       recdes_free_data_area (&out);
     }
+}
+
+// ============================================================================
+// TC-V10: REMOVE path — a live reference is reclaimed, a stale one is skipped (CBRD-26950)
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteReclaimsLiveReferenceAndSkipsStaleOne)
+{
+  RECDES live_chunk {}, stale_chunk {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("dead row's chain, still its own", live_chunk), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("live row's chain in a reused slot", stale_chunk), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr d1 (&live_chunk, recdes_free_data_area);
+  test_oos_utils::auto_freed_recdes_ptr d2 (&stale_chunk, recdes_free_data_area);
+
+  OID live_oid = OID_INITIALIZER, reused_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, live_chunk, live_oid), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, stale_chunk, reused_oid), NO_ERROR);
+
+  /* The record whose stub names reused_oid with a stale stamp stands for a dead row's image after the
+   * slot was handed to a live row. */
+  RECDES stale_rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({reused_oid}, { (INT64) stale_chunk.length}, stale_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr d3 (&stale_rec, recdes_free_data_area);
+  make_stub_reference_stale (stale_rec, 1, 0);
+
+  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
+  er_clear ();
+  ASSERT_EQ (vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &stale_rec, &emptied_pages), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR) << "a skipped reclamation must leave no stray error";
+  EXPECT_TRUE (emptied_pages.empty ());
+  EXPECT_TRUE (chunk_is_present (reused_oid)) << "the live occupant must survive the stale reference";
+
+  RECDES live_rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({live_oid}, { (INT64) live_chunk.length}, live_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr d4 (&live_rec, recdes_free_data_area);
+  ASSERT_EQ (vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &live_rec, &emptied_pages), NO_ERROR);
+  EXPECT_FALSE (chunk_is_present (live_oid)) << "the live reference must reclaim its chain";
+  EXPECT_TRUE (chunk_is_present (reused_oid));
+}
+
+// ============================================================================
+// Test fixture: a real heap file with its own OOS file, for the paths that resolve the OOS file
+// from the heap (forward walk, eager delete). Mirrors the real-vacuum fixture without DML.
+// ============================================================================
+class OosVacuumHeapSeamServer : public ::testing::Test
+{
+  protected:
+    HFID hfid;
+    VFID oos_vfid;
+    OID class_oid;
+
+    void SetUp () override
+    {
+      HFID_SET_NULL (&hfid);
+      VFID_SET_NULL (&oos_vfid);
+      OID_SET_NULL (&class_oid);
+
+      /* Borrow a real class OID: xheap_create reads the class record for the TDE algorithm. */
+      ASSERT_EQ (xlocator_find_class_oid (thread_p, "db_user", &class_oid, NULL_LOCK), LC_CLASSNAME_EXIST);
+      ASSERT_EQ (xheap_create (thread_p, &hfid, &class_oid, false), NO_ERROR);
+      ASSERT_TRUE (heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, true));
+      ASSERT_FALSE (VFID_ISNULL (&oos_vfid));
+      ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+    }
+
+    void TearDown () override
+    {
+      if (!HFID_IS_NULL (&hfid))
+	{
+	  (void) xheap_destroy (thread_p, &hfid, &class_oid);
+	  (void) xtran_server_commit (thread_p, false);
+	}
+    }
+
+    /* Inserts payload into the heap's OOS file and returns a record whose only stub references it. */
+    void insert_chunk_and_record (const char *payload, OID &oid_out, RECDES &rec_out)
+    {
+      RECDES chunk {};
+      ASSERT_EQ (test_oos_utils::from_string_into_recdes (payload, chunk), NO_ERROR);
+      test_oos_utils::auto_freed_recdes_ptr defer (&chunk, recdes_free_data_area);
+      oid_out = OID_INITIALIZER;
+      ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, chunk, oid_out), NO_ERROR);
+      ASSERT_EQ (build_heap_recdes_with_oos ({oid_out}, { (INT64) chunk.length}, rec_out), NO_ERROR);
+    }
+};
+
+// ============================================================================
+// TC-V11: forward walk — a live reference is reclaimed, a stale one is skipped (CBRD-26950)
+// ============================================================================
+TEST_F (OosVacuumHeapSeamServer, ForwardWalkReclaimsLiveReferenceAndSkipsStaleOne)
+{
+  OID live_oid, reused_oid;
+  RECDES live_rec {}, stale_rec {};
+  insert_chunk_and_record ("old version's chain, reclaimable", live_oid, live_rec);
+  insert_chunk_and_record ("live row's chain in a reused slot", reused_oid, stale_rec);
+  test_oos_utils::auto_freed_recdes_ptr d1 (&live_rec, recdes_free_data_area);
+  test_oos_utils::auto_freed_recdes_ptr d2 (&stale_rec, recdes_free_data_area);
+  make_stub_reference_stale (stale_rec, 1, 0);
+
+  VACUUM_OOS_VFID_MEMO memo;
+
+  std::vector<char> stale_undo = make_undo_image (stale_rec);
+  er_clear ();
+  ASSERT_EQ (vacuum_forward_walk_reclaim_oos (thread_p, stale_undo.data (), (int) stale_undo.size (), &hfid.vfid,
+	     &memo), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_TRUE (chunk_is_present (reused_oid)) << "the forward walk must skip a stale OOS reference";
+
+  std::vector<char> live_undo = make_undo_image (live_rec);
+  ASSERT_EQ (vacuum_forward_walk_reclaim_oos (thread_p, live_undo.data (), (int) live_undo.size (), &hfid.vfid,
+	     &memo), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_FALSE (chunk_is_present (live_oid)) << "the forward walk must reclaim a live reference";
+  EXPECT_TRUE (chunk_is_present (reused_oid));
+
+  /* A block retry replays the already-reclaimed request: still a clean success. */
+  ASSERT_EQ (vacuum_forward_walk_reclaim_oos (thread_p, live_undo.data (), (int) live_undo.size (), &hfid.vfid,
+	     &memo), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+}
+
+// ============================================================================
+// TC-V12: eager path — same no-op contract as vacuum (CBRD-26950)
+// ============================================================================
+TEST_F (OosVacuumHeapSeamServer, EagerDeleteReclaimsLiveReferenceAndSkipsStaleOne)
+{
+  OID live_oid, reused_oid, kept_oid;
+  RECDES live_rec {}, stale_rec {}, kept_rec {};
+  insert_chunk_and_record ("old image's chain, unreferenced by the new image", live_oid, live_rec);
+  insert_chunk_and_record ("live row's chain in a reused slot", reused_oid, stale_rec);
+  insert_chunk_and_record ("chain the new image still references", kept_oid, kept_rec);
+  test_oos_utils::auto_freed_recdes_ptr d1 (&live_rec, recdes_free_data_area);
+  test_oos_utils::auto_freed_recdes_ptr d2 (&stale_rec, recdes_free_data_area);
+  test_oos_utils::auto_freed_recdes_ptr d3 (&kept_rec, recdes_free_data_area);
+  make_stub_reference_stale (stale_rec, 1, 0);
+
+  /* heap_oos_delete_unreferenced reads only the heap file and the row OID from the context. */
+  HEAP_OPERATION_CONTEXT context;
+  std::memset (&context, 0, sizeof (context));
+  context.hfid = hfid;
+  context.oid.volid = hfid.vfid.volid;
+  context.oid.pageid = hfid.hpgid;
+  context.oid.slotid = 1;
+
+  er_clear ();
+  ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &stale_rec, NULL, "unit test stale"), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR) << "user DML on the eager path must report success cleanly";
+  EXPECT_TRUE (chunk_is_present (reused_oid)) << "the eager path must skip a stale OOS reference";
+
+  ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &live_rec, NULL, "unit test live"), NO_ERROR);
+  EXPECT_FALSE (chunk_is_present (live_oid)) << "the eager path must reclaim a live reference";
+
+  /* An UPDATE whose post-image still references the chain keeps it. */
+  ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &kept_rec, &kept_rec, "unit test kept"), NO_ERROR);
+  EXPECT_TRUE (chunk_is_present (kept_oid));
+  EXPECT_TRUE (chunk_is_present (reused_oid));
 }
 
 int

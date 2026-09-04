@@ -110,7 +110,7 @@ TEST (OosDeleteTest, OosDeleteBasic)
   ASSERT_GE (free_before, 0);
   test_oos_debug ("free_before=%d", free_before);
 
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int free_after = get_free_space_of_oid_page (oid);
@@ -144,7 +144,7 @@ TEST (OosDeleteTest, OosDeleteThenReadFails)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   // Reading a deleted slot should fail
@@ -208,7 +208,7 @@ TEST (OosDeleteTest, OosDeleteMultiChunk)
   ASSERT_GE (next_free_before, 0);
   test_oos_debug ("head_free_before=%d, next_free_before=%d", head_free_before, next_free_before);
 
-  err = oos_delete (thread_p, oos_vfid, head_oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, head_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int head_free_after = get_free_space_of_oid_page (head_oid);
@@ -259,7 +259,7 @@ TEST (OosDeleteTest, OosUpdatePattern)
   ASSERT_NE (old_oid.slotid, new_oid.slotid);
 
   // Delete the old record (UPDATE path: discard previous version)
-  err = oos_delete (thread_p, oos_vfid, old_oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, old_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   // New record must still be readable and unchanged
@@ -325,7 +325,7 @@ TEST (OosDeleteTest, OosDeleteRestoresFreeSpace)
   ASSERT_LT (free_after_second_insert, free_after_first_insert);
 
   // Delete the second record
-  err = oos_delete (thread_p, oos_vfid, target_oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, target_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int free_after_delete = get_free_space_of_oid_page (target_oid);
@@ -377,7 +377,7 @@ TEST (OosDeleteTest, OosDeleteLarge160KBMultiChunk)
   recdes_free_data_area (&rec_check);
 
   // Delete the full chain
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   // Reading any chunk from the head OID must now fail
@@ -429,7 +429,7 @@ TEST (OosDeleteTest, OosDeleteSlotBecomesUnknown)
     test_oos_debug ("type_before=%d", type_before);
   }
 
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   // After deletion: spage_get_record_type returns REC_UNKNOWN for deleted slots
@@ -519,11 +519,11 @@ TEST (OosDeleteTest, EmptiedListSkipsPageThatStillHoldsRecords)
   ASSERT_EQ (oid_a.pageid, oid_b.pageid);	// both small records land on one page
 
   std::vector<VPID> emptied;
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid_a, &emptied), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid_a, &emptied), NO_ERROR);
   EXPECT_TRUE (emptied.empty ()) << "a page that still holds chunk b must not be a reclaim candidate";
 
   // deleting the last record now empties the page: reported exactly once
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid_b, &emptied), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid_b, &emptied), NO_ERROR);
   const VPID page = {oid_b.pageid, oid_b.volid};
   EXPECT_EQ (emptied.size (), 1U);
   EXPECT_EQ (count_vpid (emptied, page), 1);
@@ -548,7 +548,7 @@ TEST (OosDeleteTest, EmptiedListReportsEachPageOfMultiPageChainOnce)
   ASSERT_GE (chain_vpids.size (), 2U);
 
   std::vector<VPID> emptied;
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, head_oid, &emptied), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, head_oid, &emptied), NO_ERROR);
 
   // every page the chain occupied alone is now empty and reported once; nothing else is reported
   for (const VPID &vpid : emptied)

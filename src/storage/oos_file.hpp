@@ -162,13 +162,20 @@ extern int oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbas
  * ER_HEAP_OOS_CORRUPTED_RECORD instead of returning another chain's bytes (CBRD-26950). */
 extern int oos_read (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, oos_buffer dest);
 extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests);
-/* emptied_vpids (optional): every page this delete left with zero records is appended once, so
+/* Deletes the OOS value chain ref names only after proving target identity: the head chunk must
+ * carry ref.identity_stamp. A deallocated head page, a missing head slot or a mismatched stamp is
+ * a successful no-op that modifies nothing, leaves the error stack clean and reports no candidate,
+ * which gives every caller retry idempotency without extra state (CBRD-26950).
+ * emptied_vpids (optional): every page this delete left with zero records is appended once, so
  * batch-boundary callers can feed oos_reclaim_empty_pages after committing. Pages that still
  * hold other chunks are not candidates and are not reported. */
-extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
+extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
 		       std::vector<VPID> *emptied_vpids = NULL);
-/* Idempotency probe: *out_exists is true iff the chunk's slot is still present. A deallocated page
- * or a removed slot both report "gone" with NO_ERROR; any other failure is propagated. */
+/* Occupancy probe for tests and diagnostics: *out_exists is true iff SOME record occupies the slot
+ * at oid. A deallocated page or a removed slot both report "gone" with NO_ERROR; any other failure
+ * is propagated. It proves occupancy, not identity: it cannot tell the chunk a reference was
+ * created for from a later occupant of the same slot, so it must never gate a delete. oos_delete
+ * verifies identity itself (CBRD-26950). */
 extern int oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists);
 /* Reads the identity stamp the head chunk at head_oid currently carries, for building a chain
  * reference in tests and diagnostics. Fails when the page is deallocated or the slot is absent. */

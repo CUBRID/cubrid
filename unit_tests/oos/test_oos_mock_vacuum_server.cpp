@@ -100,7 +100,7 @@ TEST_F (OosVacuumServer, BasicInsertAndDelete)
   recdes_free_data_area (&rec_check);
 
   /* Delete — this is what vacuum_heap_oos_delete_within_sysop does */
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Must be gone */
@@ -141,7 +141,7 @@ TEST_F (OosVacuumServer, MultiChunkDelete)
   ASSERT_GE (free_before, 0);
 
   /* Vacuum deletes the head OID; oos_delete follows the chain internally */
-  err = oos_delete (thread_p, oos_vfid, head_oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, head_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int free_after = get_free_space_of_oid_page (head_oid);
@@ -187,7 +187,7 @@ TEST_F (OosVacuumServer, LargeMultiPageDelete)
   recdes_free_data_area (&rec_check);
 
   /* Delete entire chain */
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Must be gone */
@@ -235,7 +235,7 @@ TEST_F (OosVacuumServer, MvccUpdateVacuumPattern)
   ASSERT_EQ (err, NO_ERROR);
 
   /* Step 3: Vacuum deletes old version's OOS */
-  err = oos_delete (thread_p, oos_vfid, old_oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, old_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Step 4: New version OOS still readable */
@@ -290,7 +290,7 @@ TEST_F (OosVacuumServer, BulkVacuumReclaimAndReuse)
   /* Vacuum: delete all OOS records */
   for (int i = 0; i < N; i++)
     {
-      err = oos_delete (thread_p, oos_vfid, oids[i]);
+      err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oids[i]);
       ASSERT_EQ (err, NO_ERROR);
     }
 
@@ -380,7 +380,7 @@ TEST_F (OosVacuumServer, MultiUpdateChurnVacuum)
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  /* Vacuum deletes old version */
-	  err = oos_delete (thread_p, oos_vfid, current_oids[i]);
+	  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, current_oids[i]);
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  current_oids[i] = new_oid;
