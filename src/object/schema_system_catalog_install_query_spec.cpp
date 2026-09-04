@@ -812,18 +812,9 @@ sm_define_view_index_spec (void)
 	    "WHEN 3 THEN 'INDEX IS IN ONLINE BUILDING' "
 	    "ELSE 'NULL' "
 	    "END AS [status], "
-          "CASE "
-            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[class_of].[owner].[name] "
-            "ELSE NULL "
-            "END AS [referential_index_class_owner_name], "
-          "CASE "
-            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[class_of].[class_name] "
-            "ELSE NULL "
-            "END AS [referential_index_class_name], "
-          "CASE "
-            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[index_name] "
-            "ELSE NULL "
-            "END AS [referential_index_name], "
+          "[ref_class].[owner].[name] AS [referential_index_class_owner_name], "
+          "[ref_class].[class_name] AS [referential_index_class_name], "
+          "[ref_pk].[index_name] AS [referential_index_name], "
           "CASE [i].[delete_rule] "
             "WHEN 0 THEN 'CASCADE' "
             "WHEN 1 THEN 'RESTRICT' "
@@ -855,6 +846,11 @@ sm_define_view_index_spec (void)
 	"FROM "
 	  /* CT_INDEX_NAME */
 	  "[%s] AS [i] "
+	  /* CT_CLASS_NAME */
+	  "LEFT OUTER JOIN [%s] AS [ref_class] ON [ref_class].[class_of] = [i].[referential_class] "
+	  /* CT_INDEX_NAME */
+	  "LEFT OUTER JOIN [%s] AS [ref_pk] "
+	    "ON [ref_pk].[class_of] = [ref_class] AND [ref_pk].[is_primary_key] = 1 "
 	"WHERE "
 	  "{'DBA'} SUBSETEQ ("
 	      "SELECT "
@@ -894,6 +890,8 @@ sm_define_view_index_spec (void)
 	    ")",            
 	CT_INDEXKEY_NAME,
         OPTION_DEDUPLICATE_MASK,
+	CT_INDEX_NAME,
+	CT_CLASS_NAME,
 	CT_INDEX_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,

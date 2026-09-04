@@ -395,21 +395,29 @@ const char *sm_define_view_key_column_usage_spec (void)
       "[idx_key].[key_attr_name] AS [column_name], "
       "([idx_key].[key_order] + 1) AS [ordinal_position], "
       "([ref_key].[key_order] + 1) AS [position_in_unique_constraint], "
-      "[idx].[referential_index].[class_of].[owner].[name] AS [referenced_table_schema], "
-      "[idx].[referential_index].[class_of].[class_name] AS [referenced_table_name], "
+      "[ref_class].[owner].[name] AS [referenced_table_schema], "
+      "[ref_class].[class_name] AS [referenced_table_name], "
       "[ref_key].[key_attr_name] AS [referenced_column_name] "
     "FROM "
       /* CT_INDEXKEY_NAME */
       "[%s] AS [idx_key] "
       /* CT_INDEX_NAME */
       "INNER JOIN [%s] AS [idx] ON [idx] = [idx_key].[index_of] "
+      /* CT_CLASS_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_class] ON [ref_class].[class_of] = [idx].[referential_class] "
+      /* CT_INDEX_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_idx] "
+        "ON [ref_idx].[class_of] = [ref_class] AND [ref_idx].[is_primary_key] = 1 "
       /* CT_INDEXKEY_NAME */
-      "LEFT OUTER JOIN [%s] AS [ref_key] ON [ref_key].[index_of] = [idx].[referential_index] AND [ref_key].[key_order] = [idx_key].[key_order] "
+      "LEFT OUTER JOIN [%s] AS [ref_key] "
+        "ON [ref_key].[index_of] = [ref_idx] AND [ref_key].[key_order] = [idx_key].[key_order] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
       "AND ([idx_key].[key_attr_name] IS NULL OR [idx_key].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN ") "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEXKEY_NAME,
+    CT_INDEX_NAME,
+    CT_CLASS_NAME,
     CT_INDEX_NAME,
     CT_INDEXKEY_NAME);
   // *INDENT-ON*
@@ -532,8 +540,8 @@ const char *sm_define_view_referential_constraints_spec (void)
       "[idx].[class_of].[owner].[name] AS [constraint_schema], "
       "[idx].[index_name] AS [constraint_name], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [unique_constraint_catalog], " /* string -> varchar(255) */
-      "[idx].[referential_index].[class_of].[owner].[name] AS [unique_constraint_schema], "
-      "[idx].[referential_index].[index_name] AS [unique_constraint_name], "
+      "[ref_class].[owner].[name] AS [unique_constraint_schema], "
+      "[ref_pk].[index_name] AS [unique_constraint_name], "
       /* SM_FK_MATCH_NONE, SM_FK_MATCH_PARTIAL, SM_FK_MATCH_FULL */
       "DECODE ([idx].[referential_match_option], %d, 'NONE', %d, 'PARTIAL', %d, 'FULL') AS [match_option], "
       /* SM_FOREIGN_KEY_RESTRICT, SM_FOREIGN_KEY_NO_ACTION, SM_FOREIGN_KEY_SET_NULL */
@@ -541,10 +549,15 @@ const char *sm_define_view_referential_constraints_spec (void)
       /* SM_FOREIGN_KEY_CASCADE, SM_FOREIGN_KEY_RESTRICT, SM_FOREIGN_KEY_NO_ACTION, SM_FOREIGN_KEY_SET_NULL */
       "DECODE ([idx].[delete_rule], %d, 'CASCADE', %d, 'RESTRICT', %d, 'NO ACTION', %d, 'SET NULL') AS [delete_rule], "
       "[idx].[class_of].[class_name] AS [table_name], "
-      "[idx].[referential_index].[class_of].[class_name] AS [referenced_table_name] "
+      "[ref_class].[class_name] AS [referenced_table_name] "
     "FROM "
       /* CT_INDEX_NAME */
       "[%s] AS [idx] "
+      /* CT_CLASS_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_class] ON [ref_class].[class_of] = [idx].[referential_class] "
+      /* CT_INDEX_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_pk] "
+        "ON [ref_pk].[class_of] = [ref_class] AND [ref_pk].[is_primary_key] = 1 "
     "WHERE "
       AUTH_CHECK_OBJECT_WRITE("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
       "AND [idx].[is_foreign_key] = 1",
@@ -558,6 +571,8 @@ const char *sm_define_view_referential_constraints_spec (void)
     SM_FOREIGN_KEY_RESTRICT,
     SM_FOREIGN_KEY_NO_ACTION,
     SM_FOREIGN_KEY_SET_NULL,
+    CT_INDEX_NAME,
+    CT_CLASS_NAME,
     CT_INDEX_NAME);
   // *INDENT-ON*
 
