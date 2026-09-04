@@ -79,7 +79,6 @@ class ServerEnv : public ::testing::Environment
 namespace test_oos_utils
 {
 
-
   inline std::string make_repeated_pattern_string (int size)
   {
     const std::string pattern = "ABCDEFGHIJK"; // pattern size is 11
@@ -103,7 +102,6 @@ namespace test_oos_utils
     return oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, static_cast<std::size_t> (recdes.length)), oid);
   }
 
-
   /* Builds the chain reference for oid from the identity stamp its head chunk currently carries.
    * Test-only shortcut: production callers take the stamp from the owning heap record's OOS inline
    * stub. Fails for an absent chunk, which keeps "reading a deleted chain errors" observable. */
@@ -113,7 +111,6 @@ namespace test_oos_utils
     ref_out.identity_stamp = NULL_LSA;
     return oos_get_identity_stamp (thread_p, oid, &ref_out.identity_stamp);
   }
-
 
   /* Deletes the chain at oid through the identity stamp its head chunk currently carries. Test-only
    * shortcut: production callers pass the reference parsed from the owning heap record's OOS inline

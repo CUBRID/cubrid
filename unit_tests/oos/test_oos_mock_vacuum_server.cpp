@@ -25,7 +25,7 @@
  * code path.
  *
  * For tests that exercise the real vacuum code path (vacuum_heap_oos_delete_within_sysop,
- * heap_recdes_get_oos_oids), see test_oos_vacuum_server.cpp.
+ * heap_recdes_get_oos_refs), see test_oos_vacuum_server.cpp.
  */
 
 #include "test_oos_server_common.hpp"

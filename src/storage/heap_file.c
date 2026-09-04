@@ -28369,8 +28369,12 @@ heap_recdes_get_oos_refs (const RECDES * recdes, OOS_REF_VECTOR & oos_refs)
 	      assert (false && "OID read from OOS slot is null — corrupted record?");
 	      return ER_FAILED;
 	    }
-	  (void) or_get_bigint (&buf, &err);
-	  DB_BIGINT packed_identity_stamp = or_get_bigint (&buf, &err);
+	  DB_BIGINT packed_identity_stamp = 0;
+	  (void) or_get_bigint (&buf, &err);	/* the full length is not needed here */
+	  if (err == NO_ERROR)
+	    {
+	      packed_identity_stamp = or_get_bigint (&buf, &err);
+	    }
 	  if (err != NO_ERROR)
 	    {
 	      assert (false && "or_get_bigint failed unexpectedly");

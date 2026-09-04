@@ -587,8 +587,8 @@ TEST (OosTest, OosInlineFormatWriteAndReadBack)
   test_oid.pageid = 42;
   test_oid.slotid = 7;
   test_oid.volid = 3;
-  DB_BIGINT test_length = 160 * 1024;
-  const LOG_LSA test_identity_stamp (0xC0FFEE, 42); /* 160 KB */
+  DB_BIGINT test_length = 160 * 1024; /* 160 KB */
+  const LOG_LSA test_identity_stamp (0xC0FFEE, 42);
 
   or_put_oid (&write_buf, &test_oid);
   or_put_bigint (&write_buf, test_length);
