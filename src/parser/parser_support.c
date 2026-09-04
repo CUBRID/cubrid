@@ -10723,9 +10723,13 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
  * Stream layout (all multi-byte fields via OR_BUF):
  *   version(byte = PT_CDT_VERSION)  node
  *   node := VALUE_TAG(int)  db_value(or_put_value, domain included)
- *         | OP_TAG(int)     op(int)  qualifier(int)  result domain  arity(int)  node*arity
- *         | FUNC_TAG(int)   fcode(int)  qualifier(int = 0)  result domain  arity(int)  node*arity
+ *         | OP_TAG(int)     op(int)  qualifier(int)  continued_case(int)  result domain  arity(int)  node*arity
+ *         | FUNC_TAG(int)   fcode(int)  qualifier(int = 0)  continued_case(int = 0)  result domain  arity(int)
+ *                          node*arity
  * A PT_FUNCTION_HOLDER wrapper is transparent: its held PT_FUNCTION is stored.
+ * continued_case is an unparse hint of PT_EXPR (CONCAT/CONCAT_WS/FIELD and the
+ * CASE/DECODE/COALESCE/LEAST/GREATEST chains); without it a rehydrated residual
+ * prints in a different form than the original expression.
  */
 #define PT_CDT_VERSION 1
 #define PT_CDT_TAG_VALUE 1	/* PT_VALUE */
@@ -10777,14 +10781,15 @@ pt_cdt_canonical_domain (TP_DOMAIN * domain)
 
 /*
  * pt_cdt_put_node_header () - emit the uniform OP/FUNC node header: tag,
- *	code, qualifier, canonical result domain, 32-bit alignment
+ *	code, qualifier, continued_case, canonical result domain, 32-bit alignment
  *   return: NO_ERROR or error code
  *
  * On overflow this returns ER_TF_BUFFER_OVERFLOW before anything is written 
  * past the buffer, which lets pt_cdt_serialize retry with a larger buffer.
  */
 static int
-pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, int tag, int code, int qualifier)
+pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, int tag, int code, int qualifier,
+			int continued_case)
 {
   TP_DOMAIN *domain;
   int rc;
@@ -10799,11 +10804,11 @@ pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, i
 
   /* everything written below plus the arity int the caller writes right
    * after this header */
-  int tag_code_qualifier_size = 3 * OR_INT_SIZE;
+  int header_ints_size = 4 * OR_INT_SIZE;	/* tag, code, qualifier, continued_case */
   int aligned_domain_size = DB_ALIGN (or_packed_domain_size (domain, 0), INT_ALIGNMENT);
   int arity_size = OR_INT_SIZE;
 
-  if (buf->ptr + tag_code_qualifier_size + aligned_domain_size + arity_size > buf->endptr)
+  if (buf->ptr + header_ints_size + aligned_domain_size + arity_size > buf->endptr)
     {
       return ER_TF_BUFFER_OVERFLOW;
     }
@@ -10811,6 +10816,7 @@ pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, i
   or_put_int (buf, tag);
   or_put_int (buf, code);
   or_put_int (buf, qualifier);
+  or_put_int (buf, continued_case);
   rc = or_put_domain (buf, domain, 0, 0);
   if (rc == NO_ERROR)
     {
@@ -10870,8 +10876,10 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
 	  return pt_cdt_put_node (parser, buf, node->info.expr.arg1);
 	}
 
+      /* continued_case is an unparse hint (e.g. whether CONCAT prints as a function call); preserve it so a
+       * rehydrated residual prints like the original expression */
       rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_OP, (int) node->info.expr.op,
-				   (int) node->info.expr.qualifier);
+				   (int) node->info.expr.qualifier, (int) node->info.expr.continued_case);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -10896,7 +10904,7 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
       return rc;
 
     case PT_FUNCTION:
-      rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_FUNC, (int) node->info.function.function_type, 0);
+      rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_FUNC, (int) node->info.function.function_type, 0, 0);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -11011,7 +11019,7 @@ static PT_NODE *
 pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 {
   int rc = NO_ERROR;
-  int tag, code, qualifier, arity, i;
+  int tag, code, qualifier, continued_case = 0, arity, i;
   int is_null = 0;
   TP_DOMAIN *domain = NULL;
   PT_NODE *node = NULL;
@@ -11052,6 +11060,10 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
     {
       qualifier = or_get_int (buf, &rc);
     }
+  if (rc == NO_ERROR)
+    {
+      continued_case = or_get_int (buf, &rc);
+    }
   if (rc != NO_ERROR)
     {
       return NULL;
@@ -11091,6 +11103,7 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 	}
       node->info.expr.op = (PT_OP_TYPE) code;
       node->info.expr.qualifier = (PT_MISC_TYPE) qualifier;
+      node->info.expr.continued_case = (short) continued_case;
       node->info.expr.arg1 = args[0];
       node->info.expr.arg2 = args[1];
       node->info.expr.arg3 = args[2];
