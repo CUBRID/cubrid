@@ -822,7 +822,7 @@ qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE ** vals
   bool hn;
 
   assert (tl != NULL && tl->finalized && tl->type_cnt == n);
-  assert (lens != NULL);
+  assert (lens != NULL || n == 0);	/* a zero-column list never allocates f_valp/f_len (INSERT ... SELECT inner block) */
   assert (tl->data_off[0] % QFILE_TUPLE_ALIGNMENT == 0 && tl->data_off[1] % QFILE_TUPLE_ALIGNMENT == 0);
 
 restart:
@@ -897,7 +897,7 @@ qfile_tuple_fill_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE *
   int i, w, off;
 
   assert (tl != NULL && tl->finalized && tl->type_cnt == n);
-  assert (lens != NULL);
+  assert (lens != NULL || n == 0);
 
   QFILE_PUT_TUPLE_LENGTH (out, size, has_null);
   off = tl->data_off[has_null ? 1 : 0];
