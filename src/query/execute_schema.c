@@ -2278,6 +2278,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   PT_NODE *node, *node2;
   const char *user_name, *password, *comment;
   const char *group_name, *member_name;
+  PT_MISC_TYPE login_capability;
   bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2386,7 +2387,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       goto end;
     }
 
-  /* Now treats optional password, group, member and comment of the created user */
+  /* Now treats optional password, login capability, group, member and comment of the created user */
 
   /* password */
   node = statement->info.create_user.password;
@@ -2394,6 +2395,17 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (password != NULL)
     {
       error = au_set_password_encrypt (user, password);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  /* login capability */
+  login_capability = statement->info.create_user.login_capability;
+  if (login_capability == PT_LOGIN || login_capability == PT_NOLOGIN)
+    {
+      error = au_set_user_loginable (user, login_capability == PT_LOGIN);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2563,6 +2575,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   const PT_ALTER_CODE alter_user_code = statement->info.alter_user.code;
   const char *user_name, *password, *comment;
   const char *member_name;
+  PT_MISC_TYPE login_capability;
   bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2599,9 +2612,9 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   set_savepoint = true;
 
   /*
-   * here, both password and comment are optional,
-   * either password or comment shall exist,
-   * csql_grammar denies the error case with the missing of both.
+   * here, password, login capability and comment are optional,
+   * at least one of them shall exist,
+   * csql_grammar denies the error case with the missing of all.
    */
 
   /* password */
@@ -2610,6 +2623,17 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     {
       password = IS_STRING (node) ? GET_STRING (node) : NULL;
       error = au_set_password_encrypt (user, password);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  /* login capability */
+  login_capability = statement->info.alter_user.login_capability;
+  if (login_capability == PT_LOGIN || login_capability == PT_NOLOGIN)
+    {
+      error = au_set_user_loginable (user, login_capability == PT_LOGIN);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -5485,6 +5509,7 @@ int
 do_drop_partitioned_class (MOP class_, int drop_sub_flag, bool is_cascade_constraints)
 {
   DB_OBJLIST *objs;
+  DB_OBJLIST *users_snapshot = NULL;
   SM_CLASS *smclass, *subclass;
   MOP delobj;
   int error = NO_ERROR;
@@ -5514,7 +5539,19 @@ do_drop_partitioned_class (MOP class_, int drop_sub_flag, bool is_cascade_constr
       goto fail_return;
     }
 
-  for (objs = smclass->users; objs;)
+  /* smclass->users is owned by the parent SM_CLASS, and sm_delete_class_mop () below can decache the parent
+   * (a client-side abort, or a re-fetch that re-caches it), which releases the whole class object through
+   * classobj_free_class () and frees the list with it. Walk a private copy instead; the MOPs it holds stay
+   * valid because a decache only clears MOP->object (CBRD-27053). */
+  users_snapshot = ml_copy (smclass->users);
+  if (users_snapshot == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_OBJLIST));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto fail_return;
+    }
+
+  for (objs = users_snapshot; objs;)
     {
       error = au_fetch_class (objs->op, &subclass, AU_FETCH_READ, AU_SELECT);
       if (error != NO_ERROR)
@@ -5543,6 +5580,11 @@ do_drop_partitioned_class (MOP class_, int drop_sub_flag, bool is_cascade_constr
   error = NO_ERROR;
 
 fail_return:
+  if (users_snapshot != NULL)
+    {
+      ml_free (users_snapshot);
+    }
+
   return error;
 }
 
@@ -8123,12 +8165,14 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   error = check_default_on_update_clause (parser, attribute);
   if (error != NO_ERROR)
     {
+      tp_domain_free (attr_db_domain);
       goto error_exit;
     }
 
   error = get_att_order_from_def (attribute, &add_first, &add_after_attr);
   if (error != NO_ERROR)
     {
+      tp_domain_free (attr_db_domain);
       goto error_exit;
     }
 
@@ -11991,6 +12035,10 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
     {
       attr_chg_properties->new_name_space = ID_SHARED_ATTRIBUTE;
     }
+  else if (attr_def->info.attr_def.attr_type == PT_META_ATTR)
+    {
+      attr_chg_properties->new_name_space = ID_CLASS_ATTRIBUTE;
+    }
 
   if (attr_def->info.attr_def.data_default != NULL)
     {
@@ -14924,6 +14972,18 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
 	{
 	  attr_name = old_name;
 	}
+    }
+
+  /* visibility can be set only on normal attributes; CREATE and ADD reject it at parse time, but for MODIFY/CHANGE
+   * the attribute's actual namespace is known only after build_attr_change_map(). This must precede the
+   * is_att_change_needed() early return: an explicit VISIBLE on an already visible attribute counts as "no change"
+   * and would silently succeed otherwise. */
+  if (attribute->info.attr_def.attr_invisible != PT_ATTR_INVISIBLE_UNSET && attr_chg_prop->name_space != ID_ATTRIBUTE)
+    {
+      PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_VISIBILITY, attr_name);
+      error = ER_PT_SEMANTIC;
+      goto exit;
     }
 
   if (!is_att_change_needed (attr_chg_prop))

@@ -7128,6 +7128,21 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       logpb_checkpoint_trans (chkpt_trans, act_tdes, ntrans, ntops, smallest_lsa);
     }
 
+  /* System worker transactions (e.g. online index loaders) must also hold
+   * smallest_lsa: recovery undo processes them too, so the log archive
+   * retention boundary derived from it may not skip their in-flight log.
+   */
+  // *INDENT-OFF*
+  log_system_tdes::map_all_tdes ([&smallest_lsa] (log_tdes & sys_tdes)
+    {
+      if (!LSA_ISNULL (&sys_tdes.head_lsa)
+	  && (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &sys_tdes.head_lsa)))
+	{
+	  LSA_COPY (&smallest_lsa, &sys_tdes.head_lsa);
+	}
+    });
+  // *INDENT-ON*
+
   /*
    * Reset the structure to the correct number of transactions and
    * recalculate the length
@@ -7667,6 +7682,7 @@ logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SES
   int attempt;
   int rv;
   bool continue_check;
+  bool save_check_interrupt;
 
   LOG_CS_ENTER (thread_p);
   LSA_COPY (&target_lsa, &log_Gl.hdr.append_lsa);
@@ -7712,7 +7728,10 @@ logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SES
 
       /* NULL_PAGEID means either the daemon won the race (the next attempt observes its result) or the
        * checkpoint failed (R stays below T and the bounded attempts run out). */
+      /* interrupts off like every other caller: an interrupt wake inside the pgbuf FLUSH wait aborts the flush */
+      save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
       (void) logpb_checkpoint (thread_p);
+      (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 
       rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
       LSA_COPY (&redo_lsa, &log_Gl.chkpt_redo_lsa);
