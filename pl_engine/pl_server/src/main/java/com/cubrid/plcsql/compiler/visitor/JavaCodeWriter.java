@@ -1562,6 +1562,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // StmtCursorFetch
     //
 
+    private static String[] tmplCheckSelectListLength =
+            new String[] {
+                "ResultSetMetaData rsmd_%'LEVEL'% = rs.getMetaData();",
+                "if (rsmd_%'LEVEL'% == null) {",
+                "  throw new SQL_ERROR(\"failed to get the result set meta data of the FETCH statement\");",
+                "}",
+                "if (%'INTO-VAR-COUNT'% != rsmd_%'LEVEL'%.getColumnCount()) {",
+                "  throw new SQL_ERROR(\"length of the SELECT list and the nuber of variables in the INTO clause do not match\");",
+                "}"
+            };
+
     private static String[] tmplStmtCursorFetch =
             new String[] {
                 "try { // cursor fetch",
@@ -1570,6 +1581,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  }",
                 "  ResultSet rs = %'CURSOR'%.rs;",
                 "  if (%'CURSOR'%.fetch()) {",
+                "    %'+OPT-CHECK-SELECT-LIST-LENGTH'%",
                 "    %'+SET-INTO-VARIABLES'%",
                 "  }",
                 "} catch (SQLException e) {",
@@ -1596,6 +1608,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             String resultStr;
             if (node.columnTypeList == null) {
+                // cursor is a SYS_REFCURSOR
                 resultStr = String.format("rs.getObject(%d)", i + 1);
             } else {
                 resultStr =
@@ -1618,13 +1631,28 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitStmtCursorFetch(StmtCursorFetch node) {
 
+        Object optCheckSelectListLength =
+                node.columnTypeList != null
+                        ? ""
+                        : new CodeTemplate(
+                                "Select list length check in StmtCursorFetch",
+                                Misc.UNKNOWN_LINE_COLUMN,
+                                tmplCheckSelectListLength,
+                                "%'LEVEL'%",
+                                Integer.toString(node.id.scope.level),
+                                "%'INTO-VAR-COUNT'%",
+                                Integer.toString(node.intoTargetList.size()));
+
         String[] setIntoTargets = getSetIntoTargetsCode(node);
+
         return new CodeTemplate(
                 "StmtCursorFetch",
                 Misc.getLineColumnOf(node.ctx),
                 tmplStmtCursorFetch,
                 "%'CURSOR'%",
                 node.id.javaCode(),
+                "%'+OPT-CHECK-SELECT-LIST-LENGTH'%",
+                optCheckSelectListLength,
                 "%'+SET-INTO-VARIABLES'%",
                 setIntoTargets);
     }
