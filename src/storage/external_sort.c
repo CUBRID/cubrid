@@ -6319,6 +6319,14 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   int parallel_num = 1;
 
+  /* A px scan worker running a dptr clone (CBRD-27205) must not nest another parallel sort: the
+   * reservation would only steal workers from the pool per outer row. Scoped to scan workers
+   * only; px_query workers (e.g. parallel MERGELIST inputs) keep their parallel sorts. */
+  if (thread_p->m_px_is_scan_worker)
+    {
+      return 1;
+    }
+
   if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT)
     {
       SORT_INFO *sort_info_p;

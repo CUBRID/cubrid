@@ -313,6 +313,7 @@ namespace cubthread
       pthread_mutex_t m_px_stats_mutex;
       UINT64 *m_px_stats;
       entry *m_px_orig_thread_entry;
+      bool m_px_is_scan_worker;	// running a parallel-scan worker task; blocks nested parallel sort/hash-join (CBRD-27205)
       bool m_uses_px_stats;
 
       bool m_is_private_lru_enabled;

@@ -130,6 +130,8 @@ namespace parallel_scan
   template <bool is_outptr_list>
   possible_flags sibling_check (ACCESS_SPEC_TYPE *arg);
 
+  bool dptr_subtree_worker_safe (XASL_NODE *arg, bool is_scan_level);
+
   void process_xasl_node_recursive (XASL_NODE *arg);
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg);
   void block_parallel_index_and_temp_in_subtree (XASL_NODE *arg);
@@ -529,6 +531,135 @@ namespace parallel_scan
     return result;
   }
 
+  /* memo for dptr_subtree_worker_safe; sentinel true breaks XASL ref cycles like xasl_check_cache. */
+  thread_local std::unordered_map<XASL_NODE *, bool> dptr_walk_cache;
+
+  /* Worker-execution validation of a non-linked dptr subtree (CBRD-27205). Workers run the whole
+   * subtree per row via qexec_execute_mainblock, so the main-tree relaxations do not apply:
+   * outptr_list must pass the strict check (check<true> downgrades SP to CANNOT_LIST_MERGE, but a
+   * dptr's select list is evaluated on the worker), scan_ptr levels need the strong spec check
+   * (sibling_check lets METHOD/DBLINK specs through as CANNOT_LIST_MERGE), and non-linked aptrs
+   * and group-by/aggregate internals are worker-executed too. Only CANNOT_PARALLEL_SCAN
+   * disqualifies: the subtree runs serially inside each worker, so merge flags do not apply. */
+  bool
+  dptr_subtree_worker_safe (XASL_NODE *arg, bool is_scan_level)
+  {
+    if (!arg)
+      {
+	return true;
+      }
+    auto ins = dptr_walk_cache.emplace (arg, true);
+    if (!ins.second)
+      {
+	return ins.first->second;
+      }
+
+    possible_flags flags = 0;
+    bool safe = true;
+
+    if (is_scan_level)
+      {
+	/* scan_ptr nodes are SCAN_PROC, which check<XASL_NODE> rejects wholesale; mirror its
+	 * content checks here, but with the strong access-spec check. */
+	if (arg->selected_upd_list || arg->scan_op_type != S_SELECT || arg->upd_del_class_cnt > 0
+	    || XASL_IS_FLAGED (arg, XASL_MULTI_UPDATE_AGG) || arg->bptr_list || arg->fptr_list || arg->connect_by_ptr)
+	  {
+	    safe = false;
+	  }
+	flags |= check<false> (arg->after_join_pred);
+	flags |= check<false> (arg->if_pred);
+	for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
+	  {
+	    flags |= check<false> (specp);
+	  }
+	for (ACCESS_SPEC_TYPE *specp = arg->merge_spec; specp; specp = specp->next)
+	  {
+	    flags |= check<false> (specp);
+	  }
+      }
+    else
+      {
+	flags |= check<false> (arg);
+      }
+
+    if (arg->outptr_list)
+      {
+	flags |= check<false> (arg->outptr_list->valptrp);
+      }
+
+    /* worker-evaluated too: rownum/orderby_num predicates and LIMIT expressions of the dptr
+     * subtree (check<XASL_NODE> skips their contents - they are coordinator-side in the main
+     * tree). An SP/serial expression here must force the serial fallback. */
+    flags |= check<false> (arg->instnum_pred);
+    flags |= check<false> (arg->ordbynum_pred);
+    flags |= check<false> (arg->limit_offset);
+    flags |= check<false> (arg->limit_row_count);
+
+    switch (arg->type)
+      {
+      case BUILDLIST_PROC:
+	if (arg->proc.buildlist.eptr_list || arg->proc.buildlist.a_eval_list)
+	  {
+	    /* analytic internals are outside check<>'s coverage; keep such plans serial. */
+	    safe = false;
+	  }
+	if (arg->proc.buildlist.g_outptr_list)
+	  {
+	    flags |= check<false> (arg->proc.buildlist.g_outptr_list->valptrp);
+	  }
+	flags |= check<false> (arg->proc.buildlist.g_regu_list);
+	flags |= check<false> (arg->proc.buildlist.g_having_pred);
+	flags |= check<false> (arg->proc.buildlist.g_grbynum_pred);
+	for (AGGREGATE_TYPE *aggp = arg->proc.buildlist.g_agg_list; aggp; aggp = aggp->next)
+	  {
+	    flags |= check<false> (aggp->operands);
+	  }
+	break;
+      case BUILDVALUE_PROC:
+	flags |= check<false> (arg->proc.buildvalue.having_pred);
+	flags |= check<false> (arg->proc.buildvalue.outarith_list);
+	for (AGGREGATE_TYPE *aggp = arg->proc.buildvalue.agg_list; aggp; aggp = aggp->next)
+	  {
+	    flags |= check<false> (aggp->operands);
+	  }
+	break;
+      case HASHJOIN_PROC:
+	/* build/probe inputs and their during-join key regus run on the worker; check<XASL_NODE>
+	 * does not descend into them. */
+	flags |= check<false> (arg->proc.hashjoin.outer.regu_list_pred);
+	flags |= check<false> (arg->proc.hashjoin.inner.regu_list_pred);
+	safe = safe && dptr_subtree_worker_safe (arg->proc.hashjoin.outer.xasl, false)
+	       && dptr_subtree_worker_safe (arg->proc.hashjoin.inner.xasl, false);
+	break;
+      case UNION_PROC:
+      case DIFFERENCE_PROC:
+      case INTERSECTION_PROC:
+	safe = safe && dptr_subtree_worker_safe (arg->proc.union_.left, false)
+	       && dptr_subtree_worker_safe (arg->proc.union_.right, false);
+	break;
+      case CTE_PROC:
+	safe = safe && dptr_subtree_worker_safe (arg->proc.cte.non_recursive_part, false)
+	       && dptr_subtree_worker_safe (arg->proc.cte.recursive_part, false);
+	break;
+      default:
+	break;
+      }
+
+    for (XASL_NODE *xaslp = arg->aptr_list; safe && xaslp; xaslp = xaslp->next)
+      {
+	safe = dptr_subtree_worker_safe (xaslp, false);
+      }
+    for (XASL_NODE *xaslp = arg->dptr_list; safe && xaslp; xaslp = xaslp->next)
+      {
+	safe = dptr_subtree_worker_safe (xaslp, false);
+      }
+    safe = safe && dptr_subtree_worker_safe (arg->scan_ptr, true);
+
+    safe = safe && !is_flag_set (flags, CANNOT_PARALLEL_SCAN);
+    dptr_walk_cache[arg] = safe;
+    return safe;
+  }
+
   template <bool is_outptr_list>
   possible_flags check (XASL_NODE *arg)
   {
@@ -643,25 +774,20 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp : dptrs)
       {
-	temp = sibling_check<false> (xaslp);
-	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
+	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
 	  {
-	    set_flag (result, CANNOT_PARALLEL_SCAN);
-	  }
-      }
-
-    if (dptrs.size() > 0)
-      {
-	std::unordered_set<XASL_NODE *> dptrs2 (dptrs);
-	for (XASL_NODE *xaslp : dptrs2)
-	  {
-	    if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
+	    temp = sibling_check<false> (xaslp);
+	    if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	      {
-		dptrs.erase (xaslp);
+		set_flag (result, CANNOT_PARALLEL_SCAN);
 	      }
 	  }
-	if (dptrs.size() > 0)
+	else if (!dptr_subtree_worker_safe (xaslp, false))
 	  {
+	    /* CBRD-27205: workers execute non-linked dptrs per row on their private clone
+	     * (px_scan_task::execute_nonlinked_dptr_list); anything the worker must not run falls
+	     * back to serial scan. A passing subtree still runs serially inside each worker
+	     * (process_xasl_node_recursive_force_cannot_parallel). */
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
       }
@@ -894,11 +1020,23 @@ namespace parallel_scan
 	      }
 	    else
 	      {
+		/* XASL_SNAPSHOT workers pre-evaluate after_join/if preds but never run non-linked
+		 * dptrs; a pred depending on a dptr value would misqualify rows (CBRD-27205). */
+		bool has_nonlinked_dptr = false;
+		for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
+		  {
+		    if (!XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
+		      {
+			has_nonlinked_dptr = true;
+			break;
+		      }
+		  }
+
 		/* list merge blocked → row-by-row fallback. */
 		for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 		  {
 		    ACCESS_SPEC_UNSET_FLAG (specp, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
-		    if (specp->type == TARGET_LIST
+		    if (has_nonlinked_dptr || specp->type == TARGET_LIST
 			|| (specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX))
 		      {
 			ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -1033,11 +1171,13 @@ scan_check_parallel_scan_possible (XASL_NODE *xasl)
 {
   parallel_scan::xasl_check_cache.clear ();
   parallel_scan::xasl_processing_set.clear ();
+  parallel_scan::dptr_walk_cache.clear ();
 
   parallel_scan::process_xasl_node_recursive (xasl);
 
   parallel_scan::xasl_check_cache.clear ();
   parallel_scan::xasl_processing_set.clear ();
+  parallel_scan::dptr_walk_cache.clear ();
 
   return NO_ERROR;
 }

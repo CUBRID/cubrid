@@ -143,6 +143,7 @@ namespace cubthread
     , m_px_stats_mutex ()
     , m_px_stats (NULL)
     , m_px_orig_thread_entry (NULL)
+    , m_px_is_scan_worker (false)
     , m_uses_px_stats (false)
     , m_is_private_lru_enabled (false)
     , m_holder_anchor (NULL)

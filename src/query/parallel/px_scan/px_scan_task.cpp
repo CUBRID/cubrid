@@ -53,6 +53,13 @@ namespace parallel_scan
 	  m_result_handler->signal_worker_done ();
 	}
     });
+    /* marks this pool thread as a px scan worker for the whole task so nested parallel sort /
+     * hash join stay serial (dptr clones run per outer row); px_query workers keep nesting. */
+    thread_ref.m_px_is_scan_worker = true;
+    auto scan_worker_flag_guard = make_scope_exit ([&thread_ref] ()
+    {
+      thread_ref.m_px_is_scan_worker = false;
+    });
     err_code = initialize (thread_ref);
     if (err_code != NO_ERROR)
       {
@@ -247,14 +254,34 @@ namespace parallel_scan
 
 		if (specp->type == TARGET_LIST)
 		  {
-		    assert_release_error (scan_info.list_id != NULL);
+		    /* A list fed by a dptr on this clone chain is (re)filled per row by THIS worker:
+		     * scan the clone's list_id. The coordinator's pre-execution list is only right for
+		     * aptr-produced lists (shared read-only); for a dptr it stays empty (CBRD-27205). */
+		    QFILE_LIST_ID *open_list_id = scan_info.list_id;
+		    XASL_NODE *src_xasl = specp->s.list_node.xasl_node;
+		    if (src_xasl != NULL)
+		      {
+			for (xasl_node *lv = m_xasl; lv != nullptr && open_list_id != src_xasl->list_id;
+			     lv = lv->scan_ptr)
+			  {
+			    for (xasl_node *dp = lv->dptr_list; dp != nullptr; dp = dp->next)
+			      {
+				if (dp == src_xasl)
+				  {
+				    open_list_id = src_xasl->list_id;
+				    break;
+				  }
+			      }
+			  }
+		      }
+		    assert_release_error (open_list_id != NULL);
 		    if (er_errid() != NO_ERROR)
 		      {
 			return er_errid();
 		      }
 		    err_code =
 			    scan_open_list_scan (&thread_ref, &specp->s_id, specp->s_id.grouped, specp->single_fetch, specp->s_dbval,xptr->val_list,
-						 m_vd,scan_info.list_id, specp->s.list_node.list_regu_list_pred,specp->where_pred,
+						 m_vd,open_list_id, specp->s.list_node.list_regu_list_pred,specp->where_pred,
 						 specp->s.list_node.list_regu_list_rest,specp->s.list_node.list_regu_list_build, specp->s.list_node.list_regu_list_probe,
 						 specp->s.list_node.hash_list_scan_yn,true);
 		    if (err_code != NO_ERROR)
@@ -264,7 +291,14 @@ namespace parallel_scan
 		  }
 		else if (specp->type == TARGET_CLASS)
 		  {
-		    if (xptr->scan_ptr == NULL)
+		    /* mirror serial fixed_scan_xasl: a dptr anywhere on the chain runs a whole
+		     * subquery between rows, so no page may stay fixed across it (CBRD-27205). */
+		    bool chain_has_dptr = false;
+		    for (xasl_node *cn = m_xasl; cn != nullptr && !chain_has_dptr; cn = cn->scan_ptr)
+		      {
+			chain_has_dptr = (cn->dptr_list != nullptr);
+		      }
+		    if (xptr->scan_ptr == NULL && !chain_has_dptr)
 		      {
 			fixed_scan = true;
 		      }
@@ -613,6 +647,21 @@ namespace parallel_scan
 
     m_scan_id = &m_xasl->spec_list->s_id;
 
+    /* Level-0 non-linked dptrs (correlated subqueries the serial qexec_intprt_fnc runs per row via
+     * qexec_execute_mainblock) will run on this worker's private clone: the full tree above is
+     * unpacked/cloned per worker, so each dptr subtree's list_id/single_tuple/status are worker-local
+     * and correlation regu vars resolve into this clone's val_list. scan_ptr-level dptrs need no
+     * extra handling; qexec_execute_scan already runs them on the clone.
+     * Reachable only when every non-linked dptr subtree passed dptr_subtree_worker_safe (). */
+    for (xasl_node *dptr = m_xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
+      {
+	if (!XASL_IS_FLAGED (dptr, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    m_run_nonlinked_dptr = true;
+	    break;
+	  }
+      }
+
     m_xasl_state = (xasl_state *) db_private_alloc (&thread_ref, sizeof (xasl_state));
     if (m_xasl_state == nullptr)
       {
@@ -642,6 +691,27 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
+  /* Per-row mirror of qexec_intprt_fnc's "evaluate dptr list" for the level-0 node: clear each dptr
+   * head with truncate, skip regu-linked ones (they run lazily via EXECUTE_REGU_VARIABLE_XASL), and
+   * run the rest on this worker's clone. */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  SCAN_CODE task<result_type, ST>::execute_nonlinked_dptr_list (cubthread::entry &thread_ref)
+  {
+    for (xasl_node *xptr = m_xasl->dptr_list; xptr != nullptr; xptr = xptr->next)
+      {
+	qexec_clear_head_lists_with_truncate (&thread_ref, xptr);
+	if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    continue;
+	  }
+	if (qexec_execute_mainblock (&thread_ref, xptr, m_xasl_state, NULL) != NO_ERROR)
+	  {
+	    return S_ERROR;
+	  }
+      }
+    return S_SUCCESS;
+  }
+
   /* Shared OID-drain helper: leaf-path + late-joiner. Returns S_END on completion, S_ERROR with stop=true on terminal failure. */
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
   SCAN_CODE task<result_type, ST>::drain_slot_oids (cubthread::entry &thread_ref, bool &stop)
@@ -664,6 +734,18 @@ namespace parallel_scan
 	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    stop = true;
 	    return S_ERROR;
+	  }
+
+	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	  {
+	    /* serial order: dptr execution before after_join_pred/if_pred (qexec_intprt_fnc). */
+	    if (m_run_nonlinked_dptr && execute_nonlinked_dptr_list (thread_ref) != S_SUCCESS)
+	      {
+		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		stop = true;
+		return S_ERROR;
+	      }
 	  }
 
 	if (m_xasl->after_join_pred)

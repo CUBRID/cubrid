@@ -452,6 +452,18 @@ extern "C"
       }
     else
       {
+	/* XASL_SNAPSHOT workers pre-evaluate after_join/if preds but never run non-linked dptrs
+	 * (only MERGEABLE/BUILDVALUE_OPT do); a pred depending on a dptr value would misqualify
+	 * rows. Reachable when XASL_TO_BE_CACHED unset MERGEABLE above; fall back serial (CBRD-27205). */
+	for (XASL_NODE *dptr = xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
+	  {
+	    if (!XASL_IS_FLAGED (dptr, XASL_LINK_TO_REGU_VARIABLE))
+	      {
+		worker_manager_p->release_workers ();
+		assert (scan_id->type == S_HEAP_SCAN);
+		return NO_ERROR;
+	      }
+	  }
 	scan_id->s.phsid.result_type = parallel_scan::RESULT_TYPE::XASL_SNAPSHOT;
       }
 
