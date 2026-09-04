@@ -263,7 +263,7 @@ qfile_slot_locate (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool * is_n
  *   c(in): layout of the column the body was stored in
  *   body/len(in): what qfile_slot_locate () / qfile_tuple_walk_next () returned for a bound column
  *   dom(in): decoding domain
- *   copy(in): readval copy flag; a SCRATCH body is always decoded with copy == true (value never aliases tuple bytes)
+ *   copy(in): readval copy flag, honoured for every column kind
  *   A SCRATCH body is decoded where it lies: the layout keeps it 4-aligned (qfile_col_layout_of_domain).
  */
 inline bool
@@ -283,16 +283,25 @@ qfile_col_read_body (const QFILE_COL_LAYOUT * c, const char *body, int len, cons
       or_init (&buf, (char *) body, len);
       return dom->type->data_readval (&buf, value, dom, -1, copy, NULL, 0);
     }
-  if (c->var_access == QFILE_VAR_DIRECT && dom->type->has_index_readval ())
+  or_init (&buf, (char *) body, len);
+  if (c->var_access == QFILE_VAR_DIRECT)
     {
-      or_init (&buf, (char *) body, len);
-      return dom->type->index_readval (&buf, value, dom, len, copy, NULL, 0);
+      /* index_* encoding, unaligned. A decoding domain without index_readval is a regu the compiler left unresolved
+       * (DB_TYPE_NULL: reads nothing, yields NULL; DB_TYPE_VARIABLE): its data_readval is applied as with the old
+       * format and as develop did. */
+      if (dom->type->has_index_readval ())
+	{
+	  return dom->type->index_readval (&buf, value, dom, len, copy, NULL, 0);
+	}
+      assert (TP_DOMAIN_TYPE (dom) == DB_TYPE_NULL || TP_DOMAIN_TYPE (dom) == DB_TYPE_VARIABLE);
+      return dom->type->data_readval (&buf, value, dom, -1, copy, NULL, 0);
     }
 
-  /* VAR/SCRATCH: 4-aligned in the tuple, decoded in place; copy == true keeps the value from aliasing tuple bytes */
+  /* VAR/SCRATCH: 4-aligned in the tuple, decoded in place. The caller's copy flag is honoured as with any other
+   * column: copy == false lets the value reference the tuple bytes for as long as the tuple is pinned (a SET stays a
+   * disk-set reference instead of being materialized element by element). */
   assert (PTR_ALIGN (body, QFILE_TUPLE_ALIGNMENT) == body);
-  or_init (&buf, (char *) body, len);
-  return dom->type->data_readval (&buf, value, dom, -1, true, NULL, 0);
+  return dom->type->data_readval (&buf, value, dom, -1, copy, NULL, 0);
 }
 
 /*
