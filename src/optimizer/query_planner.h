@@ -110,6 +110,14 @@ typedef enum
   QO_PLAN_SKIP_ORDERBY_CAN_USE = -2,
 } QO_PLAN_SKIP_ORDERBY_OPT;
 
+typedef enum
+{
+  QO_PLAN_SKIP_GROUPBY_USE = 1,
+  QO_PLAN_SKIP_GROUPBY_NO = 0,
+  QO_PLAN_SKIP_GROUPBY_CANNOT_USE = -1,
+  QO_PLAN_SKIP_GROUPBY_CAN_USE = -2,
+} QO_PLAN_SKIP_GROUPBY_OPT;
+
 #define DEFAULT_NULL_SELECTIVITY (double) 0.01
 #define DEFAULT_EXISTS_SELECTIVITY (double) 0.1
 #define DEFAULT_SELECTIVITY (double) 0.1
@@ -235,6 +243,7 @@ struct qo_plan
   QO_PLAN_PARALLEL_OPT_USE parallel_opt_use;	/* used to determine if this plan uses parallel opt */
   QO_PLAN_MULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this plan uses multi range opt */
   QO_PLAN_SKIP_ORDERBY_OPT skip_orderby_opt;	/* used to determine if this plan uses skip orderby opt */
+  QO_PLAN_SKIP_GROUPBY_OPT skip_groupby_opt;	/* used to determine if this plan uses skip groupby opt */
   // *INDENT-OFF*
   cubxasl::analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
   // *INDENT-ON*
