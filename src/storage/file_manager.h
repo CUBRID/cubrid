@@ -50,6 +50,7 @@ typedef enum
   FILE_VACUUM_DATA,
   FILE_QUERY_AREA,
   FILE_TEMP,
+  FILE_OOS,
   FILE_UNKNOWN_TYPE,
   FILE_LAST = FILE_UNKNOWN_TYPE
 } FILE_TYPE;
@@ -93,6 +94,14 @@ struct file_ovf_heap_des
   OID class_oid;
 };
 
+/* OOS file descriptor */
+typedef struct file_oos_des FILE_OOS_DES;
+struct file_oos_des
+{
+  HFID hfid;
+  OID class_oid;
+};
+
 /* Btree file descriptor */
 typedef struct file_btree_des FILE_BTREE_DES;
 struct file_btree_des
@@ -131,6 +140,7 @@ union file_descriptors
 {
   FILE_HEAP_DES heap;
   FILE_OVF_HEAP_DES heap_overflow;
+  FILE_OOS_DES heap_oos;
   FILE_BTREE_DES btree;
   FILE_OVF_BTREE_DES btree_key_overflow;	/* TODO: rename FILE_OVF_BTREE_DES */
   FILE_EHASH_DES ehash;
@@ -245,6 +255,7 @@ extern int file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID 
 extern int file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user_pages_out);
 extern int file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * class_oid, int *n_data_pages_out);
 extern DISK_ISVALID file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup);
+extern DISK_ISVALID file_is_vpid_in_file (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup);
 extern int file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out);
 extern int file_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp);
 extern int file_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE latch_mode,

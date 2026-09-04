@@ -526,6 +526,8 @@ struct log_tdes
   struct log_repl *repl_records;	/* replication records */
   LOG_LSA repl_insert_lsa;	/* insert or mvcc update target lsa */
   LOG_LSA repl_update_lsa;	/* in-place update target lsa */
+  LOG_LSA_QUEUE oos_insert_lsa_queue;	/* for oos replication log */
+  bool oos_suppress_insert_lsa_queueing;	/* skip auto queueing of chunk LSAs during multi-chunk OOS logging */
   void *first_save_entry;	/* first save entry for the transaction */
 
   int suppress_replication;	/* suppress writing replication logs when flag is set */

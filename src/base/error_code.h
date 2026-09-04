@@ -1773,7 +1773,17 @@
 
 #define ER_AU_CANT_ALTER_LOGIN                      -1378
 
-#define ER_LAST_ERROR                               -1379
+#define ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE       -1379
+
+#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1380
+
+#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1381
+
+#define ER_HEAP_OOS_CORRUPTED_RECORD                -1382
+
+#define ER_HEAP_OOS_INVALID_ARGUMENT                -1383
+
+#define ER_LAST_ERROR                               -1384
 
 
 

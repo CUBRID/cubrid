@@ -112,6 +112,7 @@ typedef enum
   LC_FLUSH_INSERT,
   LC_FLUSH_INSERT_PRUNE,
   LC_FLUSH_INSERT_PRUNE_VERIFY,
+  LC_FLUSH_INSERT_OOS,
   LC_FLUSH_DELETE,
   LC_FLUSH_UPDATE,
   LC_FLUSH_UPDATE_PRUNE,
@@ -119,9 +120,13 @@ typedef enum
   LC_FETCH_VERIFY_CHN
 } LC_COPYAREA_OPERATION;
 
+/* TODO:
+ *    Handle LC_FLUSH_INSERT_OOS in LC_IS_FLUSH_INSERT usage to prevent malfunctions.
+ *    Post-POC, refactor by separating macros or implementing exception handling for OOS call sites.
+ */
 #define LC_IS_FLUSH_INSERT(operation) \
   (operation == LC_FLUSH_INSERT || operation == LC_FLUSH_INSERT_PRUNE \
-   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY)
+   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY || operation == LC_FLUSH_INSERT_OOS)
 
 #define LC_IS_FLUSH_UPDATE(operation) \
   (operation == LC_FLUSH_UPDATE || operation == LC_FLUSH_UPDATE_PRUNE \

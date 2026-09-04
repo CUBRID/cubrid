@@ -407,6 +407,9 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_PUT_OFFSET(ptr, val) \
   OR_PUT_BIG_VAR_OFFSET ((ptr), (val))
 
+#define OR_PUT_LAST_VAR_OFFSET(ptr, val) \
+  OR_PUT_OFFSET ((ptr), OR_SET_VAR_LAST_ELEMENT (val))
+
 #define OR_GET_OFFSET(ptr) \
   OR_GET_BIG_VAR_OFFSET ((ptr))
 
@@ -428,15 +431,41 @@ OR_PUT_DOUBLE (char *ptr, double val)
   } while (0)
 
 #define OR_GET_OFFSET_INTERNAL(ptr, offset_size) \
-  ((offset_size) == OR_BYTE_SIZE) \
-   ? OR_GET_BYTE ((ptr)) \
-   : (((offset_size) == OR_SHORT_SIZE) \
-      ? OR_GET_SHORT ((ptr)) : OR_GET_INT ((ptr)))
+  OR_GET_VAR_OFFSET ( \
+    ((offset_size) == OR_BYTE_SIZE) \
+     ? OR_GET_BYTE ((ptr)) \
+     : (((offset_size) == OR_SHORT_SIZE) \
+        ? OR_GET_SHORT ((ptr)) : OR_GET_INT ((ptr))))
 
 /*
  * VARIABLE OFFSET TABLE ACCESSORS
  * The variable offset table is present in the headers of objects and sets.
  */
+
+
+/*
+ * Per-variable-column flags stored in each variable offset table entry.
+ * OR_VAR_BIT_OOS identifies one OOS inline stub; OR_RECORD_FLAG_HAS_OOS is
+ * the separate record-level summary flag in the first representation word.
+ */
+
+#define OR_VAR_BIT_OOS 0x1
+#define OR_VAR_BIT_LAST_ELEMENT 0x2
+#define OR_VAR_FLAG_MASK 0x3
+
+#define OR_SET_VAR_OOS(length) ((int) (length) | OR_VAR_BIT_OOS)
+#define OR_SET_VAR_LAST_ELEMENT(length) ((int) (length) | OR_VAR_BIT_LAST_ELEMENT)
+
+#define OR_GET_VAR_FLAG(length) ((int) (length) & OR_VAR_FLAG_MASK)
+#define OR_GET_VAR_OFFSET(length) ((int) (length) & (~OR_VAR_FLAG_MASK))
+
+#define OR_IS_OOS(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_OOS)
+#define OR_IS_LAST_ELEMENT(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_LAST_ELEMENT)
+
+/* OOS inline size: OOS OID (8 bytes) + OOS length (8 bytes) */
+#define OR_OOS_INLINE_SIZE (OR_OID_SIZE + OR_BIGINT_SIZE)
+
+/* variable offset */
 
 #define OR_VAR_TABLE_SIZE(vars) \
   (OR_VAR_TABLE_SIZE_INTERNAL (vars, BIG_VAR_OFFSET_SIZE))
@@ -453,10 +482,10 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 #define OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, index, offset_size) \
   ((offset_size == OR_BYTE_SIZE) \
-   ? (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
+   ? (OR_GET_VAR_OFFSET (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
    : ((offset_size == OR_SHORT_SIZE) \
-      ? (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
-      : (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))))
+      ? (OR_GET_VAR_OFFSET (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
+      : (OR_GET_VAR_OFFSET (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))))))
 
 #define OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(table, index, offset_size) \
   (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (table, (index) + 1, offset_size) \
@@ -552,11 +581,17 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 #define OR_GET_MVCC_CHN(ptr) (OR_GET_INT ((char *) (ptr) + OR_CHN_OFFSET))
 
-#define OR_GET_MVCC_FLAG(ptr) \
+#define OR_GET_RECORD_FLAGS(ptr) \
   (((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET)) \
-    >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK)
+    >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_FLAG_MASK)
 
-#define OR_GET_MVCC_REPID_AND_FLAG(ptr) \
+#define OR_GET_MVCC_FLAGS(ptr) \
+  (OR_GET_RECORD_FLAGS (ptr) & OR_RECORD_MVCC_FLAG_MASK)
+
+#define OR_RECORD_HAS_OOS(ptr) \
+  ((OR_GET_RECORD_FLAGS (ptr) & OR_RECORD_FLAG_HAS_OOS) != 0)
+
+#define OR_GET_RECORD_REPID_AND_FLAGS(ptr) \
   (OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET))
 
 /* VARIABLE OFFSET TABLE ACCESSORS */
@@ -1069,9 +1104,9 @@ extern int or_rep_id (RECDES * record);
 extern int or_set_rep_id (RECDES * record, int repid);
 extern int or_chn (RECDES * record);
 extern int or_replace_chn (RECDES * record, int chn);
-extern int or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error);
-extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit,
-					int variable_offset_size);
+extern int or_get_record_repid_and_flags (OR_BUF * buf, int *error);
+extern int or_set_record_repid_and_flags (OR_BUF * buf, int record_flags, int repid, int bound_bit,
+					  int variable_offset_size);
 extern char *or_class_name (RECDES * record);
 
 /* Pointer based decoding functions */
@@ -1309,8 +1344,6 @@ STATIC_INLINE int or_put_big_var_offset (OR_BUF * buf, int num) __attribute__ ((
 STATIC_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int or_get_big_var_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size) __attribute__ ((ALWAYS_INLINE));
 
 /* Data unpacking functions */
@@ -2537,21 +2570,15 @@ or_put_big_var_offset (OR_BUF * buf, int num)
 }
 
 STATIC_INLINE int
-or_get_big_var_offset (OR_BUF * buf, int *error)
-{
-  return or_get_int (buf, error);
-}
-
-STATIC_INLINE int
 or_put_offset (OR_BUF * buf, int num)
 {
   return or_put_big_var_offset (buf, num);
 }
 
 STATIC_INLINE int
-or_get_offset (OR_BUF * buf, int *error)
+or_put_last_var_offset (OR_BUF * buf, int num)
 {
-  return or_get_big_var_offset (buf, error);
+  return or_put_offset (buf, OR_SET_VAR_LAST_ELEMENT (num));
 }
 
 STATIC_INLINE int
@@ -2575,19 +2602,23 @@ or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
 STATIC_INLINE int
 or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
 {
+  int val;
+
   if (offset_size == OR_BYTE_SIZE)
     {
-      return or_get_byte (buf, error);
+      val = or_get_byte (buf, error);
     }
   else if (offset_size == OR_SHORT_SIZE)
     {
-      return or_get_short (buf, error);
+      val = or_get_short (buf, error);
     }
   else
     {
       assert (offset_size == OR_INT_SIZE);
-      return or_get_int (buf, error);
+      val = or_get_int (buf, error);
     }
+
+  return OR_GET_VAR_OFFSET (val);
 }
 
 /*

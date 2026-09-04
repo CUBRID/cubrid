@@ -21,6 +21,7 @@
 # - some: cmake -DUNIT_TEST_ABC=ON -DUNIT_TEST_XYZ=ON <path>
 
 project(Test)
+enable_testing()
 
 set(TEST_COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/common)
 
@@ -39,6 +40,7 @@ option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
+option (UNIT_TEST_OOS "Unit testing: oos")
 
 message("  unit_tests/...")
 
@@ -57,6 +59,13 @@ externalproject_add(${CATCH2_TARGET}
 set (CATCH2_DIR ${CMAKE_BINARY_DIR}/unit_tests/catch2-prefix/src/catch2)
 include_directories(${CATCH2_DIR}/single_include)
 list(APPEND TESTS_EXTERNAL_TARGETS ${CATCH2_TARGET})
+
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/52eb8108c5bdec04579160ae17225d66034bd723.zip
+)
+FetchContent_MakeAvailable(googletest)
 
 message("   common")
 add_subdirectory(common)
@@ -108,6 +117,11 @@ if (UNIT_TESTS OR UNIT_TEST_DOUBLE_WRITE_BUFFER)
   message("    double_write_buffer")
   add_subdirectory(double_write_buffer)
 endif(UNIT_TESTS OR UNIT_TEST_DOUBLE_WRITE_BUFFER)
+
+if (UNIT_TESTS OR UNIT_TEST_OOS)
+  message("    oos")
+  add_subdirectory(oos)
+endif(UNIT_TESTS OR UNIT_TEST_OOS)
 
 #[[
 TODO compilation fails
