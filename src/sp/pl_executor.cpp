@@ -42,7 +42,7 @@ namespace cubpl
 {
   using namespace cubmethod;
 
-  invoke_java::invoke_java (int tid, pl_signature *sig, bool tc, bool no_sql)
+  invoke_java::invoke_java (int tid, const pl_signature *sig, bool tc, bool no_sql)
     : tran_id (tid)
   {
     signature.assign (sig->ext.sp.target_class_name).append (".").append (sig->ext.sp.target_method_name);
@@ -50,7 +50,7 @@ namespace cubpl
     lang = sig->type;
     result_type = sig->result_type;
 
-    pl_arg &arg = sig->arg;
+    const pl_arg &arg = sig->arg;
     num_args = arg.arg_size;
     arg_mode.resize (num_args);
     arg_type.resize (num_args);
@@ -115,7 +115,7 @@ namespace cubpl
 
 
 //////////////////////////////////////////////////
-  executor::executor (pl_signature &sig)
+  executor::executor (const pl_signature &sig)
     : m_sig (sig)
   {
     session *sess = get_session ();
@@ -1016,7 +1016,7 @@ exit:
     db_make_null (&res);
     unpacker.unpack_all (attr_name);
 
-    OID *code_oid = &m_sig.ext.sp.code_oid;
+    const OID *code_oid = &m_sig.ext.sp.code_oid;
     if (OID_ISNULL (code_oid))
       {
 	error = ER_FAILED;

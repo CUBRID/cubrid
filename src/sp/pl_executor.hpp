@@ -39,7 +39,7 @@ namespace cubpl
   struct invoke_java : public cubpacking::packable_object
   {
     invoke_java () = delete;
-    invoke_java (int tran_id, pl_signature *sig, bool tc, bool no_sql);
+    invoke_java (int tran_id, const pl_signature *sig, bool tc, bool no_sql);
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -67,7 +67,7 @@ namespace cubpl
   {
     public:
       executor () = delete; // Not DefaultConstructible
-      executor (pl_signature &sig);
+      executor (const pl_signature &sig);
 
       executor (executor &&other) = delete; // Not MoveConstructible
       executor (const executor &copy) = delete; // Not CopyConstructible
@@ -91,7 +91,7 @@ namespace cubpl
 
     private:
       execution_stack *m_stack;
-      pl_signature &m_sig;
+      const pl_signature &m_sig;	// read-only: px workers share the caller's signature
 
       std::vector <std::reference_wrapper <DB_VALUE>> m_args;
       std::vector <DB_VALUE> m_out_args;

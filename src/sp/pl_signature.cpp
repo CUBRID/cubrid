@@ -386,7 +386,7 @@ namespace cubpl
   }
 
   bool
-  pl_signature::has_args ()
+  pl_signature::has_args () const
   {
     return arg.arg_size > 0;
   }

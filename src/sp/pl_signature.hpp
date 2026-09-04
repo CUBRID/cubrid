@@ -106,7 +106,7 @@ namespace cubpl
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-    bool has_args ();
+    bool has_args () const;
 
     pl_signature ();
     ~pl_signature () override;
