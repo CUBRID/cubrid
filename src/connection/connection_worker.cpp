@@ -452,8 +452,32 @@ namespace cubconn::connection
       {
 	m_thread.join ();
       }
-    ::close (m_eventfd);
-    ::close (m_timerfd);
+
+    /* release the dummy contexts registered for m_eventfd and m_timerfd.
+     * they are not tracked in m_context, so nothing else releases them.
+     */
+    for (int i = 0; i < DIM (m_eventfd_contexts); i++)
+      {
+	if (m_eventfd_contexts[i])
+	  {
+	    (void) m_events.remove_descriptor ((i == 0) ? m_eventfd : m_timerfd);
+	    /* m_conn is not a real connection entry. see eventfd_register (). */
+	    if (m_eventfd_contexts[i]->m_conn)
+	      {
+		delete reinterpret_cast<int *> (m_eventfd_contexts[i]->m_conn);
+	      }
+	    delete m_eventfd_contexts[i];
+	  }
+      }
+
+    if (m_eventfd != -1)
+      {
+	::close (m_eventfd);
+      }
+    if (m_timerfd != -1)
+      {
+	::close (m_timerfd);
+      }
 
     assert (m_context.size () == 0);
   }
@@ -1004,10 +1028,20 @@ retry:
     css_conn_entry *conn;
 
     ctx = new context ();
-    conn = reinterpret_cast<css_conn_entry *> (new int { fd });
-    if (!ctx || !conn)
+    if (!ctx)
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_register: failed to allocate memory\n");
+	return false;
+      }
+
+    /* the eventfd has no connection entry. keep the descriptor itself in m_conn so that
+     * ctx->m_conn->fd reads back the eventfd (fd is the first member of css_conn_entry).
+     */
+    conn = reinterpret_cast<css_conn_entry *> (new int { fd });
+    if (!conn)
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_register: failed to allocate memory\n");
+	delete ctx;
 	return false;
       }
     ctx->m_conn = conn;
@@ -1016,10 +1050,13 @@ retry:
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_register: add_descriptor failed\n");
 
+	delete reinterpret_cast<int *> (conn);
 	delete ctx;
-	delete conn;
 	return false;
       }
+
+    /* epoll holds ctx as its user data. release it in the destructor. */
+    m_eventfd_contexts[ (fd == m_eventfd) ? 0 : 1] = ctx;
 
     return true;
   }

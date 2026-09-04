@@ -313,6 +313,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
+  ${QUERY_DIR}/like_match_lockstep.i
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
   ${QUERY_DIR}/query_hash_join.h
@@ -401,10 +402,12 @@ set(SP_HEADERS
 
 set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_checker.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.cpp
   )
 
 set(PARALLEL_SCAN_HEADERS
   ${PARALLEL_SCAN_DIR}/px_scan_checker.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -785,6 +788,7 @@ target_link_libraries(cubridsa
 if(UNIX)
   target_include_directories(cubridsa PUBLIC ${TBB_INCLUDES})
   target_link_libraries(cubridsa PRIVATE ${TBB_LIBS})
+  target_link_options(cubridsa PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
   add_dependencies(cubridsa ${TBB_TARGETS})
 endif(UNIX)
 

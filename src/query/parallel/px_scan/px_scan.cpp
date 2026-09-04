@@ -36,6 +36,9 @@
 #include "px_parallel.hpp"			/* parallel_query::compute_parallel_degree */
 #include "list_file.h"				/* qfile_close_list, qfile_destroy_list */
 #include "heap_file.h"				/* heap_attrinfo_end, heap_get_num_data_pages */
+#include "file_manager.h"			/* file_get_num_user_pages */
+#include "system_parameter.h"			/* prm_get_integer_value */
+#include "thread_manager.hpp"			/* cubthread::system_core_count */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -384,10 +387,9 @@ extern "C"
 	    return NO_ERROR;
 	  }
 
+	assert (thread_p->private_heap_id != 0);
 	if (oid_is_system_class (class_oid)
-	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed
-	    /* private_heap_id==0 means not main thread; parallel heap scan requires main thread. */
-	    || thread_p->private_heap_id == 0)
+	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed)
 	  {
 	    /* parallel-thread heap scan not supported */
 	    ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -854,11 +856,7 @@ extern "C"
 
     scan_id->type = S_LIST_SCAN;
 
-    if (thread_p->private_heap_id == 0)
-      {
-	/* not main thread; cannot use parallel list scan */
-	return NO_ERROR;
-      }
+    assert (thread_p->private_heap_id != 0);
 
     /* DML reads val_list directly from scan_id; result handler does not populate it as DML expects. */
     if (xasl->type == INSERT_PROC || xasl->type == UPDATE_PROC
@@ -1306,11 +1304,7 @@ extern "C"
     /* clear stale pending from previous open (e.g., partition pruning re-open in qexec_next_scan_block_iterations). */
     scan_clear_parallel_index_pending (thread_p, scan_id);
 
-    if (thread_p->private_heap_id == 0)
-      {
-	/* not main thread; cannot use parallel index scan */
-	return NO_ERROR;
-      }
+    assert (thread_p->private_heap_id != 0);
 
     /* DML reads val_list directly; parallel scan does not populate it the same way */
     if (xasl->type == INSERT_PROC || xasl->type == UPDATE_PROC
@@ -1383,8 +1377,35 @@ extern "C"
     assert (xasl != nullptr);
     assert (vd != nullptr);
 
-    /* index scan degree set client-side by optimizer; trust spec->num_parallel_threads verbatim. */
+    /* index scan degree set client-side by optimizer; re-gated below by actual index size and core/page limits. */
     num_parallel_threads = spec->num_parallel_threads;
+    if (num_parallel_threads < 2)
+      {
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
+      }
+
+    /* server-side gate: actual index size (user pages of the b-tree file; overflow files excluded) */
+    INDX_INFO *indx_info = scan_id->s.isid.indx_info;
+    if (indx_info == nullptr)
+      {
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
+      }
+    int num_index_pages;
+    error = file_get_num_user_pages (thread_p, &indx_info->btid.vfid, &num_index_pages);
+    if (error != NO_ERROR)
+      {
+	assert_release_error (er_errid () != NO_ERROR);
+	return er_errid ();
+      }
+    if (num_index_pages < prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD))
+      {
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
+      }
+    num_parallel_threads = MIN (num_parallel_threads, (int) cubthread::system_core_count ());
+    num_parallel_threads = MIN (num_parallel_threads, num_index_pages);
     if (num_parallel_threads < 2)
       {
 	assert (scan_id->type == S_INDX_SCAN);
@@ -1987,6 +2008,9 @@ namespace parallel_scan
 	    return S_END;
 	  }
 	  break;
+	  case parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED:
+	    /* benign early-stop: quota met, merged list already holds the first N rows. */
+	    break;
 	  default:
 	    break;
 	  }

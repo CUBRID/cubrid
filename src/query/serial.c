@@ -156,8 +156,13 @@ static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACH
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
 					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
 					const OID * serial_oidp, DB_VALUE * key_val);
+static int serial_get_nth_value_internal (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val,
+					  DB_VALUE * max_val, DB_VALUE * cyclic, int nth, DB_VALUE * result_val,
+					  bool clamp_block);
 static int serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
 				 DB_VALUE * cyclic, int nth, DB_VALUE * result_val);
+static int serial_reserve_block_end (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
+				     DB_VALUE * cyclic, int nth, DB_VALUE * result_val);
 static void serial_set_cache_entry (SERIAL_CACHE_ENTRY * entry, DB_VALUE * inc_val, DB_VALUE * cur_val,
 				    DB_VALUE * min_val, DB_VALUE * max_val, DB_VALUE * started, DB_VALUE * cyclic,
 				    DB_VALUE * last_val, int cached_num);
@@ -204,6 +209,92 @@ xserial_get_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const
 	}
     }
 
+  return ret;
+}
+
+/*
+ * xserial_get_cached_num () - read a serial's cache block size (cached_num) from its _db_serial row.
+ *   return: NO_ERROR, or ER_code
+ *   cached_num(out)  : the serial's cached_num (0 when the serial has no cached_num column)
+ *   serial_oidp(in)  : OID of the _db_serial row
+ *
+ * The AUTO_INCREMENT insert path caches this on the attribute representation so it can pass the
+ * serial's real cached_num to xserial_get_next_value without a per-row catalog lookup.
+ */
+int
+xserial_get_cached_num (THREAD_ENTRY * thread_p, int *cached_num, const OID * serial_oidp)
+{
+  int ret = NO_ERROR;
+  HEAP_SCANCACHE scan_cache;
+  SCAN_CODE scan;
+  RECDES recdesc = RECDES_INITIALIZER;
+  HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
+  ATTR_ID attrid;
+  DB_VALUE *val;
+  OID serial_class_oid;
+
+  *cached_num = 0;
+
+  oid_get_serial_oid (&serial_class_oid);
+  heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
+
+  /* get record into record desc */
+  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  if (scan != S_SUCCESS)
+    {
+      if (er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, serial_oidp->volid, serial_oidp->pageid,
+		  serial_oidp->slotid);
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
+	}
+      goto exit_on_error;
+    }
+
+  /* retrieve the cached_num attribute */
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CACHED_NUM_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+  if (attrid != NOT_FOUND)
+    {
+      ret = heap_attrinfo_start (thread_p, &serial_class_oid, 1, &attrid, &attr_info);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      attr_info_p = &attr_info;
+
+      ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, attr_info_p);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      val = heap_attrinfo_access (attrid, attr_info_p);
+      *cached_num = db_get_int (val);
+
+      heap_attrinfo_end (thread_p, attr_info_p);
+      attr_info_p = NULL;
+    }
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  if (attr_info_p != NULL)
+    {
+      heap_attrinfo_end (thread_p, attr_info_p);
+    }
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  ret = (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
   return ret;
 }
 
@@ -401,6 +492,8 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 
   assert (1 <= num_alloc);
 
+  db_make_null (&next_val);
+
   /* check if cached numbers were already exhausted */
   if (num_alloc == 1)
     {
@@ -420,6 +513,10 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
       error =
 	serial_get_nth_value (&entry->inc_val, &entry->cur_val, &entry->min_val, &entry->max_val, &entry->cyclic,
 			      num_alloc, &next_val);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
 
       error = numeric_db_value_compare (&next_val, &entry->last_cached_val, &cmp_result);
       if (error != NO_ERROR)
@@ -437,24 +534,41 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
   /* consumed all cached value */
   if (exhausted == true)
     {
+      DB_VALUE new_last_cached_val;
+
+      db_make_null (&new_last_cached_val);
+
       nturns = CEIL_PTVDIV (num_alloc, entry->cached_num);
 
       error =
-	serial_get_nth_value (&entry->inc_val, &entry->last_cached_val, &entry->min_val, &entry->max_val,
-			      &entry->cyclic, (nturns * entry->cached_num), &entry->last_cached_val);
+	serial_reserve_block_end (&entry->inc_val, &entry->last_cached_val, &entry->min_val, &entry->max_val,
+				  &entry->cyclic, (nturns * entry->cached_num), &new_last_cached_val);
 
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
 
-      /* cur_val of _db_serial is updated to last_cached_val of entry */
-      error = serial_update_cur_val_of_serial (thread_p, entry, num_alloc);
+      error = numeric_db_value_compare (&new_last_cached_val, &entry->last_cached_val, &cmp_result);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
 
+      /* A reservation clamped to the range boundary can reserve nothing new; leave the entry and
+       * _db_serial alone then, because the value generation below raises the range overflow anyway
+       * and a durable write per failing call buys nothing. */
+      if (db_get_int (&cmp_result) != 0)
+	{
+	  pr_clone_value (&new_last_cached_val, &entry->last_cached_val);
+
+	  /* cur_val of _db_serial is updated to last_cached_val of entry */
+	  error = serial_update_cur_val_of_serial (thread_p, entry, num_alloc);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
     }
 
   /* get next value */
@@ -758,8 +872,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	      nturns = CEIL_PTVDIV (num_alloc, cached_num);
 
 	      ret =
-		serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * (cached_num - 1)),
-				      &last_val);
+		serial_reserve_block_end (&inc_val, &cur_val, &min_val, &max_val, &cyclic,
+					  (nturns * (cached_num - 1)), &last_val);
 	    }
 
 	  num_alloc--;
@@ -773,7 +887,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	  nturns = CEIL_PTVDIV (num_alloc, cached_num);
 
 	  ret =
-	    serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * cached_num), &last_val);
+	    serial_reserve_block_end (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * cached_num),
+				      &last_val);
 	}
 
       if (ret == NO_ERROR)
@@ -1002,7 +1117,7 @@ exit_on_error:
 }
 
 /*
- * serial_get_nth_value () - get Nth next_value
+ * serial_get_nth_value () - get Nth next_value, for handing the value out
  *   return: NO_ERROR, or ER_status
  *   inc_val(in)        :
  *   cur_val(in)        :
@@ -1011,10 +1126,55 @@ exit_on_error:
  *   cyclic(in)         :
  *   nth(in)            :
  *   result_val(out)    :
+ *
+ * A value past max_val (min_val for a negative increment) on a non-cyclic serial is out of
+ * range, so this raises ER_QPROC_SERIAL_RANGE_OVERFLOW.
  */
 static int
 serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val, DB_VALUE * cyclic,
 		      int nth, DB_VALUE * result_val)
+{
+  return serial_get_nth_value_internal (inc_val, cur_val, min_val, max_val, cyclic, nth, result_val, false);
+}
+
+/*
+ * serial_reserve_block_end () - get Nth next_value, for reserving a cache block up to it
+ *   return: NO_ERROR, or ER_status
+ *   inc_val(in)        :
+ *   cur_val(in)        :
+ *   min_val(in)        :
+ *   max_val(in)        :
+ *   cyclic(in)         :
+ *   nth(in)            :
+ *   result_val(out)    :
+ *
+ * A block end past max_val (min_val for a negative increment) on a non-cyclic serial is
+ * clamped to that boundary, so the values up to it stay reservable instead of the whole
+ * block failing. The value generation still raises the overflow for a value past it.
+ */
+static int
+serial_reserve_block_end (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
+			  DB_VALUE * cyclic, int nth, DB_VALUE * result_val)
+{
+  return serial_get_nth_value_internal (inc_val, cur_val, min_val, max_val, cyclic, nth, result_val, true);
+}
+
+/*
+ * serial_get_nth_value_internal () - get Nth next_value
+ *   return: NO_ERROR, or ER_status
+ *   inc_val(in)        :
+ *   cur_val(in)        :
+ *   min_val(in)        :
+ *   max_val(in)        :
+ *   cyclic(in)         :
+ *   nth(in)            :
+ *   result_val(out)    :
+ *   clamp_block(in)    : what to do when the Nth value leaves the range -- see the two
+ *                        callers above, which is what a caller should use
+ */
+static int
+serial_get_nth_value_internal (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
+			       DB_VALUE * cyclic, int nth, DB_VALUE * result_val, bool clamp_block)
 {
   DB_VALUE tmp_val, cmp_result, add_val;
   unsigned char num[DB_NUMERIC_BUF_SIZE];
@@ -1062,6 +1222,12 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	    {
 	      pr_share_value (min_val, result_val);
 	    }
+	  else if (clamp_block)
+	    {
+	      /* Reserving a cache block would overshoot max_val; clamp it to the boundary so
+	       * values up through max_val stay usable instead of failing early. */
+	      pr_share_value (max_val, result_val);
+	    }
 	  else
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_RANGE_OVERFLOW, 0);
@@ -1095,6 +1261,12 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	    {
 	      pr_share_value (max_val, result_val);
 	    }
+	  else if (clamp_block)
+	    {
+	      /* Reserving a cache block would undershoot min_val; clamp it to the boundary so
+	       * values down through min_val stay usable instead of failing early. */
+	      pr_share_value (min_val, result_val);
+	    }
 	  else
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_RANGE_OVERFLOW, 0);
@@ -1114,8 +1286,8 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 /*
  * serial_initialize_cache_pool () -
  *   return: NO_ERROR, or ER_status
- *   load_attr_info(in): load the _db_serial attribute layout now. Pass false only on the
- *                       restoredb path, which restarts the server without a client workspace.
+ *   load_attr_info(in): load the _db_serial attribute layout now. Pass false only when restarting
+ *                       from a backup, which has no client workspace.
  */
 int
 serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
@@ -1129,6 +1301,14 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
       serial_finalize_cache_pool ();
     }
 
+  if (!load_attr_info)
+    {
+      /* Without a client workspace the load swizzles the object-domain owner OID and divides by
+       * the empty MOP table in ws_mop (SIGFPE). restoredb/restoreslave generate no serial values,
+       * so the cache pool is not built either; a later normal boot initializes everything. */
+      return NO_ERROR;
+    }
+
   serial_Cache_hashmap.init (serial_Cache_Ts, THREAD_TS_SERIAL_CACHE, SERIAL_CACHE_HASH_SIZE, freelist_block_size,
 			     freelist_block_count, serial_Cache_entry_descriptor);
   serial_Cache_initialized = true;
@@ -1136,16 +1316,6 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
   for (i = 0; i < sizeof (serial_Attrs_id) / sizeof (ATTR_ID); i++)
     {
       serial_Attrs_id[i] = -1;
-    }
-
-  if (!load_attr_info)
-    {
-      /* restoredb (xboot_restart_from_backup) restarts the server without initializing the client
-       * workspace, so loading the _db_serial attribute layout here would swizzle the object-domain
-       * owner OID and divide by the empty MOP table in ws_mop (SIGFPE). restoredb never generates
-       * serial values, so the layout is not needed; a later normal boot loads it with the workspace
-       * ready. */
-      return NO_ERROR;
     }
 
   /* Load the _db_serial attribute layout once, now that the catalog is available. */
