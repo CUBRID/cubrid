@@ -12343,6 +12343,15 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	  && attr_info->values[i].last_attrepr->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
 	  && !db_value_is_null (&attr_info->values[i].dbvalue) && column_size[i] > OR_OOS_INLINE_SIZE)
 	{
+	  if (suppress_oos)
+	    {
+	      if (would_demote_oos != NULL)
+		{
+		  *would_demote_oos = true;
+		}
+	      continue;
+	    }
+
 	  (*oos_plan)[i].selected = true;
 	  payload_size -= column_size[i];
 	  payload_size += OR_OOS_INLINE_SIZE;
