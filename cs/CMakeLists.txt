@@ -275,6 +275,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
+  ${QUERY_DIR}/like_match_lockstep.i
   ${QUERY_DIR}/query_monitoring.hpp
 )
 
@@ -431,10 +432,12 @@ set(API_HEADERS
 
 set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_checker.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.cpp
   )
 
 set(PARALLEL_SCAN_HEADERS
   ${PARALLEL_SCAN_DIR}/px_scan_checker.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -621,6 +624,7 @@ if(UNIX)
   target_link_libraries(cubridcs PUBLIC stdc++fs)
   target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubridcs LINK_PUBLIC rt)
+  target_link_options(cubridcs PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
 else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)

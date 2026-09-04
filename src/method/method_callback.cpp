@@ -567,6 +567,10 @@ namespace cubmethod
 	    PT_NODE *stmt = db_get_statement (db_session, 0);
 
 	    parser->custom_print |= PT_CONVERT_RANGE;
+	    /* select-list aliases (e.g. "AS col1") must survive into rewritten_query: this text is
+	     * embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime by Query.open(),
+	     * so a client reading column labels off that cursor needs them to still be there */
+	    parser->custom_print |= PT_PRINT_ALIAS;
 	    semantics.rewritten_query = parser_print_tree (parser, stmt);
 
 	    has_table_access = false;

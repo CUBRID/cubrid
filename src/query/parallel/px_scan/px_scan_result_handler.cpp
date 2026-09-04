@@ -97,6 +97,9 @@ namespace parallel_scan
 	m_.active_results = parallelism;
 	m_.is_list_id_domain_resolved = false;
 	m_.g_hash_eligible = (bool) orig_xasl_tree_for_domain_resolve->proc.buildlist.g_hash_eligible;
+
+	m_.instnum_mode = parallel_scan::detect_instnum_mode (orig_xasl_tree_for_domain_resolve,
+			  m_.rownum_col_indices, m_.instnum_draw);
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -197,7 +200,7 @@ namespace parallel_scan
 	      {
 		assert (list_id_header.m_list_id_p->last_pgptr == nullptr);
 		qfile_destroy_list (thread_p, list_id_header.m_list_id_p);
-		list_id_header.m_list_id_p = nullptr;
+		QFILE_FREE_AND_INIT_LIST_ID (list_id_header.m_list_id_p);
 	      }
 	    for (std::atomic<TP_DOMAIN *> *type_list_p : list_id_header.m_type_list)
 	      {
@@ -253,6 +256,16 @@ namespace parallel_scan
 	    {
 	      db_private_free_and_init (thread_p, type_list.domp);
 	    }
+	  if (m_.instnum_mode == parallel_scan::instnum_mode::ATOMIC_DRAW && !m_.instnum_draw.limit_resolved)
+	    {
+	      /* resolve the rhs once under the mutex; all workers carry the same host variables. */
+	      if (parallel_scan::resolve_instnum_limit (thread_p, m_.instnum_draw, tl.vd) != NO_ERROR)
+		{
+		  m_err_messages_p->move_top_error_message_to_this();
+		  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  return;
+		}
+	    }
 	}
 	size = tl.writer_result_p->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
 	tl.writer_result_p->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
@@ -284,6 +297,13 @@ namespace parallel_scan
 	  }
 	tl.val_list_domain_resolved = false;
 	tl.xasl = curr_xasl;
+	if (m_.instnum_mode != parallel_scan::instnum_mode::NONE && tl.xasl->instnum_val != nullptr)
+	  {
+	    /* guarantee a V_BOUND 8-byte BIGINT slot: renumber mode overwrites it at merge,
+	     * atomic mode stores the drawn number before each emit. */
+	    db_make_bigint (tl.xasl->instnum_val, 0);
+	  }
+	tl.instnum_quota_done = false;	/* tls outlives the scan; a reused worker must not inherit it */
 	tl.agg_hash_state = HS_NONE;
 	tl.g_agg_domains_resolved = TRUE;
 	if (m_.g_hash_eligible)
@@ -552,9 +572,12 @@ namespace parallel_scan
       }
   }
 
-  void merge_list_ids (THREAD_ENTRY *thread_p, QFILE_LIST_ID *dest, std::vector<QFILE_LIST_ID *> &lists)
+  /* a dropped segment would silently truncate the result, and the ROWNUM watermark taken from
+   * dest->tuple_cnt would go with it, so connect failures are propagated. */
+  int merge_list_ids (THREAD_ENTRY *thread_p, QFILE_LIST_ID *dest, std::vector<QFILE_LIST_ID *> &lists)
   {
     QFILE_LIST_ID *tmp_merged_list = nullptr;
+    int error = NO_ERROR;
     for (QFILE_LIST_ID *list_id : lists)
       {
 	assert (list_id != nullptr);
@@ -565,9 +588,9 @@ namespace parallel_scan
 	      {
 		tmp_merged_list = list_id;
 	      }
-	    else
+	    else if (qfile_connect_list (thread_p, tmp_merged_list, list_id) != NO_ERROR)
 	      {
-		qfile_connect_list (thread_p, tmp_merged_list, list_id);
+		error = ER_FAILED;
 	      }
 	  }
 	else
@@ -586,7 +609,10 @@ namespace parallel_scan
 	      {
 		qfile_close_list (thread_p, dest);
 	      }
-	    qfile_connect_list (thread_p, dest, tmp_merged_list);
+	    if (qfile_connect_list (thread_p, dest, tmp_merged_list) != NO_ERROR)
+	      {
+		error = ER_FAILED;
+	      }
 	  }
 	else
 	  {
@@ -598,6 +624,7 @@ namespace parallel_scan
 	    QFILE_FREE_AND_INIT_LIST_ID (tmp_merged_list);
 	  }
       }
+    return error;
   }
 
   template <RESULT_TYPE result_type>
@@ -612,7 +639,10 @@ namespace parallel_scan
 	      while (m_.active_results != 0)
 		{
 		  m_result_cv.wait_for (lock, std::chrono::microseconds (50));
-		  if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+		  parallel_query::interrupt::interrupt_code code = m_interrupt_p->get_code();
+		  /* INST_NUM_SATISFIED is a benign early-stop: keep waiting for workers to finalize. */
+		  if (code != parallel_query::interrupt::interrupt_code::NO_INTERRUPT
+		      && code != parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED)
 		    {
 		      return S_ERROR;
 		    }
@@ -620,17 +650,55 @@ namespace parallel_scan
 	    }
 	}
 
-	if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	{
+	  parallel_query::interrupt::interrupt_code code = m_interrupt_p->get_code();
+	  if (code != parallel_query::interrupt::interrupt_code::NO_INTERRUPT
+	      && code != parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED)
+	    {
+	      return S_ERROR;
+	    }
+	}
+
+	/* Restamp by merged position. RENUMBER left the columns unnumbered; ATOMIC_DRAW put the number
+	 * each worker drew there, which is not where the row lands once the worker lists are chained -
+	 * serial guarantees the k-th returned row carries k, so the merge has to restore that. */
+	if (m_.instnum_mode != parallel_scan::instnum_mode::NONE && !m_.rownum_col_indices.empty ())
 	  {
+	    if (parallel_scan::renumber_instnum_lists (thread_p, m_.writer_results, m_.rownum_col_indices,
+		dest->tuple_cnt) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return S_ERROR;
+	      }
+	  }
+
+	if (merge_list_ids (thread_p, dest, m_.writer_results) != NO_ERROR)
+	  {
+	    m_err_messages_p->move_top_error_message_to_this();
+	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return S_ERROR;
 	  }
 
-	merge_list_ids (thread_p, dest, m_.writer_results);
+	if (m_.instnum_mode != parallel_scan::instnum_mode::NONE)
+	  {
+	    /* a later block of the same scan may run serially and resume from instnum_val, so leave the
+	     * watermark there; the parallel path takes it from dest->tuple_cnt instead. */
+	    if (m_.orig_xasl->instnum_val != nullptr)
+	      {
+		db_make_bigint (m_.orig_xasl->instnum_val, dest->tuple_cnt);
+	      }
+	  }
 
 	if (m_.g_hash_eligible)
 	  {
 	    BUILDLIST_PROC_NODE *buildlist_proc = &m_.orig_xasl->proc.buildlist;
-	    merge_list_ids (thread_p, buildlist_proc->agg_hash_context->part_list_id, m_.hgby_results);
+	    if (merge_list_ids (thread_p, buildlist_proc->agg_hash_context->part_list_id, m_.hgby_results) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return S_ERROR;
+	      }
 	    /* HS_REJECT_ALL forces 'hash: partial' trace for hgby with part list IDs (cf. qdump_print_stats_text). */
 	    m_.orig_xasl->groupby_stats.groupby_hash = HS_REJECT_ALL;
 	  }
@@ -783,6 +851,32 @@ namespace parallel_scan
 	QPROC_TPLDESCR_STATUS status;
 
 	OUTPTR_LIST *input = (OUTPTR_LIST *)src;
+
+	if (m_.instnum_mode == parallel_scan::instnum_mode::ATOMIC_DRAW)
+	  {
+	    if (tl.instnum_quota_done)
+	      {
+		/* stop paying for the shared counter until the loop reaches its next page boundary. */
+		return true;
+	      }
+	    INT64 drawn = m_.instnum_draw.next ();
+	    if (m_.instnum_draw.exceeded (drawn))
+	      {
+		/* quota exhausted: skip the row and signal; workers stop at the next page boundary.
+		 * CAS from NO_INTERRUPT only, so an error code is never overwritten. Not an error. */
+		parallel_query::interrupt::interrupt_code expected =
+			parallel_query::interrupt::interrupt_code::NO_INTERRUPT;
+		m_interrupt_p->m_code.compare_exchange_strong (expected,
+		    parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED);
+		tl.instnum_quota_done = true;
+		return true;
+	      }
+	    if (tl.xasl->instnum_val != nullptr)
+	      {
+		/* worker-private clone; the projection below reads this DB_VALUE for output ROWNUM. */
+		db_make_bigint (tl.xasl->instnum_val, drawn);
+	      }
+	  }
 
 	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 
@@ -2467,6 +2561,14 @@ namespace parallel_scan
 		    }
 		}
 	      break;
+	    }
+
+	  /* The host variable's domain is resolved only in worker clones that scan rows.
+	   * Copy the resolved domain to the main agg node before merging the accumulators. */
+	  if (orig_agg_p->opr_dbtype == DB_TYPE_VARIABLE && cur_agg_p->opr_dbtype != DB_TYPE_VARIABLE)
+	    {
+	      orig_agg_p->domain = cur_agg_p->domain;
+	      orig_agg_p->opr_dbtype = cur_agg_p->opr_dbtype;
 	    }
 
 	  switch (orig_agg_p->function)
