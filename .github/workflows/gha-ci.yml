@@ -356,7 +356,10 @@ jobs:
     env:
       # Same values as the CircleCI executor cubrid-build.
       BUILD_MIRROR: /home/build-cache/cubrid-mirror
-      CI_LOG_ROOT: /home/build-cache/gha-ci/logs
+      # Per mode, under the run that produced it. A flat file keyed by run id
+      # only is one file for two matrix legs: whichever finishes last wins,
+      # and a reader chasing a debug failure opens the release build.
+      BUILD_LOG_DIR: /home/build-cache/gha-ci/runs/${{ github.run_id }}/build/${{ matrix.mode }}
       MODE: ${{ matrix.mode }}
       BUILD_ARGS: ${{ matrix.args }}
       # develop | pr. Keeps the preserved develop artifacts out of reach of PR builds.
@@ -610,9 +613,9 @@ jobs:
           # build.log is the only clue on failure, and it does not reach the GHA log.
           f="$GITHUB_WORKSPACE/build.log"
           if [ -f "$f" ]; then
-            mkdir -p "$CI_LOG_ROOT"
-            cp "$f" "$CI_LOG_ROOT/${GITHUB_RUN_ID}-build.log"
-            echo "saved: $CI_LOG_ROOT/${GITHUB_RUN_ID}-build.log ($(wc -l < "$f") lines)"
+            mkdir -p "$BUILD_LOG_DIR"
+            cp "$f" "$BUILD_LOG_DIR/build.log"
+            echo "saved: $BUILD_LOG_DIR/build.log ($(wc -l < "$f") lines)"
             echo "=== last 60 lines of build.log ==="
             tail -60 "$f"
           fi
@@ -1795,8 +1798,9 @@ jobs:
             echo
             echo "---"
             # BRID, not this run: a reused build wrote its log under the run
-            # that made it, and this run left none.
-            echo "[Artifacts]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/) · [build log]($ARTIFACT_URL_BASE/logs/${BRID}-build.log)"
+            # that made it, and this run left none. debug, because that is the
+            # build the suite mounted; the release log sits beside it.
+            echo "[Artifacts]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/) · [build log]($ARTIFACT_URL_BASE/runs/$BRID/build/debug/build.log)"
             echo
             echo "Internal network only. The run directory is pruned 7 days after the run."
           } >> "$GITHUB_STEP_SUMMARY"
