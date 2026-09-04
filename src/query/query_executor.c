@@ -91,6 +91,7 @@
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_scan_trace_handler.hpp"
 #include "px_scan.hpp"
+#include "px_merge_join.hpp"	/* parallel_query::merge_join::try_parallel_merge */
 #endif /* SERVER_MODE && !WINDOWS */
 #include "px_query_executor.hpp"
 #include <vector>
@@ -520,15 +521,10 @@ static int qexec_analytic_value_lookup (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTI
 static int qexec_analytic_group_header_next (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state);
 static int qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
 static int qexec_collection_has_null (DB_VALUE * colval);
-static DB_VALUE_COMPARE_RESULT qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom,
-							 QFILE_TUPLE * rght_tval, TP_DOMAIN ** rght_dom, int tval_cnt);
 static long qexec_size_remaining (QFILE_TUPLE_RECORD * tplrec1, QFILE_TUPLE_RECORD * tplrec2,
 				  QFILE_LIST_MERGE_INFO * merge_info, int k);
 static int qexec_merge_tuple (QFILE_TUPLE_RECORD * tplrec1, QFILE_TUPLE_RECORD * tplrec2,
 			      QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * tplrec);
-static int qexec_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE_RECORD * tplrec1,
-				       QFILE_TUPLE_RECORD * tplrec2, QFILE_LIST_MERGE_INFO * merge_info,
-				       QFILE_TUPLE_RECORD * tplrec);
 static QFILE_LIST_ID *qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp,
 					QFILE_LIST_ID * inner_list_idp, QFILE_LIST_MERGE_INFO * merge_infop,
 					int ls_flag);
@@ -5886,7 +5882,7 @@ qexec_collection_has_null (DB_VALUE * colval)
  * as the lessor side, that tuple will be discarded,
  * then the next comparison will discard the other side.
  */
-static DB_VALUE_COMPARE_RESULT
+DB_VALUE_COMPARE_RESULT
 qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom, QFILE_TUPLE * rght_tval,
 			  TP_DOMAIN ** rght_dom, int tval_cnt)
 {
@@ -6128,7 +6124,7 @@ qexec_merge_tuple (QFILE_TUPLE_RECORD * tplrec1, QFILE_TUPLE_RECORD * tplrec2, Q
  *   merge_info(in)     : Tuple merge information
  *   tplrec(in) : Result tuple descriptor
  */
-static int
+int
 qexec_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE_RECORD * tplrec1,
 			    QFILE_TUPLE_RECORD * tplrec2, QFILE_LIST_MERGE_INFO * merge_info,
 			    QFILE_TUPLE_RECORD * tplrec)
@@ -7421,8 +7417,28 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 
   if (merge_infop->join_type == JOIN_INNER)
     {
-      /* call list file merge routine */
-      list_id = qexec_merge_list (thread_p, outer_xasl->list_id, inner_xasl->list_id, merge_infop, ls_flag);
+      bool px_merge_executed = false;
+
+#if SERVER_MODE && !WINDOWS
+      /* enabled by the parallel_merge_join system parameter (default off); falls through to the serial merge */
+      int px_merge_parallelism = 0;
+      if (parallel_query::merge_join::try_parallel_merge (thread_p, outer_xasl->list_id, inner_xasl->list_id,
+							  merge_infop, ls_flag, &list_id,
+							  px_merge_executed, px_merge_parallelism) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      if (px_merge_executed)
+	{
+	  xasl->executed_parallelism = px_merge_parallelism;
+	}
+#endif /* SERVER_MODE && !WINDOWS */
+
+      if (!px_merge_executed)
+	{
+	  /* call list file merge routine */
+	  list_id = qexec_merge_list (thread_p, outer_xasl->list_id, inner_xasl->list_id, merge_infop, ls_flag);
+	}
     }
   else
     {
@@ -7461,8 +7477,11 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* make this the resultant list file */
-  qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_PROHIBIT_DEPENDENT);
+  /* make this the resultant list file. MOVE_DEPENDENT: the parallel merge gathers its ranges by
+   * splicing their page chains (qfile_connect_list), so list_id may carry a dependent_list_id chain
+   * whose ownership must transfer here. The serial paths produce no dependent chain, for which MOVE
+   * and PROHIBIT behave identically. */
+  qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_MOVE_DEPENDENT);
   QFILE_FREE_AND_INIT_LIST_ID (list_id);
 
   return NO_ERROR;

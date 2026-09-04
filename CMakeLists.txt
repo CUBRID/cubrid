@@ -417,6 +417,7 @@ set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
 set(PARALLEL_HASH_JOIN_DIR   ${CMAKE_SOURCE_DIR}/src/query/parallel/px_hash_join)
+set(PARALLEL_MERGE_JOIN_DIR  ${CMAKE_SOURCE_DIR}/src/query/parallel/px_merge_join)
 set(PARALLEL_SCAN_DIR        ${CMAKE_SOURCE_DIR}/src/query/parallel/px_scan)
 set(PARALLEL_QUERY_EXECUTE_DIR ${CMAKE_SOURCE_DIR}/src/query/parallel/px_query_execute)
 set(OPTIMIZER_HISTOGRAM_DIR    ${CMAKE_SOURCE_DIR}/src/optimizer/histogram)
@@ -449,6 +450,7 @@ include_directories(
   src/transaction
   src/xasl
   src/query/parallel/px_hash_join
+  src/query/parallel/px_merge_join
   src/query/parallel/px_scan
   src/query/parallel/px_scan/index
   src/query/parallel

@@ -361,6 +361,18 @@ set(PARALLEL_HASH_JOIN_HEADERS
   ${PARALLEL_HASH_JOIN_DIR}/px_hash_join.hpp
 )
 
+set(PARALLEL_MERGE_JOIN_SOURCES
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_partition.cpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_task.cpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join.cpp
+)
+
+set(PARALLEL_MERGE_JOIN_HEADERS
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_partition.hpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_task.hpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join.hpp
+)
+
 set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_instnum.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.cpp
@@ -410,6 +422,7 @@ set(PARALLEL_QUERY_SOURCES
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
   ${PARALLEL_QUERY_DIR}/px_sort.c
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.cpp
+  ${PARALLEL_QUERY_DIR}/px_task_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_parallel.cpp
   )
 
@@ -419,6 +432,7 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
   ${PARALLEL_QUERY_DIR}/px_sort.h
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
+  ${PARALLEL_QUERY_DIR}/px_task_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   ${PARALLEL_QUERY_DIR}/px_parallel.hpp
   )
@@ -667,6 +681,7 @@ set (CUBRID_LIB_SOURCES
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
   ${PARALLEL_HASH_JOIN_SOURCES}
+  ${PARALLEL_MERGE_JOIN_SOURCES}
   ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
@@ -693,6 +708,7 @@ set (CUBRID_LIB_HEADERS
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
   ${PARALLEL_HASH_JOIN_HEADERS}
+  ${PARALLEL_MERGE_JOIN_HEADERS}
   ${PARALLEL_SCAN_HEADERS}
   ${PARALLEL_QUERY_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}

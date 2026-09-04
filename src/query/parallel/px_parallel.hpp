@@ -33,6 +33,7 @@ namespace parallel_query
     SORT      = 2,
     SUBQUERY  = 3,
     INDEX_BUILD = 4,	/* no-logging (loaddb) index build; an ordinary CREATE INDEX uses SORT */
+    MERGE_JOIN = 5,	/* range-partitioned merge of a sort-merge join's input lists */
   };
 
   UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages,
