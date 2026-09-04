@@ -61,8 +61,7 @@ extern int qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list
 extern QPROC_TPLDESCR_STATUS qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p,
 									valptr_list_node * valptr_list, val_descr * vd,
 									qfile_tuple_descriptor * tdp);
-extern QPROC_TPLDESCR_STATUS qdata_size_tuple_desc (qfile_tuple_value_type_list * tl,
-						    qfile_tuple_descriptor * tdp);
+extern QPROC_TPLDESCR_STATUS qdata_size_tuple_desc (qfile_tuple_value_type_list * tl, qfile_tuple_descriptor * tdp);
 extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd);
 
 extern int qdata_add_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);

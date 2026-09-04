@@ -224,7 +224,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE
 		  || QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (regu_var->domain)))
 		{
-		  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
+		  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) !=
+		      NO_ERROR)
 		    {
 		      goto error;
 		    }
@@ -344,7 +345,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    {
 	      if (arithptr->rightptr != NULL)
 		{
-		  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
+		  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) !=
+		      NO_ERROR)
 		    {
 		      goto error;
 		    }
@@ -4648,7 +4650,8 @@ exit_on_error:
  */
 static int
 fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd,
-					       OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** min, DB_VALUE ** max)
+					       OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** min,
+					       DB_VALUE ** max)
 {
   int er_status = NO_ERROR;
   PRED_EXPR *pred_expr;
@@ -4917,8 +4920,9 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * 
 	{
 	  PRIM_SET_NULL (regu_var->vfetch_to);
 	}
-      if (qfile_slot_read_value (tplrec, pos_descr->pos_no, pos_descr->dom, regu_var->vfetch_to, false /* Don't copy */ ,
-				 &is_null) != NO_ERROR)
+      if (qfile_slot_read_value
+	  (tplrec, pos_descr->pos_no, pos_descr->dom, regu_var->vfetch_to, false /* Don't copy */ ,
+	   &is_null) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
