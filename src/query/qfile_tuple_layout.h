@@ -386,6 +386,19 @@ qfile_value_direct (const QFILE_COL_LAYOUT * c, const DB_VALUE * value)
 }
 
 /*
+ * qfile_col_stores_null () - a DB_TYPE_NULL column stores NULL whatever the evaluator produced.
+ *   The compiler types an expression over NULL literals as NULL (pt_eval_expr_type: disk_size(NULL) is INT 0 on the
+ *   server but its column domain is tp_Null); tp_Null has no encoding (FIXED, size 0), and develop's reader decoded
+ *   such a column through tp_Null, i.e. yielded NULL no matter what bytes the writer emitted. The writer keeps that
+ *   observable result by storing the column as NULL instead of a body the layout cannot describe.
+ */
+inline bool
+qfile_col_stores_null (const QFILE_COL_LAYOUT * c, const DB_VALUE * value)
+{
+  return DB_IS_NULL (value) || c->type_id == DB_TYPE_NULL;
+}
+
+/*
  * qfile_value_body_size () - body size of a bound value in the encoding its column stores.
  *   return: size, or ER_FAILED (debug builds only: string longer than its precision)
  */
@@ -514,6 +527,10 @@ qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * src, i
 
   for (i = 0; i < n; i++)
     {
+      if (!src[i].is_null && tl->col[i].type_id == DB_TYPE_NULL)
+	{
+	  src[i].is_null = true;	/* qfile_col_stores_null (): the fill pass reads is_null too */
+	}
       if (src[i].is_null)
 	{
 	  hn = true;
@@ -721,13 +738,13 @@ restart:
   for (i = 0; i < n; i++)
     {
       v = vals[i];
-      if (DB_IS_NULL (v))
+      c = &tl->col[i];
+      if (qfile_col_stores_null (c, v))
 	{
 	  hn = true;
 	  lens[i] = 0;
 	  continue;
 	}
-      c = &tl->col[i];
       vt = DB_VALUE_DOMAIN_TYPE (v);
       if (vt == (DB_TYPE) c->type_id)
 	{
@@ -800,7 +817,8 @@ qfile_tuple_fill_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE *
 
   for (i = 0; i < n; i++)
     {
-      if (DB_IS_NULL (vals[i]))
+      c = &tl->col[i];
+      if (qfile_col_stores_null (c, vals[i]))
 	{
 	  assert (has_null);
 	  continue;
@@ -809,7 +827,6 @@ qfile_tuple_fill_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE *
 	{
 	  QFILE_BITMAP_SET_BOUND (bm, i);
 	}
-      c = &tl->col[i];
       src.val = vals[i];
       src.data = NULL;
       src.len = lens[i];
