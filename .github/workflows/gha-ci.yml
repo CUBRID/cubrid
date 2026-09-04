@@ -1389,8 +1389,6 @@ jobs:
       # The wall-clock step reads the run start time. Public repos need no scope --
       # stated so it does not fail silently if this repository ever becomes private.
       actions: read
-      # Posts the result summary. The only place here that needs write.
-      pull-requests: write
     runs-on: cubrid-arc
     timeout-minutes: 30
     container:
@@ -1797,8 +1795,6 @@ jobs:
 
           echo "=== summary ==="
           cat "$GITHUB_STEP_SUMMARY"
-          # The summary file is append-only; leave a copy for the next step.
-          cp "$GITHUB_STEP_SUMMARY" /tmp/summary.md
 
           # Guard 3 of 3: a shard dying whole is invisible to guard 2.
           rc=0
@@ -1848,48 +1844,6 @@ jobs:
           fi
           [ "$rc" -eq 0 ] && echo "completed with no failures."
           exit $rc
-
-      - name: Post to the PR
-        # always(): a failure is exactly when the PR needs to hear about it.
-        if: always() && needs.gate.outputs.pr != ''
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PR: ${{ needs.gate.outputs.pr }}
-        run: |
-          set -eo pipefail
-          # A job summary lives on the run page only; it does not reach the PR thread.
-          if [[ ! "$PR" =~ ^[0-9]{1,7}$ ]]; then
-            echo "::error::pr must be an integer"; exit 1
-          fi
-          if [ ! -f /tmp/summary.md ]; then
-            printf '## gha-ci: shell suite\n\nCould not build a summary. Check the run.\n' > /tmp/summary.md
-          fi
-
-          {
-            cat /tmp/summary.md
-            echo
-            echo "<sub>gha-ci / run [\`${GITHUB_RUN_ID}\`](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) - artifacts \`${RUNDIR}\`</sub>"
-          } > /tmp/body.md
-
-          # Comment bodies cap at 65536 characters, so long failure lists are trimmed.
-          head -c 60000 /tmp/body.md > /tmp/body.trim.md
-          jq -Rs '{body: .}' < /tmp/body.trim.md > /tmp/comment.json
-
-          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
-            -d @/tmp/comment.json)
-
-          echo "HTTP $code"
-          if [ "$code" != "201" ]; then
-          # A 403 here means pull-requests: write did not reach GITHUB_TOKEN.
-            echo "::error::failed to post the PR comment"
-            jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
-            exit 1
-          fi
-          echo "posted: $(jq -r '.html_url' /tmp/resp.json)"
 
       # 59MB per run, nothing worth keeping, and the cleanup CronJob does not see it.
       #
