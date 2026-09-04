@@ -1563,7 +1563,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplCheckSelectListLength =
-            new String[] {
+            new String[] {"%'CURSOR'%.checkSelectListLength(%'INTO-VAR-COUNT'%);"
+                /*
                 "ResultSetMetaData rsmd_%'LEVEL'% = rs.getMetaData();",
                 "if (rsmd_%'LEVEL'% == null) {",
                 "  throw new SQL_ERROR(\"failed to get the result set meta data of the FETCH statement\");",
@@ -1571,6 +1572,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "if (%'INTO-VAR-COUNT'% != rsmd_%'LEVEL'%.getColumnCount()) {",
                 "  throw new SQL_ERROR(\"length of the SELECT list and the number of variables in the INTO clause do not match\");",
                 "}"
+                 */
             };
 
     private static String[] tmplStmtCursorFetch =
@@ -1579,9 +1581,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  if (%'CURSOR'% == null) {",
                 "    throw new INVALID_CURSOR(\"the cursor is NULL\");",
                 "  }",
+                "  %'+OPT-CHECK-SELECT-LIST-LENGTH'%",
                 "  ResultSet rs = %'CURSOR'%.rs;",
                 "  if (%'CURSOR'%.fetch()) {",
-                "    %'+OPT-CHECK-SELECT-LIST-LENGTH'%",
                 "    %'+SET-INTO-VARIABLES'%",
                 "  }",
                 "} catch (SQLException e) {",
@@ -1638,8 +1640,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                 "Select list length check in StmtCursorFetch",
                                 Misc.UNKNOWN_LINE_COLUMN,
                                 tmplCheckSelectListLength,
-                                "%'LEVEL'%",
-                                Integer.toString(node.id.scope.level),
                                 "%'INTO-VAR-COUNT'%",
                                 Integer.toString(node.intoTargetList.size()));
 
@@ -1649,10 +1649,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "StmtCursorFetch",
                 Misc.getLineColumnOf(node.ctx),
                 tmplStmtCursorFetch,
-                "%'CURSOR'%",
-                node.id.javaCode(),
                 "%'+OPT-CHECK-SELECT-LIST-LENGTH'%",
                 optCheckSelectListLength,
+                "%'CURSOR'%",
+                node.id.javaCode(),
                 "%'+SET-INTO-VARIABLES'%",
                 setIntoTargets);
     }
