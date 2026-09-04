@@ -494,6 +494,7 @@ dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
   T_CCI_DATE cci_date;
   T_CCI_BIT cci_bit;
   char num_str[NUMERIC_MAX_STRING_SIZE];
+  const char *type_name;
   unsigned char type;
 
   value = &dbval->data;
@@ -623,7 +624,14 @@ dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
       u_type = CCI_U_TYPE_NULL;
       break;
     default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1, "unknown");
+      /* Name the type the sink refused. This branch said "unknown", so the user could not tell which type
+       * was rejected -- ENUM and MONETARY sources land here, and so does anything added to DB_TYPE
+       * without a case. The read direction names the types it maps (print_utype_to_string() above, whose
+       * own default is ""). pr_type_name() returns NULL for an id it does not map, so the old string
+       * stays as the fallback. */
+      type_name = pr_type_name ((DB_TYPE) type);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1,
+	      (type_name != NULL) ? type_name : "unknown");
       return ER_DBLINK_UNSUPPORTED_TYPE;
     }
   ret = cci_bind_param (stmt_handle, param_index, a_type, value, u_type, 0);
