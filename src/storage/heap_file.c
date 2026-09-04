@@ -9109,7 +9109,7 @@ heap_get_num_data_pages (THREAD_ENTRY * thread_p, const HFID * hfid, int *num_pa
 
 /*
  * heap_get_num_objects () - Count the number of objects
- *   return: number of records or -1 in case of an error
+ *   return: NO_ERROR or ER_FAILED (the count itself is returned through nobjs; it is INT64 now, CBRD-27140)
  *   hfid(in): Object heap file identifier
  *   npages(in):
  *   nobjs(in):
@@ -9120,7 +9120,7 @@ heap_get_num_data_pages (THREAD_ENTRY * thread_p, const HFID * hfid, int *num_pa
  * fetched to find the number of objects.
  */
 int
-heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length)
+heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, INT64 * nobjs, int *avg_length)
 {
   // *INDENT-OFF*
   cubstorage::bestspace *bestspace;
@@ -9194,7 +9194,7 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, i
   log_skip_logging (thread_p, &addr_hdr);
   pgbuf_ordered_set_dirty_and_free (thread_p, &hdr_pg_watcher);
 
-  return *nobjs;
+  return NO_ERROR;
 }
 
 /*
@@ -9208,7 +9208,7 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, i
  * Note: Estimate the number of pages, objects, and average length of objects.
  */
 int
-heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length)
+heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, INT64 * nobjs, int *avg_length)
 {
   // *INDENT-OFF*
   cubstorage::bestspace *bestspace;
@@ -9225,7 +9225,7 @@ heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nob
     {
       bestspace->get_estimates (num_pages, recs_num, recs_sumlen);
       *npages = num_pages;
-      *nobjs = (int) recs_num;
+      *nobjs = (INT64) recs_num;
     }
   else
     {
@@ -9280,14 +9280,15 @@ heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid)
 {
   int ignore_npages = -1;
   int ignore_avg_reclen = -1;
-  int nobjs = -1;
+  INT64 nobjs = -1;
 
   if (heap_estimate (thread_p, hfid, &ignore_npages, &nobjs, &ignore_avg_reclen) == -1)
     {
       return ER_FAILED;
     }
 
-  return nobjs;
+  /* callers size fetch batches with this; past 2^31 the exact figure does not matter, the sign does */
+  return (nobjs > INT_MAX) ? INT_MAX : (int) nobjs;
 }
 
 /*
@@ -9305,7 +9306,7 @@ static int
 heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen)
 {
   int ignore_npages;
-  int ignore_nobjs;
+  INT64 ignore_nobjs;
 
   if (heap_estimate (thread_p, hfid, &ignore_npages, &ignore_nobjs, &avg_reclen) == -1)
     {
@@ -16978,23 +16979,27 @@ xheap_get_class_num_objects_pages (THREAD_ENTRY * thread_p, const HFID * hfid, i
 				   int *npages)
 {
   int length, num;
+  INT64 nobjs64 = 0;
   int ret;
 
   assert (!HFID_IS_NULL (hfid));
 
   if (approximation)
     {
-      num = heap_estimate (thread_p, hfid, npages, nobjs, &length);
+      num = heap_estimate (thread_p, hfid, npages, &nobjs64, &length);
     }
   else
     {
-      num = heap_get_num_objects (thread_p, hfid, npages, nobjs, &length);
+      num = heap_get_num_objects (thread_p, hfid, npages, &nobjs64, &length);
     }
 
   if (num < 0)
     {
       return (((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret);
     }
+
+  /* db_get_class_num_objs_and_pages () still hands out an int: saturate rather than wrap (CBRD-27140) */
+  *nobjs = (nobjs64 > INT_MAX) ? INT_MAX : (int) nobjs64;
 
   return NO_ERROR;
 }

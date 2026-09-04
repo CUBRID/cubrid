@@ -134,7 +134,7 @@ typedef enum
 struct ndv_info
 {
   QO_ENV *env;
-  int total_ndv;
+  INT64 total_ndv;
   BITSET seg_bitset;
 };
 typedef struct ndv_info NDV_INFO;
@@ -200,7 +200,7 @@ static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
 static void qo_estimate_ngroups (QO_PLAN *, SORT_TYPE);
-static int qo_get_group_ndv (QO_PLAN *, SORT_TYPE);
+static INT64 qo_get_group_ndv (QO_PLAN *, SORT_TYPE);
 static double qo_estimate_ndv (double N, double p, double n);
 
 static QO_PLAN *qo_top_plan_new (QO_PLAN *);
@@ -469,8 +469,8 @@ static double qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 static double qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 static double qo_rlike_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
-static int qo_index_cardinality (QO_ENV * env, PT_NODE * attr);
-static int qo_index_cardinality_with_dedup (QO_ENV * env, PT_NODE * attr, BITSET * seg_bitset);
+static INT64 qo_index_cardinality (QO_ENV * env, PT_NODE * attr);
+static INT64 qo_index_cardinality_with_dedup (QO_ENV * env, PT_NODE * attr, BITSET * seg_bitset);
 
 /*
  * log3 () -
@@ -643,7 +643,7 @@ qo_term_string (QO_TERM * term, char *buf)
 static void
 qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
 {
-  int group_ndv, estimate_ndv;
+  INT64 group_ndv, estimate_ndv;
   double expected_nrows = plan->info->cardinality;
   double total_nrows = plan->info->total_rows;
 
@@ -703,7 +703,7 @@ qo_estimate_ndv (double N, double p, double n)
  *   return:
  *   plan(in):
  */
-static int
+static INT64
 qo_get_group_ndv (QO_PLAN * plan, SORT_TYPE sort_type)
 {
   PT_NODE *nodes;
@@ -4686,7 +4686,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     int a_range, b_range;	/* num iscan range terms */
     int a_filter, b_filter;	/* num iscan filter terms */
     int a_last, b_last;		/* the last partial-key indicator */
-    int a_keys, b_keys;		/* num keys */
+    INT64 a_keys, b_keys;	/* num keys */
     int a_pages, b_pages;	/* num access index pages */
     int a_leafs, b_leafs;	/* num access index leaf pages */
     int i;
@@ -10486,7 +10486,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   PT_NODE *lhs, *rhs, *multi_attr;
   DB_VALUE *host_var;
   PRED_CLASS pc_lhs, pc_rhs;
-  int lhs_icard, rhs_icard, icard;
+  INT64 lhs_icard, rhs_icard, icard;
   double selectivity;
 
   lhs = pt_expr->info.expr.arg1;
@@ -10805,7 +10805,7 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   PRED_CLASS pc_lhs, pc_rhs;
   DB_VALUE *rhs_db_value;
   DB_VALUE *lhs_db_value;
-  int lhs_icard, rhs_icard, icard;
+  INT64 lhs_icard, rhs_icard, icard;
   double selectivity;
 
   lhs = pt_expr->info.expr.arg1;
@@ -11150,7 +11150,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
   double total_selectivity;
   double selectivity = DEFAULT_BETWEEN_SELECTIVITY;
-  int lhs_icard = 0, rhs_icard = 0, icard = 0;
+  INT64 lhs_icard = 0, rhs_icard = 0, icard = 0;
   PT_NODE *range_node;
   PT_OP_TYPE op_type;
 
@@ -11505,7 +11505,7 @@ qo_classify (PT_NODE * attr)
  *   env(in): optimizer environment
  *   attr(in): pt node for the attribute for which we want the index cardinality
  */
-static int
+static INT64
 qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
 {
   PT_NODE *dummy;
@@ -11545,7 +11545,7 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
 
   if (info->ndv > 0)
     {
-      int ndv = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;	/* need to change type to INT64 */
+      INT64 ndv = info->ndv;
 
       if (info->cum_stats.is_indexed == true && info->cum_stats.pkeys[0] > 0)
 	{
@@ -11575,7 +11575,7 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
  *   attr(in): pt node for the attribute for which we want the index cardinality
  *   seg_bitset(in): segment bitset for checking if there are duplicate columns
  */
-static int
+static INT64
 qo_index_cardinality_with_dedup (QO_ENV * env, PT_NODE * attr, BITSET * seg_bitset)
 {
   PT_NODE *dummy;
@@ -11628,7 +11628,7 @@ qo_index_cardinality_with_dedup (QO_ENV * env, PT_NODE * attr, BITSET * seg_bits
 
   if (info->ndv > 0)
     {
-      int ndv = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;	/* need to change type to INT64 */
+      INT64 ndv = info->ndv;
 
       if (info->cum_stats.is_indexed == true && info->cum_stats.pkeys[0] > 0)
 	{
@@ -12074,7 +12074,7 @@ static PT_NODE *
 qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   NDV_INFO *ndv_info = (NDV_INFO *) arg;
-  int ndv;
+  INT64 ndv;
 
   *continue_walk = PT_CONTINUE_WALK;
 

@@ -5190,7 +5190,7 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
   switch (cst_item.item)
     {
     case CST_NOBJECTS:
-      db_make_int (db_val, class_statsp->heap_num_objects);
+      db_make_bigint (db_val, class_statsp->heap_num_objects);
       break;
     case CST_NPAGES:
       db_make_int (db_val, class_statsp->heap_num_pages);
@@ -5253,7 +5253,7 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
 	}
       else
 	{
-	  db_make_int (db_val, bt_statsp->keys);
+	  db_make_bigint (db_val, bt_statsp->keys);
 	}
       break;
     default:

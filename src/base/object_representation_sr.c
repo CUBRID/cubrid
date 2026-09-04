@@ -399,12 +399,12 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		  bt_statsp->pkeys_size = BTREE_STATS_PKEYS_NUM;
 		}
 
-	      bt_statsp->pkeys = (int *) malloc (bt_statsp->pkeys_size * sizeof (int));
+	      bt_statsp->pkeys = (INT64 *) malloc (bt_statsp->pkeys_size * sizeof (INT64));
 	      if (bt_statsp->pkeys == NULL)
 		{
 		  bt_statsp->pkeys_size = 0;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  bt_statsp->pkeys_size * sizeof (int));
+			  bt_statsp->pkeys_size * sizeof (INT64));
 		  goto error;
 		}
 
