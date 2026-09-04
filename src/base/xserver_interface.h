@@ -127,7 +127,7 @@ extern int xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * oid,
 
 extern int xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 				       int n_attrs, int *attr_ids, OID * pk_cls_oid, BTID * pk_btid, char *fk_name);
-extern LOG_LSA *xrepl_log_get_append_lsa (void);
+extern LOG_LSA xrepl_log_get_append_lsa (void);
 extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 
 extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool reuse_oid);

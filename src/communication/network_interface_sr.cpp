@@ -8695,12 +8695,12 @@ srepl_log_get_append_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 {
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  LOG_LSA *lsa;
+  LOG_LSA lsa;
 
   lsa = xrepl_log_get_append_lsa ();
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  (void) or_pack_log_lsa (reply, lsa);
+  (void) or_pack_log_lsa (reply, &lsa);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

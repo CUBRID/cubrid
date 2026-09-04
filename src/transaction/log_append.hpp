@@ -75,7 +75,7 @@ struct log_append_info
   int vdes;			/* Volume descriptor of active log */
   std::atomic<LOG_LSA> nxio_lsa;  /* Lowest log sequence number which has not been written to disk (for WAL). */
   /* todo - not really belonging here. should be part of page buffer. */
-  LOG_LSA prev_lsa;		/* Address of last append log record */
+  LOG_LSA_ATOMIC prev_lsa;	/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
 
   bool appending_page_tde_encrypted;  /* true if a newly appended page has to be tde-encrypted */
