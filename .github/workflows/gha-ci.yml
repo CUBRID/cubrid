@@ -123,6 +123,8 @@ env:
   STAMPS: /home/build-cache/gha-ci/runs/${{ github.run_id }}/stamps
   BUILD_SENTINEL: .complete
   BUILD_META: .gha-ci-build.meta
+  # Paired with arc_artifact_server_node_port in circleci-k8s-ansible.
+  ARTIFACT_URL_BASE: http://192.168.1.48:30080
 
 jobs:
   # All four triggers become one shape: every job below reads needs.gate.outputs and
@@ -352,7 +354,9 @@ jobs:
     env:
       # Same values as the CircleCI executor cubrid-build.
       BUILD_MIRROR: /home/build-cache/cubrid-mirror
-      CI_LOG_ROOT: /home/build-cache/gha-ci/logs
+      # Per mode: one path for two matrix legs is the later leg overwriting
+      # the earlier one.
+      BUILD_LOG_DIR: /home/build-cache/gha-ci/runs/${{ github.run_id }}/build/${{ matrix.mode }}
       MODE: ${{ matrix.mode }}
       BUILD_ARGS: ${{ matrix.args }}
       # develop | pr. Keeps the preserved develop artifacts out of reach of PR builds.
@@ -606,9 +610,9 @@ jobs:
           # build.log is the only clue on failure, and it does not reach the GHA log.
           f="$GITHUB_WORKSPACE/build.log"
           if [ -f "$f" ]; then
-            mkdir -p "$CI_LOG_ROOT"
-            cp "$f" "$CI_LOG_ROOT/${GITHUB_RUN_ID}-build.log"
-            echo "saved: $CI_LOG_ROOT/${GITHUB_RUN_ID}-build.log ($(wc -l < "$f") lines)"
+            mkdir -p "$BUILD_LOG_DIR"
+            cp "$f" "$BUILD_LOG_DIR/build.log"
+            echo "saved: $BUILD_LOG_DIR/build.log ($(wc -l < "$f") lines)"
             echo "=== last 60 lines of build.log ==="
             tail -60 "$f"
           fi
@@ -1790,7 +1794,17 @@ jobs:
             fi
             echo
             echo "---"
-            echo "Artifacts: \`$RUNDIR\`"
+            # BRID: a reused build left no log under this run. debug: that is
+            # what the suite mounted. A build published before this layout has
+            # no log here, and the flat file it left names no mode -- linking
+            # it would open the release log next to a debug failure half the
+            # time, so that run gets no build-log link at all.
+            line="[Artifacts]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/)"
+            blog="runs/$BRID/build/debug/build.log"
+            [ -f "$CI_ROOT/$blog" ] && line="$line · [build log]($ARTIFACT_URL_BASE/$blog)"
+            echo "$line"
+            echo
+            echo "Internal network only. The run directory is pruned 7 days after the run."
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "=== summary ==="
