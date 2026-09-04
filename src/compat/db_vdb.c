@@ -55,7 +55,7 @@
 #include "dbtype.h"
 #include "histogram_cl.hpp"
 #include "optimizer.h"
-#include "jansson.h"
+#include "json_builder.h"
 #include "util_func.h"
 #include "xasl.h"
 #include "query_cl.h"
@@ -3540,8 +3540,7 @@ do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement
 	    {
 	      if (parser->plan_trace[i].trace.json_plan != NULL)
 		{
-		  json_object_clear (parser->plan_trace[i].trace.json_plan);
-		  json_decref (parser->plan_trace[i].trace.json_plan);
+		  trace_json_decref (parser->plan_trace[i].trace.json_plan);
 		  parser->plan_trace[i].trace.json_plan = NULL;
 		}
 	    }
