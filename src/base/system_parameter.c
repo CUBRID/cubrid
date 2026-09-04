@@ -5544,6 +5544,22 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
 };
 
+/* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
+ * parameters it needs, in pl_engine/pl_server/src/main/java/com/cubrid/jsp/SysParam.java.
+ * xsysprm_get_pl_context_parameters () keys every parameter it sends by its prm_Def[] index,
+ * so inserting or removing a parameter above any of these silently shifts the ordinal the PL
+ * server is looking for: the lookup misses, Context.getSystemParameterBool () returns null and
+ * unboxing it aborts every stored procedure compile. Keep the two lists in step - if one of
+ * these fires, fix SysParam.java, not the assertion. */
+static_assert (PRM_ID_ORACLE_STYLE_EMPTY_STRING == 95, "update SysParam.java");
+static_assert (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE == 100, "update SysParam.java");
+static_assert (PRM_ID_INTL_NUMBER_LANG == 193, "update SysParam.java");
+static_assert (PRM_ID_INTL_DATE_LANG == 194, "update SysParam.java");
+static_assert (PRM_ID_INTL_COLLATION == 206, "update SysParam.java");
+static_assert (PRM_ID_TIMEZONE == 249, "update SysParam.java");
+static_assert (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR == 334, "update SysParam.java");
+static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 354, "update SysParam.java");
+
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
 
 static const int prm_Def_size = (int) (DIM (prm_Def));

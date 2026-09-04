@@ -9,7 +9,10 @@ import java.nio.charset.StandardCharsets;
 
 public class SysParam implements UnPackableObject, PackableObject {
 
-    // see src/base/system_parameter.h
+    // The ordinals of enum param_id in src/base/system_parameter.h. The server sends a
+    // parameter keyed by that ordinal, so these must be updated whenever a parameter is
+    // added or removed anywhere above the ones listed here. static_assert()s next to
+    // prm_Def[] in src/base/system_parameter.c break the build if they drift apart.
     public static final int ORACLE_STYLE_EMPTY_STRING = 95;
     public static final int COMPAT_NUMERIC_DIVISION_SCALE = 100;
     public static final int INTL_NUMBER_LANG = 193;
