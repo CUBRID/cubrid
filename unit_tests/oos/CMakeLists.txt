@@ -23,6 +23,7 @@ project(test_oos_project)
 set(SA_MODE_TESTS
   test_oos
   test_oos_delete
+  test_oos_identity_stamp
   test_oos_remove_file
   test_oos_bestspace
   test_oos_growth_sweep
@@ -83,6 +84,8 @@ set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB TIMEOUT 3
 # =============================================================================
 add_test(NAME test_oos COMMAND test_oos)
 add_test(NAME test_oos_delete COMMAND test_oos_delete)
+# identity stamp contract: insert issues it, reads verify it, deletes require it (CBRD-26950).
+add_test(NAME test_oos_identity_stamp COMMAND test_oos_identity_stamp)
 add_test(NAME test_oos_remove_file COMMAND test_oos_remove_file)
 add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
 # growth-gate incremental sweep: delete bursts must not grow the OOS file on re-insert (CBRD-26786).
@@ -95,7 +98,8 @@ add_test(NAME test_byte_span_writer COMMAND test_byte_span_writer)
 add_test(NAME test_oos_tde_gate COMMAND test_oos_tde_gate)
 
 set_tests_properties(
-  test_oos test_oos_delete test_oos_remove_file test_oos_bestspace test_oos_growth_sweep
+  test_oos test_oos_delete test_oos_identity_stamp test_oos_remove_file test_oos_bestspace
+  test_oos_growth_sweep
   PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 30
 )
 

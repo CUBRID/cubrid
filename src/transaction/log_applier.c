@@ -5029,7 +5029,9 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes, OID * head_oid_out)
       if (found_head_chunk)
 	{
 	  int offset = OOS_RECORD_HEADER_SIZE;
-	  OOS_RECORD_HEADER merged_header = { total_data_length, 0, OID_INITIALIZER };
+	  /* The merged image is transient applier memory: locator_oos_insert_force strips this header
+	   * and the slave's own oos_insert issues the identity stamp, so NULL is right here. */
+	  OOS_RECORD_HEADER merged_header = { total_data_length, 0, OID_INITIALIZER, NULL_LSA };
 	  int chunk_index;
 
 	  if (total_body_length != total_data_length)

@@ -57,13 +57,14 @@ oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
 
 static int
 oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
-			const OOS_RECORD_HEADER &header, OID &oid);
+			const OOS_RECORD_HEADER &header, OID &oid, LOG_LSA &identity_stamp_out);
 static int
 oos_insert_record_in_fixed_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, PAGE_PTR page_ptr,
-				 const VPID &vpid, oos_buffer src, const OOS_RECORD_HEADER &header, OID &oid);
+				 const VPID &vpid, oos_buffer src, const OOS_RECORD_HEADER &header, OID &oid,
+				 LOG_LSA &identity_stamp_out);
 static int
 oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
-			 OID &oid);
+			 OID &oid, LOG_LSA &identity_stamp_out);
 static int
 oos_insert_single_page_batch (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 			      cubbase::span<oos_insert_request> requests,
@@ -2081,7 +2082,7 @@ oos_cleanup_insert_publication_state_on_error (THREAD_ENTRY *thread_p) noexcept
 }
 
 int
-oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid)
+oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid, LOG_LSA *identity_stamp_out)
 {
   oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, src.size=%zu",
 	     oos_vfid.fileid, oos_vfid.volid, src.size ());
@@ -2105,16 +2106,18 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
   // review whether it is possible to generate the segment headers inside the oos_insert_within_page() and
   // oos_insert_across_pages() functions.
 
+  LOG_LSA identity_stamp = NULL_LSA;
+
   try
     {
       if (src_len <= oos_get_max_chunk_size_within_page ())
 	{
-	  const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER};
-	  err = oos_insert_within_page (thread_p, oos_vfid, src, header, oid);
+	  const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER, NULL_LSA};
+	  err = oos_insert_within_page (thread_p, oos_vfid, src, header, oid, identity_stamp);
 	}
       else
 	{
-	  err = oos_insert_across_pages (thread_p, oos_vfid, src, oid);
+	  err = oos_insert_across_pages (thread_p, oos_vfid, src, oid, identity_stamp);
 	}
 
       if (err != NO_ERROR)
@@ -2132,7 +2135,12 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
     }
 
   cleanup_publication_on_error.release ();
-  oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
+  if (identity_stamp_out != NULL)
+    {
+      *identity_stamp_out = identity_stamp;
+    }
+  oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d} identity_stamp=%lld|%d", OID_AS_ARGS (&oid),
+	     LSA_AS_ARGS (&identity_stamp));
   return NO_ERROR;
 }
 
@@ -2159,16 +2167,22 @@ oos_insert_single_page_batch (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     {
       oos_insert_request &request = requests[i];
       const int src_len = static_cast<int> (request.src.size ());
-      const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER};
+      const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER, NULL_LSA};
       OID oid;
+      LOG_LSA identity_stamp = NULL_LSA;
 
-      err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, request.src, header, oid);
+      err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, request.src, header, oid,
+					     identity_stamp);
       if (err != NO_ERROR)
 	{
 	  return err;
 	}
 
       *request.oid_out = oid;
+      if (request.identity_stamp_out != NULL)
+	{
+	  *request.identity_stamp_out = identity_stamp;
+	}
       oos_publish_oos_oid (thread_p, oid);
     }
 
@@ -2241,10 +2255,15 @@ oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos
 	  if (requests[pos].src.size () > (std::size_t) max_chunk_size)
 	    {
 	      OID oid;
-	      err = oos_insert_across_pages (thread_p, oos_vfid, requests[pos].src, oid);
+	      LOG_LSA identity_stamp = NULL_LSA;
+	      err = oos_insert_across_pages (thread_p, oos_vfid, requests[pos].src, oid, identity_stamp);
 	      if (err == NO_ERROR)
 		{
 		  *requests[pos].oid_out = oid;
+		  if (requests[pos].identity_stamp_out != NULL)
+		    {
+		      *requests[pos].identity_stamp_out = identity_stamp;
+		    }
 		  oos_publish_oos_oid (thread_p, oid);
 		  pos++;
 		  publication_count++;
@@ -2316,7 +2335,8 @@ oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos
 //   auto-push in log_append_{undo,}redo_crumbs while this function runs.
 //
 static int
-oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid)
+oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid,
+			 LOG_LSA &identity_stamp_out)
 {
   int error_code = NO_ERROR;
   LOG_TDES *tdes = NULL;
@@ -2375,10 +2395,12 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
       total_inserted_length += static_cast<int> (chunk.size ());
 
       // Keep total_data_length in each chunk so the log applier can validate all pieces before reassembly.
-      OOS_RECORD_HEADER header{total_data_length, i, next_chunk_oid};
+      OOS_RECORD_HEADER header{total_data_length, i, next_chunk_oid, NULL_LSA};
 
       OID current_chunk_oid;
-      error_code = oos_insert_within_page (thread_p, oos_vfid, chunk, header, current_chunk_oid);
+      LOG_LSA chunk_identity_stamp = NULL_LSA;
+      error_code = oos_insert_within_page (thread_p, oos_vfid, chunk, header, current_chunk_oid,
+					   chunk_identity_stamp);
       if (error_code != NO_ERROR)
 	{
 	  oos_error ("could not insert chunk index=%d of length %zu.", i, chunk.size ());
@@ -2395,6 +2417,10 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
 	}
 
       next_chunk_oid = current_chunk_oid;
+      /* Chains are written tail first, so the loop ends at i == 0, the head chunk: this is the
+       * value the owning stub must carry. Each chunk carries the LSA of its own page, so no
+       * chain-wide value exists when the tail chunks are stamped. */
+      identity_stamp_out = chunk_identity_stamp;
     }
   assert (total_inserted_length == total_data_length);
 
@@ -2413,10 +2439,32 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
 
 static int
 oos_insert_record_in_fixed_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, PAGE_PTR page_ptr,
-				 const VPID &vpid, oos_buffer src, const OOS_RECORD_HEADER &header, OID &oid)
+				 const VPID &vpid, oos_buffer src, const OOS_RECORD_HEADER &header, OID &oid,
+				 LOG_LSA &identity_stamp_out)
 {
+  /* Issue the chunk's identity stamp (CBRD-26950): the page LSA read under the write latch the
+   * caller already holds and keeps through the slotted-page insert and this chunk's own log append
+   * below, so it is the page LSA immediately before this chunk's logging.
+   *
+   * Invariant 1: the stamp is the page LSA BEFORE this chunk's log append. Redo cannot learn the
+   * LSA of the record it is replaying, but the stamp is part of the logged chunk image, so redo
+   * (and the undo of a later delete) restores exactly what was written.
+   *
+   * Invariant 2: at least one logged page operation separates two incarnations of one slot. The
+   * first occupant's own logged insert already advances the page LSA past its stamp, and page LSAs
+   * never regress in normal operation, so a later occupant of the same slot always carries a
+   * different stamp. Today every chunk insert and every chunk delete is its own log record,
+   * including batch inserts; a future optimization that merges several inserts into one log record
+   * must preserve this.
+   *
+   * Invariant 3: NULL is an ordinary stamp value with no special handling. Only the offline log
+   * re-creation utility produces NULL page LSAs, and it also discards the log and therefore every
+   * pending reclamation request, so no stale OOS reference survives into the restarted LSA space. */
+  OOS_RECORD_HEADER stamped_header = header;
+  stamped_header.identity_stamp = *pgbuf_get_lsa (page_ptr);
+
   OOS_RECDES oos_recdes{};
-  int err = oos_prepend_header (src, header, oos_recdes);
+  int err = oos_prepend_header (src, stamped_header, oos_recdes);
   if (err != NO_ERROR)
     {
       oos_error ("oos_prepend_header failed");
@@ -2444,13 +2492,14 @@ oos_insert_record_in_fixed_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, P
   oid.volid = vpid.volid;
 
   oos_log_insert_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), &oid, &oos_recdes);
+  identity_stamp_out = stamped_header.identity_stamp;
   return NO_ERROR;
 }
 
 static int
 oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			const OOS_RECORD_HEADER &header,
-			OID &oid)
+			OID &oid, LOG_LSA &identity_stamp_out)
 {
   int err = NO_ERROR;
   VPID vpid;
@@ -2469,7 +2518,7 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer
       return err;
     }
   PAGE_PTR page_ptr = auto_page_ptr.get ();
-  err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, src, header, oid);
+  err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, src, header, oid, identity_stamp_out);
   if (err != NO_ERROR)
     {
       return err;
@@ -3245,6 +3294,79 @@ oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
       oos_reclaim_note_delete (oos_vfid);
     }
   return err;
+}
+
+/*
+ * oos_get_identity_stamp () - Read the identity stamp the head chunk at head_oid currently carries.
+ *
+ *   return: NO_ERROR, or an error when the page is deallocated or the slot is absent. Unlike
+ *           oos_delete, an absent target is an error here: the caller asks about a chunk it knows
+ *           to exist, to build a correct chain reference for a test or a diagnostic.
+ *   thread_p(in): thread entry
+ *   head_oid(in): OID of the head chunk
+ *   identity_stamp_out(out): the stamp stored in the chunk header
+ *
+ * NOTE: Production callers never read the stamp back from storage: they take it from the insert
+ *       request output when the chain is created and from the owning heap record's OOS inline stub
+ *       afterwards. This accessor is not a pre-delete probe; oos_delete verifies identity itself.
+ */
+int
+oos_get_identity_stamp (THREAD_ENTRY *thread_p, const OID &head_oid, LOG_LSA *identity_stamp_out)
+{
+  assert (identity_stamp_out != NULL);
+  LSA_SET_NULL (identity_stamp_out);
+
+  VPID vpid;
+  vpid.volid = head_oid.volid;
+  vpid.pageid = head_oid.pageid;
+
+  /* Tolerate a deallocated page the same way oos_get_length does: a vacuumed reference must report
+   * an error rather than trip the dead-page assert inside pgbuf_fix. */
+  PAGE_PTR page_ptr = NULL;
+  int err = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      oos_error ("oos_get_identity_stamp: pgbuf_fix failed at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&head_oid));
+      return err;
+    }
+  if (page_ptr == nullptr)
+    {
+      oos_error ("oos_get_identity_stamp: page deallocated at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&head_oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  scope_exit page_unfixer ([&]()
+  {
+    pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+  });
+
+  OOS_RECDES oos_recdes = RECDES_INITIALIZER;
+  SCAN_CODE code = spage_get_record (thread_p, page_ptr, head_oid.slotid, &oos_recdes, PEEK);
+  if (code != S_SUCCESS)
+    {
+      oos_error ("oos_get_identity_stamp: spage_get_record failed (code=%d) at oid={vol=%d,page=%d,slot=%d}",
+		 (int) code, OID_AS_ARGS (&head_oid));
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+      return er_errid ();
+    }
+
+  if (oos_recdes.length < OOS_RECORD_HEADER_SIZE)
+    {
+      oos_error ("oos_get_identity_stamp: OOS record smaller than header (len=%d) at oid={vol=%d,page=%d,slot=%d}",
+		 oos_recdes.length, OID_AS_ARGS (&head_oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
+
+  OOS_RECORD_HEADER header;
+  std::memcpy (&header, oos_recdes.data, OOS_RECORD_HEADER_SIZE);
+  *identity_stamp_out = header.identity_stamp;
+
+  return NO_ERROR;
 }
 
 // TODO: since this value never changes, we can make it a constant or static variable,
