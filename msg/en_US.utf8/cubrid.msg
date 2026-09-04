@@ -1483,7 +1483,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1378 Cannot change the login capability of user "%1$s".
 
-1379 Last Error
+1379 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
+1380 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
+
+1381 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

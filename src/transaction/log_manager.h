@@ -162,6 +162,7 @@ extern void log_rv_dump_hexa (FILE * fp, int length, void *data);
 extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int log_rv_no_logging_index_durable_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int log_rv_no_logging_index_committed_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int log_rv_undoredo_sysmeta_version (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages);
 #endif

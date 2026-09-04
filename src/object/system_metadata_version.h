@@ -18,24 +18,17 @@
 
 
 /*
- * schema_information_schema.hpp - SQL INFORMATION_SCHEMA (ISO/IEC 9075-11:2003) metadata interface
+ * system_metadata_version.h - System metadata version constant.
+ *
+ * Increment on release when system metadata (system catalog, information_schema,
+ * etc.) changes. Stored in LOG_HEADER (UINT16); boot mismatch requires
+ * 'cubrid upgradedb'. Version 0 marks databases created before 11.5.0;
+ * they must be recreated.
  */
 
-#ifndef _SCHEMA_INFORMATION_SCHEMA_HPP_
-#define _SCHEMA_INFORMATION_SCHEMA_HPP_
+#ifndef _SYSTEM_METADATA_VERSION_H_
+#define _SYSTEM_METADATA_VERSION_H_
 
-#include <string>
-#include <string_view>
-#include <vector>
+#define SYSTEM_METADATA_VERSION 1
 
-void info_schema_init (void);
-int info_schema_install (void);
-int info_schema_rebuild_vclasses (void);
-bool sm_is_information_schema_views (const std::string_view name);
-
-namespace cubschema
-{
-  const std::vector<std::string> &get_information_schema_view_names ();
-}
-
-#endif /* _SCHEMA_INFORMATION_SCHEMA_HPP_ */
+#endif /* _SYSTEM_METADATA_VERSION_H_ */

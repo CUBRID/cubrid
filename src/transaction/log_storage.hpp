@@ -134,8 +134,7 @@ struct log_header
   DKNPAGES npages;		/* Number of pages in the active log portion. Does not include the log header page. */
   INT8 db_charset;
   bool was_copied;		/* set to true for copied database; should be reset on first server start */
-  INT8 dummy3;			/* Dummy fields for 8byte align */
-  INT8 dummy4;
+  UINT16 sysmeta_version;	/* version of the system metadata (e.g. system catalog) on disk */
   LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in active log */
   LOG_LSA append_lsa;		/* Current append location */
   LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the recovery process */
@@ -190,8 +189,7 @@ struct log_header
     , npages (0)
     , db_charset (0)
     , was_copied (false)
-    , dummy3 (0)
-    , dummy4 (0)
+    , sysmeta_version (0)
     , fpageid (0)
     , append_lsa (NULL_LSA)
     , chkpt_lsa (NULL_LSA)

@@ -181,6 +181,7 @@ Available administrator's utilities:\n\
     restoreslave\n\
     spacedb\n\
     unloaddb\n\
+    upgradedb\n\
     paramdump\n\
     statdump\n\
     changemode\n\
@@ -1380,3 +1381,25 @@ valid options:\n\
     -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
     -l, --list                    list all files\n\
     -c, --clean-invalid-file      clean invalid files\n
+
+$set 61 MSGCAT_UTIL_SET_UPGRADEDB
+1 Database system metadata is not upgradable; recreate the database with the current CUBRID version.\n
+2 Database system metadata is newer than the current CUBRID version; downgrade is not supported.\n
+3 Apply system metadata upgrade scripts? (y/n)\n
+4 options --check and --force are mutually exclusive.\n
+5 System metadata upgrade script decoding failed: %1$s\n
+6 System metadata upgrade script validation failed: %1$s\n
+7 Failed to read system metadata upgrade script: %1$s\n
+8 No system metadata upgrade script is listed in %1$s\n
+9 System metadata is up to date; no upgrade is required.\n
+10 System metadata upgrade is required. Run 'cubrid upgradedb'.\n
+60 \
+upgradedb: upgrade system metadata to match the current CUBRID version.\n\
+usage: %1$s upgradedb [OPTION] database-name\n\
+\n\
+valid options:\n\
+      --check                  report whether an upgrade is required, without applying it;\n\
+                               exit 0 if up to date, 1 if it cannot be checked or\n\
+                               upgraded, 2 if an upgrade is required\n\
+  -f, --force                  apply the upgrade without prompting for confirmation\n\
+  -v, --verbose                print upgrade scripts before applying them\n
