@@ -734,6 +734,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
 #define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
 
+#define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
 #define PRM_NAME_TASK_GROUP "task_group"
 
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
@@ -4774,6 +4775,23 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_CORE_COUNT,
+   PRM_NAME_THREAD_CORE_COUNT,
+   (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count ()}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
+   {false, {.i = 1}},
+   {false, {.i = 1}},
+#endif
+   {false, {.i = 1024}},
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_TASK_GROUP,
    PRM_NAME_TASK_GROUP,
    (PRM_FOR_SERVER),
@@ -5459,12 +5477,12 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_AUTO_INCREMENT_CACHE_SIZE,
    PRM_NAME_AUTO_INCREMENT_CACHE_SIZE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 20}},
    {false, {.i = 20}},
-   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = 1000}},
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5518,6 +5536,22 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
 };
+
+/* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
+ * parameters it needs, in pl_engine/pl_server/src/main/java/com/cubrid/jsp/SysParam.java.
+ * xsysprm_get_pl_context_parameters () keys every parameter it sends by its prm_Def[] index,
+ * so inserting or removing a parameter above any of these silently shifts the ordinal the PL
+ * server is looking for: the lookup misses, Context.getSystemParameterBool () returns null and
+ * unboxing it aborts every stored procedure compile. Keep the two lists in step - if one of
+ * these fires, fix SysParam.java, not the assertion. */
+static_assert (PRM_ID_ORACLE_STYLE_EMPTY_STRING == 95, "update SysParam.java");
+static_assert (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE == 100, "update SysParam.java");
+static_assert (PRM_ID_INTL_NUMBER_LANG == 193, "update SysParam.java");
+static_assert (PRM_ID_INTL_DATE_LANG == 194, "update SysParam.java");
+static_assert (PRM_ID_INTL_COLLATION == 206, "update SysParam.java");
+static_assert (PRM_ID_TIMEZONE == 249, "update SysParam.java");
+static_assert (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR == 335, "update SysParam.java");
+static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 355, "update SysParam.java");
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
 
@@ -10052,6 +10086,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *tz_leap_second_support_prm;
   SYSPRM_PARAM *task_worker_prm;
   SYSPRM_PARAM *task_group_prm;
+  SYSPRM_PARAM *thread_core_count_prm;
 #if defined (SERVER_MODE)
   SYSPRM_PARAM *max_parallel_workers_prm;
   SYSPRM_PARAM *parallelism_prm;
@@ -10124,6 +10159,22 @@ prm_tune_parameters (void)
 	}
 
       task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
+
+      /* thread_core_count was renamed to task_group by CBRD-26255. The old name is kept only as a
+       * deprecated alias, so that a cubrid.conf written for 11.4 or earlier still boots. task_group is
+       * the authoritative name: the alias is applied only when task_group itself was not given, no
+       * matter in which order the two appear in cubrid.conf.
+       *
+       * TODO: remove PRM_ID_THREAD_CORE_COUNT, its prm_Def entry and this block when the deprecation
+       *       period for the rename is over.
+       */
+      thread_core_count_prm = GET_PRM (PRM_ID_THREAD_CORE_COUNT);
+      if (PRM_IS_SET (thread_core_count_prm) && !PRM_IS_SET (task_group_prm))
+	{
+	  sprintf (newval, "%d", MIN (PRM_GET_INT (thread_core_count_prm->value), system_cpu_count));
+	  (void) prm_set (task_group_prm, newval, true);
+	}
+
       if (PRM_GET_INT (task_group_prm->value) > system_cpu_count)
 	{
 	  sprintf (newval, "%d", system_cpu_count);

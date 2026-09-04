@@ -30,6 +30,7 @@ cd build_preset_debug && ctest
 | `resource_tracker/` | `UNIT_TEST_RESOURCE_TRACKER` | ✓ Active |
 | `monitor/` | `UNIT_TEST_MONITOR` | ✓ Active |
 | `log_prior_inflight/` | `UNIT_TEST_LOG_PRIOR_INFLIGHT` | ✓ Active |
+| `json_builder/` | `UNIT_TEST_JSON_BUILDER` | ✓ Active |
 | `lockfree/` | `UNIT_TEST_LOCKFREE` | ✗ Disabled (compilation fails) |
 | `loaddb/` | `UNIT_TEST_LOADDB` | ✗ Disabled (compilation fails) |
 | `memory_monitor/` | `UNIT_TEST_MEMORY_MONITOR` | ✗ Disabled (compilation fails) |
