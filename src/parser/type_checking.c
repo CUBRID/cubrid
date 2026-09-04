@@ -1473,12 +1473,26 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_SYS_GUID:
+      num = 0;
+
+      /* row-determined: a fresh GUID on every evaluation */
+      sig.volatility = PT_VOLATILITY_VOLATILE;
+
+      /* one overload: no arguments, just a return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_DATABASE:
     case PT_SCHEMA:
     case PT_VERSION:
     case PT_CURRENT_USER:
     case PT_LIST_DBS:
-    case PT_SYS_GUID:
     case PT_USER:
       num = 0;
 
@@ -1495,6 +1509,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
     case PT_UUID:
       num = 0;
+
+      /* row-determined: a fresh UUID on every evaluation */
+      sig.volatility = PT_VOLATILITY_VOLATILE;
 
       /* first overload: UUID() -> BIT (defaults to UUID(4)) */
       sig.arg1_type.type = pt_arg_type::NORMAL;
@@ -2014,6 +2031,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
     case PT_UUID_FORMAT:
       num = 0;
+
+      sig.volatility = PT_VOLATILITY_IMMUTABLE;
 
       /* UUID_FORMAT (STRING) */
       sig.arg1_type.type = pt_arg_type::GENERIC;

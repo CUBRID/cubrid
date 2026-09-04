@@ -307,13 +307,18 @@ struct json_t;
 #define PT_IS_FUNCTION(n) \
         ( (n) && ((n)->node_type == PT_FUNCTION) )
 
-/* a PT_DATA_DEFAULT node carrying a STABLE residual DEFAULT expression:
- * classified STABLE by pt_check_data_default, on the new DEFAULT path
- * (no legacy pseudo-column enum) */
-#define PT_IS_STABLE_RESIDUAL_DEFAULT(n) \
+/* a PT_DATA_DEFAULT node carrying a residual DEFAULT expression: classified
+ * STABLE or VOLATILE by pt_check_data_default, on the new DEFAULT path (no
+ * legacy pseudo-column enum).  A STABLE residual is evaluated once per
+ * statement, a VOLATILE one once per row. */
+#define PT_IS_RESIDUAL_DEFAULT(n) \
         ( (n) && ((n)->node_type == PT_DATA_DEFAULT) && \
           (n)->info.data_default.default_expr_type == DB_DEFAULT_NONE && \
-          (n)->info.data_default.expr_volatility == PT_VOLATILITY_STABLE )
+          PT_VOLATILITY_IS_RESIDUAL ((n)->info.data_default.expr_volatility) )
+
+#define PT_IS_VOLATILE_RESIDUAL_DEFAULT(n) \
+        ( PT_IS_RESIDUAL_DEFAULT (n) && \
+          PT_VOLATILITY_IS_VOLATILE_RESIDUAL ((n)->info.data_default.expr_volatility) )
 
 #define PT_IS_MULTI_COL_TERM(n) \
 	( (n) && \
