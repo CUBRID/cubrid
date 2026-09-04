@@ -2178,8 +2178,15 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
       null_freqs[i] = 0.0;
     }
 
-  if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL) != NO_ERROR)
+  bool hfid_found;		/* always written by heap_get_class_info () */
+
+  if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, &hfid_found) != NO_ERROR || !hfid_found)
     {
+      if (!hfid_found)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, class_oid.volid, class_oid.pageid,
+		  class_oid.slotid);
+	}
       status = ER_FAILED;
       (void) return_error_to_client (thread_p, rid);
       goto cleanup;

@@ -855,7 +855,7 @@ static int heap_hfid_table_entry_key_copy (void *src, void *dest);
 static unsigned int heap_hfid_table_entry_key_hash (void *key, int hash_table_size);
 static int heap_hfid_table_entry_key_compare (void *k1, void *k2);
 static int heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE * ftype_out,
-				char **classname_out);
+				bool * found);
 static int heap_get_class_info_from_record (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
 					    char **classname_out);
 
@@ -6397,11 +6397,21 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	    }
 	}
 
-      ret = heap_get_class_info (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type, NULL);
+      bool found = false;
+
+      ret = heap_get_class_info (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type, &found);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return ret;
+	}
+      if (!found)
+	{
+	  /* instances of the class are being scanned, so its heap must exist. */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, class_oid->volid, class_oid->pageid,
+		  class_oid->slotid);
+	  return ER_HEAP_UNKNOWN_OBJECT;
 	}
       assert (hfid == NULL || HFID_EQ (hfid, &scan_cache->node.hfid));
       assert (scan_cache->file_type == FILE_HEAP || scan_cache->file_type == FILE_HEAP_REUSE_SLOTS);
@@ -6646,11 +6656,20 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
     {
       if (!OID_EQ (class_oid, &scan_cache->node.class_oid))
 	{
-	  ret = heap_get_class_info (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type, NULL);
+	  bool found = false;
+
+	  ret = heap_get_class_info (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type, &found);
 	  if (ret != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return ret;
+	    }
+	  if (!found)
+	    {
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, class_oid->volid,
+		      class_oid->pageid, class_oid->slotid);
+	      return ER_HEAP_UNKNOWN_OBJECT;
 	    }
 	  assert (HFID_EQ (&scan_cache->node.hfid, hfid));
 	  scan_cache->node.class_oid = *class_oid;
@@ -9522,7 +9541,7 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
   if (err != NO_ERROR)
     {
       /* for non existent object, return S_DOESNT_EXIST and let the caller handle the case; */
-      return err == ER_HEAP_UNKNOWN_OBJECT ? S_DOESNT_EXIST : S_ERROR;
+      return (err == ER_HEAP_UNKNOWN_OBJECT || err == ER_PB_ORDERED_NO_HEAP) ? S_DOESNT_EXIST : S_ERROR;
     }
 
   /* Get class OID from HEAP_CHAIN. */
@@ -12184,7 +12203,16 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	      return S_ERROR;
 	    }
 
-	  heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, NULL);
+	  bool found = false;
+
+	  if (heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, &found) != NO_ERROR || !found)
+	    {
+	      /* an instance of the class is being transformed, so its heap must exist. */
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, attr_info->class_oid.volid,
+		      attr_info->class_oid.pageid, attr_info->class_oid.slotid);
+	      return S_ERROR;
+	    }
 
 	  snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), attrid);
 
@@ -14894,6 +14922,7 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
   OID class_oid;
   LC_FIND_CLASSNAME status;
   HFID hfid;
+  bool found = false;
   OR_PARTITION *parts = NULL;
   int parts_count = 0;
 
@@ -14906,10 +14935,16 @@ heap_dump_heap_file (THREAD_ENTRY * thread_p, FILE * fp, bool dump_records, cons
 
   fprintf (fp, "\n*** DUMP HEAP OF %s ***\n", class_name);
 
-  error_code = heap_hfid_cache_get (thread_p, &class_oid, &hfid, NULL, NULL);
+  error_code = heap_hfid_cache_get (thread_p, &class_oid, &hfid, NULL, &found);
   if (error_code != NO_ERROR)
     {
       assert (false);
+      goto exit;
+    }
+  if (!found)
+    {
+      /* a view, or a class whose heap is not assigned - nothing to dump. */
+      fprintf (fp, "*** class %s has no heap (a view?) ***\n", class_name);
       goto exit;
     }
 
@@ -16356,8 +16391,11 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  goto end;
 	}
 
-      if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL) != NO_ERROR)
+      bool found = false;
+
+      if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, &found) != NO_ERROR || !found)
 	{
+	  assert (found);
 	  goto end;
 	}
       assert (!HFID_IS_NULL (&hfid));
@@ -17384,20 +17422,23 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid,
 /*
  * heap_get_class_info () - get HFID and file type for class.
  *
- * return             : error code
- * thread_p (in)      : thread entry
- * class_oid (in)     : class OID
- * hfid_out (out)     : output heap file identifier
- * ftype_out (out)    : output heap file type
- * classname_out (out): output classname
+ * return          : error code (real failures only, e.g. record or file I/O; "the class has no heap" is NOT an
+ *                   error - it is reported through found)
+ * thread_p (in)   : thread entry
+ * class_oid (in)  : class OID
+ * hfid_out (out)  : output heap file identifier; HFID_SET_NULL initialized, valid only when *found is true
+ * ftype_out (out) : output heap file type; valid only when *found is true
+ * found (out)     : false when the class currently has no heap (a view, or a transient DDL state). The returned
+ *                   mapping is a point-in-time snapshot; liveness at use time is the caller's concern (locks or
+ *                   page-level validation).
  */
 int
 heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
-		     FILE_TYPE * ftype_out, char **classname_out)
+		     FILE_TYPE * ftype_out, bool * found)
 {
   int error_code = NO_ERROR;
 
-  error_code = heap_hfid_cache_get (thread_p, class_oid, hfid_out, ftype_out, classname_out);
+  error_code = heap_hfid_cache_get (thread_p, class_oid, hfid_out, ftype_out, found);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -17433,8 +17474,10 @@ heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
       return ER_FAILED;
     }
 
-  ret = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
-  if (ret != NO_ERROR || HFID_IS_NULL (&hfid))
+  bool found = false;
+
+  ret = heap_get_class_info (thread_p, class_oid, &hfid, NULL, &found);
+  if (ret != NO_ERROR || !found)
     {
       lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK, true);
       return ret;
@@ -18434,9 +18477,18 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
 	  goto cleanup;
 	}
 
-      error = heap_get_class_info (thread_p, &class_oid, &ctx->hfids[0], NULL, NULL);
+      bool found = false;
+
+      error = heap_get_class_info (thread_p, &class_oid, &ctx->hfids[0], NULL, &found);
       if (error != NO_ERROR)
 	{
+	  goto cleanup;
+	}
+      if (!found)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, class_oid.volid, class_oid.pageid,
+		  class_oid.slotid);
+	  error = ER_HEAP_UNKNOWN_OBJECT;
 	  goto cleanup;
 	}
 
@@ -19913,8 +19965,9 @@ int
 heap_scancache_quick_start_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, OID * class_oid)
 {
   HFID class_hfid;
+  bool found = false;
 
-  heap_get_class_info (thread_p, class_oid, &class_hfid, NULL, NULL);
+  heap_get_class_info (thread_p, class_oid, &class_hfid, NULL, &found);
   (void) heap_scancache_quick_start_with_class_hfid (thread_p, scan_cache, &class_hfid);
   scan_cache->page_latch = PGBUF_LATCH_READ;
 
@@ -19962,8 +20015,9 @@ int
 heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, OID * class_oid)
 {
   HFID class_hfid;
+  bool found = false;
 
-  heap_get_class_info (thread_p, class_oid, &class_hfid, NULL, NULL);
+  heap_get_class_info (thread_p, class_oid, &class_hfid, NULL, &found);
   (void) heap_scancache_quick_start_internal (scan_cache, &class_hfid);
   scan_cache->page_latch = PGBUF_LATCH_WRITE;
 
@@ -20155,9 +20209,11 @@ heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
   else
     {
-      if (heap_get_class_info (thread_p, &context->class_oid, NULL, &file_type, NULL) != NO_ERROR)
+      bool found = false;
+
+      if (heap_get_class_info (thread_p, &context->class_oid, NULL, &file_type, &found) != NO_ERROR || !found)
 	{
-	  ASSERT_ERROR ();
+	  assert (found);
 	  return FILE_UNKNOWN_TYPE;
 	}
       assert (file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS);
@@ -24009,8 +24065,6 @@ heap_hfid_table_entry_alloc (void)
       return NULL;
     }
 
-  new_entry->classname = NULL;
-
   return (void *) new_entry;
 }
 
@@ -24024,15 +24078,6 @@ heap_hfid_table_entry_free (void *entry)
 {
   if (entry != NULL)
     {
-      HEAP_HFID_TABLE_ENTRY *entry_p = (HEAP_HFID_TABLE_ENTRY *) entry;
-
-      // Clear the classname.
-      if (entry_p->classname != NULL)
-	{
-	  free (entry_p->classname);
-	  entry_p->classname = NULL;
-	}
-
       free (entry);
       return NO_ERROR;
     }
@@ -24063,7 +24108,6 @@ heap_hfid_table_entry_init (void *entry)
   entry_p->hfid.vfid.volid = NULL_VOLID;
   entry_p->hfid.hpgid = NULL_PAGEID;
   entry_p->ftype = FILE_UNKNOWN_TYPE;
-  entry_p->classname = NULL;
 
   return NO_ERROR;
 }
@@ -24071,13 +24115,8 @@ heap_hfid_table_entry_init (void *entry)
 static int
 heap_hfid_table_entry_uninit (void *entry)
 {
-  HEAP_HFID_TABLE_ENTRY *entry_p = (HEAP_HFID_TABLE_ENTRY *) entry;
-  if (entry_p->classname != NULL)
-    {
-      free (entry_p->classname);
-      entry_p->classname = NULL;
-    }
-  return NO_ERROR;
+  /* nothing to release: the entry has no owned payload since the classname cache was removed. */
+  return entry != NULL ? NO_ERROR : ER_FAILED;
 }
 
 /*
@@ -24203,6 +24242,9 @@ heap_initialize_hfid_table (void)
     }
 
   heap_Hfid_table_area.logging = prm_get_bool_value (PRM_ID_HEAP_INFO_CACHE_LOGGING);
+// *INDENT-OFF*
+  heap_Hfid_table_area.generation.store (0);
+// *INDENT-ON*
 
   heap_Hfid_table = &heap_Hfid_table_area;
 
@@ -24240,6 +24282,11 @@ heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p, OID * class_oid)
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   int error = NO_ERROR;
   int success = 0;
+
+  /* Bump the invalidation clock BEFORE the delete and regardless of whether an entry exists: a filler that read
+   * the class record before this invalidation may not have published yet (nothing to delete), and the clock is
+   * what makes it withdraw its stale publish afterwards (see heap_hfid_cache_get). */
+  heap_Hfid_table->generation.fetch_add (1);
 
   error = lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, class_oid, &success);
   heap_hfid_table_log (thread_p, class_oid, "heap_delete_hfid_from_cache success=%d", success);
@@ -24373,14 +24420,11 @@ exit:
  * ftype (in)     : FILE_HEAP or FILE_HEAP_REUSE_SLOTS.
  */
 int
-heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE ftype,
-		       const char *classname_in)
+heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE ftype)
 {
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
-  HFID hfid_local = HFID_INITIALIZER;
-  char *classname_local = NULL;
   int inserted = 0;
 
   assert (hfid != NULL && !HFID_IS_NULL (hfid));
@@ -24392,62 +24436,31 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
       return NO_ERROR;
     }
 
+  /* fill-then-publish, same as heap_hfid_cache_get (): the entry is completed before it is linked. */
+  entry = (HEAP_HFID_TABLE_ENTRY *) lf_freelist_claim (t_entry, &heap_Hfid_table->hfid_hash_freelist);
+  if (entry == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  COPY_OID (&entry->class_oid, class_oid);	/* LF_LIST_BF_INSERT_GIVEN does not copy the key */
+  HFID_COPY (&entry->hfid, hfid);
+  entry->ftype = ftype;
+
   error_code =
-    lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, &inserted);
+    lf_hash_insert_given (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, &inserted);
   if (error_code != NO_ERROR)
     {
       assert (false);
       return error_code;
     }
-  // NOTE: no collisions are expected when heap_cache_class_info is called
-
-  assert (entry != NULL);
-  assert (entry->hfid.hpgid == NULL_PAGEID);
-
-  HFID_COPY (&entry->hfid, hfid);
-  if (classname_in != NULL)
-    {
-      classname_local = strdup (classname_in);
-    }
-  else
-    {
-      error_code = heap_get_class_info_from_record (thread_p, class_oid, &hfid_local, &classname_local);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  lf_tran_end_with_mb (t_entry);
-
-	  // remove from hash
-	  int success = 0;
-	  if (lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, &success) != NO_ERROR)
-	    {
-	      assert (false);
-	    }
-	  assert (success);
-
-	  heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info failed error=%d", error_code);
-
-	  if (classname_local != NULL)
-	    {
-	      free (classname_local);
-	    }
-
-	  return error_code;
-	}
-    }
-
-  entry->ftype = ftype;
-
-  char *dummy_null = NULL;
-  if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
-    {
-      free (classname_local);
-    }
+  // NOTE: no collisions are expected when heap_cache_class_info is called (boot-time root class only)
+  assert (inserted == 1);
 
   lf_tran_end_with_mb (t_entry);
 
-  heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info hfid=%d|%d|%d, ftype=%s, classname = %s",
-		       HFID_AS_ARGS (hfid), file_type_to_string (ftype), classname_local);
+  heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info hfid=%d|%d|%d, ftype=%s",
+		       HFID_AS_ARGS (hfid), file_type_to_string (ftype));
 
   /* Successfully cached. */
   return NO_ERROR;
@@ -24466,109 +24479,139 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
  */
 static int
 heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out, FILE_TYPE * ftype_out,
-		     char **classname_out)
+		     bool * found)
 {
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
-  char *classname_local = NULL;
+  HFID hfid_local = HFID_INITIALIZER;
+  FILE_TYPE ftype_local = FILE_UNKNOWN_TYPE;
+  uint64_t generation_snapshot;
   int inserted = 0;
 
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
+  assert (found != NULL);
+
+  *found = false;
+  if (hfid_out != NULL)
+    {
+      HFID_SET_NULL (hfid_out);
+    }
+
+  /* lookup: the hash only holds complete entries (fill-then-publish), so a found entry needs no state checks. */
+  error_code = lf_hash_find (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (entry != NULL)
+    {
+      assert (entry->hfid.hpgid != NULL_PAGEID && entry->hfid.vfid.fileid != NULL_FILEID
+	      && entry->hfid.vfid.volid != NULL_VOLID);
+      assert (entry->ftype == FILE_HEAP || entry->ftype == FILE_HEAP_REUSE_SLOTS);
+
+      if (hfid_out != NULL)
+	{
+	  *hfid_out = entry->hfid;
+	}
+      if (ftype_out != NULL)
+	{
+	  *ftype_out = entry->ftype;
+	}
+      *found = true;
+      lf_tran_end_with_mb (t_entry);
+      return NO_ERROR;
+    }
+
+  /* miss. Snapshot the invalidation clock before reading the class record, so we can tell whether an invalidation
+   * overlapped the fill (see the publish step below). */
+  generation_snapshot = heap_Hfid_table->generation.load ();
+
+  /* fill outside the hash: nothing is exposed until the completed entry is linked. */
+  if (OID_IS_ROOTOID (class_oid))
+    {
+      /* root HFID should already be cached at boot. */
+      assert_release (false);
+      boot_find_root_heap (&hfid_local);
+      ftype_local = FILE_HEAP;
+    }
+  else
+    {
+      error_code = heap_get_class_info_from_record (thread_p, class_oid, &hfid_local, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
+	  return error_code;
+	}
+
+      if (HFID_IS_NULL (&hfid_local))
+	{
+	  /* The class record has no heap file assigned at this moment: views never have one, and DDL may expose a
+	   * transient state. This is a state, not an error - report a miss and cache nothing. */
+	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get: class record has NULL HFID (no heap)%s", "");
+	  return NO_ERROR;	/* *found remains false */
+	}
+
+      error_code = file_get_type (thread_p, &hfid_local.vfid, &ftype_local);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
+	  return error_code;
+	}
+    }
+  assert (ftype_local == FILE_HEAP || ftype_local == FILE_HEAP_REUSE_SLOTS);
+
+  /* publish: link the completed entry with one CAS. If the key already exists, our entry is retired and the
+   * winner's (equally complete) entry is returned instead - observationally the same as a cache hit. */
+  entry = (HEAP_HFID_TABLE_ENTRY *) lf_freelist_claim (t_entry, &heap_Hfid_table->hfid_hash_freelist);
+  if (entry == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  COPY_OID (&entry->class_oid, class_oid);	/* LF_LIST_BF_INSERT_GIVEN does not copy the key */
+  entry->hfid = hfid_local;
+  entry->ftype = ftype_local;
 
   error_code =
-    lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, &inserted);
+    lf_hash_insert_given (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, &inserted);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
   assert (entry != NULL);
+  lf_tran_end_with_mb (t_entry);
 
-  /*  Here we check only the classname because this is the last field to be populated by other possible concurrent
-   *  inserters. This means that if this field is already set by someone else, then the entry data is already
-   *  mature so we don't need to add data again.
-   */
-  if (entry->classname == NULL)
+  /* re-check the invalidation clock after publishing. A change means some invalidation overlapped the fill and our
+   * record snapshot may already be stale, so withdraw the entry: either the invalidator's delete or this delete
+   * removes it, and the worst case is over-invalidating a valid entry (one extra record read later). Checking only
+   * before the insert would leave a window between the check and the link-in. */
+  if (inserted == 1 && generation_snapshot != heap_Hfid_table->generation.load ())
     {
-      HFID hfid_local = HFID_INITIALIZER;
-
-      /* root HFID should already be added. */
-      if (OID_IS_ROOTOID (class_oid))
-	{
-	  assert_release (false);
-	  boot_find_root_heap (&entry->hfid);
-	  entry->ftype = FILE_HEAP;
-	  lf_tran_end_with_mb (t_entry);
-	  return NO_ERROR;
-	}
-
-      /* this is either a newly inserted entry or one with incomplete information that is currently being filled by
-       * another transaction. We need to retrieve the HFID from the class record. We do not care that we are
-       * overwriting the information, since it must be always the same (the HFID never changes for the same class OID). */
-      error_code = heap_get_class_info_from_record (thread_p, class_oid, &hfid_local, &classname_local);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  lf_tran_end_with_mb (t_entry);
-
-	  // remove entry
-	  lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
-
-	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
-	  return error_code;
-	}
-      entry->hfid = hfid_local;
-
-      char *dummy_null = NULL;
-
-      if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
-	{
-	  // somebody else has set it
-	  free (classname_local);
-	}
+      (void) lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
+      heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get: publish withdrawn, generation moved to %llu",
+			   (unsigned long long) heap_Hfid_table->generation.load ());
     }
 
-  assert (entry->hfid.hpgid != NULL_PAGEID && entry->hfid.vfid.fileid != NULL_FILEID
-	  && entry->hfid.vfid.volid != NULL_VOLID && entry->classname != NULL);
-
-  if (entry->ftype == FILE_UNKNOWN_TYPE)
-    {
-      FILE_TYPE ftype_local;
-      error_code = file_get_type (thread_p, &entry->hfid.vfid, &ftype_local);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  lf_tran_end_with_mb (t_entry);
-
-	  // remove entry
-	  lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
-
-	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
-	  return error_code;
-	}
-      entry->ftype = ftype_local;
-    }
-  assert (entry->ftype == FILE_HEAP || entry->ftype == FILE_HEAP_REUSE_SLOTS);
-
+  /* the values handed out are a point-in-time snapshot of the class record; liveness at use time is guaranteed by
+   * the caller's locks or by page-level validation, exactly as for a cache hit. */
   if (hfid_out != NULL)
     {
-      *hfid_out = entry->hfid;
+      *hfid_out = hfid_local;
     }
   if (ftype_out != NULL)
     {
-      *ftype_out = entry->ftype;
+      *ftype_out = ftype_local;
     }
-  if (classname_out != NULL)
-    {
-      *classname_out = entry->classname;
-    }
+  *found = true;
 
-  lf_tran_end_with_mb (t_entry);
-
-  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get hfid=%d|%d|%d, ftype = %s, classname = %s",
-		       HFID_AS_ARGS (&entry->hfid), file_type_to_string (entry->ftype), entry->classname.load ());
-  return error_code;
+  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get hfid=%d|%d|%d, ftype = %s, inserted = %d",
+		       HFID_AS_ARGS (&hfid_local), file_type_to_string (ftype_local), inserted);
+  return NO_ERROR;
 }
 
 /*
@@ -24579,13 +24622,11 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
  *   class_oid (in)     : the class OID for which the entry will be returned
  *   hfid_out (out)     : output heap file identifier
  *   ftype_out (out)    : output heap file type
- *   classname_out (out): output classname. The string is owned by the cache entry and is freed when the entry is
- *                        deleted and reclaimed; callers must not retain it beyond the entry's lifetime.
  *   success  (out)     : true if found from cache
  */
 int
 heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out, FILE_TYPE * ftype_out,
-			 char **classname_out, bool * success)
+			 bool * success)
 {
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
@@ -24595,6 +24636,10 @@ heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * 
   assert (success != NULL);
 
   *success = false;
+  if (hfid_out != NULL)
+    {
+      HFID_SET_NULL (hfid_out);
+    }
 
   error_code = lf_hash_find (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry);
   if (error_code != NO_ERROR)
@@ -24605,24 +24650,10 @@ heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * 
 
   if (entry)
     {
-      /* The cache is publish-then-fill: heap_hfid_cache_get () exposes the entry in the hash through
-       * lf_hash_find_or_insert () first and fills it afterwards, publishing classname last (CAS). If classname is
-       * not set yet, the entry is still being filled by a concurrent thread; treat it as a cache miss. Reading
-       * classname before hfid mirrors the writer's order (hfid store, then classname CAS), so a non-NULL
-       * classname guarantees a valid hfid. ftype, however, is resolved only after classname is published, so it
-       * may still be unknown; report a miss rather than an unknown type when the caller asked for it. */
-      char *classname_local = entry->classname;
-
-      if (classname_local == NULL || HFID_IS_NULL (&entry->hfid)
-	  || (ftype_out != NULL && entry->ftype == FILE_UNKNOWN_TYPE))
-	{
-	  /* *success remains false */
-	  lf_tran_end_with_mb (t_entry);
-	  return NO_ERROR;
-	}
-
+      /* the hash only holds complete entries (fill-then-publish), so a found entry is always fully valid. */
       assert (entry->hfid.hpgid != NULL_PAGEID && entry->hfid.vfid.fileid != NULL_FILEID
 	      && entry->hfid.vfid.volid != NULL_VOLID);
+      assert (entry->ftype == FILE_HEAP || entry->ftype == FILE_HEAP_REUSE_SLOTS);
 
       if (hfid_out != NULL)
 	{
@@ -24631,10 +24662,6 @@ heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * 
       if (ftype_out != NULL)
 	{
 	  *ftype_out = entry->ftype;
-	}
-      if (classname_out != NULL)
-	{
-	  *classname_out = classname_local;
 	}
 
       *success = true;
@@ -24980,8 +25007,11 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * sca
 
   assert (scan_cache != NULL);
 
-  if (heap_get_class_info (thread_p, partition_oid, &hfid, NULL, NULL) != NO_ERROR)
+  bool found = false;
+
+  if (heap_get_class_info (thread_p, partition_oid, &hfid, NULL, &found) != NO_ERROR || !found)
     {
+      assert (found);
       return ER_FAILED;
     }
 
