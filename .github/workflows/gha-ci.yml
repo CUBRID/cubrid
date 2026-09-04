@@ -123,6 +123,10 @@ env:
   STAMPS: /home/build-cache/gha-ci/runs/${{ github.run_id }}/stamps
   BUILD_SENTINEL: .complete
   BUILD_META: .gha-ci-build.meta
+  # Where a reader can open what a run left behind. roles/arc in
+  # circleci-k8s-ansible serves CI_ROOT at this address, read-only, on the
+  # internal network -- the two are one setting in two repositories.
+  ARTIFACT_URL_BASE: http://192.168.1.48:30080
 
 jobs:
   # All four triggers become one shape: every job below reads needs.gate.outputs and
@@ -1790,7 +1794,11 @@ jobs:
             fi
             echo
             echo "---"
-            echo "Artifacts: \`$RUNDIR\`"
+            # BRID, not this run: a reused build wrote its log under the run
+            # that made it, and this run left none.
+            echo "[Artifacts]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/) · [build log]($ARTIFACT_URL_BASE/logs/${BRID}-build.log)"
+            echo
+            echo "Internal network only. The run directory is pruned 7 days after the run."
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "=== summary ==="
