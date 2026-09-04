@@ -925,7 +925,7 @@ exit:
 	std::string default_value_string = get_column_default_as_string (attr);
 
 	column_info info (db_type, set_type, scale, precision, charset,
-			  attr_name_string, default_value_string,
+			  attr_name_string, attr_name_string, default_value_string,
 			  auto_increment, unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared,
 			  attr_name_string, class_name_string, false);
 
