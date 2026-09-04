@@ -387,10 +387,9 @@ extern "C"
 	    return NO_ERROR;
 	  }
 
+	assert (thread_p->private_heap_id != 0);
 	if (oid_is_system_class (class_oid)
-	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed
-	    /* private_heap_id==0 means not main thread; parallel heap scan requires main thread. */
-	    || thread_p->private_heap_id == 0)
+	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed)
 	  {
 	    /* parallel-thread heap scan not supported */
 	    ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -857,11 +856,7 @@ extern "C"
 
     scan_id->type = S_LIST_SCAN;
 
-    if (thread_p->private_heap_id == 0)
-      {
-	/* not main thread; cannot use parallel list scan */
-	return NO_ERROR;
-      }
+    assert (thread_p->private_heap_id != 0);
 
     /* DML reads val_list directly from scan_id; result handler does not populate it as DML expects. */
     if (xasl->type == INSERT_PROC || xasl->type == UPDATE_PROC
@@ -1309,11 +1304,7 @@ extern "C"
     /* clear stale pending from previous open (e.g., partition pruning re-open in qexec_next_scan_block_iterations). */
     scan_clear_parallel_index_pending (thread_p, scan_id);
 
-    if (thread_p->private_heap_id == 0)
-      {
-	/* not main thread; cannot use parallel index scan */
-	return NO_ERROR;
-      }
+    assert (thread_p->private_heap_id != 0);
 
     /* DML reads val_list directly; parallel scan does not populate it the same way */
     if (xasl->type == INSERT_PROC || xasl->type == UPDATE_PROC
@@ -2017,6 +2008,9 @@ namespace parallel_scan
 	    return S_END;
 	  }
 	  break;
+	  case parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED:
+	    /* benign early-stop: quota met, merged list already holds the first N rows. */
+	    break;
 	  default:
 	    break;
 	  }

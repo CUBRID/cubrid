@@ -756,6 +756,8 @@ struct qo_term
 #define QO_TERM_SEL_FROM_HISTOGRAM  1024	/* selectivity computed from histograms only */
 #define QO_TERM_LIKE_DERIVED_RANGE  2048	/* range term derived from a prefix LIKE */
 #define QO_TERM_LIKE_HAS_DERIVED_RANGE 4096	/* the prefix LIKE a range was derived from */
+#define QO_TERM_OR_DERIVED          8192	/* single-spec restriction derived from a multi-spec OR factor */
+#define QO_TERM_OR_DERIVED_EXPENSIVE 16384	/* OR-derived restriction too costly to keep as a plain data filter */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)

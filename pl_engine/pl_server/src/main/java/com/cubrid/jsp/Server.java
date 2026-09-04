@@ -31,7 +31,6 @@
 
 package com.cubrid.jsp;
 
-import com.cubrid.jsp.classloader.ClassLoaderManager;
 import com.cubrid.jsp.protocol.BootstrapRequest;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -80,7 +79,7 @@ public class Server {
         initializeLogger(config);
 
         // initialize class loader
-        Files.createDirectories(ClassLoaderManager.getRootPath());
+        Files.createDirectories(Paths.get(config.getDatabasePath()));
 
         // initialize socket
         initializeSocket(config);

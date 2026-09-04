@@ -31,63 +31,63 @@
 
 package com.cubrid.jsp.classloader;
 
+import com.cubrid.jsp.code.ClassAccess;
 import com.cubrid.jsp.code.CompiledCode;
 import com.cubrid.jsp.code.CompiledCodeSet;
-import java.util.Map.Entry;
-import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
 
-public class SessionClassLoader extends ClassLoader {
+public class CatalogClassLoader extends ClassLoader {
 
-    private String id = null;
-    private CompiledCodeSet code = null;
+    public final String mainClassName;
 
-    public SessionClassLoader(CompiledCodeSet code) {
-        id = UUID.randomUUID().toString();
-        this.code = code;
-    }
+    public CatalogClassLoader(String mainClassName, ClassLoader parent) {
+        super(parent);
 
-    public String getId() {
-        return id;
-    }
+        this.mainClassName = mainClassName;
 
-    public CompiledCodeSet getCode() {
-        return code;
+        codeSet = ClassAccess.getObjectCode();
+        if (codeSet == null) {
+            throw new IllegalStateException(
+                    "retrieving object code failed for a class " + mainClassName);
+        }
     }
 
     @Override
     public Class<?> loadClass(String name) throws ClassNotFoundException {
-        Class<?> mainCls = findLoadedClass(name);
-        if (mainCls != null) {
-            // already loaded
+        // The unit's own classes (the main class and its nested classes) are all in codeSet.codeMap
+        // Load them here and do not let them reach the relaying parent.
+        if (codeSet.codeMap.containsKey(name)) {
+            return findClass(name);
         } else {
-            try {
-                mainCls = super.loadClass(name);
-                if (mainCls != null) {
-                    return mainCls;
-                }
-            } catch (ClassNotFoundException e) {
-                // ignore
-            }
+            return super.loadClass(name);
+        }
+    }
 
-            // find in codesets
-            if (code != null) {
-                for (Entry<String, CompiledCode> entry : code.getCodeList()) {
-                    Class<?> cls = null;
-                    String className = entry.getKey();
-                    byte[] classBytes = entry.getValue().getByteCode();
-                    cls = defineClass(className, classBytes, 0, classBytes.length);
-                    if (name.equals(className)) {
-                        mainCls = cls;
-                    }
-                }
-            }
+    @Override
+    public Class<?> findClass(String name) throws ClassNotFoundException {
+
+        Class<?> ret = defined.get(name);
+        if (ret != null) {
+            return ret;
         }
 
-        return mainCls;
+        CompiledCode code = codeSet.codeMap.get(name);
+        if (code == null) {
+            throw new ClassNotFoundException(name);
+        }
+
+        byte[] classBytes = code.getByteCode();
+        ret = defineClass(name, classBytes, 0, classBytes.length);
+        defined.put(name, ret);
+
+        return ret;
     }
 
-    public void clear() {
-        id = null;
-        code = null;
-    }
+    // ===========================
+    // Private
+    // ===========================
+
+    private CompiledCodeSet codeSet;
+    private Map<String, Class<?>> defined = new HashMap<>();
 }

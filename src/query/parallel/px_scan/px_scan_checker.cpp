@@ -21,6 +21,7 @@
  */
 
 #include "px_scan_checker.hpp"
+#include "px_scan_instnum.hpp"
 
 #include "dbtype_def.h"
 #include "error_manager.h"
@@ -92,6 +93,7 @@ namespace parallel_scan
   {
     return (flags & flag) != 0;
   }
+
 
   using rv_list_node = struct regu_variable_list_node;
 
@@ -419,20 +421,12 @@ namespace parallel_scan
 	    result |= check<false> (arg->s.cls_node.cls_regu_list_range);
 	    result |= check<false> (arg->where_range);
 	  }
-	if (!arg->s.cls_node.cls_regu_list_pred && !arg->s.cls_node.cls_regu_list_rest)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
       }
     else if (arg->type == TARGET_LIST)
       {
 	result |= check<false> (arg->s.list_node.list_regu_list_pred);
 	result |= check<false> (arg->s.list_node.list_regu_list_rest);
 	result |= check<false> (arg->where_pred);
-	if (!arg->s.list_node.list_regu_list_pred && !arg->s.list_node.list_regu_list_rest)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
       }
     return result;
   }
@@ -521,7 +515,8 @@ namespace parallel_scan
 	  }
       }
 
-    if (sibling->instnum_pred || sibling->instnum_val)
+    if ((sibling->instnum_pred || sibling->instnum_val) && !is_renumberable_instnum (sibling)
+	&& !is_atomic_instnum_eligible (sibling))
       {
 	set_flag (result, CANNOT_LIST_MERGE);
       }
@@ -558,9 +553,10 @@ namespace parallel_scan
       case BUILDLIST_PROC:
 	break;
       case BUILDVALUE_PROC:
+	/* agg-less buildvalue too: MERGEABLE_LIST would misread proc.buildlist in result_handler init. */
+	set_flag (result, CANNOT_LIST_MERGE);
 	if (arg->proc.buildvalue.agg_list)
 	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
 	    buildvalue_opt = true;
 	    AGGREGATE_TYPE *agg_it = arg->proc.buildvalue.agg_list;
 	    temp = 0;
@@ -704,8 +700,11 @@ namespace parallel_scan
 
     if (arg->instnum_pred || arg->instnum_val)
       {
-	set_flag (result, CANNOT_LIST_MERGE);
 	buildvalue_opt = false;
+	if (!is_renumberable_instnum (arg) && !is_atomic_instnum_eligible (arg))
+	  {
+	    set_flag (result, CANNOT_LIST_MERGE);
+	  }
       }
 
     if (arg->outptr_list)
@@ -843,9 +842,13 @@ namespace parallel_scan
     result |= check<false> (arg);
 
     const bool block_index_spec =
-	    (arg->instnum_pred || arg->instnum_val)
+	    ((arg->instnum_pred || arg->instnum_val) && !is_renumberable_instnum (arg))
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_SKIP_SORT)
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_USES_LIMIT_OPT);
+
+    /* atomic draw keeps an arbitrary N rows: fine on a heap, but a temp list is usually a sorted
+     * top-N idiom, so keep list specs serial. Renumbering (instnum_pred == NULL) is unaffected. */
+    const bool block_list_spec = (arg->instnum_pred != nullptr);
 
     const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST);
 
@@ -858,11 +861,15 @@ namespace parallel_scan
       }
     else
       {
-	if (block_index_spec)
+	if (block_index_spec || block_list_spec)
 	  {
 	    for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 	      {
-		if (specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX)
+		if (block_index_spec && specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX)
+		  {
+		    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+		  }
+		if (block_list_spec && specp->type == TARGET_LIST)
 		  {
 		    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
 		  }

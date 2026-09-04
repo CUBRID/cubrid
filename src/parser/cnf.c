@@ -1210,6 +1210,14 @@ pt_do_cnf (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_wal
       /* to make pt_cnf() work */
       for (; list; list = list->next)
 	{
+	  /* a restriction derived by qo_extract_or_restrictions () must stay one whole factor:
+	   * re-running the distribution on it explodes it into per-branch OR products -- new
+	   * nodes that shed the OR-derived marks the plan-time judgment needs and that re-pay,
+	   * per product, the duplicated evaluation those marks exist to prevent */
+	  if (PT_EXPR_INFO_IS_FLAGED (list, PT_EXPR_INFO_OR_DERIVED))
+	    {
+	      continue;
+	    }
 	  PT_EXPR_INFO_CLEAR_FLAG (list, PT_EXPR_INFO_CNF_DONE);
 	}
 

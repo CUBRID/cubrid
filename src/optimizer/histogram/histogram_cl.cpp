@@ -891,21 +891,28 @@ string_domain_frac_lt (std::string_view lo, std::string_view hi, std::string_vie
 
 /*
  * comp_parts () - pieces for a range comparison against value `v`.
- *   nonmcv_below_frac (out): fraction of ALL rows that are non-MCV non-null and < v
+ *   nonmcv_lt_frac (out)   : fraction of ALL rows that are non-MCV non-null and < v
+ *   nonmcv_le_frac (out)   : the same for <= v
  *                            (equi-depth histogram interpolation / total_rows)
  *   mcv_lt (out)           : Σ MCV freq for values strictly < v
  *   mcv_le (out)           : Σ MCV freq for values <= v
  * FracFn maps (lo, hi, v) -> position of v within (lo, hi] in [0,1].
+ *
+ * The bucket part needs those two apart for the same reason the MCV part does. A bucket's stored
+ * endpoint is a value that occurs in the data, so a probe landing on it has the endpoint's own
+ * rows on the <= side and not on the < side. Interpolation prices a continuum and cannot separate
+ * them, so the endpoint's rows are approximated from the bucket's distinct count.
  */
 template <typename T, typename FracFn>
 static void
 comp_parts (const hist::HistogramReader &r, const T &v, FracFn frac,
-	    double &nonmcv_below_frac, double &mcv_lt, double &mcv_le)
+	    double &nonmcv_lt_frac, double &nonmcv_le_frac, double &mcv_lt, double &mcv_le)
 {
   const double total_rows = static_cast<double> (r.total_rows ());
   const int nb = static_cast<int> (r.bucket_count ());
 
-  double nonmcv_below_rows = 0.0;
+  double nonmcv_lt_rows = 0.0;
+  double nonmcv_le_rows = 0.0;
   if (nb > 0)
     {
       int b = r.find_bucket<T> (v);
@@ -945,10 +952,25 @@ comp_parts (const hist::HistogramReader &r, const T &v, FracFn frac,
 	  const T lo = r.bucket_hi<T> (b - 1);
 	  f = frac (lo, hi, v);
 	}
-      nonmcv_below_rows = static_cast<double> (r.bucket_cumulative (b - 1))
-			  + static_cast<double> (r.bucket_rows (b)) * f;
+      const double bucket_rows = static_cast<double> (r.bucket_rows (b));
+      nonmcv_le_rows = static_cast<double> (r.bucket_cumulative (b - 1)) + bucket_rows * f;
+
+      /* Rows equal to v belong on the <= side only. They are identifiable just when the probe is
+       * the bucket's stored endpoint: the bucket then contributes all of its rows (f == 1.0), so
+       * the endpoint's own rows come back off to leave the strictly-less mass. The bucket's
+       * distinct count spreads them evenly, the same uniformity the interpolation above assumes.
+       * A bucket holding a single distinct value -- a column whose rows all carry the same value
+       * is the extreme -- returns its whole mass, so "< v" correctly falls to zero there. */
+      double eq_rows = 0.0;
+      if (v == hi)
+	{
+	  const double bucket_ndv = static_cast<double> (r.bucket_approx_ndv (b));
+	  eq_rows = (bucket_ndv >= 1.0) ? (bucket_rows / bucket_ndv) : bucket_rows;
+	}
+      nonmcv_lt_rows = (nonmcv_le_rows > eq_rows) ? (nonmcv_le_rows - eq_rows) : 0.0;
     }
-  nonmcv_below_frac = (total_rows > 0.0) ? nonmcv_below_rows / total_rows : 0.0;
+  nonmcv_lt_frac = (total_rows > 0.0) ? nonmcv_lt_rows / total_rows : 0.0;
+  nonmcv_le_frac = (total_rows > 0.0) ? nonmcv_le_rows / total_rows : 0.0;
 
   mcv_lt = 0.0;
   mcv_le = 0.0;
@@ -1266,7 +1288,8 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
       return;
     }
 
-  double nonmcv_below_frac = 0.0;
+  double nonmcv_lt_frac = 0.0;
+  double nonmcv_le_frac = 0.0;
   double mcv_lt = 0.0;
   double mcv_le = 0.0;
 
@@ -1274,19 +1297,19 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
     {
     case hist::histogram_key_kind::i64:
       comp_parts<std::int64_t> (histogram_reader, key.i64, numeric_domain_frac_i64_lt,
-				nonmcv_below_frac, mcv_lt, mcv_le);
+				nonmcv_lt_frac, nonmcv_le_frac, mcv_lt, mcv_le);
       break;
     case hist::histogram_key_kind::dbl:
       comp_parts<double> (histogram_reader, key.dbl, numeric_domain_frac_dbl_lt,
-			  nonmcv_below_frac, mcv_lt, mcv_le);
+			  nonmcv_lt_frac, nonmcv_le_frac, mcv_lt, mcv_le);
       break;
     case hist::histogram_key_kind::str:
       comp_parts<std::string_view> (histogram_reader, std::string_view (key.str), string_domain_frac_lt,
-				    nonmcv_below_frac, mcv_lt, mcv_le);
+				    nonmcv_lt_frac, nonmcv_le_frac, mcv_lt, mcv_le);
       break;
     case hist::histogram_key_kind::u64:
       comp_parts<std::uint64_t> (histogram_reader, key.u64, numeric_domain_frac_u64_lt,
-				 nonmcv_below_frac, mcv_lt, mcv_le);
+				 nonmcv_lt_frac, nonmcv_le_frac, mcv_lt, mcv_le);
       break;
     case hist::histogram_key_kind::invalid:
     default:
@@ -1296,8 +1319,8 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
     }
 
   /* P(col < v) and P(col <= v) as fractions of ALL rows */
-  const double f_lt = nonmcv_below_frac + mcv_lt;
-  const double f_le = nonmcv_below_frac + mcv_le;
+  const double f_lt = nonmcv_lt_frac + mcv_lt;
+  const double f_le = nonmcv_le_frac + mcv_le;
   const double nullfrac = histogram_reader.null_frequency ();
 
   double sel;
@@ -1341,6 +1364,32 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
   *selectivity = sel;
   *success = true;
   return;
+}
+
+/*
+ * histogram_get_total_rows () - the row count the column's histogram was built from
+ *   return               : true when the column has a usable histogram (total_rows is then set)
+ *   lhs (in)             : column node
+ *   total_rows (out)     : rows the histogram summarizes
+ *
+ * A caller that builds a range selectivity out of two single probes cannot apply the one-row
+ * floor those probes apply individually (the floor is inside them, and their difference is not),
+ * so it needs the same denominator to hedge the combined estimate with.
+ */
+bool
+histogram_get_total_rows (PT_NODE *lhs, double *total_rows)
+{
+  hist::HistogramReader histogram_reader;
+
+  assert (total_rows != NULL);
+
+  if (!histogram_init_reader_from_lhs (lhs, histogram_reader))
+    {
+      return false;
+    }
+
+  *total_rows = static_cast<double> (histogram_reader.total_rows ());
+  return *total_rows > 0.0;
 }
 
 /*

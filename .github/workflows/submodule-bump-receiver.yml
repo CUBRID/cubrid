@@ -232,7 +232,9 @@ jobs:
             echo "title=$TAG Update $SUB submodule to ${TARGET:0:7}"
             echo "author=$AUTHOR"
             echo "manifest<<__MANIFEST__"
+            # A bare #N would autolink to the parent repo, so qualify it with the submodule slug.
             git -C "$SUB" log --no-decorate --reverse --format='- %s%n%w(0,2,2)%b%n' "$OLD..$TARGET" \
+              | sed -E "s@(^|[^[:alnum:]_/])#([0-9]+)@\1$SLUG#\2@g" \
               | sed 's/[[:space:]]*$//' | cat -s
             echo "__MANIFEST__"
           } >> "$GITHUB_OUTPUT"
