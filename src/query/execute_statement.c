@@ -541,14 +541,159 @@ typedef enum
 } DEFAULT_EXPR_EVAL_MODE;
 
 /*
+ * Per-INSERT cache of rehydrated residual DEFAULT expression trees.
+ *
+ * On the client (Local Evaluation) path a residual DEFAULT's effective
+ * volatility is not persisted, so each residual must be rehydrated from its
+ * Compact DEFAULT Tree (pt_compact_default_tree_from_stream) and classified
+ * (pt_get_expr_tree_volatility) before it can be evaluated.  Without a cache,
+ * do_evaluate_default_expr_by_smclass would redo that work on every call -- once
+ * per row for an INSERT -- and a residual whose volatility does not match the
+ * current eval mode would be rehydrated only to be thrown away.  This cache
+ * holds the rehydrated tree and its volatility so the rehydrate+classify happens
+ * once per statement; re-evaluating the SAME tree per row is safe because
+ * pt_evaluate_tree recomputes volatile leaves (UUID/...) on every call and never
+ * memoizes a result onto the node.
+ */
+typedef struct residual_default_entry RESIDUAL_DEFAULT_ENTRY;
+struct residual_default_entry
+{
+  SM_ATTRIBUTE *att;		/* residual attribute this entry maps to */
+  PT_NODE *tree;		/* rehydrated Compact DEFAULT Tree (parser-allocated) */
+  PT_VOLATILITY vol;		/* effective volatility */
+};
+
+typedef struct residual_default_cache RESIDUAL_DEFAULT_CACHE;
+struct residual_default_cache
+{
+  SM_CLASS *smclass;		/* class the entries were built for; NULL if not built */
+  int count;			/* number of residual entries */
+  RESIDUAL_DEFAULT_ENTRY *entries;
+};
+
+/*
+ * do_clear_residual_default_cache () - free a residual DEFAULT cache: release
+ *	each rehydrated tree (parser memory) and the entry array, and reset the
+ *	cache to empty.  Safe on an unbuilt (zero-initialized) cache.
+ */
+static void
+do_clear_residual_default_cache (PARSER_CONTEXT * parser, RESIDUAL_DEFAULT_CACHE * cache)
+{
+  int i;
+
+  if (cache == NULL || cache->entries == NULL)
+    {
+      return;
+    }
+  for (i = 0; i < cache->count; i++)
+    {
+      if (cache->entries[i].tree != NULL)
+	{
+	  parser_free_tree (parser, cache->entries[i].tree);
+	}
+    }
+  free_and_init (cache->entries);
+  cache->count = 0;
+  cache->smclass = NULL;
+}
+
+/*
+ * is_residual_default_attr () - true iff att carries a residual (STABLE or VOLATILE)
+ *	column DEFAULT stored as a Compact DEFAULT Tree (DB_DEFAULT_NONE with a tree
+ *	stream), as opposed to a legacy pseudo-column DEFAULT or no DEFAULT at all.
+ */
+static bool
+is_residual_default_attr (const SM_ATTRIBUTE * att)
+{
+  return (att->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
+	  && att->default_value.default_expr.default_expr_tree_stream != NULL
+	  && att->default_value.default_expr.default_expr_tree_stream_size > 0);
+}
+
+/*
+ * do_build_residual_default_cache () - rehydrate and classify every residual
+ *	DEFAULT of smclass once, populating cache.  No value is evaluated here;
+ *	the caller evaluates the cached trees per row/statement.  Any prior
+ *	contents (e.g. for a different partition class) are released first.
+ *   return: NO_ERROR or ER_code
+ */
+static int
+do_build_residual_default_cache (PARSER_CONTEXT * parser, SM_CLASS * smclass, RESIDUAL_DEFAULT_CACHE * cache)
+{
+  SM_ATTRIBUTE *att;
+  int n = 0;
+
+  do_clear_residual_default_cache (parser, cache);
+
+  for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (is_residual_default_attr (att))
+	{
+	  n++;
+	}
+    }
+
+  cache->smclass = smclass;
+  cache->count = 0;
+  cache->entries = NULL;
+  if (n == 0)
+    {
+      return NO_ERROR;
+    }
+
+  cache->entries = (RESIDUAL_DEFAULT_ENTRY *) malloc (n * sizeof (RESIDUAL_DEFAULT_ENTRY));
+  if (cache->entries == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) n * sizeof (RESIDUAL_DEFAULT_ENTRY));
+      cache->smclass = NULL;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      PT_NODE *residual;
+      PT_NODE *unclassified_node = NULL;
+
+      if (!is_residual_default_attr (att))
+	{
+	  continue;
+	}
+
+      residual =
+	pt_compact_default_tree_from_stream (parser, att->default_value.default_expr.default_expr_tree_stream,
+					     att->default_value.default_expr.default_expr_tree_stream_size);
+      if (residual == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  do_clear_residual_default_cache (parser, cache);
+	  return ER_GENERIC_ERROR;
+	}
+
+      /* the volatility only picks the evaluation cadence of an already DDL-validated
+       * residual; should a node have lost its classification since (UNSET), the
+       * residual falls back to once-per-statement evaluation */
+      cache->entries[cache->count].att = att;
+      cache->entries[cache->count].tree = residual;
+      cache->entries[cache->count].vol = pt_get_expr_tree_volatility (residual, &unclassified_node);
+      cache->count++;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * do_evaluate_default_expr_by_smclass () - evaluates default expressions for class attributes.
  *   return: Error code
  *   parser(in):
  *   smclass(in):
- *   eval_mode(in): 
+ *   eval_mode(in):
+ *   cache(in/out): per-statement residual cache (required); built lazily for smclass and
+ *	reused across the statement's rows, so each residual is rehydrated+classified once
  */
 static int
-do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode)
+do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode,
+				     RESIDUAL_DEFAULT_CACHE * cache)
 {
   SM_ATTRIBUTE *att;
   int error = NO_ERROR;
@@ -563,33 +708,59 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
   bool has_user_format;
 
   assert (smclass != NULL);
+  assert (cache != NULL);
+
+  /* Rehydrate+classify all residual DEFAULTs once per statement (see RESIDUAL_DEFAULT_CACHE), reused for
+   * every row.  Built lazily here, and rebuilt if a different (e.g. partition) class arrives. */
+  if (cache->smclass != smclass)
+    {
+      error = do_build_residual_default_cache (parser, smclass, cache);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       DB_DEFAULT_EXPR_TYPE default_expr_type = att->default_value.default_expr.default_expr_type;
 
-      if (default_expr_type == DB_DEFAULT_NONE && att->default_value.default_expr.default_expr_tree_stream != NULL
-	  && att->default_value.default_expr.default_expr_tree_stream_size > 0)
+      if (is_residual_default_attr (att))
 	{
-	  /* STABLE residual DEFAULT expression: rehydrate the Compact DEFAULT Tree and evaluate it once per
-	   * statement, so the client (Local Evaluation) path fills the same statement-time value the server
-	   * path would.  The frozen DDL-time snapshot in att->default_value.value is refreshed in place, the
-	   * same way the legacy statement-determined expressions below refresh it. */
-	  PT_NODE *residual;
+	  /* Residual DEFAULT expression: evaluate its Compact DEFAULT Tree on the client (Local Evaluation)
+	   * path, filling the same value the server path would.  A STABLE residual is evaluated once per
+	   * statement, a VOLATILE one once per row; the volatility is the engine's current classification of
+	   * the rehydrated tree (mirroring pt_residual_default_needs_si_datetime), computed once when the
+	   * per-statement cache is built.  The frozen DDL-time snapshot in att->default_value.value is
+	   * refreshed in place, the same way the legacy statement-determined expressions below refresh it. */
+	  PT_NODE *residual = NULL;
+	  PT_VOLATILITY residual_vol = PT_VOLATILITY_UNSET;
+	  DEFAULT_EXPR_EVAL_MODE residual_mode;
+	  int j;
 
-	  if (eval_mode != DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY)
+	  for (j = 0; j < cache->count; j++)
 	    {
-	      continue;
+	      if (cache->entries[j].att == att)
+		{
+		  residual = cache->entries[j].tree;
+		  residual_vol = cache->entries[j].vol;
+		  break;
+		}
 	    }
-
-	  residual =
-	    pt_compact_default_tree_from_stream (parser, att->default_value.default_expr.default_expr_tree_stream,
-						 att->default_value.default_expr.default_expr_tree_stream_size);
+	  /* every residual attribute of smclass was cached by do_build_residual_default_cache */
+	  assert (residual != NULL);
 	  if (residual == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      error = ER_GENERIC_ERROR;
 	      break;
+	    }
+
+	  residual_mode = (PT_VOLATILITY_IS_VOLATILE_RESIDUAL (residual_vol)
+			   ? DEFAULT_EXPR_EVAL_BY_ROW_ONLY : DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY);
+	  if (eval_mode != residual_mode)
+	    {
+	      continue;
 	    }
 
 	  db_make_null (&default_value);
@@ -598,12 +769,10 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	    {
 	      pt_report_to_ersys (parser, PT_EXECUTION);
 	      pt_reset_error (parser);
-	      parser_free_tree (parser, residual);
 	      db_value_clear (&default_value);
 	      error = er_errid ();
 	      break;
 	    }
-	  parser_free_tree (parser, residual);
 
 	  pr_clear_value (&att->default_value.value);
 	  pr_clone_value (&default_value, &att->default_value.value);
@@ -864,6 +1033,7 @@ static int
 do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 {
   SM_CLASS *smclass;
+  RESIDUAL_DEFAULT_CACHE rdcache = { NULL, 0, NULL };
   int error = NO_ERROR;
 
   assert (class_name->node_type == PT_NAME);
@@ -874,7 +1044,16 @@ do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_nam
       return error;
     }
 
-  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY);
+  /* This statement-mode pass uses its OWN throwaway cache, deliberately not shared with the per-row cache
+   * owned by do_insert_template / insert_subquery_results: a statement-wide cache would have to be owned by
+   * the orchestrators (insert_local, do_merge, do_execute_merge), which exit through several early returns,
+   * so leak-safe teardown there is fragile.  Keeping the cache local to a function with a single clean exit
+   * (here, and the two row-loop owners) frees it correctly on every path.  The cost is that a residual is
+   * rehydrated at most twice per statement -- once here, once when the row cache is first built -- never
+   * per row. */
+  error = do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY, &rdcache);
+  do_clear_residual_default_cache (parser, &rdcache);
+  return error;
 }
 
 /*
@@ -882,15 +1061,17 @@ do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_nam
  *				the attributes of a given class's object template
  *   return: Error code
  *   parser(in):
- *   class_name(in):
+ *   otemplate(in):
+ *   cache(in/out): per-statement residual cache (required), reused across this INSERT's rows
  */
 static int
-do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate)
+do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate,
+					    RESIDUAL_DEFAULT_CACHE * cache)
 {
   assert (otemplate != NULL);
   assert (otemplate->class_ != NULL);
 
-  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY);
+  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY, cache);
 }
 
 /*
@@ -13212,6 +13393,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   DB_VALUE *value = NULL;
   DB_SEQ *seq = NULL;
   int obj_count = 0;
+  RESIDUAL_DEFAULT_CACHE rdcache = { NULL, 0, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (otemplate != NULL);
   if (otemplate == NULL)
@@ -13465,7 +13647,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	      i++;
 	    }
 
-	  error = do_evaluate_row_default_expr_for_otemplate (parser, *otemplate);
+	  error = do_evaluate_row_default_expr_for_otemplate (parser, *otemplate, &rdcache);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -13672,6 +13854,8 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
     }
 
 cleanup:
+  do_clear_residual_default_cache (parser, &rdcache);
+
   /* free attribute descriptors */
   if (attr_descs)
     {
@@ -13775,6 +13959,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   DB_SEQ *seq = NULL;
   DB_VALUE db_value;
   DB_VALUE *value = NULL;
+  RESIDUAL_DEFAULT_CACHE rdcache = { NULL, 0, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (parser != NULL);
 
@@ -13969,7 +14154,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 			}
 		    }
 
-		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate);
+		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate, &rdcache);
 		  if (error != NO_ERROR)
 		    {
 		      dbt_abort_object (otemplate);
@@ -14116,6 +14301,8 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
 
 cleanup:
+  do_clear_residual_default_cache (parser, &rdcache);
+
   if (update != NULL)
     {
       /* restore flags */

@@ -1878,6 +1878,34 @@ pt_residual_needs_si_datetime_walk (PARSER_CONTEXT * parser, PT_NODE * node, voi
 	      *continue_walk = PT_STOP_WALK;
 	    }
 	  break;
+	case PT_UUID:
+	  /* UUID(7) is time-ordered: its client (Local Evaluation) evaluation reads the synchronized
+	   * statement clock (parser->sys_datetime/sys_epochtime), so si_datetime must be in sync.  UUID() and
+	   * UUID(4) are random and need no clock (SYS_GUID() is v4 as well).  The systematic per-signature
+	   * si_datetime decision belongs to the function classification work; this is a targeted guard. */
+	  {
+	    PT_NODE *ver = node->info.expr.arg1;
+
+	    if (ver == NULL)
+	      {
+		/* UUID() defaults to v4 (random): no clock needed */
+	      }
+	    else if (ver->node_type == PT_VALUE && ver->type_enum == PT_TYPE_INTEGER)
+	      {
+		if (ver->info.value.data_value.i == 7)
+		  {
+		    *needs_si_datetime = true;
+		    *continue_walk = PT_STOP_WALK;
+		  }
+	      }
+	    else
+	      {
+		/* version not a known integer constant: synchronize conservatively */
+		*needs_si_datetime = true;
+		*continue_walk = PT_STOP_WALK;
+	      }
+	  }
+	  break;
 	default:
 	  break;
 	}
