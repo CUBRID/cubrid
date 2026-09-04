@@ -1212,6 +1212,11 @@ do_reset_auto_increment_serial (MOP serial_obj)
   db_make_null (&start_value);
   db_make_null (&started_flag);
 
+  /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
+   * tail back to cur_val, so it has to land first. Afterwards it would clobber the reset value, or
+   * on rollback be undone with it. */
+  (void) serial_decache (ws_oid (serial_object));
+
   error_code = db_get (serial_object, SERIAL_ATTR_MIN_VAL, &start_value);
   if (error_code != NO_ERROR)
     {
@@ -1255,10 +1260,6 @@ do_reset_auto_increment_serial (MOP serial_obj)
     {
       goto error_exit;
     }
-
-  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial does not serve
-   * stale values after TRUNCATE-reset (do_alter_serial / do_drop_serial already decache). */
-  (void) serial_decache (ws_oid (serial_object));
 
   db_value_clear (&start_value);
   db_value_clear (&started_flag);
@@ -1316,6 +1317,11 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     {
       return ER_OBJ_INVALID_ARGUMENTS;
     }
+
+  /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
+   * tail back to cur_val, so it has to land first. Afterwards it would clobber the rebase value, or
+   * on rollback be undone with it. */
+  (void) serial_decache (ws_oid (serial_object));
 
   db_make_null (&max_val);
   db_make_null (&new_val);
@@ -1429,10 +1435,6 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     {
       goto error_exit;
     }
-
-  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial reflects the new
-   * base after ALTER ... AUTO_INCREMENT = n (matches do_alter_serial / do_drop_serial). */
-  (void) serial_decache (ws_oid (serial_object));
 
   goto normal_exit;
 
@@ -2353,8 +2355,10 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
 
   /* cached_num comes from auto_increment_cache_size. 0 keeps the per-row durable catalog write;
    * n >= 2 makes the serial cache a block of n values so heap_set_autoincrement_value takes the
-   * cached path. A column whose whole range holds fewer values than one block goes uncached: the
-   * parameter is a global default, so it cannot fail the DDL the way CREATE SERIAL ... CACHE n does. */
+   * cached path. A column whose whole range holds fewer values than one block goes uncached - the
+   * parameter is a default this column did not spell out, so it cannot fail the DDL the way
+   * CREATE SERIAL ... CACHE n does. It is a session parameter, and a serial keeps the size it was
+   * created with. */
   cached_num = prm_get_integer_value (PRM_ID_AUTO_INCREMENT_CACHE_SIZE);
   if (cached_num > 1)
     {
@@ -2694,6 +2698,12 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * then refetch it from server again.
    */
   assert (WS_ISDIRTY (serial_object) == false);
+
+  /* Drop the server-side cache before the refetch below takes the write lock, so the value this
+   * statement reads, checks its invariants against and writes back is the last one actually issued
+   * rather than the block end. At the end label instead, the template is already filled from the
+   * block end and its stale cur_val overwrites the write-back when the ALTER commits. */
+  (void) serial_decache (&serial_obj_id);
 
   ws_decache (serial_object);
 
