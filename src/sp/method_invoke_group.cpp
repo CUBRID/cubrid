@@ -136,14 +136,6 @@ namespace cubmethod
 
     for (int i = 0; i < m_sig_array->num_sigs; i++)
       {
-	// invoke
-	cubmethod::header header (s_id, METHOD_REQUEST_INVOKE /* default */);
-	error = xs_callback_send_args (m_stack->get_thread_entry (), header, m_id, m_sig_array->sigs[i]);
-	if (error != NO_ERROR)
-	  {
-	    break;
-	  }
-
 	DB_VALUE &result = m_result_vector[i];
 	db_value_clear (&result);
 
@@ -164,8 +156,10 @@ namespace cubmethod
 	  return e;
 	};
 
-	// get_return
-	error = xs_callback_receive (m_stack->get_thread_entry (), get_method_result);
+	// invoke and get_return
+	cubmethod::header header (s_id, METHOD_REQUEST_INVOKE /* default */);
+	error = xs_callback_send_and_receive (m_stack->get_thread_entry (), get_method_result, header, m_id,
+					      m_sig_array->sigs[i]);
 	if (error != NO_ERROR)
 	  {
 	    break;

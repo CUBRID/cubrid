@@ -2940,6 +2940,36 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY *conn, int request, unsigned shor
    working_task_count = 0;
  }
 
+#if defined(SERVER_MODE)
+ void
+ css_conn_entry::begin_method_callback ()
+ {
+   ++method_callback_count;
+ }
+
+ void
+ css_conn_entry::end_method_callback ()
+ {
+   size_t count = method_callback_count.load ();
+   while (count > 0 && !method_callback_count.compare_exchange_weak (count, count - 1))
+     {
+     }
+   assert_release_error (count > 0);
+ }
+
+ bool
+ css_conn_entry::has_outstanding_method_callback () const
+ {
+   return method_callback_count.load () > 0;
+ }
+
+ void
+ css_conn_entry::init_method_callback ()
+ {
+   method_callback_count = 0;
+ }
+#endif
+
  void
  css_conn_entry::release_packet (void *buffer)
  {

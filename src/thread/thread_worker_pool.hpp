@@ -66,14 +66,20 @@ namespace cubthread
       virtual void initialize (std::size_t worker_count, std::size_t core_count) = 0;
 
       // execution
-      virtual void execute (task_type *work_arg) = 0;
-      virtual void execute_on_core (task_type *work_arg, std::size_t core_hash, bool is_temp = false) = 0;
+      virtual void execute (task_type *work_arg, task_submission_options options = {}) = 0;
+      virtual void execute_on_core (task_type *work_arg, std::size_t core_hash,
+				    task_submission_options options = {}) = 0;
 
       // pooling related
       virtual void warmup (void) = 0;
 
       // termination
+      // stop_execution must be called outside a task running in this pool. worker cannot synchronously wait for its
+      // own detached thread entry to return.
       virtual void stop_execution (void) = 0;
+      bool is_current_thread_worker (void) const;
+      void register_current_worker_thread (void);
+      void unregister_current_worker_thread (void);
 
       // information
       virtual bool is_running (void) const = 0;
@@ -93,7 +99,7 @@ namespace cubthread
 	return m_idle_timeout;
       }
 
-      virtual std::size_t get_worker_count (void) const = 0;
+      virtual std::size_t get_pool_size (void) const = 0;
       virtual std::size_t get_core_count (void) const = 0;
 
       // stats
@@ -118,6 +124,8 @@ namespace cubthread
       bool m_pool_threads;
       // transition time period between active and inactive
       wait_seconds m_idle_timeout;
+
+      static thread_local worker_pool *m_current_worker_pool;
   };
 
   class worker_pool::core
@@ -132,7 +140,7 @@ namespace cubthread
       virtual void initialize (std::size_t worker_count) = 0;
 
       // execution
-      virtual void execute_task (task_type *task_p, bool is_temp) = 0;
+      virtual void execute_task (task_type *task_p, task_submission_options options) = 0;
 
       // pooling related
       virtual void warmup (void) = 0;
@@ -212,4 +220,3 @@ namespace cubthread
 } // namespace cubthread
 
 #endif // _THREAD_WORKER_POOL_HPP_
-

@@ -32,6 +32,24 @@
 #include "memory_wrapper.hpp"
 
 #if defined (SERVER_MODE)
+void
+xs_callback_begin_wait (cubthread::entry *thread_p)
+{
+  if (thread_p != NULL && thread_p->conn_entry != NULL)
+    {
+      thread_p->conn_entry->begin_method_callback ();
+    }
+}
+
+void
+xs_callback_end_wait (cubthread::entry *thread_p)
+{
+  if (thread_p != NULL && thread_p->conn_entry != NULL)
+    {
+      thread_p->conn_entry->end_method_callback ();
+    }
+}
+
 int xs_callback_send (cubthread::entry *thread_p, const cubmem::extensible_block &mem)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
@@ -81,6 +99,18 @@ int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &fun
   return error;
 }
 #else
+void
+xs_callback_begin_wait (cubthread::entry *thread_p)
+{
+  (void) thread_p;
+}
+
+void
+xs_callback_end_wait (cubthread::entry *thread_p)
+{
+  (void) thread_p;
+}
+
 static std::queue <cubmem::extensible_block> &
 xs_get_data_queue_from_cl ()
 {
