@@ -95,7 +95,7 @@ static bool
 oos_needs_repl_tracking (THREAD_ENTRY *thread_p);
 
 static void
-oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid);
+oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid, const LOG_LSA &identity_stamp);
 
 static void
 oos_cleanup_insert_publication_state_on_error (THREAD_ENTRY *thread_p) noexcept;
@@ -2056,8 +2056,10 @@ oos_prepend_header (oos_buffer src, const OOS_RECORD_HEADER &oos_header, OOS_REC
   return NO_ERROR;
 }
 
+/* Publishes one inserted chain for replication: the head OOS OID and the identity stamp it was
+ * created with, so the HA applier can rewrite both fields of the slave's stub (CBRD-26950). */
 static void
-oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid)
+oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid, const LOG_LSA &identity_stamp)
 {
 #if defined(CUBRID_UNIT_TEST_ENABLED)
   if (oos_Test_throw_bad_alloc_on_next_oid_publication.exchange (false, std::memory_order_relaxed))
@@ -2065,7 +2067,7 @@ oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid)
       throw std::bad_alloc ();
     }
 #endif
-  thread_p->oos_oids.push_back (oid);
+  thread_p->oos_oids.push_back ({ oid, identity_stamp });
 }
 
 static void
@@ -2125,7 +2127,7 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
 	  return err;
 	}
 
-      oos_publish_oos_oid (thread_p, oid);
+      oos_publish_oos_oid (thread_p, oid, identity_stamp);
     }
   catch (const std::bad_alloc &)
     {
@@ -2183,7 +2185,7 @@ oos_insert_single_page_batch (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 	{
 	  *request.identity_stamp_out = identity_stamp;
 	}
-      oos_publish_oos_oid (thread_p, oid);
+      oos_publish_oos_oid (thread_p, oid, identity_stamp);
     }
 
   int freespace_after = spage_max_space_for_new_record (thread_p, page_ptr);
@@ -2264,7 +2266,7 @@ oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos
 		    {
 		      *requests[pos].identity_stamp_out = identity_stamp;
 		    }
-		  oos_publish_oos_oid (thread_p, oid);
+		  oos_publish_oos_oid (thread_p, oid, identity_stamp);
 		  pos++;
 		  publication_count++;
 		}
@@ -2324,7 +2326,7 @@ oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos
 //
 //   Per-transaction queue/vector invariant (for the slave applier to reassemble):
 //     oos_insert_lsa_queue : [..., dummy_lsa, tail_chunk_lsa]
-//     oos_oids             : [..., oid_Null_oid]
+//     oos_oids             : [..., {oid_Null_oid, NULL_LSA}]   (boundary marker)
 //
 //   The public insert API pushes the real head-chunk OID after this function returns,
 //   so the final pairing becomes oos_oids=[..., null, real_oid]
@@ -2428,7 +2430,7 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
     {
       tdes->oos_insert_lsa_queue.push (dummy_lsa);
       tdes->oos_insert_lsa_queue.push (tail_chunk_lsa);
-      thread_p->oos_oids.push_back (oid_Null_oid);
+      thread_p->oos_oids.push_back ({ oid_Null_oid, NULL_LSA });
     }
 
   // update the out parameter 'oid' to give access to the first slot

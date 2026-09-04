@@ -8167,10 +8167,10 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
 		{
 		  LOG_RCVINDEX oos_repl_rcvindex =
-		    OID_ISNULL (&thread_p->oos_oids[i]) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
+		    OID_ISNULL (&thread_p->oos_oids[i].oid) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
 		  error_code = repl_log_insert (thread_p,
 						class_oid,
-						&thread_p->oos_oids[i],
+						&thread_p->oos_oids[i].oid,
 						LOG_REPLICATION_DATA,
 						oos_repl_rcvindex, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
 		  if (error_code != NO_ERROR)
@@ -8970,10 +8970,10 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
 	    {
 	      LOG_RCVINDEX oos_repl_rcvindex =
-		OID_ISNULL (&thread_p->oos_oids[i]) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
+		OID_ISNULL (&thread_p->oos_oids[i].oid) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
 	      error_code =
-		repl_log_insert (thread_p, class_oid, &thread_p->oos_oids[i], LOG_REPLICATION_DATA, oos_repl_rcvindex,
-				 new_key, REPL_INFO_TYPE_RBR_NORMAL);
+		repl_log_insert (thread_p, class_oid, &thread_p->oos_oids[i].oid, LOG_REPLICATION_DATA,
+				 oos_repl_rcvindex, new_key, REPL_INFO_TYPE_RBR_NORMAL);
 	      if (error_code != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -14257,13 +14257,29 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 	  goto end;
 	}
 
-      oos_oid = thread_p->oos_oids[oos_oid_count];
+      oos_oid = thread_p->oos_oids[oos_oid_count].oid;
       oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
+
+      /* The or_put_* writers below bound-check only via assert, so a truncated stub in a malformed
+       * replicated record would be written past in a release build. Reject it here. */
+      if (oid_ptr + OR_OOS_INLINE_SIZE > (char *) recdes->data + recdes->length)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "OOS inline stub exceeds record bounds while applying replicated heap record");
+	  error = ER_HA_GENERIC_ERROR;
+	  goto end;
+	}
 
       buf.ptr = oid_ptr;
       buf.endptr = (char *) recdes->data + recdes->length;
 
       or_put_oid (&buf, &oos_oid);
+
+      /* The stub also stores the chain's identity stamp (CBRD-26950). The slave's own oos_insert
+       * issued and published it together with the OID, so replace the master's stamp with the local
+       * one; the 8-byte full length in between is unchanged and OOS storage is never read. */
+      or_advance (&buf, OR_BIGINT_SIZE);
+      or_put_bigint (&buf, oos_pack_identity_stamp (thread_p->oos_oids[oos_oid_count].identity_stamp));
 
       oos_oid_count++;
     }
