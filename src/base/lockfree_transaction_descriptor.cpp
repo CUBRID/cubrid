@@ -151,6 +151,14 @@ namespace lockfree
     void
     descriptor::reclaim_retired_list ()
     {
+      if (m_retired_head == NULL)
+	{
+	  // nothing to reclaim, and no reason to read the table's minimum to find that out. retire_node ()
+	  // reclaims before it appends, so this is every descriptor's first retire and every one that follows
+	  // a pass that took the whole list.
+	  return;
+	}
+
       id min_tran_id = m_table->get_min_active_tranid ();
       if (min_tran_id <= m_last_reclaim_minid)
 	{
