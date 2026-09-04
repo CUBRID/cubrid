@@ -258,6 +258,8 @@ static int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * nod
 static int pt_resolve_dblink_check_owner_name (PARSER_CONTEXT * parser, PT_NODE * node, char **server_owner_name);
 
 static void pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt);
+static PT_NODE *pt_dblink_remove_invisible_attrs (PARSER_CONTEXT * parser, PT_NODE * attr_list);
+static bool pt_dblink_spec_star_passes_invisible (const PT_NODE * spec);
 typedef struct
 {
   int norder;
@@ -266,6 +268,7 @@ typedef struct
   int dec_precision;
   int precision;
   int charset;
+  int is_invisible;		/* schema_info IS_INVISIBLE (PROTOCOL_V13+); 0 when unknown */
 } S_REMOTE_COL_ATTR;
 
 typedef struct remote_tbl_cols S_REMOTE_TBL_COLS;
@@ -361,6 +364,7 @@ public:
 
 	    attr->norder = m_attr_used++;
 	    attr->name_pos = m_nm_used;
+	    attr->is_invisible = 0;	/* only the schema_info path may set it */
 
 	    memcpy (m_nm_buf + m_nm_used, name, len);
 	    m_nm_used += len;
@@ -387,6 +391,13 @@ public:
     return m_attr_used;
   }
 
+  /* drop the rows collected so far (buffers are reused); the select-star flag is kept */
+  void reset_attrs ()
+  {
+    m_attr_used = 0;
+    m_nm_used = 0;
+  }
+
   bool is_select_star ()
   {
     return m_attr_star;
@@ -402,6 +413,8 @@ static int pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO *
 					 S_REMOTE_TBL_COLS * rmt_cols);
 static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink,
 					    S_REMOTE_TBL_COLS * rmt_tbl_cols);
+static int pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_TYPE sch_type, char *table_name,
+							   S_REMOTE_TBL_COLS * rmt_tbl_cols, int *reason);
 
 static PT_NODE *pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node);
 
@@ -2260,13 +2273,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			    }
 			  else
 			    {
+			      PT_NODE *copied_attrs;
+
 			      for (as_attr = spec->info.spec.as_attr_list; as_attr; as_attr = as_attr->next)
 				{
 				  as_attr->info.name.resolved = range_var->info.name.original;
 				}
-			      resolved_attrs =
-				parser_append_node (attr->next,
-						    parser_copy_tree_list (parser, spec->info.spec.as_attr_list));
+			      copied_attrs = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
+			      if (!pt_dblink_spec_star_passes_invisible (spec))
+				{
+				  copied_attrs = pt_dblink_remove_invisible_attrs (parser, copied_attrs);
+				}
+			      resolved_attrs = parser_append_node (attr->next, copied_attrs);
 			    }
 
 			  if (prev_attr == NULL)
@@ -4112,9 +4130,22 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
     {
       assert (PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec));
       col = pt_is_on_list (parser, name, spec->info.spec.as_attr_list);
+
+      if (col != NULL && col->flag.is_remote_invisible_column && (spec->info.spec.flag & PT_SPEC_FLAG_DUMMY_REMOVED))
+	{
+	  /* dummy spec from subquery cannot see invisible columns - the subquery projected
+	   * "SELECT *", so only the visible columns were ever in scope there.  The native path
+	   * reaches through the same spec flag, but asks the schema (db_attribute_is_invisible_column ())
+	   * instead of a node mark - a DBLink spec has no local schema to ask. */
+	  col = NULL;
+	}
+
       ok = (col != NULL);
       if (col && !name->info.name.spec_id)
 	{
+	  /* copy the type, not the flags: an explicitly referenced invisible column
+	   * is a visible output column, so flag.is_remote_invisible_column must not
+	   * travel to the reference */
 	  name->type_enum = col->type_enum;
 	  if (col->data_type)
 	    {
@@ -5122,6 +5153,13 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
       attr_def_node->info.attr_def.size_constraint = dt->info.data_type.precision;
     }
 
+  /* on the name node, which pt_dblink_table_gather_attribs () reuses as the
+   * as_attr_list entry; a node flag never prints into the stored spec */
+  if (attr->is_invisible)
+    {
+      attr_def_node->info.attr_def.attr_name->flag.is_remote_invisible_column = 1;
+    }
+
   return true;
 }
 
@@ -5191,6 +5229,20 @@ pt_build_select_list_for_dblink (PARSER_CONTEXT * parser, PT_NODE * col_list)
   return tvc;
 }
 
+/*
+ * pt_check_column_list () - drop the collected names that are not columns of the
+ *   remote table, and the ones the spec must not expose
+ *   parser(in): parser context
+ *   tbl_alias_nm(in): the spec's exposed name
+ *   dblink_table(in/out): the spec's dblink table; its sel_list is rewritten
+ *   rmt_cols(in): the remote column list
+ *
+ * Note: this only decides what the remote query has to project.  Whether a column the
+ *   statement is allowed to see is decided later, once per reference, by
+ *   pt_find_name_in_spec () - a spec written as "(SELECT * FROM t@srv)" and collapsed by
+ *   parser_remove_dummy_select () rejects the hidden ones there, the same way
+ *   pt_find_attr_in_class_list () does on the native path.
+ */
 static void
 pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLINK_INFO * dblink_table,
 		      S_REMOTE_TBL_COLS * rmt_cols)
@@ -5206,6 +5258,9 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
   PT_NODE *sel_list = dblink_table->sel_list;
   PT_NODE *col;
 
+  /* check_for_already_exists () keeps the star, if any, at the head of the list */
+  bool has_star = (sel_list->type_enum == PT_TYPE_STAR);
+
   while (sel_list)
     {
       col = sel_list;
@@ -5214,15 +5269,14 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
 
       if (col->type_enum == PT_TYPE_STAR)
 	{			// case:  * or tbl.*
-	  if (!col->info.name.resolved || intl_identifier_casecmp (tbl_alias_nm, col->info.name.resolved) == 0)
+	  if (!col->info.name.resolved
+	      || intl_identifier_casecmp_for_dblink (col->info.name.resolved, tbl_alias_nm) == 0)
 	    {
-	      if (sel_list)
-		{
-		  parser_free_node (parser, sel_list);
-		}
+	      /* keep the star and keep scanning: the remaining names may be remote
+	       * invisible columns that the star expansion does not cover */
 	      new_sel_list = new_sel_list ? parser_append_node (col, new_sel_list) : col;
-	      break;
 	    }
+	  continue;
 	}
 
       col_name = col->info.name.original;
@@ -5241,15 +5295,38 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
 	    }
 	}
 
+      /* with a star, a visible name is already covered by the expansion, so only
+       * invisible names are kept; with no visibility info (pre-V13 remote via the
+       * prepare) this collapses to the legacy star-only list */
       if (i < rmt_cols->get_attr_size ())
 	{
-	  new_sel_list = new_sel_list ? parser_append_node (col, new_sel_list) : col;
+	  bool is_invisible = (rmt_cols->get_attr (i)->is_invisible != 0);
+
+	  if (!has_star || is_invisible)
+	    {
+	      new_sel_list = new_sel_list ? parser_append_node (col, new_sel_list) : col;
+	    }
 	}
     }
 
   dblink_table->sel_list = new_sel_list;
 }
 
+/*
+ * pt_remake_dblink_select_list () - build the remote query text and the column
+ *   definitions (dblink_table->cols) from the collected select list
+ *   return: NO_ERROR or ER_DBLINK
+ *   parser(in): parser context
+ *   class_spec(in/out): the dblink spec; its derived table's qstr/rewritten and cols
+ *          are (re)built here
+ *   rmt_cols(in): the remote column list
+ *
+ * Note: the i-th entry of dblink_table->cols (and so of the spec's as_attr_list built
+ *   from it) must correspond to the i-th column of the remote query text built here -
+ *   dblink_scan fetches by position and enforces val_cnt == remote col_cnt.  Hidden
+ *   entries keep their slot: flag.is_remote_invisible_column never reaches XASL
+ *   (REGU_VARIABLE_HIDDEN_COLUMN is a different, unrelated field).
+ */
 static int
 pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec, S_REMOTE_TBL_COLS * rmt_cols)
 {
@@ -5285,7 +5362,36 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 
   // select * from dblink_t1@remote_srv1;
   var_buf = pt_append_nulstring (parser, var_buf, "SELECT ");
-  var_buf = pt_append_varchar (parser, var_buf, pt_build_select_list_for_dblink (parser, dblink_table->sel_list));
+  if (dblink_table->sel_list != NULL && dblink_table->sel_list->type_enum == PT_TYPE_STAR
+      && dblink_table->sel_list->next != NULL)
+    {
+      /* star + referenced invisible columns: "alias.*, inv1, ..." - the qualified star
+       * keeps the remote visible expansion while the invisible columns, excluded from
+       * it, are fetched explicitly after it */
+      if (range_var != NULL)
+	{
+	  var_buf = pt_append_varchar (parser, var_buf, pt_print_bytes (parser, range_var));
+	}
+      else
+	{
+	  /* the bare table name, not the printed entity name: an owner-qualified entity
+	   * prints as "owner.table" and "owner.table.*" is not a correlation-name star
+	   * (the grammar takes a single identifier before ".*").  Without an alias the
+	   * table name itself is the correlation name, so "table.*" is what refers to
+	   * the "FROM owner.table" below. */
+	  var_buf = pt_append_name (parser, var_buf, entity_name->info.name.original);
+	}
+      var_buf = pt_append_nulstring (parser, var_buf, ".*");
+      for (tmp = dblink_table->sel_list->next; tmp; tmp = tmp->next)
+	{
+	  var_buf = pt_append_nulstring (parser, var_buf, ", ");
+	  var_buf = pt_append_varchar (parser, var_buf, pt_print_bytes (parser, tmp));
+	}
+    }
+  else
+    {
+      var_buf = pt_append_varchar (parser, var_buf, pt_build_select_list_for_dblink (parser, dblink_table->sel_list));
+    }
 
   // from table
   if (class_spec->meta_class == PT_META_CLASS)
@@ -5335,9 +5441,15 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 
   if (dblink_table->sel_list->node_type == PT_NAME && dblink_table->sel_list->type_enum == PT_TYPE_STAR)
     {
-      assert (dblink_table->sel_list->next == NULL);
+      /* visible columns in remote definition order - exactly the remote "*" expansion.
+       * The prepare source leaves is_invisible 0 everywhere, so it keeps its full list. */
       for (int i = 0; i < rmt_cols->get_attr_size (); i++)
 	{
+	  if (rmt_cols->get_attr (i)->is_invisible)
+	    {
+	      continue;
+	    }
+
 	  if ((id_node = parser_new_node (parser, PT_NAME)) == NULL)
 	    {
 	      PT_ERROR (parser, derived_table, er_msg ());
@@ -5347,6 +5459,25 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 
 	  id_node->info.name.original = pt_append_string (parser, NULL, rmt_cols->get_name (i));
 	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols)) == NULL)
+	    {
+	      error = ER_DBLINK;
+	      goto error_exit;
+	    }
+	  attr_def_node = attr_def_node ? parser_append_node (tmp, attr_def_node) : tmp;
+	}
+
+      /* referenced invisible columns follow, in the same order they were appended to
+       * the remote query text after "alias.*"; they are exposed for name binding but
+       * pt_resolve_star () excludes them from the outer star expansion */
+      id_node = dblink_table->sel_list->next;
+      dblink_table->sel_list->next = NULL;
+      while (id_node)
+	{
+	  PT_NODE *extra = id_node;
+	  id_node = extra->next;
+	  extra->next = NULL;
+
+	  if ((tmp = pt_mk_attr_def_node (parser, extra, rmt_cols)) == NULL)
 	    {
 	      error = ER_DBLINK;
 	      goto error_exit;
@@ -5381,6 +5512,178 @@ error_exit:
 #define MAX_LEN_CONNECTION_URL	512
 #define SQL_MAX_TEXT_LEN DB_MAX_IDENTIFIER_LENGTH * 2 + 16
 
+/* why cci_schema_info could not describe the table.  The caller needs the reason: a
+ * remote that is too old to answer is a compatibility matter, while a name the remote
+ * does not resolve is not, and the two must not be treated the same. */
+enum
+{
+  PT_DBLINK_SCHEMA_OK = 0,
+  PT_DBLINK_SCHEMA_REJECTED,	/* the request itself was refused */
+  PT_DBLINK_SCHEMA_PRE_V13,	/* no IS_INVISIBLE / EXT_DOMAIN / CODESET column */
+  PT_DBLINK_SCHEMA_NO_ROW	/* the remote resolves the name to no class */
+};
+
+/*
+ * pt_dblink_table_get_column_defs_by_schema_info () - remote table schema via cci_schema_info
+ *   return: NO_ERROR on success (rmt_tbl_cols filled); ER_FAILED otherwise, with
+ *           rmt_tbl_cols left empty and the reason in reason
+ *   conn(in): open CCI connection to the remote
+ *   sch_type(in): CCI_SCH_ATTRIBUTE for a class, CCI_SCH_ATTR_WITH_SYNONYM for a synonym
+ *   table_name(in): remote table name, as the statement wrote it
+ *   rmt_tbl_cols(out): remote column list, invisible columns included
+ *   reason(out): why the request could not describe the table; PT_DBLINK_SCHEMA_OK on success
+ *
+ * Note: The "SELECT *" prepare metadata excludes invisible columns, so a valid
+ *   reference to a remote invisible column would be reported as an unknown column.
+ *   CCI_SCH_ATTRIBUTE returns the table's real attribute list (invisible included).
+ *   The DOMAIN column arrives as a plain T_CCI_U_TYPE: CCI strips the protocol and
+ *   collection bits on fetch (confirm_schema_type_info in cci_query_execute.c), and it
+ *   carries no codeset at all.  PROTOCOL_V13 therefore adds EXT_DOMAIN (16) and
+ *   CODESET (17), which this function reads instead; both are required, so a remote
+ *   that does not send them falls back to the "SELECT *" prepare.
+ */
+static int
+pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_TYPE sch_type, char *table_name,
+						S_REMOTE_TBL_COLS * rmt_tbl_cols, int *reason)
+{
+  T_CCI_ERROR cci_error;
+  T_CCI_CUBRID_STMT stmt_type;
+  S_REMOTE_COL_ATTR *rmt_attr;
+  char *attr_name;
+  int req, err, ind, ext_domain, codeset, scale, precision, invisible, res_col_cnt = 0;
+
+  /* exact class-name match; CCI_ATTR_NAME_PATTERN_MATCH with a NULL attribute name
+   * skips the attribute filter (an exact match against NULL matches nothing) */
+  *reason = PT_DBLINK_SCHEMA_REJECTED;
+
+  req = cci_schema_info (conn, sch_type, table_name, NULL, CCI_ATTR_NAME_PATTERN_MATCH, &cci_error);
+  if (req < 0)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "dblink: schema_info for [%s] was rejected (%d: %s)\n", table_name, cci_error.err_code,
+		    cci_error.err_msg);
+      return ER_FAILED;
+    }
+
+  /* columns 15 IS_INVISIBLE, 16 EXT_DOMAIN and 17 CODESET exist only from PROTOCOL_V13
+   * remotes, and all three are needed: without 16 a collection column cannot be told
+   * from its element type, and without 17 the codeset would have to be guessed */
+  if (cci_get_result_info (req, &stmt_type, &res_col_cnt) == NULL)
+    {
+      res_col_cnt = 0;
+    }
+
+  if (res_col_cnt < 17)
+    {
+      *reason = PT_DBLINK_SCHEMA_PRE_V13;
+
+      /* pre-V13 remote, or a V13 remote without the type columns: the "SELECT *"
+       * prepare describes the visible set exactly and carries the full ext type */
+      er_log_debug (ARG_FILE_LINE,
+		    "dblink: the remote answered schema_info for [%s] with %d columns, fewer than the 17 that carry "
+		    "IS_INVISIBLE / EXT_DOMAIN / CODESET (PROTOCOL_V13); using the \"SELECT *\" prepare instead - "
+		    "an older remote cannot report invisible columns\n", table_name, res_col_cnt);
+      cci_close_req_handle (req);
+      return ER_FAILED;
+    }
+
+  while ((err = cci_cursor (req, 1, CCI_CURSOR_CURRENT, &cci_error)) == 0)
+    {
+      if ((err = cci_fetch (req, &cci_error)) < 0)
+	{
+	  break;
+	}
+
+      /* SCH_ATTRIBUTE result: 1 ATTR_NAME, 3 SCALE, 4 PRECISION, 15 IS_INVISIBLE,
+       * 16 EXT_DOMAIN, 17 CODESET; a NULL leaves the output variable unwritten, so the
+       * indicator is part of each required check */
+      if (cci_get_data (req, 1, CCI_A_TYPE_STR, &attr_name, &ind) < 0 || attr_name == NULL
+	  || cci_get_data (req, 3, CCI_A_TYPE_INT, &scale, &ind) < 0 || ind == -1
+	  || cci_get_data (req, 4, CCI_A_TYPE_INT, &precision, &ind) < 0 || ind == -1
+	  || cci_get_data (req, 16, CCI_A_TYPE_INT, &ext_domain, &ind) < 0 || ind == -1)
+	{
+	  err = ER_FAILED;
+	  break;
+	}
+
+      /* CODESET is legitimately absent for a type that has none: NULL reads as -1 */
+      if (cci_get_data (req, 17, CCI_A_TYPE_INT, &codeset, &ind) < 0)
+	{
+	  err = ER_FAILED;
+	  break;
+	}
+      if (ind == -1)
+	{
+	  codeset = -1;
+	}
+
+      rmt_attr = rmt_tbl_cols->get_col_attr (attr_name);
+      if (rmt_attr == NULL)
+	{
+	  err = ER_FAILED;
+	  break;
+	}
+
+      /* EXT_DOMAIN keeps the collection bits that CCI strips from DOMAIN, so a remote
+       * SET/MULTISET/SEQUENCE column is still rejected at compile time */
+      rmt_attr->type_idx = ext_domain;
+      rmt_attr->dec_precision = scale;
+      rmt_attr->precision = precision;
+
+      rmt_attr->is_invisible = 0;
+      if (cci_get_data (req, 15, CCI_A_TYPE_INT, &invisible, &ind) >= 0 && ind != -1)
+	{
+	  rmt_attr->is_invisible = invisible;
+	}
+
+      /* CODESET is how the column's characters are encoded at the far end - the column's
+       * own codeset on a CUBRID remote, UTF-8 on a gateway - and -1 for a type that does
+       * not carry a per-column codeset.  Reproduce there what the "SELECT *" prepare
+       * would have reported for the same column, since this path replaces it: the
+       * raw-bits marker for BIT/VARBIT, and 0 for everything else.  (A remote JSON column
+       * gets 0 where the prepare reports INTL_CODESET_UTF8; nothing reads it -
+       * pt_data_type_to_db_domain () takes data_type.units only for char and bit types.) */
+      if (codeset >= 0)
+	{
+	  rmt_attr->charset = codeset;
+	}
+      else if (pt_dblink_get_basic_utype ((T_CCI_U_EXT_TYPE) ext_domain) == CCI_U_TYPE_BIT
+	       || pt_dblink_get_basic_utype ((T_CCI_U_EXT_TYPE) ext_domain) == CCI_U_TYPE_VARBIT)
+	{
+	  rmt_attr->charset = INTL_CODESET_RAW_BITS;
+	}
+      else
+	{
+	  rmt_attr->charset = 0;
+	}
+    }
+
+  cci_close_req_handle (req);
+
+  if (err != CCI_ER_NO_MORE_DATA || rmt_tbl_cols->get_attr_size () == 0)
+    {
+      /* fetch failure, or a name the remote resolves to no class: drop what was collected */
+      if (rmt_tbl_cols->get_attr_size () == 0 && err == CCI_ER_NO_MORE_DATA)
+	{
+	  *reason = PT_DBLINK_SCHEMA_NO_ROW;
+	  er_log_debug (ARG_FILE_LINE,
+			"dblink: schema_info found no column of [%s] - the remote does not resolve that name the way "
+			"the statement wrote it\n", table_name);
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"dblink: reading schema_info for [%s] failed (%d: %s)\n", table_name, cci_error.err_code,
+			cci_error.err_msg);
+	}
+      rmt_tbl_cols->reset_attrs ();
+      return ER_FAILED;
+    }
+
+  *reason = PT_DBLINK_SCHEMA_OK;
+  return NO_ERROR;
+}
+
 static int
 pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_REMOTE_TBL_COLS * rmt_tbl_cols)
 {
@@ -5392,6 +5695,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   PT_DBLINK_INFO *dblink_table = &dblink->info.dblink_table;
   char *find;
   char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
+  bool schema_info_required = false;
 
   char *table_name = dblink_table->remote_table_name;
   char *url = (char *) dblink_table->url->info.value.data_value.str->bytes;
@@ -5454,9 +5758,91 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       goto set_parser_error;
     }
 
+  /* "SELECT *" prepare metadata cannot get invisible columns, so take the schema from
+   * cci_schema_info; star expansion needs IS_INVISIBLE (PROTOCOL_V13). */
+  if (table_name != NULL && dblink_table->sel_list != NULL)
+    {
+      bool has_star = (dblink_table->sel_list->node_type == PT_NAME
+		       && dblink_table->sel_list->type_enum == PT_TYPE_STAR);
+      int reason = PT_DBLINK_SCHEMA_OK, rc = ER_FAILED;
+      char qualified_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+      char *lookup_name = table_name;
+
+      /* A lone star references no invisible column, and the "SELECT *" prepare below
+       * describes exactly the visible set the star must expand to - the same list this
+       * function would build from schema_info.  Skip schema_info there: it costs a round
+       * trip for an identical column list. */
+      if (has_star && dblink_table->sel_list->next == NULL)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"dblink: schema_info skipped for [%s] - the statement references no column besides the star, "
+			"and the \"SELECT *\" prepare describes exactly the list the star expands to\n", table_name);
+	}
+      /* The catalog request compares its argument as a value, so a name written with
+       * identifier quotes can only answer for a class literally spelled that way - never
+       * the one the prepare resolves to.  Do not ask: read the "SELECT *" describe, which
+       * is the remote's own reading of the same characters. */
+      else if (strpbrk (table_name, "\"`[") != NULL)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"dblink: schema_info skipped for [%s] - a quoted name is not the stored name, so the catalog "
+			"cannot answer for it; using the \"SELECT *\" prepare, which the remote parses\n", table_name);
+	}
+      else
+	{
+	  /* sch_attr_info () filters by owner only for a qualified name, so name the schema
+	   * the remote resolves in - the one CREATE SERVER gave - and let it filter.  A
+	   * gateway keeps the name as written: it picks the schema itself and may look
+	   * through PUBLIC, which an explicit owner would rule out. */
+	  if (user != NULL && user[0] != '\0' && strchr (table_name, '.') == NULL
+	      && cci_get_dbms_type (conn) == CAS_DBMS_CUBRID
+	      && snprintf (qualified_name, sizeof (qualified_name), "%s.%s", user, table_name)
+	      < (int) sizeof (qualified_name))
+	    {
+	      lookup_name = qualified_name;
+	    }
+
+	  rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTRIBUTE, lookup_name, rmt_tbl_cols,
+							       &reason);
+
+	  /* CCI_SCH_ATTRIBUTE describes a class and never a synonym, so a synonym is answered
+	   * with no row.  CCI_SCH_ATTR_WITH_SYNONYM describes the target with the same 17
+	   * columns, and is synonym-only - a second attempt, not a replacement.  A gateway
+	   * refuses the type outright, so the attempt costs nothing there. */
+	  if (rc != NO_ERROR && reason == PT_DBLINK_SCHEMA_NO_ROW)
+	    {
+	      rc = pt_dblink_table_get_column_defs_by_schema_info (conn, CCI_SCH_ATTR_WITH_SYNONYM, lookup_name,
+								   rmt_tbl_cols, &reason);
+	    }
+
+	  if (rc == NO_ERROR)
+	    {
+	      err = NO_ERROR;
+	      goto set_parser_error;
+	    }
+
+	  /* The "SELECT *" describe is a smaller column list, not a degraded form of the same
+	   * one, so serving it here would compile the statement against a different table
+	   * shape.  Keep the prepare below only to report the remote's own error, and refuse
+	   * if it succeeds.  A remote too old to report invisible columns still falls back. */
+	  if (reason != PT_DBLINK_SCHEMA_PRE_V13)
+	    {
+	      schema_info_required = true;
+	    }
+	}
+    }
+
   req = cci_prepare (conn, sql, 0, &cci_error);
   if (req < 0)
     {
+      goto set_parser_error;
+    }
+
+  if (schema_info_required)
+    {
+      snprintf (cci_error.err_msg, sizeof (cci_error.err_msg),
+		"the remote resolves this name but did not report its column list, so an invisible column "
+		"cannot be told from an unknown one");
       goto set_parser_error;
     }
 
@@ -5523,6 +5909,9 @@ pt_dblink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * dblink_column
     {
       PT_NODE *next_attr = dblink_column->info.attr_def.attr_name;
       next_attr->type_enum = dblink_column->type_enum;
+
+      /* is_remote_invisible_column was set by pt_dblink_table_fill_attr_def () for a
+       * remote invisible column; a reparsed spec leaves it clear */
 
       if (dblink_column->data_type != NULL)
 	{
@@ -7409,6 +7798,77 @@ pt_resolve_star_reserved_names (PARSER_CONTEXT * parser, PT_NODE * from)
 }
 
 /*
+ * pt_dblink_remove_invisible_attrs () - drop the remote invisible columns from a copied
+ *   attribute list of a derived spec, for star expansion
+ *   return: the filtered list
+ *   parser(in): parser context
+ *   attr_list(in/out): a copy of the spec's as_attr_list
+ *
+ * Note: an invisible column keeps its slot in the spec's tuple and stays resolvable by
+ *   name; only a star must not expand to it.  The mark travels on the name node
+ *   (pt_dblink_table_gather_attribs (),
+ *   and pt_get_attr_list_of_derived_table () for a derived table wrapped around it), so
+ *   nothing here has to be kept in step with a second list.
+ */
+static PT_NODE *
+pt_dblink_remove_invisible_attrs (PARSER_CONTEXT * parser, PT_NODE * attr_list)
+{
+  PT_NODE *attr, *prev, *next;
+
+  prev = NULL;
+  for (attr = attr_list; attr != NULL; attr = next)
+    {
+      next = attr->next;
+      if (attr->flag.is_remote_invisible_column)
+	{
+	  if (prev)
+	    {
+	      prev->next = next;
+	    }
+	  else
+	    {
+	      attr_list = next;
+	    }
+	  attr->next = NULL;
+	  parser_free_node (parser, attr);
+	}
+      else
+	{
+	  prev = attr;
+	}
+    }
+
+  return attr_list;
+}
+
+/*
+ * pt_dblink_spec_star_passes_invisible () - true when a star over this spec must expose the remote
+ *   invisible columns instead of skipping them
+ *   return: whether the spec's star is transparent
+ *   spec(in): the spec the star is being expanded over
+ *
+ * Note: the only such star is the one pt_check_sub_query_spec () generates inside the
+ *   derived table it wraps a DML statement's remote source in.  That derived table is not
+ *   a scope the statement wrote, so it has to pass the referenced remote invisible columns
+ *   through to the block that does reference them.  The wrapper itself is marked too, but
+ *   a star over the wrapper is the statement's own and must still hide them.
+ *
+ *   This transparency is safe only while that generated inner query stays a bare
+ *   "SELECT *" with no other clause: a hidden column in a SELECT LIST is what the later
+ *   phases read as an ORDER BY artifact (the tail assert in pt_check_order_by (), the
+ *   truncation in qo_rewrite_hidden_col_as_derived (), num_orderby_keys in
+ *   pt_to_update_xasl ()), and only an ORDER BY / GROUP BY / DISTINCT on that query
+ *   would put them within reach.  Widening this predicate to other spec types re-opens
+ *   every one of those readers.
+ */
+static bool
+pt_dblink_spec_star_passes_invisible (const PT_NODE * spec)
+{
+  return (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE
+	  && (spec->info.spec.flag & PT_SPEC_FLAG_DBLINK_DML_SRC) != 0);
+}
+
+/*
  * pt_resolve_star () - resolve the '*' as in a query
  *      Replace the star with an equivalent list x.a, x.b, y.a, y.d ...
  *   return:
@@ -7450,6 +7910,10 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
       if (PT_SPEC_IS_DERIVED (spec) || PT_SPEC_IS_CTE (spec))
 	{
 	  spec_att = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
+	  if (!pt_dblink_spec_star_passes_invisible (spec))
+	    {
+	      spec_att = pt_dblink_remove_invisible_attrs (parser, spec_att);
+	    }
 	}
       else
 	{
@@ -8566,6 +9030,14 @@ generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list, NATURA
        */
 
       if (pt_cur->alias_print == NULL && pt_cur->node_type != PT_NAME)
+	{
+	  continue;
+	}
+
+      /* remote invisible columns (a DML wrapper spec's list carries them) never join,
+       * matching the skip generate_natural_join_attrs_from_db_attrs () makes for a native
+       * invisible column */
+      if (pt_cur->flag.is_remote_invisible_column)
 	{
 	  continue;
 	}
@@ -11420,6 +11892,11 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 	    }
 
 	  col->type_enum = att->type_enum;
+
+	  /* A remote invisible column of the inner query stays invisible through this derived
+	   * table: it keeps its slot in the tuple, but the outer star must not expand to it. */
+	  col->flag.is_remote_invisible_column = att->flag.is_remote_invisible_column;
+
 	  if (att->data_type)
 	    {
 	      col->data_type = parser_copy_tree_list (parser, att->data_type);
@@ -11897,77 +12374,63 @@ check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, cons
 {
   const char *tbl_alias_nm = plkcol->tbl_name_node->info.name.original;
   PT_NODE *col;
+  bool is_star = (original == NULL);	/* "*" or "tbl.*" */
 
-  if (resolved && intl_identifier_casecmp (tbl_alias_nm, resolved) != 0)
+  /* the _for_dblink variant everywhere: pt_check_column_list () and
+   * pt_mk_attr_def_node () consume this list with it, and it additionally strips a
+   * leading quote from the reference.  Comparing differently here would let a
+   * quoted duplicate through, and a duplicate reaches the remote select list twice. */
+  if (resolved && intl_identifier_casecmp_for_dblink (resolved, tbl_alias_nm) != 0)
     {
       return;
     }
 
-  if (plkcol->col_list)
+  /* A star and names coexist in the list: the star drives the visible expansion
+   * while names referenced elsewhere may add remote invisible columns, which are
+   * excluded from "SELECT *".  The star node is kept at the head of the list. */
+  if (is_star)
     {
-      if (plkcol->col_list->type_enum == PT_TYPE_STAR && plkcol->col_list->info.name.resolved == NULL)
+      if (plkcol->col_list && plkcol->col_list->type_enum == PT_TYPE_STAR)
 	{
-	  return;		// case: * vs anything
+	  return;		/* already has a star */
 	}
-
-      if (resolved == NULL)
-	{			// col
-	  for (col = plkcol->col_list; col; col = col->next)
+    }
+  else
+    {
+      for (col = plkcol->col_list; col; col = col->next)
+	{
+	  if (col->type_enum == PT_TYPE_STAR)
 	    {
-	      if (col->type_enum == PT_TYPE_STAR)
-		{
-		  return;	// case: tbl.* vs anything
-		}
-	      else if (intl_identifier_casecmp (col->info.name.original, original) == 0)
-		{
-		  return;	// case: col  vs col
-		}
+	      continue;
 	    }
-	}
-      else if (original)
-	{			// tbl.col
-	  for (col = plkcol->col_list; col; col = col->next)
+	  if (intl_identifier_casecmp_for_dblink (original, col->info.name.original) == 0)
 	    {
-	      if (col->type_enum == PT_TYPE_STAR)
-		{
-		  return;	// case: tbl.* vs anything
-		}
-	      else if (intl_identifier_casecmp (col->info.name.original, original) == 0)
-		{
-		  return;	// case: col  vs col  or  col vs tbl.col
-		}
+	      return;		/* case: col vs col  or  col vs tbl.col */
 	    }
-	}
-      else
-	{			// tbl.*
-	  if (plkcol->col_list->type_enum == PT_TYPE_STAR)
-	    {
-	      return;		// case: tbl.* vs tbl.*
-	    }
-
-	  parser_free_node (parser, plkcol->col_list);
-	  plkcol->col_list = NULL;
 	}
     }
 
   PT_NODE *name = parser_new_node (parser, PT_NAME);
-
-  if (resolved && original)
+  if (name == NULL)
     {
-      //name->info.name.resolved = pt_append_string (parser, NULL, resolved);
-      name->info.name.original = pt_append_string (parser, NULL, original);
+      return;
     }
-  else if (resolved)
+
+  if (is_star)
     {
       name->type_enum = PT_TYPE_STAR;
-      name->info.name.resolved = pt_append_string (parser, NULL, resolved);
+      if (resolved)
+	{
+	  name->info.name.resolved = pt_append_string (parser, NULL, resolved);
+	}
+      name->next = plkcol->col_list;	/* the star leads the list */
+      plkcol->col_list = name;
     }
   else
     {
       name->info.name.original = pt_append_string (parser, NULL, original);
+      plkcol->col_list = parser_append_node (name, plkcol->col_list);
     }
-
-  plkcol->col_list = parser_append_node (name, plkcol->col_list);
 }
 
 
@@ -11975,13 +12438,22 @@ static PT_NODE *
 pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   S_LINK_COLUMNS *plkcol = (S_LINK_COLUMNS *) arg;
-  PT_NODE *name = NULL;
 
   switch (node->node_type)
     {
     case PT_DOT_:
-      check_for_already_exists (parser, plkcol, node->info.dot.arg1->info.name.original,
-				node->info.dot.arg2->info.name.original);
+      /* only a plain (qualifier, column) pair: in a nested path (a.b.c) arg1 is
+       * itself a PT_DOT_ and info.name.original would read the wrong union member.
+       * The qualifier filters nothing: the walk is not stopped here, so arg1 and arg2
+       * are visited again as bare PT_NAMEs, and that arm passes no resolved name to
+       * check_for_already_exists ().  A reference qualified with another table's alias
+       * is therefore collected as well - pt_check_column_list () is what keeps the
+       * remote select list to this table's columns. */
+      if (node->info.dot.arg1->node_type == PT_NAME && node->info.dot.arg2->node_type == PT_NAME)
+	{
+	  check_for_already_exists (parser, plkcol, node->info.dot.arg1->info.name.original,
+				    node->info.dot.arg2->info.name.original);
+	}
       break;
 
     case PT_NAME:
@@ -11997,14 +12469,8 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 
     case PT_VALUE:
       if (node->type_enum == PT_TYPE_STAR)
-	{
-	  name = parser_new_node (parser, PT_NAME);
-	  name->type_enum = PT_TYPE_STAR;
-	  if (plkcol->col_list)
-	    {
-	      parser_free_node (parser, plkcol->col_list);
-	    }
-	  plkcol->col_list = name;
+	{			// case: *
+	  check_for_already_exists (parser, plkcol, NULL, NULL);
 	}
       break;
 
@@ -12016,19 +12482,28 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 static void
-pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_QUERY_INFO * query, PT_NODE * on_cond)
+pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_QUERY_INFO * query)
 {
+  PT_NODE *spec;
+
   if (query->q.select.list)
     {
+      /* a star does not stop the walk: names referenced in the conditions below
+       * may be remote invisible columns, which the star ("SELECT *") never covers */
       (void) parser_walk_tree (parser, query->q.select.list, pt_get_column_name_pre, plkcol, NULL, NULL);
-      if (plkcol->col_list && plkcol->col_list->type_enum == PT_TYPE_STAR)
-	{
-	  return;
-	}
     }
-  if (on_cond)
+
+  /* an ON condition hangs on the spec at the right side of its JOIN, so the dblink
+   * table's columns may appear in another spec's on_cond (e.g. the dblink table on
+   * the left side of a join).  Walk every spec's on_cond; a name qualified with another
+   * table's alias is collected here too (see pt_get_column_name_pre ()), and
+   * pt_check_column_list () afterwards drops whatever is not a column of this table. */
+  for (spec = query->q.select.from; spec; spec = spec->next)
     {
-      (void) parser_walk_tree (parser, on_cond, pt_get_column_name_pre, plkcol, NULL, NULL);
+      if (spec->info.spec.on_cond)
+	{
+	  (void) parser_walk_tree (parser, spec->info.spec.on_cond, pt_get_column_name_pre, plkcol, NULL, NULL);
+	}
     }
   if (query->q.select.where)
     {
@@ -12090,7 +12565,7 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      lkcol.col_list = table->info.dblink_table.sel_list;
 
 	      lkcol.tbl_name_node = spec->info.spec.range_var;
-	      pt_get_cols_for_dblink (parser, &lkcol, query, spec->info.spec.on_cond);
+	      pt_get_cols_for_dblink (parser, &lkcol, query);
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;
 	      lkcol.col_list = NULL;
@@ -12114,6 +12589,162 @@ pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
     }
 
   return node;
+}
+
+/*
+ * pt_dml_column_name_pre () - pt_get_column_name_pre () restricted to the positions
+ *   that can reference a source table: spec subtrees (table and server names), the
+ *   assignment left-hand sides and the INSERT attribute lists (DML target columns)
+ *   are excluded here, so nested constructs are covered too
+ */
+static PT_NODE *
+pt_dml_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  /* continue_walk is shared across the walk: reset it so the PT_LIST_WALK set on one
+   * node does not leak to its siblings */
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_SPEC)
+    {
+      /* no column names in a spec subtree - except its ON condition, which may
+       * reference any table of the statement */
+      if (node->info.spec.on_cond)
+	{
+	  (void) parser_walk_tree (parser, node->info.spec.on_cond, pt_dml_column_name_pre, arg, NULL, NULL);
+	}
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (PT_IS_ASSIGN_NODE (node))
+    {
+      /* only the rhs: the lhs names a column of the DML target, and collecting it
+       * would add a phantom column to the remote select list */
+      (void) parser_walk_tree (parser, node->info.expr.arg2, pt_dml_column_name_pre, arg, NULL, NULL);
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_INSERT)
+    {
+      /* the attribute list names target columns; the sources are the values and
+       * the ON DUPLICATE KEY assignments */
+      (void) parser_walk_tree (parser, node->info.insert.value_clauses, pt_dml_column_name_pre, arg, NULL, NULL);
+      (void) parser_walk_tree (parser, node->info.insert.odku_assignments, pt_dml_column_name_pre, arg, NULL, NULL);
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  return pt_get_column_name_pre (parser, node, arg, continue_walk);
+}
+
+/*
+ * pt_dml_gather_source_refs () - walk the clauses of a DML statement that can
+ *   reference a source table; hints, index names and cursor names are not among them
+ */
+static void
+pt_dml_gather_source_refs (PARSER_CONTEXT * parser, PT_NODE * stmt, S_LINK_COLUMNS * lkcol)
+{
+  switch (stmt->node_type)
+    {
+    case PT_UPDATE:
+      (void) parser_walk_tree (parser, stmt->info.update.assignment, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.update.spec, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.update.class_specs, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.update.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.update.order_by, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.update.orderby_for, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      break;
+
+    case PT_DELETE:
+      (void) parser_walk_tree (parser, stmt->info.delete_.spec, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.delete_.class_specs, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.delete_.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      break;
+
+    case PT_MERGE:
+      (void) parser_walk_tree (parser, stmt->info.merge.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.merge.update.assignment, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.merge.update.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      (void) parser_walk_tree (parser, stmt->info.merge.update.del_search_cond, pt_dml_column_name_pre, lkcol, NULL,
+			       NULL);
+      (void) parser_walk_tree (parser, stmt->info.merge.insert.value_clauses, pt_dml_column_name_pre, lkcol, NULL,
+			       NULL);
+      (void) parser_walk_tree (parser, stmt->info.merge.insert.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      break;
+
+    default:
+      /* PT_INSERT and anything unexpected: pt_dml_column_name_pre () itself excludes
+       * the target positions */
+      (void) parser_walk_tree (parser, stmt, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      break;
+    }
+}
+
+/*
+ * pt_gather_dblink_cols_in_dml_pre () - collect, for one remote source table of a DML
+ *   statement, the columns the statement references on it
+ *   arg(in): the enclosing DML statement
+ */
+static PT_NODE *
+pt_gather_dblink_cols_in_dml_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *stmt = (PT_NODE *) arg;
+  PT_NODE *table;
+  *continue_walk = PT_CONTINUE_WALK;
+
+  /* the remote spec sits below the generated derived table, so spec subtrees are walked */
+  if (node->node_type != PT_SPEC || !(node->info.spec.flag & PT_SPEC_FLAG_DBLINK_DML_SRC)
+      || !PT_SPEC_IS_DERIVED (node) || node->info.spec.derived_table_type != PT_DERIVED_DBLINK_TABLE)
+    {
+      return node;
+    }
+
+  table = node->info.spec.derived_table;
+  if (table->node_type != PT_DBLINK_TABLE || table->info.dblink_table.remote_table_name == NULL
+      || *table->info.dblink_table.remote_table_name == '\0' || node->info.spec.range_var == NULL)
+    {
+      return node;
+    }
+
+  S_LINK_COLUMNS lkcol;
+
+  memset (&lkcol, 0x00, sizeof (lkcol));
+  lkcol.col_list = table->info.dblink_table.sel_list;
+  lkcol.tbl_name_node = node->info.spec.range_var;
+
+  pt_dml_gather_source_refs (parser, stmt, &lkcol);
+
+  table->info.dblink_table.sel_list = lkcol.col_list;
+  lkcol.col_list = NULL;
+
+  *continue_walk = PT_LIST_WALK;
+
+  return node;
+}
+
+/*
+ * pt_gather_dblink_cols_in_dml () - add the columns a DML statement references on its
+ *   remote source tables to those tables' remote select lists
+ *   return:
+ *   parser(in): parser context
+ *   stmt(in): PT_INSERT / PT_UPDATE / PT_DELETE / PT_MERGE after the dblink rewrite
+ *
+ * Note: pt_check_sub_query_spec () wraps a remote source spec in a derived table the
+ *   statement never wrote, so pt_gather_dblink_colums () - which only sees that generated
+ *   inner query, whose select list is a bare star - loses every reference that lives in
+ *   the enclosing block.  Only the specs it marked PT_SPEC_FLAG_DBLINK_DML_SRC are
+ *   collected from the statement; a subquery the statement did write keeps its own scope.
+ */
+void
+pt_gather_dblink_cols_in_dml (PARSER_CONTEXT * parser, PT_NODE * stmt)
+{
+  if (parser == NULL || stmt == NULL)
+    {
+      return;
+    }
+
+  (void) parser_walk_tree (parser, stmt, pt_gather_dblink_cols_in_dml_pre, stmt, NULL, NULL);
 }
 
 int
@@ -12156,15 +12787,21 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
 }
 
 /*
- * pt_dblink_get_remote_col_charset () - physical remote codeset of a DBLink column
+ * pt_dblink_get_remote_col_charset () - codeset a DBLink column's bytes arrive in
  *   return: INTL_CODESET of the named remote column, or -1 if not found
  *   remote_col_list(in): PT_DBLINK_INFO.remote_col_list (S_REMOTE_TBL_COLS *)
  *   col_name(in): bare remote column name
  *
- * The CCI column metadata carries the remote column's true (physical) codeset, which
- * is preserved here regardless of how the parse-tree attr_def later declares the
- * column's codeset.  The correlated push-down guard uses this to detect a cross-codeset
- * key (remote physical codeset != local outer codeset) and fall back to local evaluation.
+ * The CCI column metadata carries how the column's characters are encoded at the far end
+ * - the column's own codeset on a CUBRID remote, UTF-8 on a gateway, which re-encodes
+ * character data to UTF-8 on the way out - and it is preserved here regardless of how the
+ * parse-tree attr_def later declares the column's codeset.  The correlated push-down guard
+ * uses it to detect a key whose value, bound as raw local bytes, would meet a differently
+ * encoded column, and fall back to local evaluation.
+ *
+ * The "SELECT *" prepare already reported this per column; schema_info has to carry it as
+ * well (its CODESET column), because a statement that references a remote invisible column
+ * takes the schema_info path instead and would otherwise lose it for every column.
  */
 int
 pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name)

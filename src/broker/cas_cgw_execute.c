@@ -44,6 +44,8 @@
 
 #include "cas_cgw_execute.h"
 #include "cas_cgw_odbc.h"
+#include "cas_schema_info.h"
+#include "cas_str_like.h"
 
 
 #define DBLINK_HINT                     "DBLINK"
@@ -885,6 +887,14 @@ ux_cgw_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
       goto cursor_error;
     }
 
+  if (srv_handle->cgw_schema_info != NULL)
+    {
+      /* schema_info rows are cached on the handle; the position is carried by fetch */
+      net_buf_cp_int (net_buf, 0, NULL);	/* result code */
+      net_buf_cp_int (net_buf, srv_handle->cgw_schema_info_count, NULL);	/* total row count */
+      return 0;
+    }
+
   count = srv_handle->total_tuple_count;
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
@@ -1036,4 +1046,262 @@ int
 ux_cgw_is_database_connected (void)
 {
   return cgw_is_database_connected () == 0 ? 1 : 0;
+}
+
+/* schema_info row value writers - the value layout of add_res_data_* with no ext type */
+static void
+cgw_schema_res_string (T_NET_BUF * net_buf, const char *str)
+{
+  int len = (str == NULL) ? 0 : (int) strlen (str);
+
+  net_buf_cp_int (net_buf, len + 1, NULL);	/* NULL terminator */
+  net_buf_cp_str (net_buf, (str != NULL) ? str : "", len);
+  net_buf_cp_byte (net_buf, '\0');
+}
+
+static void
+cgw_schema_res_short (T_NET_BUF * net_buf, short value)
+{
+  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
+  net_buf_cp_short (net_buf, value);
+}
+
+static void
+cgw_schema_res_int (T_NET_BUF * net_buf, int value)
+{
+  net_buf_cp_int (net_buf, NET_SIZE_INT, NULL);
+  net_buf_cp_int (net_buf, value, NULL);
+}
+
+/*
+ * cgw_schema_attr_filter () - keep only the attributes the client asked for
+ *   return: number of rows left at the head of attrs
+ *   attrs(in/out): attribute rows, compacted in place
+ *   count(in): number of rows
+ *   attr_name(in): requested attribute name or pattern, NULL when not given
+ *   flag(in): CCI_ATTR_NAME_PATTERN_MATCH selects pattern matching
+ *
+ * Note: mirrors sch_attr_info () of the regular CAS - with the pattern flag the name
+ *   is a LIKE pattern and no name means no filter at all, otherwise the match is
+ *   exact and a missing name matches nothing.  Remote identifiers keep their own
+ *   case, so the exact match is case insensitive like the LIKE one.
+ */
+static int
+cgw_schema_attr_filter (T_CGW_SCHEMA_ATTR * attrs, int count, char *attr_name, char flag)
+{
+  bool is_pattern = (flag & CCI_ATTR_NAME_PATTERN_MATCH) != 0;
+  int i, kept = 0;
+
+  if (is_pattern && attr_name == NULL)
+    {
+      return count;
+    }
+
+  for (i = 0; i < count; i++)
+    {
+      bool match;
+
+      if (is_pattern)
+	{
+	  match = (str_like (attrs[i].attr_name, attr_name, '\\') == 1);
+	}
+      else
+	{
+	  match = (attr_name != NULL && strcasecmp (attrs[i].attr_name, attr_name) == 0);
+	}
+
+      if (match)
+	{
+	  if (kept != i)
+	    {
+	      attrs[kept] = attrs[i];
+	    }
+	  kept++;
+	}
+    }
+
+  return kept;
+}
+
+/*
+ * ux_cgw_schema_info () - CAS_FC_SCHEMA_INFO for the gateway
+ *   return: srv handle id, or an error code with the error already on net_buf
+ *
+ * Note: only CCI_SCH_ATTRIBUTE is served (the DBLink remote-table schema, invisible
+ *   columns included).  The response mirrors ux_schema_info (): srv_h_id, row count,
+ *   schema_attr_meta () column meta; rows are served by ux_cgw_fetch_schema_attribute ().
+ */
+int
+ux_cgw_schema_info (int schema_type, char *table_name, char *attr_name, char flag, T_NET_BUF * net_buf,
+		    T_REQ_INFO * req_info, unsigned int query_seq_num)
+{
+  int srv_h_id = -1, err_code;
+  T_SRV_HANDLE *srv_handle = NULL;
+  T_CGW_HANDLE *cgw_handle = NULL;
+  T_CGW_SCHEMA_ATTR *attrs = NULL;
+  int num_attrs = 0;
+
+  if (schema_type != CCI_SCH_ATTRIBUTE)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+      goto schema_info_error;
+    }
+
+  if (table_name == NULL || (flag & CCI_CLASS_NAME_PATTERN_MATCH))
+    {
+      /* the ODBC catalog lookup below matches one table literally - it escapes the
+       * wildcards of the name it is given - so a class-name pattern, or no name at all,
+       * cannot be answered.  Report that instead of returning the columns of whatever
+       * single table happens to match the pattern text. */
+      err_code = ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+      goto schema_info_error;
+    }
+
+  if (cgw_get_handle (&cgw_handle) < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto schema_info_error;
+    }
+
+  srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num);
+  if (srv_h_id < 0)
+    {
+      err_code = ERROR_INFO_SET (srv_h_id, CAS_ERROR_INDICATOR);
+      goto schema_info_error;
+    }
+
+  if (cgw_schema_info_attribute (cgw_handle->hdbc, table_name, &attrs, &num_attrs) < 0)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+      goto schema_info_error;
+    }
+
+  num_attrs = cgw_schema_attr_filter (attrs, num_attrs, attr_name, flag);
+
+  srv_handle->schema_type = -1;	/* not a CAS schema session; freed via cgw_schema_info */
+  srv_handle->cgw_schema_info = (void *) attrs;
+  srv_handle->cgw_schema_info_count = num_attrs;
+  srv_handle->cgw_schema_class_name = strdup (table_name);
+  if (srv_handle->cgw_schema_class_name == NULL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      goto schema_info_error;
+    }
+
+  net_buf_cp_int (net_buf, srv_h_id, NULL);	/* result code */
+  net_buf_cp_int (net_buf, num_attrs, NULL);	/* result count */
+  schema_attr_meta (net_buf);
+
+  return srv_h_id;
+
+schema_info_error:
+  NET_BUF_ERR_SET (net_buf);
+  if (srv_handle)
+    {
+      hm_srv_handle_free (srv_h_id);
+    }
+  return err_code;
+}
+
+/*
+ * ux_cgw_fetch_schema_attribute () - serve rows collected by ux_cgw_schema_info ()
+ *   in the CCI_SCH_ATTRIBUTE tuple layout of fetch_attribute ()
+ */
+int
+ux_cgw_fetch_schema_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, T_NET_BUF * net_buf,
+			       T_REQ_INFO * req_info)
+{
+  T_CGW_SCHEMA_ATTR *attrs = (T_CGW_SCHEMA_ATTR *) srv_handle->cgw_schema_info;
+  T_BROKER_VERSION client_version = req_info->client_version;
+  T_OBJECT dummy_obj;
+  int num_tuple_msg_offset;
+  int num_tuple = 0;
+  char fetch_end_flag = 0;
+  short domain;
+  int i;
+
+  if (attrs == NULL || cursor_pos <= 0)
+    {
+      int err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  if (fetch_count <= 0)
+    {
+      fetch_count = 100;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);	/* result code */
+  net_buf_cp_int (net_buf, 0, &num_tuple_msg_offset);	/* tuple count, back-patched */
+  memset (&dummy_obj, 0, sizeof (dummy_obj));
+
+  for (i = cursor_pos; i <= srv_handle->cgw_schema_info_count && num_tuple < fetch_count; i++, num_tuple++)
+    {
+      T_CGW_SCHEMA_ATTR *at = &attrs[i - 1];
+
+      net_buf_cp_int (net_buf, i, NULL);	/* tuple index */
+      net_buf_cp_object (net_buf, &dummy_obj);
+
+      /* 1. attr name */
+      cgw_schema_res_string (net_buf, at->attr_name);
+      /* 2. domain - encode_ext_type_to_short () layout, no collection bits */
+      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V7))
+	{
+	  domain = (short) (((short) CAS_TYPE_FIRST_BYTE_PROTOCOL_MASK << 8) | (unsigned char) at->cci_type);
+	}
+      else
+	{
+	  domain = (short) at->cci_type;
+	}
+      cgw_schema_res_short (net_buf, domain);
+      /* 3. scale */
+      cgw_schema_res_short (net_buf, at->scale);
+      /* 4. precision */
+      cgw_schema_res_int (net_buf, at->precision);
+      /* 5. indexed, 6. non_null, 7. shared, 8. unique - not provided by the remote */
+      cgw_schema_res_short (net_buf, 0);
+      cgw_schema_res_short (net_buf, 0);
+      cgw_schema_res_short (net_buf, 0);
+      cgw_schema_res_short (net_buf, 0);
+      /* 9. default */
+      cgw_schema_res_string (net_buf, "");
+      /* 10. order - the remote definition order, which the attribute filter does not
+       * renumber; the row index would report a different ordinal than a regular CAS */
+      cgw_schema_res_int (net_buf, at->attr_order);
+      /* 11. class name, 12. source class - the remote table has no superclass, so the
+       * source class is the table itself, as fetch_attribute () reports for a
+       * non-inherited attribute */
+      cgw_schema_res_string (net_buf, srv_handle->cgw_schema_class_name);
+      cgw_schema_res_string (net_buf, srv_handle->cgw_schema_class_name);
+      /* 13. is_key */
+      cgw_schema_res_short (net_buf, 0);
+      /* 14. remarks */
+      cgw_schema_res_string (net_buf, "");
+
+      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13))
+	{
+	  /* 15. is invisible */
+	  cgw_schema_res_short (net_buf, (short) at->is_invisible);
+	  /* 16. ext domain - a remote DBMS has no collection type that ODBC can express
+	   * (cgw_odbc_type_to_cci_u_type () never returns one), so this is DOMAIN itself */
+	  cgw_schema_res_short (net_buf, (short) at->cci_type);
+	  /* 17. codeset - the same value the prepare path reports via T_ODBC_COL_INFO */
+	  cgw_schema_res_short (net_buf, (short) at->charset);
+	}
+    }
+
+  if (i > srv_handle->cgw_schema_info_count)
+    {
+      fetch_end_flag = 1;
+    }
+
+  net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
+  return 0;
 }

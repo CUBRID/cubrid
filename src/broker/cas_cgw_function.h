@@ -38,6 +38,7 @@ extern FN_RETURN fn_cgw_close_req_handle (SOCKET sock_fd, int argc, void **argv,
 					  T_REQ_INFO * req_info);
 extern FN_RETURN fn_cgw_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern FN_RETURN fn_cgw_get_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern FN_RETURN fn_cgw_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern FN_RETURN fn_cgw_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 					T_REQ_INFO * req_info);
 extern FN_RETURN fn_cgw_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
