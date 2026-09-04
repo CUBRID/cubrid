@@ -12146,7 +12146,9 @@ pt_dblink_delete_reject_confirmed (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
 		    "dblink: remote DELETE with a local subquery does not support a multi-part qualifier "
 		    "on the WHERE predicate");
 	}
-      PT_ERROR (parser, upd_spec, errmsg);
+      /* PT_ERRORc, unlike the literal-message PT_ERROR above: errmsg carries bad_qualifier, and PT_ERROR
+       * would take it as the format string. A bracketed identifier may hold % directives. */
+      PT_ERRORc (parser, upd_spec, errmsg);
       return true;
     }
 
