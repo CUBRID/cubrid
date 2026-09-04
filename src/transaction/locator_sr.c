@@ -7475,12 +7475,18 @@ error:
  *   copyarea_length_hint(in): An estimated size for the LC_COPYAREA or -1 if
  *                             an estimated size is not known.
  *   lob_create_flag(in) :
+ *   oos_class_oid(in): class whose heap receives the OOS value chains; NULL means
+ *                      attr_info->class_oid. A partitioned write passes the pruned partition.
+ *   probe_would_demote_oos(out): when non-NULL, suppress OOS demotion (build a fully-inline
+ *                                image, write no OOS value chain) and report whether a normal
+ *                                transform would have demoted a column.
  *
  * Note: The allocated should be freed by using locator_free_copy_area ()
  */
 LC_COPYAREA *
 locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
-					 RECDES * new_recdes, const int copyarea_length_hint, int lob_create_flag)
+					 RECDES * new_recdes, const int copyarea_length_hint, int lob_create_flag,
+					 const OID * oos_class_oid, bool * probe_would_demote_oos)
 {
   LC_COPYAREA *copyarea = NULL;
   int copyarea_length = copyarea_length_hint <= 0 ? DB_PAGESIZE : copyarea_length_hint;
@@ -7504,7 +7510,17 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
   new_recdes->data = copyarea->mem;
   new_recdes->area_size = copyarea->length;
 
-  if (lob_create_flag == LOB_FLAG_EXCLUDE_LOB)
+  if (probe_would_demote_oos != NULL)
+    {
+      scan = heap_attrinfo_transform_to_disk_probe_oos (thread_p, attr_info, old_recdes, &build_record,
+							lob_create_flag, probe_would_demote_oos);
+    }
+  else if (oos_class_oid != NULL)
+    {
+      scan = heap_attrinfo_transform_to_disk_oos_class (thread_p, attr_info, old_recdes, &build_record,
+							lob_create_flag, oos_class_oid);
+    }
+  else if (lob_create_flag == LOB_FLAG_EXCLUDE_LOB)
     {
       scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, &build_record);
     }
@@ -7692,9 +7708,63 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
-      copyarea =
-	locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1,
-						 LOB_FLAG_INCLUDE_LOB);
+      if (pruning_type != DB_NOT_PARTITIONED_CLASS)
+	{
+	  bool would_demote_oos = false;
+
+	  /* An OOS value chain must live in the OOS file of the heap that stores its record, and the
+	   * target heap of a partitioned write is only known after pruning. Build the record with OOS
+	   * demotion suppressed, prune with that fully-inline image, and when demotion is needed
+	   * rebuild the record with its OOS value chains written to the pruned partition's heap
+	   * (CBRD-27089). */
+	  copyarea =
+	    locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1,
+						     LOB_FLAG_INCLUDE_LOB, NULL, &would_demote_oos);
+	  if (copyarea != NULL && would_demote_oos)
+	    {
+	      OID pruned_class_oid;
+	      HFID pruned_hfid;
+	      OID superclass_oid;
+
+	      COPY_OID (&pruned_class_oid, &class_oid);
+	      HFID_COPY (&pruned_hfid, &class_hfid);
+	      OID_SET_NULL (&superclass_oid);
+
+	      if (LC_IS_FLUSH_INSERT (operation))
+		{
+		  error_code =
+		    partition_prune_insert (thread_p, &class_oid, &new_recdes, scan_cache, pcontext, pruning_type,
+					    &pruned_class_oid, &pruned_hfid, &superclass_oid);
+		}
+	      else
+		{
+		  assert (LC_IS_FLUSH_UPDATE (operation));
+		  error_code =
+		    partition_prune_update (thread_p, &class_oid, &new_recdes, pcontext, pruning_type,
+					    &pruned_class_oid, &pruned_hfid, &superclass_oid);
+		}
+
+	      locator_free_copy_area (copyarea);
+	      copyarea = NULL;
+	      new_recdes.data = NULL;
+	      new_recdes.area_size = 0;
+
+	      if (error_code != NO_ERROR)
+		{
+		  break;
+		}
+
+	      copyarea =
+		locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1,
+							 LOB_FLAG_INCLUDE_LOB, &pruned_class_oid, NULL);
+	    }
+	}
+      else
+	{
+	  copyarea =
+	    locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1,
+						     LOB_FLAG_INCLUDE_LOB, NULL, NULL);
+	}
       if (copyarea == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -13781,7 +13851,7 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 	}
       mvcc_reev_data->copyarea =
 	locator_allocate_copy_area_by_attr_info (thread_p, mvcc_reev_data->curr_attrinfo, recdes,
-						 mvcc_reev_data->new_recdes, -1, LOB_FLAG_INCLUDE_LOB);
+						 mvcc_reev_data->new_recdes, -1, LOB_FLAG_INCLUDE_LOB, NULL, NULL);
       if (mvcc_reev_data->copyarea == NULL)
 	{
 	  ev_res = V_ERROR;

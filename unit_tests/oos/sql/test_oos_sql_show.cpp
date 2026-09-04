@@ -21,6 +21,7 @@
  */
 
 #include <algorithm>
+#include <string>
 
 #include "test_oos_sql_common.hpp"
 
@@ -153,6 +154,38 @@ namespace
 
     db_value_clear (&val);
     return rc;
+  }
+
+  static int
+  get_string_column (DB_QUERY_RESULT *result, int column, std::string *out_val)
+  {
+    DB_VALUE val;
+    int rc;
+
+    db_make_null (&val);
+    rc = db_query_get_tuple_value (result, column, &val);
+    if (rc == NO_ERROR)
+      {
+	const char *str = db_get_string (&val);
+	if (str == nullptr)
+	  {
+	    rc = ER_FAILED;
+	  }
+	else
+	  {
+	    *out_val = str;
+	  }
+      }
+
+    db_value_clear (&val);
+    return rc;
+  }
+
+  static std::string
+  unqualified_table_name (const std::string &table_name)
+  {
+    std::string::size_type separator = table_name.rfind ('.');
+    return separator == std::string::npos ? table_name : table_name.substr (separator + 1);
   }
 }
 
@@ -347,6 +380,75 @@ TEST_F (OosSqlShow, ShowAllHeapOosReportsPartitionRows)
   EXPECT_EQ (rc, DB_CURSOR_END);
   EXPECT_GT (row_count, 1);
   EXPECT_GE (oos_heap_count, 1);
+
+  db_query_end (result);
+}
+
+TEST_F (OosSqlShow, PartitionedForceOutlineStoresOosInPrunedHeap)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_show_part ("
+		     "id INT, data_col BIT VARYING STORAGE FORCE_OUTLINE) "
+		     "PARTITION BY RANGE (id) ("
+		     "PARTITION p0 VALUES LESS THAN (10), "
+		     "PARTITION p1 VALUES LESS THAN MAXVALUE)");
+  ASSERT_GE (rc, 0);
+  rc = exec_sql ("INSERT INTO t_oos_show_part VALUES (1, REPEAT(X'EE', 64))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  int value_matches = 0;
+  rc = fetch_single_int ("SELECT data_col = CAST(REPEAT(X'EE', 64) AS BIT VARYING) "
+			 "FROM t_oos_show_part WHERE id = 1", &value_matches);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (value_matches, 1);
+
+  DB_QUERY_RESULT *result = nullptr;
+  rc = show_heap_oos_query ("SHOW ALL HEAP OOS OF t_oos_show_part", &result);
+  ASSERT_EQ (rc, NO_ERROR);
+  ASSERT_NE (result, nullptr);
+
+  bool saw_root = false;
+  bool saw_p0 = false;
+  bool saw_p1 = false;
+  do
+    {
+      std::string table_name;
+      int has_oos = -1;
+      int num_recs = -1;
+
+      rc = get_string_column (result, COL_TABLE_NAME, &table_name);
+      ASSERT_EQ (rc, NO_ERROR);
+      rc = get_int_column (result, COL_HAS_OOS_FILE, &has_oos);
+      ASSERT_EQ (rc, NO_ERROR);
+      rc = get_int_column (result, COL_OOS_NUM_RECS, &num_recs);
+      ASSERT_EQ (rc, NO_ERROR);
+
+      table_name = unqualified_table_name (table_name);
+      if (table_name == "t_oos_show_part")
+	{
+	  saw_root = true;
+	  EXPECT_EQ (has_oos, 0);
+	  EXPECT_EQ (num_recs, 0);
+	}
+      else if (table_name == "t_oos_show_part__p__p0")
+	{
+	  saw_p0 = true;
+	  EXPECT_EQ (has_oos, 1);
+	  EXPECT_EQ (num_recs, 1);
+	}
+      else if (table_name == "t_oos_show_part__p__p1")
+	{
+	  saw_p1 = true;
+	  EXPECT_EQ (has_oos, 0);
+	  EXPECT_EQ (num_recs, 0);
+	}
+    }
+  while ((rc = db_query_next_tuple (result)) == DB_CURSOR_SUCCESS);
+
+  EXPECT_EQ (rc, DB_CURSOR_END);
+  EXPECT_TRUE (saw_root);
+  EXPECT_TRUE (saw_p0);
+  EXPECT_TRUE (saw_p1);
 
   db_query_end (result);
 }
