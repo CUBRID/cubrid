@@ -218,6 +218,7 @@ extern QFILE_LIST_ID *qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALU
 				       QFILE_LIST_ID * existing_list_id);
 extern int qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p);
 extern QFILE_TUPLE_COL_SRC *qfile_tpl_descr_col_src (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n);
+extern int qfile_tpl_descr_alloc_values (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n);
 extern int qfile_save_tuple (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_DESCRIPTOR * tuple_descr_p,
 			     QFILE_TUPLE_TYPE tuple_type, char *out, int size);
 extern int qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE_TYPE tpl_type);

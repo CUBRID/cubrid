@@ -238,6 +238,90 @@ qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
 #endif /* !NDEBUG */
 
 /*
+ * qfile_slot_locate_walk () - the out-of-line half of qfile_slot_locate (): cache start, then the incremental walk
+ *   from the cached position (or from the end of the constant prefix) to column col (#200 item 6).
+ */
+const char *
+qfile_slot_locate_walk (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool * is_null)
+{
+  const QFILE_TUPLE_VALUE_TYPE_LIST *tl = rec->tl;
+  const QFILE_COL_LAYOUT *c;
+  const unsigned char *bm;
+  const char *tpl = rec->tpl;
+  int i, off, hdr, len;
+
+  if (rec->nvalid < 0)
+    {
+      qfile_slot_start (rec);
+    }
+
+  if (col < rec->fast_limit)
+    {
+      c = &tl->col[col];
+      *body_len = c->size;
+      *is_null = false;
+      return tpl + rec->data_off + c->off;
+    }
+
+  if (col >= rec->nvalid)
+    {
+      i = rec->nvalid;
+      off = rec->off;
+    }
+  else
+    {
+      i = rec->fast_limit;
+      off = rec->data_off + qfile_prefix_end (tl, i);
+    }
+
+  bm = rec->has_null ? QFILE_TUPLE_BITMAP (tpl, tl->hdr_size) : NULL;
+
+  for (; i < col; i++)
+    {
+      if (bm != NULL && !QFILE_BITMAP_IS_BOUND (bm, i))
+	{
+	  continue;
+	}
+      c = &tl->col[i];
+      if (c->kind == QFILE_COL_FIXED)
+	{
+	  off = DB_ALIGN (off, c->alignby) + c->size;
+	}
+      else
+	{
+	  len = qfile_var_hdr_decode (tpl + off, &hdr);
+	  off += hdr + len;
+	}
+    }
+
+  if (col <= INT16_MAX)
+    {
+      rec->nvalid = (int16_t) col;
+      rec->off = off;
+    }
+
+  if (bm != NULL && !QFILE_BITMAP_IS_BOUND (bm, col))
+    {
+      *body_len = 0;
+      *is_null = true;
+      return tpl + off;
+    }
+
+  c = &tl->col[col];
+  if (c->kind == QFILE_COL_FIXED)
+    {
+      *body_len = c->size;
+      *is_null = false;
+      return tpl + DB_ALIGN (off, c->alignby);
+    }
+
+  len = qfile_var_hdr_decode (tpl + off, &hdr);
+  *body_len = len;
+  *is_null = false;
+  return tpl + off + hdr;
+}
+
+/*
  * qfile_slot_clear () - unbind the descriptor. Called by the slot owner when the scan/cursor is closed.
  *   Does not touch rec->tpl / rec->size: the owned tuple buffer is still freed by the record owner as before.
  */

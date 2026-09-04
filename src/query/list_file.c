@@ -462,6 +462,7 @@ qfile_modify_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_LIST_ID
   qfile_type_list_finalize (&list_id_p->type_list);
 
   list_id_p->tpl_descr.f_valp = NULL;
+  list_id_p->tpl_descr.f_len = NULL;
   list_id_p->tpl_descr.col_src = NULL;
   list_id_p->tpl_descr.col_src_cap = 0;
   return NO_ERROR;
@@ -1680,6 +1681,28 @@ qfile_tpl_descr_col_src (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n)
 }
 
 /*
+ * qfile_tpl_descr_alloc_values () - allocate the T_NORMAL staging arrays of a tuple descriptor: f_valp[n] followed by
+ *   f_len[n] in ONE block (#200 item 5), so the existing free (f_valp) sites release both.
+ *   return: NO_ERROR or ER_FAILED (ER_OUT_OF_VIRTUAL_MEMORY set)
+ */
+int
+qfile_tpl_descr_alloc_values (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n)
+{
+  size_t size = (size_t) n * (sizeof (DB_VALUE *) + sizeof (int));
+
+  assert (n > 0 && tuple_descr_p->f_valp == NULL);
+
+  tuple_descr_p->f_valp = (DB_VALUE **) malloc (size);
+  if (tuple_descr_p->f_valp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      return ER_FAILED;
+    }
+  tuple_descr_p->f_len = (int *) (tuple_descr_p->f_valp + n);
+  return NO_ERROR;
+}
+
+/*
  * qfile_save_tuple () - assembler fill pass over the tuple staged in the descriptor.
  *   return: NO_ERROR or ER_FAILED
  *   tl(in): layout descriptor of the destination list
@@ -1693,7 +1716,8 @@ qfile_save_tuple (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_DESCRIPTOR
   switch (tuple_type)
     {
     case T_NORMAL:
-      return qfile_tuple_fill_from_values (tl, tuple_descr_p->f_valp, tuple_descr_p->f_cnt, out, size);
+      return qfile_tuple_fill_from_values (tl, tuple_descr_p->f_valp, tuple_descr_p->f_len, tuple_descr_p->f_cnt, out,
+					   size, tuple_descr_p->has_null);
 
     case T_COL_SRC:
       return qfile_tuple_fill (tl, tuple_descr_p->col_src, tuple_descr_p->col_src_cnt, out, size,
@@ -2989,7 +3013,8 @@ qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, const QFILE_TUPLE_VALU
       return ER_FAILED;
     }
 
-  if (qfile_tuple_fill_from_values (tl, tpl_descr->f_valp, tpl_descr->f_cnt, tplrec->tpl, tplrec->size) != NO_ERROR)
+  if (qfile_tuple_fill_from_values (tl, tpl_descr->f_valp, tpl_descr->f_len, tpl_descr->f_cnt, tplrec->tpl,
+				    tplrec->size, tpl_descr->has_null) != NO_ERROR)
     {
       /* error has already been set */
       db_private_free_and_init (thread_p, tplrec->tpl);
@@ -3288,12 +3313,8 @@ qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD * tuple_slot
       data = PTR_ALIGN (data, MAX_ALIGNMENT);
       length = CAST_BUFLEN (data - key_record_p->data);
 
-      size = qfile_tuple_size (&key_info_p->key_tl, src, nkeys, &has_null);
-      if (size < 0)
-	{
-	  QFILE_COL_SRC_RELEASE (src, src_buf);
-	  return ER_FAILED;
-	}
+      /* every source is a raw body of a same-layout column, so the size is length arithmetic only (#200 item 7) */
+      size = qfile_tuple_size_raw (&key_info_p->key_tl, src, nkeys, &has_null);
       length += size;
 
       if (length <= key_record_p->area_size)
@@ -3919,35 +3940,98 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
   t0 = PTR_ALIGN (&(k0->s.original.body[0]), MAX_ALIGNMENT);
   t1 = PTR_ALIGN (&(k1->s.original.body[0]), MAX_ALIGNMENT);
   n = key_info_p->nkeys;
-  if (tl->first_non_cached_col < n || QFILE_GET_TUPLE_HAS_NULL (t0) || QFILE_GET_TUPLE_HAS_NULL (t1))
+  if (QFILE_GET_TUPLE_HAS_NULL (t0) || QFILE_GET_TUPLE_HAS_NULL (t1))
     {
       return qfile_compare_partial_sort_record_general (key_info_p, k0, k1);
     }
   b0 = t0 + tl->data_off[0];
   b1 = t1 + tl->data_off[0];
   order = 0;
-  for (i = 0; i < n; i++)
+  if (tl->first_non_cached_col >= n)
     {
-      const QFILE_COL_LAYOUT *c = &tl->col[i];
-      SUBKEY_INFO *key = &key_info_p->key[i];
+      for (i = 0; i < n; i++)
+	{
+	  const QFILE_COL_LAYOUT *c = &tl->col[i];
+	  SUBKEY_INFO *key = &key_info_p->key[i];
 
-      if (key->use_cmp_dom)
-	{
-	  order = qfile_compare_with_interpolation_domain (c, b0 + c->off, c->size, b1 + c->off, c->size, key, key_info_p);
+	  if (key->use_cmp_dom)
+	    {
+	      order =
+		qfile_compare_with_interpolation_domain (c, b0 + c->off, c->size, b1 + c->off, c->size, key, key_info_p);
+	    }
+	  else
+	    {
+	      order = (*key->sort_f) ((void *) (b0 + c->off), (void *) (b1 + c->off), key->col_dom, 0, 1, NULL);
+	    }
+	  if (key->is_desc)
+	    {
+	      order = -order;
+	    }
+	  if (order != 0)
+	    {
+	      break;
+	    }
 	}
-      else
-	{
-	  order = (*key->sort_f) ((void *) (b0 + c->off), (void *) (b1 + c->off), key->col_dom, 0, 1, NULL);
-	}
-      if (key->is_desc)
-	{
-	  order = -order;
-	}
-      if (order != 0)
-	{
-	  break;
-	}
+      return order;
     }
+
+  /* Second tier (#200 item 4): NULL-free keys with a variable-width DIRECT key (string family, NUMERIC, BIT) -- the
+   * legacy comparator's two-pointer walk over the key mini tuples: FIXED keys advance by align + size, DIRECT keys by
+   * their length header, and the body is compared where it lies (index_cmpdisk, D-199-14). Only a SCRATCH key (SET,
+   * JSON, OBJECT: aligned copies needed) falls to the general path, in the loop, at the key where it appears. The
+   * stream-invariant kind / alignby come from key_tl (BR-04); nothing about the two records is cached. */
+  {
+    int off0 = 0, off1 = 0;
+    const char *d0, *d1;
+    int l0, l1, h0, h1;
+
+    for (i = 0; i < n; i++)
+      {
+	const QFILE_COL_LAYOUT *c = &tl->col[i];
+	SUBKEY_INFO *key = &key_info_p->key[i];
+
+	if (c->kind == QFILE_COL_FIXED)
+	  {
+	    off0 = DB_ALIGN (off0, c->alignby);
+	    off1 = DB_ALIGN (off1, c->alignby);
+	    d0 = b0 + off0;
+	    d1 = b1 + off1;
+	    l0 = l1 = c->size;
+	    off0 += c->size;
+	    off1 += c->size;
+	  }
+	else if (c->var_access == QFILE_VAR_DIRECT)
+	  {
+	    l0 = qfile_var_hdr_decode (b0 + off0, &h0);
+	    l1 = qfile_var_hdr_decode (b1 + off1, &h1);
+	    d0 = b0 + off0 + h0;
+	    d1 = b1 + off1 + h1;
+	    off0 += h0 + l0;
+	    off1 += h1 + l1;
+	  }
+	else
+	  {
+	    return qfile_compare_partial_sort_record_general (key_info_p, k0, k1);
+	  }
+
+	if (key->use_cmp_dom)
+	  {
+	    order = qfile_compare_with_interpolation_domain (c, d0, l0, d1, l1, key, key_info_p);
+	  }
+	else
+	  {
+	    order = (*key->sort_f) ((void *) d0, (void *) d1, key->col_dom, 0, 1, NULL);
+	  }
+	if (key->is_desc)
+	  {
+	    order = -order;
+	  }
+	if (order != 0)
+	  {
+	    break;
+	  }
+      }
+  }
   return order;
 }
 

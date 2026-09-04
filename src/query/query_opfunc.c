@@ -414,13 +414,24 @@ static int
 qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n, qfile_tuple_value_type_list * tl,
 			    qfile_tuple_record * tuple_record_p)
 {
-  int size;
+  int lens_buf[QDATA_TUPLE_VALS_STACK], *lens = lens_buf;
+  int size, error;
   bool has_null;
 
-  size = qfile_tuple_size_from_values (tl, vals, n, &has_null);
+  if (n > QDATA_TUPLE_VALS_STACK)
+    {
+      lens = (int *) db_private_alloc (thread_p, n * sizeof (int));
+      if (lens == NULL)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  size = qfile_tuple_size_from_values (tl, vals, lens, n, &has_null);
   if (size < 0)
     {
-      return ER_FAILED;
+      error = ER_FAILED;
+      goto end;
     }
 
   if (tuple_record_p->size < size)
@@ -438,12 +449,20 @@ qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n, qf
 	}
       if (tuple_record_p->tpl == NULL)
 	{
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto end;
 	}
       tuple_record_p->size = tpl_size;
     }
 
-  return qfile_tuple_fill_from_values (tl, vals, n, tuple_record_p->tpl, size);
+  error = qfile_tuple_fill_from_values (tl, vals, lens, n, tuple_record_p->tpl, size, has_null);
+
+end:
+  if (lens != lens_buf)
+    {
+      db_private_free (thread_p, lens);
+    }
+  return error;
 }
 
 int
@@ -586,7 +605,8 @@ qdata_size_tuple_desc (qfile_tuple_value_type_list * tl, qfile_tuple_descriptor 
 {
   /* the compressed string, if any, is deallocated later, after copying the db_value into the tuple */
   tuple_desc_p->tpl_size =
-    qfile_tuple_size_from_values (tl, tuple_desc_p->f_valp, tuple_desc_p->f_cnt, &tuple_desc_p->has_null);
+    qfile_tuple_size_from_values (tl, tuple_desc_p->f_valp, tuple_desc_p->f_len, tuple_desc_p->f_cnt,
+				  &tuple_desc_p->has_null);
   if (tuple_desc_p->tpl_size < 0)
     {
       return QPROC_TPLDESCR_FAILURE;

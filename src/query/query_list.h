@@ -428,6 +428,9 @@ struct qfile_tuple_descriptor
   /* T_NORMAL */
   int f_cnt;			/* number of field */
   DB_VALUE **f_valp;		/* pointer of field value pointer array (owned by the list) */
+  int *f_len;			/* body length of f_valp[i] from the size pass, consumed by the fill pass (#200 item 5).
+				 * Lives in the f_valp allocation right after the pointers (qfile_tpl_descr_alloc_values),
+				 * so freeing f_valp frees it. */
 
   /* T_COL_SRC */
   QFILE_TUPLE_COL_SRC *col_src;	/* owned by the list; grown on demand by qfile_tpl_descr_col_src () */
@@ -527,6 +530,7 @@ struct qfile_list_id
       (list_id)->tpl_descr.has_null = false; \
       (list_id)->tpl_descr.f_cnt = 0; \
       (list_id)->tpl_descr.f_valp = NULL; \
+      (list_id)->tpl_descr.f_len = NULL; \
       (list_id)->tpl_descr.col_src = NULL; \
       (list_id)->tpl_descr.col_src_cap = 0; \
       (list_id)->tpl_descr.col_src_cnt = 0; \

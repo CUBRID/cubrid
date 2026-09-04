@@ -270,11 +270,8 @@ namespace parallel_scan
 		}
 	    }
 	}
-	size = tl.writer_result_p->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
-	tl.writer_result_p->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
-	if (tl.writer_result_p->tpl_descr.f_valp == NULL)
+	if (qfile_tpl_descr_alloc_values (&tl.writer_result_p->tpl_descr, tl.writer_result_p->type_list.type_cnt) != NO_ERROR)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	    m_err_messages_p->move_top_error_message_to_this();
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return;

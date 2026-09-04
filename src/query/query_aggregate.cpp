@@ -2518,8 +2518,8 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
   list_id->tpl_descr.f_valp[col++] = &tuple_count;
   list_id->tpl_descr.f_cnt = col;
 
-  tuple_size = qfile_tuple_size_from_values (&list_id->type_list, list_id->tpl_descr.f_valp, col,
-					     &list_id->tpl_descr.has_null);
+  tuple_size = qfile_tuple_size_from_values (&list_id->type_list, list_id->tpl_descr.f_valp, list_id->tpl_descr.f_len,
+					     col, &list_id->tpl_descr.has_null);
   if (tuple_size < 0)
     {
       return ER_FAILED;
