@@ -12371,6 +12371,13 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  spec->info.spec.meta_class = PT_CLASS;
 	  spec->info.spec.remote_server_name = list->info.spec.remote_server_name;
 	  spec->info.spec.entity_name = list->info.spec.entity_name;
+	  /* entity_name moves inside, so an unaliased spec would keep no name of its own and only answer to
+	   * the exposed name generated later. Anything resolving a qualifier reads range_var ?: entity_name,
+	   * so leave the table name there -- a copy, since the inner spec now owns the original. */
+	  if (list->info.spec.range_var == NULL)
+	    {
+	      list->info.spec.range_var = parser_copy_tree (parser, list->info.spec.entity_name);
+	    }
 	  list->info.spec.remote_server_name = NULL;
 	  list->info.spec.entity_name = NULL;
 	  sub_sel->info.query.q.select.from = spec;
