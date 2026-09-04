@@ -384,6 +384,84 @@ TEST (OosBestspaceTest, BestspaceInsertDeleteCycle)
 
 
 // ===========================================================================
+// TEST: BestspaceStaleHintToNonOosPageIsRejected
+//
+// A stale bestspace hint may point at a page that reclaim deallocated and another file has since
+// REALLOCATED; such a page fixes successfully, so the lookup must re-validate ptype == PAGE_OOS.
+// The file's own file-table header page (PAGE_FTAB, vpid = {vfid.fileid, vfid.volid}) stands in
+// for "reallocated for another purpose".
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceStaleHintToNonOosPageIsRejected)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  VPID fhead_vpid;
+  fhead_vpid.volid = oos_vfid.volid;
+  fhead_vpid.pageid = oos_vfid.fileid;
+
+  ASSERT_NE (bridge_oos_stats_add_bestspace (thread_p, &oos_vfid, &fhead_vpid, DB_PAGESIZE / 2), nullptr);
+
+  VPID found_vpid{NULL_PAGEID, NULL_VOLID};
+  auto page_ptr = bridge_oos_find_best_page (thread_p, oos_vfid, 100, found_vpid);
+  ASSERT_NE (page_ptr, nullptr);
+  ASSERT_FALSE (VPID_EQ (&found_vpid, &fhead_vpid))
+      << "lookup handed out a non-OOS (file-table) page from a stale hint";
+  ASSERT_EQ (pgbuf_get_page_ptype (thread_p, page_ptr.get ()), PAGE_OOS);
+  page_ptr.reset ();
+
+  // The poisoned hint must be evicted, not retried: a second lookup stays clean.
+  found_vpid = {NULL_PAGEID, NULL_VOLID};
+  auto page_ptr2 = bridge_oos_find_best_page (thread_p, oos_vfid, 100, found_vpid);
+  ASSERT_NE (page_ptr2, nullptr);
+  ASSERT_FALSE (VPID_EQ (&found_vpid, &fhead_vpid));
+  page_ptr2.reset ();
+
+  err = oos_remove_file (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: BestspaceStaleHintToForeignOosPageIsRejected
+//
+// Page type alone cannot validate a stale hint: a reclaimed page may be reallocated to another
+// OOS file and remain PAGE_OOS.  A lookup for file A must never hand out file B's data page.
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceStaleHintToForeignOosPageIsRejected)
+{
+  VFID target_vfid, foreign_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, target_vfid), NO_ERROR);
+  ASSERT_EQ (oos_create_file (thread_p, foreign_vfid), NO_ERROR);
+
+  const std::string foreign_data = "foreign OOS page";
+  RECDES foreign_rec{};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (foreign_data, foreign_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr free_foreign_rec (&foreign_rec, recdes_free_data_area);
+
+  OID foreign_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, foreign_vfid, foreign_rec, foreign_oid), NO_ERROR);
+  VPID foreign_vpid = { foreign_oid.pageid, foreign_oid.volid };
+
+  ASSERT_EQ (bridge_oos_stats_del_bestspace_by_vpid (thread_p, &foreign_vpid), NO_ERROR);
+  ASSERT_NE (bridge_oos_stats_add_bestspace (thread_p, &target_vfid, &foreign_vpid, DB_PAGESIZE / 2), nullptr);
+
+  VPID found_vpid = VPID_INITIALIZER;
+  auto page_ptr = bridge_oos_find_best_page (thread_p, target_vfid, 100, found_vpid);
+  ASSERT_NE (page_ptr, nullptr);
+  EXPECT_FALSE (VPID_EQ (&found_vpid, &foreign_vpid))
+      << "lookup handed file A a PAGE_OOS data page owned by file B";
+  page_ptr.reset ();
+
+  ASSERT_EQ (oos_remove_file (thread_p, target_vfid), NO_ERROR);
+  ASSERT_EQ (oos_remove_file (thread_p, foreign_vfid), NO_ERROR);
+}
+
+
+// ===========================================================================
 // TEST: BestspaceFindBestPageBasic
 //
 // Directly test bridge_oos_find_best_page: verify it returns a valid

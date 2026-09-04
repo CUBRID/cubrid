@@ -6894,7 +6894,7 @@ end:
 }
 
 /*
- * file_check_vpid () - check vpid is one of the file's user pages
+ * file_is_vpid_in_file () - check whether vpid is one of the file's user pages
  *
  * return           : DISK_INVALID if page does not belong to file, DISK_ERROR for errors and DISK_VALID for successful
  *                    check
@@ -6903,7 +6903,7 @@ end:
  * vpid_lookup (in) : checked VPID
  */
 DISK_ISVALID
-file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
+file_is_vpid_in_file (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead;
@@ -6952,7 +6952,6 @@ file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
       else
 	{
 	  /* not ok */
-	  assert_release (false);
 	  isvalid = DISK_INVALID;
 	  goto exit;
 	}
@@ -6975,7 +6974,6 @@ file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
       if (!found)
 	{
 	  /* not ok */
-	  assert_release (false);
 	  isvalid = DISK_INVALID;
 	  goto exit;
 	}
@@ -7001,7 +6999,6 @@ file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
       if (!found)
 	{
 	  /* not ok */
-	  assert_release (false);
 	  isvalid = DISK_INVALID;
 	  goto exit;
 	}
@@ -7010,7 +7007,6 @@ file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
       if (FILE_USER_PAGE_IS_MARKED_DELETED (vpid_in_table))
 	{
 	  /* not ok */
-	  assert_release (false);
 	  isvalid = DISK_INVALID;
 	  goto exit;
 	}
@@ -7028,6 +7024,23 @@ exit:
   if (page_fhead != NULL)
     {
       pgbuf_unfix (thread_p, page_fhead);
+    }
+  return isvalid;
+}
+
+/*
+ * file_check_vpid () - check vpid is one of the file's user pages and assert if it is not
+ */
+DISK_ISVALID
+file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
+{
+  DISK_ISVALID isvalid = file_is_vpid_in_file (thread_p, vfid, vpid_lookup);
+
+  if (isvalid == DISK_INVALID)
+    {
+      /* Preserve the legacy consistency-check contract: debug builds abort, while release builds log
+       * ER_FAILED_ASSERTION as a notification. */
+      assert_release (false);
     }
   return isvalid;
 }
