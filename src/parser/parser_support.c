@@ -171,6 +171,8 @@ static PT_NODE *pt_resolve_showstmt_args_named (PARSER_CONTEXT * parser, const S
 static bool pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, SERVER_NAME_LIST * snl);
 static void pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 					 int local_upd, int remote_upd, SERVER_NAME_LIST * snl);
+/* defined next to the INSERT SELECT conversion that shares it */
+static PT_NODE *pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #define NULL_ATTRID -1
 
 /*
@@ -11913,14 +11915,14 @@ pt_dblink_delete_is_pushable_pred (PT_NODE * cond)
 
   switch (cond->info.expr.op)
     {
-    case PT_IS_IN:
-    case PT_EQ_SOME:
+    case PT_IS_IN:		/* col IN (subquery) */
+    case PT_EQ_SOME:		/* col {= | <> | < | > | <= | >=} ANY (subquery) */
     case PT_NE_SOME:
     case PT_LT_SOME:
     case PT_GT_SOME:
     case PT_LE_SOME:
     case PT_GE_SOME:
-    case PT_EQ:
+    case PT_EQ:		/* scalar: col {= | <> | < | > | <= | >=} (subquery) */
     case PT_NE:
     case PT_LT:
     case PT_GT:
@@ -12083,9 +12085,6 @@ pt_dblink_delete_subq_servers (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
 
   return snl->server_cnt - server_cnt_before;
 }
-
-/* defined below, next to the INSERT SELECT conversion that shares it */
-static PT_NODE *pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 /* Same-server mixed WHERE subquery: rewrite embedded remote specs to dblink derived tables. No runtime
  * change is needed -- the sink's aptr already compiles whatever subquery it is handed, generically.
