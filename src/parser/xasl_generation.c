@@ -26872,13 +26872,15 @@ outofmem:
  * (heap_attrinfo_start / heap_attrinfo_read_dbvalues).  A DEFAULT expression
  * has no column references, so the empty attrinfo is never consulted at
  * evaluation time and costs only a few bytes in the stream
- * (see qexec_eval_default_expr_stream, which evaluates func_regu alone).
+ * (see qexec_eval_default_expr_func_pred, which evaluates func_regu alone).
  */
 int
 pt_to_default_expr_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *stream_size)
 {
   FUNC_PRED *func_pred = NULL;
   SYMBOL_INFO *symbols = NULL;
+  PT_NODE *unclassified_node = NULL;
+  PT_VOLATILITY volatility;
 
   assert (parser != NULL && expr != NULL && stream != NULL && stream_size != NULL);
 
@@ -26924,6 +26926,15 @@ pt_to_default_expr_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **strea
       error = er_errid ();
       goto end;
     }
+
+  /* Stamp the residual's effective volatility onto the root regu (riding the
+   * already-serialized regu flags).  Server Evaluation reads it to decide
+   * once-per-statement (STABLE) vs once-per-row (VOLATILE) without a parser.
+   * The tree was validated as a STABLE/VOLATILE residual by pt_check_data_default,
+   * so this never yields UNSET. */
+  volatility = pt_get_expr_tree_volatility (expr, &unclassified_node);
+  assert (PT_VOLATILITY_IS_RESIDUAL (volatility));
+  REGU_VARIABLE_SET_DEFAULT_VOLATILITY (func_pred->func_regu, volatility);
 
   error = xts_map_func_pred_to_stream (func_pred, stream, stream_size);
 

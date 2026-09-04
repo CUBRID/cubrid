@@ -30,6 +30,7 @@
 #include "object_primitive.h"
 #include "db_function.hpp"
 #include "xasl_sp.hpp"
+#include "pt_volatility.h"
 
 #include <functional>
 
@@ -173,6 +174,18 @@ const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query *
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
 
+/* Persisted effective volatility of a residual column DEFAULT expression, stamped
+ * on the root regu at DDL time (pt_to_default_expr_stream) and read by Server
+ * Evaluation to decide once-per-statement (STABLE) vs once-per-row (VOLATILE)
+ * evaluation.  Two bits hold the PT_VOLATILITY value; the stamped regu is
+ * serialized into the catalog, so those bits carry persisted meaning and must
+ * not be reallocated to a runtime flag.  This rides the already-serialized regu
+ * flags (no stream-format change) and is distinct from the runtime
+ * FETCH_ALL_CONST / FETCH_NOT_CONST flags, which are asserted clear at
+ * serialization time. */
+const int REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT = 13;
+const int REGU_VARIABLE_DEFAULT_VOLATILITY_MASK = 0x3 << REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT;	/* 0x6000 */
+
 class regu_variable_node
 {
   public:
@@ -252,6 +265,8 @@ inline bool REGU_VARIABLE_IS_FLAGED (const regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
+inline PT_VOLATILITY REGU_VARIABLE_GET_DEFAULT_VOLATILITY (const regu_variable_node *regu);
+inline void REGU_VARIABLE_SET_DEFAULT_VOLATILITY (regu_variable_node *regu, PT_VOLATILITY v);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -283,5 +298,19 @@ REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu)
       return TP_DOMAIN_TYPE (regu->domain);
     }
   return DB_TYPE_UNKNOWN;
+}
+
+PT_VOLATILITY
+REGU_VARIABLE_GET_DEFAULT_VOLATILITY (const regu_variable_node *regu)
+{
+  return (PT_VOLATILITY) ((regu->flags & REGU_VARIABLE_DEFAULT_VOLATILITY_MASK)
+			  >> REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT);
+}
+
+void
+REGU_VARIABLE_SET_DEFAULT_VOLATILITY (regu_variable_node *regu, PT_VOLATILITY v)
+{
+  regu->flags &= ~REGU_VARIABLE_DEFAULT_VOLATILITY_MASK;
+  regu->flags |= (((int) v) << REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT) & REGU_VARIABLE_DEFAULT_VOLATILITY_MASK;
 }
 #endif /* _REGU_VAR_HPP_ */
