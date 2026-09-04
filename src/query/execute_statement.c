@@ -21476,7 +21476,7 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 
 /*
- * server_check_owner () - Is the caller allowed to place a server object in this owner's namespace?
+ * server_check_owner () - Is the caller allowed to place a server object in this owner's schema?
  *   return: NO_ERROR, or ER_AU_NOT_OWNER
  *   owner (in): the user object named as the owner
  *
@@ -22631,7 +22631,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
       if (rec_cnt == 0)
 	{
 	  /* "Not found" on purpose - a distinct error would reveal which names exist in another user's
-	   * namespace. Duplicate-name checks stay safe: each caller is authorized for the owner it looks up. */
+	   * schema. Duplicate-name checks stay safe: each caller is authorized for the owner it looks up. */
 	  error = ER_DBLINK_SERVER_NOT_FOUND;
 	}
     }
