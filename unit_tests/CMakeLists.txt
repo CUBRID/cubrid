@@ -71,13 +71,10 @@ if (UNIT_TESTS OR UNIT_TEST_STRING_BUFFER)
   add_subdirectory(string_buffer)
 endif()
 
-#[[
-TODO compilation fails
 if (UNIT_TESTS OR UNIT_TEST_LOCKFREE)
   message("    lockfree")
   add_subdirectory(lockfree)
 endif (UNIT_TESTS OR UNIT_TEST_LOCKFREE)
-]]
 
 if (UNIT_TESTS OR UNIT_TEST_THREAD)
   message("    thread")

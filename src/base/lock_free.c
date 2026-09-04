@@ -2504,6 +2504,40 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
   return it->curr;
 }
 
+/*
+ * lf_hash_iterate_restart () - abandon the current position and iterate again from the first bucket
+ *   it(in/out): iterator
+ *
+ * Note: the current entry has to be dropped together with the bucket index. lf_hash_iterate () advances inside
+ *       the chain whenever it->curr is set, and that path opens no transaction, so an iterator restarted with
+ *       curr left behind walks the rest of that bucket a second time and does it unprotected.
+ */
+void
+lf_hash_iterate_restart (LF_HASH_TABLE_ITERATOR * it)
+{
+  LF_ENTRY_DESCRIPTOR *edesc;
+
+  if (it == NULL || it->hash_table == NULL)
+    {
+      assert (false);
+      return;
+    }
+  edesc = it->hash_table->entry_desc;
+  assert (edesc != NULL && it->tran_entry != NULL);
+
+  if (it->curr != NULL && edesc->using_mutex)
+    {
+      /* lf_hash_iterate () locked this entry and unlocks it on the way past */
+      pthread_mutex_unlock ((pthread_mutex_t *) OF_GET_PTR (it->curr, edesc->of_mutex));
+    }
+  it->curr = NULL;
+  it->bucket_index = -1;
+  if (it->tran_entry->transaction_id != LF_NULL_TRANSACTION_ID)
+    {
+      lf_tran_end_with_mb (it->tran_entry);
+    }
+}
+
 #if defined (UNITTEST_LF)
 /*
  * lf_reset_counters () - Reset all counters.

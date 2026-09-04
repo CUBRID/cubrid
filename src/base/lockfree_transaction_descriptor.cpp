@@ -51,7 +51,11 @@ namespace lockfree
 	}
       if (m_saved_node != NULL)
 	{
-	  m_saved_node->reclaim ();
+	  // count zero: save_reclaimable () parks a claimed node, and a claimed node was never counted as
+	  // retired. Passing one here subtracts from a counter that was never added to, which wraps
+	  // m_retired_count to SIZE_MAX whenever this is the freelist's last outstanding node.
+	  reclaim_run (m_saved_node, m_saved_node, 0);
+	  m_saved_node = NULL;
 	}
     }
 
@@ -69,7 +73,7 @@ namespace lockfree
 
       reclaim_retired_list ();
 
-      node.m_retire_tranid = m_tranid;
+      node.m_retire_tranid = m_tranid.load (std::memory_order_relaxed);
       node.m_retired_next = NULL;
       // add to tail to keep delete ids ordered
       if (m_retired_tail == NULL)
@@ -90,12 +94,20 @@ namespace lockfree
 	}
     }
 
+    table *
+    descriptor::get_table () const
+    {
+      return m_table;
+    }
+
     void
     descriptor::start_tran ()
     {
       if (!is_tran_started ())
 	{
-	  m_tranid = m_table->get_current_global_tranid ();
+	  // store-load: this id must be visible before the chain reads it protects. the one order x86 does not
+	  // give free, and what lf_tran_start_with_mb ()'s MEMORY_BARRIER () bought.
+	  m_tranid.store (m_table->get_current_global_tranid (), std::memory_order_seq_cst);
 	}
     }
 
@@ -104,50 +116,88 @@ namespace lockfree
     {
       if (!m_did_incr)
 	{
-	  m_tranid = m_table->get_new_global_tranid ();
+	  m_tranid.store (m_table->get_new_global_tranid (), std::memory_order_seq_cst);
+	  // only now that the id is published, so the scan counts this thread - see the header
+	  m_table->refresh_min_active_tranid_if_due (m_tranid.load (std::memory_order_relaxed));
+	  // a second promote is now a no-op, as it is in lf_tran_start (entry, true) once did_incr is set
+	  m_did_incr = true;
 	}
-      assert (m_tranid != INVALID_TRANID);
+      assert (m_tranid.load (std::memory_order_relaxed) != INVALID_TRANID);
     }
 
     bool
     descriptor::is_tran_started () const
     {
-      return m_tranid != INVALID_TRANID;
+      // relaxed: every caller is the owner asking about its own mark. get_transaction_id () is the only
+      // read from another thread, and it is the one that has to be ordered.
+      return m_tranid.load (std::memory_order_relaxed) != INVALID_TRANID;
     }
 
     void
     descriptor::end_tran ()
     {
       assert (is_tran_started ());
-      m_tranid = INVALID_TRANID;
+      // load-store: the reads this id protected must finish before it is dropped. free on x86;
+      // lf_tran_end_with_mb ()'s full barrier was stronger than needed.
+      m_tranid.store (INVALID_TRANID, std::memory_order_release);
       m_did_incr = false;
     }
 
     id
     descriptor::get_transaction_id () const
     {
-      return m_tranid;
+      // seq_cst, pairing with the publish in start_tran (): the reclaimer unlinks and then scans here, the
+      // owner publishes and then reads, and only a single total order over both stops each from missing the
+      // other. an acquire load does not join that order. same instruction as acquire on x86 and armv8.
+      return m_tranid.load (std::memory_order_seq_cst);
     }
 
     void
     descriptor::reclaim_retired_list ()
     {
+      if (m_retired_head == NULL)
+	{
+	  // nothing to reclaim, and no reason to read the table's minimum to find that out. retire_node ()
+	  // reclaims before it appends, so this is every descriptor's first retire and every one that follows
+	  // a pass that took the whole list.
+	  return;
+	}
+
       id min_tran_id = m_table->get_min_active_tranid ();
       if (min_tran_id <= m_last_reclaim_minid)
 	{
 	  // nothing changed
 	  return;
 	}
+      // retire_node () appends, so the list is ordered by retire id and everything reclaimable is a prefix.
+      // hand the whole prefix over at once, the way lf_freelist_transport () did, so an owner that can splice
+      // a run does not pay per node.
+      reclaimable_node *run_head = m_retired_head;
+      reclaimable_node *run_tail = NULL;
+      size_t run_count = 0;
       while (m_retired_head != NULL && m_retired_head->m_retire_tranid < min_tran_id)
 	{
-	  reclaim_retired_head ();
+	  run_tail = m_retired_head;
+	  m_retired_head = m_retired_head->m_retired_next;
+	  ++run_count;
 	}
       if (m_retired_head == NULL)
 	{
 	  m_retired_tail = NULL;
 	}
+      if (run_count != 0)
+	{
+	  run_tail->m_retired_next = NULL;
+	  reclaim_run (run_head, run_tail, run_count);
+	  m_reclaim_count += run_count;
+	}
 
-      m_last_reclaim_minid = min_tran_id;
+      // never latch the idle sentinel: INVALID_TRANID is the largest id there is, so storing it would make the
+      // early return above true for every later pass and stop this descriptor reclaiming for good.
+      if (min_tran_id != INVALID_TRANID)
+	{
+	  m_last_reclaim_minid = min_tran_id;
+	}
     }
 
     void
@@ -162,8 +212,18 @@ namespace lockfree
 	}
 
       nodep->m_retired_next = NULL;
-      nodep->reclaim ();
+      reclaim_run (nodep, nodep, 1);
       ++m_reclaim_count;
+    }
+
+    void
+    descriptor::reclaim_run (reclaimable_node *head, reclaimable_node *tail, size_t count)
+    {
+      // The owner carries the only vtable involved; reclaimable_node has none, so there is nothing to
+      // dispatch on the nodes themselves. A table always has one - it is a constructor argument - so there
+      // is no owner-less case to fall through, and no way to drop a run on the floor in a release build.
+      assert (m_table != NULL);
+      m_table->get_reclaimable_owner ().reclaim_run (head, tail, count);
     }
 
     void

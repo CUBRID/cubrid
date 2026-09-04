@@ -22,9 +22,11 @@
 #include "test_debug.hpp"
 
 #include "lockfree_freelist.hpp"
+#include "lockfree_hashmap.hpp"
 #include "lockfree_transaction_system.hpp"
 #include "string_buffer.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <condition_variable>
 #include <cstdlib>
@@ -38,6 +40,31 @@ using namespace lockfree;
 
 namespace test_lockfree
 {
+  //
+  // Layout guard for the node wrapper. See plan/lockfree DESIGN_CBRD-24794 D1: the wrapper carried a vtable
+  // pointer and an owner pointer on top of the retire link and retire id, 32 bytes on every node of every
+  // table. Both went; these assertions fail at compile time if either comes back.
+  //
+  namespace
+  {
+    struct probe_entry_48
+    {
+      char pad[48];
+    };
+
+    constexpr size_t WRAPPER_OVERHEAD = sizeof (tran::reclaimable_node);
+
+    static_assert (WRAPPER_OVERHEAD == 16, "the retire link and retire id, and nothing else");
+    static_assert (sizeof (freelist<probe_entry_48>::free_node) == sizeof (probe_entry_48) + WRAPPER_OVERHEAD,
+		   "free_node must add the reclaimable_node base and nothing of its own");
+
+    // and what the hashmap puts on a chain must be that same node over the entry itself - no wrapper struct
+    // between them. It used to hold an entry-descriptor pointer, one copy per node of the whole table.
+    static_assert (lockfree::hashmap<int, probe_entry_48>::get_chain_node_size ()
+		   == sizeof (probe_entry_48) + WRAPPER_OVERHEAD,
+		   "the hashmap chain node must be the entry plus the reclaimable_node base, nothing more");
+  }
+
   std::atomic<size_t> g_item_alloc_count;
   std::atomic<size_t> g_item_dealloc_count;
   struct my_item
@@ -49,7 +76,6 @@ namespace test_lockfree
 
     void set_owner ();
     void reset_owner ();
-    void on_reclaim () {}  // do nothing
   };
 
   using my_freelist = freelist<my_item>;
@@ -61,6 +87,8 @@ namespace test_lockfree
 		       size_t retire_all_weight, const my_end_job_function &f_on_finish);
   static int run_test (size_t thread_count, size_t ops_per_thread, size_t claim_weight, size_t retire_weight,
 		       size_t retire_all_weight);
+  static int test_reclaim_after_idle ();
+  static int test_initial_allocation ();
 
   int
   test_freelist_functional ()
@@ -69,7 +97,9 @@ namespace test_lockfree
 
     test_common::sync_cout ("start test_freelist_functional\n");
 
-    int err = run_test (4, 1000, 60, 39, 1);
+    int err = test_initial_allocation ();
+    err = err | test_reclaim_after_idle ();
+    err = err | run_test (4, 1000, 60, 39, 1);
     err = err | run_test (64, 1000, 60, 39, 1);
 
     if (err == 0)
@@ -82,6 +112,124 @@ namespace test_lockfree
       }
 
     return err;
+  }
+
+  //
+  // test_initial_allocation () - the constructor must accept a block of one and must allocate exactly the
+  //                              number of blocks it was asked for.
+  //
+  // Two defects, both reachable only once new_lfhash defaults on. assert (block_size > 1) aborted the server in
+  // boot_restart_server () for every database with max_plan_cache_entries <= 3, where xcache_initialize ()
+  // computes a block size of one - a block lf_freelist_init () has always accepted. And the constructor
+  // allocated one block more than asked, alloc_backbuffer () once and another inside every swap_backbuffer (),
+  // which lf_freelist_init () does not: lock_dump_resource () reads that count, so cubrid lockdb reported 1500
+  // allocated objects where it had always reported 1000.
+  //
+  int
+  test_initial_allocation ()
+  {
+    struct block_request
+    {
+      size_t block_size;
+      size_t block_count;
+    };
+    const block_request REQUESTS[] =
+    {
+      { 1, 2 },     // xcache_initialize () for max_plan_cache_entries <= 3
+      { 500, 2 },   // the object lock resource table's defaults, the count cubrid lockdb prints
+      { 16, 3 },
+      { 1, 1 },     // the "minimum two blocks" path with nothing left to halve
+      { 16, 1 },
+    };
+
+    test_common::sync_cout ("test_initial_allocation\n");
+
+    int err = 0;
+    for (const block_request &request : REQUESTS)
+      {
+	// what the constructor promises for a request of a single block
+	const size_t block_size =
+		request.block_count <= 1 ? std::max<size_t> (request.block_size / 2, 1) : request.block_size;
+	const size_t block_count = request.block_count <= 1 ? 2 : request.block_count;
+	const size_t expected = block_size * block_count;
+
+	lockfree::tran::system l_lfsys { 1 };
+	my_freelist l_freelist { l_lfsys, request.block_size, request.block_count };
+
+	const size_t allocated = l_freelist.get_alloc_count ();
+	const size_t on_hand = l_freelist.get_available_count () + l_freelist.get_backbuffer_count ();
+
+	string_buffer result_str;
+	result_str ("  block_size = %zu, block_count = %zu: allocated = %zu, expected = %zu, on hand = %zu\n",
+		    request.block_size, request.block_count, allocated, expected, on_hand);
+	test_common::sync_cout (result_str.get_buffer ());
+
+	if (allocated != expected || on_hand != allocated)
+	  {
+	    err = 1;
+	  }
+      }
+
+    if (err != 0)
+      {
+	test_common::sync_cout ("failed test_initial_allocation\n");
+      }
+    return err;
+  }
+
+  //
+  // test_reclaim_after_idle () - epoch reclamation must survive the transaction table going fully idle.
+  //
+  // table::get_min_active_tranid () answers INVALID_TRANID - the largest id there is - when no descriptor is
+  // active, and that happens routinely: get_new_global_tranid () recomputes the minimum before the caller has
+  // been assigned its own id. descriptor::reclaim_retired_list () used to store that sentinel as the pass's
+  // high-water mark, after which its "minimum has not moved" early return was true forever and the descriptor
+  // never reclaimed again, so its retired list grew without bound.
+  //
+  // A single thread retiring one node at a time with no transaction open between retires is the cheapest way
+  // to reproduce it: the table is idle at every recompute.
+  //
+  int
+  test_reclaim_after_idle ()
+  {
+    const size_t RETIRE_COUNT = 1000;
+    // the minimum active id is only recomputed every MATI_REFRESH_INTERVAL (100) transactions, so a healthy
+    // descriptor still carries up to one refresh interval of not-yet-reclaimed nodes. anything beyond a couple
+    // of intervals means reclamation stopped.
+    const size_t MAX_EXPECTED_BACKLOG = 300;
+
+    test_common::sync_cout ("test_reclaim_after_idle\n");
+
+    lockfree::tran::system l_lfsys { 1 };
+    my_freelist l_freelist { l_lfsys, 16, 2 };
+    tran::index l_index = l_lfsys.assign_index ();
+
+    for (size_t i = 0; i < RETIRE_COUNT; i++)
+      {
+	my_node *node = l_freelist.claim (l_index);
+	test_common::custom_assert (node != NULL);
+	// claim () leaves the transaction started on purpose; end it so the table is fully idle
+	l_freelist.get_transaction_table ().end_tran (l_index);
+	l_freelist.retire (l_index, *node);
+      }
+
+    tran::table &l_table = l_freelist.get_transaction_table ();
+    size_t retired = l_table.get_total_retire_count ();
+    size_t reclaimed = l_table.get_total_reclaim_count ();
+    size_t backlog = l_table.get_current_retire_count ();
+
+    l_lfsys.free_index (l_index);
+
+    string_buffer result_str;
+    result_str ("  retired = %zu, reclaimed = %zu, backlog = %zu\n", retired, reclaimed, backlog);
+    test_common::sync_cout (result_str.get_buffer ());
+
+    if (backlog > MAX_EXPECTED_BACKLOG)
+      {
+	test_common::sync_cout ("failed test_reclaim_after_idle: reclamation stalled\n");
+	return 1;
+      }
+    return 0;
   }
 
   void

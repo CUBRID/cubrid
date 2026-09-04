@@ -33,16 +33,23 @@ namespace lockfree
     //
     // table
     //
-    table::table (system &sys)
+    table::table (system &sys, reclaimable_owner &owner)
       : m_sys (sys)
       , m_all (new descriptor[m_sys.get_max_transaction_count ()] ())
       , m_global_tranid { 0 }
       , m_min_active_tranid { 0 }
+      , m_owner (owner)
     {
       for (size_t i = 0; i < m_sys.get_max_transaction_count (); i++)
 	{
 	  m_all[i].set_table (*this);
 	}
+    }
+
+    reclaimable_owner &
+    table::get_reclaimable_owner () const
+    {
+      return m_owner;
     }
 
     table::~table ()
@@ -72,12 +79,17 @@ namespace lockfree
     id
     table::get_new_global_tranid ()
     {
-      id ret = ++m_global_tranid;
-      if (ret % MATI_REFRESH_INTERVAL == 0)
+      return ++m_global_tranid;
+    }
+
+    void
+    table::refresh_min_active_tranid_if_due (id assigned_tranid)
+    {
+      // called once the caller has published assigned_tranid, never before - see the header.
+      if (assigned_tranid % MATI_REFRESH_INTERVAL == 0)
 	{
 	  compute_min_active_tranid ();
 	}
-      return ret;
     }
 
     id

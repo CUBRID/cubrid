@@ -2585,8 +2585,14 @@ catalog_initialize (CTID * catalog_id_p)
   catalog_Id.vfid.volid = catalog_id_p->vfid.volid;
   catalog_Id.hpgid = catalog_id_p->hpgid;
 
-  // init
-  catalog_Hashmap.init (catalog_Ts, THREAD_TS_CATALOG, CATALOG_HASH_SIZE, 2, 100, catalog_entry_Descriptor);
+  // init. catalog_initialize () cannot report, and neither could the path this replaces
+  // (lf_hash_table_cpp::init () assert (false)d and returned void), so the error is left set for whoever asks
+  // next and the rest of this function runs exactly as it did before.
+  if (catalog_Hashmap.init (catalog_Ts, THREAD_TS_CATALOG, CATALOG_HASH_SIZE, 2, 100, catalog_entry_Descriptor)
+      != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
 
   catalog_Max_record_size =
     spage_max_record_size () - CATALOG_PAGE_HEADER_SIZE - CATALOG_MAX_SLOT_ID_SIZE - CATALOG_MAX_SLOT_ID_SIZE;
