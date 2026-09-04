@@ -4197,7 +4197,12 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   int old_wait_msecs;
 
   old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
+  /* Thread-scoped, not tdes->wait_msecs: this runs nested inside the no-wait latch probes (bestspace L1_fix,
+   * btree_set_error) through pgbuf_fix's page validation, and those probes hold a thread-scoped LK_FORCE_ZERO_WAIT
+   * override that takes precedence over the TDES value. Writing LK_INFINITE_WAIT into the TDES would be shadowed, the
+   * volume-header fix below would be demoted to a conditional latch, and its failure asserts. Use the same override so
+   * the innermost (this) scope wins. */
+  old_wait_msecs = logtb_set_thread_wait_msecs_override (thread_p, LK_INFINITE_WAIT);
 
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
     {
@@ -4237,7 +4242,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   isvalid = disk_is_sector_reserved (thread_p, volheader, sectid, debug_crash);
 
 exit:
-  xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+  (void) logtb_set_thread_wait_msecs_override (thread_p, old_wait_msecs);
   (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   if (page_volheader)

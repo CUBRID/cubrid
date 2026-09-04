@@ -2598,6 +2598,79 @@ logtb_find_wait_msecs (int tran_index)
 }
 
 /*
+ * logtb_find_current_wait_msecs - find waiting times for current transaction, honoring the
+ *                  thread-scoped override
+ *
+ * return: wait_msecs...
+ *
+ * Note: Returns the thread-scoped override set by logtb_set_thread_wait_msecs_override () if one
+ *       is active; otherwise falls back to the transaction descriptor's wait_msecs. Use this
+ *       (instead of logtb_find_wait_msecs) wherever the wait interval of the *requesting thread*
+ *       is wanted, so that short no-wait latch probes do not have to mutate the transaction-global
+ *       value shared with sibling threads of the same transaction.
+ */
+int
+logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p->wait_msecs_override != THREAD_WAIT_MSECS_NO_OVERRIDE)
+    {
+      return thread_p->wait_msecs_override;
+    }
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      return tdes->wait_msecs;
+    }
+  else
+    {
+      return 0;
+    }
+}
+
+/*
+ * logtb_set_thread_wait_msecs_override - set or clear the thread-scoped override of the current
+ *                  transaction's wait_msecs
+ *
+ * return: the previous override (THREAD_WAIT_MSECS_NO_OVERRIDE if none was active)
+ *
+ *   wait_msecs(in): wait interval to enforce for this thread only, or
+ *                   THREAD_WAIT_MSECS_NO_OVERRIDE to clear the override
+ *
+ * Note: Unlike xlogtb_reset_wait_msecs, this does not touch the transaction descriptor, which is
+ *       shared by every thread executing on behalf of the same transaction (parallel query
+ *       workers). Mutating the shared value from a latch probe opens a window where a sibling
+ *       thread's unconditional page fix is silently converted to a conditional one and fails
+ *       without setting an error, and two interleaved save/restore pairs can leave the whole
+ *       transaction stuck in no-wait mode. Callers must restore the returned value when the
+ *       probe is done.
+ */
+int
+logtb_set_thread_wait_msecs_override (THREAD_ENTRY * thread_p, int wait_msecs)
+{
+  int old_wait_msecs;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  old_wait_msecs = thread_p->wait_msecs_override;
+  thread_p->wait_msecs_override = wait_msecs;
+
+  return old_wait_msecs;
+}
+
+/*
  * logtb_find_interrupt -
  *
  * return :

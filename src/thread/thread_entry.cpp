@@ -87,6 +87,7 @@ namespace cubthread
     , emulate_tid ()
     , client_id (-1)
     , tran_index (NULL_TRAN_INDEX)
+    , wait_msecs_override (THREAD_WAIT_MSECS_NO_OVERRIDE)
     , private_lru_index (-1)
     , tran_index_lock ()
     , rid (0)

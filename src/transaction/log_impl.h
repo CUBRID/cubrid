@@ -1140,6 +1140,8 @@ extern const char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
+extern int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p);
+extern int logtb_set_thread_wait_msecs_override (THREAD_ENTRY * thread_p, int wait_msecs);
 
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);

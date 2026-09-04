@@ -8744,7 +8744,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
   old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-  old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
+  old_wait_msec = logtb_set_thread_wait_msecs_override (thread_p, LK_INFINITE_WAIT);
 
   if (HEAP_ISVALID_OID (thread_p, oid) != DISK_VALID)
     {
@@ -8851,7 +8851,7 @@ exit_on_end:
     }
 
   (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
-  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msec);
+  (void) logtb_set_thread_wait_msecs_override (thread_p, old_wait_msec);
 
   return doesexist;
 }

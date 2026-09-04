@@ -21726,13 +21726,15 @@ btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_
       /* We don't provide classname for VACUUM operations, since it may prevent other vacuums from fixing a page. */
       if (!VACUUM_IS_THREAD_VACUUM (thread_p))
 	{
-	  save_old_wait = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+	  /* thread-scoped override: the transaction-global tdes->wait_msecs is shared with sibling threads of the
+	   * same transaction (parallel query workers) and must not be toggled from here. */
+	  save_old_wait = logtb_set_thread_wait_msecs_override (thread_p, LK_FORCE_ZERO_WAIT);
 	  if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR)
 	    {
 	      /* ignore */
 	      er_clear ();
 	    }
-	  (void) xlogtb_reset_wait_msecs (thread_p, save_old_wait);
+	  (void) logtb_set_thread_wait_msecs_override (thread_p, save_old_wait);
 	}
     }
 
