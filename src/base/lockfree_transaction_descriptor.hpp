@@ -30,6 +30,7 @@
 
 #include "lockfree_transaction_def.hpp"
 
+#include <atomic>
 #include <limits>
 
 // forward definition
@@ -83,7 +84,9 @@ namespace lockfree
 	void reclaim_retired_head ();
 
 	table *m_table;
-	id m_tranid;
+	/* Owner writes, compute_min_active_tranid () reads. start_tran () publishes seq_cst, end_tran ()
+	 * clears release, every other access relaxed. */
+	std::atomic<id> m_tranid;
 	id m_last_reclaim_minid;
 	reclaimable_node *m_retired_head;
 	reclaimable_node *m_retired_tail;

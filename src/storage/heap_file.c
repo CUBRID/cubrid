@@ -865,6 +865,8 @@ static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_pa
 
 static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 					      OID * partition_oid);
+static SCAN_CODE heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa,
+						   LOG_PAGE * log_page_p, RECDES * recdes);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
@@ -25167,6 +25169,77 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * heap_get_undo_record_for_version () - Read the undo image of one previous version, from wherever that
+ *				         version currently lives.
+ *
+ *   return: SCAN_CODE, as log_get_undo_record ()
+ *   thread_p (in): Thread entry.
+ *   version_lsa (in): Log address of the version to read.
+ *   log_page_p (in): Scratch log page, used only when the version is read from the log.
+ *   recdes (out): Record descriptor.
+ *
+ * NOTE: A version already copied into the log page buffer is read from there, or from disk, as usual.
+ *       One not copied yet is read from its staged prior node in the in-flight window; only when the
+ *       window lacks it too is a drain forced. Decided per hop, since any hop may still be uncopied.
+ */
+static SCAN_CODE
+heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa, LOG_PAGE * log_page_p,
+				  RECDES * recdes)
+{
+  LOG_LSA copied_lsa = log_Gl.append.get_copied_lsa ();
+
+  /* Inclusive, as in logpb_fetch_page (): copied_lsa is where the next record goes, so a version at
+   * exactly that address is the head of what is still staged - the case this window exists for. */
+  if (LSA_LE (&copied_lsa, version_lsa))
+    {
+      SCAN_CODE window_scan;
+      PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
+
+      if (log_get_undo_record_from_inflight (thread_p, version_lsa, recdes, &window_scan))
+	{
+	  if (window_scan == S_SUCCESS)
+	    {
+	      /* Counted where the window delivered the record. On S_DOESNT_FIT the caller grows the area and
+	       * comes back with the same version_lsa, and that retry is the same read, not a second one. */
+	      perfmon_inc_stat (thread_p, PSTAT_PRIOR_INFLIGHT_WINDOW_HIT);
+	    }
+	  return window_scan;
+	}
+
+      /* Not in the window either: type not staged, ring full when it was appended, or copied and released
+       * just now. Re-read the watermark first - in that last case a page already has the record. */
+      perfmon_inc_stat (thread_p, PSTAT_PRIOR_INFLIGHT_WINDOW_MISS);
+      copied_lsa = log_Gl.append.get_copied_lsa ();
+
+      if (LSA_LE (&copied_lsa, version_lsa))
+	{
+	  PERF_UTIME_TRACKER_START (thread_p, &time_track);
+	  LOG_CS_ENTER (thread_p);
+	  logpb_prior_lsa_append_all_list (thread_p);
+	  LOG_CS_EXIT (thread_p);
+	  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_PRIOR_DRAIN_READER_GUARD);
+
+	  copied_lsa = log_Gl.append.get_copied_lsa ();
+	}
+
+      /* The drain leaves the record below the watermark, never at it. */
+      assert (LSA_LT (version_lsa, &copied_lsa));
+    }
+
+  /* Fetch the page where version_lsa is located */
+  log_page_p->hdr.logical_pageid = NULL_PAGEID;
+  log_page_p->hdr.offset = NULL_OFFSET;
+  if (logpb_fetch_page (thread_p, version_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+    {
+      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_undo_record_for_version");
+      return S_ERROR;
+    }
+
+  return log_get_undo_record (thread_p, log_page_p, *version_lsa, recdes);
+}
+
+/*
  * heap_get_visible_version_from_log () - Iterate through old versions of object until a visible object is found
  *
  *   return: SCAN_CODE. Possible values:
@@ -25190,7 +25263,6 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
   MVCC_REC_HEADER mvcc_header;
   RECDES local_recdes;
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
-  LOG_LSA oldest_prior_lsa;
 
   assert (scan_cache != NULL);
   assert (scan_cache->mvcc_snapshot != NULL);
@@ -25201,38 +25273,18 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       recdes->data = NULL;
     }
 
-  /* make sure prev_version_lsa is flushed from prior lsa list - wake up log flush thread if it's not flushed */
-  oldest_prior_lsa = *log_get_append_lsa ();	/* TODO: fix atomicity issue on x86 */
-  if (LSA_LT (&oldest_prior_lsa, previous_version_lsa))
-    {
-      LOG_CS_ENTER (thread_p);
-      logpb_prior_lsa_append_all_list (thread_p);
-      LOG_CS_EXIT (thread_p);
-
-      oldest_prior_lsa = *log_get_append_lsa ();
-      assert (!LSA_LT (&oldest_prior_lsa, previous_version_lsa));
-    }
-
   if (recdes->data == NULL)
     {
       scan_cache->assign_recdes_to_area (*recdes);
     }
 
-  /* check visibility of old versions from log following prev_version_lsa links */
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+  /* Check visibility of old versions from log following prev_version_lsa links. Where each version is
+   * read from is decided per hop, in heap_get_undo_record_for_version (). */
   for (LSA_COPY (&process_lsa, previous_version_lsa); !LSA_ISNULL (&process_lsa);)
     {
-      /* Fetch the page where prev_vesion_lsa is located */
-      log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-      log_page_p->hdr.logical_pageid = NULL_PAGEID;
-      log_page_p->hdr.offset = NULL_OFFSET;
-      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
-	{
-	  assert (false);
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_visible_version_from_log");
-	  return S_ERROR;
-	}
-
-      scan_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
+      scan_code = heap_get_undo_record_for_version (thread_p, &process_lsa, log_page_p, recdes);
       if (scan_code != S_SUCCESS)
 	{
 	  if (scan_code == S_DOESNT_FIT && scan_cache->is_recdes_assigned_to_area (*recdes))

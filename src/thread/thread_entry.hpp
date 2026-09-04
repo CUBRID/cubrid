@@ -265,6 +265,7 @@ namespace cubthread
 
       struct log_zip *log_zip_undo;
       struct log_zip *log_zip_redo;
+      struct log_zip *log_unzip_undo;	/* reader side: decompressing an undo image back out */
       char *log_data_ptr;
       int log_data_length;
 

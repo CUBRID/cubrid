@@ -22,6 +22,7 @@
 #include "log_compress.h"
 #include "log_impl.h"
 #include "log_manager.h"
+#include "log_prior_inflight.hpp"
 #include "log_record.hpp"
 #include "page_buffer.h"
 #include "perf_monitor.h"
@@ -34,6 +35,7 @@
 #if !defined(SERVER_MODE)
 static LOG_ZIP *log_zip_undo = NULL;
 static LOG_ZIP *log_zip_redo = NULL;
+static LOG_ZIP *log_unzip_undo = NULL;
 static char *log_data_ptr = NULL;
 static int log_data_length = 0;
 #endif
@@ -85,6 +87,7 @@ log_data_addr::log_data_addr (const VFID *vfid_arg, PAGE_PTR pgptr_arg, PGLENGTH
 log_append_info::log_append_info ()
   : vdes (NULL_VOLDES)
   , nxio_lsa (NULL_LSA)
+  , copied_lsa (NULL_LSA)
   , prev_lsa (NULL_LSA)
   , log_pgptr (NULL)
   , appending_page_tde_encrypted (false)
@@ -95,6 +98,7 @@ log_append_info::log_append_info ()
 log_append_info::log_append_info (const log_append_info &other)
   : vdes (other.vdes)
   , nxio_lsa {other.nxio_lsa.load ()}
+  , copied_lsa {other.copied_lsa.load ()}
   , prev_lsa (other.prev_lsa)
   , log_pgptr (other.log_pgptr)
   , appending_page_tde_encrypted (other.appending_page_tde_encrypted)
@@ -114,6 +118,18 @@ log_append_info::set_nxio_lsa (const LOG_LSA &next_io_lsa)
   nxio_lsa.store (next_io_lsa);
 }
 
+LOG_LSA
+log_append_info::get_copied_lsa () const
+{
+  return copied_lsa.load (std::memory_order_acquire);
+}
+
+void
+log_append_info::set_copied_lsa (const LOG_LSA &copied)
+{
+  copied_lsa.store (copied, std::memory_order_release);
+}
+
 log_prior_lsa_info::log_prior_lsa_info ()
   : prior_lsa (NULL_LSA)
   , prev_lsa (NULL_LSA)
@@ -131,6 +147,9 @@ LOG_RESET_APPEND_LSA (const LOG_LSA *lsa)
   // todo - concurrency safe-guard
   log_Gl.hdr.append_lsa = *lsa;
   log_Gl.prior_info.prior_lsa = *lsa;
+  /* The prior list is empty at *lsa now. Publishing here is what keeps copied_lsa <= append_lsa across
+   * every reset. */
+  log_Gl.append.set_copied_lsa (*lsa);
 }
 
 void
@@ -231,13 +250,7 @@ log_append_init_zip ()
 void
 log_append_final_zip ()
 {
-  if (!log_Zip_support)
-    {
-      return;
-    }
-
-#if defined (SERVER_MODE)
-#else
+#if !defined (SERVER_MODE)
   if (log_zip_undo)
     {
       log_zip_free (log_zip_undo);
@@ -247,6 +260,11 @@ log_append_final_zip ()
     {
       log_zip_free (log_zip_redo);
       log_zip_redo = NULL;
+    }
+  if (log_unzip_undo)
+    {
+      log_zip_free (log_unzip_undo);
+      log_unzip_undo = NULL;
     }
   if (log_data_ptr)
     {
@@ -286,6 +304,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
   node->log_header.type = rec_type;
 
   node->tde_encrypted = false;
+  node->inflight_holder = NULL;
 
   node->data_header_length = 0;
   node->data_header = NULL;
@@ -424,6 +443,7 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, L
   node->log_header.type = rec_type;
 
   node->tde_encrypted = false;
+  node->inflight_holder = NULL;
 
   node->data_header_length = 0;
   node->data_header = NULL;
@@ -1362,6 +1382,10 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   LOG_VACUUM_INFO *vacuum_info = NULL;
   MVCCID mvccid = MVCCID_NULL;
 
+  /* Ahead of the mutex, so that all the append path holds it for is the ring push. Nothing can free the
+   * node between here and register (): the tail of this function always links it into the prior list. */
+  log_prior_inflight_prepare (node);
+
   if (with_lock == LOG_PRIOR_LSA_WITHOUT_LOCK)
     {
       log_Gl.prior_info.prior_lsa_mutex.lock ();
@@ -1500,6 +1524,10 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 
   /* END append */
   prior_lsa_end_append (thread_p, node);
+
+  /* Nothing writes into the node again, so publish it now - in start_lsa order, the order the drain
+   * retires in. */
+  log_prior_inflight_register (start_lsa, node);
 
   if (log_Gl.prior_info.prior_list_tail == NULL)
     {
@@ -1744,6 +1772,36 @@ log_append_get_zip_undo (THREAD_ENTRY *thread_p)
     }
 #else
   return log_zip_undo;
+#endif
+}
+
+LOG_ZIP *
+log_append_get_unzip_undo (THREAD_ENTRY *thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p == NULL)
+    {
+      return NULL;
+    }
+  else
+    {
+      if (thread_p->log_unzip_undo == NULL)
+	{
+	  thread_p->log_unzip_undo = log_zip_alloc (IO_PAGESIZE);
+	}
+      return (LOG_ZIP *) thread_p->log_unzip_undo;
+    }
+#else
+  if (log_unzip_undo == NULL)
+    {
+      log_unzip_undo = log_zip_alloc (IO_PAGESIZE);
+    }
+  return log_unzip_undo;
 #endif
 }
 
