@@ -14885,7 +14885,7 @@ ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * 
 
   xasl->proc.mergelist.outer_xasl = left;
   xasl->proc.mergelist.inner_xasl = right;
-  /* qexec_merge_list[_outer] scans these children's list files backward (CBRD-27365 #184 class B) */
+  /* qexec_merge_list[_outer] scans these children's list files backward */
   XASL_SET_FLAG (left, XASL_LIST_BACKWARD);
   XASL_SET_FLAG (right, XASL_LIST_BACKWARD);
 

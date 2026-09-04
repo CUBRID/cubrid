@@ -4084,8 +4084,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
       *peek_dbval = regu_var->vfetch_to;
 
-      /* slot value accessor: layout from the bound descriptor, decoding domain from the regu (D-182-7, D-196-3);
-       * a NULL column leaves the cleared vfetch_to as is (same as before) */
+      /* slot accessor: layout from the bound descriptor, domain from the regu; NULL column leaves vfetch_to as is */
       if (regu_var->value.pos_descr.dom->type == NULL)
 	{
 	  goto exit_on_error;
@@ -4833,7 +4832,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
     {
       if (regu_list && regu_list->value.type == TYPE_POSITION)
 	{
-	  /* the list is all TYPE_POSITION (existing invariant): one sequential pass over the tuple (#200 item 2) */
+	  /* the list is all TYPE_POSITION (existing invariant): one sequential pass over the tuple */
 	  return fetch_peek_dbval_pos (regu_list, tplrec);
 	}
       for (regup = regu_list; regup != NULL; regup = regup->next)
@@ -4880,13 +4879,8 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 }
 
 /*
- * fetch_peek_dbval_pos () - fetch_val_list (peek) for a regu list made only of TYPE_POSITION variables: read the
- *   columns straight from the tuple slot in pos_no order (one sequential deform, the slot position cache advances
- *   with it) instead of routing every variable through fetch_peek_dbval_slow (). Restores the dedicated path develop
- *   had (D-182-8 had folded it into the generic loop; perf M1/S2 attributed 7~10% self time to the detour, #200 item 2).
+ * fetch_peek_dbval_pos () - fetch_val_list (peek) for an all-TYPE_POSITION regu list: reads columns in pos_no order
  *   return: NO_ERROR or ER_code
- *   Same value semantics as the TYPE_POSITION case of fetch_peek_dbval_slow (): vfetch_to is cleared, then decoded with
- *   the position's domain; a NULL column leaves it NULL.
  */
 static int
 fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * tplrec)
@@ -4913,10 +4907,7 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * 
 	  return ER_FAILED;
 	}
 
-      /* clear as fetch_peek_dbval_slow () does, but only call out when there may be something to release: a value of
-       * a FIXED column without need_clear owns nothing and is just marked NULL here (CC-05/A60: the legacy path paid
-       * pr_clear_value per value). VAR columns always go through pr_clear_value: sets and VOBJs are freed by it
-       * regardless of need_clear (the first smoke of #200 leaked set objects here). */
+      /* a need_clear-free FIXED column is just marked NULL; VAR columns always call pr_clear_value */
       if (tplrec->tl->col[pos_descr->pos_no].kind != QFILE_COL_FIXED || regu_var->vfetch_to->need_clear
 	  || DB_NEED_CLEAR (regu_var->vfetch_to))
 	{

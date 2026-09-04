@@ -80,7 +80,7 @@ namespace parallel_scan
 	    list_id_p->type_list.domp[i] = valp->dom;
 	  }
       }
-    qfile_type_list_finalize (&list_id_p->type_list);	/* mutator-owns-finalize (D-181-6, px writer's own list) */
+    qfile_type_list_finalize (&list_id_p->type_list);	/* this worker's own list */
     return NO_ERROR;
   }
 
@@ -679,7 +679,7 @@ namespace parallel_scan
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return S_ERROR;
 	  }
-	/* the merged worker lists became the (top-most) xasl's result: it must be backward capable (#184 §3.3) */
+	/* the merged worker lists became the (top-most) xasl's result: it must be backward capable */
 	assert (!XASL_IS_FLAGED (m_.orig_xasl, XASL_TOP_MOST_XASL) || dest->type_list.type_cnt == 0
 		|| QFILE_LIST_IS_BACKWARD (dest));
 
@@ -815,9 +815,7 @@ namespace parallel_scan
 		  }
 	      }
 
-	    /* domain-driven sequential walk (D-182-16, thread contract D-181-10): this reader never touches the
-	     * writer-owned layout descriptor; the atomic domains drive the deform. The header size and the column
-	     * count are fixed at qfile_open_list () and read only after the header was published (m_valid). */
+	    /* domain-driven sequential walk: the atomic domains drive the deform, read only after the header is published. */
 	    qfile_tuple_walk_init (&tl.walk, tl.tpl_buf.tpl, list_id_header_p->m_list_id_p->type_list.hdr_size,
 				   list_id_header_p->m_type_cnt);
 
@@ -887,11 +885,11 @@ namespace parallel_scan
 
 	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 
-	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, &(tl.writer_result_p->tpl_descr));
+	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, & (tl.writer_result_p->tpl_descr));
 
 	if (unlikely (!m_.is_list_id_domain_resolved))
 	  {
-	    /* resolve this worker's list domains from the collected values BEFORE the size pass (PR #258 review) */
+	    /* resolve this worker's list domains from the collected values before the size pass */
 	    qfile_update_domains_on_type_list (thread_p, tl.writer_result_p, input);
 	    m_.is_list_id_domain_resolved = tl.writer_result_p->is_domain_resolved;
 	  }
@@ -1079,8 +1077,7 @@ namespace parallel_scan
 	list_id_p = tl_list_id_header->m_list_id_p;
 	if (unlikely (!list_id_p->is_domain_resolved))
 	  {
-	    /* resolve the list domains from this value list BEFORE assembling the tuple, so the tuple is laid out with
-	     * the descriptor every later reader uses (PR #258 review) */
+	    /* resolve the list domains from this value list first so the tuple matches the descriptor readers use */
 	    (void) update_domains_on_type_list_by_val_list (thread_p, list_id_p, input);
 	    for (int i = 0; i < tl_list_id_header->m_type_cnt; i++)
 	      {
@@ -1793,7 +1790,7 @@ namespace parallel_scan
 	/* per-row domain fallback: qexec_resolve_domains_for_aggregation may leave NULL domain for covering index NULL values. */
 	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	  {
-	    acc_dom->value_dom = &tp_Bigint_domain;	/* qdata_bit_*_dbval accumulate in BIGINT (D-190-12) */
+	    acc_dom->value_dom = &tp_Bigint_domain;	/* qdata_bit_*_dbval accumulate in BIGINT */
 	    acc_dom->value2_dom = &tp_Null_domain;
 	  }
 	DB_VALUE tmp_val;
@@ -1832,7 +1829,7 @@ namespace parallel_scan
 	if (agg_node->sort_list != NULL)
 	  {
 	    /* GROUP_CONCAT(ORDER BY): push first operand value to list_id */
-	    /* the list assembler encodes the value for the list's column layout (CBRD-27365) */
+	    /* the list assembler encodes the value for the list's column layout */
 	    if (qfile_add_values_tuple_to_list (thread_p, agg_node->list_id, &db_value_p, 1) != NO_ERROR)
 	      {
 		return false;
@@ -2000,7 +1997,7 @@ namespace parallel_scan
 	    return false;
 	  }
 	write_val_p = &median_cast_val;
-	/* the list assembler encodes the value for the list's column layout (CBRD-27365) */
+	/* the list assembler encodes the value for the list's column layout */
 	if (qfile_add_values_tuple_to_list (thread_p, agg_node->list_id, &write_val_p, 1) != NO_ERROR)
 	  {
 	    pr_clear_value (&median_cast_val);
@@ -2111,7 +2108,7 @@ namespace parallel_scan
 	     * they pollute the distinct value set (matches serial
 	     * qdata_evaluate_aggregate_list, which inserts only db_values[0]).
 	     * db_value_p (operand[0]) was already fetched and NULL-checked above. */
-	    /* the list assembler encodes the value for the list's column layout (CBRD-27365) */
+	    /* the list assembler encodes the value for the list's column layout */
 	    if (qfile_add_values_tuple_to_list (thread_p, agg_node->list_id, &db_value_p, 1) != NO_ERROR)
 	      {
 		return false;

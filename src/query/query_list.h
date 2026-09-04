@@ -223,7 +223,7 @@ typedef enum
 #define QFILE_MAX_TUPLE_SIZE_IN_PAGE  (DB_PAGESIZE - QFILE_PAGE_HEADER_SIZE)
 
 /*
- * Tuple byte format (CBRD-27365, ADR 0016 section 1.1, PG MinimalTuple style):
+ * Tuple byte format:
  *
  *   [len 4B][prev_len 4B, backward capable lists only][null bitmap, has-null tuples only][pad][values][pad]
  *
@@ -244,7 +244,7 @@ typedef enum
 #define QFILE_TUPLE_HDR_SIZE_BACKWARD           8
 #define QFILE_TUPLE_LENGTH_OFFSET               0
 #define QFILE_TUPLE_PREV_LENGTH_OFFSET          4
-#define QFILE_TUPLE_ALIGNMENT                   INT_ALIGNMENT	/* D-180-3: tuple_alignby = 4 */
+#define QFILE_TUPLE_ALIGNMENT                   INT_ALIGNMENT	/* tuple_alignby = 4 */
 
 /* READERS/WRITERS FOR QFILE_TUPLE FIELDS */
 
@@ -269,12 +269,12 @@ typedef enum
 #define QFILE_PUT_PREV_TUPLE_LENGTH(tpl,val) \
   OR_PUT_INT ((tpl) + QFILE_TUPLE_PREV_LENGTH_OFFSET,val)
 
-/* null bitmap (D-180-2): 1 = bound */
+/* null bitmap: 1 = bound */
 #define QFILE_TUPLE_BITMAP(tpl, hdr_size)       ((const unsigned char *) (tpl) + (hdr_size))
 #define QFILE_BITMAP_IS_BOUND(bm, i)            ((((const unsigned char *) (bm))[(i) >> 3] >> ((i) & 7)) & 1)
 #define QFILE_BITMAP_SET_BOUND(bm, i)           (((unsigned char *) (bm))[(i) >> 3] |= (unsigned char) (1 << ((i) & 7)))
 
-/* variable value length header (D-180-6) */
+/* variable value length header */
 #define QFILE_VAR_HDR_LONG_BIT                  0x80
 #define QFILE_VAR_HDR_SHORT_MAX                 127
 #define QFILE_VAR_HDR_SIZE(len)                 ((len) <= QFILE_VAR_HDR_SHORT_MAX ? 1 : 4)
@@ -288,27 +288,26 @@ typedef enum
 
 typedef char *QFILE_TUPLE;	/* list file tuple */
 
-/* tuple record descriptor == tuple slot (CBRD-27365, ADR 0016 D-182-2).
+/* tuple record descriptor == tuple slot.
  * The record keeps its historical owning/non-owning meaning (size > 0: private buffer owned by the record,
  * size == 0: tpl PEEKs into a list page). The slot fields bind the layout descriptor of the list the tuple
- * belongs to and cache the deform position (PG tts_nvalid/off); they are reset by qfile_slot_set_tuple (),
- * the only sanctioned way to point the record at another tuple (D-182-5). */
+ * belongs to and cache the deform position; they are reset by qfile_slot_set_tuple (), the only sanctioned
+ * way to point the record at another tuple. */
 struct qfile_tuple_value_type_list;
 typedef struct qfile_tuple_record QFILE_TUPLE_RECORD;
 struct qfile_tuple_record
 {
   char *tpl;			/* tuple pointer */
   int size;			/* area _allocated_ for tuple pointer */
-  const struct qfile_tuple_value_type_list *tl;	/* layout descriptor, bound once per scan (D-182-6) */
-  int16_t nvalid;		/* columns deformed so far (PG tts_nvalid); -1 = position cache not started for this tuple */
-  int16_t fast_limit;		/* end of the constant-offset prefix for this tuple (D-182-4) */
+  const struct qfile_tuple_value_type_list *tl;	/* layout descriptor, bound once per scan */
+  int16_t nvalid;		/* columns deformed so far; -1 = position cache not started for this tuple */
+  int16_t fast_limit;		/* end of the constant-offset prefix for this tuple */
   int16_t data_off;		/* tl->data_off[has_null] of this tuple */
   bool has_null;		/* has-null bit of this tuple's length word */
-  int32_t off;			/* start offset (unaligned) of column nvalid, from tuple start (PG off) */
+  int32_t off;			/* start offset (unaligned) of column nvalid, from tuple start */
 };
 
-/* Per-column layout entry of the tuple layout descriptor (CBRD-27365, ADR 0016 D-181-3).
- * 8 bytes; PG CompactAttribute precedent. Growing it means revisiting D-181-3. */
+/* Per-column layout entry of the tuple layout descriptor. Kept at 8 bytes; consider the cost before growing it. */
 typedef struct qfile_col_layout QFILE_COL_LAYOUT;
 struct qfile_col_layout
 {
@@ -317,20 +316,20 @@ struct qfile_col_layout
   uint8_t kind;			/* QFILE_COL_FIXED | QFILE_COL_VAR */
   uint8_t var_access;		/* VAR only: QFILE_VAR_DIRECT | QFILE_VAR_SCRATCH */
   uint8_t alignby;		/* FIXED: 2 | 4. VAR: 1 */
-  uint8_t type_id;		/* DB_TYPE of domp[i] (DB_TYPE_VARIABLE while unresolved): lets the assembler decide "value has the
-				 * column's type" from this entry alone, without the domp[i] -> domain -> type load chain (#200 item 5) */
+  uint8_t type_id;		/* DB_TYPE of domp[i] (DB_TYPE_VARIABLE while unresolved): lets the assembler check the value's
+				 * type from this entry alone, without the domp[i] -> domain -> type load chain */
 };
 
-/* Type list structure == tuple layout descriptor (CBRD-27365, ADR 0016 D-181-1/2/5).
+/* Type list structure == tuple layout descriptor.
  *
  * Two states. An INPUT type list (locals built by the executor before qfile_open_list) only fills domp/type_cnt
  * and has finalized == false; the descriptor fields below are not read. A FINALIZED type list (every
- * QFILE_LIST_ID) was allocated by qfile_type_list_alloc () as ONE block [domp[type_cnt] | col[type_cnt]]
- * (so the existing free (domp) sites are untouched) and had qfile_type_list_finalize () run after its last
- * domp mutation (mutator-owns-finalize, D-181-6). Copies inherit the block by memcpy (qfile_type_list_copy).
+ * QFILE_LIST_ID) was allocated by qfile_type_list_alloc () as one block [domp[type_cnt] | col[type_cnt]] (so
+ * the existing free (domp) sites are untouched) and had qfile_type_list_finalize () run after its last domp
+ * mutation. Copies inherit the block by memcpy (qfile_type_list_copy).
  *
  * The descriptor IS the layout: kind/size/alignby of every column come from domp[] (qfile_type_list_finalize),
- * hdr_size from the QFILE_FLAG_BACKWARD flag of qfile_open_list () (D-181-8). */
+ * hdr_size from the QFILE_FLAG_BACKWARD flag of qfile_open_list (). */
 typedef struct qfile_tuple_value_type_list QFILE_TUPLE_VALUE_TYPE_LIST;
 struct qfile_tuple_value_type_list
 {
@@ -340,7 +339,7 @@ struct qfile_tuple_value_type_list
   int first_non_cached_col;	/* min (first VAR column, first column with off > INT16_MAX); type_cnt if none */
   int16_t data_off[2];		/* [0] = no-null, [1] = has-null : ALIGN4 (hdr_size + bitmap) */
   int16_t bitmap_size;		/* (type_cnt + 7) >> 3 */
-  uint8_t hdr_size;		/* 4 | 8 ; 8 <=> backward capable (D-181-8, the only truth) */
+  uint8_t hdr_size;		/* 4 | 8 ; 8 <=> backward capable */
   bool finalized;
 };
 
@@ -403,7 +402,7 @@ typedef enum
 } QFILE_TUPLE_TYPE;
 
 /*
- * Tuple assembler column source (CBRD-27365 D-182-11). One entry per output column.
+ * Tuple assembler column source. One entry per output column.
  *   val != NULL : encode the DB_VALUE with its type's data_writeval
  *   val == NULL : copy data[0..len) verbatim as the stored body (what qfile_slot_locate () returned for a column of
  *                 the same domain; the source and destination columns must share the layout kind)
@@ -429,9 +428,9 @@ struct qfile_tuple_descriptor
   /* T_NORMAL */
   int f_cnt;			/* number of field */
   DB_VALUE **f_valp;		/* pointer of field value pointer array (owned by the list) */
-  int *f_len;			/* body length of f_valp[i] from the size pass, consumed by the fill pass (#200 item 5).
-				 * Lives in the f_valp allocation right after the pointers (qfile_tpl_descr_alloc_values),
-				 * so freeing f_valp frees it. */
+  int *f_len;			/* body length of f_valp[i] from the size pass, consumed by the fill pass. Lives in the
+				 * f_valp allocation right after the pointers (qfile_tpl_descr_alloc_values), so freeing
+				 * f_valp frees it. */
 
   /* T_COL_SRC */
   QFILE_TUPLE_COL_SRC *col_src;	/* owned by the list; grown on demand by qfile_tpl_descr_col_src () */
@@ -584,11 +583,11 @@ enum
   QFILE_FLAG_DISTINCT = 0x0200,
   QFILE_FLAG_USE_KEY_BUFFER = 0x0400,
   QFILE_NOT_USE_MEMBUF = 0x0800,
-  QFILE_FLAG_BACKWARD = 0x1000	/* list may be scanned backward (qfile_scan_prev / cursor_prev_tuple), #184 A/B/C:
-				 * its tuples carry the 8-byte [len][prev_len] header (type_list.hdr_size, D-181-8) */
+  QFILE_FLAG_BACKWARD = 0x1000	/* list may be scanned backward (qfile_scan_prev / cursor_prev_tuple): its tuples
+				 * carry the 8-byte [len][prev_len] header (type_list.hdr_size) */
 };
 
-/* hdr_size is the only truth about backward capability (D-181-8) */
+/* hdr_size is the only truth about backward capability */
 #define QFILE_LIST_IS_BACKWARD(list_id)    ((list_id)->type_list.hdr_size == QFILE_TUPLE_HDR_SIZE_BACKWARD)
 /* qfile_open_list () flag that gives a new list the tuple header of an existing one (raw tuple copies between the
  * two then need no header rewrite, see qfile_add_tuple_to_list_from) */

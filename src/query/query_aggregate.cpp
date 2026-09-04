@@ -839,7 +839,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    }
 
 	  /* the list assembler encodes the value for the list's column layout (a raw disk image would not match a
-	   * VAR/DIRECT column, CBRD-27365) */
+	   * VAR/DIRECT column) */
 	  if (qfile_add_values_tuple_to_list (thread_p, agg_p->list_id, &db_value_p, 1) != NO_ERROR)
 	    {
 	      pr_clear_value_vector (db_values);
@@ -2519,7 +2519,7 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
   list_id->tpl_descr.f_cnt = col;
 
   tuple_size = qfile_tuple_size_from_values (&list_id->type_list, list_id->tpl_descr.f_valp, list_id->tpl_descr.f_len,
-					     col, &list_id->tpl_descr.has_null);
+	       col, &list_id->tpl_descr.has_null);
   if (tuple_size < 0)
     {
       return ER_FAILED;
@@ -2576,8 +2576,7 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
   bool is_null;
   int i, rc = NO_ERROR;
 
-  /* domain-driven sequential walk (D-182-16): the caller owns the column domains; the tuple was assembled with the
-   * partial list's layout (key, then value/value2/count per function, then the tuple count) */
+  /* domain-driven walk: key columns, then value/value2/count per function, then the tuple count */
   db_make_int (&int_val, 0);
   qfile_tuple_walk_init (&walk, tuple, hdr_size, key->val_count + 3 * value->func_count + 1);
 
@@ -2814,7 +2813,7 @@ qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_no
   if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != TP_DOMAIN_TYPE (agg_p->domain))
     {
       agg_p->list_id->type_list.domp[0] = agg_p->domain;
-      qfile_type_list_finalize (&agg_p->list_id->type_list);	/* mutator-owns-finalize (D-181-6) */
+      qfile_type_list_finalize (&agg_p->list_id->type_list);
       agg_p->sort_list->pos_descr.dom = agg_p->domain;
     }
 

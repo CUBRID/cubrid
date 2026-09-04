@@ -74,8 +74,7 @@ struct cursor_id
   int current_tuple_length;	/* Current tuple length */
   int oid_col_no_cnt;		/* Number of values in oid_col_no */
   DB_FETCH_MODE prefetch_lock_mode;
-  QFILE_TUPLE_RECORD current_slot;	/* non-owning slot over current_tuple_p (CBRD-27365); tpl == NULL until the
-					 * first column read after a cursor move (see cursor_reset_current_slot) */
+  QFILE_TUPLE_RECORD current_slot;	/* non-owning slot over current_tuple_p; tpl == NULL until reset */
   bool is_updatable;		/* Cursor updatable ? */
   bool is_oid_included;		/* Cursor has first hidden oid col. */
   bool is_copy_tuple_value;	/* get tplvalue: true = copy(default), false = peek */

@@ -536,8 +536,7 @@ static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 static int qexec_add_intint_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, int v1, int v2);
 static int qexec_add_intval_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, int v1, DB_VALUE * v2);
 
-/* a child list promoted to the top-most XASL's result (qfile_copy_list_id) must be backward capable: the client
- * scrolls results (CBRD-27365 #184 §3.3). Trivially true in PR-2a (every list has hdr_size 8); PR-2b makes it bite. */
+/* a child list promoted to the top-most XASL's result must be backward capable, since the client scrolls results */
 static inline void
 qexec_assert_result_list_backward (const XASL_NODE * xasl, const QFILE_LIST_ID * src_list_id)
 {
@@ -988,9 +987,7 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
   if (list_id->is_domain_resolved == false)
     {
-      /* Resolve DB_TYPE_VARIABLE domains from the values just fetched (finalizes the layout descriptor) BEFORE the
-       * size pass, so size and fill see the same layout (PR #258 review). Done for the RETRY statuses too: the
-       * private-buffer fallback writer needs the resolved descriptor as well. */
+      /* resolve DB_TYPE_VARIABLE domains before the size pass, so size and fill see the same layout */
       if (qfile_update_domains_on_type_list (thread_p, list_id, outptr_list) != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -3810,7 +3807,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
   VPID vpid;
   QFILE_LIST_ID *list_idp;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
-  QFILE_TUPLE_RECORD tplslot = { NULL, 0 };	/* slot over the tuple being emitted (in-place orderby_num, D-182-13) */
+  QFILE_TUPLE_RECORD tplslot = { NULL, 0 };	/* slot over the tuple being emitted (in-place orderby_num) */
 
   error = NO_ERROR;
 
@@ -5181,12 +5178,12 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
   QFILE_LIST_ID *list_idp;
 
   QFILE_TUPLE_RECORD dummy;
-  QFILE_TUPLE_RECORD data_slot = { NULL, 0 };	/* slot over the sorted input tuple (PR-1a) */
+  QFILE_TUPLE_RECORD data_slot = { NULL, 0 };	/* slot over the sorted input tuple */
   int status;
 
   info = (GROUPBY_STATE *) arg;
   list_idp = &(info->input_scan->list_id);
-  qfile_slot_bind (&data_slot, &list_idp->type_list);	/* the sorted tuples come from the input list (D-182-6) */
+  qfile_slot_bind (&data_slot, &list_idp->type_list);	/* the sorted tuples come from the input list */
 
   data = NULL;
   page = NULL;
@@ -5933,8 +5930,7 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE_RECORD * left, int *left_ind, TP_DOMAIN **
       PRIM_SET_NULL (&left_dbval);
       PRIM_SET_NULL (&right_dbval);
 
-      /* get tpl values into db_values for the comparison: the merge columns are read through the two scan slots
-       * (positions cached per tuple, D-182-15) */
+      /* get tpl values into db_values for the comparison: the merge columns are read through the two scan slots */
 
       /* Do not copy the string--just use the pointer.  The pr_ routines for strings and sets have different semantics
        * for length. */
@@ -9922,8 +9918,7 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
 
   list_id->last_pgptr = NULL;	/* don't want qfile_close_list() to free this bogus listid */
-  /* hand-built one-column list: own [domp | col] block like qfile_open_list (D-181-1); it is the top-most XASL's result
-   * list (RETURN_GENERATED_KEYS tuples are fetched by the client), so it is backward capable (#184 class A) */
+  /* hand-built one-column list, backward capable since its tuples are fetched (scrolled) by the client */
   if (qfile_type_list_alloc (&list_id->type_list, 1, QFILE_TUPLE_HDR_SIZE_BACKWARD) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -9932,7 +9927,7 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
   /* set up to return object domains in case we want to return the updated/inserted/deleted oid's */
   list_id->type_list.domp[0] = &tp_Object_domain;
-  qfile_type_list_finalize (&list_id->type_list);	/* mutator-owns-finalize (D-181-6) */
+  qfile_type_list_finalize (&list_id->type_list);	/* finalize after setting domp[0] */
 
   if (xasl->type == INSERT_PROC && XASL_IS_FLAGED (xasl, XASL_RETURN_GENERATED_KEYS))
     {
@@ -18131,8 +18126,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
     bf2df_str_domain.type = &bf2df_str_type;
     bf2df_str_type.set_data_cmpdisk_function (bf2df_str_cmpdisk);
-    /* CBRD-27365: a string list column is VAR/DIRECT and its sort key compares with the index comparator
-     * (qfile_col_cmpdisk_function); the index encoding has the same [len byte][bytes] prefix bf2df_str_cmpdisk reads */
+    /* a string list column's sort key uses the index comparator; its encoding has the same [len byte][bytes] prefix */
     bf2df_str_type.set_index_cmpdisk_function (bf2df_str_cmpdisk);
     bf2df_str_type.set_cmpval_function (bf2df_str_cmpval);
 
@@ -18442,10 +18436,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		   * the recursive xasl will iterate through this list id while appending new results at its end
 		   * note: this works only if the cte(actually the non_recursive_part link) is the first spec used
 		   * for scanning during recursive iterations
-		   * note: not while a column is still DB_TYPE_VARIABLE (NULL-only so far, e.g. a NULL host variable in
-		   * the anchor): the list scan copies the layout descriptor when it opens, so an append that resolves
-		   * the column mid-scan would be read with the stale VAR layout (D-192-2, #191 R1). The copy path below
-		   * reopens the scan every iteration with the current descriptor instead.
+		   * note: not while a column is still DB_TYPE_VARIABLE, since the scan copies the layout on open
 		   */
 		  save_recursive_list_id = recursive_part->list_id;
 		  recursive_part->list_id = non_recursive_part->list_id;
@@ -18802,8 +18793,7 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
       return ER_FAILED;
     }
 
-  /* we start with tpl itself; the raw tuple is wrapped in a slot bound to the list's finalized descriptor (the
-   * caller's type_list is the INPUT type list and only supplies the decoding domains) */
+  /* we start with tpl itself, wrapped in a slot bound to the list's descriptor (type_list only supplies domains) */
   qfile_slot_fill (&tuple_rec, tpl, &s_id.list_id.type_list);
 
   do
@@ -20553,10 +20543,7 @@ bf2df_str_compare (const unsigned char *s0, int l0, const unsigned char *s1, int
 	  return DB_LT;
 	}
 
-      /* both equal in this group, find next one. A string that ended in this group must not be read past its end:
-       * the legacy list tuple format zero-padded every string value so the over-read saw 0x00, the CBRD-27365 format
-       * stores the next column (or nothing, in a sort key mini tuple) right after the last byte, so a 0x2E ('.') there
-       * turned "1" vs "1.1" into DB_UNK and broke the BF->DF order (CTP _03_adhoc_delete_update_3, -495). */
+      /* both equal in this group, find next one; a string ending here must not be read past its end */
       if (s0 < e0 && *s0 == '.')
 	{
 	  s0++;
@@ -21051,7 +21038,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
 	  context->sorted_part_list_id->type_list.domp[index + 2] = &tp_Integer_domain;
 	}
 
-      /* mutator-owns-finalize (D-181-6) */
+      /* finalize after mutating domp */
       qfile_type_list_finalize (&context->part_list_id->type_list);
       qfile_type_list_finalize (&context->sorted_part_list_id->type_list);
     }
@@ -21143,7 +21130,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		       && TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
 		{
 		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
-		  qfile_type_list_finalize (&agg_p->list_id->type_list);	/* mutator-owns-finalize (D-181-6) */
+		  qfile_type_list_finalize (&agg_p->list_id->type_list);	/* finalize after mutating domp */
 		}
 	    }
 
@@ -21217,9 +21204,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    case PT_AGG_BIT_AND:
 	    case PT_AGG_BIT_OR:
 	    case PT_AGG_BIT_XOR:
-	      /* qdata_bit_and/or/xor_dbval always produce a BIGINT accumulator whatever the operand type; the declared
-	       * INTEGER agg domain is applied when the result is projected. The accumulator domain must describe the
-	       * bytes actually stored in the hash GROUP BY partial list (CBRD-27365 PR-2a writer probe, D-190-12). */
+	      /* qdata_bit_and/or/xor_dbval always produce a BIGINT accumulator; describe what's actually stored */
 	      agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
 	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 	      break;
@@ -21383,7 +21368,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		{
 		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
 		}
-	      qfile_type_list_finalize (&agg_p->list_id->type_list);	/* mutator-owns-finalize (D-181-6) */
+	      qfile_type_list_finalize (&agg_p->list_id->type_list);	/* finalize after mutating domp */
 	    }
 
 	  /* initialize accumulators */
@@ -22454,7 +22439,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
       group_type_list.domp[0] = &tp_Integer_domain;
       group_type_list.domp[1] = &tp_Integer_domain;
 
-      /* window frames move backward over these lists (qexec_analytic_value_advance): #184 class C */
+      /* window frames move backward over these lists (qexec_analytic_value_advance) */
       func_state->group_list_id =
 	qfile_open_list (thread_p, &group_type_list, NULL, xasl_state->query_id, QFILE_FLAG_BACKWARD, NULL);
 
@@ -22685,12 +22670,12 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
   QFILE_LIST_ID *list_idp;
 
   QFILE_TUPLE_RECORD dummy;
-  QFILE_TUPLE_RECORD data_slot = { NULL, 0 };	/* slot over the sorted input tuple (PR-1a) */
+  QFILE_TUPLE_RECORD data_slot = { NULL, 0 };	/* slot over the sorted input tuple */
   int status;
 
   analytic_state = (ANALYTIC_STATE *) arg;
   list_idp = &(analytic_state->input_scan->list_id);
-  qfile_slot_bind (&data_slot, &list_idp->type_list);	/* the sorted tuples come from the input list (D-182-6) */
+  qfile_slot_bind (&data_slot, &list_idp->type_list);	/* the sorted tuples come from the input list */
 
   data = NULL;
 
@@ -23029,9 +23014,7 @@ exit_on_error:
 }
 
 /*
- * qexec_add_intint_tuple () / qexec_add_intval_tuple () - the analytic group / value header tuples
- *   (INT, INT) and (INT, value). Replace qfile_fast_intint/intval_tuple_to_list (D-182-12): the values go through
- *   the tuple assembler like every other list tuple.
+ * qexec_add_intint_tuple () / qexec_add_intval_tuple () - analytic group/value header tuples: (INT, INT), (INT, value)
  *   return: NO_ERROR or ER_FAILED
  */
 static int

@@ -151,7 +151,7 @@ OR_PUT_FLOAT (char *ptr, float val)
   memcpy (ptr, &ui, sizeof (ui));
 }
 
-/* CBRD-27365 (spec #180 D-180-4): 4-byte-aligned tuple values; read through memcpy, never a typed deref */
+/* ptr may not be aligned; read through memcpy, never a typed deref */
 #define OR_GET_FLOAT(ptr, value) \
   do { \
     UINT32 _or_ui; \

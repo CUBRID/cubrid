@@ -5286,7 +5286,7 @@ or_pack_listid (char *ptr, void *listid_ptr)
   ptr += OR_INT_SIZE;
   OR_PUT_INT (ptr, listid->type_list.type_cnt);
   ptr += OR_INT_SIZE;
-  /* layout flags (CBRD-27365 D-181-9): the tuple header size cannot be derived from the domains */
+  /* the tuple header size cannot be derived from the domains, so pack it explicitly */
   OR_PUT_INT (ptr, listid->type_list.hdr_size);
   ptr += OR_INT_SIZE;
 
@@ -5378,7 +5378,7 @@ or_unpack_listid (char *ptr, void *listid_ptr)
   listid->type_list.type_cnt = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
   {
-    /* layout flags (D-181-9): keep an unexpected value out of range of the narrowing cast so the caller's check sees it */
+    /* keep an unexpected value out of range of the narrowing cast so the caller's check sees it */
     int hdr_size = OR_GET_INT (ptr);
 
     listid->type_list.hdr_size = (hdr_size == QFILE_TUPLE_HDR_SIZE_FORWARD || hdr_size == QFILE_TUPLE_HDR_SIZE_BACKWARD)
@@ -5429,13 +5429,13 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
 
       if (hdr_size != QFILE_TUPLE_HDR_SIZE_FORWARD && hdr_size != QFILE_TUPLE_HDR_SIZE_BACKWARD)
 	{
-	  /* not a list id packed by this build (lockstep policy, ADR 0016 section 1.6): refuse rather than misread */
+	  /* not a list id packed by this build: refuse rather than misread */
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  goto error;
 	}
 
-      /* own [domp | col] block; the descriptor is recomputed here from the unpacked domains (D-181-9) */
+      /* own [domp | col] block; the descriptor is recomputed here from the unpacked domains */
       if (qfile_type_list_alloc (&listid->type_list, count, hdr_size) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,

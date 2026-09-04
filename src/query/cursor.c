@@ -83,9 +83,7 @@ static void cursor_allocate_oid_buffer (CURSOR_ID * cursor_id_p);
  */
 
 /*
- * cursor_reset_current_slot () - forget the deform position of the current tuple.
- *   Called by every cursor move (mutator-owns-reset, D-182-5); the slot is re-pointed lazily by the first column
- *   read after the move (cursor_get_tuple_value_from_list), which is when current_tuple_p is final.
+ * cursor_reset_current_slot () - forget the deform position of the current tuple
  */
 static void
 cursor_reset_current_slot (CURSOR_ID * cursor_id_p)
@@ -111,7 +109,7 @@ cursor_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_l
 {
   memcpy (dest_list_id_p, src_list_id_p, DB_SIZEOF (QFILE_LIST_ID));
 
-  /* the layout descriptor is inherited by block copy (D-181-6) */
+  /* deep-copy the type list's domain array (already block-copied above by reference) */
   if (qfile_type_list_copy (&dest_list_id_p->type_list, &src_list_id_p->type_list) != NO_ERROR)
     {
       return ER_FAILED;
@@ -451,8 +449,7 @@ cursor_get_tuple_value_from_list (CURSOR_ID * cursor_id_p, int index, DB_VALUE *
 
   assert (index >= 0 && index < type_list_p->type_cnt);
 
-  /* the slot is re-pointed by the first read after a cursor move; the shared accessor keeps the deform position
-   * (formerly current_tuple_value_index/_p) so successive reads of increasing columns stay O(1) */
+  /* the slot is re-pointed by the first read after a cursor move, so increasing-column reads stay O(1) */
   slot = &cursor_id_p->current_slot;
   if (slot->tpl == NULL)
     {
@@ -1608,8 +1605,7 @@ cursor_prev_tuple (CURSOR_ID * cursor_id_p)
 	{
 	  cursor_id_p->tuple_no--;
 	  cursor_id_p->current_tuple_no--;
-	  /* prev_len exists only in the 8-byte header of a backward capable list (D-181-8, D-182-9): on a forward-only
-	   * list the word after the length is bitmap/value bytes, so refuse instead of stepping to a garbage offset */
+	  /* refuse instead of stepping to a garbage offset: prev_len only exists in a backward-capable list's header */
 	  if (!QFILE_LIST_IS_BACKWARD (&cursor_id_p->list_id))
 	    {
 	      assert (false);

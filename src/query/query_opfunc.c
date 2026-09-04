@@ -509,7 +509,7 @@ qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * 
   int len;
   bool is_null;
 
-  /* sequential column reads through the slot cache are O(n) overall (D-182-7 bulk accessor) */
+  /* sequential column reads through the slot cache are O(n) overall */
   for (val_list_iterator = val_list->valp, val_list_index = 0; val_list_iterator
        && val_list_index < val_list->val_cnt; val_list_iterator = val_list_iterator->next, val_list_index++)
     {
@@ -594,9 +594,7 @@ exit_with_status:
 }
 
 /*
- * qdata_size_tuple_desc () - assembler size pass over the values collected by
- *   qdata_generate_tuple_desc_for_valptr_list (). Call it AFTER the list's DB_TYPE_VARIABLE domains have been resolved
- *   from those values (qfile_update_domains_on_type_list) so size and fill see the same layout descriptor.
+ * qdata_size_tuple_desc () - size pass over the values from qdata_generate_tuple_desc_for_valptr_list ()
  *   return: QPROC_TPLDESCR_SUCCESS, QPROC_TPLDESCR_RETRY_BIG_REC or QPROC_TPLDESCR_FAILURE
  *   tl(in): finalized layout descriptor of the destination list
  */

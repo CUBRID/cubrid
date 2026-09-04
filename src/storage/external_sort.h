@@ -137,8 +137,7 @@ struct SORTKEY_INFO
   SUBKEY_INFO *key;		/* Points to `default_keys' if `nkeys' <= 8; otherwise it points to malloc'ed space. */
   SUBKEY_INFO default_keys[8];	/* Default storage; this ought to work for most cases. */
   int error;			/* median domain convert errors */
-  QFILE_TUPLE_VALUE_TYPE_LIST key_tl;	/* layout descriptor of the key mini tuple: domp[i] = list domain of key[i].col
-					 * (CBRD-27365 D-182-14). Read-only once built; shared by parallel sort workers. */
+  QFILE_TUPLE_VALUE_TYPE_LIST key_tl;	/* key mini-tuple layout: domp[i] = domain of key[i].col */
 };
 
 struct SORT_INFO

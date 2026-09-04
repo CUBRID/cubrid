@@ -835,7 +835,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->qlist_merge_method = HASHJOIN_MERGE_CONNECT;
   manager->qlist_flag =
     (manager->qlist_merge_method == HASHJOIN_MERGE_CONNECT) ? QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF : QFILE_FLAG_ALL;
-  manager->qlist_flag |= XASL_LIST_BACKWARD_FLAG (xasl);	/* result lists are promoted to xasl->list_id (#184 A) */
+  manager->qlist_flag |= XASL_LIST_BACKWARD_FLAG (xasl);	/* result lists are promoted to xasl->list_id */
 
   assert (manager->px_worker_manager == NULL);
 
@@ -2930,79 +2930,75 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 
   db_make_null (&pre_coerce_value);
 
-  /* The same tuple value can be referenced by multiple keys (e.g. value_indexes = {0, 1, 1, 3}); value_indexes is
-   * non-decreasing, so the slot cache makes the successive locates O(1) (D-182-15). */
+  /* value_indexes is non-decreasing (a value may serve several keys), so the slot cache keeps locates O(1) */
   for (key_index = 0; key_index < key->val_count; key_index++)
     {
-      {
-	  value_index = value_indexes[key_index];
-	  pr_clear_value (key->values[key_index]);
+      value_index = value_indexes[key_index];
+      pr_clear_value (key->values[key_index]);
 
-	  if (need_coerce_domains && coerce_domains[key_index] != NULL
-	      && coerce_domains[key_index] != domains[key_index])
+      if (need_coerce_domains && coerce_domains[key_index] != NULL && coerce_domains[key_index] != domains[key_index])
+	{
+	  error = qfile_slot_read_value (tuple_record, value_index, domains[key_index], &pre_coerce_value, false,
+					 &value_is_null);
+	  if (error != NO_ERROR)
 	    {
-	      error = qfile_slot_read_value (tuple_record, value_index, domains[key_index], &pre_coerce_value, false,
-					     &value_is_null);
-	      if (error != NO_ERROR)
-		{
-		  goto error_exit;
-		}
-	      /* Skip the tuple if any value is NULL */
-	      if (value_is_null)
-		{
-		  goto skip_next;
-		}
+	      goto error_exit;
+	    }
+	  /* Skip the tuple if any value is NULL */
+	  if (value_is_null)
+	    {
+	      goto skip_next;
+	    }
 
-	      if (coerce_domains[key_index]->type->id == DB_TYPE_NUMERIC
-		  && pre_coerce_value.domain.general_info.type == DB_TYPE_NUMERIC
-		  && coerce_domains[key_index]->precision == DB_DEFAULT_NUMERIC_PRECISION
-		  && pre_coerce_value.domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION
-		  && pre_coerce_value.domain.numeric_info.scale < 0)
-		{
-		  /* 
-		   * for float numeric and fixed numeric, this is used to recalculate the fixed
-		   * numeric's precision later, as it must be known accurately during normalization.
-		   * 
-		   * note: A value in numeric(38,0) column does not guarantee precision 38.
-		   */
-		  pre_coerce_value.domain.numeric_info.precision = DB_HJOIN_NUMERIC_PRECISION_DEFERRED;
-		}
+	  if (coerce_domains[key_index]->type->id == DB_TYPE_NUMERIC
+	      && pre_coerce_value.domain.general_info.type == DB_TYPE_NUMERIC
+	      && coerce_domains[key_index]->precision == DB_DEFAULT_NUMERIC_PRECISION
+	      && pre_coerce_value.domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION
+	      && pre_coerce_value.domain.numeric_info.scale < 0)
+	    {
+	      /* 
+	       * for float numeric and fixed numeric, this is used to recalculate the fixed
+	       * numeric's precision later, as it must be known accurately during normalization.
+	       * 
+	       * note: A value in numeric(38,0) column does not guarantee precision 38.
+	       */
+	      pre_coerce_value.domain.numeric_info.precision = DB_HJOIN_NUMERIC_PRECISION_DEFERRED;
+	    }
 
-	      domain_status = tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
-	      if (domain_status != DOMAIN_COMPATIBLE)
-		{
-		  tp_domain_status_er_set (domain_status, ARG_FILE_LINE, &pre_coerce_value, coerce_domains[key_index]);
-		  pr_clear_value (&pre_coerce_value);
-		  goto error_exit;
-		}
-
+	  domain_status = tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
+	  if (domain_status != DOMAIN_COMPATIBLE)
+	    {
+	      tp_domain_status_er_set (domain_status, ARG_FILE_LINE, &pre_coerce_value, coerce_domains[key_index]);
 	      pr_clear_value (&pre_coerce_value);
-	    }
-	  else
-	    {
-	      error = qfile_slot_read_value (tuple_record, value_index, domains[key_index], key->values[key_index], false,
-					     &value_is_null);
-	      if (error != NO_ERROR)
-		{
-		  goto error_exit;
-		}
-	      /* Skip the tuple if any value is NULL */
-	      if (value_is_null)
-		{
-		  goto skip_next;
-		}
+	      goto error_exit;
 	    }
 
-	  if (compare_key != NULL)
+	  pr_clear_value (&pre_coerce_value);
+	}
+      else
+	{
+	  error = qfile_slot_read_value (tuple_record, value_index, domains[key_index], key->values[key_index], false,
+					 &value_is_null);
+	  if (error != NO_ERROR)
 	    {
-	      /* Skip the tuple if any value does not match */
-	      compare_result = tp_value_compare (key->values[key_index], compare_key->values[key_index], 0, 0);
-	      if (compare_result != DB_EQ)
-		{
-		  goto skip_next;
-		}
+	      goto error_exit;
 	    }
-      }
+	  /* Skip the tuple if any value is NULL */
+	  if (value_is_null)
+	    {
+	      goto skip_next;
+	    }
+	}
+
+      if (compare_key != NULL)
+	{
+	  /* Skip the tuple if any value does not match */
+	  compare_result = tp_value_compare (key->values[key_index], compare_key->values[key_index], 0, 0);
+	  if (compare_result != DB_EQ)
+	    {
+	      goto skip_next;
+	    }
+	}
     }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -3025,7 +3021,7 @@ error_exit:
 }
 
 /*
- * hjoin_locate_tuple_hash_key() - body of the leading hash-key column (INT, always bound) through the slot (D-182-15)
+ * hjoin_locate_tuple_hash_key() - locate the body of the leading hash-key column (INT, always bound)
  *   return: pointer to the 4-byte hash key inside the tuple
  *   tuple_record(in): tuple containing the hash key as its first column
  */
@@ -4080,8 +4076,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 	{
 	  /* in-memory hash entry payload: a raw tuple of the build list, bind it to that list's descriptor */
 	  qfile_slot_fill (tuple_record, (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry), &list_scan_id->list_id.type_list);
-	  tuple_record->size = 0;	/* PEEK: the payload is owned by the hash table (the former value read the
-					 * tuple's prev_len word; nothing consumes size on this path) */
+	  tuple_record->size = 0;	/* PEEK: the payload is owned by the hash table */
 	}
       else
 	{
@@ -4239,7 +4234,7 @@ hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
   assert (merge_info != NULL);
   assert (overflow_record != NULL);
 
-  /* the tuple assembler's merge path (D-182-11): one deform per input, exact size, page or private buffer */
+  /* merge path: one deform per input, exact size, page or private buffer */
   error = qfile_merge_tuple_add_list (thread_p, list_id, outer_record, inner_record, merge_info, overflow_record);
   if (error != NO_ERROR)
     {

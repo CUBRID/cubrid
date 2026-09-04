@@ -55,6 +55,12 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(__GNUC__)
+#define QFILE_NOINLINE __attribute__ ((noinline))
+#else
+#define QFILE_NOINLINE
+#endif
+
 #if defined(CS_MODE)
 #error Belongs to not client module
 #endif
@@ -453,8 +459,7 @@ qcache_free_ht_no (THREAD_ENTRY * thread_p, int ht_no)
 int
 qfile_modify_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_LIST_ID * list_id_p)
 {
-  /* type_list_p may be an INPUT type list or a finalized one; the list gets its own finalized descriptor
-   * (D-181-2, mutator-owns-finalize D-181-6) */
+  /* type_list_p may be an input or a finalized type list; the list gets its own finalized copy. */
   if (qfile_type_list_copy (&list_id_p->type_list, type_list_p) != NO_ERROR)
     {
       return ER_FAILED;
@@ -482,7 +487,7 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 {
   memcpy (dest_list_id_p, src_list_id_p, DB_SIZEOF (QFILE_LIST_ID));
 
-  /* copy domain info of type list; the layout descriptor is inherited by block copy (D-181-6) */
+  /* copy domain info of type list */
   if (qfile_type_list_copy (&dest_list_id_p->type_list, &src_list_id_p->type_list) != NO_ERROR)
     {
       return ER_FAILED;
@@ -890,11 +895,7 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 
       if (type1 == DB_TYPE_VARIABLE)
 	{
-	  /* list1's column is still unresolved. It may already hold tuples: a column stays DB_TYPE_VARIABLE only while
-	   * every value written to it was NULL (the assembler resolves it at its first bound value, D-199-13), and a
-	   * NULL occupies 0 bytes whatever the column's layout kind, so adopting list2's domain re-lays out nothing
-	   * that was written. (Recursive CTE anchor with a NULL host variable: the former assert_release (tuple_cnt
-	   * == 0) fired here, D-192-1.) */
+	  /* list1's column is unresolved: its tuples hold only NULL (0 bytes) there, so adopting list2's domain is safe */
 	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
 	  continue;
 	}
@@ -935,7 +936,7 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 	}
     }
 
-  /* domp of list1 may have changed above (mutator-owns-finalize, D-181-6) */
+  /* domp of list1 may have changed above */
   qfile_type_list_finalize (&list_id1_p->type_list);
 
   return NO_ERROR;
@@ -1174,7 +1175,7 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
 
   VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
 
-  /* own [domp | col] block (D-181-1); the tuple header size is the only record of backward capability (D-181-8) */
+  /* allocate the type list's own domain/column block; hdr_size records the backward-capability header size */
   if (qfile_type_list_alloc (&list_id_p->type_list, type_list_p->type_cnt,
 			     QFILE_IS_FLAG_SET (flag, QFILE_FLAG_BACKWARD) ? QFILE_TUPLE_HDR_SIZE_BACKWARD
 			     : QFILE_TUPLE_HDR_SIZE_FORWARD) != NO_ERROR)
@@ -1508,7 +1509,7 @@ qfile_add_tuple_to_list_id (QFILE_LIST_ID * list_id_p, PAGE_PTR page_p, int tupl
 {
   if (QFILE_LIST_IS_BACKWARD (list_id_p))
     {
-      /* prev_len exists only in the 8-byte header of a backward capable list (D-181-8) */
+      /* prev_len exists only in the header of a backward capable list */
       QFILE_PUT_PREV_TUPLE_LENGTH (page_p, list_id_p->lasttpl_len);
     }
 
@@ -1549,14 +1550,11 @@ qfile_tuple_copy_bytes (char *dst, const QFILE_TUPLE src, int src_hdr_size, int 
 }
 
 /*
- * qfile_add_tuple_to_list_from () - append a tuple that was laid out for a list with src_hdr_size (D-199-3).
+ * qfile_add_tuple_to_list_from () - append a tuple copied from a list with a possibly different header size
  *   return: int (NO_ERROR or ER_FAILED)
  *   list_id(in): List File Identifier
  *   tpl(in): tuple to be added (page resident or private buffer)
  *   src_hdr_size(in): type_list.hdr_size of the list the tuple came from
- *
- * Note: raw tuple copies between lists (UNION/set operations, sort output, hash join partitions) must rewrite the
- *       header when the two lists differ in backward capability; the bitmap and the values are copied verbatim.
  */
 int
 qfile_add_tuple_to_list_from (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFILE_TUPLE tuple, int src_hdr_size)
@@ -1665,7 +1663,8 @@ qfile_tpl_descr_col_src (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n)
 {
   if (tuple_descr_p->col_src_cap < n)
     {
-      QFILE_TUPLE_COL_SRC *src = (QFILE_TUPLE_COL_SRC *) realloc (tuple_descr_p->col_src, n * sizeof (QFILE_TUPLE_COL_SRC));
+      QFILE_TUPLE_COL_SRC *src =
+	(QFILE_TUPLE_COL_SRC *) realloc (tuple_descr_p->col_src, n * sizeof (QFILE_TUPLE_COL_SRC));
 
       if (src == NULL)
 	{
@@ -1681,8 +1680,8 @@ qfile_tpl_descr_col_src (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n)
 }
 
 /*
- * qfile_tpl_descr_alloc_values () - allocate the T_NORMAL staging arrays of a tuple descriptor: f_valp[n] followed by
- *   f_len[n] in ONE block (#200 item 5), so the existing free (f_valp) sites release both.
+ * qfile_tpl_descr_alloc_values () - allocate the T_NORMAL staging arrays of a tuple descriptor: f_valp[n] followed
+ *   by f_len[n] in one block, so the existing free (f_valp) sites release both.
  *   return: NO_ERROR or ER_FAILED (ER_OUT_OF_VIRTUAL_MEMORY set)
  */
 int
@@ -1781,9 +1780,6 @@ qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
  * qfile_add_col_src_tuple_to_list () - assemble the n column sources staged in list_id_p->tpl_descr.col_src into one
  *   tuple and append it to the list: page resident when it fits, private buffer + qfile_add_tuple_to_list otherwise.
  *   return: int (NO_ERROR or ER_FAILED)
- *
- * Replaces qfile_fast_intint/intval/val_tuple_to_list (D-182-12): the callers stage src[] through
- * qfile_tpl_descr_col_src () and the inlined assembler folds the per-column branches on constant sources.
  */
 int
 qfile_add_col_src_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int n)
@@ -1826,7 +1822,7 @@ qfile_add_col_src_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 /*
  * qfile_add_values_tuple_to_list () - append a tuple made of n DB_VALUEs (analytic group/value headers,
- *   RETURN_GENERATED_KEYS). Replaces qfile_fast_intint/intval/val_tuple_to_list (D-182-12).
+ *   RETURN_GENERATED_KEYS).
  *   return: int (NO_ERROR or ER_FAILED)
  */
 int
@@ -1853,8 +1849,7 @@ qfile_add_values_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
  *   return: int (NO_ERROR or ER_FAILED)
  *   big_rec(in/out): caller-owned buffer reused for tuples that do not fit in a page
  *
- * One deform of each input through the slot cache (O(n) instead of the former per-column header walk), one size
- * pass, one fill: this is the T_MERGE path of the tuple assembler (D-182-11).
+ * One deform of each input through the slot cache, one size pass, one fill.
  */
 int
 qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFILE_TUPLE_RECORD * outer_rec,
@@ -2694,7 +2689,7 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
   assert (thread_p != NULL);
   assert (base_list_id != NULL);
   assert (append_list_id != NULL);
-  /* the joined pages share one tuple header size (#184 D5) */
+  /* the joined pages share one tuple header size */
   assert (base_list_id->type_list.hdr_size == append_list_id->type_list.hdr_size);
 
   assert (base_list_id->last_pgptr == NULL);
@@ -2871,7 +2866,7 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
   assert (thread_p != NULL);
   assert (base_list_id != NULL);
   assert (append_list_id != NULL);
-  /* the joined pages share one tuple header size (#184 D5) */
+  /* the joined pages share one tuple header size */
   assert (base_list_id->type_list.hdr_size == append_list_id->type_list.hdr_size);
 
   /* Check if qfile_close_list was called */
@@ -3239,8 +3234,7 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p, RECDES 
   QFILE_TUPLE_POSITION saved_position;
   int length;
 
-  /* remember where the scan stands so a SORT_REC_DOESNT_FIT retry can re-read this tuple without stepping the scan
-   * backward (#184: the former qfile_scan_prev un-read made every sorted list backward capable) */
+  /* remember where the scan stands so a SORT_REC_DOESNT_FIT retry can re-read this tuple without stepping back */
   qfile_save_current_scan_tuple_position (input_scan_p, &saved_position);
 
   scan_status = qfile_scan_list_next (thread_p, input_scan_p, tuple_record_p, PEEK);
@@ -3263,7 +3257,7 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p, RECDES 
     }
   else
     {
-      /* un-read: jump back to the saved position so the retry re-reads this tuple (forward-only scan, #184) */
+      /* un-read: jump back to the saved position so the retry re-reads this tuple */
       scan_status = qfile_jump_scan_tuple_position (thread_p, input_scan_p, &saved_position, tuple_record_p, PEEK);
       status = ((scan_status == S_ERROR) ? SORT_ERROR_OCCURRED : SORT_REC_DOESNT_FIT);
     }
@@ -3272,7 +3266,7 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p, RECDES 
 }
 
 /*
- * qfile_build_sort_rec () - fill the SORT_REC for the list tuple in tuple_slot (D-182-14).
+ * qfile_build_sort_rec () - fill the SORT_REC for the list tuple in tuple_slot.
  *   return: required record length (the record is complete only when it is <= key_record_p->area_size, the
  *           SORT_REC_DOESNT_FIT protocol of the sort module), or ER_FAILED
  *   P_sort_key: header = original tuple position (vpid, tuple_offset), body = key mini tuple assembled with
@@ -3850,7 +3844,8 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	      /* overflow tuple whose header must be rewritten: assemble it, then append it as one tuple */
 	      QFILE_TUPLE_RECORD ovf_rec = { NULL, 0 };
 
-	      if (qfile_get_tuple (thread_p, page_p, page_p + key_p->s.original.offset, &ovf_rec, list_id_p) != NO_ERROR)
+	      if (qfile_get_tuple (thread_p, page_p, page_p + key_p->s.original.offset, &ovf_rec, list_id_p) !=
+		  NO_ERROR)
 		{
 		  error = ER_FAILED;
 		}
@@ -3921,9 +3916,6 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
  * Note: These routines are used for relative comparisons of two sort
  *       records during sorting.
  */
-#if defined(__GNUC__)
-__attribute__ ((noinline))
-#endif
 static int qfile_compare_partial_sort_record_general (SORTKEY_INFO * key_info_p, SORT_REC * k0, SORT_REC * k1);
 
 int
@@ -3936,11 +3928,9 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
   const char *t0, *t1, *b0, *b1;
   int i, n, order;
 
-  /* Fast path (#193 perf review, D-193-4): every key is a FIXED column inside the constant-offset prefix and neither
-   * key tuple has a NULL, so each key body sits at tl->col[i].off from data_off[0] -- one length-word test per record
-   * and no slot state. The general path (NULLs, variable-width keys, SCRATCH copies) lives in a separate non-inlined
-   * function so its two 256-byte scratch buffers and slot records stay out of this frame: the comparator runs n log n
-   * times and its self time had doubled against the legacy pointer walk (perf M4: 19% -> 35%). */
+  /* Fast path: every key is a FIXED column inside the constant-offset prefix and neither key tuple has a NULL, so
+   * each key body sits at tl->col[i].off from data_off[0]. The general path (NULLs, variable-width keys, SCRATCH
+   * copies) lives in a separate non-inlined function so its scratch buffers stay out of this hot frame. */
   t0 = PTR_ALIGN (&(k0->s.original.body[0]), MAX_ALIGNMENT);
   t1 = PTR_ALIGN (&(k1->s.original.body[0]), MAX_ALIGNMENT);
   n = key_info_p->nkeys;
@@ -3961,7 +3951,8 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
 	  if (key->use_cmp_dom)
 	    {
 	      order =
-		qfile_compare_with_interpolation_domain (c, b0 + c->off, c->size, b1 + c->off, c->size, key, key_info_p);
+		qfile_compare_with_interpolation_domain (c, b0 + c->off, c->size, b1 + c->off, c->size, key,
+							 key_info_p);
 	    }
 	  else
 	    {
@@ -3979,11 +3970,9 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
       return order;
     }
 
-  /* Second tier (#200 item 4): NULL-free keys with a variable-width DIRECT key (string family, NUMERIC, BIT) -- the
-   * legacy comparator's two-pointer walk over the key mini tuples: FIXED keys advance by align + size, DIRECT keys by
-   * their length header, and the body is compared where it lies (index_cmpdisk, D-199-14). Only a SCRATCH key (SET,
-   * JSON, OBJECT: aligned copies needed) falls to the general path, in the loop, at the key where it appears. The
-   * stream-invariant kind / alignby come from key_tl (BR-04); nothing about the two records is cached. */
+  /* Second tier: NULL-free keys with a variable-width DIRECT key (string family, NUMERIC, BIT). Walks the key mini
+   * tuples: FIXED keys advance by align + size, DIRECT keys by their length header, and the body is compared where
+   * it lies. Only a SCRATCH key (SET, JSON, OBJECT: aligned copies needed) falls to the general path. */
   {
     int off0 = 0, off1 = 0;
     const char *d0, *d1;
@@ -4042,16 +4031,17 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
 /*
  * qfile_compare_partial_sort_record_general () - the full comparator: NULL keys, variable-width keys, SCRATCH copies.
  */
-static int
+static QFILE_NOINLINE int
 qfile_compare_partial_sort_record_general (SORTKEY_INFO * key_info_p, SORT_REC * k0, SORT_REC * k1)
 {
-  QFILE_TUPLE_RECORD s0 = { NULL, 0 }, s1 = { NULL, 0 };
+  QFILE_TUPLE_RECORD s0 = { NULL, 0 };
+  QFILE_TUPLE_RECORD s1 = { NULL, 0 };
   const QFILE_COL_LAYOUT *c;
   const char *d0, *d1;
   int l0, l1;
   bool null0, null1;
   int i, n, order;
-  /* VAR/SCRATCH key bodies are unaligned in the mini tuple: compare aligned stack copies, heap beyond (D-182-10) */
+  /* VAR/SCRATCH key bodies are unaligned: compare aligned copies (stack, heap beyond the stack limit) */
   char scratch0[QFILE_SCRATCH_STACK + MAX_ALIGNMENT], scratch1[QFILE_SCRATCH_STACK + MAX_ALIGNMENT];
   char *heap0 = NULL, *heap1 = NULL;
 
@@ -4355,9 +4345,8 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	}
     }
 
-  /* key mini tuple layout (D-182-14): key i is a raw copy of list column key[i].col, so its layout domain is the
-   * list's domain for that column (the comparison domain col_dom may differ, e.g. an unresolved DB_TYPE_VARIABLE).
-   * The mini tuple is forward-only (D-180-8). */
+  /* key i is a raw copy of list column key[i].col, so its layout domain is the list's domain for that column
+   * (the comparison domain col_dom may differ, e.g. an unresolved DB_TYPE_VARIABLE). */
   if (qfile_type_list_alloc (&key_info_p->key_tl, n, QFILE_TUPLE_HDR_SIZE_FORWARD) != NO_ERROR)
     {
       qfile_clear_sort_key_info (key_info_p);
@@ -4370,14 +4359,13 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
     }
   qfile_type_list_finalize (&key_info_p->key_tl);
 
-  /* the disk comparator must match the stored encoding of the key column (D-180-8): a VAR/DIRECT key body is the
-   * index encoding, so it compares with index_cmpdisk; FIXED and VAR/SCRATCH bodies compare with data_cmpdisk on
-   * aligned bytes (the A_sort_key slots are aligned, the P_sort_key comparator copies SCRATCH bodies first) */
+  /* the disk comparator must match the stored encoding of the key column: a VAR/DIRECT key body is the index
+   * encoding, so it compares with index_cmpdisk; FIXED and VAR/SCRATCH bodies compare with data_cmpdisk on aligned
+   * bytes. */
   for (i = 0; i < n; i++)
     {
       SUBKEY_INFO *subkey = &key_info_p->key[i];
-      /* an unresolved comparison domain falls back to the list domain of the KEY COLUMN (key i is column key[i].col,
-       * not column i: the former types->domp[i] picked the wrong column whenever the keys were not the leading ones) */
+      /* an unresolved comparison domain falls back to the list domain of the key column (key i is column key[i].col) */
       const TP_DOMAIN *cmp_dom = (subkey->col_dom->type->id == DB_TYPE_VARIABLE) ? types->domp[subkey->col]
 	: subkey->col_dom;
 
@@ -4389,9 +4377,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 
 /* qfile_init_empty_sort_key_info () - a SORTKEY_INFO with no key (the "no sort needed" analytic path, the hash
  *   GROUP BY partial-list sort before its keys are known). Every field the accessors and qfile_clear_sort_key_info
- *   read is defined, including a finalized empty key mini tuple descriptor (D-182-14); the former hand-written
- *   `nkeys = 0; key = NULL;` left key_tl uninitialized (CBRD-27365 PR-2a CTP: assert in qfile_tuple_size and
- *   munmap_chunk(): invalid pointer in the clear).
+ *   read is defined, including a finalized empty key mini tuple descriptor.
  */
 void
 qfile_init_empty_sort_key_info (SORTKEY_INFO * key_info_p)
@@ -4804,7 +4790,7 @@ qfile_duplicate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int fl
 {
   QFILE_LIST_ID *dup_list_id_p;
 
-  /* the pages are copied as they are, so the duplicate must carry the same tuple header (D-181-8) */
+  /* the pages are copied as they are, so the duplicate must carry the same tuple header */
   dup_list_id_p = qfile_open_list (thread_p, &list_id_p->type_list, NULL, list_id_p->query_id,
 				   flag | QFILE_LIST_BACKWARD_FLAG (list_id_p), NULL);
   if (dup_list_id_p == NULL)
@@ -4855,7 +4841,7 @@ qfile_get_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUPLE src
 	{
 	  return rc;
 	}
-      qfile_slot_set_tuple (dest_tplrec, dest_tplrec->tpl);	/* buffer refilled: reset the deform cache (D-182-5) */
+      qfile_slot_set_tuple (dest_tplrec, dest_tplrec->tpl);	/* buffer refilled: reset the deform cache */
       return NO_ERROR;
     }
 
@@ -4869,7 +4855,7 @@ qfile_get_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUPLE src
     }
 
   memcpy (dest_tplrec->tpl, src_tuple, tuple_length);
-  qfile_slot_set_tuple (dest_tplrec, dest_tplrec->tpl);	/* buffer refilled: reset the deform cache (D-182-5) */
+  qfile_slot_set_tuple (dest_tplrec, dest_tplrec->tpl);	/* buffer refilled: reset the deform cache */
   return NO_ERROR;
 }
 
@@ -5089,7 +5075,7 @@ qfile_scan_prev (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
     {
       if (scan_id_p->curr_tplno > 0)
 	{
-	  /* prev_len exists only in the 8-byte header of a backward capable list (D-181-8, D-182-9) */
+	  /* prev_len exists only in the header of a backward capable list */
 	  assert (QFILE_LIST_IS_BACKWARD (&scan_id_p->list_id));
 	  scan_id_p->curr_offset -= QFILE_GET_PREV_TUPLE_LENGTH (scan_id_p->curr_tpl);
 	  scan_id_p->curr_tpl -= QFILE_GET_PREV_TUPLE_LENGTH (scan_id_p->curr_tpl);
@@ -5190,9 +5176,8 @@ qfile_retrieve_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, Q
   int tuple_size;
   const QFILE_TUPLE_VALUE_TYPE_LIST *tl = &scan_id_p->list_id.type_list;
 
-  /* filler-owns-bind: the record a scan fills is bound to the scan's layout descriptor here, so callers that
-   * pass a local record straight to the fetch path (scan_next_list_scan, hash join, analytic, ...) hold a
-   * bound slot (D-182-6). The COPY branches also reset the cache after refilling the owned buffer (D-182-5). */
+  /* the record a scan fills is bound to the scan's layout descriptor here, so callers that pass a local record
+   * straight to the fetch path hold a bound slot. The COPY branches also reset the cache after refilling. */
   if (QFILE_GET_OVERFLOW_PAGE_ID (scan_id_p->curr_pgptr) == NULL_PAGEID)
     {
       if (peek)
@@ -5399,7 +5384,7 @@ qfile_open_list_scan (QFILE_LIST_ID * list_id_p, QFILE_LIST_SCAN_ID * scan_id_p)
   scan_id_p->tplrec.size = 0;
   scan_id_p->tplrec.tpl = NULL;
   qfile_slot_bind (&scan_id_p->tplrec, &scan_id_p->list_id.type_list);
-  assert (qfile_type_list_check (&scan_id_p->list_id.type_list));	/* D-181-7: a domp mutation without finalize */
+  assert (qfile_type_list_check (&scan_id_p->list_id.type_list));	/* catch a domp mutation without finalize */
 
   return NO_ERROR;
 }
@@ -6997,7 +6982,7 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list
 
   if (changed)
     {
-      qfile_type_list_finalize (&list_id_p->type_list);	/* late domain resolution: re-finalize (D-181-6) */
+      qfile_type_list_finalize (&list_id_p->type_list);	/* late domain resolution: re-finalize */
     }
 
   return NO_ERROR;
@@ -7059,7 +7044,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
   /* locate and update tuple value inside the page or in overflow pages */
   if (QFILE_GET_OVERFLOW_PAGE_ID (page_p) == NULL_PAGEID)
     {
-      /* tuple is inside the page: in-place rewrite through the slot (D-182-13) */
+      /* tuple is inside the page: in-place rewrite through the slot */
       qfile_slot_fill (&tuple_rec, tuple_p, &list_id_p->type_list);
       if (qfile_slot_overwrite_value (&tuple_rec, col_num, domain_p, value_p) != NO_ERROR)
 	{
@@ -7089,7 +7074,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
 	    }
 	}
 
-      /* in-place rewrite of the column in the private copy (D-182-13) */
+      /* in-place rewrite of the column in the private copy */
       if (qfile_slot_overwrite_value (&tuple_rec, col_num, domain_p, value_p) != NO_ERROR)
 	{
 	  error = ER_FAILED;

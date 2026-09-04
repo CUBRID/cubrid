@@ -16,29 +16,7 @@
  *
  */
 
-/*
- * qfile_tuple_layout.h - temporary list file tuple slot, accessor and assembler API (CBRD-27365, ADR 0016)
- *
- * Shared by the server (list_file.c, fetch.c, ...), the SA build and the client cursor (cursor.c). This is the only
- * code that interprets the bytes of a list file tuple (format: query_list.h "Tuple byte format").
- *
- * Contract summary
- *   - A record used as a slot is BOUND to the layout descriptor (type_list) of the list its tuple belongs to.
- *     qfile_retrieve_tuple () binds the record it fills to the scan's type_list on every fill (filler-owns-bind,
- *     D-196-9); records filled outside a scan (raw page tuple, sort output, cursor) are bound explicitly.
- *   - qfile_slot_set_tuple () is the only sanctioned way to point a slot at another tuple; it resets the deform cache
- *     and the scratch bump offset (mutator-owns-reset, D-182-5). memcpy into an owned buffer must be followed by it.
- *   - Accessors take the DECODING domain from the caller (the domain the writer used), while the layout comes
- *     from the bound descriptor (D-196-3). NULL handling stays with the caller: on is_null the DB_VALUE is
- *     untouched.
- *   - qfile_slot_locate () returns the stored body of a column. For a FIXED column that is the aligned data_*
- *     encoding; for a VAR column it is the index_* encoding (DIRECT) or an unaligned data_* encoding (SCRATCH).
- *     Raw consumers may only dereference FIXED bodies (hash keys, counters); everything else decodes through
- *     qfile_slot_read_value () or copies through qfile_slot_locate_aligned ().
- *   - A VAR/SCRATCH body is decoded from a transient aligned copy (stack, heap beyond 256 bytes) with copy == true,
- *     so the DB_VALUE owns its bytes and no slot owns a scratch area (D-199-2). Every reader of such values already
- *     clears its DB_VALUE (fetch clears vfetch_to before each read; set/JSON values are heap objects anyway).
- */
+/* qfile_tuple_layout.h - list file tuple slot, accessor and assembler API; shared by server, SA build, cursor. */
 
 #ifndef _QFILE_TUPLE_LAYOUT_H_
 #define _QFILE_TUPLE_LAYOUT_H_
@@ -56,15 +34,7 @@
 #include "object_representation.h"
 #include "string_opfunc.h"	/* db_get_string_length (debug size probe) */
 
-/*
- * Column classification (D-180-4/5, D-196-11, D-199-1).
- *   FIXED: constant disksize, alignby = min (natural alignment, 4).
- *   VAR  : has_computed_disk_size () or an unresolved DB_TYPE_VARIABLE. DIRECT when the type's index_* encoding is
- *          byte-order neutral and alignment free (string family, BIT, NUMERIC: has_index_readval ()); SCRATCH for the
- *          rest (SET/JSON/ELO/VOBJ/OBJECT/...: data_* encoding copied through an aligned scratch). OBJECT has an
- *          index reader but its index encoding is host-order raw bytes and its data encoding may be a VOBJ set on the
- *          client, so it is SCRATCH (D-199-1).
- */
+/* Column classification: FIXED has constant disksize; VAR is DIRECT (string/BIT/NUMERIC) or SCRATCH (else). */
 inline void
 qfile_col_layout_of_domain (const TP_DOMAIN * dom, QFILE_COL_LAYOUT * c)
 {
@@ -90,7 +60,7 @@ qfile_col_layout_of_domain (const TP_DOMAIN * dom, QFILE_COL_LAYOUT * c)
       return;
     }
 
-  a = MIN (t->alignment, QFILE_TUPLE_ALIGNMENT);	/* D-180-4: BIGINT/DOUBLE align 4 and are read by memcpy */
+  a = MIN (t->alignment, QFILE_TUPLE_ALIGNMENT);	/* BIGINT/DOUBLE align 4 and are read by memcpy */
   if (a < 1)
     {
       a = 1;
@@ -101,7 +71,7 @@ qfile_col_layout_of_domain (const TP_DOMAIN * dom, QFILE_COL_LAYOUT * c)
   c->alignby = (uint8_t) a;
 }
 
-/* variable value length header (D-180-6) */
+/* variable value length header */
 inline int
 qfile_var_hdr_decode (const char *p, int *hdr)
 {
@@ -133,7 +103,7 @@ qfile_var_hdr_encode (char *p, int len)
   memcpy (p, &w, 4);
 }
 
-/* first NULL column of a has-null tuple (PG first_null_attr, capped at type_cnt) */
+/* first NULL column of a has-null tuple, capped at type_cnt */
 inline int
 qfile_first_null_col (const unsigned char *bm, int type_cnt)
 {
@@ -155,13 +125,7 @@ qfile_first_null_col (const unsigned char *bm, int type_cnt)
   return type_cnt;
 }
 
-/*
- * Layout descriptor lifetime (D-181-1/2/6).
- *   qfile_type_list_alloc    - allocate the [domp | col] block; finalized = false, domp entries unset.
- *   qfile_type_list_copy     - alloc + inherit (block memcpy when the source is finalized).
- *   qfile_type_list_finalize - (re)compute the descriptor from domp; call right after the last domp mutation.
- *   qfile_type_list_check    - debug: stored descriptor == recomputation from domp (D-181-7).
- */
+/* Layout descriptor lifetime: alloc allocates the block, copy allocates+inherits, finalize (re)computes from domp. */
 extern int qfile_type_list_alloc (QFILE_TUPLE_VALUE_TYPE_LIST * tl, int type_cnt, int hdr_size);
 extern int qfile_type_list_copy (QFILE_TUPLE_VALUE_TYPE_LIST * dest, const QFILE_TUPLE_VALUE_TYPE_LIST * src);
 extern void qfile_type_list_finalize (QFILE_TUPLE_VALUE_TYPE_LIST * tl);
@@ -170,8 +134,7 @@ extern bool qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * tl);
 #endif
 
 /*
- * qfile_type_list_is_resolved () - false while any column is still DB_TYPE_VARIABLE (its layout is not settled yet)
- *   Runtime predicate (the recursive-CTE common-list optimization gate, D-192-2), not debug-only.
+ * qfile_type_list_is_resolved () - false while any column is still DB_TYPE_VARIABLE (layout not settled yet).
  */
 inline bool
 qfile_type_list_is_resolved (const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
@@ -190,8 +153,6 @@ qfile_type_list_is_resolved (const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
 
 /*
  * qfile_slot_bind () - bind the layout descriptor of the list this record will read tuples from.
- *   The descriptor address stays stable for the life of a scan (late DB_TYPE_VARIABLE domain resolution rewrites
- *   its contents in place).
  */
 inline void
 qfile_slot_bind (QFILE_TUPLE_RECORD * rec, const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
@@ -202,9 +163,6 @@ qfile_slot_bind (QFILE_TUPLE_RECORD * rec, const QFILE_TUPLE_VALUE_TYPE_LIST * t
 
 /*
  * qfile_slot_set_tuple () - point the record at another tuple and reset the deform cache.
- *   Buffer management (alloc/realloc/free of an owned tpl) still assigns rec->tpl directly; the copy that fills
- *   the buffer must be followed by this call. Ownership (rec->size) is untouched. The position cache is started
- *   lazily by the first accessor call (has-null bit, bitmap scan), so tuples that are never read cost nothing.
  */
 inline void
 qfile_slot_set_tuple (QFILE_TUPLE_RECORD * rec, char *tpl)
@@ -214,8 +172,7 @@ qfile_slot_set_tuple (QFILE_TUPLE_RECORD * rec, char *tpl)
 }
 
 /*
- * qfile_slot_fill () - bind + set_tuple in one step; used by the code that fills a record from a list
- *   (qfile_retrieve_tuple, qfile_get_tuple callers) so every filled record is a usable slot (D-196-9).
+ * qfile_slot_fill () - bind + set_tuple in one step, used when filling a record from a list.
  */
 inline void
 qfile_slot_fill (QFILE_TUPLE_RECORD * rec, char *tpl, const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
@@ -227,10 +184,7 @@ qfile_slot_fill (QFILE_TUPLE_RECORD * rec, char *tpl, const QFILE_TUPLE_VALUE_TY
 extern void qfile_slot_clear (QFILE_TUPLE_RECORD * rec);
 
 /*
- * qfile_prefix_end () - offset (from data_off) where the bytes of the constant prefix columns [0, lim) end, i.e. where
- *   the walk for column lim starts. This is the UNALIGNED end of column lim-1: the writer aligns a column only when it
- *   writes it, so a NULL column lim contributes no padding and the next bound column starts right here (the aligned
- *   start col[lim].off is only valid when column lim itself is bound). lim <= first_non_cached_col.
+ * qfile_prefix_end () - offset (from data_off) where prefix columns [0, lim) end; lim <= first_non_cached_col.
  */
 inline int
 qfile_prefix_end (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, int lim)
@@ -244,8 +198,7 @@ qfile_prefix_end (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, int lim)
 }
 
 /*
- * qfile_slot_start () - start the position cache for the current tuple (D-182-4/5):
- *   fast_limit = min (first non-cached column, first NULL column); nvalid = fast_limit; off = end of the prefix.
+ * qfile_slot_start () - start the position cache for the current tuple.
  */
 inline void
 qfile_slot_start (QFILE_TUPLE_RECORD * rec)
@@ -268,19 +221,10 @@ qfile_slot_start (QFILE_TUPLE_RECORD * rec)
 }
 
 /*
- * qfile_slot_locate () - position accessor: address of the stored body of column col (D-182-7).
+ * qfile_slot_locate () - position accessor: address of the stored body of column col.
  *   return: pointer to the stored body (meaningful only when !*is_null; a NULL column has no bytes)
  *   body_len(out): stored body length (FIXED: disksize; VAR: body length L without the length header; 0 for NULL)
  *   is_null(out): column is NULL
- *
- *   Columns before fast_limit are O(1) (constant offset). Sequential and repeated accesses to non-decreasing
- *   columns beyond it are O(1) amortized thanks to the (nvalid, off) cache; a smaller column restarts from
- *   fast_limit.
- *
- *   Two pieces (#200 item 6, CC-05): this forced-inline wrapper serves the constant-offset case with a few loads;
- *   everything else (cache start, bitmap, header decoding) is the out-of-line qfile_slot_locate_walk (). With both
- *   in one inline body GCC emitted the whole function out of line and every per-key / per-value caller paid a call
- *   (perf S1/S3: 1.1~1.4% self time in the call alone).
  */
 extern const char *qfile_slot_locate_walk (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool * is_null);
 inline const char *qfile_slot_locate (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool * is_null)
@@ -315,9 +259,8 @@ qfile_slot_locate (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool * is_n
  *   return: NO_ERROR or the readval error
  *   c(in): layout of the column the body was stored in
  *   body/len(in): what qfile_slot_locate () / qfile_tuple_walk_next () returned for a bound column
- *   dom(in): decoding domain (D-196-3)
- *   copy(in): readval copy flag; a SCRATCH body is always decoded with copy == true from a transient aligned copy
- *             (D-199-2), so the value never aliases tuple bytes
+ *   dom(in): decoding domain
+ *   copy(in): readval copy flag; a SCRATCH body is always decoded with copy == true (value never aliases tuple bytes)
  */
 inline bool
 qfile_col_body_needs_copy (const QFILE_COL_LAYOUT * c, const TP_DOMAIN * dom)
@@ -358,7 +301,7 @@ qfile_col_read_body (const QFILE_COL_LAYOUT * c, const char *body, int len, cons
 }
 
 /*
- * qfile_slot_read_value () - value accessor: decode column col into *value with the caller's domain (D-182-7).
+ * qfile_slot_read_value () - value accessor: decode column col into *value with the caller's domain.
  *   return: NO_ERROR or the readval error
  *   dom(in): decoding domain (the one the writer used); the layout comes from the bound descriptor
  *   copy(in): readval copy flag
@@ -379,10 +322,8 @@ qfile_slot_read_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN * dom,
     }
 
   c = &rec->tl->col[col];
-  /* probe: the decoding domain should agree with the stored kind. Exceptions: an unresolved column (values are NULL
-   * then), the OBJECT/OID pair (OBJECT columns are VAR/SCRATCH, decoded from an aligned copy with either domain) and a
-   * DB_TYPE_NULL decoding domain (a regu whose domain the compiler left unresolved, e.g. the ISS/covering plan probe of
-   * CTP _19_apricot/_03_index_skip_scan/_05: mr_data_readval_null leaves the value NULL exactly as the legacy reader did). */
+  /* probe: decoding domain should match the stored kind, except an unresolved column, the OBJECT/OID pair, and a
+   * DB_TYPE_NULL decoding domain (a regu whose domain the compiler left unresolved). */
 #if !defined(NDEBUG)
   if (TP_DOMAIN_TYPE (rec->tl->domp[col]) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (dom) != DB_TYPE_VARIABLE
       && TP_DOMAIN_TYPE (dom) != DB_TYPE_NULL && TP_DOMAIN_TYPE (dom) != DB_TYPE_OID
@@ -400,28 +341,16 @@ qfile_slot_read_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN * dom,
 }
 
 /*
- * qfile_col_cmpdisk_function () - the disk comparator matching a column's stored encoding (D-180-8).
- *   FIXED -> data_cmpdisk on the aligned body; VAR/DIRECT -> index_cmpdisk on the index body; VAR/SCRATCH ->
- *   data_cmpdisk, which requires the caller to compare aligned copies (qfile_col_body_needs_copy).
+ * qfile_col_cmpdisk_function () - disk comparator for a column's stored encoding: FIXED/SCRATCH use data_cmpdisk
+ *   (aligned copies), VAR/DIRECT uses index_cmpdisk.
  */
-inline pr_type::data_cmpdisk_function_type
-qfile_col_cmpdisk_function (const QFILE_COL_LAYOUT * c, const TP_DOMAIN * dom)
-{
-  if (c->kind == QFILE_COL_VAR && c->var_access == QFILE_VAR_DIRECT && dom->type->has_index_readval ())
-    {
-      return dom->type->get_index_cmpdisk_function ();
-    }
-  return dom->type->get_data_cmpdisk_function ();
-}
+extern
+  pr_type::data_cmpdisk_function_type
+qfile_col_cmpdisk_function (const QFILE_COL_LAYOUT * c, const TP_DOMAIN * dom);
 
 /*
- * Tuple assembler (D-182-11): two passes over QFILE_TUPLE_COL_SRC[] (or a DB_VALUE *[] for the T_NORMAL descriptor
- * path). qfile_tuple_size () returns the exact tuple length (header included) and records each val source's body
- * size in src[i].len; qfile_tuple_fill () writes exactly that many bytes at out. Every list tuple - page resident,
- * private buffer, sort key body - is produced here, so the byte format lives in this one place.
- *
- * tl is the FINALIZED layout descriptor of the list the tuple is written into: its col[] decides the layout and its
- * hdr_size the header. A raw source (val == NULL) must come from a column of the same layout kind.
+ * Tuple assembler: two passes over QFILE_TUPLE_COL_SRC[] (or DB_VALUE *[] for T_NORMAL); qfile_tuple_size () measures,
+ *   qfile_tuple_fill () writes; tl is the finalized layout descriptor of the destination list.
  */
 
 inline void
@@ -443,8 +372,7 @@ qfile_col_src_set_raw (QFILE_TUPLE_COL_SRC * src, const char *data, int len, boo
 }
 
 /*
- * qfile_value_direct () - a value is written in the index_* encoding when its column is VAR/DIRECT and its own type
- *   has that encoding (a DIRECT column only receives string/BIT/NUMERIC values, D-190-9).
+ * qfile_value_direct () - true when a value is written in the index_* encoding (VAR/DIRECT column, matching type).
  */
 inline bool
 qfile_value_direct (const QFILE_COL_LAYOUT * c, const DB_VALUE * value)
@@ -454,9 +382,8 @@ qfile_value_direct (const QFILE_COL_LAYOUT * c, const DB_VALUE * value)
 }
 
 /*
- * qfile_value_body_size () - body size of a bound value in the encoding its column stores (D-180-6.3).
- *   return: size, or ER_FAILED (debug builds only: string longer than its precision, see the legacy
- *           qdata_get_tuple_value_size_from_dbval)
+ * qfile_value_body_size () - body size of a bound value in the encoding its column stores.
+ *   return: size, or ER_FAILED (debug builds only: string longer than its precision)
  */
 inline int
 qfile_value_body_size (const QFILE_COL_LAYOUT * c, const DB_VALUE * value)
@@ -502,8 +429,7 @@ qfile_value_body_size (const QFILE_COL_LAYOUT * c, const DB_VALUE * value)
       val_size = pr_data_writeval_disk_size (v);
       if (c->kind == QFILE_COL_VAR && c->var_access == QFILE_VAR_DIRECT)
 	{
-	  /* a DIRECT column stores the index_* encoding; a value without one would be written in the data_* encoding
-	   * and misread by every reader */
+	  /* a DIRECT column stores the index_* encoding; a value without one would be misread by every reader */
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  return ER_FAILED;
@@ -511,8 +437,8 @@ qfile_value_body_size (const QFILE_COL_LAYOUT * c, const DB_VALUE * value)
     }
   if (c->kind == QFILE_COL_FIXED && val_size != c->size)
     {
-      /* the format is not self-describing (D-182-1): a value wider or narrower than the column's fixed width would
-       * overrun or underrun the tuple, so refuse it in release builds too (the legacy [flag][len] format tolerated it) */
+      /* the format is not self-describing: a value wider or narrower than the column's fixed width would overrun
+       * or underrun the tuple, so refuse it in release builds too */
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
       return ER_FAILED;
@@ -522,9 +448,8 @@ qfile_value_body_size (const QFILE_COL_LAYOUT * c, const DB_VALUE * value)
 
 #if !defined(NDEBUG)
 /*
- * qfile_tuple_check_col_type () - writer-side probe (PR-1b handover 4): a value written into column col must have
- *   the column's type, because the layout of the column comes from tl->domp[col]. Compatible pairs that share a
- *   layout kind are accepted; an unresolved DB_TYPE_VARIABLE column accepts anything.
+ * qfile_tuple_check_col_type () - writer-side probe: a value written into column col must have the column's type
+ *   (compatible pairs sharing a layout kind are accepted; an unresolved column accepts anything).
  */
 inline void
 qfile_tuple_check_col_type (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, int col, const DB_VALUE * val)
@@ -545,15 +470,9 @@ qfile_tuple_check_col_type (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, int col, con
 #endif
 
 /*
- * qfile_tuple_resolve_column () - an unresolved (DB_TYPE_VARIABLE) column receives its first bound value: fix the
- *   column's domain from that value and recompute the layout (mutator-owns-finalize, D-181-6; D-199-13).
+ * qfile_tuple_resolve_column () - resolve an unresolved (DB_TYPE_VARIABLE) column from its first bound value and
+ *   recompute the layout.
  *   return: true when the descriptor changed
- *   The format is not self-describing, so a column's layout must be settled before its first bound value is written;
- *   the executor's regu-driven resolution (qfile_update_domains_on_type_list) can lag behind by several tuples when
- *   the regu domain itself is still DB_TYPE_VARIABLE, and every tuple written meanwhile would be laid out as VAR.
- *   Because the column is resolved at its FIRST bound value, every earlier tuple holds NULL there (0 bytes, no
- *   padding), so re-finalizing does not change how those tuples are read. (#186 had claimed the executor guarantees
- *   this; it does not - D-199-13 - which is why the assembler enforces it here.)
  */
 inline bool
 qfile_tuple_resolve_column (QFILE_TUPLE_VALUE_TYPE_LIST * tl, int col, const DB_VALUE * val)
@@ -637,9 +556,8 @@ qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * src, i
 }
 
 /*
- * qfile_value_pr_type () - PR_TYPE of a bound value: the static id map indexed directly (one L1-resident load; the
- *   out-of-line pr_type_from_id () adds a call and a range test per value, and the alternative domp[i] -> domain ->
- *   type chain is three dependent loads - perf annotate of the Q01 size pass, #200 item 5).
+ * qfile_value_pr_type () - PR_TYPE of a bound value via the static id map (avoids the call/range-test of
+ *   pr_type_from_id () and the domain-chain lookup).
  */
 inline const PR_TYPE *
 qfile_value_pr_type (const DB_VALUE * val)
@@ -651,9 +569,9 @@ qfile_value_pr_type (const DB_VALUE * val)
 }
 
 /*
- * qfile_tuple_put_value () - emit the body of one bound column at p in the encoding of its column (D-180-5/6.3).
+ * qfile_tuple_put_value () - emit the body of one bound column at p in the encoding of its column.
  *   return: bytes written (header included for VAR) or ER_FAILED. "written size == computed size" is asserted.
- *   t(in): PR_TYPE of src->val (qfile_col_value_type); ignored for a raw source (val == NULL)
+ *   t(in): PR_TYPE of src->val (qfile_value_pr_type); ignored for a raw source (val == NULL)
  */
 inline int
 qfile_tuple_put_value (char *p, const QFILE_COL_LAYOUT * c, const QFILE_TUPLE_COL_SRC * src, const PR_TYPE * t)
@@ -690,7 +608,7 @@ qfile_tuple_put_value (char *p, const QFILE_COL_LAYOUT * c, const QFILE_TUPLE_CO
       or_init (&buf, body, len);
       if (t->index_writeval (&buf, src->val) != NO_ERROR || CAST_BUFLEN (buf.ptr - buf.buffer) != len)
 	{
-	  assert_release (false);	/* written size must equal the computed size (#183) */
+	  assert_release (false);	/* written size must equal the computed size */
 	  return ER_FAILED;
 	}
       return hdr + len;
@@ -739,8 +657,8 @@ qfile_tuple_put_value (char *p, const QFILE_COL_LAYOUT * c, const QFILE_TUPLE_CO
 /*
  * qfile_tuple_fill () - assembler fill pass: write the tuple that qfile_tuple_size () measured.
  *   return: NO_ERROR or ER_FAILED
- *   out(in): destination (list page or private buffer) with at least size bytes; the prev_len word of a backward
- *            capable list is left for the page writer (qfile_add_tuple_to_list_id)
+ *   out(in): destination (list page or private buffer, >= size bytes); prev_len word of a backward list is left for
+ *            the page writer
  */
 inline int
 qfile_tuple_fill (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, const QFILE_TUPLE_COL_SRC * src, int n, char *out,
@@ -804,13 +722,9 @@ qfile_tuple_fill (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, const QFILE_TUPLE_COL_
 }
 
 /*
- * qfile_tuple_size_from_values () / qfile_tuple_fill_from_values () - T_NORMAL overload over the descriptor's
- *   f_valp[] (no source array). The size pass records each body length in lens[] (QFILE_TUPLE_DESCRIPTOR.f_len) and
- *   the fill pass consumes it, so a value's size is computed once per tuple (#200 item 5, CC-05/A60; the former fill
- *   pass recomputed it). When a value has its column's type - the normal case - the column entry already tells the
- *   encoding: a FIXED column's size is c->size (no call), a VAR column needs one length call through the column's
- *   PR_TYPE (no pr_type_from_id, no has_index_readval probe). Only a value of another type (a compatible pair such
- *   as CHAR into a VARCHAR column) takes the generic qfile_value_body_size () route.
+ * qfile_tuple_size_from_values () / qfile_tuple_fill_from_values () - T_NORMAL overload over f_valp[]; the size pass
+ *   records each body length in lens[] so the fill pass need not recompute it; a value matching its column's type is
+ *   measured directly, others go through qfile_value_body_size ().
  */
 inline int
 qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE ** vals, int *lens, int n, bool * has_null)
@@ -826,8 +740,7 @@ qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE ** vals
   assert (tl->data_off[0] % QFILE_TUPLE_ALIGNMENT == 0 && tl->data_off[1] % QFILE_TUPLE_ALIGNMENT == 0);
 
 restart:
-  /* one pass; data_off[] is a multiple of the tuple alignment and every alignby divides it, so the body is summed
-   * from 0 and data_off added at the end (the has-null verdict is only known after the pass) */
+  /* one pass: body summed from 0, data_off added at the end (has-null verdict is only known after the pass) */
   body = 0;
   hn = false;
   for (i = 0; i < n; i++)
@@ -862,7 +775,7 @@ restart:
 	{
 	  if (c->type_id == DB_TYPE_VARIABLE && qfile_tuple_resolve_column (tl, i, v))
 	    {
-	      /* late resolution (D-199-13): the layout changed under us; measure again with the settled descriptor */
+	      /* late resolution: the layout changed under us; measure again with the settled descriptor */
 	      qfile_type_list_finalize (tl);
 	      goto restart;
 	    }
@@ -955,16 +868,16 @@ qfile_tuple_fill_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE *
 }
 
 /*
- * qfile_slot_overwrite_value () - in-place rewrite of a bound, same-encoding-size column (D-182-13, #185).
+ * qfile_slot_overwrite_value () - in-place rewrite of a bound, same-encoding-size column.
  *   return: NO_ERROR, ER_FAILED when the in-place contract is violated (asserted in debug)
  */
 extern int qfile_slot_overwrite_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN * dom,
 				       const DB_VALUE * value);
 
 /*
- * Domain-driven sequential walk (D-182-16): for readers that cannot bind a descriptor (px XASL_SNAPSHOT reader,
- * thread contract D-181-10) or that own the column domains themselves (aggregate hash entry (de)serialization).
- * The caller supplies what the descriptor would: the header size of the list and its column count.
+ * Domain-driven sequential walk: for readers that cannot bind a descriptor (px XASL_SNAPSHOT reader) or that own
+ *   the column domains themselves (aggregate hash entry (de)serialization); the caller supplies header size and
+ *   column count instead.
  */
 typedef struct qfile_tuple_walk QFILE_TUPLE_WALK;
 struct qfile_tuple_walk

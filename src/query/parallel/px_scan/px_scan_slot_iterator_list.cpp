@@ -121,7 +121,7 @@ namespace parallel_scan
 	QFILE_TUPLE tpl;
 	QFILE_TUPLE_RECORD tpl_slot = { NULL, 0 };
 
-	qfile_slot_bind (&tpl_slot, &m_list_id->type_list);	/* raw page tuple wrapped in a slot (D-182-6) */
+	qfile_slot_bind (&tpl_slot, &m_list_id->type_list);	/* raw page tuple wrapped in a slot */
 
 	if (has_overflow_page)
 	  {

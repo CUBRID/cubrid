@@ -6753,7 +6753,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		{
 		  return S_ERROR;
 		}
-	      /* the dumped tuple has the covering list's layout: bind + set (D-182-5/6) */
+	      /* the dumped tuple has the covering list's layout: bind + set it */
 	      tplrec.size = isidp->multi_range_opt.tplrec.size;
 	      qfile_slot_fill (&tplrec, isidp->multi_range_opt.tplrec.tpl, &isidp->indx_cov.list_id->type_list);
 	    }
@@ -8902,7 +8902,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   llsidp = &scan_id->s.llsid;
 
-  /* the probed tuples are copies of list_id tuples; retarget the slot only through the setter (D-182-5/6) */
+  /* the probed tuples are copies of list_id tuples; retarget the slot only through the setter */
   qfile_slot_bind (&tplrec, &llsidp->list_id->type_list);
 
   while ((qp_scan = scan_hash_probe_next (thread_p, scan_id, &tpl)) == S_SUCCESS)

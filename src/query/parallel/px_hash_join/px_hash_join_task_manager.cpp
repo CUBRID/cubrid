@@ -303,7 +303,7 @@ namespace parallel_query
 		{
 		  /* next tuple */
 		  tuple_length = QFILE_GET_TUPLE_LENGTH (tuple_record.tpl);
-		  qfile_slot_set_tuple (&tuple_record, tuple_record.tpl + tuple_length);	/* next tuple in page (D-182-5) */
+		  qfile_slot_set_tuple (&tuple_record, tuple_record.tpl + tuple_length);	/* next tuple in page */
 		}
 	      else
 		{
@@ -1018,7 +1018,7 @@ cleanup:
 		{
 		  /* next tuple */
 		  tuple_length = QFILE_GET_TUPLE_LENGTH (probe->tuple_record.tpl);
-		  qfile_slot_set_tuple (&probe->tuple_record, probe->tuple_record.tpl + tuple_length);	/* D-182-5 */
+		  qfile_slot_set_tuple (&probe->tuple_record, probe->tuple_record.tpl + tuple_length);
 		}
 	      else
 		{
@@ -1316,7 +1316,7 @@ cleanup:
 		{
 		  /* next tuple */
 		  tuple_length = QFILE_GET_TUPLE_LENGTH (probe->tuple_record.tpl);
-		  qfile_slot_set_tuple (&probe->tuple_record, probe->tuple_record.tpl + tuple_length);	/* D-182-5 */
+		  qfile_slot_set_tuple (&probe->tuple_record, probe->tuple_record.tpl + tuple_length);
 		}
 	      else
 		{

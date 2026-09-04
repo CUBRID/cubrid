@@ -134,7 +134,7 @@ typedef struct pr_type
 
     void set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg);
     data_cmpdisk_function_type get_data_cmpdisk_function () const;
-    index_cmpdisk_function_type get_index_cmpdisk_function () const;	/* CBRD-27365: VAR/DIRECT list columns compare in the index encoding */
+    index_cmpdisk_function_type get_index_cmpdisk_function () const;	/* compares in the index encoding */
     void set_index_cmpdisk_function (index_cmpdisk_function_type index_cmpdisk_arg);
 
     void set_cmpval_function (cmpval_function_type cmpval_arg);
@@ -143,8 +143,8 @@ typedef struct pr_type
     // is fixed/variable
     inline bool is_always_variable () const;
     inline bool is_size_computed () const;
-    inline bool has_index_readval () const;	/* CBRD-27365: VAR/DIRECT vs VAR/SCRATCH layout (D-180-5) */
-    inline bool has_computed_disk_size () const;	/* CBRD-27365: VAR column criterion (D-196-11) */
+    inline bool has_index_readval () const;	/* true if this type has an index-encoding read function */
+    inline bool has_computed_disk_size () const;	/* true if the disk size is not a fixed constant */
 
     // size functions
     inline int get_mem_size_of_mem (const void *mem, const tp_domain * domain = NULL) const;
@@ -459,9 +459,7 @@ pr_type::has_index_readval () const
   return f_index_readval != NULL;
 }
 
-/* True when the disk size of a value is not the constant disksize: either length function is present. Unlike
- * is_size_computed () this does not require the pair to be consistent — DB_TYPE_OBJECT only has the value-side
- * function (a virtual object serializes as a set), and its list file column must therefore be laid out as VAR. */
+/* True when either length function is present, unlike is_size_computed () which requires both to be set. */
 bool
 pr_type::has_computed_disk_size () const
 {

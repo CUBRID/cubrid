@@ -209,7 +209,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	{
 	  /* values are written after coercion to func_p->domain. */
 	  func_p->list_id->type_list.domp[0] = func_p->domain;
-	  qfile_type_list_finalize (&func_p->list_id->type_list);	/* mutator-owns-finalize (D-181-6) */
+	  qfile_type_list_finalize (&func_p->list_id->type_list);
 	}
     }
 
