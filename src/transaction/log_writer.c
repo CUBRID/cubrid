@@ -738,7 +738,7 @@ logwr_set_hdr_and_flush_info (void)
       if (logwr_Gl.hdr.ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED)
 	{
 	  /* In case of delayed write, get last_recv_pageid from the append lsa of the local log header */
-	  logwr_Gl.last_recv_pageid = logwr_Gl.hdr.append_lsa.pageid - 1;
+	  logwr_Gl.last_recv_pageid = logwr_Gl.hdr.append_lsa.load ().pageid - 1;
 	}
       else
 	{
@@ -749,8 +749,7 @@ logwr_set_hdr_and_flush_info (void)
   if (logwr_Gl.hdr.ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED)
     {
       /* In case of delayed write, save the append lsa of the log to be written locally */
-      logwr_Gl.hdr.append_lsa.pageid = logwr_Gl.last_recv_pageid;
-      logwr_Gl.hdr.append_lsa.offset = NULL_OFFSET;
+      logwr_Gl.hdr.append_lsa.store (LOG_LSA (logwr_Gl.last_recv_pageid, NULL_OFFSET));
     }
   return NO_ERROR;
 }
@@ -791,8 +790,8 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
-  assert (logwr_Gl.last_arv_fpageid <= pageid && pageid <= logwr_Gl.hdr.append_lsa.pageid);
-  assert (logwr_Gl.last_arv_fpageid <= to_pageid && to_pageid <= logwr_Gl.hdr.append_lsa.pageid);
+  assert (logwr_Gl.last_arv_fpageid <= pageid && pageid <= logwr_Gl.hdr.append_lsa.load ().pageid);
+  assert (logwr_Gl.last_arv_fpageid <= to_pageid && to_pageid <= logwr_Gl.hdr.append_lsa.load ().pageid);
 
   for (; pageid < to_pageid; pageid += num_pages, ar_phy_pageid += num_pages)
     {
@@ -1459,15 +1458,14 @@ logwr_archive_active_log (void)
 
   /* set append lsa as last archive logical pageid */
   /* in order to prevent log applier reading an immature active log page. */
-  LSA_COPY (&saved_append_lsa, &logwr_Gl.hdr.append_lsa);
-  logwr_Gl.hdr.append_lsa.pageid = logwr_Gl.last_arv_lpageid;
-  logwr_Gl.hdr.append_lsa.offset = NULL_OFFSET;
+  saved_append_lsa = logwr_Gl.hdr.append_lsa;
+  logwr_Gl.hdr.append_lsa.store (LOG_LSA (logwr_Gl.last_arv_lpageid, NULL_OFFSET));
 
   /* Flush the log header to reflect the archive */
   logwr_flush_header_page ();
 
   /* restore append lsa */
-  LSA_COPY (&logwr_Gl.hdr.append_lsa, &saved_append_lsa);
+  logwr_Gl.hdr.append_lsa.store (saved_append_lsa);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_ARCHIVE_CREATED, 3, archive_name, arvhdr->fpageid,
 	  arvhdr->fpageid + arvhdr->npages - 1);
@@ -2990,6 +2988,7 @@ logwr_dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
 {
   const char *ha_file_status = NULL;
   const char *ha_server_state = NULL;
+  LOG_LSA append_lsa;
 
   if (hdr == NULL)
     {
@@ -3063,7 +3062,8 @@ logwr_dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
   fprintf (out, "%*s\"fpageid\": %lld,\n", indent + 2, "", (long long) hdr->fpageid);
 
   fprintf (out, "%*s\"append_lsa\": ", indent + 2, "");
-  logwr_dump_log_lsa (out, &hdr->append_lsa, indent + 4);
+  append_lsa = hdr->append_lsa;
+  logwr_dump_log_lsa (out, &append_lsa, indent + 4);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*s\"chkpt_lsa\": ", indent + 2, "");

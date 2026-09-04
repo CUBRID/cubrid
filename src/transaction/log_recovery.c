@@ -859,7 +859,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
     }
 
 #if !defined(SERVER_MODE)
-  LSA_COPY (&log_Gl.final_restored_lsa, &log_Gl.hdr.append_lsa);
+  log_Gl.final_restored_lsa = log_Gl.hdr.append_lsa;
 #endif /* SERVER_MODE */
 
   log_append_empty_record (thread_p, LOG_DUMMY_CRASH_RECOVERY, NULL);
@@ -2978,21 +2978,23 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
 	  if (LSA_ISNULL (&lsa) && log_rtype != LOG_END_OF_LOG && *did_incom_recovery == false)
 	    {
+	      LOG_LSA append_lsa = *end_redo_lsa;
+
 	      LOG_RESET_APPEND_LSA (end_redo_lsa);
-	      if (log_startof_nxrec (thread_p, &log_Gl.hdr.append_lsa, true) == NULL)
+	      if (log_startof_nxrec (thread_p, &append_lsa, true) == NULL)
 		{
 		  /* We may destroy a record */
 		  LOG_RESET_APPEND_LSA (end_redo_lsa);
 		}
 	      else
 		{
-		  LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+		  LOG_RESET_APPEND_LSA (&append_lsa);
 
 		  /*
 		   * Reset the forward address of current record to next record,
 		   * and then flush the page.
 		   */
-		  LSA_COPY (&log_rec->forw_lsa, &log_Gl.hdr.append_lsa);
+		  log_rec->forw_lsa = append_lsa;
 
 		  assert (log_lsa.pageid == log_page_p->hdr.logical_pageid);
 		  logpb_write_page_to_disk (thread_p, log_page_p, log_lsa.pageid);
@@ -3000,7 +3002,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      er_log_debug (ARG_FILE_LINE,
 			    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
 			    " Will Assume = %lld|%d and Next Trid = %d\n",
-			    (long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset, tran_id);
+			    (long long int) log_Gl.hdr.append_lsa.load ().pageid, log_Gl.hdr.append_lsa.load ().offset,
+			    tran_id);
 	      log_Gl.hdr.next_trid = tran_id;
 	    }
 
@@ -3151,7 +3154,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
     {
       _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: end of analysis phase, append_lsa = (%lld|%d) \n",
-		     (long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
+		     (long long int) log_Gl.hdr.append_lsa.load ().pageid, log_Gl.hdr.append_lsa.load ().offset);
     }
 
   return;
@@ -5401,9 +5404,9 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
 
   if (LSA_ISNULL (new_append_lsa))
     {
-      log_Gl.hdr.append_lsa.pageid = 0;
-      log_Gl.hdr.append_lsa.offset = 0;
-      LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+      LOG_LSA first_lsa = { 0, 0 };
+
+      LOG_RESET_APPEND_LSA (&first_lsa);
     }
   else
     {
@@ -5429,12 +5432,12 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
       LOG_RESET_APPEND_LSA (new_append_lsa);
     }
 
-  LSA_COPY (&log_Gl.hdr.chkpt_lsa, &log_Gl.hdr.append_lsa);
+  log_Gl.hdr.chkpt_lsa = log_Gl.hdr.append_lsa;
   log_Gl.hdr.is_shutdown = false;
 
   logpb_invalidate_pool (thread_p);
 
-  if (log_Gl.append.vdes == NULL_VOLDES || log_Gl.hdr.fpageid > log_Gl.hdr.append_lsa.pageid)
+  if (log_Gl.append.vdes == NULL_VOLDES || log_Gl.hdr.fpageid > log_Gl.hdr.append_lsa.load ().pageid)
     {
       LOG_PAGE *loghdr_pgptr = NULL;
       LOG_PAGE *append_pgptr = NULL;
@@ -5442,7 +5445,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
       /*
        * Don't have the log active, or we are going to the past
        */
-      arv_num = logpb_get_archive_number (thread_p, log_Gl.hdr.append_lsa.pageid - 1);
+      arv_num = logpb_get_archive_number (thread_p, log_Gl.hdr.append_lsa.load ().pageid - 1);
       if (arv_num == -1)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_resetlog");
@@ -5463,8 +5466,8 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
 	  log_recovery_notpartof_archives (thread_p, arv_num, catmsg);
 	}
 
-      log_Gl.hdr.fpageid = log_Gl.hdr.append_lsa.pageid;
-      log_Gl.hdr.nxarv_pageid = log_Gl.hdr.append_lsa.pageid;
+      log_Gl.hdr.fpageid = log_Gl.hdr.append_lsa.load ().pageid;
+      log_Gl.hdr.nxarv_pageid = log_Gl.hdr.append_lsa.load ().pageid;
       log_Gl.hdr.nxarv_phy_pageid = logpb_to_physical_pageid (log_Gl.hdr.nxarv_pageid);
       log_Gl.hdr.nxarv_num = arv_num;
       log_Gl.hdr.last_arv_num_for_syscrashes = -1;
@@ -5523,9 +5526,9 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
        * There is already a log active and the new append location is in the
        * current range. Leave the log as it is, just reset the append location.
        */
-      if (log_Gl.hdr.nxarv_pageid >= log_Gl.hdr.append_lsa.pageid)
+      if (log_Gl.hdr.nxarv_pageid >= log_Gl.hdr.append_lsa.load ().pageid)
 	{
-	  log_Gl.hdr.nxarv_pageid = log_Gl.hdr.append_lsa.pageid;
+	  log_Gl.hdr.nxarv_pageid = log_Gl.hdr.append_lsa.load ().pageid;
 	  log_Gl.hdr.nxarv_phy_pageid = logpb_to_physical_pageid (log_Gl.hdr.nxarv_pageid);
 	}
     }

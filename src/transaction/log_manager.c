@@ -122,7 +122,7 @@ static int rv;
 #define LOG_ISCHECKPOINT_TIME() \
   (log_Gl.rcv_phase == LOG_RESTARTED \
    && log_Gl.run_nxchkpt_atpageid != NULL_PAGEID \
-   && log_Gl.hdr.append_lsa.pageid >= log_Gl.run_nxchkpt_atpageid)
+   && log_Gl.hdr.append_lsa.load ().pageid >= log_Gl.run_nxchkpt_atpageid)
 
 #if defined(SERVER_MODE)
 #define LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED(thread_p) \
@@ -593,16 +593,14 @@ log_get_crash_point_lsa (void)
 }
 
 /*
- * log_find_find_lsa -
+ * log_get_append_lsa -
  *
- * return:
- *
- * NOTE:
+ * return: the current append lsa
  */
-LOG_LSA *
+LOG_LSA
 log_get_append_lsa (void)
 {
-  return (&log_Gl.hdr.append_lsa);
+  return log_Gl.hdr.append_lsa;
 }
 
 /*
@@ -884,9 +882,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
       goto error;
     }
 
-  LSA_SET_NULL (&log_Gl.append.prev_lsa);
-  /* copy log_Gl.append.prev_lsa to log_Gl.prior_info.prev_lsa */
-  LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+  LOG_RESET_PREV_LSA (&NULL_LSA);
 
   /*
    * Flush the append page, so that the end of the log mark is written.
@@ -1178,11 +1174,10 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	      goto error;
 	    }
 	  log_Gl.hdr.fpageid = LOGPAGEID_MAX;
-	  log_Gl.hdr.append_lsa.pageid = LOGPAGEID_MAX;
-	  log_Gl.hdr.append_lsa.offset = 0;
+	  log_Gl.hdr.append_lsa.store (LOG_LSA (LOGPAGEID_MAX, 0));
 
 	  /* sync append_lsa to prior_lsa */
-	  LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+	  log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
 
 	  LSA_SET_NULL (&log_Gl.hdr.chkpt_lsa);
 	  log_Gl.hdr.nxarv_pageid = LOGPAGEID_MAX;
@@ -1205,7 +1200,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       r_args->db_creation = log_Gl.hdr.db_creation;
       LSA_COPY (&r_args->restart_repl_lsa, &log_Gl.hdr.smallest_lsa_at_last_chkpt);
-      LSA_COPY (&r_args->restart_committed_lsa, &log_Gl.hdr.append_lsa);
+      r_args->restart_committed_lsa = log_Gl.hdr.append_lsa;
     }
 
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &log_Gl.hdr.chkpt_lsa);
@@ -1403,7 +1398,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       if (init_emergency == true && log_Gl.hdr.is_shutdown == false)
 	{
-	  if (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && LSA_GT (&log_Gl.hdr.append_lsa, &log_Gl.hdr.eof_lsa))
+	  if (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && log_Gl.hdr.append_lsa.load () > log_Gl.hdr.eof_lsa)
 	    {
 	      /* We cannot believe in append_lsa for this case. It points to an unflushed log page. Since we are
 	       * going to skip recovery for emergency startup, just replace it with eof_lsa. */
@@ -1422,7 +1417,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	}
 
       /* Read the End of file record to find out the previous address */
-      if (log_Gl.hdr.append_lsa.pageid > 0 || log_Gl.hdr.append_lsa.offset > 0)
+      if (log_Gl.hdr.append_lsa.load ().pageid > 0 || log_Gl.hdr.append_lsa.load ().offset > 0)
 	{
 	  eof = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
 	  LOG_RESET_PREV_LSA (&eof->back_lsa);
@@ -1430,7 +1425,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
 #if defined(SERVER_MODE)
       /* fix flushed_lsa_lower_bound become NULL_LSA */
-      LSA_COPY (&log_Gl.flushed_lsa_lower_bound, &log_Gl.append.prev_lsa);
+      log_Gl.flushed_lsa_lower_bound = log_Gl.append.prev_lsa;
 #endif /* SERVER_MODE */
 
       /*
@@ -1445,17 +1440,17 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
   log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
 
-  if (!LSA_EQ (&log_Gl.append.prev_lsa, &log_Gl.prior_info.prev_lsa))
+  if (log_Gl.append.prev_lsa.load () != log_Gl.prior_info.prev_lsa)
     {
       assert (0);
       /* defense code */
-      LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+      log_Gl.prior_info.prev_lsa = log_Gl.append.prev_lsa;
     }
-  if (!LSA_EQ (&log_Gl.hdr.append_lsa, &log_Gl.prior_info.prior_lsa))
+  if (log_Gl.hdr.append_lsa.load () != log_Gl.prior_info.prior_lsa)
     {
       assert (0);
       /* defense code */
-      LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+      log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
     }
 
   /*
@@ -1468,7 +1463,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
 
   /* Next checkpoint should be run at ... */
-  log_Gl.run_nxchkpt_atpageid = (log_Gl.hdr.append_lsa.pageid + log_Gl.chkpt_every_npages);
+  log_Gl.run_nxchkpt_atpageid = (log_Gl.hdr.append_lsa.load ().pageid + log_Gl.chkpt_every_npages);
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
@@ -1516,7 +1511,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   LOG_CS_EXIT (thread_p);
 
   er_log_debug (ARG_FILE_LINE, "log_initialize_internal: end of log initializaton, append_lsa = (%lld|%d) \n",
-		(long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
+		(long long int) log_Gl.hdr.append_lsa.load ().pageid, log_Gl.hdr.append_lsa.load ().offset);
 
   return error_code;
 
@@ -1849,7 +1844,7 @@ log_final (THREAD_ENTRY * thread_p)
   if (anyloose_ends == false && error_code == NO_ERROR)
     {
       log_Gl.hdr.is_shutdown = true;
-      LSA_COPY (&log_Gl.hdr.chkpt_lsa, &log_Gl.hdr.append_lsa);
+      log_Gl.hdr.chkpt_lsa = log_Gl.hdr.append_lsa;
       LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt, &log_Gl.hdr.chkpt_lsa);
     }
   else
@@ -4801,7 +4796,8 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
       fprintf (stdout,
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG,
 			       ((iscommitted == LOG_COMMIT) ? MSGCAT_LOG_FINISH_COMMIT : MSGCAT_LOG_FINISH_ABORT)),
-	       tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset, time_val);
+	       tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.load ().pageid, log_Gl.hdr.append_lsa.load ().offset,
+	       time_val);
       fflush (stdout);
     }
 #endif /* !NDEBUG */
@@ -5997,7 +5993,8 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	  fprintf (stdout,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG,
 				   ((iscommitted != LOG_ABORT) ? MSGCAT_LOG_FINISH_COMMIT : MSGCAT_LOG_FINISH_ABORT)),
-		   tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset, time_val);
+		   tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.load ().pageid,
+		   log_Gl.hdr.append_lsa.load ().offset, time_val);
 	  fflush (stdout);
 	}
 #endif /* !NDEBUG */
@@ -6273,6 +6270,7 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 {
   char db_creation_time_val[CTIME_MAX];
   char vol_creation_time_val[CTIME_MAX];
+  LOG_LSA append_lsa = log_header_p->append_lsa;
 
   (void) ctime_r ((time_t *) & log_header_p->db_creation, db_creation_time_val);
   (void) ctime_r ((time_t *) & log_header_p->vol_creation, vol_creation_time_val);
@@ -6292,7 +6290,7 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 	   log_header_p->db_compatibility, log_header_p->db_iopagesize, log_header_p->db_logpagesize,
 	   log_header_p->is_shutdown, log_header_p->next_trid, (long long int) log_header_p->mvcc_next_id,
 	   log_header_p->avg_ntrans, log_header_p->avg_nlocks, log_header_p->npages, (long long) log_header_p->fpageid,
-	   LSA_AS_ARGS (&log_header_p->append_lsa), LSA_AS_ARGS (&log_header_p->chkpt_lsa));
+	   LSA_AS_ARGS (&append_lsa), LSA_AS_ARGS (&log_header_p->chkpt_lsa));
 
   fprintf (out_fp,
 	   "     Next_archive_pageid = %lld at active_phy_pageid = %d,\n"
@@ -7168,15 +7166,15 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 	{
 	  lsa.pageid = 0;
 	}
-      else if (lsa.pageid > log_Gl.hdr.append_lsa.pageid && LOG_ISRESTARTED ())
+      else if (lsa.pageid > log_Gl.hdr.append_lsa.load ().pageid && LOG_ISRESTARTED ())
 	{
-	  lsa.pageid = log_Gl.hdr.append_lsa.pageid;
+	  lsa.pageid = log_Gl.hdr.append_lsa.load ().pageid;
 	}
     }
   else
     {
       /* Backward */
-      if (lsa.pageid < 0 || lsa.pageid > log_Gl.hdr.append_lsa.pageid)
+      if (lsa.pageid < 0 || lsa.pageid > log_Gl.hdr.append_lsa.load ().pageid)
 	{
 	  log_find_end_log (thread_p, &lsa);
 	}
@@ -7226,7 +7224,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
       if (lsa.offset == NULL_OFFSET && (lsa.offset = log_pgptr->hdr.offset) == NULL_OFFSET)
 	{
 	  /* Nothing in this page.. */
-	  if (lsa.pageid >= log_Gl.hdr.append_lsa.pageid || lsa.pageid <= 0)
+	  if (lsa.pageid >= log_Gl.hdr.append_lsa.load ().pageid || lsa.pageid <= 0)
 	    {
 	      LSA_SET_NULL (&lsa);
 	    }
@@ -8682,7 +8680,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 
   /* Guess the end of the log from the header */
 
-  LSA_COPY (end_lsa, &log_Gl.hdr.append_lsa);
+  *end_lsa = log_Gl.hdr.append_lsa;
   type = LOG_LARGER_LOGREC_TYPE;
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
@@ -8759,7 +8757,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 	    }
 	}
 
-      if (type == LOG_END_OF_LOG && eof != NULL && !LSA_EQ (end_lsa, &log_Gl.hdr.append_lsa))
+      if (type == LOG_END_OF_LOG && eof != NULL && *end_lsa != log_Gl.hdr.append_lsa.load ())
 	{
 	  /*
 	   * Reset the log header for future reads, multiple restart crashes,
@@ -9356,6 +9354,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   DB_DATETIME vol_creation;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_HEADER *header = &ctx->header;
+  LOG_LSA append_lsa = header->append_lsa;
 
   if (cursor >= 1)
     {
@@ -9424,7 +9423,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_bigint (out_values[idx], header->fpageid);
   idx++;
 
-  lsa_to_string (buf, sizeof (buf), &header->append_lsa);
+  lsa_to_string (buf, sizeof (buf), &append_lsa);
   error = db_make_string_copy (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
@@ -9829,7 +9828,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   bool area_was_mallocated = false;
 
   /* assert log record is not in prior list */
-  oldest_prior_lsa = *log_get_append_lsa ();
+  oldest_prior_lsa = log_get_append_lsa ();
   assert (LSA_LT (&process_lsa, &oldest_prior_lsa));
 
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
@@ -14341,7 +14340,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 	  else if (error == ER_CDC_LSA_NOT_FOUND)
 	    {
 	      /* input time is too big to find log, then returns latest log */
-	      LSA_COPY (start_lsa, &log_Gl.append.prev_lsa);
+	      *start_lsa = log_Gl.append.prev_lsa;
 
 	      *extraction_time = time (NULL);	/* can not know time of latest log */
 	      is_found = true;
@@ -14398,7 +14397,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 		  else
 		    {
 		      /* no time information has been found in any log volume; returns the latest log */
-		      LSA_COPY (start_lsa, &log_Gl.append.prev_lsa);
+		      *start_lsa = log_Gl.append.prev_lsa;
 		      *extraction_time = time (NULL);
 		    }
 		  is_found = true;
@@ -14448,7 +14447,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 	      else
 		{
 		  /* num_arvs ==0 but no time info has been found in active log volume */
-		  LSA_COPY (start_lsa, &log_Gl.append.prev_lsa);
+		  *start_lsa = log_Gl.append.prev_lsa;
 
 		  *extraction_time = time (NULL);	/* can not know time of latest log */
 		  is_found = true;
