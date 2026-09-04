@@ -629,6 +629,7 @@ public class SpLib {
         public int rowCount = -1;
 
         private PreparedStatement myStmt;
+        private int selectListLength = -1;
 
         public Query(String query) {
             this(query, false);
@@ -713,6 +714,8 @@ public class SpLib {
             }
 
             try {
+                selectListLength = -1;
+
                 if (myStmt == null) {
                     // no need to close the statement because it was declared and is closed outside
                     // of this Query close only the result set.
@@ -806,6 +809,36 @@ public class SpLib {
                 rowCount = rs.getRow();
             } catch (SQLException e) {
                 throw new SQL_ERROR(e.getMessage());
+            }
+        }
+
+        // Only called by FETCH statements with SYS_REFCURSOR.
+        // Runtime check of select list length against the count of INTO variables.
+        // The check is done during the compile time for ordinary cursors.
+        public void checkSelectListLength(int intoVarCount) {
+            if (!isOpen()) {
+                throw new INVALID_CURSOR("attempted to read a meta data of an unopened cursor");
+            }
+
+            try {
+                if (selectListLength < 0) {
+                    ResultSetMetaData rsmd = myStmt.getMetaData();
+                    if (rsmd == null) {
+                        throw new SQL_ERROR(
+                                "failed to get the result set meta data of the prepared statement");
+                    }
+                    selectListLength = rsmd.getColumnCount();
+                }
+            } catch (SQLException e) {
+                throw new SQL_ERROR(e.getMessage());
+            }
+
+            if (selectListLength != intoVarCount) {
+                throw new SQL_ERROR(
+                        String.format(
+                                "length (%d) of the SELECT list and "
+                                        + "the number (%d) of variables in the INTO clause do not match",
+                                selectListLength, intoVarCount));
             }
         }
     }
