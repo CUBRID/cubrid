@@ -90,7 +90,9 @@ permissions: {} # jobs opt-in below
 # drops the second. dispatch is keyed on the SHA because two force_build dispatches for
 # one SHA would race the republish and pull the overlay lowerdir from a running shard.
 # The run group is per pull request because a comment carries no head SHA, and it tests
-# issue.pull_request the way the gate does -- issues share the PR number space.
+# issue.pull_request the way the gate does -- issues share the PR number space. A rerun
+# shares that group: both post the same commit status, so two in flight would race it,
+# and CircleCI cannot reach that state -- there a rerun starts from a finished workflow.
 concurrency:
   group: >-
     gha-ci-${{ github.event_name == 'push'
@@ -102,7 +104,7 @@ concurrency:
     || github.event.issue.pull_request != null
     && startsWith(github.event.comment.body, '/run')
     && contains(github.event.comment.body, 'rerun')
-    && format('pr-{0}-rerun-{1}', github.event.issue.number, github.event.comment.id)
+    && format('pr-{0}-run', github.event.issue.number)
     || github.event.issue.pull_request != null
     && startsWith(github.event.comment.body, '/run')
     && (contains(github.event.comment.body, 'shell')
@@ -277,6 +279,46 @@ jobs:
           emit rerun_from "$rerun"
           emit sabotage "$sab"
           echo "resolved: event=$EV test=$test_run namespace=$ns ccache_write=$cache_write"
+
+  # The check ticket 28 makes required. Posted from here and not from collect: that
+  # job runs in a pod that can be evicted, and statuses: write must not reach a
+  # runner that executes testcase code.
+  status_pending:
+    name: status (pending)
+    needs: gate
+    if: ${{ needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.pr != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Mark the head commit pending
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          CONTEXT: "gha-ci: test_shell"
+        run: |
+          set -eo pipefail
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
+          fi
+          jq -n --arg c "$CONTEXT" \
+            --arg u "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{state:"pending", context:$c, target_url:$u, description:"shell suite running"}' \
+            > /tmp/st.json
+          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -d @/tmp/st.json)
+          echo "HTTP $code"
+          if [ "$code" != "201" ]; then
+            echo "::error::could not post the pending status"
+            jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
+            exit 1
+          fi
+          echo "pending posted on ${SHA}"
 
   # Both modes of the CircleCI baseline, which differ only in the build argument and
   # the ccache they use. One image serves both: the release build here is for testing,
@@ -773,6 +815,7 @@ jobs:
           LIMIT: ${{ steps.args.outputs.limit }}
           SABOTAGE: ${{ needs.gate.outputs.sabotage }}
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
+          SHA: ${{ needs.gate.outputs.sha }}
         run: |
           set -eo pipefail
 
@@ -789,6 +832,17 @@ jobs:
           if [ -n "$RERUN_FROM" ]; then
             src="$CI_ROOT/runs/$RERUN_FROM/failed.list"
             [ -f "$src" ] || { echo "::error::no failed.list: $src"; exit 1; }
+            # CircleCI's rerun runs the same commit as the workflow it came from.
+            # gate re-resolves the head, so hold that guarantee here.
+            prev_sha=$(find "$CI_ROOT/runs/$RERUN_FROM/results" -mindepth 2 -maxdepth 2 \
+              -name build.read -exec awk -F= '/^sha=/ {print $2}' {} + 2>/dev/null | sort -u) \
+              || prev_sha=''
+            n_sha=$(printf '%s' "$prev_sha" | grep -c . || :)
+            if [ "$n_sha" -ne 1 ] || [ "$prev_sha" != "$SHA" ]; then
+              echo "::error::run $RERUN_FROM tested '$(echo $prev_sha)', not this head $SHA"
+              echo "  A re-run may only re-run the failures of the same commit. Use /run all."
+              exit 1
+            fi
             cut -f2 "$src" | sed 's#^#cubrid-testcases-private-ex/#' | sort -u > /tmp/want.list
             want=$(wc -l < /tmp/want.list)
             # Keep only what is in the tree now; cases deleted since are dropped.
@@ -1865,3 +1919,47 @@ jobs:
           else
             echo "nothing to remove: $seed"
           fi
+
+  # always(), not success(): a red verdict is what the gate exists to show.
+  status:
+    name: status
+    needs: [gate, collect]
+    if: ${{ always() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.pr != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Post the verdict to the head commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          CONTEXT: "gha-ci: test_shell"
+          COLLECT: ${{ needs.collect.result }}
+        run: |
+          set -eo pipefail
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
+          fi
+          case "$COLLECT" in
+            success)   state=success; desc="shell suite passed" ;;
+            cancelled) state=failure; desc="run was superseded or cancelled" ;;
+            *)         state=failure; desc="shell suite failed -- see the run" ;;
+          esac
+          echo "collect=$COLLECT -> $state"
+          jq -n --arg s "$state" --arg c "$CONTEXT" --arg d "$desc" \
+            --arg u "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{state:$s, context:$c, target_url:$u, description:$d}' > /tmp/st.json
+          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -d @/tmp/st.json)
+          echo "HTTP $code"
+          if [ "$code" != "201" ]; then
+            echo "::error::could not post the verdict status"
+            jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
+            exit 1
+          fi
+          echo "posted ${state} on ${SHA}"
