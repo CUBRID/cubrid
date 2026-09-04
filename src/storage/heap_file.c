@@ -651,6 +651,7 @@ static int heap_ovf_get_capacity (THREAD_ENTRY * thread_p, const OID * ovf_oid, 
 
 static int heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 					   HEAP_SCANCACHE ** scan_cache);
+STATIC_INLINE void heap_scancache_reset_insert_hint (HEAP_SCANCACHE * scan_cache) __attribute__ ((ALWAYS_INLINE));
 static int heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					  const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
 					  MVCC_SNAPSHOT * mvcc_snapshot, bool copy_to_local_cache = false);
@@ -6342,6 +6343,17 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
 }
 
 /*
+ * heap_scancache_reset_insert_hint () - forget the insert page hint
+ *   scan_cache (in/out): the two hint fields always move together
+ */
+STATIC_INLINE void
+heap_scancache_reset_insert_hint (HEAP_SCANCACHE * scan_cache)
+{
+  VPID_SET_NULL (&scan_cache->insert_hint_vpid);
+  scan_cache->insert_hint_l1_pos = -1;	/* unknown position in the bestspace L1 arrays */
+}
+
+/*
  * heap_scancache_start_internal () - Start caching information for a heap scan
  *   return: NO_ERROR
  *   scan_cache(in/out): Scan cache
@@ -6449,7 +6461,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->partition_list = NULL;
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
-  VPID_SET_NULL (&scan_cache->insert_hint_vpid);
+  heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
   if (copy_to_local_cache && is_queryscan)
     {
@@ -6484,7 +6496,7 @@ exit_on_error:
   scan_cache->partition_list = NULL;
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
-  VPID_SET_NULL (&scan_cache->insert_hint_vpid);
+  heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
@@ -6685,6 +6697,8 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
   scan_cache->page_latch = PGBUF_LATCH_WRITE;
   scan_cache->node.classname = NULL;
 
+  heap_scancache_reset_insert_hint (scan_cache);
+
   return ret;
 }
 
@@ -6771,7 +6785,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->partition_list = NULL;
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
-  VPID_SET_NULL (&scan_cache->insert_hint_vpid);
+  heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
 
   return NO_ERROR;
@@ -20704,7 +20718,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 
   if (home_hint_p == NULL)
     {
-      bool hint_page_usable = false;
+      bool hint_valid = false;
 
       assert (!HFID_IS_NULL (&context->hfid));
 
@@ -20713,18 +20727,85 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
        * The hint is validated like a bestspace candidate; any miss falls back to the search. */
       if (context->scan_cache_p != NULL && !VPID_ISNULL (&context->scan_cache_p->insert_hint_vpid))
 	{
-	  VPID hint_vpid = context->scan_cache_p->insert_hint_vpid;
-	  OID page_class_oid;
-	  int save_wait_msecs;
+	  // *INDENT-OFF*
+	  cubstorage::bestspace *bestspace;
+	  // *INDENT-ON*
 
-	  /* mirrors bestspace::shard::L1_fix -- the hint page is fixed the way a bestspace candidate is */
-	  save_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
-	  error_code = pgbuf_ordered_fix (thread_p, &hint_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
-					  context->home_page_watcher_p);
-	  (void) xlogtb_reset_wait_msecs (thread_p, save_wait_msecs);
-	  if (error_code != NO_ERROR)
+	  /* the bestspace is looked up before the hint page is latched,
+	   * and lookup only (NULL class_oid) -- a registry find, no build. */
+	  bestspace = heap_find_bestspace (thread_p, NULL, &context->hfid, NULL);
+	  if (bestspace != NULL)
 	    {
-	      if (error_code == ER_LK_PAGE_TIMEOUT)
+	      VPID hint_vpid = context->scan_cache_p->insert_hint_vpid;
+
+	      /* mirrors bestspace::shard::L1_fix -- the hint page is fixed the way a bestspace candidate is */
+	      int save_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+	      error_code = pgbuf_ordered_fix (thread_p, &hint_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
+					      context->home_page_watcher_p);
+	      (void) xlogtb_reset_wait_msecs (thread_p, save_wait_msecs);
+	      if (error_code == NO_ERROR)
+		{
+		  PAGE_PTR page_p = context->home_page_watcher_p->pgptr;
+		  OID page_class_oid;
+		  bool page_valid = false;
+
+		  /* mirrors the space rule of bestspace::find -- the hint keeps the unfill reservation */
+		  int consume_size = context->recdes_p->length + SPAGE_SLOT_SIZE;
+		  int needed_size = bestspace->get_needed_size (consume_size);
+		  int freespace = 0;
+
+		  /* mirrors the candidate checks of bestspace::shard::L1_find */
+		  if (pgbuf_get_page_ptype (thread_p, page_p) == PAGE_HEAP
+		      && !heap_page_is_not_in_heap (thread_p, page_p)
+		      && heap_get_class_oid_from_page (thread_p, page_p, &page_class_oid) == NO_ERROR
+		      && OID_EQ (&page_class_oid, &context->class_oid))
+		    {
+		      page_valid = true;
+		      freespace = spage_max_space_for_new_record (thread_p, page_p);
+		    }
+
+		  if (page_valid && freespace >= needed_size)
+		    {
+		      /* the search charges the record to the estimates when it hands out a page,
+		       * so the hint does too -- otherwise the estimates lose every row that skips the search */
+		      bestspace->add_estimates (*thread_p, 0, 1, context->recdes_p->length);
+
+		      /* the search charges its handout to the recorded free space; the hint does the same,
+		       * but only when the page changes tier -- the search reads by tier,
+		       * so a finer correction would not change any lookup */
+		      std::uint16_t freespace_after = (std::uint16_t) (freespace - consume_size);
+
+		      // *INDENT-OFF*
+		      if (cubstorage::bestspace::size_to_tier (freespace_after)
+			  != cubstorage::bestspace::size_to_tier ((std::uint16_t) freespace))
+			{
+			  bestspace->update_freespace (hint_vpid, freespace_after,
+						       context->scan_cache_p->insert_hint_l1_pos);
+			}
+		      // *INDENT-ON*
+
+		      hint_valid = true;
+		    }
+		  else
+		    {
+		      /* hint miss; the page filled up, or vacuum took it out of the heap -- drop the hint */
+		      er_clear ();	/* a failed header read is already logged */
+
+		      /* correct the recorded free space once before the hint goes,
+		       * so the next searcher is not sent to a page this scan already filled */
+		      if (page_valid)
+			{
+			  // *INDENT-OFF*
+			  bestspace->update_freespace (hint_vpid, (std::uint16_t) freespace,
+						       context->scan_cache_p->insert_hint_l1_pos);
+			  // *INDENT-ON*
+			}
+		      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+
+		      heap_scancache_reset_insert_hint (context->scan_cache_p);
+		    }
+		}
+	      else if (error_code == ER_LK_PAGE_TIMEOUT)
 		{
 		  /* hint miss; the page is only contended, not gone -- keep the hint */
 		  er_clear ();
@@ -20733,7 +20814,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	      else if (error_code == ER_PB_BAD_PAGEID || er_errid () == ER_PB_BAD_PAGEID)
 		{
 		  /* hint miss; the hinted page was deallocated -- drop the hint */
-		  VPID_SET_NULL (&context->scan_cache_p->insert_hint_vpid);
+		  heap_scancache_reset_insert_hint (context->scan_cache_p);
 		  er_clear ();
 		  error_code = NO_ERROR;
 		}
@@ -20747,52 +20828,10 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 		  return error_code;
 		}
 	    }
-	  else
-	    {
-	      PAGE_PTR hint_page_p = context->home_page_watcher_p->pgptr;
-
-	      /* mirrors the candidate checks of bestspace::shard::L1_find */
-	      if (pgbuf_get_page_ptype (thread_p, hint_page_p) == PAGE_HEAP
-		  && !heap_page_is_not_in_heap (thread_p, hint_page_p)
-		  && heap_get_class_oid_from_page (thread_p, hint_page_p, &page_class_oid) == NO_ERROR
-		  && OID_EQ (&page_class_oid, &context->class_oid)
-		  && spage_max_space_for_new_record (thread_p, hint_page_p) >= context->recdes_p->length)
-		{
-		  // *INDENT-OFF*
-		  cubstorage::bestspace *bestspace;
-		  // *INDENT-ON*
-
-		  /* the search charges the record to the estimates when it hands out a page,
-		   * so the hint does too -- otherwise the estimates lose every row that skips the search */
-		  bestspace = heap_find_bestspace (thread_p, &context->class_oid, &context->hfid, NULL);
-		  if (bestspace != NULL)
-		    {
-		      bestspace->add_estimates (*thread_p, 0, 1, context->recdes_p->length);
-		    }
-		  else
-		    {
-		      /* the estimates are statistics and the hint page is already usable,
-		       * so losing this row's count must not fail the insert */
-		      er_clear ();
-		    }
-
-		  hint_page_usable = true;
-		}
-	      else
-		{
-		  /* hint miss; the page is not usable for this insert -- a failed header read is already logged.
-		   * The hint is a page this statement already inserted into
-		   * and cannot become invalid within the statement,
-		   * so in practice the only cause that reaches here is a full page. */
-		  er_clear ();
-		  VPID_SET_NULL (&context->scan_cache_p->insert_hint_vpid);
-		  pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
-		}
-	    }
 	}
 
       /* find and fix page for insert */
-      if (!hint_page_usable
+      if (!hint_valid
 	  && heap_find_bestpage (thread_p, &context->class_oid, &context->hfid, context->recdes_p->length, true,
 				 context->home_page_watcher_p) != NO_ERROR)
 	{
@@ -23582,7 +23621,14 @@ error:
   /* remember the page that took this insert; the next insert of this scan tries it first */
   if (rc == NO_ERROR && context->scan_cache_p != NULL && !OID_ISNULL (&context->res_oid))
     {
-      VPID_SET (&context->scan_cache_p->insert_hint_vpid, context->res_oid.volid, context->res_oid.pageid);
+      VPID res_vpid;
+
+      VPID_SET (&res_vpid, context->res_oid.volid, context->res_oid.pageid);
+      if (!VPID_EQ (&res_vpid, &context->scan_cache_p->insert_hint_vpid))
+	{
+	  context->scan_cache_p->insert_hint_l1_pos = -1;	/* unknown position in the bestspace L1 arrays */
+	}
+      context->scan_cache_p->insert_hint_vpid = res_vpid;
     }
 
   /* all ok */

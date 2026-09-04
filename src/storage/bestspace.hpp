@@ -246,6 +246,8 @@ namespace cubstorage
 		       std::size_t bias, PGBUF_WATCHER &page_watcher);
 	  status find_candidate (OID *class_oid, std::uint16_t needed_size, std::uint16_t consume_size,
 				 bestspace_entry &candidate, bool &valid, PGBUF_WATCHER &page_watcher);
+	  bool update_freespace (VPID vpid, std::uint16_t freespace, std::size_t &entry_index);
+	  bool update_freespace_at (std::size_t entry_index, VPID vpid, std::uint16_t freespace);
 
 	  void add_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen);
 	  void subtract_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen);
@@ -345,6 +347,8 @@ namespace cubstorage
 
 	  std::size_t to_entries (bestspace_entry *candidates);
 
+	  bool update_if_exist (bestspace_entry candidate);
+
 	private:
 	  std::array<bestspace_entry, MAX_CANDIDATES_QUEUE_SIZE> m_array;
 	  std::size_t m_size;
@@ -352,7 +356,7 @@ namespace cubstorage
 
 	  std::mutex m_mutex;
 
-	  void remove_if_exist (bestspace_entry &candidate);
+	  bool remove_if_exist (bestspace_entry &candidate);
 	  void insert (bestspace_entry &candidate);
       };
 
@@ -373,6 +377,8 @@ namespace cubstorage
 		PGBUF_WATCHER &page_watcher);
 
       static tier size_to_tier (std::uint16_t size);
+      int get_needed_size (int consume_size) const;
+      void update_freespace (VPID vpid, std::uint16_t freespace, int &l1_pos);
 
       void add_estimates (cubthread::entry &thread_ref, int num_pages, std::uint64_t recs_num,
 			  std::uint64_t recs_sumlen);

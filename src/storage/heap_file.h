@@ -162,6 +162,8 @@ struct heap_scancache
     VPID insert_hint_vpid;	/* page that took this scan's previous insert;
 				 * tried first on the next insert,
 				 * so batch INSERTs skip the per-row bestspace search */
+    int insert_hint_l1_pos;	/* last known position of insert_hint_vpid in the bestspace L1 arrays;
+				 * -1 = unknown. spares the correction a full sweep */
     HEAP_SCAN_READ_MODE read_mode;	/* HEAP_SCAN_READ_COPY or HEAP_SCAN_READ_LOCAL_CACHE */
 
     void start_area ();
