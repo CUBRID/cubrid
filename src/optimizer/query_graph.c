@@ -2666,7 +2666,8 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  /* The term might be a merge term (i.e., it uses '=' as the operator), but the expressions might not be
 	   * simple attribute references, and we mustn't try to establish equivalence classes in that case.
 	   */
-	  if (qo_is_equi_join_term (term))
+	  if (qo_is_equi_join_term (term)
+	      && !QO_NODE_IS_SEMI_ANTI_JOIN (head_node) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
 	    {
 	      qo_equivalence (head_seg, tail_seg);
 	      QO_TERM_NOMINAL_SEG (term) = head_seg;
@@ -8424,6 +8425,11 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
       s1 = QO_TERM_SEG (jterm);
       s2 = QO_TERM_OID_SEG (jterm);
       if (s1 == NULL || s2 == NULL)
+	{
+	  continue;
+	}
+
+      if (QO_NODE_IS_SEMI_ANTI_JOIN (QO_SEG_HEAD (s1)) || QO_NODE_IS_SEMI_ANTI_JOIN (QO_SEG_HEAD (s2)))
 	{
 	  continue;
 	}

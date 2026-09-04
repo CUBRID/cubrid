@@ -44,6 +44,15 @@ typedef struct to_dot_info TO_DOT_INFO;
 typedef struct pt_name_spec_info PT_NAME_SPEC_INFO;
 typedef struct qo_reset_location_info RESET_LOCATION_INFO;
 typedef struct qo_reduce_reference_info QO_REDUCE_REFERENCE_INFO;
+typedef struct qo_unnest_info QO_UNNEST_INFO;
+
+struct qo_unnest_info
+{
+  PT_NODE *subq;		/* the [NOT] EXISTS / [NOT] IN subquery operand */
+  PT_NODE *on_cond;		/* the CNF list it would carry as the spec's ON */
+  bool is_anti;			/* ANTI rather than SEMI */
+  bool is_in_form;		/* an IN form, whose on_cond starts with a synthesized equality */
+};
 
 struct spec_id_info
 {
@@ -119,6 +128,7 @@ typedef enum dnf_merge_range_result DNF_MERGE_RANGE_RESULT;
 
 /* optimize subqueries */
 PT_NODE *qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+void qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node);
 PT_NODE *qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * parent_node);
 void qo_add_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 
