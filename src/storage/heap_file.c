@@ -25202,14 +25202,14 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
     }
 
   /* make sure prev_version_lsa is flushed from prior lsa list - wake up log flush thread if it's not flushed */
-  oldest_prior_lsa = *log_get_append_lsa ();	/* TODO: fix atomicity issue on x86 */
+  oldest_prior_lsa = log_get_append_lsa ();
   if (LSA_LT (&oldest_prior_lsa, previous_version_lsa))
     {
       LOG_CS_ENTER (thread_p);
       logpb_prior_lsa_append_all_list (thread_p);
       LOG_CS_EXIT (thread_p);
 
-      oldest_prior_lsa = *log_get_append_lsa ();
+      oldest_prior_lsa = log_get_append_lsa ();
       assert (!LSA_LT (&oldest_prior_lsa, previous_version_lsa));
     }
 

@@ -881,6 +881,51 @@ template <typename T, typename V> inline T ATOMIC_TAS_64 (volatile T *ptr, V amo
 #endif
 }
 
+/*
+ * Plain atomic load/store with acquire/release ordering.
+ * Unlike the ATOMIC_LOAD_64/ATOMIC_STORE_64 macros below (integer-only, read-modify-write),
+ * these accept any 64bit trivially-copyable type.
+ */
+template <typename T> inline T ATOMIC_LOAD_64_ACQUIRE (volatile T *ptr)
+{
+  static_assert (sizeof (T) == sizeof (UINT64), "Not 64bit");
+  static_assert (alignof (T) == sizeof (UINT64), "Not 64bit aligned");
+  static_assert (std::is_trivially_copyable <T>::value, "Not trivially copyable");
+#if defined (_WIN64)
+  union { T value; INT64 word; } ret;
+  ret.word = InterlockedOr64 (reinterpret_cast <volatile INT64 *>(ptr), 0);
+  return ret.value;
+#elif defined(WINDOWS)
+  union { T value; UINT64 word; } ret;
+  ret.word = win32_exchange_add64 (reinterpret_cast <volatile UINT64 *>(ptr), 0);
+  return ret.value;
+#else
+  static_assert (__atomic_always_lock_free (sizeof (UINT64), 0), "Not lock-free");
+  T ret;
+  __atomic_load (ptr, &ret, __ATOMIC_ACQUIRE);
+  return ret;
+#endif
+}
+
+template <typename T> inline void ATOMIC_STORE_64_RELEASE (volatile T *ptr, T new_val)
+{
+  static_assert (sizeof (T) == sizeof (UINT64), "Not 64bit");
+  static_assert (alignof (T) == sizeof (UINT64), "Not 64bit aligned");
+  static_assert (std::is_trivially_copyable <T>::value, "Not trivially copyable");
+#if defined (_WIN64)
+  union { T value; INT64 word; } tmp;
+  tmp.value = new_val;
+  InterlockedExchange64 (reinterpret_cast <volatile INT64 *>(ptr), tmp.word);
+#elif defined(WINDOWS)
+  union { T value; UINT64 word; } tmp;
+  tmp.value = new_val;
+  win32_exchange64 (reinterpret_cast <volatile UINT64 *>(ptr), tmp.word);
+#else
+  static_assert (__atomic_always_lock_free (sizeof (UINT64), 0), "Not lock-free");
+  __atomic_store (ptr, &new_val, __ATOMIC_RELEASE);
+#endif
+}
+
 namespace dispatch
 {
   template <bool B> struct Bool2Type

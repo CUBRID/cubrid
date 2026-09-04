@@ -1748,7 +1748,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCES
 
   logpb_log ("called logpb_fetch_page with pageid = %lld\n", (long long int) req_lsa->pageid);
 
-  LSA_COPY (&append_lsa, &log_Gl.hdr.append_lsa);
+  append_lsa = log_get_append_lsa ();
   LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
 
   /*
@@ -2630,6 +2630,7 @@ static void
 logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 {
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
+  LOG_LSA next_append_lsa;
   bool need_flush;
 #if defined(SERVER_MODE)
   int rv;
@@ -2655,8 +2656,13 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 
   log_Gl.append.log_pgptr = NULL;
 
-  log_Gl.hdr.append_lsa.pageid++;
-  log_Gl.hdr.append_lsa.offset = 0;
+  /* Advance append_lsa to the next page with one atomic store.
+   * Lock-free readers treat append_lsa as the upper bound of the log already copied into the log page buffer;
+   * a two-step update (pageid++, then offset = 0) exposes a transient value larger than the settled one,
+   * which breaks the monotonicity those readers rely on. */
+  next_append_lsa.pageid = log_Gl.hdr.append_lsa.pageid + 1;
+  next_append_lsa.offset = 0;
+  ATOMIC_STORE_64_RELEASE (&log_Gl.hdr.append_lsa, next_append_lsa);
 
   /*
    * Is the next logical page to archive, currently located at the physical
