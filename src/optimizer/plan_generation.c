@@ -1698,6 +1698,10 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
 		     QO_XASL_INDEX_INFO * qo_index_infop, PT_NODE ** hash_predp)
 {
   QO_INDEX_ENTRY *index_entryp = NULL;
+  QO_TERM *termp;
+  BITSET drop_terms;
+  BITSET_ITERATOR iter;
+  int t;
 
   /* initialize output parameter */
   if (key_predp != NULL)
@@ -1734,6 +1738,26 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
       bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.kf_terms));
     }
   while (0);
+
+  /* An OR-derived restriction is implied by the multi-spec factor it was extracted from, so as a
+   * data filter it only pre-rejects rows the original factor would reject anyway.  Once no index
+   * adopted it (it survived the key-range/key-filter subtraction above), it pays its way only
+   * when it is cheap to evaluate AND rejects most rows: a conjunct costlier than a
+   * column-vs-constant compare re-pays that computation per scanned row, and a filter that lets
+   * most rows through spends its evaluation on every row while saving the original factor on
+   * few -- drop either from the predicate. */
+  bitset_init (&drop_terms, env);
+  for (t = bitset_iterate (&(plan->sarged_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (env, t);
+      if (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED_EXPENSIVE)
+	  || (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (termp) > 0.5))
+	{
+	  bitset_add (&drop_terms, t);
+	}
+    }
+  bitset_difference (&(plan->sarged_terms), &drop_terms);
+  bitset_delset (&drop_terms);
 
   /* make predicate list for hash key */
   if (hash_predp != NULL)
@@ -3100,13 +3124,14 @@ qo_find_driving_scan_plan (QO_PLAN * plan)
  *   plan(in): root plan
  *
  * Note: When the driving table is an index-family scan, compute
- *       metric = ceil (sel * leaf_pages).  If the metric is below the
+ *       metric = ceil (sel * index pages).  If the metric is below the
  *       session threshold (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD) or
  *       any required input is missing, mark the spec with
  *       PT_SPEC_FLAG_NO_PARALLEL_SCAN (fail-safe).  Otherwise pick a
  *       degree and record it on the spec so xasl_generation propagates
  *       it to the server exactly like a user hint.
- *       An explicit PARALLEL(N) hint bypasses the metric check.
+ *       An explicit PARALLEL(N) hint bypasses the metric check and the
+ *       auto parallelism cap; the server re-gates by actual index size.
  */
 static void
 qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
@@ -3158,15 +3183,10 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
   has_hint = (select->info.query.q.select.hint & PT_HINT_PARALLEL) != 0;
   if (has_hint)
     {
-      /* Parallel index scan needs at least two threads after applying the global cap. */
-      cap = prm_get_integer_value (PRM_ID_PARALLELISM);
-      if (cap <= 1 || spec->info.spec.num_parallel_threads <= 1)
+      /* hint bypasses the metric check and the auto parallelism cap */
+      if (spec->info.spec.num_parallel_threads <= 1)
 	{
 	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
-	}
-      else if (spec->info.spec.num_parallel_threads > cap)
-	{
-	  spec->info.spec.num_parallel_threads = cap;
 	}
       return;
     }
@@ -3190,6 +3210,11 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
   for (t = bitset_iterate (&(driving->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
     {
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_SEL_FROM_HISTOGRAM))
+	{
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  return;
+	}
       sel *= QO_TERM_SELECTIVITY (termp);
     }
   if (sel > 1.0)

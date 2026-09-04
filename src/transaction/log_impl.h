@@ -533,6 +533,12 @@ struct log_tdes
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
 
   INT64 query_timeout;		/* a query should be executed before query_timeout time. */
+  INT64 last_query_deadline;	/* Deadline of the query that just ended, kept past the reset in
+				 * qmgr_reset_query_exec_info() so that the commit path, which runs after it,
+				 * can wait for its 2PC decisions longer than the built-in bound when more
+				 * than that is left.  It only extends that wait, never shortens it - see
+				 * log_2pc_commit_first_phase() for why.  0 means there is no deadline to
+				 * carry: either none was asked for, or the session never had one. */
 
   INT64 query_start_time;
   INT64 tran_start_time;
@@ -934,6 +940,8 @@ extern LOG_GLOBAL log_Gl;
 
 extern LOG_LOGGING_STAT log_Stat;
 
+extern bool logtb_Reuse_boot_managers;
+
 /* Name of the database and logs */
 extern char log_Path[];
 extern char log_Archive_path[];
@@ -1174,6 +1182,7 @@ extern void logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_I
 
 extern MVCCID logtb_find_current_mvccid (THREAD_ENTRY * thread_p);
 extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);
+extern int logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p);
 extern int logtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p);
 extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 

@@ -190,41 +190,101 @@ stats_estimate_ndv_from_sample (const STATS_NDV_SAMPLE_INPUT * in)
  *   return: number of leading candidates worth keeping in the MCV list (>= 0)
  *
  * mcv_counts holds the sample counts of the most common values, sorted descending
- * (most common first). A value qualifies as an MCV when it occurs in at least 1% of
- * the sampled (non-null) rows; since the candidates are sorted by descending count,
- * the MCVs are the leading run at or above that threshold. The remaining values are
- * left to the equi-depth histogram.
+ * (most common first). A value is kept only when its sample count is significantly
+ * higher than the selectivity it would otherwise receive as a non-MCV value, using
+ * the lower end of a continuity-corrected Wald-type confidence interval for the
+ * hypergeometric distribution (sampling without replacement).
  *
- *   samplerows -> reservoir non-null size (the 1% threshold is taken against this)
- *   stadistinct / stanullfrac / totalrows are unused (kept for signature stability).
+ * Mapping for the full reservoir scan (analysis done in non-null space):
+ *   stadistinct -> population non-null NDV (D_pop), always > 0 here
+ *   stanullfrac -> 0.0 (nulls excluded from the candidate space)
+ *   samplerows  -> reservoir non-null size
+ *   totalrows   -> exact population non-null rows (N_nn)
  */
 int
 stats_analyze_mcv_list (const INT64 * mcv_counts, int num_candidates, double stadistinct,
 			double stanullfrac, INT64 samplerows, double totalrows)
 {
-  int num_mcv = 0;
-  double threshold;
+  double ndistinct_table;
+  double sumcount;
+  int num_mcv;
   int i;
 
-  /* unused; kept for signature stability with the previous statistical criterion */
-  (void) stadistinct;
-  (void) stanullfrac;
-  (void) totalrows;
-
-  if (mcv_counts == NULL || num_candidates <= 0 || samplerows <= 0)
+  if (mcv_counts == NULL || num_candidates <= 0)
     {
       return 0;
     }
 
-  /* an MCV must occur in at least 1% of the sampled non-null rows */
-  threshold = 0.01 * (double) samplerows;
-  for (i = 0; i < num_candidates; i++)
+  num_mcv = num_candidates;
+
+  /* If the entire table was sampled, keep the whole list. This also protects us
+   * against division by zero in the code below. */
+  if ((double) samplerows >= totalrows || totalrows <= 1.0)
     {
-      if ((double) mcv_counts[i] < threshold)
+      return num_mcv;
+    }
+
+  /* Estimated number of distinct nonnull values in the table. A negative
+   * stadistinct as a fraction of totalrows; our D_pop is always a positive absolute
+   * count, but keep the decode for parity. */
+  ndistinct_table = stadistinct;
+  if (ndistinct_table < 0)
+    {
+      ndistinct_table = -ndistinct_table * totalrows;
+    }
+
+  /* sumcount tracks the total count of all but the last (least common) value. */
+  sumcount = 0.0;
+  for (i = 0; i < num_mcv - 1; i++)
+    {
+      sumcount += (double) mcv_counts[i];
+    }
+
+  while (num_mcv > 0)
+    {
+      double selec, otherdistinct, N, n, K, variance, stddev;
+
+      /* Estimated selectivity the least common value would have if it weren't in
+       * the MCV list. */
+      selec = 1.0 - sumcount / (double) samplerows - stanullfrac;
+      if (selec < 0.0)
 	{
+	  selec = 0.0;
+	}
+      if (selec > 1.0)
+	{
+	  selec = 1.0;
+	}
+      otherdistinct = ndistinct_table - (num_mcv - 1);
+      if (otherdistinct > 1)
+	{
+	  selec /= otherdistinct;
+	}
+
+      /* Lower end of a continuity-corrected Wald-type confidence interval for the
+       * hypergeometric distribution (sampling without replacement). */
+      N = totalrows;
+      n = (double) samplerows;
+      K = N * (double) mcv_counts[num_mcv - 1] / n;
+      variance = n * K * (N - K) * (N - n) / (N * N * (N - 1));
+      stddev = sqrt (variance);
+
+      if ((double) mcv_counts[num_mcv - 1] > selec * (double) samplerows + 2 * stddev + 0.5)
+	{
+	  /* Significantly more common than the non-MCV selectivity would suggest.
+	   * Keep it and all the more common values. */
 	  break;
 	}
-      num_mcv++;
+      else
+	{
+	  /* Discard this value and consider the next least common value. */
+	  num_mcv--;
+	  if (num_mcv == 0)
+	    {
+	      break;
+	    }
+	  sumcount -= (double) mcv_counts[num_mcv - 1];
+	}
     }
 
   return num_mcv;
