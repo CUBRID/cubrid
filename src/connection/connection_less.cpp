@@ -29,9 +29,6 @@
 
 #include "connection_less.h"
 
-#if defined(SERVER_MODE)
-#error Does not belong to server module
-#endif
 
 connection_less::connection_less ()
 {

@@ -131,7 +131,11 @@ extern "C"
   enum OPEN_BUFFER_FLAGS
   { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1 };
 
+#if defined (SERVER_MODE)
+  extern thread_local int g_open_buffer_control_flags;
+#else
   extern int g_open_buffer_control_flags;
+#endif
 
   extern bool db_is_client_cache_reusable (DB_QUERY_RESULT * result);
   extern int db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode);

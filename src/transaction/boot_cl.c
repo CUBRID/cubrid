@@ -40,6 +40,9 @@
 #endif /* !WINDOWS */
 
 #include <assert.h>
+#if defined (SERVER_MODE)
+#include <mutex>
+#endif
 
 #include "porting.h"
 #if !defined(HPUX)
@@ -77,7 +80,9 @@
 #include "locator.h"
 #include "transform.h"
 #include "jsp_cl.h"
+#if !defined (SERVER_MODE)
 #include "client_support.h"
+#endif
 #include "es.h"
 #include "tsc_timer.h"
 #include "show_meta.h"
@@ -85,6 +90,8 @@
 #include "dbtype.h"
 #include "method_callback.hpp"
 #include "object_primitive.h"
+#include "object_template.h"
+#include "class_object.h"
 #include "connection_globals.h"
 #include "host_lookup.h"
 #include "schema_system_catalog.hpp"
@@ -120,6 +127,12 @@
 #define BOOT_NO_OPT_CAP                 0
 #define BOOT_CHECK_HA_DELAY_CAP         NET_CAP_HA_REPL_DELAY
 
+#if defined (SERVER_MODE)
+/* the server credential carries per-session state (server_session_key feeds
+ * csession_find_or_create_session), so it lives in the session context */
+#include "client_session_context.hpp"
+#define boot_Server_credential (csc_current ()->boot_server_credential)
+#else /* SERVER_MODE */
 static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
   /* process_id */ -1,
@@ -133,6 +146,9 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   INTL_CODESET_NONE,
   NULL
 };
+#endif /* !SERVER_MODE */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static const char *boot_Client_no_user_string = "(nouser)";
 static const char *boot_Client_id_unknown_string = "(unknown)";
@@ -149,7 +165,9 @@ VOLID boot_User_volid = 0;	/* todo: boot_User_volid looks deprecated */
 /* Server host connected */
 char boot_Host_connected[CUB_MAXHOSTNAMELEN] = "";
 #endif /* CS_MODE */
-char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";
+#if !defined (SERVER_MODE)
+char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";	/* server build uses boot_sr.c's */
+#endif
 char boot_Ip_address[16] = { 0 };
 
 static char boot_Volume_label[PATH_MAX] = " ";
@@ -159,7 +177,9 @@ static int boot_Process_id = -1;
 
 static int boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation);
 static int install_system_metadata (void);
+#if !defined (SERVER_MODE)
 static void boot_shutdown_client_at_exit (void);
+#endif
 #if defined(CS_MODE)
 static int boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabilities, int opt_cap,
 				       bool discriminative, int connect_order, bool is_preferred_host);
@@ -210,7 +230,15 @@ boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
 
   boot_Set_client_at_exit = true;
   boot_Process_id = getpid ();
+#if !defined (SERVER_MODE)
+  /* the in-process client must not plant the CS client's exit-time
+   * shutdown inside cub_server — the client context is deliberately never
+   * shut down (see server_compile_tracer.cpp), and this handler would free
+   * client state after the thread manager's own teardown (tl_Entry_p
+   * already NULL -> assert in thread_get_thread_entry_info at exit). The
+   * server process's exit is owned by boot_shutdown_server_at_exit. */
   atexit (boot_shutdown_client_at_exit);
+#endif
 
   return NO_ERROR;
 }
@@ -252,7 +280,9 @@ install_system_metadata (void)
 static int
 boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb)
 {
+#if !defined (SERVER_MODE)
   int error_code;
+#endif
   const char *conf_file = NULL;
 
   /* If the client is restarted, shutdown the client */
@@ -261,10 +291,14 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
       (void) boot_shutdown_client (true);
     }
 
+#if !defined (SERVER_MODE)
+  /* same contract as boot_shutdown_client — an in-process (re)boot
+   * must never finalize the client modules shared with the running server */
   if (!boot_Is_client_all_final)
     {
       boot_client_all_finalize (ALL_FINALIZATION);
     }
+#endif
 
 #if defined(WINDOWS)
 /* set up the WINDOWS stream emulations */
@@ -329,13 +363,20 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
     }
 #endif
 
-/* initialize system parameters */
+/* initialize system parameters.
+ * skipped for the in-process client (SERVER_MODE) — the server's
+ * already-loaded parameter state is authoritative; re-loading here would
+ * both clobber live server parameters and hit prm_set_default's
+ * session-parameter path on a thread that has no session yet. */
+#if !defined (SERVER_MODE)
   if (sysprm_load_and_init_client (client_credential->get_db_name (), conf_file) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       return ER_BO_CANT_LOAD_SYSPRM;
     }
+#endif
 
+#if !defined (SERVER_MODE)
   if (!is_createdb)
     {
       // reload with update file name
@@ -353,11 +394,17 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
 	}
 #endif
     }
+#endif /* !SERVER_MODE — keep the server's er state */
 
   /* initialize the "areas" memory manager, requires prm_ */
   area_init ();
   locator_initialize_areas ();
 
+#if !defined (SERVER_MODE)
+  /* in-process boot must not re-run perfmon_initialize — the server
+   * already initialized pstat_Global for MAX_NTRANS at boot, and re-running
+   * it would leak those arrays and reallocate tran_stats for 1 transaction
+   * while server workers keep indexing by their real tran_index (OOB). */
   if (is_createdb)
     {
       error_code = perfmon_initialize (MAX_NTRANS);
@@ -375,6 +422,7 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
       ASSERT_ERROR ();
       return error_code;
     }
+#endif /* !SERVER_MODE */
 
   /* Initialize tsc-timer */
   tsc_init ();
@@ -651,6 +699,12 @@ boot_restart_failure_cleanup (DB_INFO * db,
     }
   else
     {
+#if !defined (SERVER_MODE)
+      /* not for the in-process boot — direct registration aliases
+       * these to the server's static boot_Db_full_name/boot_Host_name
+       * (boot_sr.c xboot_register_client), so freeing them would hand static
+       * storage to the private heap. The memset below still clears the
+       * aliases. */
       if (boot_Server_credential.db_full_name)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
@@ -659,7 +713,12 @@ boot_restart_failure_cleanup (DB_INFO * db,
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
 	}
+#endif /* !SERVER_MODE */
 
+#if !defined (SERVER_MODE)
+      /* never finalize these for an in-process boot — they are shared
+       * with (and owned by) the running server. Same contract as
+       * boot_shutdown_client's SERVER_MODE branch. */
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
       set_final ();
@@ -680,6 +739,12 @@ boot_restart_failure_cleanup (DB_INFO * db,
 
       locator_free_areas ();
       sysprm_final ();
+      /* Retire the process-owned areas and reset their init guards before
+       * area_final frees the remaining areas (also on in-process re-boot). */
+      ws_area_final ();
+      pr_area_final ();
+      obt_area_final ();
+      classobj_area_final ();
       area_final ();
 
       lang_final ();
@@ -692,6 +757,7 @@ boot_restart_failure_cleanup (DB_INFO * db,
 #if defined(WINDOWS)
       pc_final ();
 #endif /* WINDOWS */
+#endif /* !SERVER_MODE */
 
       memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
       memset (boot_Server_credential.server_session_key, 0xFF, SERVER_SESSION_KEY_SIZE);
@@ -1129,7 +1195,7 @@ error_exit:
 int
 boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
-  int tran_index;
+  int tran_index = NULL_TRAN_INDEX;
   TRAN_ISOLATION tran_isolation;
   int tran_lock_wait_msecs;
   TRAN_STATE transtate;
@@ -1138,6 +1204,17 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #if !defined(WINDOWS)
   bool dl_initialized = false;
 #endif /* !WINDOWS */
+
+#if defined (SERVER_MODE)
+  /* in-process client boot is not reentrant: it interleaves process-once
+   * module initialization (language/areas/domains/showstmt/...) with
+   * per-session state, and the once-guards are plain flags — serialize whole
+   * boots here (cold path; concurrent sessions overlap only in the SQL work
+   * that follows).  Unregistration needs no counterpart: it is a folded
+   * server call plus this session's own state. */
+  static std::mutex boot_Restart_mutex;
+  std::lock_guard < std::mutex > boot_restart_guard (boot_Restart_mutex);
+#endif
 
   assert (client_credential != NULL);
 
@@ -1350,6 +1427,18 @@ error:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
     }
 
+#if defined (SERVER_MODE)
+  /* a failure between boot_register_client and boot_client leaves the
+   * transaction registered server-side while tm_Tran_index is still unset —
+   * unregister it here by the local index, or it stays ACTIVE and shutdown's
+   * log_abort_all_active_transaction corrupts Main_entry_p (the SIGABRT
+   * mechanism documented on PR #181). */
+  if (tran_index != NULL_TRAN_INDEX && !BOOT_IS_CLIENT_RESTARTED ())
+    {
+      (void) boot_unregister_client (tran_index);
+    }
+#endif
+
 #if !defined(WINDOWS)
   boot_restart_failure_cleanup (db, dl_initialized, false);
 #else
@@ -1421,12 +1510,23 @@ boot_shutdown_client (bool is_er_final)
 #endif /* !CS_MODE */
 	}
 
+#if defined (SERVER_MODE)
+      /* for the in-process client, shutdown may only reclaim the
+       * transaction/registration (done above). The client modules
+       * (parser/ws/tp/sysprm/perfmon/...) are shared with — and owned by —
+       * the running server, so boot_client_all_finalize must never run
+       * here. Reachable via boot_restart_failure_cleanup when an in-process
+       * boot fails after client registration (e.g. au_start/es_init). */
+      tm_Tran_index = NULL_TRAN_INDEX;
+#else
       boot_client_all_finalize (is_er_final ? ALL_FINALIZATION : EXCEPT_ER_FINALIZATION);
+#endif
     }
 
   return NO_ERROR;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * boot_shutdown_client_at_exit () - make sure that the client is shutdown at exit
  *
@@ -1454,6 +1554,7 @@ boot_shutdown_client_at_exit (void)
       (void) boot_shutdown_client (true);
     }
 }
+#endif /* !SERVER_MODE */
 
 /*
  * boot_donot_shutdown_client_at_exit: do not shutdown client at exist.
@@ -1572,6 +1673,12 @@ boot_client_all_finalize (int final_level)
       locator_free_areas ();
       sysprm_final ();
       perfmon_finalize ();
+      /* Retire the process-owned areas and reset their init guards before
+       * area_final frees the remaining areas (also on in-process re-boot). */
+      ws_area_final ();
+      pr_area_final ();
+      obt_area_final ();
+      classobj_area_final ();
       area_final ();
 
       msgcat_final ();

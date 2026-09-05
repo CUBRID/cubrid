@@ -77,6 +77,8 @@
 #endif /* WINDOWS */
 
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
 
@@ -370,11 +372,13 @@ typedef struct corr_info
   UINTPTR id;
 } CORR_INFO;
 
+#if !defined (SERVER_MODE)
 FILE *query_Plan_dump_fp = NULL;
 char *query_Plan_dump_filename = NULL;
 bool query_Plan_dump_fp_open = false;
+#endif
 
-static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0 };
+static CSQL_PARSER_TLS XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0 };
 
 static const int OID_LIST_GROWTH = 10;
 
@@ -13137,7 +13141,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
     {
       return NULL;
     }
-  new (sig_array) cubpl::pl_signature_array ();
+  placement_new (sig_array);	/* raw placement-new is malformed by the memory_wrapper new-macro */
 
   sig_array->num_sigs = pt_length_of_list (cselect);
 
@@ -13146,7 +13150,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 
   for (int i = 0; i < sig_array->num_sigs; i++)
     {
-      new (&sig_array->sigs[i]) cubpl::pl_signature ();
+      placement_new (&sig_array->sigs[i]);
     }
 
   for (PT_NODE * node = cselect; node != NULL; node = node->next)
@@ -17216,7 +17220,16 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
   pt_set_aptr (parser, select_node, xasl);
 
-  if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
+  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_IS_MERGE_QUERY))
+    {
+      /* MERGE executes its update/insert subplans inside xtran_server_start_topop()'s system operation, whose
+       * tdes->rmutex_topop does not support workers of the same transaction locking it from other threads —
+       * parallel dispatch under it self-deadlocks (see qo_check_parallel_hash_join, which already refuses
+       * MERGE for the same reason; this covers the sort/subquery/hash-join paths driven by
+       * xasl->parallelism, while parallel scan is blocked for MERGE by the recursive scan checker). */
+      xasl->parallelism = 0;	/* disable */
+    }
+  else if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
     {
       xasl->parallelism = select_node->info.query.q.select.num_parallel_threads;
     }
@@ -17592,7 +17605,16 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   pt_set_aptr (parser, select_node, xasl);
 
-  if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
+  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_IS_MERGE_QUERY))
+    {
+      /* MERGE executes its update/insert subplans inside xtran_server_start_topop()'s system operation, whose
+       * tdes->rmutex_topop does not support workers of the same transaction locking it from other threads —
+       * parallel dispatch under it self-deadlocks (see qo_check_parallel_hash_join, which already refuses
+       * MERGE for the same reason; this covers the sort/subquery/hash-join paths driven by
+       * xasl->parallelism, while parallel scan is blocked for MERGE by the recursive scan checker). */
+      xasl->parallelism = 0;	/* disable */
+    }
+  else if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
     {
       xasl->parallelism = select_node->info.query.q.select.num_parallel_threads;
     }
@@ -29565,7 +29587,11 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	   * 2: PT_AUTHID_OWNER + PT_DETERMINISTIC
 	   * 3: PT_AUTHID_CALLER + PT_DETERMINISTIC
 	   */
-#if defined (CS_MODE)
+	  /* the folded compile is the legacy CS client (workspace#176 결함 16:
+	   * a non-deterministic SP must keep its subquery out of the result
+	   * cache — caching it returns stale SP results and leaks a
+	   * SUBQUERY_CACHE trace line the legacy client never produced) */
+#if defined (CS_MODE) || defined (SERVER_MODE)
 	  if (regu_src->value.sp_ptr->sig->is_deterministic == false)
 	    {
 	      return ER_FAILED;

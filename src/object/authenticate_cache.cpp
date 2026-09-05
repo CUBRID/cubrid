@@ -25,8 +25,11 @@
 #include "authenticate.h"
 #include "authenticate_grant.hpp" /* apply_grants */
 #include "dbtype_function.h"
+#include "message_catalog.h"
 #include "schema_manager.h"
 #include "set_object.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 au_class_cache::au_class_cache (int depth)
 {
@@ -364,7 +367,11 @@ authenticate_cache::make_class_cache (int depth)
     }
   else
     {
+#if defined(MMON_DEBUG_LEVEL)	/* memory_wrapper new-macro active: plain new is the noexcept file/line form */
+      new_class_cache = new AU_CLASS_CACHE (depth);
+#else
       new_class_cache = new (std::nothrow) AU_CLASS_CACHE (depth);
+#endif
       if (new_class_cache == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (AU_CLASS_CACHE));

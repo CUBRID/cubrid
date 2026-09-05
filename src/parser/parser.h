@@ -33,9 +33,6 @@
 #include "parse_tree.h"
 #include "deduplicate_key.h"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
 
 #ifdef __cplusplus
 extern "C"
@@ -64,7 +61,7 @@ extern "C"
 
   extern void csql_yyset_lineno (int line_number);
   extern int csql_yyget_lineno (void);
-  extern size_t json_table_column_count;
+  extern CSQL_PARSER_TLS size_t json_table_column_count;
 
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
   extern void parser_final (void);

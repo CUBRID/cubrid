@@ -1487,8 +1487,7 @@ perfmon_is_perf_tracking_force (bool always_collect)
 }
 
 #endif /* __cplusplus */
-
-#if defined(CS_MODE) || defined(SA_MODE)
+/* unguarded — client half now compiled into server */
 /* Client execution statistic structure */
 typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;
 struct perfmon_client_stat_info
@@ -1511,7 +1510,7 @@ extern int perfmon_print_stats (FILE * stream);
 extern int perfmon_print_global_stats (FILE * stream, bool cumulative, const char *substr);
 extern int perfmon_get_stats (void);
 extern int perfmon_get_global_stats (void);
-#endif /* CS_MODE || SA_MODE */
+/* end of former CS/SA region */
 
 STATIC_INLINE void
 perfmon_diff_timeval (struct timeval *elapsed, struct timeval *start, struct timeval *end)

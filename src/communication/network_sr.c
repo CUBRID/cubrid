@@ -35,6 +35,7 @@
 #endif
 #include "boot_sr.h"
 #include "connection_error.h"
+#include "server_compile_tracer.hpp"
 #include "connection_sr.h"
 #include "critical_section.h"
 #include "event_log.h"
@@ -1149,6 +1150,8 @@ net_server_start (const char *server_name)
     }
   else
     {
+      boot_tracer_start_if_requested (server_name);
+
       packed_name = css_pack_server_name (server_name, &name_length);
 
       r = css_init (thread_p, packed_name, name_length, prm_get_integer_value (PRM_ID_TCP_PORT_ID));

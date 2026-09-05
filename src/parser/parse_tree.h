@@ -23,9 +23,6 @@
 #ifndef _PARSE_TREE_H_
 #define _PARSE_TREE_H_
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
 
 #ident "$Id$"
 
@@ -35,6 +32,7 @@
 #include "class_object.h"
 #include "compile_context.h"
 #include "config.h"
+#include "csql_parser_tls.h"
 #include "cursor.h"
 #include "db_function.hpp"
 #include "json_table_def.h"
@@ -541,7 +539,6 @@ struct trace_json_t;
 	&& (n->info.dot.arg2->info.function.function_type == PT_GENERIC) \
         && (strchr (n->info.dot.arg2->info.function.generic_name, '.') == NULL))
 
-#if !defined (SERVER_MODE)
 /* the following defines support host variable binding for internal statements.
    internal statements can be generated on TEXT handling, and these statements
    can include host variables derived from original statement. so, to look up
@@ -572,8 +569,6 @@ struct trace_json_t;
              parser_->host_variables = NULL; parser_->host_var_count = 0; \
 	     parser_->host_var_expected_domains = NULL; \
              parser_->auto_param_count = 0; parser_->flag.set_host_var = 0; } } while (0)
-
-#endif /* !SERVER_MODE */
 
 /* NODE FUNCTION DECLARATIONS */
 #define IS_UPDATE_OBJ(node) (node->node_type == PT_UPDATE && node->info.update.object_parameter)
@@ -3759,6 +3754,8 @@ struct parser_node
   int line_number;		/* the user line number originating this */
   int column_number;		/* the user column number originating this */
   int buffer_pos;		/* position in the parse buffer of the string originating this */
+  int nesting_depth;		/* expression nesting depth, maintained by parser_make_expression (); guards the
+				 * recursive tree walkers against stack exhaustion from user input */
   char *sql_user_text;		/* user input sql string */
   int sql_user_text_len;	/* user input sql string length (one statement) */
 
@@ -4123,15 +4120,13 @@ extern "C"
 }
 #endif
 
-#if !defined (SERVER_MODE)
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-  extern PARSER_CONTEXT *parent_parser;
+  extern CSQL_PARSER_TLS PARSER_CONTEXT *parent_parser;
 #ifdef __cplusplus
 }
-#endif
 #endif
 
 #endif				/* _PARSE_TREE_H_ */

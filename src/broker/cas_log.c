@@ -49,6 +49,8 @@
 #include "hide_password.h"
 #include "cas_optimization.h"
 #include "cas_common_vars.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined(WINDOWS)
 typedef int mode_t;
@@ -62,8 +64,8 @@ typedef int mode_t;
 #define CAS_LOG_HIDE_PW        1
 
 static const char *get_access_log_type_string (ACCESS_LOG_TYPE type);
-static char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
-static char sql_log_buffer[SQL_LOG_BUFFER_SIZE];
+static CAS_TLS char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
+static CAS_TLS char sql_log_buffer[SQL_LOG_BUFFER_SIZE];
 
 static char *make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size, const char *br_name);
 static void cas_log_backup (T_CUBRID_FILE_ID fid);
@@ -85,10 +87,10 @@ static void cas_log_write_query_string_internal (char *query, int size, bool new
 static int error_file_offset;
 static char cas_log_error_flag;
 #endif
-static FILE *log_fp = NULL, *slow_log_fp = NULL;
-static char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
-static INT64 saved_log_fpos = 0;
-static CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
+static CAS_TLS FILE *log_fp = NULL, *slow_log_fp = NULL;
+static CAS_TLS char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
+static CAS_TLS INT64 saved_log_fpos = 0;
+static CAS_TLS CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
 
 static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream);
 static void cas_fwrite_oneline (FILE * fp, const char *str);
@@ -109,7 +111,7 @@ static int cas_rename (const char *oldpath, const char *newpath);
 static int cas_mkdir (const char *pathname, mode_t mode);
 static void access_log_backup (char *access_log_file, struct tm *ct);
 
-static INT64 saved_temp_stmt_fpos = 0;
+static CAS_TLS INT64 saved_temp_stmt_fpos = 0;
 
 static char *
 make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size, const char *br_name)
@@ -366,7 +368,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 		   || as_info->cur_sql_log_mode == SQL_LOG_MODE_NOTICE)
 	    {
 	      /* check timeout */
-	      if ((run_time_sec * 1000 + run_time_msec) < shm_appl->long_transaction_time)
+	      if ((run_time_sec * 1000 + run_time_msec) < CAS_SHM_CFG (long_transaction_time))
 		{
 		  abandon = true;
 		}
@@ -398,7 +400,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	    }
 	  saved_log_fpos = cas_ftell (log_fp);
 
-	  if ((saved_log_fpos / 1000) > shm_appl->sql_log_max_size)
+	  if ((saved_log_fpos / 1000) > CAS_SHM_CFG (sql_log_max_size))
 	    {
 	      cas_log_close (true);
 	      cas_log_backup (FID_SQL_LOG_DIR);
@@ -987,7 +989,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
     }
 
   fseek (fp, 0, SEEK_END);
-  if ((ftell (fp) / ONE_K) > shm_appl->access_log_max_size)
+  if ((ftell (fp) / ONE_K) > CAS_SHM_CFG (access_log_max_size))
     {
       time_t backup_sec = time (NULL);
       struct tm backup_tm;
@@ -1047,10 +1049,17 @@ cas_log_query_info_init (int id, char is_only_query_plan)
 char *
 cas_log_query_plan_file (int id)
 {
-  static char plan_file_name[BROKER_PATH_MAX];
+  static CAS_TLS char plan_file_name[BROKER_PATH_MAX];
   char dirname[BROKER_PATH_MAX];
   get_cubrid_file (FID_CAS_TMP_DIR, dirname, BROKER_PATH_MAX);
+#if defined (SERVER_MODE)
+  /* the slot index disambiguates sessions in the merged server, where every
+   * session shares one pid and the srv_handle ids are per-session (B2-D5) */
+  if (snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.%d.plan", dirname, (int) getpid (), shm_as_index, id) <
+      0)
+#else
   if (snprintf (plan_file_name, BROKER_PATH_MAX - 1, "%s/%d.%d.plan", dirname, (int) getpid (), id) < 0)
+#endif
     {
       assert (false);
       return NULL;
@@ -1195,7 +1204,7 @@ cas_slow_log_end ()
       long slow_log_fpos;
       slow_log_fpos = cas_ftell (slow_log_fp);
 
-      if ((slow_log_fpos / 1000) > shm_appl->sql_log_max_size)
+      if ((slow_log_fpos / 1000) > CAS_SHM_CFG (sql_log_max_size))
 	{
 	  cas_slow_log_close ();
 	  cas_log_backup (FID_SLOW_LOG_DIR);

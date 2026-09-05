@@ -36,6 +36,9 @@
 #endif
 
 #include "deduplicate_key.h"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -171,7 +174,7 @@ dk_get_deduplicate_key_value (OID * rec_oid, int att_id, DB_VALUE * value)
 //=============================================================================
 
 //=============================================================================
-#if !defined(SERVER_MODE)
+/* unguarded — client half now compiled into server */
 
 // SM_ATTRIBUTE and DB_ATTRIBUTE are the same thing.
 static SM_ATTRIBUTE *st_sm_atts[COUNT_OF_DEDUPLICATE_KEY_LEVEL];
@@ -351,7 +354,8 @@ dk_print_deduplicate_key_info (char *buf, int buf_size, int deduplicate_level)
   assert (len < buf_size);
   return buf;
 }
-#endif // #if !defined(SERVER_MODE)
+
+/* end of former !SERVER_MODE region */
 //=============================================================================
 char *
 dk_get_deduplicate_key_attr_name (int level)
@@ -373,7 +377,22 @@ dk_deduplicate_key_attribute_initialized ()
   dk_or_attribute_initialized ();
 #endif
 
-#if !defined(SERVER_MODE)
+  /* deliberately unguarded — st_sm_atts is process-global state the
+   * compiled-in client half needs (index DDL compilation resolves reserved
+   * deduplicate-key attributes through it), and tp_init runs once at server
+   * boot, so this is the only chance to build it.  Cost: a handful of small
+   * one-time allocations on a pure server boot. */
+#if defined (SERVER_MODE)
+  /* server boot runs off any session bracket, and these attributes live for
+   * the whole process — give them their own context so the workspace-heap
+   * allocations below have an owner (sessions only read the result) */
+  {
+    static client_session_context dk_boot_ctx;
+    csc_activate (&dk_boot_ctx);
+    dk_sm_attribute_initialized ();
+    csc_deactivate ();
+  }
+#else
   dk_sm_attribute_initialized ();
 #endif
 }
@@ -381,7 +400,5 @@ dk_deduplicate_key_attribute_initialized ()
 void
 dk_deduplicate_key_attribute_finalized ()
 {
-#if !defined(SERVER_MODE)
-  dk_sm_attribute_finalized ();
-#endif
+  dk_sm_attribute_finalized ();	/* unguarded */
 }

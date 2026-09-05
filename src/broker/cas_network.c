@@ -58,6 +58,8 @@
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
 #endif /* WINDOWS */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define SELECT_MASK	fd_set
 
@@ -71,10 +73,10 @@ static void unset_net_timeout_flag (void);
 static int get_host_ip (unsigned char *ip_addr);
 #endif /* WINDOWS */
 
-static bool net_timeout_flag = false;
+static CAS_TLS bool net_timeout_flag = false;
 
-static char net_error_flag;
-static int net_timeout = NET_DEFAULT_TIMEOUT;
+static CAS_TLS char net_error_flag;
+static CAS_TLS int net_timeout = NET_DEFAULT_TIMEOUT;
 
 #define READ_FROM_NET(sd, buf, size) ssl_client ? cas_ssl_read (sd, buf, size) : \
 	READ_FROM_SOCKET(sd, buf, size)

@@ -36,8 +36,11 @@
 #endif /* WINDOWS */
 
 #include "cas_log.h"
+#include "cas_common_vars.h"
 #include "dbtype.h"
 #include "cas_common_execute.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define SRV_HANDLE_ALLOC_SIZE		256
 
@@ -46,13 +49,13 @@ static void col_update_info_free (T_QUERY_RESULT * q_result);
 static void srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle);
 extern bool tran_is_in_libcas (void);
 
-static T_SRV_HANDLE **srv_handle_table = NULL;
-static int max_srv_handle = 0;
-static int max_handle_id = 0;
-static int current_handle_count = 0;
-static int current_handle_id = -1;	/* it is used for javasp */
-static bool is_cgw_mode = false;
-static cgw_free_stmt_func_t cgw_free_stmt_func = NULL;
+static CAS_TLS T_SRV_HANDLE **srv_handle_table = NULL;
+static CAS_TLS int max_srv_handle = 0;
+static CAS_TLS int max_handle_id = 0;
+static CAS_TLS int current_handle_count = 0;
+static CAS_TLS int current_handle_id = -1;	/* it is used for javasp */
+static CAS_TLS bool is_cgw_mode = false;
+static CAS_TLS cgw_free_stmt_func_t cgw_free_stmt_func = NULL;
 
 int
 hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
@@ -63,7 +66,7 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   T_SRV_HANDLE **new_srv_handle_table = NULL;
   T_SRV_HANDLE *srv_handle;
 
-  if (cas_shard_flag == OFF && current_handle_count >= shm_appl->max_prepared_stmt_count)
+  if (cas_shard_flag == OFF && current_handle_count >= CAS_SHM_CFG (max_prepared_stmt_count))
     {
       return ERROR_INFO_SET (CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED, CAS_ERROR_INDICATOR);
     }

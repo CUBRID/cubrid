@@ -26,13 +26,11 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
 
 #include "config.h"
+#include "csql_parser_tls.h"
 
-extern int qp_Packing_er_code;
+extern CSQL_PARSER_TLS int qp_Packing_er_code;
 
 /* Memory Buffer Related Routines */
 extern char *pt_alloc_packing_buf (int size);

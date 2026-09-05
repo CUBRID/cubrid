@@ -127,6 +127,8 @@ extern size_t css_get_max_connections ();
 #if defined (SERVER_MODE)
 extern int css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				      void **ptr);
+extern int css_session_status_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
+					  void **ptr);
 #else // not SERVER_MODE = SA_MODE
 // SA_MODE does not have access to server_support.c, but job scan is a common function
 // however, on SA_MODE, the result is always empty list
@@ -134,6 +136,19 @@ inline int
 css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
   // suppress all unused parameter warnings
+  (void) thread_p;
+  (void) show_type;
+  (void) arg_values;
+  (void) arg_cnt;
+
+  *ptr = NULL;
+  return NO_ERROR;
+}
+
+// same shape for SHOW SESSION STATUS: SA_MODE has no adopted sessions
+inline int
+css_session_status_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
   (void) thread_p;
   (void) show_type;
   (void) arg_values;

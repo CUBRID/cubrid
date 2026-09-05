@@ -1216,10 +1216,10 @@ struct xasl_node
   SQ_CACHE *sq_cache;
   int parallelism;		/* parallelism of the query */
 
-#if defined (CS_MODE) || defined (SA_MODE)
+  /* client-half compiler fields; unconditional so XASL_NODE has one layout
+   * when the client half is linked into the server */
   int projected_size;		/* # of bytes per result tuple */
   double cardinality;		/* estimated cardinality of result */
-#endif
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
   ORDERBY_STATS orderby_stats;

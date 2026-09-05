@@ -64,6 +64,16 @@
 extern int method_Num_method_jsp_calls;
 #define IS_IN_METHOD_OR_JSP_CALL() (method_Num_method_jsp_calls > 0)
 
+#else
+
+/* merged server: the in-process method/SP callback dispatch re-enters qmgr on
+ * the very thread evaluating the outer XASL (the SA shape, #120 D2/D7); its
+ * dispatch counts libcas depth on the session, reachable only under the
+ * thread's activation bracket */
+extern bool csc_bracket_is_active (void);	/* client_session_context.cpp */
+extern bool tran_is_in_libcas (void);	/* transaction_cl.c */
+#define IS_IN_METHOD_OR_JSP_CALL() (csc_bracket_is_active () && tran_is_in_libcas ())
+
 #endif
 
 #define QMGR_TEMP_FILE_FREE_LIST_SIZE   100
@@ -1281,7 +1291,7 @@ exit_on_error:
  *   xasl_id(in)        : XASL file id that was a result of prepare_query()
  *   query_idp(out)     : query id to be used for getting results
  *   dbval_count(in)      : number of host variables
- *   dbval_p(in) : array of host variables (query input parameters)
+ *   dbvals_p(in) : array of host variables (borrowed — never freed or kept past this call)
  *   flagp(in)  : flag
  *   clt_cache_time(in) :
  *   srv_cache_time(in) :
@@ -1297,18 +1307,12 @@ exit_on_error:
  */
 QFILE_LIST_ID *
 xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_ID * query_id_p, int dbval_count,
-		     void *dbval_p, QUERY_FLAG * flag_p, CACHE_TIME * client_cache_time_p,
+		     DB_VALUE * dbvals_p, QUERY_FLAG * flag_p, CACHE_TIME * client_cache_time_p,
 		     CACHE_TIME * server_cache_time_p, int query_timeout, xasl_cache_ent ** ret_cache_entry_p)
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
   XASL_CLONE xclone = XASL_CLONE_INITIALIZER;
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
-  DB_VALUE *dbvals_p;
-#if defined (SERVER_MODE)
-  DB_VALUE *dbval;
-  HL_HEAPID old_pri_heap_id;
-  char *data;
-#endif
   int i;
   DB_VALUE_ARRAY params;
   QMGR_QUERY_ENTRY *query_p;
@@ -1330,17 +1334,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   xasl_cache_entry_p = NULL;
   list_cache_entry_p = NULL;
 
-  dbvals_p = NULL;
-#if defined (SERVER_MODE)
-  data = (char *) dbval_p;
-  old_pri_heap_id = 0;
-#endif
-
-#if defined (SERVER_MODE)
-  assert (thread_get_recursion_depth (thread_p) == 0);
-#elif defined (SA_MODE)
   assert (thread_get_recursion_depth (thread_p) == 0 || IS_IN_METHOD_OR_JSP_CALL ());
-#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
@@ -1411,30 +1405,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   /* for result-cache only */
   params.size = dbval_count;
   params.vals = NULL;
-
-#if defined (SERVER_MODE)
-  if (dbval_count)
-    {
-      char *ptr;
-
-      assert (data != NULL);
-
-      dbvals_p = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * dbval_count);
-      if (dbvals_p == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      /* unpack DB_VALUEs from the received data */
-      ptr = data;
-      for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
-	{
-	  ptr = or_unpack_db_value (ptr, dbval);
-	}
-    }
-#else
-  dbvals_p = (DB_VALUE *) dbval_p;
-#endif
 
   /* If it is not inhibited from getting the cached result, inspect the list cache (query result cache) and get the
    * list file id(QFILE_LIST_ID) to be returned to the client if it is in there. The list cache will be searched with
@@ -1685,17 +1655,6 @@ end:
       thread_p->trigger_involved = false;
     }
 
-#if defined (SERVER_MODE)
-  if (dbvals_p)
-    {
-      for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
-	{
-	  pr_clear_value (dbval);
-	}
-      db_private_free_and_init (thread_p, dbvals_p);
-    }
-#endif
-
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
     {
       perfmon_start_watch (thread_p);
@@ -1814,7 +1773,7 @@ copy_bind_value_to_tdes (THREAD_ENTRY * thread_p, int num_bind_vals, DB_VALUE * 
  *   xasl_stream_size(in)      : memory area size pointed by the xasl_stream
  *   query_id(in)       :
  *   dbval_count(in)      : Number of positional values
- *   dbval_p(in)      : List of positional values
+ *   dbvals_p(in)      : List of positional values (borrowed — never freed or kept past this call)
  *   flag(in)   :
  *   query_timeout(in): set a timeout only if it is positive
  *
@@ -1827,16 +1786,9 @@ copy_bind_value_to_tdes (THREAD_ENTRY * thread_p, int num_bind_vals, DB_VALUE * 
  */
 QFILE_LIST_ID *
 xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int xasl_stream_size,
-				 QUERY_ID * query_id_p, int dbval_count, void *dbval_p, QUERY_FLAG * flag_p,
+				 QUERY_ID * query_id_p, int dbval_count, DB_VALUE * dbvals_p, QUERY_FLAG * flag_p,
 				 int query_timeout)
 {
-#if defined (SERVER_MODE)
-  DB_VALUE *dbval;
-  HL_HEAPID old_pri_heap_id;
-  char *data;
-  int i;
-#endif
-  DB_VALUE *dbvals_p;
   QMGR_QUERY_ENTRY *query_p;
   QFILE_LIST_ID *list_id_p;
   int tran_index;
@@ -1850,19 +1802,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
   *query_id_p = -1;
   list_id_p = NULL;
 
-  dbvals_p = NULL;
-
-#if defined (SERVER_MODE)
-  assert (thread_get_recursion_depth (thread_p) == 0);
-#elif defined (SA_MODE)
   assert (thread_get_recursion_depth (thread_p) == 0 || IS_IN_METHOD_OR_JSP_CALL ());
-#endif
-
-
-#if defined (SERVER_MODE)
-  data = (char *) dbval_p;
-  old_pri_heap_id = 0;
-#endif
 
   saved_is_stats_on = perfmon_server_is_stats_on (thread_p);
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
@@ -1924,29 +1864,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
   /* set a timeout if necessary */
   qmgr_set_query_exec_info_to_tdes (tran_index, query_timeout, NULL);
-
-  if (dbval_count)
-    {
-      char *ptr;
-
-      assert (data != NULL);
-
-      dbvals_p = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * dbval_count);
-      if (dbvals_p == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      /* unpack DB_VALUEs from the received data */
-      ptr = data;
-      for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
-	{
-	  ptr = or_unpack_db_value (ptr, dbval);
-	}
-    }
 #else
-  dbvals_p = (DB_VALUE *) dbval_p;
-
   /* allocate a new query entry */
   query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
   if (query_p == NULL)
@@ -1988,17 +1906,6 @@ end:
       session_set_trigger_state (thread_p, false);
       thread_p->trigger_involved = false;
     }
-
-#if defined (SERVER_MODE)
-  if (dbvals_p)
-    {
-      for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
-	{
-	  pr_clear_value (dbval);
-	}
-      db_private_free_and_init (thread_p, dbvals_p);
-    }
-#endif
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
     {

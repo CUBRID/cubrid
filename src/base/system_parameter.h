@@ -551,8 +551,32 @@ enum param_id
 
   PRM_ID_PLAN_CACHE_BIND_SENSITIVITY,
 
+  /* stage B2 (#116 D9): CAS-owned broker parameters whose owner moved into
+   * the server with the folded CAS speaker — sql/slow/access log production
+   * and the long-query/long-transaction thresholds */
+  PRM_ID_CAS_SQL_LOG,
+  PRM_ID_CAS_SLOW_LOG,
+  PRM_ID_CAS_SQL_LOG_MAX_SIZE,
+  PRM_ID_CAS_ACCESS_LOG,
+  PRM_ID_CAS_ACCESS_LOG_MAX_SIZE,
+  PRM_ID_CAS_LONG_QUERY_TIME,
+  PRM_ID_CAS_LONG_TRANSACTION_TIME,
+  PRM_ID_CAS_JDBC_CACHE,
+  PRM_ID_CAS_JDBC_CACHE_HINT_ONLY,
+  PRM_ID_CAS_JDBC_CACHE_LIFE_TIME,
+  PRM_ID_CAS_STATEMENT_POOLING,
+  PRM_ID_CAS_CCI_DEFAULT_AUTOCOMMIT,
+  PRM_ID_CAS_MAX_PREPARED_STMT_COUNT,
+  PRM_ID_CAS_SESSION_TIMEOUT,
+  PRM_ID_CAS_MAX_STRING_LENGTH,
+  PRM_ID_CAS_MAX_QUERY_TIMEOUT,
+  PRM_ID_CAS_ACCESS_CONTROL,
+  PRM_ID_CAS_ACCESS_CONTROL_FILE,
+  PRM_ID_CAS_ACCESS_CONTROL_DEFAULT_ALLOW,
+  PRM_ID_CAS_STRIPPED_COLUMN_NAME,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_PLAN_CACHE_BIND_SENSITIVITY
+  PRM_LAST_ID = PRM_ID_CAS_STRIPPED_COLUMN_NAME
 };
 typedef enum param_id PARAM_ID;
 
@@ -705,6 +729,15 @@ extern "C"
 #define SERVER_SESSION_CHCK  ((PRM_FOR_SESSION | PRM_FOR_SERVER) & ~PRM_CLIENT_SESSION)	// 0x00000104
 #define PRM_SERVER_SESSION(id)  (((GET_PRM (id))->static_flag & SERVER_SESSION_MASK) == SERVER_SESSION_CHCK)
 
+/* client-only session parameters (e.g. create_table_reuseoid, optimization_level): the server
+ * process hosts the in-process client half, whose reads must resolve through the session's
+ * parameter array like a CAS resolved its per-connection copy; server-proper code never reads
+ * these, and PRM_CLIENT_SESSION dual parameters keep the server's own value */
+#define CLIENT_ONLY_SESSION_MASK  (PRM_FOR_SESSION | PRM_FOR_CLIENT | PRM_FOR_SERVER)
+#define CLIENT_ONLY_SESSION_CHCK  (PRM_FOR_SESSION | PRM_FOR_CLIENT)
+#define PRM_CLIENT_ONLY_SESSION(id)  (((GET_PRM (id))->static_flag & CLIENT_ONLY_SESSION_MASK) == CLIENT_ONLY_SESSION_CHCK)
+#define PRM_SESSION_READTHROUGH(id)  (PRM_SERVER_SESSION (id) || PRM_CLIENT_ONLY_SESSION (id))
+
 /*
  * for PRM_ID_PARALLELISM
  */
@@ -789,6 +822,7 @@ extern "C"
   extern int sysprm_set_to_default (PARAM_ID param_id, bool set_to_force);
   extern int sysprm_check_range (PARAM_ID param_id, void *value);
   extern int sysprm_get_range (PARAM_ID id, void *min, void *max);
+  extern bool sysprm_param_is_set (PARAM_ID id);
   extern int prm_get_master_port_id (void);
   extern bool prm_get_commit_on_shutdown (void);
 
@@ -803,20 +837,21 @@ extern "C"
 
 #if defined (SERVER_MODE)
   extern int sysprm_session_init_session_parameters (SESSION_PARAM ** session_params, int *found_session_parameters);
+  /* builds the in-process client's session-parameter array from the
+   * live process values (no network handshake to deliver them) */
+  extern SESSION_PARAM *sysprm_alloc_session_parameters_from_defaults (void);
 #endif				/* SERVER_MODE */
 
 #if defined (CS_MODE)
   extern void sysprm_update_client_session_parameters (SESSION_PARAM * session_parameters);
 #endif				/* CS_MODE */
 
-#if !defined (SERVER_MODE)
   extern char *sysprm_print_parameters_for_qry_string (void);
   extern char *sysprm_print_parameters_for_ha_repl (void);
   extern SYSPRM_ERR sysprm_validate_change_parameters (const char *data, bool check,
 						       SYSPRM_ASSIGN_VALUE ** assignments_ptr);
   extern SYSPRM_ERR sysprm_make_default_values (const char *data, char *default_val_buf, const int buf_size);
   extern int sysprm_init_intl_param (void);
-#endif				/* !SERVER_MODE */
 
   extern int sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int length);
   extern int sysprm_set_error (SYSPRM_ERR rc, const char *data);
@@ -852,7 +887,7 @@ extern "C"
     assert (PRM_IS_INTEGER (GET_PRM (prm_id)) || PRM_IS_KEYWORD (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_INT_P (prm_get_value (prm_id));
       }
@@ -872,7 +907,7 @@ extern "C"
     assert (PRM_IS_BOOLEAN (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_BOOL_P (prm_get_value (prm_id));
       }
@@ -892,7 +927,7 @@ extern "C"
     assert (PRM_IS_FLOAT (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_FLOAT_P (prm_get_value (prm_id));
       }
@@ -912,7 +947,7 @@ extern "C"
     assert (PRM_IS_STRING (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_STRING_P (prm_get_value (prm_id));
       }
@@ -933,7 +968,7 @@ extern "C"
     assert (PRM_IS_INTEGER_LIST (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_INTEGER_LIST_P (prm_get_value (prm_id));
       }
@@ -953,7 +988,7 @@ extern "C"
     assert (PRM_IS_BIGINT (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (PRM_SERVER_SESSION (prm_id))
+    if (PRM_SESSION_READTHROUGH (prm_id))
       {
 	return PRM_GET_BIGINT_P (prm_get_value (prm_id));
       }

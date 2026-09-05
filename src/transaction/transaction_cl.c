@@ -62,7 +62,30 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
+#if defined (SERVER_MODE)
+extern int csc_er_stack_floor (void);	/* client_session_context.cpp */
+#else
+/* single-workspace builds have no dispatch boundary; keeps pre-fold behavior */
+#define csc_er_stack_floor() 0
+#endif
+
+/*
+ * tran_er_stack_clearall - er_stack_clearall bounded to the client half.
+ *   Under a fold session bracket the er frames at or below the innermost
+ *   method-dispatch floor belong to the invoking server executor; legacy CAS's
+ *   clearall could only reach its own process's stack, so the fold clears only
+ *   the frames above the floor.  Outside a bracket the floor is 0 == clearall.
+ */
+static void
+tran_er_stack_clearall (void)
+{
+  er_stack_clear_above (csc_er_stack_floor ());
+}
+
+#if !defined (SERVER_MODE)
 int tm_Tran_index = NULL_TRAN_INDEX;
 TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
 bool tm_Tran_async_ws = false;
@@ -77,6 +100,7 @@ LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not
  */
 LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
 int tm_Tran_latest_query_status;
+#endif /* !SERVER_MODE */
 
 /* Timeout(milli seconds) for queries.
  *
@@ -88,9 +112,16 @@ int tm_Tran_latest_query_status;
  *
  * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (SP)
  */
+#if defined (SERVER_MODE)
+#define tm_Query_begin (csc_tm ()->query_begin)
+#define tm_Query_timeout (csc_tm ()->query_timeout)
+#define tm_libcas_depth (csc_tm ()->libcas_depth)
+#define user_savepoint_list (csc_tm ()->user_savepoint_list)
+#else /* SERVER_MODE */
 static UINT64 tm_Query_begin = 0;
 static int tm_Query_timeout = 0;
 static int tm_libcas_depth = 0;
+#endif /* !SERVER_MODE */
 
 /* this is a local list of user-defined savepoints.  It may be updated upon
  * the following calls:
@@ -99,7 +130,9 @@ static int tm_libcas_depth = 0;
  *    tran_abort()		-> tran_free_savepoint_list()
  *    tran_abort_upto_savepoint() -> tm_free_list_upto_savepoint()
  */
+#if !defined (SERVER_MODE)
 static DB_NAMELIST *user_savepoint_list = NULL;
+#endif
 
 static int tran_add_savepoint (const char *savept_name);
 static void tran_free_list_upto_savepoint (const char *savept_name);
@@ -223,7 +256,9 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
 }
 
 /* only loaddb changes this setting */
+#if !defined (SERVER_MODE)
 bool tm_Use_OID_preflush = true;
+#endif
 
 int
 tran_flush_to_commit (void)
@@ -376,7 +411,7 @@ tran_commit (bool retain_lock)
   if (error_code == NO_ERROR || BOOT_IS_CLIENT_RESTARTED ())
     {
       ws_clear_all_hints (retain_lock);
-      er_stack_clearall ();
+      tran_er_stack_clearall ();
     }
 
   /* allow triggers AFTER the commit */
@@ -498,7 +533,7 @@ tran_abort (void)
   /* Increment snapshot version in work space */
   ws_increment_mvcc_snapshot_version ();
 
-  er_stack_clearall ();
+  tran_er_stack_clearall ();
 
   /* can these do anything useful ? */
   tr_check_rollback_triggers (TR_TIME_AFTER);
@@ -806,7 +841,7 @@ tran_2pc_prepare (void)
     {
       db_clear_client_query_result (true, true);
       ws_clear_all_hints (false);
-      er_stack_clearall ();
+      tran_er_stack_clearall ();
     }
 
 end:
@@ -965,7 +1000,7 @@ tran_2pc_prepare_global_tran (int gtrid)
     {
       db_clear_client_query_result (true, true);
       ws_clear_all_hints (false);
-      er_stack_clearall ();
+      tran_er_stack_clearall ();
     }
 
   return error_code;

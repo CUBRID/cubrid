@@ -619,6 +619,12 @@ admin_add_cmd (int master_shm_id, const char *broker)
       uw_shm_detach (shm_br);
       return 0;
     }
+  if (shm_br->br_info[br_index].direct_handoff == ON)
+    {
+      sprintf (admin_err_msg, "Cannot add appl server: broker [%s] is a direct-handoff front (no CAS pool)\n", broker);
+      uw_shm_detach (shm_br);
+      return -1;
+    }
 
   if (shm_br->br_info[br_index].auto_add_appl_server == ON)
     {
@@ -705,6 +711,12 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
     {
       uw_shm_detach (shm_br);
       return 0;
+    }
+  if (shm_br->br_info[br_index].direct_handoff == ON)
+    {
+      sprintf (admin_err_msg, "Cannot restart appl server: broker [%s] is a direct-handoff front (no CAS pool)\n",
+	       broker);
+      goto restart_error;
     }
 
   shm_appl = (T_SHM_APPL_SERVER *) uw_shm_open (appl_shm_key, SHM_APPL_SERVER, SHM_MODE_ADMIN);
@@ -893,6 +905,12 @@ admin_drop_cmd (int master_shm_id, const char *broker)
     {
       uw_shm_detach (shm_br);
       return 0;
+    }
+  if (shm_br->br_info[br_index].direct_handoff == ON)
+    {
+      sprintf (admin_err_msg, "Cannot drop appl server: broker [%s] is a direct-handoff front (no CAS pool)", broker);
+      uw_shm_detach (shm_br);
+      return -1;
     }
 
   shm_appl_server = (T_SHM_APPL_SERVER *) uw_shm_open (appl_shm_key, SHM_APPL_SERVER, SHM_MODE_ADMIN);
@@ -1869,6 +1887,18 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
 	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (), uw_get_os_error_code ());
 	  goto set_conf_error;
 	}
+    }
+
+  /* B4 (#116 D9): on a direct-handoff broker the CAS-execution parameters
+   * are server system parameters (cas_*) now, and there is no appl-server
+   * pool — only the connection-front parameter ACCESS_MODE stays changeable
+   * here. The gateway keeps the full surface (it can never be direct). */
+  if (br_info_p->direct_handoff == ON && strcasecmp (conf_name, "ACCESS_MODE") != 0)
+    {
+      sprintf (admin_err_msg,
+	       "Cannot change %s on a direct-handoff broker; CAS execution parameters are server parameters (cas_*)",
+	       conf_name);
+      goto set_conf_error;
     }
 
   if (strcasecmp (conf_name, "SQL_LOG") == 0)
@@ -3262,6 +3292,15 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id, T_SHM_BROKER * shm_br)
 		  goto end;
 		}
 	    }
+	}
+    }
+  else if (br_info->direct_handoff == ON)
+    {
+      /* stage B1 (#117): no CAS pool — connections are handed off to the
+       * database server; slots exist only as the broker's admission count */
+      for (i = 0; i < br_info->appl_server_max_num; i++)
+	{
+	  CON_STATUS_LOCK_INIT (&(shm_appl->as_info[i]));
 	}
     }
   else

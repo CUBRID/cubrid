@@ -1181,7 +1181,7 @@ comp_func_grouping_unicode_cp_mapping (const void *arg1, const void *arg2)
 }
 #endif //#if defined(SA_MODE)
 
-#if !defined (SERVER_MODE)
+/* unguarded — client half now compiled into server */
 /*
  * unicode_string_need_compose() - Checks if a string needs composition
  *				   and returns the size required by fully
@@ -1470,4 +1470,5 @@ unicode_decompose_string (const char *str_in, const int size_in, char *str_out, 
 
   *size_out = CAST_STRLEN (dest_cursor - str_out);
 }
-#endif /* SERVER_MODE */
+
+/* end of former !SERVER_MODE region */

@@ -116,8 +116,8 @@
 // To have the safe area is just a safe guard to avoid potential issues of bad size calculation.
 #define QEWC_MAX_DATA_SIZE  (DB_PAGESIZE - QEWC_SAFE_GUARD_SIZE)
 
-/* This file is only included in the server.  So set the on_server flag on */
-unsigned int db_on_server = 1;
+/* server workers stay 1; a thread hosting the in-process client half sets 0 and lets enter_server/exit_server toggle it */
+thread_local unsigned int db_on_server = 1;
 
 STATIC_INLINE TRAN_STATE stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool retain_lock,
     bool *should_conn_reset) __attribute__ ((ALWAYS_INLINE));
@@ -4019,8 +4019,20 @@ sboot_register_client (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
   unpacker.unpack_all (client_credential, client_lock_wait, xint);
   client_isolation = (TRAN_ISOLATION) xint;
 
-  tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
-				      &server_credential);
+  if (!BOOT_UTIL_CHANNEL_CLIENT_TYPE (client_credential.client_type))
+    {
+      /* wf122/B5 D5: this channel is the utility/HA plane; csql and driver
+       * traffic rides the CAS wire.  The handshake error is one every
+       * legacy client can render locally. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_HAND_SHAKE, 1, client_credential.get_host_name ());
+      tran_index = NULL_TRAN_INDEX;
+      tran_state = TRAN_UNACTIVE_UNKNOWN;
+    }
+  else
+    {
+      tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
+					  &server_credential);
+    }
   if (tran_index == NULL_TRAN_INDEX)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -5688,6 +5700,7 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   int csserror, dbval_cnt, data_size, replydata_size, page_size;
   QUERY_ID query_id = NULL_QUERY_ID;
   char *ptr, *data = NULL, *reply, *replydata = NULL;
+  DB_VALUE *dbvals = NULL;
   PAGE_PTR page_ptr;
   char *aligned_page_buf;
   QUERY_FLAG query_flag;
@@ -5815,9 +5828,49 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 
   CACHE_TIME_RESET (&srv_cache_time);
 
+  /* unpack the parameter values — xqmgr_execute_query borrows a native DB_VALUE array */
+  if (dbval_cnt > 0)
+    {
+      assert (data != NULL);
+
+      dbvals = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * dbval_cnt);
+      if (dbvals == NULL)
+	{
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  if (data != NULL && data != aligned_data_buf)
+	    {
+	      thread_p->release_packet (data);
+	    }
+	  if (base_stats != NULL)
+	    {
+	      free_and_init (base_stats);
+	    }
+	  if (p_net_Deferred_end_queries != net_Deferred_end_queries)
+	    {
+	      free_and_init (p_net_Deferred_end_queries);
+	    }
+	  return;
+	}
+
+      ptr = data;
+      for (i = 0; i < dbval_cnt; i++)
+	{
+	  ptr = or_unpack_db_value (ptr, &dbvals[i]);
+	}
+    }
+
   /* call the server routine of query execute */
-  list_id = xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time,
+  list_id = xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, dbvals, &query_flag, &clt_cache_time,
 				 &srv_cache_time, query_timeout, &xasl_cache_entry_p);
+
+  if (dbvals != NULL)
+    {
+      for (i = 0; i < dbval_cnt; i++)
+	{
+	  pr_clear_value (&dbvals[i]);
+	}
+      db_private_free_and_init (thread_p, dbvals);
+    }
 
   if (data != NULL && data != aligned_data_buf)
     {
@@ -6317,6 +6370,8 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char 
   char *xasl_stream;
   int xasl_stream_size;
   char *ptr, *var_data, *list_data;
+  DB_VALUE *dbvals = NULL;
+  int i;
   OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   PAGE_PTR page_ptr;
@@ -6364,13 +6419,38 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char 
   is_tran_auto_commit = IS_TRAN_AUTO_COMMIT (flag);
   xsession_set_tran_auto_commit (thread_p, is_tran_auto_commit);
 
+  /* unpack the positional values — xqmgr_prepare_and_execute_query borrows a native DB_VALUE array */
+  if (var_count > 0 && var_data != NULL)
+    {
+      dbvals = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * var_count);
+      if (dbvals == NULL)
+	{
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  goto cleanup;
+	}
+
+      ptr = var_data;
+      for (i = 0; i < var_count; i++)
+	{
+	  ptr = or_unpack_db_value (ptr, &dbvals[i]);
+	}
+    }
+
   /*
    * After this point, xqmgr_prepare_and_execute_query has assumed
    * responsibility for freeing xasl_stream...
    */
   q_result =
-	  xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, &query_id, var_count, var_data, &flag,
+	  xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, &query_id, var_count, dbvals, &flag,
 	      query_timeout);
+  if (dbvals != NULL)
+    {
+      for (i = 0; i < var_count; i++)
+	{
+	  pr_clear_value (&dbvals[i]);
+	}
+      db_private_free_and_init (thread_p, dbvals);
+    }
   if (var_data)
     {
       thread_p->release_packet (var_data);

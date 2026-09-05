@@ -61,6 +61,8 @@
 #include "dbtype.h"
 #include "parser_allocator.hpp"
 #include "execute_schema.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -96,14 +98,14 @@ struct pt_host_vars
  * that info from server. */
 #define DB_ENUM_ELEMENTS_MAX_AGG_SIZE (DB_PAGESIZE / 2)
 
-int qp_Packing_er_code = NO_ERROR;
+CSQL_PARSER_TLS int qp_Packing_er_code = NO_ERROR;
 
 static const int PACKING_MMGR_CHUNK_SIZE = 1024;
 static const int PACKING_MMGR_BLOCK_SIZE = 10;
 
-static int packing_heap_num_slot = 0;
-static HL_HEAPID *packing_heap = NULL;
-static int packing_level = 0;
+static CSQL_PARSER_TLS int packing_heap_num_slot = 0;
+static CSQL_PARSER_TLS HL_HEAPID *packing_heap = NULL;
+static CSQL_PARSER_TLS int packing_level = 0;
 
 static void pt_free_packing_buf (int slot);
 
@@ -10144,7 +10146,13 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
   unsigned char pad[2];
 
   bool ti = true;
+#if defined (SERVER_MODE)
+  /* session-settable parameter: a first-caller cache would pin one session's
+   * value process-wide (a4 audit) */
+  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+#else
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+#endif
 
   if (dt == NULL || dt->node_type != PT_DATA_TYPE || dt->type_enum != PT_TYPE_ENUMERATION)
     {

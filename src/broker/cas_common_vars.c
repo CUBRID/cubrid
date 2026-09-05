@@ -30,6 +30,8 @@
 #include "cas_common_vars.h"
 #include "cas_common.h"
 #include "porting.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* Shard ID variables */
 int shm_shard_id = SHARD_ID_UNSUPPORTED;
@@ -38,31 +40,32 @@ int shm_shard_cas_id = -1;
 int cas_shard_flag = OFF;
 
 /* Shared memory variables */
-int shm_as_index;
+CAS_TLS int shm_as_index;
 T_SHM_APPL_SERVER *shm_appl;
-T_APPL_SERVER_INFO *as_info;
+CAS_TLS T_CAS_SESSION_CFG cas_session_cfg;
+CAS_TLS T_APPL_SERVER_INFO *as_info;
 
 /* Transaction and query timing */
-struct timeval tran_start_time;
-struct timeval query_start_time;
-int tran_timeout = 0;
-int query_timeout = 0;
-INT64 query_cancel_time;
-char query_cancel_flag;
+CAS_TLS struct timeval tran_start_time;
+CAS_TLS struct timeval query_start_time;
+CAS_TLS int tran_timeout = 0;
+CAS_TLS int query_timeout = 0;
+CAS_TLS INT64 query_cancel_time;
+CAS_TLS char query_cancel_flag;
 
 /* Error handling */
-int errors_in_transaction = 0;
-T_ERROR_INFO err_info;
+CAS_TLS int errors_in_transaction = 0;
+CAS_TLS T_ERROR_INFO err_info;
 
 /* Client info */
-char stripped_column_name;
-char cas_client_type;
+CAS_TLS char stripped_column_name;
+CAS_TLS char cas_client_type;
 
 /* CAS info buffer */
-char prev_cas_info[CAS_INFO_SIZE];
+CAS_TLS char prev_cas_info[CAS_INFO_SIZE];
 
 /* Network socket */
-SOCKET new_req_sock_fd = INVALID_SOCKET;
+CAS_TLS SOCKET new_req_sock_fd = INVALID_SOCKET;
 
 #if defined(WINDOWS)
 /* Request count for restart check (WINDOWS only) */
@@ -74,18 +77,18 @@ const char *program_name;
 char broker_name[BROKER_NAME_LEN];
 
 /* CAS configuration */
-int cas_default_isolation_level = 0;
-int cas_default_lock_timeout = -1;
-int cas_send_result_flag = TRUE;
-bool cas_default_ansi_quotes = true;
-bool cas_default_no_backslash_escapes = true;
+CAS_TLS int cas_default_isolation_level = 0;
+CAS_TLS int cas_default_lock_timeout = -1;
+CAS_TLS int cas_send_result_flag = TRUE;
+CAS_TLS bool cas_default_ansi_quotes = true;
+CAS_TLS bool cas_default_no_backslash_escapes = true;
 
 /* Request info */
-T_REQ_INFO req_info;
+CAS_TLS T_REQ_INFO req_info;
 
 /* Additional variables used by CAS and CGW */
 int psize_at_start;
-int con_status_before_check_cas;
-bool is_first_request;
-int cas_info_size = CAS_INFO_SIZE;
-bool autocommit_deferred = false;
+CAS_TLS int con_status_before_check_cas;
+CAS_TLS bool is_first_request;
+CAS_TLS int cas_info_size = CAS_INFO_SIZE;
+CAS_TLS bool autocommit_deferred = false;

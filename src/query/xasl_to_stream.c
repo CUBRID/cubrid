@@ -44,6 +44,9 @@
 #include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
 #include "xasl_unpack_info.hpp"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	/* thread_get_thread_entry_info () — xts_debug_check */
+#endif
 
 #define    BYTE_SIZE        OR_INT_SIZE
 #define    LONG_SIZE        OR_INT_SIZE
@@ -59,21 +62,27 @@ struct xts_visited_ptr
   int offset;			/* offset where the node pointed by 'ptr' is stored */
 };
 
+/* The serialization state below lives for a single xts_map_*_to_stream call
+ * on one thread, so per-thread scope multiplexes it (see csql_parser_tls.h) */
+#include "csql_parser_tls.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* linear byte stream to store the given XASL tree */
-static char *xts_Stream_buffer = NULL;	/* pointer to the stream */
-static int xts_Stream_size = 0;	/* # of bytes allocated */
-static int xts_Free_offset_in_stream = 0;
-static int xts_id_serial = 0;
+static CSQL_PARSER_TLS char *xts_Stream_buffer = NULL;	/* pointer to the stream */
+static CSQL_PARSER_TLS int xts_Stream_size = 0;	/* # of bytes allocated */
+static CSQL_PARSER_TLS int xts_Free_offset_in_stream = 0;
+static CSQL_PARSER_TLS int xts_id_serial = 0;
 
 /* blocks of visited pointer constants */
-static XTS_VISITED_PTR *xts_Ptr_blocks[MAX_PTR_BLOCKS] = { 0 };
+static CSQL_PARSER_TLS XTS_VISITED_PTR *xts_Ptr_blocks[MAX_PTR_BLOCKS] = { 0 };
 
 /* low-water-mark of visited pointers */
-static int xts_Ptr_lwm[MAX_PTR_BLOCKS] = { 0 };
-static int xts_Ptr_max[MAX_PTR_BLOCKS] = { 0 };
+static CSQL_PARSER_TLS int xts_Ptr_lwm[MAX_PTR_BLOCKS] = { 0 };
+static CSQL_PARSER_TLS int xts_Ptr_max[MAX_PTR_BLOCKS] = { 0 };
 
 /* error code specific to this file */
-static int xts_Xasl_errcode = NO_ERROR;
+static CSQL_PARSER_TLS int xts_Xasl_errcode = NO_ERROR;
 
 static int xts_save_aggregate_type (const AGGREGATE_TYPE * aggregate);
 static int xts_save_function_type (const FUNCTION_TYPE * function);
@@ -8033,7 +8042,17 @@ xts_debug_check (const T &t, char *pack_start, const char *pack_end)
   //     check original data is same as resulted data after pack/unpack
   //
 
-  stx_init_xasl_unpack_info (NULL, xts_Stream_buffer, xts_Stream_size);
+  /* pre-fold this ran against the client's process-global unpack slot (NULL
+   * thread); in the merged server the slot lives on the executing thread, so
+   * use that thread and RESTORE its slot — the server half of this very
+   * thread may own an unpack of its own (dispatched inner statements). */
+  THREAD_ENTRY *thread_p = NULL;
+#if defined (SERVER_MODE)
+  thread_p = thread_get_thread_entry_info ();
+  XASL_UNPACK_INFO *save_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+#endif
+
+  stx_init_xasl_unpack_info (thread_p, xts_Stream_buffer, xts_Stream_size);
 
   // check sizeof is correct
   std::size_t buf_size = pack_end - pack_start;
@@ -8042,7 +8061,7 @@ xts_debug_check (const T &t, char *pack_start, const char *pack_end)
 
   // build object from packed data
   T unpack_t;
-  char * unpack_end = stx_build (NULL, pack_start, unpack_t);
+  char * unpack_end = stx_build (thread_p, pack_start, unpack_t);
   if (unpack_end != pack_end)
     {
       // this leads to build corruption
@@ -8057,9 +8076,13 @@ xts_debug_check (const T &t, char *pack_start, const char *pack_end)
 
   xts_debug_clear (unpack_t);
 
-  xasl_unpack_info* unpack_info = get_xasl_unpack_info_ptr (NULL);
-  db_private_free_and_init (NULL, unpack_info);
-  set_xasl_unpack_info_ptr (NULL, NULL);
+  xasl_unpack_info* unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  db_private_free_and_init (thread_p, unpack_info);
+#if defined (SERVER_MODE)
+  set_xasl_unpack_info_ptr (thread_p, save_unpack_info);
+#else
+  set_xasl_unpack_info_ptr (thread_p, NULL);
+#endif
 #endif // DEBUG
 }
 

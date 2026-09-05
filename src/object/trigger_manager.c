@@ -43,6 +43,8 @@
 #include "execute_statement.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -139,6 +141,18 @@ const char *TR_ATT_COMMENT = "comment";
 const char *TR_ATT_CREATED_TIME = "created_time";
 const char *TR_ATT_UPDATED_TIME = "updated_time";
 
+#if defined (SERVER_MODE)
+/* module state lives in the session's tr_context (trigger_manager.h);
+ * the file-private names are redirected here */
+#define tr_Stack (csc_tr ()->stack)
+#define tr_User_triggers_valid (csc_tr ()->user_triggers_valid)
+#define tr_User_triggers_modified (csc_tr ()->user_triggers_modified)
+#define tr_User_triggers (csc_tr ()->user_triggers)
+#define tr_Uncommitted_triggers (csc_tr ()->uncommitted_triggers)
+#define tr_Schema_caches (csc_tr ()->schema_caches)
+#define tr_Execution_enabled (csc_tr ()->execution_enabled)
+#define tr_object_map (csc_tr ()->object_map)
+#else /* SERVER_MODE */
 int tr_Current_depth = 0;
 int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
 OID tr_Stack[TR_MAX_RECURSION_LEVEL + 1];
@@ -163,6 +177,7 @@ static TR_SCHEMA_CACHE *tr_Schema_caches = NULL;
  * This can be modified using tr_set_execution_enabled().
  */
 static bool tr_Execution_enabled = true;
+#endif /* !SERVER_MODE */
 
 /*
  * tr_object_map
@@ -174,7 +189,9 @@ static bool tr_Execution_enabled = true;
  *
  */
 
+#if !defined (SERVER_MODE)
 static MHT_TABLE *tr_object_map = NULL;
+#endif
 
 static const char *time_as_string (DB_TRIGGER_TIME tr_time);
 static char *tr_process_name (const char *name_string);

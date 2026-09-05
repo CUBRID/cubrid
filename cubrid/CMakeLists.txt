@@ -212,6 +212,8 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/host_lookup.c
   ${CONNECTION_DIR}/connection_context.cpp
   ${CONNECTION_DIR}/master_connector.cpp
+  ${CONNECTION_DIR}/adoption.cpp
+  ${CONNECTION_DIR}/driver_session.cpp
   ${CONNECTION_DIR}/connection_pool.cpp
   ${CONNECTION_DIR}/connection_worker.cpp
   ${CONNECTION_DIR}/coordinator.cpp
@@ -224,6 +226,8 @@ set(CONNECTION_HEADERS
   ${CONNECTION_DIR}/connection_support.hpp
   ${CONNECTION_DIR}/connection_context.hpp
   ${CONNECTION_DIR}/master_connector.hpp
+  ${CONNECTION_DIR}/adoption.hpp
+  ${CONNECTION_DIR}/driver_session.hpp
   ${CONNECTION_DIR}/connection_pool.hpp
   ${CONNECTION_DIR}/connection_worker.hpp
   ${CONNECTION_DIR}/coordinator.hpp
@@ -612,6 +616,117 @@ endif(UNIX)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
+set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES GENERATED true)
+set_source_files_properties(${FLEX_csql_lexer_OUTPUTS} PROPERTIES GENERATED true)
+
+# compile the client half (parser/optimizer/schema/workspace)
+# into the server library under SERVER_MODE so a worker thread can compile SQL in-process.
+# File list mirrors sa/CMakeLists.txt minus standalone-utility and network-transport files.
+set(CLIENT_HALF_SOURCES
+  ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/dynamic_load.c
+  ${BASE_DIR}/hide_password.cpp
+  ${COMMUNICATION_DIR}/network_callback_cl.cpp
+  ${COMMUNICATION_DIR}/network_histogram.cpp
+  ${COMMUNICATION_DIR}/network_interface_cl.c
+  ${COMPAT_DIR}/db_admin.c
+  ${COMPAT_DIR}/db_class.c
+  ${COMPAT_DIR}/db_info.c
+  ${COMPAT_DIR}/db_method_static.cpp
+  ${COMPAT_DIR}/db_obj.c
+  ${COMPAT_DIR}/db_old.c
+  ${COMPAT_DIR}/db_query.c
+  ${COMPAT_DIR}/db_temp.c
+  ${COMPAT_DIR}/db_vdb.c
+  ${COMPAT_DIR}/db_virt.c
+  ${COMPAT_DIR}/dbtype_function.c
+  ${METHOD_DIR}/method_callback.cpp
+  ${METHOD_DIR}/method_oid_handler.cpp
+  ${METHOD_DIR}/method_query_handler.cpp
+  ${OBJECT_DIR}/authenticate.c
+  ${OBJECT_DIR}/authenticate_access_auth.cpp
+  ${OBJECT_DIR}/authenticate_access_class.cpp
+  ${OBJECT_DIR}/authenticate_access_user.cpp
+  ${OBJECT_DIR}/authenticate_cache.cpp
+  ${OBJECT_DIR}/authenticate_context.cpp
+  ${OBJECT_DIR}/authenticate_grant.cpp
+  ${OBJECT_DIR}/authenticate_migration.cpp
+  ${OBJECT_DIR}/authenticate_owner.cpp
+  ${OBJECT_DIR}/authenticate_password.cpp
+  ${OBJECT_DIR}/class_description.cpp
+  ${OBJECT_DIR}/class_object.c
+  ${OBJECT_DIR}/client_session_context.cpp
+  ${OBJECT_DIR}/object_accessor.c
+  ${OBJECT_DIR}/object_description.cpp
+  ${OBJECT_DIR}/object_print.c
+  ${OBJECT_DIR}/object_print_util.cpp
+  ${OBJECT_DIR}/object_printer.cpp
+  ${OBJECT_DIR}/object_template.c
+  ${OBJECT_DIR}/quick_fit.c
+  ${OBJECT_DIR}/schema_class_truncator.cpp
+  ${OBJECT_DIR}/schema_information_schema_builder.cpp
+  ${OBJECT_DIR}/schema_information_schema_definition.cpp
+  ${OBJECT_DIR}/schema_information_schema_install.cpp
+  ${OBJECT_DIR}/schema_information_schema_install_query_spec.cpp
+  ${OBJECT_DIR}/schema_manager.c
+  ${OBJECT_DIR}/schema_system_catalog_builder.cpp
+  ${OBJECT_DIR}/schema_system_catalog_definition.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install_query_spec.cpp
+  ${OBJECT_DIR}/schema_template.c
+  ${OBJECT_DIR}/transform_cl.c
+  ${OBJECT_DIR}/trigger_description.cpp
+  ${OBJECT_DIR}/trigger_manager.c
+  ${OBJECT_DIR}/virtual_object.c
+  ${OBJECT_DIR}/work_space.c
+  ${OPTIMIZER_DIR}/plan_generation.c
+  ${OPTIMIZER_DIR}/query_bitset.c
+  ${OPTIMIZER_DIR}/query_graph.c
+  ${OPTIMIZER_DIR}/query_planner.c
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_checker.cpp
+  ${PARSER_DIR}/cnf.c
+  ${PARSER_DIR}/compile.c
+  ${PARSER_DIR}/double_byte_support.c
+  ${PARSER_DIR}/func_type.cpp
+  ${PARSER_DIR}/keyword.c
+  ${PARSER_DIR}/method_transform.c
+  ${PARSER_DIR}/name_resolution.c
+  ${PARSER_DIR}/parse_dbi.c
+  ${PARSER_DIR}/parse_evaluate.c
+  ${PARSER_DIR}/parse_tree.c
+  ${PARSER_DIR}/parse_tree_cl.c
+  ${PARSER_DIR}/parse_type.cpp
+  ${PARSER_DIR}/parser_allocator.cpp
+  ${PARSER_DIR}/parser_support.c
+  ${PARSER_DIR}/query_result.c
+  ${PARSER_DIR}/scanner_support.c
+  ${PARSER_DIR}/semantic_check.c
+  ${PARSER_DIR}/show_meta.c
+  ${PARSER_DIR}/type_checking.c
+  ${PARSER_DIR}/view_transform.c
+  ${PARSER_DIR}/xasl_generation.c
+  ${PARSER_DIR}/xasl_regu_alloc.cpp
+  ${QUERY_DIR}/cursor.c
+  ${QUERY_DIR}/execute_schema.c
+  ${QUERY_DIR}/execute_statement.c
+  ${QUERY_DIR}/query_cl.c
+  ${QUERY_DIR}/xasl_to_stream.c
+  ${REWRITER_DIR}/query_rewrite.c
+  ${REWRITER_DIR}/query_rewrite_auto_parameterize.c
+  ${REWRITER_DIR}/query_rewrite_select.c
+  ${REWRITER_DIR}/query_rewrite_set.c
+  ${REWRITER_DIR}/query_rewrite_subquery.c
+  ${REWRITER_DIR}/query_rewrite_term.c
+  ${SP_DIR}/jsp_cl.cpp
+  ${SP_DIR}/sp_catalog.cpp
+  ${STORAGE_DIR}/statistics_cl.c
+  ${TRANSACTION_DIR}/boot_cl.c
+  ${TRANSACTION_DIR}/locator_cl.c
+  ${TRANSACTION_DIR}/server_compile_tracer.cpp
+  ${TRANSACTION_DIR}/transaction_cl.c
+  )
 
 if(UNIX)
   set_source_files_properties(${BASE_DIR}/json_builder.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -620,6 +735,67 @@ if(UNIX)
   set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_types_internal.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
 endif(UNIX)
+
+# stage B1 (#117): the CAS speaker folded into the server so an adopted
+# driver connection's session thread can run the CAS request loop in-process
+# (driver_session.cpp).  The per-CAS-process globals in these files are
+# thread-local under SERVER_MODE (CAS_TLS, cas_common_vars.h); shm reads are
+# served by the stub in cas_server_support.cpp.  cas_sql_log2.c (dup2 on fd 1)
+# is deliberately NOT folded (structurally retired, B2-D5); cas_ssl.c is
+# folded since B2-D9 (server-side TLS termination) — OpenSSL comes with
+# EP_LIBS, which the cubrid target already links.
+set(CAS_SPEAKER_SOURCES
+  ${BROKER_DIR}/cas_dispatch.c
+  ${BROKER_DIR}/cas_conn_helpers.c
+  ${BROKER_DIR}/cas_function.c
+  ${BROKER_DIR}/cas_execute.c
+  # CBRD-26896 query replace: cas_function.c/cas_execute.c call qr_*().  In the
+  # merged server the rule segment is never attached (qr_init is cub_cas-only,
+  # cas_Shm_stub keeps query_replace_shm_key at 0), so every qr_* entry point
+  # short-circuits and the feature is inert here (wf207 D5).
+  ${BROKER_DIR}/query_replace.c
+  ${BROKER_DIR}/cas_common_execute.c
+  ${BROKER_DIR}/cas_common_function.c
+  ${BROKER_DIR}/cas_common_vars.c
+  ${BROKER_DIR}/cas_net_buf.c
+  ${BROKER_DIR}/cas_network.c
+  ${BROKER_DIR}/cas_handle.c
+  ${BROKER_DIR}/cas_error.c
+  ${BROKER_DIR}/cas_util.c
+  ${BROKER_DIR}/cas_str_like.c
+  ${BROKER_DIR}/cas_schema_info.c
+  ${BROKER_DIR}/cas_meta.c
+  ${BROKER_DIR}/cas_optimization.c
+  ${BROKER_DIR}/cas_xa.c
+  ${BROKER_DIR}/cas_log.c
+  ${BROKER_DIR}/cas_ssl.c
+  ${BROKER_DIR}/cas_server_support.cpp
+  ${BROKER_DIR}/cas_csql.cpp
+  ${BROKER_DIR}/broker_filename.c
+  ${BROKER_DIR}/broker_util.c
+  )
+
+# wf122/B5: the csql body is folded in so CAS_FC_CSQL_REQUEST can render
+# results server-side (thin csql).  Mutable file-scope state in these files
+# is thread-local under SERVER_MODE (CSQL_BODY_TLS, csql.h).
+set(CSQL_BODY_SOURCES
+  ${EXECUTABLES_DIR}/csql.c
+  ${EXECUTABLES_DIR}/csql_session.c
+  ${EXECUTABLES_DIR}/csql_result.c
+  ${EXECUTABLES_DIR}/csql_result_format.c
+  ${EXECUTABLES_DIR}/csql_support.c
+  )
+# ASYNC_MODE is load-bearing: without it cas_network.c loses every poll()
+# timeout; CAS_CUBRID selects the CUBRID branches in cas_net_buf.c
+SET_SOURCE_FILES_PROPERTIES(
+  ${CAS_SPEAKER_SOURCES}
+  PROPERTIES COMPILE_DEFINITIONS "ASYNC_MODE;CAS_CUBRID"
+  )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${CSQL_BODY_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
 
 SET_SOURCE_FILES_PROPERTIES(
   ${BASE_SOURCES}
@@ -644,7 +820,28 @@ SET_SOURCE_FILES_PROPERTIES(
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
+  ${CLIENT_HALF_SOURCES}
+  ${CAS_SPEAKER_SOURCES}
   PROPERTIES LANGUAGE CXX
+  )
+
+# grammar/lexer output must build as C++ here: under SERVER_MODE their include
+# chain reaches C++-only headers (thread_compat.hpp -> <thread>).  The generated
+# C code needs -fpermissive for C-style int<->enum and void* conversions, and
+# -Wno-error so the Release -Werror does not re-escalate what -fpermissive
+# demoted.
+SET_SOURCE_FILES_PROPERTIES(
+  ${BISON_csql_grammar_OUTPUTS}
+  ${FLEX_csql_lexer_OUTPUTS}
+  PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-fpermissive -Wno-narrowing -Wno-write-strings -Wno-error"
+  )
+
+# under SERVER_MODE inlining, gcc's -Wclobbered flags allocator locals inlined
+# into qo_optimize_query's setjmp frame although they are dead at the longjmp;
+# keep the warning visible but not fatal
+SET_SOURCE_FILES_PROPERTIES(
+  ${OPTIMIZER_DIR}/query_graph.c
+  PROPERTIES COMPILE_FLAGS "-Wno-error=clobbered"
   )
 
 set (CUBRID_LIB_SOURCES
@@ -672,6 +869,9 @@ set (CUBRID_LIB_SOURCES
   ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
+  ${CLIENT_HALF_SOURCES}
+  ${BISON_csql_grammar_OUTPUTS}
+  ${FLEX_csql_lexer_OUTPUTS}
   )
 
 list(APPEND CUBRID_LIB_SOURCES
@@ -679,6 +879,9 @@ list(APPEND CUBRID_LIB_SOURCES
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_sampler_sr.cpp
   )
+
+list(APPEND CUBRID_LIB_SOURCES ${CAS_SPEAKER_SOURCES})
+list(APPEND CUBRID_LIB_SOURCES ${CSQL_BODY_SOURCES})
 
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
@@ -740,7 +943,7 @@ endif(UNIX)
 # for dblink
 target_link_libraries(cubrid PUBLIC cascci)
 
-add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer)
+add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer gen_csql_grammar gen_csql_lexer)
 
 if(AT_LEAST_ONE_UNIT_TEST)
   if (WIN32)

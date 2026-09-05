@@ -53,6 +53,8 @@
 #include "execute_statement.h"
 #include "log_lsa.hpp"
 #include "object_primitive.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define WS_SET_FOUND_DELETED(mop) WS_SET_DELETED(mop)
 #define MAX_FETCH_SIZE 64
@@ -6886,7 +6888,11 @@ end:
 
 //
 // class locator_repl
+#if defined (SERVER_MODE)
+thread_local class locator_repl __gv_locator_repl;
+#else
 CUB_THREAD_LOCAL class locator_repl __gv_locator_repl;
+#endif
 
 /*
  * locator_repl_mflush_force () - Force the mflush area

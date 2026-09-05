@@ -89,6 +89,9 @@
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"	// for cubthread::system_core_count
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+
+extern bool csc_bracket_is_active (void);	/* client_session_context.cpp — merged client half's scope rules */
+extern thread_local unsigned int db_on_server;	/* hat: set inside enter_server brackets */
 #endif // SERVER_MODE
 #include "string_regex.hpp"
 #if !defined (SERVER_MODE)
@@ -816,6 +819,27 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_STATISTICS_SAMPLE_PAGES "statistics_sample_pages"
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
+
+#define PRM_NAME_CAS_SQL_LOG "cas_sql_log"
+#define PRM_NAME_CAS_SLOW_LOG "cas_slow_log"
+#define PRM_NAME_CAS_SQL_LOG_MAX_SIZE "cas_sql_log_max_size"
+#define PRM_NAME_CAS_ACCESS_LOG "cas_access_log"
+#define PRM_NAME_CAS_ACCESS_LOG_MAX_SIZE "cas_access_log_max_size"
+#define PRM_NAME_CAS_LONG_QUERY_TIME "cas_long_query_time"
+#define PRM_NAME_CAS_LONG_TRANSACTION_TIME "cas_long_transaction_time"
+#define PRM_NAME_CAS_JDBC_CACHE "cas_jdbc_cache"
+#define PRM_NAME_CAS_JDBC_CACHE_HINT_ONLY "cas_jdbc_cache_hint_only"
+#define PRM_NAME_CAS_JDBC_CACHE_LIFE_TIME "cas_jdbc_cache_life_time"
+#define PRM_NAME_CAS_STATEMENT_POOLING "cas_statement_pooling"
+#define PRM_NAME_CAS_CCI_DEFAULT_AUTOCOMMIT "cas_cci_default_autocommit"
+#define PRM_NAME_CAS_MAX_PREPARED_STMT_COUNT "cas_max_prepared_stmt_count"
+#define PRM_NAME_CAS_SESSION_TIMEOUT "cas_session_timeout"
+#define PRM_NAME_CAS_MAX_STRING_LENGTH "cas_max_string_length"
+#define PRM_NAME_CAS_MAX_QUERY_TIMEOUT "cas_max_query_timeout"
+#define PRM_NAME_CAS_ACCESS_CONTROL "cas_access_control"
+#define PRM_NAME_CAS_ACCESS_CONTROL_FILE "cas_access_control_file"
+#define PRM_NAME_CAS_ACCESS_CONTROL_DEFAULT_ALLOW "cas_access_control_default_allow"
+#define PRM_NAME_CAS_STRIPPED_COLUMN_NAME "cas_stripped_column_name"
 
 // #endregion 
 
@@ -4707,7 +4731,9 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DDL_AUDIT_LOG,
    PRM_NAME_DDL_AUDIT_LOG,
-   (PRM_FOR_CLIENT),
+   /* also a server parameter since the folded CAS speaker produces the DDL
+    * audit log inside cub_server (stage B2, #116 D4) */
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -4718,7 +4744,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DDL_AUDIT_LOG_SIZE,
    PRM_NAME_DDL_AUDIT_LOG_SIZE,
-   (PRM_FOR_CLIENT | PRM_SIZE_UNIT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_SIZE_UNIT),
    PRM_BIGINT,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.bi = 10485760ULL /* 10M */ }},
@@ -5535,6 +5561,245 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* stage B2 (#116 D9): CAS-owned parameters, server-resident since the CAS
+   * speaker fold.  Units/defaults/limits follow the broker conf they replace
+   * (SQL_LOG, SLOW_LOG, SQL_LOG_MAX_SIZE KB, ACCESS_LOG, ACCESS_LOG_MAX_SIZE
+   * KB, LONG_QUERY_TIME msec, LONG_TRANSACTION_TIME msec). */
+  {PRM_ID_CAS_SQL_LOG,
+   PRM_NAME_CAS_SQL_LOG,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_KEYWORD,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 0 /* SQL_LOG_MODE_NONE */ }},
+   {false, {.i = 0}},
+   {false, {.i = 4 /* SQL_LOG_MODE_ALL */ }}, {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_SLOW_LOG,
+   PRM_NAME_CAS_SLOW_LOG,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_SQL_LOG_MAX_SIZE,
+   PRM_NAME_CAS_SQL_LOG_MAX_SIZE,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 10000 /* KB = 10M */ }},
+   {false, {.i = 10000}},
+   {false, {.i = 2097152 /* KB = 2G */ }}, {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_ACCESS_LOG,
+   PRM_NAME_CAS_ACCESS_LOG,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_ACCESS_LOG_MAX_SIZE,
+   PRM_NAME_CAS_ACCESS_LOG_MAX_SIZE,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 10000 /* KB = 10M */ }},
+   {false, {.i = 10000}},
+   {false, {.i = 2097152 /* KB = 2G */ }}, {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_LONG_QUERY_TIME,
+   PRM_NAME_CAS_LONG_QUERY_TIME,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 60000 /* msec = 1min */ }},
+   {false, {.i = 60000}},
+   {false, {.i = 86400000 /* 24h */ }}, {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_LONG_TRANSACTION_TIME,
+   PRM_NAME_CAS_LONG_TRANSACTION_TIME,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 60000 /* msec = 1min */ }},
+   {false, {.i = 60000}},
+   {false, {.i = 86400000 /* 24h */ }}, {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_JDBC_CACHE,
+   PRM_NAME_CAS_JDBC_CACHE,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_JDBC_CACHE_HINT_ONLY,
+   PRM_NAME_CAS_JDBC_CACHE_HINT_ONLY,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_JDBC_CACHE_LIFE_TIME,
+   PRM_NAME_CAS_JDBC_CACHE_LIFE_TIME,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 1000 /* sec, DEFAULT_JDBC_CACHE_LIFE_TIME */ }},
+   {false, {.i = 1000}},
+   NULL_SYSPRM_PARAM_VALUE, {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_STATEMENT_POOLING,
+   PRM_NAME_CAS_STATEMENT_POOLING,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_CCI_DEFAULT_AUTOCOMMIT,
+   PRM_NAME_CAS_CCI_DEFAULT_AUTOCOMMIT,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_MAX_PREPARED_STMT_COUNT,
+   PRM_NAME_CAS_MAX_PREPARED_STMT_COUNT,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2000 /* DEFAULT_MAX_PREPARED_STMT_COUNT */ }},
+   {false, {.i = 2000}},
+   NULL_SYSPRM_PARAM_VALUE, {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_SESSION_TIMEOUT,
+   PRM_NAME_CAS_SESSION_TIMEOUT,
+   /* default -1 = no idle disconnect: unlike a CAS, an adopted connection IS
+    * its session (B1-D12, no reattach), so an idle drop would lose session
+    * state a broker deployment kept */
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = -1 /* sec; -1 = off */ }},
+   {false, {.i = -1}},
+   NULL_SYSPRM_PARAM_VALUE, {false, {.i = -1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_MAX_STRING_LENGTH,
+   PRM_NAME_CAS_MAX_STRING_LENGTH,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = -1 /* -1 = unlimited */ }},
+   {false, {.i = -1}},
+   NULL_SYSPRM_PARAM_VALUE, {false, {.i = -1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_MAX_QUERY_TIMEOUT,
+   PRM_NAME_CAS_MAX_QUERY_TIMEOUT,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 0 /* sec; 0 = unlimited (broker MAX_QUERY_TIMEOUT) */ }},
+   {false, {.i = 0}},
+   {false, {.i = 86400 /* 24h */ }}, {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* stage B2 (#116 D6): the db:dbuser:ip ACCESS_CONTROL check moves from the
+   * CAS to the server's session establishment; the broker's IP-only
+   * ACCESS_LIST stays broker-side unchanged */
+  {PRM_ID_CAS_ACCESS_CONTROL,
+   PRM_NAME_CAS_ACCESS_CONTROL,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_ACCESS_CONTROL_FILE,
+   PRM_NAME_CAS_ACCESS_CONTROL_FILE,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_STRING,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.str = (char *) ""}},
+   {false, {.str = (char *) ""}},
+   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_ACCESS_CONTROL_DEFAULT_ALLOW,
+   PRM_NAME_CAS_ACCESS_CONTROL_DEFAULT_ALLOW,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false /* = the broker's DENY default policy */ }},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CAS_STRIPPED_COLUMN_NAME,
+   PRM_NAME_CAS_STRIPPED_COLUMN_NAME,
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true /* = the broker's STRIPPED_COLUMN_NAME=ON default */ }},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
@@ -5630,6 +5895,16 @@ static const KEYVAL boolean_words[] = {
   {"0", 0},
   {"false", 0},
   {"off", 0}
+};
+
+/* values track T_SQL_LOG_MODE_VALUE (broker_config.h) — the folded CAS
+ * speaker consumes them as as_info->cur_sql_log_mode */
+static const KEYVAL cas_sql_log_mode_words[] = {
+  {"none", 0},
+  {"error", 1},
+  {"timeout", 2},
+  {"notice", 3},
+  {"all", 4}
 };
 
 static const KEYVAL er_log_level_words[] = {
@@ -6625,13 +6900,11 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	}
 #endif /* CS_MODE */
 
-#if defined (SERVER_MODE)
-      if (PRM_IS_FOR_CLIENT (prm) && !PRM_IS_FOR_SERVER (prm))
-	{
-	  /* prm for only client */
-	  continue;
-	}
-#endif /* SERVER_MODE */
+      /* the server process hosts the in-process client half, so it loads every
+       * client parameter this conf carries (the same values a CAS reading this
+       * file held): session parameters seed each session's parameter array, and
+       * non-session ones are read from these statics by the folded compile
+       * path — the SA build, the fold's template, loads all of them too */
 
       if (reload && !PRM_IS_RELOADABLE (prm))
 	{
@@ -7336,7 +7609,7 @@ prm_check_environment (void)
     }
 }
 
-#if !defined (SERVER_MODE)
+/* was #if !SERVER_MODE — client half now compiled into server */
 /*
  * sysprm_validate_escape_char_parameters () - validate escape char setting
  *
@@ -7350,7 +7623,6 @@ prm_check_environment (void)
 static SYSPRM_ERR
 sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_list)
 {
-  SYSPRM_PARAM *prm = NULL;
   const SYSPRM_ASSIGN_VALUE *assignment = NULL;
   bool set_require_like_escape, set_no_backslash_escape;
   bool is_require_like_escape = false, is_no_backslash_escape = false;
@@ -7375,16 +7647,19 @@ sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_l
       return PRM_ERR_NO_ERROR;
     }
 
+  /* the current values must be the SESSION-effective ones: in the fold a
+   * prior SET of no_backslash_escapes lands in session storage, so reading
+   * the raw process value here sees the boot default and vetoes a legal
+   * combination (workspace#176 결함 13; CS/SA read the same process value
+   * either way).  prm_get_bool_value is the session read-through. */
   if (!set_no_backslash_escape)
     {
-      prm = GET_PRM (PRM_ID_NO_BACKSLASH_ESCAPES);
-      is_no_backslash_escape = PRM_GET_BOOL (prm->value);
+      is_no_backslash_escape = prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES);
     }
 
   if (!set_require_like_escape)
     {
-      prm = GET_PRM (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER);
-      is_require_like_escape = PRM_GET_BOOL (prm->value);
+      is_require_like_escape = prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER);
     }
 
   if (is_require_like_escape == true && is_no_backslash_escape == true)
@@ -7604,7 +7879,8 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
 
   return err;
 }
-#endif /* !SERVER_MODE */
+
+/* end of former !SERVER_MODE region */
 
 /*
  * sysprm_change_parameter_values () - update system parameter values
@@ -7638,7 +7914,22 @@ sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments, bool ch
 #if defined (SERVER_MODE)
       if (check)
 	{
-	  if (!PRM_IS_FOR_SERVER (prm) && !PRM_IS_FOR_SESSION (prm))
+	  if (csc_bracket_is_active () && !db_on_server)
+	    {
+	      /* the merged client half applies with the legacy client rule —
+	       * the server rule below silently dropped client-only writes
+	       * (SET 'ansi_quotes=...' reported success and wrote nothing).
+	       * Hat ON (db_on_server) is the folded sysprm_change_server_
+	       * parameters leg: that is the legacy SERVER-side apply, and the
+	       * client rule here silently dropped FOR_SERVER-only writes
+	       * (group_concat_max_len — workspace#176 결함 11). */
+	      if (!PRM_IS_FOR_CLIENT (prm))
+		{
+		  /* skip this assignment */
+		  continue;
+		}
+	    }
+	  else if (!PRM_IS_FOR_SERVER (prm) && !PRM_IS_FOR_SESSION (prm))
 	    {
 	      /* skip this assignment */
 	      continue;
@@ -7701,6 +7992,9 @@ prm_get_keyval (const SYSPRM_PARAM * prm, int value, const char *name)
     {
     case PRM_ID_ER_LOG_LEVEL:
       return prm_keyword (value, name, er_log_level_words, DIM (er_log_level_words));
+
+    case PRM_ID_CAS_SQL_LOG:
+      return prm_keyword (value, name, cas_sql_log_mode_words, DIM (cas_sql_log_mode_words));
 
     case PRM_ID_LOG_ISOLATION_LEVEL:
       return prm_keyword (value, name, isolation_level_words, DIM (isolation_level_words));
@@ -8612,6 +8906,23 @@ sysprm_get_range (PARAM_ID param_id, void *min, void *max)
 }
 
 /*
+ * sysprm_param_is_set - was the parameter explicitly set (conf or SET),
+ *                       as opposed to carrying its compiled-in default?
+ *   return: true if set
+ *   param_id (in): parameter id
+ */
+bool
+sysprm_param_is_set (PARAM_ID param_id)
+{
+  if (param_id < PRM_FIRST_ID || param_id > PRM_LAST_ID)
+    {
+      return false;
+    }
+
+  return PRM_IS_SET (GET_PRM (param_id)) != 0;
+}
+
+/*
  * sysprm_check_range -
  *   return:
  *   param_id (in): parameter id
@@ -8841,7 +9152,40 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 #if defined (SERVER_MODE)
   if (check)
     {
-      if (!PRM_IS_FOR_SERVER (prm) && !PRM_IS_FOR_SESSION (prm))
+      if (csc_bracket_is_active ())
+	{
+	  /* the merged client half's SET SYSTEM PARAMETERS: legacy client
+	   * scope rules (the CS_MODE block above).  A client-only parameter
+	   * applies in-process — rejecting it as "not for server" broke every
+	   * test-mode SET (ansi_quotes & friends, workspace#176 결함 6). */
+	  if (PRM_IS_FOR_CLIENT (prm))
+	    {
+	      if (PRM_IS_FOR_SESSION (prm))
+		{
+		  /* the value in session state must also be updated. user doesn't have to be part of DBA group. */
+		  ret = PRM_ERR_NOT_FOR_CLIENT_NO_AUTH;
+		}
+	      else if (PRM_IS_FOR_SERVER (prm))
+		{
+		  /* the value has to be changed on server too. user has to be part of DBA group. */
+		  ret = PRM_ERR_NOT_FOR_CLIENT;
+		}
+	    }
+	  else
+	    {
+	      if (PRM_IS_FOR_SERVER (prm))
+		{
+		  /* this value is only for server. user has to be DBA. */
+		  ret = PRM_ERR_NOT_FOR_CLIENT;
+		}
+	      else
+		{
+		  /* not for client or server, cannot be changed on-line */
+		  return PRM_ERR_CANNOT_CHANGE;
+		}
+	    }
+	}
+      else if (!PRM_IS_FOR_SERVER (prm) && !PRM_IS_FOR_SESSION (prm))
 	{
 	  return PRM_ERR_NOT_FOR_SERVER;
 	}
@@ -8860,8 +9204,16 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
     {
       set_min = true;
     }
-#if defined(CS_MODE)
+#if defined(CS_MODE) || defined(SERVER_MODE)
+#if defined(SERVER_MODE)
+  /* the merged client half validates values with the legacy client rules —
+   * lang names, collation, timezone (workspace#176 결함 15: an invalid
+   * 'intl_number_lang=tr_t' must be -839, not silently accepted).  Outside
+   * a bracket the server keeps its legacy behavior (no such checks). */
+  if (!set_default && csc_bracket_is_active ())
+#else
   if (!set_default)
+#endif
     {
       if (prm->id == PRM_ID_INTL_NUMBER_LANG || prm->id == PRM_ID_INTL_DATE_LANG)
 	{
@@ -10709,7 +11061,7 @@ prm_get_value (PARAM_ID prm_id)
 #if defined (SERVER_MODE)
   THREAD_ENTRY *thread_p;
 
-  if (PRM_SERVER_SESSION (prm_id) && BO_IS_SERVER_RESTARTED ())
+  if (PRM_SESSION_READTHROUGH (prm_id) && BO_IS_SERVER_RESTARTED ())
     {
       SESSION_PARAM *sprm;
       thread_p = thread_get_thread_entry_info ();
@@ -10730,7 +11082,14 @@ prm_get_value (PARAM_ID prm_id)
     case PRM_BIGINT:
     case PRM_STRING:
     case PRM_INTEGER_LIST:
+      /* client-only session parameters may carry a NULL-string static default
+       * (a client build returns it unasserted); only server-session statics
+       * are guaranteed non-null here */
+#if defined (SERVER_MODE)
+      assert (GET_PRM (prm_id)->value.is_null == false || PRM_CLIENT_ONLY_SESSION (prm_id));
+#else
       assert (GET_PRM (prm_id)->value.is_null == false);
+#endif
       return &(GET_PRM (prm_id)->value.v);
     default:
       break;
@@ -10755,6 +11114,23 @@ prm_set_integer_value (PARAM_ID prm_id, int value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER (GET_PRM (prm_id)) || PRM_IS_KEYWORD (GET_PRM (prm_id)));
 
+#if defined (SERVER_MODE)
+  /* the write half of the session read-through: reads of a session parameter
+   * come from the session (prm_get_value), so a client-half write must land
+   * there too or it is silently lost to the very next read (SET TRACE, CAS
+   * optimization level, ...).  Without a session (server-internal threads)
+   * fall through to the shared value, as before. */
+  if (PRM_SESSION_READTHROUGH (prm_id) && BO_IS_SERVER_RESTARTED ())
+    {
+      SESSION_PARAM *sprm = session_get_session_parameter (thread_get_thread_entry_info (), prm_id);
+      if (sprm != NULL)
+	{
+	  sprm->value.i = value;
+	  return;
+	}
+    }
+#endif
+
   PRM_GET_INT (GET_PRM (prm_id)->value) = value;
 
   sysprm_update_flag_different (GET_PRM (prm_id));
@@ -10772,6 +11148,19 @@ prm_set_bool_value (PARAM_ID prm_id, bool value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BOOLEAN (GET_PRM (prm_id)));
+
+#if defined (SERVER_MODE)
+  /* see prm_set_integer_value: the write half of the session read-through */
+  if (PRM_SESSION_READTHROUGH (prm_id) && BO_IS_SERVER_RESTARTED ())
+    {
+      SESSION_PARAM *sprm = session_get_session_parameter (thread_get_thread_entry_info (), prm_id);
+      if (sprm != NULL)
+	{
+	  sprm->value.b = value;
+	  return;
+	}
+    }
+#endif
 
   PRM_GET_BOOL (GET_PRM (prm_id)->value) = value;
 
@@ -11087,6 +11476,64 @@ sysprm_alloc_session_parameters (void)
   memset (result, 0, size);
   return result;
 }
+
+#if defined (SERVER_MODE)
+/*
+ * sysprm_alloc_session_parameters_from_defaults () - allocates a session
+ *		parameter array filled from this process's current parameter
+ *		values (same fill as the CS_MODE cached_session_parameters
+ *		block in sysprm_load_and_init_internal).
+ *
+ * return : NULL or pointer to array of session parameters
+ *
+ * the in-process client has no network handshake to deliver its
+ * session parameters, so it builds them from the live (server) values.
+ */
+SESSION_PARAM *
+sysprm_alloc_session_parameters_from_defaults (void)
+{
+  SESSION_PARAM *prms;
+  SESSION_PARAM *sprm;
+  int i, n = 0;
+
+  prms = sysprm_alloc_session_parameters ();
+  if (prms == NULL)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
+    {
+      if (PRM_IS_FOR_SESSION (GET_PRM (i)))
+	{
+	  assert (prm_Def_session_idx[i] == n);
+	  sprm = &prms[n++];
+	  sprm->prm_id = (PARAM_ID) i;
+	  sprm->flag = (GET_PRM (i)->dynamic_flag);
+	  sprm->datatype = GET_PRM (i)->datatype;
+	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
+	  if (i == PRM_ID_TIMEZONE && sprm->value.str == NULL)
+	    {
+	      /* the timezone parameter's stored default is a NULL string and
+	       * update_session_state_from_sys_params strlen()s it; fall back
+	       * to the system timezone, the same special case the parameter
+	       * dump code applies (round-20 core) */
+	      sprm->value.str = strdup (tz_get_system_timezone ());
+	      if (sprm->value.str == NULL)
+		{
+		  /* leaving it NULL reintroduces the strlen crash; fail the
+		   * whole allocation instead */
+		  sysprm_free_session_parameters (&prms);
+		  return NULL;
+		}
+	    }
+	  sysprm_update_session_prm_flag_allocated (sprm);
+	}
+    }
+
+  return prms;
+}
+#endif /* SERVER_MODE */
 
 /*
  * sysprm_free_session_parameters () - free session parameter array
@@ -12064,7 +12511,7 @@ sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int 
   return (int) (ptr - buffer);
 }
 
-#if !defined (SERVER_MODE)
+/* was #if !SERVER_MODE — client half now compiled into server */
 /*
  * sysprm_print_parameters_for_qry_string () - print parameters for query
  *					       string
@@ -12087,7 +12534,28 @@ sysprm_print_parameters_for_qry_string (void)
     {
       if (PRM_PRINT_QRY_STRING (i))
 	{
+#if defined (SERVER_MODE)
+	  /* the printed value must be the SESSION-effective one: this string
+	   * is the plan-cache key component, and prm->value is the shared
+	   * process value — printing it aliases cache keys across sessions
+	   * whose SET SYSTEM PARAMETERS differ, so one session's compiled
+	   * plan (date-lang names, timezone folding) serves every other
+	   * (workspace#176 결함 10).  The legacy CAS printed its per-process
+	   * value, which WAS the session-effective value. */
+	  SYSPRM_PARAM session_prm = *GET_PRM (i);
+	  if (PRM_SESSION_READTHROUGH ((PARAM_ID) i) && BO_IS_SERVER_RESTARTED ())
+	    {
+	      SESSION_PARAM *sprm = session_get_session_parameter (thread_get_thread_entry_info (), (PARAM_ID) i);
+	      if (sprm != NULL)
+		{
+		  session_prm.value.is_null = false;
+		  session_prm.value.v = sprm->value;
+		}
+	    }
+	  n = prm_print (&session_prm, ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
+#else
 	  n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
+#endif
 	  ptr += n;
 	  len -= n;
 
@@ -12098,7 +12566,7 @@ sysprm_print_parameters_for_qry_string (void)
     }
   *ptr = '\0';
 
-  /* TODO: 
+  /* TODO:
    *     If we pass the buffer and its size as arguments,
    *    we can reduce the cost of allocating new memory and copying it here.
    */
@@ -12264,7 +12732,8 @@ sysprm_init_intl_param (void)
 
   return error;
 }
-#endif /* !SERVER_MODE */
+
+/* end of former !SERVER_MODE region */
 
 /*
  * sysprm_set_error () - sets an error for system parameter errors

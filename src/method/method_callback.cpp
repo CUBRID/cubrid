@@ -43,6 +43,12 @@
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
 
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 using namespace cubpl;
 
 static PT_NODE *
@@ -356,7 +362,11 @@ namespace cubmethod
   {
     if (m_oid_handler == nullptr)
       {
+#if defined(MMON_DEBUG_LEVEL)	/* memory_wrapper new-macro active: plain new is the noexcept file/line form */
+	m_oid_handler = new oid_handler (m_error_ctx);
+#else
 	m_oid_handler = new (std::nothrow) oid_handler (m_error_ctx);
+#endif
 	if (m_oid_handler == nullptr)
 	  {
 	    assert (false);
@@ -1074,7 +1084,11 @@ exit:
 	  }
       }
 
+#if defined(MMON_DEBUG_LEVEL)	/* memory_wrapper new-macro active: plain new is the noexcept file/line form */
+    query_handler *handler = new query_handler (m_error_ctx, idx);
+#else
     query_handler *handler = new (std::nothrow) query_handler (m_error_ctx, idx);
+#endif
     if (handler == nullptr)
       {
 	assert (false);
@@ -1215,6 +1229,20 @@ exit:
   //////////////////////////////////////////////////////////////////////////
   // Global method callback handler interface
   //////////////////////////////////////////////////////////////////////////
+#if defined (SERVER_MODE)
+  /* merged server: one handle cache per session (#120 D8) — the CAS original
+   * was process-global, but one CAS served exactly one session */
+  callback_handler *
+  get_callback_handler (void)
+  {
+    client_session_context *ctx = csc_current ();
+    if (ctx->method_callback_handler == nullptr)
+      {
+	ctx->method_callback_handler = new callback_handler (100);
+      }
+    return ctx->method_callback_handler;
+  }
+#else
   static callback_handler handler (100);
 
   callback_handler *
@@ -1222,13 +1250,36 @@ exit:
   {
     return &handler;
   }
+#endif
 }
+
+#if defined (SERVER_MODE)
+/* per-session retirement, called from csc_teardown under the session's
+ * bracket: the handler's query handles walk workspace-backed state, so this
+ * must run before ws_final */
+void
+method_callback_session_final (void)
+{
+  client_session_context *ctx = csc_current ();
+  if (ctx->method_callback_handler != nullptr)
+    {
+      ctx->method_callback_handler->clear_all_query_handlers ();
+      delete ctx->method_callback_handler;
+      ctx->method_callback_handler = nullptr;
+    }
+}
+#endif
 
 /* called from boot_client_all_finalize() before ws_final() */
 void
 method_callback_final (void)
 {
+#if defined (SERVER_MODE)
+  /* don't create a handler just to clear it */
+  cubmethod::callback_handler *h = csc_current ()->method_callback_handler;
+#else
   cubmethod::callback_handler *h = cubmethod::get_callback_handler ();
+#endif
   if (h != NULL)
     {
       h->clear_all_query_handlers ();

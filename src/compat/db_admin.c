@@ -34,7 +34,12 @@
 #include <signal.h>
 
 #include "authenticate.h"
+#if !defined (SERVER_MODE)
 #include "client_support.h"
+#else
+#include "server_support.h"	/* css_ha_server_state */
+#include "boot_sr.h"		/* boot_db_name */
+#endif
 #include "porting.h"
 #include "system_parameter.h"
 #include "storage_common.h"
@@ -61,6 +66,7 @@
 #include "jsp_cl.h"
 #include "execute_statement.h"
 #include "connection_support.hpp"
+#include "transaction_cl.h"	/* tm_Tran_index (#121 D8) */
 #include "trigger_manager.h"
 #if !defined(CS_MODE)
 #include "session.h"
@@ -76,6 +82,8 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
 #else
 #include "wintcp.h"
 #endif /* !WINDOWS */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* host status for marking abnormal host status */
 typedef struct db_host_status DB_HOST_STATUS;
@@ -101,9 +109,18 @@ struct db_host_status_list
  The macros for testing this variable were moved to db.h so the query
  interface functions can use them as well. */
 
+#if defined (SERVER_MODE)
+/* session identity lives in the session context (db.h db_cl_context);
+ * the file-private names are redirected here */
+#define db_Client_ip_addr (csc_db ()->client_ip_addr)
+#define db_Client_type (csc_db ()->client_type)
+#define db_Client_statement_type (csc_db ()->client_statement_type)
+#define is_doing_end_session (csc_db ()->is_doing_end_session)
+#else /* SERVER_MODE */
 char db_Database_name[DB_MAX_IDENTIFIER_LENGTH + 1];
 char db_Program_name[PATH_MAX];
 char db_Client_ip_addr[16] = { 0 };
+#endif /* !SERVER_MODE */
 
 static char *db_Preferred_hosts = NULL;
 static int db_Connect_order = DB_CONNECT_ORDER_SEQ;
@@ -116,8 +133,10 @@ static DB_HOST_STATUS_LIST db_Host_status_list;
 static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);
 
+#if !defined (SERVER_MODE)
 static int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
 static CUBRID_STMT_TYPE db_Client_statement_type = CUBRID_STMT_NONE;
+#endif
 
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error);
@@ -450,6 +469,15 @@ db_get_database_name (void)
     {
       name = ws_copy_string ((const char *) db_Database_name);
     }
+#if defined (SERVER_MODE)
+  else if (boot_db_name () != NULL)
+    {
+      /* wf122/B5: a folded-server session never runs db_restart, so the
+       * session context's database_name stays empty — fall back to the
+       * server's own booted database (csql ;database renders through here) */
+      name = ws_copy_string (boot_db_name ());
+    }
+#endif
 
   return ((char *) name);
 }
@@ -929,7 +957,11 @@ db_restart (const char *program, int print_version, const char *volume)
     }
   else
     {
-      strncpy_bufsize (db_Program_name, program);
+      /* strncat instead of strncpy_bufsize: through the session-context macro
+       * gcc no longer sees the null-write guard and raises
+       * -Wstringop-truncation on the equal-to-size bound */
+      db_Program_name[0] = '\0';
+      strncat (db_Program_name, program, sizeof (db_Program_name) - 1);
       db_Database_name[0] = '\0';
 
       /* authorization will need to access the database and call some db_ functions so assume connection will be ok
@@ -1024,7 +1056,11 @@ db_shutdown (void)
 #if !defined(WINDOWS)
   (void) os_set_signal_handler (SIGFPE, prev_sigfpe_handler);
 #endif
+#if !defined (SERVER_MODE)
+  /* the folded server's global is the SERVER's own (#121 D8); the session's
+   * gate lives in its tdes and dies with it */
   db_Disable_modifications = 0;
+#endif
 
   db_free_execution_plan ();
 
@@ -1059,7 +1095,14 @@ int
 db_disable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
+#if defined (SERVER_MODE)
+  /* #121 D8: the toggle depth is session state, deliberately NOT the tdes —
+   * a transaction boundary reseeds the tdes baseline and would destroy an
+   * open protected region's nesting (codex B3 F2) */
+  csc_db ()->modification_disable_depth++;
+#else
   db_Disable_modifications++;
+#endif
   return NO_ERROR;
 }
 
@@ -1073,9 +1116,29 @@ int
 db_enable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
+#if defined (SERVER_MODE)
+  csc_db ()->modification_disable_depth--;
+#else
   db_Disable_modifications--;
+#endif
   return NO_ERROR;
 }
+
+#if defined (SERVER_MODE)
+/*
+ * db_cl_modification_disabled - the folded client half's modification gate
+ *   (#121 D8): the transaction's type-derived baseline plus the session's
+ *   toggle depth.  The sum reproduces the legacy process global's
+ *   arithmetic (a boot-time read-only raise, temporary method-call toggles,
+ *   even an unbalanced enable cancelling the baseline).  0 before a
+ *   transaction exists — every db_ entry point checks CHECK_CONNECT first.
+ */
+int
+db_cl_modification_disabled (void)
+{
+  return logtb_session_modification_disabled (tm_Tran_index) + csc_db ()->modification_disable_depth;
+}
+#endif /* SERVER_MODE */
 
 /*
  * db_end_session - end current session
@@ -1083,7 +1146,9 @@ db_enable_modification (void)
  *
  * NOTE: This function ends the session identified by 'db_Session_id'
  */
+#if !defined (SERVER_MODE)
 static int is_doing_end_session = -1;
+#endif
 int
 db_end_session (void)
 {
@@ -3073,7 +3138,9 @@ db_get_ha_server_state (char *buffer, int maxlen)
 
   CHECK_CONNECT_ERROR ();
 
-#if defined(CS_MODE)
+#if defined(CS_MODE) || defined(SERVER_MODE)
+  /* wf122/B5: the folded server renders csql ;database itself — report the
+   * server's own HA state instead of the legacy non-CS placeholder */
   ha_state = css_ha_server_state ();
 #else
   ha_state = HA_SERVER_STATE_NA;

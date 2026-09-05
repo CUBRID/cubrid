@@ -72,6 +72,28 @@
 #include "host_lookup.h"
 #include "network_interface_cl.h"
 #include "boot_cl.h"
+#if defined(SERVER_MODE)
+#include "client_session_context.hpp"	/* csc_bracket_is_active (wf122/B5) */
+#include "xasl_generation.h"	/* query_Plan_dump_fp session macro (wf122/B5) */
+/* wf122/B5: server-side --sysadm gate (client_type is admin-csql AND DBA);
+ * used to keep ;checkpoint/;killtran off the broker-routed path */
+static bool csql_server_sysadm_allowed (void);
+#endif
+#if defined(CSQL_THIN)
+#include "csql_wire.h"		/* thin csql transport (wf122/B5 D6R) */
+
+/* wf122/B5 D5R: this translation unit's transaction/session primitives all
+ * ride the wire in the thin flavor.  The redirection is at the API seam so
+ * the exit prompts, ;autocommit interplay and error paths keep the fat
+ * client's exact control flow. */
+#define db_commit_is_needed()   (csql_wire_tran_dirty () ? 1 : 0)
+#define db_abort_transaction()  (csql_wire_tran ('A') == 0 ? NO_ERROR : ER_FAILED)
+#define db_commit_transaction() (csql_wire_tran ('C') == 0 ? NO_ERROR : ER_FAILED)
+#define db_shutdown()           (csql_wire_disconnect (), NO_ERROR)
+
+static void csql_thin_display_wire_error (void);
+static int csql_thin_client_type (const CSQL_ARGUMENT * csql_arg);
+#endif
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -81,6 +103,8 @@
 #include "boot_sr.h"
 #include "catalog_class.h"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -132,12 +156,12 @@ int (*csql_text_utf8_to_console) (const char *, const int, char **, int *) = NUL
 
 int (*csql_text_console_to_utf8) (const char *, const int, char **, int *) = NULL;
 
-int csql_Row_count;
-int csql_Num_failures;
-char csql_Db_name[512];
+CSQL_BODY_TLS int csql_Row_count;
+CSQL_BODY_TLS int csql_Num_failures;
+CSQL_BODY_TLS char csql_Db_name[512];
 
 /* command editor lines */
-int csql_Line_lwm = -1;
+CSQL_BODY_TLS int csql_Line_lwm = -1;
 
 /* default environment command names */
 char csql_Print_cmd[PATH_MAX] = "lpr";
@@ -159,14 +183,14 @@ char csql_Formatter_cmd[PATH_MAX];
 /* tty file stream which is used for conversation with users.
  * In batch mode, this will be set to "/dev/null"
  */
-static FILE *csql_Tty_fp = NULL;
+static CSQL_BODY_TLS FILE *csql_Tty_fp = NULL;
 
 /* scratch area to make a message text to be displayed.
  * NOTE: Never put chars more than sizeof(csql_Scratch_text).
  */
-char csql_Scratch_text[SCRATCH_TEXT_LEN];
+CSQL_BODY_TLS char csql_Scratch_text[SCRATCH_TEXT_LEN];
 
-int csql_Error_code = NO_ERROR;
+CSQL_BODY_TLS int csql_Error_code = NO_ERROR;
 
 typedef enum
 {
@@ -183,9 +207,9 @@ static char csql_Prompt_offline[101];	//  for clear "-Wformat-truncation=" warni
 /*
  * Handles for the various files
  */
-FILE *csql_Input_fp = NULL;
-FILE *csql_Output_fp = NULL;
-FILE *csql_Error_fp = NULL;
+CSQL_BODY_TLS FILE *csql_Input_fp = NULL;
+CSQL_BODY_TLS FILE *csql_Output_fp = NULL;
+CSQL_BODY_TLS FILE *csql_Error_fp = NULL;
 
 /*
  * Global longjmp environment to terminate the csql() interpreter in the
@@ -196,26 +220,34 @@ FILE *csql_Error_fp = NULL;
  * the csql() function after the longjmp has been performed.
  */
 static jmp_buf csql_Exit_env;
-static int csql_Exit_status = EXIT_SUCCESS;
+static CSQL_BODY_TLS int csql_Exit_status = EXIT_SUCCESS;
 
 /* this is non-zero if there is a dangling connection to a database */
 static bool csql_Database_connected = false;
 
-static bool csql_Is_interactive = false;
+static CSQL_BODY_TLS bool csql_Is_interactive = false;
 static bool csql_Is_sigint_caught = false;
-static bool csql_Is_echo_on = false;
+static CSQL_BODY_TLS bool csql_Is_echo_on = false;
 enum
 { HISTO_OFF, HISTO_ON };
 static int csql_Is_histo_on = HISTO_OFF;
-static bool csql_Is_time_on = true;
+static CSQL_BODY_TLS bool csql_Is_time_on = true;
 
 static jmp_buf csql_Jmp_buf;
 
-static CSQL_COLUMN_WIDTH_INFO *csql_column_width_info_list = NULL;
-static int csql_column_width_info_list_size = 0;
-static int csql_column_width_info_list_index = 0;
+static CSQL_BODY_TLS CSQL_COLUMN_WIDTH_INFO *csql_column_width_info_list = NULL;
+static CSQL_BODY_TLS int csql_column_width_info_list_size = 0;
+static CSQL_BODY_TLS int csql_column_width_info_list_index = 0;
 
-static bool csql_Query_trace = false;
+static CSQL_BODY_TLS bool csql_Query_trace = false;
+
+#if defined(SERVER_MODE)
+/* wf122/B5: a folded csql path that would terminate the fat client
+ * (csql_exit) instead unwinds to the request boundary armed by the
+ * csql_server_*_request entry points below. */
+static thread_local jmp_buf csql_Server_request_env;
+static thread_local bool csql_Server_request_env_armed = false;
+#endif
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -1154,18 +1186,113 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       return DO_CMD_FAILURE;
     }
 
+#if defined(SERVER_MODE)
+  /* wf122/B5: only the server-dependent commands may execute inside
+   * cub_server; a thin csql keeps the client-side ones local, and nothing
+   * received off the wire may reach e.g. S_CMD_SHELL. */
+  switch ((SESSION_CMD) cmd_no)
+    {
+    case S_CMD_COMMIT:
+    case S_CMD_ROLLBACK:
+    case S_CMD_CHECKPOINT:
+    case S_CMD_KILLTRAN:
+    case S_CMD_SCHEMA:
+    case S_CMD_DATABASE:
+    case S_CMD_TRIGGER:
+    case S_CMD_INFO:
+    case S_CMD_SET_PARAM:
+    case S_CMD_GET_PARAM:
+    case S_CMD_PLAN_DUMP:
+    case S_CMD_TRACE:
+    case S_CMD_SERVER_OUTPUT:
+      break;
+    default:
+      csql_Error_code = CSQL_ERR_SESS_CMD_NOT_FOUND;
+      return DO_CMD_FAILURE;
+    }
+#endif /* SERVER_MODE */
+
   /* restore line_read string */
   if (sess_end != NULL)
     {
       *sess_end = sess_end_char;
     }
 
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
   if (csql_Is_interactive)
     {
       add_history (line_read);
     }
-#endif /* !WINDOWS */
+#endif /* !WINDOWS && !SERVER_MODE */
+
+#if defined(CSQL_THIN)
+  /* wf122/B5 D5R: the server-dependent commands ship as one wire line and
+   * run the very same case bodies inside cub_server (rendered text comes
+   * back); everything else stays client-side below. */
+  switch ((SESSION_CMD) cmd_no)
+    {
+    case S_CMD_COMMIT:
+    case S_CMD_ROLLBACK:
+    case S_CMD_CHECKPOINT:
+    case S_CMD_KILLTRAN:
+    case S_CMD_SCHEMA:
+    case S_CMD_DATABASE:
+    case S_CMD_TRIGGER:
+    case S_CMD_INFO:
+    case S_CMD_SET_PARAM:
+    case S_CMD_GET_PARAM:
+    case S_CMD_PLAN_DUMP:
+    case S_CMD_TRACE:
+    case S_CMD_SERVER_OUTPUT:
+      {
+	int wire_rc = csql_wire_session_cmd (csql_arg, line_read);
+
+	if (wire_rc < 0)
+	  {
+	    csql_thin_display_wire_error ();
+	    csql_check_server_down ();
+	    return DO_CMD_FAILURE;
+	  }
+	/* codex review #9: only a state-CHANGING on/off form updates the
+	 * client flag; the query-only form (no argument) and invalid forms
+	 * leave it unchanged, so `;trace` alone does not silently enable
+	 * tracing and `;server-output` alone does not stop the drain */
+	if (cmd_no == S_CMD_TRACE && wire_rc == DO_CMD_SUCCESS)
+	  {
+	    if (strncasecmp (argument, "on", 2) == 0)
+	      {
+		csql_wire_set_trace (true);
+	      }
+	    else if (strncasecmp (argument, "off", 3) == 0)
+	      {
+		csql_wire_set_trace (false);
+	      }
+	  }
+	if (cmd_no == S_CMD_SERVER_OUTPUT && wire_rc == DO_CMD_SUCCESS)
+	  {
+	    if (strcasecmp (argument, "on") == 0)
+	      {
+		csql_arg->pl_server_output = true;
+	      }
+	    else if (strcasecmp (argument, "off") == 0)
+	      {
+		csql_arg->pl_server_output = false;
+	      }
+	  }
+	return wire_rc;
+      }
+    case S_CMD_HISTO:
+    case S_CMD_CLR_HISTO:
+    case S_CMD_DUMP_HISTO:
+    case S_CMD_DUMP_CLR_HISTO:
+      /* the client-side network histogram has no meaning on the 1-hop
+       * path (#126: reduced) */
+      csql_fputs ("Histogram commands are not supported by this csql.\n", csql_Tty_fp);
+      return DO_CMD_SUCCESS;
+    default:
+      break;
+    }
+#endif /* CSQL_THIN */
 
   er_clear ();
 
@@ -1267,7 +1394,15 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_CHECKPOINT:
+#if defined(SERVER_MODE)
+      /* codex review (b5-codex-review #1): the bare sysadm-flag + DBA check
+       * is settable by any broker-routed client over function code 45.
+       * Require the server-side admin-csql gate so a forced checkpoint stays
+       * reachable only through the same-uid --sysadm DIRECT_CONNECT path. */
+      if (csql_server_sysadm_allowed ())
+#else
       if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+#endif
 	{
 	  error_code = db_checkpoint ();
 	  if (error_code != NO_ERROR)
@@ -1286,7 +1421,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_KILLTRAN:
+#if defined(SERVER_MODE)
+      /* codex review (b5-codex-review #1): same as ;checkpoint — killing an
+       * arbitrary transaction by index must require the admin-csql gate, not
+       * just a wire-settable flag on a broker-routed DBA session */
+      if (csql_server_sysadm_allowed ())
+#else
       if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+#endif
 	{
 	  csql_killtran ((argument[0] == '\0') ? NULL : argument);
 	}
@@ -1297,6 +1439,25 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_RESTART:
+#if defined(CSQL_THIN)
+      if (csql_Database_connected)
+	{
+	  csql_Database_connected = false;
+	  csql_wire_disconnect ();
+	}
+      er_init ("./csql.err", ER_NEVER_EXIT);
+      if (csql_wire_connect (csql_arg->db_name, csql_arg->user_name, csql_arg->passwd,
+			     csql_thin_client_type (csql_arg)) != NO_ERROR)
+	{
+	  csql_Error_code = CSQL_ERR_SQL_ERROR;
+	  csql_thin_display_wire_error ();
+	}
+      else
+	{
+	  csql_Database_connected = true;
+	  csql_display_msg (csql_get_message (CSQL_STAT_RESTART_TEXT));
+	}
+#else /* !CSQL_THIN */
       if (csql_Database_connected)
 	{
 	  csql_Database_connected = false;
@@ -1327,6 +1488,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
 	  csql_display_msg (csql_get_message (CSQL_STAT_RESTART_TEXT));
 	}
+#endif /* !CSQL_THIN */
       break;
 
       /* Environment stuffs */
@@ -1419,6 +1581,11 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  fprintf (csql_Output_fp, "ECHO IS %s\n", (csql_Is_echo_on ? "ON" : "OFF"));
 	}
+#if defined(CSQL_THIN)
+      /* wf122/B5: the render runs server-side — ship the toggle with every
+       * request, or the server keeps the connect-time default */
+      csql_wire_set_echo_on (csql_Is_echo_on);
+#endif
       break;
 
     case S_CMD_DATE:
@@ -1445,6 +1612,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  fprintf (csql_Output_fp, "TIME IS %s\n", (csql_Is_time_on ? "ON" : "OFF"));
 	}
+#if defined(CSQL_THIN)
+      /* wf122/B5: same as ;echo — the timing line is rendered server-side */
+      csql_wire_set_time_on (csql_Is_time_on);
+#endif
       break;
 
     case S_CMD_LINE_OUTPUT:
@@ -2179,6 +2350,114 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
  *   If `type' is EDITOR_INPUT, it attempts to get input string from command
  *   buffer.
  */
+#if defined(CSQL_THIN)
+/* thin flavor (wf122/B5 D5R): the pipeline runs server-side
+ * (CAS_FC_CSQL_REQUEST) and the rendered text is replayed by the wire layer;
+ * this body only prepares the statement text and translates the result. */
+
+/* the fat client's connect-time client-type selection, shared by the boot
+ * path and ;restart / ;connect */
+static int
+csql_thin_client_type (const CSQL_ARGUMENT * csql_arg)
+{
+  if (csql_arg->sysadm)
+    {
+      if (csql_arg->write_on_standby)
+	{
+	  return DB_CLIENT_TYPE_ADMIN_CSQL_WOS;
+	}
+      if (csql_arg->skip_vacuum)
+	{
+	  return DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL;
+	}
+      return DB_CLIENT_TYPE_ADMIN_CSQL;
+    }
+  if (csql_arg->read_only)
+    {
+      return DB_CLIENT_TYPE_READ_ONLY_CSQL;
+    }
+  if (csql_arg->skip_vacuum)
+    {
+      return DB_CLIENT_TYPE_SKIP_VACUUM_CSQL;
+    }
+  return DB_CLIENT_TYPE_CSQL;
+}
+
+/* the fat client's nonscr_display_error layout, fed by the wire error */
+static void
+csql_thin_display_wire_error (void)
+{
+  char *msg = NULL;
+
+  (void) csql_wire_last_error (&msg);
+  fprintf (csql_Error_fp, "\n%s%s\n\n", csql_get_message (CSQL_ERROR_PREFIX),
+	   (msg != NULL && msg[0] != '\0') ? msg : "server connection error");
+  fflush (csql_Error_fp);
+}
+
+static int
+csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, const int line_no)
+{
+  const char *text = NULL;
+  char *file_text = NULL;
+  int status;
+
+  csql_Num_failures = 0;
+
+  if (type == FILE_INPUT)
+    {
+      FILE *fp = (FILE *) stream;
+      size_t cap = 65536, len = 0, r;
+
+      file_text = (char *) malloc (cap);
+      if (file_text == NULL)
+	{
+	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+	  return 1;
+	}
+      while ((r = fread (file_text + len, 1, cap - len - 1, fp)) > 0)
+	{
+	  len += r;
+	  if (cap - len < 2)
+	    {
+	      char *nb = (char *) realloc (file_text, cap * 2);
+	      if (nb == NULL)
+		{
+		  free (file_text);
+		  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+		  return 1;
+		}
+	      file_text = nb;
+	      cap *= 2;
+	    }
+	}
+      file_text[len] = '\0';
+      text = file_text;
+    }
+  else if (type == STRING_INPUT)
+    {
+      text = (const char *) stream;
+    }
+  else
+    {
+      text = csql_edit_contents_get ();
+    }
+
+  status = csql_wire_execute (csql_arg, type, line_no, text);
+  free (file_text);
+
+  if (status < 0)
+    {
+      csql_Error_code = CSQL_ERR_SQL_ERROR;
+      csql_thin_display_wire_error ();
+      csql_check_server_down ();
+      csql_Num_failures = 1;
+      return 1;
+    }
+  csql_Num_failures = status;
+  return status;
+}
+#else /* !CSQL_THIN */
 static int
 csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, const int line_no)
 {
@@ -2636,6 +2915,7 @@ error:
     }
   return 1;
 }
+#endif /* !CSQL_THIN */
 
 /*
  * free_attr_spec()
@@ -2901,7 +3181,11 @@ signal_intr (int sig_no)
 {
   if (csql_Is_interactive)
     {
+#if defined(CSQL_THIN)
+      csql_wire_cancel ();	/* wf122/B5: the in-flight request's cancel */
+#else
       db_set_interrupt (1);
+#endif
     }
   csql_Is_sigint_caught = true;
 
@@ -3181,8 +3465,20 @@ csql_exit_cleanup ()
 void
 csql_exit (int exit_status)
 {
+#if defined(SERVER_MODE)
+  /* wf122/B5: never terminate cub_server; unwind to the request boundary.
+   * Unarmed means a folded csql path escaped the entry points below. */
+  assert (csql_Server_request_env_armed);
+  if (csql_Server_request_env_armed)
+    {
+      csql_Exit_status = exit_status;
+      longjmp (csql_Server_request_env, 1);
+    }
+  return;
+#else
   csql_Exit_status = exit_status;
   longjmp (csql_Exit_env, 1);
+#endif
 }
 
 /* --sysadm-rebuild-catalog option is only supported in SA_MODE */
@@ -3355,6 +3651,47 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_apply_catalog_rebuild_mode (csql_arg, &client_type);
     }
 
+#if defined(CSQL_THIN)
+  /* the fat client's boot chain initialized language from the server
+   * credential; the thin csql initializes from the environment (UTF-8
+   * default — the common install charset; a non-UTF-8 database console
+   * needs $CUBRID_CHARSET) */
+  {
+    const char *cs = getenv ("CUBRID_CHARSET");
+
+    if (lang_init () != NO_ERROR || lang_set_charset_lang (cs != NULL && cs[0] != '\0' ? cs : "en_US.utf8") != NO_ERROR)
+      {
+	csql_Error_code = CSQL_ERR_OS_ERROR;
+	goto error;
+      }
+  }
+  csql_wire_set_interactive (csql_Is_interactive);
+  if (csql_wire_connect (csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, client_type) != NO_ERROR)
+    {
+      if (!csql_Is_interactive || csql_arg->passwd != NULL || csql_wire_last_error (NULL) != ER_AU_INVALID_PASSWORD)
+	{
+	  csql_thin_display_wire_error ();
+	  csql_exit (EXIT_FAILURE);
+	}
+
+      /* get password interactively if interactive mode */
+      p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
+      if (p[0] == '\0')
+	{
+	  csql_arg->passwd = (char *) NULL;	/* to fit into db_login protocol */
+	}
+      else
+	{
+	  csql_arg->passwd = strdup (p);
+	}
+
+      if (csql_wire_connect (csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, client_type) != NO_ERROR)
+	{
+	  csql_thin_display_wire_error ();
+	  csql_exit (EXIT_FAILURE);
+	}
+    }
+#else /* !CSQL_THIN */
   if (db_restart_ex (argv0, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL, client_type) != NO_ERROR)
     {
       if (!csql_Is_interactive || csql_arg->passwd != NULL || db_error_code () != ER_AU_INVALID_PASSWORD)
@@ -3383,9 +3720,14 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	  goto error;
 	}
     }
+#endif /* !CSQL_THIN */
 
   er_set_print_property (ER_PRINT_TO_CONSOLE);
 
+#if !defined(CSQL_THIN)
+  /* wf122/B5: under the thin csql these are server-side session shaping —
+   * the ddl audit log is produced by the server (B2), the trigger and
+   * sysadm-authorization flags travel with every request */
   logddl_init (APP_NAME_CSQL);
   logddl_check_ddl_audit_param ();
 
@@ -3406,6 +3748,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       /* sysadm mode: keep authorization off for the whole session (intentionally never restored). */
       AU_SAVE_AND_DISABLE (dummy);
     }
+#endif /* !CSQL_THIN */
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */
   if (prm_get_bool_value (PRM_ID_CSQL_SINGLE_LINE_MODE))
@@ -3637,6 +3980,31 @@ csql_get_column_width (const char *column_name)
     }
 
   return 0;
+}
+
+/*
+ * csql_column_widths_serialize() - "name=w;name=w" form of the ;column-width
+ *   list (wf122/B5: the thin csql ships it with every request so the
+ *   server-side renderer sees the same widths the fat client would)
+ */
+void
+csql_column_widths_serialize (char *buf, size_t bufsize)
+{
+  size_t used = 0;
+  int i;
+
+  buf[0] = '\0';
+  for (i = 0; i < csql_column_width_info_list_index; i++)
+    {
+      int n = snprintf (buf + used, bufsize - used, "%s%s=%d", used > 0 ? ";" : "",
+			csql_column_width_info_list[i].name, csql_column_width_info_list[i].width);
+      if (n < 0 || (size_t) n >= bufsize - used)
+	{
+	  buf[used] = '\0';
+	  break;
+	}
+      used += (size_t) n;
+    }
 }
 
 /*
@@ -3959,6 +4327,42 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   er_init ("./csql.err", ER_NEVER_EXIT);
   csql_new_arg.passwd = (char *) NULL;
 
+#if defined(CSQL_THIN)
+  if (csql_wire_connect (db_name_ptr, user_name_ptr, NULL, csql_thin_client_type (csql_arg)) != NO_ERROR)
+    {
+      if (csql_Is_interactive && csql_wire_last_error (NULL) == ER_AU_INVALID_PASSWORD)
+	{
+	  p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
+
+	  /* try again */
+	  if (csql_wire_connect (db_name_ptr, user_name_ptr, p, csql_thin_client_type (csql_arg)) != NO_ERROR)
+	    {
+	      csql_Error_code = CSQL_ERR_SQL_ERROR;
+	      csql_thin_display_wire_error ();
+	      fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
+
+	      return ER_FAILED;
+	    }
+
+	  if (p[0] == '\0')
+	    {
+	      csql_new_arg.passwd = (char *) NULL;	/* to fit into db_login protocol */
+	    }
+	  else
+	    {
+	      csql_new_arg.passwd = strdup (p);
+	    }
+	}
+      else
+	{
+	  csql_Error_code = CSQL_ERR_SQL_ERROR;
+	  csql_thin_display_wire_error ();
+	  fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
+
+	  return ER_FAILED;
+	}
+    }
+#else /* !CSQL_THIN */
   if (db_restart_ex (UTIL_CSQL_NAME, db_name_ptr, user_name_ptr, NULL, NULL, db_get_client_type ()) != NO_ERROR)
     {
       if (csql_Is_interactive && db_error_code () == ER_AU_INVALID_PASSWORD)
@@ -3994,6 +4398,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
 	}
     }
+#endif /* !CSQL_THIN */
 
 /*If login is success, copy csql_new_arg to csql_arg*/
   csql_new_arg.user_name = strdup (user_name_ptr);
@@ -4005,18 +4410,22 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
   memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
 
+#if !defined(CSQL_THIN)
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
       int dummy;
       /* sysadm mode: keep authorization off for the whole session (intentionally never restored). */
       AU_SAVE_AND_DISABLE (dummy);
     }
+#endif
   csql_Database_connected = true;
 
+#if !defined(CSQL_THIN)
   if (csql_arg->trigger_action_flag == false)
     {
       db_disable_trigger ();
     }
+#endif
 
   fprintf (csql_Output_fp, "Connected.\n");
 
@@ -4025,3 +4434,260 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
   return NO_ERROR;
 }
+
+#if defined(SERVER_MODE)
+/*
+ * wf122/B5: server-side entry points for CAS_FC_CSQL_REQUEST.
+ *
+ * Both run the unmodified fat-csql pipeline on the session thread, inside
+ * the already-active client session bracket, with csql_Output_fp /
+ * csql_Error_fp pointed at caller-provided capture streams.  All the file
+ * state they touch is thread-local (CSQL_BODY_TLS), and per-request client
+ * settings arrive in CSQL_SERVER_EXEC_OPTS instead of process globals.
+ */
+
+/*
+ * csql_server_apply_column_widths() - rebuild the per-request column width
+ *   list from its serialized "name=width;name=width" form
+ */
+static void
+csql_server_apply_column_widths (const char *widths)
+{
+  char *dup, *save = NULL, *tok;
+
+  free_csql_column_width_info_list ();
+
+  if (widths == NULL || widths[0] == '\0')
+    {
+      return;
+    }
+
+  dup = strdup (widths);
+  if (dup == NULL)
+    {
+      return;
+    }
+  for (tok = strtok_r (dup, ";", &save); tok != NULL; tok = strtok_r (NULL, ";", &save))
+    {
+      char *eq = strrchr (tok, '=');
+
+      if (eq == NULL)
+	{
+	  continue;
+	}
+      *eq = '\0';
+      csql_set_column_width_info (tok, atoi (eq + 1));
+    }
+  free (dup);
+}
+
+/* the fat client's connect-time session shaping, applied at the request
+ * boundary instead (equivalent: every statement runs inside a request):
+ * --no-trigger-action and --sysadm authorization-off (the latter only for a
+ * session that really is an admin-csql type AND a DBA member). */
+static bool
+csql_server_sysadm_allowed (void)
+{
+  int t = db_get_client_type ();
+
+  if (t != DB_CLIENT_TYPE_ADMIN_CSQL && t != DB_CLIENT_TYPE_ADMIN_CSQL_WOS
+      && t != DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL)
+    {
+      return false;
+    }
+  return au_is_dba_group_member (Au_user);
+}
+
+static void
+csql_server_request_begin (const CSQL_SERVER_EXEC_OPTS * opts, FILE * out_fp, FILE * err_fp)
+{
+  /* ;plan output goes to stdout in the fat client; here it must land in the
+   * captured stream (session plan-dump handle, unless a file dump is armed) */
+  if (csc_bracket_is_active () && !query_Plan_dump_fp_open)
+    {
+      query_Plan_dump_fp = out_fp;
+    }
+  csql_Output_fp = out_fp;
+  csql_Error_fp = err_fp;
+  csql_Input_fp = NULL;
+  csql_Tty_fp = NULL;
+  /* the fat client resets parser line numbers per buffer when interactive;
+   * the thin client ships its interactivity so error line numbers match */
+  csql_Is_interactive = opts->is_interactive;
+  csql_Is_echo_on = opts->is_echo_on;
+  csql_Is_time_on = opts->is_time_on;
+  csql_Query_trace = opts->query_trace;
+  csql_Error_code = NO_ERROR;
+  csql_Row_count = 0;
+  csql_Num_failures = 0;
+  csql_server_apply_column_widths (opts->column_widths);
+}
+
+static void
+csql_server_request_end (void)
+{
+  if (csc_bracket_is_active () && !query_Plan_dump_fp_open && query_Plan_dump_fp == csql_Output_fp)
+    {
+      query_Plan_dump_fp = NULL;
+    }
+  if (csql_Output_fp != NULL)
+    {
+      fflush (csql_Output_fp);
+    }
+  if (csql_Error_fp != NULL)
+    {
+      fflush (csql_Error_fp);
+    }
+  free_csql_column_width_info_list ();
+  csql_edit_contents_clear ();
+  csql_Output_fp = NULL;
+  csql_Error_fp = NULL;
+}
+
+/*
+ * csql_server_execute_request() - run a statement buffer exactly as fat csql
+ *   would; returns the csql_execute_statements() failure count (>= 0), or a
+ *   negative value when the request aborted through csql_exit()
+ */
+int
+csql_server_execute_request (const CSQL_ARGUMENT * csql_arg, const CSQL_SERVER_EXEC_OPTS * opts, const char *text,
+			     FILE * out_fp, FILE * err_fp)
+{
+  /* volatile: live across the request-boundary setjmp */
+  volatile int status = -1;
+  FILE *volatile mem_in = NULL;
+  volatile bool au_disabled = false;
+  volatile int au_save = 0;
+
+  csql_server_request_begin (opts, out_fp, err_fp);
+  csql_Server_request_env_armed = true;
+  if (setjmp (csql_Server_request_env) != 0)
+    {
+      /* a folded fatal path (csql_exit) unwound here; the statement error is
+       * already on the captured error stream */
+      status = -1;
+      goto end;
+    }
+
+  if (csc_bracket_is_active ())
+    {
+      if (!csql_arg->trigger_action_flag)
+	{
+	  db_disable_trigger ();
+	}
+      if (csql_arg->sysadm && csql_server_sysadm_allowed ())
+	{
+	  int save = 0;
+	  AU_SAVE_AND_DISABLE (save);
+	  au_save = save;
+	  au_disabled = true;
+	}
+    }
+
+  switch (opts->input_type)
+    {
+    case FILE_INPUT:
+      mem_in = fmemopen ((void *) text, strlen (text), "r");
+      if (mem_in == NULL)
+	{
+	  goto end;
+	}
+      status = csql_execute_statements (csql_arg, FILE_INPUT, mem_in, opts->line_no);
+      break;
+    case EDITOR_INPUT:
+      /* preload the (thread-local) edit buffer so echo/ddl-log semantics
+       * match the fat client's command-buffer path */
+      csql_edit_contents_clear ();
+      if (csql_edit_contents_append (text, false) != CSQL_SUCCESS)
+	{
+	  goto end;
+	}
+      status = csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, opts->line_no);
+      break;
+    default:
+      status = csql_execute_statements (csql_arg, STRING_INPUT, text, opts->line_no);
+      break;
+    }
+
+end:
+  csql_Server_request_env_armed = false;
+  if (au_disabled)
+    {
+      int save = au_save;
+      AU_RESTORE (save);
+    }
+  if (mem_in != NULL)
+    {
+      fclose (mem_in);
+    }
+  csql_server_request_end ();
+  return status;
+}
+
+/*
+ * csql_server_session_cmd_request() - run one server-dependent csql session
+ *   command line (";schema foo" form, prefix included); the SERVER_MODE
+ *   allowlist inside csql_do_session_cmd() rejects everything else.
+ *   Returns the DO_CMD_* code, or -1 when the request aborted.
+ */
+int
+csql_server_session_cmd_request (const CSQL_ARGUMENT * csql_arg, const CSQL_SERVER_EXEC_OPTS * opts, const char *line,
+				 FILE * out_fp, FILE * err_fp)
+{
+  /* volatile: live across the request-boundary setjmp */
+  volatile int rc = -1;
+  volatile bool au_disabled = false;
+  volatile int au_save = 0;
+  /* codex review #10: volatile + freed only at end: so a csql_exit longjmp
+   * (e.g. server-down on an auto-committing command) cannot leak it */
+  char *volatile dup = NULL;
+
+  csql_server_request_begin (opts, out_fp, err_fp);
+  csql_Server_request_env_armed = true;
+  if (setjmp (csql_Server_request_env) != 0)
+    {
+      rc = -1;
+      goto end;
+    }
+
+  if (csc_bracket_is_active ())
+    {
+      if (!csql_arg->trigger_action_flag)
+	{
+	  db_disable_trigger ();
+	}
+      if (csql_arg->sysadm && csql_server_sysadm_allowed ())
+	{
+	  int save = 0;
+	  AU_SAVE_AND_DISABLE (save);
+	  au_save = save;
+	  au_disabled = true;
+	}
+    }
+
+  dup = strdup (line);
+  if (dup == NULL)
+    {
+      goto end;
+    }
+  rc = csql_do_session_cmd (dup, (CSQL_ARGUMENT *) csql_arg);
+  if (rc == DO_CMD_FAILURE && csql_Error_code != NO_ERROR)
+    {
+      nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+    }
+
+end:
+  csql_Server_request_env_armed = false;
+  if (dup != NULL)
+    {
+      free (dup);
+    }
+  if (au_disabled)
+    {
+      int save = au_save;
+      AU_RESTORE (save);
+    }
+  csql_server_request_end ();
+  return rc;
+}
+#endif /* SERVER_MODE */

@@ -40,6 +40,8 @@
 #include "virtual_object.h"
 #include "dbtype.h"
 #include "boot.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -127,8 +129,8 @@ typedef struct attr_ref_info
   bool found;			/* set when a reference is found */
 } ATTR_REF_INFO;
 
-static unsigned int top_cycle = 0;
-static DB_OBJECT *cycle_buffer[MAX_CYCLE];
+static CSQL_PARSER_TLS unsigned int top_cycle = 0;
+static CSQL_PARSER_TLS DB_OBJECT *cycle_buffer[MAX_CYCLE];
 
 
 

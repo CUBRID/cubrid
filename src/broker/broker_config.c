@@ -257,6 +257,8 @@ const char *broker_keywords[] = {
   "SQL_LOG_MAX_SIZE",
   "SERVICE",
   "SSL",
+  "DIRECT_HANDOFF",
+  "DIRECT_HANDOFF_SSL_DB",
 #if defined (FOR_ODBC_GATEWAY)
   "CGW_LINK_SERVER",
   "CGW_LINK_SERVER_IP",
@@ -661,6 +663,22 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
+
+      INI_GETSTR_CHK (s, ini, sec_name, "DIRECT_HANDOFF", "OFF", &lineno);
+      br_info[num_brs].direct_handoff = conf_get_value_table_on_off (s);
+      if (br_info[num_brs].direct_handoff < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
+      INI_GETSTR_CHK (s, ini, sec_name, "DIRECT_HANDOFF_SSL_DB", "", &lineno);
+      if (strlen (s) >= sizeof (br_info[num_brs].direct_handoff_ssl_db))
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+      strcpy (br_info[num_brs].direct_handoff_ssl_db, s);
 #if defined (FOR_ODBC_GATEWAY)
       INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_SERVER", DEFAULT_EMPTY_STRING, &lineno);
       strcpy (br_info[num_brs].cgw_link_server, s);
@@ -1273,6 +1291,17 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
+#if !defined (WINDOWS)
+      /* B4 (#116 D1): the standalone CAS is removed on UNIX — a plain CAS
+       * broker always hands connections off to the server directly. The
+       * gateway (CAS_CGW) and the Windows relay path keep their appl-server
+       * pools. */
+      if (br_info[num_brs].appl_server == APPL_SERVER_CAS && br_info[num_brs].shard_flag == OFF)
+	{
+	  br_info[num_brs].direct_handoff = ON;
+	}
+#endif
+
       num_brs++;
     }
 
@@ -1335,6 +1364,12 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
 	  if (br_info[i].shard_flag == ON)
 	    {
+#if !defined (WINDOWS)
+	      /* B4 (#116 D2): SHARD is not supported in the new architecture
+	       * (sources stay frozen; removal is upstream's call) */
+	      PRINTERROR ("config error, %s, SHARD is not supported\n", br_info[i].name);
+	      error_flag = TRUE;
+#endif
 	      if (br_info[i].proxy_shm_id <= 0)
 		{
 		  PRINTERROR ("config error, %s, SHARD_PROXY_SHM_ID\n", br_info[i].name);
@@ -1345,6 +1380,23 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 		  PRINTERROR ("config error, %s, SHARD_DB_NAME\n", br_info[i].name);
 		  error_flag = TRUE;
 		}
+	    }
+
+	  /* B4 (#116 D1/D7): the gateway keeps its CAS pool — no handoff */
+	  if (br_info[i].direct_handoff == ON && br_info[i].appl_server != APPL_SERVER_CAS)
+	    {
+	      PRINTERROR ("config error, %s, DIRECT_HANDOFF requires APPL_SERVER=CAS\n", br_info[i].name);
+	      error_flag = TRUE;
+	    }
+
+	  /* B2 (#116 D9-SSL): an SSL client's db_info is encrypted, so the
+	   * broker cannot route by dbname — the target must be configured */
+	  if (br_info[i].direct_handoff == ON && br_info[i].use_SSL == ON
+	      && br_info[i].direct_handoff_ssl_db[0] == '\0')
+	    {
+	      PRINTERROR ("config error, %s, DIRECT_HANDOFF with SSL requires DIRECT_HANDOFF_SSL_DB\n",
+			  br_info[i].name);
+	      error_flag = TRUE;
 	    }
 	}			/* end for (i) */
     }				/* end if (admin_flag) */
@@ -1662,6 +1714,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 #endif
       fprintf (fp, "APPL_SERVER_SHM_ID\t=%x\n", br_info[i].appl_server_shm_id);
       fprintf (fp, "SSL\t\t\t=%s\n", br_info[i].use_SSL ? "ON" : "OFF");
+      fprintf (fp, "DIRECT_HANDOFF\t\t=%s\n", br_info[i].direct_handoff ? "ON" : "OFF");
       fprintf (fp, "APPL_SERVER_MAX_SIZE\t=%d\n", br_info[i].appl_server_max_size / ONE_K);
       fprintf (fp, "SESSION_TIMEOUT\t\t=%d\n", br_info[i].session_timeout);
       fprintf (fp, "LOG_DIR\t\t\t=%s\n", br_info[i].log_dir);

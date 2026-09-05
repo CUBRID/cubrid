@@ -33,6 +33,9 @@
 #include <ctype.h>
 
 #include "authenticate.h"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
 #include "show_meta.h"
 #include "error_manager.h"
 #include "parser.h"
@@ -40,6 +43,8 @@
 #include "dbtype.h"
 #include "error_code.h"
 #include "db.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 enum
 {
@@ -687,6 +692,43 @@ metadata_of_threads (void)
   return &md;
 }
 
+/* SHOW SESSION STATUS: the per-session CAS statistics the broker's shm slot
+ * table used to expose through 'cubrid broker status' (B2-D10, #116 D10) */
+static SHOWSTMT_METADATA *
+metadata_of_session_status (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Token", "bigint"},
+    {"Slot", "int"},
+    {"Broker", "varchar(64)"},
+    {"Client_ip", "varchar(20)"},
+    {"Db_user", "varchar(32)"},
+    {"Session_id", "bigint"},
+    {"Tran_index", "int"},
+    {"Num_requests", "bigint"},
+    {"Num_transactions", "bigint"},
+    {"Num_queries", "bigint"},
+    {"Num_selects", "bigint"},
+    {"Num_inserts", "bigint"},
+    {"Num_updates", "bigint"},
+    {"Num_deletes", "bigint"},
+    {"Num_errors", "bigint"},
+    {"Num_long_queries", "bigint"},
+    {"Num_long_transactions", "bigint"},
+    {"Last_activity", "varchar(256)"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_SESSION_STATUS, true /* only_for_dba */ , "show session status",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
+  };
+  return &md;
+}
+
 static SHOWSTMT_METADATA *
 metadata_of_page_buffer_status (void)
 {
@@ -937,8 +979,44 @@ free_db_attribute_list (SHOWSTMT_METADATA * md)
  * showstmt_metadata_init() -- initialize the metadata of show statements
  * return error code>
  */
+static int showstmt_metadata_init_internal (void);
+
 int
 showstmt_metadata_init (void)
+{
+#if defined (SERVER_MODE)
+  /* B4: this runs once, from the FIRST session's boot (boot_restart_client,
+   * which is serialized) — but init_db_attribute_list's attribute structs
+   * are workspace-heap allocations, and a session's workspace dies with the
+   * session now (B4-D6 immediate teardown), leaving show_Metas[] pointing
+   * into freed memory for every later session's SHOW.  Build the
+   * process-lifetime metadata under its own never-torn-down context instead
+   * (the dk_boot_ctx pattern, deduplicate_key.c). */
+  int error;
+  client_session_context *session_ctx;
+
+  if (show_Inited)
+    {
+      return NO_ERROR;
+    }
+
+  session_ctx = csc_current ();
+  csc_deactivate ();
+  {
+    static client_session_context show_boot_ctx;
+    csc_activate (&show_boot_ctx);
+    error = showstmt_metadata_init_internal ();
+    csc_deactivate ();
+  }
+  csc_activate (session_ctx);
+  return error;
+#else
+  return showstmt_metadata_init_internal ();
+#endif
+}
+
+static int
+showstmt_metadata_init_internal (void)
 {
   int error;
   unsigned int i;
@@ -971,6 +1049,7 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_TRAN_TABLES] = metadata_of_tran_tables ();
   show_Metas[SHOWSTMT_THREADS] = metadata_of_threads ();
   show_Metas[SHOWSTMT_PAGE_BUFFER_STATUS] = metadata_of_page_buffer_status ();
+  show_Metas[SHOWSTMT_SESSION_STATUS] = metadata_of_session_status ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {

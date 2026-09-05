@@ -26,9 +26,6 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
 
 #include "dbtype_def.h"
 #include "object_domain.h"
@@ -141,9 +138,26 @@ typedef struct
   COMPATIBLE_LEVEL compatible;	/* how compatible is the sub-tree */
 } COMPATIBLE_INFO;
 
+#if defined (SERVER_MODE)
+/* the plan-dump handle is session state (#123 D2); reached through the
+ * thread's activation bracket (client_session_context.hpp) */
+// *INDENT-OFF*
+struct plan_dump_context
+{
+  char *filename = NULL;
+  FILE *fp = NULL;
+  bool fp_open = false;
+};
+// *INDENT-ON*
+extern struct plan_dump_context *csc_plan_dump (void);
+#define query_Plan_dump_filename (csc_plan_dump ()->filename)
+#define query_Plan_dump_fp (csc_plan_dump ()->fp)
+#define query_Plan_dump_fp_open (csc_plan_dump ()->fp_open)
+#else /* SERVER_MODE */
 extern char *query_Plan_dump_filename;
 extern FILE *query_Plan_dump_fp;
 extern bool query_Plan_dump_fp_open;
+#endif /* !SERVER_MODE */
 
 extern ACCESS_SPEC_TYPE *pt_make_dblink_access_spec (ACCESS_METHOD access,
 						     PRED_EXPR * where_pred,

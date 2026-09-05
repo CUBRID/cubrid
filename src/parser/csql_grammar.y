@@ -106,10 +106,14 @@ typedef struct
 void csql_yyerror_explicit (int line, int column);
 void csql_yyerror (const char *s);
 
-extern int g_msg[1024];
-extern int msg_ptr;
-extern int is_dblink_query_string;
-extern int expecting_pl_lang_spec;
+/* this block is copied verbatim into the generated csql_grammar.h,
+ * so the TLS marker must be defined here for both copies */
+#include "csql_parser_tls.h"
+
+extern CSQL_PARSER_TLS int g_msg[1024];
+extern CSQL_PARSER_TLS int msg_ptr;
+extern CSQL_PARSER_TLS int is_dblink_query_string;
+extern CSQL_PARSER_TLS int expecting_pl_lang_spec;
 extern int yylex(void);
 
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
@@ -179,52 +183,52 @@ struct _s_passwd{
   int method_password_arg_idx;
   bool pwd_comma_offset;
 };
-static struct _s_passwd pwd_info = { -1, -1, false, false, 0, -1, false };
+static CSQL_PARSER_TLS struct _s_passwd pwd_info = { -1, -1, false, false, 0, -1, false };
 static void pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING en_add_pwd_string);
 
-static int parser_groupby_exception = 0;
+static CSQL_PARSER_TLS int parser_groupby_exception = 0;
 
 /* xxxnum_check: 0 not allowed, no compatibility check
 		 1 allowed, compatibility check (search_condition)
 		 2 allowed, no compatibility check (select_list) */
-static int parser_instnum_check = 0;
-static int parser_groupbynum_check = 0;
-static int parser_orderbynum_check = 0;
-static int parser_within_join_condition = 0;
+static CSQL_PARSER_TLS int parser_instnum_check = 0;
+static CSQL_PARSER_TLS int parser_groupbynum_check = 0;
+static CSQL_PARSER_TLS int parser_orderbynum_check = 0;
+static CSQL_PARSER_TLS int parser_within_join_condition = 0;
 
 /* xxx_check: 0 not allowed
               1 allowed */
-static int parser_sysconnectbypath_check = 0;
-static int parser_prior_check = 0;
-static int parser_connectbyroot_check = 0;
-static int parser_serial_check = 1;
-static int parser_pseudocolumn_check = 1;
-static int parser_subquery_check = 1;
-static int parser_hostvar_check = 1;
+static CSQL_PARSER_TLS int parser_sysconnectbypath_check = 0;
+static CSQL_PARSER_TLS int parser_prior_check = 0;
+static CSQL_PARSER_TLS int parser_connectbyroot_check = 0;
+static CSQL_PARSER_TLS int parser_serial_check = 1;
+static CSQL_PARSER_TLS int parser_pseudocolumn_check = 1;
+static CSQL_PARSER_TLS int parser_subquery_check = 1;
+static CSQL_PARSER_TLS int parser_hostvar_check = 1;
 
 /* check Oracle style outer-join operator: '(+)' */
-static bool parser_found_Oracle_outer = false;
+static CSQL_PARSER_TLS bool parser_found_Oracle_outer = false;
 
 /* check sys_date, sys_time, sys_timestamp, sys_datetime local_transaction_id */
-static bool parser_si_datetime = false;
-static bool parser_si_tran_id = false;
+static CSQL_PARSER_TLS bool parser_si_datetime = false;
+static CSQL_PARSER_TLS bool parser_si_tran_id = false;
 
 /* check the condition that the statment is not able to be prepared */
-static bool parser_cannot_prepare = false;
+static CSQL_PARSER_TLS bool parser_cannot_prepare = false;
 
 /* check the condition that the result of a query is not able to be cached */
-static bool parser_cannot_cache = false;
+static CSQL_PARSER_TLS bool parser_cannot_cache = false;
 
 /* check if INCR is used legally */
-static int parser_select_level = -1;
+static CSQL_PARSER_TLS int parser_select_level = -1;
 
 /* handle inner increment exprs in select list */
-static PT_NODE *parser_hidden_incr_list = NULL;
+static CSQL_PARSER_TLS PT_NODE *parser_hidden_incr_list = NULL;
 
 /* for opt_over_analytic_partition_by */
-static bool is_analytic_function = false;
+static CSQL_PARSER_TLS bool is_analytic_function = false;
 
-static bool is_in_sp_func_type = false;
+static CSQL_PARSER_TLS bool is_in_sp_func_type = false;
 
 #define PT_EMPTY INT_MAX
 
@@ -437,17 +441,91 @@ static void pt_value_set_collation_info (PARSER_CONTEXT *parser,
 					 PT_NODE *node,
 					 PT_NODE *coll_node);
 static void pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
-                   const char *str, const char *txt, DB_CURRENCY type);
+                   const char *str, const char *txt, PT_CURRENCY type);
 static PT_NODE * pt_create_paren_expr_list (PT_NODE * exp);
-static PT_MISC_TYPE parser_attr_type;
+static CSQL_PARSER_TLS PT_MISC_TYPE parser_attr_type;
 
-static bool allow_attribute_ordering;
+static CSQL_PARSER_TLS bool allow_attribute_ordering;
 
+/* db.h declares this extern "C"; keep C linkage when this generated
+ * file is compiled as C++ (SERVER_MODE build) */
+#ifdef __cplusplus
+extern "C" int parse_one_statement (int state);
+#else
 int parse_one_statement (int state);
+#endif
 static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 					   PT_NODE *node, PT_NODE *coll_node);
 
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
+
+/* maximum expression nesting depth accepted from user input; a generous fixed
+ * constant - the upstream regression suite chains ~5,000 ANDed predicates in
+ * one statement (a legitimate stress shape the legacy client accepted), while
+ * unbounded nesting overflows the C stack of the recursive tree walkers
+ * downstream of the parser.  Compile runs on the driver-session threads
+ * (default 8MB pthread stacks, the legacy CAS equivalent), and the D6
+ * sigaltstack keeps a genuine overflow diagnosable. */
+#define PT_MAX_NESTING_DEPTH 16384
+
+static int
+pt_nesting_depth_max3 (const PT_NODE * arg1, const PT_NODE * arg2, const PT_NODE * arg3)
+{
+  int depth = 0;
+
+  if (arg1 != NULL && arg1->nesting_depth > depth)
+    {
+      depth = arg1->nesting_depth;
+    }
+  if (arg2 != NULL && arg2->nesting_depth > depth)
+    {
+      depth = arg2->nesting_depth;
+    }
+  if (arg3 != NULL && arg3->nesting_depth > depth)
+    {
+      depth = arg3->nesting_depth;
+    }
+
+  return depth;
+}
+
+static int
+pt_nesting_depth_list_max (const PT_NODE * list)
+{
+  int depth = 0;
+
+  for (; list != NULL; list = list->next)
+    {
+      if (list->nesting_depth > depth)
+	{
+	  depth = list->nesting_depth;
+	}
+    }
+
+  return depth;
+}
+
+/* record a node's nesting depth and demote the statement to a parse error
+ * past the limit.  Every grammar path that builds a PT_EXPR outside
+ * parser_make_expression () must route its depth through here; constructs
+ * that desugar an argument list into a nested chain (CASE, DECODE, COALESCE,
+ * LEAST/GREATEST, CONCAT) pass list-length + argument-depth, which bounds the
+ * walker recursion within a small constant factor of the true node depth. */
+static void
+pt_set_guarded_nesting_depth (PARSER_CONTEXT * parser, PT_NODE * node, int depth)
+{
+  if (node == NULL)
+    {
+      return;
+    }
+
+  node->nesting_depth = depth;
+  if (depth > PT_MAX_NESTING_DEPTH && !pt_has_error (parser))
+    {
+      PT_ERRORf (parser, node, "Statement is nested too deeply (the maximum nesting depth is %d).",
+		 PT_MAX_NESTING_DEPTH);
+    }
+}
 
 #define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)  do {  \
    if ((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
@@ -463,13 +541,13 @@ static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * n
 void _push_msg (int code, int line);
 void pop_msg (void);
 
-char *g_query_string;
-int g_query_string_pos;
-int g_query_string_len;
-int g_original_buffer_len;
+CSQL_PARSER_TLS char *g_query_string;
+CSQL_PARSER_TLS int g_query_string_pos;
+CSQL_PARSER_TLS int g_query_string_len;
+CSQL_PARSER_TLS int g_original_buffer_len;
 
 static int pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start, int spec_end, int end);
-static int g_plcsql_text_pos;
+static CSQL_PARSER_TLS int g_plcsql_text_pos;
 
 /*
  * The behavior of location propagation when a rule is matched must
@@ -7455,6 +7533,10 @@ show_type
 		{{
 			$$ = SHOWSTMT_THREADS;
 		}}
+	| SESSION STATUS
+		{{
+			$$ = SHOWSTMT_SESSION_STATUS;
+		}}
 	;
 
 show_type_of_like
@@ -7956,6 +8038,8 @@ update_assignment
 					tmp->info.expr.arg1 = e1;
 					tmp->info.expr.arg2 = e2;
 				      }
+				    pt_set_guarded_nesting_depth (this_parser, tmp,
+								  1 + pt_nesting_depth_max3 (e1, e2, NULL));
 				    list = parser_make_link (tmp, list);
 
 				    e2 = e2_next;
@@ -8016,6 +8100,7 @@ paren_path_expression_set
 			    p->info.expr.paren_type = 1;
 			    p->info.expr.arg1 = $2;
 			  }
+			pt_set_guarded_nesting_depth (this_parser, p, 1 + pt_nesting_depth_list_max ($2));
 
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -13256,13 +13341,13 @@ hint_list
 		{{
 			PT_NODE *node = parser_top_hint_node ();
 			char *hint_comment = $2;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
+			(void) pt_get_hint (hint_comment, pt_hint_table (), node);
 		}}
 	| SQL_HINT
 		{{
 			PT_NODE *node = parser_top_hint_node ();
 			char *hint_comment = $1;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
+			(void) pt_get_hint (hint_comment, pt_hint_table (), node);
 		}}
 	;
 
@@ -16935,6 +17020,7 @@ case_expr
 		{{
 			PT_NODE *prev, *expr, *arg, *tmp;
 			int count = parser_count_list ($3);
+			int args_max = pt_nesting_depth_list_max ($3);
 			int i;
 			arg = $3;
 
@@ -16993,6 +17079,9 @@ case_expr
 			      }
 			  }
 
+			/* the argument list desugared into a count-deep chain */
+			pt_set_guarded_nesting_depth (this_parser, expr, count + args_max);
+
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -17003,6 +17092,8 @@ case_expr
 			PT_NODE *node, *prev, *tmp, *curr, *p;
 
 			int count = parser_count_list ($3);
+			int when_max = pt_nesting_depth_list_max ($3);
+			int oper_depth = ($2 != NULL) ? $2->nesting_depth : 0;
 			node = prev = $3;
 			if (node)
 			  node->info.expr.continued_case = 0;
@@ -17049,6 +17140,10 @@ case_expr
 			if (case_oper)
 			  parser_free_node (this_parser, case_oper);
 
+			/* when-list desugared into a count-deep chain, with a copy of the
+			 * case operand under each when */
+			pt_set_guarded_nesting_depth (this_parser, node, count + when_max + oper_depth);
+
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -17058,6 +17153,7 @@ case_expr
 			PT_NODE *node, *prev, *curr, *p;
 
 			int count = parser_count_list ($2);
+			int when_max = pt_nesting_depth_list_max ($2);
 			node = prev = $2;
 			if (node)
 			  node->info.expr.continued_case = 0;
@@ -17091,6 +17187,9 @@ case_expr
 			    prev->info.expr.arg2 = p;
 			    PICE (prev);
 			  }
+
+			/* when-list desugared into a count-deep chain */
+			pt_set_guarded_nesting_depth (this_parser, node, count + when_max);
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -17140,12 +17239,16 @@ simple_when_clause
 				node->info.expr.arg3 = q;
 				PICE (q);
 			      }
+			    pt_set_guarded_nesting_depth (this_parser, q,
+							  1 + pt_nesting_depth_max3 ($2, NULL, NULL));
 			  }
 
 			p = $4;
 			if (node)
 			  node->info.expr.arg1 = p;
 			PICE (node);
+			pt_set_guarded_nesting_depth (this_parser, node,
+						      2 + pt_nesting_depth_max3 ($2, $4, NULL));
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -17185,6 +17288,8 @@ searched_when_clause
 			if (node)
 			  node->info.expr.arg1 = p;
 			PICE (node);
+			pt_set_guarded_nesting_depth (this_parser, node,
+						      1 + pt_nesting_depth_max3 ($2, $4, NULL));
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -22592,8 +22697,8 @@ pop_msg ()
   msg_ptr--;
 }
 
-int parser_function_code = PT_EMPTY;
-size_t json_table_column_count = 0;
+CSQL_PARSER_TLS int parser_function_code = PT_EMPTY;
+CSQL_PARSER_TLS size_t json_table_column_count = 0;
 
 static PT_NODE *
 parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_CODE func_code,
@@ -22606,6 +22711,9 @@ parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_CODE func_code,
     {
       node_function->info.function.function_type = func_code;
       node_function->info.function.arg_list = args_list;
+      /* nesting through a function call runs arg -> PT_FUNCTION -> holder
+       * PT_EXPR; carry the argument depth so the holder's guard sees it */
+      node_function->nesting_depth = 1 + pt_nesting_depth_list_max (args_list);
 
       node =
 	parser_make_expression (parser, PT_FUNCTION_HOLDER, node_function, NULL,
@@ -22663,6 +22771,11 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
       expr->info.expr.arg1 = arg1;
       expr->info.expr.arg2 = arg2;
       expr->info.expr.arg3 = arg3;
+
+      /* the recursive tree walkers (pt_apply/pt_print/semantic passes) descend
+       * one C stack frame per nesting level, so user input must not build an
+       * arbitrarily deep tree; demote it to a statement error here instead */
+      pt_set_guarded_nesting_depth (parser, expr, 1 + pt_nesting_depth_max3 (arg1, arg2, arg3));
 
       if (parser_instnum_check == 1 && !pt_instnum_compatibility (expr))
 	{
@@ -22738,10 +22851,10 @@ parser_make_link_or (PT_NODE * list, PT_NODE * node)
   return list;
 }
 
-static bool parser_cannot_cache_stack_default[STACK_SIZE];
-static bool *parser_cannot_cache_stack = parser_cannot_cache_stack_default;
-static int parser_cannot_cache_sp = 0;
-static int parser_cannot_cache_limit = STACK_SIZE;
+static CSQL_PARSER_TLS bool parser_cannot_cache_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS bool *parser_cannot_cache_stack = parser_cannot_cache_stack_default;
+static CSQL_PARSER_TLS int parser_cannot_cache_sp = 0;
+static CSQL_PARSER_TLS int parser_cannot_cache_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_cannot_cache (bool value)
@@ -22777,7 +22890,7 @@ parser_restore_cannot_cache ()
   parser_cannot_cache = parser_cannot_cache_stack[--parser_cannot_cache_sp];
 }
 
-static int parser_si_datetime_saved;
+static CSQL_PARSER_TLS int parser_si_datetime_saved;
 
 static void
 parser_save_and_set_si_datetime (int value)
@@ -22792,7 +22905,7 @@ parser_restore_si_datetime ()
   parser_si_datetime = parser_si_datetime_saved;
 }
 
-static int parser_si_tran_id_saved;
+static CSQL_PARSER_TLS int parser_si_tran_id_saved;
 
 static void
 parser_save_and_set_si_tran_id (int value)
@@ -22807,7 +22920,7 @@ parser_restore_si_tran_id ()
   parser_si_tran_id = parser_si_tran_id_saved;
 }
 
-static int parser_cannot_prepare_saved;
+static CSQL_PARSER_TLS int parser_cannot_prepare_saved;
 
 static void
 parser_save_and_set_cannot_prepare (bool value)
@@ -22822,10 +22935,10 @@ parser_restore_cannot_prepare ()
   parser_cannot_prepare = parser_cannot_prepare_saved;
 }
 
-static int parser_wjc_stack_default[STACK_SIZE];
-static int *parser_wjc_stack = parser_wjc_stack_default;
-static int parser_wjc_sp = 0;
-static int parser_wjc_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_wjc_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_wjc_stack = parser_wjc_stack_default;
+static CSQL_PARSER_TLS int parser_wjc_sp = 0;
+static CSQL_PARSER_TLS int parser_wjc_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_wjc (int value)
@@ -22861,10 +22974,10 @@ parser_restore_wjc ()
   parser_within_join_condition = parser_wjc_stack[--parser_wjc_sp];
 }
 
-static int parser_instnum_stack_default[STACK_SIZE];
-static int *parser_instnum_stack = parser_instnum_stack_default;
-static int parser_instnum_sp = 0;
-static int parser_instnum_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_instnum_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_instnum_stack = parser_instnum_stack_default;
+static CSQL_PARSER_TLS int parser_instnum_sp = 0;
+static CSQL_PARSER_TLS int parser_instnum_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_ic (int value)
@@ -22900,10 +23013,10 @@ parser_restore_ic ()
   parser_instnum_check = parser_instnum_stack[--parser_instnum_sp];
 }
 
-static int parser_groupbynum_stack_default[STACK_SIZE];
-static int *parser_groupbynum_stack = parser_groupbynum_stack_default;
-static int parser_groupbynum_sp = 0;
-static int parser_groupbynum_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_groupbynum_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_groupbynum_stack = parser_groupbynum_stack_default;
+static CSQL_PARSER_TLS int parser_groupbynum_sp = 0;
+static CSQL_PARSER_TLS int parser_groupbynum_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_gc (int value)
@@ -22939,10 +23052,10 @@ parser_restore_gc ()
   parser_groupbynum_check = parser_groupbynum_stack[--parser_groupbynum_sp];
 }
 
-static int parser_orderbynum_stack_default[STACK_SIZE];
-static int *parser_orderbynum_stack = parser_orderbynum_stack_default;
-static int parser_orderbynum_sp = 0;
-static int parser_orderbynum_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_orderbynum_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_orderbynum_stack = parser_orderbynum_stack_default;
+static CSQL_PARSER_TLS int parser_orderbynum_sp = 0;
+static CSQL_PARSER_TLS int parser_orderbynum_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_oc (int value)
@@ -22978,10 +23091,10 @@ parser_restore_oc ()
   parser_orderbynum_check = parser_orderbynum_stack[--parser_orderbynum_sp];
 }
 
-static int parser_sysc_stack_default[STACK_SIZE];
-static int *parser_sysc_stack = parser_sysc_stack_default;
-static int parser_sysc_sp = 0;
-static int parser_sysc_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_sysc_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_sysc_stack = parser_sysc_stack_default;
+static CSQL_PARSER_TLS int parser_sysc_sp = 0;
+static CSQL_PARSER_TLS int parser_sysc_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_sysc (int value)
@@ -23017,10 +23130,10 @@ parser_restore_sysc ()
   parser_sysconnectbypath_check = parser_sysc_stack[--parser_sysc_sp];
 }
 
-static int parser_prc_stack_default[STACK_SIZE];
-static int *parser_prc_stack = parser_prc_stack_default;
-static int parser_prc_sp = 0;
-static int parser_prc_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_prc_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_prc_stack = parser_prc_stack_default;
+static CSQL_PARSER_TLS int parser_prc_sp = 0;
+static CSQL_PARSER_TLS int parser_prc_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_prc (int value)
@@ -23056,10 +23169,10 @@ parser_restore_prc ()
   parser_prior_check = parser_prc_stack[--parser_prc_sp];
 }
 
-static int parser_cbrc_stack_default[STACK_SIZE];
-static int *parser_cbrc_stack = parser_cbrc_stack_default;
-static int parser_cbrc_sp = 0;
-static int parser_cbrc_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_cbrc_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_cbrc_stack = parser_cbrc_stack_default;
+static CSQL_PARSER_TLS int parser_cbrc_sp = 0;
+static CSQL_PARSER_TLS int parser_cbrc_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_cbrc (int value)
@@ -23095,10 +23208,10 @@ parser_restore_cbrc ()
   parser_connectbyroot_check = parser_cbrc_stack[--parser_cbrc_sp];
 }
 
-static int parser_serc_stack_default[STACK_SIZE];
-static int *parser_serc_stack = parser_serc_stack_default;
-static int parser_serc_sp = 0;
-static int parser_serc_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_serc_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_serc_stack = parser_serc_stack_default;
+static CSQL_PARSER_TLS int parser_serc_sp = 0;
+static CSQL_PARSER_TLS int parser_serc_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_serc (int value)
@@ -23134,10 +23247,10 @@ parser_restore_serc ()
   parser_serial_check = parser_serc_stack[--parser_serc_sp];
 }
 
-static int parser_pseudoc_stack_default[STACK_SIZE];
-static int *parser_pseudoc_stack = parser_pseudoc_stack_default;
-static int parser_pseudoc_sp = 0;
-static int parser_pseudoc_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_pseudoc_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_pseudoc_stack = parser_pseudoc_stack_default;
+static CSQL_PARSER_TLS int parser_pseudoc_sp = 0;
+static CSQL_PARSER_TLS int parser_pseudoc_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_pseudoc (int value)
@@ -23173,10 +23286,10 @@ parser_restore_pseudoc ()
   parser_pseudocolumn_check = parser_pseudoc_stack[--parser_pseudoc_sp];
 }
 
-static int parser_sqc_stack_default[STACK_SIZE];
-static int *parser_sqc_stack = parser_sqc_stack_default;
-static int parser_sqc_sp = 0;
-static int parser_sqc_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_sqc_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_sqc_stack = parser_sqc_stack_default;
+static CSQL_PARSER_TLS int parser_sqc_sp = 0;
+static CSQL_PARSER_TLS int parser_sqc_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_sqc (int value)
@@ -23212,10 +23325,10 @@ parser_restore_sqc ()
   parser_subquery_check = parser_sqc_stack[--parser_sqc_sp];
 }
 
-static int parser_hvar_stack_default[STACK_SIZE];
-static int *parser_hvar_stack = parser_hvar_stack_default;
-static int parser_hvar_sp = 0;
-static int parser_hvar_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_hvar_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_hvar_stack = parser_hvar_stack_default;
+static CSQL_PARSER_TLS int parser_hvar_sp = 0;
+static CSQL_PARSER_TLS int parser_hvar_limit = STACK_SIZE;
 
 static void
 parser_save_and_set_hvar (int value)
@@ -23251,10 +23364,10 @@ parser_restore_hvar ()
   parser_hostvar_check = parser_hvar_stack[--parser_hvar_sp];
 }
 
-static int parser_oracle_stack_default[STACK_SIZE];
-static int *parser_oracle_stack = parser_oracle_stack_default;
-static int parser_oracle_sp = 0;
-static int parser_oracle_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_oracle_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_oracle_stack = parser_oracle_stack_default;
+static CSQL_PARSER_TLS int parser_oracle_sp = 0;
+static CSQL_PARSER_TLS int parser_oracle_limit = STACK_SIZE;
 
 static void
 parser_save_found_Oracle_outer ()
@@ -23289,7 +23402,7 @@ parser_restore_found_Oracle_outer ()
   parser_found_Oracle_outer = parser_oracle_stack[--parser_oracle_sp];
 }
 
-static PT_NODE *parser_alter_node_saved;
+static CSQL_PARSER_TLS PT_NODE *parser_alter_node_saved;
 
 static void
 parser_save_alter_node (PT_NODE * node)
@@ -23303,7 +23416,7 @@ parser_get_alter_node ()
   return parser_alter_node_saved;
 }
 
-static PT_NODE *parser_attr_def_one_saved;
+static CSQL_PARSER_TLS PT_NODE *parser_attr_def_one_saved;
 
 static void
 parser_save_attr_def_one (PT_NODE * node)
@@ -23317,10 +23430,10 @@ parser_get_attr_def_one ()
   return parser_attr_def_one_saved;
 }
 
-static PT_NODE *parser_orderby_node_stack_default[STACK_SIZE];
-static PT_NODE **parser_orderby_node_stack = parser_orderby_node_stack_default;
-static int parser_orderby_node_sp = 0;
-static int parser_orderby_node_limit = STACK_SIZE;
+static CSQL_PARSER_TLS PT_NODE *parser_orderby_node_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS PT_NODE **parser_orderby_node_stack = parser_orderby_node_stack_default;
+static CSQL_PARSER_TLS int parser_orderby_node_sp = 0;
+static CSQL_PARSER_TLS int parser_orderby_node_limit = STACK_SIZE;
 
 static void
 parser_push_orderby_node (PT_NODE * node)
@@ -23362,10 +23475,10 @@ parser_pop_orderby_node ()
   return parser_orderby_node_stack[--parser_orderby_node_sp];
 }
 
-static PT_NODE *parser_select_node_stack_default[STACK_SIZE];
-static PT_NODE **parser_select_node_stack = parser_select_node_stack_default;
-static int parser_select_node_sp = 0;
-static int parser_select_node_limit = STACK_SIZE;
+static CSQL_PARSER_TLS PT_NODE *parser_select_node_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS PT_NODE **parser_select_node_stack = parser_select_node_stack_default;
+static CSQL_PARSER_TLS int parser_select_node_sp = 0;
+static CSQL_PARSER_TLS int parser_select_node_limit = STACK_SIZE;
 
 static void
 parser_push_select_stmt_node (PT_NODE * node)
@@ -23413,10 +23526,10 @@ parser_is_select_stmt_node_empty ()
   return parser_select_node_sp < 1;
 }
 
-static PT_NODE *parser_hint_node_stack_default[STACK_SIZE];
-static PT_NODE **parser_hint_node_stack = parser_hint_node_stack_default;
-static int parser_hint_node_sp = 0;
-static int parser_hint_node_limit = STACK_SIZE;
+static CSQL_PARSER_TLS PT_NODE *parser_hint_node_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS PT_NODE **parser_hint_node_stack = parser_hint_node_stack_default;
+static CSQL_PARSER_TLS int parser_hint_node_sp = 0;
+static CSQL_PARSER_TLS int parser_hint_node_limit = STACK_SIZE;
 
 static void
 parser_push_hint_node (PT_NODE * node)
@@ -23464,10 +23577,10 @@ parser_is_hint_node_empty ()
   return parser_hint_node_sp < 1;
 }
 
-static int parser_join_type_stack_default[STACK_SIZE];
-static int *parser_join_type_stack = parser_join_type_stack_default;
-static int parser_join_type_sp = 0;
-static int parser_join_type_limit = STACK_SIZE;
+static CSQL_PARSER_TLS int parser_join_type_stack_default[STACK_SIZE];
+static CSQL_PARSER_TLS int *parser_join_type_stack = parser_join_type_stack_default;
+static CSQL_PARSER_TLS int parser_join_type_sp = 0;
+static CSQL_PARSER_TLS int parser_join_type_limit = STACK_SIZE;
 
 static void
 parser_push_join_type (int v)
@@ -23509,7 +23622,7 @@ parser_pop_join_type ()
   return parser_join_type_stack[--parser_join_type_sp];
 }
 
-static bool parser_is_reverse_saved;
+static CSQL_PARSER_TLS bool parser_is_reverse_saved;
 
 static void
 parser_save_is_reverse (bool v)
@@ -23810,7 +23923,7 @@ parser_main (PARSER_CONTEXT * parser)
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 
-  pt_initialize_hint(parser, parser_hint_table); 
+  pt_initialize_hint(parser, pt_hint_table ()); 
 #if YYDEBUG
   parser_init_yydebug ();
 #endif
@@ -23826,7 +23939,7 @@ parser_main (PARSER_CONTEXT * parser)
   yytoken_start_line = yytoken_start_line_save;
   yytoken_start_column = yytoken_start_column_save;
 
-  pt_cleanup_hint (parser, parser_hint_table);
+  pt_cleanup_hint (parser, pt_hint_table ());
 
   if (pt_has_error (parser) || parser->stack_top <= 0 || !parser->node_stack)
     {
@@ -23897,7 +24010,7 @@ end:
 
 
 
-extern int parser_yyinput_single_mode;
+extern CSQL_PARSER_TLS int parser_yyinput_single_mode;
 int
 parse_one_statement (int state)
 {
@@ -23927,9 +24040,9 @@ parse_one_statement (int state)
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 
-  pt_initialize_hint(this_parser, parser_hint_table);
+  pt_initialize_hint(this_parser, pt_hint_table ());
   rv = yyparse ();
-  pt_cleanup_hint (this_parser, parser_hint_table);
+  pt_cleanup_hint (this_parser, pt_hint_table ());
 
   if (parser_statement_OK)
     this_parser->statement_number = 1;
@@ -23946,7 +24059,7 @@ parse_one_statement (int state)
   It must start with an English capital letter.
 */
 #define INIT_PT_HINT(key, type) {key, NULL, type, 0, false}
-PT_HINT parser_hint_table[] = {
+static CSQL_PARSER_TLS PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("ORDERED", PT_HINT_ORDERED),
   INIT_PT_HINT("LEADING", PT_HINT_LEADING),
   INIT_PT_HINT("NO_INDEX_SS", PT_HINT_NO_INDEX_SS),
@@ -23998,6 +24111,15 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("BIND_SENSITIVE", PT_HINT_BIND_SENSITIVE),
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
+
+/* cross-TU access to the thread_local hint table.  An extern
+ * declaration of an unsized thread_local array is unusable (gcc cannot
+ * form the TLS wrapper's reference type), so consumers call this instead. */
+PT_HINT *
+pt_hint_table (void)
+{
+  return parser_hint_table;
+}
 
 
 
@@ -24717,6 +24839,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	int i;
 	PT_NODE *case_oper, *p, *q, *r, *nodep, *node, *curr, *prev;
 	int count;
+	int args_max = pt_nesting_depth_list_max (args);
 
 	if (c < 3)
 	  return NULL;
@@ -24809,6 +24932,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	if (case_oper)
 	  parser_free_node (this_parser, case_oper);
 
+	/* pair list desugared into a chain with an EQ layer per pair */
+	pt_set_guarded_nesting_depth (this_parser, node, c + 1 + args_max);
+
 	return node;
       }
 
@@ -24817,6 +24943,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       {
 	PT_NODE *prev, *expr, *arg, *tmp;
 	int i;
+	int args_max = pt_nesting_depth_list_max (args);
 	arg = args;
 
 	if (c < 1)
@@ -24874,6 +25001,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	    expr->info.expr.arg2->flag.is_hidden_column = 1;
 	  }
 
+	/* argument list desugared into a c-deep chain */
+	pt_set_guarded_nesting_depth (this_parser, expr, c + args_max);
+
 	return expr;
       }
 
@@ -24883,6 +25013,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       {
 	PT_NODE *prev, *expr, *arg, *tmp, *sep, *val;
 	int i, ws;
+	int args_max = pt_nesting_depth_list_max (args);
 	arg = args;
 
 	ws = (key->op != PT_CONCAT) ? 1 : 0;
@@ -24989,6 +25120,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	      }
 	    expr->info.expr.arg2 = val;
 	  }
+
+	/* argument list desugared into a c-deep chain */
+	pt_set_guarded_nesting_depth (this_parser, expr, c + args_max);
 
 	return expr;
       }
@@ -25520,7 +25654,7 @@ pt_value_set_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
 
 static void
 pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
-                   const char *currency_str, const char *value, DB_CURRENCY type)
+                   const char *currency_str, const char *value, PT_CURRENCY type)
 {
   double dval;
 

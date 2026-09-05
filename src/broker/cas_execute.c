@@ -68,7 +68,11 @@
 #include "system_parameter.h"
 #include "schema_manager.h"
 #include "object_representation.h"
+#if defined(SERVER_MODE)
+#include "connection_defs.h"	/* DB_HS_* (the only surface used here); connection_cl.h is CS-only */
+#else
 #include "connection_cl.h"
+#endif
 #include "db_set_function.h"
 #include "dbi.h"
 #include "parse_tree.h"
@@ -81,6 +85,8 @@
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
 #include "query_replace.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -323,10 +329,10 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_attribute,		/* SCH_ATTR_WITH_SYNONYM */
 };
 
-static char database_name[MAX_HA_DBINFO_LENGTH] = "";
-static char database_user[SRV_CON_DBUSER_SIZE] = "";
-static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
-static char cas_db_sys_param[128] = "";
+static CAS_TLS char database_name[MAX_HA_DBINFO_LENGTH] = "";
+static CAS_TLS char database_user[SRV_CON_DBUSER_SIZE] = "";
+static CAS_TLS char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
+static CAS_TLS char cas_db_sys_param[128] = "";
 
 int
 ux_check_connection (void)
@@ -536,6 +542,36 @@ connect_error:
   return ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR, p);
 }
 
+#if defined (SERVER_MODE)
+/* the adopted session boots through db_restart_ex directly (driver_session,
+ * B1-D11: client-type synthesis is B3 scope) and skips ux_database_connect,
+ * so the connected-identity bookkeeping it performs must be replayed here —
+ * otherwise ux_check_connection () reports "not connected" and the driver's
+ * first CHECK_CAS discards the connection and forces a second handoff */
+void
+ux_adopted_identity_record (const char *db_name, const char *db_user, const char *db_passwd)
+{
+  const char *host_connected = db_get_host_connected ();
+  const char *p = strchr (db_name, '@');
+  size_t name_len = (p != NULL) ? (size_t) (p - db_name) : strlen (db_name);
+
+  if (name_len >= sizeof (as_info->database_name))
+    {
+      name_len = sizeof (as_info->database_name) - 1;
+    }
+  memcpy (as_info->database_name, db_name, name_len);
+  as_info->database_name[name_len] = '\0';
+  strncpy (as_info->database_user, db_user, sizeof (as_info->database_user) - 1);
+  as_info->database_user[sizeof (as_info->database_user) - 1] = '\0';
+  strncpy (as_info->database_host, host_connected, sizeof (as_info->database_host) - 1);
+  as_info->last_connect_time = time (NULL);
+
+  strncpy (database_name, db_name, sizeof (database_name) - 1);
+  strncpy (database_user, db_user, sizeof (database_user) - 1);
+  strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
+}
+#endif /* SERVER_MODE */
+
 int
 ux_is_database_connected (void)
 {
@@ -570,6 +606,30 @@ ux_set_default_setting ()
 {
   int cur_isolation_level;
   int cur_lock_timeout;
+
+#if defined (SERVER_MODE)
+  /* ansi_quotes is a client-only (non-session) parameter, so in the merged
+   * server it lives in the one shared process prm: a test-mode SET would
+   * outlive its driver session and poison the next session's parsing (the
+   * legacy CAS's prm never outlived its process).  Capture the boot value on
+   * the first session and restore it for every later one.  The first capture
+   * always precedes any session's SET — a SET needs a session, and that
+   * session captured first. */
+  static bool cas_boot_ansi_quotes;
+  static bool cas_boot_ansi_quotes_init = false;
+
+  if (!cas_boot_ansi_quotes_init)
+    {
+      cas_boot_ansi_quotes = prm_get_bool_value (PRM_ID_ANSI_QUOTES);
+      cas_boot_ansi_quotes_init = true;
+    }
+  else
+    {
+      prm_set_bool_value (PRM_ID_ANSI_QUOTES, cas_boot_ansi_quotes);
+      /* ux_database_connect captured the scanner default before this restore */
+      cas_default_ansi_quotes = cas_boot_ansi_quotes;
+    }
+#endif
 
   ux_get_tran_setting (&cur_lock_timeout, &cur_isolation_level);
 
@@ -6950,11 +7010,11 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	   *   precision = 0;
 	   */
 
-	  if (shm_appl->max_string_length >= 0)
+	  if (CAS_SHM_CFG (max_string_length) >= 0)
 	    {
-	      if (precision < 0 || precision > shm_appl->max_string_length)
+	      if (precision < 0 || precision > CAS_SHM_CFG (max_string_length))
 		{
-		  precision = shm_appl->max_string_length;
+		  precision = CAS_SHM_CFG (max_string_length);
 		}
 	    }
 
@@ -9833,11 +9893,11 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	}
 
 
-      if (shm_appl->max_string_length >= 0)
+      if (CAS_SHM_CFG (max_string_length) >= 0)
 	{
-	  if (precision < 0 || precision > shm_appl->max_string_length)
+	  if (precision < 0 || precision > CAS_SHM_CFG (max_string_length))
 	    {
-	      precision = shm_appl->max_string_length;
+	      precision = CAS_SHM_CFG (max_string_length);
 	    }
 	}
 
@@ -9862,9 +9922,9 @@ static int
 get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id)
 {
   bool jdbc_cache_is_hint;
-  int jdbc_cache_life_time = shm_appl->jdbc_cache_life_time;
+  int jdbc_cache_life_time = CAS_SHM_CFG (jdbc_cache_life_time);
 
-  if (shm_appl->jdbc_cache == 0 || db_get_statement_type (session, stmt_id) != CUBRID_STMT_SELECT
+  if (CAS_SHM_CFG (jdbc_cache) == 0 || db_get_statement_type (session, stmt_id) != CUBRID_STMT_SELECT
       || cas_default_isolation_level == TRAN_REPEATABLE_READ || cas_default_isolation_level == TRAN_SERIALIZABLE)
     {
       return -1;
@@ -9872,7 +9932,7 @@ get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id)
 
   jdbc_cache_is_hint = db_get_jdbccachehint (session, stmt_id, &jdbc_cache_life_time);
 
-  if (shm_appl->jdbc_cache_only_hint && !jdbc_cache_is_hint)
+  if (CAS_SHM_CFG (jdbc_cache_only_hint) && !jdbc_cache_is_hint)
     {
       return -1;
     }
@@ -9919,7 +9979,7 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 
   tran_timeout =
-    ut_check_timeout (&tran_start_time, NULL, shm_appl->long_transaction_time, &elapsed_sec, &elapsed_msec);
+    ut_check_timeout (&tran_start_time, NULL, CAS_SHM_CFG (long_transaction_time), &elapsed_sec, &elapsed_msec);
   if (tran_timeout >= 0)
     {
       as_info->num_long_transactions %= MAX_DIAG_DATA_VALUE;
