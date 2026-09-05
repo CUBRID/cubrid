@@ -180,6 +180,7 @@ IDL       [a-zA-Z0-9_]
 [aA][lL][tT][eE][rR]							{ return ALTER; }
 [aA][nN][aA][lL][yY][zZ][eE]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return ANALYZE; }
+[aA][nN][tT][iI]							{ return ANTI; }
 [aA][nN][dD]								{ return AND; }
 [aA][nN][yY]								{ return ANY; }
 [aA][rR][cC][hH][iI][vV][eE]						{ csql_yylval.cptr = pt_makename(yytext);
@@ -805,6 +806,7 @@ IDL       [a-zA-Z0-9_]
 [sS][eE][eE][dD]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return SEED_; }
 [sS][eE][lL][eE][cC][tT]						{ return SELECT; }
+[sS][eE][mM][iI]							{ return SEMI; }
 [sS][eE][nN][sS][iI][tT][iI][vV][eE]					{ return SENSITIVE; }
 [sS][eE][pP][aA][rR][aA][tT][oO][rR]					{ csql_yylval.cptr = pt_makename(yytext);
 									  return SEPARATOR; }

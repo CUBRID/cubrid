@@ -2688,6 +2688,8 @@ pt_print_bytes_spec_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 	    case PT_JOIN_LEFT_OUTER:
 	    case PT_JOIN_RIGHT_OUTER:
 	    case PT_JOIN_FULL_OUTER:
+	    case PT_JOIN_SEMI:	/* join keyword printed by the spec; no comma separator */
+	    case PT_JOIN_ANTI:
 	      break;
 	      /* case PT_JOIN_UNION: -- does not support */
 	    default:
@@ -9949,6 +9951,12 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_JOIN_FULL_OUTER:	/* not used */
       q = pt_append_nulstring (parser, q, " full outer join ");
       break;
+    case PT_JOIN_SEMI:
+      q = pt_append_nulstring (parser, q, " semi join ");
+      break;
+    case PT_JOIN_ANTI:
+      q = pt_append_nulstring (parser, q, " anti join ");
+      break;
       /* case PT_JOIN_UNION: -- does not support */
     default:
       break;
@@ -15215,6 +15223,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_NO_MERGE)
 	    {
 	      q = pt_append_nulstring (parser, q, "NO_MERGE ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_NO_UNNEST)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_UNNEST ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_NO_SUBQUERY_CACHE)

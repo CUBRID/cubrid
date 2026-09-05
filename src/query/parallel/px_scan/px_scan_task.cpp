@@ -361,11 +361,31 @@ namespace parallel_scan
 		    return err_code;
 		  }
 
-		err_code = new_memoize_storage (&thread_ref, xptr);
-		if (err_code != NO_ERROR)
-		  {
-		    return err_code;
-		  }
+		/* skip memoize if any scan on the scan_ptr chain from here down is a SEMI / ANTI single-fetch
+		 * inner, as the serial path does (qexec_execute_mainblock_internal): a memo hit replays the
+		 * cached subtree result without probing, and for an ANTI inner a cached "no match" comes back
+		 * as S_END, which the parent takes as "no combination" and drops an outer row it must keep */
+		{
+		  bool sa_in_chain = false;
+
+		  for (xasl_node *dxp = xptr; dxp != NULL; dxp = dxp->scan_ptr)
+		    {
+		      if (XASL_IS_NL_SEMI_OR_ANTI (dxp))
+			{
+			  sa_in_chain = true;
+			  break;
+			}
+		    }
+
+		  if (!sa_in_chain)
+		    {
+		      err_code = new_memoize_storage (&thread_ref, xptr);
+		      if (err_code != NO_ERROR)
+			{
+			  return err_code;
+			}
+		    }
+		}
 
 		if (thread_ref.on_trace && partition_pruned)
 		  {
