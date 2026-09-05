@@ -187,6 +187,12 @@ namespace cubmethod
     return m_query_result;
   }
 
+  void
+  query_handler::detach_result_for_out_rs ()
+  {
+    m_query_result.result = NULL;
+  }
+
   int
   query_handler::prepare (std::string sql, int flag)
   {
@@ -493,7 +499,8 @@ namespace cubmethod
 		  }
 
 		/* first tuple, store attribute info */
-		column_info c_info = set_column_info (db_type, set_type, scale, precision, charset, attr_name, attr_name, class_name,
+		column_info c_info = set_column_info (db_type, set_type, scale, precision, charset, attr_name, attr_name,
+						      attr_name, class_name,
 						      false);
 
 		info.column_infos.push_back (c_info);
@@ -953,7 +960,7 @@ namespace cubmethod
 	  }
 
 	int num_cols = 0;
-	char *col_name = NULL, *class_name = NULL, *attr_name = NULL;
+	char *col_name = NULL, *written_col_name = NULL, *class_name = NULL, *attr_name = NULL;
 
 	char set_type;
 	int precision = 0;
@@ -963,20 +970,17 @@ namespace cubmethod
 	DB_QUERY_TYPE *col;
 	for (col = db_column_info; col != NULL; col = db_query_format_next (col))
 	  {
-#if 0
-	    // TODO: stripped_column_name
-	    if (stripped_column_name)
+	    // col_name is the name used to find a column index in a ResultSet (server-side JDBC findColumn).
+	    // It is the alias if the user wrote an AS clause, otherwise the column name with the table
+	    // qualifier stripped off (e.g. "col" for "T.col"). This matches the standard JDBC convention.
+	    col_name = (char *) db_query_format_name (col);
+
+	    // written_col_name keeps the name exactly as the user wrote it in the SELECT list
+	    // (e.g. "T.col"). It lets findColumn still accept the qualified name for backward compatibility (CBRD-27242).
+	    written_col_name = (char *) db_query_format_original_name (col);
+	    if (written_col_name == NULL || strchr (written_col_name, '*') != NULL)
 	      {
-		col_name = (char *) db_query_format_name (col);
-	      }
-	    else
-#endif
-	      {
-		col_name = (char *) db_query_format_original_name (col);
-		if (strchr (col_name, '*') != NULL)
-		  {
-		    col_name = (char *) db_query_format_name (col);
-		  }
+		written_col_name = col_name;
 	      }
 	    class_name = (char *) db_query_format_class_name (col);
 	    attr_name = (char *) db_query_format_attr_name (col);
@@ -1008,7 +1012,8 @@ namespace cubmethod
 		m_query_result.null_type_column.push_back (0);
 	      }
 
-	    column_info info = set_column_info ((int) db_type, set_type, scale, precision, charset, col_name, attr_name, class_name,
+	    column_info info = set_column_info ((int) db_type, set_type, scale, precision, charset, col_name, written_col_name,
+						attr_name, class_name,
 						(char) db_query_format_is_non_null (col));
 	    infos.push_back (info);
 	    num_cols++;
@@ -1038,7 +1043,7 @@ namespace cubmethod
 
   column_info
   query_handler::set_column_info (int dbType, int setType, short scale, int prec, char charset, const char *col_name,
-				  const char *attr_name,
+				  const char *written_col_name, const char *attr_name,
 				  const char *class_name, char is_non_null)
   {
     DB_OBJECT *class_obj = db_find_class (class_name);
@@ -1053,13 +1058,14 @@ namespace cubmethod
     char shared = db_attribute_is_shared (attr);
 
     std::string col_name_string (col_name ? col_name : "");
+    std::string written_col_name_string (written_col_name ? written_col_name : "");
     std::string attr_name_string (attr_name? attr_name : "");
     std::string class_name_string (class_name? class_name : "");
 
     std::string default_value_string = get_column_default_as_string (attr);
 
     column_info info (dbType, setType, scale, prec, charset,
-		      col_name_string, default_value_string,
+		      col_name_string, written_col_name_string, default_value_string,
 		      auto_increment, unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared,
 		      attr_name_string, class_name_string, is_non_null);
 

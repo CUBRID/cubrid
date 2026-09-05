@@ -24,10 +24,11 @@
 #define _PX_SCAN_TRACE_HANDLER_HPP_
 
 #include "system.h"
+#include <atomic>
 #include <vector>
 #include "thread_entry.hpp"
 #include "scan_manager.h"
-#include "jansson.h"
+#include "json_builder.h"
 #include "px_scan_result_type.hpp"
 #include "px_scan_type_enum.hpp"
 
@@ -78,9 +79,19 @@ namespace parallel_scan
 		      struct timeval elapsed_time);
       void merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats);
       void clear();
+      void set_topnsort_used()
+      {
+	m_topnsort_used.store (true, std::memory_order_relaxed);
+      }
+      bool is_topnsort_used() const
+      {
+	return m_topnsort_used.load (std::memory_order_relaxed);
+      }
       std::vector<child_stats> m_stats;
       std::mutex m_stats_mutex;
       trace_storage_for_sibling_xasl m_trace_storage_for_sibling_xasl;
+    private:
+      std::atomic<bool> m_topnsort_used {false};
   };
 
   class accumulative_trace_storage
@@ -95,7 +106,7 @@ namespace parallel_scan
 
       void add_stats (trace_handler &trace_handler);
       void dump_stats_text (FILE *fp, int indent, char *class_name);
-      void dump_stats_json (json_t *scan, char *class_name);
+      void dump_stats_json (trace_json_t *scan, char *class_name);
       void set_last_partition_stats (SCAN_STATS *partition_stats);
     private:
       std::vector<child_stats> m_stats;
@@ -103,6 +114,7 @@ namespace parallel_scan
       RESULT_TYPE m_result_type;
       SCAN_TYPE m_scan_type;
       bool m_is_initialized;
+      bool m_topnsort_used = false;
   };
 }
 
