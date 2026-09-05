@@ -11730,7 +11730,7 @@ xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
  *
  * return:
  */
-LOG_LSA *
+LOG_LSA
 xrepl_log_get_append_lsa (void)
 {
   return log_get_append_lsa ();
