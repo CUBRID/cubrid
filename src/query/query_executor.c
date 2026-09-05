@@ -41,6 +41,7 @@
 #include "query_aggregate.hpp"
 #include "query_analytic.hpp"
 #include "query_opfunc.h"
+#include "numeric_opfunc.h"
 #include "fetch.h"
 #include "dbtype.h"
 #include "object_primitive.h"
@@ -1218,6 +1219,12 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
+
+	  if (xasl->proc.buildlist.g_agg_domains_resolved)
+	    {
+	      /* Sharing needs the resolved accumulator domains, so it is linked here. */
+	      qdata_link_shared_accumulators (xasl->proc.buildlist.g_agg_list);
+	    }
 	}
 
       /* process tuple */
@@ -1325,6 +1332,12 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		   &xasl->proc.buildvalue.agg_domains_resolved) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      if (xasl->proc.buildvalue.agg_domains_resolved)
+		{
+		  /* Sharing needs the resolved accumulator domains, so it is linked here. */
+		  qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list);
 		}
 	    }
 
@@ -15356,6 +15369,15 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   BUILDVALUE_PROC_NODE *buildvalue = &xasl->proc.buildvalue;
 
   /* make final pass on aggregate list nodes */
+  /* Sharing needs the resolved accumulator domains. A parallel BUILDVALUE
+   * resolves them inside the workers, so the main list is linked here, after
+   * the merges and before propagation reads the links (idempotent on the
+   * serial path). */
+  if (buildvalue->agg_list != NULL)
+    {
+      qdata_link_shared_accumulators (buildvalue->agg_list);
+    }
+
   if (buildvalue->agg_list && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -16208,6 +16230,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  /* domains not resolved */
 	  xasl->proc.buildlist.g_agg_domains_resolved = 0;
 
+	  /* Mark aggregate-only output expressions for agg-expr evaluation before
+	   * the scan starts. Parallel workers mark their own XASL copies the same way.
+	   *
+	   * Accumulator sharing is deferred until the domains are resolved in
+	   * qexec_end_one_iteration (): the domains were just reset above. */
+	  qexec_mark_aggregate_operand_expressions (xasl);
+
 	  if (xasl->proc.buildlist.a_eval_list)
 	    {
 	      if (qdata_setup_analytic_eval_list (thread_p, xasl, xasl_state) != NO_ERROR)
@@ -16229,6 +16258,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  /* domains not resolved */
 	  xasl->proc.buildvalue.agg_domains_resolved = 0;
+
+	  /* Mark aggregate operand expressions for agg-expr evaluation before
+	   * the scan starts. Parallel workers mark their own XASL copies the same way.
+	   *
+	   * Accumulator sharing is deferred until the domains are resolved in
+	   * qexec_end_one_iteration (): the domains were just reset above. */
+	  qexec_mark_aggregate_operand_expressions (xasl);
 	}
 
       multi_upddel = QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl);
@@ -21537,6 +21573,100 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 
   /* all ok */
   return NO_ERROR;
+}
+
+/*
+ * qexec_mark_aggregate_operand_expressions () - flag the expressions that only
+ *                                               feed an aggregate
+ *   xasl(in/out): BUILDLIST_PROC or BUILDVALUE_PROC whose operand expressions are marked
+ *
+ * BUILDLIST reaches the aggregate through a TYPE_CONSTANT operand pointing to
+ * the DB_VALUE written by the expression (regu->vfetch_to). Matching these
+ * pointers identifies expressions used only by the aggregate.
+ *
+ * BUILDVALUE has no such indirection: the aggregate operand is the expression
+ * regu itself, so it is flagged directly.
+ *
+ * The flag is needed by parallel workers, where px_scan_result_handler fetches
+ * the operand directly and fetch_peek_arith () reaches agg-expr evaluation
+ * through this flag. General expressions remain on the float_numeric_db_value_*
+ * path. Called once per XASL copy, before the scan starts.
+ */
+void
+qexec_mark_aggregate_operand_expressions (xasl_node * xasl)
+{
+  REGU_VARIABLE_LIST regu_p;
+  AGGREGATE_TYPE *agg_list, *agg_p;
+  VALPTR_LIST *outptr_list;
+  int budget;
+
+  if (xasl == NULL)
+    {
+      return;
+    }
+
+  budget = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
+
+  if (xasl->type == BUILDVALUE_PROC)
+    {
+      for (agg_p = xasl->proc.buildvalue.agg_list; agg_p != NULL; agg_p = agg_p->next)
+	{
+	  if (agg_p->function != PT_SUM && agg_p->function != PT_AVG)
+	    {
+	      continue;
+	    }
+	  if (agg_p->option == Q_DISTINCT || agg_p->operands == NULL || agg_p->operands->value.type != TYPE_INARITH)
+	    {
+	      continue;
+	    }
+
+	  if (fetch_is_agg_expr_shape (&agg_p->operands->value, budget))
+	    {
+	      REGU_VARIABLE_SET_FLAG (&agg_p->operands->value, REGU_VARIABLE_AGG_OPERAND);
+	    }
+	}
+    }
+  else if (xasl->type == BUILDLIST_PROC)
+    {
+      /* Analytic functions are not covered: their operands are materialized
+       * into list file slots before evaluation, so there is no expression to mark. */
+      agg_list = xasl->proc.buildlist.g_agg_list;
+      outptr_list = xasl->outptr_list;
+      if (agg_list == NULL || outptr_list == NULL)
+	{
+	  return;
+	}
+
+      for (regu_p = outptr_list->valptrp; regu_p != NULL; regu_p = regu_p->next)
+	{
+	  if (regu_p->value.type != TYPE_INARITH || regu_p->value.vfetch_to == NULL)
+	    {
+	      continue;
+	    }
+
+	  for (agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
+	    {
+	      if (agg_p->function != PT_SUM && agg_p->function != PT_AVG)
+		{
+		  continue;
+		}
+	      if (agg_p->option == Q_DISTINCT || agg_p->operands == NULL)
+		{
+		  continue;
+		}
+
+	      if (agg_p->operands->value.type == TYPE_CONSTANT
+		  && agg_p->operands->value.value.dbvalptr == regu_p->value.vfetch_to)
+		{
+		  if (fetch_is_agg_expr_shape (&regu_p->value, budget))
+		    {
+		      REGU_VARIABLE_SET_FLAG (&regu_p->value, REGU_VARIABLE_AGG_OPERAND);
+		    }
+		  break;
+		}
+	    }
+	}
+    }
 }
 
 /*

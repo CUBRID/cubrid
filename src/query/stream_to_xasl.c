@@ -5983,6 +5983,9 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   /* accumulator */
   aggregate->accumulator.clear_value_at_clone_decache = false;
+  /* execution-only fields are not part of the stream, so initialize them here */
+  aggregate->accumulator.shared_from = 0;
+  aggregate->accumulator.sum_acc.is_active = false;
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {

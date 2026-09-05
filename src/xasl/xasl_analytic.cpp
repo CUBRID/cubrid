@@ -39,5 +39,8 @@ namespace cubxasl
 
     /* curr_cnt */
     curr_cnt = 0;
+
+    /* execution-only field, not part of the stream, so initialize it here */
+    sum_acc.is_active = false;
   }
 }
