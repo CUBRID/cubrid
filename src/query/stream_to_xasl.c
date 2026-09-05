@@ -4180,6 +4180,10 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
+  outptr_list->eval_prog = NULL;
+  outptr_list->eval_prog_idx = NULL;
+  outptr_list->eval_prog_state = 0;
+
   ptr = or_unpack_int (ptr, &outptr_list->valptr_cnt);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -4240,6 +4244,10 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred_expr)
 
   ptr = or_unpack_int (ptr, &tmp);
   pred_expr->type = (TYPE_PRED_EXPR) tmp;
+
+  /* server-side only: compiled lazily on the first evaluation (eval_data_filter ()) */
+  pred_expr->scan_prog = NULL;
+  pred_expr->scan_prog_state = 0;
 
   switch (pred_expr->type)
     {
@@ -5976,6 +5984,14 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   XASL_UNPACK_INFO *xasl_unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
 
   assert (ptr != NULL && aggregate != NULL);
+
+  /* server-side runtime state, never part of the stream */
+  aggregate->operand_prog = NULL;
+  aggregate->operand_prog_idx = NULL;
+  aggregate->operand_prog_state = 0;
+  aggregate->operand_prog_base = -1;
+  aggregate->acc_kernel = NULL;
+  aggregate->accumulator.sum_state = NULL;
 
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);

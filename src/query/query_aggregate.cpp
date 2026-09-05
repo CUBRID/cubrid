@@ -23,20 +23,22 @@
 #include "query_aggregate.hpp"
 
 #include "arithmetic.h"
-#include "btree.h"                          // btree_find_min_or_max_key, btree_get_unique_statistics_for_count
+#include "btree.h"		// btree_find_min_or_max_key, btree_get_unique_statistics_for_count
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "fetch.h"
 #include "list_file.h"
 #include "memory_alloc.h"
 #include "memory_hash.h"
+#include "numeric_opfunc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "expr_compile.h"
 #include "query_opfunc.h"
 #include "regu_var.hpp"
 #include "string_opfunc.h"
-#include "xasl.h"                           // QPROC_IS_INTERPOLATION_FUNC
+#include "xasl.h"		// QPROC_IS_INTERPOLATION_FUNC
 #include "xasl_aggregate.hpp"
 #include "statistics.h"
 
@@ -56,7 +58,7 @@ static int qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thr
     cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain,
     FUNC_CODE func_type, tp_domain *func_domain,
-    std::vector<DB_VALUE> &db_values);
+    std::vector < DB_VALUE > &db_values);
 static int qdata_process_distinct_or_sort (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
     QUERY_ID query_id);
 static int qdata_aggregate_interpolation (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
@@ -146,6 +148,7 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
 	}
 
       /* CAUTION : if modify initializing ACC's value then should change qdata_alloc_agg_hvalue() */
+      qdata_numeric_sum_discard (&agg_p->accumulator);
       agg_p->accumulator.curr_cnt = 0;
       if (db_value_domain_init (agg_p->accumulator.value, DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value),
 				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
@@ -207,6 +210,12 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
   TP_DOMAIN *double_domain;
   int error = NO_ERROR;
 
+  /* a deferred NUMERIC sum on either side must be materialized before merging */
+  if (qdata_numeric_sum_flush (acc) != NO_ERROR || qdata_numeric_sum_flush (new_acc) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   switch (func_type)
     {
     case PT_GROUPBY_NUM:
@@ -223,7 +232,8 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
     case PT_AVG:
     case PT_SUM:
       // these functions only affect acc.value and new_acc can be treated as an ordinary value
-      error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value, true);
+      error =
+	      qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value, true);
       break;
 
     // JSON_ARRAYAGG: append the partial arrays by preserving every element.
@@ -582,7 +592,7 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 static int
 qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain, FUNC_CODE func_type,
-    tp_domain *func_domain, std::vector<DB_VALUE> &db_values)
+    tp_domain *func_domain, std::vector < DB_VALUE > &db_values)
 {
   // we have only one argument so aggregate only the first db_value
   if (db_values.size () == 1)
@@ -591,7 +601,7 @@ qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubx
     }
 
   // maybe this condition will be changed in the future based on the future arguments conditions
-  for (DB_VALUE &db_value : db_values)
+  for (DB_VALUE &db_value:db_values)
     {
       if (DB_IS_NULL (&db_value))
 	{
@@ -616,6 +626,293 @@ qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubx
   return NO_ERROR;
 }
 
+/* deferred-carry NUMERIC sum: the accumulator's sum_state wraps the numeric state
+ * together with the target accumulator domain so every flush site is self-contained */
+typedef struct qdata_sum_state_holder QDATA_SUM_STATE_HOLDER;
+struct qdata_sum_state_holder
+{
+  NUMERIC_SUM_STATE *state;
+  tp_domain *value_dom;
+};
+
+/*
+ * qdata_numeric_sum_flush () - materialize a pending deferred NUMERIC sum into
+ *				acc->value (mirror: per-row adds + the trailing domain
+ *				coercion), then drop the state
+ */
+int
+qdata_numeric_sum_flush (cubxasl::aggregate_accumulator *acc)
+{
+  QDATA_SUM_STATE_HOLDER *holder = (QDATA_SUM_STATE_HOLDER *) acc->sum_state;
+  int error;
+
+  if (holder == NULL)
+    {
+      return NO_ERROR;
+    }
+  acc->sum_state = NULL;
+
+  pr_clear_value (acc->value);
+  error = numeric_sum_state_result (holder->state, acc->value);
+  if (error == NO_ERROR)
+    {
+      error = expr_coerce_result_to_domain (acc->value, holder->value_dom);
+    }
+  numeric_sum_state_free (holder->state);
+  free_and_init (holder);
+  return (error == NO_ERROR) ? NO_ERROR : ER_FAILED;
+}
+
+/*
+ * qdata_numeric_sum_discard () - drop a pending deferred sum without materializing
+ */
+void
+qdata_numeric_sum_discard (cubxasl::aggregate_accumulator *acc)
+{
+  QDATA_SUM_STATE_HOLDER *holder = (QDATA_SUM_STATE_HOLDER *) acc->sum_state;
+
+  if (holder != NULL)
+    {
+      acc->sum_state = NULL;
+      numeric_sum_state_free (holder->state);
+      free_and_init (holder);
+    }
+}
+
+/*
+ * Per-row accumulate kernels (resolved in qdata_agg_operand_prog_compile () below).
+ * A kernel replaces the interpreted per-row tail for ONE aggregate whose single operand
+ * the compiled program already evaluated: the operand vector, its deep copy and the
+ * accumulate dispatch are all skipped.  Every kernel MIRRORS that tail exactly: the
+ * NULL elimination (no accumulation, no tuple count), the accumulate semantics and
+ * error propagation, and the unconditional tuple count increment after accumulating.
+ */
+typedef int (*QDATA_ACC_KERNEL_FN) (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
+				    cubxasl::aggregate_accumulator *acc, DB_VALUE *value);
+
+static int
+qdata_acc_kernel_generic (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
+			  cubxasl::aggregate_accumulator *acc, DB_VALUE *value)
+{
+  int error;
+
+  if (DB_IS_NULL (value))
+    {
+      return NO_ERROR;
+    }
+  error = qdata_aggregate_value_to_accumulator (thread_p, acc, &agg_p->accumulator_domain, agg_p->function,
+	  agg_p->domain, value, false);
+  acc->curr_cnt++;
+  return error;
+}
+
+/*
+ * SUM/AVG over a BIGINT accumulator: mirror of qdata_add_dbval () BIGINT x BIGINT.  The
+ * trailing domain coercion is skipped -- tp_value_cast_internal () returns straight away
+ * for a same-type non-parameterized domain when source and destination are the same value.
+ */
+static int
+qdata_acc_kernel_sum_bigint (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
+			     cubxasl::aggregate_accumulator *acc, DB_VALUE *value)
+{
+  DB_BIGINT bi1, bi2, result;
+
+  if (DB_IS_NULL (value))
+    {
+      return NO_ERROR;
+    }
+  if (acc->curr_cnt < 1 || DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_BIGINT
+      || DB_VALUE_DOMAIN_TYPE (acc->value) != DB_TYPE_BIGINT)
+    {
+      /* first row (copy semantics) or a type the fast path does not cover */
+      return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
+    }
+
+  bi1 = db_get_bigint (acc->value);
+  bi2 = db_get_bigint (value);
+  result = bi1 + bi2;
+  if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
+      acc->curr_cnt++;
+      return ER_FAILED;
+    }
+  db_make_bigint (acc->value, result);
+  acc->curr_cnt++;
+  return NO_ERROR;
+}
+
+/* SUM/AVG over a DOUBLE accumulator: mirror of qdata_add_dbval () DOUBLE x DOUBLE */
+static int
+qdata_acc_kernel_sum_double (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
+			     cubxasl::aggregate_accumulator *acc, DB_VALUE *value)
+{
+  double result;
+
+  if (DB_IS_NULL (value))
+    {
+      return NO_ERROR;
+    }
+  if (acc->curr_cnt < 1 || DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_DOUBLE
+      || DB_VALUE_DOMAIN_TYPE (acc->value) != DB_TYPE_DOUBLE)
+    {
+      return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
+    }
+
+  result = db_get_double (acc->value) + db_get_double (value);
+  if (OR_CHECK_DOUBLE_OVERFLOW (result))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
+      acc->curr_cnt++;
+      return ER_FAILED;
+    }
+  db_make_double (acc->value, result);
+  acc->curr_cnt++;
+  return NO_ERROR;
+}
+
+/*
+ * SUM/AVG over a NUMERIC accumulator: mirror of qdata_add_dbval () NUMERIC x NUMERIC
+ * including the trailing coercion into the accumulator domain (NUMERIC is parameterized,
+ * so the coercion is NOT a no-op and stays)
+ */
+static int
+qdata_acc_kernel_sum_numeric (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
+			      cubxasl::aggregate_accumulator *acc, DB_VALUE *value)
+{
+  QDATA_SUM_STATE_HOLDER *holder;
+
+  if (DB_IS_NULL (value))
+    {
+      return NO_ERROR;
+    }
+  if (DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_NUMERIC)
+    {
+      if (qdata_numeric_sum_flush (acc) != NO_ERROR)
+	{
+	  acc->curr_cnt++;
+	  return ER_FAILED;
+	}
+      return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
+    }
+
+  holder = (QDATA_SUM_STATE_HOLDER *) acc->sum_state;
+  if (holder == NULL)
+    {
+      /* deferred-carry accumulation: the state absorbs every row (including the
+       * first) and one numeric_sum_state_result () at a flush point replaces the
+       * per-row digit-scan/round/pack/coerce of the interpreted path */
+      int prec, scale;
+
+      if (acc->curr_cnt >= 1)
+	{
+	  /* a materialized partial sum already sits in acc->value (e.g. after a merge
+	   * or spill): keep the generic per-row path for this accumulator */
+	  return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
+	}
+      db_get_numeric_precision_and_scale (value, &prec, &scale, NULL);
+      holder = (QDATA_SUM_STATE_HOLDER *) malloc (sizeof (QDATA_SUM_STATE_HOLDER));
+      if (holder == NULL)
+	{
+	  return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
+	}
+      holder->state = numeric_sum_state_alloc (scale);
+      if (holder->state == NULL)
+	{
+	  free_and_init (holder);
+	  return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
+	}
+      holder->value_dom = agg_p->accumulator_domain.value_dom;
+      acc->sum_state = holder;
+    }
+
+  if (!numeric_sum_state_accumulate (holder->state, value))
+    {
+      /* unexpected input scale: materialize what we have and fall back for this row */
+      if (qdata_numeric_sum_flush (acc) != NO_ERROR)
+	{
+	  acc->curr_cnt++;
+	  return ER_FAILED;
+	}
+      return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
+    }
+  acc->curr_cnt++;
+  return NO_ERROR;
+}
+
+/*
+ * qdata_acc_kernel_name () - display name of an accumulate kernel for SQL trace
+ */
+const char *
+qdata_acc_kernel_name (const void *kernel)
+{
+  if (kernel == (const void *) qdata_acc_kernel_generic)
+    {
+      return "generic";
+    }
+  if (kernel == (const void *) qdata_acc_kernel_sum_bigint)
+    {
+      return "sum_bigint";
+    }
+  if (kernel == (const void *) qdata_acc_kernel_sum_double)
+    {
+      return "sum_double";
+    }
+  if (kernel == (const void *) qdata_acc_kernel_sum_numeric)
+    {
+      return "sum_numeric";
+    }
+  return "?";
+}
+
+/*
+ * qdata_acc_kernel_resolve () - the accumulate kernel for one aggregate the program
+ *				 covers, or NULL to keep the interpreted tail
+ *
+ * NULL for: multiple operands, DISTINCT or sorted input (list file path), optimized
+ * MIN/MAX (early-termination block), and any function whose per-row tail does more
+ * than plain accumulation.
+ */
+static QDATA_ACC_KERNEL_FN
+qdata_acc_kernel_resolve (cubxasl::aggregate_list_node *agg_p)
+{
+  if (agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL || agg_p->flag.min_max_optimized)
+    {
+      return NULL;
+    }
+  if (agg_p->operands == NULL || agg_p->operands->next != NULL)
+    {
+      return NULL;
+    }
+  if (agg_p->accumulator_domain.value_dom == NULL)
+    {
+      return NULL;
+    }
+
+  switch (agg_p->function)
+    {
+    case PT_SUM:
+    case PT_AVG:
+      switch (TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom))
+	{
+	case DB_TYPE_BIGINT:
+	  return qdata_acc_kernel_sum_bigint;
+	case DB_TYPE_DOUBLE:
+	  return qdata_acc_kernel_sum_double;
+	case DB_TYPE_NUMERIC:
+	  return qdata_acc_kernel_sum_numeric;
+	default:
+	  return qdata_acc_kernel_generic;
+	}
+    case PT_MIN:
+    case PT_MAX:
+    case PT_COUNT:
+      return qdata_acc_kernel_generic;
+    default:
+      return NULL;
+    }
+}
+
 /*
  * qdata_evaluate_aggregate_list () -
  *   return: NO_ERROR, or ER_code
@@ -628,9 +925,137 @@ qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubx
  *        Alternate accumulators can not be used for DISTINCT processing or
  *        the GROUP_CONCAT and MEDIAN function.
  */
+/*
+ * qdata_agg_operand_prog_compile () - lazily compile the operand expressions of a whole
+ *				       aggregate list into one program (expr_compile.h)
+ *
+ * Only plain accumulating functions participate; the operands of any aggregate the
+ * per-row loop may skip (COUNT_STAR, GROUPBY_NUM, optimized or special-cased ones) are
+ * left out so the unconditional per-row program evaluation cannot change behavior.
+ * Roots the expression compiler cannot cover purely are excluded the same way (the
+ * compiler is called without fallback roots), so every compiled step is side-effect
+ * free and evaluating it for a row whose aggregate later stops (is_ended) is harmless.
+ *
+ * Exported (not static) for the parallel BUILDVALUE_OPT accumulation loop, which
+ * compiles each worker's clone the same way.
+ */
+void
+qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
+				val_descr *val_desc_p)
+{
+  cubxasl::aggregate_list_node *agg_p;
+  REGU_VARIABLE *roots[128];
+  int *idx = NULL;
+  int n = 0, k;
+  EXPR_PROG *prog;
+
+  agg_list_p->operand_prog_state = 2;	/* disabled unless everything below succeeds */
+
+  /* collect candidate operands in evaluation order */
+  for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
+    {
+      bool participates;
+
+      switch (agg_p->function)
+	{
+	case PT_SUM:
+	case PT_AVG:
+	case PT_MIN:
+	case PT_MAX:
+	case PT_COUNT:
+	  participates = !agg_p->flag.agg_optimized;
+	  break;
+	default:
+	  participates = false;
+	  break;
+	}
+
+      agg_p->operand_prog_base = -1;
+      agg_p->acc_kernel = NULL;
+      if (!participates)
+	{
+	  continue;
+	}
+
+      agg_p->operand_prog_base = n;
+      for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
+	{
+	  if (n >= (int) DIM (roots))
+	    {
+	      return;
+	    }
+	  roots[n++] = &operand->value;
+	}
+    }
+
+  if (n == 0)
+    {
+      return;
+    }
+
+  idx = (int *) malloc (sizeof (int) * n);
+  if (idx == NULL)
+    {
+      return;
+    }
+
+  /* wired-only programs are wanted here: even when every operand is a plain
+   * TYPE_CONSTANT cell (buildlist aggregates -- the expressions were moved into the
+   * scan), the accumulate kernels below still skip the per-row operand vector, its
+   * deep copy and the accumulate dispatch */
+  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, true, false, idx);
+  if (prog == NULL)
+    {
+      free_and_init (idx);
+      return;
+    }
+
+  /* an aggregate whose every operand was excluded keeps its base but reads -1 entries */
+  for (k = 0; k < n; k++)
+    {
+      if (idx[k] >= 0)
+	{
+	  break;
+	}
+    }
+  if (k == n)
+    {
+      expr_prog_free (prog);
+      free_and_init (idx);
+      return;
+    }
+
+  agg_list_p->operand_prog = prog;
+  agg_list_p->operand_prog_idx = idx;
+  agg_list_p->operand_prog_state = 1;
+
+  /* resolve per-aggregate accumulate kernels: only an aggregate whose single operand the
+   * program actually covers may bypass the interpreted per-row tail */
+  bool any_kernel = false;
+  for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
+    {
+      if (agg_p->operand_prog_base >= 0 && idx[agg_p->operand_prog_base] >= 0)
+	{
+	  agg_p->acc_kernel = (void *) qdata_acc_kernel_resolve (agg_p);
+	  any_kernel = any_kernel || (agg_p->acc_kernel != NULL);
+	}
+    }
+
+  /* a step-less program that also resolved no kernel does nothing for anybody */
+  if (!any_kernel && prog->n_steps == 0)
+    {
+      expr_prog_free (prog);
+      free_and_init (idx);
+      agg_list_p->operand_prog = NULL;
+      agg_list_p->operand_prog_idx = NULL;
+      agg_list_p->operand_prog_state = 2;
+    }
+}
+
 int
 qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
-			       val_descr *val_desc_p, cubxasl::aggregate_accumulator *alt_acc_list, bool use_desc_index)
+			       val_descr *val_desc_p, cubxasl::aggregate_accumulator *alt_acc_list,
+			       bool use_desc_index)
 {
   cubxasl::aggregate_list_node *agg_p;
   cubxasl::aggregate_accumulator *accumulator;
@@ -642,10 +1067,37 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   int dbval_size, i, error;
   cubxasl::aggregate_percentile_info *percentile = NULL;
   DB_VALUE *db_value_p = NULL;
+  EXPR_PROG *operand_prog = NULL;
+
+  if (agg_list_p != NULL)
+    {
+      if (agg_list_p->operand_prog_state == 0)
+	{
+	  qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
+	}
+      if (agg_list_p->operand_prog_state == 1)
+	{
+	  operand_prog = (EXPR_PROG *) agg_list_p->operand_prog;
+	  if (!expr_prog_signature_ok (operand_prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p)))
+	    {
+	      /* different bind types than the program was specialized for: recompile */
+	      expr_prog_free (operand_prog);
+	      free_and_init (agg_list_p->operand_prog_idx);
+	      agg_list_p->operand_prog = NULL;
+	      agg_list_p->operand_prog_state = 0;
+	      qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
+	      operand_prog = (agg_list_p->operand_prog_state == 1) ? (EXPR_PROG *) agg_list_p->operand_prog : NULL;
+	    }
+	}
+      if (operand_prog != NULL && expr_prog_eval (operand_prog, thread_p, val_desc_p, NULL, NULL) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
 
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
-      std::vector<DB_VALUE> db_values;
+      std::vector < DB_VALUE > db_values;
 
       /* determine accumulator */
       accumulator = (alt_acc_list != NULL ? &alt_acc_list[i] : &agg_p->accumulator);
@@ -685,16 +1137,47 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  continue;
 	}
 
+      if (agg_p->acc_kernel != NULL && operand_prog != NULL)
+	{
+	  /* the program evaluated this aggregate's single operand for the row already;
+	   * accumulate straight from the program cell -- no operand vector, no deep copy */
+	  DB_VALUE *cell_value =
+		  expr_prog_value (operand_prog, agg_list_p->operand_prog_idx[agg_p->operand_prog_base]);
+
+	  error = ((QDATA_ACC_KERNEL_FN) agg_p->acc_kernel) (thread_p, agg_p, accumulator, cell_value);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  continue;
+	}
+
       /* fetch operands value. aggregate regulator variable should only contain constants */
       REGU_VARIABLE_LIST operand = NULL;
+      int opr_ordinal = agg_p->operand_prog_base;
       for (operand = agg_p->operands; operand != NULL; operand = operand->next)
 	{
 	  // create an empty value
 	  db_values.emplace_back ();
 
+	  int prog_root = -1;
+	  if (operand_prog != NULL && opr_ordinal >= 0)
+	    {
+	      prog_root = agg_list_p->operand_prog_idx[opr_ordinal++];
+	    }
+
+	  if (prog_root >= 0)
+	    {
+	      /* the compiled program evaluated this operand for the row already */
+	      if (pr_clone_value (expr_prog_value (operand_prog, prog_root), &db_values.back ()) != NO_ERROR)
+		{
+		  pr_clear_value_vector (db_values);
+		  return ER_FAILED;
+		}
+	    }
 	  // fetch it
-	  if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
-				&db_values.back ()) != NO_ERROR)
+	  else if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
+				     &db_values.back ()) != NO_ERROR)
 	    {
 	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
@@ -1319,6 +1802,15 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   const PR_TYPE *pr_type_p;
   OR_BUF buf;
   double dbl;
+
+  /* materialize deferred NUMERIC sums before any accumulator value is consumed */
+  for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
+    {
+      if (qdata_numeric_sum_flush (&agg_p->accumulator) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
 
   db_make_null (&sqr_val);
   db_make_null (&dbval);
@@ -2147,6 +2639,7 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
     {
       value->accumulators[i].value = pr_make_value ();
       value->accumulators[i].value2 = pr_make_value ();
+      value->accumulators[i].sum_state = NULL;	/* raw allocation: must not inherit garbage */
     }
   /* initialize accumulators.value */
   for (i = 0, agg_p = g_agg_list; agg_p != NULL; agg_p = agg_p->next, i++)
@@ -2196,6 +2689,8 @@ qdata_free_agg_hvalue (cubthread::entry *thread_p, aggregate_hash_value *value)
     {
       for (i = 0; i < value->func_count; i++)
 	{
+	  qdata_numeric_sum_discard (&value->accumulators[i]);
+
 	  if (value->accumulators[i].value != NULL)
 	    {
 	      pr_free_value (value->accumulators[i].value);
@@ -2422,25 +2917,27 @@ qdata_copy_agg_hkey (cubthread::entry *thread_p, aggregate_hash_key *key)
 
 /*
  * qdata_load_agg_hvalue_in_agg_list () - load hash value in aggregate list
+ *   return: NO_ERROR, or ER_FAILED when a deferred NUMERIC sum cannot be materialized
  *   value(in): aggregate hash value
  *   agg_list(in): aggregate list
  *   copy_vals(in): true for deep copy of DB_VALUES, false for shallow copy
  */
-void
-qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list, bool copy_vals)
+int
+qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list,
+				   bool copy_vals)
 {
   int i = 0;
 
   if (value == NULL)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
 
   if (value->func_count != 0 && agg_list == NULL)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
 
   while (agg_list != NULL)
@@ -2454,6 +2951,16 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
 
       if (agg_list->function != PT_GROUPBY_NUM)
 	{
+	  /* a deferred NUMERIC sum must be materialized before its value is copied;
+	   * the destination accumulator cannot carry a pending state either. A failed
+	   * flush (overflow at materialization) must not degrade into copying the
+	   * already-cleared value as if it were the sum. */
+	  if (qdata_numeric_sum_flush (&value->accumulators[i]) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  qdata_numeric_sum_discard (&agg_list->accumulator);
+
 	  if (copy_vals)
 	    {
 	      /* set tuple count */
@@ -2497,6 +3004,8 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
     }
 
   assert (i == value->func_count);
+
+  return NO_ERROR;
 }
 
 /*
@@ -2527,6 +3036,11 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
 
   for (i = 0; i < value->func_count; i++)
     {
+      /* a deferred NUMERIC sum must be materialized before its value is serialized */
+      if (qdata_numeric_sum_flush (&value->accumulators[i]) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
       list_id->tpl_descr.f_valp[col++] = value->accumulators[i].value;
       list_id->tpl_descr.f_valp[col++] = value->accumulators[i].value2;
 
@@ -2713,8 +3227,8 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
  *   acc_dom(in): accumulator domains
  */
 SCAN_CODE
-qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id *list_scan_id, aggregate_hash_key *key,
-				 aggregate_hash_value *value, tp_domain **key_dom,
+qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id *list_scan_id,
+				 aggregate_hash_key *key, aggregate_hash_value *value, tp_domain **key_dom,
 				 cubxasl::aggregate_accumulator_domain **acc_dom)
 {
   SCAN_CODE sc;

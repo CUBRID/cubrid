@@ -34,6 +34,11 @@
 #include "thread_compat.hpp"
 
 // forward definitions
+namespace cubxasl
+{
+  struct aggregate_accumulator;
+  struct aggregate_list_node;
+}
 struct function_node;
 class regu_variable_node;
 struct tp_domain;
@@ -64,6 +69,12 @@ extern QPROC_TPLDESCR_STATUS qdata_generate_tuple_desc_for_valptr_list (THREAD_E
 									valptr_list_node * valptr_list, val_descr * vd,
 									qfile_tuple_descriptor * tdp);
 extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd);
+extern void qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list);
+extern const char *qdata_acc_kernel_name (const void *kernel);
+extern int qdata_numeric_sum_flush (cubxasl::aggregate_accumulator * acc);
+extern void qdata_numeric_sum_discard (cubxasl::aggregate_accumulator * acc);
+extern void qdata_agg_operand_prog_compile (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list_p,
+					    val_descr * val_desc_p);
 
 extern int qdata_add_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
 extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res,

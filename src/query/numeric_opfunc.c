@@ -2626,6 +2626,119 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   return ret;
 }
 
+/* deferred-carry NUMERIC sum accumulator (see numeric_opfunc.h).  All inputs of one
+ * aggregate share a fixed scale, so per-row accumulation reduces to one magnitude-word
+ * addition into a sign bucket; every remaining step of float_numeric_db_value_add ()
+ * runs once, in numeric_sum_state_result (). */
+
+#define NUMERIC_SUM_STATE_WORDS 4	/* 256 bits: 128 bits of headroom above 38 digits */
+
+struct numeric_sum_state
+{
+  uint64_t pos[NUMERIC_SUM_STATE_WORDS];	/* magnitude sum of non-negative inputs */
+  uint64_t neg[NUMERIC_SUM_STATE_WORDS];	/* magnitude sum of negative inputs */
+  int scale;			/* the fixed input scale */
+};
+
+NUMERIC_SUM_STATE *
+numeric_sum_state_alloc (int scale)
+{
+  NUMERIC_SUM_STATE *state = (NUMERIC_SUM_STATE *) malloc (sizeof (NUMERIC_SUM_STATE));
+
+  if (state != NULL)
+    {
+      memset (state, 0, sizeof (*state));
+      state->scale = scale;
+    }
+  return state;
+}
+
+void
+numeric_sum_state_free (NUMERIC_SUM_STATE * state)
+{
+  if (state != NULL)
+    {
+      free_and_init (state);
+    }
+}
+
+/* returns false when the value cannot join this state (scale mismatch); the caller
+ * then materializes the state and keeps the generic per-row path */
+bool
+numeric_sum_state_accumulate (NUMERIC_SUM_STATE * state, const DB_VALUE * value)
+{
+  uint64_t word[NUMERIC_SUM_STATE_WORDS];
+  uint64_t *bucket;
+  int prec, scale;
+
+  db_get_numeric_precision_and_scale (value, &prec, &scale, NULL);
+  if (scale != state->scale)
+    {
+      return false;
+    }
+
+  /* numeric_bytes_to_words () zeroes the whole destination itself on this path
+   * (dest_words > NUMERIC_AS_WORDS), so the caller must not clear it a second time */
+  numeric_bytes_to_words (db_locate_numeric (value), DB_NUMERIC_BUF_SIZE, word, NUMERIC_SUM_STATE_WORDS,
+			  NUMERIC_SUM_STATE_WORDS * (int) sizeof (uint64_t));
+
+  bucket = numeric_is_negative (value) ? state->neg : state->pos;
+  float_numeric_add (bucket, word, bucket, NUMERIC_SUM_STATE_WORDS);
+  /* the headroom makes a per-row overflow check unnecessary */
+  return true;
+}
+
+int
+numeric_sum_state_result (const NUMERIC_SUM_STATE * state, DB_VALUE * result)
+{
+  uint64_t res_word[NUMERIC_SUM_STATE_WORDS];
+  uint8_t res_buf[DB_NUMERIC_BUF_SIZE];
+  bool sign;
+  int prec, scale = state->scale;
+  int ret;
+
+  /* mirror of the signed-addition tail of float_numeric_db_value_add () */
+  if (float_numeric_operation_compare (state->pos, state->neg, NUMERIC_SUM_STATE_WORDS) >= 0)
+    {
+      float_numeric_sub (state->pos, state->neg, res_word, NUMERIC_SUM_STATE_WORDS);
+      sign = false;
+    }
+  else
+    {
+      float_numeric_sub (state->neg, state->pos, res_word, NUMERIC_SUM_STATE_WORDS);
+      sign = true;
+    }
+
+  prec = float_numeric_get_decimal_digit (res_word, NUMERIC_SUM_STATE_WORDS);
+  if (sign && prec == 1 && res_word[NUMERIC_SUM_STATE_WORDS - 1] == 0)
+    {
+      /* Prevent -0; zero is always treated as positive. */
+      sign = false;
+    }
+
+  ret = float_numeric_check_overflow_and_adjust_scale (&prec, &scale, result);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  ret =
+    float_numeric_round_and_pack (res_word, NUMERIC_SUM_STATE_WORDS,
+				  NUMERIC_SUM_STATE_WORDS * (int) sizeof (uint64_t), res_buf, &prec, &scale);
+  if (ret != NO_ERROR)
+    {
+      /* the interpreted per-row accumulation reports SUM overflow as a hard
+       * ER_QPROC_OVERFLOW_ADDITION; a deferred sum that cannot be materialized is the
+       * same user-visible condition and must not downgrade to a warning */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
+      db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return ER_QPROC_OVERFLOW_ADDITION;
+    }
+
+  db_make_numeric (result, res_buf, prec, scale, DB_NUMERIC_BUF_SIZE, sign, true);
+  return NO_ERROR;
+}
+
 /*
  * numeric_db_value_sub () -
  *   return: NO_ERROR, or ER_code
@@ -3118,6 +3231,81 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
 
   return ret;
+}
+
+/*
+ * float_numeric_db_value_mul_fixed64 () - single-word specialization of
+ *   float_numeric_db_value_mul () for the compiled expression path
+ *   return: 1 when answer was produced (bit-identical to the reference fast path),
+ *           0 when the caller must use float_numeric_db_value_mul ()
+ *
+ * Note:
+ *   - Handles exactly the reference "fast path" population (both magnitudes fit one
+ *     64-bit word and the result stays within 3 calculation words) plus the zero
+ *     shortcut, replaying the same helpers in the same order; every other input --
+ *     NULLs, wide magnitudes, wide result precision -- is declined so the reference
+ *     keeps full ownership of edge-case behavior.
+ *   - What it saves per row against the reference: two full bytes-to-words expansions,
+ *     three working-buffer memsets and two 17-byte zero scans.
+ */
+int
+float_numeric_db_value_mul_fixed64 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
+{
+  int scale1, scale2, result_scale;
+  int prec1, prec2, result_prec;
+  uint8_t result_buf[DB_NUMERIC_BUF_SIZE];
+  uint64_t dbv1_word[NUMERIC_AS_WORDS] = { 0, 0, 0 };
+  uint64_t dbv2_word[NUMERIC_AS_WORDS] = { 0, 0, 0 };
+  uint64_t result_word[NUMERIC_AS_WORDS] = { 0, 0, 0 };
+  bool result_sign;
+  const uint8_t *buf1, *buf2;
+
+  if (answer == NULL || dbv1 == NULL || dbv2 == NULL || DB_VALUE_TYPE (dbv1) != DB_TYPE_NUMERIC
+      || DB_VALUE_TYPE (dbv2) != DB_TYPE_NUMERIC || DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
+    {
+      return 0;
+    }
+
+  /* single-word magnitudes only: the MSB byte and the middle word must be zero
+   * (the same "upper words all zero" condition the reference fast path tests) */
+  buf1 = (const uint8_t *) db_locate_numeric (dbv1);
+  buf2 = (const uint8_t *) db_locate_numeric (dbv2);
+  if (buf1[0] != 0 || buf2[0] != 0 || numeric_get_uint64_from_be (buf1 + 1) != 0
+      || numeric_get_uint64_from_be (buf2 + 1) != 0)
+    {
+      return 0;
+    }
+  dbv1_word[2] = numeric_get_uint64_from_be (buf1 + 1 + 8);
+  dbv2_word[2] = numeric_get_uint64_from_be (buf2 + 1 + 8);
+
+  /* the reference zero shortcut (0 * v == 0, prec 1 scale 0, never negative) */
+  if (dbv1_word[2] == 0 || dbv2_word[2] == 0)
+    {
+      memset (result_buf, 0, DB_NUMERIC_BUF_SIZE);
+      db_make_numeric (answer, result_buf, 1, 0, DB_NUMERIC_BUF_SIZE, false, true);
+      return 1;
+    }
+
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, NULL);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, NULL);
+  result_scale = scale1 + scale2;
+  result_prec = prec1 + prec2;
+  result_sign = numeric_is_negative (dbv1) ^ numeric_is_negative (dbv2);
+
+  /* decline when the reference would size the calculation wider than 3 words */
+  if (MAX (_gv_numeric_precision_to_bytes_lookup[result_prec], DB_NUMERIC_BUF_SIZE) + 1 > NUMERIC_AS_WORD_BYTES)
+    {
+      return 0;
+    }
+
+  result_prec = float_numeric_mul_fast (dbv1_word, dbv2_word, result_word, NUMERIC_AS_WORDS, result_buf, &result_scale);
+  if (result_sign && result_prec == 1 && result_word[NUMERIC_AS_WORDS - 1] == 0)
+    {
+      /* Prevent -0; zero is always treated as positive. */
+      result_sign = false;
+    }
+  db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
+  return 1;
 }
 
 /*

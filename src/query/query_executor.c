@@ -40,6 +40,7 @@
 #include "partition_sr.h"
 #include "query_aggregate.hpp"
 #include "query_analytic.hpp"
+#include "expr_compile.h"
 #include "query_opfunc.h"
 #include "fetch.h"
 #include "dbtype.h"
@@ -1783,6 +1784,15 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
       return pg_cnt;
     }
 
+  /* release the compiled scan-filter form (root node only; see expr_compile.h) when the
+   * clone is being retired -- a clone kept cached keeps its compiled tree */
+  if (pr->scan_prog != NULL && (is_final || XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE)))
+    {
+      expr_scan_pred_free (pr->scan_prog);
+      pr->scan_prog = NULL;
+      pr->scan_prog_state = 0;
+    }
+
   switch (pr->type)
     {
     case T_PRED:
@@ -2293,8 +2303,19 @@ qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AGGREGATE_TYP
   int pg_cnt;
 
   pg_cnt = 0;
+
+  /* release the compiled operand program (head node only; see expr_compile.h) */
+  if (list != NULL && list->operand_prog != NULL)
+    {
+      expr_prog_free ((EXPR_PROG *) list->operand_prog);
+      list->operand_prog = NULL;
+      free_and_init (list->operand_prog_idx);
+      list->operand_prog_state = 0;
+    }
+
   for (p = list; p; p = p->next)
     {
+      qdata_numeric_sum_discard (&p->accumulator);
       if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 	{
 	  if (p->accumulator.clear_value_at_clone_decache)
@@ -2492,6 +2513,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	if (connect_by->prior_outptr_list)
 	  {
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, connect_by->prior_outptr_list->valptrp, is_final, false);
+	    /* the compiled projection program owns slot values on the private heap; it must not
+	     * outlive the request (leak tracker aborts on the request boundary in debug builds,
+	     * and a cached clone would carry dangling slot values into its next execution) */
+	    qdata_free_valptr_list_prog (thread_p, connect_by->prior_outptr_list);
 	  }
 
 	pg_cnt += qexec_clear_regu_list (thread_p, xasl, connect_by->prior_regu_list_pred, is_final, false);
@@ -2539,6 +2564,8 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	    if (buildlist->g_outptr_list)
 	      {
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_outptr_list->valptrp, is_final, false);
+		/* see the outptr_list note below: compiled programs must not outlive the request */
+		qdata_free_valptr_list_prog (thread_p, buildlist->g_outptr_list);
 	      }
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_regu_list, is_final, false);
 	    if (buildlist->g_val_list)
@@ -2575,15 +2602,18 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	    if (buildlist->a_outptr_list)
 	      {
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list->valptrp, is_final, false);
+		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list);
 	      }
 	    if (buildlist->a_outptr_list_ex)
 	      {
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_ex->valptrp, is_final, false);
+		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex);
 	      }
 	    if (buildlist->a_outptr_list_interm)
 	      {
 		pg_cnt +=
 		  qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_interm->valptrp, is_final, false);
+		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm);
 	      }
 	    if (buildlist->a_val_list)
 	      {
@@ -2774,6 +2804,12 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
       if (xasl->outptr_list)
 	{
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->outptr_list->valptrp, is_final, false);
+	  /* The compiled projection program owns slot values allocated on the private heap of the
+	   * executing thread. It must be released with the execution, like scan_prog and
+	   * operand_prog: a program that outlives the request trips the per-request leak tracker
+	   * (debug abort at the request boundary), and a cached clone would carry dangling slot
+	   * values into its next execution once db_clear_private_heap () reclaims the heap. */
+	  qdata_free_valptr_list_prog (thread_p, xasl->outptr_list);
 	}
       pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->spec_list, is_final, false, false);
       pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->merge_spec, is_final, false, false);
@@ -2998,6 +3034,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       /* clear the db_values in the tree */
       if (xasl->outptr_list)
 	{
+	  qdata_free_valptr_list_prog (thread_p, xasl->outptr_list);
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->outptr_list->valptrp, is_final, true);
 	}
       pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->spec_list, is_final, true, true);
@@ -3110,6 +3147,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	  }
 	if (connect_by->prior_outptr_list)
 	  {
+	    qdata_free_valptr_list_prog (thread_p, connect_by->prior_outptr_list);
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, connect_by->prior_outptr_list->valptrp, is_final, true);
 	  }
 
@@ -3157,6 +3195,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	  {
 	    if (buildlist->g_outptr_list)
 	      {
+		qdata_free_valptr_list_prog (thread_p, buildlist->g_outptr_list);
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_outptr_list->valptrp, is_final, true);
 	      }
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_regu_list, is_final, true);
@@ -3193,14 +3232,17 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 
 	    if (buildlist->a_outptr_list)
 	      {
+		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list);
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list->valptrp, is_final, true);
 	      }
 	    if (buildlist->a_outptr_list_ex)
 	      {
+		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex);
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_ex->valptrp, is_final, true);
 	      }
 	    if (buildlist->a_outptr_list_interm)
 	      {
+		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm);
 		pg_cnt +=
 		  qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_interm->valptrp, is_final, true);
 	      }
@@ -5281,14 +5323,20 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		  info->input_recs += hvalue->tuple_count;
 
 		  /* replace aggregate accumulators */
-		  qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[0].d_agg_list, false);
+		  if (qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[0].d_agg_list, false) != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
 
 		  if (info->with_rollup)
 		    {
 		      for (i = 1; i < info->g_dim_levels; i++)
 			{
 			  /* replace accumulators for restarted rollup groups */
-			  qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[i].d_agg_list, true);
+			  if (qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[i].d_agg_list, true) != NO_ERROR)
+			    {
+			      goto exit_on_error;
+			    }
 			}
 		    }
 		}
@@ -5340,14 +5388,20 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		  info->input_recs += hvalue->tuple_count;
 
 		  /* replace aggregate accumulators */
-		  qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[0].d_agg_list, false);
+		  if (qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[0].d_agg_list, false) != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
 
 		  if (info->with_rollup)
 		    {
 		      /* replace accumulators for restarted rollup groups */
 		      for (i = rollup_level; i < info->g_dim_levels; i++)
 			{
-			  qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[i].d_agg_list, true);
+			  if (qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[i].d_agg_list, true) != NO_ERROR)
+			    {
+			      goto exit_on_error;
+			    }
 			}
 
 		      /* compose accumulators for active rollup groups */
@@ -5568,7 +5622,10 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	      qexec_gby_start_group_dim (thread_p, &gbstate, NULL);
 
 	      /* load values in list and aggregate first tuple */
-	      qdata_load_agg_hvalue_in_agg_list (value, gbstate.g_dim[0].d_agg_list, false);
+	      if (qdata_load_agg_hvalue_in_agg_list (value, gbstate.g_dim[0].d_agg_list, false) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 	      qexec_gby_agg_tuple (thread_p, &gbstate, value->first_tuple.tpl, PEEK);
 
 	      /* finalize */
