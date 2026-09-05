@@ -43,6 +43,7 @@
 #include "db_date.h"
 #include "tz_support.h"
 #include <cas_cci.h>
+#include <broker_cas_protocol.h>
 
 #include <db_json.hpp>
 
@@ -623,6 +624,58 @@ dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
 }
 
 /*
+ * dblink_declare_client_codeset () - tell a newly opened remote which codeset we send in
+ *   return: void
+ *   conn_handle(in): connection that has just been opened
+ *
+ * Note: A remote reads incoming character data in its own codeset unless told otherwise.  When the
+ *   two differ, a pushed predicate then compares raw bytes and quietly matches nothing, and a
+ *   pushed value is stored as the wrong characters.  Sending our codeset name once makes the remote
+ *   convert both the literals inside the statement text and the values bound per row -- so the text
+ *   needs no rewriting, and the remote's own codeset need never be looked up.
+ *
+ *   CUBRID remotes only.  A vendor is reached through the gateway, which converts the statement as
+ *   if it arrived in UTF-8 (cgw_utf8_to_unicode ()), so a non-UTF-8 local side is already broken
+ *   before the text gets there and declaring a codeset would not change that.
+ *
+ *   Best effort.  On failure the connection behaves as it did before, so a statement that used to
+ *   run still runs; the warning is what makes that visible, since the text put on the wire is the
+ *   same either way.
+ */
+static void
+dblink_declare_client_codeset (int conn_handle)
+{
+  T_CCI_ERROR err_buf;
+  char sql[64];
+  /* sized to hold the statement and the remote's whole message, so nothing is cut */
+  char errmsg[sizeof (sql) + sizeof (err_buf.err_msg) + 16];
+  int dbms_type, req_handle;
+
+  /* The handshake already stored this; no round trip. */
+  dbms_type = cci_get_dbms_type (conn_handle);
+  if (dbms_type != CAS_DBMS_CUBRID && dbms_type != CAS_PROXY_DBMS_CUBRID)
+    {
+      return;
+    }
+
+  snprintf (sql, sizeof (sql), "SET NAMES %s", lang_get_codeset_name ((int) LANG_SYS_CODESET));
+
+  /* One round trip; prepare then execute would be two. */
+  req_handle = cci_prepare_and_execute (conn_handle, sql, 0, NULL, &err_buf);
+  if (req_handle < 0)
+    {
+      /* Name the statement: what comes back is the remote's own wording, which on its own does not
+       * say which statement failed.  Reading this needs error_log_warning=yes. */
+      snprintf (errmsg, sizeof (errmsg), "%s failed: %s", sql,
+		err_buf.err_msg[0] != '\0' ? err_buf.err_msg : "no message from the remote");
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return;
+    }
+
+  (void) cci_close_req_handle (req_handle);
+}
+
+/*
  * dblink_acquire_pooled_conn () - shared helper: build the gateway connection URL, reuse a pooled
  *   remote connection within the local transaction (non-autocommit) or open a fresh one, and set
  *   its autocommit mode.  Unifies the connection acquisition duplicated across
@@ -687,6 +740,9 @@ dblink_acquire_pooled_conn (THREAD_ENTRY * thread_p, const char *url, const char
 	  (void) cci_disconnect (conn_handle, &err_buf);
 	  return ER_DBLINK;
 	}
+
+      /* Only for a connection just created; a pooled one was told when it was opened. */
+      dblink_declare_client_codeset (conn_handle);
 
       if (autocommit_mode == CCI_AUTOCOMMIT_FALSE)
 	{
