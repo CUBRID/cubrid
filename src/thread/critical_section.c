@@ -487,7 +487,6 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
       thread_p = thread_get_thread_entry_info ();
     }
 
-
   tsc_getticks (&start_tick);
 
   error_code = pthread_mutex_lock (&csect->lock);
@@ -708,7 +707,6 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
     {
       thread_p = thread_get_thread_entry_info ();
     }
-
 
   tsc_getticks (&start_tick);
 
