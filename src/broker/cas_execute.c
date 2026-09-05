@@ -200,6 +200,7 @@ static void set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec
 static int fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_class (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_attribute (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
+static int cas_copy_peeked_string (const DB_VALUE * value, char *buf, size_t buf_size);
 static int fetch_method (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_methfile (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_constraint (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
@@ -5471,6 +5472,33 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fe
   return 0;
 }
 
+/*
+ * cas_copy_peeked_string () - NUL-terminated copy of a string value peeked from a query result
+ *   return: 0, or ER_QPROC_INVALID_DATATYPE when the value is not a string or does not fit
+ *   A peeked string value points into the list file page: its bytes are exactly the string, with the next column
+ *   right behind them. Everything that treats the bytes as a C string needs its own copy.
+ */
+static int
+cas_copy_peeked_string (const DB_VALUE * value, char *buf, size_t buf_size)
+{
+  int size;
+
+  if (DB_IS_NULL (value) || !DB_IS_STRING (value))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+  size = db_get_string_size (value);
+  if (size < 0 || (size_t) size >= buf_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+  memcpy (buf, db_get_string (value), size);
+  buf[size] = '\0';
+  return 0;
+}
+
 static int
 fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
 		 T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -5484,6 +5512,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
   DB_QUERY_RESULT *result;
   T_QUERY_RESULT *q_result;
   DB_VALUE val_class, val_attr;
+  char class_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];	/* unique_name = owner.class fits an identifier (DB_MAX_CLASS_LENGTH) */
+  char attr_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
   DB_OBJECT *class_obj;
   DB_ATTRIBUTE *db_attr;
   const char *attr_name;
@@ -5540,7 +5570,14 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      class_name = db_get_string (&val_class);
+      /* the value is a peek into the list file page: the bytes are not NUL-terminated (the next column follows
+       * immediately), so take a NUL-terminated copy before handing them to the C-string schema APIs */
+      err_code = cas_copy_peeked_string (&val_class, class_name_buf, sizeof (class_name_buf));
+      if (err_code < 0)
+	{
+	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	}
+      class_name = class_name_buf;
       class_obj = db_find_class (class_name);
       if (class_obj == NULL)
 	{
@@ -5553,7 +5590,12 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      attr_name = db_get_string (&val_attr);
+      err_code = cas_copy_peeked_string (&val_attr, attr_name_buf, sizeof (attr_name_buf));
+      if (err_code < 0)
+	{
+	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	}
+      attr_name = attr_name_buf;
       if (srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE)
 	{
 	  db_attr = db_get_class_attribute (class_obj, attr_name);

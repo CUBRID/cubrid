@@ -21,6 +21,7 @@
 //
 
 #include "query_analytic.hpp"
+#include "qfile_tuple_layout.h"
 
 #include "dbtype.h"
 #include "fetch.h"
@@ -208,6 +209,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	{
 	  /* values are written after coercion to func_p->domain. */
 	  func_p->list_id->type_list.domp[0] = func_p->domain;
+	  qfile_type_list_finalize (&func_p->list_id->type_list);
 	}
     }
 
@@ -243,42 +245,16 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    }
 	}
 
-      /* handle distincts by adding to the temp list file */
-      dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
-      pr_type_p = pr_type_from_id (dbval_type);
+      /* handle distincts by adding to the temp list file (the assembler encodes for the list's column layout) */
+      {
+	DB_VALUE *distinct_val_p = &dbval;
 
-      if (pr_type_p == NULL)
-	{
-	  error = ER_FAILED;
-	  goto exit;
-	}
-
-      dbval_size = pr_data_writeval_disk_size (&dbval);
-      if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)) != NULL)
-	{
-	  or_init (&buf, disk_repr_p, dbval_size);
-	  error = pr_type_p->data_writeval (&buf, &dbval);
-	  if (error != NO_ERROR)
-	    {
-	      assert_release (buf.ptr <= buf.endptr);
-	      db_private_free_and_init (thread_p, disk_repr_p);
-	      error = ER_FAILED;
-	      goto exit;
-	    }
-	}
-      else
-	{
-	  error = ER_FAILED;
-	  goto exit;
-	}
-
-      if (qfile_add_item_to_list (thread_p, disk_repr_p, dbval_size, func_p->list_id) != NO_ERROR)
-	{
-	  db_private_free_and_init (thread_p, disk_repr_p);
-	  error = ER_FAILED;
-	  goto exit;
-	}
-      db_private_free_and_init (thread_p, disk_repr_p);
+	if (qfile_add_values_tuple_to_list (thread_p, func_p->list_id, &distinct_val_p, 1) != NO_ERROR)
+	  {
+	    error = ER_FAILED;
+	    goto exit;
+	  }
+      }
 
       /* interpolation funcs need to check domain compatibility in the following code */
       if (!QPROC_IS_INTERPOLATION_FUNC (func_p))
@@ -891,22 +867,22 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		      break;
 		    }
 
-		  tuple_p = ((char *) tuple_record.tpl + QFILE_TUPLE_LENGTH_SIZE);
-		  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_UNBOUND)
-		    {
-		      continue;
-		    }
+		  {
+		    bool is_null;
 
-		  or_init (&buf, (char *) tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE,
-			   QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
-		  if (pr_type_p->data_readval (&buf, &dbval, list_id_p->type_list.domp[0], -1, true, NULL, 0) !=
-		      NO_ERROR)
-		    {
-		      qfile_close_scan (thread_p, &scan_id);
-		      qfile_close_list (thread_p, list_id_p);
-		      qfile_destroy_list (thread_p, list_id_p);
-		      return ER_FAILED;
-		    }
+		    if (qfile_slot_read_value (&tuple_record, 0, list_id_p->type_list.domp[0], &dbval, true, &is_null)
+			!= NO_ERROR)
+		      {
+			qfile_close_scan (thread_p, &scan_id);
+			qfile_close_list (thread_p, list_id_p);
+			qfile_destroy_list (thread_p, list_id_p);
+			return ER_FAILED;
+		      }
+		    if (is_null)
+		      {
+			continue;
+		      }
+		  }
 
 		  if (func_p->function == PT_VARIANCE || func_p->function == PT_VAR_POP
 		      || func_p->function == PT_VAR_SAMP || func_p->function == PT_STDDEV

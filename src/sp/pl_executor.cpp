@@ -136,7 +136,7 @@ namespace cubpl
 
   int
   executor::fetch_args_peek (regu_variable_list_node *val_list_p, VAL_DESCR *val_desc_p, OID *obj_oid_p,
-			     QFILE_TUPLE tuple)
+			     QFILE_TUPLE_RECORD *tplrec)
   {
     int error = NO_ERROR;
     int index = 0;
@@ -167,7 +167,7 @@ namespace cubpl
 	operand = val_list_p;
 	while (operand != NULL)
 	  {
-	    error = fetch_peek_dbval (m_thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+	    error = fetch_peek_dbval (m_thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tplrec, &value);
 	    if (error != NO_ERROR)
 	      {
 		m_args.clear ();

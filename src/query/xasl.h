@@ -541,11 +541,16 @@ struct cte_proc_node
 #define XASL_ANALYTIC_SKIP_SORT (0x1 << 21)	/* analytic skip sort optimization */
 #define XASL_DBLINK_CURSOR_REWIND	(0x1 << 22)	/* correlated DBLink subquery: rewind CCI cursor instead of re-issuing cci_execute per outer row */
 #define XASL_CORR_DBLINK		(0x1 << 23)	/* correlated push-down (per-row bind); mutually exclusive with XASL_DBLINK_CURSOR_REWIND */
+#define XASL_LIST_BACKWARD		(0x1 << 24)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define IS_DBLINK_CURSOR_REWIND_XASL(x)     XASL_IS_FLAGED ((x), XASL_DBLINK_CURSOR_REWIND)
 #define IS_CORR_DBLINK_XASL(x)		XASL_IS_FLAGED ((x), XASL_CORR_DBLINK)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
+
+/* qfile_open_list () backward-scan flag: set for the top-most XASL's result or a MERGELIST_PROC child list. */
+#define XASL_LIST_BACKWARD_FLAG(x) \
+  ((XASL_IS_FLAGED ((x), XASL_TOP_MOST_XASL) || XASL_IS_FLAGED ((x), XASL_LIST_BACKWARD)) ? QFILE_FLAG_BACKWARD : 0)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
 #define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v) \

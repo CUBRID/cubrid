@@ -42,7 +42,6 @@ struct val_list_node;
 struct valptr_list_node;
 struct xasl_state;
 
-#define UNBOUND(x) ((x)->val_flag == V_UNBOUND || (x)->type == DB_TYPE_NULL)
 
 #define BOUND(x) (! UNBOUND(x))
 
@@ -57,12 +56,12 @@ typedef enum
 extern void qdata_set_value_list_to_null (val_list_node * val_list);
 extern bool qdata_copy_db_value (DB_VALUE * dbval1, const DB_VALUE * dbval2);
 
-extern int qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval, char *tvalp, int *tval_size);
 extern int qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd,
-					    qfile_tuple_record * tplrec);
+					    qfile_tuple_value_type_list * tl, qfile_tuple_record * tplrec);
 extern QPROC_TPLDESCR_STATUS qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p,
 									valptr_list_node * valptr_list, val_descr * vd,
 									qfile_tuple_descriptor * tdp);
+extern QPROC_TPLDESCR_STATUS qdata_size_tuple_desc (qfile_tuple_value_type_list * tl, qfile_tuple_descriptor * tdp);
 extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd);
 
 extern int qdata_add_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
@@ -81,10 +80,11 @@ extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_l
 extern int qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list,
 				       qfile_tuple_value_type_list * type_list);
 extern int qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * func, val_descr * vd, OID * obj_oid,
-				    QFILE_TUPLE tpl);
+				    QFILE_TUPLE_RECORD * tplrec);
 extern int qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list,
 					 qfile_tuple_value_type_list * type_list);
-extern int qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfile_tuple_record * tplrec);
+extern int qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list,
+					 qfile_tuple_value_type_list * tl, qfile_tuple_record * tplrec);
 extern int qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * type_list,
 				    qfile_tuple_record * tplrec, VAL_LIST * val_list);
 
@@ -116,7 +116,6 @@ extern int qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_n
 extern int qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p,
 					  OPERATOR_TYPE op);
 extern int qdata_tuple_to_values_array (THREAD_ENTRY * thread_p, qfile_tuple_descriptor * tuple, DB_VALUE ** values);
-extern int qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p);
 extern int qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** result_dom, DB_VALUE * result,
 							FUNC_CODE function);
 extern int qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, double row_num_d,

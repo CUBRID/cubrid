@@ -28,6 +28,7 @@
 
 #ifdef __cplusplus
 #include <atomic>
+#include <stdint.h>
 #include "thread_compat.hpp"
 #endif
 
@@ -221,60 +222,63 @@ typedef enum
 
 #define QFILE_MAX_TUPLE_SIZE_IN_PAGE  (DB_PAGESIZE - QFILE_PAGE_HEADER_SIZE)
 
-/* Each tuple start is aligned with MAX_ALIGNMENT
- * Each tuple value header is aligned with MAX_ALIGNMENT,
- * Each tuple value is aligned with MAX_ALIGNMENT
+/*
+ * Tuple byte format:
+ *
+ *   [len 4B][prev_len 4B, backward capable lists only][null bitmap, has-null tuples only][pad][values][pad]
+ *
+ *   len       : network order; bit 31 = has-null, low 31 bits = tuple length including padding (multiple of 4)
+ *   prev_len  : length of the previous tuple in the page (qfile_scan_prev / cursor_prev_tuple); present iff the
+ *               list's type_list.hdr_size == 8
+ *   bitmap    : ceil (type_cnt / 8) bytes, bit i = byte[i >> 3] & (1 << (i & 7)), 1 = bound, 0 = NULL
+ *   values    : logical column order from data_off = ALIGN4 (hdr_size + bitmap size). NULL = 0 bytes.
+ *               FIXED column: ALIGN (alignby in {2,4}) then disksize bytes of data_writeval (8-byte values are read
+ *               by memcpy). VAR/DIRECT column (string/BIT/NUMERIC, index_* encoding): no alignment, 1-byte (<= 127)
+ *               or 4-byte (bit 7 of the first byte set, ntohl & 0x7FFFFFFF) body length header, then the body.
+ *               VAR/SCRATCH column (SET/JSON/OBJECT..., data_* encoding, needs INT_ALIGNMENT): ALIGN4, then the
+ *               4-byte length header, then the body (4-aligned, (de)coded in place).
+ * Every tuple start is 4-byte aligned (page header 32 bytes, every tuple length a multiple of 4).
+ * The accessors and the assembler live in qfile_tuple_layout.h; nothing else interprets these bytes.
  */
 
-#define QFILE_TUPLE_LENGTH_SIZE                 8
+#define QFILE_TUPLE_HDR_SIZE_FORWARD            4
+#define QFILE_TUPLE_HDR_SIZE_BACKWARD           8
 #define QFILE_TUPLE_LENGTH_OFFSET               0
 #define QFILE_TUPLE_PREV_LENGTH_OFFSET          4
-
-#define QFILE_TUPLE_VALUE_HEADER_LENGTH         8
-#define QFILE_TUPLE_VALUE_HEADER_SIZE           8
-#define QFILE_TUPLE_VALUE_FLAG_SIZE             4
-#define QFILE_TUPLE_VALUE_LENGTH_SIZE           4
-
-#define QFILE_TUPLE_VALUE_FLAG_OFFSET           0
-#define QFILE_TUPLE_VALUE_LENGTH_OFFSET         4
+#define QFILE_TUPLE_ALIGNMENT                   INT_ALIGNMENT	/* tuple_alignby = 4 */
 
 /* READERS/WRITERS FOR QFILE_TUPLE FIELDS */
 
+#define QFILE_TUPLE_LENGTH_HAS_NULL_BIT         0x80000000
+#define QFILE_TUPLE_LENGTH_MASK                 0x7FFFFFFF
+
 #define QFILE_GET_TUPLE_LENGTH(tpl) \
-  OR_GET_INT ((tpl) + QFILE_TUPLE_LENGTH_OFFSET)
+  ((int) ((unsigned int) OR_GET_INT ((tpl) + QFILE_TUPLE_LENGTH_OFFSET) & QFILE_TUPLE_LENGTH_MASK))
+
+#define QFILE_GET_TUPLE_HAS_NULL(tpl) \
+  (((unsigned int) OR_GET_INT ((tpl) + QFILE_TUPLE_LENGTH_OFFSET) & QFILE_TUPLE_LENGTH_HAS_NULL_BIT) != 0)
 
 #define QFILE_GET_PREV_TUPLE_LENGTH(tpl) \
   OR_GET_INT ((tpl) + QFILE_TUPLE_PREV_LENGTH_OFFSET)
 
-#define QFILE_PUT_TUPLE_LENGTH(tpl,val) \
-  OR_PUT_INT ((tpl) + QFILE_TUPLE_LENGTH_OFFSET,val)
+/* the length word carries the has-null flag: written by the assembler and by the header rewrite of
+ * qfile_add_tuple_to_list_from (); every other writer copies whole tuples and keeps the word as is */
+#define QFILE_PUT_TUPLE_LENGTH(tpl,len,has_null) \
+  OR_PUT_INT ((tpl) + QFILE_TUPLE_LENGTH_OFFSET, \
+	      (int) ((unsigned int) (len) | ((has_null) ? QFILE_TUPLE_LENGTH_HAS_NULL_BIT : 0)))
 
 #define QFILE_PUT_PREV_TUPLE_LENGTH(tpl,val) \
   OR_PUT_INT ((tpl) + QFILE_TUPLE_PREV_LENGTH_OFFSET,val)
 
-#define QFILE_GET_TUPLE_VALUE_FLAG(ptr) \
-  (QFILE_TUPLE_VALUE_FLAG) OR_GET_INT ((ptr) + QFILE_TUPLE_VALUE_FLAG_OFFSET)
+/* null bitmap: 1 = bound */
+#define QFILE_TUPLE_BITMAP(tpl, hdr_size)       ((const unsigned char *) (tpl) + (hdr_size))
+#define QFILE_BITMAP_IS_BOUND(bm, i)            ((((const unsigned char *) (bm))[(i) >> 3] >> ((i) & 7)) & 1)
+#define QFILE_BITMAP_SET_BOUND(bm, i)           (((unsigned char *) (bm))[(i) >> 3] |= (unsigned char) (1 << ((i) & 7)))
 
-#define QFILE_GET_TUPLE_VALUE_LENGTH(ptr) \
-  (int) OR_GET_INT ((ptr) + QFILE_TUPLE_VALUE_LENGTH_OFFSET)
-
-#define QFILE_PUT_TUPLE_VALUE_FLAG(ptr,val) \
-  OR_PUT_INT ((ptr) + QFILE_TUPLE_VALUE_FLAG_OFFSET, (val))
-
-#define QFILE_PUT_TUPLE_VALUE_LENGTH(ptr,val) \
-  OR_PUT_INT ((ptr) + QFILE_TUPLE_VALUE_LENGTH_OFFSET, (val))
-
-#define QFILE_GET_TUPLE_VALUE_HEADER_POSITION(tpl,ind,valp) \
-  do \
-    { \
-      int _k; \
-      (valp) = (char*) (tpl) + QFILE_TUPLE_LENGTH_SIZE; \
-      for (_k = 0; _k < (ind); _k++) \
-        { \
-          (valp) += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH ((valp)); \
-        } \
-    } \
-  while (0)
+/* variable value length header */
+#define QFILE_VAR_HDR_LONG_BIT                  0x80
+#define QFILE_VAR_HDR_SHORT_MAX                 127
+#define QFILE_VAR_HDR_SIZE(len)                 ((len) <= QFILE_VAR_HDR_SHORT_MAX ? 1 : 4)
 
 /* Special flag set in the TUPLE_CNT field to indicate an overflow page */
 #define QFILE_OVERFLOW_TUPLE_COUNT_FLAG -2
@@ -285,34 +289,71 @@ typedef enum
 
 typedef char *QFILE_TUPLE;	/* list file tuple */
 
-/* tuple record descriptor */
+/* tuple record descriptor == tuple slot.
+ * The record keeps its historical owning/non-owning meaning (size > 0: private buffer owned by the record,
+ * size == 0: tpl PEEKs into a list page). The slot fields bind the layout descriptor of the list the tuple
+ * belongs to and cache the deform position; they are reset by qfile_slot_set_tuple (), the only sanctioned
+ * way to point the record at another tuple. */
+struct qfile_tuple_value_type_list;
 typedef struct qfile_tuple_record QFILE_TUPLE_RECORD;
 struct qfile_tuple_record
 {
   char *tpl;			/* tuple pointer */
   int size;			/* area _allocated_ for tuple pointer */
+  const struct qfile_tuple_value_type_list *tl;	/* layout descriptor, bound once per scan */
+  int16_t nvalid;		/* columns deformed so far; -1 = position cache not started for this tuple */
+  int16_t fast_limit;		/* end of the constant-offset prefix for this tuple */
+  int16_t data_off;		/* tl->data_off[has_null] of this tuple */
+  bool has_null;		/* has-null bit of this tuple's length word */
+  int32_t off;			/* start offset (unaligned) of column nvalid, from tuple start */
 };
 
-typedef enum
+/* Per-column layout entry of the tuple layout descriptor. Kept at 8 bytes; consider the cost before growing it. */
+typedef struct qfile_col_layout QFILE_COL_LAYOUT;
+struct qfile_col_layout
 {
-  V_BOUND = 1,
-  V_UNBOUND
-} QFILE_TUPLE_VALUE_FLAG;
-
-/* tuple value header */
-typedef struct qfile_tuple_value_header QFILE_TUPLE_VALUE_HEADER;
-struct qfile_tuple_value_header
-{
-  QFILE_TUPLE_VALUE_FLAG val_flag;	/* V_BOUND/V_UNBOUND? */
-  int val_len;			/* length of tuple value */
+  int16_t off;			/* constant offset from data_off; -1 when not cached (after the first VAR column or > INT16_MAX) */
+  int16_t size;			/* FIXED: disksize (max 12). VAR: -1 */
+  uint8_t kind;			/* QFILE_COL_FIXED | QFILE_COL_VAR */
+  uint8_t var_access;		/* VAR only: QFILE_VAR_DIRECT | QFILE_VAR_SCRATCH */
+  uint8_t alignby;		/* FIXED: 2 | 4. VAR: 1 */
+  uint8_t type_id;		/* DB_TYPE of domp[i] (DB_TYPE_VARIABLE while unresolved): lets the assembler check the value's
+				 * type from this entry alone, without the domp[i] -> domain -> type load chain */
 };
 
-/* Type list structure */
+/* Type list structure == tuple layout descriptor.
+ *
+ * Two states. An INPUT type list (locals built by the executor before qfile_open_list) only fills domp/type_cnt
+ * and has finalized == false; the descriptor fields below are not read. A FINALIZED type list (every
+ * QFILE_LIST_ID) was allocated by qfile_type_list_alloc () as one block [domp[type_cnt] | col[type_cnt]] (so
+ * the existing free (domp) sites are untouched) and had qfile_type_list_finalize () run after its last domp
+ * mutation. Copies inherit the block by memcpy (qfile_type_list_copy).
+ *
+ * The descriptor IS the layout: kind/size/alignby of every column come from domp[] (qfile_type_list_finalize),
+ * hdr_size from the QFILE_FLAG_BACKWARD flag of qfile_open_list (). */
 typedef struct qfile_tuple_value_type_list QFILE_TUPLE_VALUE_TYPE_LIST;
 struct qfile_tuple_value_type_list
 {
-  TP_DOMAIN **domp;		/* array of column domains */
+  TP_DOMAIN **domp;		/* array of column domains; head of the [domp | col] block when finalized */
   int type_cnt;			/* number of data types */
+  QFILE_COL_LAYOUT *col;	/* == (QFILE_COL_LAYOUT *) (domp + type_cnt); convenience pointer, not a separate allocation */
+  int first_non_cached_col;	/* min (first VAR column, first column with off > INT16_MAX); type_cnt if none */
+  int16_t data_off[2];		/* [0] = no-null, [1] = has-null : ALIGN4 (hdr_size + bitmap) */
+  int16_t bitmap_size;		/* (type_cnt + 7) >> 3 */
+  uint8_t hdr_size;		/* 4 | 8 ; 8 <=> backward capable */
+  bool finalized;
+};
+
+/* QFILE_COL_LAYOUT.kind / .var_access */
+enum
+{
+  QFILE_COL_FIXED = 0,
+  QFILE_COL_VAR = 1
+};
+enum
+{
+  QFILE_VAR_DIRECT = 0,
+  QFILE_VAR_SCRATCH = 1
 };
 
 /* tuple value position descriptor */
@@ -357,33 +398,45 @@ struct qfile_list_merge_info
 typedef enum
 {
   T_UNKNOWN,			/* uninitialized: not used */
-  T_SINGLE_BOUND_ITEM,		/* called by qfile_add_item_to_list() */
-  T_NORMAL,			/* normal case */
-  T_SORTKEY,			/* called by ls_sort_put_next() */
-  T_MERGE			/* called by xs_add_mergetuple() */
+  T_NORMAL,			/* f_valp[]: one DB_VALUE per column (tuple descriptor path) */
+  T_COL_SRC			/* col_src[]: per-column sources (sort key output, merge output, raw item, counters) */
 } QFILE_TUPLE_TYPE;
 
-/* tuple descriptor */
+/*
+ * Tuple assembler column source. One entry per output column.
+ *   val != NULL : encode the DB_VALUE with its type's data_writeval
+ *   val == NULL : copy data[0..len) verbatim as the stored body (what qfile_slot_locate () returned for a column of
+ *                 the same domain; the source and destination columns must share the layout kind)
+ * is_null makes the column NULL regardless of val/data. qfile_tuple_size () writes the disk size of a val source
+ * into len so qfile_tuple_fill () does not compute it again.
+ */
+typedef struct qfile_tuple_col_src QFILE_TUPLE_COL_SRC;
+struct qfile_tuple_col_src
+{
+  const DB_VALUE *val;
+  const char *data;
+  int len;
+  bool is_null;
+};
+
+/* tuple descriptor: the per-list staging area for qfile_generate_tuple_into_list () */
 typedef struct qfile_tuple_descriptor QFILE_TUPLE_DESCRIPTOR;
 struct qfile_tuple_descriptor
 {
-  /* T_SINGLE_BOUND_ITEM */
-  char *item;			/* pointer of item (i.e, single bound field tuple) */
-  int item_size;		/* item size */
+  int tpl_size;			/* exact tuple size, from the assembler size pass */
+  bool has_null;		/* size pass output, consumed by the fill pass */
 
   /* T_NORMAL */
-  int tpl_size;			/* tuple size */
   int f_cnt;			/* number of field */
-  DB_VALUE **f_valp;		/* pointer of field value pointer array */
+  DB_VALUE **f_valp;		/* pointer of field value pointer array (owned by the list) */
+  int *f_len;			/* body length of f_valp[i] from the size pass, consumed by the fill pass. Lives in the
+				 * f_valp allocation right after the pointers (qfile_tpl_descr_alloc_values), so freeing
+				 * f_valp frees it. */
 
-  /* T_SORTKEY */
-  void *sortkey_info;		/* casted pointer of (SORTKEY_INFO *) */
-  void *sort_rec;		/* casted pointer of (SORT_REC *) */
-
-  /* T_MERGE */
-  QFILE_TUPLE_RECORD *tplrec1;	/* first tuple */
-  QFILE_TUPLE_RECORD *tplrec2;	/* second tuple */
-  QFILE_LIST_MERGE_INFO *merge_info;	/* tuple merge info */
+  /* T_COL_SRC */
+  QFILE_TUPLE_COL_SRC *col_src;	/* owned by the list; grown on demand by qfile_tpl_descr_col_src () */
+  int col_src_cap;
+  int col_src_cnt;
 };
 
 /*
@@ -453,6 +506,13 @@ struct qfile_list_id
     { \
       (list_id)->type_list.type_cnt = 0; \
       (list_id)->type_list.domp = NULL; \
+      (list_id)->type_list.col = NULL; \
+      (list_id)->type_list.first_non_cached_col = 0; \
+      (list_id)->type_list.data_off[0] = 0; \
+      (list_id)->type_list.data_off[1] = 0; \
+      (list_id)->type_list.bitmap_size = 0; \
+      (list_id)->type_list.hdr_size = 0; \
+      (list_id)->type_list.finalized = false; \
       (list_id)->sort_list = NULL; \
       (list_id)->tuple_cnt = 0; \
       (list_id)->page_cnt = 0; \
@@ -467,16 +527,14 @@ struct qfile_list_id
       (list_id)->temp_vfid.fileid = NULL_PAGEID; \
       (list_id)->temp_vfid.volid = NULL_VOLID; \
       (list_id)->tfile_vfid = NULL; \
-      (list_id)->tpl_descr.item = NULL; \
-      (list_id)->tpl_descr.item_size = 0; \
       (list_id)->tpl_descr.tpl_size = 0; \
+      (list_id)->tpl_descr.has_null = false; \
       (list_id)->tpl_descr.f_cnt = 0; \
       (list_id)->tpl_descr.f_valp = NULL; \
-      (list_id)->tpl_descr.sortkey_info = NULL; \
-      (list_id)->tpl_descr.sort_rec = NULL; \
-      (list_id)->tpl_descr.tplrec1 = NULL; \
-      (list_id)->tpl_descr.tplrec2 = NULL; \
-      (list_id)->tpl_descr.merge_info = NULL; \
+      (list_id)->tpl_descr.f_len = NULL; \
+      (list_id)->tpl_descr.col_src = NULL; \
+      (list_id)->tpl_descr.col_src_cap = 0; \
+      (list_id)->tpl_descr.col_src_cnt = 0; \
       (list_id)->is_domain_resolved = false; \
       (list_id)->is_result_cached = false; \
       (list_id)->dependent_list_id = NULL; \
@@ -525,8 +583,16 @@ enum
   QFILE_FLAG_ALL = 0x0100,
   QFILE_FLAG_DISTINCT = 0x0200,
   QFILE_FLAG_USE_KEY_BUFFER = 0x0400,
-  QFILE_NOT_USE_MEMBUF = 0x0800
+  QFILE_NOT_USE_MEMBUF = 0x0800,
+  QFILE_FLAG_BACKWARD = 0x1000	/* list may be scanned backward (qfile_scan_prev / cursor_prev_tuple): its tuples
+				 * carry the 8-byte [len][prev_len] header (type_list.hdr_size) */
 };
+
+/* hdr_size is the only truth about backward capability */
+#define QFILE_LIST_IS_BACKWARD(list_id)    ((list_id)->type_list.hdr_size == QFILE_TUPLE_HDR_SIZE_BACKWARD)
+/* qfile_open_list () flag that gives a new list the tuple header of an existing one (raw tuple copies between the
+ * two then need no header rewrite, see qfile_add_tuple_to_list_from) */
+#define QFILE_LIST_BACKWARD_FLAG(list_id)  (QFILE_LIST_IS_BACKWARD (list_id) ? QFILE_FLAG_BACKWARD : 0)
 
 #define QFILE_SET_FLAG(var, flag)          ((var) |= (flag))
 #define QFILE_CLEAR_FLAG(var, flag)        ((var) &= (flag))

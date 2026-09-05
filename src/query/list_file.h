@@ -143,6 +143,8 @@ extern void qfile_finalize (void);
 extern void qfile_destroy_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern void qfile_close_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern int qfile_add_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl);
+extern int qfile_add_tuple_to_list_from (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl,
+					 int src_hdr_size);
 extern int qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl,
 					    QFILE_TUPLE_POSITION * tuple_pos);
 extern int qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, PAGE_PTR ovfl_tpl_pg,
@@ -168,12 +170,14 @@ extern bool qfile_is_sort_list_covered (SORT_LIST * covering_list, SORT_LIST * c
 /* Sorting related routines */
 extern SORT_STATUS qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * info, RECDES * key,
 					QFILE_LIST_SCAN_ID * input_scan, QFILE_TUPLE_RECORD * tplrec);
-extern QFILE_TUPLE qfile_generate_sort_tuple (SORTKEY_INFO * info, SORT_REC * sort_rec, RECDES * output_recdes);
+extern QFILE_TUPLE qfile_generate_sort_tuple (SORTKEY_INFO * info, SORT_REC * sort_rec, RECDES * output_recdes,
+					      QFILE_TUPLE_VALUE_TYPE_LIST * out_tl);
 extern int qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg);
 extern int qfile_compare_all_sort_record (const void *pk0, const void *pk1, void *arg);
 extern int qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * listid, SORTKEY_INFO * info);
 extern SORTKEY_INFO *qfile_initialize_sort_key_info (SORTKEY_INFO * info, SORT_LIST * list,
 						     QFILE_TUPLE_VALUE_TYPE_LIST * types);
+extern void qfile_init_empty_sort_key_info (SORTKEY_INFO * info);
 extern void qfile_clear_sort_key_info (SORTKEY_INFO * info);
 extern QFILE_LIST_ID *qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 						 SORT_LIST * sort_list, QUERY_OPTIONS option, int ls_flag,
@@ -213,20 +217,23 @@ extern QFILE_LIST_ID *qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALU
 				       SORT_LIST * sort_list, QUERY_ID query_id, int flag,
 				       QFILE_LIST_ID * existing_list_id);
 extern int qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p);
-extern int qfile_save_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, QFILE_TUPLE_TYPE tuple_type, char *page_p,
-			     int *tuple_length_p);
+extern QFILE_TUPLE_COL_SRC *qfile_tpl_descr_col_src (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n);
+extern int qfile_tpl_descr_alloc_values (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n);
+extern int qfile_save_tuple (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_DESCRIPTOR * tuple_descr_p,
+			     QFILE_TUPLE_TYPE tuple_type, char *out, int size);
 extern int qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE_TYPE tpl_type);
-extern int qfile_fast_intint_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int v1, int v2);
-extern int qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int v1, DB_VALUE * v2);
-extern int qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, DB_VALUE * val);
-extern int qfile_add_item_to_list (THREAD_ENTRY * thread_p, char *item, int item_size, QFILE_LIST_ID * list_id);
+extern int qfile_add_col_src_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int n);
+extern int qfile_add_values_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, DB_VALUE ** vals, int n);
+extern int qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
+				       QFILE_TUPLE_RECORD * outer_rec, QFILE_TUPLE_RECORD * inner_rec,
+				       QFILE_LIST_MERGE_INFO * merge_info_p, QFILE_TUPLE_RECORD * big_rec);
 extern QFILE_LIST_ID *qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file,
 					      QFILE_LIST_ID * rhs_file, int flag);
 extern int qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id);
 extern int qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id);
 extern int qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
-extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * tpl_descr,
-					    QFILE_TUPLE_RECORD * tplrec);
+extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, const QFILE_TUPLE_VALUE_TYPE_LIST * tl,
+					    QFILE_TUPLE_DESCRIPTOR * tpl_descr, QFILE_TUPLE_RECORD * tplrec);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);
 extern int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2);
 #if !defined(NDEBUG)
@@ -252,9 +259,6 @@ extern void qfile_end_scan_fix (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * s_
 extern void qfile_close_scan (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * s_id);
 
 /* Miscellaneous */
-extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value (QFILE_TUPLE tpl, int index, char **tpl_val, int *val_size);
-extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value_r (QFILE_TUPLE tpl, int index, char **tpl_val, int *val_size);
-extern int qfile_locate_tuple_next_value (OR_BUF * iterator, OR_BUF * buf, QFILE_TUPLE_VALUE_FLAG * flag);
 extern bool qfile_has_next_page (PAGE_PTR page_p);
 extern int qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 					      valptr_list_node * valptr_list_p);
