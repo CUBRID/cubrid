@@ -261,6 +261,10 @@ retire:
       /* never reached a session owner — reclaim it here */
       csc_retire_and_delete (ctx);
     }
+  /* Raw retirement returns the entry as-is; match entry_manager::retire_context
+   * before another worker claims this former session entry. */
+  entry_p->private_lru_index = -1;
+  entry_p->m_is_private_lru_enabled = false;
   entry_p->get_error_context ().deregister_thread_local ();
   entry_p->unregister_id ();
   cubthread::get_manager ()->retire_entry (*entry_p);
