@@ -75,6 +75,20 @@ namespace cubpl
 
       bool m_is_running;
 
+      /* PARALLEL_ENABLE contract (#108 D108-1/2): a declared SP promises never to touch the
+       * server-side connection, so its client (CAS) callbacks are refused instead of relayed.
+       * The px-worker arm is a safety net for an undeclared SP that reaches a worker through an
+       * escape path the parallel checkers do not visit (an SP inside an aggregate operand): a
+       * worker thread carries no request id of its own, so a callback from it would be sent to
+       * the wrong rid. */
+      bool m_is_parallel_enabled_sp;
+      /* Decided once, at construction: the px marker is owned by the parallel task that set it,
+       * and code that runs after the SP returns must reach the same verdict as code that ran
+       * before it. */
+      bool m_is_px_worker;
+
+      int reject_client_callback ();
+
       int interrupt_handler ();
 
     public:
@@ -122,15 +136,51 @@ namespace cubpl
       cubmethod::header m_java_header; // header sending to cub_javasp
       bool m_transaction_control;
 
+      bool is_px_worker_stack () const
+      {
+	return m_is_px_worker;
+      }
+
+      /* One predicate, enforced at both ends: the server refuses the callback, and the PL server
+       * is told up front so it refuses jdbc:default:connection before a Connection object is
+       * created (that object is cached per session, so concurrent px workers would share one). */
+      bool is_server_side_sql_forbidden () const
+      {
+	return m_is_parallel_enabled_sp || m_is_px_worker;
+      }
+
+      void set_parallel_enabled_sp (bool is_parallel_enabled)
+      {
+	m_is_parallel_enabled_sp = is_parallel_enabled;
+      }
+
+      /* The two entry points below are the single chokepoint for everything this stack sends to
+       * CAS; guarding them covers today's callbacks and any added later, with no way around. */
+
       template <typename ... Args>
       int send_data_to_client (Args &&... args)
       {
+	if (is_px_worker_stack ())
+	  {
+	    /* The only no-receive callbacks are the execution-rights push/pop and the
+	     * close-query-handlers notice. Neither carries SQL and neither is a reply Java is
+	     * waiting for, so they are dropped rather than turned into an error: from a worker
+	     * thread there is no rid to send them on, and once server-side SQL is impossible
+	     * nothing on the CAS side can observe them. */
+	    return NO_ERROR;
+	  }
+
 	return xs_callback_send_no_receive (m_thread_p, m_client_header, std::forward<Args> (args)...);
       }
 
       template <typename ... Args>
       int send_data_to_client_recv (const xs_callback_func &func, Args &&... args)
       {
+	if (is_server_side_sql_forbidden ())
+	  {
+	    return reject_client_callback ();
+	  }
+
 	return xs_callback_send_and_receive (m_thread_p, func, m_client_header, std::forward<Args> (args)...);
       }
 

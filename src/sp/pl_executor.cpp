@@ -42,7 +42,7 @@ namespace cubpl
 {
   using namespace cubmethod;
 
-  invoke_java::invoke_java (int tid, pl_signature *sig, bool tc)
+  invoke_java::invoke_java (int tid, const pl_signature *sig, bool tc, bool no_sql)
     : tran_id (tid)
   {
     signature.assign (sig->ext.sp.target_class_name).append (".").append (sig->ext.sp.target_method_name);
@@ -50,7 +50,7 @@ namespace cubpl
     lang = sig->type;
     result_type = sig->result_type;
 
-    pl_arg &arg = sig->arg;
+    const pl_arg &arg = sig->arg;
     num_args = arg.arg_size;
     arg_mode.resize (num_args);
     arg_type.resize (num_args);
@@ -62,6 +62,7 @@ namespace cubpl
       }
 
     transaction_control = (lang == SP_LANG_PLCSQL) ? true : tc;
+    no_server_side_sql = no_sql;
   }
 
   void
@@ -81,6 +82,7 @@ namespace cubpl
 
     serializator.pack_int (result_type);
     serializator.pack_bool (transaction_control);
+    serializator.pack_bool (no_server_side_sql);
   }
 
   void
@@ -107,18 +109,23 @@ namespace cubpl
 
     size += serializator.get_packed_int_size (size); // return_type
     size += serializator.get_packed_bool_size (size); // transaction_control
+    size += serializator.get_packed_bool_size (size); // no_server_side_sql
     return size;
   }
 
 
 //////////////////////////////////////////////////
-  executor::executor (pl_signature &sig)
+  executor::executor (const pl_signature &sig)
     : m_sig (sig)
   {
     session *sess = get_session ();
     if (sess)
       {
 	m_stack = sess->create_and_push_stack (nullptr);
+	if (m_stack != nullptr)
+	  {
+	    m_stack->set_parallel_enabled_sp (sig.is_parallel_enabled);
+	  }
       }
   }
 
@@ -379,8 +386,12 @@ exit:
     // handling 'else' is not required because send_data_to_java will handle the case when sess is not found
 
     prepare_args prepare_arg ((std::uint64_t) this, tid, METHOD_TYPE_PLCSQL, m_args);
-    invoke_java invoke_arg (tid, &m_sig,
-			    (m_sig.type == PL_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
+    /* A PARALLEL_ENABLE SP cannot reach CAS, and transaction control is a CAS round trip; saying
+     * so up front makes Java reject it with a clearer message than a refused callback would. */
+    const bool transaction_control = m_sig.is_parallel_enabled
+				     ? false
+				     : ((m_sig.type == PL_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
+    invoke_java invoke_arg (tid, &m_sig, transaction_control, m_stack->is_server_side_sql_forbidden ());
 
     error = m_stack->send_data_to_java (session_params, prepare_arg, invoke_arg);
     return error;
@@ -1005,7 +1016,7 @@ exit:
     db_make_null (&res);
     unpacker.unpack_all (attr_name);
 
-    OID *code_oid = &m_sig.ext.sp.code_oid;
+    const OID *code_oid = &m_sig.ext.sp.code_oid;
     if (OID_ISNULL (code_oid))
       {
 	error = ER_FAILED;

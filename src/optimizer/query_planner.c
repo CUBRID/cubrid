@@ -54,6 +54,7 @@
 #include "regu_var.hpp"
 #include "memory_hash.h"	/* MHT_HLS_ENTRY for hash-join spill cost */
 #include "histogram_cl.hpp"
+#include "jsp_cl.h"		/* jsp_is_sp_parallel_eligible () */
 
 #define TEST_DUMP_PLAN_SCAN_COST 0
 #define TEST_DUMP_PLAN_SORT_COST 0
@@ -293,6 +294,8 @@ static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni
 static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
+							   int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
 				BITSET * cur_visited_terms);
@@ -13898,6 +13901,56 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
 }
 
 /*
+ * qo_check_method_call_parallel_eligibility () - parser_walk_tree callback looking for a
+ *   PT_METHOD_CALL node that may not run inside a parallel hash join worker: a method, or
+ *   a stored procedure without the PARALLEL_ENABLE declaration
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_ineligible = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (tree != NULL && tree->node_type == PT_METHOD_CALL)
+    {
+      const char *name = NULL;
+
+      if (!PT_IS_METHOD (tree) && tree->info.method_call.method_name != NULL)
+	{
+	  PT_NODE *method_name_node = tree->info.method_call.method_name;
+
+	  if (PT_NAME_RESOLVED (method_name_node))
+	    {
+	      int custom_print_saved = parser->custom_print;
+	      parser->custom_print |= PT_SUPPRESS_QUOTES;
+	      parser->custom_print &= ~PT_PRINT_QUOTES;
+	      name = parser_print_tree (parser, method_name_node);
+	      parser->custom_print = custom_print_saved;
+	    }
+	  else
+	    {
+	      name = PT_NAME_ORIGINAL (method_name_node);
+	    }
+	}
+
+      if (name == NULL || !jsp_is_sp_parallel_eligible (name))
+	{
+	  *has_ineligible = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      /* eligible: keep walking, an argument may hold another method call */
+    }
+
+  return tree;
+}
+
+/*
  * qo_check_hjoin_for_parallel_opt() -
  *   return: One of the following QO_PLAN_PARALLEL_OPT_USE values:
  *           - PLAN_PARALLEL_OPT_USE: Parallel hash join is enabled by hint.
@@ -13917,7 +13970,9 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
   BITSET_ITERATOR bitset_iter;
   int bitset_index;
 
-  bool is_method_call = false;
+  bool has_ineligible_method_call = false;
+  BITSET *term_sets[3];
+  int set_index;
 
   if (plan == NULL || plan->info == NULL || plan->plan_type != QO_PLANTYPE_JOIN
       || plan->plan_un.join.join_method != QO_JOINMETHOD_HASH_JOIN)
@@ -13967,9 +14022,27 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
       return PLAN_PARALLEL_OPT_CANNOT_USE;
     }
 
-  if (!bitset_is_empty (&plan->plan_un.join.during_join_terms))
+  /* during/after join terms become the join predicates the parallel hash join workers
+   * evaluate per row, so both sets must hold only parallel-eligible method calls.
+   * The plan's sarged_terms must be checked as well: for an inner join the residual
+   * (non-equi) join terms are never classified as during/after join terms but stay in
+   * sarged_terms, and qo_init_projection_info () moves any of them whose columns both
+   * children project into the hash join proc's after_join_pred, which the workers evaluate.
+   * hash_terms are excluded on purpose: the key expressions are materialized into the
+   * child buildlist outputs and the workers read them by tuple position, so an SP there
+   * never executes on a worker (its evaluation is governed by the scan-path judge). */
+  term_sets[0] = &plan->plan_un.join.during_join_terms;
+  term_sets[1] = &plan->plan_un.join.after_join_terms;
+  term_sets[2] = &plan->sarged_terms;
+
+  for (set_index = 0; set_index < 3; set_index++)
     {
-      for (bitset_index = bitset_iterate (&plan->plan_un.join.during_join_terms, &bitset_iter); bitset_index != -1;
+      if (bitset_is_empty (term_sets[set_index]))
+	{
+	  continue;
+	}
+
+      for (bitset_index = bitset_iterate (term_sets[set_index], &bitset_iter); bitset_index != -1;
 	   bitset_index = bitset_next_member (&bitset_iter))
 	{
 	  term = QO_ENV_TERM (env, bitset_index);
@@ -13981,12 +14054,19 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 	  expr = QO_TERM_PT_EXPR (term);
 	  if (expr == NULL)
 	    {
-	      return PLAN_PARALLEL_OPT_CANNOT_USE;
+	      if (set_index == 0)
+		{
+		  /* keep the historical during_join_terms behavior */
+		  return PLAN_PARALLEL_OPT_CANNOT_USE;
+		}
+	      /* a term without a parse-tree expression cannot contain a method call */
+	      continue;
 	    }
 
-	  (void) parser_walk_tree (parser, expr, pt_is_method_call_node, &is_method_call, NULL, NULL);
+	  (void) parser_walk_tree (parser, expr, qo_check_method_call_parallel_eligibility,
+				   &has_ineligible_method_call, NULL, NULL);
 
-	  if (is_method_call)
+	  if (has_ineligible_method_call)
 	    {
 	      return PLAN_PARALLEL_OPT_CANNOT_USE;
 	    }

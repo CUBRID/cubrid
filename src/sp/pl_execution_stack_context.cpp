@@ -25,6 +25,8 @@
 #include "pl_query_cursor.hpp"
 
 #include "log_impl.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"	/* thread_get_thread_entry_info () */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -39,12 +41,39 @@ namespace cubpl
   {
     m_tid = logtb_find_current_tranid (thread_p);
     m_is_running = false;
+    m_is_parallel_enabled_sp = false;
+    /* m_px_orig_thread_entry points at the query's leader thread; the leader sets it to itself
+     * while it runs a job inline, so "set and not me" is exactly "I am a px worker". */
+    m_is_px_worker = (thread_p != nullptr && thread_p->m_px_orig_thread_entry != nullptr
+		      && thread_p->m_px_orig_thread_entry != thread_p);
     m_client_header.id = sess->get_id ();
     m_java_header.id = sess->get_id ();
   }
 
+  int
+  execution_stack::reject_client_callback ()
+  {
+    /* Answer the callback ourselves with METHOD_RESPONSE_ERROR instead of going out to CAS. Java
+     * is waiting for a reply to this very request, so replying keeps the protocol in sync and the
+     * SP sees a plain SQLException; what it does with that exception is its own business. */
+    cubmem::block blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_PARALLEL_ENABLE_NO_SQL,
+				   std::string ("cannot execute SQL on the server-side connection: the stored procedure is"
+				       " declared PARALLEL_ENABLE"),
+				   ARG_FILE_LINE));
+    int error = send_data_to_java (blk);
+    blk.freemem ();
+
+    return error;
+  }
+
   execution_stack::~execution_stack ()
   {
+    /* A px stack counts its depth in a thread_local (see create_px_stack ()), so it must be
+     * destroyed on the thread that created it. It is: cubpl::executor is an automatic object
+     * (fetch.c), its constructor opens the stack and this destructor closes it in the same
+     * scope, so the stack cannot outlive the frame or cross a thread. */
+    assert (!is_px_worker_stack () || m_thread_p == thread_get_thread_entry_info ());
+
     // use local variable
     session *sess = get_session ();
     if (sess)
@@ -60,7 +89,7 @@ namespace cubpl
 	    sess->release_connection (m_connection); // release connection to session
 	  }
 
-	sess->pop_and_destroy_stack (get_id ());
+	sess->pop_and_destroy_stack (get_id (), is_px_worker_stack ());
       }
   }
 
@@ -248,10 +277,20 @@ namespace cubpl
   execution_stack::interrupt_handler ()
   {
     bool dummy_continue;
-    if (logtb_is_interrupted (m_thread_p, true, &dummy_continue))
+    bool interrupted = logtb_is_interrupted (m_thread_p, true, &dummy_continue);
+    session *sess = get_session ();
+
+    /* The tran flag is one-shot and px workers consume it (logtb_is_interrupted_tran with clear),
+     * so an SP blocked on the PL server could miss a cancel delivered while parallel jobs were
+     * draining. The session pl interrupt is non-consuming and covers that window. */
+    if (!interrupted && sess != nullptr && sess->is_interrupted ())
+      {
+	interrupted = true;
+      }
+
+    if (interrupted)
       {
 	m_connection->invalidate ();
-	session *sess = get_session ();
 	if (sess)
 	  {
 	    sess->set_local_error_for_interrupt ();

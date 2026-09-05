@@ -516,6 +516,7 @@ namespace cubschema
       {"external_language", format_varchar (64)},
       {"parameter_style", format_varchar (3)},
       {"is_deterministic", format_varchar (3)},
+      {"is_parallel_enabled", format_varchar (3)},
       {"sql_data_access", format_varchar (17)},
       {"sql_path", "string"},
       {"security_type", format_varchar (7)},

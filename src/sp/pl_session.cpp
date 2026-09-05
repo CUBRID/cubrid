@@ -95,12 +95,24 @@ namespace cubpl
     // TODO: delete other resources
   }
 
+  /* Same-thread argument nesting still exists without SQL: in SELECT f(g(x)) the inner executor
+   * is constructed before the outer one, on the one thread evaluating the row. That nesting is
+   * bounded by the query text, and the unbounded SP -> SQL -> SP route is refused outright
+   * (ER_SP_PARALLEL_ENABLE_NO_SQL), so keeping ER_SP_TOO_MANY_NESTED_CALL alive for px stacks
+   * needs a per-thread counter and no session state at all. */
+  static thread_local int tl_px_stack_depth = 0;
+
   execution_stack *
   session::create_and_push_stack (cubthread::entry *thread_p)
   {
     if (thread_p == nullptr)
       {
 	thread_p = thread_get_thread_entry_info ();
+      }
+
+    if (thread_p->m_px_orig_thread_entry != nullptr && thread_p->m_px_orig_thread_entry != thread_p)
+      {
+	return create_px_stack (thread_p);
       }
 
     std::lock_guard<std::mutex> lock (m_mutex_stack);
@@ -112,23 +124,18 @@ namespace cubpl
 	return nullptr;
       }
 
-    if (m_stack_idx == -1)
+    if (m_stack_idx == -1 && m_stack_map.empty ())
       {
-	// clear previous interrupt state
+	// nothing of this session is running: this push starts a new chain, so the previous
+	// interrupt state is stale. px executions live in m_stack_map only, so an empty ordered
+	// stack alone is not idle - clearing then would erase an interrupt the workers still owe.
 	clear_interrupt ();
       }
-    else
+    else if (m_interrupt_id != NO_ERROR)
       {
-
-	assert (m_stack_idx >= 0);
-
-	// check interrupt
-	if (m_interrupt_id != NO_ERROR)
-	  {
-	    // block creating a new stack
-	    set_local_error_for_interrupt ();
-	    return nullptr;
-	  }
+	// block creating a new stack
+	set_local_error_for_interrupt ();
+	return nullptr;
       }
 
     execution_stack *stack = new execution_stack (thread_p, this);
@@ -159,14 +166,93 @@ namespace cubpl
     return stack;
   }
 
+  execution_stack *
+  session::create_px_stack (cubthread::entry *thread_p)
+  {
+    /* A px worker's SP call is not part of a call chain. Server-side SQL is refused for it, so it
+     * cannot nest another SP through the session, and there is nothing for the ordered stack
+     * (m_exec_stack / m_stack_idx / m_cond_target_stack_at_top) to order: that stack exists to
+     * keep the SP <-> SQL nesting chain of one thread in LIFO shape. The px execution therefore
+     * only registers in m_stack_map, which is what the three pieces of bookkeeping that must see
+     * it read - is_thread_involved() (rmutex owner lookup), is_sp_running() and
+     * wait_until_pl_session_done() (session teardown must not run out from under a worker). */
+    std::lock_guard<std::mutex> lock (m_mutex_stack);
+
+    if (tl_px_stack_depth >= METHOD_MAX_RECURSION_DEPTH)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
+	return nullptr;
+      }
+
+    if (m_stack_idx == -1 && m_stack_map.empty ())
+      {
+	/* Nothing of this session is running: a leftover interrupt belongs to a previous
+	 * statement, not to this one, so it must not refuse this stack. Cancelling any query
+	 * records ER_INTERRUPTED here even when no SP is involved (TT_WORKER hook of
+	 * logtb_set_tran_index_interrupt / logtb_is_interrupted_tdes), and only stack creation
+	 * clears it - a query whose first SP call lands on a px worker would otherwise be
+	 * refused forever. Same idle rule as create_and_push_stack (); the cancel-erasing
+	 * window this opens between a worker's destroy and a sibling's create already exists
+	 * in destroy_px_stack (), and the tdes interrupt still stops such a worker upstream. */
+	clear_interrupt ();
+      }
+    else if (m_interrupt_id != NO_ERROR)
+      {
+	/* The session is busy, so the interrupt targets the statement in flight: refuse, so a
+	 * cancelled query also stops the workers that have not started yet. */
+	set_local_error_for_interrupt ();
+	return nullptr;
+      }
+
+    execution_stack *stack = new execution_stack (thread_p, this);
+    if (stack == nullptr)
+      {
+	set_interrupt (ER_OUT_OF_VIRTUAL_MEMORY);
+	return nullptr;
+      }
+
+    m_stack_map [stack->get_id ()] = stack;
+    tl_px_stack_depth++;
+
+    return stack;
+  }
+
   void
-  session::pop_and_destroy_stack (const PL_STACK_ID sid)
+  session::destroy_px_stack (const PL_STACK_ID sid)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex_stack);
+
+    m_stack_map.erase (sid);
+    tl_px_stack_depth--;
+    assert (tl_px_stack_depth >= 0);
+
+    if (m_stack_map.empty () && m_stack_idx == -1)
+      {
+	/* The session just went idle, and the interrupt is cleared by whichever path drains the
+	 * last stack - here, or the ordered pop. Doing it only there would let a stale interrupt
+	 * outlive a query whose SPs all ran on workers (the leader never pushes then), and every
+	 * later worker would be refused by the check in create_px_stack (). Clearing is safe
+	 * exactly because nothing of this session is running any more. */
+	clear_interrupt ();
+	m_cond_pl_session_done.notify_all ();
+      }
+  }
+
+  void
+  session::pop_and_destroy_stack (const PL_STACK_ID sid, bool is_px_stack)
   {
     auto target_stack_is_at_top = [&] () -> bool
     {
       // condition to check
       return m_exec_stack[m_stack_idx] == sid;
     };
+
+    if (is_px_stack)
+      {
+	// never entered the ordered stack; see create_px_stack ()
+	destroy_px_stack (sid);
+	return;
+      }
 
     std::unique_lock<std::mutex> ulock (m_mutex_stack);
 
@@ -180,14 +266,14 @@ namespace cubpl
 
     m_stack_map.erase (sid);
 
-    if (m_stack_idx == -1)
+    if (m_stack_idx == -1 && m_stack_map.empty ())
       {
 	clear_interrupt ();
 	m_cond_pl_session_done.notify_all();
       }
     else
       {
-	assert (m_stack_idx >= 0);
+	assert (m_stack_idx >= -1);
       }
   }
 
@@ -382,8 +468,9 @@ namespace cubpl
   {
     auto pl_session_is_not_running = [this] () -> bool
     {
-      // condition of finish
-      return m_stack_idx == -1; // not running
+      // condition of finish; m_stack_map, not m_stack_idx, because px executions are registered
+      // there only (see create_px_stack ())
+      return m_stack_map.empty (); // not running
     };
 
     std::unique_lock<std::mutex> ulock (m_mutex_stack);
@@ -400,7 +487,8 @@ namespace cubpl
   session::is_sp_running ()
   {
     std::lock_guard<std::mutex> lock (m_mutex_stack);
-    return m_stack_idx >= 0;
+    // px executions live in m_stack_map only (see create_px_stack ())
+    return !m_stack_map.empty ();
   }
 
   query_cursor *
@@ -554,9 +642,16 @@ namespace cubpl
   {
     std::vector<sys_param> changed_sys_params;
 
+    /* Every px worker running an SP enters here concurrently, each with its own connection, so the
+     * whole read-modify-write of the parameter state is held under one lock - the containers
+     * themselves are not thread-safe. The values are identical for all of them, and the
+     * all-required flag is only cleared by the release of a connection that already delivered
+     * them, so serializing here opens no stale window. */
+    std::lock_guard<std::mutex> lock (m_mutex_session_param);
+
     if (check_reloading_pl_context_required (conn))
       {
-	set_session_params_all_required (true);
+	set_session_params_all_required_unlocked (true);
       }
 
     if (m_session_param_changed_ids.size () == 0 && !m_all_session_params_required)
@@ -608,7 +703,7 @@ namespace cubpl
       {
 	for (auto &param : changed_sys_params)
 	  {
-	    set_session_param (param);
+	    set_session_param_unlocked (param);
 	  }
       }
 
@@ -618,17 +713,32 @@ namespace cubpl
   void
   session::mark_session_param_changed (int prm_id)
   {
+    std::lock_guard<std::mutex> lock (m_mutex_session_param);
     m_session_param_changed_ids.insert (prm_id);
   }
 
   void
   session::set_session_param (const sys_param &param)
   {
+    std::lock_guard<std::mutex> lock (m_mutex_session_param);
+    set_session_param_unlocked (param);
+  }
+
+  void
+  session::set_session_param_unlocked (const sys_param &param)
+  {
     m_session_params.insert_or_assign (param.prm_id, param);
   }
 
   void
   session::set_session_params_all_required (bool is_required)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex_session_param);
+    set_session_params_all_required_unlocked (is_required);
+  }
+
+  void
+  session::set_session_params_all_required_unlocked (bool is_required)
   {
     m_all_session_params_required = is_required;
     if (!m_all_session_params_required)

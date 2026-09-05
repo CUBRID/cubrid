@@ -106,6 +106,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // -----------------------------------------------------------------
     // Unit
     //
+    // The connection is taken before the body, outside its exception handlers; a refusal there
+    // (a PARALLEL_ENABLE routine) would otherwise reach the caller as an anonymous PROGRAM_ERROR.
     private static final String strGetConn =
             "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::\");";
 

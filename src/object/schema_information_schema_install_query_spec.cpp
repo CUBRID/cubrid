@@ -662,6 +662,8 @@ sm_define_view_routines_spec (void)
       "'SQL' AS [parameter_style], "
       /* SP_DIRECTIVE_DETERMINISTIC */
       "IF (([sp].[directive] & %d) <> 0, 'YES', 'NO') AS [is_deterministic], "
+      /* SP_DIRECTIVE_PARALLEL_ENABLE */
+      "IF (([sp].[directive] & %d) <> 0, 'YES', 'NO') AS [is_parallel_enabled], "
       "CASE [sp].[sql_data_access] "
         "WHEN %d THEN 'NO SQL' "
         "WHEN %d THEN 'CONTAINS SQL' "
@@ -701,6 +703,7 @@ sm_define_view_routines_spec (void)
     SP_LANG_JAVA,
     SP_LANG_PLCSQL, SP_LANG_JAVA,
     SP_DIRECTIVE_DETERMINISTIC,
+    SP_DIRECTIVE_PARALLEL_ENABLE,
     SP_SQL_TYPE_NO_SQL,
     SP_SQL_TYPE_CONTAINS_SQL,
     SP_SQL_TYPE_READS_SQL_DATA,
