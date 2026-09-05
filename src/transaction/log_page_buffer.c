@@ -44,6 +44,8 @@
 #include <netdb.h>
 #endif /* SOLARIS */
 
+#include <atomic>
+
 #if !defined(WINDOWS)
 #include <sys/param.h>
 #include <fcntl.h>
@@ -193,8 +195,8 @@ static int rv;
 typedef struct log_buffer LOG_BUFFER;
 struct log_buffer
 {
-  volatile LOG_PAGEID pageid;	/* Logical page of the log. (Page identifier of the infinite log) */
-  volatile LOG_PHY_PAGEID phy_pageid;	/* Physical pageid for the active log portion */
+  std::atomic < LOG_PAGEID > pageid;	/* Logical page of the log. (Page identifier of the infinite log) */
+  std::atomic < LOG_PHY_PAGEID > phy_pageid;	/* Physical pageid for the active log portion */
   bool dirty;			/* Is page dirty */
   LOG_PAGE *logpage;		/* The actual buffered log page */
 };
@@ -855,9 +857,9 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
 	  /* should not happen */
 	  assert_release (false);
 	  logpb_log ("logpb_locate_page: fatal error, victimizing dirty log page %lld.\n",
-		     (long long int) log_bufptr->pageid);
+		     (long long int) log_bufptr->pageid.load ());
 
-	  if (logpb_write_page_to_disk (thread_p, log_bufptr->logpage, log_bufptr->pageid) != NO_ERROR)
+	  if (logpb_write_page_to_disk (thread_p, log_bufptr->logpage, log_bufptr->pageid.load ()) != NO_ERROR)
 	    {
 	      assert_release (false);
 	      return NULL;
@@ -934,13 +936,13 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   bufptr = logpb_get_log_buffer (log_pgptr);
   if (!bufptr->dirty)
     {
-      logpb_log ("dirty flag set for pageid = %lld\n", (long long int) bufptr->pageid);
+      logpb_log ("dirty flag set for pageid = %lld\n", (long long int) bufptr->pageid.load ());
     }
 #if defined(CUBRID_DEBUG)
   if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
       && (bufptr->pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID || bufptr->pageid > LOGPB_LAST_ACTIVE_PAGE_ID))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSHING_UNUPDATABLE, 1, bufptr->pageid);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSHING_UNUPDATABLE, 1, bufptr->pageid.load ());
     }
 #endif /* CUBRID_DEBUG */
 
@@ -1055,19 +1057,19 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  logpb_log ("called logpb_flush_page for pageid = %lld\n", (long long int) bufptr->pageid);
+  logpb_log ("called logpb_flush_page for pageid = %lld\n", (long long int) bufptr->pageid.load ());
 
 #if defined(CUBRID_DEBUG)
   if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
       && (bufptr->pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID || bufptr->pageid > LOGPB_LAST_ACTIVE_PAGE_ID))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSHING_UNUPDATABLE, 1, bufptr->pageid);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSHING_UNUPDATABLE, 1, bufptr->pageid.load ());
       return ER_LOG_FLUSHING_UNUPDATABLE;
     }
   if (bufptr->phy_pageid == NULL_PAGEID || bufptr->phy_pageid != logpb_to_physical_pageid (bufptr->pageid))
     {
       /* Bad physical log page for such logical page */
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, bufptr->pageid);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, bufptr->pageid.load ());
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_flush_page");
       return ER_LOG_PAGE_CORRUPTED;
     }
@@ -1085,7 +1087,7 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
        * of forcing the page to disk without doing fync
        */
 
-      if (logpb_write_page_to_disk (thread_p, log_pgptr, bufptr->pageid) != NO_ERROR)
+      if (logpb_write_page_to_disk (thread_p, log_pgptr, bufptr->pageid.load ()) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1227,7 +1229,7 @@ logpb_dump_to_flush_page (FILE * out_fp)
 	      fprintf (out_fp, ",");
 	    }
 	}
-      fprintf (out_fp, " %4lld", (long long int) log_bufptr->pageid);
+      fprintf (out_fp, " %4lld", (long long int) log_bufptr->pageid.load ());
     }
 
   fprintf (out_fp, "\n");
@@ -1257,7 +1259,7 @@ logpb_dump_pages (FILE * out_fp)
       else
 	{
 	  fprintf (out_fp, "%3d %10lld %10d %3d %p %p-%p %4s %5lld %5d\n",
-		   i, (long long) log_bufptr->pageid, log_bufptr->phy_pageid, log_bufptr->dirty,
+		   i, (long long) log_bufptr->pageid.load (), log_bufptr->phy_pageid.load (), log_bufptr->dirty,
 		   (void *) log_bufptr, (void *) (log_bufptr->logpage),
 		   (void *) (&log_bufptr->logpage->area[LOGAREA_SIZE - 1]), "",
 		   (long long) log_bufptr->logpage->hdr.logical_pageid, log_bufptr->logpage->hdr.offset);
@@ -2800,7 +2802,7 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
       phy_pageid = bufptr->phy_pageid;
 
       logpb_log ("logpb_writev_append_pages: started with pageid = %lld and phy_pageid = %lld\n",
-		 (long long int) bufptr->pageid, (long long int) phy_pageid);
+		 (long long int) bufptr->pageid.load (), (long long int) phy_pageid);
 
       for (i = 0; i < npages; i++)
 	{
@@ -2838,12 +2840,12 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
 	    {
 	      if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
 		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, bufptr->pageid,
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, bufptr->pageid.load (),
 			  phy_pageid, log_Name_active, log_Gl.hdr.db_logpagesize);
 		}
 	      else
 		{
-		  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, bufptr->pageid,
+		  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, bufptr->pageid.load (),
 				       phy_pageid, log_Name_active);
 		}
 	      to_flush = NULL;
@@ -3562,7 +3564,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	      /* found dirty */
 	      break;
 	    }
-	  logpb_log ("logpb_flush_all_append_pages: skip flushing not dirty page %lld.\n", bufptr->pageid);
+	  logpb_log ("logpb_flush_all_append_pages: skip flushing not dirty page %lld.\n", bufptr->pageid.load ());
 	}
       if (i == flush_info->num_toflush)
 	{
@@ -3660,7 +3662,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	  logpb_log ("logpb_flush_all_append_pages: fatal error, nxio_lsa %lld|%d page not found in buffer. "
 		     "bufptr->pageid is %lld instead.\n",
-		     (long long int) nxio_lsa.pageid, (int) nxio_lsa.offset, (long long int) bufptr->pageid);
+		     (long long int) nxio_lsa.pageid, (int) nxio_lsa.offset, (long long int) bufptr->pageid.load ());
 
 	  error_code = ER_FAILED;
 	  goto error;
@@ -3678,7 +3680,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      logpb_write_page_to_disk (thread_p, bufptr->logpage, bufptr->pageid);
+      logpb_write_page_to_disk (thread_p, bufptr->logpage, bufptr->pageid.load ());
       need_sync = true;
       bufptr->dirty = false;
       flush_page_count += 1;
