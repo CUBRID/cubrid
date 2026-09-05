@@ -34,7 +34,7 @@
 #include "session.h"
 
 #include "boot_sr.h"
-#include "jansson.h"
+#include "json_builder.h"
 #include "critical_section.h"
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -2905,7 +2905,7 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
   char *trace_str = NULL;
   size_t sizeloc;
   FILE *fp;
-  json_t *plan, *xasl, *stats;
+  trace_json_t *plan, *xasl, *stats;
   DB_VALUE temp_result;
 
   state_p = session_get_session_state (thread_p);
@@ -2940,30 +2940,29 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
     }
   else if (state_p->trace_format == QUERY_TRACE_JSON)
     {
-      stats = json_object ();
+      stats = trace_json_object ();
 
       if (state_p->plan_string != NULL)
 	{
-	  plan = json_loads (state_p->plan_string, 0, NULL);
+	  plan = trace_json_loads (state_p->plan_string);
 	  if (plan != NULL)
 	    {
-	      json_object_set_new (stats, "Query Plan", plan);
+	      trace_json_object_set_new (stats, "Query Plan", plan);
 	    }
 	}
 
       if (state_p->trace_stats != NULL)
 	{
-	  xasl = json_loads (state_p->trace_stats, 0, NULL);
+	  xasl = trace_json_loads (state_p->trace_stats);
 	  if (xasl != NULL)
 	    {
-	      json_object_set_new (stats, "Trace Statistics", xasl);
+	      trace_json_object_set_new (stats, "Trace Statistics", xasl);
 	    }
 	}
 
-      trace_str = json_dumps (stats, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
+      trace_str = trace_json_dumps (stats);
 
-      json_object_clear (stats);
-      json_decref (stats);
+      trace_json_decref (stats);
     }
 
   if (trace_str != NULL)
@@ -3258,6 +3257,16 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
       return ER_FAILED;
     }
 
+  /* The session state can outlive its load session: connection teardown (see
+   * session_destroy_load_session) frees the load session while the state is still
+   * reachable. Report an error here so sloaddb_* handlers take the error path
+   * instead of dereferencing a NULL load session. */
+  if (state_p->load_session_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INVALID_STATE, 0);
+      return ER_LDR_INVALID_STATE;
+    }
+
   load_session_ref_ptr = state_p->load_session_p;
 
   return NO_ERROR;
@@ -3308,26 +3317,26 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
 }
 
 /*
- * session_stop_attached_threads - stops extra attached threads (not connection worker thread)
- *                                 associated with the session
+ * session_interrupt_attached_threads - interrupt extra attached threads (not connection worker
+ *                                      thread) associated with the session, without freeing the
+ *                                      load session
  *
  */
 void
-session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
+session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
 
   assert (session != NULL);
 
-  // on uninit abort and delete loaddb session
+  /* Interrupt only; keep the load session object alive so that in-flight requests
+   * still holding a reference (via session_get_load_session) do not access freed
+   * memory. The object is freed later by session_destroy_load_session, once the
+   * connection workers have drained. */
   if (session->load_session_p != NULL)
     {
       session->load_session_p->interrupt ();
-      session->load_session_p->wait_for_completion ();
-
-      delete session->load_session_p;
-      session->load_session_p = NULL;
     }
 
   if (session->pl_session_p)
@@ -3338,6 +3347,40 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 	  session->pl_session_p->wait_until_pl_session_done ();
 	}
     }
+#endif
+}
 
+void
+session_destroy_load_session (THREAD_ENTRY * thread_p, void *session_arg)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *session = (SESSION_STATE *) session_arg;
+
+  assert (session != NULL);
+
+  /* Must be called only after the connection workers have drained, otherwise an
+   * in-flight sloaddb_* request may still be using the load session. */
+  if (session->load_session_p != NULL)
+    {
+      session->load_session_p->wait_for_completion ();
+
+      delete session->load_session_p;
+      session->load_session_p = NULL;
+    }
+#endif
+}
+
+void
+session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *session = (SESSION_STATE *) session_arg;
+
+  assert (session != NULL);
+
+  /* Session-state uninit path: no concurrent worker can reach this session, so
+   * interrupt and destroy in one shot. */
+  session_interrupt_attached_threads (thread_p, session);
+  session_destroy_load_session (thread_p, session);
 #endif
 }

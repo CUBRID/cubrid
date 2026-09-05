@@ -110,6 +110,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/chartype.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/intl_support.c
+  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/string_buffer.cpp
@@ -313,6 +314,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
+  ${QUERY_DIR}/like_match_lockstep.i
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
   ${QUERY_DIR}/query_hash_join.h
@@ -401,10 +403,12 @@ set(SP_HEADERS
 
 set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_checker.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.cpp
   )
 
 set(PARALLEL_SCAN_HEADERS
   ${PARALLEL_SCAN_DIR}/px_scan_checker.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -505,6 +509,7 @@ set(TRANSACTION_HEADERS
   )
 
 set(STORAGE_SOURCES
+  ${STORAGE_DIR}/bestspace.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
@@ -530,11 +535,13 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/statistics_cl.c
   ${STORAGE_DIR}/statistics_sr.c
+  ${STORAGE_DIR}/statistics_ndv.c
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
   )
 set(STORAGE_HEADERS
+  ${STORAGE_DIR}/bestspace.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/ftab_set.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
@@ -569,11 +576,16 @@ set(HISTOGRAM_SOURCES
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_sampler_sr.cpp
 )
 set(HISTOGRAM_HEADERS
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_bucketizer.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_sampler_sr.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/reservoir_sampler.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/hyperloglog.hpp
 )
 
 set(LOADDB_SOURCES
@@ -615,6 +627,7 @@ set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED tr
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
 if(UNIX)
+  set_source_files_properties(${BASE_DIR}/json_builder.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -773,6 +786,13 @@ target_link_libraries(cubridsa
     rt
     cascci
   )
+
+if(UNIX)
+  target_include_directories(cubridsa PUBLIC ${TBB_INCLUDES})
+  target_link_libraries(cubridsa PRIVATE ${TBB_LIBS})
+  target_link_options(cubridsa PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
+  add_dependencies(cubridsa ${TBB_TARGETS})
+endif(UNIX)
 
 add_dependencies(cubridsa
   gen_csql_grammar

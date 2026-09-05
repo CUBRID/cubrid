@@ -133,12 +133,8 @@ connection_less::css_queue_connection (CSS_CONN_ENTRY *conn, const char *host)
   map_entry_p = (CSS_MAP_ENTRY *) malloc (sizeof (CSS_MAP_ENTRY));
   if (map_entry_p != NULL)
     {
-      map_entry_p->key = (char *) malloc (strlen (host) + 1);
-      if (map_entry_p->key != NULL)
-	{
-	  strcpy (map_entry_p->key, host);
-	}
-      else
+      map_entry_p->key = strdup (host);
+      if (map_entry_p->key == NULL)
 	{
 	  free (map_entry_p);
 	  return (NULL);

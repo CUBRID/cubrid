@@ -752,6 +752,12 @@ struct qo_term
 #define QO_TERM_MULTI_COLL_PRED     64	/* multi column && in OP, (a,b) in .. */
 #define QO_TERM_MULTI_COLL_CONST    128	/* multi column && have constant value, (a,1) in .. */
 #define QO_TERM_OR_PRED             256	/* or predicate. e.g.) a=1 or b=2 */
+#define QO_TERM_IMPLIED             512	/* join term implied by transitive closure, not from a user predicate */
+#define QO_TERM_SEL_FROM_HISTOGRAM  1024	/* selectivity computed from histograms only */
+#define QO_TERM_LIKE_DERIVED_RANGE  2048	/* range term derived from a prefix LIKE */
+#define QO_TERM_LIKE_HAS_DERIVED_RANGE 4096	/* the prefix LIKE a range was derived from */
+#define QO_TERM_OR_DERIVED          8192	/* single-spec restriction derived from a multi-spec OR factor */
+#define QO_TERM_OR_DERIVED_EXPENSIVE 16384	/* OR-derived restriction too costly to keep as a plain data filter */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -882,6 +888,13 @@ struct qo_env
   BITSET *tmp_bitset;
 
   /*
+   * Scratch buffer of implied-join pairs owned by qo_generate_implied_join_terms().
+   * Held here only so qo_env_free() can release it if qo_add_term() longjmps out via qo_abort().
+   * (void * because QO_IMPLIED_JOIN_PAIR is private to query_graph.c.)
+   */
+  void *implied_pairs;
+
+  /*
    * The final plan produced by the optimizer.
    */
   QO_PLAN *final_plan;
@@ -959,6 +972,10 @@ struct qo_env
    * large, this is set to true.
    */
   bool multi_range_opt_candidate;
+
+  /* histogram provenance scratch for the term whose selectivity is being computed */
+  bool sel_hist_used;
+  bool sel_hist_fallback;
 };
 
 #define QO_ENV_SEG(env, n)		(&(env)->segs[(n)])

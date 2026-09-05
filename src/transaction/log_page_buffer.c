@@ -5518,10 +5518,10 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 		}
 	      else
 		{
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+		  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_LOGARCHIVE_NEEDED),
 			   arv_name);
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+		  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 
 		  if (fgets (line_buf, PATH_MAX, stdin) == NULL)
 		    {
@@ -5552,7 +5552,8 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 		  break;
 
 		case 3:	/* Relocate */
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_NEWLOCATION));
+		  fprintf (stdout, "%s",
+			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_NEWLOCATION));
 		  if (fgets (line_buf, PATH_MAX, stdin) == 0 || (sscanf (line_buf, format_string, arv_name) != 1))
 		    {
 		      fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, *ret_arv_num);
@@ -6030,6 +6031,19 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   LOG_CS_ENTER (thread_p);
 
+  if (cdc_find_lsa_in_progress () > 0)
+    {
+      /* A cdc_find_lsa() (flashback verify or CDC find) is mounting archives one by one; defer
+       * removal this cycle so an archive it is about to read is not deleted underneath it and
+       * trips assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file().
+       * Kept outside the PRM_ID_SUPPLEMENTAL_LOG block below on purpose: cdc_find_lsa() bumps the
+       * counter regardless of supplemental_log, and the flashback path (flashback_verify_time) has
+       * no supplemental_log gate, so a scan can be in flight even when supplemental_log = 0 -- a
+       * cycle that would otherwise skip cdc/flashback retention and delete the archive being read. */
+      LOG_CS_EXIT (thread_p);
+      return 0;
+    }
+
   if (!prm_get_bool_value (PRM_ID_FORCE_REMOVE_LOG_ARCHIVES))
     {
 #if defined(SERVER_MODE)
@@ -6129,7 +6143,6 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
 	      _er_log_debug (ARG_FILE_LINE, "First log pageid for flashback is %lld", flashback_first_pageid);
 
-	      /* NULL check for flashback_first_pageid is done in flashback_is_needed_to_keep_archive () */
 	      if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
 		{
 		  min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
@@ -6238,6 +6251,18 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
+  if (cdc_find_lsa_in_progress () > 0)
+    {
+      /* A cdc_find_lsa() (flashback verify or CDC find) is mounting archives one by one; defer
+       * removal this cycle so an archive it is about to read is not deleted underneath it and
+       * trips assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file().
+       * Kept outside the PRM_ID_SUPPLEMENTAL_LOG block below on purpose: cdc_find_lsa() bumps the
+       * counter regardless of supplemental_log, and the flashback path (flashback_verify_time) has
+       * no supplemental_log gate, so a scan can be in flight even when supplemental_log = 0 -- a
+       * cycle that would otherwise skip cdc/flashback retention and delete the archive being read. */
+      return;
+    }
+
   /* Close any log archives that are opened */
   if (log_Gl.archive.vdes != NULL_VOLDES)
     {
@@ -6303,7 +6328,6 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
       /* flashback */
       if (flashback_is_needed_to_keep_archive ())
 	{
-
 	  flashback_first_pageid = flashback_min_log_pageid_to_keep ();
 
 	  if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
@@ -7051,6 +7075,21 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       logpb_checkpoint_trans (chkpt_trans, act_tdes, ntrans, ntops, smallest_lsa);
     }
 
+  /* System worker transactions (e.g. online index loaders) must also hold
+   * smallest_lsa: recovery undo processes them too, so the log archive
+   * retention boundary derived from it may not skip their in-flight log.
+   */
+  // *INDENT-OFF*
+  log_system_tdes::map_all_tdes ([&smallest_lsa] (log_tdes & sys_tdes)
+    {
+      if (!LSA_ISNULL (&sys_tdes.head_lsa)
+	  && (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &sys_tdes.head_lsa)))
+	{
+	  LSA_COPY (&smallest_lsa, &sys_tdes.head_lsa);
+	}
+    });
+  // *INDENT-ON*
+
   /*
    * Reset the structure to the correct number of transactions and
    * recalculate the length
@@ -7546,7 +7585,6 @@ logpb_create_backup_read_worker_pool (size_t thread_count)
 
   g_backup_read_worker_pool =
     thread_create_worker_pool (thread_count, core_count, "backup-read", thread_get_entry_manager (), true);
-  // m_log = false
 }
 
 void
@@ -7560,6 +7598,112 @@ logpb_destroy_backup_read_worker_pool ()
 {
   thread_get_manager ()->destroy_worker_pool (g_backup_read_worker_pool);
 }
+
+#if defined (SERVER_MODE)
+/*
+ * logpb_backup_ensure_fresh_checkpoint - Force a checkpoint that completes strictly after entry, before an
+ *                                        online FULL backup proceeds
+ *
+ * return: NO_ERROR if a fresh checkpoint completed, ER status otherwise
+ *
+ *   session(in): the backup session (for verbose output only)
+ *
+ * NOTE: A no-logging (no-redo) index build appends a replay-barrier record, and media recovery refuses to
+ *   replay past it.  An online full backup is self-consistent only when the checkpoint it starts from lies
+ *   after every such barrier.  Forcing a fresh checkpoint here establishes the invariant R >= T > B
+ *   (R: log_Gl.chkpt_redo_lsa of the completed checkpoint, T: append LSA captured at entry, B: any barrier
+ *   appended before the backup started), without tracking barrier LSAs and without changing any backup or
+ *   log header format.
+ *
+ *   logpb_checkpoint () returns NULL_PAGEID both when another checkpoint is already running and on failure,
+ *   so success is judged only by R reaching T.  A checkpoint that was already in progress at entry is waited
+ *   out but never counted as fresh (its redo LSA may predate T).  If R never reaches T within the bounded
+ *   attempts, the backup fails -- the caller has not yet deleted any previous backup volume at this point.
+ */
+static int
+logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session)
+{
+  LOG_LSA target_lsa;		/* T: append LSA at entry */
+  LOG_LSA redo_lsa;		/* R: redo LSA of the last completed checkpoint */
+  const int max_attempts = 3;
+  int attempt;
+  int rv;
+  bool continue_check;
+  bool save_check_interrupt;
+
+  LOG_CS_ENTER (thread_p);
+  LSA_COPY (&target_lsa, &log_Gl.hdr.append_lsa);
+  LOG_CS_EXIT (thread_p);
+
+  if (session->verbose_fp != NULL)
+    {
+      /* Keep the pre-existing wait message: tools and testcases grep this exact phrase, and it stays true --
+       * the backup starts only after the forced checkpoint completes. */
+      fprintf (session->verbose_fp, "[ Database backup will start after checkpointing is complete. ]\n\n");
+    }
+
+  for (attempt = 0; attempt < max_attempts; attempt++)
+    {
+      /* wait out any in-progress checkpoint; it may have started before T and is never counted as fresh */
+      while (true)
+	{
+	  LOG_CS_ENTER (thread_p);
+	  if (log_Gl.run_nxchkpt_atpageid != NULL_PAGEID)
+	    {
+	      LOG_CS_EXIT (thread_p);
+	      break;
+	    }
+	  LOG_CS_EXIT (thread_p);
+
+	  if (logtb_get_check_interrupt (thread_p) == true
+	      && logtb_is_interrupted (thread_p, true, &continue_check) == true)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      return ER_INTERRUPTED;
+	    }
+	  thread_sleep (1000);	/* 1000 msec, same cadence as the checkpoint wait in logpb_backup () */
+	}
+
+      /* any checkpoint that completed after T -- ours or the daemon's -- satisfies the invariant */
+      rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
+      LSA_COPY (&redo_lsa, &log_Gl.chkpt_redo_lsa);
+      pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
+      if (LSA_GE (&redo_lsa, &target_lsa))
+	{
+	  return NO_ERROR;
+	}
+
+      /* NULL_PAGEID means either the daemon won the race (the next attempt observes its result) or the
+       * checkpoint failed (R stays below T and the bounded attempts run out). */
+      /* interrupts off like every other caller: an interrupt wake inside the pgbuf FLUSH wait aborts the flush */
+      save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
+      (void) logpb_checkpoint (thread_p);
+      (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
+
+      rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
+      LSA_COPY (&redo_lsa, &log_Gl.chkpt_redo_lsa);
+      pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
+      if (LSA_GE (&redo_lsa, &target_lsa))
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  /* leave the R/T LSAs behind so a non-convergence (pages that never flush) can be diagnosed */
+  _er_log_debug (ARG_FILE_LINE,
+		 "logpb_backup_ensure_fresh_checkpoint: no fresh checkpoint after %d attempts; "
+		 "chkpt_redo_lsa (%lld|%d) is still below the target append LSA (%lld|%d)\n",
+		 max_attempts, LSA_AS_ARGS (&redo_lsa), LSA_AS_ARGS (&target_lsa));
+  if (session->verbose_fp != NULL)
+    {
+      fprintf (session->verbose_fp,
+	       "[ Backup failed: no fresh checkpoint completed; redo LSA (%lld|%d) < target LSA (%lld|%d). ]\n\n",
+	       LSA_AS_ARGS (&redo_lsa), LSA_AS_ARGS (&target_lsa));
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DBBACKUP_FAIL, 1, log_Gl.hdr.prefix_name);
+  return ER_LOG_DBBACKUP_FAIL;
+}
+#endif /* SERVER_MODE */
 
 /*
  * logpb_backup - Execute a level backup for the given database volume
@@ -7693,6 +7837,18 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
       assert (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       goto error;
+    }
+
+  if (backup_level != FILEIO_BACKUP_BIG_INCREMENT_LEVEL && backup_level != FILEIO_BACKUP_SMALL_INCREMENT_LEVEL)
+    {
+      /* Online FULL backup: force a fresh checkpoint so that the checkpoint this backup starts from
+       * postdates any no-logging index build replay barrier already in the log.  Runs strictly before
+       * any previous backup volume is deleted below, so a failure here loses nothing. */
+      error_code = logpb_backup_ensure_fresh_checkpoint (thread_p, &session);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   print_backupdb_waiting_reason = false;
@@ -8078,6 +8234,9 @@ loop:
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_ENTER, 1, log_Name_active);
 
   LOG_CS_ENTER (thread_p);
+
+  /* Flush before selecting archive logs. This may create a new archive and advance nxarv_num. */
+  logpb_flush_pages_direct (thread_p);
 
 #if defined(SERVER_MODE)
   /*
@@ -10792,9 +10951,9 @@ logpb_remote_ask_user_before_delete_volumes (THREAD_ENTRY * thread_p, const char
   char user_response[FILEIO_MAX_USER_RESPONSE_SIZE];
   bool r;
 
-  if (asprintf (&ptr1, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS)) < 0
+  if (asprintf (&ptr1, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS)) < 0
       || asprintf (&ptr2, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_DELETE_BKVOLS), volpath) < 0
-      || asprintf (&ptr3, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_ENTER_Y2_CONFIRM)) < 0
+      || asprintf (&ptr3, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_ENTER_Y2_CONFIRM)) < 0
       || asprintf (&fullmsg, "%s%s%s%s", ptr1, ptr2, ptr3, ptr1) < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);

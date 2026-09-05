@@ -184,15 +184,17 @@ set(BUILD_NUMBER ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_
 set(BUILD_OS ${CMAKE_SYSTEM_NAME})
 
 # BUILD_TYPE
-if(CMAKE_BUILD_TYPE MATCHES "Debug")
+if(CMAKE_BUILD_TYPE MATCHES "OptDebug")
+  set(BUILD_TYPE "optdebug")
+elseif(CMAKE_BUILD_TYPE MATCHES "Debug")
   set(BUILD_TYPE "debug")
 elseif(CMAKE_BUILD_TYPE MATCHES "Coverage|Profile")
   string(TOLOWER "${CMAKE_BUILD_TYPE} debug" BUILD_TYPE)
 elseif(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
   set(BUILD_TYPE "release")
-else(CMAKE_BUILD_TYPE MATCHES "Debug")
+else()
   set(BUILD_TYPE "unknown")
-endif(CMAKE_BUILD_TYPE MATCHES "Debug")
+endif()
 
 if(MSVC)
   configure_file(cmake/version.rc.cmake version.rc)
@@ -215,7 +217,7 @@ if(UNIX)
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
 
     # C flags for both debug and release build
-    set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer")
+    set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer -fPIE")
     # C++ flags for both debug and release build
     set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17")
 
@@ -229,12 +231,19 @@ if(UNIX)
     # C++ flags for release build
     set(CMAKE_CXX_RELEASE_FLAGS "-O2 -DNDEBUG -finline-functions ${CMAKE_CXX_COMMON_FLAGS}")
 
+    # C flags for optdebug build (release-level optimization, asserts enabled)
+    set(CMAKE_C_OPTDEBUG_FLAGS "-O2 -finline-functions -ggdb3 -Wall -fstack-protector-strong -DCUBRID_OPTDEBUG ${CMAKE_C_COMMON_FLAGS}")
+    # C++ flags for optdebug build (release-level optimization, asserts enabled)
+    set(CMAKE_CXX_OPTDEBUG_FLAGS "-O2 -finline-functions -ggdb3 -Wall -DCUBRID_OPTDEBUG ${CMAKE_CXX_COMMON_FLAGS}")
+
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_DEBUG_FLAGS}")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_DEBUG_FLAGS}")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_C_RELEASE_FLAGS}")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${CMAKE_CXX_RELEASE_FLAGS}")
     set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} ${CMAKE_C_RELEASE_FLAGS}")
     set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} ${CMAKE_CXX_RELEASE_FLAGS}")
+    set(CMAKE_C_FLAGS_OPTDEBUG "${CMAKE_C_FLAGS_OPTDEBUG} ${CMAKE_C_OPTDEBUG_FLAGS}")
+    set(CMAKE_CXX_FLAGS_OPTDEBUG "${CMAKE_CXX_FLAGS_OPTDEBUG} ${CMAKE_CXX_OPTDEBUG_FLAGS}")
 
     if(WITH_SOURCES)
       set(DEBUG_PREFIX_MAP_FLAG "-fdebug-prefix-map=${CMAKE_SOURCE_DIR}/src=${CMAKE_INSTALL_PREFIX}/src")
@@ -245,12 +254,9 @@ if(UNIX)
       set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${DEBUG_PREFIX_MAP_FLAG}")
       set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} ${DEBUG_PREFIX_MAP_FLAG}")
       set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_C_FLAGS_OPTDEBUG "${CMAKE_C_FLAGS_OPTDEBUG} ${DEBUG_PREFIX_MAP_FLAG}")
+      set(CMAKE_CXX_FLAGS_OPTDEBUG "${CMAKE_CXX_FLAGS_OPTDEBUG} ${DEBUG_PREFIX_MAP_FLAG}")
     endif(WITH_SOURCES)
-
-    # set has-style
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
-    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
 
   elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   else()
@@ -352,9 +358,9 @@ add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
 
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
-  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++17 -D_GCOV"
+  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++17 -D_GCOV -fPIE"
     CACHE STRING "Flags used by the c++ compiler during coverage build." FORCE)
-  set(CMAKE_C_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -D_GCOV"
+  set(CMAKE_C_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -D_GCOV -fPIE"
     CACHE STRING "Flags used by the c compiler during coverage build." FORCE)
   set(CMAKE_EXE_LINKER_FLAGS_COVERAGE "-static-libstdc++"
     CACHE STRING "Flags used for linking binaries during coverage build." FORCE)
@@ -369,9 +375,9 @@ if(CMAKE_BUILD_TYPE MATCHES "Coverage")
 endif(CMAKE_BUILD_TYPE MATCHES "Coverage")
 
 if(CMAKE_BUILD_TYPE MATCHES "Profile")
-  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg -std=c++17"
+  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg -std=c++17 -fPIE"
     CACHE STRING "Flags used by the c++ compiler during profile build." FORCE)
-  set(CMAKE_C_FLAGS_PROFILE "-g -pg"
+  set(CMAKE_C_FLAGS_PROFILE "-g -pg -fPIE"
     CACHE STRING "Flags used by the c compiler during profile build." FORCE)
 
   mark_as_advanced(CMAKE_CXX_FLAGS_PROFILE CMAKE_C_FLAGS_PROFILE)
@@ -603,12 +609,12 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   if(SUPPORT_XA)
     add_definitions(-DCCI_XA)
   endif(SUPPORT_XA)
-  if(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")  
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wwrite-strings  -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-parameter -pthread")
+  if(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings  -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
   else()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-format-security -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security -pthread")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
   endif()
  
   if(SIZEOF_OFF64_T)
@@ -621,6 +627,18 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
     #set(CMAKE_C_FLAGS "-m32 ${CMAKE_C_FLAGS}")
     #set(CMAKE_CXX_FLAGS "-m32 ${CMAKE_CXX_FLAGS}")
   endif()
+
+  # set hash-style and security hardening linker flags (placed after cmake check_* calls
+  # so that check_type_size/check_include_file test binaries are not linked with -pie,
+  # which would fail because the test objects are not compiled with -fPIC/-fPIE)
+  # These are GNU ld specific flags; guard with CMAKE_COMPILER_IS_GNUCC to avoid
+  # linker errors when building with Clang + lld on Linux.
+  if(CMAKE_COMPILER_IS_GNUCC)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both -Wl,-z,relro,-z,now -pie -static-libstdc++")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both -Wl,-z,relro,-z,now -static-libstdc++")
+    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both -Wl,-z,relro,-z,now -static-libstdc++")
+  endif(CMAKE_COMPILER_IS_GNUCC)
+
 elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
   # Definitions for system
   add_definitions(-DGCC -DAIX -D_GNU_SOURCE -DPPC -fsigned-char -D_THREAD_SAFE)
@@ -792,55 +810,9 @@ if(WIN32)
 endif(WIN32)
 
 # for cmserver
-if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
-  include(ExternalProject)
-  set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/3rdparty")
-  get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
-  get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
-  get_target_property(CMSTAT_PUBLIC_HEADERS cmstat PUBLIC_HEADER)
-  list(APPEND CMS_CONFIGURE_OPTS --enable-64bit)
-  add_custom_target(pre_cubridmanager)
-  if(UNIX)
-    set(CMS_DEPENDS cubridcs cascci cmstat cmdep)
-    externalproject_add(cubridmanager
-      LOG_CONFIGURE        TRUE
-      LOG_BUILD            TRUE
-      DEPENDS pre_cubridmanager ${CMS_DEPENDS}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cubridmanager/server
-      CONFIGURE_COMMAND sh <SOURCE_DIR>/autogen.sh
-      COMMAND sh <SOURCE_DIR>/configure --prefix=<INSTALL_DIR> --with-cubrid-libdir=<TMP_DIR> --with-cubrid-includedir=<TMP_DIR> ${CMS_CONFIGURE_OPTS}
-      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-  else(UNIX)
-    set(CMS_DEPENDS cascci cmstat cmdep)
-    externalproject_add(cubridmanager
-      DEPENDS pre_cubridmanager ${CMS_DEPENDS}
-      LOG_CONFIGURE        TRUE
-      LOG_BUILD            TRUE
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cubridmanager/server
-      CONFIGURE_COMMAND ""
-      BUILD_COMMAND cmd /c build.bat --prefix <INSTALL_DIR> --with-cubrid-libdir <TMP_DIR> --with-cubrid-includedir <TMP_DIR> ${CMS_CONFIGURE_OPTS}
-      INSTALL_COMMAND ""
-      BUILD_IN_SOURCE 1
-      )
-  endif(UNIX)
-  externalproject_get_property(cubridmanager TMP_DIR)
-  foreach(required_target ${CMS_DEPENDS})
-    add_custom_command(TARGET pre_cubridmanager PRE_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_LINKER_FILE:${required_target}> ${TMP_DIR})
-  endforeach(required_target)
-  foreach(required_header ${CCI_PUBLIC_HEADERS} ${CMDEP_PUBLIC_HEADERS} ${CMSTAT_PUBLIC_HEADERS})
-    add_custom_command(TARGET pre_cubridmanager PRE_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${required_header} ${TMP_DIR})
-  endforeach(required_header)
-
-  externalproject_get_property(cubridmanager INSTALL_DIR)
-  install(DIRECTORY ${INSTALL_DIR}/
-    DESTINATION ${CUBRID_PREFIXDIR} COMPONENT Manager
-    USE_SOURCE_PERMISSIONS)
-endif(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
-
+if(WITH_CCI AND WITH_CMSERVER AND UNIX AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server/CMakeLists.txt)
+  add_subdirectory(cubridmanager/server)
+endif()
 # create empty directories
 install(DIRECTORY DESTINATION ${CUBRID_3RDPARYDIR})
 install(DIRECTORY DESTINATION ${CUBRID_LOGDIR})
@@ -869,6 +841,11 @@ install(FILES
   ${CMAKE_SOURCE_DIR}/contrib/readme/README_TMP.txt
   DESTINATION ${CUBRID_TMPDIR}
   RENAME README.txt)
+
+if(CMAKE_BUILD_TYPE MATCHES "OptDebug")
+  file(WRITE "${CMAKE_BINARY_DIR}/build_mode.txt" "build_mode=optdebug\n")
+  install(FILES "${CMAKE_BINARY_DIR}/build_mode.txt" DESTINATION ${CUBRID_PREFIXDIR})
+endif()
 
 if(WITH_SOURCES)
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/ DESTINATION ${CUBRID_SRCDIR})
@@ -913,9 +890,9 @@ elseif(CMAKE_BUILD_TYPE MATCHES "Coverage")
   set(CUBRID_PACKAGE_FILE_SUFFIX "-coverage")
 elseif(CMAKE_BUILD_TYPE MATCHES "Profile")
   set(CUBRID_PACKAGE_FILE_SUFFIX "-profile")
-else(CMAKE_BUILD_TYPE MATCHES "Debug")
+else()
   set(CUBRID_PACKAGE_FILE_SUFFIX "")
-endif(CMAKE_BUILD_TYPE MATCHES "Debug")
+endif()
 if(WIN32)
   set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CMAKE_SYSTEM_NAME}-x64-${CUBRID_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")
   set(CCI_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CMAKE_SYSTEM_NAME}-x64-${CCI_VERSION}${CUBRID_PACKAGE_FILE_SUFFIX}")

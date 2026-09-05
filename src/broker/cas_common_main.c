@@ -62,6 +62,7 @@
 #include "broker_acl.h"
 #include "cas_ssl.h"
 #include "broker_util.h"
+#include "query_replace.h"
 
 #if !defined(WINDOWS)
 #include "broker_recv_fd.h"
@@ -552,6 +553,7 @@ cas_final (void)
 {
   signal (SIGTERM, SIG_IGN);
   signal (SIGINT, SIG_IGN);
+  qr_final ();
   cas_free (false);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;

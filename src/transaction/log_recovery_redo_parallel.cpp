@@ -661,7 +661,6 @@ namespace cublog
 
     m_worker_pool = thread_create_worker_pool (a_task_count, a_task_count, "recovery-redo",
 		    *m_pool_entry_manager.get ());
-    // m_log = false
   }
 
   void

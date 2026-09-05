@@ -1124,7 +1124,7 @@ disk_set_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, const HFID * hfid)
   vhdr = (DISK_VOLUME_HEADER *) addr.pgptr;
 
   log_append_undoredo_data (thread_p, RVDK_RESET_BOOT_HFID, &addr, sizeof (vhdr->boot_hfid), sizeof (*hfid),
-			    &vhdr->boot_hfid, &hfid);
+			    &vhdr->boot_hfid, hfid);
   HFID_COPY (&(vhdr->boot_hfid), hfid);
 
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
@@ -4089,6 +4089,12 @@ disk_reserve_sectors_in_volume (THREAD_ENTRY * thread_p, int vol_index, DISK_RES
       return error_code;
     }
 
+  /* The header is held in WRITE for microseconds, so a second reserver almost never meets it. Widen that window on
+   * demand, to make the contention reproducible for tests. While the injection is on this fires for every
+   * reservation, temporary and permanent volumes alike, so tests should enable it only around what they measure.
+   * FI_TEST is a no-op in NDEBUG builds. */
+  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLHEADER_HOLD, 0);
+
   disk_log ("disk_reserve_sectors_in_volume", "reserve %d sectors in volume %d.", context->nsects_lastvol_remaining,
 	    volid);
 
@@ -5867,11 +5873,7 @@ xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid)
       return NULL;
     }
 
-  remarks = (char *) malloc ((int) strlen (disk_vhdr_get_vol_remarks (vhdr)) + 1);
-  if (remarks != NULL)
-    {
-      strcpy (remarks, disk_vhdr_get_vol_remarks (vhdr));
-    }
+  remarks = strdup (disk_vhdr_get_vol_remarks (vhdr));
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
 
