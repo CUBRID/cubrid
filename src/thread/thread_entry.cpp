@@ -107,6 +107,7 @@ namespace cubthread
     , interrupted (false)
     , shutdown (false)
     , check_interrupt (true)
+    , force_latch_wait (false)
     , wait_for_latch_promote (false)
     , next_wait_thrd (NULL)
     , lockwait (NULL)

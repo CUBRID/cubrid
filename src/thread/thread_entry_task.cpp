@@ -72,6 +72,7 @@ namespace cubthread
     context.unregister_id ();
     context.tran_index = NULL_TRAN_INDEX;
     context.check_interrupt = true;
+    context.force_latch_wait = false;
     context.private_lru_index = -1;
     context.m_is_private_lru_enabled = false;
 #if defined (SERVER_MODE)

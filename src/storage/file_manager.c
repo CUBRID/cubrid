@@ -8755,7 +8755,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       if (page_ftab == NULL)
 	{
 	  error_code = er_errid ();
-	  if (error_code != ER_INTERRUPTED)
+	  if (error_code != ER_INTERRUPTED && !PGBUF_IS_LATCH_REFUSED_ERROR (error_code))
 	    {
 	      assert_release (false);
 	    }
@@ -8776,7 +8776,13 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       if (error_code != NO_ERROR)
 	{
 	  error_code = er_errid ();
-	  if (error_code != ER_INTERRUPTED)
+	  if (error_code == NO_ERROR)
+	    {
+	      /* the reservation failed without setting an error - do not let NO_ERROR report success below */
+	      assert (false);
+	      error_code = ER_FAILED;
+	    }
+	  else if (error_code != ER_INTERRUPTED && !PGBUF_IS_LATCH_REFUSED_ERROR (error_code))
 	    {
 	      assert_release (false);
 	    }
@@ -8886,7 +8892,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       if (page_ftab == NULL)
 	{
 	  error_code = er_errid ();
-	  if (error_code != ER_INTERRUPTED)
+	  if (error_code != ER_INTERRUPTED && !PGBUF_IS_LATCH_REFUSED_ERROR (error_code))
 	    {
 	      assert_release (false);
 	    }
