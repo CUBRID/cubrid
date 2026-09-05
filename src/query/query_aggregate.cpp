@@ -935,8 +935,8 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		    case DB_TYPE_TIME:
 		      break;
 		    default:
-		      assert (agg_p->operands->value.type == TYPE_CONSTANT ||
-			      agg_p->operands->value.type == TYPE_DBVAL);
+		      assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
+			      || agg_p->operands->value.type == TYPE_POS_VALUE);
 
 		      /* try to cast dbval to double, datetime then time */
 		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
@@ -966,6 +966,12 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 			  pr_clear_value_vector (db_values);
 			  return error;
+			}
+
+		      /* clear errors from failed casts if any cast attempt succeeds. */
+		      if (er_errid () != NO_ERROR)
+			{
+			  er_clear ();
 			}
 
 		      /* update domain */
@@ -1295,7 +1301,7 @@ cleanup:
  */
 int
 qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
-			       bool keep_list_file, sampling_info *sampling)
+			       bool keep_list_file)
 {
   int error = NO_ERROR;
   AGGREGATE_TYPE *agg_p;
@@ -1313,8 +1319,6 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   const PR_TYPE *pr_type_p;
   OR_BUF buf;
   double dbl;
-  int sampling_weight = 1;
-  int adjust_sam_weight = 1;
 
   db_make_null (&sqr_val);
   db_make_null (&dbval);
@@ -1324,13 +1328,6 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   db_make_null (&xavg2val);
   db_make_null (&varval);
   db_make_null (&dval);
-
-  /* check sampling scan */
-  if (sampling)
-    {
-      assert (sampling->weight > 0);
-      sampling_weight = sampling->weight;
-    }
 
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
     {
@@ -1345,7 +1342,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       /* set count-star aggregate values */
       if (agg_p->function == PT_COUNT_STAR)
 	{
-	  db_make_bigint (agg_p->accumulator.value, agg_p->accumulator.curr_cnt * sampling_weight);
+	  db_make_bigint (agg_p->accumulator.value, agg_p->accumulator.curr_cnt);
 	}
 
       /* the value of groupby_num() remains unchanged; it will be changed while evaluating groupby_num predicates
@@ -1436,8 +1433,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	      if (agg_p->function == PT_COUNT)
 		{
-		  adjust_sam_weight = stats_adjust_sampling_weight (list_id_p->tuple_cnt, sampling_weight);
-		  db_make_bigint (agg_p->accumulator.value, list_id_p->tuple_cnt * adjust_sam_weight);
+		  db_make_bigint (agg_p->accumulator.value, list_id_p->tuple_cnt);
 		}
 	      else
 		{
@@ -1684,6 +1680,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  TP_DOMAIN *double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
 	  /* compute AVG(X) = SUM(X)/COUNT(X) */
+	  (void) pr_clear_value (&dbval);
 	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
 	  error = qdata_divide_dbval (agg_p->accumulator.value, &dbval, &xavgval, double_domain_ptr);
 	  if (error != NO_ERROR)
@@ -1694,6 +1691,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  if (agg_p->function == PT_AVG)
 	    {
+	      (void) pr_clear_value (agg_p->accumulator.value);
 	      if (tp_value_coerce (&xavgval, agg_p->accumulator.value, double_domain_ptr) != DOMAIN_COMPATIBLE)
 		{
 		  ASSERT_ERROR_AND_SET (error);

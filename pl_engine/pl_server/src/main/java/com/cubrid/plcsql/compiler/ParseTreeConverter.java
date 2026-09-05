@@ -76,10 +76,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public final Set<Dependency> dependenciesOfStaticSql = new HashSet<>();
     public int dataAccessLevel = ServerConstants.SP_SQL_TYPE_NO_SQL;
 
-    public ParseTreeConverter(InstanceStore iStore, String spOwner, String spRevision) {
+    public ParseTreeConverter(InstanceStore iStore, String spOwner, String compileSeqNo) {
         this.iStore = iStore;
         this.spOwner = Misc.getNormalizedText(spOwner);
-        this.spRevision = spRevision;
+        this.compileSeqNo = compileSeqNo;
         this.sqlSerialNo = 1;
     }
 
@@ -253,7 +253,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public Unit visitCreate_routine(Create_routineContext ctx) {
         previsitRoutine_definition(ctx.routine_definition(), null);
         DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
-        return new Unit(ctx, autonomousTransaction, connectionRequired, decl, spRevision);
+        return new Unit(ctx, connectionRequired, decl, spOwner, compileSeqNo);
     }
 
     @Override
@@ -1324,28 +1324,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public AstNode visitPragma_declaration(Pragma_declarationContext ctx) {
-        assert ctx.AUTONOMOUS_TRANSACTION() != null; // by syntax
-
-        // currently, only the Autonomous Transaction is
-        // allowed only in the top-level declarations
-        if (symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx), // s013
-                    "AUTONOMOUS_TRANSACTION can only be declared at the top level");
-        }
-
-        throw new SemanticError(
-                Misc.getLineColumnOf(ctx), "AUTONOMOUS_TRANSACTION is not supported yet");
-
-        /*
-        // just turn on the flag and return nothing
-        autonomousTransaction = true;
-        return null;
-         */
-    }
-
-    @Override
     public AstNode visitConstant_declaration(Constant_declarationContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.identifier());
@@ -1447,10 +1425,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         try {
             if (ctx.LANGUAGE() != null
                     && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
-                int[] lineColumn = Misc.getLineColumnOf(ctx);
-                throw new SyntaxError(
-                        lineColumn[0],
-                        lineColumn[1],
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx),
                         "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
             }
             String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
@@ -2766,7 +2742,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             new LinkedHashMap<>();
 
     private final String spOwner;
-    private final String spRevision;
+    private final String compileSeqNo;
 
     private StmtLoop.LoopOptimizables loopOptimizables = null;
 
@@ -2775,7 +2751,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private int exHandlerDepth;
 
-    private boolean autonomousTransaction = false;
     private boolean connectionRequired = false;
 
     private boolean controlFlowBlocked;
@@ -3018,20 +2993,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private String getColumnNameInSelectList(ColumnInfo ci) {
         String colName = ci.colName;
         assert colName != null;
-
-        int dotIdx = colName.lastIndexOf(".");
-        if (dotIdx > 0
-                && dotIdx < colName.length() - 1
-                && ci.className != null
-                && ci.className.length() > 0
-                && ci.attrName != null) {
-
-            String afterDot = colName.substring(dotIdx + 1);
-            if (afterDot.equalsIgnoreCase(ci.attrName)) {
-                // In this case, colName must be of the form <table name alias>.<attr name>
-                colName = ci.attrName;
-            }
-        }
 
         Matcher matcher = patternId.matcher(colName);
         return matcher.matches() ? colName : null;

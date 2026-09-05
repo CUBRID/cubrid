@@ -567,6 +567,10 @@ namespace cubmethod
 	    PT_NODE *stmt = db_get_statement (db_session, 0);
 
 	    parser->custom_print |= PT_CONVERT_RANGE;
+	    /* select-list aliases (e.g. "AS col1") must survive into rewritten_query: this text is
+	     * embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime by Query.open(),
+	     * so a client reading column labels off that cursor needs them to still be there */
+	    parser->custom_print |= PT_PRINT_ALIAS;
 	    semantics.rewritten_query = parser_print_tree (parser, stmt);
 
 	    has_table_access = false;
@@ -738,7 +742,7 @@ namespace cubmethod
     int save;
     const char *name = question.name.c_str ();
 
-    AU_DISABLE (save);
+    AU_SAVE_AND_DISABLE (save);
     {
       // TODO
       mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
@@ -817,7 +821,7 @@ namespace cubmethod
     }
 
 exit:
-    AU_ENABLE (save);
+    AU_RESTORE (save);
 
     res.err_id = err;
     if (err != NO_ERROR)
@@ -941,7 +945,7 @@ exit:
 	std::string default_value_string = get_column_default_as_string (attr);
 
 	column_info info (db_type, set_type, scale, precision, charset,
-			  attr_name_string, default_value_string,
+			  attr_name_string, attr_name_string, default_value_string,
 			  auto_increment, unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared,
 			  attr_name_string, class_name_string, false);
 

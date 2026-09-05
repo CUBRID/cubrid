@@ -100,21 +100,6 @@ struct lk_entry
 #endif				/* not SERVER_MODE */
 };
 
-typedef struct lk_acqobj_lock LK_ACQOBJ_LOCK;
-struct lk_acqobj_lock
-{
-  OID oid;			/* lock resource object identifier */
-  OID class_oid;		/* only needed in case of instance lock */
-  LOCK lock;			/* lock mode */
-};
-
-typedef struct lk_acquired_locks LK_ACQUIRED_LOCKS;
-struct lk_acquired_locks
-{
-  LK_ACQOBJ_LOCK *obj;		/* The list of acquired object locks */
-  unsigned int nobj_locks;	/* Number of actual object locks */
-};
-
 /* During delete and update operation,
  * if the number of objects to be deleted or updated is larger than
  * lock escalation threshold, we should acquire a lock on the class
@@ -154,7 +139,7 @@ typedef enum
   LOCK_RESOURCE_INSTANCE,	/* An instance resource */
   LOCK_RESOURCE_CLASS,		/* A class resource */
   LOCK_RESOURCE_ROOT_CLASS,	/* A root class resource */
-  LOCK_RESOURCE_OBJECT		/* An object resource. Obsolete */
+  LOCK_RESOURCE_TRANSACTION	/* A transaction self-lock keyed by the inserter's MVCCID */
 } LOCK_RESOURCE_TYPE;
 
 /*
@@ -163,9 +148,47 @@ typedef enum
 typedef struct lk_res_key LK_RES_KEY;
 struct lk_res_key
 {
-  LOCK_RESOURCE_TYPE type;	/* type of resource: class,instance */
-  OID oid;
-  OID class_oid;
+  LOCK_RESOURCE_TYPE type;	/* type of resource: class, instance, root_class or transaction */
+  /* Payload selected by type: object resources (INSTANCE/CLASS/ROOT_CLASS) use the OID pair; a TRANSACTION
+   * self-lock uses mvccid. The payload is a fixed 16-byte union; reserved pads the mvccid member to that size
+   * (asserted below) so the key has no partial member. lock_res_key_* hash/compare/copy read only the member
+   * selected by type. */
+  union
+  {
+    struct
+    {
+      OID oid;
+      OID class_oid;
+    };
+    struct
+    {
+      MVCCID mvccid;
+      UINT64 reserved;		/* unused padding; no MVCC meaning */
+    };
+  };
+};
+
+/* The key payload is a fixed 16-byte union; both members must fill it (no partial overlay). */
+static_assert (sizeof (OID) * 2 == 16, "LK_RES_KEY: OID pair must be 16 bytes");
+static_assert (sizeof (MVCCID) + sizeof (UINT64) == 16, "LK_RES_KEY: mvccid + reserved must be 16 bytes");
+
+/* One held lock, gathered for the 2PC prepare record and re-acquired at restart. Carries the whole key rather than an
+ * OID pair, so object locks and the MVCCID-keyed transaction self-lock share one path; key.type discriminates. */
+typedef struct lk_acq_lock LK_ACQ_LOCK;
+struct lk_acq_lock
+{
+  LK_RES_KEY key;		/* lock resource key; key.type selects the payload */
+  LOCK lock;			/* lock mode */
+};
+
+/* The entry goes into the 2PC prepare record verbatim, so its layout is a log format. */
+static_assert (sizeof (LK_ACQ_LOCK) == 32, "LK_ACQ_LOCK: size is the 2PC prepare record's lock array stride");
+
+typedef struct lk_acquired_locks LK_ACQUIRED_LOCKS;
+struct lk_acquired_locks
+{
+  LK_ACQ_LOCK *locks;		/* The list of acquired locks */
+  unsigned int nlocks;		/* Number of actual locks */
 };
 
 /*
@@ -200,6 +223,10 @@ extern int lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, c
 extern int lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
 				   int cond_flag, int wait_msecs);
 extern int lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag);
+extern int lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int cond_flag);
+extern void lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
+extern int lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
+extern bool lock_has_xlock_or_self_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
 extern int lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * superclass_oid, LOCK lock,
 			  int cond_flag);
 extern int lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK class_lock);

@@ -194,8 +194,11 @@ extern int sm_touch_class (MOP classmop);
 /* Statistics functions */
 extern SM_CLASS *sm_get_class_with_statistics (MOP classop);
 extern CLASS_STATS *sm_get_statistics_force (MOP classop);
-extern int sm_update_statistics (MOP classop, bool with_fullscan);
-extern int sm_update_all_statistics (bool with_fullscan);
+struct class_attr_ndv;
+/* provided_ndv (optional): pre-computed per-column NDV (e.g. from the histogram full scan) so the
+ * server reuses it and skips its own NDV scan. NULL => server computes NDV itself. */
+extern int sm_update_statistics (MOP classop, bool with_fullscan, struct class_attr_ndv *provided_ndv = NULL);
+extern int sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram);
 
 /* Misc information functions */
 extern const char *sm_get_ch_name (MOP op);

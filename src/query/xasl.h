@@ -402,6 +402,18 @@ struct update_proc_node
 				 * in conditions and assignment reevaluation */
 };
 
+/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
+ * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, and UPDATE to follow) */
+typedef struct remote_dml_sink REMOTE_DML_SINK;
+struct remote_dml_sink
+{
+  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
+  char *url;			/* DBLink connection URL */
+  char *user;			/* DBLink connection user */
+  char *pwd;			/* DBLink connection password */
+  char *table_name;		/* remote target table name */
+};
+
 typedef struct insert_proc_node INSERT_PROC_NODE;
 struct insert_proc_node
 {
@@ -421,6 +433,10 @@ struct insert_proc_node
   int num_val_lists;		/* number of value lists in values clause */
   VALPTR_LIST **valptr_lists;	/* OUTPTR lists for each list of values */
   DB_VALUE *obj_oid;		/* Inserted object OID, used for sub-inserts */
+  /* remote INSERT SELECT sink fields (INSERT INTO remote SELECT FROM local) */
+  REMOTE_DML_SINK sink;
+  char **remote_attr_names;	/* remote target column names (array) */
+  int remote_num_attrs;		/* length of remote_attr_names */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
@@ -434,6 +450,10 @@ struct delete_proc_node
   int num_reev_classes;		/* no of classes involved in mvcc condition */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions */
+  /* remote DELETE + local subquery sink fields (DELETE FROM remote WHERE col op (SELECT FROM local)) */
+  REMOTE_DML_SINK sink;
+  char *remote_key_col;		/* remote target column on the WHERE left-hand side (e.g. rc1) */
+  char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<", ">", "<=", ">=" */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
@@ -514,7 +534,7 @@ struct cte_proc_node
 #define XASL_NO_FIXED_SCAN	       (0x1 << 14)	/* disable fixed scan for this proc */
 #define XASL_NEED_SINGLE_TUPLE_SCAN    (0x1 << 15)	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	       (0x1 << 16)	/* is any tde class related */
-#define XASL_SAMPLING_SCAN	       (0x1 << 17)	/* is sampling scan */
+/* (0x1 << 17) was XASL_SAMPLING_SCAN, removed with the query-based statistics sampling path */
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
 #define XASL_ANALYTIC_USES_LIMIT_OPT (0x1 << 20)	/* analytic uses limit optimization */
@@ -587,6 +607,10 @@ struct cte_proc_node
   (((func_p)->function == PT_MEDIAN) \
    || ((func_p)->function == PT_PERCENTILE_CONT) \
    || ((func_p)->function == PT_PERCENTILE_DISC))
+
+#define QPROC_IS_CONTINUOUS_INTERPOLATION_FUNC(func_p) \
+  (((func_p)->function == PT_MEDIAN) \
+   || ((func_p)->function == PT_PERCENTILE_CONT))
 
  /* pseudocolumns offsets in tuple (from end) */
 #define	PCOL_ISCYCLE_TUPLE_OFFSET	1
@@ -749,8 +773,8 @@ typedef enum
   ACCESS_METHOD_SEQUENTIAL_RECORD_INFO,	/* sequential scan that will read record info */
   ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN,	/* sequential scan access that only scans pages without accessing record data */
   ACCESS_METHOD_INDEX_KEY_INFO,	/* indexed access to obtain key information */
-  ACCESS_METHOD_INDEX_NODE_INFO,	/* indexed access to obtain b-tree node info */
-  ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN	/* sequential sampling scan */
+  ACCESS_METHOD_INDEX_NODE_INFO	/* indexed access to obtain b-tree node info */
+    /* ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN was removed with the query-based statistics sampling path */
 } ACCESS_METHOD;
 
 #define IS_ANY_INDEX_ACCESS(access_) \
@@ -982,6 +1006,7 @@ struct groupby_stat
   UINT64 groupby_pages;
   UINT64 groupby_ioreads;
   int rows;
+  INT64 read_rows;
   AGGREGATE_HASH_STATE groupby_hash;
   bool run_groupby;
   bool groupby_sort;
@@ -1077,6 +1102,7 @@ struct access_spec_node
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */
   bool fixed_scan;		/* scan pages are kept fixed? */
+  bool cached_scan;		/* runtime-only cached-scan activation; not serialized */
   bool pruned;			/* true if partition pruning has been performed */
   bool clear_value_at_clone_decache;	/* true, if need to clear s_dbval at clone decache */
 #endif				/* #if defined (SERVER_MODE) || defined (SA_MODE) */
@@ -1108,6 +1134,10 @@ struct xasl_node
   VAL_LIST *single_tuple;	/* single tuple result */
 
   int is_single_tuple;		/* single tuple subquery? */
+
+  /* predicate-operand regu owning this uncorrelated scalar subquery (NULL otherwise);
+   * gates the precompute/inject/checker-relax path. */
+  REGU_VARIABLE *precomp_owner_regu;
 
   QUERY_OPTIONS option;		/* UNIQUE option */
   OUTPTR_LIST *outptr_list;	/* output pointer list */

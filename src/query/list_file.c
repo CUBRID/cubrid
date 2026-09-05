@@ -284,6 +284,7 @@ static void qfile_add_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_C
 static void qfile_delete_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTRY * lent);
 static int qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data);
 static int qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, void *args);
+static int qfile_reassign_list_cache_entry_owner (THREAD_ENTRY * thread_p, void *data, void *args);
 static bool qfile_is_early_time (struct timeval *a, struct timeval *b);
 
 static int qfile_get_list_cache_entry_size_for_allocate (int nparam);
@@ -3797,8 +3798,9 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
 	      break;		/* current sector exhausted — fall through to next-sector fetch */
 	    }
 
+	  /* tfile may be NULL for a cached list file (query result cache):
+	   * these are disk pages read by VPID, and qmgr_get_old_page/qmgr_free_old_page tolerate a NULL tfile. */
 	  QMGR_TEMP_FILE *tfile = (QMGR_TEMP_FILE *) tfiles[m_sector_index];
-	  assert (tfile != NULL);
 
 	  PAGE_PTR page = qmgr_get_old_page (thread_p, &vpid, tfile);
 	  if (page == NULL)
@@ -5896,6 +5898,60 @@ qfile_finalize_list_cache (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * qfile_reassign_list_cache_entry_owner () - re-point one list cache entry at its new owning
+ *   XASL cache entry (mht_map_no_key callback)
+ *   return: NO_ERROR
+ *   data(in): QFILE_LIST_CACHE_ENTRY *
+ *   args(in): XASL_CACHE_ENTRY * (the new owner)
+ */
+static int
+qfile_reassign_list_cache_entry_owner (THREAD_ENTRY * thread_p, void *data, void *args)
+{
+  QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
+  XASL_CACHE_ENTRY *new_owner = (XASL_CACHE_ENTRY *) args;
+
+  lent->xcache_entry = new_owner;
+  lent->query_string = new_owner->sql_info.sql_hash_text;
+
+  return NO_ERROR;
+}
+
+/*
+ * qfile_reassign_list_cache_owner () - re-point every entry of a list cache hash table at a
+ *   new owning XASL cache entry. Used when a recompile hands its result cache over to the
+ *   replacing XASL cache entry: the entries' back-pointers (xcache_entry, query_string) were
+ *   set at creation and would otherwise dangle once the old entry is freed.
+ *   return: NO_ERROR or ER_FAILED
+ *   list_ht_no(in): hash table id being handed over
+ *   new_owner(in): the XASL cache entry that now owns the hash table
+ */
+int
+qfile_reassign_list_cache_owner (THREAD_ENTRY * thread_p, int list_ht_no, XASL_CACHE_ENTRY * new_owner)
+{
+  if (QFILE_IS_LIST_CACHE_DISABLED)
+    {
+      return NO_ERROR;
+    }
+  if (list_ht_no < 0 || (unsigned int) list_ht_no >= qfile_List_cache.n_hts || new_owner == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[list_ht_no], qfile_reassign_list_cache_entry_owner,
+			 new_owner);
+
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+
+  return NO_ERROR;
+}
+
+/*
  * qfile_clear_list_cache () - Clear out list cache hash table
  *   return:
  *   list_ht_no(in)     :
@@ -7424,14 +7480,14 @@ qfile_collect_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 
   assert (thread_p != NULL);
   assert (list_id != NULL);
-  assert (list_id->tfile_vfid != NULL);
   assert (sector_info != NULL);
 
   /* reset sector_info */
   qfile_free_list_sector_info (thread_p, sector_info);
 
-  /* membuf exists only in the first list_id */
-  if (list_id->tfile_vfid->membuf != NULL && list_id->tfile_vfid->membuf_last >= 0)
+  /* membuf exists only in the first list_id;
+   * a cached list file (query result cache) has no tfile_vfid handle, so no membuf. */
+  if (list_id->tfile_vfid != NULL && list_id->tfile_vfid->membuf != NULL && list_id->tfile_vfid->membuf_last >= 0)
     {
       assert (list_id->tfile_vfid->membuf_npages > 0);
       sector_info->membuf_tfile = list_id->tfile_vfid;
@@ -7439,14 +7495,16 @@ qfile_collect_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 
   for (current = list_id; current != NULL; current = current->dependent_list_id)
     {
-      assert (current->tfile_vfid != NULL);
+      /* a cached list file has no tfile_vfid handle;
+       * enumerate sectors from the preserved temp_vfid (retired by file_temp_retire_preserved on eviction). */
+      VFID *temp_vfid = (current->tfile_vfid != NULL) ? &current->tfile_vfid->temp_vfid : &current->temp_vfid;
 
-      if (VFID_ISNULL (&current->tfile_vfid->temp_vfid))
+      if (VFID_ISNULL (temp_vfid))
 	{
 	  continue;
 	}
 
-      error = file_get_all_data_sectors (thread_p, &current->tfile_vfid->temp_vfid, &collector);
+      error = file_get_all_data_sectors (thread_p, temp_vfid, &collector);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;

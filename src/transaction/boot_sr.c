@@ -66,7 +66,6 @@
 #include "intl_support.h"
 #include "serial.h"
 #include "server_interface.h"
-#include "jansson.h"
 #include "pl_sr.h"
 #include "xserver_interface.h"
 #include "session.h"
@@ -2662,7 +2661,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       logtb_disable_update (NULL);
     }
 
-  error_code = serial_initialize_cache_pool (thread_p);
+  /* Skip the eager _db_serial attribute-info load when restarting from a backup (restoredb,
+   * restoreslave): no client workspace yet. */
+  error_code = serial_initialize_cache_pool (thread_p, !from_backup);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -2729,9 +2730,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       /* server is up! */
       boot_server_status (BOOT_SERVER_UP);
     }
-#if !defined(SA_MODE)
-  json_set_alloc_funcs (malloc, free);
-#endif
 
   return NO_ERROR;
 
@@ -2766,8 +2764,10 @@ error:
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
+  dblink_2pc_daemon_stop ();
+#endif
   pl_server_destroy ();
-
   cdc_daemons_destroy ();
 
   BO_DISABLE_FLUSH_DAEMONS ();
@@ -3079,6 +3079,22 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   /* remove lob ces temp dir */
   (void) fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
 
+  /* persist the latest heap bestspace hints before the log and buffer managers are finalized. */
+  (void) heap_update_all_bestspaces (thread_p);
+
+  /* Hand the unissued tail of every reserved serial cache block back to _db_serial, so a restart
+   * resumes at the last value issued instead of past the block end. Must run while the heap and log
+   * managers are still up; serial_finalize_cache_pool runs after the volumes are dismounted. The
+   * write opens a system operation, which the system main transaction may not do, so borrow a
+   * system worker - an interrupted xvacuum () may have left one - and put the main one back. */
+  if (thread_p->get_system_tdes () == NULL)
+    {
+      thread_p->claim_system_worker ();
+    }
+  serial_flush_cache_pool (thread_p);
+  thread_p->retire_system_worker ();
+  logtb_set_to_system_tran_index (thread_p);
+
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
 
@@ -3380,12 +3396,20 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
        */
 #ifdef CCI_XA
       if (LOG_ISTRAN_ACTIVE (tdes))
-#else
-      if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_2PC_PREPARE (tdes))	/* logtb_is_current_active (thread_p) */
-#endif
 	{
 	  (void) xtran_server_abort (thread_p);
 	}
+      /* LOG_ISTRAN_2PC_PREPARE: intentionally not aborted.
+       * logtb_release_tran_index() detects the prepared state, promotes the slot
+       * to a loose-end, and preserves it so that log_2pc_attach_global_tran()
+       * can attach when the coordinator daemon delivers the commit/abort decision
+       * via a new gateway connection. */
+#else
+      if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_2PC_PREPARE (tdes))	/* logtb_is_current_active (thread_p) */
+	{
+	  (void) xtran_server_abort (thread_p);
+	}
+#endif
 
       perfmon_stop_watch (thread_p);
 
@@ -3684,7 +3708,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 int
 xcallback_console_print (THREAD_ENTRY * thread_p, char *print_str)
 {
-  fprintf (stdout, print_str);
+  fprintf (stdout, "%s", print_str);
 
   return NO_ERROR;
 }

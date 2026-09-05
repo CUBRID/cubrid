@@ -44,9 +44,11 @@ static bool qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, 
 						       QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
+static bool qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons);
+static bool qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
+static void qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query);
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_rewrite_oid_equality (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * pred, int *seqno);
-static PT_NODE *qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_get_next_oid_pred (PT_NODE * pred);
 
@@ -94,6 +96,10 @@ qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE **
 	    parser_walk_tree (parser, (*nodep)->info.query.q.select.from, qo_analyze_path_join_pre, NULL,
 			      qo_analyze_path_join, (*nodep)->info.query.q.select.where);
 	}			/* if (pred) */
+
+      /* shrink the GROUP BY first, so that qo_reduce_order_by () judges the ORDER BY against the
+       * grouping key that will actually run */
+      qo_remove_useless_groupby_columns (parser, (*nodep));
 
       if (qo_reduce_order_by (parser, (*nodep)) != NO_ERROR)
 	{
@@ -1248,6 +1254,220 @@ exit_on_error:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
     }
   goto exit_on_end;
+}
+
+/*
+ * qo_is_row_identifying_key () - check whether a constraint picks out a single row, and so
+ *				  determines every other column of its table
+ *   return: true, if the constraint may be used to drop redundant GROUP BY columns
+ *   cons(in): class constraint
+ *
+ * Note:
+ *   A UNIQUE constraint accepts NULL more than once while GROUP BY treats NULLs as equal, so
+ *   two rows could share such a key and still differ in the other columns. Every column of a
+ *   unique key must therefore be NOT NULL as well. A primary key is NOT NULL by definition.
+ *
+ *   Only SM_NORMAL_INDEX is trusted: an invisible index or one that is still being built
+ *   online does not guarantee uniqueness yet.
+ */
+static bool
+qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons)
+{
+  int i;
+
+  if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (cons->type))
+    {
+      return false;
+    }
+
+  if (cons->attributes == NULL)
+    {
+      return false;
+    }
+
+  if (cons->index_status != SM_NORMAL_INDEX)
+    {
+      return false;
+    }
+
+  if (cons->type == SM_CONSTRAINT_PRIMARY_KEY)
+    {
+      return true;
+    }
+
+  for (i = 0; cons->attributes[i] != NULL; i++)
+    {
+      if (!(cons->attributes[i]->flags & SM_ATTFLAG_NON_NULL))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * qo_groupby_has_key () - check whether the GROUP BY clause groups on every column of a key
+ *   return: true, if every column of the key is in the clause
+ *   group_by(in): GROUP BY clause, a list of PT_SORT_SPEC
+ *   spec_id(in): id of the spec that owns the key
+ *   cons(in): class constraint holding the key columns
+ */
+static bool
+qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons)
+{
+  PT_NODE *group, *col;
+  const char *name;
+  int i;
+
+  for (i = 0; cons->attributes[i] != NULL; i++)
+    {
+      name = cons->attributes[i]->header.name;
+
+      for (group = group_by; group != NULL; group = group->next)
+	{
+	  col = group->info.sort_spec.expr;
+
+	  if (col->node_type == PT_NAME && col->info.name.spec_id == spec_id
+	      && intl_identifier_casecmp (col->info.name.original, name) == 0)
+	    {
+	      break;
+	    }
+	}
+
+      if (group == NULL)
+	{
+	  /* ran out of clause without meeting this key column */
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * qo_remove_useless_groupby_columns () - remove the GROUP BY columns that are functionally determined
+ *			   by a key of the same table
+ *   return: void
+ *   parser(in): parser global context info for reentrancy
+ *   query(in/out): query node has GROUP BY
+ *
+ * Note:
+ *   When every column of a table's primary key, or of one of its NOT NULL unique keys, is
+ *   listed in the GROUP BY clause, the other GROUP BY columns of that same table cannot vary
+ *   inside a group, so they never split a group. Removing them shrinks the grouping key that
+ *   pt_to_buildlist_proc () builds later on, which makes both the sort key and the hash key
+ *   narrower. Their values are still produced for the output, because pt_to_aggregate ()
+ *   appends every select list name that is missing from the intermediate output list.
+ *
+ *   e.g. create table t (pk int primary key, name varchar (100), amount int);
+ *
+ *        select pk, name, sum (amount) from t group by pk, name;
+ *          -> select pk, name, sum (amount) from t group by pk;
+ *
+ *        select pk, name, sum (amount) from t group by name, pk;
+ *          -> select pk, name, sum (amount) from t group by pk;
+ *
+ *   A column goes wherever it is written, so the order in which a sorted GROUP BY hands out its
+ *   groups may change. This must therefore run before qo_reduce_order_by (), which drops an
+ *   ORDER BY only when the GROUP BY that will actually run still covers it.
+ *
+ *   When more than one key of the table is covered, the one with the fewest columns wins,
+ *   because everything outside the chosen key is removed. A key column written twice keeps
+ *   only its first occurrence.
+ */
+static void
+qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  PT_NODE *group, *next, *spec, *col, *dup;
+  DB_OBJECT *classop;
+  SM_CLASS_CONSTRAINT *cons, *best_cons;
+  int i, size, best_size;
+
+  if (query->node_type != PT_SELECT)
+    {
+      return;
+    }
+
+  if (query->info.query.q.select.group_by == NULL || query->info.query.q.select.group_by->flag.with_rollup)
+    {
+      /* ROLLUP builds a partial group for every prefix of the grouping key, so none of its
+       * columns may be dropped */
+      return;
+    }
+
+  for (spec = query->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      classop = NULL;
+      PT_SPEC_GET_DB_OBJECT (spec, classop);
+      if (classop == NULL)
+	{
+	  /* derived tables and CTEs carry no constraint to rely on */
+	  continue;
+	}
+
+      best_cons = NULL;
+      best_size = 0;
+
+      for (cons = sm_class_constraints (classop); cons != NULL; cons = cons->next)
+	{
+	  if (!qo_is_row_identifying_key (cons)
+	      || !qo_groupby_has_key (query->info.query.q.select.group_by, spec->info.spec.id, cons))
+	    {
+	      continue;
+	    }
+
+	  for (size = 0; cons->attributes[size]; size++)
+	    {
+	      ;
+	    }
+
+	  if (best_cons == NULL || size < best_size)
+	    {
+	      best_cons = cons;
+	      best_size = size;
+	    }
+	}
+
+      if (best_cons == NULL)
+	{
+	  continue;
+	}
+
+      for (group = query->info.query.q.select.group_by; group != NULL; group = next)
+	{
+	  next = group->next;
+
+	  col = group->info.sort_spec.expr;
+	  if (col->node_type != PT_NAME || col->info.name.spec_id != spec->info.spec.id)
+	    {
+	      continue;
+	    }
+
+	  for (i = 0; best_cons->attributes[i]; i++)
+	    {
+	      if (intl_identifier_casecmp (col->info.name.original, best_cons->attributes[i]->header.name) == 0)
+		{
+		  break;
+		}
+	    }
+
+	  if (best_cons->attributes[i] != NULL)
+	    {
+	      /* a key column stays; a repeat of it further on orders nothing, so only the first one is kept */
+	      while ((dup = pt_find_order_value_in_list (parser, col, group->next)) != NULL)
+		{
+		  group->next = pt_remove_from_list (parser, dup, group->next);
+		}
+
+	      next = group->next;
+	      continue;
+	    }
+
+	  query->info.query.q.select.group_by =
+	    pt_remove_from_list (parser, group, query->info.query.q.select.group_by);
+	}
+    }
 }
 
 /*
@@ -3526,8 +3746,9 @@ qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
  *
  * Note: If join order hint is set, skip and go ahead.
  *   do parser_walk_tree() pre function
+ *   Also called from qo_reduce_equality_terms_post (), which needs the location reset. Calling it twice is harmless.
  */
-static PT_NODE *
+PT_NODE *
 qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *spec, *spec2;

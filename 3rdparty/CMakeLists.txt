@@ -18,7 +18,6 @@
 set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
 set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
 set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.6.4.tar.gz")             # expat library sources URL
-set(WITH_LIBJANSSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/jansson/jansson-2.10.tar.gz")         # jansson library sources URL
 set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.2.tar.gz")                  # editline library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0.tar.gz")              # rapidjson library sources URL
 set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-1.1.1w.tar.gz")       # openssl library sources URL
@@ -44,7 +43,6 @@ set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_
 #
 # Below are the URL_HASH values for different libraries used in this project:
 set(WITH_LIBEXPAT_URL_HASH "SHA256=fd03b7172b3bd7427a3e7a812063f74754f24542429b634e0db6511b53fb2278")		# expat library 
-set(WITH_LIBJANSSON_URL_HASH "SHA256=78215ad1e277b42681404c1d66870097a50eb084be9d771b1d15576575cf6447")         # jansson library 
 set(WITH_LIBEDIT_URL_HASH "SHA256=140312cd2dd22b4981d22448f02ef215fd7685ca57bb90b1427e496234d2d7da")            # editline libray
 set(WITH_RAPIDJSON_URL_HASH "SHA256=bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e")          # rapidjson library 
 set(WITH_LIBOPENSSL_URL_HASH "SHA256=cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8")         # openssl library 
@@ -65,7 +63,6 @@ else(WIN32)
 endif()
 
 set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: EXTERNAL)")
-set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
 set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODBC library (default: EXTERNAL)")
@@ -75,7 +72,6 @@ set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB lib
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
-message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
@@ -94,7 +90,21 @@ include(ExternalProject)
 
 set (3RDPARTY_LIBS_DIR ${CMAKE_BINARY_DIR}/3rdparty)
 set_property(DIRECTORY PROPERTY EP_BASE "${3RDPARTY_LIBS_DIR}")
-set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_BINARY_DIR}/3rdparty --enable-static --disable-shared --with-pic CFLAGS=-w CXXFLAGS=-w)
+
+# What CUBRID adds to every third-party library built below: -fPIC because these
+# are static archives linked into CUBRID's shared libraries, -w because their
+# warnings are not actionable here.
+#
+# The optimization level stays per-library, at whatever upstream declares and
+# tests; debug info is not carried over. Beware how flags reach a library: a make
+# command-line variable overrides the Makefile's own assignments, and CFLAGS given
+# to configure suppresses autoconf's "-g -O2". Passing only -fPIC or -w leaves the
+# library at -O0.
+set(3RDPARTY_COMMON_FLAGS "-fPIC -w")
+
+# restates the level from autoconf's "-g -O2", which supplying CFLAGS suppresses.
+# No CXXFLAGS: none of these compile C++ in the target this build runs.
+set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_BINARY_DIR}/3rdparty --enable-static --disable-shared --with-pic "CFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}")
 
 # For Windows
 if(WIN32)
@@ -103,7 +113,6 @@ if(WIN32)
   set(WINDOWS_EXTERNAL_DIR ${WINDOWS_BASE_DIR}/3rdparty)
   set(WINDOWS_EXTERNAL_LIB_DIR ${WINDOWS_EXTERNAL_DIR}/lib64)
   set(WINDOWS_EXTERNAL_INCLUDE_DIR ${WINDOWS_EXTERNAL_DIR}/include)
-  # I could not load debug dll for jansson. disabled for now.
   # if(CMAKE_BUILD_TYPE MATCHES "Debug")
   #   set(WINDOWS_EXTERNAL_DLL_DIR ${WINDOWS_EXTERNAL_DIR}/dll_debug)
   # else()
@@ -218,59 +227,6 @@ list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
 list(APPEND EP_INCLUDES ${LIBEXPAT_INCLUDES})
 list(APPEND EP_LIBS ${LIBEXPAT_LIBS})
 
-# WITH_LIBJANSSON can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds jansson library from URL stored in ${WITH_LIBJANSSON_URL} uses the library created by the build
-# * "SYSTEM"   - use jansson library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBJANSSON_ROOT_PATH}/lib
-#                use jansson headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBJANSSON_ROOT_PATH}/include
-# on Windows:
-# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/3rdparty
-set(LIBJANSSON_TARGET libjansson)
-if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
-  list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
-  if(UNIX)
-    set(LIBJANSSON_LIBS ${3RDPARTY_LIBS_DIR}/lib/libjansson.a)
-    set(LIBJANSSON_INCLUDES ${3RDPARTY_LIBS_DIR}/include/jansson)
-    ADD_BY_PRODUCTS_VARIABLE ("LIBJANSSON" ${LIBJANSSON_LIBS})
-    externalproject_add(${LIBJANSSON_TARGET}
-      URL                  ${WITH_LIBJANSSON_URL}
-      URL_HASH             ${WITH_LIBJANSSON_URL_HASH}
-      LOG_CONFIGURE        TRUE
-      LOG_BUILD            TRUE
-      LOG_INSTALL          TRUE
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      "${LIBJANSSON_BYPRODUCTS}"
-      )
-  else(UNIX)
-    # WIN32
-    set(LIBJANSSON_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/jansson64.lib)
-    set(LIBJANSSON_INCLUDES ${WINDOWS_EXTERNAL_INCLUDE_DIR})
-    add_custom_target(${LIBJANSSON_TARGET}
-      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson.dll"
-      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson.dll
-      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson64.dll
-    )
-  endif(UNIX)
-elseif(WITH_LIBJANSSON STREQUAL "SYSTEM")
-  if(UNIX)
-    find_library(LIBJANSSON_LIBS NAMES libjansson.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBJANSSON_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBJANSSON_INCLUDES NAMES jansson.h jansson_config.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBJANSSON_ROOT_PATH}/include REQUIRED)
-
-    message(STATUS "Found jansson library: ${LIBJANSSON_LIBS}")
-    message(STATUS "Found jansson headers: ${LIBJANSSON_INCLUDES}")
-  endif(UNIX)
-endif()
-list(APPEND EP_INCLUDES ${LIBJANSSON_INCLUDES})
-list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
-
 # WITH_LIBEDIT can have multiple values with different meanings
 # on Linux:
 # * "EXTERNAL" - (default) builds editline library from URL stored in ${WITH_LIBEDIT_URL} uses the library created by the build
@@ -337,7 +293,8 @@ else()
     DOWNLOAD_NO_PROGRESS 1
     CONFIGURE_COMMAND     ""                  # no configure
     BUILD_IN_SOURCE       true                # lz4 Makefile is designed to run locally
-    BUILD_COMMAND         make CFLAGS=-fPIC   # to allow static linking in shared library
+    # MOREFLAGS is lz4's append hook, so its "CFLAGS ?= -O3" survives
+    BUILD_COMMAND         make "MOREFLAGS=${3RDPARTY_COMMON_FLAGS}"
     INSTALL_COMMAND       ""                  # suppress install
     "${LZ4_BYPRODUCTS}"
   )
@@ -357,9 +314,9 @@ list(APPEND EP_INCLUDES ${LZ4_INCLUDES})
 #                  ${WITH_LIBOPENSSL_ROOT_PATH}/include
 # on Windows:
 # * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/3rdparty
-set(LIBOPENSSL_TARGET libopenssl)
 if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
   if(UNIX)
+    set(LIBOPENSSL_TARGET libopenssl)
     #compile OpenSSL library given an internet url to a OpenSSL archive
     #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
     set(LIBOPENSSL_LIBS ${3RDPARTY_LIBS_DIR}/lib/libssl.a ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
@@ -471,7 +428,9 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND ""        # no configure
       BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
-      BUILD_COMMAND make CFLAGS=-fPIC CXXFLAGS=-fPIC # to allow static linking in shared library
+      # no append hook, so restate the level from the Makefile's "CXXFLAGS ?= -O3 -g".
+      # No CFLAGS: re2 has no C sources and its Makefile never reads CFLAGS.
+      BUILD_COMMAND make "CXXFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}"
       INSTALL_COMMAND ""
       "${RE2_BYPRODUCTS}"
     )
@@ -546,7 +505,6 @@ expose_3rdparty_variable(LIBNCURSES)
 endif(UNIX)
 
 expose_3rdparty_variable(LIBEXPAT)
-expose_3rdparty_variable(LIBJANSSON)
 expose_3rdparty_variable(LZ4)
 expose_3rdparty_variable(LIBOPENSSL)
 expose_3rdparty_variable(LIBUNIXODBC)

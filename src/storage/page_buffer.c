@@ -280,14 +280,16 @@ typedef enum
 
 #if defined (SERVER_MODE)
 /* vacuum workers and checkpoint thread should not contribute to promoting a bcb as active/hot */
-#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) VACUUM_IS_THREAD_VACUUM_WORKER (th)
+#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) (VACUUM_IS_THREAD_VACUUM_WORKER (th))
 #else
 #define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) false
 #endif
 
 #if defined (SERVER_MODE)
-/* vacuum workers ,checkpoint thread and temp page should not contribute to promoting a bcb as active/hot */
-#define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) VACUUM_IS_THREAD_VACUUM_WORKER (th) || pgbuf_is_temporary_volume (buf->vpid.volid)
+/* vacuum workers, checkpoint thread and temp pages should not contribute to promoting a bcb as
+ * active/hot */
+#define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) \
+  (VACUUM_IS_THREAD_VACUUM_WORKER (th) || pgbuf_is_temporary_volume (buf->vpid.volid))
 #else
 #define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) false
 #endif
@@ -386,20 +388,7 @@ typedef struct pgbuf_monitor_bcb_mutex PGBUF_MONITOR_BCB_MUTEX;
 
 typedef struct pgbuf_holder_info PGBUF_HOLDER_INFO;
 
-typedef struct pgbuf_status PGBUF_STATUS;
 typedef struct pgbuf_status_snapshot PGBUF_STATUS_SNAPSHOT;
-typedef struct pgbuf_status_old PGBUF_STATUS_OLD;
-
-struct alignas (64) pgbuf_status
-{
-  unsigned long long num_hit;
-  unsigned long long num_page_request;
-  unsigned long long num_pages_created;
-  unsigned long long num_pages_written;
-  unsigned long long num_pages_read;
-  unsigned int num_flusher_waiting_threads;
-  unsigned int dummy;
-};
 
 struct pgbuf_status_snapshot
 {
@@ -411,16 +400,6 @@ struct pgbuf_status_snapshot
   unsigned int num_data_pages;
   unsigned int num_system_pages;
   unsigned int num_temp_pages;
-};
-
-struct pgbuf_status_old
-{
-  unsigned long long num_hit;
-  unsigned long long num_page_request;
-  unsigned long long num_pages_created;
-  unsigned long long num_pages_written;
-  unsigned long long num_pages_read;
-  time_t print_out_time;
 };
 
 struct pgbuf_holder_info
@@ -823,8 +802,6 @@ struct pgbuf_buffer_pool
   lockfree::circular_queue<int> *shared_lrus_with_victims;
   /* *INDENT-ON* */
 
-  PGBUF_STATUS *show_status;
-  PGBUF_STATUS_OLD show_status_old;
   PGBUF_STATUS_SNAPSHOT show_status_snapshot;
 #if defined (SERVER_MODE)
   pthread_mutex_t show_status_mutex;
@@ -855,6 +832,81 @@ static char pgbuf_Guard[8] = { MEM_REGION_GUARD_MARK, MEM_REGION_GUARD_MARK, MEM
   MEM_REGION_GUARD_MARK
 };
 #endif /* CUBRID_DEBUG */
+
+/* ----------------------------------------------------------------------------------------------
+ * Pgbuf opaque copy-buffer API for cached heap scans (CBRD-27041).
+ *
+ * The copy buffer is not a real BCB slot: it is a stand-alone <dummy BCB, iopage> pair, private to
+ * this file, so that the PAGE_PTR returned by pgbuf_copy_buffer_get_page_ptr () satisfies the same
+ * CAST_PGPTR_TO_BFPTR / CAST_PGPTR_TO_IOPGPTR invariants as a real fixed page.
+ * ---------------------------------------------------------------------------------------------- */
+struct pgbuf_copy_buffer
+{
+  PGBUF_BCB dummy_bcb;		/* real BCB struct, only vpid field meaningful */
+  PGBUF_IOPAGE_BUFFER iopage_buf;	/* flexible-payload; actual size determined by alloc */
+};
+
+/* CRITICAL: sizeof (struct pgbuf_copy_buffer) under-allocates because FILEIO_PAGE.page is char[1].
+ * Must use dynamic sizing. */
+#define PGBUF_COPY_BUFFER_ALLOC_SIZE \
+  ((size_t) (offsetof (struct pgbuf_copy_buffer, iopage_buf) + PGBUF_IOPAGE_BUFFER_SIZE))
+
+PGBUF_COPY_BUFFER_HANDLE
+pgbuf_copy_buffer_alloc (void)
+{
+  struct pgbuf_copy_buffer *buf = (struct pgbuf_copy_buffer *) malloc (PGBUF_COPY_BUFFER_ALLOC_SIZE);
+
+  if (buf == NULL)
+    {
+      return NULL;		/* OOM: caller handles graceful degradation */
+    }
+  /* PGBUF_BCB embeds a std::atomic member, so a raw memset trips -Wclass-memaccess; value-initialize
+   * via placement new instead (same net effect: every field zeroed). */
+  placement_new (&buf->dummy_bcb);
+  buf->iopage_buf.bcb = &buf->dummy_bcb;
+  buf->dummy_bcb.iopage_buffer = &buf->iopage_buf;
+  VPID_SET_NULL (&buf->dummy_bcb.vpid);
+#if defined (CUBRID_DEBUG)
+  /* Init guard bytes at page[DB_PAGESIZE], matching PGBUF_FIND_BUFFER_GUARD. */
+  memcpy (&buf->iopage_buf.iopage.page[DB_PAGESIZE], pgbuf_Guard, sizeof (pgbuf_Guard));
+#endif /* CUBRID_DEBUG */
+
+  er_log_debug (ARG_FILE_LINE, "cached scan buffer allocated");
+
+  return buf;
+}
+
+void
+pgbuf_copy_buffer_free (PGBUF_COPY_BUFFER_HANDLE handle)
+{
+  if (handle != NULL)
+    {
+      /* end the lifetime started by the placement new in pgbuf_copy_buffer_alloc (); currently a
+       * no-op, but keeps construction/destruction symmetric if PGBUF_BCB members change */
+      handle->dummy_bcb. ~ pgbuf_bcb ();
+    }
+  free_and_init (handle);
+}
+
+void
+pgbuf_copy_page_for_scan (PAGE_PTR src_pgptr, PGBUF_COPY_BUFFER_HANDLE handle)
+{
+  FILEIO_PAGE *src_iopage;
+  PGBUF_BCB *src_bcb;
+
+  CAST_PGPTR_TO_IOPGPTR (src_iopage, src_pgptr);	/* src must be fixed */
+  memcpy (&handle->iopage_buf.iopage, src_iopage, IO_PAGESIZE);
+
+  /* Update dummy BCB vpid from source. */
+  CAST_PGPTR_TO_BFPTR (src_bcb, src_pgptr);
+  handle->dummy_bcb.vpid = src_bcb->vpid;
+}
+
+PAGE_PTR
+pgbuf_copy_buffer_get_page_ptr (PGBUF_COPY_BUFFER_HANDLE handle)
+{
+  return (PAGE_PTR) handle->iopage_buf.iopage.page;
+}
 
 #define AOUT_HASH_DIVIDE_RATIO 1000
 #define AOUT_HASH_IDX(vpid, list) ((vpid)->pageid % list->num_hashes)
@@ -1542,7 +1594,6 @@ pgbuf_initialize (void)
   memset (&pgbuf_Pool.buf_invalid_list, 0, sizeof (PGBUF_INVALID_LIST));
   memset (&pgbuf_Pool.seq_chkpt_flusher, 0, sizeof (PGBUF_SEQ_FLUSHER));
   memset (&pgbuf_Pool.quota, 0, sizeof (PGBUF_PAGE_QUOTA));
-  memset (&pgbuf_Pool.show_status_old, 0, sizeof (PGBUF_STATUS_OLD));
   memset (&pgbuf_Pool.show_status_snapshot, 0, sizeof (PGBUF_STATUS_SNAPSHOT));
 
 #if defined (SERVER_MODE)
@@ -1581,7 +1632,6 @@ pgbuf_initialize (void)
   pgbuf_Pool.big_private_lrus_with_victims = NULL;
   pgbuf_Pool.shared_lrus_with_victims = NULL;
 
-  pgbuf_Pool.show_status = NULL;
 #if defined (SERVER_MODE)
   pgbuf_Pool.show_status_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
@@ -1766,20 +1816,6 @@ pgbuf_initialize (void)
       ASSERT_ERROR ();
       goto error;
     }
-
-  /* cache-line aligned so each per-thread slot owns its own line (no false sharing) */
-  pgbuf_Pool.show_status =
-    (PGBUF_STATUS *) cub_aligned_alloc (64, sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1),
-					__FILE__, __LINE__);
-  if (pgbuf_Pool.show_status == NULL)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
-
-  memset (pgbuf_Pool.show_status, 0, sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1));
-
-  pgbuf_Pool.show_status_old.print_out_time = time (NULL);
 
 #if defined(SERVER_MODE)
   pthread_mutex_init (&pgbuf_Pool.show_status_mutex, NULL);
@@ -1976,12 +2012,6 @@ pgbuf_finalize (void)
       pgbuf_Pool.shared_lrus_with_victims = NULL;
     }
 
-  if (pgbuf_Pool.show_status != NULL)
-    {
-      free (pgbuf_Pool.show_status);
-      pgbuf_Pool.show_status = NULL;
-    }
-
 #if defined(SERVER_MODE)
   pthread_mutex_destroy (&pgbuf_Pool.show_status_mutex);
 #endif
@@ -2154,7 +2184,6 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 #endif /* !NDEBUG */
   PGBUF_FIX_PERF perf;
   bool maybe_deallocated;
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
 
   perf.perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
 
@@ -2247,7 +2276,6 @@ try_again:
 	  pgbuf_hit = true;
 #endif /* ENABLE_SYSTEMTAP */
 
-	  show_status->num_hit++;
 	  goto fast_path;
 	}
     }
@@ -2267,8 +2295,6 @@ try_again:
       CUBRID_PGBUF_HIT ();
       pgbuf_hit = true;
 #endif /* ENABLE_SYSTEMTAP */
-
-      show_status->num_hit++;
 
       if (fetch_mode == NEW_PAGE)
 	{
@@ -2488,8 +2514,6 @@ fast_path:
        * note: temporary pages are not strictly handled in regard with their deallocation status. */
       assert (fetch_mode != NEW_PAGE || pgbuf_is_lsa_temporary (pgptr));
     }
-
-  show_status->num_page_request++;
 
   /* Record number of fetches in statistics */
   if (perf.is_perf_tracking)
@@ -6191,6 +6215,21 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 
   *is_latch_wait = false;
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
+#if defined (SERVER_MODE)
+  /* fail-closed safety net: an idle bcb (PGBUF_NO_LATCH) with an EMPTY wait queue must never carry
+   * waiter_exists == true; the idle-grant CAS below force-expects waiter_exists == false and the idle path never
+   * blocks, so a stale bit would spin this thread forever while it holds the bcb mutex. all waiter_exists
+   * transitions are bcb-mutex-protected and we hold the mutex here, so the check is race-free. heal and flag. */
+  PGBUF_ATOMIC_LATCH_IMPL impl_snapshot = get_impl (&bufptr->atomic_latch);
+  if (impl_snapshot.impl.latch_mode == PGBUF_NO_LATCH && impl_snapshot.impl.waiter_exists
+      && bufptr->next_wait_thrd == NULL)
+    {
+      assert (false);		/* diag builds: catch any future leak at its first victim */
+      er_log_debug (ARG_FILE_LINE, "pgbuf_latch_bcb_upon_fix: healed stranded waiter_exists on idle bcb %d|%d\n",
+		    VPID_AS_ARGS (&bufptr->vpid));
+      set_waiter_exists (&bufptr->atomic_latch, false);
+    }
+#endif /* SERVER_MODE */
 // *INDENT-OFF*
   do
     {
@@ -6982,7 +7021,15 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 		    }
 
 		  thrd_entry->next_wait_thrd = NULL;
+		  /* self-removed from the wait queue on interrupt: reconcile waiter_exists (see
+		   * pgbuf_wake_flush_waiters). */
+		  if (!pgbuf_is_exist_blocked_reader_writer (bufptr))
+		    {
+		      set_waiter_exists (&bufptr->atomic_latch, false);
+		    }
 		  PGBUF_BCB_UNLOCK (bufptr);
+		  /* set an error like the READ/WRITE wait path does (pgbuf_timed_sleep); callers assert one is set */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 		  return ER_FAILED;
 		}
 
@@ -8041,7 +8088,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_alloc_search_and_wait = PERF_UTIME_TRACKER_INITIALIZER;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
 
 #if defined (SERVER_MODE)
   struct timespec to;
@@ -8153,11 +8199,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       // before migration of the page_flush_daemon it was a try_wakeup, check if still needed
       pgbuf_wakeup_page_flush_daemon (thread_p);
 
-      show_status->num_flusher_waiting_threads++;
-
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
-
-      show_status->num_flusher_waiting_threads--;
 
       PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, pstat_cond_wait);
 
@@ -8257,7 +8299,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   PAGE_PTR pgptr = NULL;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   bool success;
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
   PGBUF_ATOMIC_LATCH_IMPL impl;
 
 #if defined (ENABLE_SYSTEMTAP)
@@ -8344,7 +8385,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
     {
       /* Record number of reads in statistics */
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
-      show_status->num_pages_read++;
 
 #if defined(ENABLE_SYSTEMTAP)
       query_id = qmgr_get_current_query_id (thread_p);
@@ -8474,9 +8514,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
 	}
-
-      show_status->num_pages_created++;
-      show_status->num_hit++;
     }
 
   return bufptr;
@@ -10589,8 +10626,6 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   FILEIO_WRITE_MODE write_mode;
   bool is_temp = pgbuf_is_temporary_volume (bufptr->vpid.volid);
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
-
 
   PGBUF_BCB_CHECK_OWN (bufptr);
 
@@ -10727,8 +10762,6 @@ copy_unflushed_lsa:
     }
   else
     {
-      show_status->num_pages_written++;
-
       /* Record number of writes in statistics */
       write_mode = (dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE);
 
@@ -10844,6 +10877,16 @@ pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 	{
 	  prev_waiter = crt_waiter;
 	}
+    }
+  /* every PGBUF_LATCH_FLUSH waiter was dequeued above. reconcile the atomic-latch waiter_exists bit exactly as
+   * pgbuf_wakeup_reader_writer does on the unlatch path: if no blocked reader/writer remains queued, clear it.
+   * leaving it set on a bcb that is (or goes) idle poisons pgbuf_latch_bcb_upon_fix's idle-grant CAS, which
+   * force-expects waiter_exists == false and never enqueues when latch_mode == PGBUF_NO_LATCH -- the next fix
+   * then spins forever while holding the bcb mutex (bulk-build CREATE INDEX livelock). caller holds the bcb
+   * mutex at all callsites, and all waiter_exists transitions are bcb-mutex-protected, so this is race-free. */
+  if (!pgbuf_is_exist_blocked_reader_writer (bcb))
+    {
+      set_waiter_exists (&bcb->atomic_latch, false);
     }
 
   PERF_UTIME_TRACKER_TIME (thread_p, &timetr, PSTAT_PB_WAKE_FLUSH_WAITER);
@@ -11532,11 +11575,15 @@ pgbuf_wakeup_page_flush_daemon (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_has_perm_pages_fixed () -
+ * pgbuf_has_perm_pages_fixed () - does the thread still hold a page other than a query result page?
  *
- * return	       : The number of pages fixed by the thread.
+ * return	       : true if any page whose type is not PAGE_QRESULT is fixed by the thread.
  * thread_p (in)       : Thread entry.
  *
+ * Note: PAGE_QRESULT is the single exemption, because a query result page belongs to the thread's own list file
+ *       scan and no other thread fixes it. Callers use this to check that a thread is not holding a latch another
+ *       thread needs before it blocks - see lock_suspend and pgbuf_ordered_callback. Widening the exemption to the
+ *       other temporary page types would loosen those asserts, so weigh those callers before changing it.
  */
 bool
 pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
@@ -12257,7 +12304,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	   * cannot be fixed */
 	  if (er_status == NO_ERROR)
 	    {
-	      /* LK_FORCE_ZERO_WAIT is used in some page scan functions (e.g. heap_stats_find_page_in_bestspace) to
+	      /* LK_FORCE_ZERO_WAIT is used in some page scan functions (e.g. heap_find_bestpage) to
 	       * skip busy pages; here we return an error code (which means the page was not fixed), however no error
 	       * is set : this allows scan of pages to continue */
 	      assert (wait_msecs == LK_FORCE_ZERO_WAIT);
@@ -12879,6 +12926,341 @@ exit:
 	  if (!pgbuf_bcb_should_avoid_deallocation (bufptr))
 	    {
 	      /* oops... deallocate not prevented */
+	      assert (false);
+	    }
+	  else
+	    {
+	      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
+	    }
+	  PGBUF_BCB_UNLOCK (bufptr);
+	}
+    }
+
+  return er_status;
+}
+
+/*
+ * pgbuf_ordered_callback () - Temporarily unfix all ordered pages while executing a callback.
+ *   return: error code
+ *   thread_p (in): thread entry
+ *   callback_func (in): callback executed without any fixed pages
+ *   callback_args (in): callback arguments
+ *
+ * Note: Only ordered pages are unfixed, because only they carry a watcher through which the fix can be restored. Any
+ *       other fix is left in place - see the assert before the callback. The callback must not fix a page of its
+ *       own.
+ *       Unfixed pages are re-fixed in page order even when the callback returns an error. If re-fixing fails, some
+ *       watchers may remain without a fixed page and callers must check watcher page pointers before using them.
+ */
+#if !defined(NDEBUG)
+int
+pgbuf_ordered_callback_debug (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_FUNC callback_func,
+			      void *callback_args, const char *caller_file, int caller_line, const char *caller_func)
+#else /* NDEBUG */
+int
+pgbuf_ordered_callback_release (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_FUNC callback_func, void *callback_args)
+#endif				/* NDEBUG */
+{
+  PGBUF_HOLDER_INFO ordered_holders_info[PGBUF_MAX_PAGE_FIXED_BY_TRAN];
+  PGBUF_HOLDER_INFO *holder_info;
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_HOLDER *holder;
+  PGBUF_WATCHER *watcher;
+  PGBUF_BCB *bufptr;
+  PAGE_PTR pgptr;
+  PAGE_PTR refixed_pgptr;
+  PGBUF_ORDERED_GROUP group_id;
+  PGBUF_ORDERED_RANK rank;
+  int callback_status = NO_ERROR;
+  int er_status = NO_ERROR;
+  int previous_er_status;
+  int saved_pages_cnt = 0;
+  int holder_fix_cnt;
+  int fixed_count;
+  int thrd_idx;
+  int i, j;
+
+  assert (thread_p != NULL);
+  assert (callback_func != NULL);
+
+  if (!thread_p || !callback_func)
+    {
+      return ER_FAILED_ASSERTION;
+    }
+
+  thrd_idx = thread_get_entry_index (thread_p);
+
+  /* validate and save all holders before unfixing anything. */
+  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+    {
+      if (saved_pages_cnt >= PGBUF_MAX_PAGE_FIXED_BY_TRAN)
+	{
+	  assert_release (false);
+	  er_status = ER_FAILED_ASSERTION;
+	  goto exit;
+	}
+
+      if (!PGBUF_IS_ORDERED_PAGETYPE (holder->bufptr->iopage_buffer->iopage.prv.ptype))
+	{
+	  /* outside the heap latch ordering protocol, so it has no watcher and its fix cannot be restored. leave it
+	   * in place, exactly as pgbuf_ordered_fix does for the holders it cannot restore. */
+	  continue;
+	}
+
+      if (holder->watch_count <= 0 || holder->fix_count != holder->watch_count
+	  || holder->watch_count > PGBUF_MAX_PAGE_WATCHERS)
+	{
+	  /* ordered page whose fix cannot be restored, because there is no watcher whose page pointer can be */
+	  /* updated. It may be this heap's header or last page, which the allocating thread needs, so waiting while */
+	  /* holding it could deadlock. refuse instead of unfixing what we cannot put back. */
+	  assert_release (false);
+	  er_status = ER_FAILED_ASSERTION;
+	  goto exit;
+	}
+
+      holder_info = &ordered_holders_info[saved_pages_cnt];
+      holder_info->watch_count = 0;
+      holder_info->latch_mode = PGBUF_LATCH_READ;
+      holder_info->ptype = (PAGE_TYPE) holder->bufptr->iopage_buffer->iopage.prv.ptype;
+      holder_info->prevent_dealloc = false;
+      VPID_COPY (&holder_info->vpid, &holder->bufptr->vpid);
+      VPID_SET_NULL (&group_id);
+      rank = PGBUF_ORDERED_RANK_UNDEFINED;
+
+      CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
+      for (watcher = holder->first_watcher, j = 0; watcher != NULL; watcher = watcher->next, j++)
+	{
+	  if (j >= PGBUF_MAX_PAGE_WATCHERS)
+	    {
+	      assert_release (false);
+	      er_status = ER_FAILED_ASSERTION;
+	      goto exit;
+	    }
+
+#if !defined(NDEBUG)
+	  assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+#endif
+
+	  if (watcher->pgptr != pgptr || watcher->curr_rank >= PGBUF_ORDERED_RANK_UNDEFINED
+	      || (watcher->latch_mode != PGBUF_LATCH_READ && watcher->latch_mode != PGBUF_LATCH_WRITE))
+	    {
+	      assert_release (false);
+	      er_status = ER_FAILED_ASSERTION;
+	      goto exit;
+	    }
+
+	  if (j == 0)
+	    {
+	      VPID_COPY (&group_id, &watcher->group_id);
+	      rank = (PGBUF_ORDERED_RANK) watcher->curr_rank;
+	    }
+	  else if (!VPID_EQ (&group_id, &watcher->group_id) || rank != watcher->curr_rank)
+	    {
+	      assert_release (false);
+	      er_status = ER_FAILED_ASSERTION;
+	      goto exit;
+	    }
+
+	  holder_info->watcher[j] = watcher;
+	  if (watcher->latch_mode == PGBUF_LATCH_WRITE)
+	    {
+	      holder_info->latch_mode = PGBUF_LATCH_WRITE;
+	    }
+	}
+
+      if (j != holder->watch_count)
+	{
+	  assert_release (false);
+	  er_status = ER_FAILED_ASSERTION;
+	  goto exit;
+	}
+
+      holder_info->watch_count = j;
+      VPID_COPY (&holder_info->group_id, &group_id);
+      holder_info->rank = rank;
+      saved_pages_cnt++;
+    }
+
+  if (saved_pages_cnt > 1)
+    {
+      qsort (ordered_holders_info, saved_pages_cnt, sizeof (ordered_holders_info[0]), pgbuf_compare_hold_vpid_for_sort);
+    }
+
+  /* unfix all saved pages. deallocation is prevented until each page is restored. */
+  for (i = 0; i < saved_pages_cnt; i++)
+    {
+      holder_info = &ordered_holders_info[i];
+      for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+	{
+	  if (VPID_EQ (&holder_info->vpid, &holder->bufptr->vpid))
+	    {
+	      break;
+	    }
+	}
+
+      assert (holder != NULL);
+      assert (holder->fix_count == holder_info->watch_count);
+      assert (holder->watch_count == holder_info->watch_count);
+
+      holder_fix_cnt = holder->fix_count;
+      holder->watch_count = 0;
+      holder->first_watcher = NULL;
+      holder->last_watcher = NULL;
+
+      CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
+      /* this must be called */
+      pgbuf_bcb_register_avoid_deallocation (holder->bufptr);
+      holder_info->prevent_dealloc = true;
+
+      while (holder_fix_cnt-- > 0)
+	{
+#if !defined(NDEBUG)
+	  pgbuf_unfix_debug (thread_p, pgptr, caller_file, caller_line, caller_func);
+#else
+	  pgbuf_unfix (thread_p, pgptr);
+#endif
+	}
+
+      for (j = 0; j < holder_info->watch_count; j++)
+	{
+	  watcher = holder_info->watcher[j];
+	  assert (watcher->pgptr == pgptr);
+	  PGBUF_CLEAR_WATCHER (watcher);
+	  watcher->page_was_unfixed = true;
+#if !defined(NDEBUG)
+	  pgbuf_watcher_init_debug (watcher, caller_file, caller_line, true);
+#endif
+	}
+    }
+
+  /* pgbuf_ordered_callback used to require that the thread holds no page at all. It unfixes ordered pages only, so a
+   * fix without a watcher may now remain - in practice the query result page of the thread's own list file scan,
+   * which no other thread fixes. Any other type must surface here: the shard allocator the callback waits for fixes
+   * PAGE_FTAB and PAGE_VOLHEADER itself, and keeping one of those across the wait would deadlock against it.
+   *
+   * TODO: if this fires, decide whether the reported page type must be unfixed across the callback too, rather than
+   * allowing it here. */
+  assert (!pgbuf_has_perm_pages_fixed (thread_p));
+
+  callback_status = callback_func (thread_p, callback_args);
+
+  /* restore every page in the same global order used by ordered fix. */
+  for (i = 0; i < saved_pages_cnt; i++)
+    {
+      holder_info = &ordered_holders_info[i];
+      pgptr = NULL;
+      fixed_count = 0;
+
+      for (j = 0; j < holder_info->watch_count; j++)
+	{
+#if !defined(NDEBUG)
+	  refixed_pgptr = pgbuf_fix_debug (thread_p, &holder_info->vpid, OLD_PAGE, holder_info->latch_mode,
+					   PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line, caller_func);
+#else
+	  refixed_pgptr = pgbuf_fix_release (thread_p, &holder_info->vpid, OLD_PAGE, holder_info->latch_mode,
+					     PGBUF_UNCONDITIONAL_LATCH);
+#endif
+	  if (refixed_pgptr == NULL)
+	    {
+	      break;
+	    }
+	  if (pgptr == NULL)
+	    {
+	      pgptr = refixed_pgptr;
+	    }
+	  else
+	    {
+	      assert (pgptr == refixed_pgptr);
+	    }
+	  fixed_count++;
+	}
+
+      if (fixed_count != holder_info->watch_count)
+	{
+	  previous_er_status = er_errid ();
+	  if (previous_er_status == NO_ERROR)
+	    {
+	      previous_er_status = ER_FAILED;
+	    }
+
+	  while (fixed_count-- > 0)
+	    {
+#if !defined(NDEBUG)
+	      pgbuf_unfix_debug (thread_p, pgptr, caller_file, caller_line, caller_func);
+#else
+	      pgbuf_unfix (thread_p, pgptr);
+#endif
+	    }
+
+	  if (previous_er_status == ER_INTERRUPTED)
+	    {
+	      er_status = ER_INTERRUPTED;
+	    }
+	  else
+	    {
+	      er_status = ER_PB_ORDERED_REFIX_FAILED;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 3, holder_info->vpid.volid,
+		      holder_info->vpid.pageid, previous_er_status);
+	    }
+	  goto exit;
+	}
+
+      holder = pgbuf_get_holder (thread_p, pgptr);
+      if (holder == NULL)
+	{
+	  assert_release (false);
+	  while (fixed_count-- > 0)
+	    {
+#if !defined(NDEBUG)
+	      pgbuf_unfix_debug (thread_p, pgptr, caller_file, caller_line, caller_func);
+#else
+	      pgbuf_unfix (thread_p, pgptr);
+#endif
+	    }
+	  er_status = ER_FAILED_ASSERTION;
+	  goto exit;
+	}
+
+      assert (holder_info->prevent_dealloc);
+      holder_info->prevent_dealloc = false;
+      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
+
+#if !defined(NDEBUG)
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, holder_info->ptype);
+#endif
+
+      for (j = 0; j < holder_info->watch_count; j++)
+	{
+#if !defined(NDEBUG)
+	  pgbuf_add_watch_instance_internal (holder, pgptr, holder_info->watcher[j],
+					     (PGBUF_LATCH_MODE) holder_info->watcher[j]->latch_mode, false,
+					     caller_file, caller_line);
+#else
+	  pgbuf_add_watch_instance_internal (holder, pgptr, holder_info->watcher[j],
+					     (PGBUF_LATCH_MODE) holder_info->watcher[j]->latch_mode, false);
+#endif
+	}
+    }
+
+  er_status = callback_status;
+
+exit:
+  for (i = 0; i < saved_pages_cnt; i++)
+    {
+      if (ordered_holders_info[i].prevent_dealloc)
+	{
+	  hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&ordered_holders_info[i].vpid)];
+	  bufptr = pgbuf_search_hash_chain (thread_p, hash_anchor, &ordered_holders_info[i].vpid);
+	  if (bufptr == NULL)
+	    {
+	      assert (false);
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	      continue;
+	    }
+
+	  if (!pgbuf_bcb_should_avoid_deallocation (bufptr))
+	    {
 	      assert (false);
 	    }
 	  else
@@ -15695,6 +16077,26 @@ pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page)
 }
 
 /*
+ * pgbuf_mark_page_for_lru_bottom () - mark a fixed page so that its coming unfix drops the bcb to
+ *   the bottom of its LRU list (immediately victimizable) instead of keeping or boosting it.
+ *   Long scans that will not revisit a page (statistics collection) use this to hand the buffer
+ *   back without polluting the working set. Same mechanism page deallocation uses, minus the
+ *   dirty flag.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * page (in)     : page to demote on unfix
+ */
+void
+pgbuf_mark_page_for_lru_bottom (THREAD_ENTRY * thread_p, PAGE_PTR page)
+{
+  PGBUF_BCB *bcb;
+
+  CAST_PGPTR_TO_BFPTR (bcb, page);
+  pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG, 0);
+}
+
+/*
  * pgbuf_bcb_is_flushing () - is page going to be accessed by vacuum?
  *
  * return   : true/false
@@ -16905,17 +17307,10 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
   const int num_cols = 19;
-  time_t cur_time;
-  int idx, i;
+  int idx;
   int error = NO_ERROR;
-  DB_VALUE *vals = NULL, db_val;
-  unsigned long long delta, hit_delta, request_delta;
-  double time_delta;
-  double hit_rate;
-  DB_DATA_STATUS data_status;
-  PGBUF_STATUS status_accumulated = { };
+  DB_VALUE *vals = NULL;
   PGBUF_STATUS_SNAPSHOT *status_snapshot = &pgbuf_Pool.show_status_snapshot;
-  PGBUF_STATUS_OLD *status_old = &pgbuf_Pool.show_status_old;
 
   *ptr = NULL;
 
@@ -16925,21 +17320,11 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 
   pgbuf_scan_bcb_table ();
 
-  for (i = 0; i <= (int) thread_num_total_threads (); i++)
-    {
-      status_accumulated.num_hit += pgbuf_Pool.show_status[i].num_hit;
-      status_accumulated.num_page_request += pgbuf_Pool.show_status[i].num_page_request;
-      status_accumulated.num_pages_created += pgbuf_Pool.show_status[i].num_pages_created;
-      status_accumulated.num_pages_written += pgbuf_Pool.show_status[i].num_pages_written;
-      status_accumulated.num_pages_read += pgbuf_Pool.show_status[i].num_pages_read;
-      status_accumulated.num_flusher_waiting_threads += pgbuf_Pool.show_status[i].num_flusher_waiting_threads;
-    }
-
   ctx = showstmt_alloc_array_context (thread_p, 1, num_cols);
   if (ctx == NULL)
     {
       error = er_errid ();
-      return error;
+      goto exit_on_error;
     }
 
   vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
@@ -16949,31 +17334,18 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
       goto exit_on_error;
     }
 
-  cur_time = time (NULL);
-
-  time_delta = difftime (cur_time, status_old->print_out_time) + 0.0001;	// avoid dividing by 0
-
   idx = 0;
 
-  hit_rate = (status_accumulated.num_hit - status_old->num_hit) /
-    ((status_accumulated.num_page_request - status_old->num_page_request) + 0.0000000000001);
-  hit_rate = hit_rate * 100;
-
-  db_make_double (&db_val, hit_rate);
-  db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 13, 10);
-  error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
-  idx++;
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  delta = status_accumulated.num_hit - status_old->num_hit;
-  db_make_bigint (&vals[idx], delta);
+  /* Hit_rate: deprecated, always NULL. see Data_page_buffer_hit_ratio of cubrid statdump. */
+  db_make_null (&vals[idx]);
   idx++;
 
-  delta = status_accumulated.num_page_request - status_old->num_page_request;
-  db_make_bigint (&vals[idx], delta);
+  /* Num_hit: deprecated, always NULL. */
+  db_make_null (&vals[idx]);
+  idx++;
+
+  /* Num_page_request: deprecated, always NULL. see Num_data_page_fetches of cubrid statdump. */
+  db_make_null (&vals[idx]);
   idx++;
 
   db_make_int (&vals[idx], pgbuf_Pool.num_buffers);
@@ -17006,48 +17378,31 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
   db_make_int (&vals[idx], status_snapshot->num_temp_pages);
   idx++;
 
-  delta = status_accumulated.num_pages_created - status_old->num_pages_created;
-  db_make_bigint (&vals[idx], delta);
+  /* Num_pages_created: deprecated, always NULL. */
+  db_make_null (&vals[idx]);
   idx++;
 
-  delta = status_accumulated.num_pages_written - status_old->num_pages_written;
-  db_make_bigint (&vals[idx], delta);
+  /* Num_pages_written: deprecated, always NULL. see Num_data_page_iowrites of cubrid statdump. */
+  db_make_null (&vals[idx]);
   idx++;
 
-  db_make_double (&db_val, delta / time_delta);
-  db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 20, 10);
-  error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
-  idx++;
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  delta = status_accumulated.num_pages_read - status_old->num_pages_read;
-  db_make_bigint (&vals[idx], delta);
+  /* Pages_written_rate: deprecated, always NULL. */
+  db_make_null (&vals[idx]);
   idx++;
 
-  db_make_double (&db_val, delta / time_delta);
-  db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 20, 10);
-  error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
+  /* Num_pages_read: deprecated, always NULL. see Num_data_page_ioreads of cubrid statdump. */
+  db_make_null (&vals[idx]);
   idx++;
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
 
-  db_make_int (&vals[idx], status_accumulated.num_flusher_waiting_threads);
+  /* Pages_read_rate: deprecated, always NULL. */
+  db_make_null (&vals[idx]);
+  idx++;
+
+  /* Num_flusher_waiting_threads: deprecated, always NULL. */
+  db_make_null (&vals[idx]);
   idx++;
 
   assert (idx == num_cols);
-
-  /* set now data to old data */
-  status_old->num_hit = status_accumulated.num_hit;
-  status_old->num_page_request = status_accumulated.num_page_request;
-  status_old->num_pages_created = status_accumulated.num_pages_created;
-  status_old->num_pages_written = status_accumulated.num_pages_written;
-  status_old->num_pages_read = status_accumulated.num_pages_read;
-  status_old->print_out_time = cur_time;
 
   *ptr = ctx;
 
