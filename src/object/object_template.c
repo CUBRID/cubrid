@@ -165,16 +165,11 @@ static void free_temp_object (MOP obj);
 int
 obt_area_init (void)
 {
-#if defined (SERVER_MODE)
   if (Template_area != NULL)
     {
-      /* process-shared area (#123 D5); later sessions reuse it.  CS/SA keep
-       * the upstream unconditional re-create: their shutdown path frees every
-       * area (area_final) without resetting this pointer, so an in-process
-       * re-boot (copylogdb reconnect loop) would reuse a freed area */
+      /* process-shared area (#123 D5); process teardown resets the pointer */
       return NO_ERROR;
     }
-#endif
 
   Template_area = area_create ("Object templates", sizeof (OBJ_TEMPLATE), 32);
   if (Template_area == NULL)

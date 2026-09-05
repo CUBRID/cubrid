@@ -90,6 +90,8 @@
 #include "dbtype.h"
 #include "method_callback.hpp"
 #include "object_primitive.h"
+#include "object_template.h"
+#include "class_object.h"
 #include "connection_globals.h"
 #include "host_lookup.h"
 #include "schema_system_catalog.hpp"
@@ -737,6 +739,12 @@ boot_restart_failure_cleanup (DB_INFO * db,
 
       locator_free_areas ();
       sysprm_final ();
+      /* Retire the process-owned areas and reset their init guards before
+       * area_final frees the remaining areas (also on in-process re-boot). */
+      ws_area_final ();
+      pr_area_final ();
+      obt_area_final ();
+      classobj_area_final ();
       area_final ();
 
       lang_final ();
@@ -1665,6 +1673,12 @@ boot_client_all_finalize (int final_level)
       locator_free_areas ();
       sysprm_final ();
       perfmon_finalize ();
+      /* Retire the process-owned areas and reset their init guards before
+       * area_final frees the remaining areas (also on in-process re-boot). */
+      ws_area_final ();
+      pr_area_final ();
+      obt_area_final ();
+      classobj_area_final ();
       area_final ();
 
       msgcat_final ();

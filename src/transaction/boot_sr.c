@@ -52,6 +52,9 @@
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "object_primitive.h"
+#include "object_template.h"
+#include "class_object.h"
+#include "work_space.h"
 #include "locator_sr.h"
 #include "heap_file.h"
 #include "system_catalog.h"
@@ -3908,6 +3911,12 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
       locator_free_areas ();
       set_final ();
       sysprm_final ();
+      /* Retire the process-owned areas and reset their init guards before
+       * area_final frees the remaining areas (also on in-process re-boot). */
+      ws_area_final ();
+      pr_area_final ();
+      obt_area_final ();
+      classobj_area_final ();
       area_final ();
       msgcat_final ();
       if (is_er_final == ER_ALL_FINAL)
