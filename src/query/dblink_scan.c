@@ -1475,8 +1475,16 @@ sql_build_error:
  *   thread_p(in)   : thread entry
  *   table_name(in) : remote table name
  *   key_col(in)    : remote WHERE column (left-hand side, e.g. rc1)
- *   op(in)         : comparison operator SQL text ("=", "<", ">", "<=", ">=")
+ *   op(in)         : comparison operator SQL text ("=", "<>", "<", ">", "<=", ">=")
  *   sql_out(out)   : set to the built SQL text on success
+ *
+ * TODO: key_col is appended unquoted, matching the parser-side
+ *       push-down paths (pt_copypush_terms, and mq_dblink_append_corr_pred_sql -- see the TODO there).  A
+ *       reserved-word or space-bearing column therefore fails the remote prepare instead of deleting the
+ *       wrong rows.  One thing differs here: this text is assembled at execution time, where
+ *       cci_get_dbms_type() identifies the remote, so vendor-aware quoting is feasible in this path even
+ *       though it is not at XASL generation.  Deferred until the quoting semantics are settled per vendor
+ *       (quoting makes identifiers case-sensitive on Oracle, and MySQL's default quote is the backtick).
  */
 static int
 dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, const char *key_col, const char *op,
@@ -1529,7 +1537,7 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
  *   num_attrs(in)   : INSERT only -- length of attr_names (0 when positional)
  *   num_bind(in)    : INSERT only -- number of ? placeholders (= SELECT column count)
  *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1)
- *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<", ">", "<=", ">=")
+ *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<>", "<", ">", "<=", ">=")
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
  * Note: To prevent partial writes, both kinds ALWAYS:

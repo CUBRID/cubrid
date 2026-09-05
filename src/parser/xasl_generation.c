@@ -19504,16 +19504,12 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
  * Note: table_name is left NULL on allocation failure -- the caller detects this the same way it
  *   already checks pt_has_error(parser), by testing sink->table_name == NULL.
  *
- * TODO: The remote table name (here) and remote column names (INSERT's remote_attr_names) are
- *   emitted to the remote server unquoted (dblink_dml_open builds "INSERT INTO <table> [(<cols>)]
- *   VALUES (?, ...)" / "DELETE FROM <table> WHERE ..."). Quoting makes identifiers case-sensitive,
- *   but unquoted identifiers are normalized differently by DB (Oracle: uppercase, CUBRID: lowercase)
- *   and the quote character differs (CUBRID/Oracle: "id", MySQL default: `id`). The remote DBMS type
- *   is unknown at XASL generation (these sinks also target Oracle/MySQL via the gateway), and
- *   info.name.original has already dropped the user's quoting, so faithful requoting is not possible
- *   here. Proper per-DB quoting is deferred, consistent with the correlated push-down path
- *   (CBRD-26601, mq_dblink_append_corr_pred_sql). Consequence: remote table/column names that
- *   require quoting (reserved words, mixed-case, special chars) are not supported.
+ * TODO: remote table/column names are emitted unquoted. Quoting is per-DB and cannot be decided here: the
+ *   remote DBMS type is unknown at XASL generation (these sinks also target Oracle/MySQL via the gateway),
+ *   unquoted names normalize differently (Oracle uppercases, CUBRID lowercases), the quote character differs
+ *   ("id" vs MySQL `id`), and info.name.original has already dropped the user's quoting. Deferred, same as
+ *   the correlated push-down path (CBRD-26601, mq_dblink_append_corr_pred_sql) -- fix both together.
+ *   Consequence: reserved / mixed-case / special-char identifiers are not supported.
  */
 static void
 pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_DBLINK_INFO * pdblink,
@@ -19731,11 +19727,8 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
- * pt_to_delete_xasl_remote_subquery () - Builds DELETE_PROC XASL for a remote DELETE whose WHERE references a
- *   pure-local subquery. Mirrors pt_to_insert_xasl_remote_select: the local subquery is compiled as the aptr
- *   (produces a single-column list-file), and the DELETE_PROC carries the remote connection, target table,
- *   WHERE key column, and comparison operator. The runtime reads each list-file value and pushes
- *   "DELETE FROM <table> WHERE <key> <op> ?" via CCI bind.
+ * pt_to_delete_xasl_remote_subquery () - Remote DELETE + local subquery: aptr = local list-file,
+ *   DELETE_PROC holds remote conn/table/key/op; runtime binds per-row "DELETE ... WHERE key op ?".
  *
  * return        : XASL node, or NULL on error.
  * parser (in)   : Parser context.
@@ -19760,10 +19753,9 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   assert (cond != NULL && cond->node_type == PT_EXPR);
 
-  /* Only the first predicate is translated below, so a second one would be dropped without a diagnostic. The
-   * parser gate admits a single predicate, but rewrites between there and here can append to the list -- LIMIT
-   * becomes inst_num() <= n during semantic check, for one. Those forms are excluded at the gate; reject here
-   * too so any future appender surfaces as an error instead of a silently unenforced condition. */
+  /* Only the first predicate is translated below, so a second would be dropped without a diagnostic. The
+   * gate admits one, but rewrites between there and here can append (LIMIT becomes inst_num() <= n). Reject
+   * so a future appender surfaces as an error instead of a silently unenforced condition. */
   if (cond->next != NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
@@ -19771,7 +19763,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  /* operator -> remote WHERE SQL text (fixed safe set; IN / = ANY push per-row equality) */
+  /* op -> remote WHERE text (fixed set; one remote pred per list-file value; ANY = per-row OR). */
   switch (cond->info.expr.op)
     {
     case PT_IS_IN:
@@ -19780,16 +19772,24 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       op_sql = "=";
       break;
     case PT_LT:
+    case PT_LT_SOME:
       op_sql = "<";
       break;
     case PT_GT:
+    case PT_GT_SOME:
       op_sql = ">";
       break;
     case PT_LE:
+    case PT_LE_SOME:
       op_sql = "<=";
       break;
     case PT_GE:
+    case PT_GE_SOME:
       op_sql = ">=";
+      break;
+    case PT_NE:
+    case PT_NE_SOME:
+      op_sql = "<>";
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE subquery: unexpected operator");
@@ -19805,10 +19805,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   else if (arg1 != NULL && arg1->node_type == PT_DOT_ && arg1->info.dot.arg2 != NULL
 	   && arg1->info.dot.arg2->node_type == PT_NAME)
     {
-      /* Only the trailing attribute survives here. That the qualifier names the delete target is established by
-       * the parser gate (pt_convert_dblink_dml_query); it is not re-checked at this point because by now name
-       * resolution has rewritten the dotted name and the spec's range variable no longer lines up with the
-       * qualifier as written, so the comparison cannot be repeated naively. */
+      /* Trailing attr only; qualifier already checked at the parser gate (not re-checkable after name rewrite). */
       key_col = arg1->info.dot.arg2->info.name.original;
     }
   if (key_col == NULL)
@@ -21788,10 +21785,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return NULL;
 	}
 
-      /* remote DELETE + local subquery sink: pt_convert_dblink_dml_query set up a
-       * PT_DBLINK_TABLE_DML with qstr == NULL (no serialized pushdown text) and preserved the WHERE subquery.
-       * Route to the value-push sink instead of the qstr pushdown. qstr != NULL keeps the normal remote DELETE
-       * (no local subquery) on the existing pushdown path. */
+      /* remote DELETE + local subquery sink (qstr == NULL, WHERE kept) -> value-push path;
+       * qstr != NULL stays on the normal remote DELETE pushdown. */
       {
 	PT_NODE *remote_spec = from->info.spec.remote_server_name;
 

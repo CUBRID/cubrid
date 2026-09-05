@@ -453,7 +453,7 @@ struct delete_proc_node
   /* remote DELETE + local subquery sink fields (DELETE FROM remote WHERE col op (SELECT FROM local)) */
   REMOTE_DML_SINK sink;
   char *remote_key_col;		/* remote target column on the WHERE left-hand side (e.g. rc1) */
-  char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<", ">", "<=", ">=" */
+  char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<>", "<", ">", "<=", ">=" */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
