@@ -43,6 +43,7 @@
 #include "db_date.h"
 #include "tz_support.h"
 #include <cas_cci.h>
+#include <broker_cas_protocol.h>	/* CAS_*_DBMS_* values returned by cci_get_dbms_type */
 
 #include <db_json.hpp>
 
@@ -152,6 +153,69 @@ static int type_map[] = {
 
 #define NULL_CHECK(ind) \
 	if ((ind) == -1) break
+
+/*
+ * dblink_dml_src_utype () - The CCI type a remote marker carries when its domain is this source type.
+ *   return: CCI_U_TYPE_NULL for a type with no CCI equivalent (the caller then leaves the cast to the
+ *           formatter, which also declines it)
+ *   src_type(in): DB_TYPE of the local subquery's source column
+ *
+ * Its counterpart is the u_type dblink_bind_dbval_to_param() picks when sending the value (and
+ * cas_u_type[] on the broker side); type_map[] just above is a different mapping -- CCI type to bind shape.
+ * One cell differs from the bind path on purpose: that one sends a CHAR value as CCI_U_TYPE_STRING, while
+ * this reports CHAR, because the rule compares *declared* types and the marker names the declared type of
+ * the target. Calling CHAR and CHAR equal keeps the bare "?" there, which is what the all-local form
+ * matches (both sides pad).
+ */
+static T_CCI_U_TYPE
+dblink_dml_src_utype (DB_TYPE src_type)
+{
+  switch (src_type)
+    {
+    case DB_TYPE_CHAR:
+      return CCI_U_TYPE_CHAR;
+    case DB_TYPE_STRING:
+      return CCI_U_TYPE_STRING;
+    case DB_TYPE_BIT:
+      return CCI_U_TYPE_BIT;
+    case DB_TYPE_VARBIT:
+      return CCI_U_TYPE_VARBIT;
+    case DB_TYPE_NUMERIC:
+      return CCI_U_TYPE_NUMERIC;
+    case DB_TYPE_SHORT:
+      return CCI_U_TYPE_SHORT;
+    case DB_TYPE_INTEGER:
+      return CCI_U_TYPE_INT;
+    case DB_TYPE_BIGINT:
+      return CCI_U_TYPE_BIGINT;
+    case DB_TYPE_FLOAT:
+      return CCI_U_TYPE_FLOAT;
+    case DB_TYPE_DOUBLE:
+      return CCI_U_TYPE_DOUBLE;
+    case DB_TYPE_MONETARY:
+      return CCI_U_TYPE_MONETARY;
+    case DB_TYPE_DATE:
+      return CCI_U_TYPE_DATE;
+    case DB_TYPE_TIME:
+      return CCI_U_TYPE_TIME;
+    case DB_TYPE_TIMESTAMP:
+      return CCI_U_TYPE_TIMESTAMP;
+    case DB_TYPE_DATETIME:
+      return CCI_U_TYPE_DATETIME;
+    case DB_TYPE_TIMESTAMPTZ:
+      return CCI_U_TYPE_TIMESTAMPTZ;
+    case DB_TYPE_TIMESTAMPLTZ:
+      return CCI_U_TYPE_TIMESTAMPLTZ;
+    case DB_TYPE_DATETIMETZ:
+      return CCI_U_TYPE_DATETIMETZ;
+    case DB_TYPE_DATETIMELTZ:
+      return CCI_U_TYPE_DATETIMELTZ;
+    case DB_TYPE_JSON:
+      return CCI_U_TYPE_JSON;
+    default:
+      return CCI_U_TYPE_NULL;
+    }
+}
 
 static T_CCI_U_TYPE
 dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
@@ -430,6 +494,7 @@ dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
   T_CCI_DATE cci_date;
   T_CCI_BIT cci_bit;
   char num_str[NUMERIC_MAX_STRING_SIZE];
+  const char *type_name;
   unsigned char type;
 
   value = &dbval->data;
@@ -559,7 +624,14 @@ dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
       u_type = CCI_U_TYPE_NULL;
       break;
     default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1, "unknown");
+      /* Name the type the sink refused. This branch said "unknown", so the user could not tell which type
+       * was rejected -- ENUM and MONETARY sources land here, and so does anything added to DB_TYPE
+       * without a case. The read direction names the types it maps (print_utype_to_string() above, whose
+       * own default is ""). pr_type_name() returns NULL for an id it does not map, so the old string
+       * stays as the fallback. */
+      type_name = pr_type_name ((DB_TYPE) type);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1,
+	      (type_name != NULL) ? type_name : "unknown");
       return ER_DBLINK_UNSUPPORTED_TYPE;
     }
   ret = cci_bind_param (stmt_handle, param_index, a_type, value, u_type, 0);
@@ -1469,22 +1541,246 @@ sql_build_error:
 }
 
 /*
- * dblink_dml_build_delete_sql () - Build "DELETE FROM <table> WHERE <key_col> <op> ?" (one placeholder).
+ * Restoring the pushed value's declared type -- the whole policy in one place.
+ *
+ * The sink pushes the local subquery's value as a bare placeholder -- the marker, in the CCI terms used
+ * below -- so the remote resolves its domain from the target column and reshapes the value into it. The
+ * comparison then stops matching what the all-local form matches: a CHAR target pads a VARCHAR value, and
+ * a numeric target turns a date into a number where the all-local form refuses the pair. Spelling the
+ * source type into the statement puts the declared type back, because the remote then computes
+ * common_type(target, source) -- the same function on the same arguments the all-local form runs.
+ *
+ * One rule, decided after the first prepare, from the marker:
+ *
+ *   marker resolved, domain differs from the source type | CAST(? AS <source>) + re-prepare
+ *   marker resolved, domain agrees                       | bare "?" -- nothing to fix
+ *   marker unresolved (numeric target), date/time source | CAST(? AS <source>) + re-prepare
+ *   marker unresolved, any other source                  | bare "?"
+ *
+ * The last two rows are the fallback: a numeric target reports CCI_U_TYPE_NULL, which leaves the rule
+ * without a right-hand side. It casts less than the rule because only a date/time source was measured to
+ * diverge there -- casting the rest would change every numeric-key statement's text for nothing.
+ *
+ * The whole rule is gated on the remote being CUBRID: the cast text spells CUBRID type names, and the other
+ * vendors do not share them (Oracle has no DATETIME, MySQL casts to CHAR rather than VARCHAR(n)). The ask
+ * costs one CAS round trip per statement, the agreeing ones included -- a DML prepare carries nothing else
+ * that would name the target type.
+ */
+
+/*
+ * dblink_dml_delete_remote_is_cubrid () - Is the remote a native CUBRID server?
+ *   return: true only for a direct or proxied CUBRID connection
+ *   conn_handle(in): open CCI connection
+ *
+ * Free to ask: cci_get_dbms_type() reads broker_info[BROKER_INFO_DBMS_TYPE], which the connection
+ * handshake already filled in -- no round-trip, so this needs no caching.
+ */
+static bool
+dblink_dml_delete_remote_is_cubrid (int conn_handle)
+{
+  int dbms_type = cci_get_dbms_type (conn_handle);
+
+  return dbms_type == CAS_DBMS_CUBRID || dbms_type == CAS_PROXY_DBMS_CUBRID;
+}
+
+/*
+ * dblink_dml_delete_is_datetime_type () - Is this source type one the unresolved-marker fallback casts?
+ *   return: true for the four date/time types the fallback covers
+ *   src_type(in): DB_TYPE of the local subquery's source column
+ *
+ * The zone-qualified types are out because cci_bind_param rejects them (see the formatter's default case).
+ */
+static bool
+dblink_dml_delete_is_datetime_type (DB_TYPE src_type)
+{
+  return (src_type == DB_TYPE_DATE || src_type == DB_TYPE_TIME || src_type == DB_TYPE_DATETIME
+	  || src_type == DB_TYPE_TIMESTAMP);
+}
+
+/*
+ * dblink_dml_delete_cast_type () - CUBRID type text that restores the pushed value's declared type.
+ *   return: buf, or NULL when the domain has no usable CAST text (the caller then pushes a bare "?")
+ *   src_dom(in) : domain of the local subquery's source column
+ *   buf(out)    : caller-provided buffer
+ *   buflen(in)  : size of buf
+ *
+ * The precision has to ride along where the default is not the widest: CAST('2024-01-01' AS CHAR) yields
+ * '2' (measured), while a bare VARCHAR keeps the value. So CHAR, BIT and NUMERIC decline the cast without
+ * a usable precision rather than ship a truncating one.
+ */
+static const char *
+dblink_dml_delete_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
+{
+  DB_TYPE src_type = TP_DOMAIN_TYPE (src_dom);
+  int prec = (src_dom != NULL) ? src_dom->precision : 0;
+  int scale = (src_dom != NULL) ? src_dom->scale : 0;
+  int ret;
+
+  switch (src_type)
+    {
+    case DB_TYPE_CHAR:
+      if (prec <= 0)
+	{
+	  return NULL;
+	}
+      ret = snprintf (buf, buflen, "CHAR(%d)", prec);
+      break;
+    case DB_TYPE_BIT:
+      if (prec <= 0)
+	{
+	  return NULL;
+	}
+      ret = snprintf (buf, buflen, "BIT(%d)", prec);
+      break;
+    case DB_TYPE_NUMERIC:
+      if (prec <= 0)
+	{
+	  return NULL;
+	}
+      ret = snprintf (buf, buflen, "NUMERIC(%d,%d)", prec, scale);
+      break;
+    case DB_TYPE_STRING:
+      if (prec > 0)
+	{
+	  ret = snprintf (buf, buflen, "VARCHAR(%d)", prec);
+	}
+      else
+	{
+	  ret = snprintf (buf, buflen, "VARCHAR");
+	}
+      break;
+    case DB_TYPE_VARBIT:
+      /* BIT VARYING, not VARBIT -- "CAST(x AS VARBIT(16))" is a syntax error (measured). Dropping an
+       * unusable length is safe here: a 16-bit value cast to a bare BIT VARYING stays 16 bits, while a
+       * bare BIT truncates it to one (measured), which is why BIT above declines instead. */
+      if (prec > 0)
+	{
+	  ret = snprintf (buf, buflen, "BIT VARYING(%d)", prec);
+	}
+      else
+	{
+	  ret = snprintf (buf, buflen, "BIT VARYING");
+	}
+      break;
+    case DB_TYPE_SHORT:
+      ret = snprintf (buf, buflen, "SHORT");
+      break;
+    case DB_TYPE_INTEGER:
+      ret = snprintf (buf, buflen, "INTEGER");
+      break;
+    case DB_TYPE_BIGINT:
+      ret = snprintf (buf, buflen, "BIGINT");
+      break;
+    case DB_TYPE_FLOAT:
+      ret = snprintf (buf, buflen, "FLOAT");
+      break;
+    case DB_TYPE_DOUBLE:
+      ret = snprintf (buf, buflen, "DOUBLE");
+      break;
+    case DB_TYPE_DATE:
+      ret = snprintf (buf, buflen, "DATE");
+      break;
+    case DB_TYPE_TIME:
+      ret = snprintf (buf, buflen, "TIME");
+      break;
+    case DB_TYPE_DATETIME:
+      ret = snprintf (buf, buflen, "DATETIME");
+      break;
+    case DB_TYPE_TIMESTAMP:
+      ret = snprintf (buf, buflen, "TIMESTAMP");
+      break;
+    default:
+      /* Everything the sink cannot spell keeps the bare placeholder, which is what it pushed before this
+       * policy existed: the zone-qualified types (rejected by cci_bind_param anyway), collections, LOBs,
+       * ENUM, MONETARY -- which dblink_bind_dbval_to_param() has no case for at all, so such a source
+       * fails with ER_DBLINK_UNSUPPORTED_TYPE before any comparison -- and JSON, which binds but brings the
+       * local server down on a separate develop defect, so claiming its cast text here would be a guess. */
+      return NULL;
+    }
+
+  if (ret < 0 || (size_t) ret >= buflen)
+    {
+      /* a truncated type name would prepare as something else on the remote */
+      return NULL;
+    }
+
+  return buf;
+}
+
+/*
+ * dblink_dml_delete_cast_type_needed () - Ask the remote what it expects in the marker, and answer with the
+ *   cast text when that disagrees with what the sink is about to bind.
+ *   return: cast text (in buf), or NULL to keep the bare placeholder
+ *   stmt_handle(in): prepared DELETE whose single marker is asked about
+ *   src_dom(in)    : domain of the local subquery's source column
+ *   buf(out)       : caller-provided buffer for the type text
+ *   buflen(in)     : size of buf
+ *
+ * The marker is the sink's only way to see the target type: a DML prepare carries no column information
+ * (CAS ships that only for SELECT). The rule and its fallback are in the policy comment above
+ * dblink_dml_delete_remote_is_cubrid().
+ */
+static const char *
+dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *buf, size_t buflen)
+{
+  T_CCI_PARAM_INFO *param_info = NULL;
+  T_CCI_ERROR err_buf;
+  const char *cast_type = NULL;
+  DB_TYPE src_type = TP_DOMAIN_TYPE (src_dom);
+  int marker_type, num_param;
+
+  memset (&err_buf, 0, sizeof (err_buf));
+  num_param = cci_get_param_info (stmt_handle, &param_info, &err_buf);
+  if (num_param < 1 || param_info == NULL)
+    {
+      /* nothing to compare against; leaving the bare placeholder keeps the historical shape */
+      return NULL;
+    }
+
+  /* through dblink_get_basic_utype() so the comparison stays right if a marker ever arrives with the
+   * collection bits set -- CCI_GET_PARAM_INFO_TYPE reports the *ext* type. */
+  marker_type = (int) dblink_get_basic_utype ((T_CCI_U_EXT_TYPE) CCI_GET_PARAM_INFO_TYPE (param_info, 1));
+
+  if (marker_type == (int) CCI_U_TYPE_NULL)
+    {
+      /* Fallback: a numeric target leaves the domain unresolved. Why only date/time casts here is in the
+       * policy comment above. */
+      if (dblink_dml_delete_is_datetime_type (src_type))
+	{
+	  cast_type = dblink_dml_delete_cast_type (src_dom, buf, buflen);
+	}
+    }
+  else if (marker_type != (int) dblink_dml_src_utype (src_type))
+    {
+      cast_type = dblink_dml_delete_cast_type (src_dom, buf, buflen);
+    }
+
+  cci_param_info_free (param_info);
+
+  return cast_type;
+}
+
+/*
+ * dblink_dml_build_delete_sql () - Build "DELETE FROM <table> WHERE <key_col> <op> <placeholder>" (one
+ *   placeholder, bare "?" or wrapped in a CAST -- see cast_type).
  *   return: NO_ERROR on success (sql_out set to a db_private_alloc'd string, caller frees with
  *           db_private_free), error code on failure.
  *   thread_p(in)   : thread entry
  *   table_name(in) : remote table name
  *   key_col(in)    : remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)         : comparison operator SQL text ("=", "<", ">", "<=", ">=")
+ *   cast_type(in)  : CUBRID type name to restore on the pushed value ("... <op> CAST(? AS <cast_type>)"), or
+ *                    NULL to push the bare placeholder. Decided by dblink_dml_delete_cast_type_needed().
  *   sql_out(out)   : set to the built SQL text on success
  */
 static int
 dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, const char *key_col, const char *op,
-			     char **sql_out)
+			     const char *cast_type, char **sql_out)
 {
   int ret, remaining;
   char *sql;
   size_t sql_len;
+  char bind_expr[64];
 
   *sql_out = NULL;
 
@@ -1494,7 +1790,21 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
       return ER_DBLINK;
     }
 
-  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + 64;
+  if (cast_type != NULL && cast_type[0] != '\0')
+    {
+      ret = snprintf (bind_expr, sizeof (bind_expr), "CAST(? AS %s)", cast_type);
+      if (ret < 0 || ret >= (int) sizeof (bind_expr))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: cast type name too long");
+	  return ER_DBLINK;
+	}
+    }
+  else
+    {
+      strcpy (bind_expr, "?");
+    }
+
+  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + strlen (bind_expr) + 64;
   sql = (char *) db_private_alloc (thread_p, sql_len);
   if (sql == NULL)
     {
@@ -1503,7 +1813,8 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
     }
 
   remaining = (int) sql_len;
-  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s ?", table_name, key_col, op);
+  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s %s", table_name, key_col, op,
+		  bind_expr);
   if (ret < 0 || ret >= remaining)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: SQL assembly truncated");
@@ -1512,6 +1823,48 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
     }
 
   *sql_out = sql;
+  return NO_ERROR;
+}
+
+/*
+ * dblink_dml_delete_reprepare_with_cast () - Replace the prepared DELETE with one whose placeholder carries
+ *   the restored type. Used when the marker's domain turned out to differ from the source type, which is
+ *   only knowable after the first prepare.
+ *   return: NO_ERROR, or an error code with state->stmt_handle left pointing at the original statement
+ *   state(in/out) : sink state; stmt_handle is swapped only after the new prepare succeeds
+ *   cast_type(in) : type name from dblink_dml_delete_cast_type_needed()
+ *
+ * Failure is raised, not swallowed: the quiet alternative -- drop the cast and run the bare statement --
+ * goes back to deleting the wrong rows with nothing to show for it. Swapping only after success means the
+ * caller's dblink_dml_close() closes exactly one handle on either path, so no descriptor leaks.
+ */
+static int
+dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, const char *table_name,
+				       const char *key_col, const char *op, const char *cast_type)
+{
+  T_CCI_ERROR err_buf;
+  char *sql = NULL;
+  int ret, req;
+
+  ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, cast_type, &sql);
+  if (ret != NO_ERROR)
+    {
+      /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
+      return ret;
+    }
+
+  req = cci_prepare (state->conn_handle, sql, 0, &err_buf);
+  db_private_free (thread_p, sql);
+  if (req < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
+      return ER_DBLINK;
+    }
+
+  (void) cci_close_req_handle (state->stmt_handle);
+  state->stmt_handle = req;
+
   return NO_ERROR;
 }
 
@@ -1530,6 +1883,9 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
  *   num_bind(in)    : INSERT only -- number of ? placeholders (= SELECT column count)
  *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<", ">", "<=", ">=")
+ *   src_dom(in)     : DELETE only -- domain of the local subquery's source column (NULL when
+ *                     unknown). Used to restore the pushed value's declared type; see the policy comment
+ *                     above dblink_dml_delete_remote_is_cubrid()
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
  * Note: To prevent partial writes, both kinds ALWAYS:
@@ -1545,12 +1901,15 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 int
 dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user, const char *pwd,
 		 const char *table_name, char **attr_names, int num_attrs, int num_bind, const char *key_col,
-		 const char *op, DBLINK_DML_STATE * state)
+		 const char *op, TP_DOMAIN * src_dom, DBLINK_DML_STATE * state)
 {
   int ret;
   T_CCI_ERROR err_buf;
   char *sql = NULL;
   const char *errctx;
+  const char *cast_type = NULL;
+  bool restore_type = false;
+  char cast_buf[64];		/* DELETE only; longest text is "BIT VARYING(1073741823)" */
 
   state->conn_handle = -1;
   state->stmt_handle = -1;
@@ -1597,7 +1956,10 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
       ret = dblink_dml_build_insert_sql (thread_p, table_name, attr_names, num_attrs, num_bind, &sql);
       break;
     case DBLINK_DML_DELETE:
-      ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, &sql);
+      /* The first SQL always carries a bare "?": what to cast to is only knowable from the marker, which
+       * needs this prepare to exist. Gated on a CUBRID remote -- CAST is CUBRID syntax. */
+      restore_type = (key_col != NULL && dblink_dml_delete_remote_is_cubrid (state->conn_handle));
+      ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, NULL, &sql);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
@@ -1619,6 +1981,20 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
       /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
       return ER_DBLINK;
+    }
+
+  /* One decision, one place: ask the marker and re-prepare only when it disagrees with what we bind. */
+  if (restore_type)
+    {
+      cast_type = dblink_dml_delete_cast_type_needed (state->stmt_handle, src_dom, cast_buf, sizeof (cast_buf));
+      if (cast_type != NULL)
+	{
+	  ret = dblink_dml_delete_reprepare_with_cast (thread_p, state, table_name, key_col, op, cast_type);
+	  if (ret != NO_ERROR)
+	    {
+	      return ret;
+	    }
+	}
     }
 
   return NO_ERROR;
