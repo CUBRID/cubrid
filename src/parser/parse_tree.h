@@ -1627,6 +1627,8 @@ typedef enum
  * Type definitions
  */
 
+typedef struct parser_string_block PARSER_STRING_BLOCK;	/* defined in parse_tree.c */
+
 typedef struct parser_varchar PARSER_VARCHAR;
 
 typedef struct parser_context PARSER_CONTEXT;
@@ -3890,6 +3892,7 @@ struct parser_context
   int stack_size;		/* total number of slots in node_stack */
   PT_NODE **node_stack;		/* the parser stack */
   PT_NODE *orphans;		/* list of parse tree fragments freed later */
+  PARSER_STRING_BLOCK *string_blocks;	/* this parser's string block list (private to parse_tree.c) */
 
   char *error_buffer;		/* for parse error messages */
 
@@ -4116,7 +4119,7 @@ void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
 extern "C"
 {
 #endif
-  void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+  void *parser_allocate_string_buffer (PARSER_CONTEXT * parser, const int length, const int align);
   bool pt_is_json_value_type (PT_TYPE_ENUM type);
   bool pt_is_json_doc_type (PT_TYPE_ENUM type);
 #ifdef __cplusplus
