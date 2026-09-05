@@ -195,8 +195,8 @@ static int rv;
 typedef struct log_buffer LOG_BUFFER;
 struct log_buffer
 {
-  std::atomic < LOG_PAGEID > pageid;	/* Logical page of the log. (Page identifier of the infinite log) */
-  std::atomic < LOG_PHY_PAGEID > phy_pageid;	/* Physical pageid for the active log portion */
+  std::atomic<LOG_PAGEID> pageid;	/* Logical page of the log. (Page identifier of the infinite log) */
+  std::atomic<LOG_PHY_PAGEID> phy_pageid;	/* Physical pageid for the active log portion */
   bool dirty;			/* Is page dirty */
   LOG_PAGE *logpage;		/* The actual buffered log page */
 };
