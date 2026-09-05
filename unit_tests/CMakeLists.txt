@@ -40,6 +40,7 @@ option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
 option (UNIT_TEST_SERVER_COMPILE "Unit testing: client parser inside SERVER_MODE binary")
+option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output")
 
 message("  unit_tests/...")
 
@@ -114,6 +115,10 @@ if (UNIT_TESTS OR UNIT_TEST_SERVER_COMPILE)
   message("    server_compile")
   add_subdirectory(server_compile)
 endif(UNIT_TESTS OR UNIT_TEST_SERVER_COMPILE)
+if (UNIT_TESTS OR UNIT_TEST_JSON_BUILDER)
+  message("    json_builder")
+  add_subdirectory(json_builder)
+endif(UNIT_TESTS OR UNIT_TEST_JSON_BUILDER)
 
 #[[
 TODO compilation fails

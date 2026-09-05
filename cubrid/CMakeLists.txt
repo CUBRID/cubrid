@@ -90,6 +90,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
+  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/language_support.c
   ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/locale_support.c
@@ -728,6 +729,7 @@ set(CLIENT_HALF_SOURCES
   )
 
 if(UNIX)
+  set_source_files_properties(${BASE_DIR}/json_builder.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -747,6 +749,11 @@ set(CAS_SPEAKER_SOURCES
   ${BROKER_DIR}/cas_conn_helpers.c
   ${BROKER_DIR}/cas_function.c
   ${BROKER_DIR}/cas_execute.c
+  # CBRD-26896 query replace: cas_function.c/cas_execute.c call qr_*().  In the
+  # merged server the rule segment is never attached (qr_init is cub_cas-only,
+  # cas_Shm_stub keeps query_replace_shm_key at 0), so every qr_* entry point
+  # short-circuits and the feature is inert here (wf207 D5).
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/cas_common_execute.c
   ${BROKER_DIR}/cas_common_function.c
   ${BROKER_DIR}/cas_common_vars.c
@@ -924,6 +931,7 @@ if(UNIX)
   target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubrid PUBLIC stdc++fs)
   target_link_libraries(cubrid PUBLIC rt)
+  target_link_options(cubrid PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
 
   # Add TBB
   target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})

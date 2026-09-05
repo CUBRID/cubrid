@@ -61,6 +61,7 @@
 #include "cas_network.h"
 #include "cas_function.h"
 #include "cas_net_buf.h"
+#include "query_replace.h"
 #include "cas_execute.h"
 #include "connection_support.hpp"
 #include "broker_process_size.h"
@@ -84,6 +85,7 @@ static int cas_init_shm (void);
 static int cas_register_to_proxy (SOCKET proxy_sock_fd);
 
 /* Callback functions for cas_main_loop() */
+static int cas_init_specific (void);
 static int cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd,
 			   const char *url, T_REQ_INFO * req_info, char *cas_info);
 static void cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr,
@@ -156,11 +158,25 @@ main (int argc, char *argv[])
   return res;
 }
 
+/* once-per-process initialization for the non-shard CAS (cub_cas).
+ * invoked by cas_main_loop() before the request loop. */
+static int
+cas_init_specific (void)
+{
+  /* attach to the query replace rule segment built by the broker.  a shard or CGW broker
+   * never publishes one (broker_shm.c leaves query_replace_shm_key at 0), so this is a
+   * no-op there.  the CAS_FOR_CGW guard is defensive: cas.c is built only into cub_cas. */
+#if !defined(CAS_FOR_CGW)
+  qr_init (shm_appl);
+#endif
+  return 0;
+}
+
 static int
 cas_main (void)
 {
   CAS_MAIN_OPS ops = {
-    .init_specific = NULL,	/* cas.c has no specific initialization */
+    .init_specific = cas_init_specific,	/* attach query replace rule segment */
     .pre_db_connect = NULL,	/* No pre-connect processing for cas.c */
     .db_connect = cas_db_connect,
     .post_db_connect = cas_post_db_connect,
@@ -300,6 +316,8 @@ cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user,
       FREE_MEM (db_err_msg);
       return -1;
     }
+
+  qr_load_dbuser_has_rules (as_info->database_name, db_user);
 
   return err_code;
 }

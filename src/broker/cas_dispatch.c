@@ -58,6 +58,7 @@
 #include "cas_function.h"
 #include "cas_net_buf.h"
 #include "cas_execute.h"
+#include "query_replace.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -444,6 +445,11 @@ cas_process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 		}
 
 	      ux_set_default_setting ();
+
+	      /* the db/user this CAS serves changed without going through
+	       * cas_db_connect(); refresh the query replace (db,user) rule cache
+	       * so lookups match the new connection instead of the previous one. */
+	      qr_load_dbuser_has_rules (as_info->database_name, cas_db_user);
 
 	      cas_log_write_and_end (0, false, "connect db %s user %s", cas_db_name, cas_db_user);
 	    }

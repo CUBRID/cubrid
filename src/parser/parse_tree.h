@@ -43,7 +43,7 @@
 #include "misctype_def.h"
 
 // forward definitions
-struct json_t;
+struct trace_json_t;
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -3857,7 +3857,7 @@ typedef struct pt_plan_trace_info
   union
   {
     char *text_plan;
-    struct json_t *json_plan;
+    struct trace_json_t *json_plan;
   } trace;
 } PT_PLAN_TRACE_INFO;
 

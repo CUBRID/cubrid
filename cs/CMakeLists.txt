@@ -99,6 +99,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
+  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/language_support.c
   ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/locale_support.c
@@ -489,6 +490,7 @@ set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED tr
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
 if(UNIX)
+  set_source_files_properties(${BASE_DIR}/json_builder.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -635,6 +637,7 @@ if(UNIX)
   target_link_libraries(cubridcs PUBLIC stdc++fs)
   target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubridcs LINK_PUBLIC rt)
+  target_link_options(cubridcs PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
 else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)

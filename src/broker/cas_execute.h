@@ -36,7 +36,7 @@ extern void ux_adopted_identity_record (const char *db_name, const char *db_user
 extern int ux_database_reconnect (void);
 extern int ux_is_database_connected (void);
 extern int ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * ne_buf, T_REQ_INFO * req_info,
-		       unsigned int query_seq_num);
+		       unsigned int query_seq_num, int replace_rule_idx);
 extern int ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log);
 extern int ux_end_session (void);
 extern int ux_get_row_count (T_NET_BUF * net_buf);

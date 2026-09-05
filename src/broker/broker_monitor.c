@@ -142,7 +142,10 @@ typedef enum
   FIELD_STMT_POOL_RATIO,
   FIELD_NUMBER_OF_CONNECTION_REJECTED,
   FIELD_UNUSABLE_DATABASES,
-  FIELD_LAST = FIELD_UNUSABLE_DATABASES
+  FIELD_REPLACE_PREPARE,
+  FIELD_REPLACE_EXECUTE,
+  FIELD_REPLACE_FALLBACK,
+  FIELD_LAST = FIELD_REPLACE_FALLBACK
 } FIELD_NAME;
 
 typedef enum
@@ -241,7 +244,10 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_SHARD_Q_SIZE, 7, "SHARD-Q", FIELD_RIGHT_ALIGN},
   {FIELD_STMT_POOL_RATIO, 20, "STMT-POOL-RATIO(%)", FIELD_RIGHT_ALIGN},
   {FIELD_NUMBER_OF_CONNECTION_REJECTED, 9, "#REJECT", FIELD_RIGHT_ALIGN},
-  {FIELD_UNUSABLE_DATABASES, 100, "UNUSABLE_DATABASES", FIELD_LEFT_ALIGN}
+  {FIELD_UNUSABLE_DATABASES, 100, "UNUSABLE_DATABASES", FIELD_LEFT_ALIGN},
+  {FIELD_REPLACE_PREPARE, 12, "REPLACE-P", FIELD_RIGHT_ALIGN},
+  {FIELD_REPLACE_EXECUTE, 12, "REPLACE-E", FIELD_RIGHT_ALIGN},
+  {FIELD_REPLACE_FALLBACK, 12, "REPLACE-FB", FIELD_RIGHT_ALIGN}
 };
 
 /* structure for appl monitoring */
@@ -252,6 +258,12 @@ struct appl_monitoring_item
   INT64 num_long_query;
   INT64 qps;
   INT64 lqs;
+  INT64 num_qr_prepare;		/* previous snapshot for -s interval delta */
+  INT64 num_qr_execute;
+  INT64 num_qr_fallback;
+  INT64 qr_prepare_delta;	/* last computed delta, reshown when elapsed_time == 0 */
+  INT64 qr_execute_delta;
+  INT64 qr_fallback_delta;
 };
 
 /* structure for broker monitoring */
@@ -289,6 +301,9 @@ struct br_monitoring_item
   UINT64 shard_waiter_count;
   UINT64 num_request_stmt;
   UINT64 num_request_stmt_in_pool;
+  UINT64 num_qr_prepare;
+  UINT64 num_qr_execute;
+  UINT64 num_qr_fallback;
   int num_appl_server;
 };
 
@@ -400,6 +415,7 @@ static int refresh_sec = 0;
 static int last_access_sec = 0;
 static bool tty_mode = false;
 static bool full_info_flag = false;
+static bool query_replace_flag = false;	/* -r : show query replace columns */
 static int state_interval = 1;
 static char service_filter_value = SERVICE_UNKNOWN;
 
@@ -742,7 +758,7 @@ print_usage (void)
   printf ("\t-s refresh time in sec\n");
   printf ("\t-f full info\n");
 #else
-  printf ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [-f] [<expr>]\n");
+  printf ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [-f] [-r] [<expr>]\n");
   printf ("\t<expr> part of broker name or SERVICE=[ON|OFF]\n");
   printf ("\t-q display job queue\n");
   printf ("\t-m display shard statistics information\n");
@@ -753,6 +769,7 @@ print_usage (void)
   printf ("\t-P brief mode (show proxy info)\n");
   printf ("\t-s refresh time in sec\n");
   printf ("\t-f full info\n");
+  printf ("\t-r display query replace counts (with default or -b view)\n");
 #endif
 }
 
@@ -766,12 +783,13 @@ get_args (int argc, char *argv[], char *br_vector)
   regex_t re;
 #endif
 
-  char optchars[] = "hbqts:l:fmcSPu";
+  char optchars[] = "hbqts:l:fmcSPur";
 
   display_job_queue = false;
   refresh_sec = 0;
   last_access_sec = 0;
   full_info_flag = false;
+  query_replace_flag = false;
   state_interval = 1;
   service_filter_value = SERVICE_UNKNOWN;
   while ((c = getopt (argc, argv, optchars)) != EOF)
@@ -799,6 +817,9 @@ get_args (int argc, char *argv[], char *br_vector)
 	  break;
 	case 'f':
 	  full_info_flag = true;
+	  break;
+	case 'r':
+	  query_replace_flag = true;
 	  break;
 	case 'c':
 	  monitor_flag |= CLIENT_MONITOR_FLAG_MASK;
@@ -828,6 +849,16 @@ get_args (int argc, char *argv[], char *br_vector)
 	  print_usage ();
 	  return -1;
 	}
+    }
+
+  /* -r is only valid with the default (per-CAS) or -b (broker summary) view.
+   * reject -f, -q and any other monitoring view. */
+  if (query_replace_flag
+      && ((monitor_flag & ~BROKER_MONITOR_FLAG_MASK) != 0 || full_info_flag == true || display_job_queue == true))
+    {
+      fprintf (stderr, "-r cannot be used with -f, -q, -u, -c, -m, -S or -P\n");
+      print_usage ();
+      return -1;
     }
 
   for (; optind < argc; optind++)
@@ -1100,6 +1131,38 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
       print_value (FIELD_CONNECT, &(as_info_p->num_connect_requests), FIELD_T_INT);
       print_value (FIELD_RESTART, &(as_info_p->num_restarts), FIELD_T_INT);
     }
+
+  if (query_replace_flag)
+    {
+      INT64 qr_prepare, qr_execute, qr_fallback;
+
+      if (elapsed_time > 0)
+	{
+	  /* show the delta accumulated during the -s refresh interval.  the very first
+	   * pass has a zeroed snapshot, so a single-shot run shows the cumulative count. */
+	  qr_prepare = as_info_p->num_query_replace_prepare - appl_mnt_old->num_qr_prepare;
+	  qr_execute = as_info_p->num_query_replace_execute - appl_mnt_old->num_qr_execute;
+	  qr_fallback = as_info_p->num_query_replace_fallback - appl_mnt_old->num_qr_fallback;
+	  appl_mnt_old->num_qr_prepare = as_info_p->num_query_replace_prepare;
+	  appl_mnt_old->num_qr_execute = as_info_p->num_query_replace_execute;
+	  appl_mnt_old->num_qr_fallback = as_info_p->num_query_replace_fallback;
+	  appl_mnt_old->qr_prepare_delta = qr_prepare;
+	  appl_mnt_old->qr_execute_delta = qr_execute;
+	  appl_mnt_old->qr_fallback_delta = qr_fallback;
+	}
+      else
+	{
+	  /* two refreshes inside the same second: reshow the last delta.  the cached
+	   * delta must be used, not the snapshot -- that holds a cumulative count and
+	   * would be printed in a column that means "per interval" (same as qps/lqs). */
+	  qr_prepare = appl_mnt_old->qr_prepare_delta;
+	  qr_execute = appl_mnt_old->qr_execute_delta;
+	  qr_fallback = appl_mnt_old->qr_fallback_delta;
+	}
+      print_value (FIELD_REPLACE_PREPARE, &qr_prepare, FIELD_T_INT64);
+      print_value (FIELD_REPLACE_EXECUTE, &qr_execute, FIELD_T_INT64);
+      print_value (FIELD_REPLACE_FALLBACK, &qr_fallback, FIELD_T_INT64);
+    }
   print_newline ();
   if (as_info_p->uts_status == UTS_STATUS_BUSY)
     {
@@ -1343,6 +1406,13 @@ print_monitor_header (MONITOR_TYPE mnt_type)
 	}
     }
 
+  if (query_replace_flag && mnt_type == MONITOR_T_BROKER)
+    {
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_PREPARE, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_EXECUTE, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_FALLBACK, NULL);
+    }
+
   str_out ("%s", buf);
   print_newline ();
 
@@ -1447,6 +1517,9 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items, T_BROKER_INFO * br_info_p, T_
       mnt_item_p->num_insert_query += as_info_p->num_insert_queries;
       mnt_item_p->num_update_query += as_info_p->num_update_queries;
       mnt_item_p->num_delete_query += as_info_p->num_delete_queries;
+      mnt_item_p->num_qr_prepare += as_info_p->num_query_replace_prepare;
+      mnt_item_p->num_qr_execute += as_info_p->num_query_replace_execute;
+      mnt_item_p->num_qr_fallback += as_info_p->num_query_replace_fallback;
       mnt_item_p->num_others_query =
 	(mnt_item_p->num_qx - mnt_item_p->num_select_query - mnt_item_p->num_insert_query -
 	 mnt_item_p->num_update_query - mnt_item_p->num_delete_query);
@@ -1548,6 +1621,9 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur, BR_MONITORING_ITEM * mn
 	  mnt_item.num_update_query = mnt_item_cur_p->num_update_query - mnt_item_old_p->num_update_query;
 	  mnt_item.num_delete_query = mnt_item_cur_p->num_delete_query - mnt_item_old_p->num_delete_query;
 	  mnt_item.num_others_query = mnt_item_cur_p->num_others_query - mnt_item_old_p->num_others_query;
+	  mnt_item.num_qr_prepare = mnt_item_cur_p->num_qr_prepare - mnt_item_old_p->num_qr_prepare;
+	  mnt_item.num_qr_execute = mnt_item_cur_p->num_qr_execute - mnt_item_old_p->num_qr_execute;
+	  mnt_item.num_qr_fallback = mnt_item_cur_p->num_qr_fallback - mnt_item_old_p->num_qr_fallback;
 
 	  if (mnt_type == MONITOR_T_PROXY)
 	    {
@@ -1687,6 +1763,15 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur, BR_MONITORING_ITEM * mn
 		  print_value (FIELD_STMT_POOL_RATIO, &stmt_pool_ratio, FIELD_T_FLOAT);
 		}
 	    }
+	}
+
+      if (query_replace_flag && mnt_type == MONITOR_T_BROKER)
+	{
+	  /* delta accumulated during the -s refresh interval (cumulative on a
+	   * single-shot run, like #SELECT/#INSERT) */
+	  print_value (FIELD_REPLACE_PREPARE, &mnt_item.num_qr_prepare, FIELD_T_UINT64);
+	  print_value (FIELD_REPLACE_EXECUTE, &mnt_item.num_qr_execute, FIELD_T_UINT64);
+	  print_value (FIELD_REPLACE_FALLBACK, &mnt_item.num_qr_fallback, FIELD_T_UINT64);
 	}
 
       print_newline ();
@@ -1890,8 +1975,8 @@ time_format (int t, char *time_str)
 static void
 print_appl_header (bool use_pdh_flag)
 {
-  char buf[256];
-  char line_buf[256];
+  char buf[LINE_MAX];
+  char line_buf[LINE_MAX];
   int buf_offset = 0;
   int i;
 
@@ -1940,6 +2025,13 @@ print_appl_header (bool use_pdh_flag)
       buf_offset = print_title (buf, buf_offset, FIELD_CONNECT, NULL);
       buf_offset = print_title (buf, buf_offset, FIELD_RESTART, NULL);
 
+    }
+
+  if (query_replace_flag)
+    {
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_PREPARE, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_EXECUTE, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_REPLACE_FALLBACK, NULL);
     }
 
   for (i = 0; i < buf_offset; i++)
