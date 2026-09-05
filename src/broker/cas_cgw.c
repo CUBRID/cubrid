@@ -690,6 +690,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
+#if !defined(WINDOWS)
+  /* Apply a pending query cancel in normal thread context, as in cas.c. */
+  query_cancel_process ();
+#endif /* !WINDOWS */
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
   set_hang_check_time ();
 

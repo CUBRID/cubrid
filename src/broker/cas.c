@@ -1155,10 +1155,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
 
+#if !defined(WINDOWS)
   /* Process a query-cancel signal that arrived while the request header was
    * being read.  The actual interrupt is applied here in normal thread context,
    * because signal-handler-safe functions are too limited for db_set_interrupt. */
   query_cancel_process ();
+#endif /* !WINDOWS */
 
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
   set_hang_check_time ();

@@ -326,7 +326,16 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 	    while (fn_ret == FN_KEEP_CONN)
 	      {
 #if !defined(WINDOWS)
-		signal (SIGUSR1, query_cancel);
+		/* Discard any cancel that arrived too late for the previous request
+		 * before re-arming the handler for this request. */
+		query_cancel_pending = 0;
+		{
+		  struct sigaction sa_cancel;
+		  sigemptyset (&sa_cancel.sa_mask);
+		  sa_cancel.sa_flags = 0;	/* no SA_RESTART: EINTR is needed */
+		  sa_cancel.sa_handler = query_cancel;
+		  sigaction (SIGUSR1, &sa_cancel, NULL);
+		}
 #endif /* !WINDOWS */
 
 		fn_ret = ops->process_request (client_sock_fd, &net_buf, &req_info, srv_sock_fd);
