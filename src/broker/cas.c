@@ -214,17 +214,7 @@ main (int argc, char *argv[])
   int res = 0;
 
 #if !defined(WINDOWS)
-  signal (SIGTERM, cas_sig_handler);
-  signal (SIGINT, cas_sig_handler);
-  signal (SIGSEGV, cas_sig_handler);
-  signal (SIGABRT, cas_sig_handler);
-  signal (SIGFPE, cas_sig_handler);
-  signal (SIGILL, cas_sig_handler);
-  signal (SIGBUS, cas_sig_handler);
-  signal (SIGSYS, cas_sig_handler);
-  signal (SIGUSR1, SIG_IGN);
-  signal (SIGPIPE, SIG_IGN);
-  signal (SIGXFSZ, SIG_IGN);
+  cas_setup_signal_handlers ();
 #endif /* WINDOWS */
 
   if (cas_init () < 0)
@@ -662,7 +652,16 @@ conn_retry:
 	while (fn_ret == FN_KEEP_CONN)
 	  {
 #if !defined(WINDOWS)
-	    signal (SIGUSR1, query_cancel);
+	    /* Discard any cancel that arrived too late for the previous request
+	     * before re-arming the handler for this request. */
+	    query_cancel_pending = 0;
+	    {
+	      struct sigaction sa_cancel;
+	      sigemptyset (&sa_cancel.sa_mask);
+	      sa_cancel.sa_flags = 0;	/* no SA_RESTART: EINTR is needed */
+	      sa_cancel.sa_handler = query_cancel;
+	      sigaction (SIGUSR1, &sa_cancel, NULL);
+	    }
 #endif /* !WINDOWS */
 
 	    fn_ret = process_request (proxy_sock_fd, &net_buf, &req_info, INVALID_SOCKET);
@@ -1155,6 +1154,14 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
+
+#if !defined(WINDOWS)
+  /* Process a query-cancel signal that arrived while the request header was
+   * being read.  The actual interrupt is applied here in normal thread context,
+   * because signal-handler-safe functions are too limited for db_set_interrupt. */
+  query_cancel_process ();
+#endif /* !WINDOWS */
+
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
   set_hang_check_time ();
 

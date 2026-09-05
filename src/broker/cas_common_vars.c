@@ -48,7 +48,8 @@ struct timeval query_start_time;
 int tran_timeout = 0;
 int query_timeout = 0;
 INT64 query_cancel_time;
-char query_cancel_flag;
+volatile sig_atomic_t query_cancel_flag;
+volatile sig_atomic_t query_cancel_pending;
 
 /* Error handling */
 int errors_in_transaction = 0;
