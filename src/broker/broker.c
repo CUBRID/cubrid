@@ -840,6 +840,21 @@ receiver_thr_f (void *arg)
       setsockopt (clt_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
       ut_set_keepalive (clt_sock_fd);
 
+      /* ACL check must run before any protocol handling (PING/ST/QC/CANCEL/X1 included) so that an
+       * unauthorized IP cannot reach the pre-auth query-cancel path. */
+      if (v3_acl != NULL)
+	{
+	  unsigned char ip_addr[4];
+
+	  memcpy (ip_addr, &(clt_sock_addr.sin_addr), 4);
+
+	  if (uw_acl_check (ip_addr) < 0)
+	    {
+	      CLOSE_SOCKET (clt_sock_fd);
+	      continue;
+	    }
+	}
+
       cas_client_type = CAS_CLIENT_NONE;
 
       /* read header */
@@ -903,6 +918,11 @@ receiver_thr_f (void *arg)
        *   |COMMAND("QC",2)|PID(4)|CLIENT_PORT(2)|RESERVED(2)|
        *
        *   CLIENT_PORT can be 0 if the client failed to get its local port.
+       *
+       * - Optionally, when the sender sets the BROKER_SUPPORT_SESSION_CANCEL bit
+       *   (in cas_req_header[8] for "QC", in cas_req_header[3] for "X1"), a
+       *   SESSION_ID_SIZE-byte CAS session id is appended right after the header
+       *   above and is verified against the CAS-issued session id (see KVE-2026-1827).
        */
       else if (strncmp (cas_req_header, "QC", 2) == 0 || strncmp (cas_req_header, "CANCEL", 6) == 0
 	       || strncmp (cas_req_header, "X1", 2) == 0)
@@ -911,6 +931,8 @@ receiver_thr_f (void *arg)
 #if !defined(WINDOWS)
 	  int pid, i;
 	  unsigned short client_port = 0;
+	  bool has_session_id = false;
+	  unsigned int req_session_id = 0;
 #endif
 
 #if !defined(WINDOWS)
@@ -920,11 +942,29 @@ receiver_thr_f (void *arg)
 	      memcpy ((char *) &client_port, cas_req_header + 6, 2);
 	      pid = ntohl (pid);
 	      client_port = ntohs (client_port);
+	      has_session_id = ((cas_req_header[8] & BROKER_SUPPORT_SESSION_CANCEL) != 0);
 	    }
 	  else
 	    {
 	      memcpy ((char *) &pid, cas_req_header + 6, 4);
 	      pid = ntohl (pid);
+	      if (cas_req_header[0] == 'X')
+		{
+		  has_session_id = ((cas_req_header[3] & BROKER_SUPPORT_SESSION_CANCEL) != 0);
+		}
+	    }
+
+	  if (has_session_id)
+	    {
+	      int session_read_len;
+
+	      session_read_len = read_nbytes_from_client (clt_sock_fd, (char *) &req_session_id, SESSION_ID_SIZE);
+	      if (session_read_len < 0)
+		{
+		  CLOSE_SOCKET (clt_sock_fd);
+		  continue;
+		}
+	      req_session_id = ntohl (req_session_id);
 	    }
 
 	  ret_code = CAS_ER_QUERY_CANCEL;
@@ -936,9 +976,24 @@ receiver_thr_f (void *arg)
 		  if (shm_appl->as_info[i].service_flag == SERVICE_ON && shm_appl->as_info[i].pid == pid
 		      && shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
 		    {
+		      /* Sender IP must always match the session owner's IP, regardless of which
+		       * cancel variant (QC/CANCEL/X1) was used. */
+		      if (memcmp (&shm_appl->as_info[i].cas_clt_ip, &clt_sock_addr.sin_addr, 4) != 0)
+			{
+			  continue;
+			}
+
+		      /* When the sender supplied a client port (QC only), it must also match. */
 		      if (cas_req_header[0] == 'Q' && client_port > 0
-			  && shm_appl->as_info[i].cas_clt_port != client_port
-			  && memcmp (&shm_appl->as_info[i].cas_clt_ip, &clt_sock_addr.sin_addr, 4) != 0)
+			  && shm_appl->as_info[i].cas_clt_port != client_port)
+			{
+			  continue;
+			}
+
+		      /* When the client advertised session-token support, the CAS-issued session id
+		       * is the authoritative check; the IP/port checks above remain as defense-in-depth
+		       * for clients that have not been upgraded yet. */
+		      if (has_session_id && req_session_id != shm_appl->as_info[i].session_id)
 			{
 			  continue;
 			}
@@ -1009,20 +1064,6 @@ receiver_thr_f (void *arg)
 	  if (client_version < CAS_MAKE_VER (8, 2, 0))
 	    {
 	      CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_COMMUNICATION);
-	      CLOSE_SOCKET (clt_sock_fd);
-	      continue;
-	    }
-	}
-
-      if (v3_acl != NULL)
-	{
-	  unsigned char ip_addr[4];
-
-	  memcpy (ip_addr, &(clt_sock_addr.sin_addr), 4);
-
-	  if (uw_acl_check (ip_addr) < 0)
-	    {
-	      send_error_to_driver (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT, cas_req_header);
 	      CLOSE_SOCKET (clt_sock_fd);
 	      continue;
 	    }

@@ -131,6 +131,14 @@ extern "C"
 #define BROKER_SUPPORT_HOLDABLE_RESULT          0x40
 /* Do not remove or rename BROKER_RECONNECT_WHEN_SERVER_DOWN */
 #define BROKER_RECONNECT_WHEN_SERVER_DOWN       0x20
+/* Client announces that a SESSION_ID_SIZE-byte session id is appended after the standard
+ * 10-byte query-cancel header (QC/X1 only; see KVE-2026-1827 hardening), so the broker can
+ * verify the cancel request against the CAS-issued session id in addition to source IP/port.
+ * For "X1" this bit is carried in the function-flag byte (cas_req_header[3]); for "QC" it is
+ * carried in the first reserved byte (cas_req_header[8]).
+ * NOTE: cci repository's mirrored copy (src/cci/broker_cas_protocol.h) must define the same
+ * bit once the CCI driver adds support for sending the session id. */
+#define BROKER_SUPPORT_SESSION_CANCEL           0x10
 
 /* For backward compatibility */
 #define BROKER_INFO_MAJOR_VERSION               (BROKER_INFO_PROTO_VERSION)
