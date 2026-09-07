@@ -176,6 +176,7 @@ namespace cubpl
       {
 	if (is_server_side_sql_forbidden ())
 	  {
+	    assert (false);
 	    return reject_client_callback ();
 	  }
 
