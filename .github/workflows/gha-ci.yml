@@ -90,7 +90,9 @@ permissions: {} # jobs opt-in below
 # drops the second. dispatch is keyed on the SHA because two force_build dispatches for
 # one SHA would race the republish and pull the overlay lowerdir from a running shard.
 # The run group is per pull request because a comment carries no head SHA, and it tests
-# issue.pull_request the way the gate does -- issues share the PR number space.
+# issue.pull_request the way the gate does -- issues share the PR number space. A rerun
+# shares that group: both post the same commit status, so two in flight would race it,
+# and CircleCI cannot reach that state -- there a rerun starts from a finished workflow.
 concurrency:
   group: >-
     gha-ci-${{ github.event_name == 'push'
@@ -102,7 +104,7 @@ concurrency:
     || github.event.issue.pull_request != null
     && startsWith(github.event.comment.body, '/run')
     && contains(github.event.comment.body, 'rerun')
-    && format('pr-{0}-rerun-{1}', github.event.issue.number, github.event.comment.id)
+    && format('pr-{0}-run', github.event.issue.number)
     || github.event.issue.pull_request != null
     && startsWith(github.event.comment.body, '/run')
     && (contains(github.event.comment.body, 'shell')
@@ -121,6 +123,8 @@ env:
   STAMPS: /home/build-cache/gha-ci/runs/${{ github.run_id }}/stamps
   BUILD_SENTINEL: .complete
   BUILD_META: .gha-ci-build.meta
+  # Paired with arc_artifact_server_node_port in circleci-k8s-ansible.
+  ARTIFACT_URL_BASE: http://192.168.1.48:30080
 
 jobs:
   # All four triggers become one shape: every job below reads needs.gate.outputs and
@@ -278,6 +282,46 @@ jobs:
           emit sabotage "$sab"
           echo "resolved: event=$EV test=$test_run namespace=$ns ccache_write=$cache_write"
 
+  # The check ticket 28 makes required. Posted from here and not from collect: that
+  # job runs in a pod that can be evicted, and statuses: write must not reach a
+  # runner that executes testcase code.
+  status_pending:
+    name: status (pending)
+    needs: gate
+    if: ${{ needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.pr != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Mark the head commit pending
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          CONTEXT: "gha-ci: test_shell"
+        run: |
+          set -eo pipefail
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
+          fi
+          jq -n --arg c "$CONTEXT" \
+            --arg u "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{state:"pending", context:$c, target_url:$u, description:"shell suite running"}' \
+            > /tmp/st.json
+          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -d @/tmp/st.json)
+          echo "HTTP $code"
+          if [ "$code" != "201" ]; then
+            echo "::error::could not post the pending status"
+            jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
+            exit 1
+          fi
+          echo "pending posted on ${SHA}"
+
   # Both modes of the CircleCI baseline, which differ only in the build argument and
   # the ccache they use. One image serves both: the release build here is for testing,
   # not distribution, so it carries no glibc constraint.
@@ -310,7 +354,9 @@ jobs:
     env:
       # Same values as the CircleCI executor cubrid-build.
       BUILD_MIRROR: /home/build-cache/cubrid-mirror
-      CI_LOG_ROOT: /home/build-cache/gha-ci/logs
+      # Per mode: one path for two matrix legs is the later leg overwriting
+      # the earlier one.
+      BUILD_LOG_DIR: /home/build-cache/gha-ci/runs/${{ github.run_id }}/build/${{ matrix.mode }}
       MODE: ${{ matrix.mode }}
       BUILD_ARGS: ${{ matrix.args }}
       # develop | pr. Keeps the preserved develop artifacts out of reach of PR builds.
@@ -564,9 +610,9 @@ jobs:
           # build.log is the only clue on failure, and it does not reach the GHA log.
           f="$GITHUB_WORKSPACE/build.log"
           if [ -f "$f" ]; then
-            mkdir -p "$CI_LOG_ROOT"
-            cp "$f" "$CI_LOG_ROOT/${GITHUB_RUN_ID}-build.log"
-            echo "saved: $CI_LOG_ROOT/${GITHUB_RUN_ID}-build.log ($(wc -l < "$f") lines)"
+            mkdir -p "$BUILD_LOG_DIR"
+            cp "$f" "$BUILD_LOG_DIR/build.log"
+            echo "saved: $BUILD_LOG_DIR/build.log ($(wc -l < "$f") lines)"
             echo "=== last 60 lines of build.log ==="
             tail -60 "$f"
           fi
@@ -773,6 +819,7 @@ jobs:
           LIMIT: ${{ steps.args.outputs.limit }}
           SABOTAGE: ${{ needs.gate.outputs.sabotage }}
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
+          SHA: ${{ needs.gate.outputs.sha }}
         run: |
           set -eo pipefail
 
@@ -789,6 +836,17 @@ jobs:
           if [ -n "$RERUN_FROM" ]; then
             src="$CI_ROOT/runs/$RERUN_FROM/failed.list"
             [ -f "$src" ] || { echo "::error::no failed.list: $src"; exit 1; }
+            # CircleCI's rerun runs the same commit as the workflow it came from.
+            # gate re-resolves the head, so hold that guarantee here.
+            prev_sha=$(find "$CI_ROOT/runs/$RERUN_FROM/results" -mindepth 2 -maxdepth 2 \
+              -name build.read -exec awk -F= '/^sha=/ {print $2}' {} + 2>/dev/null | sort -u) \
+              || prev_sha=''
+            n_sha=$(printf '%s' "$prev_sha" | grep -c . || :)
+            if [ "$n_sha" -ne 1 ] || [ "$prev_sha" != "$SHA" ]; then
+              echo "::error::run $RERUN_FROM tested '$(echo $prev_sha)', not this head $SHA"
+              echo "  A re-run may only re-run the failures of the same commit. Use /run all."
+              exit 1
+            fi
             cut -f2 "$src" | sed 's#^#cubrid-testcases-private-ex/#' | sort -u > /tmp/want.list
             want=$(wc -l < /tmp/want.list)
             # Keep only what is in the tree now; cases deleted since are dropped.
@@ -1335,8 +1393,6 @@ jobs:
       # The wall-clock step reads the run start time. Public repos need no scope --
       # stated so it does not fail silently if this repository ever becomes private.
       actions: read
-      # Posts the result summary. The only place here that needs write.
-      pull-requests: write
     runs-on: cubrid-arc
     timeout-minutes: 30
     container:
@@ -1738,13 +1794,21 @@ jobs:
             fi
             echo
             echo "---"
-            echo "Artifacts: \`$RUNDIR\`"
+            # BRID: a reused build left no log under this run. debug: that is
+            # what the suite mounted. A build published before this layout has
+            # no log here, and the flat file it left names no mode -- linking
+            # it would open the release log next to a debug failure half the
+            # time, so that run gets no build-log link at all.
+            line="[Artifacts]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/)"
+            blog="runs/$BRID/build/debug/build.log"
+            [ -f "$CI_ROOT/$blog" ] && line="$line · [build log]($ARTIFACT_URL_BASE/$blog)"
+            echo "$line"
+            echo
+            echo "Internal network only. The run directory is pruned 7 days after the run."
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "=== summary ==="
           cat "$GITHUB_STEP_SUMMARY"
-          # The summary file is append-only; leave a copy for the next step.
-          cp "$GITHUB_STEP_SUMMARY" /tmp/summary.md
 
           # Guard 3 of 3: a shard dying whole is invisible to guard 2.
           rc=0
@@ -1795,48 +1859,6 @@ jobs:
           [ "$rc" -eq 0 ] && echo "completed with no failures."
           exit $rc
 
-      - name: Post to the PR
-        # always(): a failure is exactly when the PR needs to hear about it.
-        if: always() && needs.gate.outputs.pr != ''
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PR: ${{ needs.gate.outputs.pr }}
-        run: |
-          set -eo pipefail
-          # A job summary lives on the run page only; it does not reach the PR thread.
-          if [[ ! "$PR" =~ ^[0-9]{1,7}$ ]]; then
-            echo "::error::pr must be an integer"; exit 1
-          fi
-          if [ ! -f /tmp/summary.md ]; then
-            printf '## gha-ci: shell suite\n\nCould not build a summary. Check the run.\n' > /tmp/summary.md
-          fi
-
-          {
-            cat /tmp/summary.md
-            echo
-            echo "<sub>gha-ci / run [\`${GITHUB_RUN_ID}\`](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) - artifacts \`${RUNDIR}\`</sub>"
-          } > /tmp/body.md
-
-          # Comment bodies cap at 65536 characters, so long failure lists are trimmed.
-          head -c 60000 /tmp/body.md > /tmp/body.trim.md
-          jq -Rs '{body: .}' < /tmp/body.trim.md > /tmp/comment.json
-
-          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
-            -d @/tmp/comment.json)
-
-          echo "HTTP $code"
-          if [ "$code" != "201" ]; then
-          # A 403 here means pull-requests: write did not reach GITHUB_TOKEN.
-            echo "::error::failed to post the PR comment"
-            jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
-            exit 1
-          fi
-          echo "posted: $(jq -r '.html_url' /tmp/resp.json)"
-
       # 59MB per run, nothing worth keeping, and the cleanup CronJob does not see it.
       #
       # Keep it when anything failed. "Re-run failed jobs" does not re-run plan,
@@ -1865,3 +1887,47 @@ jobs:
           else
             echo "nothing to remove: $seed"
           fi
+
+  # always(), not success(): a red verdict is what the gate exists to show.
+  status:
+    name: status
+    needs: [gate, collect]
+    if: ${{ always() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.pr != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Post the verdict to the head commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          CONTEXT: "gha-ci: test_shell"
+          COLLECT: ${{ needs.collect.result }}
+        run: |
+          set -eo pipefail
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
+          fi
+          case "$COLLECT" in
+            success)   state=success; desc="shell suite passed" ;;
+            cancelled) state=failure; desc="run was superseded or cancelled" ;;
+            *)         state=failure; desc="shell suite failed -- see the run" ;;
+          esac
+          echo "collect=$COLLECT -> $state"
+          jq -n --arg s "$state" --arg c "$CONTEXT" --arg d "$desc" \
+            --arg u "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{state:$s, context:$c, target_url:$u, description:$d}' > /tmp/st.json
+          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -d @/tmp/st.json)
+          echo "HTTP $code"
+          if [ "$code" != "201" ]; then
+            echo "::error::could not post the verdict status"
+            jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
+            exit 1
+          fi
+          echo "posted ${state} on ${SHA}"
