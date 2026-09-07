@@ -291,8 +291,10 @@ namespace parallel_scan
 		  }
 		else if (specp->type == TARGET_CLASS)
 		  {
-		    /* mirror serial fixed_scan_xasl: a dptr anywhere on the chain runs a whole
-		     * subquery between rows, so no page may stay fixed across it (CBRD-27205). */
+		    /* A dptr runs a whole subquery between two rows of this scan, so the page must not stay
+		     * fixed across it (serial: query_executor.c fixed_scan_xasl). Workers now run non-linked
+		     * dptrs per row (CBRD-27205), and scan_ptr-level dptrs run between inner rows too, so
+		     * check every level of the chain, not only the top node. */
 		    bool chain_has_dptr = false;
 		    for (xasl_node *cn = m_xasl; cn != nullptr && !chain_has_dptr; cn = cn->scan_ptr)
 		      {
