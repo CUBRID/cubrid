@@ -41,10 +41,11 @@
 #include "dbtype.h"
 #include "xasl_cache.h"
 #include "thread_lockfree_hash_map.hpp"
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif /* SERVER_MODE */
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /* attribute of _db_serial class */
