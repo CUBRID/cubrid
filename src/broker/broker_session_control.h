@@ -34,14 +34,14 @@ struct broker_session_config
 
 struct broker_session_change
 {
-  uint32_t session_id; /* zero selects all sessions of the broker */
+  uint32_t session_id;		/* zero selects all sessions of the broker */
   struct broker_session_config config;
-  char database[33]; /* required with session_id, avoids cross-DB ambiguity */
+  char database[33];		/* required with session_id, avoids cross-DB ambiguity */
 };
 
 struct broker_session_change_reply
 {
-  int32_t result; /* 0 success, -1 invalid/unknown, -2 incomplete delivery */
+  int32_t result;		/* 0 success, -1 invalid/unknown, -2 incomplete delivery */
   int32_t affected;
 };
 

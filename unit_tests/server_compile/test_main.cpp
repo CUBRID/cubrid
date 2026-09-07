@@ -681,7 +681,10 @@ test_session_log_identity (void)
   holder.join ();
 
   /* Only these test-owned names can exist; both holders have retired. */
-  for (const char *name : { name_a, name_b })
+  for (const char *name :
+       {
+	       name_a, name_b
+       })
     {
       for (int slot = 1; slot <= 2; slot++)
 	{

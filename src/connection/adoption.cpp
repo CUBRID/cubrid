@@ -787,8 +787,8 @@ namespace cubconn
       broker_session_change_reply reply = { -1, 0 };
       const broker_session_config &config = change.config;
       if (config.mask != 0 && (config.mask & ~BROKER_SESSION_LOG_MASK) == 0
-	  && (!(config.mask & BROKER_SESSION_SQL_LOG) || (config.sql_log >= 0 && config.sql_log <= 4))
-	  && (!(config.mask & BROKER_SESSION_SLOW_LOG) || (config.slow_log >= 0 && config.slow_log <= 1)))
+	  && (! (config.mask & BROKER_SESSION_SQL_LOG) || (config.sql_log >= 0 && config.sql_log <= 4))
+	  && (! (config.mask & BROKER_SESSION_SLOW_LOG) || (config.slow_log >= 0 && config.slow_log <= 1)))
 	{
 	  std::lock_guard<std::mutex> guard (m.registry_mutex);
 	  for (auto &pair : m.registry)

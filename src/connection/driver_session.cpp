@@ -650,7 +650,7 @@ namespace cubconn
 	}
 
       client_name = driver_client_name ((unsigned char) params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
-				       info.url, params.direct);
+					info.url, params.direct);
 
       /* point the CAS globals at this thread's slot (cas_server_support) */
       cas_server_session_slot_begin (params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
@@ -660,7 +660,7 @@ namespace cubconn
        * Direct csql uses the DB name; the same lease prevents collisions if a
        * broker has that name.  Acquire before opening any log producer. */
       if (cas_server_session_log_begin (params.direct ? params.server_name.c_str ()
-				       : params.broker_name.c_str ()) != 0)
+					: params.broker_name.c_str ()) != 0)
 	{
 	  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
 			    CAS_ER_INTERNAL, "Cannot reserve a session log slot");

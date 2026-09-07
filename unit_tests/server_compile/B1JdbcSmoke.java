@@ -404,8 +404,8 @@ public class B1JdbcSmoke {
         // the autocommit flag, so the bind values start at argv[3]; the slow
         // path used to log from a hard-coded argv[2] and aborted cub_server on
         // the trailing-NUL assertion in cas_common_bind_value_print.
-        PreparedStatement slowb = con.prepareStatement(
-                "UPDATE b1_smoke SET v = ? WHERE id = ? AND SLEEP(2) = 0");
+        PreparedStatement slowb =
+                con.prepareStatement("UPDATE b1_smoke SET v = ? WHERE id = ? AND SLEEP(2) = 0");
         for (int i = 20; i <= 21; i++) {
             slowb.setString(1, "slowbatch" + i);
             slowb.setInt(2, i);
@@ -414,7 +414,8 @@ public class B1JdbcSmoke {
         int[] slowCounts = slowb.executeBatch();
         slowb.close();
         if (slowCounts.length != 2) {
-            throw new RuntimeException("slow prepared batch expected 2 results, got " + slowCounts.length);
+            throw new RuntimeException(
+                    "slow prepared batch expected 2 results, got " + slowCounts.length);
         }
         Statement bstmt = con.createStatement();
         bstmt.addBatch("UPDATE b1_smoke SET v = 'batched' WHERE id = 20");
