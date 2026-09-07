@@ -2996,8 +2996,10 @@ db_set_system_parameters (const char *data)
 
   for (SYSPRM_ASSIGN_VALUE * ptr = assignments; ptr != NULL; ptr = ptr->next)
     {
-      if (ptr->prm_id == PRM_ID_LK_TIMEOUT)
+      if (ptr->prm_id == PRM_ID_LK_TIMEOUT || ptr->prm_id == PRM_ID_LK_TIMEOUT_SECS)
 	{
+	  /* The deprecated name updates the shared value without adding its
+	   * partner to assignments; both names must update the transaction. */
 	  int val = PRM_GET_INT_P (prm_get_value (PRM_ID_LK_TIMEOUT));
 	  (void) tran_reset_wait_times (((val > 0) ? (val * 1000) : val));
 	}

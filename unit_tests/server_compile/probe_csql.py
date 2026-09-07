@@ -154,6 +154,36 @@ def csql_session_cmd(sock, line, flags):
     return parse_reply(send_request(sock, body), "session_cmd %r" % line)
 
 
+def check_lock_timeout_names(holder, port, dbname, dbuser, dbpasswd):
+    def require_success(result, action):
+        status, chunks = result
+        if status != 0:
+            die("%s failed: %r" % (action, text_of(chunks, CHUNK_ERR)))
+
+    flags = FLAG_AUTO_COMMIT | FLAG_TRIGGER_ACTION
+    require_success(csql_execute(holder, "CREATE TABLE csql_timeout_probe (n INT);", flags), "timeout table create")
+    try:
+        require_success(csql_execute(holder, "INSERT INTO csql_timeout_probe VALUES (1);", flags), "timeout row insert")
+        # No autocommit: this successful UPDATE holds the conflicting row lock.
+        require_success(csql_execute(holder, "UPDATE csql_timeout_probe SET n=2;", FLAG_TRIGGER_ACTION), "holder UPDATE")
+        for name in ("lock_timeout", "lock_timeout_in_secs"):
+            with open_and_connect(port, dbname, dbuser, dbpasswd) as waiter:
+                waiter.settimeout(5)
+                require_success(csql_session_cmd(waiter, ';set %s="0"' % name, FLAG_TRIGGER_ACTION), name)
+                try:
+                    status, chunks = csql_execute(waiter, "UPDATE csql_timeout_probe SET n=3;", FLAG_TRIGGER_ACTION)
+                except socket.timeout:
+                    die("%s=0 waited instead of reporting the held row lock" % name)
+                err = text_of(chunks, CHUNK_ERR)
+                if status <= 0 or "timed out waiting on" not in err or "lock" not in err:
+                    die("%s=0 did not report lock timeout: status=%d err=%r" % (name, status, err))
+                require_success(csql_session_cmd(waiter, ";rollback", FLAG_TRIGGER_ACTION), "waiter rollback")
+    finally:
+        require_success(csql_session_cmd(holder, ";rollback", FLAG_TRIGGER_ACTION), "holder rollback")
+        require_success(csql_execute(holder, "DROP TABLE csql_timeout_probe;", flags), "timeout table cleanup")
+    print("PROBE_CSQL: both lock-timeout names apply to a real conflicting lock")
+
+
 def main():
     if len(sys.argv) != 5:
         die("usage: probe_csql.py <broker_port> <dbname> <dbuser> <dbpasswd>")
@@ -213,6 +243,7 @@ def main():
         die("sysadm-flagged ;checkpoint was NOT refused on a non-admin session: %r" % out)
     print("PROBE_CSQL: sysadm-flag ;checkpoint refused on a non-admin session")
 
+    check_lock_timeout_names(sock, port, dbname, dbuser, dbpasswd)
     sock.close()
     print("PROBE_CSQL: SUCCESS")
 
