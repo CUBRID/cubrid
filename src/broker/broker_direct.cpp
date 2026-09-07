@@ -207,6 +207,7 @@ namespace brd
     std::string control_path;
     std::thread control_thread;
     std::mutex config_mutex; /* serializes handoff snapshots and control updates */
+    bool session_timeout_overridden = false;
     /* read live at handoff time (ACCESS_MODE stays dynamic, #121 D1/B4) and
      * written for the front metrics + slot mirror (#116 D10) */
     T_SHM_APPL_SERVER *shm = NULL;
@@ -809,7 +810,7 @@ namespace brd
   }
 
   static void
-  runtime_config_snapshot (const T_SHM_APPL_SERVER *shm, broker_runtime_config &config)
+  runtime_config_snapshot (const T_SHM_APPL_SERVER *shm, broker_runtime_config &config, bool timeout_overridden)
   {
     config = {};
     config.sql_log_max_size = shm->sql_log_max_size;
@@ -824,6 +825,7 @@ namespace brd
     config.cci_default_autocommit = shm->cci_default_autocommit;
     config.max_prepared_stmt_count = shm->max_prepared_stmt_count;
     config.session_timeout = shm->session_timeout;
+    config.session_timeout_is_set = timeout_overridden ? 1 : 0;
     config.query_timeout = shm->query_timeout;
     config.max_string_length = shm->max_string_length;
     config.trigger_action_flag = shm->trigger_action_flag;
@@ -839,10 +841,11 @@ namespace brd
    * complete snapshot here, under config_mutex, prevents concurrent admin
    * changes to different settings from overwriting each other's values. */
   static bool
-  change_runtime_config (T_SHM_APPL_SERVER *shm, broker_session_change &change)
+  change_runtime_config (manager &m, broker_session_change &change)
   {
+    T_SHM_APPL_SERVER *shm = m.shm;
     broker_runtime_config next;
-    runtime_config_snapshot (shm, next);
+    runtime_config_snapshot (shm, next, m.session_timeout_overridden);
     const broker_runtime_config &requested = change.config.runtime;
     switch (change.parameter)
       {
@@ -926,6 +929,10 @@ namespace brd
     shm->session_timeout = next.session_timeout;
     shm->query_timeout = next.query_timeout;
     shm->trigger_action_flag = (char) next.trigger_action_flag;
+    if (change.parameter == BROKER_RUNTIME_SESSION_TIMEOUT)
+      {
+	m.session_timeout_overridden = true;
+      }
     if (change.parameter == BROKER_RUNTIME_LOG_DIR)
       {
 	std::memcpy (shm->log_dir, next.log_dir, strlen (next.log_dir) + 1);
@@ -934,7 +941,7 @@ namespace brd
       {
 	std::memcpy (shm->slow_log_dir, next.slow_log_dir, strlen (next.slow_log_dir) + 1);
       }
-    runtime_config_snapshot (shm, change.config.runtime);
+    runtime_config_snapshot (shm, change.config.runtime, m.session_timeout_overridden);
     return true;
   }
 
@@ -956,7 +963,7 @@ namespace brd
 
     std::lock_guard<std::mutex> config_guard (m.config_mutex);
     broker_session_change forwarded = change;
-    if ((config.mask & BROKER_SESSION_RUNTIME) && !change_runtime_config (m.shm, forwarded))
+    if ((config.mask & BROKER_SESSION_RUNTIME) && !change_runtime_config (m, forwarded))
       {
 	return result;
       }
@@ -1433,7 +1440,7 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
       body.config.mask = BROKER_SESSION_CONFIG_MASK;
       body.config.sql_log = m->shm->sql_log_mode;
       body.config.slow_log = m->shm->slow_log_mode;
-      runtime_config_snapshot (m->shm, body.config.runtime);
+      runtime_config_snapshot (m->shm, body.config.runtime, m->session_timeout_overridden);
       body.query_replace_shm_key = m->shm->query_replace_shm_key;
       body.broker_shm_id = m->shm_key;
       body.slot_idx = 0;	/* per-slot identity retired with the CAS pool */

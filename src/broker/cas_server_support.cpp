@@ -202,6 +202,7 @@ cas_server_refresh_session_config (T_APPL_SERVER_INFO *slot)
   cfg->cci_default_autocommit = prm_get_bool_value (PRM_ID_CAS_CCI_DEFAULT_AUTOCOMMIT) ? ON : OFF;
   cfg->max_prepared_stmt_count = prm_get_integer_value (PRM_ID_CAS_MAX_PREPARED_STMT_COUNT);
   cfg->session_timeout = prm_get_integer_value (PRM_ID_CAS_SESSION_TIMEOUT);
+  cfg->session_timeout_is_set = 0;
   cfg->max_string_length = prm_get_integer_value (PRM_ID_CAS_MAX_STRING_LENGTH);
   cfg->query_timeout = prm_get_integer_value (PRM_ID_CAS_MAX_QUERY_TIMEOUT);
   cfg->trigger_action_flag = ON;
@@ -236,7 +237,15 @@ cas_server_apply_pending_config (bool reopen_logs)
 	{
 	  (void) tr_set_execution_state (config.runtime.trigger_action_flag != 0);
 	}
+      int session_timeout = cas_session_cfg.session_timeout;
       cas_session_cfg = config.runtime;
+      if (!cas_session_cfg.session_timeout_is_set)
+	{
+	  /* A folded connection cannot reattach its lost session. Keep the
+	   * server's default (normally -1), rather than reviving the legacy
+	   * broker's 300-second timeout, until an explicit live change. */
+	  cas_session_cfg.session_timeout = session_timeout;
+	}
       as_info->cur_statement_pooling = (char) cas_session_cfg.statement_pooling;
       as_info->cci_default_autocommit = (char) cas_session_cfg.cci_default_autocommit;
     }

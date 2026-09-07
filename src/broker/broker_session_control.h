@@ -45,6 +45,7 @@ struct broker_runtime_config
   int32_t cci_default_autocommit;
   int32_t max_prepared_stmt_count;
   int32_t session_timeout;
+  int32_t session_timeout_is_set;
   int32_t query_timeout;
   int32_t max_string_length;
   int32_t trigger_action_flag;
