@@ -485,6 +485,11 @@ namespace cubconn
       std::memcpy (req_info.driver_info, driver_header, DRIVER_HEADER_SIZE);
       req_info.need_rollback = TRUE;
 
+      gettimeofday (&tran_start_time, NULL);
+      logddl_set_start_time (&tran_start_time);
+      gettimeofday (&query_start_time, NULL);
+      tran_timeout = 0;
+      query_timeout = 0;
       cas_log_error_handler_begin ();
 
       FN_RETURN fn_ret = FN_KEEP_CONN;
@@ -493,6 +498,12 @@ namespace cubconn
 	  /* the SIGUSR1 (re)arming of the CAS loop is retired: cancel arrives
 	   * as a tran interrupt via the control channel (#117 D4) */
 	  fn_ret = cas_process_request (fd, &net_buf, &req_info, INVALID_SOCKET);
+	  /* Match cas_common_main's per-request epilogue. Otherwise a later
+	   * cursor/handle close is still treated as the first request and
+	   * incorrectly tells the driver that its transaction is inactive. */
+	  is_first_request = false;
+	  as_info->fn_status = FN_STATUS_DONE;
+	  as_info->last_access_time = time (NULL);
 	  cas_log_error_handler_clear ();
 	}
 
