@@ -581,7 +581,6 @@ exit:
 	error_code = callback_set_pl_session_param (thread_ref, unpacker);
 	break;
       default:
-	// TODO: not implemented yet, do we need error handling?
 	assert (false);
 	error_code = ER_FAILED;
 	break;

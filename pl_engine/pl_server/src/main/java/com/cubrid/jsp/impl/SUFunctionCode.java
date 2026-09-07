@@ -46,33 +46,18 @@ public enum SUFunctionCode {
      * This command is not actually supported already It just returns tuple count that you can
      * retrieve from the EXECUTE command
      */
-    // CURSOR(7),
     FETCH(8),
-    GET_SCHEMA_INFO(9),
     GET_BY_OID(10),
     PUT_BY_OID(11),
 
     /**
      * The result of this command can be obtained from DB Server when starting the Java SP Server
      */
-    // GET_DB_VERSION(15),
     RELATED_TO_OID(17),
     RELATED_TO_COLLECTION(18),
-    NEXT_RESULT(19),
-    EXECUTE_BATCH_STATEMENT(20),
-    EXECUTE_BATCH_PREPAREDSTATEMENT(21),
-    CURSOR_UPDATE(22),
     MAKE_OUT_RS(33),
 
     GET_GENERATED_KEYS(34),
-
-    NEW_LOB(35),
-    WRITE_LOB(36),
-    READ_LOB(37),
-    PREPARE_AND_EXECUTE(41),
-
-    /** The CURSOR will manage at the DB Server */
-    // CURSOR_CLOSE(42),
 
     /* PL SESSION PARAMETER */
     SET_PL_SESSION_PARAMETER(50),
