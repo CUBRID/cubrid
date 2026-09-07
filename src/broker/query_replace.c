@@ -54,6 +54,8 @@
 #include "parse_tree.h"
 #include "parser.h"
 #include "language_support.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* free and nullify: this TU does not pull in memory_alloc.h's free_and_init, so
  * provide the same guarded macro locally (matching broker_log_replay.c). */
@@ -2700,8 +2702,7 @@ qr_init_for_broker (int shm_key, int owner_shm_id, const char *broker_name)
   if (mid == -1)
     {
 #if !defined(NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "qr_init: shmget failed for key 0x%x (%s)\n",
-		     shm_key, strerror (errno));
+      _er_log_debug (ARG_FILE_LINE, "qr_init: shmget failed for key 0x%x (%s)\n", shm_key, strerror (errno));
 #endif
       goto error;
     }
@@ -2710,8 +2711,7 @@ qr_init_for_broker (int shm_key, int owner_shm_id, const char *broker_name)
   if (base == (char *) -1)
     {
 #if !defined(NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "qr_init: shmat failed for key 0x%x (%s)\n",
-		     shm_key, strerror (errno));
+      _er_log_debug (ARG_FILE_LINE, "qr_init: shmat failed for key 0x%x (%s)\n", shm_key, strerror (errno));
 #endif
       goto error;
     }
@@ -2720,8 +2720,7 @@ qr_init_for_broker (int shm_key, int owner_shm_id, const char *broker_name)
   if (qr_shm->magic != QR_SHM_MAGIC)
     {
 #if !defined(NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "qr_init: bad magic 0x%x for key 0x%x\n", qr_shm->magic,
-		     shm_key);
+      _er_log_debug (ARG_FILE_LINE, "qr_init: bad magic 0x%x for key 0x%x\n", qr_shm->magic, shm_key);
 #endif
       shmdt (base);
       qr_shm = NULL;
@@ -2800,8 +2799,7 @@ qr_init_for_broker (int shm_key, int owner_shm_id, const char *broker_name)
   return 0;
 
 error:
-  snprintf (qr_msg, sizeof (qr_msg), "query replace disabled: cannot attach rule segment (shm key 0x%x)",
-	    shm_key);
+  snprintf (qr_msg, sizeof (qr_msg), "query replace disabled: cannot attach rule segment (shm key 0x%x)", shm_key);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, qr_msg);
 
   return -1;

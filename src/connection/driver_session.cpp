@@ -777,7 +777,7 @@ namespace cubconn
       if (!params.direct)
 	{
 	  (void) qr_init_for_broker (params.query_replace_shm_key, params.broker_shm_id,
-				    params.broker_name.c_str ());
+				     params.broker_name.c_str ());
 	  qr_load_dbuser_has_rules (info.db_name, info.db_user);
 	}
 

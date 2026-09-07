@@ -1969,7 +1969,7 @@ invalid_value:
 }
 
 static void
-admin_mirror_runtime_change (T_BROKER_INFO *broker, const T_SHM_APPL_SERVER *shm, const char *name)
+admin_mirror_runtime_change (T_BROKER_INFO * broker, const T_SHM_APPL_SERVER * shm, const char *name)
 {
   const struct runtime_option *option = admin_runtime_option (name);
   if (option == NULL)

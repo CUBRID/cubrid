@@ -7813,8 +7813,8 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   /* call the server routine of query execute */
 #if defined (SERVER_MODE)
   list_id = sqmgr_execute_query_inprocess (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag,
-					  clt_cache_time, srv_cache_time, query_timeout, &query_info,
-					  &query_info_length);
+					   clt_cache_time, srv_cache_time, query_timeout, &query_info,
+					   &query_info_length);
 #else
   list_id =
     xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,

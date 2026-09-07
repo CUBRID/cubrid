@@ -307,6 +307,7 @@ static thread_local er_log_handler_t er_Handler = NULL;
 /* Optional adopted-session copy. The database error log remains authoritative;
  * a broker's ERROR_LOG_DIR must never redirect another broker's diagnostics. */
 static thread_local char er_Session_log_path[PATH_MAX] = { 0 };
+
 static thread_local FILE *er_Session_log_fh = NULL;
 static thread_local bool er_Session_log_failed = false;
 #else

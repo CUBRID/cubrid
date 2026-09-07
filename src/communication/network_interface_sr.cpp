@@ -6187,9 +6187,9 @@ exit:
  * No transport, transaction completion or result ownership is changed here. */
 QFILE_LIST_ID *
 sqmgr_execute_query_inprocess (THREAD_ENTRY *thread_p, const XASL_ID *xasl_id, QUERY_ID *query_id,
-			      int dbval_count, DB_VALUE *dbvals, QUERY_FLAG *flag, CACHE_TIME *client_cache_time,
-			      CACHE_TIME *server_cache_time, int query_timeout, char **query_info,
-			      int *query_info_length)
+			       int dbval_count, DB_VALUE *dbvals, QUERY_FLAG *flag, CACHE_TIME *client_cache_time,
+			       CACHE_TIME *server_cache_time, int query_timeout, char **query_info,
+			       int *query_info_length)
 {
   const int trace_level = prm_get_integer_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN);
   const int trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
@@ -6243,7 +6243,7 @@ sqmgr_execute_query_inprocess (THREAD_ENTRY *thread_p, const XASL_ID *xasl_id, Q
     }
 
   list_id = xqmgr_execute_query (thread_p, xasl_id, query_id, dbval_count, dbvals, flag, client_cache_time,
-				server_cache_time, query_timeout, &cache_entry);
+				 server_cache_time, query_timeout, &cache_entry);
   execution_error = er_errid ();
   if (cache_entry != NULL)
     {
@@ -6258,7 +6258,7 @@ sqmgr_execute_query_inprocess (THREAD_ENTRY *thread_p, const XASL_ID *xasl_id, Q
 	  && execution_error != ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
 	{
 	  char *sql_id = NULL;
-          if (info.sql_hash_text != NULL)
+	  if (info.sql_hash_text != NULL)
 	    {
 	      (void) qmgr_get_sql_id (thread_p, &sql_id, info.sql_hash_text, strlen (info.sql_hash_text));
 	    }
@@ -6288,7 +6288,7 @@ sqmgr_execute_query_inprocess (THREAD_ENTRY *thread_p, const XASL_ID *xasl_id, Q
 	  if (trace_slow_msec >= 0 && response_time >= trace_slow_msec)
 	    {
 	      *query_info_length = trace_log_slow_query (thread_p, &info, response_time, diff_stats,
-						       trace_text, trace_level);
+				   trace_text, trace_level);
 	      if (*query_info_length > 0)
 		{
 		  *query_info = trace_text;

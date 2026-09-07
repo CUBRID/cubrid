@@ -136,10 +136,10 @@ extern void sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid
 extern void sqmgr_prepare_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern struct qfile_list_id *sqmgr_execute_query_inprocess (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id,
-							  QUERY_ID * query_id, int dbval_count, DB_VALUE * dbvals,
-							  QUERY_FLAG * flag, CACHE_TIME * client_cache_time,
-							  CACHE_TIME * server_cache_time, int query_timeout,
-							  char **query_info, int *query_info_length);
+							    QUERY_ID * query_id, int dbval_count, DB_VALUE * dbvals,
+							    QUERY_FLAG * flag, CACHE_TIME * client_cache_time,
+							    CACHE_TIME * server_cache_time, int query_timeout,
+							    char **query_info, int *query_info_length);
 extern void sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_end_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

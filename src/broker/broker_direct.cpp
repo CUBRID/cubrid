@@ -966,7 +966,7 @@ namespace brd
 	|| ((config.mask & BROKER_SESSION_SQL_LOG) && (config.sql_log < 0 || config.sql_log > SQL_LOG_MODE_ALL))
 	|| ((config.mask & BROKER_SESSION_SLOW_LOG) && (config.slow_log < 0 || config.slow_log > 1))
 	|| ((config.mask & BROKER_SESSION_RUNTIME) && (change.session_id != 0
-						    || config.mask != BROKER_SESSION_RUNTIME))
+	    || config.mask != BROKER_SESSION_RUNTIME))
 	|| (change.session_id != 0 && (change.database[0] == '\0'
 				       || memchr (change.database, '\0', sizeof (change.database)) == NULL)))
       {
