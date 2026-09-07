@@ -525,7 +525,6 @@ qo_plan_malloc (QO_ENV * env)
 
   plan->parallel_opt_use = PLAN_PARALLEL_OPT_NO;
   plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_NO;
-  plan->skip_groupby_opt = QO_PLAN_SKIP_GROUPBY_NO;
 
   plan->has_sort_limit = false;
   plan->use_iscan_descending = false;
@@ -1049,7 +1048,6 @@ qo_set_groupby_skip (QO_PLAN * plan)
       if (plan->plan_un.scan.index != NULL && plan->plan_un.scan.index->head != NULL)
 	{
 	  plan->plan_un.scan.index->head->groupby_skip = true;
-	  plan->skip_groupby_opt = QO_PLAN_SKIP_GROUPBY_USE;
 	}
       break;
 
@@ -13129,27 +13127,6 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
 
   env = plan->info->env;
 
-  switch (plan->skip_groupby_opt)
-    {
-    case QO_PLAN_SKIP_GROUPBY_USE:
-    case QO_PLAN_SKIP_GROUPBY_CAN_USE:
-      return true;
-
-    case QO_PLAN_SKIP_GROUPBY_CANNOT_USE:
-      return false;
-
-    case QO_PLAN_SKIP_GROUPBY_NO:
-      /* need check */
-      break;
-
-    default:
-      /* impossible case */
-      assert (false);
-
-      /* need check */
-      break;
-    }
-
   parser = QO_ENV_PARSER (env);
   statement = QO_ENV_PT_TREE (env);
   group_by = statement->info.query.q.select.group_by;
@@ -13172,12 +13149,9 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
       goto end;
     }
 
+  /* no descending retry here; qo_top_plan_new () does not retry descending on a join plan, so such a candidate could
+   * never skip the group by anyway */
   is_groupby_skip = pt_sort_spec_cover_groupby (parser, group_sort_list, group_by, statement);
-  if (!is_groupby_skip && qo_is_interesting_order_scan (plan))
-    {
-      /* the index may still cover the grouping when it is scanned descending */
-      is_groupby_skip = qo_check_groupby_skip_descending (plan, group_sort_list);
-    }
 
   parser_free_tree (parser, group_sort_list);
 
@@ -13200,15 +13174,6 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
     }
 
 end:
-  if (is_groupby_skip)
-    {
-      plan->skip_groupby_opt = QO_PLAN_SKIP_GROUPBY_CAN_USE;
-    }
-  else
-    {
-      plan->skip_groupby_opt = QO_PLAN_SKIP_GROUPBY_CANNOT_USE;
-    }
-
   return is_groupby_skip;
 }
 
