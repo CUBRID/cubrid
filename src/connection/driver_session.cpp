@@ -710,7 +710,7 @@ namespace cubconn
       cas_server_apply_pending_config (false);
       cas_log_open (broker_name);
       cas_slow_log_open (broker_name);
-      logddl_init (APP_NAME_CAS);
+      logddl_init (std::strcmp (client_name, "csql") == 0 ? APP_NAME_CSQL : APP_NAME_CAS);
       logddl_check_ddl_audit_param ();
       logddl_set_broker_info (cas_log_slot_index, broker_name);
       {

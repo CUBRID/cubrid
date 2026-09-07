@@ -6181,6 +6181,163 @@ exit:
     }
 }
 
+/* The folded client skips the RPC handler, but still needs its execution
+ * diagnostics. Keep the cache entry fixed while its SQL text is logged, and
+ * return the same slow-query text the wire reply supplies to the CAS logger.
+ * No transport, transaction completion or result ownership is changed here. */
+QFILE_LIST_ID *
+sqmgr_execute_query_inprocess (THREAD_ENTRY *thread_p, const XASL_ID *xasl_id, QUERY_ID *query_id,
+			      int dbval_count, DB_VALUE *dbvals, QUERY_FLAG *flag, CACHE_TIME *client_cache_time,
+			      CACHE_TIME *server_cache_time, int query_timeout, char **query_info,
+			      int *query_info_length)
+{
+  const int trace_level = prm_get_integer_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN);
+  const int trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
+  const int trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
+  const bool collect = trace_slow_msec >= 0 || trace_ioreads > 0;
+  const bool was_watching = collect && perfmon_server_is_stats_on (thread_p);
+  const bool was_tracing_slow = thread_p->event_stats.trace_slow_query;
+  const int initial_extend_pages = thread_p->event_stats.extend_pages;
+  const struct timeval initial_extend_time = thread_p->event_stats.extend_time;
+  UINT64 *base_stats = NULL, *current_stats = NULL, *diff_stats = NULL;
+  char *trace_text = NULL;
+  XASL_CACHE_ENTRY *cache_entry = NULL;
+  QFILE_LIST_ID *list_id = NULL;
+  EXECUTION_INFO info = { NULL, NULL, NULL };
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed;
+  bool started_watch = false;
+  int execution_error;
+
+  *query_info = NULL;
+  *query_info_length = 0;
+  if (collect)
+    {
+      base_stats = perfmon_allocate_values ();
+      current_stats = perfmon_allocate_values ();
+      diff_stats = perfmon_allocate_values ();
+      if (trace_slow_msec >= 0)
+	{
+	  trace_text = (char *) malloc (QUERY_INFO_BUF_SIZE);
+	}
+      if (base_stats == NULL || current_stats == NULL || diff_stats == NULL
+	  || (trace_slow_msec >= 0 && trace_text == NULL))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) QUERY_INFO_BUF_SIZE);
+	  *query_id = NULL_QUERY_ID;
+	  goto cleanup;
+	}
+
+      perfmon_start_watch (thread_p);
+      started_watch = true;
+      if (trace_level != TRACE_LOG_LEVEL_OFF)
+	{
+	  xperfmon_server_copy_stats (thread_p, base_stats, false);
+	}
+      else
+	{
+	  xperfmon_server_copy_stats_for_trace (thread_p, base_stats);
+	}
+      thread_p->event_stats.trace_slow_query = was_tracing_slow || trace_slow_msec >= 0;
+      tsc_getticks (&start_tick);
+    }
+
+  list_id = xqmgr_execute_query (thread_p, xasl_id, query_id, dbval_count, dbvals, flag, client_cache_time,
+				server_cache_time, query_timeout, &cache_entry);
+  execution_error = er_errid ();
+  if (cache_entry != NULL)
+    {
+      info = cache_entry->sql_info;
+    }
+
+  if (execution_error != NO_ERROR || collect || thread_p->event_stats.extend_pages > initial_extend_pages)
+    {
+      /* Diagnostic allocation/I/O must not replace the query's actual error. */
+      er_stack_push ();
+      if (list_id == NULL && execution_error != NO_ERROR
+	  && execution_error != ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
+	{
+	  char *sql_id = NULL;
+          if (info.sql_hash_text != NULL)
+	    {
+	      (void) qmgr_get_sql_id (thread_p, &sql_id, info.sql_hash_text, strlen (info.sql_hash_text));
+	    }
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QUERY_EXECUTION_ERROR, 3, execution_error,
+		  sql_id != NULL ? sql_id : "(UNKNOWN SQL_ID)",
+		  info.sql_user_text != NULL ? info.sql_user_text : "(UNKNOWN USER_TEXT)");
+	  free_and_init (sql_id);
+	}
+
+      if (collect && cache_entry != NULL)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&elapsed, end_tick, start_tick);
+	  int response_time = elapsed.tv_sec * 1000 + elapsed.tv_usec / 1000;
+	  if (trace_level != TRACE_LOG_LEVEL_OFF)
+	    {
+	      bool detailed = trace_level == TRACE_LOG_LEVEL_DETAIL && trace_slow_msec >= 0
+			      && response_time >= trace_slow_msec;
+	      xperfmon_server_copy_stats (thread_p, current_stats, detailed);
+	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats, detailed);
+	    }
+	  else
+	    {
+	      xperfmon_server_copy_stats_for_trace (thread_p, current_stats);
+	      perfmon_calc_diff_stats_for_trace (diff_stats, current_stats, base_stats);
+	    }
+	  if (trace_slow_msec >= 0 && response_time >= trace_slow_msec)
+	    {
+	      *query_info_length = trace_log_slow_query (thread_p, &info, response_time, diff_stats,
+						       trace_text, trace_level);
+	      if (*query_info_length > 0)
+		{
+		  *query_info = trace_text;
+		  trace_text = NULL;
+		}
+	    }
+	  if (trace_ioreads > 0
+	      && diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset] >= (UINT64) trace_ioreads)
+	    {
+	      event_log_many_ioreads (thread_p, &info, response_time, diff_stats);
+	    }
+	}
+
+      if (thread_p->event_stats.extend_pages > initial_extend_pages)
+	{
+	  /* A driver thread lives across requests and can nest PL callbacks.
+	   * Log this query's delta while preserving the enclosing totals. */
+	  EVENT_STAT totals = thread_p->event_stats;
+	  thread_p->event_stats.extend_pages -= initial_extend_pages;
+	  thread_p->event_stats.extend_time.tv_sec = totals.extend_time.tv_sec - initial_extend_time.tv_sec;
+	  thread_p->event_stats.extend_time.tv_usec = totals.extend_time.tv_usec - initial_extend_time.tv_usec;
+	  if (thread_p->event_stats.extend_time.tv_usec < 0)
+	    {
+	      thread_p->event_stats.extend_time.tv_sec--;
+	      thread_p->event_stats.extend_time.tv_usec += 1000000;
+	    }
+	  event_log_extend_pages (thread_p, &info);
+	  thread_p->event_stats = totals;
+	}
+      er_stack_pop ();
+    }
+
+cleanup:
+  if (cache_entry != NULL)
+    {
+      xcache_unfix (thread_p, cache_entry);
+    }
+  if (started_watch && !was_watching)
+    {
+      perfmon_stop_watch (thread_p);
+    }
+  thread_p->event_stats.trace_slow_query = was_tracing_slow;
+  free_and_init (base_stats);
+  free_and_init (current_stats);
+  free_and_init (diff_stats);
+  free_and_init (trace_text);
+  return list_id;
+}
+
 /*
  * trace_log_slow_query - log slow query to trace log file
  * return:

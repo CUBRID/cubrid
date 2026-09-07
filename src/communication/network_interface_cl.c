@@ -84,6 +84,9 @@
 #include "pl_compile_handler.hpp"
 #include "pl_executor.hpp"
 #endif /* !CS_MODE */
+#if defined (SERVER_MODE)
+#include "network_interface_sr.h"
+#endif
 
 #include "xasl.h"
 #include "lob_locator.hpp"
@@ -7747,6 +7750,10 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   QFILE_LIST_ID *list_id = NULL;
   DB_VALUE *server_db_values = NULL;
   CACHE_TIME local_srv_cache_time;
+#if defined (SERVER_MODE)
+  char *query_info = NULL;
+  int query_info_length = 0;
+#endif
   OID *oid;
   int i;
 
@@ -7804,9 +7811,15 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
     }
 
   /* call the server routine of query execute */
+#if defined (SERVER_MODE)
+  list_id = sqmgr_execute_query_inprocess (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag,
+					  clt_cache_time, srv_cache_time, query_timeout, &query_info,
+					  &query_info_length);
+#else
   list_id =
     xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
 			 srv_cache_time, query_timeout, NULL);
+#endif
 
 #if defined (SERVER_MODE)
   qmgr_attach_first_page_copy (thread_p, list_id);
@@ -7823,6 +7836,16 @@ cleanup:
     }
 
   exit_server (*thread_p);
+
+#if defined (SERVER_MODE)
+  if (query_info != NULL)
+    {
+      /* The wire path delivers this text to the client-side execution-plan
+       * buffer. The folded speaker owns that same buffer in its context. */
+      db_set_execution_plan (query_info, query_info_length);
+      free_and_init (query_info);
+    }
+#endif
 
   return list_id;
 #endif /* !CS_MODE */
