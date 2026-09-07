@@ -861,8 +861,8 @@ namespace brd
     result.result = incomplete ? -2 : 0;
     for (const auto &ch : targets)
       {
-	adopt::msg_header header;
-	broker_session_change_reply reply;
+	adopt::msg_header header = {};
+	broker_session_change_reply reply = {};
 	if (channel_request (*ch, adopt::msg_op::SESSION_CONFIG, &change, sizeof (change), NULL, 0, -1,
 			     &header, &reply, sizeof (reply)) != 0
 	    || header.op != (std::uint32_t) adopt::msg_op::SESSION_CONFIG_REPLY || header.length != sizeof (reply)
