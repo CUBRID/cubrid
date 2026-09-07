@@ -1849,7 +1849,7 @@ admin_session_transfer (int fd, void *buffer, size_t length, bool sending)
 
 enum runtime_value_kind
 {
-  RUNTIME_BOOLEAN, RUNTIME_INTEGER, RUNTIME_SIZE, RUNTIME_TIME, RUNTIME_TIME_CEIL, RUNTIME_SECONDS, RUNTIME_PATH
+  RUNTIME_BOOLEAN, RUNTIME_INTEGER, RUNTIME_SIZE, RUNTIME_TIME, RUNTIME_SECONDS, RUNTIME_PATH
 };
 
 struct runtime_option
@@ -1879,7 +1879,7 @@ admin_runtime_option (const char *name)
     RUNTIME_OPTION (STATEMENT_POOLING, statement_pooling, RUNTIME_BOOLEAN, 0, 1),
     RUNTIME_OPTION (MAX_PREPARED_STMT_COUNT, max_prepared_stmt_count, RUNTIME_INTEGER, 1, INT_MAX),
     RUNTIME_OPTION (SESSION_TIMEOUT, session_timeout, RUNTIME_SECONDS, 0, INT_MAX),
-    RUNTIME_OPTION (MAX_QUERY_TIMEOUT, query_timeout, RUNTIME_TIME_CEIL, 0, MAX_QUERY_TIMEOUT_LIMIT * 1000),
+    RUNTIME_OPTION (MAX_QUERY_TIMEOUT, query_timeout, RUNTIME_SECONDS, 0, MAX_QUERY_TIMEOUT_LIMIT),
     RUNTIME_OPTION (TRIGGER_ACTION, trigger_action_flag, RUNTIME_BOOLEAN, 0, 1),
     RUNTIME_OPTION (LOG_DIR, log_dir, RUNTIME_PATH, 1, CONF_LOG_FILE_LEN - 1),
     RUNTIME_OPTION (SLOW_LOG_DIR, slow_log_dir, RUNTIME_PATH, 1, CONF_LOG_FILE_LEN - 1),
@@ -1938,12 +1938,7 @@ admin_parse_runtime_change (const char *name, const char *value, struct broker_s
       number = ut_size_string_to_kbyte (value, "K");
       break;
     case RUNTIME_TIME:
-    case RUNTIME_TIME_CEIL:
       number = ut_time_string_to_sec (value, "sec") * 1000.0;
-      if (option->kind == RUNTIME_TIME_CEIL)
-	{
-	  number = ceil (number);
-	}
       break;
     case RUNTIME_SECONDS:
       number = ut_time_string_to_sec (value, "sec");
