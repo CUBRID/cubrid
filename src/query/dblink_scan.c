@@ -1887,10 +1887,7 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)    : thread entry
  *   kind(in)        : DBLINK_DML_INSERT or DBLINK_DML_DELETE
- *   url(in)         : CCI connection URL
- *   user(in)        : remote user name
- *   pwd(in)         : remote password
- *   table_name(in)  : remote table name
+ *   sink(in)        : the proc's sink fields -- connection URL, user, password and remote table name
  *   attr_names(in)  : INSERT only -- explicit column names (NULL for positional INSERT)
  *   num_attrs(in)   : INSERT only -- length of attr_names (0 when positional)
  *   num_bind(in)    : INSERT only -- number of ? placeholders (= SELECT column count)
@@ -1912,9 +1909,9 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
  *   session AUTOCOMMIT, or EXECUTE_QUERY_WITH_COMMIT).
  */
 int
-dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user, const char *pwd,
-		 const char *table_name, char **attr_names, int num_attrs, int num_bind, const char *key_col,
-		 const char *op, TP_DOMAIN * src_dom, DBLINK_DML_STATE * state)
+dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML_SINK * sink, char **attr_names,
+		 int num_attrs, int num_bind, const char *key_col, const char *op, TP_DOMAIN * src_dom,
+		 DBLINK_DML_STATE * state)
 {
   int ret;
   T_CCI_ERROR err_buf;
@@ -1927,12 +1924,12 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
   state->conn_handle = -1;
   state->stmt_handle = -1;
 
-  if (table_name == NULL || table_name[0] == '\0')
+  if (sink == NULL || sink->table_name == NULL || sink->table_name[0] == '\0')
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: table_name is NULL or empty");
       return ER_DBLINK;
     }
-  if (url == NULL || user == NULL || pwd == NULL)
+  if (sink->url == NULL || sink->user == NULL || sink->pwd == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: url/user/pwd is NULL");
       return ER_DBLINK;
@@ -1956,7 +1953,8 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
   /* Acquire pooled remote connection: CCI_AUTOCOMMIT_FALSE (ignore DBLINK_AUTO_COMMIT) + DML 2PC
    * participant, for all-or-nothing.  Shared with the scan/push paths via dblink_acquire_pooled_conn;
    * the connection is committed/rolled back + disconnected by qmgr_check_dblink_trans() at local txn end. */
-  ret = dblink_acquire_pooled_conn (thread_p, url, user, pwd, CCI_AUTOCOMMIT_FALSE, true, errctx, &state->conn_handle);
+  ret = dblink_acquire_pooled_conn (thread_p, sink->url, sink->user, sink->pwd, CCI_AUTOCOMMIT_FALSE, true, errctx,
+				    &state->conn_handle);
   if (ret != NO_ERROR)
     {
       /* er_set done in helper; a partially opened conn (if any) is cleaned up by the helper */
@@ -1966,13 +1964,13 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
   switch (kind)
     {
     case DBLINK_DML_INSERT:
-      ret = dblink_dml_build_insert_sql (thread_p, table_name, attr_names, num_attrs, num_bind, &sql);
+      ret = dblink_dml_build_insert_sql (thread_p, sink->table_name, attr_names, num_attrs, num_bind, &sql);
       break;
     case DBLINK_DML_DELETE:
       /* The first SQL always carries a bare "?": what to cast to is only knowable from the marker, which
        * needs this prepare to exist. Gated on a CUBRID remote -- CAST is CUBRID syntax. */
       restore_type = (key_col != NULL && dblink_dml_remote_is_cubrid (state->conn_handle));
-      ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, NULL, &sql);
+      ret = dblink_dml_build_delete_sql (thread_p, sink->table_name, key_col, op, NULL, &sql);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
@@ -2002,7 +2000,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
       cast_type = dblink_dml_delete_cast_type_needed (state->stmt_handle, src_dom, cast_buf, sizeof (cast_buf));
       if (cast_type != NULL)
 	{
-	  ret = dblink_dml_delete_reprepare_with_cast (thread_p, state, table_name, key_col, op, cast_type);
+	  ret = dblink_dml_delete_reprepare_with_cast (thread_p, state, sink->table_name, key_col, op, cast_type);
 	  if (ret != NO_ERROR)
 	    {
 	      return ret;

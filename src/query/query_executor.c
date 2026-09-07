@@ -12692,8 +12692,8 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   assert (sink->is_remote);
 
   /* open remote connection and prepare the INSERT/DELETE statement */
-  if (dblink_dml_open (thread_p, kind, sink->url, sink->user, sink->pwd, sink->table_name, attr_names, num_attrs,
-		       val_no, key_col, op, src_dom, &dblink_state) != NO_ERROR)
+  if (dblink_dml_open (thread_p, kind, sink, attr_names, num_attrs, val_no, key_col, op, src_dom, &dblink_state)
+      != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;
