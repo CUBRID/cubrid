@@ -555,7 +555,10 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       break;
 
     case PT_RAND:
-    case PT_RANDOM:
+      /* volatility left UNSET: it differs per overload (no-arg RAND() is
+       * statement-level, seeded RAND(n) is row-level), and pt_get_op_volatility
+       * reads overloads[0] only.  Classified with matched-overload stamping in
+       * CBRD-26879; until then a DEFAULT embedding RAND keeps being rejected. */
       num = 0;
 
       /* one overload */
@@ -583,11 +586,71 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_RANDOM:
+      num = 0;
+
+      /* row-level random: both overloads (with or without a seed) recompute on
+       * every evaluation, so the whole operator is VOLATILE */
+      sig.volatility = PT_VOLATILITY_VOLATILE;
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_NONE;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_INTEGER;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_DRAND:
-    case PT_DRANDOM:
+      /* volatility left UNSET for the same per-overload reason as PT_RAND */
       num = 0;
 
       /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_INTEGER;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_DOUBLE;
+
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_NONE;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_DOUBLE;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_DRANDOM:
+      num = 0;
+
+      /* row-level random: both overloads (with or without a seed) recompute on
+       * every evaluation, so the whole operator is VOLATILE */
+      sig.volatility = PT_VOLATILITY_VOLATILE;
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
@@ -3427,6 +3490,11 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_LEAST:
     case PT_GREATEST:
       num = 0;
+
+      /* pure selection over the operands: no environment, session, clock, or
+       * server state is read, so the operators are IMMUTABLE (an operand's own
+       * volatility still propagates over them) */
+      sig.volatility = PT_VOLATILITY_IMMUTABLE;
 
       /* one overload */
 
