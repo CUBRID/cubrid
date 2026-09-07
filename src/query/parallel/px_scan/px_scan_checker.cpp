@@ -799,7 +799,7 @@ namespace parallel_scan
 	else if (!dptr_subtree_worker_safe (xaslp, false))
 	  {
 	    /* CBRD-27205: workers execute non-linked dptrs per row on their private clone
-	     * (px_scan_task::execute_nonlinked_dptr_list); anything the worker must not run falls
+	     * (qexec_execute_dptr_list from px_scan_task); anything the worker must not run falls
 	     * back to serial scan. A passing subtree still runs serially inside each worker
 	     * (process_xasl_node_recursive_force_cannot_parallel). */
 	    set_flag (result, CANNOT_PARALLEL_SCAN);

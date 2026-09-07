@@ -125,8 +125,6 @@ namespace parallel_scan
       int clone_xasl (cubthread::entry &thread_ref);
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
-      /* per-row mirror of qexec_intprt_fnc's "evaluate dptr list" for the level-0 node */
-      SCAN_CODE execute_nonlinked_dptr_list (cubthread::entry &thread_ref);
       /* INDEX-only: after leaf supply exhausted, help drain remaining shared overflow chains. No-op otherwise. */
       void drain_late_joiner_chains (cubthread::entry &thread_ref, bool &stop);
   };
