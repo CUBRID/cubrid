@@ -4359,8 +4359,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 
       /* GROUP_CONCAT : process ORDER BY and restore SEPARATOR node (just to keep original tree) */
       if (aggregate_list->function == PT_GROUP_CONCAT || aggregate_list->function == PT_CUME_DIST
-	  || aggregate_list->function == PT_PERCENT_RANK || (QPROC_IS_INTERPOLATION_FUNC (aggregate_list)
-							     && !PT_IS_CONST (tree->info.function.arg_list)))
+	  || aggregate_list->function == PT_PERCENT_RANK
+	  || (QPROC_IS_INTERPOLATION_FUNC (aggregate_list) && !PT_IS_CONST (tree->info.function.arg_list))
+	  || QPROC_IS_CONTINUOUS_INTERPOLATION_FUNC (aggregate_list))
 	{
 	  /* Separator of GROUP_CONCAT is not a 'real' argument of GROUP_CONCAT, but for convenience it is kept in
 	   * 'arg_list' of PT_FUNCTION. It is not involved in sorting process, so conversion of ORDER BY to SORT_LIST
@@ -4391,7 +4392,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       else
 	{
 	  /* GROUP_CONCAT, MEDIAN, PERCENTILE_CONT and PERCENTILE_DISC aggs support ORDER BY. We ignore ORDER BY for
-	   * MEDIAN/PERCENTILE_CONT/PERCENTILE_DISC, when arg_list is a constant. */
+	   * PERCENTILE_DISC when arg_list is a constant, since it returns the constant as is. MEDIAN and
+	   * PERCENTILE_CONT take the sort list path above even for a constant so that the result type follows
+	   * the function. */
 	  assert (QPROC_IS_INTERPOLATION_FUNC (aggregate_list) || tree->info.function.order_by == NULL);
 
 	  assert (group_concat_sep_node_save == NULL);
@@ -25829,8 +25832,8 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree, ANALYTIC_INFO * an
       /* fetch operand type */
       analytic->opr_dbtype = pt_node_to_db_type (func_info->arg_list->info.pointer.node);
 
-      /* for MEDIAN and PERCENTILE functions */
-      if (QPROC_IS_INTERPOLATION_FUNC (analytic))
+      /* PERCENTILE_DISC returns a constant operand as is */
+      if (analytic->function == PT_PERCENTILE_DISC)
 	{
 	  arg_list = func_info->arg_list->info.pointer.node;
 	  CAST_POINTER_TO_NODE (arg_list);
@@ -28927,10 +28930,11 @@ pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NO
       func_info_p->order_by->info.sort_spec.pos_descr.pos_no = 1;
       func_info_p->order_by->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, func_info_p->arg_list);
     }
-  else if (func_info_p->function_type == PT_MEDIAN && func_info_p->arg_list != NULL
-	   && !PT_IS_CONST (func_info_p->arg_list) && func_info_p->order_by == NULL)
+  else if ((func_info_p->function_type == PT_MEDIAN || func_info_p->function_type == PT_PERCENTILE_CONT)
+	   && func_info_p->arg_list != NULL && func_info_p->order_by == NULL)
     {
-      /* generate the sort spec for median */
+      /* generate the sort spec for median.
+       * also for percentile_cont on a constant, since the grammar drops its ORDER BY. */
       sort_spec = parser_new_node (parser, PT_SORT_SPEC);
       if (sort_spec == NULL)
 	{

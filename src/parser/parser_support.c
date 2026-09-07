@@ -12306,6 +12306,17 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 	}
       sub_sel_server_cnt = snl->server_cnt - tmp_server_cnt;
+
+      /* An ON DUPLICATE KEY UPDATE assignment can hold a subquery, so a table reference lives here too.
+       * A local spec must reach local_cnt or the rejection below never fires and the statement ships
+       * whole, resolving that name against the remote instead.  Walked after sub_sel_server_cnt so that
+       * count keeps meaning "remote servers in the SELECT source", and for remote targets only: the
+       * local-target callback rewrites specs rather than counting them, which would newly convert them. */
+      if (remote_upd > 0 && node->info.insert.odku_assignments)
+	{
+	  parser_walk_tree (parser, node->info.insert.odku_assignments, pt_get_server_name_list, snl, NULL, NULL);
+	}
+
       sub_sel = NULL;
       break;
     case PT_DELETE:

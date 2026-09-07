@@ -5509,6 +5509,7 @@ int
 do_drop_partitioned_class (MOP class_, int drop_sub_flag, bool is_cascade_constraints)
 {
   DB_OBJLIST *objs;
+  DB_OBJLIST *users_snapshot = NULL;
   SM_CLASS *smclass, *subclass;
   MOP delobj;
   int error = NO_ERROR;
@@ -5538,7 +5539,19 @@ do_drop_partitioned_class (MOP class_, int drop_sub_flag, bool is_cascade_constr
       goto fail_return;
     }
 
-  for (objs = smclass->users; objs;)
+  /* smclass->users is owned by the parent SM_CLASS, and sm_delete_class_mop () below can decache the parent
+   * (a client-side abort, or a re-fetch that re-caches it), which releases the whole class object through
+   * classobj_free_class () and frees the list with it. Walk a private copy instead; the MOPs it holds stay
+   * valid because a decache only clears MOP->object (CBRD-27053). */
+  users_snapshot = ml_copy (smclass->users);
+  if (users_snapshot == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_OBJLIST));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto fail_return;
+    }
+
+  for (objs = users_snapshot; objs;)
     {
       error = au_fetch_class (objs->op, &subclass, AU_FETCH_READ, AU_SELECT);
       if (error != NO_ERROR)
@@ -5567,6 +5580,11 @@ do_drop_partitioned_class (MOP class_, int drop_sub_flag, bool is_cascade_constr
   error = NO_ERROR;
 
 fail_return:
+  if (users_snapshot != NULL)
+    {
+      ml_free (users_snapshot);
+    }
+
   return error;
 }
 
@@ -12017,6 +12035,10 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
     {
       attr_chg_properties->new_name_space = ID_SHARED_ATTRIBUTE;
     }
+  else if (attr_def->info.attr_def.attr_type == PT_META_ATTR)
+    {
+      attr_chg_properties->new_name_space = ID_CLASS_ATTRIBUTE;
+    }
 
   if (attr_def->info.attr_def.data_default != NULL)
     {
@@ -14950,6 +14972,18 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
 	{
 	  attr_name = old_name;
 	}
+    }
+
+  /* visibility can be set only on normal attributes; CREATE and ADD reject it at parse time, but for MODIFY/CHANGE
+   * the attribute's actual namespace is known only after build_attr_change_map(). This must precede the
+   * is_att_change_needed() early return: an explicit VISIBLE on an already visible attribute counts as "no change"
+   * and would silently succeed otherwise. */
+  if (attribute->info.attr_def.attr_invisible != PT_ATTR_INVISIBLE_UNSET && attr_chg_prop->name_space != ID_ATTRIBUTE)
+    {
+      PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_VISIBILITY, attr_name);
+      error = ER_PT_SEMANTIC;
+      goto exit;
     }
 
   if (!is_att_change_needed (attr_chg_prop))
