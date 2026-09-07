@@ -54,6 +54,7 @@ public class SUStatement {
 
     private List<ColumnInfo> columnInfos = null;
     private HashMap<String, Integer> colNameToIndex = null;
+    private HashMap<String, Integer> writtenColNameToIndex = null;
     private SUBindParameter bindParameter = null;
 
     private byte executeFlag;
@@ -277,14 +278,24 @@ public class SUStatement {
         return colNameToIndex;
     }
 
+    public Map<String, Integer> getWrittenColNameIndex() {
+        return writtenColNameToIndex;
+    }
+
     private void setColumnInfo(List<ColumnInfo> infos) {
         columnInfos = infos;
         columnNumber = columnInfos.size();
         colNameToIndex = new HashMap<String, Integer>(columnNumber);
+        writtenColNameToIndex = new HashMap<String, Integer>(columnNumber);
         for (int i = 0; i < columnInfos.size(); i++) {
             String name = columnInfos.get(i).colName.toLowerCase();
             if (colNameToIndex.containsKey(name) == false) {
                 colNameToIndex.put(name, i);
+            }
+
+            String writtenName = columnInfos.get(i).writtenColName.toLowerCase();
+            if (writtenColNameToIndex.containsKey(writtenName) == false) {
+                writtenColNameToIndex.put(writtenName, i);
             }
         }
     }

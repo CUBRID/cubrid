@@ -563,6 +563,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->client_id = -1;
   tdes->client.set_system_internal ();
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->block_global_oldest_active_until_commit = false;
 
@@ -1591,6 +1592,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
@@ -1681,6 +1683,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->suppress_replication = 0;
   tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
@@ -4462,9 +4465,9 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 {
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
-  LOG_LSA *min_lsa = NULL;	/* The smallest lsa value */
+  LOG_LSA smallest_lsa;		/* The smallest lsa value */
 
-  LSA_SET_NULL (lsa);
+  LSA_SET_NULL (&smallest_lsa);
 
   TR_TABLE_CS_ENTER_READ_MODE (thread_p);
 
@@ -4475,19 +4478,32 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 	  tdes = log_Gl.trantable.all_tdes[i];
 
 	  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->head_lsa)
-	      && (min_lsa == NULL || LSA_LT (&tdes->head_lsa, min_lsa)))
+	      && (LSA_ISNULL (&smallest_lsa) || LSA_LT (&tdes->head_lsa, &smallest_lsa)))
 	    {
-	      min_lsa = &tdes->head_lsa;
+	      LSA_COPY (&smallest_lsa, &tdes->head_lsa);
 	    }
 	}
     }
 
-  if (min_lsa != NULL)
-    {
-      LSA_COPY (lsa, min_lsa);
-    }
-
   TR_TABLE_CS_EXIT (thread_p);
+
+  /* Consider system worker transactions (e.g. online index loaders) as well.
+   * Recovery undo processes them too (see logtb_rv_read_only_map_undo_tdes),
+   * so the smallest LSA that decides log archive retention must not skip
+   * their in-flight log.
+   */
+  // *INDENT-OFF*
+  log_system_tdes::map_all_tdes ([&smallest_lsa] (log_tdes & sys_tdes)
+    {
+      if (!LSA_ISNULL (&sys_tdes.head_lsa)
+	  && (LSA_ISNULL (&smallest_lsa) || LSA_LT (&sys_tdes.head_lsa, &smallest_lsa)))
+	{
+	  LSA_COPY (&smallest_lsa, &sys_tdes.head_lsa);
+	}
+    });
+  // *INDENT-ON*
+
+  LSA_COPY (lsa, &smallest_lsa);
 }
 
 /*
@@ -6523,6 +6539,7 @@ log_tdes::copy_to (LOG_TDES & dest) const
   REPLACE_COPY_2_DEST (dest, suppress_replication);
   REPLACE_COPY_2_DEST (dest, lob_locator_root);
   REPLACE_COPY_2_DEST (dest, query_timeout);
+  REPLACE_COPY_2_DEST (dest, last_query_deadline);
   REPLACE_COPY_2_DEST (dest, query_start_time);
   REPLACE_COPY_2_DEST (dest, tran_start_time);
   REPLACE_COPY_2_DEST (dest, xasl_id);
