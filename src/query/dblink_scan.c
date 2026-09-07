@@ -1564,7 +1564,7 @@ sql_build_error:
  */
 
 /*
- * dblink_dml_delete_remote_is_cubrid () - Is the remote a native CUBRID server?
+ * dblink_dml_remote_is_cubrid () - Is the remote a native CUBRID server?
  *   return: true only for a direct or proxied CUBRID connection
  *   conn_handle(in): open CCI connection
  *
@@ -1572,7 +1572,7 @@ sql_build_error:
  * handshake already filled in -- no round-trip, so this needs no caching.
  */
 static bool
-dblink_dml_delete_remote_is_cubrid (int conn_handle)
+dblink_dml_remote_is_cubrid (int conn_handle)
 {
   int dbms_type = cci_get_dbms_type (conn_handle);
 
@@ -1580,7 +1580,7 @@ dblink_dml_delete_remote_is_cubrid (int conn_handle)
 }
 
 /*
- * dblink_dml_delete_is_datetime_type () - Is this source type one the unresolved-marker fallback casts?
+ * dblink_dml_is_datetime_type () - Is this source type one the unresolved-marker fallback casts?
  *   return: true for the four date/time types the fallback covers
  *   src_type(in): DB_TYPE of the local subquery's source column
  *
@@ -1588,7 +1588,7 @@ dblink_dml_delete_remote_is_cubrid (int conn_handle)
  * row for them either).
  */
 static bool
-dblink_dml_delete_is_datetime_type (DB_TYPE src_type)
+dblink_dml_is_datetime_type (DB_TYPE src_type)
 {
   return (src_type == DB_TYPE_DATE || src_type == DB_TYPE_TIME || src_type == DB_TYPE_DATETIME
 	  || src_type == DB_TYPE_TIMESTAMP);
@@ -1643,7 +1643,7 @@ static const struct
 // *INDENT-ON*
 
 /*
- * dblink_dml_delete_cast_type () - CUBRID type text that restores the pushed value's declared type.
+ * dblink_dml_cast_type () - CUBRID type text that restores the pushed value's declared type.
  *   return: buf, or NULL when the domain has no usable CAST text (the caller then pushes a bare "?")
  *   src_dom(in) : domain of the local subquery's source column
  *   buf(out)    : caller-provided buffer
@@ -1653,7 +1653,7 @@ static const struct
  * and dblink_bind_dbval_to_param() refuses most of those before a comparison happens anyway.
  */
 static const char *
-dblink_dml_delete_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
+dblink_dml_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
 {
   DB_TYPE src_type = TP_DOMAIN_TYPE (src_dom);
   int prec = (src_dom != NULL) ? src_dom->precision : 0;
@@ -1731,7 +1731,7 @@ dblink_dml_delete_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
  *
  * The marker is the sink's only way to see the target type: a DML prepare carries no column information
  * (CAS ships that only for SELECT). The rule and its fallback are in the policy comment above
- * dblink_dml_delete_remote_is_cubrid().
+ * dblink_dml_remote_is_cubrid().
  */
 static const char *
 dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *buf, size_t buflen)
@@ -1758,14 +1758,14 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
     {
       /* Fallback: a numeric target leaves the domain unresolved. Why only date/time casts here is in the
        * policy comment above. */
-      if (dblink_dml_delete_is_datetime_type (src_type))
+      if (dblink_dml_is_datetime_type (src_type))
 	{
-	  cast_type = dblink_dml_delete_cast_type (src_dom, buf, buflen);
+	  cast_type = dblink_dml_cast_type (src_dom, buf, buflen);
 	}
     }
   else if (marker_type != (int) dblink_dml_src_utype (src_type))
     {
-      cast_type = dblink_dml_delete_cast_type (src_dom, buf, buflen);
+      cast_type = dblink_dml_cast_type (src_dom, buf, buflen);
     }
 
   cci_param_info_free (param_info);
@@ -1898,7 +1898,7 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
  *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<", ">", "<=", ">=")
  *   src_dom(in)     : DELETE only -- domain of the local subquery's source column (NULL when
  *                     unknown). Used to restore the pushed value's declared type; see the policy comment
- *                     above dblink_dml_delete_remote_is_cubrid()
+ *                     above dblink_dml_remote_is_cubrid()
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
  * Note: To prevent partial writes, both kinds ALWAYS:
@@ -1971,7 +1971,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
     case DBLINK_DML_DELETE:
       /* The first SQL always carries a bare "?": what to cast to is only knowable from the marker, which
        * needs this prepare to exist. Gated on a CUBRID remote -- CAST is CUBRID syntax. */
-      restore_type = (key_col != NULL && dblink_dml_delete_remote_is_cubrid (state->conn_handle));
+      restore_type = (key_col != NULL && dblink_dml_remote_is_cubrid (state->conn_handle));
       ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, NULL, &sql);
       break;
     default:
