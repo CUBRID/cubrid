@@ -26,4 +26,22 @@
 
 extern "C" int scan_check_parallel_scan_possible (XASL_NODE *xasl);
 
+namespace parallel_scan
+{
+  /* header-only: px_scan_checker.cpp is linked into cs/sa only, but the server-side scan open
+   * (px_scan.cpp) needs the same test. */
+  inline bool
+  has_nonlinked_dptr (const XASL_NODE *xasl)
+  {
+    for (const XASL_NODE *dptr = xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
+      {
+	if (!XASL_IS_FLAGED (dptr, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    return true;
+	  }
+      }
+    return false;
+  }
+}
+
 #endif /*_PX_SCAN_CHECKER_HPP_ */

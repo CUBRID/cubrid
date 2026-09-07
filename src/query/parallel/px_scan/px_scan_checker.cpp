@@ -1029,21 +1029,13 @@ namespace parallel_scan
 	      {
 		/* XASL_SNAPSHOT workers pre-evaluate after_join/if preds but never run non-linked
 		 * dptrs; a pred depending on a dptr value would misqualify rows (CBRD-27205). */
-		bool has_nonlinked_dptr = false;
-		for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
-		  {
-		    if (!XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
-		      {
-			has_nonlinked_dptr = true;
-			break;
-		      }
-		  }
+		const bool nonlinked_dptr = has_nonlinked_dptr (arg);
 
 		/* list merge blocked → row-by-row fallback. */
 		for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 		  {
 		    ACCESS_SPEC_UNSET_FLAG (specp, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
-		    if (has_nonlinked_dptr || specp->type == TARGET_LIST
+		    if (nonlinked_dptr || specp->type == TARGET_LIST
 			|| (specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX))
 		      {
 			ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
