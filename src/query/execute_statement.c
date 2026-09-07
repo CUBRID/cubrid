@@ -15466,8 +15466,10 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   PT_NODE *hv, *save_next = NULL;
   PT_NODE **host_var_p, *prev;
   PT_MISC_TYPE save_flag;
+  PARSER_STRING_BLOCK *string_blocks_before_walk;
 
   context = *parser;
+  string_blocks_before_walk = context.string_blocks;
 
   var_count = parser->host_var_count + parser->auto_param_count;
 
@@ -15494,9 +15496,7 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  goto err_exit;
 	}
 
-      /* allocate through context, not parser: string_blocks growth on parser directly here
-       * would be lost when context's own growth is synced back into parser below. */
-      stmt->sub_host_var_index = (int *) parser_alloc (&context, var_count * sizeof (int));
+      stmt->sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
       if (stmt->sub_host_var_index == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
@@ -15547,11 +15547,20 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   /* save the flag for main query's prepare */
   save_flag = stmt->info.query.is_subquery;
 
+  /* parser->string_blocks may have grown since the copy above (e.g. the parser_alloc()
+   * call for sub_host_var_index) without context knowing -- pull the current list in
+   * before context does its own growing, so nothing added directly to parser is lost.
+   * The walk above takes &context, not parser; nothing here is known to allocate through
+   * it, but that is not exhaustively provable against everything parser_walk_tree can
+   * reach. If it ever does, context.string_blocks would have moved past this snapshot,
+   * and overwriting it below would silently drop that growth -- catch it instead. */
+  assert (context.string_blocks == string_blocks_before_walk);
+  context.string_blocks = parser->string_blocks;
+
   err = do_prepare_select (&context, stmt);
 
-  /* context started as a copy of parser, so it already holds everything parser held.
-   * do_prepare_select() then adds new blocks only to context.string_blocks.
-   * parser never sees them, so sync context back into parser before returning. */
+  /* do_prepare_select() only grows context's own copy; sync it back so parser can still
+   * reach every block, including anything synced in above. */
   parser->string_blocks = context.string_blocks;
 
   /* restore the flag */
