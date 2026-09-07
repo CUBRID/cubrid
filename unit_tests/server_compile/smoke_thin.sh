@@ -133,6 +133,40 @@ printf '%s\n' "$out" | grep -q "Statistics updated successfully: 1 table, 1 colu
   || fail "update statistics confirmation missing from thin output: $out"
 echo "THIN: client-half stdout message (Statistics updated) rendered"
 
+# 6c. GET reads the current session, including owned string values. Filter
+#     GET sections so SET's echoed input cannot satisfy the assertions.
+parameter_values() {
+  awk '/^=== Get Param Input ===$/ { in_get=1; next }
+       /^=== / { in_get=0 }
+       in_get && /^[a-z_]+=/ { print }' "$1"
+}
+printf ';get lock_timeout_in_secs\n;get timezone\n' > "$WORK/params-get.sql"
+"$CSQL" -u dba "$DB" -i "$WORK/params-get.sql" >"$WORK/params-before" 2>"$WORK/params-before.err" \
+  || fail "session parameter baseline"
+parameter_values "$WORK/params-before" > "$WORK/params-before.values"
+[ "$(wc -l < "$WORK/params-before.values")" -eq 2 ] || fail "session parameter baseline missing"
+cat > "$WORK/params-change.sql" <<'EOF'
+;set lock_timeout_in_secs="5"
+;set timezone="+09:00"
+;get lock_timeout_in_secs
+;get timezone
+;set lock_timeout_in_secs="0"
+;set timezone="-04:00"
+;get lock_timeout_in_secs
+;get timezone
+EOF
+"$CSQL" -u dba "$DB" -i "$WORK/params-change.sql" >"$WORK/params-change" 2>"$WORK/params-change.err" \
+  || fail "session parameter SET/GET"
+parameter_values "$WORK/params-change" > "$WORK/params-change.values"
+printf 'lock_timeout_in_secs=5\ntimezone="+09:00"\nlock_timeout_in_secs=0\ntimezone="-04:00"\n' \
+  > "$WORK/params-expected.values"
+diff -u "$WORK/params-expected.values" "$WORK/params-change.values" || fail "GET returned stale session values"
+"$CSQL" -u dba "$DB" -i "$WORK/params-get.sql" >"$WORK/params-after" 2>"$WORK/params-after.err" \
+  || fail "new session parameter baseline"
+parameter_values "$WORK/params-after" > "$WORK/params-after.values"
+diff -u "$WORK/params-before.values" "$WORK/params-after.values" || fail "session parameters leaked to a new connection"
+echo "THIN: GET follows session SET without changing other connections"
+
 # 7. SA-mode fat flavor untouched (server must be down for -S)
 cubrid server stop "$DB" >/dev/null 2>&1 || true
 sleep 1
