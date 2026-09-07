@@ -169,7 +169,7 @@ workdir="$(mktemp -d "$SCRIPT_DIR/.smoke_jdbc.XXXXXX")" || fail "mktemp"
 cleanup_work() { rm -rf "$workdir"; }
 trap 'cleanup; cleanup_work' EXIT INT TERM
 
-javac -d "$workdir" "$SCRIPT_DIR/B1JdbcSmoke.java" || fail "javac"
+javac -cp "$JAR" -d "$workdir" "$SCRIPT_DIR/B1JdbcSmoke.java" || fail "javac"
 
 cubrid server start "$DB" >/dev/null 2>&1 || fail "server start"
 cubrid broker start >/dev/null 2>&1 || fail "broker start"
@@ -197,7 +197,7 @@ grep -qi "SLEEP" "$slowlog" || fail "slow log misses the SLEEP statement"
 # fn_execute_array slow path: the prepared batch of SLEEP(2) UPDATEs must be
 # logged with its bind values (hard-coded argv offset used to abort the server)
 grep -q "execute_array" "$slowlog" || fail "slow log misses the execute_array unit"
-grep -q "bind 1 .*STRING" "$slowlog" || fail "slow log misses execute_array bind values"
+grep -q "bind 1 .*VARCHAR" "$slowlog" || fail "slow log misses execute_array bind values"
 [ -s "$CUBRID/log/broker/${DB}.access" ] || fail "no access log line was produced"
 ddllog="$(ls "$CUBRID"/log/ddl_audit/b1direct_*_ddl.log 2>/dev/null | head -1)"
 [ -n "$ddllog" ] || fail "no DDL audit log was produced"
