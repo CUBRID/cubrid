@@ -355,16 +355,23 @@ namespace parallel_query
 
 		  if (qfile_reopen_list_as_append_mode (&thread_ref, part_list_id[part_id]) != NO_ERROR)
 		    {
+		      assert_release_error (er_errid () != NO_ERROR);
+		      m_task_manager.handle_error (thread_ref);
+		      has_error = true;
 		      break;		/* error_exit */
 		    }
 
 		  error = qfile_add_tuple_to_list (&thread_ref, part_list_id[part_id], tuple_record.tpl);
-		  if (error != NO_ERROR)
-		    {
-		      break;		/* error_exit */
-		    }
 
 		  qfile_close_list (&thread_ref, part_list_id[part_id]);
+
+		  if (error != NO_ERROR)
+		    {
+		      assert_release_error (er_errid () != NO_ERROR);
+		      m_task_manager.handle_error (thread_ref);
+		      has_error = true;
+		      break;		/* error_exit */
+		    }
 
 		  /* next page */
 		  break;
@@ -1138,6 +1145,11 @@ cleanup:
 		}
 	      while (true);
 
+	      if (has_error)
+		{
+		  break;
+		}
+
 	      if (error != NO_ERROR)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
@@ -1513,6 +1525,11 @@ cleanup:
 		    }
 		}
 	      while (true);
+
+	      if (has_error)
+		{
+		  break;
+		}
 
 	      if (error != NO_ERROR)
 		{
