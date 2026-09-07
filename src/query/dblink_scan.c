@@ -1543,28 +1543,24 @@ sql_build_error:
 /*
  * Restoring the pushed value's declared type -- the whole policy in one place.
  *
- * The sink pushes the local subquery's value as a bare placeholder -- the marker, in the CCI terms used
- * below -- so the remote resolves its domain from the target column and reshapes the value into it. The
- * comparison then stops matching what the all-local form matches: a CHAR target pads a VARCHAR value, and
- * a numeric target turns a date into a number where the all-local form refuses the pair. Spelling the
- * source type into the statement puts the declared type back, because the remote then computes
- * common_type(target, source) -- the same function on the same arguments the all-local form runs.
+ * The sink sends the local subquery value as "?". The remote types that placeholder (the marker) from the
+ * target column, so the comparison no longer matches the all-local form: a CHAR target pads a VARCHAR
+ * value, and a numeric target accepts a date the all-local form refuses. CAST(? AS <source>) puts the
+ * declared type back.
  *
- * One rule, decided after the first prepare, from the marker:
+ * One rule, after the first prepare, from the marker:
  *
- *   marker resolved, domain differs from the source type | CAST(? AS <source>) + re-prepare
- *   marker resolved, domain agrees                       | bare "?" -- nothing to fix
+ *   marker resolved, differs from the source type        | CAST(? AS <source>) + re-prepare
+ *   marker resolved, agrees                              | bare "?"
  *   marker unresolved (numeric target), date/time source | CAST(? AS <source>) + re-prepare
  *   marker unresolved, any other source                  | bare "?"
  *
- * The last two rows are the fallback: a numeric target reports CCI_U_TYPE_NULL, which leaves the rule
- * without a right-hand side. It casts less than the rule because only a date/time source was measured to
- * diverge there -- casting the rest would change every numeric-key statement's text for nothing.
+ * The last two rows are the fallback: unresolved means CCI_U_TYPE_NULL, so there is no target type to
+ * compare. Only a date/time source was measured to diverge there; casting the rest would rewrite every
+ * numeric-key statement for no change in result.
  *
- * The whole rule is gated on the remote being CUBRID: the cast text spells CUBRID type names, and the other
- * vendors do not share them (Oracle has no DATETIME, MySQL casts to CHAR rather than VARCHAR(n)). The ask
- * costs one CAS round trip per statement, the agreeing ones included -- a DML prepare carries nothing else
- * that would name the target type.
+ * CUBRID remotes only -- the cast text is CUBRID syntax. Asking the marker costs one CAS round trip per
+ * statement; a DML prepare does not name the target type.
  */
 
 /*
@@ -1588,7 +1584,8 @@ dblink_dml_delete_remote_is_cubrid (int conn_handle)
  *   return: true for the four date/time types the fallback covers
  *   src_type(in): DB_TYPE of the local subquery's source column
  *
- * The zone-qualified types are out because cci_bind_param rejects them (see the formatter's default case).
+ * The zone-qualified types are out because cci_bind_param rejects them (dblink_cast_types[] has no
+ * row for them either).
  */
 static bool
 dblink_dml_delete_is_datetime_type (DB_TYPE src_type)
@@ -1598,15 +1595,62 @@ dblink_dml_delete_is_datetime_type (DB_TYPE src_type)
 }
 
 /*
+ * How each source type spells itself in the cast, and what its bare form does to the value.
+ *
+ *   DBLINK_PREC_NONE     | the name carries everything     | SHORT, INTEGER, ... DATE, TIME, ...
+ *   DBLINK_PREC_NEEDED   | the bare form narrows the value | CHAR ('2024-01-01' -> '2'), BIT (16 bits -> 1)
+ *   DBLINK_PREC_OPTIONAL | the bare form keeps the value   | VARCHAR, BIT VARYING
+ *   DBLINK_PREC_SCALE    | the bare form keeps it, too     | NUMERIC -- spelled only when the remote takes the
+ *                        |                                 | precision (<= 38), and never without its scale
+ *
+ * All four rows are measured, so changing one asks for a measurement rather than a guess. Only
+ * DBLINK_PREC_NEEDED declines, and that is the whole reason the formatter can return nothing: a cast that
+ * truncates is worse than the bare placeholder it replaces.
+ * Adding a type is one row here -- anything absent keeps the bare "?", which is what it pushed before this
+ * policy existed.
+ */
+// *INDENT-OFF*
+typedef enum
+{
+  DBLINK_PREC_NONE,
+  DBLINK_PREC_NEEDED,
+  DBLINK_PREC_OPTIONAL,
+  DBLINK_PREC_SCALE
+} DBLINK_CAST_PREC;
+
+static const struct
+{
+  DB_TYPE type;
+  const char *name;
+  DBLINK_CAST_PREC policy;
+} dblink_cast_types[] = {
+  {DB_TYPE_CHAR,      "CHAR",        DBLINK_PREC_NEEDED},
+  {DB_TYPE_BIT,       "BIT",         DBLINK_PREC_NEEDED},
+  {DB_TYPE_STRING,    "VARCHAR",     DBLINK_PREC_OPTIONAL},
+  /* BIT VARYING, not VARBIT -- "CAST(x AS VARBIT(16))" is a syntax error */
+  {DB_TYPE_VARBIT,    "BIT VARYING", DBLINK_PREC_OPTIONAL},
+  {DB_TYPE_NUMERIC,   "NUMERIC",     DBLINK_PREC_SCALE},
+  {DB_TYPE_SHORT,     "SHORT",       DBLINK_PREC_NONE},
+  {DB_TYPE_INTEGER,   "INTEGER",     DBLINK_PREC_NONE},
+  {DB_TYPE_BIGINT,    "BIGINT",      DBLINK_PREC_NONE},
+  {DB_TYPE_FLOAT,     "FLOAT",       DBLINK_PREC_NONE},
+  {DB_TYPE_DOUBLE,    "DOUBLE",      DBLINK_PREC_NONE},
+  {DB_TYPE_DATE,      "DATE",        DBLINK_PREC_NONE},
+  {DB_TYPE_TIME,      "TIME",        DBLINK_PREC_NONE},
+  {DB_TYPE_DATETIME,  "DATETIME",    DBLINK_PREC_NONE},
+  {DB_TYPE_TIMESTAMP, "TIMESTAMP",   DBLINK_PREC_NONE}
+};
+// *INDENT-ON*
+
+/*
  * dblink_dml_delete_cast_type () - CUBRID type text that restores the pushed value's declared type.
  *   return: buf, or NULL when the domain has no usable CAST text (the caller then pushes a bare "?")
  *   src_dom(in) : domain of the local subquery's source column
  *   buf(out)    : caller-provided buffer
  *   buflen(in)  : size of buf
  *
- * The precision has to ride along where the default is not the widest: CAST('2024-01-01' AS CHAR) yields
- * '2' (measured), while a bare VARCHAR keeps the value. So CHAR, BIT and NUMERIC decline the cast without
- * a usable precision rather than ship a truncating one.
+ * The types and their precision policy are in dblink_cast_types[] above; a type absent from it declines,
+ * and dblink_bind_dbval_to_param() refuses most of those before a comparison happens anyway.
  */
 static const char *
 dblink_dml_delete_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
@@ -1614,93 +1658,62 @@ dblink_dml_delete_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
   DB_TYPE src_type = TP_DOMAIN_TYPE (src_dom);
   int prec = (src_dom != NULL) ? src_dom->precision : 0;
   int scale = (src_dom != NULL) ? src_dom->scale : 0;
-  int ret;
+  int ret = -1;
+  size_t i;
 
-  switch (src_type)
+  for (i = 0; i < sizeof (dblink_cast_types) / sizeof (dblink_cast_types[0]); i++)
     {
-    case DB_TYPE_CHAR:
-      if (prec <= 0)
+      if (dblink_cast_types[i].type != src_type)
 	{
-	  return NULL;
+	  continue;
 	}
-      ret = snprintf (buf, buflen, "CHAR(%d)", prec);
-      break;
-    case DB_TYPE_BIT:
-      if (prec <= 0)
+
+      /* No default: -Wswitch then flags a policy added to the table but not handled here. The initial
+       * ret = -1 still declines if one slips through. */
+      switch (dblink_cast_types[i].policy)
 	{
-	  return NULL;
+	case DBLINK_PREC_NONE:
+	  ret = snprintf (buf, buflen, "%s", dblink_cast_types[i].name);
+	  break;
+	case DBLINK_PREC_NEEDED:
+	  if (prec <= 0)
+	    {
+	      return NULL;
+	    }
+	  ret = snprintf (buf, buflen, "%s(%d)", dblink_cast_types[i].name, prec);
+	  break;
+	case DBLINK_PREC_OPTIONAL:
+	  if (prec > 0)
+	    {
+	      ret = snprintf (buf, buflen, "%s(%d)", dblink_cast_types[i].name, prec);
+	    }
+	  else
+	    {
+	      ret = snprintf (buf, buflen, "%s", dblink_cast_types[i].name);
+	    }
+	  break;
+	case DBLINK_PREC_SCALE:
+	  if (prec > 0 && prec <= DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      ret = snprintf (buf, buflen, "%s(%d,%d)", dblink_cast_types[i].name, prec, scale);
+	    }
+	  else
+	    {
+	      /* No precision to spell, or one the remote will not take. Arithmetic on a NUMERIC(38,0) source
+	       * widens the domain past 38 -- +, -, *, / and a bare CAST AS NUMERIC all reach 40 (measured) --
+	       * and "NUMERIC(40,0)" fails the remote's parser with "Precision (40) too large". Spelling the
+	       * precision alone would read as scale 0 and round the value away, so drop both: a bare NUMERIC
+	       * keeps the value. */
+	      ret = snprintf (buf, buflen, "%s", dblink_cast_types[i].name);
+	    }
+	  break;
 	}
-      ret = snprintf (buf, buflen, "BIT(%d)", prec);
       break;
-    case DB_TYPE_NUMERIC:
-      if (prec <= 0)
-	{
-	  return NULL;
-	}
-      ret = snprintf (buf, buflen, "NUMERIC(%d,%d)", prec, scale);
-      break;
-    case DB_TYPE_STRING:
-      if (prec > 0)
-	{
-	  ret = snprintf (buf, buflen, "VARCHAR(%d)", prec);
-	}
-      else
-	{
-	  ret = snprintf (buf, buflen, "VARCHAR");
-	}
-      break;
-    case DB_TYPE_VARBIT:
-      /* BIT VARYING, not VARBIT -- "CAST(x AS VARBIT(16))" is a syntax error (measured). Dropping an
-       * unusable length is safe here: a 16-bit value cast to a bare BIT VARYING stays 16 bits, while a
-       * bare BIT truncates it to one (measured), which is why BIT above declines instead. */
-      if (prec > 0)
-	{
-	  ret = snprintf (buf, buflen, "BIT VARYING(%d)", prec);
-	}
-      else
-	{
-	  ret = snprintf (buf, buflen, "BIT VARYING");
-	}
-      break;
-    case DB_TYPE_SHORT:
-      ret = snprintf (buf, buflen, "SHORT");
-      break;
-    case DB_TYPE_INTEGER:
-      ret = snprintf (buf, buflen, "INTEGER");
-      break;
-    case DB_TYPE_BIGINT:
-      ret = snprintf (buf, buflen, "BIGINT");
-      break;
-    case DB_TYPE_FLOAT:
-      ret = snprintf (buf, buflen, "FLOAT");
-      break;
-    case DB_TYPE_DOUBLE:
-      ret = snprintf (buf, buflen, "DOUBLE");
-      break;
-    case DB_TYPE_DATE:
-      ret = snprintf (buf, buflen, "DATE");
-      break;
-    case DB_TYPE_TIME:
-      ret = snprintf (buf, buflen, "TIME");
-      break;
-    case DB_TYPE_DATETIME:
-      ret = snprintf (buf, buflen, "DATETIME");
-      break;
-    case DB_TYPE_TIMESTAMP:
-      ret = snprintf (buf, buflen, "TIMESTAMP");
-      break;
-    default:
-      /* Everything the sink cannot spell keeps the bare placeholder, which is what it pushed before this
-       * policy existed: the zone-qualified types (rejected by cci_bind_param anyway), collections, LOBs,
-       * ENUM, MONETARY -- which dblink_bind_dbval_to_param() has no case for at all, so such a source
-       * fails with ER_DBLINK_UNSUPPORTED_TYPE before any comparison -- and JSON, which binds but brings the
-       * local server down on a separate develop defect, so claiming its cast text here would be a guess. */
-      return NULL;
     }
 
   if (ret < 0 || (size_t) ret >= buflen)
     {
-      /* a truncated type name would prepare as something else on the remote */
+      /* not in the table, or a truncated type name -- which would prepare as something else on the remote */
       return NULL;
     }
 
