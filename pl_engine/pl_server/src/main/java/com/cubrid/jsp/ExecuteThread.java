@@ -103,7 +103,7 @@ public class ExecuteThread extends Thread {
 
     /*
      * Whether the current invocation must not use the server-side default connection. Set from
-     * the invoke payload on every invocation: true for a PARALLEL_ENABLE routine or any px worker.
+     * the invoke payload on every invocation: true only for a PARALLEL_ENABLE routine.
      * Keep it per thread because the Context is shared by the session's execution threads; an
      * undeclared routine on the leader and a routine on a px worker can carry different values.
      */

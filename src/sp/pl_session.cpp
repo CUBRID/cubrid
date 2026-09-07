@@ -95,9 +95,9 @@ namespace cubpl
     // TODO: delete other resources
   }
 
-  /* Same-thread argument nesting still exists without SQL: in SELECT f(g(x)) the inner executor
-   * is constructed before the outer one, on the one thread evaluating the row. That nesting is
-   * bounded by the query text, and the unbounded SP -> SQL -> SP route is refused outright
+  /* Same-thread argument nesting still exists without SQL: in SELECT f(g(x)) the outer executor
+   * remains alive while argument evaluation constructs the inner one on the same thread. Nesting
+   * is bounded by the query text, and the unbounded SP -> SQL -> SP route is refused outright
    * (ER_SP_PARALLEL_ENABLE_NO_SQL), so keeping ER_SP_TOO_MANY_NESTED_CALL alive for px stacks
    * needs a per-thread counter and no session state at all. */
   static thread_local int tl_px_stack_depth = 0;

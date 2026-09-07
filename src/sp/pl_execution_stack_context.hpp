@@ -27,6 +27,7 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include <cassert>
 #include <unordered_set>
 #include <map>
 
@@ -75,12 +76,8 @@ namespace cubpl
 
       bool m_is_running;
 
-      /* PARALLEL_ENABLE contract (#108 D108-1/2): a declared SP promises never to touch the
-       * server-side connection, so its client (CAS) callbacks are refused instead of relayed.
-       * The px-worker arm is a safety net for an undeclared SP that reaches a worker through an
-       * escape path the parallel checkers do not visit (an SP inside an aggregate operand): a
-       * worker thread carries no request id of its own, so a callback from it would be sent to
-       * the wrong rid. */
+      /* A PARALLEL_ENABLE declaration forbids server-side SQL in both serial and parallel
+       * execution. The parallel checkers admit only declared SPs to worker execution. */
       bool m_is_parallel_enabled_sp;
       /* Decided once, at construction: the px marker is owned by the parallel task that set it,
        * and code that runs after the SP returns must reach the same verdict as code that ran
@@ -146,7 +143,8 @@ namespace cubpl
        * created (that object is cached per session, so concurrent px workers would share one). */
       bool is_server_side_sql_forbidden () const
       {
-	return m_is_parallel_enabled_sp || m_is_px_worker;
+	assert (m_is_parallel_enabled_sp || !m_is_px_worker);
+	return m_is_parallel_enabled_sp;
       }
 
       void set_parallel_enabled_sp (bool is_parallel_enabled)
