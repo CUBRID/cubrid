@@ -7745,6 +7745,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 #else /* CS_MODE */
   QFILE_LIST_ID *list_id = NULL;
   DB_VALUE *server_db_values = NULL;
+  CACHE_TIME local_srv_cache_time;
   OID *oid;
   int i;
 
@@ -7791,6 +7792,14 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
     {
       /* No dbvals */
       server_db_values = NULL;
+    }
+
+  /* The wire reply always has storage for the server cache time, even when
+   * the caller does not request it (for example, a compile-time subquery). */
+  if (srv_cache_time == NULL)
+    {
+      CACHE_TIME_RESET (&local_srv_cache_time);
+      srv_cache_time = &local_srv_cache_time;
     }
 
   /* call the server routine of query execute */
