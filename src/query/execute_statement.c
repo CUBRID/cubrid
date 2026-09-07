@@ -95,7 +95,6 @@
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
 #include "network.h"
-#include "msgcat_glossary.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -21475,40 +21474,6 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 
-/*
- * server_check_owner () - Is the caller allowed to place a server object in this owner's schema?
- *   return: NO_ERROR, or ER_AU_NOT_OWNER
- *   owner (in): the user object named as the owner
- *
- * Authorized is au_check_owner (): the owner is the caller, is a group the caller belongs to, or the
- * caller is a DBA group member. server_find () filters catalog rows with that same predicate; the
- * callers' duplicate-name checks depend on the two staying identical.
- */
-static int
-server_check_owner (MOP owner)
-{
-  DB_VALUE owner_val;
-  bool authorized;
-  int save;
-
-  db_make_object (&owner_val, owner);
-
-  /* Disable authorization for the check itself: au_check_owner () reads Au_user's group list, and
-   * without this the group term silently drops out - server_find () gets it only by doing the same. */
-  AU_SAVE_AND_DISABLE (save);
-  authorized = au_is_server_authorized_user (&owner_val);
-  AU_RESTORE (save);
-
-  if (authorized)
-    {
-      return NO_ERROR;
-    }
-
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_NOT_OWNER, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_SERVER));
-  return ER_AU_NOT_OWNER;
-}
-
-
 static int
 do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * passwd, MOP owner,
 			   const char **attr_names, char **attr_val, int attr_cnt)
@@ -21650,12 +21615,6 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1,
 		      create_server->owner_name->info.name.original);
 	    }
-	  return error;
-	}
-
-      error = server_check_owner (owner_obj);
-      if (error != NO_ERROR)
-	{
 	  return error;
 	}
     }
@@ -21923,7 +21882,6 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *server_object = NULL;
   DB_VALUE value, passwd;
   PT_ALTER_SERVER_INFO *alter;
-  MOP new_owner = NULL;
   int save;
 
   CHECK_MODIFICATION_ERROR ();
@@ -21931,33 +21889,6 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&value);
   alter = &(statement->info.alter_server);
   server_name = alter->server_name->info.name.original;
-
-  if (alter->xbits.bit_owner)
-    {
-      assert (alter->owner_name->node_type == PT_NAME);
-      pt = (char *) alter->owner_name->info.name.original;
-      assert (pt && *pt);
-
-      new_owner = db_find_user (pt);
-      if (new_owner == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  if (ER_IS_SERVER_DOWN_ERROR (error))
-	    {
-	      error = ER_NET_CANT_CONNECT_SERVER;
-	    }
-	  return error;
-	}
-
-      /* Checked ahead of server_find (): with autocommit off, refusing inside the branch below would
-       * leave the earlier CHANGE items in the transaction, and would also have looked the server up. */
-      error = server_check_owner (new_owner);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
 
   server_object = server_find (alter->server_name, alter->current_owner_name);
   if (server_object == NULL)
@@ -22147,6 +22078,22 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (alter->xbits.bit_owner)
     {
+      assert (alter->owner_name->node_type == PT_NAME);
+      pt = (char *) alter->owner_name->info.name.original;
+      assert (pt && *pt);
+
+      MOP user = db_find_user (pt);
+      if (user == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  if (ER_IS_SERVER_DOWN_ERROR (error))
+	    {
+	      error = ER_NET_CANT_CONNECT_SERVER;
+	    }
+	  goto end;
+	}
+
       if (server_find (alter->server_name, alter->owner_name))
 	{
 	  char buf[2048];
@@ -22167,7 +22114,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
 
-      db_make_object (&value, new_owner);
+      db_make_object (&value, user);
       error = db_put (server_object, SERVER_ATTR_OWNER, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -22631,7 +22578,8 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
       if (rec_cnt == 0)
 	{
 	  /* "Not found" on purpose - a distinct error would reveal which names exist in another user's
-	   * schema. Duplicate-name checks stay safe: each caller is authorized for the owner it looks up. */
+	   * schema. CREATE and ALTER ... OWNER TO read a miss as "this name is free", and they reach it
+	   * only after pt_check_server_owner () authorized them for that owner. */
 	  error = ER_DBLINK_SERVER_NOT_FOUND;
 	}
     }
