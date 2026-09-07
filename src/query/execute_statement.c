@@ -15547,13 +15547,10 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   /* save the flag for main query's prepare */
   save_flag = stmt->info.query.is_subquery;
 
-  /* parser->string_blocks may have grown since the copy above (e.g. the parser_alloc()
-   * call for sub_host_var_index) without context knowing -- pull the current list in
-   * before context does its own growing, so nothing added directly to parser is lost.
-   * The walk above takes &context, not parser; nothing here is known to allocate through
-   * it, but that is not exhaustively provable against everything parser_walk_tree can
-   * reach. If it ever does, context.string_blocks would have moved past this snapshot,
-   * and overwriting it below would silently drop that growth -- catch it instead. */
+  /* parser->string_blocks may have grown directly (e.g. parser_alloc() above) -- pull it in
+   * before context grows its own copy, so that growth is not lost.
+   * Nothing between the copy and here should grow context instead; not provable by
+   * inspection, so assert it rather than silently drop the growth if it ever does. */
   assert (context.string_blocks == string_blocks_before_walk);
   context.string_blocks = parser->string_blocks;
 
