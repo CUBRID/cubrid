@@ -14936,7 +14936,9 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.query.is_subquery == PT_IS_SUBQUERY
       || (p->info.query.is_subquery == PT_IS_UNION_SUBQUERY && p->info.query.order_by)
-      || (p->info.query.is_subquery == PT_IS_UNION_QUERY && p->info.query.order_by))
+      || (p->info.query.is_subquery == PT_IS_UNION_QUERY && p->info.query.order_by)
+      || (p->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY && p->info.query.order_by)
+      || (p->info.query.is_subquery == PT_IS_CTE_REC_SUBQUERY && p->info.query.order_by))
     {
       if (!p->info.query.flag.subquery_cached)
 	{
