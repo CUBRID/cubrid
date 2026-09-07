@@ -209,10 +209,12 @@ namespace cubload
 	return LC_CLASSNAME_ERROR;
       }
 
-    error = heap_get_class_info (&thread_ref, oid_User_class_oid, &hfid, NULL, NULL);
-    if (error != NO_ERROR)
+    bool hfid_found = false;
+
+    error = heap_get_class_info (&thread_ref, oid_User_class_oid, &hfid, NULL, &hfid_found);
+    if (error != NO_ERROR || !hfid_found)
       {
-	ASSERT_ERROR ();
+	assert (hfid_found);
 	heap_attrinfo_end (&thread_ref, &attr_info);
 	return LC_CLASSNAME_ERROR;
       }
@@ -1084,10 +1086,12 @@ namespace cubload
   server_object_loader::start_scancache (const OID &class_oid)
   {
     hfid hfid;
+    bool found = false;
 
-    int error_code = heap_get_class_info (m_thread_ref, &class_oid, &hfid, NULL, NULL);
-    if (error_code != NO_ERROR)
+    int error_code = heap_get_class_info (m_thread_ref, &class_oid, &hfid, NULL, &found);
+    if (error_code != NO_ERROR || !found)
       {
+	assert (found);
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }

@@ -4302,9 +4302,20 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
 
-	  error_code = heap_get_class_info (thread_p, &fkref->self_oid, &hfid, NULL, NULL);
+	  bool hfid_found = false;
+
+	  error_code = heap_get_class_info (thread_p, &fkref->self_oid, &hfid, NULL, &hfid_found);
 	  if (error_code != NO_ERROR)
 	    {
+	      goto error3;
+	    }
+	  if (!hfid_found)
+	    {
+	      /* the referencing class must have a heap. */
+	      assert (false);
+	      error_code = ER_HEAP_UNKNOWN_OBJECT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, fkref->self_oid.volid, fkref->self_oid.pageid,
+		      fkref->self_oid.slotid);
 	      goto error3;
 	    }
 
@@ -4680,9 +4691,20 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
 
-	  error_code = heap_get_class_info (thread_p, &fkref->self_oid, &hfid, NULL, NULL);
+	  bool hfid_found = false;
+
+	  error_code = heap_get_class_info (thread_p, &fkref->self_oid, &hfid, NULL, &hfid_found);
 	  if (error_code != NO_ERROR)
 	    {
+	      goto error3;
+	    }
+	  if (!hfid_found)
+	    {
+	      /* the referencing class must have a heap. */
+	      assert (false);
+	      error_code = ER_HEAP_UNKNOWN_OBJECT;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, fkref->self_oid.volid, fkref->self_oid.pageid,
+		      fkref->self_oid.slotid);
 	      goto error3;
 	    }
 
@@ -5574,12 +5596,14 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		{
 		  HFID cached_hfid = HFID_INITIALIZER;
 		  bool was_cached = false;
-		  error_code = heap_get_hfid_if_cached (thread_p, oid, &cached_hfid, NULL, NULL, &was_cached);
+		  error_code = heap_get_hfid_if_cached (thread_p, oid, &cached_hfid, NULL, &was_cached);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error;
 		    }
-		  if (was_cached && !HFID_EQ (&cached_hfid, &new_hfid))
+		  /* Invalidate on a cache miss too: a filler may be mid-fill with the pre-update record, and the
+		   * delete's generation bump is what makes it withdraw its publish (see heap_hfid_cache_get). */
+		  if (!was_cached || !HFID_EQ (&cached_hfid, &new_hfid))
 		    {
 		      error_code = heap_delete_hfid_from_cache (thread_p, oid);
 		      if (error_code != NO_ERROR)
@@ -5927,8 +5951,11 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      goto error;
 	    }
 
-	  if (heap_get_class_info (thread_p, class_oid, hfid, NULL, NULL) != NO_ERROR)
+	  bool hfid_found = false;
+
+	  if (heap_get_class_info (thread_p, class_oid, hfid, NULL, &hfid_found) != NO_ERROR || !hfid_found)
 	    {
+	      assert (hfid_found);
 	      goto error;
 	    }
 
@@ -6971,9 +6998,19 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
       LC_REPL_RECDES_FOR_ONEOBJ (force_area, obj, packed_key_value_len, &recdes);
 
-      error_code = heap_get_class_info (thread_p, &obj->class_oid, &obj->hfid, NULL, NULL);
+      bool hfid_found = false;
+
+      error_code = heap_get_class_info (thread_p, &obj->class_oid, &obj->hfid, NULL, &hfid_found);
       if (error_code != NO_ERROR)
 	{
+	  goto exit_on_error;
+	}
+      if (!hfid_found)
+	{
+	  assert (false);
+	  error_code = ER_HEAP_UNKNOWN_OBJECT;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, obj->class_oid.volid, obj->class_oid.pageid,
+		  obj->class_oid.slotid);
 	  goto exit_on_error;
 	}
 
@@ -12157,9 +12194,18 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   nobjects = 0;
   nfetched = -1;
 
-  error = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  bool hfid_found;		/* always written by heap_get_class_info () */
+
+  error = heap_get_class_info (thread_p, class_oid, &hfid, NULL, &hfid_found);
   if (error != NO_ERROR)
     {
+      goto error_exit;
+    }
+  if (!hfid_found)
+    {
+      assert (false);
+      error = ER_HEAP_UNKNOWN_OBJECT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, class_oid->volid, class_oid->pageid, class_oid->slotid);
       goto error_exit;
     }
 
@@ -12716,8 +12762,10 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
   PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_RANK_UNDEFINED, PGBUF_ORDERED_NULL_HFID);
 
-  error = heap_get_class_info (thread_p, class_oid, &class_hfid, NULL, NULL);
-  if (error != NO_ERROR || HFID_IS_NULL (&class_hfid))
+  bool class_hfid_found = false;
+
+  error = heap_get_class_info (thread_p, class_oid, &class_hfid, NULL, &class_hfid_found);
+  if (error != NO_ERROR || !class_hfid_found)
     {
       error = ER_FAILED;
       goto exit;
@@ -12752,8 +12800,10 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	  goto exit;
 	}
 
-      error = heap_get_class_info (thread_p, &oid_list[i], &hfid, NULL, NULL);
-      if (error != NO_ERROR || HFID_IS_NULL (&hfid))
+      bool hfid_found = false;
+
+      error = heap_get_class_info (thread_p, &oid_list[i], &hfid, NULL, &hfid_found);
+      if (error != NO_ERROR || !hfid_found)
 	{
 	  error = ER_FAILED;
 	  goto exit;

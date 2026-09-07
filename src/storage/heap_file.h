@@ -194,11 +194,19 @@ struct heap_hfid_table
   LF_ENTRY_DESCRIPTOR hfid_hash_descriptor;	/* used by hfid_hash */
   LF_FREELIST hfid_hash_freelist;	/* used by hfid_hash */
   bool logging;
+// *INDENT-OFF*
+  std::atomic<uint64_t> generation;	/* invalidation clock: bumped by every heap_delete_hfid_from_cache () call.
+					 * A filler snapshots it before reading the class record and re-checks it
+					 * after publishing; a mismatch means an invalidation overlapped the fill,
+					 * so the filler withdraws its own entry instead of leaving a stale one. */
+// *INDENT-ON*
 };
 
 #define HEAP_HFID_HASH_SIZE 1000
 
-/* entry for class OID->HFID lock free hashtable */
+/* entry for class OID->HFID lock free hashtable.
+ * The hash only ever holds complete entries: hfid and ftype are fully resolved and valid before the entry is
+ * linked (fill-then-publish), so a found entry never carries partial or NULL information. */
 typedef struct heap_hfid_table_entry HEAP_HFID_TABLE_ENTRY;
 struct heap_hfid_table_entry
 {
@@ -207,11 +215,8 @@ struct heap_hfid_table_entry
   HEAP_HFID_TABLE_ENTRY *next;	/* used in hash table */
   UINT64 del_id;		/* delete transaction ID (for lock free) */
 
-  HFID hfid;			/* value - HFID */
-  FILE_TYPE ftype;		/* value - FILE_HEAP or FILE_HEAP_REUSE_SLOTS */
-// *INDENT-OFF*
-  std::atomic<char*> classname;	/* Also cache the classname. */
-// *INDENT-ON*
+  HFID hfid;			/* value - HFID; never NULL in a linked entry */
+  FILE_TYPE ftype;		/* value - FILE_HEAP or FILE_HEAP_REUSE_SLOTS; resolved before publish */
 };
 
 // forward declaration
@@ -605,11 +610,10 @@ extern int heap_rv_mark_deleted_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 extern int heap_rv_mark_deleted_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern int heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
-				FILE_TYPE * ftype_out, char **classname_out);
-extern int heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
-				  FILE_TYPE ftype, const char *classname_in);
+				FILE_TYPE * ftype_out, bool * found);
+extern int heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE ftype);
 extern int heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
-				    FILE_TYPE * ftype_out, char **classname_out, bool * success);
+				    FILE_TYPE * ftype_out, bool * success);
 extern int heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid);
 
 extern void heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid);

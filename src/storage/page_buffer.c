@@ -13322,7 +13322,11 @@ pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAG
     }
   else
     {
-      er_status = heap_get_class_info (thread_p, &cls_oid, &hfid, NULL, NULL);
+      bool found = false;
+
+      /* on a miss (e.g. the class currently has no heap) hfid stays NULL and is reported as
+       * ER_PB_ORDERED_NO_HEAP below. */
+      er_status = heap_get_class_info (thread_p, &cls_oid, &hfid, NULL, &found);
     }
 
   if (er_status == NO_ERROR)
