@@ -225,7 +225,6 @@ cas_server_apply_pending_config (bool reopen_logs)
     }
   if (config.mask & BROKER_SESSION_RUNTIME)
     {
-      bool error_log_changed = std::strcmp (cas_session_cfg.error_log_dir, config.runtime.error_log_dir) != 0;
       if (reopen_logs && std::strcmp (cas_session_cfg.log_dir, config.runtime.log_dir) != 0)
 	{
 	  /* Preserve the existing directory-change boundary: finish the
@@ -251,7 +250,9 @@ cas_server_apply_pending_config (bool reopen_logs)
 	}
       as_info->cur_statement_pooling = (char) cas_session_cfg.statement_pooling;
       as_info->cci_default_autocommit = (char) cas_session_cfg.cci_default_autocommit;
-      if (error_log_changed)
+
+      /* A repeated setting also retries a sink that previously failed. */
+      if (cas_session_cfg.error_log_dir[0] != '\0')
 	{
 	  char path[PATH_MAX];
 	  int size = snprintf (path, sizeof (path), "%s/%s_%d.err", cas_session_cfg.error_log_dir,
