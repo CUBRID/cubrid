@@ -1833,6 +1833,10 @@ admin_session_transfer (int fd, void *buffer, size_t length, bool sending)
 	}
       if (count <= 0)
 	{
+	  if (count == 0)
+	    {
+	      errno = ECONNRESET;
+	    }
 	  return -1;
 	}
       position += count;
@@ -1842,7 +1846,7 @@ admin_session_transfer (int fd, void *buffer, size_t length, bool sending)
 }
 
 static int
-admin_session_change (const char *broker, const char *selector, const char *name, const char *value)
+admin_session_change (int shm_key, const char *selector, const char *name, const char *value)
 {
   struct broker_session_change change;
   memset (&change, 0, sizeof (change));
@@ -1883,10 +1887,15 @@ admin_session_change (const char *broker, const char *selector, const char *name
       change.session_id = (uint32_t) session;
     }
 
-  char relative[BROKER_NAME_LEN + 32];
+  char directory[BROKER_PATH_MAX];
   char path[BROKER_PATH_MAX];
-  snprintf (relative, sizeof (relative), "broker_%s.session", broker);
-  envvar_vardir_file (path, sizeof (path), relative);
+  get_cubrid_file (FID_SOCK_DIR, directory, sizeof (directory));
+  int path_size = snprintf (path, sizeof (path), "%sbr_session_%x", directory, shm_key);
+  if (path_size < 0 || (size_t) path_size >= sizeof (path))
+    {
+      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Broker session control socket path is too long");
+      return -1;
+    }
   struct sockaddr_un address;
   memset (&address, 0, sizeof (address));
   address.sun_family = AF_UNIX;
@@ -2024,7 +2033,7 @@ admin_conf_change_session (int master_shm_id, const char *br_name, const char *c
 #if !defined (WINDOWS)
       if (strcasecmp (conf_name, "SQL_LOG") == 0 || strcasecmp (conf_name, "SLOW_LOG") == 0)
 	{
-	  int result = admin_session_change (br_info_p->name, session_selector, conf_name, conf_value);
+	  int result = admin_session_change (br_info_p->appl_server_shm_id, session_selector, conf_name, conf_value);
 	  /* Broker owns the live default; mirror it for configuration display,
 	   * including a partial delivery.  No file changes survive a restart. */
 	  if (session_selector == NULL)

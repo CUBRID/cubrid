@@ -69,6 +69,7 @@
 #include "cas_error.h"
 #include "cas_protocol.h"
 #include "environment_variable.h"
+#include "broker_filename.h"
 
 namespace brd
 {
@@ -201,6 +202,7 @@ namespace brd
     std::string broker_name;
     std::string ssl_db;		/* DIRECT_HANDOFF_SSL_DB: the route for SSL clients (B2-D9) */
     int max_slots = 0;
+    int shm_key = 0;
     int control_fd = -1;
     std::string control_path;
     std::thread control_thread;
@@ -910,10 +912,14 @@ namespace brd
   static int
   control_start (manager &m)
   {
-    char relative[BROKER_NAME_LEN + 32];
+    char directory[BROKER_PATH_MAX];
     char path[BROKER_PATH_MAX];
-    snprintf (relative, sizeof (relative), "broker_%s.session", m.broker_name.c_str ());
-    envvar_vardir_file (path, sizeof (path), relative);
+    get_cubrid_file (FID_SOCK_DIR, directory, sizeof (directory));
+    int size = snprintf (path, sizeof (path), "%sbr_session_%x", directory, m.shm_key);
+    if (size < 0 || (size_t) size >= sizeof (path))
+      {
+	return -1;
+      }
     struct sockaddr_un address;
     if (std::strlen (path) >= sizeof (address.sun_path))
       {
@@ -1059,7 +1065,7 @@ namespace brd
 using namespace brd;
 
 int
-brd_init (const char *broker_name, int max_slots, T_SHM_APPL_SERVER *shm_appl, const char *ssl_db,
+brd_init (const char *broker_name, int shm_key, int max_slots, T_SHM_APPL_SERVER *shm_appl, const char *ssl_db,
 	  T_MAX_HEAP_NODE *job_queue, int job_queue_size, pthread_mutex_t *job_queue_mutex,
 	  pthread_cond_t *job_queue_cond)
 {
@@ -1067,6 +1073,7 @@ brd_init (const char *broker_name, int max_slots, T_SHM_APPL_SERVER *shm_appl, c
   manager *m = new manager ();
   m->broker_name = broker_name;
   m->max_slots = max_slots;
+  m->shm_key = shm_key;
   m->shm = shm_appl;
   shm_appl->brd_num_accepted = 0;
   shm_appl->brd_num_handoffs = 0;

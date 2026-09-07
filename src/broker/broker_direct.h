@@ -46,7 +46,7 @@ extern "C"
 /* shm_appl is read live per handoff (ACCESS_MODE stays dynamic, B4/#116 D9)
  * and carries the front metrics + the restart-surviving token table the
  * direct engine writes (#116 D10 + B1-D8). */
-  int brd_init (const char *broker_name, int max_slots, T_SHM_APPL_SERVER * shm_appl, const char *ssl_db,
+  int brd_init (const char *broker_name, int shm_key, int max_slots, T_SHM_APPL_SERVER * shm_appl, const char *ssl_db,
 		T_MAX_HEAP_NODE * job_queue, int job_queue_size, pthread_mutex_t * job_queue_mutex,
 		pthread_cond_t * job_queue_cond);
   void brd_final (void);
