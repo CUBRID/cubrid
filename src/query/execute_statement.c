@@ -15494,7 +15494,9 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  goto err_exit;
 	}
 
-      stmt->sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+      /* allocate through context, not parser: string_blocks growth on parser directly here
+       * would be lost when context's own growth is synced back into parser below. */
+      stmt->sub_host_var_index = (int *) parser_alloc (&context, var_count * sizeof (int));
       if (stmt->sub_host_var_index == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
