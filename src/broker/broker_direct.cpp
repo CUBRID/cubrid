@@ -37,6 +37,9 @@
 
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
@@ -198,6 +201,10 @@ namespace brd
     std::string broker_name;
     std::string ssl_db;		/* DIRECT_HANDOFF_SSL_DB: the route for SSL clients (B2-D9) */
     int max_slots = 0;
+    int control_fd = -1;
+    std::string control_path;
+    std::thread control_thread;
+    std::mutex config_mutex; /* serializes handoff snapshots and control updates */
     /* read live at handoff time (ACCESS_MODE stays dynamic, #121 D1/B4) and
      * written for the front metrics + slot mirror (#116 D10) */
     T_SHM_APPL_SERVER *shm = NULL;
@@ -643,7 +650,17 @@ namespace brd
     std::vector<char> reply_body (ch->reply_body.size ());
     if (channel_request (*ch, adopt::msg_op::HELLO, &hello, sizeof (hello), NULL, 0, -1,
 			 &reply_header, reply_body.data (), reply_body.size ()) != 0
-	|| (adopt::msg_op) reply_header.op != adopt::msg_op::HELLO_ACK)
+	|| (adopt::msg_op) reply_header.op != adopt::msg_op::HELLO_ACK
+	|| reply_header.length != sizeof (adopt::hello_ack_body))
+      {
+	ch->dead.store (true);
+	shutdown (fd, SHUT_RDWR);
+	return NULL;
+      }
+
+    adopt::hello_ack_body hello_ack;
+    std::memcpy (&hello_ack, reply_body.data (), sizeof (hello_ack));
+    if (hello_ack.proto_version != adopt::PROTO_VERSION)
       {
 	ch->dead.store (true);
 	shutdown (fd, SHUT_RDWR);
@@ -758,6 +775,174 @@ namespace brd
     (void) m;
     close (pc->fd);
     delete pc;
+  }
+
+  static broker_session_change_reply
+  change_session_config (manager &m, const broker_session_change &change)
+  {
+    broker_session_change_reply result = { -1, 0 };
+    const broker_session_config &config = change.config;
+    if (config.mask == 0 || (config.mask & ~BROKER_SESSION_LOG_MASK) != 0
+	|| ((config.mask & BROKER_SESSION_SQL_LOG) && (config.sql_log < 0 || config.sql_log > SQL_LOG_MODE_ALL))
+	|| ((config.mask & BROKER_SESSION_SLOW_LOG) && (config.slow_log < 0 || config.slow_log > 1))
+	|| (change.session_id != 0 && (change.database[0] == '\0'
+				    || memchr (change.database, '\0', sizeof (change.database)) == NULL)))
+      {
+	return result;
+      }
+
+    std::lock_guard<std::mutex> config_guard (m.config_mutex);
+    std::vector<std::shared_ptr<channel>> targets;
+    bool incomplete = false;
+    if (change.session_id != 0)
+      {
+	std::shared_ptr<channel> ch = channel_get_or_dial (m, change.database);
+	if (ch == NULL)
+	  {
+	    return result;
+	  }
+	targets.push_back (ch);
+      }
+    else
+      {
+	/* Reconnect to servers with sessions surviving a broker restart, even
+	 * when no new client has routed to those databases yet. */
+	std::string socket_prefix = adoption_socket_path ("");
+	std::size_t slash = socket_prefix.rfind ('/');
+	std::string directory = socket_prefix.substr (0, slash);
+	std::string prefix = socket_prefix.substr (slash + 1);
+	DIR *dir = opendir (directory.c_str ());
+	if (dir == NULL)
+	  {
+	    return result;
+	  }
+	struct dirent *entry;
+	while ((entry = readdir (dir)) != NULL)
+	  {
+	    if (std::strncmp (entry->d_name, prefix.c_str (), prefix.size ()) != 0)
+	      {
+		continue;
+	      }
+	    const char *database = entry->d_name + prefix.size ();
+	    struct stat status;
+	    std::string path = directory + "/" + entry->d_name;
+	    if (*database != '\0' && lstat (path.c_str (), &status) == 0 && S_ISSOCK (status.st_mode)
+		&& status.st_uid == geteuid ())
+	      {
+		errno = 0;
+		if (channel_get_or_dial (m, database) == NULL && errno != ECONNREFUSED && errno != ENOENT)
+		  {
+		    incomplete = true;
+		  }
+	      }
+	  }
+	closedir (dir);
+	/* Update the next-connection default in the same critical section as
+	 * handoff.  Existing overrides are overwritten by the same message.
+	 * Delivery across DBs is not atomic: return an explicit partial error
+	 * if a server cannot acknowledge, never report a false OK. */
+	if (config.mask & BROKER_SESSION_SQL_LOG)
+	  {
+	    m.shm->sql_log_mode = (char) config.sql_log;
+	  }
+	if (config.mask & BROKER_SESSION_SLOW_LOG)
+	  {
+	    m.shm->slow_log_mode = (char) config.slow_log;
+	  }
+	std::lock_guard<std::mutex> guard (m.channels_mutex);
+	for (const auto &pair : m.channels)
+	  {
+	    if (!pair.second->dead.load ())
+	      {
+		targets.push_back (pair.second);
+	      }
+	  }
+      }
+    result.result = incomplete ? -2 : 0;
+    for (const auto &ch : targets)
+      {
+	adopt::msg_header header;
+	broker_session_change_reply reply;
+	if (channel_request (*ch, adopt::msg_op::SESSION_CONFIG, &change, sizeof (change), NULL, 0, -1,
+			     &header, &reply, sizeof (reply)) != 0
+	    || header.op != (std::uint32_t) adopt::msg_op::SESSION_CONFIG_REPLY || header.length != sizeof (reply)
+	    || reply.result != 0)
+	  {
+	    result.result = -2;
+	    continue;
+	  }
+	result.affected += reply.affected;
+      }
+    return result;
+  }
+
+  static void
+  control_thread_run (manager *m)
+  {
+    while (!m->stopping.load ())
+      {
+	struct pollfd pending = { m->control_fd, POLLIN, 0 };
+	if (poll (&pending, 1, 1000) <= 0)
+	  {
+	    continue;
+	  }
+	int fd = accept4 (m->control_fd, NULL, NULL, SOCK_CLOEXEC);
+	if (fd < 0)
+	  {
+	    continue;
+	  }
+	struct ucred peer;
+	socklen_t size = sizeof (peer);
+	struct timeval timeout = { 5, 0 };
+	(void) setsockopt (fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof (timeout));
+	(void) setsockopt (fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof (timeout));
+	broker_session_change change;
+	if (getsockopt (fd, SOL_SOCKET, SO_PEERCRED, &peer, &size) == 0 && peer.uid == geteuid ()
+	    && recv_all (fd, &change, sizeof (change)) == 0)
+	  {
+	    broker_session_change_reply reply = change_session_config (*m, change);
+	    (void) send_all (fd, &reply, sizeof (reply));
+	  }
+	close (fd);
+      }
+  }
+
+  static int
+  control_start (manager &m)
+  {
+    char relative[BROKER_NAME_LEN + 32];
+    char path[BROKER_PATH_MAX];
+    snprintf (relative, sizeof (relative), "broker_%s.session", m.broker_name.c_str ());
+    envvar_vardir_file (path, sizeof (path), relative);
+    struct sockaddr_un address;
+    if (std::strlen (path) >= sizeof (address.sun_path))
+      {
+	return -1;
+      }
+    std::memset (&address, 0, sizeof (address));
+    address.sun_family = AF_UNIX;
+    std::strcpy (address.sun_path, path);
+    int fd = socket (AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    if (fd < 0)
+      {
+	return -1;
+      }
+    (void) unlink (path); /* broker startup has already claimed its shared memory */
+    if (bind (fd, (struct sockaddr *) &address, sizeof (address)) != 0)
+      {
+	close (fd);
+	return -1;
+      }
+    if (chmod (path, 0600) != 0 || listen (fd, 8) != 0)
+      {
+	close (fd);
+	unlink (path);
+	return -1;
+      }
+    m.control_fd = fd;
+    m.control_path = path;
+    m.control_thread = std::thread (control_thread_run, &m);
+    return 0;
   }
 
   static void
@@ -912,6 +1097,13 @@ brd_init (const char *broker_name, int max_slots, T_SHM_APPL_SERVER *shm_appl, c
       return -1;
     }
 
+  if (control_start (*m) != 0)
+    {
+      close (m->epoll_fd);
+      close (m->wakeup_fd);
+      delete m;
+      return -1;
+    }
   m->peek_thread = std::thread (peek_thread_run, m);
   brd_Manager = m;
   return 0;
@@ -932,6 +1124,12 @@ brd_final (void)
     {
       m->peek_thread.join ();
     }
+  if (m->control_thread.joinable ())
+    {
+      m->control_thread.join ();
+    }
+  close (m->control_fd);
+  unlink (m->control_path.c_str ());
   brd_Manager = NULL;
   /* channels/threads are detached; the process is exiting */
 }
@@ -1043,6 +1241,7 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
 	  return;
 	}
 
+      std::unique_lock<std::mutex> config_guard (m->config_mutex);
       std::shared_ptr<channel> ch = channel_get_or_dial (*m, db_name);
       if (ch == NULL)
 	{
@@ -1058,6 +1257,9 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
       body.client_port = job->port;
       body.access_mode = (std::uint8_t) m->shm->access_mode;
       body.replica_only = (std::uint8_t) (m->shm->replica_only_flag ? 1 : 0);
+      body.config.mask = BROKER_SESSION_LOG_MASK;
+      body.config.sql_log = m->shm->sql_log_mode;
+      body.config.slow_log = m->shm->slow_log_mode;
       body.slot_idx = 0;	/* per-slot identity retired with the CAS pool */
       /* broker-owned connect-reply facts (cas_bi_make_broker_info bytes 0-3);
        * the server overwrites its own bytes 4-7 (proto version, function
@@ -1081,6 +1283,7 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
 	  return;
 	}
 
+      config_guard.unlock ();
       brd_debug ("handoff db=%s: reply op=%u len=%u", db_name, reply_header.op, reply_header.length);
       if ((adopt::msg_op) reply_header.op == adopt::msg_op::HANDOFF_ACK
 	  && reply_header.length == sizeof (adopt::token_body))

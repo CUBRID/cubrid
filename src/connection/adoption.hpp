@@ -23,7 +23,7 @@
  * (SCM_RIGHTS), cancel/status forwarding, session-end notifications and the
  * restart re-sync handshake over that channel (#117 D1/D3/D4/D7).
  *
- * The wire structs below are the control-channel protocol v1.  Both ends run
+ * The wire structs below are the control-channel protocol v2.  Both ends run
  * on the same host over AF_UNIX, so fields are host byte order.
  */
 
@@ -36,6 +36,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include "broker_session_control.h"
 
 namespace cubconn
 {
@@ -46,7 +47,7 @@ namespace cubconn
     /* ------------------------------------------------------------------ */
 
     static const std::uint32_t PROTO_MAGIC = 0x41444F50;	/* "ADOP" */
-    static const std::uint32_t PROTO_VERSION = 1;
+    static const std::uint32_t PROTO_VERSION = 2;
 
     enum class msg_op : std::uint32_t
     {
@@ -64,12 +65,15 @@ namespace cubconn
 				 * connect reply on this fd; failure with a
 				 * HANDOFF_REJECT frame. */
 
+      SESSION_CONFIG = 7, /* broker_session_change; replies SESSION_CONFIG_REPLY */
+
       /* server -> broker */
       HELLO_ACK = 9,		/* body: hello_ack_body */
       HANDOFF_ACK = 10,		/* body: token_body (server-issued cancel token) */
       HANDOFF_REJECT = 11,	/* body: reject_body */
       STATUS_REPLY = 12,	/* body: status_reply_body */
       RESYNC_REPLY = 13,	/* body: resync_reply_body */
+      SESSION_CONFIG_REPLY = 15,
       SESSION_END = 14		/* async; body: token_body (frees a broker slot, #117 D3) */
     };
 
@@ -80,7 +84,7 @@ namespace cubconn
       std::uint32_t length;	/* payload bytes following this header */
     };
 
-    static const std::size_t BROKER_NAME_MAX = 32;
+    static const std::size_t BROKER_NAME_MAX = 64;
 
     struct hello_body
     {
@@ -110,6 +114,7 @@ namespace cubconn
       char driver_header[DRIVER_HEADER_SIZE];	/* the peeked 10-byte client header */
       char db_info[DRIVER_DB_INFO_SIZE];	/* the peeked db_info packet */
       char pad[2];
+      broker_session_config config;
     };
 
     struct token_body
@@ -206,6 +211,8 @@ namespace cubconn
 				     std::uint32_t client_ip);
     std::size_t registry_stats_snapshot (session_stat_row *rows, std::size_t max_rows);
     void registry_set_fn_status (std::uint32_t token, int fn_status);
+    void registry_set_session_id (std::uint32_t token, unsigned int session_id);
+    bool registry_take_session_config (broker_session_config &config);
     /* session thread signs off: notify SESSION_END and drop the entry */
     void registry_session_finished (std::uint32_t token);
 #endif

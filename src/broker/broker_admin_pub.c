@@ -77,6 +77,8 @@
 #include "dbtype_def.h"
 #include "host_lookup.h"
 #include "system_parameter.h"
+#include "environment_variable.h"
+#include "broker_session_control.h"
 
 #define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 
@@ -1817,8 +1819,125 @@ getid_error:
   return -1;
 }
 
+#if !defined (WINDOWS)
+static int
+admin_session_transfer (int fd, void *buffer, size_t length, bool sending)
+{
+  char *position = (char *) buffer;
+  while (length > 0)
+    {
+      ssize_t count = sending ? send (fd, position, length, MSG_NOSIGNAL) : recv (fd, position, length, 0);
+      if (count < 0 && errno == EINTR)
+	{
+	  continue;
+	}
+      if (count <= 0)
+	{
+	  return -1;
+	}
+      position += count;
+      length -= (size_t) count;
+    }
+  return 0;
+}
+
+static int
+admin_session_change (const char *broker, const char *selector, const char *name, const char *value)
+{
+  struct broker_session_change change;
+  memset (&change, 0, sizeof (change));
+  if (strcasecmp (name, "SQL_LOG") == 0)
+    {
+      change.config.mask = BROKER_SESSION_SQL_LOG;
+      change.config.sql_log = conf_get_value_sql_log_mode (value);
+      if (change.config.sql_log < 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "invalid value : %s", value);
+	  return -1;
+	}
+    }
+  else
+    {
+      change.config.mask = BROKER_SESSION_SLOW_LOG;
+      change.config.slow_log = conf_get_value_table_on_off (value);
+      if (change.config.slow_log < 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "invalid value : %s", value);
+	  return -1;
+	}
+    }
+  if (selector != NULL)
+    {
+      const char *separator = strrchr (selector, ':');
+      char *end = NULL;
+      errno = 0;
+      unsigned long session = separator == NULL ? 0 : strtoul (separator + 1, &end, 10);
+      if (separator == NULL || separator == selector || (size_t) (separator - selector) >= sizeof (change.database)
+	  || session == 0 || session > UINT32_MAX || errno != 0 || end == separator + 1 || *end != '\0'
+	  || separator[1] < '0' || separator[1] > '9')
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Invalid session selector; use <database>:<Session_id>");
+	  return -1;
+	}
+      memcpy (change.database, selector, separator - selector);
+      change.session_id = (uint32_t) session;
+    }
+
+  char relative[BROKER_NAME_LEN + 32];
+  char path[BROKER_PATH_MAX];
+  snprintf (relative, sizeof (relative), "broker_%s.session", broker);
+  envvar_vardir_file (path, sizeof (path), relative);
+  struct sockaddr_un address;
+  memset (&address, 0, sizeof (address));
+  address.sun_family = AF_UNIX;
+  if (strlen (path) >= sizeof (address.sun_path))
+    {
+      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Broker session control socket path is too long");
+      return -1;
+    }
+  strcpy (address.sun_path, path);
+  int fd = socket (AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (fd < 0)
+    {
+      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Cannot open broker session control socket: %s", strerror (errno));
+      return -1;
+    }
+  struct timeval timeout = { 60, 0 };
+  (void) setsockopt (fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof (timeout));
+  (void) setsockopt (fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof (timeout));
+  struct broker_session_change_reply reply;
+  int result = -1;
+  if (connect (fd, (struct sockaddr *) &address, sizeof (address)) != 0
+      || admin_session_transfer (fd, &change, sizeof (change), true) != 0
+      || admin_session_transfer (fd, &reply, sizeof (reply), false) != 0)
+    {
+      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		"Broker session control failed: %s; changes may have been partially applied", strerror (errno));
+    }
+  else if (reply.result != 0)
+    {
+      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		"Session change failed (result %d, affected %d); check selector/server state; changes may be partial",
+		reply.result, reply.affected);
+    }
+  else
+    {
+      result = 0;
+    }
+  close (fd);
+  return result;
+}
+#endif /* !WINDOWS */
+
 int
 admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name, const char *conf_value, int as_number)
+{
+  return admin_conf_change_session (master_shm_id, br_name, conf_name, conf_value, as_number, NULL);
+}
+
+int
+admin_conf_change_session (int master_shm_id, const char *br_name, const char *conf_name, const char *conf_value,
+			   int as_number, const char *session_selector)
 {
   int i, br_index;
   T_SHM_BROKER *shm_br = NULL;
@@ -1889,16 +2008,40 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
 	}
     }
 
-  /* B4 (#116 D9): on a direct-handoff broker the CAS-execution parameters
-   * are server system parameters (cas_*) now, and there is no appl-server
-   * pool — only the connection-front parameter ACCESS_MODE stays changeable
-   * here. The gateway keeps the full surface (it can never be direct). */
-  if (br_info_p->direct_handoff == ON && strcasecmp (conf_name, "ACCESS_MODE") != 0)
+  if (session_selector != NULL && br_info_p->direct_handoff != ON)
     {
-      sprintf (admin_err_msg,
-	       "Cannot change %s on a direct-handoff broker; CAS execution parameters are server parameters (cas_*)",
-	       conf_name);
+      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Session selectors require a direct-handoff broker");
       goto set_conf_error;
+    }
+  if (br_info_p->direct_handoff == ON)
+    {
+      if (as_number > 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "CAS numbers are unavailable; use <database>:<Session_id> from SHOW SESSION STATUS");
+	  goto set_conf_error;
+	}
+#if !defined (WINDOWS)
+      if (strcasecmp (conf_name, "SQL_LOG") == 0 || strcasecmp (conf_name, "SLOW_LOG") == 0)
+	{
+	  int result = admin_session_change (br_info_p->name, session_selector, conf_name, conf_value);
+	  /* Broker owns the live default; mirror it for configuration display,
+	   * including a partial delivery.  No file changes survive a restart. */
+	  if (session_selector == NULL)
+	    {
+	      br_info_p->sql_log_mode = shm_as_p->sql_log_mode;
+	      br_info_p->slow_log_mode = shm_as_p->slow_log_mode;
+	    }
+	  uw_shm_detach (shm_as_p);
+	  uw_shm_detach (shm_br);
+	  return result;
+	}
+#endif
+      if (session_selector != NULL || strcasecmp (conf_name, "ACCESS_MODE") != 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Cannot change %s on a direct-handoff broker", conf_name);
+	  goto set_conf_error;
+	}
     }
 
   if (strcasecmp (conf_name, "SQL_LOG") == 0)

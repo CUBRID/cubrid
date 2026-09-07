@@ -103,6 +103,8 @@ namespace cubconn
        * with no synchronization, so the snapshot is best-effort — counters
        * and strings may be stale or torn, which monitoring tolerates */
       T_APPL_SERVER_INFO *stats_slot = NULL;
+      broker_session_config config = {};
+      unsigned int session_id = 0;
       int slot_index = -1;
       std::uint32_t client_ip = 0;
       bool direct = false;	/* DIRECT_CONNECT session: no broker slot, no SESSION_END (wf122/B5) */
@@ -120,6 +122,7 @@ namespace cubconn
       std::unordered_map<std::uint64_t, std::shared_ptr<channel>> channels;
       std::uint64_t next_channel_id = 1;
 
+      std::atomic<std::uint64_t> config_generation { 1 };
       std::mutex registry_mutex;
       std::condition_variable registry_cv;	/* signaled when a session signs off */
       std::unordered_map<std::uint32_t, session_entry> registry;
@@ -131,6 +134,8 @@ namespace cubconn
     };
 
     static manager *adoption_Manager = NULL;
+    static thread_local std::uint32_t current_session_token = 0;
+    static thread_local std::uint64_t seen_config_generation = 0;
 
     /* ------------------------------------------------------------------ */
     /* wire helpers                                                       */
@@ -272,6 +277,8 @@ namespace cubconn
       auto it = m->registry.find (token);
       if (it != m->registry.end ())
 	{
+	  current_session_token = token;
+	  seen_config_generation = 0;
 	  it->second.stats_slot = (T_APPL_SERVER_INFO *) as_info_slot;
 	  it->second.slot_index = slot_index;
 	  it->second.client_ip = client_ip;
@@ -321,6 +328,46 @@ namespace cubconn
 	  r.last_activity[sizeof (r.last_activity) - 1] = '\0';
 	}
       return n;
+    }
+
+    void
+    registry_set_session_id (std::uint32_t token, unsigned int session_id)
+    {
+      manager *m = adoption_Manager;
+      if (m == NULL)
+	{
+	  return;
+	}
+      std::lock_guard<std::mutex> guard (m->registry_mutex);
+      auto it = m->registry.find (token);
+      if (it != m->registry.end ())
+	{
+	  it->second.session_id = session_id;
+	}
+    }
+
+    bool
+    registry_take_session_config (broker_session_config &config)
+    {
+      manager *m = adoption_Manager;
+      if (m == NULL || current_session_token == 0)
+	{
+	  return false;
+	}
+      std::uint64_t generation = m->config_generation.load (std::memory_order_acquire);
+      if (generation == seen_config_generation)
+	{
+	  return false;
+	}
+      std::lock_guard<std::mutex> guard (m->registry_mutex);
+      auto it = m->registry.find (current_session_token);
+      seen_config_generation = generation;
+      if (it == m->registry.end ())
+	{
+	  return false;
+	}
+      config = it->second.config;
+      return config.mask != 0;
     }
 
     void
@@ -496,6 +543,7 @@ namespace cubconn
 	session_entry entry;
 	entry.token = token;
 	entry.channel_id = ch.id;
+	entry.config = body.config;
 	std::memcpy (entry.broker_name, ch.broker_name, sizeof (entry.broker_name));
 	entry.client_fd = client_fd;
 	entry.tran_index = NULL_TRAN_INDEX;
@@ -730,6 +778,41 @@ namespace cubconn
     /* ------------------------------------------------------------------ */
 
     static void
+    handle_session_config (manager &m, channel &ch, const broker_session_change &change)
+    {
+      broker_session_change_reply reply = { -1, 0 };
+      const broker_session_config &config = change.config;
+      if (config.mask != 0 && (config.mask & ~BROKER_SESSION_LOG_MASK) == 0
+	  && (!(config.mask & BROKER_SESSION_SQL_LOG) || (config.sql_log >= 0 && config.sql_log <= 4))
+	  && (!(config.mask & BROKER_SESSION_SLOW_LOG) || (config.slow_log >= 0 && config.slow_log <= 1)))
+	{
+	  std::lock_guard<std::mutex> guard (m.registry_mutex);
+	  for (auto &pair : m.registry)
+	    {
+	      session_entry &entry = pair.second;
+	      if (entry.direct || std::strncmp (entry.broker_name, ch.broker_name, BROKER_NAME_MAX) != 0
+		  || (change.session_id != 0 && entry.session_id != change.session_id))
+		{
+		  continue;
+		}
+	      if (config.mask & BROKER_SESSION_SQL_LOG)
+		{
+		  entry.config.sql_log = config.sql_log;
+		}
+	      if (config.mask & BROKER_SESSION_SLOW_LOG)
+		{
+		  entry.config.slow_log = config.slow_log;
+		}
+	      entry.config.mask |= config.mask;
+	      reply.affected++;
+	    }
+	  reply.result = (change.session_id == 0 || reply.affected == 1) ? 0 : -1;
+	  m.config_generation.fetch_add (1, std::memory_order_release);
+	}
+      (void) send_message (ch, msg_op::SESSION_CONFIG_REPLY, &reply, sizeof (reply));
+    }
+
+    static void
     channel_thread_run (manager *m, std::shared_ptr<channel> ch)
     {
       /* CANCEL handling lands in engine code that uses the thread-local
@@ -780,6 +863,14 @@ namespace cubconn
 	      if (header.length == sizeof (hello_body))
 		{
 		  const hello_body *hello = reinterpret_cast<const hello_body *> (payload);
+		  if (hello->proto_version != PROTO_VERSION)
+		    {
+		      if (handoff_fd >= 0)
+			{
+			  close (handoff_fd);
+			}
+		      goto channel_done;
+		    }
 		  std::memcpy (ch->broker_name, hello->broker_name, BROKER_NAME_MAX);
 		  ch->broker_name[BROKER_NAME_MAX - 1] = '\0';
 		  hello_ack_body ack;
@@ -812,6 +903,14 @@ namespace cubconn
 		       * (ch->fd == -1) to the session thread; just retire */
 		      goto channel_done;
 		    }
+		}
+	      break;
+	    case msg_op::SESSION_CONFIG:
+	      if (header.length == sizeof (broker_session_change))
+		{
+		  broker_session_change change;
+		  std::memcpy (&change, payload, sizeof (change));
+		  handle_session_config (*m, *ch, change);
 		}
 	      break;
 	    case msg_op::CANCEL:

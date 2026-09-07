@@ -145,7 +145,16 @@ extern int cas_req_count;
 
 /* Program info */
 extern const char *program_name;
-extern char broker_name[BROKER_NAME_LEN];
+extern CAS_TLS char broker_name[BROKER_NAME_LEN];
+
+#if defined (SERVER_MODE)
+#define CAS_LOG_BROKER_NAME broker_name
+extern CAS_TLS int cas_log_slot_index;
+#define CAS_LOG_SLOT_INDEX cas_log_slot_index
+#else
+#define CAS_LOG_BROKER_NAME shm_appl->broker_name
+#define CAS_LOG_SLOT_INDEX shm_as_index
+#endif
 
 /* CAS configuration */
 extern CAS_TLS int cas_default_isolation_level;

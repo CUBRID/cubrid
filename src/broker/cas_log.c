@@ -133,7 +133,7 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
 	}
       else
 	{
-	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name, shm_as_index + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name, CAS_LOG_SLOT_INDEX + 1);
 	}
       break;
     case FID_SLOW_LOG_DIR:
@@ -144,7 +144,7 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
 	}
       else
 	{
-	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname, br_name, shm_as_index + 1);
+	  ret = snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname, br_name, CAS_LOG_SLOT_INDEX + 1);
 	}
       break;
     default:
@@ -175,10 +175,12 @@ cas_log_open (char *br_name)
     {
       if (br_name != NULL)
 	{
+#if !defined (SERVER_MODE)
 	  if (as_info->cas_log_reset == CAS_LOG_RESET_REOPEN)
 	    {
 	      set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
 	    }
+#endif
 
 	  make_sql_log_filename (FID_SQL_LOG_DIR, log_filepath, BROKER_PATH_MAX, br_name);
 	}
@@ -337,7 +339,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -460,7 +462,7 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -484,7 +486,7 @@ cas_log_write_nonl_noflush (unsigned int seq_num, bool unit_start, const char *f
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -548,7 +550,7 @@ cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   cas_log_query_cancel (0);
@@ -575,7 +577,7 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt, .
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -672,7 +674,7 @@ cas_log_write2_nonl_noflush (const char *fmt, ...)
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -692,7 +694,7 @@ cas_log_write2 (const char *fmt, ...)
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -713,7 +715,7 @@ cas_log_write_value_string (char *value, int size)
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL)
@@ -728,7 +730,7 @@ cas_log_compile_begin_write_query_string (char *query, int size, HIDE_PWD_INFO_P
 {
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL && query != NULL)
@@ -743,7 +745,7 @@ cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR
 {
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL && query != NULL)
@@ -764,7 +766,7 @@ cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_I
 {
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL && query != NULL)
@@ -779,7 +781,7 @@ cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INF
 {
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL && query != NULL)
@@ -829,7 +831,7 @@ cas_log_write_query_string_internal (char *query, int size, bool newline, HIDE_P
 {
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      cas_log_open (shm_appl->broker_name);
+      cas_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (log_fp != NULL && query != NULL)
@@ -1136,10 +1138,12 @@ cas_slow_log_open (char *br_name)
     {
       if (br_name != NULL)
 	{
+#if !defined (SERVER_MODE)
 	  if (as_info->cas_slow_log_reset == CAS_LOG_RESET_REOPEN)
 	    {
 	      set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);
 	    }
+#endif
 
 	  make_sql_log_filename (FID_SLOW_LOG_DIR, slow_log_filepath, BROKER_PATH_MAX, br_name);
 	}
@@ -1196,7 +1200,7 @@ cas_slow_log_end ()
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL)
@@ -1225,7 +1229,7 @@ cas_slow_log_write_and_end (struct timeval *log_time, unsigned int seq_num, cons
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL)
@@ -1248,7 +1252,7 @@ cas_slow_log_write (struct timeval *log_time, unsigned int seq_num, bool unit_st
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL)
@@ -1268,7 +1272,7 @@ cas_slow_log_write2 (const char *fmt, ...)
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL)
@@ -1288,7 +1292,7 @@ cas_slow_log_write_value_string (char *value, int size)
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL)
@@ -1304,7 +1308,7 @@ cas_slow_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_p
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      cas_slow_log_open (shm_appl->broker_name);
+      cas_slow_log_open (CAS_LOG_BROKER_NAME);
     }
 
   if (slow_log_fp != NULL && query != NULL)

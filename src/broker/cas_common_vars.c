@@ -41,6 +41,9 @@ int cas_shard_flag = OFF;
 
 /* Shared memory variables */
 CAS_TLS int shm_as_index;
+#if defined (SERVER_MODE)
+CAS_TLS int cas_log_slot_index;
+#endif
 T_SHM_APPL_SERVER *shm_appl;
 CAS_TLS T_CAS_SESSION_CFG cas_session_cfg;
 CAS_TLS T_APPL_SERVER_INFO *as_info;
@@ -74,7 +77,7 @@ int cas_req_count = 0;
 
 /* Program info */
 const char *program_name;
-char broker_name[BROKER_NAME_LEN];
+CAS_TLS char broker_name[BROKER_NAME_LEN];
 
 /* CAS configuration */
 CAS_TLS int cas_default_isolation_level = 0;

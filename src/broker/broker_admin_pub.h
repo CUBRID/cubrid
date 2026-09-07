@@ -57,6 +57,7 @@ int admin_reset_cmd (int, const char *);
 int admin_info_cmd (int);
 int admin_qr_cmd (int, QRCMD, const char *, const char *, const char *);
 int admin_conf_change (int, const char *, const char *, const char *, int);
+int admin_conf_change_session (int, const char *, const char *, const char *, int, const char *);
 int admin_getid_cmd (int, int, const char **);
 int admin_del_cas_log (int master_shmid, const char *broker, int asid);
 int admin_acl_status_cmd (int master_shm_id, const char *broker_name);

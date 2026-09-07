@@ -33,6 +33,11 @@
 #if defined (SERVER_MODE)
 
 #include <semaphore.h>
+#include <cerrno>
+#include <climits>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -44,6 +49,7 @@
 #include <string>
 #include <vector>
 
+#include "adoption.hpp"
 #include "broker_util.h"	/* trim */
 
 #include "broker_config.h"
@@ -67,12 +73,11 @@
 
 static T_SHM_APPL_SERVER cas_Shm_stub;
 static thread_local T_APPL_SERVER_INFO cas_As_slot;
+static thread_local int cas_Log_slot_fd = -1;
 
 /* ------------------------------------------------------------------ */
-/* session slot ids (B2-D1): the CAS slot index (shm_as_index) names   */
-/* the per-session SQL/slow/DDL log files and the query plan file, so  */
-/* each adopted session takes the lowest free index for its lifetime — */
-/* the same identity a CAS process got from the broker's slot table    */
+/* Server-wide slot ids keep query-plan scratch names unique across   */
+/* all brokers. SQL/slow/DDL logs use a separate broker-scoped lease.   */
 /* ------------------------------------------------------------------ */
 
 static std::mutex cas_Slot_index_mutex;
@@ -200,6 +205,37 @@ cas_server_refresh_session_config (T_APPL_SERVER_INFO *slot)
   cfg->query_timeout = prm_get_integer_value (PRM_ID_CAS_MAX_QUERY_TIMEOUT);
 }
 
+/* Only the owning session thread writes its CAS snapshot and log handles.
+ * Control readers publish values under the registry mutex; unchanged requests
+ * take only the generation load in registry_take_session_config. */
+void
+cas_server_apply_pending_config (bool reopen_logs)
+{
+  broker_session_config config;
+  if (as_info == NULL || !cubconn::adoption::registry_take_session_config (config))
+    {
+      return;
+    }
+  if ((config.mask & BROKER_SESSION_SQL_LOG) && as_info->cur_sql_log_mode != config.sql_log)
+    {
+      as_info->cur_sql_log_mode = (char) config.sql_log;
+      if (reopen_logs)
+	{
+	  as_info->cas_log_reset = CAS_LOG_RESET_REOPEN;
+	  cas_log_reset (broker_name);
+	}
+    }
+  if ((config.mask & BROKER_SESSION_SLOW_LOG) && as_info->cur_slow_log_mode != config.slow_log)
+    {
+      as_info->cur_slow_log_mode = (char) config.slow_log;
+      if (reopen_logs)
+	{
+	  as_info->cas_slow_log_reset = CAS_LOG_RESET_REOPEN;
+	  cas_slow_log_reset (broker_name);
+	}
+    }
+}
+
 /* per adopted session: point the CAS globals at this thread's slot */
 void
 cas_server_session_slot_begin (int client_type, int client_version, const char *driver_info)
@@ -228,7 +264,9 @@ cas_server_session_slot_begin (int client_type, int client_version, const char *
   slot->fn_status = FN_STATUS_CONN;
 
   as_info = slot;
-  shm_as_index = cas_slot_index_alloc ();	/* names this session's log files (B2-D1) */
+  snprintf (broker_name, sizeof (broker_name), "%s", shm_appl->broker_name);
+  shm_as_index = cas_slot_index_alloc (); /* server-wide query-plan temporary file identity */
+  cas_log_slot_index = shm_as_index; /* overwritten by the broker-scoped log lease */
 
   /* per-connection CAS globals that cas_common_main.c's session setup used
    * to (re)initialize */
@@ -241,6 +279,67 @@ cas_server_session_slot_begin (int client_type, int client_version, const char *
   std::memset (prev_cas_info, CAS_INFO_RESERVED_DEFAULT, sizeof (prev_cas_info));
 }
 
+/* A broker may hand sessions to several DB server processes, and its restart
+ * does not retire those sessions.  Keep the log identity leased until the
+ * producer closes its files.  flock locks belong to open file descriptions,
+ * so distinct session threads as well as distinct servers exclude each other.
+ * Lock files are stable: unlinking them would let a new inode bypass a live
+ * lease.  Only the lowest free slot is used, bounding files by peak concurrency.
+ * This is connection setup only; log writes need no interprocess lock. */
+int
+cas_server_session_log_begin (const char *name)
+{
+  char path[BROKER_PATH_MAX];
+  char directory[BROKER_PATH_MAX];
+  size_t length = std::strlen (name);
+
+  if (length == 0 || length >= sizeof (broker_name) || std::strchr (name, '/') != NULL
+      || std::strchr (name, '\\') != NULL || cas_Log_slot_fd >= 0)
+    {
+      return -1;
+    }
+
+  envvar_vardir_file (directory, sizeof (directory), "cas_log_slots");
+  if (mkdir (directory, 0770) != 0 && errno != EEXIST)
+    {
+      return -1;
+    }
+
+  for (int index = 0; index < INT_MAX; index++)
+    {
+      int size = snprintf (path, sizeof (path), "%s/%s_%d.lock", directory, name, index + 1);
+      if (size < 0 || (size_t) size >= sizeof (path))
+	{
+	  return -1;
+	}
+      int fd = open (path, O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0660);
+      if (fd < 0)
+	{
+	  return -1;
+	}
+      int result;
+      do
+	{
+	  result = flock (fd, LOCK_EX | LOCK_NB);
+	}
+      while (result < 0 && errno == EINTR);
+      if (result == 0)
+	{
+	  cas_log_slot_index = index;
+	  cas_Log_slot_fd = fd;
+	  std::memcpy (broker_name, name, length + 1);
+	  return 0;
+	}
+      int saved_errno = errno;
+      close (fd);
+      if (saved_errno != EWOULDBLOCK && saved_errno != EAGAIN)
+	{
+	  return -1;
+	}
+    }
+  return -1;
+}
+
 void
 cas_server_session_slot_end (void)
 {
@@ -248,8 +347,14 @@ cas_server_session_slot_end (void)
     {
       CON_STATUS_LOCK_DESTROY (&cas_As_slot);
       as_info = NULL;
+      if (cas_Log_slot_fd >= 0)
+	{
+	  close (cas_Log_slot_fd);
+	  cas_Log_slot_fd = -1;
+	}
       cas_slot_index_free (shm_as_index);
       shm_as_index = 0;
+      cas_log_slot_index = 0;
     }
 }
 

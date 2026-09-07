@@ -567,6 +567,10 @@ cas_process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
       return FN_CLOSE_CONN;
     }
 
+#if defined (SERVER_MODE)
+  cas_server_apply_pending_config (true);
+#endif
+
   argc = net_decode_str (read_msg, *(client_msg_header.msg_body_size_ptr), &func_code, &argv);
   if (argc < 0)
     {

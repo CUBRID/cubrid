@@ -622,8 +622,19 @@ namespace cubconn
       cas_server_session_slot_begin (params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
 				     CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
 
+      /* Broker-routed sessions keep the historical <broker>_<N> log name.
+       * Direct csql uses the DB name; the same lease prevents collisions if a
+       * broker has that name.  Acquire before opening any log producer. */
+      if (cas_server_session_log_begin (params.direct ? params.server_name.c_str ()
+				       : params.broker_name.c_str ()) != 0)
+	{
+	  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
+			    CAS_ER_INTERNAL, "Cannot reserve a session log slot");
+	  goto retire;
+	}
+
       /* publish this session's CAS slot for SHOW SESSION STATUS (B2-D10) */
-      registry_set_session_stats (params.token, as_info, shm_as_index, params.client_ip);
+      registry_set_session_stats (params.token, as_info, cas_log_slot_index, params.client_ip);
 
       /* ACCESS_CONTROL db:dbuser:ip check before any engine boot (B2-D8,
        * #116 D6) — the same ordering the CAS kept (check, then db_connect).
@@ -661,11 +672,12 @@ namespace cubconn
 
       /* the session-scoped log producers a CAS process opened at startup
        * (B2-D2/D4): SQL/slow logs on this slot, DDL audit identity */
+      cas_server_apply_pending_config (false);
       cas_log_open (broker_name);
       cas_slow_log_open (broker_name);
       logddl_init (APP_NAME_CAS);
       logddl_check_ddl_audit_param ();
-      logddl_set_broker_info (shm_as_index, broker_name);
+      logddl_set_broker_info (cas_log_slot_index, broker_name);
       {
 	char client_ip_str[16];
 	ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str), (unsigned char *) &params.client_ip);
@@ -685,6 +697,7 @@ namespace cubconn
 	  goto retire;
 	}
       registered = true;
+      registry_set_session_id (params.token, db_get_session_id ());
 
       /* replay ux_database_connect's connected-identity bookkeeping the
        * direct db_restart_ex boot skipped, so CHECK_CAS answers correctly
@@ -732,7 +745,7 @@ namespace cubconn
       cas_log_write_and_end (0, false, "connect db %s@%s user %s session id %u", as_info->database_name,
 			     as_info->database_host, info.db_user, as_info->session_id);
 
-      reply_size = build_connect_reply (params.token, params.slot_idx, params.broker_info, session_blob,
+      reply_size = build_connect_reply (params.token, cas_log_slot_index, params.broker_info, session_blob,
 					reply, sizeof (reply));
       if (write_full (params.client_fd, reply, reply_size) != NO_ERROR)
 	{

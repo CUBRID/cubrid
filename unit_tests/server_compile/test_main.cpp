@@ -46,6 +46,8 @@
 #include "cas_common_vars.h"	// shm_as_index (per-session slot id, B2-D1)
 #include "cas_dispatch.h"	// cas_server_session_slot_begin/end
 #include "cas_protocol.h"
+#include "cas_log.h"
+#include "environment_variable.h"
 #undef FREE			// cas_common.h FREE(PTR) vs page_buffer.h FREE — this TU uses neither
 #include "client_session_context.hpp"
 #include "csql.h"		// csql_server_*_request (B5 PR1)
@@ -628,6 +630,74 @@ test_session_slot_indices (void)
   return 0;
 }
 
+/* Broker-scoped log slots may share their number across brokers, whereas
+ * query-plan scratch names must remain unique throughout the DB server. */
+static int
+test_session_log_identity (void)
+{
+  char name_a[BROKER_NAME_LEN], name_b[BROKER_NAME_LEN];
+  snprintf (name_a, sizeof (name_a), "unit_log_%d_a", (int) getpid ());
+  snprintf (name_b, sizeof (name_b), "unit_log_%d_b", (int) getpid ());
+  std::atomic<bool> ready (false), release (false);
+  int holder_result = -1, holder_log = -1;
+  std::string holder_plan;
+  cas_server_speaker_boot_init ("unitdb");
+  std::thread holder ([&] ()
+  {
+    char info[SRV_CON_CLIENT_INFO_SIZE] = {};
+    cas_server_session_slot_begin (0, 0, info);
+    holder_result = cas_server_session_log_begin (name_a);
+    holder_log = cas_log_slot_index;
+    holder_plan = cas_log_query_plan_file (1);
+    ready.store (true);
+    while (!release.load ())
+      {
+	std::this_thread::yield ();
+      }
+    cas_server_session_slot_end ();
+  });
+  while (!ready.load ())
+    {
+      std::this_thread::yield ();
+    }
+
+  char info[SRV_CON_CLIENT_INFO_SIZE] = {};
+  int result = holder_result;
+  cas_server_session_slot_begin (0, 0, info);
+  if (cas_server_session_log_begin (name_a) != 0 || cas_log_slot_index == holder_log)
+    {
+      result = -1;
+    }
+  cas_server_session_slot_end ();
+
+  cas_server_session_slot_begin (0, 0, info);
+  if (cas_server_session_log_begin (name_b) != 0 || cas_log_slot_index != holder_log
+      || holder_plan == cas_log_query_plan_file (1))
+    {
+      result = -1;
+    }
+  cas_server_session_slot_end ();
+  release.store (true);
+  holder.join ();
+
+  /* Only these test-owned names can exist; both holders have retired. */
+  for (const char *name : { name_a, name_b })
+    {
+      for (int slot = 1; slot <= 2; slot++)
+	{
+	  char relative[128], path[1024];
+	  snprintf (relative, sizeof (relative), "cas_log_slots/%s_%d.lock", name, slot);
+	  envvar_vardir_file (path, sizeof (path), relative);
+	  unlink (path);
+	}
+    }
+  if (result != 0)
+    {
+      fprintf (stderr, "FAIL: broker log slots or server-wide query-plan identities collide\n");
+    }
+  return result;
+}
+
 static int
 test_synthesize_client_type (void)
 {
@@ -1106,6 +1176,12 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: concurrent sessions take distinct CAS slot indices, retired ones are reused\n");
+
+  if (test_session_log_identity () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: broker log slots exclude writers and preserve server-wide query-plan identity\n");
 
   if (test_cas_acl () != 0)
     {
