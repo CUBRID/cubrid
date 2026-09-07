@@ -115,6 +115,10 @@ struct qmgr_tran_entry
   pthread_mutex_t mutex;
 
   bool is_dblink_autocommit;	/* for dblink autocommit check */
+  bool is_dblink_sink_aborted;	/* a remote DML sink statement failed on a connection without savepoint
+				 * support, so its whole remote transaction (including work done by earlier
+				 * statements) was rolled back. Committing would silently confirm that loss,
+				 * so the local transaction must be refused at commit time. */
 };
 
 typedef struct qmgr_temp_file_list QMGR_TEMP_FILE_LIST;
@@ -670,6 +674,7 @@ qmgr_initialize_tran_entry (QMGR_TRAN_ENTRY * tran_entry_p)
   tran_entry_p->dblink_entry = NULL;
   tran_entry_p->modified_classes_p = NULL;
   tran_entry_p->is_dblink_autocommit = true;
+  tran_entry_p->is_dblink_sink_aborted = false;
   pthread_mutex_init (&tran_entry_p->mutex, NULL);
 }
 
@@ -2228,6 +2233,29 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
   QMGR_TRAN_STATUS status = QMGR_TRAN_TERMINATED;
 
+  /* the transaction ends either way, so the mark never outlives it */
+  bool sink_aborted = tran_entry_p->is_dblink_sink_aborted;
+  tran_entry_p->is_dblink_sink_aborted = false;
+
+  if (!is_abort && sink_aborted)
+    {
+      /* A sink statement failed on a connection that could not be rolled back statement by statement,
+       * so that connection's remote transaction - including what earlier statements wrote - is already
+       * gone. Committing here would report success for work that no longer exists, so refuse it and
+       * roll the remaining connections back as well, leaving local and remote both aborted. */
+      if (tran_entry_p->dblink_entry != NULL)
+	{
+	  (void) dblink_end_tran (tran_entry_p->dblink_entry, true);
+	  tran_entry_p->dblink_entry = NULL;
+	}
+
+      tran_entry_p->is_dblink_autocommit = true;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1,
+	      "a remote DML statement failed and its remote transaction was rolled back");
+
+      return QMGR_TRAN_DBLINK_ABORTED;
+    }
+
   /*
    * End DBLink connections when:
    *   (a) is_abort=true  - rollback ALL entries unconditionally; XA-prepare will not occur.
@@ -2298,6 +2326,15 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
     }
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  /* The mark must not outlive the transaction that set it. qmgr_check_dblink_trans() clears it on the
+   * commit and abort paths that go through xtran_server_commit()/xtran_server_abort(), but a transaction
+   * can also end through log_abort() alone - log_2pc_attach_client() aborts the attaching client that
+   * way before freeing its index. Clearing it here covers that too, since log_abort_local() reaches this
+   * function, as do log_commit_local() and logtb_release_tran_index(). Without it the mark reaches
+   * whoever is assigned the index next. */
+  tran_entry_p->is_dblink_sink_aborted = false;
+
   /* if the transaction is aborting, clear relative cache entries */
   if (tran_entry_p->modified_classes_p)
     {
@@ -3952,6 +3989,7 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
 
   dblink_conn_entry->conn_info.conn_handle = conn_handle;
   dblink_conn_entry->is_2pc_participant = set_participant;
+  dblink_conn_entry->has_uncommitted_dml = false;
 
   snprintf (dblink_conn_entry->conn_info.conn_url, sizeof (dblink_conn_entry->conn_info.conn_url), "%s", conn_url);
   snprintf (dblink_conn_entry->conn_info.user_name, sizeof (dblink_conn_entry->conn_info.user_name), "%s", user_name);
@@ -4004,6 +4042,12 @@ qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p, bool is_commit)
  * Note: Used by 2PC send-prepare: once a participant has been XA-prepared, the decision is owned by
  *       the 2PC daemon (which holds the same conn_handle via the participant block copy), so the
  *       entry must be dropped from the per-transaction list. The CCI connection is NOT touched here.
+ *       Also used by the remote DML sink abort path when its fallback tears the connection down.
+ *
+ *       Removing an entry can leave the transaction without any 2PC participant, so
+ *       is_dblink_autocommit is recomputed here. Left false with no participant left, nothing would
+ *       end the remaining (SELECT-only) connections: qmgr_check_dblink_trans() skips them while the
+ *       flag says the 2PC path owns them, and that path does not run without a participant.
  */
 int
 qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
@@ -4026,6 +4070,17 @@ qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
 	      prev->next = dblink->next;
 	    }
 	  free_and_init (dblink);
+
+	  tran_entry_p->is_dblink_autocommit = true;
+	  for (dblink = tran_entry_p->dblink_entry; dblink != NULL; dblink = dblink->next)
+	    {
+	      if (dblink->is_2pc_participant)
+		{
+		  tran_entry_p->is_dblink_autocommit = false;
+		  break;
+		}
+	    }
+
 	  return NO_ERROR;
 	}
       prev = dblink;
@@ -4033,4 +4088,81 @@ qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
     }
 
   return ER_FAILED;
+}
+
+/*
+ * qmgr_dblink_set_conn_dml () - record whether a connection carries uncommitted remote DML of this
+ *                               transaction
+ *   return: void
+ *   thread_p(in):
+ *   conn_handle(in): connection the DML ran on
+ *   has_dml(in): true once a remote DML statement of this transaction has changed rows on it. The
+ *                mark is not lowered again: an undo that leaves the connection clean tears it down
+ *                and drops its entry (dblink_dml_stmt_abort), so there is nothing left to clear
+ *
+ * Note: While the flag is set, rolling that connection's remote transaction back would discard work the
+ *       transaction still expects to commit.
+ */
+void
+qmgr_dblink_set_conn_dml (THREAD_ENTRY * thread_p, int conn_handle, bool has_dml)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
+
+  while (dblink)
+    {
+      if (dblink->conn_info.conn_handle == conn_handle)
+	{
+	  dblink->has_uncommitted_dml = has_dml;
+	  return;
+	}
+      dblink = dblink->next;
+    }
+}
+
+/*
+ * qmgr_dblink_conn_has_dml () - whether the connection already carries uncommitted remote DML
+ *   return: true if it does
+ *   thread_p(in):
+ *   conn_handle(in): connection to ask about
+ */
+bool
+qmgr_dblink_conn_has_dml (THREAD_ENTRY * thread_p, int conn_handle)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
+
+  while (dblink)
+    {
+      if (dblink->conn_info.conn_handle == conn_handle)
+	{
+	  return dblink->has_uncommitted_dml;
+	}
+      dblink = dblink->next;
+    }
+
+  return false;
+}
+
+/*
+ * qmgr_dblink_set_sink_aborted () - mark that a remote DML sink statement lost the transaction's
+ *                                   remote work
+ *   return: void
+ *   thread_p(in):
+ *
+ * Note: Set from the sink statement abort path when the failing statement could not be undone on its
+ *       own and its whole remote transaction had to be rolled back, taking the work of the earlier
+ *       statements with it. The flag records that the transaction's remote work is already gone;
+ *       qmgr_check_dblink_trans() then refuses the commit instead of reporting a success that
+ *       confirms the loss.
+ */
+void
+qmgr_dblink_set_sink_aborted (THREAD_ENTRY * thread_p)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  tran_entry_p->is_dblink_sink_aborted = true;
 }

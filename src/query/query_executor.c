@@ -12647,7 +12647,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   int num_attrs = 0;
   const char *key_col = NULL, *op = NULL;
   TP_DOMAIN *src_dom = NULL;
-  DBLINK_DML_STATE dblink_state = { -1, -1 };
+  DBLINK_DML_STATE dblink_state = { -1, -1, false, false };
 
   assert (specp != NULL);
 
@@ -12783,14 +12783,19 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
       goto exit_on_error;
     }
 
+  /* The statement succeeded: from here on its rows are the connection's uncommitted work, which a
+   * later statement of this transaction must not discard silently. */
+  dblink_dml_stmt_done (thread_p, &dblink_state);
+
   dblink_dml_close (&dblink_state);
   qexec_close_scan (thread_p, specp);
 
   return NO_ERROR;
 
 exit_on_error:
+  /* close the stmt before the abort path, which may disconnect the remote connection */
   dblink_dml_close (&dblink_state);
-  dblink_dml_rollback (thread_p, &dblink_state);
+  dblink_dml_stmt_abort (thread_p, &dblink_state);
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
 
