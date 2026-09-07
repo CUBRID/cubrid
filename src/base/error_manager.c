@@ -1772,7 +1772,7 @@ er_log (int err_id)
 
 #if defined (SERVER_MODE)
   if (log_fh == &er_Msglog_fh && er_Session_log_path[0] != '\0' && !er_Session_log_failed
-      && strcmp (er_Session_log_path, log_file_name) != 0)
+      && (log_file_name == NULL || strcmp (er_Session_log_path, log_file_name) != 0))
     {
       if (er_Session_log_fh != NULL
 	  && (access (er_Session_log_path, F_OK) != 0
