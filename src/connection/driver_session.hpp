@@ -55,6 +55,7 @@ namespace cubconn
     };
 
     /* pure helpers, unit-testable without a live server */
+    const char *driver_client_name (int kind, const char *url, bool direct);
 
     /* parse a V12 db_info packet (DRIVER_DB_INFO_SIZE bytes); returns
      * NO_ERROR or ER_FAILED on malformed input */

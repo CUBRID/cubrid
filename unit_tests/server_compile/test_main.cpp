@@ -699,6 +699,21 @@ test_session_log_identity (void)
 }
 
 static int
+test_driver_client_names (void)
+{
+  using cubconn::adoption::driver_client_name;
+  if (strcmp (driver_client_name (CAS_CLIENT_CCI, "thin_csql", false), "csql") != 0
+      || strcmp (driver_client_name (CAS_CLIENT_CCI, "thin_csql_extra", false), "CCI") != 0
+      || strcmp (driver_client_name (CAS_CLIENT_JDBC, "thin_csql", false), "JDBC") != 0
+      || strcmp (driver_client_name (CAS_CLIENT_CCI, NULL, true), "csql") != 0
+      || strcmp (driver_client_name (255, NULL, false), "UNKNOWN") != 0)
+    {
+      return 1;
+    }
+  return 0;
+}
+
+static int
 test_synthesize_client_type (void)
 {
   using cubconn::adoption::synthesize_client_type;
@@ -1176,6 +1191,12 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: concurrent sessions take distinct CAS slot indices, retired ones are reused\n");
+
+  if (test_driver_client_names () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: driver protocol identities preserve CCI wrappers and distinguish thin csql\n");
 
   if (test_session_log_identity () != 0)
     {

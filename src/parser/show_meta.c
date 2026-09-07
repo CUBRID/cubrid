@@ -715,7 +715,8 @@ metadata_of_session_status (void)
     {"Num_errors", "bigint"},
     {"Num_long_queries", "bigint"},
     {"Num_long_transactions", "bigint"},
-    {"Last_activity", "varchar(256)"}
+    {"Last_activity", "varchar(256)"},
+    {"Client_type", "varchar(24)"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {

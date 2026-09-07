@@ -105,6 +105,7 @@ namespace cubconn
       T_APPL_SERVER_INFO *stats_slot = NULL;
       broker_session_config config = {};
       unsigned int session_id = 0;
+      const char *client_name = "UNKNOWN"; /* static protocol label, fixed at connect */
       int slot_index = -1;
       std::uint32_t client_ip = 0;
       bool direct = false;	/* DIRECT_CONNECT session: no broker slot, no SESSION_END (wf122/B5) */
@@ -266,7 +267,8 @@ namespace cubconn
     }
 
     void
-    registry_set_session_stats (std::uint32_t token, void *as_info_slot, int slot_index, std::uint32_t client_ip)
+    registry_set_session_stats (std::uint32_t token, void *as_info_slot, int slot_index, std::uint32_t client_ip,
+				const char *client_name)
     {
       manager *m = adoption_Manager;
       if (m == NULL)
@@ -282,6 +284,7 @@ namespace cubconn
 	  it->second.stats_slot = (T_APPL_SERVER_INFO *) as_info_slot;
 	  it->second.slot_index = slot_index;
 	  it->second.client_ip = client_ip;
+	  it->second.client_name = client_name;
 	}
     }
 
@@ -307,6 +310,7 @@ namespace cubconn
 	  std::memset (&r, 0, sizeof (r));
 	  r.token = e.token;
 	  r.slot = e.slot_index;
+	  snprintf (r.client_type, sizeof (r.client_type), "%s", e.client_name);
 	  std::memcpy (r.broker_name, e.broker_name, sizeof (r.broker_name));
 	  r.broker_name[sizeof (r.broker_name) - 1] = '\0';
 	  r.client_ip = e.client_ip;

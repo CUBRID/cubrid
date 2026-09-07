@@ -96,8 +96,8 @@ sed -i "/^\[common\]/a cas_sql_log=all\ncas_slow_log=yes\ncas_access_log=yes\nca
   || fail "cannot enable cas_* log parameters"
 
 # scope the log assertions to this run
-rm -f "$CUBRID"/log/broker/sql_log/"${DB}"_*.sql.log "$CUBRID"/log/broker/sql_log/"${DB}"_*.slow.log \
-      "$CUBRID"/log/broker/"${DB}".access "$CUBRID"/log/ddl_audit/"${DB}"_*_ddl.log 2>/dev/null || true
+rm -f "$CUBRID"/log/broker/sql_log/b1direct_*.sql.log "$CUBRID"/log/broker/sql_log/b1direct_*.slow.log \
+      "$CUBRID"/log/broker/"${DB}".access "$CUBRID"/log/ddl_audit/b1direct_*_ddl.log 2>/dev/null || true
 
 # self-signed cert for the SSL leg (B2-D9): the server terminates TLS with
 # the CAS's historical cert paths, $CUBRID/conf/cas_ssl_cert.{crt,key}
@@ -124,7 +124,8 @@ MAX_NUM_APPL_SERVER     =20
 APPL_SERVER_SHM_ID      =30002
 LOG_DIR                 =log/broker/sql_log
 ERROR_LOG_DIR           =log/broker/error_log
-SQL_LOG                 =OFF
+SQL_LOG                 =ALL
+SLOW_LOG                =ON
 TIME_TO_KILL            =120
 SESSION_TIMEOUT         =300
 KEEP_CONNECTION         =AUTO
@@ -138,7 +139,8 @@ MAX_NUM_APPL_SERVER     =20
 APPL_SERVER_SHM_ID      =30003
 LOG_DIR                 =log/broker/sql_log
 ERROR_LOG_DIR           =log/broker/error_log
-SQL_LOG                 =OFF
+SQL_LOG                 =ALL
+SLOW_LOG                =ON
 TIME_TO_KILL            =120
 SESSION_TIMEOUT         =300
 KEEP_CONNECTION         =AUTO
@@ -154,7 +156,8 @@ MAX_NUM_APPL_SERVER     =20
 APPL_SERVER_SHM_ID      =30004
 LOG_DIR                 =log/broker/sql_log
 ERROR_LOG_DIR           =log/broker/error_log
-SQL_LOG                 =OFF
+SQL_LOG                 =ALL
+SLOW_LOG                =ON
 TIME_TO_KILL            =120
 SESSION_TIMEOUT         =300
 KEEP_CONNECTION         =AUTO
@@ -183,16 +186,16 @@ java -cp "$workdir:$JAR" B1JdbcSmoke "$RO_PORT" "$DB" dba "" ro || fail "jdbc re
 
 # --- log production checks (B2-D1..D6): the sessions above must have produced
 # per-slot CAS-format logs under the server's ownership -------------------
-sqllog="$(ls "$CUBRID"/log/broker/sql_log/"${DB}"_*.sql.log 2>/dev/null | head -1)"
+sqllog="$(ls "$CUBRID"/log/broker/sql_log/b1direct_*.sql.log 2>/dev/null | head -1)"
 [ -n "$sqllog" ] || fail "no per-session SQL log was produced"
 grep -q "connect db" "$sqllog" || fail "SQL log misses the connect unit"
 grep -qi "CREATE TABLE b1_smoke" "$sqllog" || fail "SQL log misses statement text"
 grep -q "EID = " "$sqllog" || fail "SQL log misses the error EID cross-reference"
-slowlog="$(ls "$CUBRID"/log/broker/sql_log/"${DB}"_*.slow.log 2>/dev/null | head -1)"
+slowlog="$(ls "$CUBRID"/log/broker/sql_log/b1direct_*.slow.log 2>/dev/null | head -1)"
 [ -n "$slowlog" ] || fail "no slow log was produced (SLEEP cases exceed cas_long_query_time=1s)"
 grep -qi "SLEEP" "$slowlog" || fail "slow log misses the SLEEP statement"
 [ -s "$CUBRID/log/broker/${DB}.access" ] || fail "no access log line was produced"
-ddllog="$(ls "$CUBRID"/log/ddl_audit/"${DB}"_*_ddl.log 2>/dev/null | head -1)"
+ddllog="$(ls "$CUBRID"/log/ddl_audit/b1direct_*_ddl.log 2>/dev/null | head -1)"
 [ -n "$ddllog" ] || fail "no DDL audit log was produced"
 grep -qi "CREATE TABLE" "$ddllog" || fail "DDL audit log misses CREATE TABLE"
 # the CAS log format must stay readable by the existing tooling (#116 D4)

@@ -308,6 +308,36 @@ namespace cubconn
       return NULL;
     }
 
+    const char *
+    driver_client_name (int kind, const char *url, bool direct)
+    {
+      /* thin csql already declares this exact marker in the V12 URL field.
+       * It is a display identity only: it never changes access/admission. */
+      if (direct || (kind == CAS_CLIENT_CCI && url != NULL && std::strcmp (url, "thin_csql") == 0))
+	{
+	  return "csql";
+	}
+      switch (kind)
+	{
+	case CAS_CLIENT_CCI:
+	  return "CCI";
+	case CAS_CLIENT_ODBC:
+	  return "ODBC";
+	case CAS_CLIENT_JDBC:
+	  return "JDBC";
+	case CAS_CLIENT_PHP:
+	  return "PHP";
+	case CAS_CLIENT_OLEDB:
+	  return "OLEDB";
+	case CAS_CLIENT_SERVER_SIDE_JDBC:
+	  return "INTERNAL_JDBC";
+	case CAS_CLIENT_GATEWAY:
+	  return "GATEWAY";
+	default:
+	  return "UNKNOWN";
+	}
+    }
+
     int
     parse_driver_protocol (const char (&driver_header)[DRIVER_HEADER_SIZE])
     {
@@ -486,6 +516,7 @@ namespace cubconn
       CSS_CONN_ENTRY *conn = NULL;
       client_session_context *ctx = NULL;
       driver_conn_info info;
+      const char *client_name = "UNKNOWN";
       char session_blob[DRIVER_SESSION_SIZE];
       char reply[CONNECT_REPLY_BUF_SIZE];
       std::size_t reply_size;
@@ -618,6 +649,9 @@ namespace cubconn
 	  goto retire;
 	}
 
+      client_name = driver_client_name ((unsigned char) params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
+				       info.url, params.direct);
+
       /* point the CAS globals at this thread's slot (cas_server_support) */
       cas_server_session_slot_begin (params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
 				     CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
@@ -634,7 +668,7 @@ namespace cubconn
 	}
 
       /* publish this session's CAS slot for SHOW SESSION STATUS (B2-D10) */
-      registry_set_session_stats (params.token, as_info, cas_log_slot_index, params.client_ip);
+      registry_set_session_stats (params.token, as_info, cas_log_slot_index, params.client_ip, client_name);
 
       /* ACCESS_CONTROL db:dbuser:ip check before any engine boot (B2-D8,
        * #116 D6) — the same ordering the CAS kept (check, then db_connect).
@@ -688,7 +722,7 @@ namespace cubconn
 
       /* client-half boot with the driver's credentials; serialization is the
        * engine's own (boot_restart_client) since A5 */
-      err = db_restart_ex ("driver_session", info.db_name, info.db_user, info.db_passwd, NULL, params.client_type);
+      err = db_restart_ex (client_name, info.db_name, info.db_user, info.db_passwd, NULL, params.client_type);
       if (err != NO_ERROR)
 	{
 	  /* cas_db_connect failure path: DBMS error straight to the driver */
