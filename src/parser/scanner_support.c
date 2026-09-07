@@ -606,21 +606,45 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
 	    }
 	  break;
-	case PT_HINT_QUERY_CACHE:	/* query_cache */
+	case PT_HINT_QUERY_CACHE:	/* QUERY_CACHE / QUERY_CACHE(N) */
 	  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 	    {
+	      PT_NODE *arg1;
 	      node->info.query.hint = (PT_HINT_ENUM) (node->info.query.hint | hint_table[i].hint);
 	      node->info.query.qcache_hint = hint_table[i].arg_list;
 	      hint_table[i].arg_list = NULL;
-	      if (node->info.query.qcache_hint)
+
+	      /* initialize cache fields */
+	      node->info.query.cache_ttl = 0;
+	      node->info.query.cache_policy = 0;
+	      node->info.query.cache_queue_slots = 1;
+
+	      arg1 = node->info.query.qcache_hint;
+	      if (arg1 != NULL)
 		{
-		  if (atoi (node->info.query.qcache_hint->info.name.original))
-		    node->info.query.flag.do_cache = 1;
+		  int val = atoi (arg1->info.name.original);
+		  if (val > 1)
+		    {
+		      /* QUERY_CACHE(N) where N>=2: TTL=N seconds, double-buffering */
+		      node->info.query.flag.do_cache = 1;
+		      node->info.query.cache_ttl = (val > 1023) ? 1023 : val;
+		      node->info.query.cache_policy = 1;	/* RESULT_CACHE_POLICY_TTL */
+		      node->info.query.cache_queue_slots = 2;	/* double-buffering */
+		    }
+		  else if (val == 1)
+		    {
+		      /* QUERY_CACHE(1): enable cache with default policy */
+		      node->info.query.flag.do_cache = 1;
+		    }
 		  else
-		    node->info.query.flag.do_not_cache = 1;
+		    {
+		      /* QUERY_CACHE(0): disable cache */
+		      node->info.query.flag.do_not_cache = 1;
+		    }
 		}
 	      else
 		{
+		  /* QUERY_CACHE without argument: enable cache with default policy */
 		  node->info.query.flag.do_cache = 1;
 		}
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
