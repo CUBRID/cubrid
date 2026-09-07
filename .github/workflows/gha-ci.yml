@@ -1909,13 +1909,14 @@ jobs:
           shown=$FAILED_N
           [ "$shown" -gt 50 ] && shown=50
           budget=900000
-          case_max=$((budget / shown))
+          # 512 for the <details> wrapper of each case, so that the cases which
+          # all reach their share still add up to less than the budget.
+          case_max=$((budget / shown - 512))
           [ "$case_max" -gt 131072 ] && case_max=131072
           head_b=$((case_max / 2))
           tail_b=$((case_max - head_b))
           echo "cases $FAILED_N / shown $shown / per case $case_max bytes"
 
-          # The 1 MiB is counted after escaping, so escape before measuring.
           esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
 
           base="$ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}"
@@ -1944,16 +1945,18 @@ jobs:
             if [ ! -f "$log" ]; then
               echo "(this case left no log in the XML)" >> /tmp/block
             else
-              raw=$(wc -c < "$log")
-              if [ "$raw" -le "$case_max" ]; then
-                esc "$log" >> /tmp/block
+              # The 1 MiB is counted after escaping, so cut the escaped log, not
+              # the log: a share measured before escaping is not the share spent.
+              esc "$log" > /tmp/esc
+              sz=$(wc -c < /tmp/esc)
+              if [ "$sz" -le "$case_max" ]; then
+                cat /tmp/esc >> /tmp/block
               else
-                # sed drops the line the byte cut split, so <pre> holds whole lines.
-                head -c "$head_b" "$log" | sed '$d' > /tmp/piece
-                esc /tmp/piece >> /tmp/block
-                printf '\n... %d KB of the middle is not here ...\n\n' $(((raw - head_b - tail_b) / 1024)) >> /tmp/block
-                tail -c "$tail_b" "$log" | sed '1d' > /tmp/piece
-                esc /tmp/piece >> /tmp/block
+                # sed drops the line the byte cut split, so <pre> holds whole
+                # lines and no entity is left half written.
+                head -c "$head_b" /tmp/esc | sed '$d' >> /tmp/block
+                printf '\n... %d KB of the middle is not here ...\n\n' $(((sz - head_b - tail_b) / 1024)) >> /tmp/block
+                tail -c "$tail_b" /tmp/esc | sed '1d' >> /tmp/block
               fi
             fi
             {
