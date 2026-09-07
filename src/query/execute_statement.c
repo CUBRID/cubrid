@@ -15537,6 +15537,11 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   err = do_prepare_select (&context, stmt);
 
+  /* string_blocks only grows by prepending and shrinks by unlinking (parse_tree.c). Whatever
+   * do_prepare_select() adds or frees ends up in context.string_blocks by the time it returns.
+   * Reconcile that into parser so parser_free_parser() can still reach it. */
+  parser->string_blocks = context.string_blocks;
+
   /* restore the flag */
   stmt->info.query.is_subquery = save_flag;
 
