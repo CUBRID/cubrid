@@ -800,7 +800,8 @@ namespace cubconn
 		  && config.runtime.long_query_time >= 0 && config.runtime.long_transaction_time >= 0
 		  && config.runtime.trigger_action_flag >= 0 && config.runtime.trigger_action_flag <= 1
 		  && memchr (config.runtime.log_dir, '\0', sizeof (config.runtime.log_dir)) != NULL
-		  && memchr (config.runtime.slow_log_dir, '\0', sizeof (config.runtime.slow_log_dir)) != NULL)))
+		  && memchr (config.runtime.slow_log_dir, '\0', sizeof (config.runtime.slow_log_dir)) != NULL
+		  && memchr (config.runtime.error_log_dir, '\0', sizeof (config.runtime.error_log_dir)) != NULL)))
 	{
 	  std::lock_guard<std::mutex> guard (m.registry_mutex);
 	  for (auto &pair : m.registry)

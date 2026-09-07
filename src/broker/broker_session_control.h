@@ -51,6 +51,7 @@ struct broker_runtime_config
   int32_t trigger_action_flag;
   char log_dir[BROKER_SESSION_PATH_MAX];
   char slow_log_dir[BROKER_SESSION_PATH_MAX];
+  char error_log_dir[BROKER_SESSION_PATH_MAX];
 };
 
 enum broker_runtime_parameter
@@ -70,7 +71,8 @@ enum broker_runtime_parameter
   BROKER_RUNTIME_MAX_QUERY_TIMEOUT,
   BROKER_RUNTIME_TRIGGER_ACTION,
   BROKER_RUNTIME_LOG_DIR,
-  BROKER_RUNTIME_SLOW_LOG_DIR
+  BROKER_RUNTIME_SLOW_LOG_DIR,
+  BROKER_RUNTIME_ERROR_LOG_DIR
 };
 
 struct broker_session_config

@@ -56,6 +56,7 @@
 #include "broker_filename.h"	/* get_cubrid_file, FID_* */
 #include "broker_shm.h"		/* uw_sem_* declarations */
 #include "environment_variable.h"	/* envvar_logdir_file */
+#include "error_manager.h"
 #include "cas_common.h"
 #include "cas_common_vars.h"
 #include "cas_dispatch.h"	/* the server-support API declarations */
@@ -208,6 +209,7 @@ cas_server_refresh_session_config (T_APPL_SERVER_INFO *slot)
   cfg->trigger_action_flag = ON;
   get_cubrid_file (FID_SQL_LOG_DIR, cfg->log_dir, sizeof (cfg->log_dir));
   get_cubrid_file (FID_SLOW_LOG_DIR, cfg->slow_log_dir, sizeof (cfg->slow_log_dir));
+  cfg->error_log_dir[0] = '\0'; /* direct csql keeps the database error log */
 }
 
 /* Only the owning session thread writes its CAS snapshot and log handles.
@@ -223,6 +225,7 @@ cas_server_apply_pending_config (bool reopen_logs)
     }
   if (config.mask & BROKER_SESSION_RUNTIME)
     {
+      bool error_log_changed = std::strcmp (cas_session_cfg.error_log_dir, config.runtime.error_log_dir) != 0;
       if (reopen_logs && std::strcmp (cas_session_cfg.log_dir, config.runtime.log_dir) != 0)
 	{
 	  /* Preserve the existing directory-change boundary: finish the
@@ -248,6 +251,17 @@ cas_server_apply_pending_config (bool reopen_logs)
 	}
       as_info->cur_statement_pooling = (char) cas_session_cfg.statement_pooling;
       as_info->cci_default_autocommit = (char) cas_session_cfg.cci_default_autocommit;
+      if (error_log_changed)
+	{
+	  char path[PATH_MAX];
+	  int size = snprintf (path, sizeof (path), "%s/%s_%d.err", cas_session_cfg.error_log_dir,
+			       broker_name, cas_log_slot_index + 1);
+	  if (size < 0 || (size_t) size >= sizeof (path) || er_set_session_error_log_file (path) != NO_ERROR)
+	    {
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+		      "Cannot configure broker session error log");
+	    }
+	}
     }
   if ((config.mask & BROKER_SESSION_SQL_LOG) && as_info->cur_sql_log_mode != config.sql_log)
     {
@@ -378,6 +392,10 @@ cas_server_session_slot_end (void)
 {
   if (as_info == &cas_As_slot)
     {
+      if (er_set_session_error_log_file (NULL) != NO_ERROR)
+	{
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, "Cannot close broker session error log");
+	}
       CON_STATUS_LOCK_DESTROY (&cas_As_slot);
       as_info = NULL;
       if (cas_Log_slot_fd >= 0)

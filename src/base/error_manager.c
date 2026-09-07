@@ -304,6 +304,11 @@ static int er_Errid_not_initialized = 0;
  * (cas_log_error_handler) to stamp EID cross-references into the SQL log;
  * sessions are threads, so the handler slot is thread-local */
 static thread_local er_log_handler_t er_Handler = NULL;
+/* Optional adopted-session copy. The database error log remains authoritative;
+ * a broker's ERROR_LOG_DIR must never redirect another broker's diagnostics. */
+static thread_local char er_Session_log_path[PATH_MAX] = { 0 };
+static thread_local FILE *er_Session_log_fh = NULL;
+static thread_local bool er_Session_log_failed = false;
 #else
 static er_log_handler_t er_Handler = NULL;
 #endif /* !SERVER_MODE */
@@ -1765,6 +1770,60 @@ er_log (int err_id)
   fprintf (*log_fh, er_Cached_msg[ER_LOG_MSG_WRAPPER_D], time_array, ER_SEVERITY_STRING (severity), file_name, line_no,
 	   ER_ERROR_WARNING_STRING (severity), err_id, tran_index, more_info_p, msg);
 
+#if defined (SERVER_MODE)
+  if (log_fh == &er_Msglog_fh && er_Session_log_path[0] != '\0' && !er_Session_log_failed
+      && strcmp (er_Session_log_path, log_file_name) != 0)
+    {
+      if (er_Session_log_fh != NULL
+	  && (access (er_Session_log_path, F_OK) != 0
+	      || ftell (er_Session_log_fh) > prm_get_integer_value (PRM_ID_ER_LOG_SIZE)))
+	{
+	  bool rotate = access (er_Session_log_path, F_OK) == 0;
+	  if (fclose (er_Session_log_fh) != 0)
+	    {
+	      er_Session_log_failed = true;
+	    }
+	  er_Session_log_fh = NULL;
+	  if (rotate && !er_Session_log_failed)
+	    {
+	      char backup[PATH_MAX];
+	      size_t length = strlen (er_Session_log_path);
+	      memcpy (backup, er_Session_log_path, length);
+	      memcpy (backup + length, ".bak", sizeof (".bak"));
+	      if ((unlink (backup) != 0 && errno != ENOENT) || rename (er_Session_log_path, backup) != 0)
+		{
+		  er_Session_log_failed = true;
+		}
+	    }
+	}
+      if (er_Session_log_fh == NULL && !er_Session_log_failed)
+	{
+	  er_Session_log_fh = fopen (er_Session_log_path, "a+");
+	  er_Session_log_failed = er_Session_log_fh == NULL;
+	}
+      if (!er_Session_log_failed)
+	{
+	  int written = fprintf (er_Session_log_fh, er_Cached_msg[ER_LOG_MSG_WRAPPER_D], time_array,
+				 ER_SEVERITY_STRING (severity), file_name, line_no, ER_ERROR_WARNING_STRING (severity),
+				 err_id, tran_index, more_info_p, msg);
+	  if (written < 0 || fflush (er_Session_log_fh) != 0)
+	    {
+	      er_Session_log_failed = true;
+	    }
+	}
+      if (er_Session_log_failed)
+	{
+	  /* Report once in the original sink without recursively calling er_set. */
+	  fprintf (*log_fh, "Cannot write broker session error log '%s': %s\n", er_Session_log_path, strerror (errno));
+	  if (er_Session_log_fh != NULL)
+	    {
+	      (void) fclose (er_Session_log_fh);
+	      er_Session_log_fh = NULL;
+	    }
+	}
+    }
+#endif
+
   /* Flush the message so it is printed immediately */
   if (*log_fh != stderr && *log_fh != stdout)
     {
@@ -1816,6 +1875,40 @@ er_register_log_handler (er_log_handler_t handler)
   er_Handler = handler;
   return prev;
 }
+
+#if defined (SERVER_MODE)
+int
+er_set_session_error_log_file (const char *path)
+{
+  int result = NO_ERROR;
+  if (path != NULL && strlen (path) >= sizeof (er_Session_log_path) - sizeof (".bak"))
+    {
+      return ER_FAILED;
+    }
+  if (path != NULL && strcmp (path, er_Session_log_path) == 0 && !er_Session_log_failed)
+    {
+      return NO_ERROR;
+    }
+  if (er_Session_log_fh != NULL)
+    {
+      if (fclose (er_Session_log_fh) != 0)
+	{
+	  result = ER_FAILED;
+	}
+      er_Session_log_fh = NULL;
+    }
+  er_Session_log_failed = false;
+  if (path == NULL)
+    {
+      er_Session_log_path[0] = '\0';
+    }
+  else
+    {
+      memcpy (er_Session_log_path, path, strlen (path) + 1);
+    }
+  return result;
+}
+#endif
 
 /*
  * er_errid - Retrieve last error identifier set before

@@ -296,6 +296,9 @@ extern "C"
 				   ...);
   typedef void (*er_log_handler_t) (unsigned int);
   extern er_log_handler_t er_register_log_handler (er_log_handler_t f);
+#if defined (SERVER_MODE)
+  extern int er_set_session_error_log_file (const char *path);
+#endif
 
 #if !defined (WINDOWS) && defined (SERVER_MODE)
   extern void er_file_create_link_to_current_log_file (const char *er_file_path, const char *suffix);

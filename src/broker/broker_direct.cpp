@@ -835,6 +835,9 @@ namespace brd
     snprintf (config.slow_log_dir, sizeof (config.slow_log_dir), "%s%s%s",
 	      IS_ABS_PATH (shm->slow_log_dir) ? "" : get_cubrid_home (), IS_ABS_PATH (shm->slow_log_dir) ? "" : "/",
 	      shm->slow_log_dir);
+    snprintf (config.error_log_dir, sizeof (config.error_log_dir), "%s%s%s",
+	      IS_ABS_PATH (shm->err_log_dir) ? "" : get_cubrid_home (), IS_ABS_PATH (shm->err_log_dir) ? "" : "/",
+	      shm->err_log_dir);
   }
 
   /* Only the broker's control thread writes its live defaults. Building the
@@ -898,6 +901,9 @@ namespace brd
       case BROKER_RUNTIME_SLOW_LOG_DIR:
 	std::memcpy (next.slow_log_dir, requested.slow_log_dir, sizeof (next.slow_log_dir));
 	break;
+      case BROKER_RUNTIME_ERROR_LOG_DIR:
+	std::memcpy (next.error_log_dir, requested.error_log_dir, sizeof (next.error_log_dir));
+	break;
       default:
 	return false;
       }
@@ -911,8 +917,10 @@ namespace brd
 	|| next.trigger_action_flag > 1 || next.log_dir[0] == '\0' || next.slow_log_dir[0] == '\0'
 	|| memchr (next.log_dir, '\0', sizeof (next.log_dir)) == NULL
 	|| memchr (next.slow_log_dir, '\0', sizeof (next.slow_log_dir)) == NULL
+	|| next.error_log_dir[0] == '\0' || memchr (next.error_log_dir, '\0', sizeof (next.error_log_dir)) == NULL
 	|| (change.parameter == BROKER_RUNTIME_LOG_DIR && strlen (next.log_dir) >= sizeof (shm->log_dir))
-	|| (change.parameter == BROKER_RUNTIME_SLOW_LOG_DIR && strlen (next.slow_log_dir) >= sizeof (shm->slow_log_dir)))
+	|| (change.parameter == BROKER_RUNTIME_SLOW_LOG_DIR && strlen (next.slow_log_dir) >= sizeof (shm->slow_log_dir))
+	|| (change.parameter == BROKER_RUNTIME_ERROR_LOG_DIR && strlen (next.error_log_dir) >= sizeof (shm->err_log_dir)))
       {
 	return false;
       }
@@ -940,6 +948,10 @@ namespace brd
     if (change.parameter == BROKER_RUNTIME_SLOW_LOG_DIR)
       {
 	std::memcpy (shm->slow_log_dir, next.slow_log_dir, strlen (next.slow_log_dir) + 1);
+      }
+    if (change.parameter == BROKER_RUNTIME_ERROR_LOG_DIR)
+      {
+	std::memcpy (shm->err_log_dir, next.error_log_dir, strlen (next.error_log_dir) + 1);
       }
     runtime_config_snapshot (shm, change.config.runtime, m.session_timeout_overridden);
     return true;

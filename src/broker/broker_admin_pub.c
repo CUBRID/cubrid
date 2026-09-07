@@ -1882,7 +1882,8 @@ admin_runtime_option (const char *name)
     RUNTIME_OPTION (MAX_QUERY_TIMEOUT, query_timeout, RUNTIME_TIME_CEIL, 0, MAX_QUERY_TIMEOUT_LIMIT * 1000),
     RUNTIME_OPTION (TRIGGER_ACTION, trigger_action_flag, RUNTIME_BOOLEAN, 0, 1),
     RUNTIME_OPTION (LOG_DIR, log_dir, RUNTIME_PATH, 1, CONF_LOG_FILE_LEN - 1),
-    RUNTIME_OPTION (SLOW_LOG_DIR, slow_log_dir, RUNTIME_PATH, 1, CONF_LOG_FILE_LEN - 1)
+    RUNTIME_OPTION (SLOW_LOG_DIR, slow_log_dir, RUNTIME_PATH, 1, CONF_LOG_FILE_LEN - 1),
+    RUNTIME_OPTION (ERROR_LOG_DIR, error_log_dir, RUNTIME_PATH, 1, CONF_LOG_FILE_LEN - 1)
   };
 #undef RUNTIME_OPTION
   for (size_t i = 0; i < sizeof (options) / sizeof (options[0]); i++)
@@ -2028,6 +2029,9 @@ admin_mirror_runtime_change (T_BROKER_INFO *broker, const T_SHM_APPL_SERVER *shm
       break;
     case BROKER_RUNTIME_SLOW_LOG_DIR:
       strcpy (broker->slow_log_dir, shm->slow_log_dir);
+      break;
+    case BROKER_RUNTIME_ERROR_LOG_DIR:
+      strcpy (broker->err_log_dir, shm->err_log_dir);
       break;
     default:
       break;
