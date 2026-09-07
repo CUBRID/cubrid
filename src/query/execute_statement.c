@@ -48,9 +48,9 @@
 #include "db.h"
 #include "dbi.h"
 #include "dbtype.h"
-#if defined (SERVER_MODE)
+/* client_session_context.hpp self-guards its SERVER_MODE-only contents; it is
+ * included in all modes for CSC_CLIENT_STDOUT (stdout outside a folded server). */
 #include "client_session_context.hpp"
-#endif
 #include "parser.h"
 #include "porting.h"
 #include "schema_manager.h"
@@ -5024,10 +5024,10 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (trace_on)
 	    {
 	      gettimeofday (&trace_end, NULL);
-	      fprintf (stdout, "TRACE update statistics: %s done in %.1f ms\n", sm_get_ch_name (class_mop),
+	      fprintf (CSC_CLIENT_STDOUT, "TRACE update statistics: %s done in %.1f ms\n", sm_get_ch_name (class_mop),
 		       (trace_end.tv_sec - trace_start.tv_sec) * 1000.0
 		       + (trace_end.tv_usec - trace_start.tv_usec) / 1000.0);
-	      fflush (stdout);
+	      fflush (CSC_CLIENT_STDOUT);
 	    }
 	}
 
@@ -5035,16 +5035,16 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (n_hist_skipped > 0)
 	    {
-	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s"
+	      fprintf (CSC_CLIENT_STDOUT, "Statistics updated successfully: %d table%s, %d column%s"
 		       " (%d skipped: histogram type not supported).\n", n_tables,
 		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s", n_hist_skipped);
 	    }
 	  else
 	    {
-	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+	      fprintf (CSC_CLIENT_STDOUT, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
 		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
 	    }
-	  fflush (stdout);
+	  fflush (CSC_CLIENT_STDOUT);
 	}
 
       return error;

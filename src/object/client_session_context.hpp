@@ -91,6 +91,13 @@ class client_session_context
     /* plan-dump handle (xasl_generation.h) */
     plan_dump_context plan_dump;
 
+    /* csql.c server-rendered request: the stream where client-half messages
+     * that the fat client wrote to its own stdout ("Statistics updated
+     * successfully", TRACE lines) must land so the thin client sees them.
+     * NULL outside a rendered request — CSC_CLIENT_STDOUT then falls back to
+     * the process stdout. */
+    FILE *render_stdout = nullptr;
+
     /* object templates (object_template.h) */
     obt_context obt;
 
@@ -186,10 +193,24 @@ extern bool csc_in_method_dispatch (void);
 /* the session's domain-cache slot (object_domain.c owns the contents, B4-D9) */
 extern void **csc_tp_domains_slot (void);
 
+/* the rendered-stdout slot a csql server request installs (csql.c) */
+extern FILE **csc_render_stdout_slot (void);
+
 /* run the client half's session teardown under a temporary bracket and free
  * the context; called by the owning session_state when it is uninitialized */
 extern void csc_retire_and_delete (client_session_context *ctx);
 
 #endif /* SERVER_MODE */
+
+/* client-half message stream: the bracketed session's rendered stdout when a
+ * csql server request is running, the process stdout otherwise (and always in
+ * the fat client) */
+#include <stdio.h>
+#if defined (SERVER_MODE)
+extern FILE *csc_render_stdout (void);
+#define CSC_CLIENT_STDOUT (csc_render_stdout ())
+#else
+#define CSC_CLIENT_STDOUT stdout
+#endif
 
 #endif /* _CLIENT_SESSION_CONTEXT_HPP_ */

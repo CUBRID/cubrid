@@ -191,6 +191,23 @@ csc_plan_dump (void)
   return &csc_current ()->plan_dump;
 }
 
+FILE **
+csc_render_stdout_slot (void)
+{
+  return &csc_current ()->render_stdout;
+}
+
+/* no assert: message sites run on pure server threads too (createdb, utilities) */
+FILE *
+csc_render_stdout (void)
+{
+  if (tl_Csc_active != NULL && tl_Csc_active->render_stdout != NULL)
+    {
+      return tl_Csc_active->render_stdout;
+    }
+  return stdout;
+}
+
 obt_context *
 csc_obt (void)
 {

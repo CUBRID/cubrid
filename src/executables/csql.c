@@ -4507,6 +4507,12 @@ csql_server_request_begin (const CSQL_SERVER_EXEC_OPTS * opts, FILE * out_fp, FI
     {
       query_Plan_dump_fp = out_fp;
     }
+  /* client-half stdout messages (execute_statement.c "Statistics updated
+   * successfully", TRACE lines) belong to the rendered output as well */
+  if (csc_bracket_is_active ())
+    {
+      *csc_render_stdout_slot () = out_fp;
+    }
   csql_Output_fp = out_fp;
   csql_Error_fp = err_fp;
   csql_Input_fp = NULL;
@@ -4529,6 +4535,10 @@ csql_server_request_end (void)
   if (csc_bracket_is_active () && !query_Plan_dump_fp_open && query_Plan_dump_fp == csql_Output_fp)
     {
       query_Plan_dump_fp = NULL;
+    }
+  if (csc_bracket_is_active ())
+    {
+      *csc_render_stdout_slot () = NULL;
     }
   if (csql_Output_fp != NULL)
     {

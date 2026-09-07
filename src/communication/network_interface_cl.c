@@ -71,6 +71,7 @@
 #include "heap_file.h"
 #endif /* !CS_MODE */
 #include "system_parameter.h"
+#include "client_session_context.hpp"	/* CSC_CLIENT_STDOUT */
 #include "replication.h"
 #include "es.h"
 #include "db.h"
@@ -6431,9 +6432,9 @@ stats_update_all_statistics (int with_fullscan, int print_summary)
   if (error == NO_ERROR && print_summary && n_tables > 0)
     {
       /* WITH NO HISTOGRAM skips the histogram pass that normally prints this summary */
-      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+      fprintf (CSC_CLIENT_STDOUT, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
 	       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
-      fflush (stdout);
+      fflush (CSC_CLIENT_STDOUT);
     }
 
   return error;
@@ -6498,16 +6499,16 @@ update_histogram_for_all_classes (int random_seed)
     {
       if (n_hist_skipped > 0)
 	{
-	  fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s"
+	  fprintf (CSC_CLIENT_STDOUT, "Statistics updated successfully: %d table%s, %d column%s"
 		   " (%d skipped: histogram type not supported).\n", n_tables,
 		   (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s", n_hist_skipped);
 	}
       else
 	{
-	  fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+	  fprintf (CSC_CLIENT_STDOUT, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
 		   (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
 	}
-      fflush (stdout);
+      fflush (CSC_CLIENT_STDOUT);
     }
 
   return error;

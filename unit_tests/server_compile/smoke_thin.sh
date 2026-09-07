@@ -124,6 +124,15 @@ printf '%s\n' "$out" | grep -q "'YES'" || fail "reuseoid=yes ignored by folded c
 "$CSQL" -u dba "$DB" -c "DROP CLASS thin_ro1; DROP CLASS thin_ro2;" >/dev/null 2>&1 || fail "reuseoid case cleanup"
 echo "THIN: client-only session parameter steers the folded compile (both SET directions)"
 
+# 6b. client-half stdout messages reach the rendered output: the fat client
+#     printed "Statistics updated successfully" on its own stdout; the folded
+#     body must route it into the request capture (CSC_CLIENT_STDOUT)
+out="$("$CSQL" -u dba "$DB" -c "CREATE CLASS thin_st (a INT); UPDATE STATISTICS ON thin_st; DROP CLASS thin_st;" 2>"$WORK/err6b")" \
+  || fail "update statistics run ($(cat "$WORK/err6b"))"
+printf '%s\n' "$out" | grep -q "Statistics updated successfully: 1 table, 1 column" \
+  || fail "update statistics confirmation missing from thin output: $out"
+echo "THIN: client-half stdout message (Statistics updated) rendered"
+
 # 7. SA-mode fat flavor untouched (server must be down for -S)
 cubrid server stop "$DB" >/dev/null 2>&1 || true
 sleep 1
