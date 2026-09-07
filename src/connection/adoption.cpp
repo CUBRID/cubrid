@@ -791,9 +791,16 @@ namespace cubconn
     {
       broker_session_change_reply reply = { -1, 0 };
       const broker_session_config &config = change.config;
-      if (config.mask != 0 && (config.mask & ~BROKER_SESSION_LOG_MASK) == 0
+      if (config.mask != 0 && (config.mask & ~BROKER_SESSION_CONFIG_MASK) == 0
 	  && (! (config.mask & BROKER_SESSION_SQL_LOG) || (config.sql_log >= 0 && config.sql_log <= 4))
-	  && (! (config.mask & BROKER_SESSION_SLOW_LOG) || (config.slow_log >= 0 && config.slow_log <= 1)))
+	  && (! (config.mask & BROKER_SESSION_SLOW_LOG) || (config.slow_log >= 0 && config.slow_log <= 1))
+	  && (! (config.mask & BROKER_SESSION_RUNTIME)
+	      || (change.session_id == 0 && config.runtime.sql_log_max_size > 0
+		  && config.runtime.max_prepared_stmt_count > 0 && config.runtime.session_timeout >= 0
+		  && config.runtime.long_query_time >= 0 && config.runtime.long_transaction_time >= 0
+		  && config.runtime.trigger_action_flag >= 0 && config.runtime.trigger_action_flag <= 1
+		  && memchr (config.runtime.log_dir, '\0', sizeof (config.runtime.log_dir)) != NULL
+		  && memchr (config.runtime.slow_log_dir, '\0', sizeof (config.runtime.slow_log_dir)) != NULL)))
 	{
 	  std::lock_guard<std::mutex> guard (m.registry_mutex);
 	  for (auto &pair : m.registry)
@@ -811,6 +818,10 @@ namespace cubconn
 	      if (config.mask & BROKER_SESSION_SLOW_LOG)
 		{
 		  entry.config.slow_log = config.slow_log;
+		}
+	      if (config.mask & BROKER_SESSION_RUNTIME)
+		{
+		  entry.config.runtime = config.runtime;
 		}
 	      entry.config.mask |= config.mask;
 	      reply.affected++;

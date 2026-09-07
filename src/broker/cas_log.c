@@ -122,7 +122,18 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
 
   assert (filename_buf != NULL);
 
+#if defined (SERVER_MODE)
+  const char *session_dir = fid == FID_SQL_LOG_DIR ? cas_session_cfg.log_dir : cas_session_cfg.slow_log_dir;
+  int dir_size = snprintf (dirname, sizeof (dirname), "%s%s", session_dir,
+			  session_dir[0] != '\0' && session_dir[strlen (session_dir) - 1] == '/' ? "" : "/");
+  if (dir_size < 0 || (size_t) dir_size >= sizeof (dirname))
+    {
+      filename_buf[0] = '\0';
+      return NULL;
+    }
+#else
   get_cubrid_file (fid, dirname, BROKER_PATH_MAX);
+#endif
   switch (fid)
     {
     case FID_SQL_LOG_DIR:

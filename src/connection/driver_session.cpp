@@ -60,6 +60,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "transaction_cl.h"	// tm_Tran_index
+#include "trigger_manager.h"
 
 /* page_buffer.h (via the engine headers above) and cas_common.h both define
  * FREE; neither macro is used in this TU */
@@ -768,6 +769,7 @@ namespace cubconn
       /* the new-connection defaults capture ux_database_connect performs
        * (cas_execute.c:493): isolation/lock-timeout baselines + sys params */
       ux_get_default_setting ();
+      (void) tr_set_execution_state (cas_session_cfg.trigger_action_flag != 0);
 
       /* The broker owns the shared, append-only rule slots. Each adopted
        * session owns its mapping, normalization buffer and failure/marker

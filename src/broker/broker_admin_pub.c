@@ -37,6 +37,8 @@
 #include <time.h>
 #include <errno.h>
 #include <assert.h>
+#include <limits.h>
+#include <stddef.h>
 
 #if defined(WINDOWS)
 #include <direct.h>
@@ -1845,6 +1847,193 @@ admin_session_transfer (int fd, void *buffer, size_t length, bool sending)
   return 0;
 }
 
+enum runtime_value_kind
+{
+  RUNTIME_BOOLEAN, RUNTIME_INTEGER, RUNTIME_SIZE, RUNTIME_TIME, RUNTIME_TIME_CEIL, RUNTIME_SECONDS, RUNTIME_PATH
+};
+
+struct runtime_option
+{
+  const char *name;
+  uint32_t parameter;
+  size_t offset;
+  enum runtime_value_kind kind;
+  int minimum;
+  int maximum;
+};
+
+static const struct runtime_option *
+admin_runtime_option (const char *name)
+{
+#define RUNTIME_OPTION(name, field, kind, minimum, maximum) \
+  { #name, BROKER_RUNTIME_##name, offsetof (struct broker_runtime_config, field), kind, minimum, maximum }
+  static const struct runtime_option options[] = {
+    RUNTIME_OPTION (SQL_LOG_MAX_SIZE, sql_log_max_size, RUNTIME_SIZE, 1, MAX_SQL_LOG_MAX_SIZE),
+    RUNTIME_OPTION (ACCESS_LOG, access_log, RUNTIME_BOOLEAN, 0, 1),
+    RUNTIME_OPTION (ACCESS_LOG_MAX_SIZE, access_log_max_size, RUNTIME_SIZE, 0, MAX_ACCESS_LOG_MAX_SIZE),
+    RUNTIME_OPTION (LONG_QUERY_TIME, long_query_time, RUNTIME_TIME, 0, LONG_QUERY_TIME_LIMIT * 1000),
+    RUNTIME_OPTION (LONG_TRANSACTION_TIME, long_transaction_time, RUNTIME_TIME, 0, LONG_TRANSACTION_TIME_LIMIT * 1000),
+    RUNTIME_OPTION (JDBC_CACHE, jdbc_cache, RUNTIME_BOOLEAN, 0, 1),
+    RUNTIME_OPTION (JDBC_CACHE_HINT_ONLY, jdbc_cache_only_hint, RUNTIME_BOOLEAN, 0, 1),
+    RUNTIME_OPTION (JDBC_CACHE_LIFE_TIME, jdbc_cache_life_time, RUNTIME_INTEGER, 0, INT_MAX),
+    RUNTIME_OPTION (STATEMENT_POOLING, statement_pooling, RUNTIME_BOOLEAN, 0, 1),
+    RUNTIME_OPTION (MAX_PREPARED_STMT_COUNT, max_prepared_stmt_count, RUNTIME_INTEGER, 1, INT_MAX),
+    RUNTIME_OPTION (SESSION_TIMEOUT, session_timeout, RUNTIME_SECONDS, 0, INT_MAX),
+    RUNTIME_OPTION (MAX_QUERY_TIMEOUT, query_timeout, RUNTIME_TIME_CEIL, 0, MAX_QUERY_TIMEOUT_LIMIT * 1000),
+    RUNTIME_OPTION (TRIGGER_ACTION, trigger_action_flag, RUNTIME_BOOLEAN, 0, 1),
+    RUNTIME_OPTION (LOG_DIR, log_dir, RUNTIME_PATH, 1, CONF_LOG_FILE_LEN - 1),
+    RUNTIME_OPTION (SLOW_LOG_DIR, slow_log_dir, RUNTIME_PATH, 1, CONF_LOG_FILE_LEN - 1)
+  };
+#undef RUNTIME_OPTION
+  for (size_t i = 0; i < sizeof (options) / sizeof (options[0]); i++)
+    {
+      if (strcasecmp (name, options[i].name) == 0)
+	{
+	  return &options[i];
+	}
+    }
+  return NULL;
+}
+
+static int
+admin_parse_runtime_change (const char *name, const char *value, struct broker_session_change *change)
+{
+  const struct runtime_option *option = admin_runtime_option (name);
+  double number = -1;
+  int integer;
+  if (option == NULL)
+    {
+      return -1;
+    }
+  change->config.mask = BROKER_SESSION_RUNTIME;
+  change->parameter = option->parameter;
+  char *field = (char *) &change->config.runtime + option->offset;
+  if (option->kind == RUNTIME_PATH)
+    {
+      size_t length = strlen (value);
+      if (length < (size_t) option->minimum || length > (size_t) option->maximum)
+	{
+	  goto invalid_value;
+	}
+      ut_cd_root_dir ();
+      int result = broker_create_dir (value);
+      struct stat status;
+      bool directory_exists = result == 0 && stat (value, &status) == 0 && S_ISDIR (status.st_mode);
+      ut_cd_work_dir ();
+      if (!directory_exists)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "cannot access the path : %s", value);
+	  return -1;
+	}
+      memcpy (field, value, length + 1);
+      return 0;
+    }
+  switch (option->kind)
+    {
+    case RUNTIME_BOOLEAN:
+      number = conf_get_value_table_on_off (value);
+      break;
+    case RUNTIME_SIZE:
+      number = ut_size_string_to_kbyte (value, "K");
+      break;
+    case RUNTIME_TIME:
+    case RUNTIME_TIME_CEIL:
+      number = ut_time_string_to_sec (value, "sec") * 1000.0;
+      if (option->kind == RUNTIME_TIME_CEIL)
+	{
+	  number = ceil (number);
+	}
+      break;
+    case RUNTIME_SECONDS:
+      number = ut_time_string_to_sec (value, "sec");
+      break;
+    case RUNTIME_INTEGER:
+      if (parse_int (&integer, value, 10) != 0)
+	{
+	  goto invalid_value;
+	}
+      number = integer;
+      break;
+    default:
+      goto invalid_value;
+    }
+  if (!isfinite (number) || number < option->minimum || number > option->maximum)
+    {
+      goto invalid_value;
+    }
+  {
+    int32_t parsed = (int32_t) number;
+    memcpy (field, &parsed, sizeof (parsed));
+  }
+  return 0;
+
+invalid_value:
+  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "invalid value : %s", value);
+  return -1;
+}
+
+static void
+admin_mirror_runtime_change (T_BROKER_INFO *broker, const T_SHM_APPL_SERVER *shm, const char *name)
+{
+  const struct runtime_option *option = admin_runtime_option (name);
+  if (option == NULL)
+    {
+      return;
+    }
+  /* Mirror only this field; another admin may concurrently change a
+   * different broker-wide setting. The broker owns the live defaults. */
+  switch (option->parameter)
+    {
+    case BROKER_RUNTIME_SQL_LOG_MAX_SIZE:
+      broker->sql_log_max_size = shm->sql_log_max_size;
+      break;
+    case BROKER_RUNTIME_ACCESS_LOG:
+      broker->access_log = shm->access_log;
+      break;
+    case BROKER_RUNTIME_ACCESS_LOG_MAX_SIZE:
+      broker->access_log_max_size = shm->access_log_max_size;
+      break;
+    case BROKER_RUNTIME_LONG_QUERY_TIME:
+      broker->long_query_time = shm->long_query_time;
+      break;
+    case BROKER_RUNTIME_LONG_TRANSACTION_TIME:
+      broker->long_transaction_time = shm->long_transaction_time;
+      break;
+    case BROKER_RUNTIME_JDBC_CACHE:
+      broker->jdbc_cache = shm->jdbc_cache;
+      break;
+    case BROKER_RUNTIME_JDBC_CACHE_HINT_ONLY:
+      broker->jdbc_cache_only_hint = shm->jdbc_cache_only_hint;
+      break;
+    case BROKER_RUNTIME_JDBC_CACHE_LIFE_TIME:
+      broker->jdbc_cache_life_time = shm->jdbc_cache_life_time;
+      break;
+    case BROKER_RUNTIME_STATEMENT_POOLING:
+      broker->statement_pooling = shm->statement_pooling;
+      break;
+    case BROKER_RUNTIME_MAX_PREPARED_STMT_COUNT:
+      broker->max_prepared_stmt_count = shm->max_prepared_stmt_count;
+      break;
+    case BROKER_RUNTIME_SESSION_TIMEOUT:
+      broker->session_timeout = shm->session_timeout;
+      break;
+    case BROKER_RUNTIME_MAX_QUERY_TIMEOUT:
+      broker->query_timeout = shm->query_timeout;
+      break;
+    case BROKER_RUNTIME_TRIGGER_ACTION:
+      broker->trigger_action_flag = shm->trigger_action_flag;
+      break;
+    case BROKER_RUNTIME_LOG_DIR:
+      strcpy (broker->log_dir, shm->log_dir);
+      break;
+    case BROKER_RUNTIME_SLOW_LOG_DIR:
+      strcpy (broker->slow_log_dir, shm->slow_log_dir);
+      break;
+    default:
+      break;
+    }
+}
+
 static int
 admin_session_change (int shm_key, const char *selector, const char *name, const char *value)
 {
@@ -1860,7 +2049,7 @@ admin_session_change (int shm_key, const char *selector, const char *name, const
 	  return -1;
 	}
     }
-  else
+  else if (strcasecmp (name, "SLOW_LOG") == 0)
     {
       change.config.mask = BROKER_SESSION_SLOW_LOG;
       change.config.slow_log = conf_get_value_table_on_off (value);
@@ -1869,6 +2058,10 @@ admin_session_change (int shm_key, const char *selector, const char *name, const
 	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "invalid value : %s", value);
 	  return -1;
 	}
+    }
+  else if (admin_parse_runtime_change (name, value, &change) != 0)
+    {
+      return -1;
     }
   if (selector != NULL)
     {
@@ -2031,8 +2224,15 @@ admin_conf_change_session (int master_shm_id, const char *br_name, const char *c
 	  goto set_conf_error;
 	}
 #if !defined (WINDOWS)
-      if (strcasecmp (conf_name, "SQL_LOG") == 0 || strcasecmp (conf_name, "SLOW_LOG") == 0)
+
+      if (strcasecmp (conf_name, "SQL_LOG") == 0 || strcasecmp (conf_name, "SLOW_LOG") == 0
+	  || admin_runtime_option (conf_name) != NULL)
 	{
+	  if (session_selector != NULL && admin_runtime_option (conf_name) != NULL)
+	    {
+	      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "%s is broker-wide; omit the session selector", conf_name);
+	      goto set_conf_error;
+	    }
 	  int result = admin_session_change (br_info_p->appl_server_shm_id, session_selector, conf_name, conf_value);
 	  /* Broker owns the live default; mirror it for configuration display,
 	   * including a partial delivery.  No file changes survive a restart. */
@@ -2040,13 +2240,15 @@ admin_conf_change_session (int master_shm_id, const char *br_name, const char *c
 	    {
 	      br_info_p->sql_log_mode = shm_as_p->sql_log_mode;
 	      br_info_p->slow_log_mode = shm_as_p->slow_log_mode;
+	      admin_mirror_runtime_change (br_info_p, shm_as_p, conf_name);
 	    }
 	  uw_shm_detach (shm_as_p);
 	  uw_shm_detach (shm_br);
 	  return result;
 	}
 #endif
-      if (session_selector != NULL || strcasecmp (conf_name, "ACCESS_MODE") != 0)
+      if (session_selector != NULL
+	  || (strcasecmp (conf_name, "ACCESS_MODE") != 0 && strcasecmp (conf_name, "CCI_PCONNECT") != 0))
 	{
 	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Cannot change %s on a direct-handoff broker", conf_name);
 	  goto set_conf_error;

@@ -64,6 +64,7 @@
 #include "cas_sql_log2.h"
 #include "cas_ssl.h"
 #include "system_parameter.h"
+#include "trigger_manager.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -203,6 +204,9 @@ cas_server_refresh_session_config (T_APPL_SERVER_INFO *slot)
   cfg->session_timeout = prm_get_integer_value (PRM_ID_CAS_SESSION_TIMEOUT);
   cfg->max_string_length = prm_get_integer_value (PRM_ID_CAS_MAX_STRING_LENGTH);
   cfg->query_timeout = prm_get_integer_value (PRM_ID_CAS_MAX_QUERY_TIMEOUT);
+  cfg->trigger_action_flag = ON;
+  get_cubrid_file (FID_SQL_LOG_DIR, cfg->log_dir, sizeof (cfg->log_dir));
+  get_cubrid_file (FID_SLOW_LOG_DIR, cfg->slow_log_dir, sizeof (cfg->slow_log_dir));
 }
 
 /* Only the owning session thread writes its CAS snapshot and log handles.
@@ -215,6 +219,26 @@ cas_server_apply_pending_config (bool reopen_logs)
   if (as_info == NULL || !cubconn::adoption::registry_take_session_config (config))
     {
       return;
+    }
+  if (config.mask & BROKER_SESSION_RUNTIME)
+    {
+      if (reopen_logs && std::strcmp (cas_session_cfg.log_dir, config.runtime.log_dir) != 0)
+	{
+	  /* Preserve the existing directory-change boundary: finish the
+	   * current transaction's log before reopening at its new path. */
+	  as_info->cas_log_reset = CAS_LOG_RESET_REOPEN;
+	}
+      if (reopen_logs && std::strcmp (cas_session_cfg.slow_log_dir, config.runtime.slow_log_dir) != 0)
+	{
+	  as_info->cas_slow_log_reset = CAS_LOG_RESET_REOPEN;
+	}
+      if (cas_session_cfg.trigger_action_flag != config.runtime.trigger_action_flag)
+	{
+	  (void) tr_set_execution_state (config.runtime.trigger_action_flag != 0);
+	}
+      cas_session_cfg = config.runtime;
+      as_info->cur_statement_pooling = (char) cas_session_cfg.statement_pooling;
+      as_info->cci_default_autocommit = (char) cas_session_cfg.cci_default_autocommit;
     }
   if ((config.mask & BROKER_SESSION_SQL_LOG) && as_info->cur_sql_log_mode != config.sql_log)
     {

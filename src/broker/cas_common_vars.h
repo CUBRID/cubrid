@@ -26,6 +26,7 @@
 #ident "$Id$"
 
 #include "broker_shm.h"
+#include "broker_session_control.h"
 #include "cas_protocol.h"
 #include "cas_error.h"
 
@@ -89,24 +90,7 @@ extern T_SHM_APPL_SERVER *shm_appl;
  * its own copy (taken at session begin from the system parameters), so no
  * session ever writes a field another session is reading (PR 7837 review).
  * The standalone CAS/CGW builds keep reading the real shm. */
-typedef struct t_cas_session_cfg T_CAS_SESSION_CFG;
-struct t_cas_session_cfg
-{
-  int sql_log_max_size;
-  char access_log;
-  int access_log_max_size;
-  int long_query_time;		/* msec */
-  int long_transaction_time;	/* msec */
-  char jdbc_cache;
-  char jdbc_cache_only_hint;
-  int jdbc_cache_life_time;
-  char statement_pooling;
-  char cci_default_autocommit;
-  int max_prepared_stmt_count;
-  int session_timeout;
-  int query_timeout;
-  int max_string_length;
-};
+typedef struct broker_runtime_config T_CAS_SESSION_CFG;
 extern CAS_TLS T_CAS_SESSION_CFG cas_session_cfg;
 
 #if defined(SERVER_MODE)

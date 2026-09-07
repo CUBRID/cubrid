@@ -808,14 +808,146 @@ namespace brd
     delete pc;
   }
 
+  static void
+  runtime_config_snapshot (const T_SHM_APPL_SERVER *shm, broker_runtime_config &config)
+  {
+    config = {};
+    config.sql_log_max_size = shm->sql_log_max_size;
+    config.access_log = shm->access_log;
+    config.access_log_max_size = shm->access_log_max_size;
+    config.long_query_time = shm->long_query_time;
+    config.long_transaction_time = shm->long_transaction_time;
+    config.jdbc_cache = shm->jdbc_cache;
+    config.jdbc_cache_only_hint = shm->jdbc_cache_only_hint;
+    config.jdbc_cache_life_time = shm->jdbc_cache_life_time;
+    config.statement_pooling = shm->statement_pooling;
+    config.cci_default_autocommit = shm->cci_default_autocommit;
+    config.max_prepared_stmt_count = shm->max_prepared_stmt_count;
+    config.session_timeout = shm->session_timeout;
+    config.query_timeout = shm->query_timeout;
+    config.max_string_length = shm->max_string_length;
+    config.trigger_action_flag = shm->trigger_action_flag;
+    snprintf (config.log_dir, sizeof (config.log_dir), "%s%s%s",
+	      IS_ABS_PATH (shm->log_dir) ? "" : get_cubrid_home (), IS_ABS_PATH (shm->log_dir) ? "" : "/",
+	      shm->log_dir);
+    snprintf (config.slow_log_dir, sizeof (config.slow_log_dir), "%s%s%s",
+	      IS_ABS_PATH (shm->slow_log_dir) ? "" : get_cubrid_home (), IS_ABS_PATH (shm->slow_log_dir) ? "" : "/",
+	      shm->slow_log_dir);
+  }
+
+  /* Only the broker's control thread writes its live defaults. Building the
+   * complete snapshot here, under config_mutex, prevents concurrent admin
+   * changes to different settings from overwriting each other's values. */
+  static bool
+  change_runtime_config (T_SHM_APPL_SERVER *shm, broker_session_change &change)
+  {
+    broker_runtime_config next;
+    runtime_config_snapshot (shm, next);
+    const broker_runtime_config &requested = change.config.runtime;
+    switch (change.parameter)
+      {
+      case BROKER_RUNTIME_SQL_LOG_MAX_SIZE:
+	next.sql_log_max_size = requested.sql_log_max_size;
+	break;
+      case BROKER_RUNTIME_ACCESS_LOG:
+	next.access_log = requested.access_log;
+	break;
+      case BROKER_RUNTIME_ACCESS_LOG_MAX_SIZE:
+	next.access_log_max_size = requested.access_log_max_size;
+	break;
+      case BROKER_RUNTIME_LONG_QUERY_TIME:
+	next.long_query_time = requested.long_query_time;
+	break;
+      case BROKER_RUNTIME_LONG_TRANSACTION_TIME:
+	next.long_transaction_time = requested.long_transaction_time;
+	break;
+      case BROKER_RUNTIME_JDBC_CACHE:
+	next.jdbc_cache = requested.jdbc_cache;
+	break;
+      case BROKER_RUNTIME_JDBC_CACHE_HINT_ONLY:
+	next.jdbc_cache_only_hint = requested.jdbc_cache_only_hint;
+	break;
+      case BROKER_RUNTIME_JDBC_CACHE_LIFE_TIME:
+	next.jdbc_cache_life_time = requested.jdbc_cache_life_time;
+	break;
+      case BROKER_RUNTIME_STATEMENT_POOLING:
+	next.statement_pooling = requested.statement_pooling;
+	break;
+      case BROKER_RUNTIME_MAX_PREPARED_STMT_COUNT:
+	if (requested.max_prepared_stmt_count < next.max_prepared_stmt_count)
+	  {
+	    return false; /* the existing live setting may only increase */
+	  }
+	next.max_prepared_stmt_count = requested.max_prepared_stmt_count;
+	break;
+      case BROKER_RUNTIME_SESSION_TIMEOUT:
+	next.session_timeout = requested.session_timeout;
+	break;
+      case BROKER_RUNTIME_MAX_QUERY_TIMEOUT:
+	next.query_timeout = requested.query_timeout;
+	break;
+      case BROKER_RUNTIME_TRIGGER_ACTION:
+	next.trigger_action_flag = requested.trigger_action_flag;
+	break;
+      case BROKER_RUNTIME_LOG_DIR:
+	std::memcpy (next.log_dir, requested.log_dir, sizeof (next.log_dir));
+	break;
+      case BROKER_RUNTIME_SLOW_LOG_DIR:
+	std::memcpy (next.slow_log_dir, requested.slow_log_dir, sizeof (next.slow_log_dir));
+	break;
+      default:
+	return false;
+      }
+    if (next.sql_log_max_size <= 0 || next.sql_log_max_size > MAX_SQL_LOG_MAX_SIZE
+	|| next.access_log < 0 || next.access_log > 1 || next.access_log_max_size < 0
+	|| next.access_log_max_size > MAX_ACCESS_LOG_MAX_SIZE || next.long_query_time < 0
+	|| next.long_transaction_time < 0 || next.jdbc_cache < 0 || next.jdbc_cache > 1
+	|| next.jdbc_cache_only_hint < 0 || next.jdbc_cache_only_hint > 1 || next.jdbc_cache_life_time < 0
+	|| next.statement_pooling < 0 || next.statement_pooling > 1 || next.max_prepared_stmt_count < 1
+	|| next.session_timeout < 0 || next.query_timeout < 0 || next.trigger_action_flag < 0
+	|| next.trigger_action_flag > 1 || next.log_dir[0] == '\0' || next.slow_log_dir[0] == '\0'
+	|| memchr (next.log_dir, '\0', sizeof (next.log_dir)) == NULL
+	|| memchr (next.slow_log_dir, '\0', sizeof (next.slow_log_dir)) == NULL
+	|| (change.parameter == BROKER_RUNTIME_LOG_DIR && strlen (next.log_dir) >= sizeof (shm->log_dir))
+	|| (change.parameter == BROKER_RUNTIME_SLOW_LOG_DIR && strlen (next.slow_log_dir) >= sizeof (shm->slow_log_dir)))
+      {
+	return false;
+      }
+    shm->sql_log_max_size = next.sql_log_max_size;
+    shm->access_log = (char) next.access_log;
+    shm->access_log_max_size = next.access_log_max_size;
+    shm->long_query_time = next.long_query_time;
+    shm->long_transaction_time = next.long_transaction_time;
+    shm->jdbc_cache = (char) next.jdbc_cache;
+    shm->jdbc_cache_only_hint = (char) next.jdbc_cache_only_hint;
+    shm->jdbc_cache_life_time = next.jdbc_cache_life_time;
+    shm->statement_pooling = (char) next.statement_pooling;
+    shm->max_prepared_stmt_count = next.max_prepared_stmt_count;
+    shm->session_timeout = next.session_timeout;
+    shm->query_timeout = next.query_timeout;
+    shm->trigger_action_flag = (char) next.trigger_action_flag;
+    if (change.parameter == BROKER_RUNTIME_LOG_DIR)
+      {
+	std::memcpy (shm->log_dir, next.log_dir, strlen (next.log_dir) + 1);
+      }
+    if (change.parameter == BROKER_RUNTIME_SLOW_LOG_DIR)
+      {
+	std::memcpy (shm->slow_log_dir, next.slow_log_dir, strlen (next.slow_log_dir) + 1);
+      }
+    runtime_config_snapshot (shm, change.config.runtime);
+    return true;
+  }
+
   static broker_session_change_reply
   change_session_config (manager &m, const broker_session_change &change)
   {
     broker_session_change_reply result = { -1, 0 };
     const broker_session_config &config = change.config;
-    if (config.mask == 0 || (config.mask & ~BROKER_SESSION_LOG_MASK) != 0
+    if (config.mask == 0 || (config.mask & ~BROKER_SESSION_CONFIG_MASK) != 0
 	|| ((config.mask & BROKER_SESSION_SQL_LOG) && (config.sql_log < 0 || config.sql_log > SQL_LOG_MODE_ALL))
 	|| ((config.mask & BROKER_SESSION_SLOW_LOG) && (config.slow_log < 0 || config.slow_log > 1))
+	|| ((config.mask & BROKER_SESSION_RUNTIME) && (change.session_id != 0
+						    || config.mask != BROKER_SESSION_RUNTIME))
 	|| (change.session_id != 0 && (change.database[0] == '\0'
 				       || memchr (change.database, '\0', sizeof (change.database)) == NULL)))
       {
@@ -823,6 +955,11 @@ namespace brd
       }
 
     std::lock_guard<std::mutex> config_guard (m.config_mutex);
+    broker_session_change forwarded = change;
+    if ((config.mask & BROKER_SESSION_RUNTIME) && !change_runtime_config (m.shm, forwarded))
+      {
+	return result;
+      }
     std::vector<std::shared_ptr<channel>> targets;
     bool incomplete = false;
     if (change.session_id != 0)
@@ -894,7 +1031,7 @@ namespace brd
       {
 	adopt::msg_header header = {};
 	broker_session_change_reply reply = {};
-	if (channel_request (*ch, adopt::msg_op::SESSION_CONFIG, &change, sizeof (change), NULL, 0, -1,
+	if (channel_request (*ch, adopt::msg_op::SESSION_CONFIG, &forwarded, sizeof (forwarded), NULL, 0, -1,
 			     &header, &reply, sizeof (reply)) != 0
 	    || header.op != (std::uint32_t) adopt::msg_op::SESSION_CONFIG_REPLY || header.length != sizeof (reply)
 	    || reply.result != 0)
@@ -1293,9 +1430,10 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
       body.client_port = job->port;
       body.access_mode = (std::uint8_t) m->shm->access_mode;
       body.replica_only = (std::uint8_t) (m->shm->replica_only_flag ? 1 : 0);
-      body.config.mask = BROKER_SESSION_LOG_MASK;
+      body.config.mask = BROKER_SESSION_CONFIG_MASK;
       body.config.sql_log = m->shm->sql_log_mode;
       body.config.slow_log = m->shm->slow_log_mode;
+      runtime_config_snapshot (m->shm, body.config.runtime);
       body.query_replace_shm_key = m->shm->query_replace_shm_key;
       body.broker_shm_id = m->shm_key;
       body.slot_idx = 0;	/* per-slot identity retired with the CAS pool */

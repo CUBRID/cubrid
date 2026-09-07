@@ -47,7 +47,7 @@ namespace cubconn
     /* ------------------------------------------------------------------ */
 
     static const std::uint32_t PROTO_MAGIC = 0x41444F50;	/* "ADOP" */
-    static const std::uint32_t PROTO_VERSION = 3;
+    static const std::uint32_t PROTO_VERSION = 4;
 
     enum class msg_op : std::uint32_t
     {
