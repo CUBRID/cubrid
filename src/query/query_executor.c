@@ -12872,6 +12872,16 @@ qexec_eval_default_expr_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * func_pre
       error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, attr->domain);
     }
 
+  /* a residual DEFAULT that evaluated to NULL for an omitted NOT NULL column is
+   * not covered by cons_pred (built from the explicitly-listed columns only), so
+   * enforce the NOT NULL constraint here.  Only an evaluated NULL can reach this
+   * point: a constant NULL DEFAULT on a NOT NULL column is rejected at DDL. */
+  if (error == NO_ERROR && attr->is_notnull && DB_IS_NULL (result))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
+      error = ER_NULL_CONSTRAINT_VIOLATION;
+    }
+
   return error;
 }
 
