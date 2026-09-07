@@ -47,7 +47,7 @@ namespace cubconn
     /* ------------------------------------------------------------------ */
 
     static const std::uint32_t PROTO_MAGIC = 0x41444F50;	/* "ADOP" */
-    static const std::uint32_t PROTO_VERSION = 2;
+    static const std::uint32_t PROTO_VERSION = 3;
 
     enum class msg_op : std::uint32_t
     {
@@ -115,6 +115,8 @@ namespace cubconn
       char db_info[DRIVER_DB_INFO_SIZE];	/* the peeked db_info packet */
       char pad[2];
       broker_session_config config;
+      std::int32_t query_replace_shm_key;
+      std::int32_t broker_shm_id;
     };
 
     struct token_body
@@ -203,6 +205,9 @@ namespace cubconn
       long long num_errors;
       long long num_long_queries;
       long long num_long_transactions;
+      long long num_query_replace_prepare;
+      long long num_query_replace_execute;
+      long long num_query_replace_fallback;
       char last_activity[256];
       char client_type[24];
     };

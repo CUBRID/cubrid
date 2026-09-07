@@ -716,7 +716,10 @@ metadata_of_session_status (void)
     {"Num_long_queries", "bigint"},
     {"Num_long_transactions", "bigint"},
     {"Last_activity", "varchar(256)"},
-    {"Client_type", "varchar(24)"}
+    {"Client_type", "varchar(24)"},
+    {"Num_query_replace_prepare", "bigint"},
+    {"Num_query_replace_execute", "bigint"},
+    {"Num_query_replace_fallback", "bigint"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {

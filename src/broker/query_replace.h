@@ -141,6 +141,7 @@ extern "C"
 				 const char *reason);
 
   extern int qr_init (T_SHM_APPL_SERVER * shm_as_p);
+  extern int qr_init_for_broker (int shm_key, int owner_shm_id, const char *broker_name);
   extern void qr_final ();
   extern void qr_load_dbuser_has_rules (const char *db_name, const char *user_name);
   extern int qr_lookup (const char *sql_stmt, int sql_len);

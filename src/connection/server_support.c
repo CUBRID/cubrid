@@ -292,7 +292,7 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
 int
 css_session_status_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
-  const int SESSION_STATUS_COLUMN_COUNT = 19;
+  const int SESSION_STATUS_COLUMN_COUNT = 22;
   int error = NO_ERROR;
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
   cubconn::adoption::session_stat_row * rows = NULL;
@@ -363,6 +363,9 @@ css_session_status_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE 
 	{
 	  error = db_make_string_copy (&vals[idx++], r.client_type);
 	}
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_query_replace_prepare);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_query_replace_execute);
+      (void) db_make_bigint (&vals[idx++], (DB_BIGINT) r.num_query_replace_fallback);
     }
 
   delete[]rows;

@@ -749,10 +749,8 @@ set(CAS_SPEAKER_SOURCES
   ${BROKER_DIR}/cas_conn_helpers.c
   ${BROKER_DIR}/cas_function.c
   ${BROKER_DIR}/cas_execute.c
-  # CBRD-26896 query replace: cas_function.c/cas_execute.c call qr_*().  In the
-  # merged server the rule segment is never attached (qr_init is cub_cas-only,
-  # cas_Shm_stub keeps query_replace_shm_key at 0), so every qr_* entry point
-  # short-circuits and the feature is inert here (wf207 D5).
+  # The adopted session attaches its broker's query-replace rules. Lookup
+  # scratch and failure/marker caches are thread-local in SERVER_MODE.
   ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/cas_common_execute.c
   ${BROKER_DIR}/cas_common_function.c

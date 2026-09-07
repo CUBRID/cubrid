@@ -328,6 +328,9 @@ namespace cubconn
 	  r.num_errors = e.stats_slot->num_error_queries;
 	  r.num_long_queries = e.stats_slot->num_long_queries;
 	  r.num_long_transactions = e.stats_slot->num_long_transactions;
+	  r.num_query_replace_prepare = e.stats_slot->num_query_replace_prepare;
+	  r.num_query_replace_execute = e.stats_slot->num_query_replace_execute;
+	  r.num_query_replace_fallback = e.stats_slot->num_query_replace_fallback;
 	  std::strncpy (r.last_activity, e.stats_slot->log_msg, sizeof (r.last_activity) - 1);
 	  r.last_activity[sizeof (r.last_activity) - 1] = '\0';
 	}
@@ -529,6 +532,8 @@ namespace cubconn
       params.client_ip = body.client_ip;
       params.client_port = body.client_port;
       params.client_type = client_type;
+      params.query_replace_shm_key = body.query_replace_shm_key;
+      params.broker_shm_id = body.broker_shm_id;
       std::memcpy (params.broker_info, body.broker_info, sizeof (params.broker_info));
       std::memcpy (params.driver_header, body.driver_header, sizeof (params.driver_header));
       std::memcpy (params.db_info, body.db_info, sizeof (params.db_info));

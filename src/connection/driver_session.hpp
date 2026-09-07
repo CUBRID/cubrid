@@ -96,6 +96,8 @@ namespace cubconn
       std::uint32_t client_ip;	/* network byte order */
       std::uint16_t client_port;
       int client_type;		/* synthesized DB_CLIENT_TYPE (#121 D7) */
+      int query_replace_shm_key = 0;
+      int broker_shm_id = 0;
       char broker_info[DRIVER_BROKER_INFO_SIZE];
       char driver_header[DRIVER_HEADER_SIZE];
       char db_info[DRIVER_DB_INFO_SIZE];

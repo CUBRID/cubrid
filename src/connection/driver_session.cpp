@@ -74,6 +74,7 @@
 #include "cas_execute.h"	// ux_get_default_setting
 #include "cas_handle.h"		// hm_srv_handle_free_all
 #include "cas_log.h"		// session log lifecycle (B2-D2/D4/D6)
+#include "query_replace.h"
 #include "broker_config.h"	// READ_ONLY/SLAVE_ONLY_ACCESS_MODE (#121 D7)
 #include "broker_util.h"	// ut_get_ipv4_string
 #include "ddl_log.h"		// per-session DDL audit identity
@@ -757,6 +758,16 @@ namespace cubconn
        * (cas_execute.c:493): isolation/lock-timeout baselines + sys params */
       ux_get_default_setting ();
 
+      /* The broker owns the shared, append-only rule slots. Each adopted
+       * session owns its mapping, normalization buffer and failure/marker
+       * caches until its prepared handles have been released. */
+      if (!params.direct)
+	{
+	  (void) qr_init_for_broker (params.query_replace_shm_key, params.broker_shm_id,
+				    params.broker_name.c_str ());
+	  qr_load_dbuser_has_rules (info.db_name, info.db_user);
+	}
+
       /* the broker filled its own connect-reply facts (bytes 0-3:
        * dbms/keep_con/statement pooling/pconnect); the server owns the
        * protocol bytes (cas_bi_make_broker_info split, B1-D5) */
@@ -806,6 +817,7 @@ namespace cubconn
       (void) ux_end_session ();
 
 retire:
+      qr_final ();
       if (as_info != NULL)
 	{
 	  /* the CAS process closed its logs at exit; a session closes its own

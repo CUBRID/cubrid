@@ -1267,6 +1267,8 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
       body.config.mask = BROKER_SESSION_LOG_MASK;
       body.config.sql_log = m->shm->sql_log_mode;
       body.config.slow_log = m->shm->slow_log_mode;
+      body.query_replace_shm_key = m->shm->query_replace_shm_key;
+      body.broker_shm_id = m->shm_key;
       body.slot_idx = 0;	/* per-slot identity retired with the CAS pool */
       /* broker-owned connect-reply facts (cas_bi_make_broker_info bytes 0-3);
        * the server overwrites its own bytes 4-7 (proto version, function
