@@ -539,8 +539,8 @@ namespace parallel_scan
     return result;
   }
 
-  /* memo for dptr_subtree_worker_safe; sentinel true breaks XASL ref cycles like xasl_check_cache. */
-  thread_local std::unordered_map<XASL_NODE *, bool> dptr_walk_cache;
+  /* memo for one dptr_subtree_worker_safe walk; sentinel true breaks XASL ref cycles like xasl_check_cache. */
+  using dptr_walk_cache_t = std::unordered_map<XASL_NODE *, bool>;
 
   /* Worker-execution validation of a non-linked dptr subtree (CBRD-27205). Workers run the whole
    * subtree per row via qexec_execute_mainblock, so the main-tree relaxations do not apply:
@@ -549,14 +549,14 @@ namespace parallel_scan
    * (sibling_check lets METHOD/DBLINK specs through as CANNOT_LIST_MERGE), and non-linked aptrs
    * and group-by/aggregate internals are worker-executed too. Only CANNOT_PARALLEL_SCAN
    * disqualifies: the subtree runs serially inside each worker, so merge flags do not apply. */
-  bool
-  dptr_subtree_worker_safe (XASL_NODE *arg, bool is_scan_level)
+  static bool
+  dptr_subtree_worker_safe_impl (XASL_NODE *arg, bool is_scan_level, dptr_walk_cache_t &cache)
   {
     if (!arg)
       {
 	return true;
       }
-    auto ins = dptr_walk_cache.emplace (arg, true);
+    auto ins = cache.emplace (arg, true);
     if (!ins.second)
       {
 	return ins.first->second;
@@ -636,18 +636,18 @@ namespace parallel_scan
 	 * does not descend into them. */
 	flags |= check<false> (arg->proc.hashjoin.outer.regu_list_pred);
 	flags |= check<false> (arg->proc.hashjoin.inner.regu_list_pred);
-	safe = safe && dptr_subtree_worker_safe (arg->proc.hashjoin.outer.xasl, false)
-	       && dptr_subtree_worker_safe (arg->proc.hashjoin.inner.xasl, false);
+	safe = safe && dptr_subtree_worker_safe_impl (arg->proc.hashjoin.outer.xasl, false, cache)
+	       && dptr_subtree_worker_safe_impl (arg->proc.hashjoin.inner.xasl, false, cache);
 	break;
       case UNION_PROC:
       case DIFFERENCE_PROC:
       case INTERSECTION_PROC:
-	safe = safe && dptr_subtree_worker_safe (arg->proc.union_.left, false)
-	       && dptr_subtree_worker_safe (arg->proc.union_.right, false);
+	safe = safe && dptr_subtree_worker_safe_impl (arg->proc.union_.left, false, cache)
+	       && dptr_subtree_worker_safe_impl (arg->proc.union_.right, false, cache);
 	break;
       case CTE_PROC:
-	safe = safe && dptr_subtree_worker_safe (arg->proc.cte.non_recursive_part, false)
-	       && dptr_subtree_worker_safe (arg->proc.cte.recursive_part, false);
+	safe = safe && dptr_subtree_worker_safe_impl (arg->proc.cte.non_recursive_part, false, cache)
+	       && dptr_subtree_worker_safe_impl (arg->proc.cte.recursive_part, false, cache);
 	break;
       default:
 	break;
@@ -655,17 +655,24 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp = arg->aptr_list; safe && xaslp; xaslp = xaslp->next)
       {
-	safe = dptr_subtree_worker_safe (xaslp, false);
+	safe = dptr_subtree_worker_safe_impl (xaslp, false, cache);
       }
     for (XASL_NODE *xaslp = arg->dptr_list; safe && xaslp; xaslp = xaslp->next)
       {
-	safe = dptr_subtree_worker_safe (xaslp, false);
+	safe = dptr_subtree_worker_safe_impl (xaslp, false, cache);
       }
-    safe = safe && dptr_subtree_worker_safe (arg->scan_ptr, true);
+    safe = safe && dptr_subtree_worker_safe_impl (arg->scan_ptr, true, cache);
 
     safe = safe && !is_flag_set (flags, CANNOT_PARALLEL_SCAN);
-    dptr_walk_cache[arg] = safe;
+    cache[arg] = safe;
     return safe;
+  }
+
+  bool
+  dptr_subtree_worker_safe (XASL_NODE *arg, bool is_scan_level)
+  {
+    dptr_walk_cache_t cache;
+    return dptr_subtree_worker_safe_impl (arg, is_scan_level, cache);
   }
 
   template <bool is_outptr_list>
@@ -1170,13 +1177,11 @@ scan_check_parallel_scan_possible (XASL_NODE *xasl)
 {
   parallel_scan::xasl_check_cache.clear ();
   parallel_scan::xasl_processing_set.clear ();
-  parallel_scan::dptr_walk_cache.clear ();
 
   parallel_scan::process_xasl_node_recursive (xasl);
 
   parallel_scan::xasl_check_cache.clear ();
   parallel_scan::xasl_processing_set.clear ();
-  parallel_scan::dptr_walk_cache.clear ();
 
   return NO_ERROR;
 }
