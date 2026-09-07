@@ -1233,7 +1233,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
   std::vector<std::vector<const JSON_VALUE *>> produced_array (json_paths.size ());
   for (size_t i = 0; i < json_paths.size (); ++i)
     {
-      produced_array[i] = std::move (json_paths[i].extract (*document));
+      produced_array[i] = json_paths[i].extract (*document);
     }
 
   if (array_result)

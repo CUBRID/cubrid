@@ -8644,7 +8644,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      else
 		{
 		  /* in MVCC - update index key means insert index key */
-		  if ((do_insert_only == true))
+		  if (do_insert_only == true)
 		    {
 		      if (index->type == BTREE_FOREIGN_KEY)
 			{

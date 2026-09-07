@@ -630,12 +630,12 @@ exit:
     cubmem::block blk;
     if (parameter_info)
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info));
+	blk = pack_data_block (METHOD_RESPONSE_SUCCESS, *parameter_info);
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("unknown error"),
-					  ARG_FILE_LINE));
+	blk = pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("unknown error"),
+			       ARG_FILE_LINE);
       }
 
     if (blk.is_valid ())
@@ -757,8 +757,8 @@ exit:
     query_cursor *cursor = m_stack->get_cursor (qid);
     if (cursor == nullptr)
       {
-	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
-				     std::string ("cursor closed"), ARG_FILE_LINE));
+	cubmem::block b = pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
+					   std::string ("cursor closed"), ARG_FILE_LINE);
 	error = m_stack->send_data_to_java (b);
 	return error;
       }
@@ -813,12 +813,12 @@ exit:
     cubmem::block blk;
     if (s_code != S_ERROR)
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS, info));
+	blk = pack_data_block (METHOD_RESPONSE_SUCCESS, info);
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
-					  std::string ("cursor closed"), ARG_FILE_LINE));
+	blk = pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
+			       std::string ("cursor closed"), ARG_FILE_LINE);
       }
 
     error = m_stack->send_data_to_java (blk);
@@ -1022,11 +1022,11 @@ exit:
 	dbvalue_java java_packer;
 	java_packer.value = &res;
 
-	blk = std::move (pack_data_block (error, java_packer));
+	blk = pack_data_block (error, java_packer);
       }
     else
       {
-	blk = std::move (pack_data_block (error));
+	blk = pack_data_block (error);
       }
 
     db_value_clear (&res);
@@ -1065,7 +1065,7 @@ exit:
 	  }
       }
 
-    cubmem::block blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS));
+    cubmem::block blk = pack_data_block (METHOD_RESPONSE_SUCCESS);
     if (blk.is_valid ())
       {
 	m_stack->send_data_to_java (blk);

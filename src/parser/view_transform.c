@@ -7492,7 +7492,6 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int
       break;
 
     default:
-      statement = statement;
       break;
     }
 
@@ -7794,7 +7793,6 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
       break;
 
     default:
-      statement = statement;
       break;
     }
 

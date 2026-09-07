@@ -58,6 +58,7 @@ namespace cubload
        * The main scanner function.
        * See load_lexer.l file for method declaration
        */
+      using yyFlexLexer::yylex;
       virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc);
 
       /*
