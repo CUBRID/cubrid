@@ -116,11 +116,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:
-  # Not the operational builds/ path -- the CircleCI test_shell still reads that.
-  CI_ROOT: /home/build-cache/gha-ci
-  CI_BUILD_ROOT: /home/build-cache/gha-ci/builds
-  TIMINGS: /home/build-cache/gha-ci/timings/shell.tsv
-  STAMPS: /home/build-cache/gha-ci/runs/${{ github.run_id }}/stamps
+  CI_ROOT: /home/gha-ci
+  CI_BUILD_ROOT: /home/gha-ci/builds
+  TIMINGS: /home/gha-ci/timings/shell.tsv
+  STAMPS: /home/gha-ci/runs/${{ github.run_id }}/stamps
   BUILD_SENTINEL: .complete
   BUILD_META: .gha-ci-build.meta
   # Paired with arc_artifact_server_node_port in circleci-k8s-ansible.
@@ -352,11 +351,10 @@ jobs:
         shell: bash
 
     env:
-      # Same values as the CircleCI executor cubrid-build.
-      BUILD_MIRROR: /home/build-cache/cubrid-mirror
+      BUILD_MIRROR: /home/gha-ci/repos
       # Per mode: one path for two matrix legs is the later leg overwriting
       # the earlier one.
-      BUILD_LOG_DIR: /home/build-cache/gha-ci/runs/${{ github.run_id }}/build/${{ matrix.mode }}
+      BUILD_LOG_DIR: /home/gha-ci/runs/${{ github.run_id }}/build/${{ matrix.mode }}
       MODE: ${{ matrix.mode }}
       BUILD_ARGS: ${{ matrix.args }}
       # develop | pr. Keeps the preserved develop artifacts out of reach of PR builds.
@@ -364,7 +362,7 @@ jobs:
 
       # One cache per mode, mounted straight off GlusterFS -- there is no restore/save
       # step to gate, so "write on develop only" is enforced by ccache itself below.
-      CCACHE_DIR: /home/build-cache/ccache-develop-${{ matrix.mode }}
+      CCACHE_DIR: /home/gha-ci/cache/ccache/develop-${{ matrix.mode }}
       # The default is mtime, which a fresh clone always misses.
       CCACHE_COMPILERCHECK: content
       # `ccache --max-size` writes into the cache directory; the variable does not.
@@ -394,7 +392,7 @@ jobs:
           echo "SHA=$INPUT_SHA" >> "$GITHUB_ENV"
 
           echo "=== mounts ==="
-          ls -ld /home/build-cache "$BUILD_MIRROR/cubrid.git" "$CCACHE_DIR" || true
+          ls -ld /home/gha-ci "$BUILD_MIRROR/cubrid.git" "$CCACHE_DIR" || true
           if [ ! -d "$BUILD_MIRROR/cubrid.git" ]; then
             echo "::error::the mirror is not visible. The pod template did not reach the job pod."
             exit 1
@@ -534,6 +532,12 @@ jobs:
             mkdir -p "$tmp"
             cp -a /home/CUBRID "$tmp/CUBRID"
 
+            # The summary links this copy, not the one under the run directory: a
+            # reused build outlives the run that made it.
+            if [ -f "$GITHUB_WORKSPACE/build.log" ]; then
+              cp "$GITHUB_WORKSPACE/build.log" "$tmp/build.log"
+            fi
+
             # Inside the CUBRID tree on purpose: shard mounts it as the overlay lowerdir,
             # so reading this file proves the mount the tests actually use.
             meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
@@ -593,7 +597,7 @@ jobs:
           echo "built by : $by (this run: $GITHUB_RUN_ID)"
           cat "$dir/build.meta"
           du -sh "$dir"
-          df -h /home/build-cache | tail -1
+          df -h /home/gha-ci | tail -1
 
           printf 'end\t%s\n' "$(date -u +%s)" >> "$STAMPS/build.tsv"
 
@@ -1794,13 +1798,11 @@ jobs:
             fi
             echo
             echo "---"
-            # BRID: a reused build left no log under this run. debug: that is
-            # what the suite mounted. A build published before this layout has
-            # no log here, and the flat file it left names no mode -- linking
-            # it would open the release log next to a debug failure half the
-            # time, so that run gets no build-log link at all.
+            # Next to the published build, not under the run directory: a reused
+            # build outlives the run that made it. debug is what the suite mounted.
+            # A build published before this layout carries no log, so no link.
             line="[Artifacts]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/)"
-            blog="runs/$BRID/build/debug/build.log"
+            blog="builds/$BUILD_NS/$SHA/debug/build.log"
             [ -f "$CI_ROOT/$blog" ] && line="$line · [build log]($ARTIFACT_URL_BASE/$blog)"
             echo "$line"
             echo
