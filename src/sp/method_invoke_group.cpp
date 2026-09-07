@@ -211,7 +211,7 @@ exit:
 
     if (!is_end_query)
       {
-	m_stack->reset_query_handlers ();
+	error = m_stack->reset_query_handlers ();
       }
 
     return error;

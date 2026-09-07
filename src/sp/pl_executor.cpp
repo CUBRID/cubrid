@@ -298,12 +298,18 @@ namespace cubpl
 	return er_errid ();
       }
 
+    /* Declared functions cannot execute SQL through CAS, so they need no CAS user push/pop. */
+    const bool change_rights = !m_stack->is_server_side_sql_forbidden ();
+
     // execution rights
     assert (m_sig.auth != NULL);
-    error = change_exec_rights (m_sig.auth);
-    if (error != NO_ERROR)
+    if (change_rights)
       {
-	goto exit;
+	error = change_exec_rights (m_sig.auth);
+	if (error != NO_ERROR)
+	  {
+	    goto exit;
+	  }
       }
 
     error = request_invoke_command ();
@@ -321,11 +327,15 @@ namespace cubpl
 exit:
     if (m_stack != NULL)
       {
-	m_stack->reset_query_handlers ();
+	int cleanup_error = m_stack->reset_query_handlers ();
+	if (error == NO_ERROR)
+	  {
+	    error = cleanup_error;
+	  }
       }
 
     // restore execution rights
-    if (change_exec_rights (NULL) != NO_ERROR)
+    if (change_rights && change_exec_rights (NULL) != NO_ERROR)
       {
 	error = er_errid ();
       }

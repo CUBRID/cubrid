@@ -84,7 +84,7 @@ namespace cubpl
        * before it. */
       bool m_is_px_worker;
 
-      int reject_client_callback ();
+      int reject_client_callback (bool reply_to_java);
 
       int interrupt_handler ();
 
@@ -121,7 +121,7 @@ namespace cubpl
       /* query handler */
       void add_query_handler (int handler_id);
       void remove_query_handler (int handler_id);
-      void reset_query_handlers ();
+      int reset_query_handlers ();
 
       const std::unordered_set <int> *get_stack_query_handler () const;
       const std::unordered_set <std::uint64_t> *get_stack_cursor () const;
@@ -158,14 +158,10 @@ namespace cubpl
       template <typename ... Args>
       int send_data_to_client (Args &&... args)
       {
-	if (is_px_worker_stack ())
+	if (is_server_side_sql_forbidden ())
 	  {
-	    /* The only no-receive callbacks are the execution-rights push/pop and the
-	     * close-query-handlers notice. Neither carries SQL and neither is a reply Java is
-	     * waiting for, so they are dropped rather than turned into an error: from a worker
-	     * thread there is no rid to send them on, and once server-side SQL is impossible
-	     * nothing on the CAS side can observe them. */
-	    return NO_ERROR;
+	    assert (false);
+	    return reject_client_callback (false);
 	  }
 
 	return xs_callback_send_no_receive (m_thread_p, m_client_header, std::forward<Args> (args)...);
@@ -177,7 +173,7 @@ namespace cubpl
 	if (is_server_side_sql_forbidden ())
 	  {
 	    assert (false);
-	    return reject_client_callback ();
+	    return reject_client_callback (true);
 	  }
 
 	return xs_callback_send_and_receive (m_thread_p, func, m_client_header, std::forward<Args> (args)...);

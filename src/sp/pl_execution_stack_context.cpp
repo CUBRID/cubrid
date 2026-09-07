@@ -51,8 +51,15 @@ namespace cubpl
   }
 
   int
-  execution_stack::reject_client_callback ()
+  execution_stack::reject_client_callback (bool reply_to_java)
   {
+    if (!reply_to_java)
+      {
+	/* No Java request is waiting for this notification, so fail locally without sending a reply. */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PARALLEL_ENABLE_NO_SQL, 0);
+	return ER_SP_PARALLEL_ENABLE_NO_SQL;
+      }
+
     /* Answer the callback ourselves with METHOD_RESPONSE_ERROR instead of going out to CAS. Java
      * is waiting for a reply to this very request, so replying keeps the protocol in sync and the
      * SP sees a plain SQLException; what it does with that exception is its own business. */
@@ -105,22 +112,23 @@ namespace cubpl
     m_stack_handler_id.erase (handler_id);
   }
 
-  void
+  int
   execution_stack::reset_query_handlers ()
   {
     if (m_stack_handler_id.empty ())
       {
 	// do nothing
-	return;
+	return NO_ERROR;
       }
 
     set_cs_command (METHOD_REQUEST_END);
     std::vector<int> handler_vec (m_stack_handler_id.begin (), m_stack_handler_id.end ());
-    send_data_to_client (handler_vec);
+    int error = send_data_to_client (handler_vec);
     m_stack_handler_id.clear ();
 
     // restore to callback mode
     set_cs_command (METHOD_REQUEST_CALLBACK);
+    return error;
   }
 
   int
