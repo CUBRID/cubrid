@@ -279,7 +279,36 @@ namespace brd
   reject_client (manager &m, SOCKET fd, int error, const char *driver_info)
   {
     __atomic_add_fetch (&m.shm->brd_num_rejected, 1, __ATOMIC_RELAXED);
-    send_error_code_to_driver (fd, error, driver_info);
+    if (IS_SSL_CLIENT (driver_info))
+      {
+	/* TLS has not been established here; the broker cannot send a CAS
+	 * application packet on the encrypted connection. */
+	send_error_code_to_driver (fd, error, driver_info);
+	return;
+      }
+
+    /* brd_park_client already acknowledged the driver header. A cleartext
+     * driver is now waiting for a length-prefixed CAS connect reply, not
+     * another four-byte broker acknowledgement. A bare negative integer is
+     * otherwise read as a length and reported as an IOException. */
+    static const char message[] = "Cannot hand off the connection to the database server";
+    char reply[sizeof (int) + CAS_INFO_SIZE + 2 * sizeof (int) + sizeof (message)];
+    char *ptr = reply;
+    int value = htonl (2 * sizeof (int) + sizeof (message));
+    std::memcpy (ptr, &value, sizeof (value));
+    ptr += sizeof (value);
+    const char cas_info[CAS_INFO_SIZE] =
+    { CAS_INFO_STATUS_INACTIVE, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT };
+    std::memcpy (ptr, cas_info, sizeof (cas_info));
+    ptr += sizeof (cas_info);
+    value = htonl (CAS_ERROR_INDICATOR);
+    std::memcpy (ptr, &value, sizeof (value));
+    ptr += sizeof (value);
+    value = htonl (error);
+    std::memcpy (ptr, &value, sizeof (value));
+    ptr += sizeof (value);
+    std::memcpy (ptr, message, sizeof (message));
+    (void) send_all (fd, reply, sizeof (reply));
   }
 
   /* slot accounting, mirrored into shm for `cubrid broker status` (#116 D10) */
