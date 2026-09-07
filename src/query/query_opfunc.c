@@ -488,14 +488,32 @@ qdata_valptr_prog_compile (THREAD_ENTRY * thread_p, valptr_list_node * valptr_li
 /*
  * qdata_valptr_prog_ensure () - the list's active program with this row already
  *				 evaluated, or NULL to use the interpreted path
+ *
+ * reuse_row: the caller is qdata_copy_valptr_list_to_tuple () taking over a row whose
+ * tuple-descriptor pass just returned QPROC_TPLDESCR_RETRY_*.  That pass already ran the
+ * program for this row (eval_prog_row_ready), so the slots still hold the row's values and
+ * running it again would only repeat the work -- the interpreted path fetches every column
+ * twice on this route, once for the descriptor and once for the copy, because
+ * fetch_peek_arith () keeps no per-row result.  The mark is consumed by whichever
+ * ensure () comes next, so it cannot outlive the row it was set for: a fresh evaluation
+ * always drops it first.
  */
 static EXPR_PROG *
 qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p,
-			  int *error_p)
+			  bool reuse_row, int *error_p)
 {
   EXPR_PROG *prog = NULL;
 
   *error_p = NO_ERROR;
+
+  if (valptr_list_p->eval_prog_row_ready)
+    {
+      valptr_list_p->eval_prog_row_ready = false;
+      if (reuse_row)
+	{
+	  return (EXPR_PROG *) valptr_list_p->eval_prog;
+	}
+    }
 
   if (valptr_list_p->eval_prog_state == 0)
     {
@@ -541,6 +559,7 @@ qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_
   valptr_list_p->eval_prog = NULL;
   free_and_init (valptr_list_p->eval_prog_idx);
   valptr_list_p->eval_prog_state = 0;
+  valptr_list_p->eval_prog_row_ready = false;
 }
 
 /*
@@ -626,7 +645,8 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
   EXPR_PROG *eval_prog;
   int prog_error;
 
-  eval_prog = qdata_valptr_prog_ensure (thread_p, valptr_list_p, val_desc_p, &prog_error);
+  /* a QPROC_TPLDESCR_RETRY_* on this same row has already evaluated the program: reuse it */
+  eval_prog = qdata_valptr_prog_ensure (thread_p, valptr_list_p, val_desc_p, true, &prog_error);
   if (prog_error != NO_ERROR)
     {
       return ER_FAILED;
@@ -845,7 +865,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
   EXPR_PROG *eval_prog;
   int prog_error;
 
-  eval_prog = qdata_valptr_prog_ensure (thread_p, valptr_list_p, val_desc_p, &prog_error);
+  eval_prog = qdata_valptr_prog_ensure (thread_p, valptr_list_p, val_desc_p, false, &prog_error);
   if (prog_error != NO_ERROR)
     {
       return QPROC_TPLDESCR_FAILURE;
@@ -912,6 +932,15 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
     }
 
 exit_with_status:
+
+  /* A retry sends the caller to qdata_copy_valptr_list_to_tuple () for this same row before
+   * it touches another one (the query_executor.c callers and the parallel result handler
+   * alike), and this pass has already run the program for the row: hand it over instead of
+   * letting that copy evaluate it a second time. */
+  if (eval_prog != NULL && (status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC))
+    {
+      valptr_list_p->eval_prog_row_ready = true;
+    }
 
   return status;
 }
@@ -984,9 +1013,9 @@ qdata_add_int (int i1, int i2, DB_VALUE * result_p)
 {
   int result;
 
-  result = i1 + i2;
-
-  if (OR_CHECK_ADD_OVERFLOW (i1, i2, result))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_ADD_OVERFLOW) */
+  if (OR_ADD_OVERFLOW (i1, i2, &result))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -1001,9 +1030,9 @@ qdata_add_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
 {
   DB_BIGINT result;
 
-  result = bi1 + bi2;
-
-  if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_ADD_OVERFLOW) */
+  if (OR_ADD_OVERFLOW (bi1, bi2, &result))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -3211,9 +3240,9 @@ qdata_subtract_int (int i1, int i2, DB_VALUE * result_p)
 {
   int itmp;
 
-  itmp = i1 - i2;
-
-  if (OR_CHECK_SUB_UNDERFLOW (i1, i2, itmp))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_SUB_OVERFLOW) */
+  if (OR_SUB_OVERFLOW (i1, i2, &itmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;
@@ -3228,9 +3257,9 @@ qdata_subtract_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
 {
   DB_BIGINT bitmp;
 
-  bitmp = bi1 - bi2;
-
-  if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, bitmp))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_SUB_OVERFLOW) */
+  if (OR_SUB_OVERFLOW (bi1, bi2, &bitmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;

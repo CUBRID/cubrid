@@ -158,8 +158,10 @@ namespace cubxasl
     TYPE_PRED_EXPR type;
 
     /* compiled scan-filter form of this tree (expr_compile.c), resolved lazily by the
-     * first eval_data_filter () over it and released with the XASL clone
-     * (qexec_clear_pred ()).  Only the tree's root ever holds one.
+     * first eval_data_filter () of an execution and released when that execution ends
+     * (qexec_clear_pred (), reached with is_final from every qexec_clear_xasl () caller):
+     * per-execution state that never outlives one execution of the clone.  Only the
+     * tree's root ever holds one.
      * Concurrency contract: these fields (and the program they point to) are written with
      * plain, non-atomic stores.  That is safe only because an XASL clone is checked out to
      * exactly one executing thread at a time (the xcache clone mutex publishes the stores

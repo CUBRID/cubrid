@@ -1784,9 +1784,13 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
       return pg_cnt;
     }
 
-  /* release the compiled scan-filter form (root node only; see expr_compile.h) when the
-   * clone is being retired -- a clone kept cached keeps its compiled tree */
-  if (pr->scan_prog != NULL && (is_final || XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE)))
+  /* release the compiled scan-filter form (root node only; see expr_compile.h).  Like
+   * operand_prog and eval_prog it is per-EXECUTION state: every qexec_clear_xasl () caller
+   * passes is_final, so a clone that stays cached starts its next execution with state 0
+   * and compiles again on the first row -- the compile is charged once per execution, not
+   * once per clone.  Freeing unconditionally is safe for the same reason (state 0 means
+   * "compile on next use"). */
+  if (pr->scan_prog != NULL)
     {
       expr_scan_pred_free (pr->scan_prog);
       pr->scan_prog = NULL;
@@ -20617,6 +20621,25 @@ qexec_gby_init_group_dim (GROUPBY_STATE * gbstate)
 	      aggp->next = aggr;
 	      aggp = aggr;
 	    }
+
+	  /* The copies above are shallow, so they also carry the head list's server-side
+	   * runtime state: the compiled operand program (head node), the per-node kernel
+	   * bindings and a pending deferred NUMERIC sum.  That state belongs to whichever
+	   * list built it -- when hash aggregation ran on the head list during the scan
+	   * (qexec_hash_gby_agg_tuple ()) the head is already compiled here -- and a
+	   * dimension must neither share it nor release it.  Start every dimension list
+	   * from zero, as stream_to_xasl () does for the head: it compiles its own program
+	   * on its first evaluated row (qdata_evaluate_aggregate_list ()) and
+	   * qexec_gby_clear_group_dim () releases what it built. */
+	  for (aggr = gbstate->g_dim[i].d_agg_list; aggr != NULL; aggr = aggr->next)
+	    {
+	      aggr->operand_prog = NULL;
+	      aggr->operand_prog_idx = NULL;
+	      aggr->operand_prog_state = 0;
+	      aggr->operand_prog_base = -1;
+	      aggr->acc_kernel = NULL;
+	      aggr->accumulator.sum_state = NULL;
+	    }
 	}
       else
 	{
@@ -20646,10 +20669,24 @@ qexec_gby_clear_group_dim (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
       for (i = 0; i < gbstate->g_dim_levels; i++)
 	{
 	  agg = gbstate->g_dim[i].d_agg_list;
+
+	  /* release the operand program this dimension compiled for itself (head node
+	   * only; see qexec_gby_init_group_dim ()) -- mirror of qexec_clear_agg_list () */
+	  if (agg != NULL && agg->operand_prog != NULL)
+	    {
+	      expr_prog_free ((EXPR_PROG *) agg->operand_prog);
+	      agg->operand_prog = NULL;
+	      free_and_init (agg->operand_prog_idx);
+	      agg->operand_prog_state = 0;
+	    }
+
 	  while (agg)
 	    {
 	      next_agg = agg->next;
 
+	      /* a deferred NUMERIC sum is still pending when the group was never finalized
+	       * (an error ended the sorted pass before qexec_gby_finalize_group ()) */
+	      qdata_numeric_sum_discard (&agg->accumulator);
 	      db_value_free (agg->accumulator.value);
 	      db_value_free (agg->accumulator.value2);
 	      if (agg->list_id)

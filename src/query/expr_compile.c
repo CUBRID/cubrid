@@ -98,7 +98,7 @@ struct expr_pred
   const void *fetch_src;
   DB_VALUE *fetched1;
   DB_VALUE *fetched2;
-  bool need_type_guard;		/* a side is a host variable: verify runtime types per row */
+  bool need_type_guard;		/* a side can drift from its plan type: verify runtime types per row */
 };
 
 /* growable build-time buffers, sized once and converted to tight arrays at the end */
@@ -1315,10 +1315,19 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
   bctx->n_slots = mark->n_slots;
 }
 
-/* can this step fail for a non-NULL input?  Publishing a host variable or a fetched leaf,
- * coercing to NUMERIC and the pure pointer selects cannot; every computing kernel can (an
- * overflow, a division by zero, a failing cast, a comparison that raises), and so can any
- * step that owns a region, through the steps inside it. */
+/* can this step fail for a non-NULL input?  Publishing a host variable, coercing to NUMERIC
+ * and the pure pointer selects cannot; every computing kernel can (an overflow, a division
+ * by zero, a failing cast, a comparison that raises), and so can any step that owns a
+ * region, through the steps inside it.
+ *
+ * A leaf fetch is classified as non-failing on purpose, although fetch_peek_dbval () can
+ * return an error for it: that happens only when the row itself cannot be decoded (an
+ * uninitialized attribute value, a list-file tuple that does not read back), i.e. the
+ * record is corrupt, not because of the operand's value.  Treating leaves as fallible
+ * would make every right operand that names a column a deferred region -- an indirect
+ * call and a region loop on every row of every arithmetic node -- to reproduce, on a
+ * corrupt record only, whether the interpreter would have reported the error one fetch
+ * earlier or later.  The row fails on either path; only the failing operand differs. */
 static bool
 expr_step_is_fallible (const EXPR_STEP * step)
 {
@@ -1546,7 +1555,8 @@ expr_pred_generic_cmp_type (DB_TYPE type)
  * re-discovers the tree shape, the term kinds and the operand types on each
  * visit, and compares through eval_value_rel_cmp ()'s per-row type dispatch.
  * The shape, the kinds and the types are all fixed when the XASL is made, so
- * the tree below is built ONCE per clone: AND/OR/NOT nodes reuse the compiled
+ * the tree below is built ONCE per execution of the scan (on its first row,
+ * released by qexec_clear_pred ()): AND/OR/NOT nodes reuse the compiled
  * predicate walker's Kleene logic, and every comparison is a leaf whose
  * (type, operator) function was resolved at build time.  Operands are fetched
  * per row through the regular fetch path -- lazily-deferred columns keep the
@@ -1715,19 +1725,28 @@ expr_scan_pred_build (const PRED_EXPR * pr, int depth, int depth_limit)
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
 	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
-	/* an attribute decodes to its domain type and a plan constant keeps its type, so
-	 * only sides that can be rebound (host variables and computed operands) make the
-	 * leaf verify the runtime types per row.
+	/* A heap attribute decodes to its domain type and an inline literal (TYPE_DBVAL) is
+	 * the value baked into the plan, so a leaf over those two alone never meets another
+	 * type at run time.  Every other operand is read from a slot somebody else fills per
+	 * row -- a host variable (TYPE_POS_VALUE), a list-file column (TYPE_POSITION), a
+	 * value-list entry (TYPE_CONSTANT: a correlated outer column or a subquery result,
+	 * which a recursive CTE refills with the BIGINT of count () in an INTEGER-domain slot)
+	 * or a computed operand -- and can drift from the type the leaf was resolved for, so
+	 * the leaf verifies the runtime types per row and hands a drifted row to
+	 * eval_pred_comp0 (), which compares it exactly as the interpreter does: the
+	 * cross-type tp_value_compare_with_error (), after eval_value_rel_cmp ()'s coercion of
+	 * a FETCH_ALL_CONST right side (a TYPE_CONSTANT is FETCH_NOT_CONST and is not coerced).
+	 * This is the same rule expr_compile_pred () applies through expr_regu_may_drift ().
+	 * The literal stays pinned because that constant-side coercion, its only writer, is
+	 * reached only from the guarded path, never for a leaf whose sides are both pinned.
 	 *
 	 * The attribute half of that claim holds across old-representation records too:
 	 * ALTER changes that keep the schema-only path (SM_ATTR_CHG_ONLY_SCHEMA,
 	 * execute_schema.c) are asserted to leave the DB_TYPE unchanged (precision
 	 * increases and set-compat only), and every change of the DB_TYPE itself goes
 	 * through SM_ATTR_CHG_WITH_ROW_UPDATE / BEST_EFFORT, which rewrite the rows. */
-	pred->need_type_guard = !((et->lhs->type == TYPE_ATTR_ID || et->lhs->type == TYPE_CONSTANT
-				   || et->lhs->type == TYPE_DBVAL)
-				  && (et->rhs->type == TYPE_ATTR_ID || et->rhs->type == TYPE_CONSTANT
-				      || et->rhs->type == TYPE_DBVAL));
+	pred->need_type_guard = !((et->lhs->type == TYPE_ATTR_ID || et->lhs->type == TYPE_DBVAL)
+				  && (et->rhs->type == TYPE_ATTR_ID || et->rhs->type == TYPE_DBVAL));
 	return pred;
       }
 
@@ -1882,10 +1901,14 @@ expr_scan_pred_free (void *compiled)
 
 /* compile a PRED_EXPR into an EXPR_PRED tree; NULL when any construct is unsupported.
  * Operand sub-expressions compile through expr_compile_node (), so their steps run
- * unconditionally in the main loop.  eval_pred () fetches a term's operands only when it
- * reaches the term, and its AND/OR loops stop at the first deciding term, so the right
- * side of an AND/OR is only compiled when none of its operand steps can fail (a failing
- * step there would raise an error the interpreted path never reaches). */
+ * unconditionally in the main loop.  eval_pred () does not: its AND/OR loops stop at the
+ * first deciding term, a comparison fetches its right operand only for a non-NULL left one
+ * (R_EQ_TORDER excepted -- DECODE compares NULLs, so both sides are always fetched) and
+ * LIKE fetches its pattern and escape only for a non-NULL source.  So the right side of an
+ * AND/OR, the right operand of a comparison and the pattern/escape of LIKE are compiled
+ * only when none of their steps can fail (expr_steps_fallible ()): a failing step there
+ * would raise an error the interpreted path never reaches, so the whole predicate stays
+ * interpreted instead.  A left operand is always fetched, so its steps may fail. */
 static EXPR_PRED *
 expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_something)
 {
@@ -1971,8 +1994,16 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 		return NULL;
 	      }
 	    c1 = expr_compile_node (bctx, et_like->src, compiled_something);
-	    c2 = (c1 >= 0) ? expr_compile_node (bctx, et_like->pattern, compiled_something) : -1;
-	    if (c1 < 0 || c2 < 0)
+	    if (c1 < 0)
+	      {
+		return NULL;
+	      }
+	    /* the eval_pred () T_LIKE_EVAL_TERM arm fetches the pattern only for a non-NULL
+	     * source and the escape only after a non-NULL pattern as well; a step of theirs
+	     * that can fail must not run for every row (see the header comment) */
+	    rhs_start = bctx->n_steps;
+	    c2 = expr_compile_node (bctx, et_like->pattern, compiled_something);
+	    if (c2 < 0)
 	      {
 		return NULL;
 	      }
@@ -1983,6 +2014,10 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 		  {
 		    return NULL;
 		  }
+	      }
+	    if (expr_steps_fallible (bctx, rhs_start))
+	      {
+		return NULL;
 	      }
 	    pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
 	    if (pred == NULL)
@@ -2068,8 +2103,21 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 	  }
 
 	c1 = expr_compile_node (bctx, et->lhs, compiled_something);
-	c2 = (c1 >= 0) ? expr_compile_node (bctx, et->rhs, compiled_something) : -1;
-	if (c1 < 0 || c2 < 0)
+	if (c1 < 0)
+	  {
+	    return NULL;
+	  }
+	/* the eval_pred () T_COMP_EVAL_TERM arm returns V_UNKNOWN for a NULL left operand
+	 * before it fetches the right one, except under R_EQ_TORDER, where NULLs compare and
+	 * both sides are always fetched; a right-operand step that can fail would run here
+	 * for the rows the interpreted path never evaluates it on (see the header comment) */
+	rhs_start = bctx->n_steps;
+	c2 = expr_compile_node (bctx, et->rhs, compiled_something);
+	if (c2 < 0)
+	  {
+	    return NULL;
+	  }
+	if (et->rel_op != R_EQ_TORDER && expr_steps_fallible (bctx, rhs_start))
 	  {
 	    return NULL;
 	  }
@@ -3041,7 +3089,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 			 bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots, int *root_idx_out)
 {
   /* the build context is a page-plus of scratch arrays: too big for a server worker's
-   * stack, and compilation happens once per clone, so it lives on the heap */
+   * stack, and compilation happens once per execution, so it lives on the heap */
   EXPR_BUILD_CTX *bctx = (EXPR_BUILD_CTX *) malloc (sizeof (EXPR_BUILD_CTX));
   EXPR_PROG *prog;
 

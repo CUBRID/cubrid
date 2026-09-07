@@ -10520,22 +10520,28 @@ heap_attr_readval_date (DB_VALUE * out, const char *disk, int size, const OR_ATT
   return NO_ERROR;
 }
 
-/* disk NUMERIC leads with a 3-byte header: size|sign, precision, scale|sign
- * (must match NUMERIC_HEADER_SIZE in object_primitive.c) */
-#define HEAP_ATTR_NUMERIC_HEADER_SIZE 3
-
 static int
 heap_attr_readval_numeric (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
 {
-  /* the value's header, parsed exactly as mr_data_readval_numeric () does */
   const unsigned char *header = (const unsigned char *) disk;
-  int val_size = header[0] & 0x7F;
-  bool is_negative = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
-  int precision = header[1] & 0x7F;
-  int scale = ((header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0) ? -((int) header[2]) : (int) header[2];
+  int val_size = 0, precision = 0, scale = 0;
+  bool is_negative = false;
   unsigned char *num = out->data.num.d.buf;
 
-  if (unlikely (precision == 0 || precision > DB_MAX_NUMERIC_PRECISION
+  /* the value's header (size|sign, precision|scale sign, scale), parsed exactly as
+   * mr_data_readval_numeric () does -- and, like it, only once the buffer is known to hold
+   * the header.  The fixed area is always at least that wide (rd_disk_size >= 4), but the
+   * default value heap_attrvalue_read () hands in is exactly as long as the catalog recorded
+   * it, so the length must be checked before a header byte is read. */
+  if (likely (size >= NUMERIC_HEADER_SIZE))
+    {
+      val_size = header[0] & 0x7F;
+      is_negative = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+      precision = header[1] & 0x7F;
+      scale = ((header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0) ? -((int) header[2]) : (int) header[2];
+    }
+
+  if (unlikely (size < NUMERIC_HEADER_SIZE || precision == 0 || precision > DB_MAX_NUMERIC_PRECISION
 		|| scale < DB_MIN_NUMERIC_SCALE || scale > DB_MAX_NUMERIC_SCALE || val_size > size))
     {
       /* a header the fast path was not built for (or one that overstates its size, which
@@ -10572,23 +10578,23 @@ heap_attr_readval_numeric (DB_VALUE * out, const char *disk, int size, const OR_
     {
     case 4:
       memset (num, 0, 16);
-      memcpy (num + 16, disk + HEAP_ATTR_NUMERIC_HEADER_SIZE, 1);
+      memcpy (num + 16, disk + NUMERIC_HEADER_SIZE, 1);
       break;
     case 8:
       memset (num, 0, 12);
-      memcpy (num + 12, disk + HEAP_ATTR_NUMERIC_HEADER_SIZE, 5);
+      memcpy (num + 12, disk + NUMERIC_HEADER_SIZE, 5);
       break;
     case 12:
       memset (num, 0, 8);
-      memcpy (num + 8, disk + HEAP_ATTR_NUMERIC_HEADER_SIZE, 9);
+      memcpy (num + 8, disk + NUMERIC_HEADER_SIZE, 9);
       break;
     case 16:
       memset (num, 0, 4);
-      memcpy (num + 4, disk + HEAP_ATTR_NUMERIC_HEADER_SIZE, 13);
+      memcpy (num + 4, disk + NUMERIC_HEADER_SIZE, 13);
       break;
     case DB_NUMERIC_BUF_SIZE:	/* 17 */
     case 20:
-      memcpy (num, disk + HEAP_ATTR_NUMERIC_HEADER_SIZE, DB_NUMERIC_BUF_SIZE);
+      memcpy (num, disk + NUMERIC_HEADER_SIZE, DB_NUMERIC_BUF_SIZE);
       break;
     default:
       {
@@ -13047,6 +13053,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	  value->last_attrepr = NULL;
 	  value->read_attrepr = NULL;
 	  value->lazy_always_eager = false;
+	  value->rd_attrepr = NULL;	/* decoding plan resolved on the first record, as in heap_attrinfo_start () */
 	}
 
       /*

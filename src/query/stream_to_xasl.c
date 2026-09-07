@@ -4183,6 +4183,7 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
   outptr_list->eval_prog = NULL;
   outptr_list->eval_prog_idx = NULL;
   outptr_list->eval_prog_state = 0;
+  outptr_list->eval_prog_row_ready = false;
 
   ptr = or_unpack_int (ptr, &outptr_list->valptr_cnt);
 

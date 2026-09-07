@@ -730,8 +730,11 @@ qdata_acc_kernel_sum_bigint (cubthread::entry *thread_p, cubxasl::aggregate_list
 
   bi1 = db_get_bigint (acc->value);
   bi2 = db_get_bigint (value);
-  result = bi1 + bi2;
-  if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result))
+  /* Add and test in one builtin.  Computing the wrapped sum first is signed overflow,
+   * which the optimizer may assume never happens and then drop the test that follows it;
+   * the verdict is the one qdata_add_bigint () reaches, and the arithmetic kernels in
+   * expr_compile.c already use the same OR_*_OVERFLOW forms. */
+  if (OR_ADD_OVERFLOW (bi1, bi2, &result))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       acc->curr_cnt++;
@@ -930,11 +933,23 @@ qdata_acc_kernel_resolve (cubxasl::aggregate_list_node *agg_p)
  *				       aggregate list into one program (expr_compile.h)
  *
  * Only plain accumulating functions participate; the operands of any aggregate the
- * per-row loop may skip (COUNT_STAR, GROUPBY_NUM, optimized or special-cased ones) are
+ * per-row loop may skip (COUNT_STAR, GROUPBY_NUM, optimized or special-cased ones, and
+ * the index-boundary MIN/MAX whose operand the loop stops fetching once it is_ended) are
  * left out so the unconditional per-row program evaluation cannot change behavior.
  * Roots the expression compiler cannot cover purely are excluded the same way (the
  * compiler is called without fallback roots), so every compiled step is side-effect
- * free and evaluating it for a row whose aggregate later stops (is_ended) is harmless.
+ * free.
+ *
+ * The program evaluates the operands of EVERY participating aggregate before the
+ * per-row loop accumulates the first one, whereas the interpreted loop fetches and
+ * accumulates one aggregate at a time.  This is deliberate: one pass over the flat step
+ * array is what removes the per-aggregate fetch dispatch, and it is what lets a
+ * sub-expression shared by several aggregates (SUM (x * y), AVG (x * y)) compile to a
+ * single step chain.  The only observable consequence is WHICH error a row that fails
+ * twice reports: when accumulating aggregate i overflows on a row whose operand of a
+ * later aggregate j also fails, the interpreter reports i's accumulate error and this
+ * path reports j's operand error.  The row fails either way, and operand errors keep
+ * their list order among themselves because roots are emitted in list order.
  *
  * Exported (not static) for the parallel BUILDVALUE_OPT accumulation loop, which
  * compiles each worker's clone the same way.
@@ -963,7 +978,13 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
 	case PT_MIN:
 	case PT_MAX:
 	case PT_COUNT:
-	  participates = !agg_p->flag.agg_optimized;
+	  /* an index-boundary MIN/MAX (min_max_optimized) is_ended after its first row and
+	   * the per-row loop skips it -- operand fetch included -- from then on; keep it on
+	   * the interpreted path so the program never evaluates an operand the interpreter
+	   * would not.  Nothing is lost: qdata_acc_kernel_resolve () gives it no kernel, and
+	   * such a list is MIN/MAX-only (pt_set_access_spec_for_aggregation ()) over a scan
+	   * the executor stops after one or two rows, where compiling would only cost. */
+	  participates = !agg_p->flag.agg_optimized && !agg_p->flag.min_max_optimized;
 	  break;
 	default:
 	  participates = false;
@@ -1089,6 +1110,9 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      operand_prog = (agg_list_p->operand_prog_state == 1) ? (EXPR_PROG *) agg_list_p->operand_prog : NULL;
 	    }
 	}
+      /* every participating operand of the row is evaluated here, before any aggregate
+       * accumulates; see qdata_agg_operand_prog_compile () for why and for the error
+       * precedence this implies on a row that fails twice */
       if (operand_prog != NULL && expr_prog_eval (operand_prog, thread_p, val_desc_p, NULL, NULL) != NO_ERROR)
 	{
 	  return ER_FAILED;

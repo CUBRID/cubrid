@@ -2960,7 +2960,9 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
 
       /* compiled form of the tree (expr_compile.h): the shape, the term kinds and the
        * operand types eval_pred () re-discovers per row are fixed in the XASL, so they
-       * are resolved once per clone here; anything not covered keeps pr_eval_fnc */
+       * are resolved once per execution here, on the scan's first row (qexec_clear_pred ()
+       * releases the result when the execution ends); anything not covered keeps
+       * pr_eval_fnc */
       if (unlikely (pred_root->scan_prog_state == 0))
 	{
 	  pred_root->scan_prog = expr_scan_pred_compile (thread_p, pred_root);

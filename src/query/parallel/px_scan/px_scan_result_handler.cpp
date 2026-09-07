@@ -1770,6 +1770,12 @@ namespace parallel_scan
 	  }
 	else
 	  {
+	    /* NOTE: this worker-local SUM rounds per row (qdata_add_dbval ()), while the serial
+	     * qdata_evaluate_aggregate_list () and the px hash GROUP BY accumulate NUMERIC through
+	     * the deferred-carry sum_state and round once at materialization.  The two agree up to
+	     * DB_MAX_NUMERIC_PRECISION digits of running sum; beyond that the per-row rounding
+	     * differs in the last digits.  Unifying this path onto sum_state (accumulate here,
+	     * flush before the write_finalize () merge) is tracked as a follow-up of CBRD-27215. */
 	    if (qdata_add_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
 	      {
 		return false;
@@ -2106,8 +2112,8 @@ namespace parallel_scan
 	  }
       }
 
-    /* compiled operand-evaluation program (expr_compile.h), the same lazy per-clone hook
-     * the serial qdata_evaluate_aggregate_list () uses.  Each worker owns its XASL clone
+    /* compiled operand-evaluation program (expr_compile.h), the same lazy per-execution
+     * hook the serial qdata_evaluate_aggregate_list () uses.  Each worker owns its XASL clone
      * (tl_xasl_p is thread_local), so the program state on the list head is worker-private;
      * qexec_clear_xasl () on the clone frees it through qexec_clear_agg_list (). */
     AGGREGATE_TYPE *agg_list = tl_xasl_p->proc.buildvalue.agg_list;

@@ -153,7 +153,11 @@ struct expr_prog
   /* host variable domain signature recorded at compile time; a later execution whose
    * bound types differ must not reuse this program.  sig_stamp records the execution the
    * signature was last verified for, so the walk is charged once per execution
-   * (expr_prog_signature_ok ()) rather than once per row. */
+   * (expr_prog_signature_ok ()) rather than once per row.  With the current lifetime --
+   * every consumer frees its program when the execution ends (qexec_clear_xasl ()) -- a
+   * program only ever meets the bind types it was compiled for, so the mismatch branch is
+   * not reached today; it is what would make keeping a program across executions of a
+   * cached clone safe, should the per-execution compile cost ever warrant that. */
   DB_TYPE *hv_types;
   int n_hv;
   unsigned long long sig_stamp;
@@ -240,7 +244,7 @@ extern int expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain
 
 /* scan-filter predicates: eval_pred () re-discovers the tree shape, the term kinds and
  * the operand types on every row.  These compile a data filter's PRED_EXPR once per
- * clone into a tree of (type, operator)-resolved comparison leaves under Kleene AND/OR
+ * execution into a tree of (type, operator)-resolved comparison leaves under Kleene AND/OR
  * nodes; operands are fetched per row through the regular fetch path, so short-circuit
  * and lazy-decode behavior stay identical.  NULL when anything in the tree is not
  * covered -- the caller keeps the interpreted pr_eval_fnc. */

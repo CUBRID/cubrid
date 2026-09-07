@@ -2631,7 +2631,7 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
  * addition into a sign bucket; every remaining step of float_numeric_db_value_add ()
  * runs once, in numeric_sum_state_result (). */
 
-#define NUMERIC_SUM_STATE_WORDS 4	/* 256 bits: 128 bits of headroom above 38 digits */
+#define NUMERIC_SUM_STATE_WORDS 4	/* 256 bits: ~120 bits of headroom above DB_MAX_NUMERIC_PRECISION (40) digits */
 
 struct numeric_sum_state
 {
@@ -2719,7 +2719,11 @@ numeric_sum_state_result (const NUMERIC_SUM_STATE * state, DB_VALUE * result)
   ret = float_numeric_check_overflow_and_adjust_scale (&prec, &scale, result);
   if (ret != NO_ERROR)
     {
-      return ret;
+      /* same user-visible condition as the round-and-pack failure below: the interpreted
+       * per-row accumulation reports it as a hard ER_QPROC_OVERFLOW_ADDITION */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
+      db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return ER_QPROC_OVERFLOW_ADDITION;
     }
 
   ret =
