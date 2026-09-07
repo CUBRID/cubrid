@@ -194,6 +194,10 @@ grep -q "EID = " "$sqllog" || fail "SQL log misses the error EID cross-reference
 slowlog="$(ls "$CUBRID"/log/broker/sql_log/b1direct_*.slow.log 2>/dev/null | head -1)"
 [ -n "$slowlog" ] || fail "no slow log was produced (SLEEP cases exceed cas_long_query_time=1s)"
 grep -qi "SLEEP" "$slowlog" || fail "slow log misses the SLEEP statement"
+# fn_execute_array slow path: the prepared batch of SLEEP(2) UPDATEs must be
+# logged with its bind values (hard-coded argv offset used to abort the server)
+grep -q "execute_array" "$slowlog" || fail "slow log misses the execute_array unit"
+grep -q "bind 1 .*STRING" "$slowlog" || fail "slow log misses execute_array bind values"
 [ -s "$CUBRID/log/broker/${DB}.access" ] || fail "no access log line was produced"
 ddllog="$(ls "$CUBRID"/log/ddl_audit/b1direct_*_ddl.log 2>/dev/null | head -1)"
 [ -n "$ddllog" ] || fail "no DDL audit log was produced"

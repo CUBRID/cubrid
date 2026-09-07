@@ -1910,7 +1910,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
       if (as_info->cur_slow_log_mode == SLOW_LOG_MODE_ON)
 	{
 	  cas_slow_log_write (&query_start_time, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			      "execute_array srv_h_id %d %d ", srv_h_id, (argc - 2) / 2);
+			      "execute_array srv_h_id %d %d ", srv_h_id, (argc - arg_index) / 2);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
 	      /* see fn_execute_internal: the session may already be freed on this path */
@@ -1920,7 +1920,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
 					       (psr != NULL) ? &psr->hide_pwd_info : NULL);
-	      cas_common_bind_value_log (&query_start_time, 2, argc - 1, argv, 0, NULL,
+	      cas_common_bind_value_log (&query_start_time, arg_index, argc - 1, argv, 0, NULL,
 					 SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true, CAS_SCHEMA_DEFAULT_CHARSET);
 	    }
 	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,

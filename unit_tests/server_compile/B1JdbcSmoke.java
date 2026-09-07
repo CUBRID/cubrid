@@ -398,6 +398,24 @@ public class B1JdbcSmoke {
                 throw new RuntimeException("prepared batch element count " + c);
             }
         }
+        // slow-log regression: a prepared batch whose elements each exceed
+        // cas_long_query_time (1s) must be recorded by the slow-log path of
+        // fn_execute_array. Modern drivers send a query-timeout field before
+        // the autocommit flag, so the bind values start at argv[3]; the slow
+        // path used to log from a hard-coded argv[2] and aborted cub_server on
+        // the trailing-NUL assertion in cas_common_bind_value_print.
+        PreparedStatement slowb = con.prepareStatement(
+                "UPDATE b1_smoke SET v = ? WHERE id = ? AND SLEEP(2) = 0");
+        for (int i = 20; i <= 21; i++) {
+            slowb.setString(1, "slowbatch" + i);
+            slowb.setInt(2, i);
+            slowb.addBatch();
+        }
+        int[] slowCounts = slowb.executeBatch();
+        slowb.close();
+        if (slowCounts.length != 2) {
+            throw new RuntimeException("slow prepared batch expected 2 results, got " + slowCounts.length);
+        }
         Statement bstmt = con.createStatement();
         bstmt.addBatch("UPDATE b1_smoke SET v = 'batched' WHERE id = 20");
         bstmt.addBatch("DELETE FROM b1_smoke WHERE id = 22");
