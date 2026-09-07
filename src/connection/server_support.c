@@ -27,6 +27,7 @@
 #include "config.h"
 #include "load_worker_manager.hpp"
 #include "log_append.hpp"
+#include "serial.h"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
@@ -623,6 +624,10 @@ shutdown:
 
   // stop load sessions
   cubload::worker_manager_stop_all ();
+
+  /* Write the serial cache blocks' unissued tails back while the log writer can still ship them:
+   * nothing issues serial values past this point. */
+  serial_flush_cache_pool_replicated (thread_p);
 
   /* we should flush all append pages before stop log writer */
   logpb_force_flush_pages (thread_p);

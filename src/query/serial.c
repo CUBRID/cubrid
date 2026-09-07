@@ -31,6 +31,7 @@
 #include "storage_common.h"
 #include "heap_file.h"
 #include "log_append.hpp"
+#include "log_impl.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "record_descriptor.hpp"
@@ -1443,8 +1444,8 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
  * Called during shutdown while the heap, log and buffer managers are still up, unlike
  * serial_finalize_cache_pool, which runs after the volumes are dismounted. Without it a clean
  * restart resumes past the end of each reserved block, and every standalone (csql -S) process
- * consumes a whole one. The caller must be on a transaction that may run system operations - each
- * write opens one; see xboot_shutdown_server.
+ * consumes a whole one. On a server each write opens a system operation, so the caller's transaction
+ * must allow one; see serial_flush_cache_pool_replicated.
  */
 void
 serial_flush_cache_pool (THREAD_ENTRY * thread_p)
@@ -1463,6 +1464,42 @@ serial_flush_cache_pool (THREAD_ENTRY * thread_p)
       serial_flush_entry_best_effort (thread_p, entry);
     }
 }
+
+#if defined (SERVER_MODE)
+/*
+ * serial_flush_cache_pool_replicated () - serial_flush_cache_pool on a transaction of its own, so that
+ *                each write-back carries a replication record and the standby lowers cur_val with us.
+ *   return:
+ *
+ * The system transactions cannot replicate, so a write-back on one would reach this node only. A
+ * regular transaction takes the flush-marked system operation in serial_update_serial_object, the
+ * path a NEXT_VALUE advance takes; the applier applies it at the operation's end.
+ */
+void
+serial_flush_cache_pool_replicated (THREAD_ENTRY * thread_p)
+{
+  int save_tran_index;
+  int tran_index;
+
+  save_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
+					TRAN_READ_COMMITTED);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      /* no transaction to write on; the block tails are lost, as after a crash */
+      er_clear ();
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
+      return;
+    }
+
+  serial_flush_cache_pool (thread_p);
+
+  (void) xtran_server_commit (thread_p, false);
+  logtb_free_tran_index (thread_p, tran_index);
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
+}
+#endif /* SERVER_MODE */
 
 /*
  * serial_finalize_cache_pool () -
