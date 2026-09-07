@@ -367,9 +367,7 @@ namespace parallel_query
 		      assert_release_error (er_errid () != NO_ERROR);
 		      m_task_manager.handle_error (thread_ref);
 		      has_error = true;
-
 		      qfile_close_list (&thread_ref, part_list_id[part_id]);
-
 		      break;		/* error_exit */
 		    }
 
