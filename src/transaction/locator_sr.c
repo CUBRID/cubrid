@@ -46,6 +46,7 @@
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
+#include "serial.h"
 #include "list_file.h"
 #include "log_lsa.hpp"
 #include "lock_manager.h"
@@ -7028,6 +7029,10 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    case LC_FLUSH_UPDATE:
 	    case LC_FLUSH_UPDATE_PRUNE:
 	    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
+	      if (serial_repl_image_is_stale (thread_p, &obj->class_oid, &obj->oid, &old_recdes, &recdes))
+		{
+		  break;	/* the row on this node is newer; the object counts as applied */
+		}
 	      pruning_type = locator_area_op_to_pruning_type (obj->operation);
 	      error_code =
 		locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, has_index,

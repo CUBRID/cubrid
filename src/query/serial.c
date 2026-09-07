@@ -42,6 +42,9 @@
 #include "xasl_cache.h"
 #include "thread_lockfree_hash_map.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
+#if defined (SERVER_MODE)
+#include "server_support.h"
+#endif /* SERVER_MODE */
 #include "memory_wrapper.hpp"
 
 /* attribute of _db_serial class */
@@ -1500,6 +1503,136 @@ serial_flush_cache_pool_replicated (THREAD_ENTRY * thread_p)
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
 }
 #endif /* SERVER_MODE */
+
+/*
+ * serial_repl_image_is_stale () - whether a row image the log applier brings is a _db_serial row that
+ *                would move cur_val against the serial's direction on a node that issues values itself.
+ *   return: true when the image must not be applied here
+ *   class_oidp(in)  : class of the row; rows of other classes are never stale
+ *   serial_oidp(in) : OID of the row
+ *   old_recdes(in)  : the row on this node
+ *   new_recdes(in)  : the image from the other node
+ *
+ * A standby follows every image, so a promotion resumes at the master's last issued value. A leaving
+ * master's log tail is applied after the promotion, so an active node takes an image only if it does
+ * not move cur_val backwards: below what this node has issued, it would re-issue those values. A
+ * cyclic serial has no direction, and an active node leaves its row alone.
+ */
+bool
+serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, const OID * serial_oidp,
+			    RECDES * old_recdes, RECDES * new_recdes)
+{
+#if !defined (SERVER_MODE)
+  /* the log applier forces rows into a server only */
+  return false;
+#else /* SERVER_MODE */
+  HEAP_CACHE_ATTRINFO old_info, new_info;
+  bool old_started = false, new_started = false, failed = false, stale = false;
+  HA_SERVER_STATE state;
+  ATTR_ID attrid;
+  DB_VALUE *val, *old_cur, *new_cur;
+  DB_VALUE cmp_result;
+  int positive;
+
+  if (!oid_is_serial (class_oidp))
+    {
+      return false;
+    }
+  state = css_ha_server_state ();
+  if (state != HA_SERVER_STATE_ACTIVE && state != HA_SERVER_STATE_TO_BE_STANDBY)
+    {
+      return false;
+    }
+  if (!serial_Cache_initialized || serial_Num_attrs < 0)
+    {
+      return false;
+    }
+  if (heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &old_info) != NO_ERROR)
+    {
+      failed = true;
+      goto exit;
+    }
+  old_started = true;
+  if (heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &new_info) != NO_ERROR)
+    {
+      failed = true;
+      goto exit;
+    }
+  new_started = true;
+  if (heap_attrinfo_read_dbvalues (thread_p, serial_oidp, old_recdes, &old_info) != NO_ERROR
+      || heap_attrinfo_read_dbvalues (thread_p, serial_oidp, new_recdes, &new_info) != NO_ERROR)
+    {
+      failed = true;
+      goto exit;
+    }
+
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CYCLIC_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+    {
+      failed = true;
+      goto exit;
+    }
+  val = heap_attrinfo_access (attrid, &old_info);
+  if (val == NULL || DB_IS_NULL (val))
+    {
+      failed = true;
+      goto exit;
+    }
+  if (db_get_int (val) != 0)
+    {
+      stale = true;
+      goto exit;
+    }
+
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_INCREMENT_VAL_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+    {
+      failed = true;
+      goto exit;
+    }
+  val = heap_attrinfo_access (attrid, &old_info);
+  positive = (val == NULL) ? ER_FAILED : numeric_db_value_is_positive (val);
+  if (positive < 0)
+    {
+      failed = true;
+      goto exit;
+    }
+
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+    {
+      failed = true;
+      goto exit;
+    }
+  old_cur = heap_attrinfo_access (attrid, &old_info);
+  new_cur = heap_attrinfo_access (attrid, &new_info);
+  if (old_cur == NULL || new_cur == NULL || DB_IS_NULL (old_cur) || DB_IS_NULL (new_cur)
+      || numeric_db_value_compare (new_cur, old_cur, &cmp_result) != NO_ERROR || DB_IS_NULL (&cmp_result))
+    {
+      failed = true;
+      goto exit;
+    }
+  stale = positive ? (db_get_int (&cmp_result) < 0) : (db_get_int (&cmp_result) > 0);
+
+exit:
+  if (failed)
+    {
+      er_clear ();
+    }
+  else if (stale)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "serial (%d|%d|%d): a replicated row image moves cur_val backwards on an active node; kept this node's row\n",
+		    OID_AS_ARGS (serial_oidp));
+    }
+  if (new_started)
+    {
+      heap_attrinfo_end (thread_p, &new_info);
+    }
+  if (old_started)
+    {
+      heap_attrinfo_end (thread_p, &old_info);
+    }
+  return stale;
+#endif /* SERVER_MODE */
+}
 
 /*
  * serial_finalize_cache_pool () -
