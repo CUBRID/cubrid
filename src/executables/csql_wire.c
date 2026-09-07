@@ -38,6 +38,7 @@
 #include "db_client_type.hpp"
 #include "environment_variable.h"
 #include "error_code.h"
+#include "system_parameter.h"
 
 #define ADOPTION_PROTOCOL_ONLY
 #include "adoption.hpp"
@@ -81,6 +82,7 @@ static sem_t wire_Cancel_sem;
 static volatile sig_atomic_t wire_Cancel_thread_up = 0;
 
 static void wire_cancel_send (void);
+static int wire_apply_statement_blocks (void);
 
 static void *
 wire_cancel_thread_run (void *arg)
@@ -531,6 +533,14 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
       host[0] = '\0';
     }
 
+  /* The thin path bypasses boot_client_initialize, including its client
+   * configuration load. Restore that load before establishing a session. */
+  if (sysprm_load_and_init_client (db, NULL) != NO_ERROR)
+    {
+      wire_set_error (ER_BO_CANT_LOAD_SYSPRM, "cannot load csql system parameters");
+      return ER_BO_CANT_LOAD_SYSPRM;
+    }
+
   int err;
   if (host[0] == '\0' || strcmp (host, "localhost") == 0)
     {
@@ -570,6 +580,11 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
    * connection is its thin equivalent, and csql session commands gate on
    * this global (csql_session.c CMD_CHECK_CONNECT) */
   db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
+  if (wire_apply_statement_blocks () != NO_ERROR)
+    {
+      csql_wire_disconnect ();
+      return wire_Err_code;
+    }
   wire_cancel_thread_start ();
   return NO_ERROR;
 }
@@ -738,7 +753,7 @@ wire_flags_from_arg (const CSQL_ARGUMENT * a)
 /* send the assembled body and replay the reply; returns the reply status or
  * a negative code on a wire/server error */
 static int
-wire_roundtrip (wire_body * b)
+wire_roundtrip (wire_body * b, bool replay)
 {
   char head[8];
   int status = ER_FAILED;
@@ -849,7 +864,15 @@ wire_roundtrip (wire_body * b)
 	}
       int clen = clen_i;
       FILE *fp = (tag == CAS_CSQL_CHUNK_ERR) ? csql_Error_fp : csql_Output_fp;
-      if (fp != NULL && clen > 0)
+      if (!replay && tag == CAS_CSQL_CHUNK_ERR && clen > 0)
+	{
+	  char msg[WIRE_ERR_MSG_MAX];
+	  size_t n = ((size_t) clen < sizeof (msg) - 1) ? (size_t) clen : sizeof (msg) - 1;
+	  memcpy (msg, reply + pos, n);
+	  msg[n] = '\0';
+	  wire_set_error (ER_FAILED, msg);
+	}
+      if (replay && fp != NULL && clen > 0)
 	{
 	  /* server text is UTF-8; apply the console conversion the fat
 	   * client would have applied while rendering */
@@ -929,24 +952,21 @@ csql_wire_execute (const CSQL_ARGUMENT * csql_arg, int input_type, int line_no, 
       return ER_FAILED;
     }
 
-  int status = wire_roundtrip (&b);
+  int status = wire_roundtrip (&b, true);
   free (b.buf);
   return status;
 }
 
-int
-csql_wire_session_cmd (const CSQL_ARGUMENT * csql_arg, const char *line)
+static int
+wire_session_cmd (int flags, int string_width, const char *widths, const char *line, bool replay)
 {
   wire_body b = { NULL, 0, 0 };
   char fc = (char) CAS_FC_CSQL_REQUEST;
-  char widths[4096];
-
-  csql_column_widths_serialize (widths, sizeof (widths));
 
   if (wire_body_append (&b, &fc, 1) != NO_ERROR
       || wire_arg_int (&b, CAS_CSQL_SUB_SESSION_CMD) != NO_ERROR
-      || wire_arg_int (&b, wire_flags_from_arg (csql_arg)) != NO_ERROR
-      || wire_arg_int (&b, csql_arg->string_width) != NO_ERROR
+      || wire_arg_int (&b, flags) != NO_ERROR
+      || wire_arg_int (&b, string_width) != NO_ERROR
       || wire_arg_str (&b, widths) != NO_ERROR || wire_arg_str (&b, line) != NO_ERROR)
     {
       free (b.buf);
@@ -954,9 +974,41 @@ csql_wire_session_cmd (const CSQL_ARGUMENT * csql_arg, const char *line)
       return ER_FAILED;
     }
 
-  int status = wire_roundtrip (&b);
+  int status = wire_roundtrip (&b, replay);
   free (b.buf);
   return status;
+}
+
+int
+csql_wire_session_cmd (const CSQL_ARGUMENT * csql_arg, const char *line)
+{
+  char widths[4096];
+
+  csql_column_widths_serialize (widths, sizeof (widths));
+  return wire_session_cmd (wire_flags_from_arg (csql_arg), csql_arg->string_width, widths, line, true);
+}
+
+/* Seed these client-only guards once per connection. Sending both false and
+ * true preserves client configuration independently of the server defaults;
+ * later explicit SETs on the same session remain effective. */
+static int
+wire_apply_statement_blocks (void)
+{
+  char line[128];
+
+  snprintf (line, sizeof (line), ";set block_ddl_statement=%c;block_nowhere_statement=%c",
+	    prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT) ? 'y' : 'n',
+	    prm_get_bool_value (PRM_ID_BLOCK_NOWHERE_STATEMENT) ? 'y' : 'n');
+  int status = wire_session_cmd (0, 0, "", line, false);
+  if (status != NO_ERROR)
+    {
+      if (wire_Err_code == NO_ERROR)
+	{
+	  wire_set_error (ER_FAILED, "cannot apply csql statement-blocking configuration");
+	}
+      return wire_Err_code;
+    }
+  return NO_ERROR;
 }
 
 int
@@ -973,7 +1025,7 @@ csql_wire_tran (char op)
       return ER_FAILED;
     }
 
-  int status = wire_roundtrip (&b);
+  int status = wire_roundtrip (&b, true);
   free (b.buf);
   return status;
 }
