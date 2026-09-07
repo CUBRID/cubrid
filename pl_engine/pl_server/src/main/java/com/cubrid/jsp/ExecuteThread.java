@@ -102,10 +102,10 @@ public class ExecuteThread extends Thread {
     private final LinkedBlockingQueue<ByteBuffer> inBound = new LinkedBlockingQueue<ByteBuffer>();
 
     /*
-     * Whether the invocation currently running on this thread may use the server-side default
-     * connection. Set from the invoke payload on every invocation. Per thread, not per Context:
-     * the Context is shared by every px worker of a session, and two workers of one query can
-     * carry different answers (one declared PARALLEL_ENABLE, one not).
+     * Whether the current invocation must not use the server-side default connection. Set from
+     * the invoke payload on every invocation: true for a PARALLEL_ENABLE routine or any px worker.
+     * Keep it per thread because the Context is shared by the session's execution threads; an
+     * undeclared routine on the leader and a routine on a px worker can carry different values.
      */
     private boolean serverSideSqlForbidden = false;
 
@@ -113,7 +113,7 @@ public class ExecuteThread extends Thread {
         return serverSideSqlForbidden;
     }
 
-    /* true when the invocation running on the calling thread is a PARALLEL_ENABLE routine */
+    /* true when the calling thread's invocation is forbidden from using server-side SQL */
     public static boolean isServerSideSqlForbiddenOnCurrentThread() {
         Thread current = Thread.currentThread();
         return current instanceof ExecuteThread

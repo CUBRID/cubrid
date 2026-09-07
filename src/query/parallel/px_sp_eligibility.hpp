@@ -21,10 +21,9 @@
  *                         execution path (parallel scan / subquery / hash join checkers).
  *
  * Eligibility is the PARALLEL_ENABLE declaration bit alone. The declaration is trusted without
- * verification - a false declaration is the declarer's responsibility - and it is enforced on
- * the one point that would otherwise make parallel execution unsafe: the SP cannot reach the
- * server-side connection (ER_SP_PARALLEL_ENABLE_NO_SQL). No environment gate is needed, because
- * transaction control travels the same refused channel.
+ * verification; a false declaration is the declarer's responsibility. Server-side SQL and
+ * DBMS_OUTPUT are prohibited at their respective entry points. No environment gate is needed,
+ * because transaction control also requires the prohibited server-side connection.
  */
 
 #ifndef _PX_SP_ELIGIBILITY_HPP_
