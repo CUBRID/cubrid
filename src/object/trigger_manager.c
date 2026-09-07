@@ -43,6 +43,7 @@
 #include "execute_statement.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
+#include "client_session_context.hpp"	/* CSC_CLIENT_STDOUT */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -4728,7 +4729,7 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
 
   if (tr_Trace)
     {
-      fprintf (stdout, "TRACE: Evaluating condition for trigger \"%s\".\n", trigger->name);
+      fprintf (CSC_CLIENT_STDOUT, "TRACE: Evaluating condition for trigger \"%s\".\n", trigger->name);
     }
 
   if (act->type != TR_ACT_EXPRESSION)
@@ -4919,7 +4920,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
     {
       if (tr_Trace)
 	{
-	  fprintf (stdout, "TRACE: Executing action for trigger \"%s\".\n", trigger->name);
+	  fprintf (CSC_CLIENT_STDOUT, "TRACE: Executing action for trigger \"%s\".\n", trigger->name);
 	}
 
       switch (act->type)
@@ -4937,7 +4938,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	case TR_ACT_PRINT:
 	  if (trigger->action->source != NULL)
 	    {
-	      fprintf (stdout, "%s\n", trigger->action->source);
+	      fprintf (CSC_CLIENT_STDOUT, "%s\n", trigger->action->source);
 	    }
 	  break;
 
