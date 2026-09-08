@@ -95,6 +95,118 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
 }
 
 /*
+ * stats_read_class_timestamp () - read a class's stored statistics timestamp
+ *   return: NO_ERROR, or an error code
+ *   class_id_p(in): class OID
+ *   out_ts(out): the class's ci_time_stamp (0 when not yet collected / unavailable)
+ *
+ * Note: a light read used by xstats_enter_update_gate () to tell, after the per-class
+ *       gate is granted, whether another session already refreshed the statistics while
+ *       we waited (so our own collection would be redundant).
+ */
+static int
+stats_read_class_timestamp (THREAD_ENTRY * thread_p, OID * class_id_p, int *out_ts)
+{
+  CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
+  CLS_INFO *cls_info_p = NULL;
+  OID dir_oid;
+  int error_code = NO_ERROR;
+
+  *out_ts = 0;
+
+  if (catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  catalog_access_info.class_oid = class_id_p;
+  catalog_access_info.dir_oid = &dir_oid;
+  error_code = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, S_LOCK);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  cls_info_p = catalog_get_class_info (thread_p, class_id_p, &catalog_access_info);
+  if (cls_info_p != NULL)
+    {
+      *out_ts = cls_info_p->ci_time_stamp;
+      catalog_free_class_info_and_init (cls_info_p);
+    }
+
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
+
+  return NO_ERROR;
+}
+
+/*
+ * xstats_enter_update_gate () - serialize concurrent UPDATE STATISTICS on one class
+ *   return: NO_ERROR, or an error code
+ *   class_id_p(in): class whose statistics are about to be (re)collected
+ *   out_stats_fresh(out): true when another session refreshed this class's statistics
+ *                         while we waited on the gate -- the caller may then skip its
+ *                         own (now redundant) scan / histogram build / store (piggyback)
+ *
+ * Note (CBRD-27369): since CBRD-26959 an UPDATE STATISTICS collects column histograms by
+ *   default, writing one _db_histogram catalog row per column and holding those X locks
+ *   to commit.  Many sessions doing this on the same table cross-request S/X on that
+ *   small set of rows and deadlock-storm.  This gate makes the collection one-at-a-time
+ *   per class: it takes an X lock, held to end of transaction, on a resource private to
+ *   statistics collection -- the class's virtual catalog-directory OID
+ *   (OID_GET_VIRTUAL_CLASS_OF_DIR_OID) used here as the locked *object*.  Elsewhere that
+ *   OID is only ever the class_oid argument of a lock, never the object, and the lock
+ *   table keys resources by object OID, so this is a distinct resource that self-conflicts
+ *   (X vs X) yet does not touch the class's own OID or rows: concurrent DML and reads of
+ *   the table are unaffected (mirrors PostgreSQL's ShareUpdateExclusiveLock on ANALYZE).
+ */
+int
+xstats_enter_update_gate (THREAD_ENTRY * thread_p, OID * class_id_p, bool * out_stats_fresh)
+{
+  OID gate_oid;
+  int ts_before = 0, ts_after = 0;
+  int error_code = NO_ERROR;
+
+  assert (class_id_p != NULL && out_stats_fresh != NULL);
+
+  *out_stats_fresh = false;
+
+  /* timestamp before we wait; a read failure only disables the piggyback shortcut */
+  if (stats_read_class_timestamp (thread_p, class_id_p, &ts_before) != NO_ERROR)
+    {
+      er_clear ();
+      ts_before = 0;
+    }
+
+  /* a class's slot number is small, so the reserved gate-OID marker bit is free; the gate
+   * would over-serialize (never misbehave) if it were not, but assert the invariant */
+  assert ((class_id_p->slotid & UPDATE_STATS_GATE_OID_MASK) == 0);
+  OID_GET_UPDATE_STATS_GATE_OID (class_id_p, &gate_oid);
+  if (lock_object (thread_p, &gate_oid, oid_Root_class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  if (ts_before > 0)
+    {
+      if (stats_read_class_timestamp (thread_p, class_id_p, &ts_after) == NO_ERROR)
+	{
+	  /* the timestamp advanced while we waited => another session already (re)collected
+	   * the statistics; report it so the caller can skip the redundant work.  An
+	   * unchanged timestamp (e.g. the previous holder aborted) leaves it false. */
+	  *out_stats_fresh = (ts_after > ts_before);
+	}
+      else
+	{
+	  er_clear ();
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * stats_update_statistics_internal () -  Updates the statistics for the objects
  *                                        of a given class
  *   return:

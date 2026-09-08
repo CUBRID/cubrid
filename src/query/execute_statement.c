@@ -4925,8 +4925,25 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (class_type == SM_CLASS_CT)
 	    {
 	      bool stats_updated = false;
+	      bool stats_fresh = false;
 
-	      if (statement->info.update_stats.drop_histogram)
+	      /* CBRD-27369: serialize concurrent UPDATE STATISTICS on this class through a
+	       * per-class gate held to commit, so at most one session at a time writes its
+	       * statistics and _db_histogram rows (concurrent collectors otherwise deadlock-
+	       * storm on those catalog rows).  When another session already refreshed the
+	       * statistics while we waited, skip our now-redundant collection (piggyback). */
+	      error = stats_enter_update_gate (class_mop, &stats_fresh);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	      if (stats_fresh && !statement->info.update_stats.drop_histogram
+		  && !statement->info.update_stats.no_histogram)
+		{
+		  stats_updated = true;
+		}
+
+	      if (!stats_updated && statement->info.update_stats.drop_histogram)
 		{
 		  DB_OBJECT *obj;
 		  PT_HISTOGRAM_INFO histogram_info;
@@ -4954,7 +4971,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    }
 		  /* the histograms are gone; fall through to the plain statistics update below */
 		}
-	      else if (!statement->info.update_stats.no_histogram)
+	      else if (!stats_updated && !statement->info.update_stats.no_histogram)
 		{
 		  DB_OBJECT *obj;
 		  PT_HISTOGRAM_INFO histogram_info;
