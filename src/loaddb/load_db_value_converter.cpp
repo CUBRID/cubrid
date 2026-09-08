@@ -52,7 +52,6 @@ namespace cubload
   int to_db_null (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_short (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_int (const char *str, const size_t str_size, const attribute *attr, db_value *val);
-  int to_db_int_set (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_bigint (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_generic_char (DB_TYPE type, const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_char (const char *str, const size_t str_size, const attribute *attr, db_value *val);
@@ -107,7 +106,7 @@ namespace cubload
     DB_TYPE set_types[3] = {DB_TYPE_SET, DB_TYPE_MULTISET, DB_TYPE_SEQUENCE};
     for (DB_TYPE &set_type : set_types)
       {
-	setters_[set_type][LDR_INT] = &to_db_int_set;
+	setters_[set_type][LDR_INT] = &to_int_generic;
 	setters_[set_type][LDR_STR] = &to_db_string;
 	setters_[set_type][LDR_NUMERIC] = &to_db_numeric;
 	setters_[set_type][LDR_DOUBLE] = &to_db_double;
@@ -297,23 +296,6 @@ namespace cubload
       }
 
     return NO_ERROR;
-  }
-
-  /**
-   * Used in case of collection when if int overflows fallback to bigint
-   */
-  int
-  to_db_int_set (const char *str, const size_t str_size, const attribute *attr, db_value *val)
-  {
-    int error_code = to_db_int (str, str_size, attr, val);
-    if (error_code == ER_IT_DATA_OVERFLOW)
-      {
-	// if there is overflow on integer, try as bigint
-	er_clear ();
-	error_code = to_db_bigint (str, str_size, attr, val);
-      }
-
-    return error_code;
   }
 
   int
