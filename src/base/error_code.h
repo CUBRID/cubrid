@@ -1785,7 +1785,13 @@
 
 #define ER_HEAP_OOS_INVALID_ARGUMENT                -1384
 
-#define ER_LAST_ERROR                               -1385
+#define ER_OOS_HISTORY_ACTIVATION_REQUIRED           -1385
+
+#define ER_OOS_HISTORY_REQUIRES_CLEAN_SHUTDOWN       -1386
+
+#define ER_CDC_LEGACY_OOS_IMAGE                      -1387
+#define ER_CDC_INVALID_HISTORY_IMAGE                -1388
+#define ER_LAST_ERROR                               -1389
 
 
 

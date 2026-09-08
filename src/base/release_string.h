@@ -31,6 +31,10 @@
 #define REL_MAX_RELEASE_LENGTH 15
 #define REL_MAX_VERSION_LENGTH 256
 
+/* Disk format with durable OOS supplemental history. Keep 11.5 readable until
+ * an operator explicitly activates an existing database. */
+#define REL_DISK_COMPATIBILITY_OOS_HISTORY 11.6f
+
 /*
  * REL_FIXUP_FUNCTION - Signature for a function that can part of
  *                      a disk compatibility rule.

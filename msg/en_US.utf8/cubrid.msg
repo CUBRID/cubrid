@@ -1495,7 +1495,15 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1384 Internal error: invalid out-of-row storage argument.
 
-1385 Last Error
+1385 OOS history activation required. Cleanly shut down the database and run cubrid activatehistorydb before writing OOS values with supplemental logging enabled.
+
+1386 OOS history activation requires a clean shutdown. Restart the database to recover it, shut it down cleanly, and retry activation.
+
+1387 Historical OOS values are not available in this legacy log image. Extraction stopped without advancing past the image.
+
+1388 The supplemental historical row image is malformed. Extraction stopped without advancing past the image.
+
+1389 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

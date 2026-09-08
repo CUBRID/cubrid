@@ -3280,7 +3280,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 
       server_credential->page_size = IO_PAGESIZE;
       server_credential->log_page_size = LOG_PAGESIZE;
-      server_credential->disk_compatibility = rel_disk_compatible ();
+      server_credential->disk_compatibility = log_get_db_compatibility ();
 #if defined (SERVER_MODE)
       server_credential->ha_server_state = css_ha_server_state ();
 #else

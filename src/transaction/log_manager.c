@@ -1310,6 +1310,17 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       goto error;
     }
 
+  /* An interrupted activation may have left the new marker in the OS cache.
+   * Establish it durably before recovery or any new-format history is allowed. */
+  if (log_Gl.hdr.db_compatibility == REL_DISK_COMPATIBILITY_OOS_HISTORY)
+    {
+      error_code = logpb_sync_history_compatibility ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   if (rel_is_log_compatible (log_Gl.hdr.db_release, rel_release_string ()) != true)
     {
       /*
@@ -4910,16 +4921,13 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
  *   data (in) : supplemental data
  *   
  */
-void
-log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length, const void *data)
+static LOG_PRIOR_NODE *
+log_make_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length, const void *data)
 {
   assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
 
   LOG_PRIOR_NODE *node;
   LOG_REC_SUPPLEMENT *supplement;
-
-  LOG_TDES *tdes;
-  int tran_index;
 
   LOG_ZIP *zip_undo = NULL;
   bool is_zipped = false;
@@ -4929,18 +4937,21 @@ log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_t
       zip_undo = log_append_get_zip_undo (thread_p);
       if (zip_undo == NULL)
 	{
-	  return;
+	  return NULL;
 	}
 
-      log_zip (zip_undo, length, data);
-      length = zip_undo->data_length;
-      data = zip_undo->log_data;
-
-      is_zipped = true;
+      if (log_zip (zip_undo, length, data))
+	{
+	  length = zip_undo->data_length;
+	  data = zip_undo->log_data;
+	  is_zipped = true;
+	}
+      else if (zip_undo->data_length == 0 && er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
+	{
+	  return NULL;
+	}
+      /* Compression that does not save space retains the original bytes. */
     }
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
 
   /* supplement data will be stored at undo data */
   node =
@@ -4948,7 +4959,7 @@ log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_t
 				   NULL);
   if (node == NULL)
     {
-      return;
+      return NULL;
     }
 
   supplement = (LOG_REC_SUPPLEMENT *) node->data_header;
@@ -4962,13 +4973,31 @@ log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_t
       supplement->length = length;
     }
 
-  prior_lsa_next_record (thread_p, node, tdes);
+  return node;
+}
+
+int
+log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length, const void *data)
+{
+  LOG_PRIOR_NODE *node = log_make_supplemental_info (thread_p, rec_type, length, data);
+  if (node == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  prior_lsa_next_record (thread_p, node, LOG_FIND_CURRENT_TDES (thread_p));
+  return NO_ERROR;
 }
 
 int
 log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, OID * classoid, LOG_LSA * undo_lsa,
 			     LOG_LSA * redo_lsa)
 {
+  int always_fail = 1;
+  if (FI_TEST_ARG (thread_p, FI_TEST_OOS_HISTORY_REFERENCE, &always_fail, 0) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "OOS history fault injection");
+      return ER_FAILED_ASSERTION;
+    }
   int size;
 
   /* sizeof (OID) = 8, sizeof (LOG_LSA) = 8, and data contains classoid and undo, redo lsa. 
@@ -5015,9 +5044,80 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
       return ER_FAILED;
     }
 
-  log_append_supplemental_info (thread_p, rec_type, size, (void *) data);
-
+  /* Allocate both records before publishing either one. A resumed reader searches
+   * forward from DML for the user, independently of the optional commit-tail copy. */
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  LOG_PRIOR_NODE *node = log_make_supplemental_info (thread_p, rec_type, size, data);
+  LOG_PRIOR_NODE *user_node = NULL;
+  int error = ER_OUT_OF_VIRTUAL_MEMORY;
+  if (node == NULL)
+    {
+      return error;
+    }
+  if (FI_TEST_ARG (thread_p, FI_TEST_OOS_HISTORY_USER, &always_fail, 0) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "OOS history fault injection");
+      error = ER_FAILED_ASSERTION;
+    }
+  else
+    {
+      user_node = log_make_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER,
+					      strlen (tdes->client.get_db_user ()), tdes->client.get_db_user ());
+    }
+  if (user_node == NULL)
+    {
+      free_and_init (node->data_header);
+      free_and_init (node->udata);
+      free_and_init (node->rdata);
+      free_and_init (node);
+      return error;
+    }
+  /* *INDENT-OFF* */
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
+  prior_lsa_next_record_with_lock (thread_p, node, tdes);
+  prior_lsa_next_record_with_lock (thread_p, user_node, tdes);
+  log_Gl.prior_info.prior_lsa_mutex.unlock ();
+  /* *INDENT-ON* */
   return NO_ERROR;
+}
+
+/* Publish a complete expanded image; only expose its LSA after a successful append. */
+int
+log_append_supplemental_image (THREAD_ENTRY * thread_p, const RECDES * image, LOG_LSA * image_lsa)
+{
+  int always_fail = 1;
+  if (FI_TEST_ARG (thread_p, FI_TEST_OOS_HISTORY_APPEND, &always_fail, 0) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "OOS history fault injection");
+      return ER_FAILED_ASSERTION;
+    }
+  int error, length;
+  char *data;
+  LSA_SET_NULL (image_lsa);
+  if (image->length <= 0 || image->length > INT_MAX - (int) sizeof (image->type))
+    {
+      return ER_FAILED;
+    }
+  length = image->length + sizeof (image->type);
+  data = (char *) malloc (length);
+  if (data == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (data, &image->type, sizeof (image->type));
+  memcpy (data + sizeof (image->type), image->data, image->length);
+  if (FI_INSERTED (FI_TEST_OOS_HISTORY_TRUNCATE))
+    {
+      length = 1;
+    }
+  error = log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_OOS_IMAGE, length, data);
+  free_and_init (data);
+  if (error == NO_ERROR)
+    {
+      LSA_COPY (image_lsa, &LOG_FIND_CURRENT_TDES (thread_p)->tail_lsa);
+    }
+  return error;
 }
 
 int
@@ -5038,11 +5138,11 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
   memcpy (data, &undo_recdes->type, sizeof (undo_recdes->type));
   memcpy (data + sizeof (undo_recdes->type), undo_recdes->data, undo_recdes->length);
 
-  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_UNDO_RECORD, length, data);
+  int error = log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_UNDO_RECORD, length, data);
 
   free_and_init (data);
 
-  return NO_ERROR;
+  return error;
 }
 
 int
@@ -10004,6 +10104,13 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
 	}
     }
 
+  if (udata_size < (int) sizeof (recdes->type))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_HISTORY_IMAGE, 0);
+      scan = S_ERROR;
+      goto exit;
+    }
+
   /* copy the record */
   recdes->type = *(INT16 *) (undo_data);
   recdes->length = udata_size - sizeof (recdes->type);
@@ -10889,6 +10996,12 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa->offset);
 	supplement_length = supplement->length;
 	rec_type = supplement->rec_type;
+	/* Image payloads are consumed only through their DML references. */
+	if (rec_type == LOG_SUPPLEMENT_OOS_IMAGE)
+	  {
+	    goto end;
+	  }
+
 
 	LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), process_lsa, log_page_p);
 
@@ -10933,8 +11046,8 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 		  }
 		else
 		  {
-		    /* can not find user */
-		    goto end;
+		    /* User metadata may not be flushed yet; retry this DML instead of skipping it. */
+		    goto error;
 		  }
 	      }
 	    else
@@ -10985,7 +11098,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	    memcpy (&redo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
-	    if (cdc_get_recdes (thread_p, NULL, NULL, &redo_lsa, &redo_recdes, false) != NO_ERROR)
+	    if ((error = cdc_get_recdes (thread_p, NULL, NULL, &redo_lsa, &redo_recdes, false)) != NO_ERROR)
 	      {
 		goto error;
 	      }
@@ -11016,7 +11129,8 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 	    memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 	    memcpy (&redo_lsa, supplement_data + sizeof (OID) + sizeof (LOG_LSA), sizeof (LOG_LSA));
 
-	    if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes, false) != NO_ERROR)
+	    if ((error =
+		 cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, &redo_lsa, &redo_recdes, false)) != NO_ERROR)
 	      {
 		goto error;
 	      }
@@ -11069,7 +11183,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
 	    memcpy (&undo_lsa, supplement_data + sizeof (OID), sizeof (LOG_LSA));
 
-	    if (cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, NULL, NULL, false) != NO_ERROR)
+	    if ((error = cdc_get_recdes (thread_p, &undo_lsa, &undo_recdes, NULL, NULL, false)) != NO_ERROR)
 	      {
 		goto error;
 	      }
@@ -11272,6 +11386,15 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	    ("cdc_loginfo_producer_execute : cdc_log_extract() error(%d) is returned at extracting log from lsa (%lld | %d)",
 	     error, LSA_AS_ARGS (&cur_log_rec_lsa));
 
+	  if (error == ER_CDC_LEGACY_OOS_IMAGE || error == ER_CDC_INVALID_HISTORY_IMAGE)
+	    {
+	      pthread_mutex_lock (&cdc_Gl.producer.lock);
+	      cdc_Gl.producer.extraction_error = error;
+	      pthread_mutex_unlock (&cdc_Gl.producer.lock);
+	      thread_sleep (50);
+	      continue;
+	    }
+
 	  if (!CDC_IS_IGNORE_LOGINFO_ERROR (error))
 	    {
 	      continue;
@@ -11355,6 +11478,7 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
   undo_recdes->data = (char *) malloc (ONE_K);
   if (undo_recdes->data == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, ONE_K);
       cdc_log ("cdc_get_undo_record : failed to allocate memory while reading from undo log lsa:(%lld | %d)",
 	       LSA_AS_ARGS (&lsa));
       return S_ERROR;
@@ -11436,6 +11560,73 @@ cdc_log_read_advance_and_preserve_if_needed (THREAD_ENTRY * thread_p, int size, 
   return NO_ERROR;
 }
 
+/* Durable images have a complete expanded row and a bounded four-byte VOT. */
+static int
+cdc_get_supplemental_image (THREAD_ENTRY * thread_p, LOG_PAGE * page, LOG_LSA lsa, RECDES * record,
+			    bool allow_legacy_undo)
+{
+  LOG_LSA cursor = lsa;
+  LOG_REC_SUPPLEMENT *supplement;
+  SUPPLEMENT_REC_TYPE type;
+  int header, first = -1, previous = -1;
+  if (cdc_check_log_page (thread_p, page, &lsa) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &cursor, page);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &cursor, page);
+  supplement = (LOG_REC_SUPPLEMENT *) (page->area + cursor.offset);
+  type = supplement->rec_type;
+  if (type != LOG_SUPPLEMENT_OOS_IMAGE && !(allow_legacy_undo && type == LOG_SUPPLEMENT_UNDO_RECORD))
+    {
+      goto malformed;
+    }
+  if (cdc_get_undo_record (thread_p, page, lsa, record) != S_SUCCESS)
+    {
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  if (record->length < OR_MVCC_MIN_HEADER_SIZE)
+    {
+      goto malformed;
+    }
+  if (type == LOG_SUPPLEMENT_UNDO_RECORD)
+    {
+      return NO_ERROR;
+    }
+  header = OR_HEADER_SIZE (record->data);
+  if ((record->type != REC_HOME && record->type != REC_NEWHOME)
+      || header > record->length || OR_GET_OFFSET_SIZE (record->data) != BIG_VAR_OFFSET_SIZE
+      || heap_recdes_contains_oos (record))
+    {
+      goto malformed;
+    }
+  for (int i = 0; i < (record->length - header) / OR_INT_SIZE; i++)
+    {
+      int entry = OR_GET_INT (record->data + header + i * OR_INT_SIZE);
+      int offset = OR_GET_VAR_OFFSET (entry);
+      if (OR_IS_OOS (entry) || offset < previous || offset > record->length - header)
+	{
+	  goto malformed;
+	}
+      if (i == 0)
+	{
+	  first = offset;
+	}
+      if (OR_IS_LAST_ELEMENT (entry))
+	{
+	  if (i > 0 && first >= (i + 1) * OR_INT_SIZE && offset == record->length - header)
+	    {
+	      return NO_ERROR;
+	    }
+	  goto malformed;
+	}
+      previous = offset;
+    }
+malformed:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_HISTORY_IMAGE, 0);
+  return ER_CDC_INVALID_HISTORY_IMAGE;
+}
+
 int
 cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recdes, LOG_LSA * redo_lsa,
 		RECDES * redo_recdes, bool is_flashback)
@@ -11513,10 +11704,9 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	{
 	case LOG_SUPPLEMENTAL_INFO:
 	  {
-	    scan_code = cdc_get_undo_record (thread_p, log_page_p, *undo_lsa, undo_recdes);
-	    if (scan_code != S_SUCCESS)
+	    error_code = cdc_get_supplemental_image (thread_p, log_page_p, *undo_lsa, undo_recdes, true);
+	    if (error_code != NO_ERROR)
 	      {
-		error_code = ER_FAILED;
 		goto error;
 	      }
 
@@ -11713,6 +11903,15 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
       switch (log_type)
 	{
+	case LOG_SUPPLEMENTAL_INFO:
+	  {
+	    error_code = cdc_get_supplemental_image (thread_p, log_page_p, *redo_lsa, redo_recdes, false);
+	    if (error_code != NO_ERROR)
+	      {
+		goto error;
+	      }
+	    break;
+	  }
 	case LOG_MVCC_DIFF_UNDOREDO_DATA:
 	case LOG_MVCC_UNDOREDO_DATA:
 	  {
@@ -12249,6 +12448,15 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	  break;
 
 	}
+    }
+
+  /* Never follow legacy OOS stubs: reclaimed slots may now belong to another row. */
+  if ((undo_recdes != NULL && undo_recdes->data != NULL && heap_recdes_contains_oos (undo_recdes))
+      || (redo_recdes != NULL && redo_recdes->data != NULL && heap_recdes_contains_oos (redo_recdes)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_LEGACY_OOS_IMAGE, 0);
+      error_code = ER_CDC_LEGACY_OOS_IMAGE;
+      goto error;
     }
 
   /* A supplemental DML LSA must always reconstruct the requested row image. */
@@ -13010,6 +13218,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   char *loginfo_buf = NULL;
   OID partitioned_classoid = OID_INITIALIZER;
+  OID history_classoid = classoid;
 
   char *classname = NULL;
 
@@ -13209,7 +13418,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   ptr = or_pack_int (ptr, trid);
   ptr = or_pack_string (ptr, user);
   ptr = or_pack_int (ptr, dataitem_type);
-  memcpy (&b_classoid, &classoid, sizeof (uint64_t));
+  /* Flashback matches its summary's physical class; CDC exposes the partition root. */
+  memcpy (&b_classoid, is_flashback ? &history_classoid : &classoid, sizeof (uint64_t));
 
   switch (dml_type)
     {
@@ -14865,7 +15075,9 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 
   if (cdc_Gl.producer.produced_queue_size == 0)
     {
-      cdc_log ("cdc_reinitialize_queue : don't need to be reinitialized");
+      cdc_Gl.producer.is_reset_process_lsa = true;
+      cdc_Gl.producer.extraction_error = NO_ERROR;
+      cdc_log ("cdc_reinitialize_queue : reset the empty stream to the requested position");
       goto end;
     }
 
@@ -14914,6 +15126,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       cdc_Gl.producer.produced_queue_size = 0;
       cdc_Gl.consumer.consumed_queue_size = 0;
       cdc_Gl.producer.is_reset_process_lsa = true;
+      cdc_Gl.producer.extraction_error = NO_ERROR;
 
           /* *INDENT-OFF* */
     delete cdc_Gl.loginfo_queue;
@@ -15290,6 +15503,14 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 
   while (cdc_Gl.loginfo_queue->is_empty ())
     {
+      pthread_mutex_lock (&cdc_Gl.producer.lock);
+      rv = cdc_Gl.producer.extraction_error;
+      pthread_mutex_unlock (&cdc_Gl.producer.lock);
+      if (rv != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
+	  return rv;
+	}
       sleep (1);
       end = (int) time (NULL);
       if ((end - begin) >= cdc_Gl.consumer.extraction_timeout)
@@ -15439,6 +15660,7 @@ cdc_initialize ()
   LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
 
   cdc_Gl.producer.is_reset_process_lsa = true;
+  cdc_Gl.producer.extraction_error = NO_ERROR;
 
   return 0;
 }
@@ -15480,6 +15702,7 @@ cdc_cleanup (THREAD_ENTRY * thread_p)
     }
 
   cdc_Gl.producer.is_reset_process_lsa = true;
+  cdc_Gl.producer.extraction_error = NO_ERROR;
 
   cdc_free_extraction_filter ();
 

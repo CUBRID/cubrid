@@ -1583,6 +1583,94 @@ error:
   return error_code;
 }
 
+/*
+ * logpb_sync_history_compatibility - Flush the format fence unconditionally.
+ * Routine log I/O tuning (suppress_fsync) must not weaken this ordering. Also
+ * used on restart in case a previous activation died before acknowledging sync.
+ */
+int
+logpb_sync_history_compatibility (void)
+{
+  if (fsync (log_Gl.append.vdes) != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC, 1, log_Name_active);
+      return ER_IO_SYNC;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * logpb_activate_history - One-way activation without restarting or recovering
+ * the database. Hold the normal exclusive active-log lock through the flush;
+ * no writer can observe the new format until its compatibility fence is durable.
+ * Only the compatibility field changes. An interrupted activation can be
+ * retried, including when the previous attempt already flushed that field.
+ */
+int
+logpb_activate_history (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+			const char *prefix_logname)
+{
+  char buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *page = (LOG_PAGE *) PTR_ALIGN (buffer, MAX_ALIGNMENT);
+  LOG_HEADER hdr;
+  LOG_HEADER *disk_hdr;
+  int error;
+
+  LOG_CS_ENTER (thread_p);
+  error = logpb_fetch_header_from_active_log (thread_p, db_fullname, logpath, prefix_logname, &hdr, page);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  if (strncmp (hdr.magic, CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH) != 0
+      || hdr.db_logpagesize < IO_MIN_PAGE_SIZE || hdr.db_logpagesize > IO_MAX_PAGE_SIZE
+      || (hdr.db_logpagesize & (hdr.db_logpagesize - 1)) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, 0);
+      error = ER_LOG_PAGE_CORRUPTED;
+      goto exit;
+    }
+  if (rel_get_disk_compatible (hdr.db_compatibility, NULL) != REL_FULLY_COMPATIBLE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_INCOMPATIBLE_DATABASE, 2, rel_name (), rel_release_string ());
+      error = ER_LOG_INCOMPATIBLE_DATABASE;
+      goto exit;
+    }
+  if (!hdr.is_shutdown)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OOS_HISTORY_REQUIRES_CLEAN_SHUTDOWN, 0);
+      error = ER_OOS_HISTORY_REQUIRES_CLEAN_SHUTDOWN;
+      goto exit;
+    }
+
+  /* Read the complete page using its stored size, preserving every other byte. */
+  if (fileio_read (thread_p, log_Gl.append.vdes, page, 0, hdr.db_logpagesize) == NULL)
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+  disk_hdr = (LOG_HEADER *) page->area;
+  disk_hdr->db_compatibility = REL_DISK_COMPATIBILITY_OOS_HISTORY;
+  if (fileio_write (thread_p, log_Gl.append.vdes, page, 0, hdr.db_logpagesize,
+		    FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL)
+    {
+      error = ER_FAILED;
+    }
+  else
+    {
+      error = logpb_sync_history_compatibility ();
+    }
+
+exit:
+  if (log_Gl.append.vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, log_Gl.append.vdes);
+      log_Gl.append.vdes = NULL_VOLDES;
+    }
+  LOG_CS_EXIT (thread_p);
+  return error;
+}
+
 // it peeks header page of the backuped log active file
 static int
 logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path, LOG_HEADER * hdr)
@@ -10718,7 +10806,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 	   * Make sure that the log is a log file and that it is compatible
 	   * with the running database and system
 	   */
-	  if (loghdr->db_compatibility != rel_disk_compatible ())
+	  if (rel_get_disk_compatible (loghdr->db_compatibility, NULL) != REL_FULLY_COMPATIBLE)
 	    {
 	      loghdr = NULL;
 	    }
