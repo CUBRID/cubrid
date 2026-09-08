@@ -171,6 +171,8 @@ static PT_NODE *pt_resolve_showstmt_args_named (PARSER_CONTEXT * parser, const S
 static bool pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, SERVER_NAME_LIST * snl);
 static void pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 					 int local_upd, int remote_upd, SERVER_NAME_LIST * snl);
+/* defined next to the INSERT SELECT conversion that shares it */
+static PT_NODE *pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #define NULL_ATTRID -1
 
 /*
@@ -11891,26 +11893,22 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   return;
 }
 
-/* true iff the DELETE WHERE clause is a single positive predicate over a subquery that the phase-1
- * value-push sink supports by shape: col IN (subquery), col = ANY (subquery), or a scalar comparison
- * col {= | < | > | <= | >=} (subquery). Forms excluded here fall through to the existing "local mixed remote
- * DML is not allowed" rejection: OR / multiple predicates (op PT_OR/PT_AND or a CNF list, caught by op or
- * cond->next), comparison ANY/ALL (PT_*_SOME except PT_EQ_SOME, PT_*_ALL), negation (PT_IS_NOT_IN, PT_NE),
- * EXISTS, and a value-list IN (arg2 is not a query).
- *
- * Correlation and row/multi-column subqueries are NOT decided here. query.correlation_level is 0 for a DELETE
- * WHERE subquery (a DELETE target is not a query scope), so it cannot flag a target-correlated subquery at this
- * point. A correlated or row subquery that passes this shape gate is routed to the sink and rejected later, where
- * the reference to the outer target (or the multi-column shape) is resolvable: pt_dblink_delete_corr_ref()
- * (semantic_check.c) rejects correlated subqueries, and pt_to_delete_xasl_remote_subquery() (xasl_generation.c)
- * rejects row/multi-column subqueries. */
+/* ==========================================================================================================
+ * remote DELETE + local subquery carve-out -- shape gate, same-server conversion, diagnostics.
+ * Entry: pt_dblink_delete_where_is_inscope (from pt_convert_dblink_delete_query),
+ *        pt_dblink_delete_settle_sink (from pt_convert_dblink_dml_query).
+ * ========================================================================================================== */
+
+/* true iff cond is a pushable subquery predicate: col IN / {=|<>|<|>|<=|>=} ANY / scalar-cmp (subquery).
+ * Each admitted shape is satisfied by pushing the local values one at a time and letting the remote compare
+ * each; ALL is not (it needs a reduction ordered by the remote column, not visible here).
+ * Shape only; execution is in XASL gen. */
 static bool
-pt_dblink_delete_where_is_inscope (PT_NODE * node)
+pt_dblink_delete_is_pushable_pred (PT_NODE * cond)
 {
-  PT_NODE *cond = node->info.delete_.search_cond;
   PT_NODE *arg2;
 
-  if (cond == NULL || cond->next != NULL || cond->node_type != PT_EXPR)
+  if (cond == NULL || cond->node_type != PT_EXPR)
     {
       return false;
     }
@@ -11918,8 +11916,14 @@ pt_dblink_delete_where_is_inscope (PT_NODE * node)
   switch (cond->info.expr.op)
     {
     case PT_IS_IN:		/* col IN (subquery) */
-    case PT_EQ_SOME:		/* col = ANY (subquery) */
-    case PT_EQ:		/* scalar: col {= | < | > | <= | >=} (subquery) */
+    case PT_EQ_SOME:		/* col {= | <> | < | > | <= | >=} ANY (subquery) */
+    case PT_NE_SOME:
+    case PT_LT_SOME:
+    case PT_GT_SOME:
+    case PT_LE_SOME:
+    case PT_GE_SOME:
+    case PT_EQ:		/* scalar: col {= | <> | < | > | <= | >=} (subquery) */
+    case PT_NE:
     case PT_LT:
     case PT_GT:
     case PT_LE:
@@ -11932,20 +11936,16 @@ pt_dblink_delete_where_is_inscope (PT_NODE * node)
   arg2 = cond->info.expr.arg2;
   if (arg2 == NULL || !PT_IS_QUERY (arg2))
     {
-      return false;		/* RHS must be a subquery, not a value list or column */
+      return false;
     }
 
   return true;
 }
 
 /*
- * pt_dblink_find_remote_spec () - parser_walk_tree pre-function: set *arg to true when the subtree still holds a
- *   spec carrying a remote server name (tbl@srv).
- *
- *   Only the INSERT SELECT sink rewrites such specs into dblink derived tables (pt_check_sub_query_spec); the
- *   remote DELETE sink does not.  Name resolution deliberately leaves flat_entity_list / spec.id unset on a
- *   remote spec because it expects that rewrite to happen, so a remote spec left inside a DELETE WHERE subquery
- *   reaches the optimizer half-built and crashes there.  Used below to keep the DELETE carve-out off that shape.
+ * pt_dblink_find_remote_spec () - walk pre: set *arg when a remote (tbl@srv) spec remains.
+ *   Same-server rewrite turns those into dblink derived tables. Name resolution leaves flat_entity_list /
+ *   spec.id unset on a spec expecting that rewrite, so a leftover reaches the optimizer half-built and crashes.
  */
 static PT_NODE *
 pt_dblink_find_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -11989,19 +11989,15 @@ pt_dblink_delete_target_range_name (PT_NODE * spec)
 }
 
 /*
- * pt_dblink_delete_qualifier_names_target () - true when the WHERE left-hand side is either unqualified or
- *   qualified with the DELETE target's own correlation name. *bad_qualifier is set to the offending name when it
- *   can be named, NULL when the shape itself is the problem.
+ * pt_dblink_delete_check_qualifier () - true when the LHS is unqualified or names the DELETE target.
+ *   *bad_qualifier is the bad qualifier, or NULL for a nested a.b.c shape.
  *
- *   pt_to_delete_xasl_remote_subquery keeps only the trailing attribute of a dotted name, so anything this
- *   function cannot verify must be kept away from the sink. A local target gets the equivalent check from name
- *   resolution; a remote spec does not, because pt_find_name_in_spec() reports every name as found there -- the
- *   local server holds no schema for the remote table. Nested qualifiers (a.b.c) therefore return false rather
- *   than being skipped: the qualifier is not a plain name, so it cannot be compared, and letting it through
- *   deletes against whatever the trailing attribute happens to name.
+ *   Name resolution cannot do this for a remote spec -- pt_find_name_in_spec() reports every name as found,
+ *   the local server holding no schema for the remote table -- while XASL keeps only the trailing attribute
+ *   of a dotted name. An unverified qualifier deletes against whatever that attribute happens to name.
  */
 static bool
-pt_dblink_delete_qualifier_names_target (PT_NODE * node, const char **bad_qualifier)
+pt_dblink_delete_check_qualifier (PT_NODE * node, const char **bad_qualifier)
 {
   PT_NODE *cond = node->info.delete_.search_cond;
   PT_NODE *arg1, *qual;
@@ -12009,9 +12005,14 @@ pt_dblink_delete_qualifier_names_target (PT_NODE * node, const char **bad_qualif
 
   *bad_qualifier = NULL;
 
+  /* The gate established a single pushable predicate, always a PT_EXPR. A mismatch means the gate and this
+   * check have drifted -- DBLINK_REMOTE_SINK_* leaves room for an UPDATE extension that would set the flag
+   * from a second site. Reject rather than skip: an unverified qualifier deletes remote rows the
+   * statement never named. */
+  assert (cond != NULL && cond->node_type == PT_EXPR);
   if (cond == NULL || cond->node_type != PT_EXPR)
     {
-      return true;
+      return false;
     }
 
   arg1 = cond->info.expr.arg1;
@@ -12037,6 +12038,188 @@ pt_dblink_delete_qualifier_names_target (PT_NODE * node, const char **bad_qualif
 
   return false;
 }
+
+/* true iff DELETE WHERE is a single pushable predicate (see pt_dblink_delete_is_pushable_pred).
+ * Correlation / row subquery are not decided here (correlation_level is 0 on a DELETE WHERE subquery), but
+ * downstream: pt_dblink_delete_corr_ref() (semantic_check.c) rejects correlated ones,
+ * pt_to_delete_xasl_remote_subquery() (xasl_generation.c) rejects row/multi-column ones. */
+static bool
+pt_dblink_delete_where_is_inscope (PT_NODE * node)
+{
+  PT_NODE *cond = node->info.delete_.search_cond;
+
+  if (cond == NULL || cond->next != NULL)
+    {
+      return false;		/* defensive: carve-out runs pre-CNF, so a cond->next list is unexpected here */
+    }
+
+  return pt_dblink_delete_is_pushable_pred (cond);
+}
+
+/* true when WHERE still holds an unrewritten remote (tbl@srv) spec. Re-checked (conversion changes it). */
+static bool
+pt_dblink_delete_has_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool found = false;
+
+  parser_walk_tree (parser, node->info.delete_.search_cond, pt_dblink_find_remote_spec, &found, NULL, NULL);
+
+  return found;
+}
+
+/* WHERE-subquery remote-server count delta (same sub_sel_server_cnt as INSERT SELECT).
+ * May overlap the caller's full walk. Harmless: server_cnt is only tested for having changed, local_cnt for
+ * being nonzero, and distinct_cnt (tested == 1) cannot be inflated -- pt_get_server_name_list skips the
+ * increment when the name is already stored. */
+static int
+pt_dblink_delete_subq_servers (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, int server_cnt_before)
+{
+  PT_NODE *cond = node->info.delete_.search_cond;
+
+  if (cond == NULL || cond->node_type != PT_EXPR)
+    {
+      return 0;
+    }
+
+  parser_walk_tree (parser, cond->info.expr.arg2, pt_get_server_name_list, snl, NULL, NULL);
+
+  return snl->server_cnt - server_cnt_before;
+}
+
+/* Same-server mixed WHERE subquery: rewrite embedded remote specs to dblink derived tables. No runtime
+ * change is needed -- the sink's aptr already compiles whatever subquery it is handed, generically.
+ * Same idea as INSERT SELECT; walk is WHERE subquery only. Clears sink_kind when not local-mixed. */
+static void
+pt_dblink_delete_convert_specs (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
+{
+  PT_NODE *cond = node->info.delete_.search_cond;
+  bool had_dblink_before;
+
+  if (!(snl->local_cnt > 0 && snl->distinct_cnt == 1))
+    {
+      snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
+      return;
+    }
+
+  had_dblink_before = snl->has_dblink_query;
+
+  if (cond != NULL && cond->node_type == PT_EXPR)
+    {
+      parser_walk_tree (parser, cond->info.expr.arg2, pt_check_sub_query_spec, snl, NULL, NULL);
+    }
+
+  /* Rewrite flips has_dblink_query (derived dblink looks like dblink()). Restore unless one was already present;
+   * DELETE is not exempt from the caller's has_dblink_query rejection (INSERT SELECT is). */
+  if (!had_dblink_before)
+    {
+      snl->has_dblink_query = false;
+    }
+}
+
+/* Post-confirmation rejects (LIMIT, bad qualifier). Not at shape gate (same-server all-remote shares that path).
+ * return: true if an error was raised */
+static bool
+pt_dblink_delete_reject_confirmed (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * upd_spec)
+{
+  const char *bad_qualifier;
+  char errmsg[256];
+
+  if (node->info.delete_.limit != NULL)
+    {
+      /* Per-value remote DELETEs: no single statement to LIMIT; also invisible until semantic check. */
+      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery does not support LIMIT");
+      return true;
+    }
+
+  if (!pt_dblink_delete_check_qualifier (node, &bad_qualifier))
+    {
+      if (bad_qualifier != NULL)
+	{
+	  snprintf (errmsg, sizeof (errmsg),
+		    "dblink: remote DELETE with a local subquery requires the WHERE qualifier to name the "
+		    "delete target, but \"%s\" does not", bad_qualifier);
+	}
+      else
+	{
+	  snprintf (errmsg, sizeof (errmsg),
+		    "dblink: remote DELETE with a local subquery does not support a multi-part qualifier "
+		    "on the WHERE predicate");
+	}
+      /* PT_ERRORc, unlike the literal-message PT_ERROR above: errmsg carries bad_qualifier, and PT_ERROR
+       * would take it as the format string. A bracketed identifier may hold % directives. */
+      PT_ERRORc (parser, upd_spec, errmsg);
+      return true;
+    }
+
+  return false;
+}
+
+/* Carve-out decline reasons, ahead of the generic catch-all (caller requires local_cnt > 0).
+ * return: true if an error was raised */
+static bool
+pt_dblink_delete_reject_declined (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * upd_spec)
+{
+  if (node->info.delete_.spec->next != NULL)
+    {
+      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery supports only a single " "FROM table");
+      return true;
+    }
+
+  if (pt_dblink_delete_has_remote_spec (parser, node))
+    {
+      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery only supports a WHERE "
+		"subquery that mixes local tables with a remote table on the delete target's own server");
+      return true;
+    }
+
+  return false;
+}
+
+/* Settle carve-out: convert same-server mix, keep sink only if no remote left, then diagnose.
+ * After counter walks, before generic local-mixed-remote rejection.
+ * return: true if an error was raised */
+static bool
+pt_dblink_delete_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, PT_NODE * upd_spec,
+			      int sub_sel_server_cnt, int local_upd, int remote_upd)
+{
+  /* Same-server mixed WHERE subquery: convert the embedded remote specs first. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ && sub_sel_server_cnt > 0)
+    {
+      pt_dblink_delete_convert_specs (parser, node, snl);
+    }
+
+  /* Keep carve-out only if no remote spec remains (same-server convert only). Else clear for
+   * all-remote (full pushdown) or multi-remote/dblink(). Counters alone are not enough -- walk WHERE. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+    {
+      /* Single FROM required (only set in pt_convert_dblink_delete_query); assert for a future second set site. */
+      assert (node->info.delete_.spec->next == NULL);
+
+      if (!pt_dblink_delete_has_remote_spec (parser, node) && snl->local_cnt > 0 && snl->distinct_cnt == 1
+	  && !snl->has_dblink_query)
+	{
+	  if (pt_dblink_delete_reject_confirmed (parser, node, upd_spec))
+	    {
+	      return true;
+	    }
+	}
+      else
+	{
+	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
+	}
+    }
+
+  /* Decline diagnostics ahead of the generic catch-all. */
+  if (node->node_type == PT_DELETE && remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
+      && pt_dblink_delete_where_is_inscope (node) && pt_dblink_delete_reject_declined (parser, node, upd_spec))
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/* ===== end of the remote DELETE carve-out helpers ===== */
 
 static void
 pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
@@ -12110,21 +12293,15 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
       target = target->next;
     }
 
-  /* remote DELETE with a local subquery in WHERE: DELETE FROM remote_t@conn WHERE col IN (SELECT ... FROM local_t)
+  /* Optimistic sink: single remote DELETE target + in-scope WHERE. Refined in pt_convert_dblink_dml_query
+   * (local-only subquery keeps it; else cleared).
    *
-   * Set optimistically when the single DELETE target is remote (remote_del == 1, no local target) and there is a
-   * WHERE clause; pt_convert_dblink_dml_query (below) refines this, keeping it only when the WHERE subquery is
-   * purely local and otherwise clearing it so the existing guards apply. WHERE shape restricted by
-   * pt_dblink_delete_where_is_inscope -- see its doc comment for supported/excluded forms and where
-   * correlated/row subqueries are rejected downstream.
+   * spec->next == NULL is required too: the sink pushes a single-table DELETE, so a second FROM spec would be
+   * dropped silently and the remote rows deleted without the join the statement asks for.
    *
-   * spec->next == NULL is required as well: the sink only ever pushes a single-table DELETE, so a second FROM
-   * spec (DELETE remote_t FROM remote_t@conn, local_t2 WHERE ...) would be dropped silently and the remote rows
-   * deleted without the join the statement asks for. Keep such statements on the existing rejection.
-   *
-   * LIMIT and a mismatched WHERE qualifier are rejected in pt_convert_dblink_dml_query instead of here: this gate
-   * cannot yet tell the local-subquery form from a same-server all-remote one, and both of those keep working
-   * through full pushdown, so diagnosing them here would break them. */
+   * LIMIT and a mismatched WHERE qualifier are rejected in pt_convert_dblink_dml_query, not here: this gate
+   * cannot yet tell the local-subquery form from a same-server all-remote one, and both keep working through
+   * full pushdown, so diagnosing them here would break them. */
   if (remote_del == 1 && local_del == 0 && node->info.delete_.spec->next == NULL
       && pt_dblink_delete_where_is_inscope (node))
     {
@@ -12193,6 +12370,13 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  spec->info.spec.meta_class = PT_CLASS;
 	  spec->info.spec.remote_server_name = list->info.spec.remote_server_name;
 	  spec->info.spec.entity_name = list->info.spec.entity_name;
+	  /* entity_name moves inside, so an unaliased spec would keep no name of its own and only answer to
+	   * the exposed name generated later. Anything resolving a qualifier reads range_var ?: entity_name,
+	   * so leave the table name there -- a copy, since the inner spec now owns the original. */
+	  if (list->info.spec.range_var == NULL)
+	    {
+	      list->info.spec.range_var = parser_copy_tree (parser, list->info.spec.entity_name);
+	    }
 	  list->info.spec.remote_server_name = NULL;
 	  list->info.spec.entity_name = NULL;
 	  sub_sel->info.query.q.select.from = spec;
@@ -12215,18 +12399,9 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 }
 
 /*
- * pt_setup_dblink_sink_spec () - Rewrite <spec>'s remote_server_name into a PT_DBLINK_TABLE_DML sink
- *   node, shared by the remote INSERT SELECT and remote DELETE + local-subquery sink setup: allocate
- *   the PT_DBLINK_TABLE_DML wrapper, split off the owner name (server->next) if present, free the raw
- *   SERVER_NAME_LIST server nodes, and re-resolve the spec's connection info.
- *   parser(in)   : parser context
- *   node(in)     : statement node, for error reporting when remote_server_name is missing
- *   spec(in/out) : the into/upd spec whose remote_server_name is rewritten
- *   snl(in)      : SERVER_NAME_LIST -- server[]/stored_cnt raw server nodes to free
- *
- * Note: every caller unconditionally returns from its own function right after calling this (on
- *   error, on an already-converted spec, or on success), so this sets a parser error via PT_ERRORm
- *   and returns rather than reporting a status.
+ * pt_setup_dblink_sink_spec () - Build PT_DBLINK_TABLE_DML sink on spec (INSERT SELECT / DELETE local-subq).
+ *   Allocates wrapper, peels owner (server->next), frees snl server nodes, re-resolves connection.
+ *   On missing remote_server_name sets a parser error and returns (every caller returns right after this).
  */
 static void
 pt_setup_dblink_sink_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec, SERVER_NAME_LIST * snl)
@@ -12274,13 +12449,17 @@ pt_setup_dblink_sink_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * sp
   pt_resolve_server_names (parser, spec);
 }
 
+/*
+ * pt_convert_dblink_dml_query () - Classify remote-touching DML as local, value-push sink, or whole remote qstr.
+ *   Fits none -> reject. local_upd/remote_upd: 0/1 for INSERT/MERGE, counts for DELETE/UPDATE (hence checks vs 1).
+ */
 static void
 pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl)
 {
   int i;
   int tmp_server_cnt = snl->server_cnt;
-  int sub_sel_server_cnt = 0;	/* remote server count found in INSERT SELECT subquery */
+  int sub_sel_server_cnt = 0;	/* remote server count found in the INSERT SELECT or DELETE WHERE subquery */
   unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
@@ -12321,6 +12500,10 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       break;
     case PT_DELETE:
       upd_spec = node->info.delete_.spec;
+      if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+	{
+	  sub_sel_server_cnt = pt_dblink_delete_subq_servers (parser, node, snl, tmp_server_cnt);
+	}
       break;
     case PT_UPDATE:
       upd_spec = node->info.update.spec;
@@ -12385,81 +12568,25 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
 
-  /* remote DELETE + local subquery: keep the carve-out only when the WHERE subquery is purely local
-   * (references local tables, no second/other remote server, no dblink() function). Otherwise clear it so
-   * the existing guards below apply: same-server all-remote subquery falls through to full pushdown, while
-   * multi-remote (distinct_cnt >= 2) and dblink() forms are rejected.
-   *
-   * The counters alone do not establish "purely local": local_cnt > 0 holds as soon as one local table is
-   * referenced and distinct_cnt == 1 holds when the only remote server is the target's, so a subquery mixing a
-   * local table with a same-server remote one satisfies both. Walk the WHERE clause for a surviving remote spec
-   * to exclude that shape -- the sink evaluates the subquery locally but nothing rewrites a remote spec inside it
-   * into a dblink derived table (pt_check_sub_query_spec runs for the INSERT SELECT sink only), so it would reach
-   * the optimizer half-built. Supporting the mixed shape is a separate change; here it keeps the pre-existing
-   * "local mixed remote DML is not allowed" rejection. */
-  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+  /* Settle the remote DELETE carve-out -- convert, keep or clear, and diagnose -- in one place, before the
+   * generic rejections below. */
+  if (pt_dblink_delete_settle_sink (parser, node, snl, upd_spec, sub_sel_server_cnt, local_upd, remote_upd))
     {
-      bool cond_has_remote_spec = false;
-
-      /* Single FROM spec is a precondition of this sink, established at the only site that sets the flag
-       * (pt_convert_dblink_delete_query). Asserted rather than re-checked so a future second set site -- the
-       * UPDATE extension this enum leaves room for -- fails loudly here instead of silently dropping a spec. */
-      assert (node->info.delete_.spec->next == NULL);
-
-      parser_walk_tree (parser, node->info.delete_.search_cond, pt_dblink_find_remote_spec, &cond_has_remote_spec,
-			NULL, NULL);
-
-      if (cond_has_remote_spec || !(snl->local_cnt > 0 && snl->distinct_cnt == 1 && !snl->has_dblink_query))
-	{
-	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
-	}
-      else
-	{
-	  /* Confirmed sink form. Two shapes are diagnosed only now, because a same-server all-remote statement
-	   * reaches this block too and keeps working through full pushdown -- rejecting them at the gate above
-	   * would break it. */
-	  const char *bad_qualifier;
-
-	  if (node->info.delete_.limit != NULL)
-	    {
-	      /* One statement becomes one remote DELETE per local value, so there is no single statement to cap
-	       * and the local side cannot tell how many remote rows a value removes. LIMIT would also be invisible
-	       * to the shape gate, which runs before semantic check turns it into an inst_num() predicate. */
-	      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery does not support LIMIT");
-	      return;
-	    }
-
-	  if (!pt_dblink_delete_qualifier_names_target (node, &bad_qualifier))
-	    {
-	      char errmsg[256];
-
-	      if (bad_qualifier != NULL)
-		{
-		  snprintf (errmsg, sizeof (errmsg),
-			    "dblink: remote DELETE with a local subquery requires the WHERE qualifier to name the "
-			    "delete target, but \"%s\" does not", bad_qualifier);
-		}
-	      else
-		{
-		  snprintf (errmsg, sizeof (errmsg),
-			    "dblink: remote DELETE with a local subquery does not support a multi-part qualifier "
-			    "on the WHERE predicate");
-		}
-	      PT_ERROR (parser, upd_spec, errmsg);
-	      return;
-	    }
-	}
+      return;
     }
 
   if (snl->local_cnt > 0 && remote_upd > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)
     {
-      PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: local mixed remote DML is not allowed");
+      PT_ERROR (parser, upd_spec ? upd_spec : into_spec,
+		"dblink: this combination of local and remote references is not supported (some forms are, such "
+		"as INSERT ... SELECT into a remote table from local data, or a remote DELETE with a local "
+		"WHERE subquery)");
       return;
     }
 
   if (snl->server_cnt == tmp_server_cnt || (local_upd > 0 && remote_upd == 0))
     {
-      /* local update only */
+      /* local only -- reached after the mixed rejection above, which requires remote_upd > 0 */
       return;
     }
 
