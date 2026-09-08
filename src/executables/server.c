@@ -240,10 +240,15 @@ abort_handler (int signo, siginfo_t * siginfo, void *dummyp)
    * action would end the process before the dump is complete. */
   if (__atomic_exchange_n (&abort_in_progress, 1, __ATOMIC_ACQ_REL) != 0)
     {
-      for (;;)
+      /* Bounded: a parked thread may hold a lock the dumping thread needs, so
+       * after the grace period fall back to the default action rather than
+       * leaving a wedged server behind (a hang costs the CI its watchdog). */
+      for (i = 0; i < 30; i++)
 	{
-	  pause ();
+	  sleep (1);
 	}
+      (void) os_set_signal_handler (signo, SIG_DFL);
+      abort ();
     }
 
   if (!BO_IS_SERVER_RESTARTED ())
