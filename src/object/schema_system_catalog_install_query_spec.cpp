@@ -60,13 +60,13 @@
  *
  */
 
-const char *
+std::string
 sm_define_view_class_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[c].[class_name] AS [class_name], "
 	  "[c].[owner].[name] AS [owner_name], "
@@ -144,17 +144,18 @@ sm_define_view_class_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_direct_super_class_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[c].[class_name] AS [class_name], "
 	  "[c].[owner].[name] AS [owner_name], "
@@ -206,17 +207,18 @@ sm_define_view_direct_super_class_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_vclass_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[q].[class_of].[class_name] AS [vclass_name], "
 	  "[q].[class_of].[owner].[name] AS [owner_name], "
@@ -278,17 +280,18 @@ sm_define_view_vclass_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_attribute_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[a].[attr_name] AS [attr_name], "
 	  "[c].[class_name] AS [class_name], "
@@ -388,17 +391,18 @@ sm_define_view_attribute_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_attr_setdomain_elm_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[a].[attr_name] AS [attr_name], "
 	  "[c].[class_name] AS [class_name], "
@@ -470,17 +474,18 @@ sm_define_view_attr_setdomain_elm_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_method_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[m].[meth_name] AS [meth_name], "
 	  "[m].[class_of].[class_name] AS [class_name], "
@@ -542,17 +547,18 @@ sm_define_view_method_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_method_arg_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[s].[meth_of].[meth_name] AS [meth_name], "
 	  "[s].[meth_of].[class_of].[class_name] AS [class_name], "
@@ -625,17 +631,18 @@ sm_define_view_method_arg_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_meth_arg_setdomain_elm_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[s].[meth_of].[meth_name] AS [meth_name], "
 	  "[s].[meth_of].[class_of].[class_name] AS [class_name], "
@@ -708,17 +715,18 @@ sm_define_view_meth_arg_setdomain_elm_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_meth_file_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[f].[class_of].[class_name] AS [class_name], "
 	  "[f].[class_of].[owner].[name] AS [owner_name], "
@@ -771,17 +779,18 @@ sm_define_view_meth_file_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_index_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[i].[index_name] AS [index_name], "
 	  "CASE [i].[is_unique] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_unique], "
@@ -901,17 +910,18 @@ sm_define_view_index_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_index_key_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[k].[index_of].[index_name] AS [index_name], "
 	  "[k].[index_of].[class_of].[class_name] AS [class_name], "
@@ -973,17 +983,18 @@ sm_define_view_index_key_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_auth_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[a].[grantor].[name] AS [grantor_name], "
 	  "[a].[grantee].[name] AS [grantee_name], "
@@ -1048,17 +1059,18 @@ sm_define_view_auth_spec (void)
 	AU_USER_CLASS_NAME
         );
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_trigger_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "CAST ([t].[name] AS VARCHAR (255)) AS [trigger_name], " /* string -> varchar(255) */
 	  "[t].[owner].[name] AS [owner_name], "
@@ -1120,17 +1132,18 @@ sm_define_view_trigger_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_partition_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[s].[class_name] AS [class_name], "
 	  "[s].[owner].[name] AS [owner_name], "
@@ -1199,17 +1212,18 @@ sm_define_view_partition_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_stored_procedure_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[sp].[sp_name] AS [sp_name], "
           "[sp].[pkg_name] AS [pkg_name], "
@@ -1318,17 +1332,18 @@ sm_define_view_stored_procedure_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_stored_procedure_args_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[sp].[sp_of].[sp_name] AS [sp_name], "
 	  "[sp].[sp_of].[owner].[name] AS [sp_owner_name], "
@@ -1397,17 +1412,18 @@ sm_define_view_stored_procedure_args_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_serial_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
         "SELECT "
           "[serial].[unique_name] AS [unique_name], "
           "[serial].[name] AS [name], "
@@ -1432,17 +1448,18 @@ sm_define_view_serial_spec (void)
           "[serial].[class_name] IS NULL",
         CT_SERIAL_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_ha_apply_info_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
         "SELECT "
           "[log_stat].[db_name] AS [db_name], "
           "[log_stat].[db_creation_time] AS [db_creation_time], "
@@ -1475,17 +1492,18 @@ sm_define_view_ha_apply_info_spec (void)
           "[%s] AS [log_stat] ",
         CT_HA_APPLY_INFO_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_collation_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[coll].[coll_id] AS [coll_id], "
 	  "[coll].[coll_name] AS [coll_name], "
@@ -1512,17 +1530,18 @@ sm_define_view_collation_spec (void)
 	CT_COLLATION_NAME,
 	CT_CHARSET_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_user_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[u].[name] AS [name], "
 	  "[u].[id] AS [id], "
@@ -1554,17 +1573,18 @@ sm_define_view_user_spec (void)
 	CT_USER_NAME,
 	CT_USER_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_authorization_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[a].[owner].[name] AS [owner], "
 	  "[a].[grants] AS [grants] "
@@ -1584,17 +1604,18 @@ sm_define_view_authorization_spec (void)
 	CT_AUTHORIZATION_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_charset_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[ch].[charset_id] AS [charset_id], "
 	  "[ch].[charset_name] AS [charset_name], "
@@ -1612,17 +1633,18 @@ sm_define_view_charset_spec (void)
 	CT_CHARSET_NAME,
 	CT_COLLATION_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_synonym_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[s].[name] AS [synonym_name], "
 	  "[s].[owner].[name] AS [synonym_owner_name], "
@@ -1662,17 +1684,18 @@ sm_define_view_synonym_spec (void)
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_server_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[ds].[link_name] AS [link_name], "
 	  "[ds].[host] AS [host], "
@@ -1732,17 +1755,18 @@ sm_define_view_server_spec (void)
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *
+std::string
 sm_define_view_histogram_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[h].[class_of] AS [class_name], "
 	  "[h].[key_attr] AS [key_attr], "
@@ -1756,6 +1780,7 @@ sm_define_view_histogram_spec (void)
 	  "[h].[key_attr]",
 	CT_HISTOGRAM_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }

@@ -1482,9 +1482,11 @@ $ LOADDB
 
 1378 사용자 "%1$s"의 login 가능 여부를 변경할 수 없습니다.
 
-1379 PARALLEL_ENABLE로 선언된 저장 프로시저/함수는 서버측 연결로 SQL을 실행하거나 DBMS_OUTPUT을 사용할 수 없습니다.
+1379 CDC: 클라이언트에 전달한 추출 위치 (%1$lld|%2$d) 때문에 archive log 볼륨 %3$d 를 보존합니다.
 
-1380 마지막 에러
+1380 PARALLEL_ENABLE로 선언된 저장 프로시저/함수는 서버측 연결로 SQL을 실행하거나 DBMS_OUTPUT을 사용할 수 없습니다.
+
+1381 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1992,7 +1994,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 333 Stored Procedure를 호출하는 CALL 문은 INTO 절을 가질 수 없습니다.
 
 334 가상 클래스 속성은 visibility를 정의할 수 없습니다.
-335 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서 visibility를 정의할 수 있습니다.
+335 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서만 visibility를 정의할 수 있습니다.
 336 NUMERIC의 스케일 범위(-84부터 127)를 초과했습니다.
 337 파티션 이름이 너무 깁니다.
 
