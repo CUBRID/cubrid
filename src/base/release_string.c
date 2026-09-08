@@ -102,7 +102,11 @@ static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, 
 /*
  * Disk (database image) Version Compatibility
  */
-static float disk_compatibility_level = 11.5f;
+/* 11.6 (CBRD-27140): the catalog's BTREE_STATS record grew from 80 to 120 bytes (INT64 key counts, stats_layout V1)
+ * and CLS_INFO carries an INT64 row count. A binary at 11.5 cannot parse system-class representations written at
+ * this level (it fails at boot with "Missing or invalid catalog class/vclass"), so the level is raised to make the
+ * refusal explicit (ER_LOG_INCOMPATIBLE_DATABASE) in both directions -- databases created at 11.5 must be rebuilt. */
+static float disk_compatibility_level = 11.6f;
 
 /*
  * rel_copy_version_string - version string of the product
