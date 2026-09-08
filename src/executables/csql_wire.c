@@ -38,6 +38,7 @@
 #include "db_client_type.hpp"
 #include "environment_variable.h"
 #include "error_code.h"
+#include "message_catalog.h"
 #include "system_parameter.h"
 
 #define ADOPTION_PROTOCOL_ONLY
@@ -155,7 +156,9 @@ wire_write_exact (int fd, const void *buf, size_t n)
   const char *p = (const char *) buf;
   while (n > 0)
     {
-      ssize_t w = write (fd, p, n);
+      /* A disconnected server is a transport error, not a fatal SIGPIPE in
+       * the interactive client (including the cancellation sender). */
+      ssize_t w = send (fd, p, n, MSG_NOSIGNAL);
       if (w < 0)
 	{
 	  if (errno == EINTR)
@@ -385,9 +388,12 @@ wire_connect_local (const char *db, const char *user, const char *passwd, int cl
   wire_copy (addr.sun_path, sizeof (addr.sun_path), path);
   if (connect (fd, (struct sockaddr *) &addr, sizeof (addr)) != 0)
     {
+      char msg[WIRE_ERR_MSG_MAX];
       close (fd);
-      wire_set_error (ER_FAILED, "cannot connect to the server adoption socket (is the server running?)");
-      return ER_FAILED;
+      snprintf (msg, sizeof (msg),
+		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_BO_CONNECT_FAILED), db, "localhost");
+      wire_set_error (ER_BO_CONNECT_FAILED, msg);
+      return ER_BO_CONNECT_FAILED;
     }
 
   cubconn::adoption::msg_header header;
@@ -758,6 +764,7 @@ wire_roundtrip (wire_body * b, bool replay)
   char head[8];
   int status = ER_FAILED;
 
+  wire_set_error (NO_ERROR, NULL);
   if (wire_Fd < 0)
     {
       wire_set_error (ER_FAILED, "not connected");
@@ -768,7 +775,9 @@ wire_roundtrip (wire_body * b, bool replay)
   memset (head + 4, 0xff, 4);
   if (wire_write_exact (wire_Fd, head, 8) != NO_ERROR || wire_write_exact (wire_Fd, b->buf, b->len) != NO_ERROR)
     {
-      wire_set_error (ER_FAILED, "cannot send request (server connection lost)");
+      wire_set_error (ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED,
+		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
+				      -ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED));
       wire_close_fd ();
       return ER_FAILED;
     }
@@ -776,7 +785,9 @@ wire_roundtrip (wire_body * b, bool replay)
   char rh[8];
   if (wire_read_exact (wire_Fd, rh, 8) != NO_ERROR)
     {
-      wire_set_error (ER_FAILED, "server connection lost");
+      wire_set_error (ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED,
+		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
+				      -ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED));
       wire_close_fd ();
       return ER_FAILED;
     }
@@ -794,7 +805,9 @@ wire_roundtrip (wire_body * b, bool replay)
   if (reply == NULL || wire_read_exact (wire_Fd, reply, (size_t) length) != NO_ERROR)
     {
       free (reply);
-      wire_set_error (ER_FAILED, "server connection lost");
+      wire_set_error (ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED,
+		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR,
+				      -ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED));
       wire_close_fd ();
       return ER_FAILED;
     }

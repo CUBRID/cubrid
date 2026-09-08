@@ -885,6 +885,11 @@ csql_check_server_down (void)
   /* wf122/B5: the wire layer drops the connection on transport failure */
   if (!csql_wire_is_connected ())
     {
+      if (csql_wire_last_error (NULL) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
+	{
+	  csql_Error_code = CSQL_ERR_SQL_ERROR;
+	  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+	}
       fprintf (csql_Error_fp, "Exiting ...\n");
       csql_exit (EXIT_FAILURE);
     }
@@ -1675,6 +1680,13 @@ csql_errmsg (int code)
     }
   else if (code == CSQL_ERR_SQL_ERROR)
     {
+#if defined(CSQL_THIN)
+      char *wire_msg = NULL;
+      if (csql_wire_last_error (&wire_msg) != NO_ERROR && wire_msg != NULL && wire_msg[0] != '\0')
+	{
+	  return wire_msg;
+	}
+#endif
       msg = db_error_string (DEFAULT_DB_ERROR_MSG_LEVEL);
       return ((msg == NULL) ? "" : msg);
     }

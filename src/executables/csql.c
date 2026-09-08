@@ -1254,7 +1254,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
 	if (wire_rc < 0)
 	  {
+	    csql_Error_code = CSQL_ERR_SQL_ERROR;
 	    csql_thin_display_wire_error ();
+	    if (cmd_no == S_CMD_CHECKPOINT)
+	      {
+		/* Like the local checkpoint case, report the error and keep
+		 * the prompt available for restart or exit. */
+		return DO_CMD_SUCCESS;
+	      }
 	    csql_check_server_down ();
 	    return DO_CMD_FAILURE;
 	  }
@@ -2489,6 +2496,14 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   else
     {
       text = csql_edit_contents_get ();
+#if !defined(WINDOWS)
+      /* The command history belongs to the interactive client, even when
+       * parsing and execution take place in the server. */
+      if (csql_Is_interactive && check_contents_has_noncomment ())
+	{
+	  add_history (text);
+	}
+#endif
     }
 
   status = csql_wire_execute (csql_arg, type, line_no, text);
@@ -2579,7 +2594,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   if (db_get_errors (session) || er_errid () != NO_ERROR)
     {
       csql_Error_code = CSQL_ERR_SQL_ERROR;
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
       if ((stmts != NULL) && (csql_Is_interactive))
 	{
 	  add_history (stmts);
@@ -2590,7 +2605,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   else
     {
       total = db_statement_count (session);
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined(SERVER_MODE)
       if ((total >= 1) && (stmts != NULL) && (csql_Is_interactive))
 	{
 	  add_history (stmts);
@@ -4386,7 +4401,6 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 	  if (csql_wire_connect (db_name_ptr, user_name_ptr, p, csql_thin_client_type (csql_arg)) != NO_ERROR)
 	    {
 	      csql_Error_code = CSQL_ERR_SQL_ERROR;
-	      csql_thin_display_wire_error ();
 	      fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
 
 	      return ER_FAILED;
@@ -4404,7 +4418,6 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       else
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
-	  csql_thin_display_wire_error ();
 	  fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
 
 	  return ER_FAILED;
