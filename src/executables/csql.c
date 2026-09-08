@@ -4564,7 +4564,9 @@ csql_server_request_begin (const CSQL_SERVER_EXEC_OPTS * opts, FILE * out_fp, FI
   csql_Output_fp = out_fp;
   csql_Error_fp = err_fp;
   csql_Input_fp = NULL;
-  csql_Tty_fp = NULL;
+  /* Match the interactive client's diagnostic stream, including the
+   * statement-count and session-command completion messages. */
+  csql_Tty_fp = opts->is_interactive ? err_fp : NULL;
   /* the fat client resets parser line numbers per buffer when interactive;
    * the thin client ships its interactivity so error line numbers match */
   csql_Is_interactive = opts->is_interactive;
@@ -4600,6 +4602,7 @@ csql_server_request_end (void)
   csql_edit_contents_clear ();
   csql_Output_fp = NULL;
   csql_Error_fp = NULL;
+  csql_Tty_fp = NULL;
 }
 
 /*
