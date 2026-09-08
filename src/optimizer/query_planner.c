@@ -3462,7 +3462,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
-  double guessed_result_cardinality, limit_val, outer_card;
+  double guessed_result_cardinality, limit_val, outer_card, required_card;
 
   inner = planp->plan_un.join.inner;
 
@@ -3502,8 +3502,15 @@ qo_nljoin_cost (QO_PLAN * planp)
 
       if (outer->plan_type == QO_PLANTYPE_SCAN)
 	{
-	  planp->limit_nljoin_guessed_card = MAX (limit_val / (outer->info)->hit_prob, 1.0);
-	  guessed_result_cardinality = MIN (planp->limit_nljoin_guessed_card, (outer->info)->cardinality);
+	  /* outer rows required to satisfy the LIMIT; the outer scan cannot read more rows than it has */
+	  required_card = MAX (limit_val / (outer->info)->hit_prob, 1.0);
+	  guessed_result_cardinality = MIN (required_card, (outer->info)->cardinality);
+	  /* rows this join emits (shown as card, handed to the next join level): the query stops at the
+	   * LIMIT, and when the outer is exhausted first it is what the rows read actually produce
+	   * (rows read * plan_card/outer_card). */
+	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
+	  planp->limit_nljoin_guessed_card =
+	    MAX (1.0, MIN (limit_val, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
 	}
       else if (outer->plan_type == QO_PLANTYPE_JOIN)
 	{
