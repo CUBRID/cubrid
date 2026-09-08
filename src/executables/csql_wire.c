@@ -759,8 +759,48 @@ wire_flags_from_arg (const CSQL_ARGUMENT * a)
   return flags;
 }
 
-/* send the assembled body and replay the reply; returns the reply status or
- * a negative code on a wire/server error */
+/* Keep a result's pager open across log-only chunks, and close it before
+ * replaying a different visible output channel. */
+typedef struct
+{
+  FILE *stream;
+  void (*previous_sigpipe) (int);
+} wire_output;
+
+static FILE *
+wire_open_output (wire_output * output)
+{
+  if (output->stream == NULL)
+    {
+      output->stream = csql_popen (csql_Pager_cmd, csql_Output_fp);
+      if (output->stream != csql_Output_fp)
+	{
+	  /* Quitting the pager is not a fatal broken pipe in csql. Socket
+	   * sends on the cancellation thread already use MSG_NOSIGNAL. */
+	  output->previous_sigpipe = signal (SIGPIPE, SIG_IGN);
+	}
+    }
+  return output->stream;
+}
+
+static void
+wire_close_output (wire_output * output)
+{
+  if (output->stream != NULL)
+    {
+      fflush (output->stream);
+      csql_pclose (output->stream, csql_Output_fp);
+      output->stream = NULL;
+    }
+  if (output->previous_sigpipe != SIG_ERR)
+    {
+      signal (SIGPIPE, output->previous_sigpipe);
+      output->previous_sigpipe = SIG_ERR;
+    }
+}
+
+/* Send the assembled body and replay the reply; return the server status or
+ * a negative code on a wire/server error. */
 static int
 wire_roundtrip (wire_body * b, bool replay)
 {
@@ -852,6 +892,7 @@ wire_roundtrip (wire_body * b, bool replay)
   size_t ulength = (size_t) length;
   bool saw_end = false;
   bool framing_error = false;
+  wire_output output = { NULL, SIG_ERR };
   while (pos < ulength)
     {
       int tag = (unsigned char) reply[pos];
@@ -895,6 +936,7 @@ wire_roundtrip (wire_body * b, bool replay)
 	  char *area = (char *) malloc ((size_t) clen);
 	  if (area == NULL)
 	    {
+	      wire_close_output (&output);
 	      free (reply);
 	      wire_set_error (ER_OUT_OF_VIRTUAL_MEMORY, "out of memory while receiving error log");
 	      wire_close_fd ();
@@ -907,6 +949,14 @@ wire_roundtrip (wire_body * b, bool replay)
 	  continue;
 	}
       FILE *fp = (tag == CAS_CSQL_CHUNK_ERR) ? csql_Error_fp : (tag == CAS_CSQL_CHUNK_STDOUT) ? stdout : csql_Output_fp;
+      if (replay && tag != CAS_CSQL_CHUNK_OUT)
+	{
+	  wire_close_output (&output);
+	}
+      if (replay && tag == CAS_CSQL_CHUNK_OUT && fp != NULL)
+	{
+	  fp = wire_open_output (&output);
+	}
       if (!replay && tag == CAS_CSQL_CHUNK_ERR && clen > 0)
 	{
 	  char msg[WIRE_ERR_MSG_MAX];
@@ -937,9 +987,11 @@ wire_roundtrip (wire_body * b, bool replay)
 	    {
 	      fwrite (reply + pos, 1, (size_t) clen, fp);
 	    }
+	  fflush (fp);
 	}
       pos += (size_t) clen;
     }
+  wire_close_output (&output);
   if (csql_Output_fp != NULL)
     {
       fflush (csql_Output_fp);
@@ -948,6 +1000,7 @@ wire_roundtrip (wire_body * b, bool replay)
     {
       fflush (csql_Error_fp);
     }
+  fflush (stdout);
 
   free (reply);
 
