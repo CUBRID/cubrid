@@ -211,7 +211,7 @@ namespace cubload
   int
   to_db_null (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    if (attr->get_repr ().is_notnull)
+    if (attr->is_not_null ())
       {
 	return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
       }
