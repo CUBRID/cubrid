@@ -23,9 +23,6 @@
 #ifndef _XASL_TO_STREAM_H_
 #define _XASL_TO_STREAM_H_
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
 
 // forward definition
 struct func_pred;

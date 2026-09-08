@@ -299,7 +299,19 @@ static FILE *er_Accesslog_fh = NULL;
 static ER_FMT er_Fmt_list[(-ER_LAST_ERROR) + 1];
 static int er_Fmt_msg_fail_count = -ER_LAST_ERROR;
 static int er_Errid_not_initialized = 0;
-#if !defined (SERVER_MODE)
+#if defined (SERVER_MODE)
+/* stage B2 (#139): the folded CAS speaker registers a per-session handler
+ * (cas_log_error_handler) to stamp EID cross-references into the SQL log;
+ * sessions are threads, so the handler slot is thread-local */
+static thread_local er_log_handler_t er_Handler = NULL;
+static thread_local er_error_observer_t er_Error_observer = NULL;
+/* Optional adopted-session copy. The database error log remains authoritative;
+ * a broker's ERROR_LOG_DIR must never redirect another broker's diagnostics. */
+static thread_local char er_Session_log_path[PATH_MAX] = { 0 };
+
+static thread_local FILE *er_Session_log_fh = NULL;
+static thread_local bool er_Session_log_failed = false;
+#else
 static er_log_handler_t er_Handler = NULL;
 #endif /* !SERVER_MODE */
 static unsigned int er_Eid = 0;
@@ -1492,6 +1504,13 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
       snprintf (crt_error.msg_area + len, crt_error.msg_area_size - len, "... %s", os_error);
     }
 
+#if defined (SERVER_MODE)
+  if (er_Error_observer != NULL)
+    {
+      (*er_Error_observer) ();
+    }
+#endif
+
   /* Call the logging function if any */
   if (severity <= prm_get_integer_value (PRM_ID_ER_LOG_LEVEL)
       && !(prm_get_bool_value (PRM_ID_ER_LOG_WARNING) == false && severity == ER_WARNING_SEVERITY)
@@ -1724,6 +1743,11 @@ er_log (int err_id)
 	    more_info_p = &more_info[0];
 	  }
       }
+
+    if (er_Handler != NULL)
+      {
+	(*er_Handler) (er_Eid);
+      }
   }
 #else /* SERVER_MODE */
   tran_index = TM_TRAN_INDEX ();
@@ -1754,6 +1778,60 @@ er_log (int err_id)
 
   fprintf (*log_fh, er_Cached_msg[ER_LOG_MSG_WRAPPER_D], time_array, ER_SEVERITY_STRING (severity), file_name, line_no,
 	   ER_ERROR_WARNING_STRING (severity), err_id, tran_index, more_info_p, msg);
+
+#if defined (SERVER_MODE)
+  if (log_fh == &er_Msglog_fh && er_Session_log_path[0] != '\0' && !er_Session_log_failed
+      && (log_file_name == NULL || strcmp (er_Session_log_path, log_file_name) != 0))
+    {
+      if (er_Session_log_fh != NULL
+	  && (access (er_Session_log_path, F_OK) != 0
+	      || ftell (er_Session_log_fh) > prm_get_integer_value (PRM_ID_ER_LOG_SIZE)))
+	{
+	  bool rotate = access (er_Session_log_path, F_OK) == 0;
+	  if (fclose (er_Session_log_fh) != 0)
+	    {
+	      er_Session_log_failed = true;
+	    }
+	  er_Session_log_fh = NULL;
+	  if (rotate && !er_Session_log_failed)
+	    {
+	      char backup[PATH_MAX];
+	      size_t length = strlen (er_Session_log_path);
+	      memcpy (backup, er_Session_log_path, length);
+	      memcpy (backup + length, ".bak", sizeof (".bak"));
+	      if ((unlink (backup) != 0 && errno != ENOENT) || rename (er_Session_log_path, backup) != 0)
+		{
+		  er_Session_log_failed = true;
+		}
+	    }
+	}
+      if (er_Session_log_fh == NULL && !er_Session_log_failed)
+	{
+	  er_Session_log_fh = fopen (er_Session_log_path, "a+");
+	  er_Session_log_failed = er_Session_log_fh == NULL;
+	}
+      if (!er_Session_log_failed)
+	{
+	  int written = fprintf (er_Session_log_fh, er_Cached_msg[ER_LOG_MSG_WRAPPER_D], time_array,
+				 ER_SEVERITY_STRING (severity), file_name, line_no, ER_ERROR_WARNING_STRING (severity),
+				 err_id, tran_index, more_info_p, msg);
+	  if (written < 0 || fflush (er_Session_log_fh) != 0)
+	    {
+	      er_Session_log_failed = true;
+	    }
+	}
+      if (er_Session_log_failed)
+	{
+	  /* Report once in the original sink without recursively calling er_set. */
+	  fprintf (*log_fh, "Cannot write broker session error log '%s': %s\n", er_Session_log_path, strerror (errno));
+	  if (er_Session_log_fh != NULL)
+	    {
+	      (void) fclose (er_Session_log_fh);
+	      er_Session_log_fh = NULL;
+	    }
+	}
+    }
+#endif
 
   /* Flush the message so it is printed immediately */
   if (*log_fh != stderr && *log_fh != stdout)
@@ -1800,18 +1878,54 @@ er_log (int err_id)
 er_log_handler_t
 er_register_log_handler (er_log_handler_t handler)
 {
-#if !defined (SERVER_MODE)
   er_log_handler_t prev;
 
   prev = er_Handler;
   er_Handler = handler;
   return prev;
-#else
-  assert (0);
-
-  return NULL;
-#endif
 }
+
+#if defined (SERVER_MODE)
+er_error_observer_t
+er_register_error_observer (er_error_observer_t observer)
+{
+  er_error_observer_t previous = er_Error_observer;
+  er_Error_observer = observer;
+  return previous;
+}
+
+int
+er_set_session_error_log_file (const char *path)
+{
+  int result = NO_ERROR;
+  if (path != NULL && strlen (path) >= sizeof (er_Session_log_path) - sizeof (".bak"))
+    {
+      return ER_FAILED;
+    }
+  if (path != NULL && strcmp (path, er_Session_log_path) == 0 && !er_Session_log_failed)
+    {
+      return NO_ERROR;
+    }
+  if (er_Session_log_fh != NULL)
+    {
+      if (fclose (er_Session_log_fh) != 0)
+	{
+	  result = ER_FAILED;
+	}
+      er_Session_log_fh = NULL;
+    }
+  er_Session_log_failed = false;
+  if (path == NULL)
+    {
+      er_Session_log_path[0] = '\0';
+    }
+  else
+    {
+      memcpy (er_Session_log_path, path, strlen (path) + 1);
+    }
+  return result;
+}
+#endif
 
 /*
  * er_errid - Retrieve last error identifier set before
@@ -2186,6 +2300,13 @@ er_set_area_error (char *server_area)
   crt_error.reserve_message_area (length);
   memcpy (crt_error.msg_area, ptr, length);
 
+#if defined (SERVER_MODE)
+  if (er_Error_observer != NULL)
+    {
+      (*er_Error_observer) ();
+    }
+#endif
+
   /* Call the logging function if any */
   if (severity <= prm_get_integer_value (PRM_ID_ER_LOG_LEVEL)
       && !(prm_get_bool_value (PRM_ID_ER_LOG_WARNING) == false && severity == ER_WARNING_SEVERITY)
@@ -2339,6 +2460,39 @@ er_stack_clearall (void)
 
   // remove all stacks, but keep last error
   while (tl_context.has_error_stack ())
+    {
+      er_stack_pop_and_keep_error ();
+    }
+}
+
+/*
+ * er_stack_depth - Current depth of this thread's saved-error stack
+ *   return: number of pushed er frames
+ */
+int
+er_stack_depth (void)
+{
+  // *INDENT-OFF*
+  context &tl_context = context::get_thread_local_context ();
+  // *INDENT-ON*
+
+  return (int) tl_context.get_stack_depth ();
+}
+
+/*
+ * er_stack_clear_above - er_stack_clearall bounded to a floor: frames at or
+ *   below the floor depth are kept.  clear_above (0) == er_stack_clearall.
+ *   return: none
+ *   floor(in): stack depth to clear down to (from er_stack_depth)
+ */
+void
+er_stack_clear_above (int floor)
+{
+  // *INDENT-OFF*
+  context &tl_context = context::get_thread_local_context ();
+  // *INDENT-ON*
+
+  while ((int) tl_context.get_stack_depth () > floor)
     {
       er_stack_pop_and_keep_error ();
     }

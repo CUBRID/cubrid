@@ -68,6 +68,19 @@
         ((client_type) == DB_CLIENT_TYPE_LOG_COPIER \
          || (client_type) == DB_CLIENT_TYPE_LOG_APPLIER)
 
+/* wf122/B5 D5: the legacy client RPC channel is the utility/HA plane only —
+ * admin utilities, HA daemons and the loaddb family.  Driver and csql
+ * traffic rides the CAS wire (broker handoff or adoption DIRECT_CONNECT);
+ * their types are refused at registration (sboot_register_client). */
+#define BOOT_UTIL_CHANNEL_CLIENT_TYPE(client_type) \
+        ((client_type) == DB_CLIENT_TYPE_ADMIN_UTILITY \
+         || (client_type) == DB_CLIENT_TYPE_LOG_COPIER \
+         || (client_type) == DB_CLIENT_TYPE_LOG_APPLIER \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2 \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4 \
+         || (client_type) == DB_CLIENT_TYPE_LOADDB_UTILITY)
+
 #define BOOT_CSQL_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_CSQL \
          || (client_type) == DB_CLIENT_TYPE_READ_ONLY_CSQL \

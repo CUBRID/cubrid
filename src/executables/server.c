@@ -110,6 +110,9 @@ register_fatal_signal_handler (int signo)
   sigemptyset (&act.sa_mask);
   act.sa_flags = 0;
   act.sa_flags |= SA_SIGINFO;
+  /* run on the per-thread alternate stack (installed by the thread manager)
+   * so a SIGSEGV from stack exhaustion still produces the crash callstack */
+  act.sa_flags |= SA_ONSTACK;
   sigaction (signo, &act, NULL);
 }
 
@@ -124,6 +127,7 @@ register_abort_signal_handler (int signo)
   sigemptyset (&act.sa_mask);
   act.sa_flags = 0;
   act.sa_flags |= SA_SIGINFO;
+  act.sa_flags |= SA_ONSTACK;
   sigaction (signo, &act, NULL);
 }
 #endif /* !NDEBUG */
@@ -225,16 +229,31 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
 static void
 abort_handler (int signo, siginfo_t * siginfo, void *dummyp)
 {
+  static int abort_in_progress = 0;
   int *local_clients_pid = NULL;
   int i, num_clients, client_pid;
+  const pid_t server_pid = getpid ();
 
-  if (os_set_signal_handler (signo, SIG_DFL) == SIG_ERR)
+  /* Several worker threads can trip the same assertion within the same
+   * millisecond. Keep this handler installed while the first one writes the
+   * crash diagnostics and park the others; a second SIGABRT with the default
+   * action would end the process before the dump is complete. */
+  if (__atomic_exchange_n (&abort_in_progress, 1, __ATOMIC_ACQ_REL) != 0)
     {
-      return;
+      /* Bounded: a parked thread may hold a lock the dumping thread needs, so
+       * after the grace period fall back to the default action rather than
+       * leaving a wedged server behind (a hang costs the CI its watchdog). */
+      for (i = 0; i < 30; i++)
+	{
+	  sleep (1);
+	}
+      (void) os_set_signal_handler (signo, SIG_DFL);
+      abort ();
     }
 
   if (!BO_IS_SERVER_RESTARTED ())
     {
+      (void) os_set_signal_handler (signo, SIG_DFL);
       return;
     }
 
@@ -251,6 +270,12 @@ abort_handler (int signo, siginfo_t * siginfo, void *dummyp)
 
       assert (client_pid > 0);
 
+      /* Adopted driver clients run in this process. Signalling ourselves
+       * with SIG_DFL would cut off the crash diagnostics below. */
+      if (client_pid == server_pid)
+	{
+	  continue;
+	}
       kill (client_pid, SIGABRT);
     }
 
@@ -261,6 +286,7 @@ abort_handler (int signo, siginfo_t * siginfo, void *dummyp)
 
   er_print_crash_callstack (signo);
   /* abort the server itself */
+  (void) os_set_signal_handler (signo, SIG_DFL);
   abort ();
 }
 #endif /* !NDEBUG */

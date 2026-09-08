@@ -51,6 +51,8 @@
 #include "util_func.h"
 #include "hide_password.h"
 #include "db.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define DDL_LOG_MSG 	            (256)
 #define DDL_LOG_PATH    	    "log/ddl_audit"
@@ -102,11 +104,20 @@ struct t_ddl_audit_handle
   bool auto_commit_mode;
 };
 
-static T_DDL_AUDIT_HANDLE ddl_audit_handle;
+/* stage B2 (#139): in the merged server the DDL audit state is per adopted
+ * session — one dedicated thread per connection runs the folded CAS speaker,
+ * so per-process state becomes per-thread.  CAS/CSQL/loaddb are unchanged. */
+#if defined(SERVER_MODE)
+#define DDL_TLS thread_local
+#else
+#define DDL_TLS
+#endif
 
-static bool is_first_initialized = true;
-static bool ddl_logging_enabled = false;
-static UINT64 ddl_logging_size = 0ULL;
+static DDL_TLS T_DDL_AUDIT_HANDLE ddl_audit_handle;
+
+static DDL_TLS bool is_first_initialized = true;
+static DDL_TLS bool ddl_logging_enabled = false;
+static DDL_TLS UINT64 ddl_logging_size = 0ULL;
 
 static void logddl_make_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name);
 static int logddl_make_copy_filename (T_APP_NAME app_name, const char *file_full_path, char *copy_filename,
@@ -133,8 +144,8 @@ static bool logddl_is_ddl_type (int node_type, PT_NODE * node);
 static void logddl_set_sql_text (char *sql_text, int sql_len, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 static bool logddl_set_stmt_type (int stmt_type, PT_NODE * statement);
 
-static bool is_executed_ddl_for_trans = false;
-static bool has_password_type = false;
+static DDL_TLS bool is_executed_ddl_for_trans = false;
+static DDL_TLS bool has_password_type = false;
 
 void
 logddl_init (T_APP_NAME app_name)

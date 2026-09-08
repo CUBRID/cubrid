@@ -28,6 +28,7 @@
 #include "db_json.hpp"
 #include "db_value_printer.hpp"
 #include "dbi.h"
+#include "deduplicate_key.h"
 #include "dbtype.h"
 #include "misc_string.h"
 #include "object_domain.h"
@@ -42,6 +43,8 @@
 #include "tde.h"
 
 #include <assert.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 //--------------------------------------------------------------------------------
 void object_printer::describe_comment_for_session_cmd (const char *comment)

@@ -296,6 +296,13 @@ extern "C"
 				   ...);
   typedef void (*er_log_handler_t) (unsigned int);
   extern er_log_handler_t er_register_log_handler (er_log_handler_t f);
+#if defined (SERVER_MODE)
+  extern int er_set_session_error_log_file (const char *path);
+  /* Observe the current thread's error before server log filtering. The
+   * observer must not modify the error, log recursively, or throw. */
+  typedef void (*er_error_observer_t) (void);
+  extern er_error_observer_t er_register_error_observer (er_error_observer_t observer);
+#endif
 
 #if !defined (WINDOWS) && defined (SERVER_MODE)
   extern void er_file_create_link_to_current_log_file (const char *er_file_path, const char *suffix);
@@ -319,6 +326,8 @@ extern "C"
   extern void er_stack_pop_and_keep_error (void);
   extern void er_restore_last_error (void);
   extern void er_stack_clearall (void);
+  extern int er_stack_depth (void);
+  extern void er_stack_clear_above (int floor);
   extern void *db_default_malloc_handler (void *arg, const char *filename, int line_no, size_t size);
   extern int er_event_restart (void);
   extern void er_clearid (void);

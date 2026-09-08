@@ -26,6 +26,7 @@
 #include "xasl_cache.h"
 #include "xasl_iteration.hpp"
 #include "px_query_task.hpp"
+#include "pl_session.hpp"	/* cubpl::get_session — retract the PL-session interrupt */
 
 #if !defined(NDEBUG)
 #include <sys/syscall.h>
@@ -193,6 +194,20 @@ namespace parallel_query_execute
 		    /* this function set interrupt when session got pl_session, so we need to clear interrupt before set error */
 		    is_interrupt = logtb_is_interrupted_tran (thread_p, true, &continue_checking, thread_p->tran_index);
 		  }
+		/* the loop above clears the TRAN interrupt but each true
+		 * iteration also re-marked the PL session; that mark outlives
+		 * the query, and every later get_session () in this CALL
+		 * reports "interrupted" instead of the worker's real error
+		 * (workspace#176 결함 17: "Data overflow" became "Has been
+		 * interrupted").  The sibling-shutdown interrupt is internal
+		 * plumbing — retract it once the workers have stopped. */
+		{
+		  cubpl::session *pl_session = cubpl::get_session ();
+		  if (pl_session != NULL)
+		    {
+		      pl_session->clear_interrupt ();
+		    }
+		}
 	      }
 	    std::lock_guard<std::mutex> lock (m_error_messages.m_mutex);
 	    bool found_error = false;

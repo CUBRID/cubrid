@@ -34,10 +34,6 @@
 #include "locator.h"
 #include "dbtype_def.h"
 
-#if defined (SERVER_MODE)
-// cppcheck-suppress preprocessorErrorDirective
-#error does not belong to server
-#endif // SERVER_MODE
 
 /*
  * VID_INFO
@@ -152,6 +148,11 @@ struct db_object
 				 * loader only */
   unsigned decached:1;		/* set if mop is decached by calling ws_decache function */
   unsigned trigger_involved:1;	/* set if mop is involved in trigger, it is used only for cdc */
+#if defined (SERVER_MODE) && !defined (NDEBUG)
+  /* owning session workspace: a MOP must never cross the session boundary
+   * (#123) — stamped at ws_make_mop, checked by WS_ASSERT_OWNED */
+  struct ws_context *owner_ws;
+#endif
 };
 
 
@@ -454,6 +455,54 @@ struct ws_mop_table_entry
 /*
  * WORKSPACE GLOBALS
  */
+#if defined (SERVER_MODE)
+/* Per-session workspace state (#123 D2): the whole MOP closed system is owned
+ * by one client session context, reached through the thread's activation
+ * bracket (client_session_context.hpp).  The names below stay grep-compatible
+ * with the process-global spelling the CS build keeps. */
+// *INDENT-OFF*
+struct ws_context
+{
+  WS_MOP_TABLE_ENTRY *mop_table = NULL;
+  unsigned int mop_table_size = 0;
+  DB_OBJLIST *resident_classes = NULL;
+  MOP commit_mops = NULL;
+  WS_STATISTICS stats = {};
+  int num_dirty_mop = 0;
+  int error_ignore_list[-ER_LAST_ERROR] = {};
+  int error_ignore_count = 0;
+
+  /* file-scope state of work_space.c */
+  bool dirty = false;
+  MOP null_object = NULL;
+  struct mht_table *classname_cache = NULL;
+  unsigned int mvcc_snapshot_version = 0;
+
+  /* the session's lea workspace heap (quick_fit.c); frees resolve to the
+   * owning session's heap, never the calling thread's (ALLOC-08) */
+  HL_HEAPID heap_id = 0;
+};
+// *INDENT-ON*
+
+extern struct ws_context *csc_ws (void);
+
+/* session-boundary check: every MOP handed to the workspace must belong to
+ * the session the calling thread's bracket installed (#123) */
+#if !defined (NDEBUG)
+#define WS_ASSERT_OWNED(mop) assert ((mop) == NULL || (mop)->owner_ws == csc_ws ())
+#else
+#define WS_ASSERT_OWNED(mop) ((void) 0)
+#endif
+
+#define ws_Mop_table (csc_ws ()->mop_table)
+#define ws_Mop_table_size (csc_ws ()->mop_table_size)
+#define ws_Resident_classes (csc_ws ()->resident_classes)
+#define ws_Commit_mops (csc_ws ()->commit_mops)
+#define ws_Stats (csc_ws ()->stats)
+#define ws_Num_dirty_mop (csc_ws ()->num_dirty_mop)
+#define ws_Error_ignore_list (csc_ws ()->error_ignore_list)
+#define ws_Error_ignore_count (csc_ws ()->error_ignore_count)
+#else /* SERVER_MODE */
 extern WS_MOP_TABLE_ENTRY *ws_Mop_table;
 extern unsigned int ws_Mop_table_size;
 extern DB_OBJLIST *ws_Resident_classes;
@@ -462,6 +511,9 @@ extern WS_STATISTICS ws_Stats;
 extern int ws_Num_dirty_mop;
 extern int ws_Error_ignore_list[-ER_LAST_ERROR];
 extern int ws_Error_ignore_count;
+
+#define WS_ASSERT_OWNED(mop) ((void) 0)
+#endif /* !SERVER_MODE */
 
 /*
  *  WORKSPACE FUNCTIONS

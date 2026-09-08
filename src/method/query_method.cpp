@@ -31,7 +31,6 @@
 
 #include "method_struct_invoke.hpp"
 
-#if !defined (SERVER_MODE)
 #include "authenticate.h"	/* AU_RESTORE, AU_SAVE_AND_DISABLE */
 #include "dbi.h"		/* db_enable_modification(), db_disable_modification() */
 #include "object_accessor.h"	/* obj_ */
@@ -49,6 +48,9 @@
 #include "transaction_cl.h"
 #include "packer.hpp"		/* packing_packer */
 #include "network_callback_cl.hpp"
+
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
 #endif
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -77,12 +79,16 @@ extern unsigned int db_on_server;
   } while (0)
 #endif
 
-#if !defined (SERVER_MODE)
+#if defined (SERVER_MODE)
+/* For builtin C Method — per-session home (#120 D8) */
+#define runtime_args (csc_current ()->method_runtime_args)
+#else
 /* For builtin C Method */
 static std::unordered_map <UINT64, std::vector<DB_VALUE>> runtime_args;
 
 /* data queue */
 static std::queue <cubmem::extensible_block> data_queue;
+#endif
 
 static void method_erase_runtime_arguments (UINT64 id);
 static void method_set_runtime_arguments (UINT64 id, std::vector<DB_VALUE> &args);
@@ -97,7 +103,6 @@ static int method_dispatch_internal (packing_unpacker &unpacker);
 static bool method_has_set_vobjs (DB_SET *set);
 static int method_fixup_set_vobjs (DB_VALUE *value_p);
 static int method_fixup_vobjs (DB_VALUE *value_p);
-#endif
 
 #if defined (CS_MODE)
 /*
@@ -187,9 +192,97 @@ method_dispatch (packing_unpacker &unpacker)
   ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
   return error;
 }
+#elif defined (SERVER_MODE)
+/* merged client-half thread boundary flag (network_interface_sr.cpp) */
+extern thread_local unsigned int db_on_server;
+
+/*
+ * method_dispatch () - Dispatch method protocol in-process for the merged
+ *   server (#120 D2/D7): the very worker thread blocked in the invoke loop
+ *   terminates the callback, on the SA-mode template.  The hat switch is the
+ *   thread-local boundary flag alone — client-half allocation routing
+ *   (memory_alloc.c) keys on it, so no heap-id swap is needed.
+ *   return:
+ *   unpacker(in)     : unpacker for request
+ */
+int
+method_dispatch (packing_unpacker &unpacker)
+{
+  int error = NO_ERROR;
+  unsigned int save_on_server = db_on_server;
+  db_on_server = 0;
+
+  /* isolate the outer query's error state from the dispatched client half:
+   * a callback error the PL routine catches must not linger on this thread's
+   * er and poison the invoking executor (legacy CS kept it in the CAS
+   * process).  An error the dispatch propagates is kept on top. */
+  er_stack_push ();
+
+  /* frames at or below this depth (the isolation frame included) belong to
+   * the server side: the client half's er_stack_clearall stops at the floor
+   * (transaction_cl.c), the way legacy CAS's clearall could not reach the
+   * server process's stack.  Nested dispatches re-floor and restore. */
+  client_session_context *csc = csc_current ();
+  int save_er_floor = csc->er_dispatch_floor;
+  csc->er_dispatch_floor = er_stack_depth ();
+
+  tran_begin_libcas_function ();
+  int depth = tran_get_libcas_depth ();
+  if (depth > METHOD_MAX_RECURSION_DEPTH)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
+      error = ER_SP_TOO_MANY_NESTED_CALL;
+    }
+
+  if (error == NO_ERROR)
+    {
+      error = method_dispatch_internal (unpacker);
+    }
+
+  tran_end_libcas_function ();
+
+  /* outermost dispatch boundary: reclaim handlers a transaction boundary
+   * deferred (free_query_handle_all(true)) — the mirror of legacy CS's
+   * deferred_flush_guard at its network-callback boundary (network_cl.c) */
+  if (!tran_is_in_libcas ())
+    {
+      cubmethod::callback_handler *h = csc_current ()->method_callback_handler;
+      if (h != NULL && h->has_deferred_query_handler ())
+	{
+	  er_stack_push ();
+	  h->free_deferred_query_handler ();
+	  er_stack_pop ();
+	}
+    }
+
+  csc->er_dispatch_floor = save_er_floor;
+
+  if (error == NO_ERROR)
+    {
+      er_stack_pop ();
+    }
+  else
+    {
+      er_stack_pop_and_keep_error ();
+    }
+
+  db_on_server = save_on_server;
+  return error;
+}
+
+/* per-session retirement, called from csc_teardown under the session's
+ * bracket before ws_final: the argument DB_VALUEs live on the session */
+void
+method_runtime_args_session_final (void)
+{
+  for (auto &it : runtime_args)
+    {
+      pr_clear_value_vector (it.second);
+    }
+  runtime_args.clear ();
+}
 #endif
 
-#if !defined (SERVER_MODE)
 /*
  * method_dispatch_internal () - Dispatch method protocol from the server
  *   return:
@@ -582,7 +675,6 @@ method_fixup_vobjs (DB_VALUE *value_p)
 
   return rc;
 }
-#endif
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 

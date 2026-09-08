@@ -26,6 +26,7 @@
 #include "error_manager.h"	/* er_errid, NO_ERROR, assert_release_error */
 #include "fetch.h"		/* fetch_val_list */
 #include "list_file.h"		/* qfile_open_list, qfile_close_list */
+#include "log_impl.h"		/* LOG_FIND_CURRENT_TDES */
 #include "memory_alloc.h"	/* CEIL_PTVDIV */
 #include "object_representation.h"	/* TP_DOMAIN */
 #include "perf_monitor.h"	/* perfmon_get_from_statistic, PSTAT_... */
@@ -1997,6 +1998,18 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   /* immutable */
   static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
+  /* Hash join workers share the dispatching transaction's tdes; a worker spilling its output list file calls
+   * log_sysop_start on it from another thread and deadlocks on tdes->rmutex_topop when the dispatcher already
+   * holds an open system operation (e.g. a MERGE subplan under xtran_server_start_topop) — same hazard as the
+   * sort_check_parallelism guard in external_sort.c. Fall back to single-thread. */
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes != NULL && tdes->is_under_sysop ())
+    {
+      manager->num_parallel_threads = 0;
+      assert (manager->px_worker_manager == NULL);
+      return HASHJOIN_STATUS_PARTITION;
+    }
+
   /* check if pages are enough for parallel-thread hash join */
   max_page_cnt =
     (outer_list_id->page_cnt > inner_list_id->page_cnt) ? outer_list_id->page_cnt : inner_list_id->page_cnt;
@@ -2110,6 +2123,15 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
 
   /* immutable */
   static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
+
+  /* same open-system-operation deadlock hazard as hjoin_try_parallel above — fall back to single-thread */
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes != NULL && tdes->is_under_sysop ())
+    {
+      manager->num_parallel_threads = 0;
+      assert (manager->px_worker_manager == NULL);
+      return HASHJOIN_STATUS_SINGLE;
+    }
 
   UINT32 degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN,
 							   single_context->probe->list_id->page_cnt,

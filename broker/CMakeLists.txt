@@ -36,6 +36,7 @@ set(CUB_BROKER_SOURCES
 
 if(UNIX)
   list(APPEND CUB_BROKER_SOURCES ${BROKER_DIR}/broker_send_fd.c)
+  list(APPEND CUB_BROKER_SOURCES ${BROKER_DIR}/broker_direct.cpp)
   SET_SOURCE_FILES_PROPERTIES(
     ${CUB_BROKER_SOURCES}
     PROPERTIES LANGUAGE CXX
@@ -256,6 +257,7 @@ set(CAS_COMMON_LIB_SOURCES
   ${BROKER_DIR}/cas_meta.c 
   ${BROKER_DIR}/cas_ssl.c
   ${BROKER_DIR}/cas_common_main.c
+  ${BROKER_DIR}/cas_conn_helpers.c
   ${BROKER_DIR}/cas_common_execute.c
   ${BROKER_DIR}/cas_common_function.c
   ${BROKER_DIR}/cas_common_vars.c
@@ -302,24 +304,19 @@ else(UNIX)
 endif(UNIX)
 
 
-set(CUB_CAS_SOURCES
-  ${BROKER_DIR}/cas.c
-  ${BROKER_DIR}/cas_function.c
-  ${BROKER_DIR}/cas_execute.c
-  ${BROKER_DIR}/cas_str_like.c
-  ${BROKER_DIR}/cas_xa.c
-  ${BROKER_DIR}/cas_schema_info.c
-  )
+# B4 (#116 D1): the standalone CAS survives only on Windows (WIN_FW relay
+# path, kept as-is) — on UNIX the broker hands connections off to the server
+if(WIN32)
+  set(CUB_CAS_SOURCES
+    ${BROKER_DIR}/cas.c
+    ${BROKER_DIR}/cas_dispatch.c
+    ${BROKER_DIR}/cas_function.c
+    ${BROKER_DIR}/cas_execute.c
+    ${BROKER_DIR}/cas_str_like.c
+    ${BROKER_DIR}/cas_xa.c
+    ${BROKER_DIR}/cas_schema_info.c
+    )
 
-if(UNIX)
-  list(APPEND CUB_CAS_SOURCES ${BROKER_DIR}/broker_error.c)
-  list(APPEND CUB_CAS_SOURCES ${BROKER_DIR}/broker_process_size.c)
-  list(APPEND CUB_CAS_SOURCES ${BROKER_DIR}/broker_recv_fd.c)
-  SET_SOURCE_FILES_PROPERTIES(
-    ${CUB_CAS_SOURCES}
-    PROPERTIES LANGUAGE CXX
-  )
-else(UNIX)
   SET_SOURCE_FILES_PROPERTIES(
     ${CUB_CAS_SOURCES}
     PROPERTIES LANGUAGE CXX
@@ -328,7 +325,7 @@ else(UNIX)
   list(APPEND CUB_CAS_SOURCES ${BASE_DIR}/porting.c)
   list(APPEND CUB_CAS_SOURCES ${BROKER_DIR}/broker_list.c)
   list(APPEND CUB_CAS_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
-  
+
   SET_SOURCE_FILES_PROPERTIES(
     ${BASE_DIR}/porting.c
     ${BROKER_DIR}/broker_list.c
@@ -336,20 +333,12 @@ else(UNIX)
     PROPERTIES LANGUAGE CXX
   )
   list(APPEND CUB_CAS_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
-endif(UNIX)
 
-add_executable(cub_cas WIN32 ${CUB_CAS_SOURCES})
-target_compile_definitions(cub_cas PRIVATE ${BROKER_DEFS} CAS_CUBRID)
-target_include_directories(cub_cas PRIVATE ${EP_INCLUDES})
-target_link_libraries(cub_cas LINK_PRIVATE cas_common_lib cubridcs)
-if(UNIX)
-  target_link_libraries(cub_cas LINK_PRIVATE rt ${LIBOPENSSL_LIBS})
-  if(TARGET ${LIBOPENSSL_TARGET})
-    add_dependencies(cub_cas ${LIBOPENSSL_TARGET})
-  endif()
-else(UNIX)
-  target_link_libraries(cub_cas LINK_PRIVATE ws2_32 dbghelp ${LIBOPENSSL_LIBS})
-endif(UNIX)
+  add_executable(cub_cas WIN32 ${CUB_CAS_SOURCES})
+  target_compile_definitions(cub_cas PRIVATE ${BROKER_DEFS} CAS_CUBRID)
+  target_include_directories(cub_cas PRIVATE ${EP_INCLUDES})
+  target_link_libraries(cub_cas LINK_PRIVATE cas_common_lib cubridcs ws2_32 dbghelp ${LIBOPENSSL_LIBS})
+endif(WIN32)
 
 set(CUB_CAS_CGW_SOURCES
   ${BROKER_DIR}/cas_cgw.c
@@ -642,7 +631,6 @@ install(TARGETS
   broker_changer
   cubrid_broker
   cubrid_gateway
-  cub_cas
   cub_cas_cgw
   cub_proxy
   broker_log_top
@@ -651,6 +639,12 @@ install(TARGETS
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
+
+if(WIN32)
+  install(TARGETS cub_cas
+    RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
+    )
+endif(WIN32)
 
 
 # TODO: compat uc script?

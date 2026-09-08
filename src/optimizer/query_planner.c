@@ -141,17 +141,23 @@ typedef struct ndv_info NDV_INFO;
 
 typedef int (*QO_WALK_FUNCTION) (QO_PLAN *, void *);
 
-static int infos_allocated = 0;
-static int infos_deallocated = 0;
+/* per-thread: plan/info accounting and the plan free list live for the
+ * optimizations running on one thread (see csql_parser_tls.h) */
+#include "csql_parser_tls.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
-static int qo_plans_allocated;
-static int qo_plans_deallocated;
-static int qo_plans_malloced;
-static int qo_plans_demalloced;
-static int qo_accumulating_plans;
-static int qo_next_tmpfile;
+static CSQL_PARSER_TLS int infos_allocated = 0;
+static CSQL_PARSER_TLS int infos_deallocated = 0;
 
-static QO_PLAN *qo_plan_free_list;
+static CSQL_PARSER_TLS int qo_plans_allocated;
+static CSQL_PARSER_TLS int qo_plans_deallocated;
+static CSQL_PARSER_TLS int qo_plans_malloced;
+static CSQL_PARSER_TLS int qo_plans_demalloced;
+static CSQL_PARSER_TLS int qo_accumulating_plans;
+static CSQL_PARSER_TLS int qo_next_tmpfile;
+
+static CSQL_PARSER_TLS QO_PLAN *qo_plan_free_list;
 
 static QO_PLAN *qo_scan_new (QO_INFO *, QO_NODE *, QO_SCANMETHOD);
 static void qo_scan_free (QO_PLAN *);

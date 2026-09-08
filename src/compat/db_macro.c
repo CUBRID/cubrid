@@ -79,17 +79,17 @@ struct valcnv_buffer
   unsigned char *bytes;
 };
 
+#if !defined (SERVER_MODE)
 SESSION_ID db_Session_id = DB_EMPTY_SESSION;
 bool db_Keep_session = false;
 
 int db_Row_count = DB_ROW_COUNT_NOT_SET;
+#endif /* !SERVER_MODE */
 
 static thread_local int valcnv_Max_set_elements = 10;
 static thread_local bool valcnv_Quote_strings = false;
 
-#if defined(SERVER_MODE)
-int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
-#else
+#if !defined (SERVER_MODE)
 int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 #endif
 int db_Disable_modifications = 0;
@@ -2880,7 +2880,6 @@ valcnv_convert_collection_value_to_string_all_elements (DB_VALUE * value_p)
   return error;
 }
 
-#if !defined(SERVER_MODE)
 int
 db_get_connect_status (void)
 {
@@ -2892,7 +2891,6 @@ db_set_connect_status (int status)
 {
   db_Connect_status = status;
 }
-#endif
 
 /*
  * db_default_expression_string() -

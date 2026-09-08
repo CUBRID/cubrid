@@ -97,6 +97,7 @@ namespace cuberr
       void pop_error_stack (er_message &popped);  // caller will destroy popped
       void pop_error_stack_and_destroy (void);
       bool has_error_stack (void);
+      std::size_t get_stack_depth (void);
 
       const bool &get_logging (void);
 

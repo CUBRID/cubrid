@@ -392,6 +392,11 @@ extern "C"
   extern int tp_init (void);
   extern void tp_apply_sys_charset (void);
   extern void tp_final (void);
+#if defined (SERVER_MODE)
+/* frees the current session's domain lists (B4-D9) — bracketed teardown
+ * only, before ws_final */
+  extern void tp_session_domains_final (void);
+#endif
   extern TP_DOMAIN *tp_domain_resolve (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, int scale,
 				       TP_DOMAIN * setdomain, int collation);
   extern TP_DOMAIN *tp_domain_resolve_default (DB_TYPE type);

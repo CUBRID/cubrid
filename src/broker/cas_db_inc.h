@@ -29,7 +29,10 @@
 #include "dbi.h"
 #include "dbtype_def.h"
 /*#include "db.h"*/
-#if !defined(SERVER_MODE)
+/* db.h owns these declarations; repeat them only when db.h is not already in
+ * the TU (a full db.h include here would drag engine headers into the light
+ * broker tools) - -Wredundant-decls-safe either way (stage B1) */
+#if !defined(_DB_H_)
 extern int db_get_connect_status (void);
 extern void db_set_connect_status (int status);
 #endif

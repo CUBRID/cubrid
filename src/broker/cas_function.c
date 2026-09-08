@@ -59,6 +59,8 @@
 #include "dbtype.h"
 #include "db_session.h"
 #include "object_primitive.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* ========================================================================
  * Forward Function Declarations
@@ -130,7 +132,8 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
     }
 
   timeout =
-    ut_check_timeout (&tran_start_time, &end_tran_end, shm_appl->long_transaction_time, &elapsed_sec, &elapsed_msec);
+    ut_check_timeout (&tran_start_time, &end_tran_end, CAS_SHM_CFG (long_transaction_time), &elapsed_sec,
+		      &elapsed_msec);
   if (timeout >= 0)
     {
       as_info->num_long_transactions %= MAX_DIAG_DATA_VALUE;
@@ -600,10 +603,10 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       app_query_timeout = 0;
     }
 
-  if (shm_appl->max_string_length >= 0)
+  if (CAS_SHM_CFG (max_string_length) >= 0)
     {
-      if (max_col_size <= 0 || max_col_size > shm_appl->max_string_length)
-	max_col_size = shm_appl->max_string_length;
+      if (max_col_size <= 0 || max_col_size > CAS_SHM_CFG (max_string_length))
+	max_col_size = CAS_SHM_CFG (max_string_length);
     }
 
   set_query_timeout (srv_handle, app_query_timeout);
@@ -821,7 +824,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   plan = db_get_execution_plan ();
 
   query_timeout =
-    ut_check_timeout (&query_start_time, &exec_end, shm_appl->long_query_time, &elapsed_sec, &elapsed_msec);
+    ut_check_timeout (&query_start_time, &exec_end, CAS_SHM_CFG (long_query_time), &elapsed_sec, &elapsed_msec);
   if (query_timeout >= 0 || ret_code < 0)
     {
       if (query_timeout >= 0)
@@ -1003,7 +1006,7 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   else if (param_name == CCI_PARAM_MAX_STRING_LENGTH)
     {
 
-      int max_str_len = shm_appl->max_string_length;
+      int max_str_len = CAS_SHM_CFG (max_string_length);
 
       net_buf_cp_int (net_buf, 0, NULL);
       if (max_str_len <= 0 || max_str_len > DB_MAX_STRING_LENGTH)
@@ -1889,7 +1892,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
 
   query_timeout =
-    ut_check_timeout (&query_start_time, &exec_end, shm_appl->long_query_time, &elapsed_sec, &elapsed_msec);
+    ut_check_timeout (&query_start_time, &exec_end, CAS_SHM_CFG (long_query_time), &elapsed_sec, &elapsed_msec);
 
   if (query_timeout >= 0 || ret_code < 0)
     {
@@ -1907,7 +1910,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
       if (as_info->cur_slow_log_mode == SLOW_LOG_MODE_ON)
 	{
 	  cas_slow_log_write (&query_start_time, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			      "execute_array srv_h_id %d %d ", srv_h_id, (argc - 2) / 2);
+			      "execute_array srv_h_id %d %d ", srv_h_id, (argc - arg_index) / 2);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
 	      /* see fn_execute_internal: the session may already be freed on this path */
@@ -1917,7 +1920,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
 					       (psr != NULL) ? &psr->hide_pwd_info : NULL);
-	      cas_common_bind_value_log (&query_start_time, 2, argc - 1, argv, 0, NULL,
+	      cas_common_bind_value_log (&query_start_time, arg_index, argc - 1, argv, 0, NULL,
 					 SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true, CAS_SCHEMA_DEFAULT_CHARSET);
 	    }
 	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
@@ -2422,7 +2425,7 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 void
 set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 {
-  int broker_timeout_in_millis = shm_appl->query_timeout * 1000;
+  int broker_timeout_in_millis = CAS_SHM_CFG (query_timeout) * 1000;
 
   if (tran_is_in_libcas () == false)
     {

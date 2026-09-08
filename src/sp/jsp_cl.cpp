@@ -68,6 +68,8 @@
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
 #include "execute_statement.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
@@ -117,8 +119,14 @@
 #define MAX_ARG_COUNT 64
 
 static int server_port = -1;
+#if defined (SERVER_MODE)
+/* per-thread: an SP call and its nesting stay on one worker thread (#120 D7) */
+static thread_local int call_cnt = 0;
+static thread_local bool is_prepare_call[MAX_CALL_COUNT] = { false, };
+#else
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT] = { false, };
+#endif
 
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static SP_MODE_ENUM jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
@@ -2006,7 +2014,7 @@ pt_to_method_arglist (PARSER_CONTEXT *parser, PT_NODE *target, PT_NODE *node_lis
   int num_args = pt_length_of_list (node_list) + 1;
   PT_NODE *node;
 
-  arg_list = (int *) db_private_alloc (NULL, num_args);
+  arg_list = (int *) db_private_alloc (NULL, num_args * sizeof (int));
   if (!arg_list)
     {
       return NULL;
@@ -2140,6 +2148,8 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
 #if defined (CS_MODE)
 	sig.auth = db_private_strdup (NULL, auth_name);
+#endif
+#if defined (CS_MODE) || defined (SERVER_MODE)
 	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_DETERMINISTIC)
 	  {
 	    sig.is_deterministic = true;

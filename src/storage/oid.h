@@ -41,7 +41,6 @@
 
 #define OID_AS_ARGS(oidp) (oidp)->volid, (oidp)->pageid, (oidp)->slotid
 
-#if !defined(SERVER_MODE)
 #define OID_TEMPID_MIN          INT_MIN
 #define OID_INIT_TEMPID()       (oid_Next_tempid = NULL_PAGEID)
 
@@ -52,7 +51,6 @@
 #define OID_ASSIGN_TEMPOID(oidp) ((oidp)->volid  = NULL_VOLID,          \
 				  (oidp)->pageid = OID_NEXT_TEMPID(),   \
 				  (oidp)->slotid = - tm_Tran_index)
-#endif /* !SERVER_MODE */
 
 #define SET_OID(dest_oid_ptr, vol_id, page_id, slot_id)  \
   do \

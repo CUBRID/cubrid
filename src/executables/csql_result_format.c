@@ -37,6 +37,8 @@
 #include "db_value_printer.hpp"
 
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1422,7 +1424,13 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
   bool plain_string = csql_arg->plain_output;
   char column_enclosure = csql_arg->column_enclosure;
 
+#if defined(SERVER_MODE)
+  /* wf122/B5: a session parameter — the fat client's once-per-process
+   * snapshot would pin every session to the first session's value */
+  bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+#else
   static bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+#endif
   char string_delimiter = csql_arg->column_enclosure;
   bool change_single_quote = (bool) (csql_arg->column_enclosure == '\'');
 

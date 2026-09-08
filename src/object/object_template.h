@@ -25,9 +25,6 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
 
 #include <stdarg.h>
 
@@ -194,8 +191,29 @@ typedef struct obj_template
  * checking is enabled.
  * This state can be modifed using obt_enable_unique_checking()
  */
-extern bool obt_Check_uniques;
+#if defined (SERVER_MODE)
+/* Per-session object-template state of the merged client half (#123 D2). */
+// *INDENT-OFF*
+struct obt_context
+{
+  bool check_uniques = true;
+  bool enable_autoincrement = true;
+  bool last_insert_id_generated = false;
 
+  /* file-scope state of object_template.c */
+  unsigned int template_traversal = 0;
+  unsigned int template_savepoint_count = 0;
+};
+// *INDENT-ON*
+extern struct obt_context *csc_obt (void);
+#define obt_Check_uniques (csc_obt ()->check_uniques)
+#define obt_Enable_autoincrement (csc_obt ()->enable_autoincrement)
+#define obt_Last_insert_id_generated (csc_obt ()->last_insert_id_generated)
+#else /* SERVER_MODE */
+extern bool obt_Check_uniques;
+#endif /* !SERVER_MODE */
+
+#if !defined (SERVER_MODE)
 /*
  * State variable used when creating object template, to indicate whether enable
  * auto increment feature
@@ -208,6 +226,7 @@ extern bool obt_Enable_autoincrement;
  * It is only for client-side insertion.
  */
 extern bool obt_Last_insert_id_generated;
+#endif /* !SERVER_MODE */
 
 
 /* OBJECT TEMPLATE FUNCTIONS */

@@ -55,6 +55,15 @@
 #if !defined (SERVER_MODE)
 extern unsigned int db_on_server;
 HL_HEAPID private_heap_id = 0;
+#else /* !SERVER_MODE */
+/* merged client half: a thread inside a session activation bracket and off
+ * the server half allocates client-private memory from the session workspace,
+ * exactly as the CS and SA builds do (their db_private_alloc redirects to
+ * db_ws_alloc when !db_on_server).  Pure server threads hold no bracket and
+ * skip this on the first probe. */
+extern thread_local unsigned int db_on_server;	/* network_interface_sr.cpp */
+extern bool csc_bracket_is_active (void);	/* client_session_context.cpp */
+#define DB_PRIVATE_IS_CLIENT_HALF() (csc_bracket_is_active () && !db_on_server)
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
@@ -456,6 +465,11 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
       return NULL;
     }
 
+  if (DB_PRIVATE_IS_CLIENT_HALF ())
+    {
+      return db_ws_alloc (size);
+    }
+
   heap_id = db_private_get_heapid_from_thread (thrd);
 
   if (heap_id)
@@ -586,6 +600,11 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
   if (size <= 0)
     {
       return NULL;
+    }
+
+  if (DB_PRIVATE_IS_CLIENT_HALF ())
+    {
+      return db_ws_realloc (ptr, size);
     }
 
   heap_id = db_private_get_heapid_from_thread (thrd);
@@ -793,6 +812,12 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 #if defined (CS_MODE)
   db_ws_free (ptr);
 #elif defined (SERVER_MODE)
+  if (DB_PRIVATE_IS_CLIENT_HALF ())
+    {
+      db_ws_free (ptr);
+      return;
+    }
+
   heap_id = db_private_get_heapid_from_thread (thrd);
 
   if (heap_id)

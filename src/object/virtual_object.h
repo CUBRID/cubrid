@@ -25,9 +25,6 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
 
 #include "locator_cl.h"
 #include "class_object.h"

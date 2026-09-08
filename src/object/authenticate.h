@@ -27,9 +27,6 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
 
 #ifndef __cplusplus
 #error Requires C++
@@ -41,6 +38,10 @@
 #include "error_manager.h"
 #include "class_object.h"
 #include "databases_file.h"
+
+// parser types used in prototypes below; full definition not needed here
+typedef struct parser_context PARSER_CONTEXT;
+typedef struct parser_node PT_NODE;
 #include "object_fetch.h"
 #include "extract_schema.hpp"
 #include "schema_system_catalog_constants.h"

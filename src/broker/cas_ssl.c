@@ -59,8 +59,11 @@
 #endif
 
 #include "cas_common.h"
+#include "cas_common_vars.h"	/* CAS_TLS: session-local SSL state in the merged server (B2-D9) */
 #include "cas_log.h"
 #include "cas_ssl.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define CERTF "cas_ssl_cert.crt"
 #define KEYF "cas_ssl_cert.key"
@@ -71,8 +74,10 @@
 #define SOCKET_NONBLOCK		1
 #define SOCKET_BLOCK		0
 
-static SSL *ssl = NULL;
-bool ssl_client = false;
+/* one CAS process serves one connection; in the merged server a session
+ * thread does, so the SSL state is session(=thread)-local (B2-D9) */
+static CAS_TLS SSL *ssl = NULL;
+CAS_TLS bool ssl_client = false;
 
 static int cas_ssl_validity_check (SSL_CTX * ctx);
 
@@ -179,6 +184,12 @@ cas_init_ssl (int sd)
       ssl = NULL;
       return ER_SSL_GENERAL;
     }
+
+#if defined (SERVER_MODE)
+  /* the SSL keeps its own reference; without this the per-session CTX would
+   * accumulate for the server's lifetime (a CAS process exits instead) */
+  SSL_CTX_free (ctx);
+#endif
 
 #if defined (WINDOWS)
   argp = SOCKET_NONBLOCK;

@@ -63,6 +63,11 @@ namespace cubmethod
   // forward declarations
   class method_invoke;
 
+  /* normalize a client-half built value to server semantics (MOP -> OID,
+   * set elements likewise) — shared by every seam where such a value
+   * crosses into server-hat execution (result unpack, TYPE_SP fetch) */
+  void method_result_to_server_semantics (DB_VALUE &value);
+
   class method_invoke_group
   {
     public:

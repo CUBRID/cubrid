@@ -51,6 +51,8 @@
 #include "dbtype.h"
 #include "printer.hpp"
 #include "string_opfunc.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -166,6 +168,12 @@ static int classobj_partition_info_size (SM_PARTITION * partition_info);
 int
 classobj_area_init (void)
 {
+  if (Template_area != NULL)
+    {
+      /* process-shared area (#123 D5); process teardown resets the pointer */
+      return NO_ERROR;
+    }
+
   Template_area = area_create ("Schema templates", sizeof (SM_TEMPLATE), 4);
   if (Template_area == NULL)
     {

@@ -21,9 +21,6 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
 
 #include "memory_alloc.h"
 #include "dbtype_def.h"
@@ -224,6 +221,47 @@ extern const char *TR_ATT_COMMENT;
 extern const char *TR_ATT_CREATED_TIME;
 extern const char *TR_ATT_UPDATED_TIME;
 
+#if defined (SERVER_MODE)
+/* Per-session trigger-manager state of the merged client half (#123 D2):
+ * trigger caches hold MOPs, so the whole module state follows the session's
+ * workspace.  Reached through the thread's activation bracket. */
+// *INDENT-OFF*
+struct tr_context
+{
+  int current_depth = 0;
+  int maximum_depth = TR_MAX_RECURSION_LEVEL;
+  bool invalid_transaction = false;
+  char invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2] = {};
+  bool trace = true;
+  TR_DEFERRED_CONTEXT *deferred_activities = NULL;
+  TR_DEFERRED_CONTEXT *deferred_activities_tail = NULL;
+  OID stack[TR_MAX_RECURSION_LEVEL + 1] = {};
+
+  /* file-scope state of trigger_manager.c */
+  int user_triggers_valid = 0;
+  int user_triggers_modified = 0;
+  TR_TRIGLIST *user_triggers = NULL;
+  TR_TRIGLIST *uncommitted_triggers = NULL;
+  TR_SCHEMA_CACHE *schema_caches = NULL;
+  bool execution_enabled = true;
+  struct mht_table *object_map = NULL;
+
+  /* execute_statement.c trigger-involvement flags (do_/cdc_Trigger_involved) */
+  bool do_trigger_involved = false;
+  bool cdc_trigger_involved = false;
+};
+// *INDENT-ON*
+
+extern struct tr_context *csc_tr (void);
+
+#define tr_Current_depth (csc_tr ()->current_depth)
+#define tr_Maximum_depth (csc_tr ()->maximum_depth)
+#define tr_Invalid_transaction (csc_tr ()->invalid_transaction)
+#define tr_Invalid_transaction_trigger (csc_tr ()->invalid_transaction_trigger)
+#define tr_Trace (csc_tr ()->trace)
+#define tr_Deferred_activities (csc_tr ()->deferred_activities)
+#define tr_Deferred_activities_tail (csc_tr ()->deferred_activities_tail)
+#else /* SERVER_MODE */
 extern int tr_Current_depth;
 extern int tr_Maximum_depth;
 extern bool tr_Invalid_transaction;
@@ -239,6 +277,7 @@ extern int tr_Recursion_level_max;
 
 extern TR_TRIGLIST *tr_Deferred_triggers;
 extern TR_TRIGLIST *tr_Deferred_triggers_tail;
+#endif /* !SERVER_MODE */
 
 /*
 * EVAL_PREFIX, EVAL_SUFFIX

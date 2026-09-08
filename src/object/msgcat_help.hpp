@@ -23,9 +23,6 @@
 #ifndef _MSGCAT_HELP_HPP_
 #define _MSGCAT_HELP_HPP_
 
-#if defined(SERVER_MODE)
-#error Does not belong to server module
-#endif //defined(SERVER_MODE)
 
 /*
  * Message id in the set MSGCAT_SET_HELP

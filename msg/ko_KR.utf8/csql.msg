@@ -196,6 +196,7 @@ $ csql help messages
    ;.Clear_hist                 - 버퍼에 있는 CSQL 통계 정보를 삭제.\n\
    ;.Dump_hist                  - CSQL에서 CSQL 통계 정보를 표시.\n\
    ;.X_hist                     - 통계 데이터를 초기화하여 CSQL에서 CSQL 통계 정보를 표시.\n\
+   Thin CSQL histogram 명령에 SESSION <id>를 지정하면 DBA가 해당 드라이버 세션을 제어합니다.\n\
    ;HElp                        - 도움말 메시지 출력.\n\n
 
 232 <제약사항> 

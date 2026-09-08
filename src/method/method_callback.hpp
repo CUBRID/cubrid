@@ -23,9 +23,6 @@
 #ifndef _METHOD_CALLBACK_HPP_
 #define _METHOD_CALLBACK_HPP_
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
 
 #include <unordered_map>
 #include <queue>

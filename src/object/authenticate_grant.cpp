@@ -37,6 +37,7 @@
 #include "set_object.h" /* set_free () */
 #include "object_accessor.h" /* obj_inst_lock () */
 #include "object_primitive.h"
+#include "optimizer.h"		/* qo_set_optimization_param () */
 
 #include "msgcat_glossary.hpp"
 
@@ -45,6 +46,8 @@
 #if defined(SA_MODE)
 #include "catalog_class.h"
 #endif /* SA_MODE */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static int au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
 static int au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option);
@@ -698,6 +701,20 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user)
 		       * This may not be necessary.
 		       */
 		      sm_bump_local_schema_version ();
+
+#if defined (SERVER_MODE)
+		      /* the bump above only invalidates this session's parse
+		       * trees; other sessions' prepared statements against
+		       * this class would still execute on plans compiled
+		       * under the revoked grant.  Touch the class so the
+		       * schema-change machinery (chn bump + XASL cache
+		       * invalidation) forces them through a recompile, which
+		       * re-runs the compile-time authorization check. */
+		      if (error == NO_ERROR)
+			{
+			  error = sm_touch_class (class_mop);
+			}
+#endif /* SERVER_MODE */
 		    }
 		  free_grant_list (grant_list);
 		}
@@ -1610,12 +1627,13 @@ collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked
 
   sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
 
-  saved_opt_level = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
-  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, 1);
+  /* through the optimizer's setter: under a fold session bracket the level
+   * lives on the session override slot, not the shared sysprm */
+  qo_set_optimization_param (&saved_opt_level, QO_PARAM_LEVEL, 1);
 
   error = db_compile_and_execute_local (query, &query_result, &query_error);
 
-  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, saved_opt_level);
+  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, saved_opt_level);
 
   if (error < 0)
     /* error is row count if not negative. */

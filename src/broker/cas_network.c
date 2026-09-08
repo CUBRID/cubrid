@@ -54,10 +54,15 @@
 #include "error_code.h"
 #include "broker_util.h"
 #include "cas_ssl.h"
+#if defined (SERVER_MODE)
+#include "adoption.hpp"
+#endif
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
 #endif /* WINDOWS */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define SELECT_MASK	fd_set
 
@@ -71,10 +76,10 @@ static void unset_net_timeout_flag (void);
 static int get_host_ip (unsigned char *ip_addr);
 #endif /* WINDOWS */
 
-static bool net_timeout_flag = false;
+static CAS_TLS bool net_timeout_flag = false;
 
-static char net_error_flag;
-static int net_timeout = NET_DEFAULT_TIMEOUT;
+static CAS_TLS char net_error_flag;
+static CAS_TLS int net_timeout = NET_DEFAULT_TIMEOUT;
 
 #define READ_FROM_NET(sd, buf, size) ssl_client ? cas_ssl_read (sd, buf, size) : \
 	READ_FROM_SOCKET(sd, buf, size)
@@ -605,6 +610,12 @@ retry_poll:
     {
       net_error_flag = 1;
     }
+#if defined (SERVER_MODE)
+  if (read_len > 0)
+    {
+      cubconn::adoption::registry_histogram_io (read_len, 0);
+    }
+#endif
   return read_len;
 }
 
@@ -667,6 +678,12 @@ retry_poll:
     {
       net_error_flag = 1;
     }
+#if defined (SERVER_MODE)
+  if (write_len > 0)
+    {
+      cubconn::adoption::registry_histogram_io (0, write_len);
+    }
+#endif
   return write_len;
 }
 

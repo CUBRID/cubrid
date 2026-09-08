@@ -293,9 +293,8 @@ extern "C"
 #endif
   extern int intl_mbs_ncasecmp (const char *mbs1, const char *mbs2, size_t n);
   extern INTL_UTF8_VALIDITY intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET codeset);
-#if !defined (SERVER_MODE)
+  /* pure helper; the folded csql body (wf122/B5) needs it under SERVER_MODE too */
   extern bool intl_is_bom_magic (const char *buf, const int size);
-#endif
   extern int intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq);
   extern int intl_cp_to_dbcs (const unsigned int codepoint, const unsigned char *byte_flag, unsigned char *seq);
   extern unsigned int intl_utf8_to_cp (const unsigned char *utf8, const int size, unsigned char **next_char);

@@ -1231,25 +1231,43 @@ appl_monitor (char *br_vector, double elapsed_time)
 	    {
 	      shard_flag = shm_appl->shard_flag;
 	      print_newline ();
-#if defined (WINDOWS)
-	      print_appl_header (shm_appl->use_pdh_flag);
-#else
-	      print_appl_header (false);
-#endif
-	      current_time = time (NULL);
-
-	      /* CAS INFORMATION DISPLAY */
-	      appl_offset = 0;
-
-	      for (k = 0; k < i; k++)
+#if !defined (WINDOWS)
+	      if (shm_br->br_info[i].direct_handoff == ON)
 		{
-		  appl_offset += shm_br->br_info[k].appl_server_max_num;
+		  /* B4 (#116 D10): no CAS pool — connection-front metrics.
+		   * Per-session statistics moved to the server's SHOW
+		   * SESSION STATUS view. */
+		  str_out ("  ACCEPTED : %lld, HANDOFFS : %lld, REJECTED : %lld, SLOTS : %d/%d",
+			   (long long) shm_appl->brd_num_accepted, (long long) shm_appl->brd_num_handoffs,
+			   (long long) shm_appl->brd_num_rejected, shm_appl->brd_slots_used,
+			   shm_br->br_info[i].appl_server_max_num);
+		  print_newline ();
 		}
-	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
+	      else
 		{
-		  appl_info_display (shm_appl, &(shm_appl->as_info[j]), i, j, &(appl_mnt_olds[appl_offset + j]),
-				     current_time, elapsed_time);
-		}		/* CAS INFORMATION DISPLAY */
+#endif
+#if defined (WINDOWS)
+		  print_appl_header (shm_appl->use_pdh_flag);
+#else
+		  print_appl_header (false);
+#endif
+		  current_time = time (NULL);
+
+		  /* CAS INFORMATION DISPLAY */
+		  appl_offset = 0;
+
+		  for (k = 0; k < i; k++)
+		    {
+		      appl_offset += shm_br->br_info[k].appl_server_max_num;
+		    }
+		  for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
+		    {
+		      appl_info_display (shm_appl, &(shm_appl->as_info[j]), i, j, &(appl_mnt_olds[appl_offset + j]),
+					 current_time, elapsed_time);
+		    }		/* CAS INFORMATION DISPLAY */
+#if !defined (WINDOWS)
+		}
+#endif
 
 	      print_newline ();
 
@@ -1420,6 +1438,20 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items, T_BROKER_INFO * br_info_p, T_
   assert (mnt_type <= MONITOR_T_LAST);
 
   mnt_item_p = mnt_items;
+
+#if !defined (WINDOWS)
+  /* B4 (#116 D10): a direct-handoff broker has no CAS rows — its status is
+   * the connection-front metrics the broker itself writes into shm */
+  if (br_info_p->direct_handoff == ON)
+    {
+      mnt_item_p->num_appl_server = shm_appl->brd_slots_used;
+      mnt_item_p->num_connect = shm_appl->brd_num_accepted;
+      mnt_item_p->num_connect_reject = shm_appl->brd_num_rejected;
+      mnt_item_p->num_request = shm_appl->brd_num_handoffs;
+      mnt_item_p->num_busy = shm_appl->brd_slots_used;
+      return;
+    }
+#endif
 
   mnt_item_p->num_appl_server = br_info_p->appl_server_num;
   for (i = 0; i < br_info_p->appl_server_max_num; i++)

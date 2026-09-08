@@ -164,11 +164,9 @@ extern INT64 stats_estimate_ndv_from_sample (const STATS_NDV_SAMPLE_INPUT * in);
 extern int stats_analyze_mcv_list (const INT64 * mcv_counts, int num_candidates, double stadistinct,
 				   double stanullfrac, INT64 samplerows, double totalrows);
 
-#if !defined(SERVER_MODE)
 extern int stats_get_statistics (OID * classoid, unsigned int timestamp, CLASS_STATS ** stats_p);
 extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
 extern void stats_ndv_dump (const char *classname, FILE * fp);
-#endif /* !SERVER_MODE */
 
 #endif /* _STATISTICS_H_ */

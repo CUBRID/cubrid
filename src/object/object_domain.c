@@ -36,6 +36,9 @@
 
 #include "area_alloc.h"
 #include "deduplicate_key.h"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -52,14 +55,14 @@
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
 
-#if !defined (SERVER_MODE)
+/* workspace/object client semantics are compiled in SERVER_MODE too
+ * (merged binary); runtime discrimination is db_on_server (thread_local, D5) */
 #include "work_space.h"
 #include "virtual_object.h"
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "object_template.h"
 #include "dbi.h"
-#endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
 #include "error_manager.h"
@@ -157,7 +160,11 @@ static int db_type_rank_order[DB_TYPE_LAST + 1] = { 0, };
 AREA *tp_Domain_area = NULL;
 static bool tp_Initialized = false;
 
+#if defined (SERVER_MODE)
+extern thread_local unsigned int db_on_server;	/* defined in network_interface_sr.cpp */
+#else
 extern unsigned int db_on_server;
+#endif
 
 
 /*
@@ -624,8 +631,10 @@ static int tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * d
 #if defined(CUBRID_DEBUG)
 static void fprint_domain (FILE * fp, TP_DOMAIN * domain);
 #endif
-static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
-static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
+static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain,
+						  bool session_scoped) __attribute__ ((ALWAYS_INLINE));
+static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain,
+					     bool session_scoped) __attribute__ ((ALWAYS_INLINE));
 
 static int tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db_enum2);
 static int tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
@@ -1161,11 +1170,15 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
 	   */
 	  if (class_obj)
 	    {
+	      /* un-gated — reached only with a real MOP (client context) */
 #if defined (SERVER_MODE)
-	      assert_release (false);
-#else /* !defined (SERVER_MODE) */
+	      /* a bracketed session's server half may reach this client body with
+	       * in-memory MOP values (pre-fold the wire pack normalized them to
+	       * OIDs); that thread owns the session workspace (D7), so only a
+	       * hatless genuine server thread violates the contract (wf173 class) */
+	      assert (!db_on_server || csc_bracket_is_active ());
+#endif
 	      new_dm->class_oid = class_obj->oid_info.oid;
-#endif /* !SERVER_MODE */
 	    }
 	}
 
@@ -1591,13 +1604,18 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_OBJECT:
     case DB_TYPE_SUB:
 
-#if defined (SERVER_MODE)
-      match = OID_EQ (&dom1->class_oid, &dom2->class_oid);
-#else /* !defined (SERVER_MODE) */
       /*
        * if "exact" is zero, we should be checking the subclass hierarchy of
        * dom1 to see id dom2 is in it !
        */
+      /* client comparator kept for the merged server too (wf174 cluster B):
+       * a bracketed session's self-referencing domain carries only class_mop
+       * (class_oid stays NULL — nothing backfills it on the server), so the
+       * old SERVER_MODE-only OID_EQ matched ANY two self-referencing element
+       * domains of unrelated classes (OID_EQ(NULL,NULL)), aliasing them in
+       * the domain cache and writing class_of=NULL to the catalog.  Genuine
+       * server domains never set class_mop, so for them the both-NULL branch
+       * below is bit-identical to the old OID_EQ. */
 
       /* Always prefer comparison of MOPs */
       if (dom1->class_mop != NULL && dom2->class_mop != NULL)
@@ -1624,7 +1642,6 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	      match = OID_EQ (WS_OID (dom1->class_mop), &dom2->class_oid);
 	    }
 	}
-#endif /* defined (SERVER_MODE) */
 
       if (match == 0 && exact == TP_SET_MATCH && dom1->class_mop == NULL && OID_ISNULL (&dom1->class_oid))
 	{
@@ -1873,10 +1890,145 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
  *    type(in): type of value
  *    setdomain(in): used to find appropriate list of MIDXKEY
  */
+#if defined (SERVER_MODE)
+/* B4-D9: per-session lists for the MOP-capable domain types.  The process
+ * cache is structural — one node serves every session — so a cached node
+ * embedding a workspace MOP outlives the workspace owning that MOP: any
+ * later session that hits the node dereferences freed memory once sessions
+ * retire promptly.  The legacy CAS ran one client process per session (one
+ * domain cache per session); these lists restore that shape for the folded
+ * client half.  The server half (db_on_server, or no bracket) never sets
+ * class_mop and keeps the process lists. */
+typedef struct tp_session_domains TP_SESSION_DOMAINS;
+struct tp_session_domains
+{
+  TP_DOMAIN *domains[DB_TYPE_LAST + 1];
+  TP_DOMAIN *midxkey_domains[TP_NUM_MIDXKEY_DOMAIN_LIST];
+};
+
+/* is a bracketed session thread running?  (the only context whose domains
+ * may embed workspace MOPs).  The hat (db_on_server) is deliberately not
+ * part of the test: the session's server half receives MOP-carrying domains
+ * across the folded seam and owns the same workspace (D7), and routing its
+ * interning to the process lists would recreate the cross-session UAF this
+ * gate exists to prevent (B4-D9/F1; wf173 class) */
+STATIC_INLINE bool
+tp_domain_client_session_active (void)
+{
+  return csc_bracket_is_active ();
+}
+
+/* does any domain in this chain (recursively) embed a workspace MOP? */
+static bool
+tp_domain_chain_carries_mop (const TP_DOMAIN * d)
+{
+  for (; d != NULL; d = d->next)
+    {
+      if (d->class_mop != NULL || (d->setdomain != NULL && tp_domain_chain_carries_mop (d->setdomain)))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* B4-D9 routing is by CONTENT, not type: only a domain that actually embeds
+ * a workspace MOP is session-scoped.  A MOP-free domain keeps the process
+ * lists — and their built-in heads — exactly as before, so its packed XASL
+ * representation (built-in one-word reference vs full form) is unchanged;
+ * routing whole type families to (built-in-less) session lists demoted
+ * built-in-matched domains to allocated clones and corrupted the stream
+ * shape the executor unpacks (gate: COUNT(*) over a vclass). */
+STATIC_INLINE bool
+tp_domain_routes_to_session (const TP_DOMAIN * transient)
+{
+  if (transient == NULL || !tp_domain_client_session_active ())
+    {
+      return false;
+    }
+  return transient->class_mop != NULL
+    || (transient->setdomain != NULL && tp_domain_chain_carries_mop (transient->setdomain));
+}
+
+static TP_SESSION_DOMAINS *
+tp_session_domains (void)
+{
+  void **slot = csc_tp_domains_slot ();
+  if (*slot == NULL)
+    {
+      *slot = calloc (1, sizeof (TP_SESSION_DOMAINS));
+    }
+  return (TP_SESSION_DOMAINS *) (*slot);
+}
+
+/* frees the session's domain lists — bracketed teardown only, before
+ * ws_final (the nodes embed this workspace's MOPs).  Session lists carry no
+ * built-ins, so every node is freed. */
+void
+tp_session_domains_final (void)
+{
+  void **slot = csc_tp_domains_slot ();
+  TP_SESSION_DOMAINS *sd = (TP_SESSION_DOMAINS *) (*slot);
+  TP_DOMAIN *d, *next;
+  size_t i;
+
+  if (sd == NULL)
+    {
+      return;
+    }
+  for (i = 0; i < sizeof (sd->domains) / sizeof (sd->domains[0]); i++)
+    {
+      for (d = sd->domains[i], next = NULL; d != NULL; d = next)
+	{
+	  next = d->next_list;
+	  d->is_cached = 0;
+	  tp_domain_free (d);
+	}
+    }
+  for (i = 0; i < sizeof (sd->midxkey_domains) / sizeof (sd->midxkey_domains[0]); i++)
+    {
+      for (d = sd->midxkey_domains[i], next = NULL; d != NULL; d = next)
+	{
+	  next = d->next_list;
+	  d->is_cached = 0;
+	  tp_domain_free (d);
+	}
+    }
+  free (sd);
+  *slot = NULL;
+}
+#else /* SERVER_MODE */
+/* single-workspace builds: the process lists ARE the session (B4-D9) */
+#define tp_domain_client_session_active() false
+#define tp_domain_chain_carries_mop(d) false
+#define tp_domain_routes_to_session(transient) false
+#endif /* SERVER_MODE */
+
 STATIC_INLINE TP_DOMAIN **
-tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain)
+tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain, bool session_scoped)
 {
   int list_index;
+
+  (void) session_scoped;	/* unused in the single-workspace builds */
+
+#if defined (SERVER_MODE)
+  if (session_scoped)
+    {
+      TP_SESSION_DOMAINS *sd = tp_session_domains ();
+      if (sd != NULL)
+	{
+	  if (type == DB_TYPE_MIDXKEY)
+	    {
+	      list_index = tp_domain_size (setdomain);
+	      list_index %= TP_NUM_MIDXKEY_DOMAIN_LIST;
+	      return &(sd->midxkey_domains[list_index]);
+	    }
+	  return &(sd->domains[type]);
+	}
+      /* allocation failure: fall through to the process lists — the
+       * pre-B4-D9 behavior — rather than fail the statement here */
+    }
+#endif
 
   if (type == DB_TYPE_MIDXKEY)
     {
@@ -1895,13 +2047,14 @@ tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain)
  *    return: the head of the list
  *    type(in): type of value
  *    setdomain(in): used to find appropriate list of MIDXKEY
+ *    session_scoped(in): B4-D9 — true routes to the session's lists
  */
 STATIC_INLINE TP_DOMAIN *
-tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain)
+tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain, bool session_scoped)
 {
   TP_DOMAIN **dlist;
 
-  dlist = tp_domain_get_list_ptr (type, setdomain);
+  dlist = tp_domain_get_list_ptr (type, setdomain, session_scoped);
   return *dlist;
 }
 
@@ -1985,8 +2138,15 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_SUB:
 
 #if defined (SERVER_MODE)
-      /* not match for these types on server... fall through. */
-#else /* !defined (SERVER_MODE) */
+      /* genuine server threads never intern these (no MOPs to compare —
+       * fall through, no match); any bracketed session thread (either hat)
+       * runs the client comparator below on its own session lists (B4-D9),
+       * or every resolve inserts a fresh duplicate (wf173 class) */
+      if (!csc_bracket_is_active ())
+	{
+	  break;
+	}
+#endif /* SERVER_MODE */
 
       while (domain)
 	{
@@ -2034,7 +2194,6 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	  *ins_pos = domain;
 	  domain = domain->next_list;
 	}
-#endif /* !defined (SERVER_MODE) */
       break;
 
     case DB_TYPE_VARIABLE:
@@ -2567,7 +2726,7 @@ tp_domain_find_noparam (DB_TYPE type, bool is_desc)
    * DB_TYPE_CLOB DB_TYPE_TIMESTAMP DB_TYPE_DATE DB_TYPE_DATETIME DB_TYPE_MONETARY DB_TYPE_SHORT DB_TYPE_BIGINT
    * DB_TYPE_TIMESTAMPTZ DB_TYPE_TIMESTAMPLTZ DB_TYPE_DATETIMETZ DB_TYPE_DATETIMELTZ */
 
-  for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
+  for (dom = tp_domain_get_list (type, NULL, false); dom != NULL; dom = dom->next_list)
     {
       if (dom->is_desc == is_desc)
 	{
@@ -2599,7 +2758,7 @@ tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc)
    * The first domain is a default domain for numeric type,
    * actually NUMERIC(15,0). We try to match it first.
    */
-  dom = tp_domain_get_list (type, NULL);
+  dom = tp_domain_get_list (type, NULL, false);
   if (precision == dom->precision && scale == dom->scale && is_desc == dom->is_desc)
     {
       return dom;
@@ -2648,7 +2807,7 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
   if (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT)
     {
       /* search the list for a domain that matches */
-      for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
+      for (dom = tp_domain_get_list (type, NULL, false); dom != NULL; dom = dom->next_list)
 	{
 	  /* Variable character/bit is sorted in descending order of precision. */
 	  if (precision > dom->precision)
@@ -2676,7 +2835,7 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
   else
     {
       /* search the list for a domain that matches */
-      for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
+      for (dom = tp_domain_get_list (type, NULL, false); dom != NULL; dom = dom->next_list)
 	{
 	  /* Fixed character/bit is sorted in ascending order of precision. */
 	  if (precision < dom->precision)
@@ -2716,11 +2875,12 @@ TP_DOMAIN *
 tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_mop, bool is_desc)
 {
   TP_DOMAIN *dom;
+  bool session_scoped = (class_mop != NULL && tp_domain_client_session_active ());
 
   /* tp_domain_find_with_classinfo */
 
   /* search the list for a domain that matches */
-  for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
+  for (dom = tp_domain_get_list (type, NULL, session_scoped); dom != NULL; dom = dom->next_list)
     {
       /* we MUST perform exact matches here */
 
@@ -2741,9 +2901,14 @@ tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_m
 	}
       else
 	{
+	  /* un-gated — class_mop is only non-NULL in client context. */
 #if defined (SERVER_MODE)
-	  assert_release (false);
-#else /* defined (SERVER_MODE) */
+	  /* a bracketed session's server half may reach this client body with
+	   * in-memory MOP values (pre-fold the wire pack normalized them to
+	   * OIDs); that thread owns the session workspace (D7), so only a
+	   * hatless genuine server thread violates the contract (wf173 class) */
+	  assert (!db_on_server || csc_bracket_is_active ());
+#endif
 	  /*
 	   * We have a mixture of OID & MOPS, it probably isn't necessary to be
 	   * this general but try to avoid assuming the class OIDs have been set
@@ -2763,7 +2928,6 @@ tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_m
 		  break;	/* found */
 		}
 	    }
-#endif /* defined (SERVER_MODE) */
 	}
     }
 
@@ -2783,11 +2947,12 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
   TP_DOMAIN *dom;
   int dsize;
   int src_dsize;
+  bool session_scoped = (tp_domain_client_session_active () && tp_domain_chain_carries_mop (setdomain));
 
   src_dsize = tp_domain_size (setdomain);
 
   /* search the list for a domain that matches */
-  for (dom = tp_domain_get_list (type, setdomain); dom != NULL; dom = dom->next_list)
+  for (dom = tp_domain_get_list (type, setdomain, session_scoped); dom != NULL; dom = dom->next_list)
     {
       /* we MUST perform exact matches here */
       if (dom->setdomain == setdomain)
@@ -2891,7 +3056,7 @@ tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc)
   TP_DOMAIN *dom = NULL;
 
   /* search the list for a domain that matches */
-  for (dom = tp_domain_get_list (DB_TYPE_ENUMERATION, NULL); dom != NULL; dom = dom->next_list)
+  for (dom = tp_domain_get_list (DB_TYPE_ENUMERATION, NULL, false); dom != NULL; dom = dom->next_list)
     {
       if (dom->is_desc == is_desc && tp_enumeration_match (&DOM_GET_ENUMERATION (dom), enumeration))
 	{
@@ -2942,11 +3107,25 @@ tp_domain_cache (TP_DOMAIN * transient)
   tp_swizzle_oid (transient);
 #endif /* !SERVER_MODE */
 
+  /* B4-D9: a MOP-embedding domain interns into the session lists */
+  bool session_scoped = tp_domain_routes_to_session (transient);
+#if defined (SERVER_MODE)
+  if (session_scoped && tp_session_domains () == NULL)
+    {
+      /* never let a MOP-bearing domain fall back into the process lists —
+       * that is the cross-session use-after-free again (codex F1).  The
+       * allocation failure fails the statement instead. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_SESSION_DOMAINS));
+      tp_domain_free (transient);
+      return NULL;
+    }
+#endif
+
   /*
    * first search stage: NO LOCK
    */
   /* locate the root of the cache list for domains of this type */
-  dlist = tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
+  dlist = tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain, session_scoped);
 
   /* search the list for a domain that matches */
   if (*dlist != NULL)
@@ -2971,7 +3150,7 @@ tp_domain_cache (TP_DOMAIN * transient)
   rv = pthread_mutex_lock (&tp_domain_cache_lock);	/* LOCK */
 
   /* locate the root of the cache list for domains of this type */
-  dlist = tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
+  dlist = tp_domain_get_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain, session_scoped);
 
   /* search the list for a domain that matches */
   if (*dlist != NULL)
@@ -3238,8 +3417,16 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 
 	case DB_TYPE_OBJECT:
 	  {
-#if !defined (SERVER_MODE)
+	    /* client body kept (crash 10, round-22 assert) — an OBJECT value only exists on client-context threads */
 	    DB_OBJECT *mop;
+
+#if defined (SERVER_MODE)
+	    /* a bracketed session's server half may reach this client body with
+	     * in-memory MOP values (pre-fold the wire pack normalized them to
+	     * OIDs); that thread owns the session workspace (D7), so only a
+	     * hatless genuine server thread violates the contract (wf173 class) */
+	    assert (!db_on_server || csc_bracket_is_active ());
+#endif
 
 	    domain = &tp_Object_domain;
 	    mop = db_get_object (val);
@@ -3255,10 +3442,6 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 		    domain = &tp_Vobj_domain;
 		  }
 	      }
-#else
-	    /* We don't have mops on server */
-	    assert (false);
-#endif
 	  }
 	  break;
 
@@ -3627,7 +3810,7 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
   return error;
 }
 
-#if !defined (SERVER_MODE)
+/* unguarded — client half now compiled into server */
 /*
  * tp_domain_attach - concatenate two domains
  *    return: concatenated domain
@@ -3766,7 +3949,8 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 
   return dropped;
 }
-#endif /* !SERVER_MODE */
+
+/* end of former !SERVER_MODE region */
 
 
 /*
@@ -3783,17 +3967,24 @@ static int
 tp_domain_check_class (TP_DOMAIN * domain, int *change)
 {
   int error = NO_ERROR;
-#if !defined (SERVER_MODE)
   int status;
-#endif /* !SERVER_MODE */
 
   if (change != NULL)
     {
       *change = 0;
     }
 
-#if !defined (SERVER_MODE)
-  if (!db_on_server)
+  /* client body kept for the merged server (wf174 prtnull): the deleted-class
+   * downgrade to the wildcard "object" domain is what lets a surviving class
+   * keep selecting an attribute whose domain class was dropped — pre-fold this
+   * revalidation was compiled out of the server, so the folded compile failed
+   * name resolution with -494 instead.  Genuine server threads (db_on_server,
+   * no bracket) skip it exactly as pre-fold. */
+  if (!db_on_server
+#if defined (SERVER_MODE)
+      && csc_bracket_is_active ()
+#endif /* SERVER_MODE */
+    )
     {
       if (domain != NULL && domain->type == tp_Type_object && domain->class_mop != NULL)
 	{
@@ -3816,7 +4007,6 @@ tp_domain_check_class (TP_DOMAIN * domain, int *change)
 	    }
 	}
     }
-#endif /* !SERVER_MODE */
 
   return error;
 }
@@ -4111,7 +4301,6 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 		}
 	    }
 	}
-#if !defined (SERVER_MODE)
       else
 	{
 	  /*
@@ -4142,7 +4331,6 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 		}
 	    }
 	}
-#endif /* !SERVER_MODE */
     }
 
   /*
@@ -4170,7 +4358,6 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 	    }
 	  return best;
 	}
-#if !defined (SERVER_MODE)
       else
 	{
 	  /*
@@ -4188,10 +4375,8 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 		}
 	    }
 	}
-#endif /* !SERVER_MODE */
     }
 
-#if !defined (SERVER_MODE)
   else if (vtype == DB_TYPE_POINTER)
     {
       /*
@@ -4203,6 +4388,13 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
        * insert into bar (b) values ({insert into foo values (1)});
        */
       DB_OTMPL *val_tmpl;
+
+      /* POINTER values wrap client object templates, which only exist on
+       * client-context threads — unlike the OID/OBJECT cases above there is
+       * no server-side meaning to fall back to */
+#if defined (SERVER_MODE)
+      assert (!db_on_server || csc_bracket_is_active ());
+#endif
 
       val_tmpl = (DB_OTMPL *) db_get_pointer (value);
       if (val_tmpl)
@@ -4216,7 +4408,6 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 	    }
 	}
     }
-#endif /* !SERVER_MODE */
 
   else if (TP_IS_SET_TYPE (vtype))
     {
@@ -8803,8 +8994,19 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       break;
 
-#if !defined (SERVER_MODE)
     case DB_TYPE_OBJECT:
+#if defined (SERVER_MODE)
+      /* a genuine server thread has no workspace, so an OBJECT target stays
+       * incompatible exactly as when this case was compiled out pre-fold; any
+       * bracketed session thread (either hat — its server half receives
+       * OBJECT values across the folded seam, wf173 class) runs the client
+       * body below on the workspace it owns */
+      if (!csc_bracket_is_active ())
+	{
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+#endif /* SERVER_MODE */
       {
 	DB_OBJECT *v_obj = NULL;
 	int is_vclass = 0;
@@ -8890,7 +9092,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
       }
       break;
-#endif /* !SERVER_MODE */
 
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
@@ -9008,8 +9209,14 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	}
       else
-#if !defined (SERVER_MODE)
-      if (original_type == DB_TYPE_OBJECT)
+	/* OBJECT-to-VOBJ needs the workspace: bracketed session threads only
+	 * (either hat, wf173 class) — a genuine server thread keeps treating
+	 * an OBJECT as its OID representation below */
+	if (original_type == DB_TYPE_OBJECT
+#if defined (SERVER_MODE)
+	    && csc_bracket_is_active ()
+#endif /* SERVER_MODE */
+	)
 	{
 	  if (vid_object_to_vobj (db_get_object (src), target) < 0)
 	    {
@@ -9021,9 +9228,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	  break;
 	}
-      else
-#endif /* !SERVER_MODE */
-      if (original_type == DB_TYPE_OID || original_type == DB_TYPE_OBJECT)
+      else if (original_type == DB_TYPE_OID || original_type == DB_TYPE_OBJECT)
 	{
 	  DB_VALUE view_oid;
 	  DB_VALUE class_oid;
@@ -10423,10 +10628,8 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
   int coercion, char_conv;
   DB_VALUE *v1, *v2;
   DB_TYPE vtype1, vtype2;
-#if !defined (SERVER_MODE)
-  DB_OBJECT *mop;
+  DB_OBJECT *mop;		/* un-gated */
   DB_IDENTIFIER *oid1, *oid2;
-#endif /* !defined (SERVER_MODE) */
   bool use_collation_of_v1 = false;
   bool use_collation_of_v2 = false;
   DB_VALUE_COMPARE_RESULT result = DB_UNK;
@@ -10474,15 +10677,17 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
        */
       if (vtype1 != vtype2)
 	{
-#if defined (SERVER_MODE)
-	  if (vtype1 == DB_TYPE_OBJECT || vtype2 == DB_TYPE_OBJECT)
-	    {
-	      assert_release (false);
-	      return DB_UNK;
-	    }
-#else /* !defined (SERVER_MODE) */
+	  /* client body kept — an OBJECT value can only originate from a
+	   * client-context thread; genuine server threads never build one */
 	  if (vtype1 == DB_TYPE_OBJECT)
 	    {
+#if defined (SERVER_MODE)
+	      /* a bracketed session's server half may reach this client body with
+	       * in-memory MOP values (pre-fold the wire pack normalized them to
+	       * OIDs); that thread owns the session workspace (D7), so only a
+	       * hatless genuine server thread violates the contract (wf173 class) */
+	      assert (!db_on_server || csc_bracket_is_active ());
+#endif
 	      if (vtype2 == DB_TYPE_OID)
 		{
 		  mop = db_get_object (v1);
@@ -10500,6 +10705,13 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	    }
 	  else if (vtype2 == DB_TYPE_OBJECT)
 	    {
+#if defined (SERVER_MODE)
+	      /* a bracketed session's server half may reach this client body with
+	       * in-memory MOP values (pre-fold the wire pack normalized them to
+	       * OIDs); that thread owns the session workspace (D7), so only a
+	       * hatless genuine server thread violates the contract (wf173 class) */
+	      assert (!db_on_server || csc_bracket_is_active ());
+#endif
 	      if (vtype1 == DB_TYPE_OID)
 		{
 		  oid1 = db_get_oid (v1);
@@ -10516,7 +10728,6 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		    }
 		}
 	    }
-#endif /* !defined (SERVER_MODE) */
 
 	  /*
 	   * If value types aren't exact, try coercion.

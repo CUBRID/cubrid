@@ -23,9 +23,6 @@
 #ifndef _OBJECT_FETCH_H_
 #define _OBJECT_FETCH_H_
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
 
 typedef enum au_fetchmode
 {
