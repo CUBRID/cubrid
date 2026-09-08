@@ -103,6 +103,7 @@ namespace cubconn
     static const std::size_t DRIVER_HEADER_SIZE = 10;	/* SRV_CON_CLIENT_INFO_SIZE */
     static const std::size_t DRIVER_DB_INFO_SIZE = 628;	/* SRV_CON_DB_INFO_SIZE (V12) */
     static const std::size_t DRIVER_BROKER_INFO_SIZE = 8;	/* BROKER_INFO_SIZE */
+    static const std::size_t DRIVER_VERSION_SIZE = 20;	/* SRV_CON_VER_STR_MAX_SIZE */
 
     struct handoff_body
     {
@@ -211,6 +212,7 @@ namespace cubconn
       long long num_query_replace_fallback;
       char last_activity[256];
       char client_type[24];
+      char client_version[DRIVER_VERSION_SIZE];
     };
     /* the session thread publishes its CAS slot after slot begin; cleared
      * with the registry entry.  as_info_slot is a T_APPL_SERVER_INFO*. */

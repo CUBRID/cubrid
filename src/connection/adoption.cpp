@@ -652,6 +652,7 @@ namespace cubconn
 	  r.token = e.token;
 	  r.slot = e.slot_index;
 	  snprintf (r.client_type, sizeof (r.client_type), "%s", e.client_name);
+	  snprintf (r.client_version, sizeof (r.client_version), "%s", e.stats_slot->driver_version);
 	  std::memcpy (r.broker_name, e.broker_name, sizeof (r.broker_name));
 	  r.broker_name[sizeof (r.broker_name) - 1] = '\0';
 	  r.client_ip = e.client_ip;
