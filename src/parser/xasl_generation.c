@@ -19530,16 +19530,23 @@ pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_DBLI
 }
 
 /*
- * pt_finish_remote_dml_xasl () - Fill the XASL-cache creator OID and copy the aptr's class OID/lock/
- *   tcard list (for locking), shared by the INSERT SELECT and DELETE local-subquery XASL builders.
+ * pt_finish_remote_dml_xasl () - Fill the XASL-cache creator OID and gather the class OID/lock/tcard
+ *   lists (for locking) across the whole xasl->aptr_list chain, shared by the INSERT SELECT, DELETE and
+ *   UPDATE local-subquery XASL builders. The UPDATE sink is the one that carries more than one aptr.
  *   return: true on success, false on allocation failure (caller returns NULL)
  *   xasl(in/out): xasl->creator_oid, class_oid_list/class_locks/tcard_list/n_oid_list/dbval_cnt filled
- *                 in from xasl->aptr_list
+ *                 in from the aptr chain. Expects a freshly allocated node: the OID lists are built from
+ *                 empty, not appended to.
  */
 static bool
 pt_finish_remote_dml_xasl (XASL_NODE * xasl)
 {
   const OID *oid;
+  XASL_NODE *aptr;
+  int n_oids = 0;
+  int i, j;
+
+  assert (xasl->n_oid_list == 0 && xasl->class_oid_list == NULL);
 
   /* XASL cache: OID of the user creating this XASL */
   oid = ws_identifier (db_get_user ());
@@ -19552,28 +19559,56 @@ pt_finish_remote_dml_xasl (XASL_NODE * xasl)
       OID_SET_NULL (&xasl->creator_oid);
     }
 
-  /* copy aptr class OID list (local SELECT/subquery tables) for locking */
-  if (xasl->aptr_list != NULL)
+  /* Collect the aptr class OID lists (local SELECT/subquery tables) for locking. The whole chain
+   * contributes, not just the head: the UPDATE sink carries one aptr per SET scalar subquery on top of
+   * the WHERE value stream, and each reads local tables of its own. dbval_cnt counts the parser's host
+   * variables rather than anything per-aptr, so the chain's maximum is what the plan needs. With a
+   * single aptr -- the INSERT SELECT and DELETE sinks -- this is what copying from the head did. */
+  for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
     {
-      XASL_NODE *aptr = xasl->aptr_list;
-
-      xasl->dbval_cnt = aptr->dbval_cnt;
-
-      if (aptr->n_oid_list > 0)
+      n_oids += aptr->n_oid_list;
+      if (aptr->dbval_cnt > xasl->dbval_cnt)
 	{
-	  xasl->class_oid_list = regu_oid_array_alloc (aptr->n_oid_list);
-	  xasl->class_locks = regu_int_array_alloc (aptr->n_oid_list);
-	  xasl->tcard_list = regu_int_array_alloc (aptr->n_oid_list);
-	  if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
-	    {
-	      return false;
-	    }
+	  xasl->dbval_cnt = aptr->dbval_cnt;
+	}
+      XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
+    }
 
-	  xasl->n_oid_list = aptr->n_oid_list;
-	  (void) memcpy (xasl->class_oid_list, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
-	  (void) memcpy (xasl->class_locks, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
-	  (void) memcpy (xasl->tcard_list, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
-	  XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
+  if (n_oids > 0)
+    {
+      xasl->class_oid_list = regu_oid_array_alloc (n_oids);
+      xasl->class_locks = regu_int_array_alloc (n_oids);
+      xasl->tcard_list = regu_int_array_alloc (n_oids);
+      if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
+	{
+	  return false;
+	}
+
+      /* union, not concatenation: two subqueries reading the same local table would otherwise register it
+       * twice. A repeated class merges its lock the way pt_spec_to_xasl_class_oid_list does when two
+       * specs reach the same class; tcard is a property of the class, so the first entry stands. */
+      for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
+	{
+	  for (i = 0; i < aptr->n_oid_list; i++)
+	    {
+	      for (j = 0; j < xasl->n_oid_list; j++)
+		{
+		  if (OID_EQ (&xasl->class_oid_list[j], &aptr->class_oid_list[i]))
+		    {
+		      break;
+		    }
+		}
+	      if (j < xasl->n_oid_list)
+		{
+		  xasl->class_locks[j] = (int) lock_conv ((LOCK) xasl->class_locks[j], (LOCK) aptr->class_locks[i]);
+		  continue;
+		}
+
+	      COPY_OID (&xasl->class_oid_list[xasl->n_oid_list], &aptr->class_oid_list[i]);
+	      xasl->class_locks[xasl->n_oid_list] = aptr->class_locks[i];
+	      xasl->tcard_list[xasl->n_oid_list] = aptr->tcard_list[i];
+	      xasl->n_oid_list++;
+	    }
 	}
     }
 
