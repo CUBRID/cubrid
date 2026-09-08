@@ -8824,6 +8824,13 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user, char *kill_host, i
   /* Same contract as sthread_kill_tran_index: the caller only sees NO_ERROR or ER_FAILED. */
   success = (xlogtb_kill_tran_index (thread_p, kill_tran_index, kill_user, kill_host, kill_pid) == NO_ERROR)
     ? NO_ERROR : ER_FAILED;
+  if (success == NO_ERROR)
+    {
+      /* logtb_slam_transaction() sets ER_CSS_CONN_SHUTDOWN on the calling thread. Over the wire that
+       * thread was the request worker; in-process it is the killer's own session, which must not read
+       * the victim's shutdown as its own. */
+      er_clear ();
+    }
 
   exit_server (*thread_p);
 
@@ -8906,6 +8913,8 @@ thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index, bool is
       if (error == NO_ERROR)
 	{
 	  (*num_killed)++;
+	  /* the interrupt notification belongs to the victim, not to the killer's session */
+	  er_clear ();
 	}
       else if (error == ER_KILL_TR_NOT_ALLOWED)
 	{
