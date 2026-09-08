@@ -456,6 +456,8 @@ extern SCAN_CODE heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid, R
 extern bool heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
 extern bool heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
 extern int heap_get_num_data_pages (THREAD_ENTRY * thread_p, const HFID * hfid, int *num_pages);
+/* heap_get_num_objects () returns NO_ERROR / ER_FAILED and hands the count back through nobjs (CBRD-27140);
+ * heap_estimate () below still returns *npages (or -1 on error) -- do not test the two the same way. */
 extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, INT64 * nobjs,
 				 int *avg_length);
 

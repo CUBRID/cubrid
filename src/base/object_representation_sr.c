@@ -223,9 +223,9 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   rep->n_fixed = 0;
   rep->n_variable = 0;
   rep->fixed_length = or_rep->fixed_length;
-#if 0				/* reserved for future use */
-  rep->repr_reserved_1 = 0;
-#endif
+  /* a representation built here is only ever written, and the writer emits the current layout; set it anyway so a
+   * reader handed this struct never sees an uninitialized layout (CBRD-27140) */
+  rep->stats_layout = CATALOG_STATS_LAYOUT_V1;
   rep->fixed = NULL;
   rep->variable = NULL;
 

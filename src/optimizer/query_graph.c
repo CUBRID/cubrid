@@ -5998,7 +5998,7 @@ qo_estimate_statistics (MOP class_mop, CLASS_STATS * statblock)
    */
 
   statblock->heap_num_pages = NOMINAL_HEAP_SIZE (class_mop);
-  statblock->heap_num_objects = (statblock->heap_num_pages * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
+  statblock->heap_num_objects = ((INT64) statblock->heap_num_pages * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
 
 }
 

@@ -7788,10 +7788,11 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  env->stat_info->leafs = INT_MAX;
 	}
 
+      /* keys/pkeys are INT64 (CBRD-27140): saturate at the field's own bound, not at INT_MAX */
       env->stat_info->keys *= exp_ratio;
       if (env->stat_info->keys < 0)
 	{
-	  env->stat_info->keys = INT_MAX;
+	  env->stat_info->keys = DB_BIGINT_MAX;
 	}
 
       for (i = 0; i < env->pkeys_val_num; i++)
@@ -7799,7 +7800,7 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  env->stat_info->pkeys[i] *= exp_ratio;
 	  if (env->stat_info->pkeys[i] < 0)
 	    {			/* multiply-overflow defence */
-	      env->stat_info->pkeys[i] = INT_MAX;
+	      env->stat_info->pkeys[i] = DB_BIGINT_MAX;
 	    }
 	}
     }
