@@ -44,6 +44,8 @@
 #include "cas_log.h"
 #include "cas_error.h"
 #include "cas_protocol.h"
+#include "error_manager.h"
+#include "object_representation.h"
 
 #include "csql.h"
 #include "adoption.hpp"
@@ -65,6 +67,74 @@ typedef struct
   bool *overflow;
   char tag;
 } csql_capture_cookie;
+
+static thread_local csql_capture_cookie *csql_Error_cookie = NULL;
+
+static void
+csql_capture_error ()
+{
+  csql_capture_cookie *cap = csql_Error_cookie;
+  if (cap == NULL || *cap->overflow)
+    {
+      return;
+    }
+
+  int err_id, severity, levels, line;
+  const char *file, *msg;
+  er_all (&err_id, &severity, &levels, &line, &file, &msg);
+  size_t size = OR_INT_SIZE * 3 + strlen (msg) + 1;
+  /* er_get_area_error substitutes "(null)" for an empty message. */
+  if (msg[0] == '\0')
+    {
+      size += strlen ("(null)");
+    }
+  if (size > CSQL_CAPTURE_LIMIT - *cap->total)
+    {
+      *cap->overflow = true;
+      return;
+    }
+
+  char *area = (char *) malloc (size);
+  if (area == NULL)
+    {
+      *cap->overflow = true;
+      return;
+    }
+  int length = (int) size;
+  er_get_area_error (area, &length);
+  try
+    {
+      /* Each record has its own frame; adjacent log records must not merge. */
+      cap->chunks->emplace_back (CAS_CSQL_CHUNK_LOG, std::string (area, length));
+      *cap->total += length;
+    }
+  catch (const std::bad_alloc &)
+    {
+      *cap->overflow = true;
+    }
+  free_and_init (area);
+}
+
+class csql_error_capture_guard
+{
+  public:
+    explicit csql_error_capture_guard (csql_capture_cookie *cookie)
+      : m_previous_cookie (csql_Error_cookie)
+      , m_previous_observer (er_register_error_observer (csql_capture_error))
+    {
+      csql_Error_cookie = cookie;
+    }
+
+    ~csql_error_capture_guard ()
+    {
+      er_register_error_observer (m_previous_observer);
+      csql_Error_cookie = m_previous_cookie;
+    }
+
+  private:
+    csql_capture_cookie *m_previous_cookie;
+    er_error_observer_t m_previous_observer;
+};
 
 static ssize_t
 csql_capture_write (void *cookie, const char *buf, size_t size)
@@ -215,6 +285,7 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
   bool overflow = false;
   csql_capture_cookie out_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_OUT };
   csql_capture_cookie err_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_ERR };
+  csql_capture_cookie log_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_LOG };
   FILE *out_fp = NULL, *err_fp = NULL;
   int status = -1;
 
@@ -229,6 +300,7 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
    * (huge result, OOM under the cap) from escaping into the C dispatcher */
   try
     {
+      csql_error_capture_guard error_capture (&log_cookie);
       if (sub_code == CAS_CSQL_SUB_EXECUTE)
 	{
 	  int flags = 0, input_type = 0, line_no = -1, string_width = 0;
@@ -295,6 +367,7 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
 	  memset (&opts, 0, sizeof (opts));
 	  opts.input_type = 1;	/* STRING semantics */
 	  opts.line_no = -1;
+	  opts.is_interactive = (flags & CAS_CSQL_FLAG_INTERACTIVE) != 0;
 	  opts.is_echo_on = (flags & CAS_CSQL_FLAG_ECHO) != 0;
 	  opts.is_time_on = (flags & CAS_CSQL_FLAG_TIME_ON) != 0;
 	  opts.query_trace = (flags & CAS_CSQL_FLAG_QUERY_TRACE) != 0;

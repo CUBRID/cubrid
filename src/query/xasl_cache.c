@@ -1522,8 +1522,8 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
        * Legacy wire requests already carry a terminated slice and leave the
        * length unset. Keep following statements out of the cached SQL text. */
       sql_user_text_len = (context->sql_user_text_len > 0
-                           ? strnlen (context->sql_user_text, context->sql_user_text_len)
-                           : strlen (context->sql_user_text)) + 1;
+			   ? strnlen (context->sql_user_text, context->sql_user_text_len)
+			   : strlen (context->sql_user_text)) + 1;
     }
   if (context->sql_plan_text != NULL)
     {

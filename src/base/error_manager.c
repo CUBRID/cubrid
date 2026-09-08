@@ -304,6 +304,7 @@ static int er_Errid_not_initialized = 0;
  * (cas_log_error_handler) to stamp EID cross-references into the SQL log;
  * sessions are threads, so the handler slot is thread-local */
 static thread_local er_log_handler_t er_Handler = NULL;
+static thread_local er_error_observer_t er_Error_observer = NULL;
 /* Optional adopted-session copy. The database error log remains authoritative;
  * a broker's ERROR_LOG_DIR must never redirect another broker's diagnostics. */
 static thread_local char er_Session_log_path[PATH_MAX] = { 0 };
@@ -1503,6 +1504,13 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
       snprintf (crt_error.msg_area + len, crt_error.msg_area_size - len, "... %s", os_error);
     }
 
+#if defined (SERVER_MODE)
+  if (er_Error_observer != NULL)
+    {
+      (*er_Error_observer) ();
+    }
+#endif
+
   /* Call the logging function if any */
   if (severity <= prm_get_integer_value (PRM_ID_ER_LOG_LEVEL)
       && !(prm_get_bool_value (PRM_ID_ER_LOG_WARNING) == false && severity == ER_WARNING_SEVERITY)
@@ -1878,6 +1886,14 @@ er_register_log_handler (er_log_handler_t handler)
 }
 
 #if defined (SERVER_MODE)
+er_error_observer_t
+er_register_error_observer (er_error_observer_t observer)
+{
+  er_error_observer_t previous = er_Error_observer;
+  er_Error_observer = observer;
+  return previous;
+}
+
 int
 er_set_session_error_log_file (const char *path)
 {
@@ -2283,6 +2299,13 @@ er_set_area_error (char *server_area)
 
   crt_error.reserve_message_area (length);
   memcpy (crt_error.msg_area, ptr, length);
+
+#if defined (SERVER_MODE)
+  if (er_Error_observer != NULL)
+    {
+      (*er_Error_observer) ();
+    }
+#endif
 
   /* Call the logging function if any */
   if (severity <= prm_get_integer_value (PRM_ID_ER_LOG_LEVEL)

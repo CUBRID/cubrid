@@ -298,6 +298,10 @@ extern "C"
   extern er_log_handler_t er_register_log_handler (er_log_handler_t f);
 #if defined (SERVER_MODE)
   extern int er_set_session_error_log_file (const char *path);
+  /* Observe the current thread's error before server log filtering. The
+   * observer must not modify the error, log recursively, or throw. */
+  typedef void (*er_error_observer_t) (void);
+  extern er_error_observer_t er_register_error_observer (er_error_observer_t observer);
 #endif
 
 #if !defined (WINDOWS) && defined (SERVER_MODE)

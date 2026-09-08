@@ -38,6 +38,7 @@
 #include "db_client_type.hpp"
 #include "environment_variable.h"
 #include "error_code.h"
+#include "error_manager.h"
 #include "message_catalog.h"
 #include "system_parameter.h"
 
@@ -592,6 +593,8 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
       return wire_Err_code;
     }
   wire_cancel_thread_start ();
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECTED_TO, 5,
+	  "csql", (int) getpid (), db, wire_Local ? "localhost" : host, wire_Local ? 0 : wire_Port);
   return NO_ERROR;
 }
 
@@ -858,7 +861,7 @@ wire_roundtrip (wire_body * b, bool replay)
 	  saw_end = true;
 	  break;
 	}
-      if (tag != CAS_CSQL_CHUNK_OUT && tag != CAS_CSQL_CHUNK_ERR)
+      if (tag != CAS_CSQL_CHUNK_OUT && tag != CAS_CSQL_CHUNK_ERR && tag != CAS_CSQL_CHUNK_LOG)
 	{
 	  framing_error = true;
 	  break;
@@ -876,6 +879,32 @@ wire_roundtrip (wire_body * b, bool replay)
 	  break;
 	}
       int clen = clen_i;
+      if (tag == CAS_CSQL_CHUNK_LOG)
+	{
+	  /* er_set_area_error expects three aligned ints and a terminated
+	   * message. Validate the wire record before handing it to the logger. */
+	  if (clen < 13 || (int) wire_get_be32 (reply + pos) >= NO_ERROR
+	      || (int) wire_get_be32 (reply + pos) <= ER_LAST_ERROR
+	      || wire_get_be32 (reply + pos + 4) > ER_MAX_SEVERITY
+	      || wire_get_be32 (reply + pos + 8) != (unsigned int) clen || reply[pos + clen - 1] != '\0')
+	    {
+	      framing_error = true;
+	      break;
+	    }
+	  char *area = (char *) malloc ((size_t) clen);
+	  if (area == NULL)
+	    {
+	      free (reply);
+	      wire_set_error (ER_OUT_OF_VIRTUAL_MEMORY, "out of memory while receiving error log");
+	      wire_close_fd ();
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  memcpy (area, reply + pos, (size_t) clen);
+	  (void) er_set_area_error (area);
+	  free (area);
+	  pos += (size_t) clen;
+	  continue;
+	}
       FILE *fp = (tag == CAS_CSQL_CHUNK_ERR) ? csql_Error_fp : csql_Output_fp;
       if (!replay && tag == CAS_CSQL_CHUNK_ERR && clen > 0)
 	{
