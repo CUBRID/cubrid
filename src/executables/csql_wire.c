@@ -861,7 +861,8 @@ wire_roundtrip (wire_body * b, bool replay)
 	  saw_end = true;
 	  break;
 	}
-      if (tag != CAS_CSQL_CHUNK_OUT && tag != CAS_CSQL_CHUNK_ERR && tag != CAS_CSQL_CHUNK_LOG)
+      if (tag != CAS_CSQL_CHUNK_OUT && tag != CAS_CSQL_CHUNK_ERR && tag != CAS_CSQL_CHUNK_LOG
+	  && tag != CAS_CSQL_CHUNK_STDOUT)
 	{
 	  framing_error = true;
 	  break;
@@ -905,7 +906,7 @@ wire_roundtrip (wire_body * b, bool replay)
 	  pos += (size_t) clen;
 	  continue;
 	}
-      FILE *fp = (tag == CAS_CSQL_CHUNK_ERR) ? csql_Error_fp : csql_Output_fp;
+      FILE *fp = (tag == CAS_CSQL_CHUNK_ERR) ? csql_Error_fp : (tag == CAS_CSQL_CHUNK_STDOUT) ? stdout : csql_Output_fp;
       if (!replay && tag == CAS_CSQL_CHUNK_ERR && clen > 0)
 	{
 	  char msg[WIRE_ERR_MSG_MAX];

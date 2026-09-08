@@ -361,6 +361,7 @@ extern "C"
     bool is_time_on;
     bool query_trace;
     const char *column_widths;	/* serialized "name=w;name=w" or NULL */
+    FILE *stdout_fp;		/* client-half stdout, separate from query results */
   } CSQL_SERVER_EXEC_OPTS;
 
   extern int csql_server_execute_request (const CSQL_ARGUMENT * csql_arg, const CSQL_SERVER_EXEC_OPTS * opts,

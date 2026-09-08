@@ -286,12 +286,14 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
   csql_capture_cookie out_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_OUT };
   csql_capture_cookie err_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_ERR };
   csql_capture_cookie log_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_LOG };
-  FILE *out_fp = NULL, *err_fp = NULL;
+  csql_capture_cookie stdout_cookie = { &chunks, &captured, &overflow, CAS_CSQL_CHUNK_STDOUT };
+  FILE *out_fp = NULL, *err_fp = NULL, *stdout_fp = NULL;
   int status = -1;
 
   out_fp = csql_capture_open (&out_cookie);
   err_fp = csql_capture_open (&err_cookie);
-  if (out_fp == NULL || err_fp == NULL)
+  stdout_fp = csql_capture_open (&stdout_cookie);
+  if (out_fp == NULL || err_fp == NULL || stdout_fp == NULL)
     {
       goto mem_error;
     }
@@ -341,6 +343,7 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
 	  opts.is_time_on = (flags & CAS_CSQL_FLAG_TIME_ON) != 0;
 	  opts.query_trace = (flags & CAS_CSQL_FLAG_QUERY_TRACE) != 0;
 	  opts.column_widths = (column_widths[0] != '\0') ? column_widths : NULL;
+	  opts.stdout_fp = stdout_fp;
 
 	  cas_log_write (0, true, "csql_request execute");
 	  status = csql_server_execute_request (&csql_arg, &opts, text, out_fp, err_fp);
@@ -372,6 +375,7 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
 	  opts.is_time_on = (flags & CAS_CSQL_FLAG_TIME_ON) != 0;
 	  opts.query_trace = (flags & CAS_CSQL_FLAG_QUERY_TRACE) != 0;
 	  opts.column_widths = (column_widths[0] != '\0') ? column_widths : NULL;
+	  opts.stdout_fp = stdout_fp;
 
 	  cas_log_write (0, true, "csql_request session_cmd");
 	  status = csql_server_session_cmd_request (&csql_arg, &opts, line, out_fp, err_fp);
@@ -411,7 +415,8 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
 
   fclose (out_fp);
   fclose (err_fp);
-  out_fp = err_fp = NULL;
+  fclose (stdout_fp);
+  out_fp = err_fp = stdout_fp = NULL;
 
   if (overflow)
     {
@@ -434,6 +439,10 @@ arg_error:
   if (err_fp != NULL)
     {
       fclose (err_fp);
+    }
+  if (stdout_fp != NULL)
+    {
+      fclose (stdout_fp);
     }
   ERROR_INFO_SET (cas_err, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (net_buf);

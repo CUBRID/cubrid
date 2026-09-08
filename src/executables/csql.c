@@ -4566,13 +4566,13 @@ csql_server_request_begin (const CSQL_SERVER_EXEC_OPTS * opts, FILE * out_fp, FI
    * captured stream (session plan-dump handle, unless a file dump is armed) */
   if (csc_bracket_is_active () && !query_Plan_dump_fp_open)
     {
-      query_Plan_dump_fp = out_fp;
+      query_Plan_dump_fp = opts->stdout_fp;
     }
   /* client-half stdout messages (execute_statement.c "Statistics updated
    * successfully", TRACE lines) belong to the rendered output as well */
   if (csc_bracket_is_active ())
     {
-      *csc_render_stdout_slot () = out_fp;
+      *csc_render_stdout_slot () = opts->stdout_fp;
     }
   csql_Output_fp = out_fp;
   csql_Error_fp = err_fp;
@@ -4593,9 +4593,9 @@ csql_server_request_begin (const CSQL_SERVER_EXEC_OPTS * opts, FILE * out_fp, FI
 }
 
 static void
-csql_server_request_end (void)
+csql_server_request_end (const CSQL_SERVER_EXEC_OPTS * opts)
 {
-  if (csc_bracket_is_active () && !query_Plan_dump_fp_open && query_Plan_dump_fp == csql_Output_fp)
+  if (csc_bracket_is_active () && !query_Plan_dump_fp_open && query_Plan_dump_fp == opts->stdout_fp)
     {
       query_Plan_dump_fp = NULL;
     }
@@ -4610,6 +4610,10 @@ csql_server_request_end (void)
   if (csql_Error_fp != NULL)
     {
       fflush (csql_Error_fp);
+    }
+  if (opts->stdout_fp != NULL)
+    {
+      fflush (opts->stdout_fp);
     }
   free_csql_column_width_info_list ();
   csql_edit_contents_clear ();
@@ -4694,7 +4698,7 @@ end:
     {
       fclose (mem_in);
     }
-  csql_server_request_end ();
+  csql_server_request_end (opts);
   return status;
 }
 
@@ -4761,7 +4765,7 @@ end:
       int save = au_save;
       AU_RESTORE (save);
     }
-  csql_server_request_end ();
+  csql_server_request_end (opts);
   return rc;
 }
 #endif /* SERVER_MODE */

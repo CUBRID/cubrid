@@ -561,7 +561,7 @@ public class B1JdbcSmoke {
             stmt.executeUpdate("DELETE FROM b1_smoke WHERE id = 100");
         }
 
-        // 15. prepared-handle cap: cas_max_prepared_stmt_count=64 (set by
+        // 15. prepared-handle cap: MAX_PREPARED_STMT_COUNT=64 (set by
         // smoke_jdbc.sh) must reject the 65th open handle on one session —
         // proves the cas_* conf actually reaches the folded speaker (B2-D7)
         step("stmt_cap");

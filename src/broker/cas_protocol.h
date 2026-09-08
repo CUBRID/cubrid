@@ -159,6 +159,7 @@ extern "C"
 #define CAS_CSQL_CHUNK_OUT                      1
 #define CAS_CSQL_CHUNK_ERR                      2
 #define CAS_CSQL_CHUNK_LOG                      3	/* packed error record, not console text */
+#define CAS_CSQL_CHUNK_STDOUT                   4	/* client stdout, independent of -o */
 
 /* CAS_FC_CSQL_REQUEST request flag bits (thin csql <-> server) */
 #define CAS_CSQL_FLAG_AUTO_COMMIT        0x00000001
