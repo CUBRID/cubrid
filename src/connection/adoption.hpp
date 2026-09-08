@@ -217,7 +217,11 @@ namespace cubconn
     /* the session thread publishes its CAS slot after slot begin; cleared
      * with the registry entry.  as_info_slot is a T_APPL_SERVER_INFO*. */
     void registry_set_session_stats (std::uint32_t token, void *as_info_slot, int slot_index,
-				     std::uint32_t client_ip, const char *client_name);
+				     std::uint32_t client_ip, const char *client_name, int client_id);
+    /* Administrative termination wakes the real driver transport and interrupts
+     * an executing request. The session thread remains the resource owner. */
+    bool registry_shutdown_client (int client_id, int tran_index);
+    void registry_begin_session_cleanup (std::uint32_t token);
     std::size_t registry_stats_snapshot (session_stat_row *rows, std::size_t max_rows);
     void registry_set_fn_status (std::uint32_t token, int fn_status);
     void registry_set_session_id (std::uint32_t token, unsigned int session_id);

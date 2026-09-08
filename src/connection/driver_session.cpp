@@ -707,7 +707,7 @@ namespace cubconn
 	}
 
       /* publish this session's CAS slot for SHOW SESSION STATUS (B2-D10) */
-      registry_set_session_stats (params.token, as_info, cas_log_slot_index, params.client_ip, client_name);
+      registry_set_session_stats (params.token, as_info, cas_log_slot_index, params.client_ip, client_name, conn->client_id);
 
       /* ACCESS_CONTROL db:dbuser:ip check before any engine boot (B2-D8,
        * #116 D6) — the same ordering the CAS kept (check, then db_connect).
@@ -857,6 +857,7 @@ namespace cubconn
       (void) ux_end_session ();
 
 retire:
+      registry_begin_session_cleanup (params.token);
       qr_final ();
       if (as_info != NULL)
 	{
