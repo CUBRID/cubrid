@@ -554,6 +554,14 @@ typedef enum
  * once per statement; re-evaluating the SAME tree per row is safe because
  * pt_evaluate_tree recomputes volatile leaves (UUID/...) on every call and never
  * memoizes a result onto the node.
+ *
+ * The cache is owned by the row-loop owner (do_insert_template,
+ * insert_subquery_results) and is the only place residual DEFAULTs are evaluated
+ * on this path: STABLE ones once, right after the cache is built for a class,
+ * VOLATILE ones once per row, by walking the cache itself.  The per-statement
+ * pass (do_evaluate_statement_default_expr) does not touch residuals at all, and
+ * the attribute walk in do_evaluate_default_expr_by_smclass serves only the
+ * legacy pseudo-column enum path.
  */
 typedef struct residual_default_entry RESIDUAL_DEFAULT_ENTRY;
 struct residual_default_entry
@@ -683,13 +691,86 @@ do_build_residual_default_cache (PARSER_CONTEXT * parser, SM_CLASS * smclass, RE
 }
 
 /*
+ * do_evaluate_residual_default () - evaluate one rehydrated residual DEFAULT tree
+ *	and refresh the attribute's in-memory default value with the result, cast to
+ *	the attribute domain.  att->default_value.value is what the object template
+ *	consumes (populate_defaults) -- the same channel the legacy
+ *	statement-determined expressions refresh in place.
+ *   return: NO_ERROR or ER_code
+ */
+static int
+do_evaluate_residual_default (PARSER_CONTEXT * parser, SM_ATTRIBUTE * att, PT_NODE * residual)
+{
+  DB_VALUE default_value;
+  TP_DOMAIN_STATUS dom_status;
+  int error;
+
+  db_make_null (&default_value);
+  pt_evaluate_tree (parser, residual, &default_value, 1);
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_EXECUTION);
+      pt_reset_error (parser);
+      db_value_clear (&default_value);
+      return er_errid ();
+    }
+
+  pr_clear_value (&att->default_value.value);
+  pr_clone_value (&default_value, &att->default_value.value);
+  db_value_clear (&default_value);
+
+  /* make sure the default value can be used for this attribute */
+  dom_status = tp_value_cast (&att->default_value.value, &att->default_value.value, att->domain, false);
+  if (dom_status != DOMAIN_COMPATIBLE)
+    {
+      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &att->default_value.value, att->domain);
+      assert_release (error != NO_ERROR);
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * do_evaluate_stable_residual_defaults () - evaluate every STABLE residual of a
+ *	freshly built cache exactly once.  Called right after the cache is built for
+ *	a class (the statement's first row, or the first row of a new partition
+ *	class), so the per-statement value is in place before any row's template
+ *	consumes it.  VOLATILE residuals are left to the per-row pass.
+ *   return: NO_ERROR or ER_code
+ */
+static int
+do_evaluate_stable_residual_defaults (PARSER_CONTEXT * parser, RESIDUAL_DEFAULT_CACHE * cache)
+{
+  int j, error;
+
+  for (j = 0; j < cache->count; j++)
+    {
+      if (PT_VOLATILITY_IS_VOLATILE_RESIDUAL (cache->entries[j].vol))
+	{
+	  continue;
+	}
+      error = do_evaluate_residual_default (parser, cache->entries[j].att, cache->entries[j].tree);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * do_evaluate_default_expr_by_smclass () - evaluates default expressions for class attributes.
  *   return: Error code
  *   parser(in):
  *   smclass(in):
  *   eval_mode(in):
- *   cache(in/out): per-statement residual cache (required); built lazily for smclass and
- *	reused across the statement's rows, so each residual is rehydrated+classified once
+ *   cache(in/out): per-statement residual cache -- required on the per-row pass, ignored
+ *	(may be NULL) on the per-statement pass.  Residual DEFAULTs belong to the row-loop
+ *	owner holding this cache: STABLE ones are evaluated once when the cache is built,
+ *	VOLATILE ones once per row.  The per-statement pass handles only the legacy
+ *	statement-determined pseudo-columns.
  */
 static int
 do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode,
@@ -706,88 +787,56 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
   int flag;
   TP_DOMAIN *result_domain = NULL;
   bool has_user_format;
+  int j;
 
   assert (smclass != NULL);
-  assert (cache != NULL);
 
-  /* Rehydrate+classify all residual DEFAULTs once per statement (see RESIDUAL_DEFAULT_CACHE), reused for
-   * every row.  Built lazily here, and rebuilt if a different (e.g. partition) class arrives. */
-  if (cache->smclass != smclass)
+  if (eval_mode == DEFAULT_EXPR_EVAL_BY_ROW_ONLY)
     {
-      error = do_build_residual_default_cache (parser, smclass, cache);
-      if (error != NO_ERROR)
+      assert (cache != NULL);
+
+      /* Residual DEFAULT expressions (Compact DEFAULT Trees), evaluated on the client (Local Evaluation)
+       * path to the same value the server path would produce.  Rehydrated+classified once per statement
+       * into the cache (see RESIDUAL_DEFAULT_CACHE), built lazily here and rebuilt if a different (e.g.
+       * partition) class arrives; the STABLE residuals are evaluated right then, once, so their value is in
+       * place before the first row's template consumes it. */
+      if (cache->smclass != smclass)
 	{
-	  return error;
+	  error = do_build_residual_default_cache (parser, smclass, cache);
+	  if (error == NO_ERROR)
+	    {
+	      error = do_evaluate_stable_residual_defaults (parser, cache);
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+
+      /* VOLATILE residuals: a fresh value for this row, straight from the cache */
+      for (j = 0; j < cache->count; j++)
+	{
+	  if (!PT_VOLATILITY_IS_VOLATILE_RESIDUAL (cache->entries[j].vol))
+	    {
+	      continue;
+	    }
+	  error = do_evaluate_residual_default (parser, cache->entries[j].att, cache->entries[j].tree);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
 	}
     }
 
+  /* Legacy pseudo-column enum defaults (default_expr_type != DB_DEFAULT_NONE): statement-determined ones on
+   * the per-statement pass, row-determined ones (UUID()/SYS_GUID()) on the per-row pass.  Residual
+   * attributes were handled above through the cache. */
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       DB_DEFAULT_EXPR_TYPE default_expr_type = att->default_value.default_expr.default_expr_type;
 
       if (is_residual_default_attr (att))
 	{
-	  /* Residual DEFAULT expression: evaluate its Compact DEFAULT Tree on the client (Local Evaluation)
-	   * path, filling the same value the server path would.  A STABLE residual is evaluated once per
-	   * statement, a VOLATILE one once per row; the volatility is the engine's current classification of
-	   * the rehydrated tree (mirroring pt_residual_default_needs_si_datetime), computed once when the
-	   * per-statement cache is built.  The frozen DDL-time snapshot in att->default_value.value is
-	   * refreshed in place, the same way the legacy statement-determined expressions below refresh it. */
-	  PT_NODE *residual = NULL;
-	  PT_VOLATILITY residual_vol = PT_VOLATILITY_UNSET;
-	  DEFAULT_EXPR_EVAL_MODE residual_mode;
-	  int j;
-
-	  for (j = 0; j < cache->count; j++)
-	    {
-	      if (cache->entries[j].att == att)
-		{
-		  residual = cache->entries[j].tree;
-		  residual_vol = cache->entries[j].vol;
-		  break;
-		}
-	    }
-	  /* every residual attribute of smclass was cached by do_build_residual_default_cache */
-	  assert (residual != NULL);
-	  if (residual == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	      error = ER_GENERIC_ERROR;
-	      break;
-	    }
-
-	  residual_mode = (PT_VOLATILITY_IS_VOLATILE_RESIDUAL (residual_vol)
-			   ? DEFAULT_EXPR_EVAL_BY_ROW_ONLY : DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY);
-	  if (eval_mode != residual_mode)
-	    {
-	      continue;
-	    }
-
-	  db_make_null (&default_value);
-	  pt_evaluate_tree (parser, residual, &default_value, 1);
-	  if (pt_has_error (parser))
-	    {
-	      pt_report_to_ersys (parser, PT_EXECUTION);
-	      pt_reset_error (parser);
-	      db_value_clear (&default_value);
-	      error = er_errid ();
-	      break;
-	    }
-
-	  pr_clear_value (&att->default_value.value);
-	  pr_clone_value (&default_value, &att->default_value.value);
-	  db_value_clear (&default_value);
-
-	  /* make sure the default value can be used for this attribute */
-	  dom_status = tp_value_cast (&att->default_value.value, &att->default_value.value, att->domain, false);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &att->default_value.value, att->domain);
-	      assert_release (error != NO_ERROR);
-
-	      break;
-	    }
-
 	  continue;
 	}
 
@@ -1033,7 +1082,6 @@ static int
 do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 {
   SM_CLASS *smclass;
-  RESIDUAL_DEFAULT_CACHE rdcache = { NULL, 0, NULL };
   int error = NO_ERROR;
 
   assert (class_name->node_type == PT_NAME);
@@ -1044,21 +1092,17 @@ do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_nam
       return error;
     }
 
-  /* This statement-mode pass uses its OWN throwaway cache, deliberately not shared with the per-row cache
-   * owned by do_insert_template / insert_subquery_results: a statement-wide cache would have to be owned by
-   * the orchestrators (insert_local, do_merge, do_execute_merge), which exit through several early returns,
-   * so leak-safe teardown there is fragile.  Keeping the cache local to a function with a single clean exit
-   * (here, and the two row-loop owners) frees it correctly on every path.  The cost is that a residual is
-   * rehydrated at most twice per statement -- once here, once when the row cache is first built -- never
-   * per row. */
-  error = do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY, &rdcache);
-  do_clear_residual_default_cache (parser, &rdcache);
-  return error;
+  /* Legacy statement-determined pseudo-columns only.  A residual DEFAULT is evaluated by the row-loop owner
+   * (do_insert_template / insert_subquery_results) through its per-statement cache -- STABLE once when the
+   * cache is built, VOLATILE once per row -- so it is rehydrated exactly once per statement. */
+  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY, NULL);
 }
 
 /*
- * do_evaluate_row_default_expr_for_otemplate() - evaluates the default expressions determined by row, if any, for
- *				the attributes of a given class's object template
+ * do_evaluate_row_default_expr_for_otemplate() - per-row DEFAULT pass for a class's object template: VOLATILE
+ *				residuals from the cache and legacy row-determined pseudo-columns; the first
+ *				call of a statement also builds the residual cache and evaluates its STABLE
+ *				residuals
  *   return: Error code
  *   parser(in):
  *   otemplate(in):
