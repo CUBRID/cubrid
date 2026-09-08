@@ -85,6 +85,7 @@ static volatile sig_atomic_t wire_Cancel_thread_up = 0;
 
 static void wire_cancel_send (void);
 static int wire_apply_statement_blocks (void);
+static int wire_apply_locale_parameters (void);
 
 static void *
 wire_cancel_thread_run (void *arg)
@@ -544,7 +545,8 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
    * configuration load. Restore that load before establishing a session. */
   if (sysprm_load_and_init_client (db, NULL) != NO_ERROR)
     {
-      wire_set_error (ER_BO_CANT_LOAD_SYSPRM, "cannot load csql system parameters");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
+      wire_set_error (ER_BO_CANT_LOAD_SYSPRM, er_msg ());
       return ER_BO_CANT_LOAD_SYSPRM;
     }
 
@@ -587,7 +589,7 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
    * connection is its thin equivalent, and csql session commands gate on
    * this global (csql_session.c CMD_CHECK_CONNECT) */
   db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
-  if (wire_apply_statement_blocks () != NO_ERROR)
+  if (wire_apply_statement_blocks () != NO_ERROR || wire_apply_locale_parameters () != NO_ERROR)
     {
       csql_wire_disconnect ();
       return wire_Err_code;
@@ -1105,6 +1107,54 @@ wire_apply_statement_blocks (void)
 	  wire_set_error (ER_FAILED, "cannot apply csql statement-blocking configuration");
 	}
       return wire_Err_code;
+    }
+  return NO_ERROR;
+}
+
+/* Explicit client locale settings used to reach the session through the fat
+ * client's parameter handshake. Leave unset values to the DB-derived defaults,
+ * and seed configured values once so later SETs remain local to the connection. */
+static int
+wire_apply_locale_parameters (void)
+{
+  const PARAM_ID params[] = { PRM_ID_INTL_DATE_LANG, PRM_ID_INTL_NUMBER_LANG, PRM_ID_INTL_COLLATION, PRM_ID_TIMEZONE };
+
+  for (size_t i = 0; i < sizeof (params) / sizeof (params[0]); i++)
+    {
+      const char *value = prm_get_string_value (params[i]);
+      char line[4096];
+      size_t used;
+
+      if (value == NULL)
+	{
+	  continue;
+	}
+      used = snprintf (line, sizeof (line), ";set %s=\"", prm_get_name (params[i]));
+      for (const char *p = value; *p != '\0'; p++)
+	{
+	  if (used + 4 > sizeof (line))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
+	      wire_set_error (ER_BO_CANT_LOAD_SYSPRM, er_msg ());
+	      return ER_BO_CANT_LOAD_SYSPRM;
+	    }
+	  if (*p == '\\' || *p == '"')
+	    {
+	      line[used++] = '\\';
+	    }
+	  line[used++] = *p;
+	}
+      line[used++] = '"';
+      line[used] = '\0';
+      if (wire_session_cmd (CAS_CSQL_FLAG_TRIGGER_ACTION, 0, "", line, false) != NO_ERROR)
+	{
+	  if (wire_Err_code == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
+	      wire_set_error (ER_BO_CANT_LOAD_SYSPRM, er_msg ());
+	    }
+	  return wire_Err_code;
+	}
     }
   return NO_ERROR;
 }
