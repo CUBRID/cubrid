@@ -49,6 +49,13 @@ curl -L https://ftp.gnu.org/gnu/bison/bison-$BISON_VERSION.tar.gz | tar xzvf - \
 
 ```
 
+It is advised to install ccache to speed up the build process. Once ccache is installed, cmake will automatically detect it. Use your favorite package manager to install ccache. For example:
+
+```sh
+# CentOS 7
+yum install -y ccache
+```
+
 ## Windows
 
 Please refer to the following script. Note that you have to run Powershell as Administrator 
