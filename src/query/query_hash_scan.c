@@ -455,12 +455,12 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     {
       fprintf (fp, "data_size = [%d], data = { ", QFILE_GET_TUPLE_LENGTH ((QFILE_TUPLE) data));
 
-      qfile_slot_fill (&slot, (char *) data, type_list_p);
+      qfile_slot_set_tuple_ptr_and_layout (&slot, (char *) data, type_list_p);
 
       for (i = 0; i < type_list_p->type_cnt; i++)
 	{
-	  if (qfile_slot_read_value (&slot, i, type_list_p->domp[i], &dbval, false /* Don't copy */ , &is_null) == NO_ERROR
-	      && !is_null)
+	  if (qfile_slot_read_column_value (&slot, i, type_list_p->domp[i], &dbval, false /* Don't copy */ , &is_null)
+	      == NO_ERROR && !is_null)
 	    {
 	      db_fprint_value (fp, &dbval);
 

@@ -588,7 +588,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
   res = V_FALSE;
   while ((qp_scan = qfile_scan_list_next (thread_p, &s_id, &tplrec, PEEK)) == S_SUCCESS)
     {
-      if (qfile_slot_read_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return V_ERROR;
@@ -729,7 +729,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &s_id, &tplrec, PEEK)) == S_SUCCESS)
     {
-      if (qfile_slot_read_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return ER_FAILED;
@@ -960,7 +960,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     {
       pr_clear_value (&list_val);
 
-      if (qfile_slot_read_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
 	{
 	  res = V_ERROR;
 	  goto end;
@@ -974,9 +974,9 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       if (list_on == true)
 	{
 	  /* private copy of the previous tuple: bind + reset the slot before reading it */
-	  qfile_slot_fill (&p_tplrec, p_tplrec.tpl, tplrec.tl);
-	  if (qfile_slot_read_value (&p_tplrec, 0, list_id->type_list.domp[0], &list_val2, true, &is_null) != NO_ERROR
-	      || is_null)
+	  qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, tplrec.type_list);
+	  if (qfile_slot_read_column_value (&p_tplrec, 0, list_id->type_list.domp[0], &list_val2, true, &is_null) !=
+	      NO_ERROR || is_null)
 	    {
 	      res = V_ERROR;
 	      goto end;
@@ -1037,9 +1037,9 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   if (list_on == true)
     {
       /* private copy of the last tuple (no unbound value): bind + reset the slot before reading it */
-      qfile_slot_fill (&p_tplrec, p_tplrec.tpl, &s_id.list_id.type_list);
-      if (qfile_slot_read_value (&p_tplrec, 0, list_id->type_list.domp[0], &list_val2, true, &is_null) != NO_ERROR
-	  || is_null)
+      qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, &s_id.list_id.type_list);
+      if (qfile_slot_read_column_value (&p_tplrec, 0, list_id->type_list.domp[0], &list_val2, true, &is_null) !=
+	  NO_ERROR || is_null)
 	{
 	  res = V_ERROR;
 	  goto end;
@@ -1144,7 +1144,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     {
       pr_clear_value (&list_val);
 
-      if (qfile_slot_read_value (&tplrec, 0, list_id1->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id1->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
 	{
 	  res = V_ERROR;
 	  goto end;
@@ -1158,9 +1158,9 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       if (list_on == true)
 	{
 	  /* private copy of the previous tuple: bind + reset the slot before reading it */
-	  qfile_slot_fill (&p_tplrec, p_tplrec.tpl, tplrec.tl);
-	  if (qfile_slot_read_value (&p_tplrec, 0, list_id1->type_list.domp[0], &list_val2, true, &is_null) != NO_ERROR
-	      || is_null)
+	  qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, tplrec.type_list);
+	  if (qfile_slot_read_column_value (&p_tplrec, 0, list_id1->type_list.domp[0], &list_val2, true, &is_null) !=
+	      NO_ERROR || is_null)
 	    {
 	      res = V_ERROR;
 	      goto end;
@@ -1222,9 +1222,9 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   if (list_on == true)
     {
       /* private copy of the last tuple (no unbound value): bind + reset the slot before reading it */
-      qfile_slot_fill (&p_tplrec, p_tplrec.tpl, &s_id.list_id.type_list);
-      if (qfile_slot_read_value (&p_tplrec, 0, list_id1->type_list.domp[0], &list_val2, true, &is_null) != NO_ERROR
-	  || is_null)
+      qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, &s_id.list_id.type_list);
+      if (qfile_slot_read_column_value (&p_tplrec, 0, list_id1->type_list.domp[0], &list_val2, true, &is_null) !=
+	  NO_ERROR || is_null)
 	{
 	  res = V_ERROR;
 	  goto end;

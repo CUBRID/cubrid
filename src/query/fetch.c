@@ -4091,8 +4091,9 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	{
 	  goto exit_on_error;
 	}
-      if (qfile_slot_read_value (tplrec, regu_var->value.pos_descr.pos_no, regu_var->value.pos_descr.dom, *peek_dbval,
-				 false /* Don't copy */ , &is_null) != NO_ERROR)
+      if (qfile_slot_read_column_value
+	  (tplrec, regu_var->value.pos_descr.pos_no, regu_var->value.pos_descr.dom, *peek_dbval,
+	   false /* Don't copy */ , &is_null) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -4911,8 +4912,8 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * 
 	}
 
       /* a need_clear-free FIXED column is just marked NULL; VAR columns always call pr_clear_value */
-      if (tplrec->tl->column_layout_array[pos_descr->pos_no].kind != QFILE_COL_FIXED || regu_var->vfetch_to->need_clear
-	  || DB_NEED_CLEAR (regu_var->vfetch_to))
+      if (tplrec->type_list->column_layout_array[pos_descr->pos_no].kind != QFILE_COL_FIXED
+	  || regu_var->vfetch_to->need_clear || DB_NEED_CLEAR (regu_var->vfetch_to))
 	{
 	  pr_clear_value (regu_var->vfetch_to);
 	}
@@ -4920,7 +4921,7 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * 
 	{
 	  PRIM_SET_NULL (regu_var->vfetch_to);
 	}
-      if (qfile_slot_read_value
+      if (qfile_slot_read_column_value
 	  (tplrec, pos_descr->pos_no, pos_descr->dom, regu_var->vfetch_to, false /* Don't copy */ ,
 	   &is_null) != NO_ERROR)
 	{

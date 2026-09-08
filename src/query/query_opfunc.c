@@ -36,7 +36,7 @@
 /* value pointer staging for the private-buffer tuple writers: stack for the usual column counts */
 #define QDATA_TUPLE_VALS_STACK 64
 static int qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n,
-				       qfile_tuple_value_type_list * tl, qfile_tuple_record * tuple_record_p);
+				       qfile_tuple_value_type_list * type_list, qfile_tuple_record * tuple_record_p);
 
 #include "system_parameter.h"
 #include "error_manager.h"
@@ -355,7 +355,7 @@ qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
  *   return: NO_ERROR, or ER_code
  *   valptr_list(in)    : Value pointer list
  *   vd(in)     : Value descriptor
- *   tl(in)     : layout descriptor of the list the tuple is written into
+ *   type_list(in)     : layout descriptor of the list the tuple is written into
  *   tplrec(in) : Tuple descriptor
  *
  * Note: Copy valptr_list values to tuple descriptor.  Regu variables
@@ -365,7 +365,7 @@ qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
  */
 int
 qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p,
-				 qfile_tuple_value_type_list * tl, qfile_tuple_record * tuple_record_p)
+				 qfile_tuple_value_type_list * type_list, qfile_tuple_record * tuple_record_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   DB_VALUE *vals_buf[QDATA_TUPLE_VALS_STACK], **vals = vals_buf;
@@ -398,7 +398,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
       n++;
     }
 
-  error = qdata_copy_values_to_tuple (thread_p, vals, n, tl, tuple_record_p);
+  error = qdata_copy_values_to_tuple (thread_p, vals, n, type_list, tuple_record_p);
 
 end:
   if (vals != vals_buf)
@@ -413,7 +413,7 @@ end:
  *   return: NO_ERROR, or ER_code
  */
 static int
-qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n, qfile_tuple_value_type_list * tl,
+qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n, qfile_tuple_value_type_list * type_list,
 			    qfile_tuple_record * tuple_record_p)
 {
   int lens_buf[QDATA_TUPLE_VALS_STACK], *lens = lens_buf;
@@ -429,7 +429,7 @@ qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n, qf
 	}
     }
 
-  size = qfile_tuple_size_from_values (tl, vals, lens, n, &has_null);
+  size = qfile_tuple_size_from_values (type_list, vals, lens, n, &has_null);
   if (size < 0)
     {
       error = ER_FAILED;
@@ -457,7 +457,7 @@ qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n, qf
       tuple_record_p->size = tpl_size;
     }
 
-  error = qfile_tuple_fill_from_values (tl, vals, lens, n, tuple_record_p->tpl, size, has_null);
+  error = qfile_tuple_fill_from_values (type_list, vals, lens, n, tuple_record_p->tpl, size, has_null);
 
 end:
   if (lens != lens_buf)
@@ -468,7 +468,7 @@ end:
 }
 
 int
-qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfile_tuple_value_type_list * tl,
+qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfile_tuple_value_type_list * type_list,
 			      qfile_tuple_record * tuple_record_p)
 {
   QPROC_DB_VALUE_LIST val_list_iterator;
@@ -490,7 +490,7 @@ qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfil
       vals[n] = val_list_iterator->val;
     }
 
-  error = qdata_copy_values_to_tuple (thread_p, vals, n, tl, tuple_record_p);
+  error = qdata_copy_values_to_tuple (thread_p, vals, n, type_list, tuple_record_p);
 
   if (vals != vals_buf)
     {
@@ -517,8 +517,9 @@ qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * 
     {
       pr_clear_value (val_list_iterator->val);
 
-      err_code = qfile_slot_read_value (tplrec, val_list_index, type_list->domp[val_list_index], val_list_iterator->val,
-					false /* Don't copy */ , &is_null);
+      err_code =
+	qfile_slot_read_column_value (tplrec, val_list_index, type_list->domp[val_list_index], val_list_iterator->val,
+				      false /* Don't copy */ , &is_null);
       if (err_code != NO_ERROR)
 	{
 	  return err_code;
@@ -598,14 +599,14 @@ exit_with_status:
 /*
  * qdata_size_tuple_desc () - size pass over the values from qdata_generate_tuple_desc_for_valptr_list ()
  *   return: QPROC_TPLDESCR_SUCCESS, QPROC_TPLDESCR_RETRY_BIG_REC or QPROC_TPLDESCR_FAILURE
- *   tl(in): finalized layout descriptor of the destination list
+ *   type_list(in): layout-ready descriptor of the destination list
  */
 QPROC_TPLDESCR_STATUS
-qdata_size_tuple_desc (qfile_tuple_value_type_list * tl, qfile_tuple_descriptor * tuple_desc_p)
+qdata_size_tuple_desc (qfile_tuple_value_type_list * type_list, qfile_tuple_descriptor * tuple_desc_p)
 {
   /* the compressed string, if any, is deallocated later, after copying the db_value into the tuple */
   tuple_desc_p->tpl_size =
-    qfile_tuple_size_from_values (tl, tuple_desc_p->f_valp, tuple_desc_p->f_len, tuple_desc_p->f_cnt,
+    qfile_tuple_size_from_values (type_list, tuple_desc_p->f_valp, tuple_desc_p->f_len, tuple_desc_p->f_cnt,
 				  &tuple_desc_p->has_null);
   if (tuple_desc_p->tpl_size < 0)
     {
@@ -6326,7 +6327,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
 	      return ER_FAILED;
 	    }
 
-	  if (qfile_slot_read_value (&tuple_record, i, domain_p, value_list->val, true, &is_null) != NO_ERROR)
+	  if (qfile_slot_read_column_value (&tuple_record, i, domain_p, value_list->val, true, &is_null) != NO_ERROR)
 	    {
 	      qfile_close_scan (thread_p, &scan_id);
 	      return ER_FAILED;
@@ -7002,7 +7003,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
 	      return ER_FAILED;
 	    }
 
-	  if (qfile_slot_read_value (&tuple_record, i, list_id_p->type_list.domp[i], &dbval, true, &is_null) !=
+	  if (qfile_slot_read_column_value (&tuple_record, i, list_id_p->type_list.domp[i], &dbval, true, &is_null) !=
 	      NO_ERROR)
 	    {
 	      qfile_close_scan (thread_p, &scan_id);
@@ -7099,7 +7100,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
     }
 
   /* we start with tpl itself */
-  qfile_slot_fill (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
+  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
 
   do
     {
@@ -7222,7 +7223,7 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
       return false;
     }
 
-  qfile_slot_fill (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
+  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
 
   /* get the parent node */
   if (qexec_get_tuple_column_value (&tuple_rec, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
@@ -7443,7 +7444,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
     }
 
   /* we start with tpl itself */
-  qfile_slot_fill (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
+  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
 
   len_result_path = SYS_CONNECT_BY_PATH_MEM_STEP;
   result_path = (char *) db_private_alloc (thread_p, sizeof (char) * len_result_path);

@@ -235,7 +235,7 @@ typedef enum
  *               FIXED column: ALIGN (alignby in {2,4}) then disksize bytes of data_writeval (8-byte values are read
  *               by memcpy). VAR/DIRECT column (string/BIT/NUMERIC, index_* encoding): no alignment, 1-byte (<= 127)
  *               or 4-byte (bit 7 of the first byte set, ntohl & 0x7FFFFFFF) body length header, then the body.
- *               VAR/SCRATCH column (SET/JSON/OBJECT..., data_* encoding, needs INT_ALIGNMENT): ALIGN4, then the
+ *               VAR/COMPOSITE column (SET/JSON/OBJECT..., data_* encoding, needs INT_ALIGNMENT): ALIGN4, then the
  *               4-byte length header, then the body (4-aligned, (de)coded in place).
  * Every tuple start is 4-byte aligned (page header 32 bytes, every tuple length a multiple of 4).
  * The accessors and the assembler live in qfile_tuple_layout.h; nothing else interprets these bytes.
@@ -292,7 +292,7 @@ typedef char *QFILE_TUPLE;	/* list file tuple */
 /* tuple record descriptor == tuple slot.
  * The record keeps its historical owning/non-owning meaning (size > 0: private buffer owned by the record,
  * size == 0: tpl PEEKs into a list page). The slot fields bind the layout descriptor of the list the tuple
- * belongs to and cache the deform position; they are reset by qfile_slot_set_tuple (), the only sanctioned
+ * belongs to and cache the deform position; they are reset by qfile_slot_set_tuple_ptr (), the only sanctioned
  * way to point the record at another tuple. */
 struct qfile_tuple_value_type_list;
 typedef struct qfile_tuple_record QFILE_TUPLE_RECORD;
@@ -300,11 +300,11 @@ struct qfile_tuple_record
 {
   char *tpl;			/* tuple pointer */
   int size;			/* area _allocated_ for tuple pointer */
-  const struct qfile_tuple_value_type_list *tl;	/* layout descriptor, bound once per scan */
+  const struct qfile_tuple_value_type_list *type_list;	/* layout descriptor, bound once per scan */
   int16_t cached_column_index_in_tuple;	/* cached column position; -1 = cache not started */
   /* Constant-offset prefix length, limited by the layout, first NULL and INT16_MAX; not the total FIXED count. */
   int16_t fixed_length_col_cnt;
-  int16_t data_off;		/* tl->data_off[has_null] of this tuple */
+  int16_t data_off;		/* type_list->data_off[has_null] of this tuple */
   bool has_null;		/* has-null bit of this tuple's length word */
   int32_t cached_byte_offset_in_tuple;	/* cached column start from tuple start, before alignment */
 };
@@ -317,7 +317,7 @@ struct qfile_col_layout
   int16_t byte_offset_in_values;
   int16_t size;			/* FIXED: disksize (max 12). VAR: -1 */
   uint8_t kind;			/* QFILE_COL_FIXED | QFILE_COL_VAR */
-  uint8_t var_access;		/* VAR only: QFILE_VAR_DIRECT | QFILE_VAR_SCRATCH */
+  uint8_t value_format;		/* VAR only: QFILE_VALUE_DIRECT | QFILE_VALUE_COMPOSITE */
   uint8_t alignby;		/* FIXED: 2 | 4. VAR: 1 */
   uint8_t type_id;		/* DB_TYPE of domp[i] (DB_TYPE_VARIABLE while unresolved): lets the assembler check the value's
 				 * type from this entry alone, without the domp[i] -> domain -> type load chain */
@@ -326,7 +326,7 @@ struct qfile_col_layout
 /* Type list structure == tuple layout descriptor.
  *
  * Two states. An INPUT type list (locals built by the executor before qfile_open_list) only fills domp/type_cnt
- * and has finalized == false; the descriptor fields below are not read. A FINALIZED type list (every
+ * and has layout_ready == false; the descriptor fields below are not read. A layout-ready type list (every
  * QFILE_LIST_ID) was allocated by qfile_type_list_alloc () as one block [domp[type_cnt] | column_layout_array[type_cnt]] (so
  * the existing free (domp) sites are untouched) and had qfile_set_layout () run after its last domp
  * mutation. Copies inherit the block by memcpy (qfile_type_list_copy).
@@ -336,7 +336,7 @@ struct qfile_col_layout
 typedef struct qfile_tuple_value_type_list QFILE_TUPLE_VALUE_TYPE_LIST;
 struct qfile_tuple_value_type_list
 {
-  TP_DOMAIN **domp;		/* array of column domains; head of the [domp | column_layout_array] block when finalized */
+  TP_DOMAIN **domp;		/* array of column domains; head of the [domp | column_layout_array] block when layout_ready */
   int type_cnt;			/* number of data types */
   QFILE_COL_LAYOUT *column_layout_array;	/* points at domp + type_cnt; not a separate allocation */
   /* NULL-independent prefix limit: first VAR or offset > INT16_MAX; type_cnt if none. Not the total FIXED count. */
@@ -344,10 +344,10 @@ struct qfile_tuple_value_type_list
   int16_t data_off[2];		/* [0] = no-null, [1] = has-null : ALIGN4 (hdr_size + bitmap) */
   int16_t bitmap_size;		/* (type_cnt + 7) >> 3 */
   uint8_t hdr_size;		/* 4 | 8 ; 8 <=> backward capable */
-  bool finalized;
+  bool layout_ready;
 };
 
-/* QFILE_COL_LAYOUT.kind / .var_access */
+/* QFILE_COL_LAYOUT.kind / .value_format */
 enum
 {
   QFILE_COL_FIXED = 0,
@@ -355,8 +355,8 @@ enum
 };
 enum
 {
-  QFILE_VAR_DIRECT = 0,
-  QFILE_VAR_SCRATCH = 1
+  QFILE_VALUE_DIRECT = 0,
+  QFILE_VALUE_COMPOSITE = 1
 };
 
 /* tuple value position descriptor */
@@ -408,7 +408,7 @@ typedef enum
 /*
  * Tuple assembler column source. One entry per output column.
  *   val != NULL : encode the DB_VALUE with its type's data_writeval
- *   val == NULL : copy data[0..len) verbatim as the stored body (what qfile_slot_locate () returned for a column of
+ *   val == NULL : copy data[0..len) verbatim as the stored body (what qfile_slot_get_column_data () returned for a column of
  *                 the same domain; the source and destination columns must share the layout kind)
  * is_null makes the column NULL regardless of val/data. qfile_tuple_size () writes the disk size of a val source
  * into len so qfile_tuple_fill () does not compute it again.
@@ -515,7 +515,7 @@ struct qfile_list_id
       (list_id)->type_list.data_off[1] = 0; \
       (list_id)->type_list.bitmap_size = 0; \
       (list_id)->type_list.hdr_size = 0; \
-      (list_id)->type_list.finalized = false; \
+      (list_id)->type_list.layout_ready = false; \
       (list_id)->sort_list = NULL; \
       (list_id)->tuple_cnt = 0; \
       (list_id)->page_cnt = 0; \

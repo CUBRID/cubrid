@@ -94,7 +94,7 @@ cursor_reset_current_slot (CURSOR_ID * cursor_id_p)
       return;
     }
 
-  qfile_slot_set_tuple (&cursor_id_p->current_slot, NULL);
+  qfile_slot_set_tuple_ptr (&cursor_id_p->current_slot, NULL);
 }
 
 /*
@@ -378,14 +378,14 @@ cursor_get_tuple_value_to_dbvalue (QFILE_TUPLE_RECORD * slot, int index, TP_DOMA
 
   type = pr_type->id;
 
-  /* VOBJs must be handled separately: a set column is VAR/SCRATCH, its body is 4-aligned in the tuple */
+  /* VOBJs must be handled separately: a set column is VAR/COMPOSITE, its body is 4-aligned in the tuple */
   if (type == DB_TYPE_VOBJ)
     {
       OR_BUF buffer;
       const char *body;
       int length;
 
-      body = qfile_slot_locate (slot, index, &length, &is_null);
+      body = qfile_slot_get_column_data (slot, index, &length, &is_null);
       if (is_null)
 	{
 	  db_value_domain_init (value_p, type, domain_p->precision, domain_p->scale);
@@ -396,7 +396,7 @@ cursor_get_tuple_value_to_dbvalue (QFILE_TUPLE_RECORD * slot, int index, TP_DOMA
     }
 
   /* for all other types, the shared accessor decodes with the prim routines */
-  if (qfile_slot_read_value (slot, index, domain_p, value_p, is_copy, &is_null) != NO_ERROR)
+  if (qfile_slot_read_column_value (slot, index, domain_p, value_p, is_copy, &is_null) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -443,7 +443,7 @@ cursor_get_tuple_value_from_list (CURSOR_ID * cursor_id_p, int index, DB_VALUE *
   slot = &cursor_id_p->current_slot;
   if (slot->tpl == NULL)
     {
-      qfile_slot_set_tuple (slot, tuple_p);
+      qfile_slot_set_tuple_ptr (slot, tuple_p);
     }
   assert (slot->tpl == tuple_p);
 
@@ -467,7 +467,7 @@ cursor_get_first_tuple_value (char *tuple_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_
   QFILE_TUPLE_RECORD slot = { NULL, 0 };
   int rc;
 
-  qfile_slot_fill (&slot, tuple_p, type_list_p);
+  qfile_slot_set_tuple_ptr_and_layout (&slot, tuple_p, type_list_p);
   rc = cursor_get_tuple_value_to_dbvalue (&slot, 0, type_list_p->domp[0], value_p, is_copy);
 
   return rc;
@@ -780,7 +780,7 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
   tuple_count = QFILE_GET_TUPLE_COUNT (cursor_id_p->buffer);
   current_tuple = cursor_id_p->buffer + QFILE_PAGE_HEADER_SIZE;
   oid_index = 0;
-  qfile_slot_bind (&slot, &cursor_id_p->list_id.type_list);
+  qfile_slot_set_layout (&slot, &cursor_id_p->list_id.type_list);
 
   /*
    * search through the current buffer to store interesting OIDs
@@ -792,15 +792,15 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
 
       /* fetch first OID */
       type = TP_DOMAIN_TYPE (cursor_id_p->list_id.type_list.domp[0]);
-      qfile_slot_set_tuple (&slot, current_tuple);
-      tuple_p = (char *) qfile_slot_locate (&slot, 0, &length, &is_null);
+      qfile_slot_set_tuple_ptr (&slot, current_tuple);
+      tuple_p = (char *) qfile_slot_get_column_data (&slot, 0, &length, &is_null);
 
       if (is_null)
 	{
 	  continue;
 	}
 
-      /* OBJECT/VOBJ columns are VAR/SCRATCH: the body is 4-aligned in the tuple, read the OID where it lies */
+      /* OBJECT/VOBJ columns are VAR/COMPOSITE: the body is 4-aligned in the tuple, read the OID where it lies */
       current_oid_p = cursor_get_oid_from_tuple (tuple_p, length, type);
 
       if (current_oid_p && oid_index < cursor_id_p->oid_ent_count)
@@ -842,12 +842,12 @@ cursor_prefetch_column_oids (CURSOR_ID * cursor_id_p)
   current_tuple = cursor_id_p->buffer + QFILE_PAGE_HEADER_SIZE;
   oid_index = 0;
 
-  qfile_slot_bind (&slot, &cursor_id_p->list_id.type_list);
+  qfile_slot_set_layout (&slot, &cursor_id_p->list_id.type_list);
 
   for (tuple_index = 0; tuple_index < tuple_count; tuple_index++)
     {
       current_tuple_length = QFILE_GET_TUPLE_LENGTH (current_tuple);
-      qfile_slot_set_tuple (&slot, current_tuple);
+      qfile_slot_set_tuple_ptr (&slot, current_tuple);
 
       for (col_index = 0; col_index < cursor_id_p->oid_col_no_cnt; col_index++)
 	{
@@ -859,14 +859,14 @@ cursor_prefetch_column_oids (CURSOR_ID * cursor_id_p)
 	      continue;
 	    }
 
-	  tuple_p = (char *) qfile_slot_locate (&slot, col_num, &length, &is_null);
+	  tuple_p = (char *) qfile_slot_get_column_data (&slot, col_num, &length, &is_null);
 
 	  if (is_null)
 	    {
 	      continue;
 	    }
 
-	  /* OBJECT/VOBJ columns are VAR/SCRATCH: the body is 4-aligned in the tuple, read the OID where it lies */
+	  /* OBJECT/VOBJ columns are VAR/COMPOSITE: the body is 4-aligned in the tuple, read the OID where it lies */
 	  current_oid_p = cursor_get_oid_from_tuple (tuple_p, length, type);
 
 	  if (current_oid_p && oid_index < cursor_id_p->oid_ent_count)
@@ -1212,10 +1212,10 @@ cursor_open (CURSOR_ID * cursor_id_p, QFILE_LIST_ID * list_id_p, bool updatable,
   cursor_id_p->buffer_filled_size = 0;
   cursor_id_p->list_id = empty_list_id;
   cursor_id_p->prefetch_lock_mode = DB_FETCH_READ;
-  qfile_slot_bind (&cursor_id_p->tuple_record, &cursor_id_p->list_id.type_list);
+  qfile_slot_set_layout (&cursor_id_p->tuple_record, &cursor_id_p->list_id.type_list);
   cursor_id_p->current_slot.tpl = NULL;
   cursor_id_p->current_slot.size = 0;	/* non-owning: current_tuple_p lives in the page buffer or tuple_record */
-  qfile_slot_bind (&cursor_id_p->current_slot, &cursor_id_p->list_id.type_list);
+  qfile_slot_set_layout (&cursor_id_p->current_slot, &cursor_id_p->list_id.type_list);
   cursor_id_p->is_copy_tuple_value = true;	/* copy */
   cursor_reset_current_slot (cursor_id_p);
 

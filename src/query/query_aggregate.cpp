@@ -1469,8 +1469,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			    bool is_null;
 
 			    (void) pr_clear_value (&dbval);
-			    error = qfile_slot_read_value (&tuple_record, 0, list_id_p->type_list.domp[0], &dbval, true,
-							   &is_null);
+			    error = qfile_slot_read_column_value (&tuple_record, 0, list_id_p->type_list.domp[0], &dbval, true,
+								  &is_null);
 			    if (error == NO_ERROR && is_null)
 			      {
 				continue;
@@ -2153,7 +2153,7 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
   /* initialize tuple */
   value->first_tuple.size = 0;
   value->first_tuple.tpl = NULL;
-  value->first_tuple.tl = NULL;
+  value->first_tuple.type_list = NULL;
 
   return value;
 }

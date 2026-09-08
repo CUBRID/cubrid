@@ -2938,8 +2938,8 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 
       if (need_coerce_domains && coerce_domains[key_index] != NULL && coerce_domains[key_index] != domains[key_index])
 	{
-	  error = qfile_slot_read_value (tuple_record, value_index, domains[key_index], &pre_coerce_value, false,
-					 &value_is_null);
+	  error = qfile_slot_read_column_value (tuple_record, value_index, domains[key_index], &pre_coerce_value, false,
+						&value_is_null);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -2977,8 +2977,9 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	}
       else
 	{
-	  error = qfile_slot_read_value (tuple_record, value_index, domains[key_index], key->values[key_index], false,
-					 &value_is_null);
+	  error =
+	    qfile_slot_read_column_value (tuple_record, value_index, domains[key_index], key->values[key_index], false,
+					  &value_is_null);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -3032,7 +3033,7 @@ hjoin_locate_tuple_hash_key (QFILE_TUPLE_RECORD * tuple_record)
   bool is_null;
   QFILE_TUPLE body;
 
-  body = (QFILE_TUPLE) qfile_slot_locate (tuple_record, 0, &len, &is_null);
+  body = (QFILE_TUPLE) qfile_slot_get_column_data (tuple_record, 0, &len, &is_null);
   assert (!is_null);
   assert (len == tp_Integer.disksize);	/* FIXED INT column: the body is the aligned 4-byte value itself */
 
@@ -4075,13 +4076,14 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       if (entry != NULL)
 	{
 	  /* in-memory hash entry payload: a raw tuple of the build list, bind it to that list's descriptor */
-	  qfile_slot_fill (tuple_record, (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry), &list_scan_id->list_id.type_list);
+	  qfile_slot_set_tuple_ptr_and_layout (tuple_record, (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry),
+					       &list_scan_id->list_id.type_list);
 	  tuple_record->size = 0;	/* PEEK: the payload is owned by the hash table */
 	}
       else
 	{
 	  /* not found */
-	  qfile_slot_set_tuple (tuple_record, NULL);
+	  qfile_slot_set_tuple_ptr (tuple_record, NULL);
 	  tuple_record->size = 0;
 	}
       break;			/* HASH_METH_IN_MEM */
@@ -4116,7 +4118,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       else
 	{
 	  /* not found */
-	  qfile_slot_set_tuple (tuple_record, NULL);
+	  qfile_slot_set_tuple_ptr (tuple_record, NULL);
 	  tuple_record->size = 0;
 	}
       break;			/* HASH_METH_HYBRID */
@@ -4146,7 +4148,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       else if (eh_search == EH_KEY_NOTFOUND)
 	{
 	  /* not found */
-	  qfile_slot_set_tuple (tuple_record, NULL);
+	  qfile_slot_set_tuple_ptr (tuple_record, NULL);
 	  tuple_record->size = 0;
 	}
       else

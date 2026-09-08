@@ -870,7 +870,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		  {
 		    bool is_null;
 
-		    if (qfile_slot_read_value (&tuple_record, 0, list_id_p->type_list.domp[0], &dbval, true, &is_null)
+		    if (qfile_slot_read_column_value (&tuple_record, 0, list_id_p->type_list.domp[0], &dbval, true, &is_null)
 			!= NO_ERROR)
 		      {
 			qfile_close_scan (thread_p, &scan_id);

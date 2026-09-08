@@ -176,7 +176,7 @@ namespace cubpl
 		break;
 	      }
 
-	    if (qfile_slot_read_value (&tuple_record, i, domain, value, true, &is_null) != NO_ERROR)
+	    if (qfile_slot_read_column_value (&tuple_record, i, domain, value, true, &is_null) != NO_ERROR)
 	      {
 		scan_code = S_ERROR;
 		break;

@@ -3811,7 +3811,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
   error = NO_ERROR;
 
   info = (SORT_INFO *) arg;
-  qfile_slot_bind (&tplslot, &info->output_file->type_list);
+  qfile_slot_set_layout (&tplslot, &info->output_file->type_list);
   ordby_info = (ORDBYNUM_INFO *) info->extra_arg;
 
   /* Traverse next link */
@@ -3893,7 +3893,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		  data = page + key->s.original.offset;
 
 		  /* update orderby_num() in the tuple */
-		  qfile_slot_set_tuple (&tplslot, data);
+		  qfile_slot_set_tuple_ptr (&tplslot, data);
 		  for (i = 0; ordby_info && i < ordby_info->ordbynum_pos_cnt; i++)
 		    {
 		      (void) qfile_slot_overwrite_value (&tplslot, ordby_info->ordbynum_pos[i], &tp_Bigint_domain,
@@ -3918,7 +3918,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		      qfile_get_tuple (thread_p, page, page + key->s.original.offset, &tplrec, list_idp);
 		      data = tplrec.tpl;
 		      /* update orderby_num() in the tuple */
-		      qfile_slot_set_tuple (&tplslot, data);
+		      qfile_slot_set_tuple_ptr (&tplslot, data);
 		      for (i = 0; ordby_info && i < ordby_info->ordbynum_pos_cnt; i++)
 			{
 			  (void) qfile_slot_overwrite_value (&tplslot, ordby_info->ordbynum_pos[i], &tp_Bigint_domain,
@@ -3952,7 +3952,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		{
 		  data = info->output_recdes.data;
 		  /* update orderby_num() in the tuple */
-		  qfile_slot_set_tuple (&tplslot, data);
+		  qfile_slot_set_tuple_ptr (&tplslot, data);
 		  for (i = 0; ordby_info && i < ordby_info->ordbynum_pos_cnt; i++)
 		    {
 		      (void) qfile_slot_overwrite_value (&tplslot, ordby_info->ordbynum_pos[i], &tp_Bigint_domain,
@@ -4795,7 +4795,8 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 	  /* the stored tuple is later read in place (qexec_groupby, PEEK); a tuple pointer alone is not readable, so bind
 	   * the layout of the list it was saved for */
-	  qfile_slot_fill (&new_value->first_tuple, new_value->first_tuple.tpl, &groupby_list->type_list);
+	  qfile_slot_set_tuple_ptr_and_layout (&new_value->first_tuple, new_value->first_tuple.tpl,
+					       &groupby_list->type_list);
 
 	  /* no need to output it, we're storing it in the hash table */
 	  *output_tuple = false;
@@ -5187,7 +5188,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
   info = (GROUPBY_STATE *) arg;
   list_idp = &(info->input_scan->list_id);
-  qfile_slot_bind (&data_slot, &list_idp->type_list);	/* the sorted tuples come from the input list */
+  qfile_slot_set_layout (&data_slot, &list_idp->type_list);	/* the sorted tuples come from the input list */
 
   data = NULL;
   page = NULL;
@@ -5276,7 +5277,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	  data = info->gby_rec.data;
 	}
 
-      qfile_slot_set_tuple (&data_slot, data);
+      qfile_slot_set_tuple_ptr (&data_slot, data);
 
       if (info->input_recs == 0)
 	{
@@ -5939,7 +5940,8 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE_RECORD * left, int *left_ind, TP_DOMAIN **
       /* Do not copy the string--just use the pointer.  The pr_ routines for strings and sets have different semantics
        * for length. */
       left_is_set = pr_is_set_type (TP_DOMAIN_TYPE (left_dom[i])) ? true : false;
-      if (qfile_slot_read_value (left, left_ind[i], left_dom[i], &left_dbval, left_is_set, &left_null) != NO_ERROR)
+      if (qfile_slot_read_column_value (left, left_ind[i], left_dom[i], &left_dbval, left_is_set, &left_null) !=
+	  NO_ERROR)
 	{
 	  cmp = DB_UNK;		/* is error */
 	  break;
@@ -5951,7 +5953,8 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE_RECORD * left, int *left_ind, TP_DOMAIN **
 	}
 
       right_is_set = pr_is_set_type (TP_DOMAIN_TYPE (rght_dom[i])) ? true : false;
-      if (qfile_slot_read_value (rght, rght_ind[i], rght_dom[i], &right_dbval, right_is_set, &right_null) != NO_ERROR)
+      if (qfile_slot_read_column_value (rght, rght_ind[i], rght_dom[i], &right_dbval, right_is_set, &right_null) !=
+	  NO_ERROR)
 	{
 	  cmp = DB_UNK;		/* is error */
 	  goto clear;
@@ -6020,7 +6023,7 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE_RECORD * left, int *left_ind, TP_DOMAIN **
         int _v;                                                              \
         bool _null;                                                          \
         for (_v = 0; _v < nvals; _v++) {                                     \
-            (pre##_valp)[_v] = (char *) qfile_slot_locate (&(pre##_tplrec),  \
+            (pre##_valp)[_v] = (char *) qfile_slot_get_column_data (&(pre##_tplrec),  \
                                         (pre##_indp)[_v],                    \
                                         &(pre##_lenp)[_v], &_null);          \
             if (_null) (pre##_lenp)[_v] = 0;                                 \
@@ -18779,7 +18782,7 @@ qexec_get_tuple_column_value (QFILE_TUPLE_RECORD * tplrec, int index, DB_VALUE *
       return ER_FAILED;
     }
 
-  if (qfile_slot_read_value (tplrec, index, domain, valp, false, &is_null) != NO_ERROR)
+  if (qfile_slot_read_column_value (tplrec, index, domain, valp, false, &is_null) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -18818,7 +18821,7 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
     }
 
   /* we start with tpl itself, wrapped in a slot bound to the list's descriptor (type_list only supplies domains) */
-  qfile_slot_fill (&tuple_rec, tpl, &s_id.list_id.type_list);
+  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, &s_id.list_id.type_list);
 
   do
     {
@@ -18914,7 +18917,7 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD *
       copy = pr_is_set_type (type);
       pr_type_p = domp->type;
 
-      if (qfile_slot_read_value (tplrec, i, domp, &dbval1, copy, &is_null) != NO_ERROR)
+      if (qfile_slot_read_column_value (tplrec, i, domp, &dbval1, copy, &is_null) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -22698,7 +22701,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 
   analytic_state = (ANALYTIC_STATE *) arg;
   list_idp = &(analytic_state->input_scan->list_id);
-  qfile_slot_bind (&data_slot, &list_idp->type_list);	/* the sorted tuples come from the input list */
+  qfile_slot_set_layout (&data_slot, &list_idp->type_list);	/* the sorted tuples come from the input list */
 
   data = NULL;
 
@@ -22778,7 +22781,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	  peek = PEEK;		/* avoid unnecessary COPY */
 	}
 
-      qfile_slot_set_tuple (&data_slot, data);
+      qfile_slot_set_tuple_ptr (&data_slot, data);
 
       /*
        * process current sorted tuple
@@ -23742,7 +23745,7 @@ qexec_analytic_group_header_load (ANALYTIC_FUNCTION_STATE * func_state)
   assert (func_state != NULL);
 
   /* deserialize tuple count */
-  body = qfile_slot_locate (&func_state->group_tplrec, 0, &len, &is_null);
+  body = qfile_slot_get_column_data (&func_state->group_tplrec, 0, &len, &is_null);
   if (is_null)
     {
       return ER_FAILED;
@@ -23750,7 +23753,7 @@ qexec_analytic_group_header_load (ANALYTIC_FUNCTION_STATE * func_state)
   func_state->curr_group_tuple_count = OR_GET_INT (body);
 
   /* deserialize not-null tuple count */
-  body = qfile_slot_locate (&func_state->group_tplrec, 1, &len, &is_null);
+  body = qfile_slot_get_column_data (&func_state->group_tplrec, 1, &len, &is_null);
   if (is_null)
     {
       return ER_FAILED;
@@ -23781,7 +23784,7 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state, bool 
   assert (func_state != NULL);
 
   /* deserialize tuple count */
-  body = qfile_slot_locate (&func_state->value_tplrec, 0, &length, &is_null);
+  body = qfile_slot_get_column_data (&func_state->value_tplrec, 0, &length, &is_null);
   if (is_null)
     {
       return ER_FAILED;
@@ -23798,8 +23801,9 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state, bool 
   pr_clear_value (func_state->func_p->value);
 
   /* deserialize value */
-  rc = qfile_slot_read_value (&func_state->value_tplrec, 1, func_state->func_p->domain, func_state->func_p->value,
-			      false, &is_null);
+  rc =
+    qfile_slot_read_column_value (&func_state->value_tplrec, 1, func_state->func_p->domain, func_state->func_p->value,
+				  false, &is_null);
   if (rc != NO_ERROR)
     {
       return ER_FAILED;

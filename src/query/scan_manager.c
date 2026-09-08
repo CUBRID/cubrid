@@ -774,7 +774,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
     }
   indx_cov->tplrec->size = 0;
   indx_cov->tplrec->tpl = NULL;
-  qfile_slot_bind (indx_cov->tplrec, &indx_cov->list_id->type_list);
+  qfile_slot_set_layout (indx_cov->tplrec, &indx_cov->list_id->type_list);
 
   indx_cov->lsid = (QFILE_LIST_SCAN_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_SCAN_ID));
   if (indx_cov->lsid == NULL)
@@ -6755,7 +6755,8 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 	      /* the dumped tuple has the covering list's layout: bind + set it */
 	      tplrec.size = isidp->multi_range_opt.tplrec.size;
-	      qfile_slot_fill (&tplrec, isidp->multi_range_opt.tplrec.tpl, &isidp->indx_cov.list_id->type_list);
+	      qfile_slot_set_tuple_ptr_and_layout (&tplrec, isidp->multi_range_opt.tplrec.tpl,
+						   &isidp->indx_cov.list_id->type_list);
 	    }
 	  else
 	    {
@@ -7243,7 +7244,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->tplrecp)
 	{
 	  llsidp->tplrecp->size = tplrec.size;
-	  qfile_slot_fill (llsidp->tplrecp, tplrec.tpl, tplrec.tl);	/* output record: carry the binding too */
+	  qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.type_list);	/* output record: carry the binding too */
 	}
 
       return S_SUCCESS;
@@ -7935,7 +7936,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (llsidp->tplrecp)
 	    {
 	      llsidp->tplrecp->size = tplrec.size;
-	      qfile_slot_fill (llsidp->tplrecp, tplrec.tpl, tplrec.tl);	/* output record: carry the binding too */
+	      qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.type_list);	/* output record: carry the binding too */
 	    }
 
 	  return S_SUCCESS;
@@ -8098,7 +8099,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 	  if (llsidp->tplrecp)
 	    {
 	      llsidp->tplrecp->size = tplrec.size;
-	      qfile_slot_fill (llsidp->tplrecp, tplrec.tpl, tplrec.tl);	/* output record: carry the binding too */
+	      qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.type_list);	/* output record: carry the binding too */
 	    }
 	  return S_SUCCESS;
 	}
@@ -8901,11 +8902,11 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   llsidp = &scan_id->s.llsid;
 
   /* the probed tuples are copies of list_id tuples; retarget the slot only through the setter */
-  qfile_slot_bind (&tplrec, &llsidp->list_id->type_list);
+  qfile_slot_set_layout (&tplrec, &llsidp->list_id->type_list);
 
   while ((qp_scan = scan_hash_probe_next (thread_p, scan_id, &tpl)) == S_SUCCESS)
     {
-      qfile_slot_set_tuple (&tplrec, tpl);
+      qfile_slot_set_tuple_ptr (&tplrec, tpl);
 
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
@@ -8982,7 +8983,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->tplrecp)
 	{
 	  llsidp->tplrecp->size = tplrec.size;
-	  qfile_slot_fill (llsidp->tplrecp, tplrec.tpl, tplrec.tl);	/* output record: carry the binding too */
+	  qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.type_list);	/* output record: carry the binding too */
 	}
 
       return S_SUCCESS;

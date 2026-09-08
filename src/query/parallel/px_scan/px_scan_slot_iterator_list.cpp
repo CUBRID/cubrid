@@ -121,7 +121,7 @@ namespace parallel_scan
 	QFILE_TUPLE tpl;
 	QFILE_TUPLE_RECORD tpl_slot = { NULL, 0 };
 
-	qfile_slot_bind (&tpl_slot, &m_list_id->type_list);	/* raw page tuple wrapped in a slot */
+	qfile_slot_set_layout (&tpl_slot, &m_list_id->type_list);	/* raw page tuple wrapped in a slot */
 
 	if (has_overflow_page)
 	  {
@@ -140,7 +140,7 @@ namespace parallel_scan
 
 	m_curr_tpl += QFILE_GET_TUPLE_LENGTH (m_curr_tpl);
 	m_curr_tplno++;
-	qfile_slot_set_tuple (&tpl_slot, tpl);
+	qfile_slot_set_tuple_ptr (&tpl_slot, tpl);
 
 	if (m_val_list)
 	  {
@@ -185,7 +185,8 @@ namespace parallel_scan
 
 	if (m_tplrecp)
 	  {
-	    qfile_slot_fill (m_tplrecp, tpl, &m_list_id->type_list);	/* output record: carry the binding too */
+	    /* output record: carry the binding too */
+	    qfile_slot_set_tuple_ptr_and_layout (m_tplrecp, tpl, &m_list_id->type_list);
 	  }
 
 	return S_SUCCESS;

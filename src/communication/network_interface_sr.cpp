@@ -5630,7 +5630,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 	    }
 
 	  /* the body carries the same compression prefix that or_get_varchar_compression_lengths () expects */
-	  tuple_p = (char *) qfile_slot_locate (&tuple_record, i, &val_length, &is_null);
+	  tuple_p = (char *) qfile_slot_get_column_data (&tuple_record, i, &val_length, &is_null);
 	  if (!is_null)
 	    {
 	      or_init (&buf, tuple_p, val_length);
