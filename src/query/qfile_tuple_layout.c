@@ -170,8 +170,8 @@ qfile_set_layout (QFILE_TUPLE_VALUE_TYPE_LIST * tl)
     {
       assert (tl->domp != NULL);
       assert (tl->column_layout_array == (QFILE_COL_LAYOUT *) (tl->domp + tl->type_cnt));
-      qfile_type_list_compute (tl->domp, tl->type_cnt, tl->hdr_size, tl->column_layout_array, &tl->max_fixed_length_col_cnt,
-			       tl->data_off, &tl->bitmap_size);
+      qfile_type_list_compute (tl->domp, tl->type_cnt, tl->hdr_size, tl->column_layout_array,
+			       &tl->max_fixed_length_col_cnt, tl->data_off, &tl->bitmap_size);
     }
   else
     {
@@ -218,7 +218,8 @@ qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
       return true;		/* cannot check; do not fail the caller for that */
     }
 
-  qfile_type_list_compute (tl->domp, tl->type_cnt, tl->hdr_size, col, &max_fixed_length_col_cnt, data_off, &bitmap_size);
+  qfile_type_list_compute (tl->domp, tl->type_cnt, tl->hdr_size, col, &max_fixed_length_col_cnt, data_off,
+			   &bitmap_size);
 
   ok = (memcmp (col, tl->column_layout_array, tl->type_cnt * sizeof (QFILE_COL_LAYOUT)) == 0
 	&& max_fixed_length_col_cnt == tl->max_fixed_length_col_cnt && data_off[0] == tl->data_off[0]

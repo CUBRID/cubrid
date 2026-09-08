@@ -3951,12 +3951,14 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
 	  if (key->use_cmp_dom)
 	    {
 	      order =
-		qfile_compare_with_interpolation_domain (c, b0 + c->byte_offset_in_values, c->size, b1 + c->byte_offset_in_values, c->size, key,
-							 key_info_p);
+		qfile_compare_with_interpolation_domain (c, b0 + c->byte_offset_in_values, c->size,
+							 b1 + c->byte_offset_in_values, c->size, key, key_info_p);
 	    }
 	  else
 	    {
-	      order = (*key->sort_f) ((void *) (b0 + c->byte_offset_in_values), (void *) (b1 + c->byte_offset_in_values), key->col_dom, 0, 1, NULL);
+	      order =
+		(*key->sort_f) ((void *) (b0 + c->byte_offset_in_values), (void *) (b1 + c->byte_offset_in_values),
+				key->col_dom, 0, 1, NULL);
 	    }
 	  if (key->is_desc)
 	    {

@@ -873,7 +873,7 @@ extern int qfile_slot_overwrite_value (QFILE_TUPLE_RECORD * rec, int col, const 
 typedef struct qfile_tuple_walk QFILE_TUPLE_WALK;
 struct qfile_tuple_walk
 {
-  const char *tuple_ptr;		/* tuple start */
+  const char *tuple_ptr;	/* tuple start */
   const unsigned char *bitmap;	/* NULL when the tuple has no NULL column */
   int tpl_len;			/* QFILE_GET_TUPLE_LENGTH (tuple_ptr) */
   int next_byte_offset_in_tuple;	/* next value offset from tuple start, before alignment */
