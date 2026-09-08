@@ -8311,7 +8311,7 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_rang
 	{
 	  /* Scanrange starts with the given object */
 	  scan_range->first_oid = *start_oid;
-	  scan = heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid,
+	  scan = heap_get_visible_version (thread_p, &scan_range->first_oid, &scan_range->scan_cache.node.class_oid,
 					   &recdes, &scan_range->scan_cache, PEEK, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
