@@ -11896,7 +11896,7 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 
 /* ==========================================================================================================
  * remote DELETE + local subquery carve-out -- shape gate, same-server conversion, diagnostics.
- * Entry: pt_dblink_dml_where_is_inscope (from pt_convert_dblink_delete_query),
+ * Entry: pt_dblink_dml_where_is_inscope (from pt_convert_dblink_delete_query / _update_query),
  *        pt_dblink_dml_settle_sink (from pt_convert_dblink_dml_query).
  * ========================================================================================================== */
 
@@ -12123,6 +12123,100 @@ pt_dblink_dml_subq_servers (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME
   return snl->server_cnt - server_cnt_before;
 }
 
+/* walk callback: set *arg to true if the subtree holds a query node anywhere */
+static PT_NODE *
+pt_dblink_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_query = (bool *) arg;
+
+  if (PT_IS_QUERY (tree))
+    {
+      *has_query = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+static bool
+pt_dblink_has_query (PARSER_CONTEXT * parser, PT_NODE * tree)
+{
+  bool has_query = false;
+
+  parser_walk_tree (parser, tree, pt_dblink_find_query, &has_query, NULL, NULL);
+
+  return has_query;
+}
+
+/* true iff the UPDATE WHERE is one this sink can carry, with *has_driving_pred telling which track it is.
+ * Two shapes are admitted:
+ *   1. no WHERE at all, the SET track -- the only subquery sits in the assignments and every remote row is
+ *      updated                                                      -> *has_driving_pred = false
+ *   2. a single pushable predicate over a subquery (the DELETE sink's shapes, see
+ *      pt_dblink_dml_is_pushable_pred)                              -> *has_driving_pred = true
+ *
+ * A WHERE that only reads remote columns (col op literal) is left to the existing rejection: the remote
+ * statement would have to carry it verbatim, which needs a deparse this sink does not have. */
+static bool
+pt_dblink_update_where_is_inscope (PT_NODE * node, bool * has_driving_pred)
+{
+  PT_NODE *cond = node->info.update.search_cond;
+
+  *has_driving_pred = false;
+
+  if (cond == NULL)
+    {
+      return true;		/* shape 1 */
+    }
+
+  if (cond->next != NULL || !pt_dblink_dml_is_pushable_pred (cond))
+    {
+      return false;
+    }
+
+  *has_driving_pred = true;	/* shape 2 */
+  return true;
+}
+
+/* true iff every UPDATE SET assignment is one the remote sink can honor, with *num_set_subq set to how many
+ * of them are a scalar subquery. Two RHS forms are accepted:
+ *   - a bare subquery (col = (SELECT ...)): evaluated once, its value bound to a placeholder in the remote
+ *     SET clause
+ *   - anything with no subquery in it (literal, remote column, expression over them): carried verbatim
+ *
+ * Rejected: a multi-column row assignment ((c1, c2) = (SELECT ...)), which one placeholder per column cannot
+ * express, and a subquery buried inside an expression (col = (SELECT ...) || 'x'), where binding the scalar
+ * alone would drop the surrounding operator. Shape only -- purity is the caller's settle step. */
+static bool
+pt_dblink_update_set_is_inscope (PARSER_CONTEXT * parser, PT_NODE * node, int *num_set_subq)
+{
+  PT_ASSIGNMENTS_HELPER ea;
+  int cnt = 0;
+
+  *num_set_subq = 0;
+
+  pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
+  while (pt_get_next_assignment (&ea))
+    {
+      if (ea.is_n_column || ea.rhs == NULL)
+	{
+	  return false;
+	}
+
+      if (PT_IS_QUERY (ea.rhs))
+	{
+	  cnt++;
+	}
+      else if (pt_dblink_has_query (parser, ea.rhs))
+	{
+	  return false;		/* subquery buried inside an expression */
+	}
+    }
+
+  *num_set_subq = cnt;
+  return true;
+}
+
 /* Same-server mixed sink subquery: rewrite embedded remote specs to dblink derived tables. No runtime
  * change is needed -- the sink's aptr already compiles whatever subquery it is handed, generically.
  * Same idea as INSERT SELECT; walk covers the sink subtrees only. Clears sink_kind when not local-mixed. */
@@ -12290,9 +12384,9 @@ pt_dblink_dml_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_
 	}
     }
 
-  /* Decline diagnostics ahead of the generic catch-all. Still DELETE-only: the UPDATE carve-out is not set
-   * anywhere yet, and widening it here would change which message an unsupported UPDATE gets. */
-  if (node->node_type == PT_DELETE && remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
+  /* Decline diagnostics ahead of the generic catch-all. Only DELETE and UPDATE reach the body: the accessor
+   * hands back NULL for every other statement kind, and a NULL predicate is out of scope. */
+  if (remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
       && pt_dblink_dml_where_is_inscope (pt_dblink_dml_search_cond (node))
       && pt_dblink_dml_reject_declined (parser, node, upd_spec))
     {
@@ -12413,6 +12507,27 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   if (error != NO_ERROR)
     {
       return;
+    }
+
+  /* Optimistic sink: single remote UPDATE target, and both clauses in scope. The local subquery may sit in
+   * WHERE (the value-push driving predicate), in the SET assignments (a scalar bound to a placeholder in the
+   * remote SET clause), or in both -- the two axes are judged independently and both have to pass, so one unsupported
+   * clause blocks the statement. At least one local subquery must exist, otherwise this is a plain remote
+   * UPDATE that keeps the ordinary pushdown path.
+   *
+   * Refined in pt_convert_dblink_dml_query (pt_dblink_dml_settle_sink), same as DELETE. The single-spec
+   * requirement is what keeps a real join out: with a second spec a bare column could resolve to a local
+   * table, and neither axis inspects spec resolution. */
+  if (remote_upd == 1 && local_upd == 0 && node->info.update.spec != NULL && node->info.update.spec->next == NULL)
+    {
+      bool where_driving_pred = false;
+      int num_set_subq = 0;
+
+      if (pt_dblink_update_where_is_inscope (node, &where_driving_pred)
+	  && pt_dblink_update_set_is_inscope (parser, node, &num_set_subq) && (where_driving_pred || num_set_subq > 0))
+	{
+	  snl->sink_kind = DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ;
+	}
     }
 
   pt_convert_dblink_dml_query (parser, node, local_upd, remote_upd, snl);
@@ -12590,6 +12705,11 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       break;
     case PT_UPDATE:
       upd_spec = node->info.update.spec;
+      /* No pt_dblink_dml_subq_servers () here, unlike DELETE: leaving sub_sel_server_cnt at 0 keeps
+       * pt_dblink_dml_settle_sink from running the same-server conversion, so an UPDATE whose subquery also
+       * reads a remote table on the target's own server loses the sink and is refused. That mixed shape is
+       * deliberately out of this change -- opening it means checking the sink runtime against several aptrs
+       * whose specs were rewritten, which the DELETE track did separately. */
       break;
     case PT_MERGE:
       into_spec = node->info.merge.into;
@@ -12689,6 +12809,16 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
    * DML text serialization (qstr stays NULL) and preserve the WHERE subquery (delete_.search_cond) for XASL
    * generation; the runtime evaluates the subquery locally and pushes per-row DELETEs via CCI bind. */
   if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+    {
+      node->flag.cannot_prepare = 0;
+      pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);
+      return;
+    }
+
+  /* remote UPDATE + local subquery: do not serialize a pushdown qstr -- that would ship the local subquery to
+   * the remote server. Set up the DML sink (qstr left NULL) and keep the WHERE / SET trees for the later
+   * value-push path, same as the DELETE sink above. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ)
     {
       node->flag.cannot_prepare = 0;
       pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);

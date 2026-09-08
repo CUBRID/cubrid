@@ -22510,6 +22510,19 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	  return NULL;
 	}
 
+      /* remote UPDATE + local subquery: qstr == NULL means the gate chose the value-push sink, whose XASL
+       * builder and per-row runtime are not implemented yet. Reject rather than fall into
+       * pt_to_xasl_for_dblink below, which would ship a statement whose local subqueries cannot run on the
+       * remote server. Replaced by the sink builder once it lands. */
+      if (from->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML
+	  && from->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
+	{
+	  PT_ERROR (parser, statement,
+		    "dblink: remote UPDATE with local subquery is not supported yet (under construction)");
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	  return NULL;
+	}
+
       return pt_to_xasl_for_dblink (parser, from);
     }
 

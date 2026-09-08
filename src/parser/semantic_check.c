@@ -12581,6 +12581,49 @@ pt_bind_remote_dml_subq (PARSER_CONTEXT * parser, PT_NODE * subq, SEMANTIC_CHK_I
 }
 
 /*
+ * pt_dblink_update_bind_subq () - Reject a subquery correlated to the outer remote UPDATE target, then
+ *   bind it stand-alone. A remote UPDATE sink holds one subquery per SET assignment plus the WHERE
+ *   driving predicate, and each needs both steps, so they live here instead of being repeated per site.
+ *   The correlation walk is shared with the DELETE sink (PT_DBLINK_DEL_CORR and its callback pair): the
+ *   rule is the same for both -- the sink evaluates the subquery once with no outer row, so a reference
+ *   to the target cannot be honored -- and rejecting it here keeps the stand-alone bind below from
+ *   failing with a confusing "Attribute <alias> was not found". Only a qualified reference is recognized,
+ *   so an unqualified one (WHERE l.x = remote_only_col) still reaches the bind and fails with that
+ *   message -- the statement is rejected either way, just less clearly. Same limitation on the DELETE side.
+ *   return: the bound subquery, or NULL if it was rejected or the bind failed (parser error already set)
+ *   parser(in)          : parser context
+ *   stmt(in)            : the UPDATE statement, for error reporting
+ *   subq(in)            : the subquery to check and bind
+ *   sc_info_ptr(in/out) : semantic check info, passed through to pt_bind_remote_dml_subq
+ *   alias(in)           : outer target range variable, may be NULL
+ *   entity(in)          : outer target table name, may be NULL
+ *   clause(in)          : "WHERE" or "SET", used to name the offending clause in both messages
+ */
+static PT_NODE *
+pt_dblink_update_bind_subq (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * subq,
+			    SEMANTIC_CHK_INFO * sc_info_ptr, const char *alias, const char *entity, const char *clause)
+{
+  PT_DBLINK_DEL_CORR corr;
+  char msg[128];
+
+  corr.alias = alias;
+  corr.entity = entity;
+  corr.top = NULL;
+  corr.found = false;
+  parser_walk_tree (parser, subq, pt_dblink_delete_corr_ref_pre, &corr, pt_dblink_delete_corr_ref_post, &corr);
+  if (corr.found)
+    {
+      snprintf (msg, sizeof (msg), "dblink: correlated subquery is not supported in a remote UPDATE %s clause", clause);
+      PT_ERRORc (parser, stmt, msg);
+      return NULL;
+    }
+
+  snprintf (msg, sizeof (msg), "remote UPDATE: failed to translate the %s subquery", clause);
+
+  return pt_bind_remote_dml_subq (parser, subq, sc_info_ptr, msg);
+}
+
+/*
  * pt_check_with_info () -  do name resolution & semantic checks on this tree
  *   return:  statement if no errors, NULL otherwise
  *   parser(in): the parser context
@@ -12780,6 +12823,50 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		      if (subq != NULL)
 			{
 			  cond->info.expr.arg2 = subq;
+			}
+		    }
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  /* mirrors the remote DELETE handling above (same reason -- see that comment), with one
+		   * difference: a remote UPDATE sink can hold several local subqueries -- the WHERE driving
+		   * predicate plus one per SET assignment -- and every one of them runs stand-alone. */
+		  PT_NODE *remote = node->info.update.spec->info.spec.remote_server_name;
+
+		  if (remote != NULL && remote->node_type == PT_DBLINK_TABLE_DML
+		      && remote->info.dblink_table.qstr == NULL)
+		    {
+		      PT_NODE *tgt = node->info.update.spec;
+		      PT_NODE *cond = node->info.update.search_cond;
+		      PT_ASSIGNMENTS_HELPER ea;
+		      const char *alias =
+			(tgt->info.spec.range_var != NULL) ? tgt->info.spec.range_var->info.name.original : NULL;
+		      const char *entity =
+			(tgt->info.spec.entity_name != NULL) ? tgt->info.spec.entity_name->info.name.original : NULL;
+
+		      if (cond != NULL && cond->next == NULL && cond->node_type == PT_EXPR
+			  && cond->info.expr.arg2 != NULL && PT_IS_QUERY (cond->info.expr.arg2))
+			{
+			  PT_NODE *subq = pt_dblink_update_bind_subq (parser, node, cond->info.expr.arg2,
+								      sc_info_ptr, alias, entity, "WHERE");
+			  if (subq != NULL)
+			    {
+			      cond->info.expr.arg2 = subq;
+			    }
+			}
+
+		      pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
+		      while (!pt_has_error (parser) && pt_get_next_assignment (&ea))
+			{
+			  if (ea.rhs != NULL && PT_IS_QUERY (ea.rhs))
+			    {
+			      PT_NODE *subq = pt_dblink_update_bind_subq (parser, node, ea.rhs, sc_info_ptr,
+									  alias, entity, "SET");
+			      if (subq != NULL)
+				{
+				  ea.assignment->info.expr.arg2 = subq;
+				}
+			    }
 			}
 		    }
 		}
