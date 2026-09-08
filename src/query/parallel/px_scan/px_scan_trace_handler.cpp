@@ -22,6 +22,7 @@
 
 #include "px_scan_trace_handler.hpp"
 #include "perf_monitor.h"
+#include "query_dump.h"
 #include "tsc_timer.h"
 #include "xasl_iteration.hpp"
 
@@ -84,10 +85,46 @@ namespace parallel_scan
       }
   }
 
+  void trace_handler::add_expr_compile_dump (xasl_node *xasl)
+  {
+    char *buf = nullptr;
+    size_t len = 0;
+    FILE *fp;
+
+    {
+      std::lock_guard<std::mutex> lock (m_stats_mutex);
+      if (!m_expr_compile_dump.empty ())
+	{
+	  return;
+	}
+    }
+    /* rendered with indent 0; the scan's dump re-indents every line under its own entry */
+    fp = open_memstream (&buf, &len);
+    if (fp == nullptr)
+      {
+	return;
+      }
+    qdump_print_expr_compile_text (fp, xasl, 0, " [px worker]");
+    fclose (fp);
+    if (buf != nullptr)
+      {
+	if (len > 0)
+	  {
+	    std::lock_guard<std::mutex> lock (m_stats_mutex);
+	    if (m_expr_compile_dump.empty ())
+	      {
+		m_expr_compile_dump.assign (buf, len);
+	      }
+	  }
+	free (buf);
+      }
+  }
+
   void trace_handler::clear()
   {
     std::lock_guard<std::mutex> lock (m_stats_mutex);
     m_stats.clear();
+    m_expr_compile_dump.clear();
     m_topnsort_used.store (false, std::memory_order_relaxed);   // per-reopen reset, matches m_stats.clear()
   }
 
@@ -95,6 +132,10 @@ namespace parallel_scan
   {
     // accumulative m_topnsort_used: no in-place reset; storage freed+realloc'd per top-level exec in qexec_clear_access_spec_list. worker per-reopen reset = trace_handler::clear().
     m_topnsort_used = m_topnsort_used || trace_handler.is_topnsort_used();
+    if (m_expr_compile_dump.empty ())
+      {
+	m_expr_compile_dump = trace_handler.m_expr_compile_dump;
+      }
     if (!m_is_initialized)
       {
 	m_stats.resize (trace_handler.m_stats.size());
@@ -306,6 +347,17 @@ namespace parallel_scan
 	fprintf (fp, ", gather: %s", result_type_str);
 	fprintf (fp, ")");
       }
+
+    /* the compiled expression programs of the worker clones, one line at a time under the
+     * same indent as the parallel line above (the listing was rendered with indent 0) */
+    for (size_t pos = 0; pos < m_expr_compile_dump.size ();)
+      {
+	size_t nl = m_expr_compile_dump.find ('\n', pos);
+	size_t end = (nl == std::string::npos) ? m_expr_compile_dump.size () : nl;
+
+	fprintf (fp, "\n%*c%.*s", indent, ' ', (int) (end - pos), m_expr_compile_dump.c_str () + pos);
+	pos = end + 1;
+      }
   }
 
   void accumulative_trace_storage::dump_stats_json (trace_json_t *scan, char *class_name)
@@ -449,6 +501,10 @@ namespace parallel_scan
 	  {
 	    trace_json_object_set_new (parallel_obj, "topnsort", trace_json_true ());
 	  }
+      }
+    if (!m_expr_compile_dump.empty ())
+      {
+	trace_json_object_set_new (parallel_obj, "expr_compile", trace_json_string (m_expr_compile_dump.c_str ()));
       }
     trace_json_object_set_new (scan, scan_type_label, parallel_obj);
   }

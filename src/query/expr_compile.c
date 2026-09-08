@@ -133,8 +133,29 @@ struct expr_build_ctx
     int opcode;			/* -1 for leaves */
     int child1, child2, child3;	/* child cell indexes, -1 when absent */
     int cell;
+    int guard;			/* the guard the cell is published under (see guards[]); 0 = always */
   } cse[EXPR_MAX_STEPS];
   int n_cse;
+
+  /* Guards: the condition under which a right-hand operand's steps run.  A right-hand side
+   * that can fail becomes a lazy region the node's kernel runs only when its left cell says
+   * so (non-NULL for arithmetic and NULLIF, NULL for NVL), so a cell such a region publishes
+   * is valid only under that condition.  Instead of forgetting those cells, the CSE table
+   * remembers the guard they were published under: a later right-hand side compiled under
+   * the SAME guard -- the same left cell, the same skip condition, the same enclosing
+   * guards -- may reuse them, because its own region runs exactly when theirs did (and the
+   * producing node comes first in step order).  This is what keeps "ep * (1 - disc)" a
+   * single chain when it occurs in several aggregates of one list.  Guard ids form a trie
+   * (parent = enclosing guard, 0 = the main loop); cur_guard is the id in effect while a
+   * right-hand side compiles. */
+  struct
+  {
+    int parent;
+    int cell;
+    int kind;
+  } guards[EXPR_MAX_STEPS];
+  int n_guards;
+  int cur_guard;
 
   val_descr *vd;		/* bind-time value descriptor (host variable types) */
     cubthread::entry * thread_p;
@@ -1282,7 +1303,7 @@ expr_new_step_with_cell (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int *cell
 typedef struct expr_build_mark EXPR_BUILD_MARK;
 struct expr_build_mark
 {
-  int n_steps, n_cells, n_cse, n_slots;
+  int n_steps, n_cells, n_cse, n_slots, n_guards;
 };
 
 static void
@@ -1292,6 +1313,7 @@ expr_build_mark (const EXPR_BUILD_CTX * bctx, EXPR_BUILD_MARK * mark)
   mark->n_cells = bctx->n_cells;
   mark->n_cse = bctx->n_cse;
   mark->n_slots = bctx->n_slots;
+  mark->n_guards = bctx->n_guards;
 }
 
 /* drop every step, cell, CSE entry and slot emitted since the mark: the predicate trees
@@ -1313,6 +1335,7 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
   bctx->n_cells = mark->n_cells;
   bctx->n_cse = mark->n_cse;
   bctx->n_slots = mark->n_slots;
+  bctx->n_guards = mark->n_guards;
 }
 
 /* can this step fail for a non-NULL input?  Publishing a host variable, coercing to NUMERIC
@@ -1359,10 +1382,11 @@ expr_steps_fallible (const EXPR_BUILD_CTX * bctx, int start)
 /* Turn the steps emitted since start into a deferred region owned by the node about to be
  * emitted.  The interpreted path never evaluates these operands unless the left side asks
  * for them, so they must not run in the main loop: they are pushed one region level down
- * (nested regions inside them move with them).  Their CSE entries are dropped as well -- a
- * later node must not read a cell that is only published when this region runs. */
+ * (nested regions inside them move with them).  Their CSE entries stay: they were tagged
+ * with the guard the region runs under (expr_rhs_begin ()), so only a right-hand side
+ * compiled under that same guard can read the cells they publish. */
 static void
-expr_build_defer_region (EXPR_BUILD_CTX * bctx, int start, int cse_mark, int *region_start, int *region_n)
+expr_build_defer_region (EXPR_BUILD_CTX * bctx, int start, int *region_start, int *region_n)
 {
   int j, first = -1, n = 0;
 
@@ -1383,7 +1407,6 @@ expr_build_defer_region (EXPR_BUILD_CTX * bctx, int start, int cse_mark, int *re
 	}
       n++;
     }
-  bctx->n_cse = cse_mark;
   /* the non-hoisted steps of the range stay contiguous after the prologue remap, so the
    * region is [first, first + n) in build order */
   *region_start = (first < 0) ? start : first;
@@ -1399,7 +1422,9 @@ expr_cse_find (EXPR_BUILD_CTX * bctx, const void *id, int opcode, int c1, int c2
   for (i = 0; i < bctx->n_cse; i++)
     {
       if (bctx->cse[i].id == id && bctx->cse[i].opcode == opcode && bctx->cse[i].child1 == c1
-	  && bctx->cse[i].child2 == c2 && bctx->cse[i].child3 == c3)
+	  && bctx->cse[i].child2 == c2 && bctx->cse[i].child3 == c3
+	  /* a cell published unconditionally, or under exactly the guard in effect here */
+	  && (bctx->cse[i].guard == 0 || bctx->cse[i].guard == bctx->cur_guard))
 	{
 	  return bctx->cse[i].cell;
 	}
@@ -1407,8 +1432,11 @@ expr_cse_find (EXPR_BUILD_CTX * bctx, const void *id, int opcode, int c1, int c2
   return -1;
 }
 
+/* guard: the guard the cell is published under -- bctx->cur_guard for a step's cell, 0 for
+ * a wired cell (a constant, a host variable published once per execution), which is valid
+ * wherever it is read */
 static void
-expr_cse_add (EXPR_BUILD_CTX * bctx, const void *id, int opcode, int c1, int c2, int c3, int cell)
+expr_cse_add (EXPR_BUILD_CTX * bctx, const void *id, int opcode, int c1, int c2, int c3, int cell, int guard)
 {
   if (bctx->n_cse < EXPR_MAX_STEPS)
     {
@@ -1418,7 +1446,147 @@ expr_cse_add (EXPR_BUILD_CTX * bctx, const void *id, int opcode, int c1, int c2,
       bctx->cse[bctx->n_cse].child2 = c2;
       bctx->cse[bctx->n_cse].child3 = c3;
       bctx->cse[bctx->n_cse].cell = cell;
+      bctx->cse[bctx->n_cse].guard = guard;
       bctx->n_cse++;
+    }
+}
+
+/* Inline literals are immutable, so two literal nodes carrying the same value of the same
+ * domain are interchangeable -- the "1" of "1 - disc" and the "1" of "1 + tax" are distinct
+ * regu nodes in the plan, one per occurrence in the statement, and without this every
+ * sub-expression built on a literal is a CSE miss.  Only exact, non-string types take part
+ * (no collation, no coercion); the values are compared bit for bit. */
+#define EXPR_CSE_LITERAL (-3)	/* the opcode of a by-value literal entry; id is the DB_VALUE */
+
+static bool
+expr_literal_shareable (const DB_VALUE * val)
+{
+  if (DB_IS_NULL (val))
+    {
+      return false;
+    }
+  switch (DB_VALUE_DOMAIN_TYPE (val))
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATETIME:
+      return true;
+    default:
+      return false;
+    }
+}
+
+static bool
+expr_literal_same (const DB_VALUE * a, const DB_VALUE * b)
+{
+  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (a);
+
+  if (type != DB_VALUE_DOMAIN_TYPE (b))
+    {
+      return false;
+    }
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+      return db_get_short (a) == db_get_short (b);
+    case DB_TYPE_INTEGER:
+      return db_get_int (a) == db_get_int (b);
+    case DB_TYPE_BIGINT:
+      return db_get_bigint (a) == db_get_bigint (b);
+    case DB_TYPE_FLOAT:
+      return memcmp (&a->data.f, &b->data.f, sizeof (float)) == 0;
+    case DB_TYPE_DOUBLE:
+      return memcmp (&a->data.d, &b->data.d, sizeof (double)) == 0;
+    case DB_TYPE_NUMERIC:
+      return DB_VALUE_PRECISION (a) == DB_VALUE_PRECISION (b) && DB_VALUE_SCALE (a) == DB_VALUE_SCALE (b)
+	&& memcmp (db_locate_numeric (a), db_locate_numeric (b), DB_NUMERIC_BUF_SIZE) == 0;
+    case DB_TYPE_DATE:
+      return *db_get_date (a) == *db_get_date (b);
+    case DB_TYPE_TIME:
+      return *db_get_time (a) == *db_get_time (b);
+    case DB_TYPE_TIMESTAMP:
+      return *db_get_timestamp (a) == *db_get_timestamp (b);
+    case DB_TYPE_DATETIME:
+      return memcmp (db_get_datetime (a), db_get_datetime (b), sizeof (DB_DATETIME)) == 0;
+    default:
+      return false;
+    }
+}
+
+static int
+expr_cse_find_literal (EXPR_BUILD_CTX * bctx, const DB_VALUE * val)
+{
+  int i;
+
+  for (i = 0; i < bctx->n_cse; i++)
+    {
+      if (bctx->cse[i].opcode == EXPR_CSE_LITERAL && expr_literal_same ((const DB_VALUE *) bctx->cse[i].id, val))
+	{
+	  return bctx->cse[i].cell;
+	}
+    }
+  return -1;
+}
+
+/* the two skip conditions a lazy right-hand side can run under */
+#define EXPR_GUARD_LHS_NOT_NULL 1	/* arithmetic, NULLIF: the right side runs for a non-NULL left */
+#define EXPR_GUARD_LHS_NULL 2	/* NVL / IFNULL / COALESCE: the right side runs for a NULL left */
+
+/* Enter the guard a right-hand operand compiles under: (enclosing guard, left cell, kind).
+ * Two nodes with the same left cell and skip condition, nested the same way, get the same
+ * id.  Returns the previous guard through saved; -1 when the guard table is full (the
+ * caller declines the node). */
+static int
+expr_rhs_begin (EXPR_BUILD_CTX * bctx, int lhs_cell, int kind, int *saved)
+{
+  int i;
+
+  *saved = bctx->cur_guard;
+  for (i = 0; i < bctx->n_guards; i++)
+    {
+      if (bctx->guards[i].parent == *saved && bctx->guards[i].cell == lhs_cell && bctx->guards[i].kind == kind)
+	{
+	  bctx->cur_guard = i + 1;
+	  return bctx->cur_guard;
+	}
+    }
+  if (bctx->n_guards >= EXPR_MAX_STEPS)
+    {
+      return -1;
+    }
+  bctx->guards[bctx->n_guards].parent = *saved;
+  bctx->guards[bctx->n_guards].cell = lhs_cell;
+  bctx->guards[bctx->n_guards].kind = kind;
+  bctx->n_guards++;
+  bctx->cur_guard = bctx->n_guards;
+  return bctx->cur_guard;
+}
+
+/* Leave the right-hand side's guard.  A right-hand side that stays eager (no fallible step,
+ * so no region) publishes its cells on every row after all: its entries are re-tagged with
+ * the enclosing guard so any later reader may share them. */
+static void
+expr_rhs_end (EXPR_BUILD_CTX * bctx, int saved, int guard, int cse_start, bool lazy)
+{
+  int i;
+
+  bctx->cur_guard = saved;
+  if (!lazy)
+    {
+      for (i = cse_start; i < bctx->n_cse; i++)
+	{
+	  if (bctx->cse[i].guard == guard)
+	    {
+	      bctx->cse[i].guard = saved;
+	    }
+	}
     }
 }
 
@@ -2199,22 +2367,35 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	  cell = expr_new_cell (bctx, regu->value.dbvalptr);
 	  if (cell >= 0)
 	    {
-	      expr_cse_add (bctx, regu->value.dbvalptr, -1, -1, -1, -1, cell);
+	      expr_cse_add (bctx, regu->value.dbvalptr, -1, -1, -1, -1, cell, 0);
 	    }
 	}
       return cell;
 
     case TYPE_DBVAL:
-      cell = expr_cse_find (bctx, &regu->value.dbval, -1, -1, -1, -1);
-      if (cell < 0)
-	{
-	  cell = expr_new_cell (bctx, &regu->value.dbval);
-	  if (cell >= 0)
-	    {
-	      expr_cse_add (bctx, &regu->value.dbval, -1, -1, -1, -1, cell);
-	    }
-	}
-      return cell;
+      {
+	bool shareable = expr_literal_shareable (&regu->value.dbval);
+
+	cell = expr_cse_find (bctx, &regu->value.dbval, -1, -1, -1, -1);
+	if (cell < 0 && shareable)
+	  {
+	    /* the same value already wired for another occurrence of the literal */
+	    cell = expr_cse_find_literal (bctx, &regu->value.dbval);
+	  }
+	if (cell < 0)
+	  {
+	    cell = expr_new_cell (bctx, &regu->value.dbval);
+	    if (cell >= 0)
+	      {
+		expr_cse_add (bctx, &regu->value.dbval, -1, -1, -1, -1, cell, 0);
+		if (shareable)
+		  {
+		    expr_cse_add (bctx, &regu->value.dbval, EXPR_CSE_LITERAL, -1, -1, -1, cell, 0);
+		  }
+	      }
+	  }
+	return cell;
+      }
 
     case TYPE_POS_VALUE:
       {
@@ -2242,7 +2423,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	step->out = NULL;
 	step->arg1p = NULL;
 	/* stash the cell index in a parallel array via cse */
-	expr_cse_add (bctx, NULL, TYPE_POS_VALUE, regu->value.val_pos, -1, -1, cell);
+	expr_cse_add (bctx, NULL, TYPE_POS_VALUE, regu->value.val_pos, -1, -1, cell, 0);
 	/* the bound value array is fixed for a whole execution: publish once per
 	 * execution, not per row */
 	bctx->step_exec_prologue[step - bctx->steps] = (bctx->in_branch == 0);
@@ -2266,7 +2447,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	    return -1;
 	  }
 	step->regu = regu;
-	expr_cse_add (bctx, regu, -1, -1, -1, -1, cell);
+	expr_cse_add (bctx, regu, -1, -1, -1, -1, cell, bctx->cur_guard);
 	*compiled_something = true;	/* a shared leaf is already a win */
 	return cell;
       }
@@ -2328,7 +2509,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		bctx->n_slots++;
 		step->domain = (rtype == DB_TYPE_INTEGER) ? NULL : regu->domain;
 		step->regu = regu;
-		expr_cse_add (bctx, regu, -2, -1, -1, -1, cell);
+		expr_cse_add (bctx, regu, -2, -1, -1, -1, cell, bctx->cur_guard);
 		*compiled_something = true;
 		return cell;
 	      }
@@ -2405,7 +2586,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		  bctx->n_slots++;
 		  step->kernel = expr_k_case_cast;
 		}
-	      expr_cse_add (bctx, regu, -2, -1, -1, -1, cell);
+	      expr_cse_add (bctx, regu, -2, -1, -1, -1, cell, bctx->cur_guard);
 	      *compiled_something = true;
 	      return cell;
 	    }
@@ -2415,7 +2596,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	  {
 	    /* T_NVL / T_IFNULL / T_COALESCE share one interpreted block */
 	    DB_TYPE t1, t2;
-	    int r_start, r_cse, r_n;
+	    int r_start, r_cse, r_n, guard, saved_guard;
 	    bool lazy;
 
 	    /* the pointer-select is only transparent when both branches already carry
@@ -2439,12 +2620,18 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	     * its steps can fail they become a region the lazy kernel runs on that condition */
 	    r_start = bctx->n_steps;
 	    r_cse = bctx->n_cse;
+	    guard = expr_rhs_begin (bctx, c1, EXPR_GUARD_LHS_NULL, &saved_guard);
+	    if (guard < 0)
+	      {
+		return -1;
+	      }
 	    c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
+	    lazy = expr_steps_fallible (bctx, r_start);
+	    expr_rhs_end (bctx, saved_guard, guard, r_cse, lazy);
 	    if (c2 < 0)
 	      {
 		return -1;
 	      }
-	    lazy = expr_steps_fallible (bctx, r_start);
 
 	    cell = expr_cse_find (bctx, NULL, T_NVL, c1, c2, -1);
 	    if (cell >= 0)
@@ -2453,7 +2640,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	      }
 	    if (lazy)
 	      {
-		expr_build_defer_region (bctx, r_start, r_cse, &r_start, &r_n);
+		expr_build_defer_region (bctx, r_start, &r_start, &r_n);
 	      }
 	    step = expr_new_step_with_cell (bctx, lazy ? expr_k_lazy_nvl : expr_k_nvl, &cell);
 	    if (step == NULL)
@@ -2469,7 +2656,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		step->t_start = r_start;
 		step->t_n = r_n;
 	      }
-	    expr_cse_add (bctx, NULL, T_NVL, c1, c2, -1, cell);
+	    expr_cse_add (bctx, NULL, T_NVL, c1, c2, -1, cell, bctx->cur_guard);
 	    *compiled_something = true;
 	    return cell;
 	  }
@@ -2533,7 +2720,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	    bctx->n_slots++;
 	    step->aux = (int) arith->misc_operand;
 	    step->regu = regu;
-	    expr_cse_add (bctx, NULL, T_EXTRACT, c1, (int) arith->misc_operand, -1, cell);
+	    expr_cse_add (bctx, NULL, T_EXTRACT, c1, (int) arith->misc_operand, -1, cell, bctx->cur_guard);
 	    *compiled_something = true;
 	    return cell;
 	  }
@@ -2544,7 +2731,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	     * interpreted domain-infer arm and cross-type coercion stay interpreted */
 	    DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
 	    DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
-	    int r_start, r_cse, r_n;
+	    int r_start, r_cse, r_n, guard, saved_guard;
 	    bool lazy;
 
 	    if (regu->domain == NULL || t1 != t2 || t1 == DB_TYPE_UNKNOWN
@@ -2562,12 +2749,18 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	     * for a non-NULL left one (lazy region when its steps can fail) */
 	    r_start = bctx->n_steps;
 	    r_cse = bctx->n_cse;
+	    guard = expr_rhs_begin (bctx, c1, EXPR_GUARD_LHS_NOT_NULL, &saved_guard);
+	    if (guard < 0)
+	      {
+		return -1;
+	      }
 	    c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
+	    lazy = expr_steps_fallible (bctx, r_start);
+	    expr_rhs_end (bctx, saved_guard, guard, r_cse, lazy);
 	    if (c2 < 0)
 	      {
 		return -1;
 	      }
-	    lazy = expr_steps_fallible (bctx, r_start);
 	    cell = expr_cse_find (bctx, regu->domain, T_NULLIF, c1, c2, -1);
 	    if (cell >= 0)
 	      {
@@ -2575,7 +2768,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	      }
 	    if (lazy)
 	      {
-		expr_build_defer_region (bctx, r_start, r_cse, &r_start, &r_n);
+		expr_build_defer_region (bctx, r_start, &r_start, &r_n);
 	      }
 	    step = expr_new_step_with_cell (bctx, lazy ? expr_k_lazy_nullif : expr_k_nullif, &cell);
 	    if (step == NULL)
@@ -2594,7 +2787,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		step->t_start = r_start;
 		step->t_n = r_n;
 	      }
-	    expr_cse_add (bctx, regu->domain, T_NULLIF, c1, c2, -1, cell);
+	    expr_cse_add (bctx, regu->domain, T_NULLIF, c1, c2, -1, cell, bctx->cur_guard);
 	    *compiled_something = true;
 	    return cell;
 	  }
@@ -2621,7 +2814,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	    step->regu = regu;
 	    step->out = (DB_VALUE *) 1;	/* needs an owned slot; materialized later */
 	    bctx->n_slots++;
-	    expr_cse_add (bctx, regu->domain, T_CAST, c1, -1, -1, cell);
+	    expr_cse_add (bctx, regu->domain, T_CAST, c1, -1, -1, cell, bctx->cur_guard);
 	    *compiled_something = true;
 	    return cell;
 	  }
@@ -2652,7 +2845,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	  DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
 	  DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
 	  bool numeric_pure = false, lazy;
-	  int r_start, r_cse, r_n;
+	  int r_start, r_cse, r_n, guard, saved_guard;
 
 	  if (rtype == DB_TYPE_NUMERIC)
 	    {
@@ -2699,27 +2892,37 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	   * that condition; a right side that cannot fail stays in the main loop */
 	  r_start = bctx->n_steps;
 	  r_cse = bctx->n_cse;
-	  c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
-	  if (c2 < 0)
+	  guard = expr_rhs_begin (bctx, c1, EXPR_GUARD_LHS_NOT_NULL, &saved_guard);
+	  if (guard < 0)
 	    {
 	      return -1;
 	    }
-	  if (rtype == DB_TYPE_NUMERIC && t2 != DB_TYPE_NUMERIC)
+	  c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
+	  if (c2 >= 0 && rtype == DB_TYPE_NUMERIC && t2 != DB_TYPE_NUMERIC)
 	    {
 	      step = expr_new_step_with_cell (bctx, expr_k_coerce_numeric, &cell);
 	      if (step == NULL)
 		{
-		  return -1;
+		  c2 = -1;
 		}
-	      step->arg1p = EXPR_ARG_ENCODE (c2);
-	      step->out = (DB_VALUE *) 1;
-	      bctx->n_slots++;
-	      bctx->step_prologue[step - bctx->steps] = (arith->rightptr->type == TYPE_DBVAL && bctx->in_branch == 0);
-	      bctx->step_exec_prologue[step - bctx->steps] =
-		(arith->rightptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
-	      c2 = cell;
+	      else
+		{
+		  step->arg1p = EXPR_ARG_ENCODE (c2);
+		  step->out = (DB_VALUE *) 1;
+		  bctx->n_slots++;
+		  bctx->step_prologue[step - bctx->steps] =
+		    (arith->rightptr->type == TYPE_DBVAL && bctx->in_branch == 0);
+		  bctx->step_exec_prologue[step - bctx->steps] =
+		    (arith->rightptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
+		  c2 = cell;
+		}
 	    }
 	  lazy = expr_steps_fallible (bctx, r_start);
+	  expr_rhs_end (bctx, saved_guard, guard, r_cse, lazy);
+	  if (c2 < 0)
+	    {
+	      return -1;
+	    }
 
 	  cell = expr_cse_find (bctx, NULL, arith->opcode, c1, c2, (int) rtype);
 	  if (cell >= 0)
@@ -2730,7 +2933,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	  kernel = expr_arith_kernel (arith->opcode, rtype, numeric_pure);
 	  if (lazy)
 	    {
-	      expr_build_defer_region (bctx, r_start, r_cse, &r_start, &r_n);
+	      expr_build_defer_region (bctx, r_start, &r_start, &r_n);
 	    }
 	  step = expr_new_step_with_cell (bctx, lazy ? expr_k_lazy_arith : kernel, &cell);
 	  if (step == NULL)
@@ -2753,7 +2956,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	      step->t_start = r_start;
 	      step->t_n = r_n;
 	    }
-	  expr_cse_add (bctx, NULL, arith->opcode, c1, c2, (int) rtype, cell);
+	  expr_cse_add (bctx, NULL, arith->opcode, c1, c2, (int) rtype, cell, bctx->cur_guard);
 	  *compiled_something = true;
 	  return cell;
 	}

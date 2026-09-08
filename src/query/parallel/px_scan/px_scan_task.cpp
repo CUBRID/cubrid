@@ -455,6 +455,8 @@ namespace parallel_scan
 	  {
 	    m_trace_handler->m_trace_storage_for_sibling_xasl.merge_xasl_tree (m_xasl);
 	  }
+	/* this clone's compiled programs are still alive here (qexec_clear_xasl () below frees them) */
+	m_trace_handler->add_expr_compile_dump (m_xasl);
 	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
 				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
 				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),

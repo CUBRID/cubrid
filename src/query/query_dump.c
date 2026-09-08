@@ -3747,12 +3747,13 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
  *				      every active program
  */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-static void
-qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent)
+void
+qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const char *tag)
 {
   cubxasl::aggregate_list_node * agg_list = NULL, *agg;
   OUTPTR_LIST *outs[2] = { NULL, NULL };
   const char *out_names[2] = { "output list", "group output list" };
+  const char *sfx = (tag != NULL) ? tag : "";
   int i, k;
 
   outs[0] = xasl_p->outptr_list;
@@ -3787,12 +3788,12 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent)
 	    }
 	  if (had_candidates)
 	    {
-	      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): interpreted (not covered)\n", indent, ' ');
+	      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): interpreted (not covered)%s\n", indent, ' ', sfx);
 	    }
 	}
       else
 	{
-	  fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): active\n", indent, ' ');
+	  fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): active%s\n", indent, ' ', sfx);
 	  for (agg = agg_list, i = 0; agg != NULL; agg = agg->next, i++)
 	    {
 	      if (agg->operand_prog_base >= 0)
@@ -3816,8 +3817,8 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  {
 	    continue;
 	  }
-	fprintf (fp, "%*cEXPR_COMPILE (data filter): %s\n", indent, ' ',
-		 (spec->where_pred->scan_prog_state == 1) ? "active" : "interpreted (not covered)");
+	fprintf (fp, "%*cEXPR_COMPILE (data filter): %s%s\n", indent, ' ',
+		 (spec->where_pred->scan_prog_state == 1) ? "active" : "interpreted (not covered)", sfx);
       }
   }
 
@@ -3841,8 +3842,8 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent)
 	    {
 	      covered += (out->eval_prog_idx[i] >= 0) ? 1 : 0;
 	    }
-	  fprintf (fp, "%*cEXPR_COMPILE (%s): active, columns covered %d/%d\n", indent, ' ', out_names[k], covered,
-		   out->valptr_cnt);
+	  fprintf (fp, "%*cEXPR_COMPILE (%s): active, columns covered %d/%d%s\n", indent, ' ', out_names[k], covered,
+		   out->valptr_cnt, sfx);
 	  expr_prog_dump (fp, (EXPR_PROG *) out->eval_prog, indent + 2);
 	}
     }
@@ -3901,7 +3902,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		   (long long int) xasl_p->func_stats.ioreads, (long long int) xasl_p->func_stats.calls);
 	}
 #if defined (SERVER_MODE) || defined (SA_MODE)
-      qdump_print_expr_compile_text (fp, xasl_p, indent);
+      qdump_print_expr_compile_text (fp, xasl_p, indent, NULL);
 #endif
       break;
 
