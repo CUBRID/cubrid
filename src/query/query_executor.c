@@ -67,7 +67,7 @@
 #include "query_dump.h"
 #include "dblink_scan.h"
 #if defined (SERVER_MODE)
-#include "jansson.h"
+#include "json_builder.h"
 #endif /* defined (SERVER_MODE) */
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
@@ -130,8 +130,13 @@
    selectivity is very high */
 #define HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD   2000
 
-/* maximum selectivity allowed for hash aggregate evaluation */
-#define HASH_AGGREGATE_VH_SELECTIVITY_THRESHOLD         0.5f
+/* cumulative unique-ratio cutoff above which hash aggregation is abandoned: starts at
+ * START_RATIO when TUPLE_THRESHOLD tuples have been hashed and decays on a log scale down to
+ * FLOOR_RATIO at FLOOR_TUPLES, staying there for larger inputs.
+ * See qexec_hash_gby_abandon_cutoff () for the rationale behind the anchors. */
+#define HASH_AGGREGATE_VH_SELECTIVITY_START_RATIO       0.95f
+#define HASH_AGGREGATE_VH_SELECTIVITY_FLOOR_RATIO       0.5f
+#define HASH_AGGREGATE_VH_SELECTIVITY_FLOOR_TUPLES      300000
 
 #define QEXEC_CLEAR_AGG_LIST_VALUE(agg_list) \
   do \
@@ -4625,6 +4630,45 @@ qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL
 }
 
 /*
+ * qexec_hash_gby_abandon_cutoff () - cumulative unique-ratio above which hash aggregation
+ *                                    should be abandoned, given the tuples hashed so far
+ *   return: cutoff ratio in [FLOOR_RATIO .. START_RATIO]; START_RATIO up to TUPLE_THRESHOLD tuples
+ *   tuple_count(in): number of tuples hashed so far
+ *
+ * Note: the observed ratio (group_count / tuple_count) is an online estimate of how much the
+ *       hash table compresses its input, so each anchor translates to a physical bound.  At
+ *       2,000 tuples a ratio above 0.95 implies the group count exceeds ~20,000, which does
+ *       not fit the default hash budget (max_agg_hash_size, 2MB) anyway; at 300,000 tuples a
+ *       ratio above 0.5 means the sort input shrinks less than 2x, so hashing no longer pays
+ *       for the per-tuple probes.  The interpolation is logarithmic because the expected
+ *       ratio of a finite group count itself decays on a log scale in the tuple count, which
+ *       keeps the margin between the cutoff and a legitimately hashable key roughly constant
+ *       across the whole range.
+ */
+static float
+qexec_hash_gby_abandon_cutoff (int tuple_count)
+{
+  if (tuple_count <= HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD)
+    {
+      /* the budget-exceeded check can fire before TUPLE_THRESHOLD tuples (wide keys or a small
+       * max_agg_hash_size); extrapolating the log curve there would push the cutoff above 1.0
+       * and make abandoning impossible, so hold it at the strict start value instead */
+      return HASH_AGGREGATE_VH_SELECTIVITY_START_RATIO;
+    }
+
+  if (tuple_count >= HASH_AGGREGATE_VH_SELECTIVITY_FLOOR_TUPLES)
+    {
+      return HASH_AGGREGATE_VH_SELECTIVITY_FLOOR_RATIO;
+    }
+
+  return HASH_AGGREGATE_VH_SELECTIVITY_START_RATIO
+    - (HASH_AGGREGATE_VH_SELECTIVITY_START_RATIO - HASH_AGGREGATE_VH_SELECTIVITY_FLOOR_RATIO)
+    * (float) (log ((double) tuple_count / HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD)
+	       / log ((double) HASH_AGGREGATE_VH_SELECTIVITY_FLOOR_TUPLES
+		      / HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD));
+}
+
+/*
  * qexec_hash_gby_agg_tuple () - aggregate tuple using hash table
  *   return: error code or NO_ERROR
  *   thread_p(in): thread
@@ -4798,8 +4842,30 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
     }
 
+  /* The hash table exceeded its memory budget.  If the key still looks high-cardinality at
+   * this point, abandon hashing instead of thrashing the LRU: a working set larger than the
+   * budget gets no re-hits, so evicting entry by entry only adds overhead on every tuple.
+   * A low ratio means repeats dominate (skewed key, or a group count near the budget), and
+   * LRU eviction keeps the hot groups resident, so spilling entry by entry stays profitable. */
+  if (context->hash_size > (int) mem_limit
+      && (float) context->group_count / context->tuple_count > qexec_hash_gby_abandon_cutoff (context->tuple_count))
+    {
+      context->state = HS_REJECT_ALL;
+
+      rc = qdata_save_agg_htable_to_list (thread_p, context->hash_table, groupby_list, context->part_list_id,
+					  context->temp_dbval_array);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
+#if !defined(NDEBUG)
+      er_log_debug (ARG_FILE_LINE, "hash aggregation abandoned: budget exceeded while still high-cardinality");
+#endif
+    }
+
   /* keep hash table within memory limit */
-  while (context->hash_size > (int) mem_limit)
+  while (context->state != HS_REJECT_ALL && context->hash_size > (int) mem_limit)
     {
       /* get least recently used entry */
       hentry = context->hash_table->lru_head;
@@ -4839,18 +4905,32 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       mht_rem (context->hash_table, key, qdata_free_agg_hentry, NULL);
     }
 
-  /* check very high selectivity case */
-  if (context->tuple_count > HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD)
+  /* Very-high-selectivity check, evaluated every TUPLE_THRESHOLD tuples on the cumulative
+   * unique ratio (groups / tuples) against a cutoff that decays with the number of tuples
+   * seen (see qexec_hash_gby_abandon_cutoff).  A single fixed cutoff cannot serve both ends
+   * of the stream: early on even a low-NDV key looks unique because repeats have not
+   * accumulated yet (a birthday-problem artifact), while late in the stream even a modest
+   * ratio means hashing is not compressing the sort input.  The decaying cutoff starts
+   * strict (0.95) so only a truly unhashable key is cut early, and relaxes toward the
+   * compression break-even (0.5) as the evidence accumulates. */
+  if (context->state == HS_ACCEPT_ALL
+      && context->tuple_count >= HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD
+      && context->tuple_count % HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD == 0)
     {
-      float selectivity = (float) context->group_count / context->tuple_count;
-      if (selectivity > HASH_AGGREGATE_VH_SELECTIVITY_THRESHOLD)
+      float unique_ratio = (float) context->group_count / context->tuple_count;
+
+      if (unique_ratio > qexec_hash_gby_abandon_cutoff (context->tuple_count))
 	{
 	  /* very high selectivity, abort hash aggregation */
 	  context->state = HS_REJECT_ALL;
 
 	  /* dump hash table to list file, no need to keep it in memory */
-	  qdata_save_agg_htable_to_list (thread_p, context->hash_table, groupby_list, context->part_list_id,
-					 context->temp_dbval_array);
+	  rc = qdata_save_agg_htable_to_list (thread_p, context->hash_table, groupby_list, context->part_list_id,
+					      context->temp_dbval_array);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
 
 #if !defined(NDEBUG)
 	  er_log_debug (ARG_FILE_LINE, "hash aggregation abandoned: very high selectivity");
@@ -12566,7 +12646,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   char **attr_names = NULL;
   int num_attrs = 0;
   const char *key_col = NULL, *op = NULL;
-  DBLINK_DML_STATE dblink_state = { -1, -1 };
+  DBLINK_DML_STATE dblink_state = { -1, -1, false, false };
 
   assert (specp != NULL);
 
@@ -12697,14 +12777,19 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
       goto exit_on_error;
     }
 
+  /* The statement succeeded: from here on its rows are the connection's uncommitted work, which a
+   * later statement of this transaction must not discard silently. */
+  dblink_dml_stmt_done (thread_p, &dblink_state);
+
   dblink_dml_close (&dblink_state);
   qexec_close_scan (thread_p, specp);
 
   return NO_ERROR;
 
 exit_on_error:
+  /* close the stmt before the abort path, which may disconnect the remote connection */
   dblink_dml_close (&dblink_state);
-  dblink_dml_rollback (thread_p, &dblink_state);
+  dblink_dml_stmt_abort (thread_p, &dblink_state);
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
 
@@ -27924,7 +28009,7 @@ qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   size_t sizeloc;
   char *trace_str = NULL;
   FILE *fp;
-  json_t *trace;
+  trace_json_t *trace;
 
   if (thread_p->trace_format == QUERY_TRACE_TEXT)
     {
@@ -27937,12 +28022,11 @@ qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
   else if (thread_p->trace_format == QUERY_TRACE_JSON)
     {
-      trace = json_object ();
+      trace = trace_json_object ();
       qdump_print_stats_json (xasl, trace);
-      trace_str = json_dumps (trace, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
+      trace_str = trace_json_dumps (trace);
 
-      json_object_clear (trace);
-      json_decref (trace);
+      trace_json_decref (trace);
     }
 
   if (trace_str != NULL)
