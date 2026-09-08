@@ -72,10 +72,15 @@ struct expr_eval_ctx
   val_descr *vd;
   OID *obj_oid;
   QFILE_TUPLE tpl;
-  EXPR_PROG *prog;		/* for kernels that run deferred step regions (CASE branches) */
+  EXPR_PROG *prog;
+  int jump;			/* the step the row continues at, set by a kernel that returned EXPR_JUMPED */
 };
 
-/* a kernel returns NO_ERROR or an error code; it reads *step->arg1p (etc.) and
+/* a kernel's third possible return: it decided where the row continues (ctx->jump) */
+#define EXPR_JUMPED (1)
+
+/* a kernel returns NO_ERROR, an error code, or EXPR_JUMPED (a jump kernel: the row
+ * continues at ctx->jump instead of the next step); it reads *step->arg1p (etc.) and
  * publishes its result by filling step->out and/or setting *step->out_cell */
 typedef int (*EXPR_KERNEL_FN) (EXPR_STEP * step, EXPR_EVAL_CTX * ctx);
 
@@ -95,22 +100,20 @@ struct expr_step
   REGU_VARIABLE *regu;		/* the subtree this step covers; used by leaf and fallback kernels */
   int aux;			/* kernel-specific small parameter (host variable index, side flags) */
 
-  /* CASE family: compiled predicate tree and the DEFERRED step regions holding the two
-   * branches.  Branch steps are skipped by the main loop and executed by the CASE kernel
-   * only for the branch the predicate selects, so a never-taken branch cannot raise an
-   * error the interpreted path would not raise (e.g. "WHEN b <> 0 THEN a / b"). */
-  void *pred;			/* EXPR_PRED *, owned by the program */
-  int t_start, t_n;		/* THEN branch step range; a lazy right-hand region for the lazy kernels */
-  int f_start, f_n;		/* ELSE branch step range */
-  bool deferred;		/* this step belongs to a deferred region (branch or lazy right-hand side) */
-  int region_depth;		/* nesting level of the region this step belongs to (0 = main loop) */
+  void *pred;			/* EXPR_PRED *, owned by the program (CASE branch test, T_PREDICATE) */
 
-  /* lazy right-hand side (mirror of fetch_peek_arith ()'s operand fetch order): when the
-   * right operand's steps can fail, they are compiled into a deferred region that the
-   * lazy kernel runs only after the left operand decided they are needed -- NULL left for
-   * arithmetic and NULLIF skips them, non-NULL left for NVL skips them.  inner is the
-   * kernel that then computes the node from the two operand cells. */
-  EXPR_KERNEL_FN inner;
+  /* Conditional evaluation is expressed with JUMPS, the steps staying one flat sequence
+   * the row loop walks forward.  A right operand the interpreter fetches only under a
+   * condition (a NULL left operand skips it for arithmetic and NULLIF, a non-NULL one
+   * skips it for NVL) is preceded by a check step that jumps past the node when the
+   * operand is not needed -- so a right side that would fail (division by zero,
+   * overflow) never runs on a row the interpreter would not have run it on.  A CASE
+   * compiles to: branch test (falls through into THEN, jumps to ELSE) / THEN steps /
+   * publish / jump to END / ELSE steps / publish.  Indexes are build-order until the
+   * program is laid out. */
+  int jump_to;			/* jump kernels: the step the row continues at; -1 otherwise */
+  int alias_of;			/* a step that writes ANOTHER step's slot (the NULL check of a lazy
+				 * arithmetic node, the ELSE publisher of a CASE): that step; -1 otherwise */
 };
 
 struct expr_prog
@@ -244,7 +247,7 @@ expr_prog_value (const EXPR_PROG * prog, int root_idx)
 extern void expr_prog_free (EXPR_PROG * prog);
 
 /* human-readable program listing (SQL trace, debugging): one line per step with the
- * kernel name, argument/output cells and domains, prologue/deferred markers */
+ * kernel name, argument/output cells and domains, prologue markers, jump targets */
 extern void expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent);
 
 /* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c); exported for
@@ -255,7 +258,7 @@ extern int expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain
  * the operand types on every row.  These compile a data filter's PRED_EXPR once per
  * execution into a tree of (type, operator)-resolved comparison leaves under Kleene AND/OR
  * nodes.  A plain operand (a column, a literal) is fetched per row through the regular
- * fetch path; an arithmetic operand is compiled into a deferred region of a program the
+ * fetch path; an arithmetic operand is compiled into a step range of a program the
  * tree owns and run by its leaf exactly where the interpreter would have fetched it, so
  * short-circuit and lazy-decode behavior stay identical either way.  NULL when anything
  * in the tree is not covered -- the caller keeps the interpreted pr_eval_fnc. */

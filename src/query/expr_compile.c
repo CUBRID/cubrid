@@ -109,7 +109,7 @@ struct expr_pred
   bool need_type_guard;		/* a side can drift from its plan type: verify runtime types per row */
 
   /* scan-filter leaves with COMPILED operands (EXPR_PRED_COMP_FETCH): an arithmetic side is
-   * compiled into a deferred region of the tree's program instead of being fetched through
+   * compiled into a step range of the tree's program instead of being fetched through
    * the interpreter; the leaf runs the region exactly where eval_pred () would have fetched
    * that side (the right one only for a non-NULL left one), so short-circuit and lazy
    * decode behavior are unchanged.  Ranges are build-order indexes until materialized. */
@@ -151,7 +151,7 @@ struct expr_build_ctx
    * execution (see expr_prog.n_exec_prologue) */
   bool step_exec_prologue[EXPR_MAX_STEPS];
 
-  int in_branch;		/* > 0 while compiling a CASE branch: emitted steps are deferred,
+  int in_branch;		/* > 0 while compiling a CASE branch: emitted steps run only when the branch is taken,
 				 * prologue hoisting is off, and nested CASE nodes are rejected */
 
   int n_slots;			/* slots are materialized after counting */
@@ -1068,136 +1068,124 @@ expr_pred_free (EXPR_PRED * pred)
   free_and_init (pred);
 }
 
-/* run one deferred region for the current row.  Regions nest (a CASE inside a lazy right
- * operand, a lazy operand inside a CASE branch), so only the steps at the region's own
- * depth run here -- a nested region's steps are run by the kernel that owns it. */
+/* Run the steps of [start, end) for the current row.  A kernel that returns EXPR_JUMPED has
+ * put the step the row continues at into ctx->jump; every other non-zero return is an
+ * error.  Jumps never leave the range they were compiled in (a lazy node jumps past
+ * itself, a CASE jumps within its own steps), so a caller running a sub-range -- a scan
+ * filter leaf running one operand side -- stays inside it. */
 static int
-expr_run_region (EXPR_PROG * prog, int start, int n, int depth, EXPR_EVAL_CTX * ctx)
+expr_run_range (EXPR_PROG * prog, int start, int end, EXPR_EVAL_CTX * ctx)
 {
-  int i, error;
+  int i = start, rc;
 
-  for (i = start; i < start + n; i++)
+  while (i < end)
     {
-      if (prog->steps[i].region_depth != depth)
+      rc = prog->steps[i].kernel (&prog->steps[i], ctx);
+      if (unlikely (rc != NO_ERROR))
 	{
-	  continue;
+	  if (rc == EXPR_JUMPED)
+	    {
+	      i = ctx->jump;
+	      continue;
+	    }
+	  return rc;
 	}
-      error = prog->steps[i].kernel (&prog->steps[i], ctx);
-      if (unlikely (error != NO_ERROR))
-	{
-	  return error;
-	}
+      i++;
     }
   return NO_ERROR;
 }
 
-/* ---- lazy right-hand operands: mirror of the fetch order of fetch_peek_arith () ---- */
-
-/* The interpreted arithmetic (and NULLIF) arm fetches the right operand only when the left
+/* ---- lazy right-hand operands: mirror of the fetch order of fetch_peek_arith () ----
+ *
+ * The interpreted arithmetic (and NULLIF) arm fetches the right operand only when the left
  * one is not NULL, and the NVL arm fetches it only when the left one IS NULL, so a right
  * operand that would fail (a division by zero, an overflow, a failing cast) never fails
- * when it is not needed.  These kernels wrap the plain kernel: they decide from the left
- * operand, run the right operand's deferred region when it is needed, and hand over. */
+ * when it is not needed.  These check steps sit right before the right operand's steps:
+ * when the operand is not needed they produce the node's result themselves and jump past
+ * the node; otherwise the row falls through into the operand steps and the plain kernel. */
 static int
-expr_k_lazy_arith (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+expr_k_jump_null_arith (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  int error;
-
   if (DB_IS_NULL (*step->arg1p))
     {
-      PRIM_SET_NULL (step->out);
-      return NO_ERROR;
+      PRIM_SET_NULL (step->out);	/* the node's slot (alias_of): a NULL left operand makes the node NULL */
+      ctx->jump = step->jump_to;
+      return EXPR_JUMPED;
     }
-  error = expr_run_region (ctx->prog, step->t_start, step->t_n, step->region_depth + 1, ctx);
-  if (unlikely (error != NO_ERROR))
-    {
-      return error;
-    }
-  return step->inner (step, ctx);
+  return NO_ERROR;
 }
 
 static int
-expr_k_lazy_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+expr_k_jump_null_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  int error;
-
   if (DB_IS_NULL (*step->arg1p))
     {
       pr_clear_value (step->out);	/* the cleared slot IS the NULL result */
-      return NO_ERROR;
+      ctx->jump = step->jump_to;
+      return EXPR_JUMPED;
     }
-  error = expr_run_region (ctx->prog, step->t_start, step->t_n, step->region_depth + 1, ctx);
-  if (unlikely (error != NO_ERROR))
-    {
-      return error;
-    }
-  return step->inner (step, ctx);
+  return NO_ERROR;
 }
 
 static int
-expr_k_lazy_nvl (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+expr_k_jump_notnull_nvl (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   DB_VALUE *a = *step->arg1p;
-  int error;
 
   if (!DB_IS_NULL (a))
     {
-      *step->out_cell = a;
+      *step->out_cell = a;	/* NVL of a non-NULL left operand is the left operand */
+      ctx->jump = step->jump_to;
+      return EXPR_JUMPED;
+    }
+  return NO_ERROR;
+}
+
+/* unconditional jump (the end of a CASE's THEN branch skips the ELSE branch) */
+static int
+expr_k_jump (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  ctx->jump = step->jump_to;
+  return EXPR_JUMPED;
+}
+
+/* T_CASE / T_IF: the branch test evaluates the compiled predicate and falls through into
+ * the THEN steps or jumps to the ELSE steps (V_FALSE and V_UNKNOWN both select the ELSE
+ * side, as in fetch_peek_arith ()); each branch ends with a publisher that puts the branch
+ * value into the node's cell -- a pointer select when both branches already carry the
+ * result type, otherwise a cast into the node's slot (the ELSE publisher writes the THEN
+ * publisher's slot through alias_of).  Only the selected branch's steps run, so a
+ * never-taken branch cannot raise an error the interpreted path would not raise
+ * (e.g. "WHEN b <> 0 THEN a / b"). */
+static int
+expr_k_case_branch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_LOGICAL pred = expr_pred_eval ((const EXPR_PRED *) step->pred);
+
+  if (pred == V_ERROR)
+    {
+      return ER_FAILED;
+    }
+  if (pred == V_TRUE)
+    {
       return NO_ERROR;
     }
-  error = expr_run_region (ctx->prog, step->t_start, step->t_n, step->region_depth + 1, ctx);
-  if (unlikely (error != NO_ERROR))
-    {
-      return error;
-    }
-  *step->out_cell = *step->arg2p;
-  return NO_ERROR;
+  ctx->jump = step->jump_to;
+  return EXPR_JUMPED;
 }
 
-/* T_CASE / T_IF: evaluate the predicate, execute ONLY the selected branch's deferred steps,
- * publish the branch value.  Whether the result needs the interpreted trailing cast is fixed
- * at compile time, so the two shapes are separate kernels: the select variant publishes the
- * branch value itself (no slot, so the cell changes per row) and the cast variant owns a slot
- * whose address was published once at materialization. */
-#define EXPR_CASE_SELECT_BRANCH(sel) \
-  DB_LOGICAL pred = expr_pred_eval ((const EXPR_PRED *) step->pred); \
-  DB_VALUE *sel; \
-  int error; \
-  if (pred == V_ERROR) \
-    { \
-      return ER_FAILED; \
-    } \
-  if (pred == V_TRUE) \
-    { \
-      error = expr_run_region (ctx->prog, step->t_start, step->t_n, step->region_depth + 1, ctx); \
-      sel = (error == NO_ERROR) ? *step->arg1p : NULL; \
-    } \
-  else \
-    { \
-      /* V_FALSE and V_UNKNOWN both select the ELSE side, as in fetch_peek_arith () */ \
-      error = expr_run_region (ctx->prog, step->f_start, step->f_n, step->region_depth + 1, ctx); \
-      sel = (error == NO_ERROR) ? *step->arg2p : NULL; \
-    } \
-  if (unlikely (error != NO_ERROR)) \
-    { \
-      return error; \
-    }
-
 static int
-expr_k_case_select (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+expr_k_case_pub_select (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  EXPR_CASE_SELECT_BRANCH (sel);
-
-  *step->out_cell = sel;
+  *step->out_cell = *step->arg1p;
   return NO_ERROR;
 }
 
 static int
-expr_k_case_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+expr_k_case_pub_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
+  DB_VALUE *sel = *step->arg1p;
   TP_DOMAIN_STATUS dom_status;
-
-  EXPR_CASE_SELECT_BRANCH (sel);
 
   /* the result domain can be a string type, so the slot may own heap memory */
   pr_clear_value (step->out);
@@ -1455,9 +1443,56 @@ expr_new_step (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int out_cell)
   step = &bctx->steps[bctx->n_steps++];
   memset (step, 0, sizeof (*step));
   step->kernel = kernel;
-  step->aux = out_cell;		/* out_cell is carried in aux until pointers are materialized */
-  step->deferred = (bctx->in_branch > 0);
-  step->region_depth = bctx->in_branch;
+  step->out_cell = (DB_VALUE **) (intptr_t) out_cell;	/* index; fixed up in materialize */
+  step->jump_to = -1;
+  step->alias_of = -1;
+  return step;
+}
+
+/* Insert a step BEFORE position pos, shifting the steps emitted since then: the NULL check
+ * of a lazy right operand is only known to be needed after that operand compiled, yet it
+ * must run first.  Every build-order step reference that points at or past pos moves with
+ * the steps.  NULL when the program is full. */
+static EXPR_STEP *
+expr_build_insert_step (EXPR_BUILD_CTX * bctx, int pos, EXPR_KERNEL_FN kernel, int out_cell)
+{
+  EXPR_STEP *step;
+  int j;
+
+  if (bctx->n_steps >= EXPR_MAX_STEPS)
+    {
+      return NULL;
+    }
+  memmove (&bctx->steps[pos + 1], &bctx->steps[pos], sizeof (EXPR_STEP) * (bctx->n_steps - pos));
+  memmove (&bctx->step_prologue[pos + 1], &bctx->step_prologue[pos], sizeof (bool) * (bctx->n_steps - pos));
+  memmove (&bctx->step_exec_prologue[pos + 1], &bctx->step_exec_prologue[pos], sizeof (bool) * (bctx->n_steps - pos));
+  bctx->n_steps++;
+  for (j = 0; j < bctx->n_steps; j++)
+    {
+      if (j == pos)
+	{
+	  continue;
+	}
+      /* a jump target is a BOUNDARY ("continue before step r"): inserting at that very
+       * boundary keeps it -- the row lands on the inserted step, which precedes the steps
+       * that were there.  An alias names a step and moves with it. */
+      if (bctx->steps[j].jump_to > pos)
+	{
+	  bctx->steps[j].jump_to++;
+	}
+      if (bctx->steps[j].alias_of >= pos)
+	{
+	  bctx->steps[j].alias_of++;
+	}
+    }
+  step = &bctx->steps[pos];
+  memset (step, 0, sizeof (*step));
+  step->kernel = kernel;
+  step->out_cell = (DB_VALUE **) (intptr_t) out_cell;
+  step->jump_to = -1;
+  step->alias_of = -1;
+  bctx->step_prologue[pos] = false;
+  bctx->step_exec_prologue[pos] = false;
   return step;
 }
 
@@ -1527,8 +1562,9 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
 
 /* can this step fail for a non-NULL input?  Publishing a host variable, coercing to NUMERIC
  * and the pure pointer selects cannot; every computing kernel can (an overflow, a division
- * by zero, a failing cast, a comparison that raises), and so can any step that owns a
- * region, through the steps inside it.
+ * by zero, a failing cast, a comparison that raises); a CASE branch test can (its
+ * predicate may raise) and a cast publisher can, so a CASE inside a right operand makes it
+ * fallible through them.
  *
  * A leaf fetch is classified as non-failing on purpose, although fetch_peek_dbval () can
  * return an error for it: that happens only when the row itself cannot be decoded (an
@@ -1541,14 +1577,12 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
 static bool
 expr_step_is_fallible (const EXPR_STEP * step)
 {
-  if (step->t_n > 0 || step->f_n > 0)
-    {
-      return true;
-    }
   return !(step->kernel == expr_k_hostvar || step->kernel == expr_k_leaf_fetch || step->kernel == expr_k_coerce_numeric
 	   || step->kernel == expr_k_nvl || step->kernel == expr_k_extract_date || step->kernel == expr_k_extract_time
 	   || step->kernel == expr_k_extract_datetime || step->kernel == expr_k_extract_timestamp_date
-	   || step->kernel == expr_k_extract_timestamp_time);
+	   || step->kernel == expr_k_extract_timestamp_time || step->kernel == expr_k_jump_null_arith
+	   || step->kernel == expr_k_jump_null_nullif || step->kernel == expr_k_jump_notnull_nvl
+	   || step->kernel == expr_k_jump || step->kernel == expr_k_case_pub_select);
 }
 
 static bool
@@ -1566,14 +1600,12 @@ expr_steps_fallible (const EXPR_BUILD_CTX * bctx, int start)
   return false;
 }
 
-/* Turn the steps emitted since start into a deferred region owned by the node about to be
- * emitted.  The interpreted path never evaluates these operands unless the left side asks
- * for them, so they must not run in the main loop: they are pushed one region level down
- * (nested regions inside them move with them).  Their CSE entries stay: they were tagged
- * with the guard the region runs under (expr_rhs_begin ()), so only a right-hand side
- * compiled under that same guard can read the cells they publish. */
+/* The row-step range emitted since start: the steps a scan-filter leaf runs for one operand
+ * side.  Hoisted steps (a literal coerced once, a host variable published once per
+ * execution) are laid out in the prologues and excluded; the remaining steps stay
+ * contiguous after the prologue remap, so the range is [first, first + n) in build order. */
 static void
-expr_build_defer_region (EXPR_BUILD_CTX * bctx, int start, int *region_start, int *region_n)
+expr_build_row_range (EXPR_BUILD_CTX * bctx, int start, int *range_start, int *range_n)
 {
   int j, first = -1, n = 0;
 
@@ -1581,23 +1613,16 @@ expr_build_defer_region (EXPR_BUILD_CTX * bctx, int start, int *region_start, in
     {
       if (bctx->step_prologue[j] || bctx->step_exec_prologue[j])
 	{
-	  /* a hoisted step (a literal coerced once, a host variable published once per
-	   * execution) reads nothing the row decides and cannot fail: it stays hoisted, out of
-	   * the region, instead of being re-run on every row the region runs */
 	  continue;
 	}
-      bctx->steps[j].deferred = true;
-      bctx->steps[j].region_depth++;
       if (first < 0)
 	{
 	  first = j;
 	}
       n++;
     }
-  /* the non-hoisted steps of the range stay contiguous after the prologue remap, so the
-   * region is [first, first + n) in build order */
-  *region_start = (first < 0) ? start : first;
-  *region_n = n;
+  *range_start = (first < 0) ? start : first;
+  *range_n = n;
 }
 
 /* CSE lookup: identical construct already compiled in this list? */
@@ -1965,7 +1990,7 @@ expr_scan_pred_interp_leaf (const PRED_EXPR * pr, bool comp0)
  * exactly as a build without this feature does, and also bounds this builder's own
  * compile-time recursion. */
 /* Compile one operand side of a scan-filter comparison leaf when it is an arithmetic
- * subtree.  Its steps become a deferred region under a guard of their own: the leaf runs
+ * subtree.  Its steps form a range under a guard of their own: the leaf runs
  * the region exactly where eval_pred () would have fetched that side, so nothing outside
  * the leaf may read the cells it publishes (wired constants excepted).  A side the step
  * compiler declines stays on the fetch path -- the mark rewinds whatever it emitted. */
@@ -1997,7 +2022,7 @@ expr_scan_side_compile (EXPR_BUILD_CTX * bctx, EXPR_PRED * pred, REGU_VARIABLE *
       bctx->n_node_cells = node_mark;
       return;
     }
-  expr_build_defer_region (bctx, start, &region_start, &region_n);
+  expr_build_row_range (bctx, start, &region_start, &region_n);
   expr_rhs_end (bctx, saved_guard, guard, cse_mark, true);
   /* a leaf every qualifying row is guaranteed to have evaluated publishes its nodes'
    * values for the scan's other consumers (expr_scan_pred_share_build ()) */
@@ -2378,8 +2403,9 @@ expr_scan_side_value (EXPR_PRED * pred, bool is_rhs, EXPR_EVAL_CTX * ctx)
     {
       int n = is_rhs ? pred->rhs_n : pred->lhs_n;
 
-      /* the operand steps sit one region level below the main loop (expr_build_defer_region ()) */
-      return (n > 0) ? expr_run_region (ctx->prog, is_rhs ? pred->rhs_start : pred->lhs_start, n, 1, ctx) : NO_ERROR;
+      int start = is_rhs ? pred->rhs_start : pred->lhs_start;
+
+      return (n > 0) ? expr_run_range (ctx->prog, start, start + n, ctx) : NO_ERROR;
     }
   return fetch_peek_dbval (ctx->thread_p, is_rhs ? pred->fetch_rhs : pred->fetch_lhs, ctx->vd, NULL, ctx->obj_oid,
 			   NULL, is_rhs ? &pred->fetched2 : &pred->fetched1);
@@ -3020,14 +3046,18 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		return cell;
 	      }
 
-	    /* T_CASE / T_IF / T_DECODE: branches compile into DEFERRED regions the kernel runs
-	     * only when selected; a CASE nested inside a branch is still rejected (kept from
-	     * v1 -- lazy operand regions may nest, see expr_build_defer_region ()).  The
-	     * predicate compiles FIRST, outside the regions -- eval_pred () also evaluates
-	     * it unconditionally. */
+	    /* T_CASE / T_IF / T_DECODE compile to a branch test that falls through into the THEN
+	     * steps or jumps to the ELSE steps, each branch ending with a publisher of its value
+	     * into the node's cell; a CASE nested inside a branch is still rejected (kept from
+	     * v1).  The predicate compiles FIRST, outside the branches -- eval_pred () also
+	     * evaluates it unconditionally. */
 	    {
 	      DB_TYPE t1, t2;
-	      int t_start, t_n, f_start, f_n, c1b, c2b, cse_mark;
+	      EXPR_STEP *test, *pub_t, *jmp, *pub_f;
+	      EXPR_KERNEL_FN pub_kernel;
+	      TP_DOMAIN *pub_domain;
+	      bool pub_owns_slot;
+	      int c1b, c2b, cse_mark, pub_t_idx;
 
 	      if (bctx->in_branch > 0)
 		{
@@ -3040,58 +3070,73 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		  return -1;
 		}
 
-	      /* a failed branch below orphans its already-emitted deferred steps; they
-	       * are unreferenced and never run, only wasted room in the program */
-	      bctx->in_branch++;
-	      cse_mark = bctx->n_cse;
-	      t_start = bctx->n_steps;
-	      c1b = expr_compile_node (bctx, arith->leftptr, compiled_something);
-	      t_n = bctx->n_steps - t_start;
-	      bctx->n_cse = cse_mark;
-	      f_start = bctx->n_steps;
-	      c2b = expr_compile_node (bctx, arith->rightptr, compiled_something);
-	      f_n = bctx->n_steps - f_start;
-	      bctx->n_cse = cse_mark;
-	      bctx->in_branch--;
-
-	      if (c1b < 0 || c2b < 0)
-		{
-		  expr_pred_free (cpred);
-		  return -1;
-		}
-
 	      t1 = expr_node_type (bctx, arith->leftptr);
 	      t2 = expr_node_type (bctx, arith->rightptr);
-
-	      step = expr_new_step_with_cell (bctx, expr_k_case_select, &cell);	/* replaced below when a cast is needed */
-	      if (step == NULL)
-		{
-		  expr_pred_free (cpred);
-		  return -1;
-		}
-	      step->pred = cpred;
-	      step->arg1p = EXPR_ARG_ENCODE (c1b);
-	      step->arg2p = EXPR_ARG_ENCODE (c2b);
-	      step->t_start = t_start;
-	      step->t_n = t_n;
-	      step->f_start = f_start;
-	      step->f_n = f_n;
-	      step->regu = regu;
 	      if (t1 == rtype && t2 == rtype
 		  && (rtype == DB_TYPE_INTEGER || rtype == DB_TYPE_BIGINT || rtype == DB_TYPE_DOUBLE))
 		{
 		  /* pure pointer select; the interpreted tp_value_auto_cast () is a
 		   * verified no-op for a same-type non-parameterized domain */
-		  step->domain = NULL;
-		  step->kernel = expr_k_case_select;
+		  pub_kernel = expr_k_case_pub_select;
+		  pub_domain = NULL;
+		  pub_owns_slot = false;
 		}
 	      else
 		{
-		  step->domain = regu->domain;
-		  step->out = (DB_VALUE *) 1;
-		  bctx->n_slots++;
-		  step->kernel = expr_k_case_cast;
+		  pub_kernel = expr_k_case_pub_cast;
+		  pub_domain = regu->domain;
+		  pub_owns_slot = true;
 		}
+
+	      /* the branch test owns the predicate; on a failure below the root rewind frees it */
+	      test = expr_new_step_with_cell (bctx, expr_k_case_branch, &cell);
+	      if (test == NULL)
+		{
+		  expr_pred_free (cpred);
+		  return -1;
+		}
+	      test->pred = cpred;
+	      test->regu = regu;
+
+	      bctx->in_branch++;
+	      cse_mark = bctx->n_cse;
+	      c1b = expr_compile_node (bctx, arith->leftptr, compiled_something);
+	      pub_t = (c1b >= 0) ? expr_new_step (bctx, pub_kernel, cell) : NULL;
+	      jmp = (pub_t != NULL) ? expr_new_step (bctx, expr_k_jump, cell) : NULL;
+	      bctx->n_cse = cse_mark;
+	      if (jmp == NULL)
+		{
+		  bctx->in_branch--;
+		  return -1;
+		}
+	      pub_t_idx = (int) (pub_t - bctx->steps);
+	      pub_t->arg1p = EXPR_ARG_ENCODE (c1b);
+	      pub_t->domain = pub_domain;
+	      pub_t->regu = regu;
+	      if (pub_owns_slot)
+		{
+		  pub_t->out = (DB_VALUE *) 1;
+		  bctx->n_slots++;
+		}
+	      test->jump_to = bctx->n_steps;	/* the ELSE side starts here */
+
+	      c2b = expr_compile_node (bctx, arith->rightptr, compiled_something);
+	      pub_f = (c2b >= 0) ? expr_new_step (bctx, pub_kernel, cell) : NULL;
+	      bctx->n_cse = cse_mark;
+	      bctx->in_branch--;
+	      if (pub_f == NULL)
+		{
+		  return -1;
+		}
+	      pub_f->arg1p = EXPR_ARG_ENCODE (c2b);
+	      pub_f->domain = pub_domain;
+	      pub_f->regu = regu;
+	      if (pub_owns_slot)
+		{
+		  pub_f->alias_of = pub_t_idx;	/* writes the THEN publisher's slot */
+		}
+	      jmp->jump_to = bctx->n_steps;	/* END: the step after the ELSE publisher */
+
 	      expr_cse_add (bctx, regu, -2, -1, -1, -1, cell, bctx->cur_guard);
 	      *compiled_something = true;
 	      return cell;
@@ -3144,11 +3189,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      {
 		return cell;
 	      }
-	    if (lazy)
-	      {
-		expr_build_defer_region (bctx, r_start, &r_start, &r_n);
-	      }
-	    step = expr_new_step_with_cell (bctx, lazy ? expr_k_lazy_nvl : expr_k_nvl, &cell);
+	    step = expr_new_step_with_cell (bctx, expr_k_nvl, &cell);
 	    if (step == NULL)
 	      {
 		return -1;
@@ -3158,9 +3199,16 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    step->regu = regu;
 	    if (lazy)
 	      {
-		step->inner = expr_k_nvl;
-		step->t_start = r_start;
-		step->t_n = r_n;
+		/* a non-NULL left operand IS the result: publish it and jump past the node */
+		int node_idx = (int) (step - bctx->steps);
+		EXPR_STEP *check = expr_build_insert_step (bctx, r_start, expr_k_jump_notnull_nvl, cell);
+
+		if (check == NULL)
+		  {
+		    return -1;
+		  }
+		check->arg1p = EXPR_ARG_ENCODE (c1);
+		check->jump_to = node_idx + 2;	/* the node moved to node_idx + 1 */
 	      }
 	    expr_cse_add (bctx, NULL, T_NVL, c1, c2, -1, cell, bctx->cur_guard);
 	    *compiled_something = true;
@@ -3272,11 +3320,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      {
 		return cell;
 	      }
-	    if (lazy)
-	      {
-		expr_build_defer_region (bctx, r_start, &r_start, &r_n);
-	      }
-	    step = expr_new_step_with_cell (bctx, lazy ? expr_k_lazy_nullif : expr_k_nullif, &cell);
+	    step = expr_new_step_with_cell (bctx, expr_k_nullif, &cell);
 	    if (step == NULL)
 	      {
 		return -1;
@@ -3289,9 +3333,18 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    step->regu = regu;
 	    if (lazy)
 	      {
-		step->inner = expr_k_nullif;
-		step->t_start = r_start;
-		step->t_n = r_n;
+		/* a NULL left operand makes the node NULL: the check clears the node's slot
+		 * (alias_of) and jumps past the node */
+		int node_idx = (int) (step - bctx->steps);
+		EXPR_STEP *check = expr_build_insert_step (bctx, r_start, expr_k_jump_null_nullif, cell);
+
+		if (check == NULL)
+		  {
+		    return -1;
+		  }
+		check->arg1p = EXPR_ARG_ENCODE (c1);
+		check->alias_of = node_idx + 1;
+		check->jump_to = node_idx + 2;
 	      }
 	    expr_cse_add (bctx, regu->domain, T_NULLIF, c1, c2, -1, cell, bctx->cur_guard);
 	    *compiled_something = true;
@@ -3437,11 +3490,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    }
 	  /* the operand mix is known now: bind the family-specific kernel */
 	  kernel = expr_arith_kernel (arith->opcode, rtype, numeric_pure);
-	  if (lazy)
-	    {
-	      expr_build_defer_region (bctx, r_start, &r_start, &r_n);
-	    }
-	  step = expr_new_step_with_cell (bctx, lazy ? expr_k_lazy_arith : kernel, &cell);
+	  step = expr_new_step_with_cell (bctx, kernel, &cell);
 	  if (step == NULL)
 	    {
 	      return -1;
@@ -3458,9 +3507,19 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  bctx->n_slots++;
 	  if (lazy)
 	    {
-	      step->inner = kernel;
-	      step->t_start = r_start;
-	      step->t_n = r_n;
+	      /* fetch_peek_arith () fetches the right operand only for a non-NULL left one: the
+	       * check before the right operand's steps makes the node NULL (through the node's
+	       * slot, alias_of) and jumps past it when the left one is NULL */
+	      int node_idx = (int) (step - bctx->steps);
+	      EXPR_STEP *check = expr_build_insert_step (bctx, r_start, expr_k_jump_null_arith, cell);
+
+	      if (check == NULL)
+		{
+		  return -1;
+		}
+	      check->arg1p = EXPR_ARG_ENCODE (c1);
+	      check->alias_of = node_idx + 1;	/* the node moved to node_idx + 1 */
+	      check->jump_to = node_idx + 2;
 	    }
 	  expr_cse_add (bctx, NULL, arith->opcode, c1, c2, (int) rtype, cell, bctx->cur_guard);
 	  *compiled_something = true;
@@ -3673,21 +3732,24 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 	  }
       }
 
-    /* branch regions stay contiguous (no step inside a branch is ever a prologue) */
+    /* jump targets and slot aliases were build-order indexes; a jump target that was the
+     * end of the build (n_steps) becomes the end of the layout */
     prog->n_compute = 0;
     for (i = 0; i < prog->n_steps; i++)
       {
 	EXPR_STEP *step = &prog->steps[i];
 
-	if (step->t_n > 0)
+	if (step->jump_to >= 0)
 	  {
-	    step->t_start = remap[step->t_start];
+	    step->jump_to = (step->jump_to >= bctx->n_steps) ? prog->n_steps : remap[step->jump_to];
 	  }
-	if (step->f_n > 0)
+	if (step->alias_of >= 0)
 	  {
-	    step->f_start = remap[step->f_start];
+	    step->alias_of = remap[step->alias_of];
 	  }
-	if (step->kernel != expr_k_leaf_fetch && step->kernel != expr_k_hostvar && step->kernel != expr_k_fallback)
+	if (step->kernel != expr_k_leaf_fetch && step->kernel != expr_k_hostvar && step->kernel != expr_k_fallback
+	    && step->kernel != expr_k_jump && step->kernel != expr_k_jump_null_arith
+	    && step->kernel != expr_k_jump_null_nullif && step->kernel != expr_k_jump_notnull_nvl)
 	  {
 	    prog->n_compute++;
 	  }
@@ -3723,6 +3785,15 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
       if (step->pred != NULL)
 	{
 	  expr_pred_materialize ((EXPR_PRED *) step->pred, prog, remap);
+	}
+    }
+  /* a step that writes another step's slot (a lazy NULL check, a CASE's ELSE publisher)
+   * takes that slot's address now that slots are assigned */
+  for (i = 0; i < prog->n_steps; i++)
+    {
+      if (prog->steps[i].alias_of >= 0)
+	{
+	  prog->steps[i].out = prog->steps[prog->steps[i].alias_of].out;
 	}
     }
 
@@ -3956,7 +4027,7 @@ int
 expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl)
 {
   EXPR_EVAL_CTX ctx;
-  int i, error;
+  int error;
 
   ctx.thread_p = thread_p;
   ctx.vd = vd;
@@ -3969,20 +4040,7 @@ expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, O
     {
       return error;
     }
-  for (i = prog->row_start; i < prog->n_steps; i++)
-    {
-      if (prog->steps[i].deferred)
-	{
-	  /* CASE branch region: executed by its CASE kernel only when selected */
-	  continue;
-	}
-      error = prog->steps[i].kernel (&prog->steps[i], &ctx);
-      if (unlikely (error != NO_ERROR))
-	{
-	  return error;
-	}
-    }
-  return NO_ERROR;
+  return expr_run_range (prog, prog->row_start, prog->n_steps, &ctx);
 }
 
 /* the kernel's display name for program listings */
@@ -4030,11 +4088,11 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_mul_numeric_plain, "mul_numeric*"},
     {
-    expr_k_lazy_arith, "lazy"},
+    expr_k_jump_null_arith, "jump_null"},
     {
-    expr_k_lazy_nullif, "lazy_nullif"},
+    expr_k_jump_null_nullif, "jump_null_nullif"},
     {
-    expr_k_lazy_nvl, "lazy_nvl"},
+    expr_k_jump_notnull_nvl, "jump_notnull"},
     {
     expr_k_div_numeric_float, "div_numeric"},
     {
@@ -4048,9 +4106,13 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_cast, "cast"},
     {
-    expr_k_case_select, "case"},
+    expr_k_case_branch, "case_branch"},
     {
-    expr_k_case_cast, "case_cast"},
+    expr_k_case_pub_cast, "case_pub_cast"},
+    {
+    expr_k_case_pub_select, "case_pub"},
+    {
+    expr_k_jump, "jump"},
     {
     expr_k_predicate, "predicate"},
     {
@@ -4152,10 +4214,9 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
     {
       const EXPR_STEP *step = &prog->steps[i];
 
-      /* a lazy step is listed under the kernel it wraps; the region it guards follows */
       fprintf (fp, "%*c[%c%2d] %-14s", indent, ' ',
-	       (i < prog->n_prologue) ? 'P' : (i < prog->n_prologue + prog->n_exec_prologue) ? 'E'
-	       : step->deferred ? 'D' : ' ', i, expr_kernel_name (step->inner != NULL ? step->inner : step->kernel));
+	       (i < prog->n_prologue) ? 'P' : (i < prog->n_prologue + prog->n_exec_prologue) ? 'E' : ' ', i,
+	       expr_kernel_name (step->kernel));
       if (step->arg1p != NULL)
 	{
 	  fprintf (fp, " c%d", (int) (step->arg1p - prog->cells));
@@ -4177,10 +4238,17 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 	{
 	  fprintf (fp, " dom=%s", pr_type_name (TP_DOMAIN_TYPE (step->domain)));
 	}
-      if (step->kernel == expr_k_case_select || step->kernel == expr_k_case_cast)
+      if (step->alias_of >= 0)
 	{
-	  fprintf (fp, " then=[%d..%d) else=[%d..%d) pred=", step->t_start, step->t_start + step->t_n,
-		   step->f_start, step->f_start + step->f_n);
+	  fprintf (fp, " (slot of [%d])", step->alias_of);
+	}
+      if (step->jump_to >= 0)
+	{
+	  fprintf (fp, " %s[%d]", (step->kernel == expr_k_jump) ? "-> " : "else -> ", step->jump_to);
+	}
+      if (step->kernel == expr_k_case_branch)
+	{
+	  fprintf (fp, " pred=");
 	  expr_pred_dump (fp, (const EXPR_PRED *) step->pred, prog);
 	}
       else if (step->kernel == expr_k_predicate || step->kernel == expr_k_predicate_cast)
@@ -4193,10 +4261,6 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 	{
 	  /* the float family: both operands were already NUMERIC (no coercion step) */
 	  fprintf (fp, " pure");
-	}
-      if (step->inner != NULL)
-	{
-	  fprintf (fp, " lazy rhs=[%d..%d)", step->t_start, step->t_start + step->t_n);
 	}
       fprintf (fp, "\n");
     }
