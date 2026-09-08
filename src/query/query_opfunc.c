@@ -2869,7 +2869,7 @@ qdata_sum_acc_accumulate (SUM_ACC * acc, bool is_first, const DB_VALUE * seed_fr
       /* new group: discard whatever state the previous one left behind */
       acc->is_active = false;
     }
-  else if (seed_from != NULL && !acc->is_active && !DB_IS_NULL (seed_from)
+  else if (!acc->is_active && !DB_IS_NULL (seed_from)
 	   && sum_acc_sum_type_for (DB_VALUE_DOMAIN_TYPE (seed_from)) != DB_TYPE_NULL)
     {
       /* an empty accumulator under a running value: a spilled partial sum came
@@ -2910,14 +2910,14 @@ qdata_sum_acc_merge (SUM_ACC * acc, const SUM_ACC * other)
     {
     case DB_TYPE_SHORT:
       acc->v.int_sum += other->v.int_sum;
-      if (acc->v.int_sum > DB_INT16_MAX || acc->v.int_sum < DB_INT16_MIN)
+      if (OR_CHECK_SHORT_OVERFLOW (acc->v.int_sum))
 	{
 	  goto overflow;
 	}
       return NO_ERROR;
     case DB_TYPE_INTEGER:
       acc->v.int_sum += other->v.int_sum;
-      if (acc->v.int_sum > DB_INT32_MAX || acc->v.int_sum < DB_INT32_MIN)
+      if (OR_CHECK_INT_OVERFLOW (acc->v.int_sum))
 	{
 	  goto overflow;
 	}
