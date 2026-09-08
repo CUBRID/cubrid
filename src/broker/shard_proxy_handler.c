@@ -43,6 +43,9 @@
 #include "shard_parser.h"
 #include "shard_proxy_function.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 #define PROXY_MAX_IGNORE_TIMER_CHECK 	10
 #define PROXY_TIMER_CHECK_INTERVAL 	1	/* sec */
 
@@ -115,7 +118,10 @@ static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
   fn_proxy_client_not_supported,	/* fn_get_last_insert_id */
   fn_proxy_client_prepare_and_execute,	/* fn_prepare_and_execute */
   fn_proxy_client_cursor_close,	/* fn_cursor_close */
-  fn_proxy_get_shard_info	/* fn_get_shard_info */
+  fn_proxy_get_shard_info,	/* fn_get_shard_info */
+  fn_proxy_client_not_supported,	/* fn_set_cas_change_mode */
+  fn_proxy_client_not_supported,	/* fn_stream_send_data */
+  fn_proxy_client_not_supported	/* fn_stream_end */
 };
 
 
@@ -162,7 +168,10 @@ static T_PROXY_CAS_FUNC proxy_cas_fn_table[] = {
   fn_proxy_cas_relay_only,	/* fn_get_last_insert_id */
   fn_proxy_cas_prepare_and_execute,	/* fn_prepare_and_execute */
   fn_proxy_cas_relay_only,	/* fn_cursor_close */
-  fn_proxy_cas_relay_only	/* fn_get_shard_info */
+  fn_proxy_cas_relay_only,	/* fn_get_shard_info */
+  fn_proxy_cas_relay_only,	/* fn_set_cas_change_mode */
+  fn_proxy_cas_relay_only,	/* fn_stream_send_data */
+  fn_proxy_cas_relay_only	/* fn_stream_end */
 };
 
 

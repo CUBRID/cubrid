@@ -290,7 +290,12 @@
   NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR) \
   \
   /* oos verification helpers (CBRD-26720) */ \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_OOS_STATS)
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_OOS_STATS) \
+  \
+  /* shared client->server byte-stream transport */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_INIT) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_SEND_DATA) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_END)
 
 enum net_server_request
 {
@@ -305,6 +310,10 @@ enum net_server_request
    */
   NET_SERVER_PING_WITH_HANDSHAKE = 999
 };
+
+/* Back-compat alias: COPY was the first consumer of the shared stream transport.
+ * Identical wire value as NET_SERVER_STREAM_INIT. */
+#define NET_SERVER_COPY_INIT NET_SERVER_STREAM_INIT
 
 /* Server/client capabilities */
 #define NET_CAP_BACKWARD_COMPATIBLE     0x80000000

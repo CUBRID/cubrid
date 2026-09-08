@@ -1012,6 +1012,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> limit_options
 %type <node> opt_upd_del_limit_clause
 %type <node> truncate_stmt
+%type <node> copy_stmt
+%type <number> copy_format
+%type <c4> opt_copy_csv_option_list
+%type <c4> copy_csv_option_list
+%type <c4> copy_csv_option
 %type <node> do_stmt
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
@@ -1217,6 +1222,12 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token CONSTRAINTS
 %token CONTINUE
 %token CONVERT
+%token COPY_
+%token CSV_
+%token DELIMITER_
+%token QUOTE_
+%token HEADER_
+%token BULK_
 %token CORRESPONDING
 %token COUNT
 %token CREATE
@@ -1284,6 +1295,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token FLOAT_
 %token For
 %token FOREIGN
+%token FORMAT_
 %token FOUND
 %token FROM
 %token FULL
@@ -1448,6 +1460,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token SQLSTATE
 %token SQLWARNING
 %token STATISTICS
+%token STDIN_
 %token String
 %token SUBCLASS
 %token SUBSET
@@ -2047,6 +2060,8 @@ stmt_
 	| transaction_stmt
 		{ $$ = $1; }
 	| truncate_stmt
+		{ $$ = $1; }
+	| copy_stmt
 		{ $$ = $1; }
 	| merge_stmt
 		{ $$ = $1; }
@@ -4445,6 +4460,116 @@ opt_owner_clause
 as_or_to
 	: AS
 	| TO
+	;
+
+copy_stmt
+	: COPY_ class_spec_without_server_name opt_attr_list FROM STDIN_ WITH '(' FORMAT_ copy_format opt_copy_csv_option_list ')'
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_COPY);
+			if (node)
+			  {
+			    container_4 opt = $10;
+			    PT_NODE *delim = CONTAINER_AT_0 (opt);
+			    PT_NODE *quote = CONTAINER_AT_1 (opt);
+			    PT_NODE *bulk = CONTAINER_AT_2 (opt);
+			    PT_NODE *hdr = CONTAINER_AT_3 (opt);
+
+			    node->info.copy.table_name = $2;
+			    node->info.copy.column_list = $3;
+			    node->info.copy.direction = 0;	/* FROM */
+			    node->info.copy.format = $9;	/* 0 = BINARY, 1 = CSV */
+			    node->info.copy.fmt.csv.delimiter = 0;
+			    node->info.copy.fmt.csv.quote = 0;
+			    node->info.copy.fmt.csv.header = 0;
+			    node->info.copy.bulk = 0;
+			    if (bulk != NULL)
+			      {
+				node->info.copy.bulk = 1;
+			      }
+
+			    if (delim != NULL && delim->info.value.data_value.str != NULL
+				&& delim->info.value.data_value.str->length >= 1)
+			      {
+				node->info.copy.fmt.csv.delimiter = delim->info.value.data_value.str->bytes[0];
+			      }
+			    if (quote != NULL && quote->info.value.data_value.str != NULL
+				&& quote->info.value.data_value.str->length >= 1)
+			      {
+				node->info.copy.fmt.csv.quote = quote->info.value.data_value.str->bytes[0];
+			      }
+			    if (hdr != NULL)
+			      {
+				node->info.copy.fmt.csv.header = 1;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+copy_format
+	: BINARY
+		{{ $$ = 0; }}
+	| CSV_
+		{{ $$ = 1; }}
+	;
+
+opt_copy_csv_option_list
+	: /* empty */
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, NULL, NULL, NULL);
+			$$ = ctn;
+		}}
+	| ',' copy_csv_option_list
+		{{
+			$$ = $2;
+		}}
+	;
+
+copy_csv_option_list
+	: copy_csv_option
+		{{
+			$$ = $1;
+		}}
+	| copy_csv_option_list ',' copy_csv_option
+		{{
+			container_4 a = $1;
+			container_4 b = $3;
+			if (CONTAINER_AT_0 (b) != NULL) a.c1 = CONTAINER_AT_0 (b);
+			if (CONTAINER_AT_1 (b) != NULL) a.c2 = CONTAINER_AT_1 (b);
+			if (CONTAINER_AT_2 (b) != NULL) a.c3 = CONTAINER_AT_2 (b);
+			if (CONTAINER_AT_3 (b) != NULL) a.c4 = CONTAINER_AT_3 (b);
+			$$ = a;
+		}}
+	;
+
+copy_csv_option
+	: DELIMITER_ char_string_literal
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, $2, NULL, NULL, NULL);
+			$$ = ctn;
+		}}
+	| BULK_		/* applies to all formats (not CSV-specific) — enables bulk-load mode */
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, NULL, FROM_NUMBER (1), NULL);
+			$$ = ctn;
+		}}
+	| QUOTE_ char_string_literal
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, $2, NULL, NULL);
+			$$ = ctn;
+		}}
+	| HEADER_
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, NULL, NULL, FROM_NUMBER (1));	/* flag */
+			$$ = ctn;
+		}}
 	;
 
 truncate_stmt
