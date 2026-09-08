@@ -598,6 +598,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> stats_option_list
 %type <number> stats_option
 %type <number> online_parallel
+%type <number> opt_compact_fill_factor
 %type <number> comp_op
 %type <number> opt_of_all_some_any
 %type <number> set_op
@@ -1536,6 +1537,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> COLUMNS
 %token <cptr> COMMENT
 %token <cptr> COMMITTED
+%token <cptr> COMPACT
 %token <cptr> COMPILE
 %token <cptr> COST
 %token <cptr> CRITICAL
@@ -1555,6 +1557,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ENCRYPT
 %token <cptr> ERROR_
 %token <cptr> EXPLAIN
+%token <cptr> FILL_FACTOR
 %token <cptr> FIRST_VALUE
 %token <cptr> FORCE
 %token <cptr> FULLSCAN
@@ -3889,6 +3892,42 @@ alter_stmt
 
 		  $$ = node;
 		  PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| ALTER						/* 1 */
+	  INDEX						/* 2 */
+	  identifier					/* 3 */
+	  ON_						/* 4 */
+	  only_class_name				/* 5 */
+	  COMPACT					/* 6 */
+	  opt_compact_fill_factor			/* 7 */
+		{{
+			/* CBRD-27401: ALTER INDEX idx ON tbl COMPACT [WITH FILL_FACTOR = n] */
+			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
+
+			if (node)
+			  {
+			    node->info.index.code = PT_COMPACT_INDEX;
+			    node->info.index.index_name = $3;
+			    node->info.index.fill_factor = $7;
+
+			    if (node->info.index.index_name)
+			      {
+			        node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+
+			    if ($5 != NULL)
+			      {
+			        PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			        ocs->info.spec.entity_name = $5;
+			        ocs->info.spec.only_all = PT_ONLY;
+			        ocs->info.spec.meta_class = PT_CLASS;
+
+			        node->info.index.indexed_class = ocs;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| ALTER						/* 1 */
 	  INDEX						/* 2 */
@@ -19915,6 +19954,24 @@ index_with_item_list
           }
         ;        
 
+opt_compact_fill_factor
+	: /* empty */
+	   {{
+		$$ = BTREE_COMPACT_DEFAULT_FILL_FACTOR;
+	   }}
+	| WITH FILL_FACTOR opt_equalsign unsigned_integer
+	   {{
+		int fill_factor = $4->info.value.data_value.i;
+		if (fill_factor < BTREE_COMPACT_MIN_FILL_FACTOR || fill_factor > BTREE_COMPACT_MAX_FILL_FACTOR)
+		  {
+		    pt_cat_error (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX,
+				  MSGCAT_SYNTAX_INVALID_FILL_FACTOR_ARGUMENT, BTREE_COMPACT_MIN_FILL_FACTOR,
+				  BTREE_COMPACT_MAX_FILL_FACTOR);
+		  }
+		$$ = fill_factor;
+	   }}
+	;
+
 online_parallel
 	: ONLINE
 	   {{
@@ -20596,6 +20653,7 @@ identifier
 	| COLUMNS                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMMENT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMMITTED              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COMPACT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMPILE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COST                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CRITICAL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20617,6 +20675,7 @@ identifier
 	| ENCRYPT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FILL_FACTOR            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}

@@ -1652,6 +1652,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Server의 USER 최대 길이는 %1$d 바이트입니다.
 138 Invalid level. 유효값은 %1$d부터 %2$d까지 입니다.
 139 저장 프로시저/함수의 인수 타입과 결과 타입에는 정밀도를 지정할 수 없습니다.
+140 FILL_FACTOR 인자 값은 %1$d에서 %2$d까지 허용됩니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다

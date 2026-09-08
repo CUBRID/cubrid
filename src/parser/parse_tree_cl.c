@@ -6858,6 +6858,13 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       b = pt_append_nulstring (parser, b, "rebuild");
     }
+  else if (p->info.index.code == PT_COMPACT_INDEX)
+    {
+      char buf[32];
+
+      snprintf (buf, sizeof (buf), "compact with fill_factor = %d", p->info.index.fill_factor);
+      b = pt_append_nulstring (parser, b, buf);
+    }
 
   return b;
 }

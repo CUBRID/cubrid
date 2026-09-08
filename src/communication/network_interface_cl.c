@@ -7057,6 +7057,60 @@ btree_class_test_unique (char *buf, int buf_size)
 }
 
 /*
+ * btree_compact_overflow () - CBRD-27401: ALTER INDEX ... COMPACT. Compacts the overflow OID chains of an index on
+ *			       the server.
+ *
+ * return		: Error code.
+ * btid (in)		: B-tree identifier.
+ * fill_factor (in)	: Target fill ratio in percent.
+ * keys_compacted (out) : Number of keys whose chain lost at least one page.
+ * pages_freed (out)	: Number of overflow pages deallocated.
+ */
+int
+btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed)
+{
+#if defined(CS_MODE)
+  int req_error, status = ER_NET_CLIENT_DATA_RECEIVE;
+  OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE + OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE * 2) a_reply;
+  char *reply;
+  char *ptr;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_btid (request, btid);
+  ptr = or_pack_int (ptr, fill_factor);
+
+  req_error = net_client_request (NET_SERVER_BTREE_COMPACT_OVERFLOW, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &status);
+      ptr = or_unpack_int64 (ptr, keys_compacted);
+      ptr = or_unpack_int64 (ptr, pages_freed);
+    }
+  else
+    {
+      status = req_error;
+    }
+
+  return status;
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xbtree_compact_overflow (thread_p, btid, fill_factor, keys_compacted, pages_freed);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
  * qfile_get_list_file_page -
  *
  * return:
