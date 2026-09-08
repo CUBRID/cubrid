@@ -8,7 +8,6 @@ The following dependencies are required and integrated into the CUBRID build pro
 For more details on how they are built with CUBRID, please refer to the [3rdparty/CMakeLists.txt](CMakeLists.txt):
 
 - libexpat v2.2.5
-- Jansson v2.10
 - Editline (libedit) for CUBRID version, https://github.com/CUBRID/libedit (Linux Only)
 - OpenSSL v1.1.1f
 - unixODBC v2.3.9
