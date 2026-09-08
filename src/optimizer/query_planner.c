@@ -836,13 +836,16 @@ qo_term_is_evaluated_before (QO_TERM * term1, QO_TERM * term2)
  *
  * Note: The sarg terms of a scan are split by is_normal_access_term ()/is_normal_if_term () in plan_generation.c:
  *   a term containing a subquery (or of class QO_TC_OTHER) goes to the if-predicate, every other term to the access
- *   predicate of the scan. The if-predicate is evaluated only for the rows that passed the access predicate, and
- *   its terms are AND-ed with short-circuit in the order given by qo_term_is_evaluated_before (). So the subquery
- *   term is evaluated for scan_rows * (selectivity of all access terms) * (selectivity of the if-predicate terms
- *   evaluated before it) rows. Neither the subquery term itself nor the if-predicate terms evaluated after it
- *   reduce the number of evaluations. The index range and key filter terms of an index scan are already reflected
- *   in scan_rows. For other plans, or when the subquery is not attached to a sarg term of this scan, it is assumed
- *   to be evaluated for every row of scan_rows.
+ *   predicate of the scan (the after-join classes never reach a scan plan; they are listed here only to mirror
+ *   is_normal_access_term ()). An OR-derived restriction that make_pred_from_plan () drops from the data filter
+ *   (too expensive, or letting most rows through) is not evaluated at all and must not be counted either. The
+ *   if-predicate is evaluated only for the rows that passed the access predicate, and its terms are AND-ed with
+ *   short-circuit in the order given by qo_term_is_evaluated_before (). So the subquery term is evaluated for
+ *   scan_rows * (selectivity of all access terms) * (selectivity of the if-predicate terms evaluated before it)
+ *   rows. Neither the subquery term itself nor the if-predicate terms evaluated after it reduce the number of
+ *   evaluations. The index range and key filter terms of an index scan are already reflected in scan_rows. For
+ *   other plans, or when the subquery is not attached to a sarg term of this scan, it is assumed to be evaluated
+ *   for every row of scan_rows.
  */
 static double
 qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx)
@@ -888,14 +891,24 @@ qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx)
 	  continue;
 	}
 
-      if (bitset_is_empty (&(QO_TERM_SUBQUERIES (term))) && QO_TERM_CLASS (term) != QO_TC_OTHER)
+      /* dropped from the data filter by make_pred_from_plan (): not evaluated at the scan */
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED_EXPENSIVE)
+	  || (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (term) > 0.5))
 	{
-	  /* access predicate term: always evaluated before the if-predicate */
-	  sel *= QO_TERM_SELECTIVITY (term);
+	  continue;
 	}
-      else if (qo_term_is_evaluated_before (term, subq_term))
+
+      if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))) || QO_TERM_CLASS (term) == QO_TC_OTHER)
 	{
-	  /* if-predicate term evaluated before the subquery term */
+	  /* if-predicate term (is_normal_if_term ()): counts only if evaluated before the subquery term */
+	  if (qo_term_is_evaluated_before (term, subq_term))
+	    {
+	      sel *= QO_TERM_SELECTIVITY (term);
+	    }
+	}
+      else if (QO_TERM_CLASS (term) != QO_TC_AFTER_JOIN && QO_TERM_CLASS (term) != QO_TC_TOTALLY_AFTER_JOIN)
+	{
+	  /* access predicate term (is_normal_access_term ()): always evaluated before the if-predicate */
 	  sel *= QO_TERM_SELECTIVITY (term);
 	}
     }
