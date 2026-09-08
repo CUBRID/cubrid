@@ -31,10 +31,13 @@
 #include <signal.h>
 #if defined(WINDOWS)
 #include <winsock2.h>
+#include <ws2tcpip.h>
 #include <time.h>
 #else /* ! WINDOWS */
 #include <sys/time.h>
 #include <sys/param.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #endif /* ! WINDOWS */
@@ -1925,6 +1928,66 @@ send_to_client:
 }
 
 /*
+ * IS_MASTER_REQUEST_ALLOWED_ON_REMOTE () - administrative requests a remote
+ *   peer is permitted to issue. This mirrors the client-side
+ *   COMMDB_CMD_ALLOWED_ON_REMOTE () allow-list in commdb.c and moves the
+ *   enforcement to the master, so a raw client that does not use the commdb
+ *   utility cannot bypass it. Every request NOT in this list (server/master
+ *   kill, shutdown, server list, ...) must originate from a local peer.
+ *   Requests in this list are additionally restricted to eligible peers by
+ *   hb_check_request_eligibility() inside their own handlers.
+ */
+#define IS_MASTER_REQUEST_ALLOWED_ON_REMOTE(req) \
+  ((req) == DEACT_STOP_ALL || (req) == DEACT_CONFIRM_STOP_ALL \
+   || (req) == DEACT_CONFIRM_NO_SERVER || (req) == DEACTIVATE_HEARTBEAT \
+   || (req) == IS_REGISTERED_HA_PROC || (req) == DEREGISTER_HA_PROCESS_BY_ARGS \
+   || (req) == GET_HA_NODE_LIST || (req) == GET_HA_NODE_LIST_VERBOSE \
+   || (req) == GET_HA_PROCESS_LIST || (req) == GET_HA_PROCESS_LIST_VERBOSE \
+   || (req) == GET_HA_PING_HOST_INFO || (req) == GET_HA_ADMIN_INFO \
+   || (req) == START_HA_UTIL_PROCESS)
+
+/*
+ * css_master_request_is_local () - is the request peer local?
+ *   return: true for a unix-domain-socket peer or a loopback TCP peer.
+ *   fd(in): the accepted connection socket
+ *
+ * Note: the master listens on INADDR_ANY, so getpeername() is the authority
+ *   on where a request came from. Used to reject administrative master
+ *   requests arriving from a remote, unauthenticated client.
+ */
+static bool
+css_master_request_is_local (SOCKET fd)
+{
+  struct sockaddr_storage addr;
+  socklen_t addr_len = sizeof (addr);
+
+  if (getpeername (fd, (struct sockaddr *) &addr, &addr_len) < 0)
+    {
+      return false;
+    }
+
+  switch (addr.ss_family)
+    {
+#if !defined(WINDOWS)
+    case AF_UNIX:
+      return true;
+#endif /* ! WINDOWS */
+    case AF_INET:
+      {
+	struct sockaddr_in *addr_in = (struct sockaddr_in *) &addr;
+	return (ntohl (addr_in->sin_addr.s_addr) == INADDR_LOOPBACK);
+      }
+    case AF_INET6:
+      {
+	struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *) &addr;
+	return (IN6_IS_ADDR_LOOPBACK (&addr_in6->sin6_addr) != 0);
+      }
+    default:
+      return false;
+    }
+}
+
+/*
  * css_process_info_request() - information server main loop
  *   return: none
  *   conn(in)
@@ -1950,6 +2013,22 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	  css_cleanup_info_connection (conn);
 	  return;
 	}
+
+      /* the master listens on INADDR_ANY and applies no
+       * authentication, so administrative requests must be restricted here.
+       * Requests not explicitly allowed on remote are honored only from a
+       * local peer; the remote-allowed HA requests are further checked by
+       * hb_check_request_eligibility() in their handlers. */
+      if (!IS_MASTER_REQUEST_ALLOWED_ON_REMOTE (request) && !css_master_request_is_local (conn->fd))
+	{
+	  if (buffer != NULL)
+	    {
+	      free_and_init (buffer);
+	    }
+	  css_cleanup_info_connection (conn);
+	  return;
+	}
+
       switch (request)
 	{
 	case GET_START_TIME:
