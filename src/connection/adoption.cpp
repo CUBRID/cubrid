@@ -53,6 +53,9 @@
 
 #include "cas_dispatch.h"	// cas_server_speaker_boot_init
 #include "cas_protocol.h"	// broker_info byte values for DIRECT_CONNECT (wf122/B5)
+/* Broker and storage headers both define FREE; neither form is used here.
+ * Keep their macro namespaces separate, as in driver_session.cpp. */
+#undef FREE
 #include "authenticate.h"
 #include "perf_monitor.h"
 #include "xserver_interface.h"
