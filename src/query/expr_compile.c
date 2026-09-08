@@ -3068,12 +3068,18 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
 
       if (cell >= 0 && only_compute_roots)
 	{
+	  /* Does a computing step publish this root's cell?  Looked up over the whole program,
+	   * not just the steps this root emitted: a root that CSE resolved entirely to an
+	   * earlier root's chain ("(a+1)*b" after "(a+1)*b+1") emits nothing of its own, yet
+	   * its value is computed and sitting in a cell -- sending it back to the interpreter
+	   * would recompute per row what the program already has. */
 	  bool has_compute = false;
 	  int j;
 
-	  for (j = mark.n_steps; j < bctx->n_steps; j++)
+	  for (j = 0; j < bctx->n_steps; j++)
 	    {
-	      if (bctx->steps[j].kernel != expr_k_leaf_fetch && bctx->steps[j].kernel != expr_k_hostvar)
+	      if ((intptr_t) bctx->steps[j].out_cell == cell && bctx->steps[j].kernel != expr_k_leaf_fetch
+		  && bctx->steps[j].kernel != expr_k_hostvar)
 		{
 		  has_compute = true;
 		  break;
