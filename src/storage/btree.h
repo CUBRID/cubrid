@@ -209,6 +209,10 @@ struct btree_scan
 
   /* TO BE REMOVED - maybe */
   VPID O_vpid;			/* vpid of overflow page */
+  OID O_last_oid;		/* CBRD-27401: highest OID already processed in the overflow chain of the current key,
+				 * when the key is partially processed and the chain is OID-ordered (non-unique index).
+				 * The chain is resumed from this OID rather than from a page, because overflow pages
+				 * may be merged or freed while the scan is interrupted. */
 
   /* TO BE REMOVED when btree_find_next_index_record is removed. */
   PAGE_PTR P_page;		/* page ptr to previous leaf page */
@@ -299,6 +303,7 @@ struct btree_scan
     (bts)->P_vpid.pageid = NULL_PAGEID;			\
     (bts)->C_vpid.pageid = NULL_PAGEID;			\
     (bts)->O_vpid.pageid = NULL_PAGEID;			\
+    OID_SET_NULL (&(bts)->O_last_oid);			\
     (bts)->P_page = NULL;				\
     (bts)->C_page = NULL;				\
     (bts)->slot_id = NULL_SLOTID;			\
@@ -349,6 +354,7 @@ struct btree_scan
     (bts)->P_vpid.pageid = NULL_PAGEID;			\
     (bts)->C_vpid.pageid = NULL_PAGEID;			\
     (bts)->O_vpid.pageid = NULL_PAGEID;			\
+    OID_SET_NULL (&(bts)->O_last_oid);			\
     (bts)->P_page = NULL;				\
     (bts)->C_page = NULL;				\
     (bts)->slot_id = -1;				\

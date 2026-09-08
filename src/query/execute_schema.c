@@ -390,6 +390,9 @@ static int do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_
 static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
+static int do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * statement);
+static int do_alter_index_compact_one_class (MOP class_mop, const char *index_name, int fill_factor,
+					     INT64 * keys_compacted, INT64 * pages_freed);
 
 int ib_thread_count = 0;
 
@@ -4249,6 +4252,144 @@ error_exit:
 }
 
 /*
+ * do_alter_index_compact_one_class() - CBRD-27401: compact the overflow OID chains of the named index of one class
+ *				       (a plain class, or the root or one partition of a partitioned class).
+ *   return: Error code if it fails
+ *   class_mop(in): Class object
+ *   index_name(in): Index name
+ *   fill_factor(in): Target fill ratio in percent
+ *   keys_compacted(in/out): Accumulated number of keys whose chain lost at least one page
+ *   pages_freed(in/out): Accumulated number of overflow pages deallocated
+ */
+static int
+do_alter_index_compact_one_class (MOP class_mop, const char *index_name, int fill_factor, INT64 * keys_compacted,
+				  INT64 * pages_freed)
+{
+  int error = NO_ERROR;
+  SM_CLASS *smcls = NULL;
+  SM_CLASS_CONSTRAINT *idx = NULL;
+  INT64 keys = 0, pages = 0;
+
+  /* AU_FETCH_READ takes a SCH_S lock on the class for the rest of the transaction: DROP/ALTER of the index waits
+   * until compaction is over, while concurrent DML (IX) is not blocked -- this is what makes the command online. */
+  error = au_fetch_class (class_mop, &smcls, AU_FETCH_READ, AU_INDEX);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  idx = classobj_find_class_index (smcls, index_name);
+  if (idx == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_NO_INDEX, 1, index_name);
+      return ER_SM_NO_INDEX;
+    }
+  if (BTID_IS_NULL (&idx->index_btid))
+    {
+      /* Nothing built yet (e.g. an index still being loaded online). */
+      return NO_ERROR;
+    }
+
+  error = btree_compact_overflow (&idx->index_btid, fill_factor, &keys, &pages);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  *keys_compacted += keys;
+  *pages_freed += pages;
+  return NO_ERROR;
+}
+
+/*
+ * do_alter_index_compact() - CBRD-27401: ALTER INDEX ... COMPACT [WITH FILL_FACTOR = n]. Compacts the overflow OID
+ *			     chains of a non-unique index online: no table lock, no sort, no rebuild. Only the leaf
+ *			     latch of the key being compacted is held on the server. Unique indexes are a no-op.
+ *			     For a partitioned class the index of every partition is compacted.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of an alter index statement
+ */
+static int
+do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *obj;
+  PT_NODE *cls = NULL;
+  const char *index_name = NULL;
+  const char *class_name = NULL;
+  int fill_factor;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
+  MOP *partitions = NULL;
+  INT64 keys_compacted = 0, pages_freed = 0;
+  int i;
+
+  index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
+  cls = statement->info.index.indexed_class ? statement->info.index.indexed_class->info.spec.flat_entity_list : NULL;
+  if (index_name == NULL || cls == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  fill_factor = statement->info.index.fill_factor;
+  if (fill_factor < BTREE_COMPACT_MIN_FILL_FACTOR || fill_factor > BTREE_COMPACT_MAX_FILL_FACTOR)
+    {
+      /* The grammar already rejects this; keep the server-side range check honest. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  class_name = cls->info.name.resolved;
+  obj = db_find_class (class_name);
+  if (obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = do_alter_index_compact_one_class (obj, index_name, fill_factor, &keys_compacted, &pages_freed);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = sm_partitioned_class_type (obj, &partition_type, NULL, &partitions);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+  if (partition_type == DB_PARTITIONED_CLASS && partitions != NULL)
+    {
+      for (i = 0; partitions[i] != NULL; i++)
+	{
+	  error = do_alter_index_compact_one_class (partitions[i], index_name, fill_factor, &keys_compacted,
+						    &pages_freed);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+    }
+  if (partitions != NULL)
+    {
+      free_and_init (partitions);
+    }
+
+  if (error == NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE, "ALTER INDEX %s ON %s COMPACT (fill_factor=%d): %lld keys compacted, %lld overflow "
+		    "pages freed\n", index_name, class_name, fill_factor, (long long) keys_compacted,
+		    (long long) pages_freed);
+    }
+
+  return error;
+}
+
+/*
  * do_alter_index() - Alters an index on a class.
  *   return: Error code if it fails
  *   parser(in): Parser context
@@ -4278,6 +4419,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   else if (statement->info.index.code == PT_CHANGE_INDEX_STATUS)
     {
       error = do_alter_index_status (parser, statement);
+    }
+  else if (statement->info.index.code == PT_COMPACT_INDEX)
+    {
+      error = do_alter_index_compact (parser, statement);
     }
   else
     {
