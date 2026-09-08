@@ -39,6 +39,9 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <cctype>
+#include <cerrno>
+#include <climits>
 #include <condition_variable>
 #include <cstring>
 #include <memory>
@@ -50,6 +53,9 @@
 
 #include "cas_dispatch.h"	// cas_server_speaker_boot_init
 #include "cas_protocol.h"	// broker_info byte values for DIRECT_CONNECT (wf122/B5)
+#include "authenticate.h"
+#include "perf_monitor.h"
+#include "xserver_interface.h"
 #include "boot.h"		// BOOT_CSQL_CLIENT_TYPE (wf122/B5 D2)
 #include "connection_defs.h"
 #include "connection_sr.h"	// css_increment_num_conn
@@ -88,6 +94,30 @@ namespace cubconn
       }
     };
 
+    struct histogram_row
+    {
+      const char *name = NULL;
+      std::uint64_t count = 0, received = 0, sent = 0, nanoseconds = 0;
+    };
+
+    struct session_histogram
+    {
+      std::mutex mutex;
+      std::atomic<bool> enabled { false };
+      std::uint64_t generation = 0;
+      bool needs_baseline = true;
+      /* Allocated only on explicit DBA opt-in. All shared data except enabled
+       * is protected by mutex; only the owning driver touches perfmon. */
+      std::vector<histogram_row> rows;
+      UINT64 *base = NULL;
+      UINT64 *snapshot = NULL;
+      ~session_histogram ()
+      {
+	free_and_init (base);
+	free_and_init (snapshot);
+      }
+    };
+
     struct session_entry
     {
       std::uint32_t token;
@@ -109,6 +139,7 @@ namespace cubconn
       int slot_index = -1;
       std::uint32_t client_ip = 0;
       bool direct = false;	/* DIRECT_CONNECT session: no broker slot, no SESSION_END (wf122/B5) */
+      std::shared_ptr<session_histogram> histogram;
     };
 
     struct manager
@@ -137,6 +168,13 @@ namespace cubconn
     static manager *adoption_Manager = NULL;
     static thread_local std::uint32_t current_session_token = 0;
     static thread_local std::uint64_t seen_config_generation = 0;
+    static thread_local std::shared_ptr<session_histogram> current_histogram;
+    static thread_local bool histogram_owns_watch = false;
+    static thread_local bool histogram_active = false;
+    static thread_local int histogram_function = 0;
+    static thread_local std::uint64_t histogram_generation = 0;
+    static thread_local histogram_row histogram_request;
+    static thread_local std::chrono::steady_clock::time_point histogram_started;
 
     /* ------------------------------------------------------------------ */
     /* wire helpers                                                       */
@@ -285,7 +323,290 @@ namespace cubconn
 	  it->second.slot_index = slot_index;
 	  it->second.client_ip = client_ip;
 	  it->second.client_name = client_name;
+	  it->second.histogram = std::make_shared<session_histogram> ();
+	  current_histogram = it->second.histogram;
+	  histogram_owns_watch = false;
+	  histogram_active = false;
 	}
+    }
+
+    /* Called by the owning session only, with its histogram locked. Keeping
+     * the watcher across requests preserves the original connection scope,
+     * including transaction boundaries. Never stop another collector's watch. */
+    static void
+    histogram_snapshot (session_histogram &hist)
+    {
+      if (!perfmon_server_is_stats_on (NULL))
+	{
+	  perfmon_start_watch (NULL);
+	  histogram_owns_watch = true;
+	  hist.needs_baseline = true;
+	}
+      xperfmon_server_copy_stats (NULL, hist.snapshot, true);
+      if (hist.needs_baseline)
+	{
+	  perfmon_copy_values (hist.base, hist.snapshot);
+	  hist.needs_baseline = false;
+	}
+    }
+
+    void
+    registry_histogram_begin (int function, const char *name, int received)
+    {
+      histogram_active = false;
+      if (current_histogram == NULL)
+	{
+	  return;
+	}
+      session_histogram &hist = *current_histogram;
+      if (!hist.enabled.load (std::memory_order_acquire))
+	{
+	  if (histogram_owns_watch)
+	    {
+	      perfmon_stop_watch (NULL);
+	      histogram_owns_watch = false;
+	    }
+	  return;
+	}
+      std::lock_guard<std::mutex> guard (hist.mutex);
+      if (!hist.enabled.load (std::memory_order_relaxed))
+	{
+	  return;
+	}
+      histogram_snapshot (hist);
+      histogram_generation = hist.generation;
+      histogram_function = function;
+      histogram_request = {};
+      histogram_request.name = name;
+      histogram_request.received = received;
+      histogram_started = std::chrono::steady_clock::now ();
+      histogram_active = true;
+    }
+
+    void
+    registry_histogram_csql_request (int subcommand)
+    {
+      if (histogram_active && (subcommand == CAS_CSQL_SUB_EXECUTE || subcommand == CAS_CSQL_SUB_SESSION_CMD))
+	{
+	  histogram_function = CAS_FC_MAX + (subcommand == CAS_CSQL_SUB_SESSION_CMD ? 1 : 0);
+	  histogram_request.name = subcommand == CAS_CSQL_SUB_EXECUTE ? "csql_execute" : "csql_session_command";
+	}
+    }
+
+    void
+    registry_histogram_io (int received, int sent)
+    {
+      if (histogram_active)
+	{
+	  histogram_request.received += received;
+	  histogram_request.sent += sent;
+	}
+    }
+
+    void
+    registry_histogram_processed ()
+    {
+      if (histogram_active)
+	{
+	  histogram_request.nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>
+					  (std::chrono::steady_clock::now () - histogram_started).count ();
+	}
+    }
+
+    void
+    registry_histogram_end ()
+    {
+      if (current_histogram != NULL && current_histogram->enabled.load (std::memory_order_acquire))
+	{
+	  session_histogram &hist = *current_histogram;
+	  std::lock_guard<std::mutex> guard (hist.mutex);
+	  if (hist.enabled.load (std::memory_order_relaxed))
+	    {
+	      histogram_snapshot (hist);
+	      if (histogram_active && histogram_generation == hist.generation)
+		{
+		  histogram_row &row = hist.rows[histogram_function];
+		  row.name = histogram_request.name;
+		  row.count++;
+		  row.received += histogram_request.received;
+		  row.sent += histogram_request.sent;
+		  row.nanoseconds += histogram_request.nanoseconds;
+		}
+	      else if (histogram_active)
+		{
+		  /* A concurrent reset excludes the in-flight request in
+		   * both the request counters and the execution statistics. */
+		  perfmon_copy_values (hist.base, hist.snapshot);
+		}
+	    }
+	}
+      histogram_active = false;
+    }
+
+    int
+    registry_histogram_command (histogram_command command, const char *argument, FILE *out)
+    {
+      /* Check the authenticated caller even when controlling another session.
+       * The existing additive csql session-command wire message is sufficient;
+       * no JDBC/CCI protocol change is needed. */
+      if (!au_is_dba_group_member (Au_user))
+	{
+	  fprintf (out, "Histogram is allowed only for DBA\n");
+	  return NO_ERROR;
+	}
+      histogram_active = false;
+      int toggle = -1;
+      const char *rest = argument;
+      if (command == histogram_command::control)
+	{
+	  if (!strncasecmp (rest, "on", 2) && (rest[2] == '\0' || isspace ((unsigned char) rest[2])))
+	    {
+	      toggle = 1;
+	      rest += 2;
+	    }
+	  else if (!strncasecmp (rest, "off", 3) && (rest[3] == '\0' || isspace ((unsigned char) rest[3])))
+	    {
+	      toggle = 0;
+	      rest += 3;
+	    }
+	}
+      while (isspace ((unsigned char) *rest))
+	{
+	  rest++;
+	}
+      unsigned long target = 0;
+      if (!strncasecmp (rest, "session", 7) && isspace ((unsigned char) rest[7]))
+	{
+	  rest += 7;
+	  while (isspace ((unsigned char) *rest))
+	    {
+	      rest++;
+	    }
+	  char *end;
+	  errno = 0;
+	  target = strtoul (rest, &end, 10);
+	  if (!isdigit ((unsigned char) *rest) || errno != 0 || target == 0 || target > UINT_MAX || *end != '\0')
+	    {
+	      fprintf (out, "Invalid histogram session id\n");
+	      return ER_FAILED;
+	    }
+	}
+      else if (*rest != '\0' && (command == histogram_command::control || !isdigit ((unsigned char) *rest)))
+	{
+	  fprintf (out, "Usage: .hist [on|off] [session ID]; .dump_hist/.clear_hist/.x_hist [session ID]\n");
+	  return ER_FAILED;
+	}
+
+      std::shared_ptr<session_histogram> selected;
+      manager *m = adoption_Manager;
+      if (m != NULL)
+	{
+	  std::lock_guard<std::mutex> guard (m->registry_mutex);
+	  for (const auto &item : m->registry)
+	    {
+	      if ((target == 0 && item.first == current_session_token)
+		  || (target != 0 && item.second.session_id == target))
+		{
+		  selected = item.second.histogram;
+		  break;
+		}
+	    }
+	}
+      if (selected == NULL)
+	{
+	  fprintf (out, "Histogram target session is not connected\n");
+	  return ER_FAILED;
+	}
+      session_histogram &hist = *selected;
+      std::lock_guard<std::mutex> guard (hist.mutex);
+      if (command == histogram_command::control)
+	{
+	  if (toggle == 1 && !hist.enabled.load (std::memory_order_relaxed))
+	    {
+	      if (hist.base == NULL)
+		{
+		  hist.base = perfmon_allocate_values ();
+		}
+	      if (hist.snapshot == NULL)
+		{
+		  hist.snapshot = perfmon_allocate_values ();
+		}
+	      if (hist.base == NULL || hist.snapshot == NULL)
+		{
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		}
+	      hist.rows.assign (CAS_FC_MAX + 2, {});
+	      memset (hist.base, 0, perfmon_get_number_of_statistic_values () * sizeof (UINT64));
+	      memset (hist.snapshot, 0, perfmon_get_number_of_statistic_values () * sizeof (UINT64));
+	      hist.needs_baseline = true;
+	      hist.generation++;
+	      hist.enabled.store (true, std::memory_order_release);
+	      if (selected == current_histogram)
+		{
+		  histogram_snapshot (hist);
+		}
+	    }
+	  else if (toggle == 0)
+	    {
+	      hist.enabled.store (false, std::memory_order_release);
+	      hist.generation++;
+	      if (selected == current_histogram && histogram_owns_watch)
+		{
+		  perfmon_stop_watch (NULL);
+		  histogram_owns_watch = false;
+		}
+	    }
+	  else if (toggle == -1)
+	    {
+	      fprintf (out, ".hist IS %s\n", hist.enabled.load () ? "ON" : "OFF");
+	    }
+	  return NO_ERROR;
+	}
+      if (!hist.enabled.load (std::memory_order_relaxed))
+	{
+	  fprintf (out, ".hist IS currently OFF\n");
+	  return NO_ERROR;
+	}
+      if (selected == current_histogram)
+	{
+	  histogram_snapshot (hist);
+	}
+      if (command == histogram_command::dump || command == histogram_command::dump_clear)
+	{
+	  UINT64 *diff = perfmon_allocate_values ();
+	  if (diff == NULL)
+	    {
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  int error = perfmon_calc_diff_stats (diff, hist.snapshot, hist.base, true);
+	  if (error != NO_ERROR)
+	    {
+	      free_and_init (diff);
+	      return error;
+	    }
+	  fprintf (out, "\nHistogram of client requests:\n");
+	  fprintf (out, "Completed requests; bytes include protocol framing (client perspective).\n");
+	  fprintf (out, "Server processing time excludes initial read/final reply write; includes callback waits.\n");
+	  fprintf (out, "%-31s %12s %14s %14s %18s\n", "Name", "Rcount", "Sent size", "Recv size", "Server time (s)");
+	  for (const auto &row : hist.rows)
+	    {
+	      if (row.count != 0)
+		{
+		  fprintf (out, "%-31s %12llu %14llu %14llu %18.9f\n", row.name,
+			   (unsigned long long) row.count, (unsigned long long) row.received,
+			   (unsigned long long) row.sent, (double) row.nanoseconds / 1e9);
+		}
+	    }
+	  perfmon_server_dump_stats (diff, out, NULL);
+	  free_and_init (diff);
+	}
+      if (command == histogram_command::clear || command == histogram_command::dump_clear)
+	{
+	  hist.rows.assign (CAS_FC_MAX + 2, {});
+	  perfmon_copy_values (hist.base, hist.snapshot);
+	  hist.generation++;
+	}
+      return NO_ERROR;
     }
 
     std::size_t
@@ -396,6 +717,12 @@ namespace cubconn
     void
     registry_session_finished (std::uint32_t token)
     {
+      if (token == current_session_token)
+	{
+	  current_histogram.reset ();
+	  histogram_active = false;
+	  histogram_owns_watch = false;
+	}
       manager *m = adoption_Manager;
       if (m == NULL)
 	{

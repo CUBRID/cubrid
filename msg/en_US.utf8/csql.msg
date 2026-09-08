@@ -198,6 +198,7 @@ $ csql help messages
    ;.Clear_hist                 - clear the CSQL statistics information in the buffer.\n\
    ;.Dump_hist                  - display the CSQL statistics information in CSQL.\n\
    ;.X_hist                     - display the CSQL statistics information in CSQL with statistics data initialized.\n\
+   Histogram commands accept SESSION <id> to control a driver session as DBA.\n\
    ;HElp                        - display this help message.\n\n
 
 232 <Constraints> 

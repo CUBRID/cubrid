@@ -46,6 +46,7 @@
 #include "cas_protocol.h"
 
 #include "csql.h"
+#include "adoption.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -207,6 +208,7 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
       return FN_KEEP_CONN;
     }
   net_arg_get_int (&sub_code, argv[0]);
+  cubconn::adoption::registry_histogram_csql_request (sub_code);
 
   csql_chunk_vec chunks;
   size_t captured = 0;

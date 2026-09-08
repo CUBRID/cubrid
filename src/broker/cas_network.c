@@ -54,6 +54,9 @@
 #include "error_code.h"
 #include "broker_util.h"
 #include "cas_ssl.h"
+#if defined (SERVER_MODE)
+#include "adoption.hpp"
+#endif
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
@@ -607,6 +610,12 @@ retry_poll:
     {
       net_error_flag = 1;
     }
+#if defined (SERVER_MODE)
+  if (read_len > 0)
+    {
+      cubconn::adoption::registry_histogram_io (read_len, 0);
+    }
+#endif
   return read_len;
 }
 
@@ -669,6 +678,12 @@ retry_poll:
     {
       net_error_flag = 1;
     }
+#if defined (SERVER_MODE)
+  if (write_len > 0)
+    {
+      cubconn::adoption::registry_histogram_io (0, write_len);
+    }
+#endif
   return write_len;
 }
 

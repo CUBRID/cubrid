@@ -36,6 +36,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include "broker_session_control.h"
 
 namespace cubconn
@@ -219,6 +220,16 @@ namespace cubconn
     void registry_set_fn_status (std::uint32_t token, int fn_status);
     void registry_set_session_id (std::uint32_t token, unsigned int session_id);
     bool registry_take_session_config (broker_session_config &config);
+    /* Optional accounting of completed driver requests. Byte counts include
+     * protocol framing; processing time excludes the initial read and final
+     * reply write. Histogram control requests do not account themselves. */
+    void registry_histogram_begin (int function, const char *name, int received);
+    void registry_histogram_csql_request (int subcommand);
+    void registry_histogram_processed ();
+    void registry_histogram_end ();
+    void registry_histogram_io (int received, int sent);
+    enum class histogram_command { control, clear, dump, dump_clear };
+    int registry_histogram_command (histogram_command command, const char *argument, FILE *out);
     /* session thread signs off: notify SESSION_END and drop the entry */
     void registry_session_finished (std::uint32_t token);
 #endif

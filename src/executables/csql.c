@@ -74,6 +74,7 @@
 #include "boot_cl.h"
 #if defined(SERVER_MODE)
 #include "client_session_context.hpp"	/* csc_bracket_is_active (wf122/B5) */
+#include "adoption.hpp"
 #include "xasl_generation.h"	/* query_Plan_dump_fp session macro (wf122/B5) */
 /* wf122/B5: server-side --sysadm gate (client_type is admin-csql AND DBA);
  * used to keep ;checkpoint/;killtran off the broker-routed path */
@@ -1205,6 +1206,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_PLAN_DUMP:
     case S_CMD_TRACE:
     case S_CMD_SERVER_OUTPUT:
+    case S_CMD_HISTO:
+    case S_CMD_CLR_HISTO:
+    case S_CMD_DUMP_HISTO:
+    case S_CMD_DUMP_CLR_HISTO:
       break;
     default:
       csql_Error_code = CSQL_ERR_SESS_CMD_NOT_FOUND;
@@ -1285,14 +1290,57 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_CLR_HISTO:
     case S_CMD_DUMP_HISTO:
     case S_CMD_DUMP_CLR_HISTO:
-      /* the client-side network histogram has no meaning on the 1-hop
-       * path (#126: reduced) */
-      csql_fputs ("Histogram commands are not supported by this csql.\n", csql_Tty_fp);
-      return DO_CMD_SUCCESS;
+      if (!histo_is_supported ())
+	{
+	  if (cmd_no == S_CMD_HISTO)
+	    {
+	      fprintf (csql_Output_fp, "Histogram is possible when the csql started with "
+		       "`communication_histogram=yes'\n");
+	    }
+	  else
+	    {
+	      fprintf (csql_Output_fp, "Histogram on execution statistics is only allowed for the csql started "
+		       "with `communication_histogram=yes'\n");
+	    }
+	  return DO_CMD_SUCCESS;
+	}
+      {
+	int wire_rc = csql_wire_session_cmd (csql_arg, line_read);
+	if (wire_rc < 0)
+	  {
+	    csql_thin_display_wire_error ();
+	    csql_check_server_down ();
+	    return DO_CMD_FAILURE;
+	  }
+	return wire_rc;
+      }
     default:
       break;
     }
 #endif /* CSQL_THIN */
+
+#if defined (SERVER_MODE)
+  if (cmd_no == S_CMD_HISTO || cmd_no == S_CMD_CLR_HISTO
+      || cmd_no == S_CMD_DUMP_HISTO || cmd_no == S_CMD_DUMP_CLR_HISTO)
+    {
+      using cubconn::adoption::histogram_command;
+      histogram_command command = histogram_command::control;
+      if (cmd_no == S_CMD_CLR_HISTO)
+	{
+	  command = histogram_command::clear;
+	}
+      else if (cmd_no == S_CMD_DUMP_HISTO)
+	{
+	  command = histogram_command::dump;
+	}
+      else if (cmd_no == S_CMD_DUMP_CLR_HISTO)
+	{
+	  command = histogram_command::dump_clear;
+	}
+      return cubconn::adoption::registry_histogram_command (command, argument, csql_Output_fp) == NO_ERROR
+	? DO_CMD_SUCCESS : DO_CMD_FAILURE;
+    }
+#endif
 
   er_clear ();
 

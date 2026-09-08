@@ -59,6 +59,9 @@
 #include "cas_net_buf.h"
 #include "cas_execute.h"
 #include "query_replace.h"
+#if defined (SERVER_MODE)
+#include "adoption.hpp"
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -638,6 +641,10 @@ cas_process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
   strcpy (as_info->log_msg, server_func_name[func_code - 1]);
 
   server_fn = server_fn_table[func_code - 1];
+#if defined (SERVER_MODE)
+  cubconn::adoption::registry_histogram_begin (func_code, server_func_name[func_code - 1],
+					       *client_msg_header.msg_body_size_ptr + MSG_HEADER_SIZE);
+#endif
 
   if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
     {
@@ -803,6 +810,9 @@ cas_process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
       logddl_write_end ();
     }
 
+#if defined (SERVER_MODE)
+  cubconn::adoption::registry_histogram_processed ();
+#endif
   if (net_buf->err_code)
     {
       net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
@@ -872,6 +882,9 @@ cas_process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 
 
 exit_on_end:
+#if defined (SERVER_MODE)
+  cubconn::adoption::registry_histogram_end ();
+#endif
 
   if (cas_shard_flag == ON && as_info->con_status != CON_STATUS_IN_TRAN && as_info->uts_status == UTS_STATUS_BUSY)
     {
