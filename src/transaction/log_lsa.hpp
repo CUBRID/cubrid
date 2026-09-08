@@ -27,6 +27,7 @@
 #define Wrong module
 #endif
 
+#include <vector>
 #include <cassert>
 #include <cstring>
 #include <cinttypes>
@@ -73,6 +74,48 @@ constexpr log_lsa MAX_LSA = { MAX_LOG_LSA_PAGEID, MAX_LOG_LSA_OFFSET };
 
 // functions
 void lsa_to_string (char *buf, int buf_size, const log_lsa *lsa);
+
+// log_lsa_queue
+struct log_lsa_queue
+{
+  std::vector<LOG_LSA> m_queue;
+  std::size_t m_head = 0;
+
+  inline void push (const LOG_LSA &lsa)
+  {
+    m_queue.push_back (lsa);
+  }
+
+  inline bool is_empty () const
+  {
+    return m_head >= m_queue.size ();
+  }
+
+  inline LOG_LSA pop ()
+  {
+    assert (!is_empty ());
+    return m_queue[m_head++];
+  }
+
+  inline const LOG_LSA &front () const
+  {
+    assert (!is_empty ());
+    return m_queue[m_head];
+  }
+
+  inline std::size_t size () const
+  {
+    return m_queue.size () - m_head;
+  }
+
+  inline void clear ()
+  {
+    m_queue.clear ();
+    m_head = 0;
+  }
+};
+
+using LOG_LSA_QUEUE = log_lsa_queue;
 
 //
 // macro replacements

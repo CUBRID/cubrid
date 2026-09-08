@@ -38,6 +38,8 @@
 
 #include <cassert>
 
+#include <vector>
+#include "oid.h"
 // forward definitions
 
 // from concurrency_slot.hpp
@@ -325,6 +327,11 @@ namespace cubthread
       UINT64 *m_px_stats;
       entry *m_px_orig_thread_entry;
       bool m_uses_px_stats;
+
+      bool m_skip_end_resource_tracks_in_recycle;
+
+      std::vector<OID> oos_oids;
+
 
       bool m_is_private_lru_enabled;
       struct pgbuf_holder_anchor *m_holder_anchor;
