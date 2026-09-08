@@ -11520,17 +11520,36 @@ sysprm_alloc_session_parameters_from_defaults (void)
 	  sprm->flag = (GET_PRM (i)->dynamic_flag);
 	  sprm->datatype = GET_PRM (i)->datatype;
 	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
-	  if (i == PRM_ID_TIMEZONE && sprm->value.str == NULL)
+	  if (sprm->datatype == PRM_STRING && sprm->value.str == NULL
+	      && (i == PRM_ID_TIMEZONE || i == PRM_ID_INTL_DATE_LANG || i == PRM_ID_INTL_NUMBER_LANG
+		  || i == PRM_ID_INTL_COLLATION))
 	    {
-	      /* the timezone parameter's stored default is a NULL string and
-	       * update_session_state_from_sys_params strlen()s it; fall back
-	       * to the system timezone, the same special case the parameter
-	       * dump code applies (round-20 core) */
-	      sprm->value.str = strdup (tz_get_system_timezone ());
+	      if (PRM_GET_STRING (GET_PRM (i)->value) != NULL)
+		{
+		  /* Copying an explicit value failed; do not replace it with a default. */
+		  sysprm_free_session_parameters (&prms);
+		  return NULL;
+		}
+	      /* The folded client skips boot_client_initialize's intl defaults.
+	       * Resolve them from the DB language for this session, without
+	       * modifying the process defaults or overriding configured values. */
+	      const char *default_value;
+	      if (i == PRM_ID_TIMEZONE)
+		{
+		  default_value = tz_get_system_timezone ();
+		}
+	      else if (i == PRM_ID_INTL_COLLATION)
+		{
+		  default_value = lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET));
+		}
+	      else
+		{
+		  default_value = lang_get_Lang_name ();
+		}
+	      sprm->value.str = strdup (default_value);
 	      if (sprm->value.str == NULL)
 		{
-		  /* leaving it NULL reintroduces the strlen crash; fail the
-		   * whole allocation instead */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (default_value) + 1);
 		  sysprm_free_session_parameters (&prms);
 		  return NULL;
 		}

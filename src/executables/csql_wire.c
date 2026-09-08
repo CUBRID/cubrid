@@ -38,6 +38,7 @@
 #include "db_client_type.hpp"
 #include "environment_variable.h"
 #include "error_code.h"
+#include "error_manager.h"
 #include "system_parameter.h"
 
 #define ADOPTION_PROTOCOL_ONLY
@@ -537,7 +538,8 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
    * configuration load. Restore that load before establishing a session. */
   if (sysprm_load_and_init_client (db, NULL) != NO_ERROR)
     {
-      wire_set_error (ER_BO_CANT_LOAD_SYSPRM, "cannot load csql system parameters");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
+      wire_set_error (ER_BO_CANT_LOAD_SYSPRM, er_msg ());
       return ER_BO_CANT_LOAD_SYSPRM;
     }
 
