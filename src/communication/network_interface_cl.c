@@ -8801,8 +8801,17 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user, char *kill_host, i
 
   return success;
 #else /* CS_MODE */
-  er_log_debug (ARG_FILE_LINE, "css_kill_client: THIS IS ONLY a C/S function");
-  return ER_FAILED;
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  /* Same contract as sthread_kill_tran_index: the caller only sees NO_ERROR or ER_FAILED. */
+  success = (xlogtb_kill_tran_index (thread_p, kill_tran_index, kill_user, kill_host, kill_pid) == NO_ERROR)
+    ? NO_ERROR : ER_FAILED;
+
+  exit_server (*thread_p);
+
+  return success;
 #endif /* !CS_MODE */
 }
 
@@ -8868,8 +8877,35 @@ thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index, bool is
 
   return success;
 #else /* CS_MODE */
-  er_log_debug (ARG_FILE_LINE, "thread_kill_or_interrupt_tran: THIS IS ONLY a C/S function");
-  return ER_FAILED;
+  int success = NO_ERROR;
+  int error;
+  int i;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  *num_killed = 0;
+  for (i = 0; i < num_tran_index; i++)
+    {
+      error = xlogtb_kill_or_interrupt_tran (thread_p, tran_index_list[i], is_dba_group_member, interrupt_only);
+      if (error == NO_ERROR)
+	{
+	  (*num_killed)++;
+	}
+      else if (error == ER_KILL_TR_NOT_ALLOWED)
+	{
+	  success = error;
+	  break;
+	}
+      else
+	{
+	  /* Same as sthread_kill_or_interrupt_tran: errors other than authorization are not reported. */
+	  er_clear ();
+	}
+    }
+
+  exit_server (*thread_p);
+
+  return success;
 #endif /* !CS_MODE */
 }
 
