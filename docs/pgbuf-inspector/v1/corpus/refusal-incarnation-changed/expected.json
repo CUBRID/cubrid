@@ -1,0 +1,9 @@
+{
+  "case": "refusal-incarnation-changed",
+  "category": "refusal",
+  "outcome": "refused",
+  "refusal_code": "incarnation-changed",
+  "reply_to": "client_hello",
+  "connection": "closed",
+  "frame_count": 1
+}

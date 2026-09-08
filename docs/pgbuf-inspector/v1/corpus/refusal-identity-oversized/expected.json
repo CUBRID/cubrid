@@ -1,0 +1,9 @@
+{
+  "case": "refusal-identity-oversized",
+  "category": "refusal",
+  "outcome": "refused",
+  "refusal_code": "identity-oversized",
+  "reply_to": "client_hello",
+  "connection": "closed",
+  "frame_count": 1
+}
