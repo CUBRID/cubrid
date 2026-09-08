@@ -132,12 +132,18 @@ extern "C"
 /* Do not remove or rename BROKER_RECONNECT_WHEN_SERVER_DOWN */
 #define BROKER_RECONNECT_WHEN_SERVER_DOWN       0x20
 /* Client announces that a SESSION_ID_SIZE-byte session id is appended after the standard
- * 10-byte query-cancel header (QC/X1 only; see KVE-2026-1827 hardening), so the broker can
+ * 10-byte query-cancel header (QC/X1 only), so the broker can
  * verify the cancel request against the CAS-issued session id in addition to source IP/port.
  * For "X1" this bit is carried in the function-flag byte (cas_req_header[3]); for "QC" it is
  * carried in the first reserved byte (cas_req_header[8]).
  * NOTE: cci repository's mirrored copy (src/cci/broker_cas_protocol.h) must define the same
- * bit once the CCI driver adds support for sending the session id. */
+ * bit once the CCI driver adds support for sending the session id.
+ * NOTE: this bit is set by the sender of the cancel request itself, i.e. on the unauthenticated,
+ * out-of-band connection being cancelled, not on the session being targeted; a forged cancel
+ * request can simply omit it. It only controls wire framing (whether the extra 4 bytes are read).
+ * Whether the session id is actually REQUIRED is decided separately in broker.c from the target
+ * session's own PROTOCOL_V13-or-later clt_version, which was recorded from that session's real,
+ * authenticated connect handshake and so cannot be forged by an unrelated cancel request. */
 #define BROKER_SUPPORT_SESSION_CANCEL           0x10
 
 /* For backward compatibility */
@@ -251,7 +257,9 @@ extern "C"
     PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
-    CURRENT_PROTOCOL = PROTOCOL_V12
+    PROTOCOL_V13 = 13,		/* CAS-issued session id required (not just optionally checked) for
+				 * QC/X1 query cancel */
+    CURRENT_PROTOCOL = PROTOCOL_V13
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 

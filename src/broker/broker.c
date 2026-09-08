@@ -840,21 +840,6 @@ receiver_thr_f (void *arg)
       setsockopt (clt_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
       ut_set_keepalive (clt_sock_fd);
 
-      /* ACL check must run before any protocol handling (PING/ST/QC/CANCEL/X1 included) so that an
-       * unauthorized IP cannot reach the pre-auth query-cancel path. */
-      if (v3_acl != NULL)
-	{
-	  unsigned char ip_addr[4];
-
-	  memcpy (ip_addr, &(clt_sock_addr.sin_addr), 4);
-
-	  if (uw_acl_check (ip_addr) < 0)
-	    {
-	      CLOSE_SOCKET (clt_sock_fd);
-	      continue;
-	    }
-	}
-
       cas_client_type = CAS_CLIENT_NONE;
 
       /* read header */
@@ -863,6 +848,24 @@ receiver_thr_f (void *arg)
 	{
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
+	}
+
+      /* ACL check must run before any protocol handling (PING/ST/QC/CANCEL/X1 included) so that an
+       * unauthorized IP cannot reach the pre-auth query-cancel path. It is placed right here, as soon
+       * as the header is available and before any command-specific branch below, so a rejected client
+       * still gets the usual CAS_ER_NOT_AUTHORIZED_CLIENT response instead of a bare disconnect. */
+      if (v3_acl != NULL)
+	{
+	  unsigned char ip_addr[4];
+
+	  memcpy (ip_addr, &(clt_sock_addr.sin_addr), 4);
+
+	  if (uw_acl_check (ip_addr) < 0)
+	    {
+	      send_error_to_driver (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT, cas_req_header);
+	      CLOSE_SOCKET (clt_sock_fd);
+	      continue;
+	    }
 	}
 
       if (strncmp (cas_req_header, "PING", 4) == 0)
@@ -922,7 +925,16 @@ receiver_thr_f (void *arg)
        * - Optionally, when the sender sets the BROKER_SUPPORT_SESSION_CANCEL bit
        *   (in cas_req_header[8] for "QC", in cas_req_header[3] for "X1"), a
        *   SESSION_ID_SIZE-byte CAS session id is appended right after the header
-       *   above and is verified against the CAS-issued session id (see KVE-2026-1827).
+       *   above and is verified against the CAS-issued session id.
+       *   That bit is set by the (unauthenticated) sender of this very cancel request, so
+       *   by itself it cannot force the check to be mandatory: a forged request can simply
+       *   omit it. Whether it is actually required is instead decided from the TARGET
+       *   session's own recorded clt_version (shm_appl->as_info[i].clt_version), which was
+       *   set from that session's own real connect handshake and so cannot be forged by an
+       *   unrelated cancel request. Once a session's clt_version is PROTOCOL_V13 or later,
+       *   a QC/X1 cancel for it must carry a matching session id; older sessions keep using
+       *   the legacy IP/port-only check. Legacy CANCEL never carries a session id and always
+       *   uses the IP-only check.
        */
       else if (strncmp (cas_req_header, "QC", 2) == 0 || strncmp (cas_req_header, "CANCEL", 6) == 0
 	       || strncmp (cas_req_header, "X1", 2) == 0)
@@ -994,6 +1006,21 @@ receiver_thr_f (void *arg)
 		       * is the authoritative check; the IP/port checks above remain as defense-in-depth
 		       * for clients that have not been upgraded yet. */
 		      if (has_session_id && req_session_id != shm_appl->as_info[i].session_id)
+			{
+			  continue;
+			}
+
+		      /* has_session_id is a bit the sender sets on this very (unauthenticated) cancel
+		       * request, so an attacker who otherwise matches the IP/port checks above could
+		       * defeat the session-id check entirely just by not setting it.
+		       * Rather than trust that self-declared bit to decide whether the
+		       * check is mandatory, ask whether the TARGET session's own client is new enough
+		       * to be expected to send it, using clt_version as recorded from that session's
+		       * real connect handshake; a forged cancel request cannot alter that value.
+		       * Legacy CANCEL never carries a session id and always keeps using the
+		       * IP/port-only check below. */
+		      if (cas_req_header[0] != 'C' && !has_session_id
+			  && DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (shm_appl->as_info[i].clt_version, PROTOCOL_V13))
 			{
 			  continue;
 			}
