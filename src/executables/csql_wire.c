@@ -1042,7 +1042,9 @@ wire_apply_statement_blocks (void)
   snprintf (line, sizeof (line), ";set block_ddl_statement=%c;block_nowhere_statement=%c",
 	    prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT) ? 'y' : 'n',
 	    prm_get_bool_value (PRM_ID_BLOCK_NOWHERE_STATEMENT) ? 'y' : 'n');
-  int status = wire_session_cmd (0, 0, "", line, false);
+  /* This configuration-only request must not disable triggers before the
+   * first SQL request supplies the user's --no-trigger-action setting. */
+  int status = wire_session_cmd (CAS_CSQL_FLAG_TRIGGER_ACTION, 0, "", line, false);
   if (status != NO_ERROR)
     {
       if (wire_Err_code == NO_ERROR)
