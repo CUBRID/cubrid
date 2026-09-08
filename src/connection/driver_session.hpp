@@ -50,6 +50,7 @@ namespace cubconn
       char db_user[33];
       char db_passwd[33];
       char url[513];
+      char driver_version[DRIVER_VERSION_SIZE];
       char session_id[20];
       bool is_health_check;
     };

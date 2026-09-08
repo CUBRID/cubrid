@@ -1911,22 +1911,30 @@ admin_parse_runtime_change (const char *name, const char *value, struct broker_s
   char *field = (char *) &change->config.runtime + option->offset;
   if (option->kind == RUNTIME_PATH)
     {
+      char absolute[BROKER_PATH_MAX];
       size_t length = strlen (value);
-      if (length < (size_t) option->minimum || length > (size_t) option->maximum)
+      if (length < (size_t) option->minimum)
 	{
 	  goto invalid_value;
 	}
-      ut_cd_root_dir ();
-      int result = broker_create_dir (value);
-      struct stat status;
-      bool directory_exists = result == 0 && stat (value, &status) == 0 && S_ISDIR (status.st_mode);
-      ut_cd_work_dir ();
-      if (!directory_exists)
+      /* A relative directory resolves against $CUBRID exactly as at broker start
+       * (make_abs_path in broker_config), so the stored and displayed value is
+       * absolute like the former per-parameter changer branches. */
+      if (length > (size_t) option->maximum || make_abs_path (absolute, NULL, value, sizeof (absolute)) < 0
+	  || strlen (absolute) >= CONF_LOG_FILE_LEN || strlen (absolute) >= BROKER_SESSION_PATH_MAX)
 	{
-	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "cannot access the path : %s", value);
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "The length of %s is too long.", option->name);
 	  return -1;
 	}
-      memcpy (field, value, length + 1);
+      int result = broker_create_dir (absolute);
+      struct stat status;
+      bool directory_exists = result == 0 && stat (absolute, &status) == 0 && S_ISDIR (status.st_mode);
+      if (!directory_exists)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "cannot access the path : %s", absolute);
+	  return -1;
+	}
+      memcpy (field, absolute, strlen (absolute) + 1);
       return 0;
     }
   switch (option->kind)
@@ -1953,9 +1961,16 @@ admin_parse_runtime_change (const char *name, const char *value, struct broker_s
     default:
       goto invalid_value;
     }
-  if (!isfinite (number) || number < option->minimum || number > option->maximum)
+  /* The converters report a malformed value as a negative number; a well-formed
+   * value outside the limits keeps the former "out of range" answer. */
+  if (!isfinite (number) || number < 0)
     {
       goto invalid_value;
+    }
+  if (number < option->minimum || number > option->maximum)
+    {
+      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "value is out of range : %s", value);
+      return -1;
     }
   {
     int32_t parsed = (int32_t) number;
@@ -2033,8 +2048,65 @@ admin_mirror_runtime_change (T_BROKER_INFO * broker, const T_SHM_APPL_SERVER * s
     }
 }
 
+/* Broker-wide checks the former per-parameter changer branches performed
+ * against the current value before applying a change. */
 static int
-admin_session_change (int shm_key, const char *selector, const char *name, const char *value)
+admin_check_runtime_previous (const T_BROKER_INFO * broker, uint32_t parameter,
+			      const struct broker_runtime_config *runtime, const char *value)
+{
+  const char *previous_dir = NULL;
+  const char *new_dir = NULL;
+  char absolute[BROKER_PATH_MAX];
+
+  switch (parameter)
+    {
+    case BROKER_RUNTIME_MAX_PREPARED_STMT_COUNT:
+      if (broker->max_prepared_stmt_count == runtime->max_prepared_stmt_count)
+	{
+	  goto same_value;
+	}
+      if (broker->max_prepared_stmt_count > runtime->max_prepared_stmt_count)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "cannot be decreased below the previous value '%d' : %s",
+		    broker->max_prepared_stmt_count, value);
+	  return -1;
+	}
+      return 0;
+    case BROKER_RUNTIME_SESSION_TIMEOUT:
+      if (broker->session_timeout == runtime->session_timeout)
+	{
+	  goto same_value;
+	}
+      return 0;
+    case BROKER_RUNTIME_LOG_DIR:
+      previous_dir = broker->log_dir;
+      new_dir = runtime->log_dir;
+      break;
+    case BROKER_RUNTIME_SLOW_LOG_DIR:
+      previous_dir = broker->slow_log_dir;
+      new_dir = runtime->slow_log_dir;
+      break;
+    case BROKER_RUNTIME_ERROR_LOG_DIR:
+      previous_dir = broker->err_log_dir;
+      new_dir = runtime->error_log_dir;
+      break;
+    default:
+      return 0;
+    }
+  if (make_abs_path (absolute, NULL, previous_dir, sizeof (absolute)) == 0 && strcmp (absolute, new_dir) == 0)
+    {
+      goto same_value;
+    }
+  return 0;
+
+same_value:
+  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "same as previous value : %s", value);
+  return -1;
+}
+
+static int
+admin_session_change (int shm_key, const T_BROKER_INFO * broker, const char *selector, const char *name,
+		      const char *value)
 {
   struct broker_session_change change;
   memset (&change, 0, sizeof (change));
@@ -2059,6 +2131,11 @@ admin_session_change (int shm_key, const char *selector, const char *name, const
 	}
     }
   else if (admin_parse_runtime_change (name, value, &change) != 0)
+    {
+      return -1;
+    }
+  else if (selector == NULL
+	   && admin_check_runtime_previous (broker, change.parameter, &change.config.runtime, value) != 0)
     {
       return -1;
     }
@@ -2232,7 +2309,8 @@ admin_conf_change_session (int master_shm_id, const char *br_name, const char *c
 	      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "%s is broker-wide; omit the session selector", conf_name);
 	      goto set_conf_error;
 	    }
-	  int result = admin_session_change (br_info_p->appl_server_shm_id, session_selector, conf_name, conf_value);
+	  int result =
+	    admin_session_change (br_info_p->appl_server_shm_id, br_info_p, session_selector, conf_name, conf_value);
 	  /* Broker owns the live default; mirror it for configuration display,
 	   * including a partial delivery.  No file changes survive a restart. */
 	  if (session_selector == NULL)

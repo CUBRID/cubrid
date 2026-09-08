@@ -722,7 +722,8 @@ metadata_of_session_status (void)
     {"Client_type", "varchar(24)"},
     {"Num_query_replace_prepare", "bigint"},
     {"Num_query_replace_execute", "bigint"},
-    {"Num_query_replace_fallback", "bigint"}
+    {"Num_query_replace_fallback", "bigint"},
+    {"Client_version", "varchar(20)"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {

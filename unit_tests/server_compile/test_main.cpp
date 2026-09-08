@@ -875,6 +875,68 @@ test_adoption_wire_helpers (void)
       return 1;
     }
 
+  /* Product version follows the URL NUL and a one-byte length, not the
+   * protocol byte in the driver header.  Never consume session_id as version
+   * data when the optional extension is truncated. */
+  char version_info[DRIVER_DB_INFO_SIZE];
+  memcpy (version_info, db_info, sizeof (version_info));
+  char *version_url = version_info + 96;
+  std::size_t version_offset = strlen (version_url) + 1;
+  const char *driver_version = "11.4.0.0073";
+  version_url[version_offset] = (char) strlen (driver_version);
+  memcpy (version_url + version_offset + 1, driver_version, strlen (driver_version));
+  if (parse_db_info (version_info, sizeof (version_info), info) != NO_ERROR
+      || strcmp (info.driver_version, driver_version) != 0 || info.session_id[5] != 5)
+    {
+      fprintf (stderr, "FAIL: parse_db_info product version\n");
+      return 1;
+    }
+
+  const unsigned char invalid_version_sizes[] = { 0, (unsigned char) DRIVER_VERSION_SIZE, 255 };
+  for (unsigned char version_size : invalid_version_sizes)
+    {
+      version_url[version_offset] = (char) version_size;
+      if (parse_db_info (version_info, sizeof (version_info), info) != NO_ERROR || info.driver_version[0] != '\0')
+	{
+	  fprintf (stderr, "FAIL: parse_db_info invalid version length\n");
+	  return 1;
+	}
+    }
+
+  char full_version[DRIVER_VERSION_SIZE];
+  memset (full_version, 'v', sizeof (full_version) - 1);
+  full_version[sizeof (full_version) - 1] = '\0';
+  memset (version_url, 'u', SRV_CON_URL_SIZE);
+  version_offset = SRV_CON_URL_SIZE - sizeof (full_version);
+  version_url[version_offset - 1] = '\0';
+  version_url[version_offset] = (char) (sizeof (full_version) - 1);
+  memcpy (version_url + version_offset + 1, full_version, sizeof (full_version) - 1);
+  if (parse_db_info (version_info, sizeof (version_info), info) != NO_ERROR
+      || strcmp (info.driver_version, full_version) != 0 || info.session_id[5] != 5)
+    {
+      fprintf (stderr, "FAIL: parse_db_info version at URL boundary\n");
+      return 1;
+    }
+
+  for (int nul_offset = SRV_CON_URL_SIZE - 2; nul_offset <= SRV_CON_URL_SIZE; nul_offset++)
+    {
+      memset (version_url, 'u', SRV_CON_URL_SIZE);
+      if (nul_offset < SRV_CON_URL_SIZE)
+	{
+	  version_url[nul_offset] = '\0';
+	}
+      if (nul_offset == SRV_CON_URL_SIZE - 2)
+	{
+	  version_url[nul_offset + 1] = 1; /* length byte without payload */
+	}
+      if (parse_db_info (version_info, sizeof (version_info), info) != NO_ERROR
+	  || info.driver_version[0] != '\0' || info.session_id[5] != 5)
+	{
+	  fprintf (stderr, "FAIL: parse_db_info truncated version metadata\n");
+	  return 1;
+	}
+    }
+
   memset (db_info + 32, 0, 32);	/* empty user defaults to PUBLIC */
   memset (db_info, 'x', 32);	/* dbname with no NUL: must not overrun */
   if (parse_db_info (db_info, sizeof (db_info), info) != NO_ERROR || strcmp (info.db_user, "PUBLIC") != 0

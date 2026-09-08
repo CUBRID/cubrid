@@ -103,6 +103,7 @@ namespace cubconn
     static const std::size_t DRIVER_HEADER_SIZE = 10;	/* SRV_CON_CLIENT_INFO_SIZE */
     static const std::size_t DRIVER_DB_INFO_SIZE = 628;	/* SRV_CON_DB_INFO_SIZE (V12) */
     static const std::size_t DRIVER_BROKER_INFO_SIZE = 8;	/* BROKER_INFO_SIZE */
+    static const std::size_t DRIVER_VERSION_SIZE = 20;	/* SRV_CON_VER_STR_MAX_SIZE */
 
     struct handoff_body
     {
@@ -211,11 +212,16 @@ namespace cubconn
       long long num_query_replace_fallback;
       char last_activity[256];
       char client_type[24];
+      char client_version[DRIVER_VERSION_SIZE];
     };
     /* the session thread publishes its CAS slot after slot begin; cleared
      * with the registry entry.  as_info_slot is a T_APPL_SERVER_INFO*. */
     void registry_set_session_stats (std::uint32_t token, void *as_info_slot, int slot_index,
-				     std::uint32_t client_ip, const char *client_name);
+				     std::uint32_t client_ip, const char *client_name, int client_id);
+    /* Administrative termination wakes the real driver transport and interrupts
+     * an executing request. The session thread remains the resource owner. */
+    bool registry_shutdown_client (int client_id, int tran_index);
+    void registry_begin_session_cleanup (std::uint32_t token);
     std::size_t registry_stats_snapshot (session_stat_row *rows, std::size_t max_rows);
     void registry_set_fn_status (std::uint32_t token, int fn_status);
     void registry_set_session_id (std::uint32_t token, unsigned int session_id);

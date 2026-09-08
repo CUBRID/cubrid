@@ -128,6 +128,7 @@ namespace cubconn
       char broker_name[BROKER_NAME_MAX];
       int client_fd;
       int tran_index;
+      int client_id = -1; /* CSS identity; valid only before session cleanup */
       std::int32_t fn_status;
       /* SHOW SESSION STATUS (B2-D10): the session thread's CAS slot.  The
        * registry_mutex guarantees POINTER lifetime only (the entry is
@@ -309,7 +310,7 @@ namespace cubconn
 
     void
     registry_set_session_stats (std::uint32_t token, void *as_info_slot, int slot_index, std::uint32_t client_ip,
-				const char *client_name)
+				const char *client_name, int client_id)
     {
       manager *m = adoption_Manager;
       if (m == NULL)
@@ -323,6 +324,7 @@ namespace cubconn
 	  current_session_token = token;
 	  seen_config_generation = 0;
 	  it->second.stats_slot = (T_APPL_SERVER_INFO *) as_info_slot;
+	  it->second.client_id = client_id;
 	  it->second.slot_index = slot_index;
 	  it->second.client_ip = client_ip;
 	  it->second.client_name = client_name;
@@ -629,6 +631,51 @@ namespace cubconn
       return NO_ERROR;
     }
 
+    bool
+    registry_shutdown_client (int client_id, int tran_index)
+    {
+      manager *m = adoption_Manager;
+      if (m == NULL || client_id < 0)
+	{
+	  return false;
+	}
+      std::lock_guard<std::mutex> guard (m->registry_mutex);
+      for (const auto &pair : m->registry)
+	{
+	  const session_entry &entry = pair.second;
+	  if (entry.client_id == client_id)
+	    {
+	      /* Cleanup clears this identity under the same mutex before releasing
+	       * either the transaction slot or the driver transport. */
+	      if (tran_index != NULL_TRAN_INDEX)
+		{
+		  (void) logtb_set_tran_index_interrupt (NULL, tran_index, true);
+		}
+	      shutdown (entry.client_fd, SHUT_RDWR);
+	      return true;
+	    }
+	}
+      return false;
+    }
+
+    void
+    registry_begin_session_cleanup (std::uint32_t token)
+    {
+      manager *m = adoption_Manager;
+      if (m == NULL)
+	{
+	  return;
+	}
+      std::lock_guard<std::mutex> guard (m->registry_mutex);
+      auto it = m->registry.find (token);
+      if (it != m->registry.end ())
+	{
+	  it->second.client_id = -1;
+	  it->second.tran_index = NULL_TRAN_INDEX;
+	  it->second.stats_slot = NULL;
+	}
+    }
+
     std::size_t
     registry_stats_snapshot (session_stat_row *rows, std::size_t max_rows)
     {
@@ -652,6 +699,7 @@ namespace cubconn
 	  r.token = e.token;
 	  r.slot = e.slot_index;
 	  snprintf (r.client_type, sizeof (r.client_type), "%s", e.client_name);
+	  snprintf (r.client_version, sizeof (r.client_version), "%s", e.stats_slot->driver_version);
 	  std::memcpy (r.broker_name, e.broker_name, sizeof (r.broker_name));
 	  r.broker_name[sizeof (r.broker_name) - 1] = '\0';
 	  r.client_ip = e.client_ip;

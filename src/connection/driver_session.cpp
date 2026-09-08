@@ -96,6 +96,7 @@ namespace cubconn
     static_assert (DRIVER_HEADER_SIZE == SRV_CON_CLIENT_INFO_SIZE, "driver header size drift");
     static_assert (DRIVER_DB_INFO_SIZE == SRV_CON_DB_INFO_SIZE, "db_info size drift");
     static_assert (DRIVER_BROKER_INFO_SIZE == BROKER_INFO_SIZE, "broker_info size drift");
+    static_assert (DRIVER_VERSION_SIZE == SRV_CON_VER_STR_MAX_SIZE, "driver version size drift");
 
     static const std::size_t CONNECT_REPLY_BUF_SIZE =
 	    sizeof (int) + CAS_INFO_SIZE + CAS_CONNECTION_REPLY_SIZE;
@@ -213,6 +214,22 @@ namespace cubconn
       copy_field (out.db_passwd, sizeof (out.db_passwd), p, SRV_CON_DBPASSWD_SIZE);
       p += SRV_CON_DBPASSWD_SIZE;
       copy_field (out.url, sizeof (out.url), p, SRV_CON_URL_SIZE);
+      /* V5+ drivers append a length-prefixed product version after the URL's
+       * NUL, within this same fixed-size field.  Preserve it before advancing
+       * to session_id; absent or malformed optional metadata uses the protocol
+       * fallback at session establishment. */
+      out.driver_version[0] = '\0';
+      std::size_t url_size = strnlen (p, SRV_CON_URL_SIZE);
+      if (url_size + 2 <= SRV_CON_URL_SIZE)
+	{
+	  std::size_t version_size = (unsigned char) p[url_size + 1];
+	  if (version_size > 0 && version_size < sizeof (out.driver_version)
+	      && version_size <= SRV_CON_URL_SIZE - url_size - 2)
+	    {
+	      std::memcpy (out.driver_version, p + url_size + 2, version_size);
+	      out.driver_version[version_size] = '\0';
+	    }
+	}
       p += SRV_CON_URL_SIZE;
       std::memcpy (out.session_id, p, SRV_CON_DBSESS_ID_SIZE);
 
@@ -668,6 +685,15 @@ namespace cubconn
       /* point the CAS globals at this thread's slot (cas_server_support) */
       cas_server_session_slot_begin (params.driver_header[SRV_CON_MSG_IDX_CLIENT_TYPE],
 				     CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
+      if (info.driver_version[0] != '\0')
+	{
+	  snprintf (as_info->driver_version, sizeof (as_info->driver_version), "%s", info.driver_version);
+	}
+      else
+	{
+	  snprintf (as_info->driver_version, sizeof (as_info->driver_version), "PROTOCOL V%d",
+		    parse_driver_protocol (params.driver_header));
+	}
 
       /* Broker-routed sessions keep the historical <broker>_<N> log name.
        * Direct csql uses the DB name; the same lease prevents collisions if a
@@ -681,7 +707,7 @@ namespace cubconn
 	}
 
       /* publish this session's CAS slot for SHOW SESSION STATUS (B2-D10) */
-      registry_set_session_stats (params.token, as_info, cas_log_slot_index, params.client_ip, client_name);
+      registry_set_session_stats (params.token, as_info, cas_log_slot_index, params.client_ip, client_name, conn->client_id);
 
       /* ACCESS_CONTROL db:dbuser:ip check before any engine boot (B2-D8,
        * #116 D6) — the same ordering the CAS kept (check, then db_connect).
@@ -721,6 +747,7 @@ namespace cubconn
        * (B2-D2/D4): SQL/slow logs on this slot, DDL audit identity */
       cas_server_apply_pending_config (false);
       cas_log_open (broker_name);
+      cas_log_write_and_end (0, false, "CLIENT VERSION %s", as_info->driver_version);
       cas_slow_log_open (broker_name);
       logddl_init (std::strcmp (client_name, "csql") == 0 ? APP_NAME_CSQL : APP_NAME_CAS);
       logddl_check_ddl_audit_param ();
@@ -830,6 +857,7 @@ namespace cubconn
       (void) ux_end_session ();
 
 retire:
+      registry_begin_session_cleanup (params.token);
       qr_final ();
       if (as_info != NULL)
 	{
