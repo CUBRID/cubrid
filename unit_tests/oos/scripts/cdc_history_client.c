@@ -40,8 +40,13 @@ main (int argc, char **argv)
   if (entropy)
     {
       file = fopen ("/mnt/payload.hex", "r");
-      if (file == NULL || fgets (expected_hex, sizeof (expected_hex), file) == NULL)
+      if (file == NULL)
 	return 2;
+      if (fgets (expected_hex, sizeof (expected_hex), file) == NULL)
+	{
+	  fclose (file);
+	  return 2;
+	}
       fclose (file);
     }
   if (argc != 4)
@@ -69,7 +74,10 @@ main (int argc, char **argv)
   {
     unsigned long long saved;
     if (fscanf (file, "%llu", &saved) != 1)
-      return 5;
+      {
+	fclose (file);
+	return 5;
+      }
     lsa = saved;
   }
   fclose (file);
@@ -105,8 +113,13 @@ main (int argc, char **argv)
 	  int found = 0;
 	  unsigned long long resume;
 	  file = fopen ("resume.lsa", "r");
-	  if (file == NULL || fscanf (file, "%llu", &resume) != 1)
+	  if (file == NULL)
 	    return 11;
+	  if (fscanf (file, "%llu", &resume) != 1)
+	    {
+	      fclose (file);
+	      return 11;
+	    }
 	  fclose (file);
 	  cubrid_log_finalize ();
 	  if (cubrid_log_set_all_in_cond (atoi (argv[3])) != 0
