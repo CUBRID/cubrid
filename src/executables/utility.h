@@ -91,7 +91,8 @@ typedef enum
   MSGCAT_UTIL_SET_TDE = 57,
   MSGCAT_UTIL_SET_FLASHBACK = 58,
   MSGCAT_UTIL_SET_MEMMON = 59,
-  MSGCAT_UTIL_SET_CLEANFILEDB = 60
+  MSGCAT_UTIL_SET_CLEANFILEDB = 60,
+  MSGCAT_UTIL_SET_ACTIVATEHISTORYDB = 61
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -821,6 +822,7 @@ typedef enum
   TDE,
   FLASHBACK,
   MEMMON,
+  ACTIVATEHISTORYDB,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -1011,6 +1013,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_CLEANFILEDB                 "cleanfiledb"
 #define UTIL_OPTION_PATCHDB                     "emergency_patchlog"
 #define UTIL_OPTION_CHECKDB                     "checkdb"
+#define UTIL_OPTION_ACTIVATEHISTORYDB           "activatehistorydb"
 #define UTIL_OPTION_ALTERDBHOST                 "alterdbhost"
 #define UTIL_OPTION_PLANDUMP                    "plandump"
 #define UTIL_OPTION_ESTIMATE_DATA               "estimate_data"
@@ -1912,6 +1915,7 @@ extern "C"
   extern int estimatedb_index (UTIL_FUNCTION_ARG * arg_map);
   extern int estimatedb_hash (UTIL_FUNCTION_ARG * arg_map);
   extern int alterdbhost (UTIL_FUNCTION_ARG * arg_map);
+  extern int activatehistorydb (UTIL_FUNCTION_ARG * arg_map);
   extern int paramdump (UTIL_FUNCTION_ARG * arg_map);
   extern int statdump (UTIL_FUNCTION_ARG * arg_map);
   extern int changemode (UTIL_FUNCTION_ARG * arg_map);

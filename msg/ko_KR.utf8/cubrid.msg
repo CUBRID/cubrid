@@ -1494,7 +1494,11 @@ $ LOADDB
 
 1384 내부 에러: out-of-row storage 인자가 유효하지 않습니다.
 
-1385 마지막 에러
+1385 OOS 이력 형식 활성화가 필요합니다. supplemental logging을 사용하는 OOS 쓰기 전에 데이터베이스를 정상 종료하고 cubrid activatehistorydb를 실행하십시오.
+
+1386 OOS 이력 형식 활성화에는 정상 종료가 필요합니다. 데이터베이스를 재시작하여 복구한 후 정상 종료하고 활성화를 다시 실행하십시오.
+
+1387 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

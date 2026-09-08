@@ -61,6 +61,7 @@
 #include "object_representation.h"
 #include "object_representation_sr.h"
 #include "xserver_interface.h"
+#include "release_string.h"
 #include "chartype.h"
 #include "query_executor.h"
 #include "fetch.h"
@@ -2852,6 +2853,63 @@ check_supplemental_log (THREAD_ENTRY * thread_p, OID * classoid)
     }
 
   return false;
+}
+
+/*
+ * heap_check_oos_history_activation () - Refuse incomplete OOS history on an
+ * inactive database before changing the row. Inspect both images, resolving
+ * forwarding/overflow records while the operation still protects the old row.
+ */
+static int
+heap_check_oos_history_activation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+{
+  RECDES old_record = RECDES_INITIALIZER;
+  OID forward_oid;
+  bool has_oos = false;
+
+  if (!context->do_supplemental_log || log_get_db_compatibility () == REL_DISK_COMPATIBILITY_OOS_HISTORY)
+    {
+      return NO_ERROR;
+    }
+
+  if (context->type != HEAP_OPERATION_DELETE && context->recdes_p->type != REC_ASSIGN_ADDRESS)
+    {
+      has_oos = heap_recdes_contains_oos (context->recdes_p);
+    }
+  if (!has_oos && context->type != HEAP_OPERATION_INSERT)
+    {
+      switch (context->record_type)
+	{
+	case REC_HOME:
+	  old_record = context->home_recdes;
+	  break;
+	case REC_RELOCATION:
+	  forward_oid = *((OID *) context->home_recdes.data);
+	  if (heap_fix_forward_page (thread_p, context, &forward_oid) != NO_ERROR
+	      || spage_get_record (thread_p, context->forward_page_watcher_p->pgptr, forward_oid.slotid,
+				   &old_record, PEEK) != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	  break;
+	case REC_BIGONE:
+	  forward_oid = *((OID *) context->home_recdes.data);
+	  if (heap_get_bigone_content (thread_p, context->scan_cache_p, PEEK, &forward_oid, &old_record) != S_SUCCESS)
+	    {
+	      return ER_FAILED;
+	    }
+	  break;
+	default:
+	  break;
+	}
+      has_oos = old_record.data != NULL && heap_recdes_contains_oos (&old_record);
+    }
+  if (has_oos)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OOS_HISTORY_ACTIVATION_REQUIRED, 0);
+      return ER_OOS_HISTORY_ACTIVATION_REQUIRED;
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -24526,6 +24584,12 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
       context->do_supplemental_log = false;
     }
 
+  rc = heap_check_oos_history_activation (thread_p, context);
+  if (rc != NO_ERROR)
+    {
+      goto error;
+    }
+
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_INSERT_START (&context->class_oid);
 #endif /* ENABLE_SYSTEMTAP */
@@ -24796,6 +24860,12 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       context->do_supplemental_log = false;
     }
 
+  rc = heap_check_oos_history_activation (thread_p, context);
+  if (rc != NO_ERROR)
+    {
+      goto error;
+    }
+
   /*
    * Physical deletion and logging
    */
@@ -25029,6 +25099,12 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   else
     {
       context->do_supplemental_log = false;
+    }
+
+  rc = heap_check_oos_history_activation (thread_p, context);
+  if (rc != NO_ERROR)
+    {
+      goto exit;
     }
 
   /*

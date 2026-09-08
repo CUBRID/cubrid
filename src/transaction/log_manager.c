@@ -1310,6 +1310,17 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       goto error;
     }
 
+  /* An interrupted activation may have left the new marker in the OS cache.
+   * Establish it durably before recovery or any new-format history is allowed. */
+  if (log_Gl.hdr.db_compatibility == REL_DISK_COMPATIBILITY_OOS_HISTORY)
+    {
+      error_code = logpb_sync_history_compatibility ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   if (rel_is_log_compatible (log_Gl.hdr.db_release, rel_release_string ()) != true)
     {
       /*

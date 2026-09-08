@@ -167,6 +167,8 @@ extern int xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isola
 
 extern LOG_LSA *log_get_final_restored_lsa (void);
 extern float log_get_db_compatibility (void);
+extern int logpb_activate_history (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+				   const char *prefix_logname);
 extern int log_set_no_logging (void);
 extern bool log_is_no_logging (void);
 extern bool logtb_has_updated (THREAD_ENTRY * thread_p);

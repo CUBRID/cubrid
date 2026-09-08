@@ -1785,7 +1785,11 @@
 
 #define ER_HEAP_OOS_INVALID_ARGUMENT                -1384
 
-#define ER_LAST_ERROR                               -1385
+#define ER_OOS_HISTORY_ACTIVATION_REQUIRED           -1385
+
+#define ER_OOS_HISTORY_REQUIRES_CLEAN_SHUTDOWN       -1386
+
+#define ER_LAST_ERROR                               -1387
 
 
 

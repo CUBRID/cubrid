@@ -7202,7 +7202,7 @@ fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 
   strncpy_bufsize (backup_header_p->db_fullname, db_full_name_p);
   backup_header_p->db_creation = *db_creation_time_p;
   backup_header_p->db_iopagesize = IO_PAGESIZE;
-  backup_header_p->db_compatibility = rel_disk_compatible ();
+  backup_header_p->db_compatibility = log_get_db_compatibility ();
   backup_header_p->level = backup_level;
   LSA_COPY (&backup_header_p->start_lsa, backup_start_lsa_p);
   LSA_COPY (&backup_header_p->chkpt_lsa, backup_checkpoint_lsa_p);
