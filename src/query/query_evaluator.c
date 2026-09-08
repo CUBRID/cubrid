@@ -2965,7 +2965,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
        * pr_eval_fnc */
       if (unlikely (pred_root->scan_prog_state == 0))
 	{
-	  pred_root->scan_prog = expr_scan_pred_compile (thread_p, pred_root);
+	  pred_root->scan_prog = expr_scan_pred_compile (thread_p, pred_root, filterp->val_descr);
 	  pred_root->scan_prog_state = (pred_root->scan_prog != NULL) ? 1 : 2;
 	}
       if (pred_root->scan_prog_state == 1)

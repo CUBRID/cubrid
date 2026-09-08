@@ -123,6 +123,9 @@ namespace cubxasl
     void *acc_kernel;		/* QDATA_ACC_KERNEL_FN (query_aggregate.cpp) accumulating this
 				 * node straight from its program cell, or NULL for the
 				 * interpreted tail; resolved with the program */
+    void *operand_prog_share_spec;	/* head only: the node's only heap scan (ACCESS_SPEC_TYPE *) whose
+					 * compiled data filter may serve operand values, or NULL
+					 * (qexec_set_expr_share_spec ()); runtime only */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
     struct
     {

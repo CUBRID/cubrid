@@ -614,6 +614,8 @@ namespace parallel_scan
       }
 
     m_scan_id = &m_xasl->spec_list->s_id;
+    /* this worker's clone scans its own spec and projects/aggregates its own rows */
+    qexec_set_expr_share_spec (m_xasl, m_xasl->spec_list);
 
     m_xasl_state = (xasl_state *) db_private_alloc (&thread_ref, sizeof (xasl_state));
     if (m_xasl_state == nullptr)

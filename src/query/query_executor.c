@@ -7567,6 +7567,35 @@ qexec_is_cached_scan_eligible (ACCESS_SPEC_TYPE * specp, SCAN_OPERATION_TYPE sca
 }
 
 /*
+ * qexec_set_expr_share_spec () - let the node's projection and aggregate operands read the
+ *				  values its data filter computes (expr_compile.h)
+ *   xasl(in): the node being scanned (may be NULL)
+ *   spec(in): the access spec being opened
+ *
+ * Only when spec is the node's single heap scan and the node has no scan_ptr chain: every
+ * row the projection or the aggregates see has then just passed this spec's data filter,
+ * and an expression the filter computed for the row is current.  A BUILDVALUE output list
+ * is evaluated after the scan, not per row, so only its aggregate operands take part.
+ */
+void
+qexec_set_expr_share_spec (XASL_NODE * xasl, ACCESS_SPEC_TYPE * spec)
+{
+  if (xasl == NULL || spec == NULL || xasl->spec_list != spec || spec->next != NULL || xasl->scan_ptr != NULL
+      || spec->type != TARGET_CLASS || spec->where_pred == NULL)
+    {
+      return;
+    }
+  if (xasl->type == BUILDLIST_PROC && xasl->outptr_list != NULL)
+    {
+      xasl->outptr_list->eval_prog_share_spec = spec;
+    }
+  if (xasl->type == BUILDVALUE_PROC && xasl->proc.buildvalue.agg_list != NULL)
+    {
+      xasl->proc.buildvalue.agg_list->operand_prog_share_spec = spec;
+    }
+}
+
+/*
  * qexec_open_scan () -
  *   return: NO_ERROR, or ER_code
  *   curr_spec(in)      : Access Specification Node
@@ -7590,6 +7619,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 {
   bool mvcc_select_lock_needed = false;
   int error_code = NO_ERROR;
+
+  qexec_set_expr_share_spec (xasl, curr_spec);
 
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && !curr_spec->pruned)
     {
@@ -20638,6 +20669,7 @@ qexec_gby_init_group_dim (GROUPBY_STATE * gbstate)
 	      aggr->operand_prog_state = 0;
 	      aggr->operand_prog_base = -1;
 	      aggr->acc_kernel = NULL;
+	      aggr->operand_prog_share_spec = NULL;
 	      aggr->accumulator.sum_state = NULL;
 	    }
 	}

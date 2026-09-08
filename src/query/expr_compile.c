@@ -49,6 +49,7 @@
 #include "query_executor.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
+#include "xasl.h"
 #include "xasl_predicate.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -71,6 +72,13 @@ enum expr_pred_kind
 };
 
 typedef struct expr_pred EXPR_PRED;
+
+/* one entry of a compiled scan filter's share registry (EXPR_PRED.share) */
+struct expr_share
+{
+  const REGU_VARIABLE *regu;
+  DB_VALUE *slot;
+};
 /* comparison leaf resolved at compile time from (operand type, relational operator) */
 typedef DB_LOGICAL (*EXPR_PRED_EVAL_FN) (const EXPR_PRED * pred);
 
@@ -99,6 +107,28 @@ struct expr_pred
   DB_VALUE *fetched1;
   DB_VALUE *fetched2;
   bool need_type_guard;		/* a side can drift from its plan type: verify runtime types per row */
+
+  /* scan-filter leaves with COMPILED operands (EXPR_PRED_COMP_FETCH): an arithmetic side is
+   * compiled into a deferred region of the tree's program instead of being fetched through
+   * the interpreter; the leaf runs the region exactly where eval_pred () would have fetched
+   * that side (the right one only for a non-NULL left one), so short-circuit and lazy
+   * decode behavior are unchanged.  Ranges are build-order indexes until materialized. */
+  bool lhs_compiled, rhs_compiled;
+  int lhs_start, lhs_n;
+  int rhs_start, rhs_n;
+  /* a literal right side of another type than the left: eval_value_rel_cmp () coerces such
+   * a FETCH_ALL_CONST operand to the left side's type before comparing (once, in place);
+   * the leaf carries that coerced value, so the row compares same-typed values directly */
+  bool rhs_pinned;
+  DB_VALUE pinned_rhs;
+  EXPR_PROG *prog;		/* the tree's root only: the operand program it owns */
+
+  /* the tree's root only: the compiled arithmetic nodes whose values a consumer of the
+   * same scan (the node's projection, its aggregate operands) may read instead of
+   * recomputing -- every node under a leaf that a qualifying row is guaranteed to have
+   * evaluated (see expr_scan_pred_build ()), with the slot the node publishes into */
+  struct expr_share *share;
+  int n_share;
 };
 
 /* growable build-time buffers, sized once and converted to tight arrays at the end */
@@ -156,6 +186,24 @@ struct expr_build_ctx
   } guards[EXPR_MAX_STEPS];
   int n_guards;
   int cur_guard;
+  int scan_side_seq;		/* distinct guard key per compiled scan-filter operand side */
+
+  /* every arithmetic node compiled so far and the cell it publishes; a scan-filter build
+   * marks the ranges a qualifying row is guaranteed to have evaluated (shareable) */
+  struct
+  {
+    const REGU_VARIABLE *regu;
+    int cell;
+    bool shareable;
+  } node_cells[EXPR_MAX_STEPS];
+  int n_node_cells;
+
+  /* a consumer compiling over a scan may wire a node to the slot the scan's compiled data
+   * filter already computes for the same expression (expr_share_find ()) */
+  const ACCESS_SPEC_TYPE *share_spec;	/* the scan: its regu lists map value-list slots to attributes */
+  const EXPR_PRED *share_pred;	/* the filter's compiled tree, holding the registry */
+  bool cell_shared[EXPR_MAX_STEPS];	/* the cell reads a filter slot: computed, though no step here */
+  int n_shared;
 
   val_descr *vd;		/* bind-time value descriptor (host variable types) */
     cubthread::entry * thread_p;
@@ -1013,6 +1061,10 @@ expr_pred_free (EXPR_PRED * pred)
     }
   expr_pred_free (pred->lhs);
   expr_pred_free (pred->rhs);
+  if (pred->rhs_pinned)
+    {
+      pr_clear_value (&pred->pinned_rhs);
+    }
   free_and_init (pred);
 }
 
@@ -1243,6 +1295,141 @@ expr_k_fallback (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
  ******************************************************************************/
 
 static int expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something);
+static void expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root);
+static bool expr_literal_same (const DB_VALUE * a, const DB_VALUE * b);
+
+/******************************************************************************
+ * sharing a scan's filter values with the scan's other consumers
+ *
+ * A node's projection and aggregate operands read the scan's columns through
+ * TYPE_CONSTANT cells (value-list slots the scan fills), while its data filter
+ * names the same columns as TYPE_ATTR_ID; the scan's regu lists say which slot
+ * each attribute is fetched into (vfetch_to).  With that mapping an expression
+ * in the SELECT list can be recognized as one the filter already computed for
+ * the row, and the consumer's cell is wired to the filter's result slot.
+ ******************************************************************************/
+
+/* take the scan whose compiled data filter may serve values, when it has one */
+static void
+expr_share_attach (EXPR_BUILD_CTX * bctx, const void *share_spec)
+{
+  const ACCESS_SPEC_TYPE *spec = (const ACCESS_SPEC_TYPE *) share_spec;
+
+  if (spec == NULL || spec->type != TARGET_CLASS || spec->where_pred == NULL
+      || spec->where_pred->scan_prog_state != 1 || spec->where_pred->scan_prog == NULL)
+    {
+      return;
+    }
+  if (((const EXPR_PRED *) spec->where_pred->scan_prog)->n_share == 0)
+    {
+      return;
+    }
+  bctx->share_spec = spec;
+  bctx->share_pred = (const EXPR_PRED *) spec->where_pred->scan_prog;
+}
+
+/* the attribute the scan fetches into a value-list slot, or -1 */
+static int
+expr_share_slot_attr (const ACCESS_SPEC_TYPE * spec, const DB_VALUE * slot)
+{
+  const REGU_VARIABLE_LIST lists[2] = { spec->s.cls_node.cls_regu_list_pred, spec->s.cls_node.cls_regu_list_rest };
+  int k;
+
+  for (k = 0; k < 2; k++)
+    {
+      REGU_VARIABLE_LIST r;
+
+      for (r = lists[k]; r != NULL; r = r->next)
+	{
+	  if (r->value.type == TYPE_ATTR_ID && r->value.vfetch_to == slot)
+	    {
+	      return r->value.value.attr_descr.id;
+	    }
+	}
+    }
+  return -1;
+}
+
+/* is the consumer's subtree (mine) the same expression as the filter's (theirs)? */
+static bool
+expr_share_same (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * mine, const REGU_VARIABLE * theirs)
+{
+  if (mine == NULL || theirs == NULL)
+    {
+      return mine == theirs;
+    }
+  if (REGU_VARIABLE_IS_FLAGED (mine, REGU_VARIABLE_APPLY_COLLATION)
+      || REGU_VARIABLE_IS_FLAGED (theirs, REGU_VARIABLE_APPLY_COLLATION))
+    {
+      return false;
+    }
+  switch (mine->type)
+    {
+    case TYPE_CONSTANT:
+      /* a value-list slot of the scan vs. the attribute the filter names */
+      if (theirs->type == TYPE_ATTR_ID)
+	{
+	  return mine->xasl == NULL && expr_share_slot_attr (bctx->share_spec, mine->value.dbvalptr) >= 0
+	    && expr_share_slot_attr (bctx->share_spec, mine->value.dbvalptr) == theirs->value.attr_descr.id;
+	}
+      return theirs->type == TYPE_CONSTANT && mine->xasl == NULL && theirs->xasl == NULL
+	&& mine->value.dbvalptr == theirs->value.dbvalptr;
+    case TYPE_ATTR_ID:
+      return theirs->type == TYPE_ATTR_ID && mine->value.attr_descr.id == theirs->value.attr_descr.id;
+    case TYPE_DBVAL:
+      return theirs->type == TYPE_DBVAL && expr_literal_same (&mine->value.dbval, &theirs->value.dbval);
+    case TYPE_POS_VALUE:
+      return theirs->type == TYPE_POS_VALUE && mine->value.val_pos == theirs->value.val_pos;
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      {
+	const ARITH_TYPE *a = mine->value.arithptr, *b = theirs->value.arithptr;
+
+	if ((theirs->type != TYPE_INARITH && theirs->type != TYPE_OUTARITH) || a == NULL || b == NULL)
+	  {
+	    return false;
+	  }
+	if (a->opcode != b->opcode || a->pred != NULL || b->pred != NULL || a->thirdptr != NULL || b->thirdptr != NULL)
+	  {
+	    return false;
+	  }
+	if (mine->domain == NULL || theirs->domain == NULL
+	    || TP_DOMAIN_TYPE (mine->domain) != TP_DOMAIN_TYPE (theirs->domain)
+	    || mine->domain->precision != theirs->domain->precision || mine->domain->scale != theirs->domain->scale)
+	  {
+	    return false;
+	  }
+	if (a->opcode == T_EXTRACT && a->misc_operand != b->misc_operand)
+	  {
+	    return false;
+	  }
+	return expr_share_same (bctx, a->leftptr, b->leftptr) && expr_share_same (bctx, a->rightptr, b->rightptr);
+      }
+    default:
+      return false;
+    }
+}
+
+/* the filter's result slot for an expression it already computes, or NULL */
+static DB_VALUE *
+expr_share_find (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
+{
+  int i;
+
+  for (i = 0; i < bctx->share_pred->n_share; i++)
+    {
+      if (expr_share_same (bctx, regu, bctx->share_pred->share[i].regu))
+	{
+	  return bctx->share_pred->share[i].slot;
+	}
+    }
+  return NULL;
+}
+
+static void expr_build_free_preds (EXPR_BUILD_CTX * bctx);
+static EXPR_PROG *expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val_descr * vd,
+				    EXPR_PRED * extra_pred);
+static int expr_prog_prepare (EXPR_PROG * prog, EXPR_EVAL_CTX * ctx);
 
 static int
 expr_new_cell (EXPR_BUILD_CTX * bctx, DB_VALUE * stable_addr)
@@ -1538,6 +1725,7 @@ expr_cse_find_literal (EXPR_BUILD_CTX * bctx, const DB_VALUE * val)
 /* the two skip conditions a lazy right-hand side can run under */
 #define EXPR_GUARD_LHS_NOT_NULL 1	/* arithmetic, NULLIF: the right side runs for a non-NULL left */
 #define EXPR_GUARD_LHS_NULL 2	/* NVL / IFNULL / COALESCE: the right side runs for a NULL left */
+#define EXPR_GUARD_SCAN_SIDE 3	/* a scan-filter leaf's operand: runs only when the leaf reaches that side */
 
 /* Enter the guard a right-hand operand compiles under: (enclosing guard, left cell, kind).
  * Two nodes with the same left cell and skip condition, nested the same way, get the same
@@ -1776,8 +1964,70 @@ expr_scan_pred_interp_leaf (const PRED_EXPR * pr, bool comp0)
  * Declining here keeps the whole filter on eval_pred (), which enforces the limit
  * exactly as a build without this feature does, and also bounds this builder's own
  * compile-time recursion. */
+/* Compile one operand side of a scan-filter comparison leaf when it is an arithmetic
+ * subtree.  Its steps become a deferred region under a guard of their own: the leaf runs
+ * the region exactly where eval_pred () would have fetched that side, so nothing outside
+ * the leaf may read the cells it publishes (wired constants excepted).  A side the step
+ * compiler declines stays on the fetch path -- the mark rewinds whatever it emitted. */
+static void
+expr_scan_side_compile (EXPR_BUILD_CTX * bctx, EXPR_PRED * pred, REGU_VARIABLE * regu, bool is_rhs, bool shareable)
+{
+  EXPR_BUILD_MARK mark;
+  int saved_guard, guard, start, cse_mark, cell, region_start, region_n, node_mark, i;
+  bool compiled_something = false;
+
+  if (bctx == NULL || regu == NULL || (regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH))
+    {
+      return;
+    }
+  expr_build_mark (bctx, &mark);
+  start = bctx->n_steps;
+  cse_mark = bctx->n_cse;
+  node_mark = bctx->n_node_cells;
+  guard = expr_rhs_begin (bctx, -(++bctx->scan_side_seq), EXPR_GUARD_SCAN_SIDE, &saved_guard);
+  if (guard < 0)
+    {
+      return;
+    }
+  cell = expr_compile_node (bctx, regu, &compiled_something);
+  if (cell < 0)
+    {
+      expr_build_rewind (bctx, &mark);
+      bctx->cur_guard = saved_guard;
+      bctx->n_node_cells = node_mark;
+      return;
+    }
+  expr_build_defer_region (bctx, start, &region_start, &region_n);
+  expr_rhs_end (bctx, saved_guard, guard, cse_mark, true);
+  /* a leaf every qualifying row is guaranteed to have evaluated publishes its nodes'
+   * values for the scan's other consumers (expr_scan_pred_share_build ()) */
+  for (i = node_mark; shareable && i < bctx->n_node_cells; i++)
+    {
+      bctx->node_cells[i].shareable = true;
+    }
+  if (is_rhs)
+    {
+      pred->arg2p = EXPR_ARG_ENCODE (cell);
+      pred->rhs_start = region_start;
+      pred->rhs_n = region_n;
+      pred->rhs_compiled = true;
+    }
+  else
+    {
+      pred->arg1p = EXPR_ARG_ENCODE (cell);
+      pred->lhs_start = region_start;
+      pred->lhs_n = region_n;
+      pred->lhs_compiled = true;
+    }
+}
+
+/* shareable: every ancestor of this term is an AND or a NOT, so a row the whole filter
+ * accepts has evaluated this term to a definite TRUE/FALSE -- both operand sides of a
+ * comparison leaf have then run for that row and their compiled values are current when
+ * the node's projection or aggregates look at the row.  Under an OR the term may have been
+ * skipped for an accepted row, so nothing below it is offered for sharing. */
 static EXPR_PRED *
-expr_scan_pred_build (const PRED_EXPR * pr, int depth, int depth_limit)
+expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, int depth_limit, bool shareable)
 {
   EXPR_PRED *pred = NULL, *lhs = NULL, *rhs = NULL;
 
@@ -1793,12 +2043,14 @@ expr_scan_pred_build (const PRED_EXPR * pr, int depth, int depth_limit)
 	{
 	  return expr_scan_pred_interp_leaf (pr, false);
 	}
-      lhs = expr_scan_pred_build (pr->pe.m_pred.lhs, depth + 1, depth_limit);
+      lhs = expr_scan_pred_build (bctx, pr->pe.m_pred.lhs, depth + 1, depth_limit,
+				  shareable && pr->pe.m_pred.bool_op == B_AND);
       if (lhs == NULL)
 	{
 	  return NULL;
 	}
-      rhs = expr_scan_pred_build (pr->pe.m_pred.rhs, depth + 1, depth_limit);
+      rhs = expr_scan_pred_build (bctx, pr->pe.m_pred.rhs, depth + 1, depth_limit,
+				  shareable && pr->pe.m_pred.bool_op == B_AND);
       if (rhs == NULL)
 	{
 	  expr_pred_free (lhs);
@@ -1818,7 +2070,7 @@ expr_scan_pred_build (const PRED_EXPR * pr, int depth, int depth_limit)
       return pred;
 
     case T_NOT_TERM:
-      lhs = expr_scan_pred_build (pr->pe.m_not_term, depth + 1, depth_limit);
+      lhs = expr_scan_pred_build (bctx, pr->pe.m_not_term, depth + 1, depth_limit, shareable);
       if (lhs == NULL)
 	{
 	  return NULL;
@@ -1838,6 +2090,8 @@ expr_scan_pred_build (const PRED_EXPR * pr, int depth, int depth_limit)
       {
 	const COMP_EVAL_TERM *et;
 	DB_TYPE t1, t2, fast_type;
+	DB_VALUE pinned;
+	bool pin_rhs = false;
 
 	if (pr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
 	  {
@@ -1867,12 +2121,43 @@ expr_scan_pred_build (const PRED_EXPR * pr, int depth, int depth_limit)
 
 	t1 = expr_scan_operand_type (et->lhs);
 	t2 = expr_scan_operand_type (et->rhs);
+	db_make_null (&pinned);
+	if (t1 != t2 && t1 != DB_TYPE_UNKNOWN && t2 != DB_TYPE_UNKNOWN && et->rhs->type == TYPE_DBVAL
+	    && !DB_IS_NULL (&et->rhs->value.dbval))
+	  {
+	    /* mirror of the constant-side coercion of eval_value_rel_cmp (): a literal right
+	     * operand is coerced to the left side's type when that type is the more general
+	     * numeric one ("n * m > 1") or a date/time type compared with a string
+	     * ("dt >= '2024-01-01'").  The interpreter does it on the first row, in place; the
+	     * leaf does it here, into its own value, and then compares same-typed sides. */
+	    TP_DOMAIN *dom = NULL;
+
+	    if (TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2) && tp_more_general_type (t1, t2) > 0)
+	      {
+		dom = tp_domain_resolve_default (t1);
+	      }
+	    else if (TP_IS_DATE_OR_TIME_TYPE (t1) && TP_IS_CHAR_TYPE (t2))
+	      {
+		dom = tp_domain_resolve_default (t1);
+	      }
+	    if (dom != NULL && tp_value_coerce (&et->rhs->value.dbval, &pinned, dom) == DOMAIN_COMPATIBLE
+		&& DB_VALUE_DOMAIN_TYPE (&pinned) == t1)
+	      {
+		pin_rhs = true;
+		t2 = t1;
+	      }
+	    else
+	      {
+		pr_clear_value (&pinned);
+	      }
+	  }
 	if (t1 != t2 || t1 == DB_TYPE_UNKNOWN
 	    || !(t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
 		 || expr_pred_generic_cmp_type (t1)))
 	  {
 	    /* differing sides would hit the constant-side coercion in
 	     * eval_value_rel_cmp (); the plain term evaluator applies it as before */
+	    pr_clear_value (&pinned);
 	    return expr_scan_pred_interp_leaf (pr, true);
 	  }
 	fast_type = (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
@@ -1881,6 +2166,7 @@ expr_scan_pred_build (const PRED_EXPR * pr, int depth, int depth_limit)
 	pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
 	if (pred == NULL)
 	  {
+	    pr_clear_value (&pinned);
 	    return NULL;
 	  }
 	memset (pred, 0, sizeof (*pred));
@@ -1890,6 +2176,13 @@ expr_scan_pred_build (const PRED_EXPR * pr, int depth, int depth_limit)
 	pred->fetch_src = pr;
 	pred->arg1p = &pred->fetched1;
 	pred->arg2p = &pred->fetched2;
+	if (pin_rhs)
+	  {
+	    /* the right holder points at the coerced literal for good; the row never fetches it */
+	    pred->rhs_pinned = true;
+	    pred->pinned_rhs = pinned;
+	    pred->fetched2 = &pred->pinned_rhs;
+	  }
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
 	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
@@ -1915,6 +2208,18 @@ expr_scan_pred_build (const PRED_EXPR * pr, int depth, int depth_limit)
 	 * through SM_ATTR_CHG_WITH_ROW_UPDATE / BEST_EFFORT, which rewrite the rows. */
 	pred->need_type_guard = !((et->lhs->type == TYPE_ATTR_ID || et->lhs->type == TYPE_DBVAL)
 				  && (et->rhs->type == TYPE_ATTR_ID || et->rhs->type == TYPE_DBVAL));
+	/* an arithmetic side is compiled into a region of the tree's program (see
+	 * expr_scan_side_compile ()); a compiled kernel always produces the type it was
+	 * compiled for, so such a side needs no drift guard */
+	expr_scan_side_compile (bctx, pred, et->lhs, false, shareable);
+	expr_scan_side_compile (bctx, pred, et->rhs, true, shareable);
+	if (pred->lhs_compiled || pred->rhs_compiled)
+	  {
+	    bool lhs_drift = !pred->lhs_compiled && et->lhs->type != TYPE_ATTR_ID && et->lhs->type != TYPE_DBVAL;
+	    bool rhs_drift = !pred->rhs_compiled && et->rhs->type != TYPE_ATTR_ID && et->rhs->type != TYPE_DBVAL;
+
+	    pred->need_type_guard = lhs_drift || rhs_drift;
+	  }
 	return pred;
       }
 
@@ -1939,31 +2244,149 @@ expr_scan_pred_fetch_leaves (const EXPR_PRED * pred)
   return expr_scan_pred_fetch_leaves (pred->lhs) + expr_scan_pred_fetch_leaves (pred->rhs);
 }
 
-void *
-expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr)
+/* does any leaf of the tree carry a compiled operand side? */
+static bool
+expr_scan_pred_has_compiled_side (const EXPR_PRED * pred)
 {
-  EXPR_PRED *pred = expr_scan_pred_build (pr, 0, prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH));
-
   if (pred == NULL)
+    {
+      return false;
+    }
+  if (pred->kind == EXPR_PRED_COMP_FETCH && (pred->lhs_compiled || pred->rhs_compiled))
+    {
+      return true;
+    }
+  return expr_scan_pred_has_compiled_side (pred->lhs) || expr_scan_pred_has_compiled_side (pred->rhs);
+}
+
+void *
+expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_descr * vd)
+{
+  EXPR_BUILD_CTX *bctx;
+  EXPR_PRED *pred;
+  bool has_compiled_side;
+
+  /* the operand steps of the comparison leaves build into one program the tree owns */
+  bctx = (EXPR_BUILD_CTX *) malloc (sizeof (EXPR_BUILD_CTX));
+  if (bctx == NULL)
     {
       return NULL;
     }
-  if (expr_scan_pred_fetch_leaves (pred) == 0
-      || (pred->kind == EXPR_PRED_COMP_FETCH && pred->fast_type == DB_TYPE_UNKNOWN))
+  memset (bctx, 0, sizeof (*bctx));
+  bctx->vd = vd;
+  bctx->thread_p = thread_p;
+
+  pred = expr_scan_pred_build (bctx, pr, 0, prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH), true);
+  if (pred == NULL)
+    {
+      expr_build_free_preds (bctx);
+      free_and_init (bctx);
+      return NULL;
+    }
+  has_compiled_side = expr_scan_pred_has_compiled_side (pred);
+  if (!has_compiled_side
+      && (expr_scan_pred_fetch_leaves (pred) == 0
+	  || (pred->kind == EXPR_PRED_COMP_FETCH && pred->fast_type == DB_TYPE_UNKNOWN)))
     {
       /* nothing compiled (all-interp tree), or a single generic-compare leaf that would
        * make the same calls eval_pred_comp0 () makes: pure indirection, dropped */
       expr_pred_free (pred);
+      free_and_init (bctx);
       return NULL;
     }
+  if (has_compiled_side)
+    {
+      pred->prog = expr_prog_finish (bctx, NULL, 0, vd, pred);
+      if (pred->prog == NULL)
+	{
+	  /* the step-owned predicate trees are gone with the failed finish; the tree's own
+	   * encoded indexes are meaningless without a program, so the filter stays interpreted */
+	  expr_pred_free (pred);
+	  free_and_init (bctx);
+	  return NULL;
+	}
+      expr_scan_pred_share_build (bctx, pred);
+    }
+  free_and_init (bctx);
   return pred;
+}
+
+/* The registry of values the filter computes that the scan's other consumers may read:
+ * every shareable arithmetic node whose step owns a result slot -- that slot's address is
+ * what the node's cell holds on every row (materialized once), so a consumer can wire a
+ * cell of its own to it.  Pointer-select nodes (NVL, a CASE without a cast) publish a
+ * different address per row and are left out. */
+static void
+expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
+{
+  int i, j, n = 0;
+
+  for (i = 0; i < bctx->n_node_cells; i++)
+    {
+      n += bctx->node_cells[i].shareable ? 1 : 0;
+    }
+  if (n == 0)
+    {
+      return;
+    }
+  root->share = (struct expr_share *) malloc (sizeof (struct expr_share) * n);
+  if (root->share == NULL)
+    {
+      return;
+    }
+  for (i = 0; i < bctx->n_node_cells; i++)
+    {
+      int cell = bctx->node_cells[i].cell;
+      bool owns_slot = false;
+
+      if (!bctx->node_cells[i].shareable)
+	{
+	  continue;
+	}
+      /* the build-time steps still carry their encoded out cell and owned-slot marker */
+      for (j = 0; j < bctx->n_steps; j++)
+	{
+	  if ((intptr_t) bctx->steps[j].out_cell == cell && bctx->steps[j].out != NULL)
+	    {
+	      owns_slot = true;
+	      break;
+	    }
+	}
+      if (owns_slot && root->prog->cells[cell] != NULL)
+	{
+	  root->share[root->n_share].regu = bctx->node_cells[i].regu;
+	  root->share[root->n_share].slot = root->prog->cells[cell];
+	  root->n_share++;
+	}
+    }
 }
 
 /* mirror of the eval_pred () walk over the compiled tree; fetch errors are V_ERROR and
  * a NULL side is V_UNKNOWN before the right side is even fetched, exactly as
  * eval_pred_comp0 () orders them */
+/* one operand side of a scan-filter leaf for the current row: its compiled region, or the
+ * regular fetch into the leaf's holder.  Either way the value is then readable through the
+ * side's argument cell. */
+STATIC_INLINE int
+expr_scan_side_value (EXPR_PRED * pred, bool is_rhs, EXPR_EVAL_CTX * ctx)
+{
+  if (is_rhs && pred->rhs_pinned)
+    {
+      return NO_ERROR;		/* the coerced literal sits in the leaf */
+    }
+  if (is_rhs ? pred->rhs_compiled : pred->lhs_compiled)
+    {
+      int n = is_rhs ? pred->rhs_n : pred->lhs_n;
+
+      /* the operand steps sit one region level below the main loop (expr_build_defer_region ()) */
+      return (n > 0) ? expr_run_region (ctx->prog, is_rhs ? pred->rhs_start : pred->lhs_start, n, 1, ctx) : NO_ERROR;
+    }
+  return fetch_peek_dbval (ctx->thread_p, is_rhs ? pred->fetch_rhs : pred->fetch_lhs, ctx->vd, NULL, ctx->obj_oid,
+			   NULL, is_rhs ? &pred->fetched2 : &pred->fetched1);
+}
+
 static DB_LOGICAL
-expr_scan_pred_eval_node (EXPR_PRED * pred, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid)
+expr_scan_pred_eval_node (EXPR_PRED * pred, EXPR_EVAL_CTX * ctx)
 {
   DB_LOGICAL r1, r2;
 
@@ -1973,15 +2396,15 @@ expr_scan_pred_eval_node (EXPR_PRED * pred, cubthread::entry * thread_p, val_des
       {
 	DB_TYPE rt1, rt2;
 
-	if (fetch_peek_dbval (thread_p, pred->fetch_lhs, vd, NULL, obj_oid, NULL, &pred->fetched1) != NO_ERROR)
+	if (expr_scan_side_value (pred, false, ctx) != NO_ERROR)
 	  {
 	    return V_ERROR;
 	  }
-	if (DB_IS_NULL (pred->fetched1))
+	if (DB_IS_NULL (*pred->arg1p))
 	  {
 	    return V_UNKNOWN;
 	  }
-	if (fetch_peek_dbval (thread_p, pred->fetch_rhs, vd, NULL, obj_oid, NULL, &pred->fetched2) != NO_ERROR)
+	if (expr_scan_side_value (pred, true, ctx) != NO_ERROR)
 	  {
 	    return V_ERROR;
 	  }
@@ -1989,34 +2412,34 @@ expr_scan_pred_eval_node (EXPR_PRED * pred, cubthread::entry * thread_p, val_des
 	  {
 	    return pred->eval (pred);
 	  }
-	rt1 = DB_VALUE_DOMAIN_TYPE (pred->fetched1);
-	rt2 = DB_VALUE_DOMAIN_TYPE (pred->fetched2);
+	rt1 = DB_VALUE_DOMAIN_TYPE (*pred->arg1p);
+	rt2 = DB_VALUE_DOMAIN_TYPE (*pred->arg2p);
 	if (rt1 == rt2 && (pred->fast_type == DB_TYPE_UNKNOWN || rt1 == pred->fast_type))
 	  {
 	    return pred->eval (pred);
 	  }
 	/* runtime types the leaf was not resolved for (a host variable bound to another
 	 * type): the interpreted term evaluator applies its coercion exactly as before */
-	return eval_pred_comp0 (thread_p, (const PRED_EXPR *) pred->fetch_src, vd, obj_oid);
+	return eval_pred_comp0 (ctx->thread_p, (const PRED_EXPR *) pred->fetch_src, ctx->vd, ctx->obj_oid);
       }
 
     case EXPR_PRED_INTERP_COMP0:
       /* a plain comparison the leaf table does not cover (mixed types): the same
        * function eval_fnc () would have picked, with its coercion */
-      return eval_pred_comp0 (thread_p, (const PRED_EXPR *) pred->fetch_src, vd, obj_oid);
+      return eval_pred_comp0 (ctx->thread_p, (const PRED_EXPR *) pred->fetch_src, ctx->vd, ctx->obj_oid);
 
     case EXPR_PRED_INTERP:
       /* a term the compiler left alone: the original subtree, evaluated verbatim */
-      return eval_pred (thread_p, (const PRED_EXPR *) pred->fetch_src, vd, obj_oid);
+      return eval_pred (ctx->thread_p, (const PRED_EXPR *) pred->fetch_src, ctx->vd, ctx->obj_oid);
 
     case EXPR_PRED_AND:
       /* Kleene AND with immediate exit on V_FALSE/V_ERROR == the eval_pred () loop */
-      r1 = expr_scan_pred_eval_node (pred->lhs, thread_p, vd, obj_oid);
+      r1 = expr_scan_pred_eval_node (pred->lhs, ctx);
       if (r1 == V_FALSE || r1 == V_ERROR)
 	{
 	  return r1;
 	}
-      r2 = expr_scan_pred_eval_node (pred->rhs, thread_p, vd, obj_oid);
+      r2 = expr_scan_pred_eval_node (pred->rhs, ctx);
       if (r2 == V_FALSE || r2 == V_ERROR)
 	{
 	  return r2;
@@ -2024,12 +2447,12 @@ expr_scan_pred_eval_node (EXPR_PRED * pred, cubthread::entry * thread_p, val_des
       return (r1 == V_UNKNOWN || r2 == V_UNKNOWN) ? V_UNKNOWN : V_TRUE;
 
     case EXPR_PRED_OR:
-      r1 = expr_scan_pred_eval_node (pred->lhs, thread_p, vd, obj_oid);
+      r1 = expr_scan_pred_eval_node (pred->lhs, ctx);
       if (r1 == V_TRUE || r1 == V_ERROR)
 	{
 	  return r1;
 	}
-      r2 = expr_scan_pred_eval_node (pred->rhs, thread_p, vd, obj_oid);
+      r2 = expr_scan_pred_eval_node (pred->rhs, ctx);
       if (r2 == V_TRUE || r2 == V_ERROR)
 	{
 	  return r2;
@@ -2038,7 +2461,7 @@ expr_scan_pred_eval_node (EXPR_PRED * pred, cubthread::entry * thread_p, val_des
 
     case EXPR_PRED_NOT:
       /* mirror of eval_negative () */
-      r1 = expr_scan_pred_eval_node (pred->lhs, thread_p, vd, obj_oid);
+      r1 = expr_scan_pred_eval_node (pred->lhs, ctx);
       if (r1 == V_TRUE)
 	{
 	  return V_FALSE;
@@ -2058,13 +2481,51 @@ expr_scan_pred_eval_node (EXPR_PRED * pred, cubthread::entry * thread_p, val_des
 DB_LOGICAL
 expr_scan_pred_eval (void *compiled, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid)
 {
-  return expr_scan_pred_eval_node ((EXPR_PRED *) compiled, thread_p, vd, obj_oid);
+  EXPR_PRED *root = (EXPR_PRED *) compiled;
+  EXPR_EVAL_CTX ctx;
+
+  ctx.thread_p = thread_p;
+  ctx.vd = vd;
+  ctx.obj_oid = obj_oid;
+  ctx.tpl = NULL;
+  ctx.prog = root->prog;
+  if (root->prog != NULL && unlikely (expr_prog_prepare (root->prog, &ctx) != NO_ERROR))
+    {
+      return V_ERROR;
+    }
+  return expr_scan_pred_eval_node (root, &ctx);
 }
 
 void
 expr_scan_pred_free (void *compiled)
 {
-  expr_pred_free ((EXPR_PRED *) compiled);
+  EXPR_PRED *root = (EXPR_PRED *) compiled;
+
+  if (root == NULL)
+    {
+      return;
+    }
+  if (root->prog != NULL)
+    {
+      expr_prog_free (root->prog);
+      root->prog = NULL;
+    }
+  if (root->share != NULL)
+    {
+      free_and_init (root->share);
+    }
+  expr_pred_free (root);
+}
+
+void
+expr_scan_pred_dump (FILE * fp, const void *compiled, int indent)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+
+  if (root != NULL && root->prog != NULL)
+    {
+      expr_prog_dump (fp, root->prog, indent);
+    }
 }
 
 /* compile a PRED_EXPR into an EXPR_PRED tree; NULL when any construct is unsupported.
@@ -2315,10 +2776,55 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
     }
 }
 
+static int expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something);
+
 /* compile one node; returns the cell index its value is readable from, or -1 to make
  * the CALLER wrap this subtree in a fallback step (never an error) */
 static int
 expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something)
+{
+  int cell;
+
+  if (regu == NULL)
+    {
+      return -1;
+    }
+  if (regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
+    {
+      return expr_compile_node_impl (bctx, regu, compiled_something);
+    }
+
+  /* the scan's data filter may already compute this very expression for the row */
+  if (bctx->share_pred != NULL)
+    {
+      DB_VALUE *slot = expr_share_find (bctx, regu);
+
+      if (slot != NULL)
+	{
+	  cell = expr_new_cell (bctx, slot);
+	  if (cell >= 0)
+	    {
+	      bctx->cell_shared[cell] = true;
+	      bctx->n_shared++;
+	      *compiled_something = true;
+	    }
+	  return cell;
+	}
+    }
+
+  cell = expr_compile_node_impl (bctx, regu, compiled_something);
+  if (cell >= 0 && bctx->n_node_cells < EXPR_MAX_STEPS)
+    {
+      bctx->node_cells[bctx->n_node_cells].regu = regu;
+      bctx->node_cells[bctx->n_node_cells].cell = cell;
+      bctx->node_cells[bctx->n_node_cells].shareable = false;
+      bctx->n_node_cells++;
+    }
+  return cell;
+}
+
+static int
+expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something)
 {
   int cell;
 
@@ -2981,16 +3487,39 @@ expr_build_free_preds (EXPR_BUILD_CTX * bctx)
     }
 }
 
-/* decode the 1-based argument-cell indexes recorded during predicate compilation */
+/* decode the 1-based argument-cell indexes recorded during predicate compilation; remap
+ * translates build-order step indexes into their final position for the operand regions of
+ * scan-filter leaves */
 static void
-expr_pred_materialize (EXPR_PRED * pred, EXPR_PROG * prog)
+expr_pred_materialize (EXPR_PRED * pred, EXPR_PROG * prog, const int *remap)
 {
   if (pred == NULL)
     {
       return;
     }
-  expr_pred_materialize (pred->lhs, prog);
-  expr_pred_materialize (pred->rhs, prog);
+  expr_pred_materialize (pred->lhs, prog, remap);
+  expr_pred_materialize (pred->rhs, prog, remap);
+  if (pred->kind == EXPR_PRED_COMP_FETCH)
+    {
+      /* a fetched side keeps its holder address; only a compiled side carries an index */
+      if (pred->lhs_compiled)
+	{
+	  pred->arg1p = &prog->cells[(intptr_t) pred->arg1p - 1];
+	  if (pred->lhs_n > 0)
+	    {
+	      pred->lhs_start = remap[pred->lhs_start];
+	    }
+	}
+      if (pred->rhs_compiled)
+	{
+	  pred->arg2p = &prog->cells[(intptr_t) pred->arg2p - 1];
+	  if (pred->rhs_n > 0)
+	    {
+	      pred->rhs_start = remap[pred->rhs_start];
+	    }
+	}
+      return;
+    }
   if (pred->arg1p != NULL)
     {
       pred->arg1p = &prog->cells[(intptr_t) pred->arg1p - 1];
@@ -3036,102 +3565,22 @@ expr_prog_compile (cubthread::entry * thread_p, regu_variable_list_node * list, 
 	}
       roots[n++] = &node->value;
     }
-  return expr_prog_compile_roots (thread_p, roots, n, vd, true, false, false, NULL);
+  return expr_prog_compile_roots (thread_p, roots, n, vd, true, false, false, NULL, NULL);
 }
 
+/* Turn the build context into a program: allocate the arrays, lay the steps out as
+ * [literal prologue][host-variable prologue][row steps], resolve every cell index and
+ * owned-slot marker into an address, and record the host-variable signature.  root_cells
+ * lists the cell of each list element (n_roots may be 0 for a program that only serves
+ * regions, e.g. a scan filter's operands); extra_pred is a caller-owned predicate tree
+ * (NULL when none) whose cells and regions are resolved against this program as well.
+ * NULL on allocation failure; the build context's predicate trees are then already freed. */
 static EXPR_PROG *
-expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots,
-			      val_descr * vd, bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots,
-			      int *root_idx_out)
+expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val_descr * vd, EXPR_PRED * extra_pred)
 {
-  EXPR_PROG *prog = NULL;
-  bool compiled_something = false;
-  int n_roots = 0, i, slot_next = 0;
-  int root_cells[EXPR_MAX_STEPS];
-
-  if (roots == NULL || in_roots <= 0 || in_roots > EXPR_MAX_STEPS)
-    {
-      return NULL;
-    }
-
-  memset (bctx, 0, sizeof (*bctx));
-  bctx->vd = vd;
-  bctx->thread_p = thread_p;
-
-  for (i = 0; i < in_roots; i++)
-    {
-      EXPR_BUILD_MARK mark;
-      int cell;
-
-      expr_build_mark (bctx, &mark);
-      cell = expr_compile_node (bctx, roots[i], &compiled_something);
-
-      if (cell >= 0 && only_compute_roots)
-	{
-	  /* Does a computing step publish this root's cell?  Looked up over the whole program,
-	   * not just the steps this root emitted: a root that CSE resolved entirely to an
-	   * earlier root's chain ("(a+1)*b" after "(a+1)*b+1") emits nothing of its own, yet
-	   * its value is computed and sitting in a cell -- sending it back to the interpreter
-	   * would recompute per row what the program already has. */
-	  bool has_compute = false;
-	  int j;
-
-	  for (j = 0; j < bctx->n_steps; j++)
-	    {
-	      if ((intptr_t) bctx->steps[j].out_cell == cell && bctx->steps[j].kernel != expr_k_leaf_fetch
-		  && bctx->steps[j].kernel != expr_k_hostvar)
-		{
-		  has_compute = true;
-		  break;
-		}
-	    }
-	  if (!has_compute)
-	    {
-	      /* nothing computed: discard this root's steps and keep the consumer's
-	       * interpreted per-root path (its CSE entries go too, so a later root
-	       * cannot reference a cell no step publishes) */
-	      cell = -1;
-	    }
-	}
-
-      if (cell < 0)
-	{
-	  /* a rejected root leaves nothing behind: the steps its subtrees emitted before
-	   * the rejection would otherwise be materialized against a cell no one reserved
-	   * (the fallback below covers the whole root through the interpreter) */
-	  expr_build_rewind (bctx, &mark);
-	}
-
-      if (cell < 0 && allow_fallback_roots)
-	{
-	  cell = expr_emit_fallback (bctx, roots[i]);
-	  if (cell < 0)
-	    {
-	      expr_build_free_preds (bctx);
-	      return NULL;	/* out of room; keep the interpreted path */
-	    }
-	}
-      if (cell < 0)
-	{
-	  if (root_idx_out != NULL)
-	    {
-	      root_idx_out[i] = -1;
-	    }
-	  continue;
-	}
-      if (root_idx_out != NULL)
-	{
-	  root_idx_out[i] = n_roots;
-	}
-      root_cells[n_roots++] = cell;
-    }
-
-  if (n_roots == 0 || (!compiled_something && !allow_wired_only))
-    {
-      /* everything fell back or was excluded: the program would only add indirection */
-      expr_build_free_preds (bctx);
-      return NULL;
-    }
+  EXPR_PROG *prog;
+  int i, slot_next = 0;
+  int remap[EXPR_MAX_STEPS];
 
   prog = (EXPR_PROG *) malloc (sizeof (EXPR_PROG));
   if (prog == NULL)
@@ -3145,6 +3594,7 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
   prog->n_cells = bctx->n_cells;
   prog->n_slots = bctx->n_slots;
   prog->n_roots = n_roots;
+  prog->n_shared = bctx->n_shared;
 
   prog->steps = (EXPR_STEP *) malloc (sizeof (EXPR_STEP) * MAX (1, prog->n_steps));
   prog->cells = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * MAX (1, prog->n_cells));
@@ -3181,14 +3631,16 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
     {
       prog->cells[i] = bctx->cells[i];	/* stable addresses; step-published cells start NULL */
     }
-  memcpy (prog->root_cells, root_cells, sizeof (int) * prog->n_roots);
+  if (prog->n_roots > 0)
+    {
+      memcpy (prog->root_cells, root_cells, sizeof (int) * prog->n_roots);
+    }
 
   /* prologue steps first (literal-only inputs), then exec-prologue steps (host-variable
    * inputs, once per execution), then per-row steps -- hoisting cannot reorder a
    * dependency and every class keeps its relative order; remap records where every
    * build-time index landed so branch regions can be fixed up below */
   {
-    int remap[EXPR_MAX_STEPS];
 
     prog->n_prologue = 0;
     prog->prologue_done = false;
@@ -3270,9 +3722,13 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
 	}
       if (step->pred != NULL)
 	{
-	  expr_pred_materialize ((EXPR_PRED *) step->pred, prog);
+	  expr_pred_materialize ((EXPR_PRED *) step->pred, prog, remap);
 	}
     }
+
+  /* a predicate tree the caller owns (a compiled scan filter) resolves its cells and
+   * operand regions against the same program */
+  expr_pred_materialize (extra_pred, prog, remap);
 
   /* record the host-variable type signature this program was specialized for */
   if (vd != NULL && vd->dbval_cnt > 0)
@@ -3293,9 +3749,113 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
   return prog;
 }
 
+static EXPR_PROG *
+expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots,
+			      val_descr * vd, bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots,
+			      int *root_idx_out, const void *share_spec)
+{
+  EXPR_PROG *prog = NULL;
+  bool compiled_something = false;
+  int n_roots = 0, i;
+  int root_cells[EXPR_MAX_STEPS];
+
+  if (roots == NULL || in_roots <= 0 || in_roots > EXPR_MAX_STEPS)
+    {
+      return NULL;
+    }
+
+  memset (bctx, 0, sizeof (*bctx));
+  bctx->vd = vd;
+  bctx->thread_p = thread_p;
+  expr_share_attach (bctx, share_spec);
+
+  for (i = 0; i < in_roots; i++)
+    {
+      EXPR_BUILD_MARK mark;
+      int cell;
+
+      expr_build_mark (bctx, &mark);
+      cell = expr_compile_node (bctx, roots[i], &compiled_something);
+
+      if (cell >= 0 && only_compute_roots)
+	{
+	  /* Does a computing step publish this root's cell?  Looked up over the whole program,
+	   * not just the steps this root emitted: a root that CSE resolved entirely to an
+	   * earlier root's chain ("(a+1)*b" after "(a+1)*b+1") emits nothing of its own, yet
+	   * its value is computed and sitting in a cell -- sending it back to the interpreter
+	   * would recompute per row what the program already has. */
+	  bool has_compute = false;
+	  int j;
+
+	  for (j = 0; j < bctx->n_steps; j++)
+	    {
+	      if ((intptr_t) bctx->steps[j].out_cell == cell && bctx->steps[j].kernel != expr_k_leaf_fetch
+		  && bctx->steps[j].kernel != expr_k_hostvar)
+		{
+		  has_compute = true;
+		  break;
+		}
+	    }
+	  if (bctx->cell_shared[cell])
+	    {
+	      /* computed by the scan's data filter, read here through a wired cell */
+	      has_compute = true;
+	    }
+	  if (!has_compute)
+	    {
+	      /* nothing computed: discard this root's steps and keep the consumer's
+	       * interpreted per-root path (its CSE entries go too, so a later root
+	       * cannot reference a cell no step publishes) */
+	      cell = -1;
+	    }
+	}
+
+      if (cell < 0)
+	{
+	  /* a rejected root leaves nothing behind: the steps its subtrees emitted before
+	   * the rejection would otherwise be materialized against a cell no one reserved
+	   * (the fallback below covers the whole root through the interpreter) */
+	  expr_build_rewind (bctx, &mark);
+	}
+
+      if (cell < 0 && allow_fallback_roots)
+	{
+	  cell = expr_emit_fallback (bctx, roots[i]);
+	  if (cell < 0)
+	    {
+	      expr_build_free_preds (bctx);
+	      return NULL;	/* out of room; keep the interpreted path */
+	    }
+	}
+      if (cell < 0)
+	{
+	  if (root_idx_out != NULL)
+	    {
+	      root_idx_out[i] = -1;
+	    }
+	  continue;
+	}
+      if (root_idx_out != NULL)
+	{
+	  root_idx_out[i] = n_roots;
+	}
+      root_cells[n_roots++] = cell;
+    }
+
+  if (n_roots == 0 || (!compiled_something && !allow_wired_only))
+    {
+      /* everything fell back or was excluded: the program would only add indirection */
+      expr_build_free_preds (bctx);
+      return NULL;
+    }
+
+  return expr_prog_finish (bctx, root_cells, n_roots, vd, NULL);
+}
+
 EXPR_PROG *
 expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots, val_descr * vd,
-			 bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots, int *root_idx_out)
+			 bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots, int *root_idx_out,
+			 const void *share_spec)
 {
   /* the build context is a page-plus of scratch arrays: too big for a server worker's
    * stack, and compilation happens once per execution, so it lives on the heap */
@@ -3307,7 +3867,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
       return NULL;
     }
   prog = expr_prog_compile_roots_impl (bctx, thread_p, roots, in_roots, vd, allow_fallback_roots, allow_wired_only,
-				       only_compute_roots, root_idx_out);
+				       only_compute_roots, root_idx_out, share_spec);
   free_and_init (bctx);
   return prog;
 }
@@ -3364,6 +3924,34 @@ expr_prog_enter_execution (EXPR_PROG * prog, val_descr * vd)
   return start;
 }
 
+/* Settle the prologues for this row: which step a row starts at is decided once per
+ * execution (the literal prologue after the first row ever, the host-variable prologue
+ * after the first row of each execution) and kept in row_start, so a row costs one
+ * comparison instead of the whole chain.  On the row that changes it, the prologue steps
+ * that became due run here. */
+static int
+expr_prog_prepare (EXPR_PROG * prog, EXPR_EVAL_CTX * ctx)
+{
+  int i, error;
+
+  if (likely (prog->exec_stamp_valid
+	      && prog->exec_stamp == (unsigned long long) (ctx->vd != NULL
+							   && ctx->vd->xasl_state !=
+							   NULL ? ctx->vd->xasl_state->query_id : 0)))
+    {
+      return NO_ERROR;
+    }
+  for (i = expr_prog_enter_execution (prog, ctx->vd); i < prog->row_start; i++)
+    {
+      error = prog->steps[i].kernel (&prog->steps[i], ctx);
+      if (unlikely (error != NO_ERROR))
+	{
+	  return error;
+	}
+    }
+  return NO_ERROR;
+}
+
 int
 expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl)
 {
@@ -3376,21 +3964,12 @@ expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, O
   ctx.tpl = tpl;
   ctx.prog = prog;
 
-  /* Which step the row starts at is settled once per execution: the literal prologue after
-   * the first row ever, the host-variable prologue after the first row of each execution.
-   * Keep the answer in row_start and re-derive it only when the executing query changes,
-   * so a row costs one comparison instead of the whole chain. */
-  if (likely (prog->exec_stamp_valid
-	      && prog->exec_stamp == (unsigned long long) (vd != NULL
-							   && vd->xasl_state != NULL ? vd->xasl_state->query_id : 0)))
+  error = expr_prog_prepare (prog, &ctx);
+  if (unlikely (error != NO_ERROR))
     {
-      i = prog->row_start;
+      return error;
     }
-  else
-    {
-      i = expr_prog_enter_execution (prog, vd);
-    }
-  for (; i < prog->n_steps; i++)
+  for (i = prog->row_start; i < prog->n_steps; i++)
     {
       if (prog->steps[i].deferred)
 	{
@@ -3560,9 +4139,14 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
     }
 
   fprintf (fp,
-	   "%*csteps: %d (prologue: %d, exec-prologue: %d, compute: %d), cells: %d, slots: %d, roots: %d, hostvar types: %d\n",
+	   "%*csteps: %d (prologue: %d, exec-prologue: %d, compute: %d), cells: %d, slots: %d, roots: %d, hostvar types: %d",
 	   indent, ' ', prog->n_steps, prog->n_prologue, prog->n_exec_prologue, prog->n_compute, prog->n_cells,
 	   prog->n_slots, prog->n_roots, prog->n_hv);
+  if (prog->n_shared > 0)
+    {
+      fprintf (fp, ", shared from data filter: %d", prog->n_shared);
+    }
+  fprintf (fp, "\n");
 
   for (i = 0; i < prog->n_steps; i++)
     {

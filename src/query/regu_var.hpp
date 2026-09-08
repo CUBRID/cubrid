@@ -139,6 +139,10 @@ struct valptr_list_node
    * use of the list so that copy does not evaluate the same row a second time (see
    * qdata_valptr_prog_ensure ()) */
   bool eval_prog_row_ready;
+  /* the scan this list projects (ACCESS_SPEC_TYPE *) when it is the node's only heap scan,
+   * so the program may read values the scan's compiled data filter computes; NULL otherwise.
+   * Set by qexec_set_expr_share_spec () before the first row; runtime only. */
+  void *eval_prog_share_spec;
 
   valptr_list_node () = default;
 };

@@ -4184,6 +4184,7 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
   outptr_list->eval_prog_idx = NULL;
   outptr_list->eval_prog_state = 0;
   outptr_list->eval_prog_row_ready = false;
+  outptr_list->eval_prog_share_spec = NULL;
 
   ptr = or_unpack_int (ptr, &outptr_list->valptr_cnt);
 
@@ -5991,6 +5992,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   aggregate->operand_prog_idx = NULL;
   aggregate->operand_prog_state = 0;
   aggregate->operand_prog_base = -1;
+  aggregate->operand_prog_share_spec = NULL;
   aggregate->acc_kernel = NULL;
   aggregate->accumulator.sum_state = NULL;
 

@@ -449,16 +449,18 @@ qdata_valptr_prog_compile (THREAD_ENTRY * thread_p, valptr_list_node * valptr_li
       return;
     }
 
-  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, false, true, idx);
+  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, false, true, idx,
+				  valptr_list_p->eval_prog_share_spec);
   if (prog == NULL)
     {
       free_and_init (idx);
       return;
     }
-  if (prog->n_compute == 0)
+  if (prog->n_compute == 0 && prog->n_shared == 0)
     {
       /* only leaf fetches: the per-column interpreted path does the same work without
-       * the program indirection */
+       * the program indirection (a column served from the data filter's slot is a
+       * computed value, even though no step of this program computes it) */
       expr_prog_free (prog);
       free_and_init (idx);
       return;

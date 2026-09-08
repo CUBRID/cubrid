@@ -150,6 +150,10 @@ struct expr_prog
    * repeats leaf fetches through extra indirection */
   int n_compute;
 
+  /* cells wired to result slots of the scan's compiled data filter: expressions the filter
+   * already computes for the row, read here instead of recomputed (see share_spec) */
+  int n_shared;
+
   /* host variable domain signature recorded at compile time; a later execution whose
    * bound types differ must not reuse this program.  sig_stamp records the execution the
    * signature was last verified for, so the walk is charged once per execution
@@ -183,10 +187,15 @@ extern EXPR_PROG *expr_prog_compile (cubthread::entry * thread_p, regu_variable_
  *
  * only_compute_roots additionally excludes every root that compiles without a single
  * computing step (a plain column, a wired constant): such a root gains nothing from
- * the program and keeps the consumer's interpreted per-root path. */
+ * the program and keeps the consumer's interpreted per-root path.
+ *
+ * share_spec (ACCESS_SPEC_TYPE *, may be NULL) is the single heap scan whose rows this list
+ * consumes: an expression its compiled data filter already computes for every accepted row
+ * is read from the filter's result slot instead of being recompiled (the executor sets it,
+ * qexec_set_expr_share_spec ()). */
 extern EXPR_PROG *expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int n_roots,
 					   val_descr * vd, bool allow_fallback_roots, bool allow_wired_only,
-					   bool only_compute_roots, int *root_idx_out);
+					   bool only_compute_roots, int *root_idx_out, const void *share_spec);
 
 /* true when the program's recorded host-variable type signature matches vd.  Walks every
  * bound value, so consumers call it through expr_prog_signature_ok () below rather than
@@ -245,11 +254,15 @@ extern int expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain
 /* scan-filter predicates: eval_pred () re-discovers the tree shape, the term kinds and
  * the operand types on every row.  These compile a data filter's PRED_EXPR once per
  * execution into a tree of (type, operator)-resolved comparison leaves under Kleene AND/OR
- * nodes; operands are fetched per row through the regular fetch path, so short-circuit
- * and lazy-decode behavior stay identical.  NULL when anything in the tree is not
- * covered -- the caller keeps the interpreted pr_eval_fnc. */
-extern void *expr_scan_pred_compile (cubthread::entry * thread_p, const cubxasl::pred_expr * pr);
+ * nodes.  A plain operand (a column, a literal) is fetched per row through the regular
+ * fetch path; an arithmetic operand is compiled into a deferred region of a program the
+ * tree owns and run by its leaf exactly where the interpreter would have fetched it, so
+ * short-circuit and lazy-decode behavior stay identical either way.  NULL when anything
+ * in the tree is not covered -- the caller keeps the interpreted pr_eval_fnc. */
+extern void *expr_scan_pred_compile (cubthread::entry * thread_p, const cubxasl::pred_expr * pr, val_descr * vd);
 extern DB_LOGICAL expr_scan_pred_eval (void *compiled, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid);
 extern void expr_scan_pred_free (void *compiled);
+/* the operand program of a compiled scan filter, if it has one (SQL trace) */
+extern void expr_scan_pred_dump (FILE * fp, const void *compiled, int indent);
 
 #endif /* _EXPR_COMPILE_H_ */

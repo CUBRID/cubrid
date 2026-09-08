@@ -1024,7 +1024,8 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
    * TYPE_CONSTANT cell (buildlist aggregates -- the expressions were moved into the
    * scan), the accumulate kernels below still skip the per-row operand vector, its
    * deep copy and the accumulate dispatch */
-  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, true, false, idx);
+  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, true, false, idx,
+				  agg_list_p->operand_prog_share_spec);
   if (prog == NULL)
     {
       free_and_init (idx);

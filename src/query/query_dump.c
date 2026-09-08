@@ -3819,6 +3819,11 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
 	  }
 	fprintf (fp, "%*cEXPR_COMPILE (data filter): %s%s\n", indent, ' ',
 		 (spec->where_pred->scan_prog_state == 1) ? "active" : "interpreted (not covered)", sfx);
+	if (spec->where_pred->scan_prog_state == 1)
+	  {
+	    /* the operand program, when the filter's comparisons carry compiled arithmetic */
+	    expr_scan_pred_dump (fp, spec->where_pred->scan_prog, indent + 2);
+	  }
       }
   }
 
