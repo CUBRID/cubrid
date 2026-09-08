@@ -9855,7 +9855,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   bool area_was_mallocated = false;
 
   /* assert log record is not in prior list */
-  oldest_prior_lsa = *log_get_append_lsa ();
+  lsa_atomic_load (&oldest_prior_lsa, log_get_append_lsa ());
   assert (LSA_LT (&process_lsa, &oldest_prior_lsa));
 
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
