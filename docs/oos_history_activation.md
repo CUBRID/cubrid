@@ -1,17 +1,17 @@
 # OOS history format activation
 
-This is the compatibility foundation for CBRD-26939. Durable OOS image
-publication and decoding are subsequent integration work; this change alone
-does not provide complete CDC or flashback support for OOS values. Keep these
-changes on the integration branch until that work and its regressions pass.
+OOS-backed INSERT, UPDATE and DELETE operations record complete historical
+values when supplemental logging is enabled. CDC and flashback read these
+images from retained logs after vacuum reclaims the original OOS storage.
+Physical recovery records retain their existing representation.
 
 ## Database states
 
 | Database | Upgraded engine | Baseline engine | Supplemental OOS writes |
 | --- | --- | --- | --- |
 | Existing, inactive (disk compatibility 11.5) | Opens without activation | Can still open | Activation-required error |
-| Existing, explicitly activated | Opens | Rejects before recovery | Requires the subsequent durable-image implementation |
-| Newly created by the upgraded engine | Current format immediately | Rejects before recovery | Requires the subsequent durable-image implementation |
+| Existing, explicitly activated | Opens | Rejects before recovery | Durable expanded images |
+| Newly created by the upgraded engine | Current format immediately | Rejects before recovery | Durable expanded images |
 
 The integration branch assigns disk compatibility **11.6** to the OOS history
 format. This is a disk-format identifier, not a change to the product release
@@ -72,8 +72,19 @@ that backup's history boundary, not a way to downgrade current-format logs.
 
 Existing non-OOS supplemental history remains readable across activation.
 Activation does not reconstruct legacy OOS values whose referenced storage
-has already been reclaimed. Explicit rejection of that legacy history belongs
-to the subsequent historical-image reader work.
+has already been reclaimed. The reader rejects every unresolved legacy OOS reference, including references
+whose original storage still exists, with `ER_CDC_LEGACY_OOS_IMAGE` (-1387)
+without reading the referenced storage. Malformed expanded images return
+`ER_CDC_INVALID_HISTORY_IMAGE` (-1388). CDC reports an extraction failure and
+retains the requested position; it does not silently skip the offending event.
+Use a new extraction session at a supported history boundary to continue.
+
+Image construction, allocation and append failures fail the originating SQL
+operation through ordinary rollback. DML references and their transaction-user
+metadata are allocated together before either record is published. Supplemental logging disabled does not
+construct or append these images. Expanded before/after images increase WAL
+volume and transient memory in proportion to the historical row values;
+compression is used only when it reduces the payload size.
 
 ## HA and reader boundary
 
@@ -102,3 +113,23 @@ installations including their Java runtime. Set `HISTORY_TEST_ROOT` to choose
 the evidence directory. Use `HISTORY_PAGE_SIZE=4K`, `8K`, or `16K` to exercise
 matching data/log page sizes. The fault injector observes filesystem syscalls;
 it does not depend on private database header offsets or numeric marker tests.
+
+Run the CDC value regression against the current installation:
+
+```sh
+HISTORY_LIFECYCLE=1 HISTORY_CLIENT_MODE=lifecycle \
+  bash unit_tests/oos/scripts/test_cdc_history.sh /path/to/current/install
+```
+
+This verifies exact values through CDC in both `all_in_cond` modes and through
+flashback after observed reclamation and restart. Optional environment settings
+exercise `HISTORY_PAGE_SIZE=4K|8K|16K`, `HISTORY_COMPRESS=yes|no`,
+`HISTORY_ENTROPY=1` (fixed high-entropy bytes), `HISTORY_TRIGGER=1`,
+`HISTORY_PARTITION=1`, `HISTORY_CRASH=1`, and `HISTORY_BACKUP=1`.
+Debug builds additionally support `HISTORY_FAULTS=1` for SQL rollback checks
+and `HISTORY_CORRUPT=1 HISTORY_CLIENT_MODE=reject` for malformed-image rejection.
+`HISTORY_REPOSITION=1` with rejection verifies reconnecting at newer supported
+history. `HISTORY_WRITER_INSTALL` selects an older writer for legacy rejection.
+`HISTORY_SUPPLEMENTAL=0` runs the write/reclamation workload without extraction
+for cost comparison. Each run retains WAL-header, elapsed-time and server RSS
+observations in its evidence directory; these are observations, not benchmarks.

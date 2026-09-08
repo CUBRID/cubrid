@@ -418,6 +418,11 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 	    supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa.offset);
 	    supplement_length = supplement->length;
 	    rec_type = supplement->rec_type;
+	    if (rec_type == LOG_SUPPLEMENT_OOS_IMAGE)
+	      {
+		break;
+	      }
+
 
 	    LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
 
@@ -893,6 +898,13 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 	  supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa.offset);
 	  supplement_length = supplement->length;
 	  rec_type = supplement->rec_type;
+	  if (rec_type == LOG_SUPPLEMENT_OOS_IMAGE)
+	    {
+	      LSA_COPY (&process_lsa, &next_log_rec_lsa);
+	      LSA_COPY (&cur_log_rec_lsa, &process_lsa);
+	      continue;
+	    }
+
 
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
 

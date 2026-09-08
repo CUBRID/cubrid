@@ -2912,6 +2912,56 @@ heap_check_oos_history_activation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTE
   return NO_ERROR;
 }
 
+/* Only OOS rows need a supplemental copy; ordinary rows keep their recovery LSA. */
+static int
+heap_capture_oos_image (THREAD_ENTRY * thread_p, const RECDES * record, LOG_LSA * image_lsa)
+{
+  RECDES copy = RECDES_INITIALIZER;
+  int error;
+  LSA_SET_NULL (image_lsa);
+  if (record->type == REC_ASSIGN_ADDRESS || !heap_recdes_contains_oos (record))
+    {
+      return NO_ERROR;
+    }
+  error = heap_oos_copy_expanded_record (thread_p, record, &copy);
+  if (error == NO_ERROR)
+    {
+      error = log_append_supplemental_image (thread_p, &copy, image_lsa);
+    }
+  free_and_init (copy.data);
+  return error;
+}
+
+/* Capture the protected before image before an eager path can delete its value chains. */
+static int
+heap_capture_oos_before_image (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, LOG_LSA * image_lsa)
+{
+  RECDES record = context->home_recdes;
+  OID forward_oid;
+
+  LSA_SET_NULL (image_lsa);
+  if (!context->do_supplemental_log || context->record_type == REC_ASSIGN_ADDRESS)
+    {
+      return NO_ERROR;
+    }
+  if (context->record_type == REC_RELOCATION)
+    {
+      forward_oid = *((OID *) record.data);
+      if (heap_fix_forward_page (thread_p, context, &forward_oid) != NO_ERROR
+	  || spage_get_record (thread_p, context->forward_page_watcher_p->pgptr, forward_oid.slotid,
+			       &record, PEEK) != S_SUCCESS)
+	{
+	  return ER_FAILED;
+	}
+    }
+  /* OOS + REC_BIGONE is not a supported physical record combination. */
+  if (context->record_type == REC_BIGONE || !heap_recdes_contains_oos (&record))
+    {
+      return NO_ERROR;
+    }
+  return heap_capture_oos_image (thread_p, &record, image_lsa);
+}
+
 /*
  * heap_vpid_init_new () - FILE_INIT_PAGE_FUNC for heap non-header pages
  *
@@ -22397,7 +22447,11 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  return rc;
 	}
 
-      log_append_supplemental_undo_record (thread_p, &ovf_recdes);
+      rc = log_append_supplemental_undo_record (thread_p, &ovf_recdes);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
 
       LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
     }
@@ -22883,7 +22937,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  if (context->do_supplemental_log)
 	    {
 	      /* relocation -> relocation case does not have any undo image to refer */
-	      log_append_supplemental_undo_record (thread_p, &new_forward_recdes);
+	      int error = log_append_supplemental_undo_record (thread_p, &new_forward_recdes);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
 
 	      /* SUPPLEMENT_DELETE UNDO LSA */
 	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
@@ -23325,7 +23383,11 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  /* undo lsa for SUPPLEMENT_DELETE : when REC_HOME is not changed  */
 	  if (context->do_supplemental_log)
 	    {
-	      log_append_supplemental_undo_record (thread_p, &built_recdes);
+	      error_code = log_append_supplemental_undo_record (thread_p, &built_recdes);
+	      if (error_code != NO_ERROR)
+		{
+		  return error_code;
+		}
 	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	    }
 
@@ -24515,6 +24577,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
+  LOG_LSA history_redo_lsa = LSA_INITIALIZER;
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
 
@@ -24571,8 +24634,12 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 
       if (!tdes->has_supplemental_log)
 	{
-	  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
-					tdes->client.get_db_user ());
+	  rc = log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					     tdes->client.get_db_user ());
+	  if (rc != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	  tdes->has_supplemental_log = true;
 	}
 
@@ -24588,6 +24655,15 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   if (rc != NO_ERROR)
     {
       goto error;
+    }
+
+  if (context->do_supplemental_log)
+    {
+      rc = heap_capture_oos_image (thread_p, context->recdes_p, &history_redo_lsa);
+      if (rc != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -24706,9 +24782,13 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   if (context->do_supplemental_log && !LSA_ISNULL (&context->supp_redo_lsa)
       && context->recdes_p->type != REC_ASSIGN_ADDRESS)
     {
-      (void) log_append_supplemental_lsa (thread_p,
-					  thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_INSERT :
-					  LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
+      if (!LSA_ISNULL (&history_redo_lsa))
+	{
+	  LSA_COPY (&context->supp_redo_lsa, &history_redo_lsa);
+	}
+      rc = log_append_supplemental_lsa (thread_p,
+					thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_INSERT :
+					LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
     }
 
 
@@ -24739,6 +24819,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
+  LOG_LSA history_undo_lsa = LSA_INITIALIZER;
   PERF_UTIME_TRACKER time_track;
 
   /*
@@ -24847,8 +24928,12 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (!tdes->has_supplemental_log)
 	{
-	  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
-					tdes->client.get_db_user ());
+	  rc = log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					     tdes->client.get_db_user ());
+	  if (rc != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	  tdes->has_supplemental_log = true;
 	}
 
@@ -24861,6 +24946,12 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
 
   rc = heap_check_oos_history_activation (thread_p, context);
+  if (rc != NO_ERROR)
+    {
+      goto error;
+    }
+
+  rc = heap_capture_oos_before_image (thread_p, context, &history_undo_lsa);
   if (rc != NO_ERROR)
     {
       goto error;
@@ -24899,9 +24990,13 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   if (context->do_supplemental_log == true)
     {
-      (void) log_append_supplemental_lsa (thread_p,
-					  thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE :
-					  LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa, NULL);
+      if (!LSA_ISNULL (&history_undo_lsa))
+	{
+	  LSA_COPY (&context->supp_undo_lsa, &history_undo_lsa);
+	}
+      rc = log_append_supplemental_lsa (thread_p,
+					thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE :
+					LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa, NULL);
     }
 
 
@@ -24942,6 +25037,8 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
+  LOG_LSA history_undo_lsa = LSA_INITIALIZER;
+  LOG_LSA history_redo_lsa = LSA_INITIALIZER;
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
 
@@ -25087,8 +25184,12 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (!tdes->has_supplemental_log)
 	{
-	  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
-					tdes->client.get_db_user ());
+	  rc = log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					     tdes->client.get_db_user ());
+	  if (rc != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	  tdes->has_supplemental_log = true;
 	}
 
@@ -25102,6 +25203,16 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
 
   rc = heap_check_oos_history_activation (thread_p, context);
+  if (rc != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  rc = heap_capture_oos_before_image (thread_p, context, &history_undo_lsa);
+  if (rc == NO_ERROR && context->do_supplemental_log)
+    {
+      rc = heap_capture_oos_image (thread_p, context->recdes_p, &history_redo_lsa);
+    }
   if (rc != NO_ERROR)
     {
       goto exit;
@@ -25157,10 +25268,18 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   if (context->do_supplemental_log == true)
     {
-      (void) log_append_supplemental_lsa (thread_p,
-					  thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_UPDATE :
-					  LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
-					  &context->supp_redo_lsa);
+      if (!LSA_ISNULL (&history_undo_lsa))
+	{
+	  LSA_COPY (&context->supp_undo_lsa, &history_undo_lsa);
+	}
+      if (!LSA_ISNULL (&history_redo_lsa))
+	{
+	  LSA_COPY (&context->supp_redo_lsa, &history_redo_lsa);
+	}
+      rc = log_append_supplemental_lsa (thread_p,
+					thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_UPDATE :
+					LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
+					&context->supp_redo_lsa);
     }
 
 

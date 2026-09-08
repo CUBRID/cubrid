@@ -829,6 +829,7 @@ typedef struct cdc_temp_logbuf
 typedef struct cdc_producer
 {
   LOG_LSA next_extraction_lsa;
+  int extraction_error;		/* Protected by producer.lock; error at the current unread image. */
   bool is_reset_process_lsa;
 
   /* configuration */

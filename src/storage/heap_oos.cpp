@@ -38,6 +38,7 @@
 #include "oos_log.hpp"
 #include "oos_util.hpp"
 #include "porting.h"
+#include "fault_injection.h"
 #include "storage_common.h"
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
@@ -414,6 +415,50 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) rec->length);
       return S_ERROR;
     }
+}
+
+/* Copy a protected row into caller-owned storage without changing the recovery image.
+ * The caller releases copy->data with free_and_init. */
+int
+heap_oos_copy_expanded_record (THREAD_ENTRY *thread_p, const RECDES *source, RECDES *copy)
+{
+  int always_fail = 1;
+  if (FI_TEST_ARG (thread_p, FI_TEST_OOS_HISTORY_COPY, &always_fail, 0) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "OOS history fault injection");
+      return ER_FAILED_ASSERTION;
+    }
+  HEAP_SCANCACHE cache;
+  HEAP_GET_CONTEXT context;
+  RECDES expanded = *source;
+  int error = heap_scancache_quick_start (&cache);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  heap_init_get_context (thread_p, &context, NULL, NULL, &expanded, &cache, PEEK, NULL_CHN,
+			 HEAP_RECDES_CONSUME_RAW_BYTES);
+  if (heap_record_replace_oos_oids (thread_p, &context) != S_SUCCESS)
+    {
+      error = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  else
+    {
+      copy->data = (char *) malloc (expanded.length);
+      if (copy->data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, expanded.length);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      else
+	{
+	  copy->type = expanded.type;
+	  copy->length = copy->area_size = expanded.length;
+	  memcpy (copy->data, expanded.data, expanded.length);
+	}
+    }
+  heap_scancache_end (thread_p, &cache);
+  return error;
 }
 
 /*

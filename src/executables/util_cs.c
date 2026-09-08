@@ -5008,6 +5008,11 @@ flashback (UTIL_FUNCTION_ARG * arg)
 				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
 				      FLASHBACK_MSG_LOG_VOLUME_NOT_EXIST));
 	      break;
+	    case ER_CDC_LEGACY_OOS_IMAGE:
+	    case ER_CDC_INVALID_HISTORY_IMAGE:
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      break;
 	    default:
 	      break;
 	    }
