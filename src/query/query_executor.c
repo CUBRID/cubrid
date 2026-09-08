@@ -9947,7 +9947,7 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
   /* set up to return object domains in case we want to return the updated/inserted/deleted oid's */
   list_id->type_list.domp[0] = &tp_Object_domain;
-  qfile_type_list_finalize (&list_id->type_list);	/* finalize after setting domp[0] */
+  qfile_set_layout (&list_id->type_list);	/* compute layout after setting domp[0] */
 
   if (xasl->type == INSERT_PROC && XASL_IS_FLAGED (xasl, XASL_RETURN_GENERATED_KEYS))
     {
@@ -21057,9 +21057,9 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
 	  context->sorted_part_list_id->type_list.domp[index + 2] = &tp_Integer_domain;
 	}
 
-      /* finalize after mutating domp */
-      qfile_type_list_finalize (&context->part_list_id->type_list);
-      qfile_type_list_finalize (&context->sorted_part_list_id->type_list);
+      /* recompute layout after mutating domp */
+      qfile_set_layout (&context->part_list_id->type_list);
+      qfile_set_layout (&context->sorted_part_list_id->type_list);
     }
 }
 
@@ -21149,7 +21149,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		       && TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
 		{
 		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
-		  qfile_type_list_finalize (&agg_p->list_id->type_list);	/* finalize after mutating domp */
+		  qfile_set_layout (&agg_p->list_id->type_list);	/* recompute layout after mutating domp */
 		}
 	    }
 
@@ -21387,7 +21387,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		{
 		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
 		}
-	      qfile_type_list_finalize (&agg_p->list_id->type_list);	/* finalize after mutating domp */
+	      qfile_set_layout (&agg_p->list_id->type_list);	/* recompute layout after mutating domp */
 	    }
 
 	  /* initialize accumulators */

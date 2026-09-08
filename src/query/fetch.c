@@ -4911,7 +4911,7 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * 
 	}
 
       /* a need_clear-free FIXED column is just marked NULL; VAR columns always call pr_clear_value */
-      if (tplrec->tl->col[pos_descr->pos_no].kind != QFILE_COL_FIXED || regu_var->vfetch_to->need_clear
+      if (tplrec->tl->column_layout_array[pos_descr->pos_no].kind != QFILE_COL_FIXED || regu_var->vfetch_to->need_clear
 	  || DB_NEED_CLEAR (regu_var->vfetch_to))
 	{
 	  pr_clear_value (regu_var->vfetch_to);

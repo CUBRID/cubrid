@@ -47,7 +47,7 @@ qfile_col_layout_of_domain (const TP_DOMAIN * dom, QFILE_COL_LAYOUT * c)
   id = TP_DOMAIN_TYPE (dom);
 
   assert (id >= 0 && id <= DB_TYPE_LAST && id <= UINT8_MAX);
-  c->off = -1;
+  c->byte_offset_in_values = -1;
   c->type_id = (uint8_t) id;
 
   if (id == DB_TYPE_VARIABLE || t->has_computed_disk_size ())
@@ -135,10 +135,10 @@ qfile_first_null_col (const unsigned char *bm, int type_cnt)
   return type_cnt;
 }
 
-/* Layout descriptor lifetime: alloc allocates the block, copy allocates+inherits, finalize (re)computes from domp. */
+/* Layout descriptor lifetime: alloc allocates the block, copy allocates+inherits, set_layout (re)computes from domp. */
 extern int qfile_type_list_alloc (QFILE_TUPLE_VALUE_TYPE_LIST * tl, int type_cnt, int hdr_size);
 extern int qfile_type_list_copy (QFILE_TUPLE_VALUE_TYPE_LIST * dest, const QFILE_TUPLE_VALUE_TYPE_LIST * src);
-extern void qfile_type_list_finalize (QFILE_TUPLE_VALUE_TYPE_LIST * tl);
+extern void qfile_set_layout (QFILE_TUPLE_VALUE_TYPE_LIST * tl);
 #if !defined(NDEBUG)
 extern bool qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * tl);
 #endif
@@ -168,43 +168,43 @@ inline void
 qfile_slot_bind (QFILE_TUPLE_RECORD * rec, const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
 {
   rec->tl = tl;
-  rec->nvalid = -1;
+  rec->cached_column_index_in_tuple = -1;
 }
 
 /*
  * qfile_slot_set_tuple () - point the record at another tuple and reset the deform cache.
  */
 inline void
-qfile_slot_set_tuple (QFILE_TUPLE_RECORD * rec, char *tpl)
+qfile_slot_set_tuple (QFILE_TUPLE_RECORD * rec, char *tuple_ptr)
 {
-  rec->tpl = tpl;
-  rec->nvalid = -1;
+  rec->tpl = tuple_ptr;
+  rec->cached_column_index_in_tuple = -1;
 }
 
 /*
  * qfile_slot_fill () - bind + set_tuple in one step, used when filling a record from a list.
  */
 inline void
-qfile_slot_fill (QFILE_TUPLE_RECORD * rec, char *tpl, const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
+qfile_slot_fill (QFILE_TUPLE_RECORD * rec, char *tuple_ptr, const QFILE_TUPLE_VALUE_TYPE_LIST * tl)
 {
   rec->tl = tl;
-  qfile_slot_set_tuple (rec, tpl);
+  qfile_slot_set_tuple (rec, tuple_ptr);
 }
 
 extern void qfile_slot_clear (QFILE_TUPLE_RECORD * rec);
 
 /*
- * qfile_prefix_end () - offset (from data_off) where prefix columns [0, lim) end; lim <= first_non_cached_col.
+ * qfile_prefix_end () - offset (from data_off) where prefix columns [0, lim) end; lim <= max_fixed_length_col_cnt.
  */
 inline int
 qfile_prefix_end (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, int lim)
 {
-  assert (lim >= 0 && lim <= tl->first_non_cached_col);
+  assert (lim >= 0 && lim <= tl->max_fixed_length_col_cnt);
   if (lim == 0)
     {
       return 0;
     }
-  return tl->col[lim - 1].off + tl->col[lim - 1].size;
+  return tl->column_layout_array[lim - 1].byte_offset_in_values + tl->column_layout_array[lim - 1].size;
 }
 
 /*
@@ -214,7 +214,7 @@ inline void
 qfile_slot_start (QFILE_TUPLE_RECORD * rec)
 {
   const QFILE_TUPLE_VALUE_TYPE_LIST *tl = rec->tl;
-  int lim = tl->first_non_cached_col;
+  int lim = tl->max_fixed_length_col_cnt;
 
   assert (rec->tpl != NULL && tl != NULL && tl->finalized);
 
@@ -225,9 +225,9 @@ qfile_slot_start (QFILE_TUPLE_RECORD * rec)
       int fn = qfile_first_null_col (QFILE_TUPLE_BITMAP (rec->tpl, tl->hdr_size), tl->type_cnt);
       lim = MIN (lim, fn);
     }
-  rec->fast_limit = (int16_t) MIN (lim, INT16_MAX);
-  rec->nvalid = rec->fast_limit;
-  rec->off = rec->data_off + qfile_prefix_end (tl, lim);
+  rec->fixed_length_col_cnt = (int16_t) MIN (lim, INT16_MAX);
+  rec->cached_column_index_in_tuple = rec->fixed_length_col_cnt;
+  rec->cached_byte_offset_in_tuple = rec->data_off + qfile_prefix_end (tl, lim);
 }
 
 /*
@@ -246,13 +246,13 @@ qfile_slot_locate (QFILE_TUPLE_RECORD * rec, int col, int *body_len, bool * is_n
   assert (rec->tpl != NULL && rec->tl != NULL && rec->tl->finalized);
   assert (col >= 0 && col < rec->tl->type_cnt);
 
-  if (rec->nvalid >= 0 && col < rec->fast_limit)
+  if (rec->cached_column_index_in_tuple >= 0 && col < rec->fixed_length_col_cnt)
     {
-      const QFILE_COL_LAYOUT *c = &rec->tl->col[col];
+      const QFILE_COL_LAYOUT *c = &rec->tl->column_layout_array[col];
 
       *body_len = c->size;
       *is_null = false;
-      return rec->tpl + rec->data_off + c->off;
+      return rec->tpl + rec->data_off + c->byte_offset_in_values;
     }
   return qfile_slot_locate_walk (rec, col, body_len, is_null);
 }
@@ -325,7 +325,7 @@ qfile_slot_read_value (QFILE_TUPLE_RECORD * rec, int col, const TP_DOMAIN * dom,
       return NO_ERROR;
     }
 
-  c = &rec->tl->col[col];
+  c = &rec->tl->column_layout_array[col];
   /* probe: decoding domain should match the stored kind, except an unresolved column, the OBJECT/OID pair, and a
    * DB_TYPE_NULL decoding domain (a regu whose domain the compiler left unresolved). */
 #if !defined(NDEBUG)
@@ -527,7 +527,7 @@ qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * src, i
 
   for (i = 0; i < n; i++)
     {
-      if (!src[i].is_null && tl->col[i].type_id == DB_TYPE_NULL)
+      if (!src[i].is_null && tl->column_layout_array[i].type_id == DB_TYPE_NULL)
 	{
 	  src[i].is_null = true;	/* qfile_col_stores_null (): the fill pass reads is_null too */
 	}
@@ -542,7 +542,7 @@ qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * src, i
     }
   if (changed)
     {
-      qfile_type_list_finalize (tl);
+      qfile_set_layout (tl);
     }
   size = tl->data_off[hn ? 1 : 0];
 
@@ -552,7 +552,7 @@ qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * tl, QFILE_TUPLE_COL_SRC * src, i
 	{
 	  continue;
 	}
-      c = &tl->col[i];
+      c = &tl->column_layout_array[i];
       if (src[i].val != NULL)
 	{
 	  src[i].len = qfile_value_body_size (c, src[i].val);
@@ -684,7 +684,7 @@ qfile_tuple_fill (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, const QFILE_TUPLE_COL_
 	{
 	  QFILE_BITMAP_SET_BOUND (bm, i);
 	}
-      c = &tl->col[i];
+      c = &tl->column_layout_array[i];
 #if !defined(NDEBUG)
       if (src[i].val != NULL)
 	{
@@ -738,7 +738,7 @@ restart:
   for (i = 0; i < n; i++)
     {
       v = vals[i];
-      c = &tl->col[i];
+      c = &tl->column_layout_array[i];
       if (qfile_col_stores_null (c, v))
 	{
 	  hn = true;
@@ -768,7 +768,7 @@ restart:
 	  if (c->type_id == DB_TYPE_VARIABLE && qfile_tuple_resolve_column (tl, i, v))
 	    {
 	      /* late resolution: the layout changed under us; measure again with the settled descriptor */
-	      qfile_type_list_finalize (tl);
+	      qfile_set_layout (tl);
 	      goto restart;
 	    }
 	  len = qfile_value_body_size (c, v);
@@ -817,7 +817,7 @@ qfile_tuple_fill_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * tl, DB_VALUE *
 
   for (i = 0; i < n; i++)
     {
-      c = &tl->col[i];
+      c = &tl->column_layout_array[i];
       if (qfile_col_stores_null (c, vals[i]))
 	{
 	  assert (has_null);
@@ -873,25 +873,25 @@ extern int qfile_slot_overwrite_value (QFILE_TUPLE_RECORD * rec, int col, const 
 typedef struct qfile_tuple_walk QFILE_TUPLE_WALK;
 struct qfile_tuple_walk
 {
-  const char *tpl;		/* tuple start */
+  const char *tuple_ptr;		/* tuple start */
   const unsigned char *bitmap;	/* NULL when the tuple has no NULL column */
-  int tpl_len;			/* QFILE_GET_TUPLE_LENGTH (tpl) */
-  int off;			/* offset of the next value (unaligned) */
-  int col;			/* next column */
+  int tpl_len;			/* QFILE_GET_TUPLE_LENGTH (tuple_ptr) */
+  int next_byte_offset_in_tuple;	/* next value offset from tuple start, before alignment */
+  int next_column_index_in_tuple;	/* next column */
   int type_cnt;
 };
 
 inline void
-qfile_tuple_walk_init (QFILE_TUPLE_WALK * walk, const char *tpl, int hdr_size, int type_cnt)
+qfile_tuple_walk_init (QFILE_TUPLE_WALK * walk, const char *tuple_ptr, int hdr_size, int type_cnt)
 {
-  bool has_null = QFILE_GET_TUPLE_HAS_NULL (tpl);
+  bool has_null = QFILE_GET_TUPLE_HAS_NULL (tuple_ptr);
 
   assert (hdr_size == QFILE_TUPLE_HDR_SIZE_FORWARD || hdr_size == QFILE_TUPLE_HDR_SIZE_BACKWARD);
-  walk->tpl = tpl;
-  walk->tpl_len = QFILE_GET_TUPLE_LENGTH (tpl);
-  walk->bitmap = has_null ? QFILE_TUPLE_BITMAP (tpl, hdr_size) : NULL;
-  walk->off = DB_ALIGN (hdr_size + (has_null ? ((type_cnt + 7) >> 3) : 0), QFILE_TUPLE_ALIGNMENT);
-  walk->col = 0;
+  walk->tuple_ptr = tuple_ptr;
+  walk->tpl_len = QFILE_GET_TUPLE_LENGTH (tuple_ptr);
+  walk->bitmap = has_null ? QFILE_TUPLE_BITMAP (tuple_ptr, hdr_size) : NULL;
+  walk->next_byte_offset_in_tuple = DB_ALIGN (hdr_size + (has_null ? ((type_cnt + 7) >> 3) : 0), QFILE_TUPLE_ALIGNMENT);
+  walk->next_column_index_in_tuple = 0;
   walk->type_cnt = type_cnt;
 }
 
@@ -908,35 +908,35 @@ qfile_tuple_walk_next (QFILE_TUPLE_WALK * walk, const TP_DOMAIN * dom, const cha
   QFILE_COL_LAYOUT lc;
   int hdr;
 
-  assert (walk->col < walk->type_cnt);
+  assert (walk->next_column_index_in_tuple < walk->type_cnt);
 
-  if (walk->bitmap != NULL && !QFILE_BITMAP_IS_BOUND (walk->bitmap, walk->col))
+  if (walk->bitmap != NULL && !QFILE_BITMAP_IS_BOUND (walk->bitmap, walk->next_column_index_in_tuple))
     {
       *is_null = true;
       *len = 0;
-      *body = walk->tpl + walk->off;
-      walk->col++;
+      *body = walk->tuple_ptr + walk->next_byte_offset_in_tuple;
+      walk->next_column_index_in_tuple++;
       return NO_ERROR;
     }
 
   qfile_col_layout_of_domain (dom, &lc);
-  walk->off = DB_ALIGN (walk->off, lc.alignby);
+  walk->next_byte_offset_in_tuple = DB_ALIGN (walk->next_byte_offset_in_tuple, lc.alignby);
   if (lc.kind == QFILE_COL_FIXED)
     {
-      *body = walk->tpl + walk->off;
+      *body = walk->tuple_ptr + walk->next_byte_offset_in_tuple;
       *len = lc.size;
-      walk->off += lc.size;
+      walk->next_byte_offset_in_tuple += lc.size;
     }
   else
     {
-      *len = qfile_var_hdr_decode (walk->tpl + walk->off, &hdr);
-      *body = walk->tpl + walk->off + hdr;
-      walk->off += hdr + *len;
+      *len = qfile_var_hdr_decode (walk->tuple_ptr + walk->next_byte_offset_in_tuple, &hdr);
+      *body = walk->tuple_ptr + walk->next_byte_offset_in_tuple + hdr;
+      walk->next_byte_offset_in_tuple += hdr + *len;
     }
-  assert (walk->off <= walk->tpl_len);
+  assert (walk->next_byte_offset_in_tuple <= walk->tpl_len);
 
   *is_null = false;
-  walk->col++;
+  walk->next_column_index_in_tuple++;
   if (c != NULL)
     {
       *c = lc;

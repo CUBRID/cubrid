@@ -2813,7 +2813,7 @@ qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_no
   if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != TP_DOMAIN_TYPE (agg_p->domain))
     {
       agg_p->list_id->type_list.domp[0] = agg_p->domain;
-      qfile_type_list_finalize (&agg_p->list_id->type_list);
+      qfile_set_layout (&agg_p->list_id->type_list);
       agg_p->sort_list->pos_descr.dom = agg_p->domain;
     }
 

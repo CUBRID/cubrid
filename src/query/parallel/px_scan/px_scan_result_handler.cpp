@@ -80,7 +80,7 @@ namespace parallel_scan
 	    list_id_p->type_list.domp[i] = valp->dom;
 	  }
       }
-    qfile_type_list_finalize (&list_id_p->type_list);	/* this worker's own list */
+    qfile_set_layout (&list_id_p->type_list);	/* this worker's own list */
     return NO_ERROR;
   }
 

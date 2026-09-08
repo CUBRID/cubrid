@@ -5447,7 +5447,7 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
 	{
 	  ptr = or_unpack_domain (ptr, &listid->type_list.domp[i], NULL);
 	}
-      qfile_type_list_finalize (&listid->type_list);
+      qfile_set_layout (&listid->type_list);
     }
 
   *listid_ptr = (void *) listid;

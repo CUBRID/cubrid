@@ -301,18 +301,20 @@ struct qfile_tuple_record
   char *tpl;			/* tuple pointer */
   int size;			/* area _allocated_ for tuple pointer */
   const struct qfile_tuple_value_type_list *tl;	/* layout descriptor, bound once per scan */
-  int16_t nvalid;		/* columns deformed so far; -1 = position cache not started for this tuple */
-  int16_t fast_limit;		/* end of the constant-offset prefix for this tuple */
+  int16_t cached_column_index_in_tuple;	/* cached column position; -1 = cache not started */
+  /* Constant-offset prefix length, limited by the layout, first NULL and INT16_MAX; not the total FIXED count. */
+  int16_t fixed_length_col_cnt;
   int16_t data_off;		/* tl->data_off[has_null] of this tuple */
   bool has_null;		/* has-null bit of this tuple's length word */
-  int32_t off;			/* start offset (unaligned) of column nvalid, from tuple start */
+  int32_t cached_byte_offset_in_tuple;	/* cached column start from tuple start, before alignment */
 };
 
 /* Per-column layout entry of the tuple layout descriptor. Kept at 8 bytes; consider the cost before growing it. */
 typedef struct qfile_col_layout QFILE_COL_LAYOUT;
 struct qfile_col_layout
 {
-  int16_t off;			/* constant offset from data_off; -1 when not cached (after the first VAR column or > INT16_MAX) */
+  /* Constant offset from data_off; -1 after the first VAR column or when the offset exceeds INT16_MAX. */
+  int16_t byte_offset_in_values;
   int16_t size;			/* FIXED: disksize (max 12). VAR: -1 */
   uint8_t kind;			/* QFILE_COL_FIXED | QFILE_COL_VAR */
   uint8_t var_access;		/* VAR only: QFILE_VAR_DIRECT | QFILE_VAR_SCRATCH */
@@ -325,19 +327,20 @@ struct qfile_col_layout
  *
  * Two states. An INPUT type list (locals built by the executor before qfile_open_list) only fills domp/type_cnt
  * and has finalized == false; the descriptor fields below are not read. A FINALIZED type list (every
- * QFILE_LIST_ID) was allocated by qfile_type_list_alloc () as one block [domp[type_cnt] | col[type_cnt]] (so
- * the existing free (domp) sites are untouched) and had qfile_type_list_finalize () run after its last domp
+ * QFILE_LIST_ID) was allocated by qfile_type_list_alloc () as one block [domp[type_cnt] | column_layout_array[type_cnt]] (so
+ * the existing free (domp) sites are untouched) and had qfile_set_layout () run after its last domp
  * mutation. Copies inherit the block by memcpy (qfile_type_list_copy).
  *
- * The descriptor IS the layout: kind/size/alignby of every column come from domp[] (qfile_type_list_finalize),
+ * The descriptor IS the layout: kind/size/alignby of every column come from domp[] (qfile_set_layout),
  * hdr_size from the QFILE_FLAG_BACKWARD flag of qfile_open_list (). */
 typedef struct qfile_tuple_value_type_list QFILE_TUPLE_VALUE_TYPE_LIST;
 struct qfile_tuple_value_type_list
 {
-  TP_DOMAIN **domp;		/* array of column domains; head of the [domp | col] block when finalized */
+  TP_DOMAIN **domp;		/* array of column domains; head of the [domp | column_layout_array] block when finalized */
   int type_cnt;			/* number of data types */
-  QFILE_COL_LAYOUT *col;	/* == (QFILE_COL_LAYOUT *) (domp + type_cnt); convenience pointer, not a separate allocation */
-  int first_non_cached_col;	/* min (first VAR column, first column with off > INT16_MAX); type_cnt if none */
+  QFILE_COL_LAYOUT *column_layout_array;	/* points at domp + type_cnt; not a separate allocation */
+  /* NULL-independent prefix limit: first VAR or offset > INT16_MAX; type_cnt if none. Not the total FIXED count. */
+  int max_fixed_length_col_cnt;
   int16_t data_off[2];		/* [0] = no-null, [1] = has-null : ALIGN4 (hdr_size + bitmap) */
   int16_t bitmap_size;		/* (type_cnt + 7) >> 3 */
   uint8_t hdr_size;		/* 4 | 8 ; 8 <=> backward capable */
@@ -506,8 +509,8 @@ struct qfile_list_id
     { \
       (list_id)->type_list.type_cnt = 0; \
       (list_id)->type_list.domp = NULL; \
-      (list_id)->type_list.col = NULL; \
-      (list_id)->type_list.first_non_cached_col = 0; \
+      (list_id)->type_list.column_layout_array = NULL; \
+      (list_id)->type_list.max_fixed_length_col_cnt = 0; \
       (list_id)->type_list.data_off[0] = 0; \
       (list_id)->type_list.data_off[1] = 0; \
       (list_id)->type_list.bitmap_size = 0; \

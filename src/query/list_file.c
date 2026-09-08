@@ -464,7 +464,7 @@ qfile_modify_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_LIST_ID
     {
       return ER_FAILED;
     }
-  qfile_type_list_finalize (&list_id_p->type_list);
+  qfile_set_layout (&list_id_p->type_list);
 
   list_id_p->tpl_descr.f_valp = NULL;
   list_id_p->tpl_descr.f_len = NULL;
@@ -921,7 +921,7 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 	      else
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INCOMPATIBLE_TYPES, 0);
-		  qfile_type_list_finalize (&list_id1_p->type_list);
+		  qfile_set_layout (&list_id1_p->type_list);
 		  return ER_QPROC_INCOMPATIBLE_TYPES;
 		}
 	    }
@@ -931,13 +931,13 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 	  || TP_DOMAIN_COLLATION_FLAG (list_id2_p->type_list.domp[i]) != TP_DOMAIN_COLL_NORMAL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
-	  qfile_type_list_finalize (&list_id1_p->type_list);
+	  qfile_set_layout (&list_id1_p->type_list);
 	  return ER_QSTR_INCOMPATIBLE_COLLATIONS;
 	}
     }
 
   /* domp of list1 may have changed above */
-  qfile_type_list_finalize (&list_id1_p->type_list);
+  qfile_set_layout (&list_id1_p->type_list);
 
   return NO_ERROR;
 }
@@ -1191,7 +1191,7 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
     {
       memcpy (list_id_p->type_list.domp, type_list_p->domp, list_id_p->type_list.type_cnt * DB_SIZEOF (TP_DOMAIN *));
     }
-  qfile_type_list_finalize (&list_id_p->type_list);
+  qfile_set_layout (&list_id_p->type_list);
 
   /* build sort_list */
   if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_DISTINCT))
@@ -3929,7 +3929,7 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
   int i, n, order;
 
   /* Fast path: every key is a FIXED column inside the constant-offset prefix and neither key tuple has a NULL, so
-   * each key body sits at tl->col[i].off from data_off[0]. The general path (NULLs, variable-width keys, SCRATCH
+   * each key body sits at tl->column_layout_array[i].byte_offset_in_values from data_off[0]. The general path (NULLs, variable-width keys, SCRATCH
    * keys) lives in a separate non-inlined function to keep this hot frame small. */
   t0 = PTR_ALIGN (&(k0->s.original.body[0]), MAX_ALIGNMENT);
   t1 = PTR_ALIGN (&(k1->s.original.body[0]), MAX_ALIGNMENT);
@@ -3941,22 +3941,22 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
   b0 = t0 + tl->data_off[0];
   b1 = t1 + tl->data_off[0];
   order = 0;
-  if (tl->first_non_cached_col >= n)
+  if (tl->max_fixed_length_col_cnt >= n)
     {
       for (i = 0; i < n; i++)
 	{
-	  const QFILE_COL_LAYOUT *c = &tl->col[i];
+	  const QFILE_COL_LAYOUT *c = &tl->column_layout_array[i];
 	  SUBKEY_INFO *key = &key_info_p->key[i];
 
 	  if (key->use_cmp_dom)
 	    {
 	      order =
-		qfile_compare_with_interpolation_domain (c, b0 + c->off, c->size, b1 + c->off, c->size, key,
+		qfile_compare_with_interpolation_domain (c, b0 + c->byte_offset_in_values, c->size, b1 + c->byte_offset_in_values, c->size, key,
 							 key_info_p);
 	    }
 	  else
 	    {
-	      order = (*key->sort_f) ((void *) (b0 + c->off), (void *) (b1 + c->off), key->col_dom, 0, 1, NULL);
+	      order = (*key->sort_f) ((void *) (b0 + c->byte_offset_in_values), (void *) (b1 + c->byte_offset_in_values), key->col_dom, 0, 1, NULL);
 	    }
 	  if (key->is_desc)
 	    {
@@ -3980,7 +3980,7 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
 
     for (i = 0; i < n; i++)
       {
-	const QFILE_COL_LAYOUT *c = &tl->col[i];
+	const QFILE_COL_LAYOUT *c = &tl->column_layout_array[i];
 	SUBKEY_INFO *key = &key_info_p->key[i];
 
 	if (c->kind == QFILE_COL_FIXED)
@@ -4053,7 +4053,7 @@ qfile_compare_partial_sort_record_general (SORTKEY_INFO * key_info_p, SORT_REC *
     {
       d0 = qfile_slot_locate (&s0, i, &l0, &null0);
       d1 = qfile_slot_locate (&s1, i, &l1, &null1);
-      c = &key_info_p->key_tl.col[i];
+      c = &key_info_p->key_tl.column_layout_array[i];
 
       if (!null0 && !null1)
 	{
@@ -4331,7 +4331,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
       assert (key_info_p->key[i].col >= 0 && key_info_p->key[i].col < types->type_cnt);
       key_info_p->key_tl.domp[i] = types->domp[key_info_p->key[i].col];
     }
-  qfile_type_list_finalize (&key_info_p->key_tl);
+  qfile_set_layout (&key_info_p->key_tl);
 
   /* the disk comparator must match the stored encoding of the key column: a VAR/DIRECT key body is the index
    * encoding, so it compares with index_cmpdisk; FIXED and VAR/SCRATCH bodies compare with data_cmpdisk on aligned
@@ -4343,7 +4343,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
       const TP_DOMAIN *cmp_dom = (subkey->col_dom->type->id == DB_TYPE_VARIABLE) ? types->domp[subkey->col]
 	: subkey->col_dom;
 
-      subkey->sort_f = qfile_col_cmpdisk_function (&key_info_p->key_tl.col[i], cmp_dom);
+      subkey->sort_f = qfile_col_cmpdisk_function (&key_info_p->key_tl.column_layout_array[i], cmp_dom);
     }
 
   return key_info_p;
@@ -4361,7 +4361,7 @@ qfile_init_empty_sort_key_info (SORTKEY_INFO * key_info_p)
   key_info_p->key = NULL;
   key_info_p->error = NO_ERROR;
   (void) qfile_type_list_alloc (&key_info_p->key_tl, 0, QFILE_TUPLE_HDR_SIZE_FORWARD);	/* no allocation for 0 columns */
-  qfile_type_list_finalize (&key_info_p->key_tl);
+  qfile_set_layout (&key_info_p->key_tl);
 }
 
 /* qfile_clear_sort_key_info () -
@@ -4388,7 +4388,7 @@ qfile_clear_sort_key_info (SORTKEY_INFO * key_info_p)
     {
       free_and_init (key_info_p->key_tl.domp);	/* the [domp | col] block of qfile_type_list_alloc () */
     }
-  key_info_p->key_tl.col = NULL;
+  key_info_p->key_tl.column_layout_array = NULL;
   key_info_p->key_tl.type_cnt = 0;
   key_info_p->key_tl.finalized = false;
 }
@@ -6956,7 +6956,7 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list
 
   if (changed)
     {
-      qfile_type_list_finalize (&list_id_p->type_list);	/* late domain resolution: re-finalize */
+      qfile_set_layout (&list_id_p->type_list);	/* late domain resolution: recompute layout */
     }
 
   return NO_ERROR;
@@ -6965,7 +6965,7 @@ exit_on_error:
 
   if (changed)
     {
-      qfile_type_list_finalize (&list_id_p->type_list);
+      qfile_set_layout (&list_id_p->type_list);
     }
   list_id_p->is_domain_resolved = false;
   return ER_FAILED;
