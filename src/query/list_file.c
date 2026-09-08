@@ -284,6 +284,7 @@ static void qfile_add_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_C
 static void qfile_delete_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTRY * lent);
 static int qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data);
 static int qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, void *args);
+static int qfile_reassign_list_cache_entry_owner (THREAD_ENTRY * thread_p, void *data, void *args);
 static bool qfile_is_early_time (struct timeval *a, struct timeval *b);
 
 static int qfile_get_list_cache_entry_size_for_allocate (int nparam);
@@ -5890,6 +5891,60 @@ qfile_finalize_list_cache (THREAD_ENTRY * thread_p)
     {
       free_and_init (qfile_List_cache_entry_pool.pool);
     }
+
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+
+  return NO_ERROR;
+}
+
+/*
+ * qfile_reassign_list_cache_entry_owner () - re-point one list cache entry at its new owning
+ *   XASL cache entry (mht_map_no_key callback)
+ *   return: NO_ERROR
+ *   data(in): QFILE_LIST_CACHE_ENTRY *
+ *   args(in): XASL_CACHE_ENTRY * (the new owner)
+ */
+static int
+qfile_reassign_list_cache_entry_owner (THREAD_ENTRY * thread_p, void *data, void *args)
+{
+  QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
+  XASL_CACHE_ENTRY *new_owner = (XASL_CACHE_ENTRY *) args;
+
+  lent->xcache_entry = new_owner;
+  lent->query_string = new_owner->sql_info.sql_hash_text;
+
+  return NO_ERROR;
+}
+
+/*
+ * qfile_reassign_list_cache_owner () - re-point every entry of a list cache hash table at a
+ *   new owning XASL cache entry. Used when a recompile hands its result cache over to the
+ *   replacing XASL cache entry: the entries' back-pointers (xcache_entry, query_string) were
+ *   set at creation and would otherwise dangle once the old entry is freed.
+ *   return: NO_ERROR or ER_FAILED
+ *   list_ht_no(in): hash table id being handed over
+ *   new_owner(in): the XASL cache entry that now owns the hash table
+ */
+int
+qfile_reassign_list_cache_owner (THREAD_ENTRY * thread_p, int list_ht_no, XASL_CACHE_ENTRY * new_owner)
+{
+  if (QFILE_IS_LIST_CACHE_DISABLED)
+    {
+      return NO_ERROR;
+    }
+  if (list_ht_no < 0 || (unsigned int) list_ht_no >= qfile_List_cache.n_hts || new_owner == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[list_ht_no], qfile_reassign_list_cache_entry_owner,
+			 new_owner);
 
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 

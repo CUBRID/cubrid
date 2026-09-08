@@ -696,6 +696,10 @@ heap_oos_test_disarm_fail_before_vfid_lookup ()
  * heap_recdes_contains_oos, so a missing OOS file or a failed OID extraction at this point
  * indicates real corruption — log and propagate.
  *
+ * Empty-page reclaim (oos_reclaim_empty_pages) must NOT be wired here: this runs inside a live
+ * user transaction whose abort replays the per-chunk undo, and undo cannot re-insert chunks
+ * into a deallocated page. Pages emptied here stay allocated.
+ *
  * op_ctx (in): short operation tag for diagnostics, e.g. "update home", "delete relocation".
  */
 int

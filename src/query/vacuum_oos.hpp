@@ -30,6 +30,12 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+#include <vector>
+
+/* Pages that lost OOS chunks during one delete batch (duplicates allowed). A plain typedef so
+ * vacuum.c (GNU-indent formatted) can declare one without exposing template syntax. */
+typedef std::vector<VPID> VACUUM_OOS_TOUCHED_PAGES;
+
 /* Forward-walk OOS reclamation helpers. */
 
 /* Single-slot memo mapping the most-recently-resolved heap-VFID -> OOS-VFID, used only by the
@@ -48,10 +54,13 @@ struct vacuum_oos_vfid_memo
   VFID oos_vfid;		/* value; meaningful only when valid (VFID_NULL = "no OOS file") */
 };
 
-extern void vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int undo_data_size,
+extern int vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int undo_data_size,
     const VFID *heap_vfid, VACUUM_OOS_VFID_MEMO *oos_vfid_memo);
 extern int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
     PGSLOTID slotid, INT16 record_type, VFID *oos_vfid);
-extern int vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record);
+extern int vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
+    VACUUM_OOS_TOUCHED_PAGES *touched_pages_out);
+extern int vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
+    VACUUM_OOS_TOUCHED_PAGES *touched_pages);
 
 #endif /* _VACUUM_OOS_HPP_ */

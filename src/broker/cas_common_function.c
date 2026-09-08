@@ -89,7 +89,7 @@ cas_common_bind_value_print (char type, void *net_value, bool slow_log, INTL_COD
     }
   else
     {
-      write2_func = cas_log_write2_nonl;
+      write2_func = cas_log_write2_nonl_noflush;
       fwrite_func = cas_log_write_value_string;
     }
 
@@ -327,7 +327,7 @@ cas_common_bind_value_log (struct timeval *log_time, int start, int argc, void *
     }
   else
     {
-      write2_func = cas_log_write2_nonl;
+      write2_func = cas_log_write2_nonl_noflush;
     }
 
   num_bind = 1;
@@ -355,7 +355,7 @@ cas_common_bind_value_log (struct timeval *log_time, int start, int argc, void *
 	}
       else
 	{
-	  cas_log_write_nonl (query_seq_num, false, "bind %d %s: ", num_bind++, param_mode_str);
+	  cas_log_write_nonl_noflush (query_seq_num, false, "bind %d %s: ", num_bind++, param_mode_str);
 	}
 
       if (type > CCI_U_TYPE_FIRST && type <= CCI_U_TYPE_LAST)
@@ -370,6 +370,15 @@ cas_common_bind_value_log (struct timeval *log_time, int start, int argc, void *
 	  write2_func ("NULL");
 	}
       write2_func ("\n");
+    }
+
+  /*
+   * The bind lines above skip the per-line flush,
+   * so flush them here in one call before the statement is executed.
+   */
+  if (!slow_log)
+    {
+      cas_log_flush_if_needed ();
     }
 }
 

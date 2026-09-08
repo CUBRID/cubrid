@@ -168,6 +168,8 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
   /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. The OIDs above are already
    * sorted into page order, so one day we should group the OIDs that share a page and delete them
    * under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
+  VACUUM_OOS_TOUCHED_PAGES touched_pages;
+
   log_sysop_start (thread_p);
   for (const OID &oid : oos_oids)
     {
@@ -185,7 +187,7 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
 	{
 	  continue;
 	}
-      error_code = oos_delete (thread_p, *oos_vfid, oid);
+      error_code = oos_delete (thread_p, *oos_vfid, oid, &touched_pages);
       if (error_code != NO_ERROR)
 	{
 	  break;
@@ -194,12 +196,60 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
   if (error_code == NO_ERROR)
     {
       log_sysop_commit (thread_p);
+
+      /* Must run after the commit: an aborted sysop would restore the chunks, and undo cannot
+       * re-insert into a deallocated page. */
+      int reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, oos_vfid, &touched_pages);
+      if (reclaim_err != NO_ERROR)
+	{
+	  assert (reclaim_err == ER_INTERRUPTED);
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "OOS empty-page reclaim interrupted (file %d|%d); deletes stay committed, "
+				 "emptied pages stay allocated until the growth-gate sweep reclaims them.",
+				 VFID_AS_ARGS (oos_vfid));
+	  error_code = reclaim_err;
+	}
     }
   else
     {
       log_sysop_abort (thread_p);
     }
   return error_code;
+}
+
+/*
+ * vacuum_oos_reclaim_empty_pages () - Reclaim the empty pages of a committed OOS delete batch.
+ *   Only ER_INTERRUPTED is propagated; other failures are absorbed (the pages stay allocated,
+ *   candidates for a later cycle).
+ *
+ * return                 : NO_ERROR or ER_INTERRUPTED.
+ * thread_p (in)          : Thread entry.
+ * oos_vfid (in)          : OOS file the pages belong to.
+ * touched_pages (in/out) : Pages the delete batch touched (duplicates allowed); cleared on return.
+ */
+int
+vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
+				VACUUM_OOS_TOUCHED_PAGES *touched_pages)
+{
+  assert (oos_vfid != NULL && !VFID_ISNULL (oos_vfid));
+  assert (touched_pages != NULL);
+
+  int error_code = oos_reclaim_empty_pages (thread_p, *oos_vfid, *touched_pages);
+  touched_pages->clear ();
+
+  if (error_code == ER_INTERRUPTED)
+    {
+      return error_code;
+    }
+  if (error_code != NO_ERROR)
+    {
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not reclaim empty OOS pages of file %d|%d (error %d); "
+			     "leaving them for a later cycle.",
+			     VFID_AS_ARGS (oos_vfid), error_code);
+      er_clear ();
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -215,18 +265,22 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
  * heap_vfid (in)         : The heap file these bytes belong to.
  * oos_vfid_memo (in/out) : The one-entry "heap file -> OOS file" cache for this block.
  *
- * NOTE: if anything goes wrong, we never fail the vacuum block. We log loudly, clear the error, and
- * return, leaving the OOS bytes on disk (a small, logged leak). Failing the block would trip a
- * shutdown-only assert in vacuum_finished_block_vacuum and could wedge vacuum entirely.
+ * return                 : NO_ERROR or ER_INTERRUPTED.
+ *
+ * NOTE: ordinary cleanup failures never fail the vacuum block. We log loudly, clear the error, and
+ * leave the OOS bytes on disk (a small, logged leak). A shutdown interruption is propagated after
+ * closing any sysop so vacuum_process_log_block can stop through its accepted interruption path.
  */
-void
+int
 vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int undo_data_size,
 				 const VFID *heap_vfid, VACUUM_OOS_VFID_MEMO *oos_vfid_memo)
 {
+  int error_code = NO_ERROR;
+
   if (undo_data == NULL || undo_data_size <= (int) sizeof (INT16))
     {
       /* Too small to hold an old row image, so there is nothing to reclaim. */
-      return;
+      return NO_ERROR;
     }
 
   RECDES undo_recdes;
@@ -244,7 +298,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
    */
   if (! ((undo_recdes.type == REC_HOME || undo_recdes.type == REC_NEWHOME) && heap_recdes_contains_oos (&undo_recdes)))
     {
-      return;
+      return NO_ERROR;
     }
 
   /* Copy the undo image into our own buffer BEFORE we fix any page below. That image usually points
@@ -264,7 +318,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
 			   "leaving OOS unreclaimed (bounded leak) heap_vfid=%d|%d",
 			   undo_recdes.length, VFID_AS_ARGS (heap_vfid));
       er_clear ();
-      return;
+      return NO_ERROR;
     }
   memcpy (stable_copy, undo_recdes.data, undo_recdes.length);
   parse_recdes.data = stable_copy;
@@ -292,14 +346,21 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
 
       if (oos_err != NO_ERROR)
 	{
-	  /* vacuum_forward_walk_oos_delete_atomic already aborted its own sysop, so any partial deletes
-	   * were rolled back. What leaks is only the OOS records we never got to delete. */
-	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-			       "forward-walk oos cleanup failed; leaving OOS unreclaimed "
-			       "(bounded leak) heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
-			       VFID_AS_ARGS (heap_vfid), VFID_AS_ARGS (&oos_vfid), oos_err);
-	  er_clear ();
-	  /* DO NOT propagate; the block must complete. */
+	  if (oos_err == ER_INTERRUPTED)
+	    {
+	      error_code = oos_err;
+	    }
+	  else
+	    {
+	      /* vacuum_forward_walk_oos_delete_atomic already aborted its own sysop, so any partial deletes
+	       * were rolled back. What leaks is only the OOS records we never got to delete. */
+	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+				   "forward-walk oos cleanup failed; leaving OOS unreclaimed "
+				   "(bounded leak) heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
+				   VFID_AS_ARGS (heap_vfid), VFID_AS_ARGS (&oos_vfid), oos_err);
+	      er_clear ();
+	      /* DO NOT propagate; the block must complete. */
+	    }
 	}
     }
   else
@@ -316,6 +377,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
     }
 
   db_private_free_and_init (thread_p, stable_copy);
+  return error_code;
 }
 
 /*
@@ -395,11 +457,15 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
  * thread_p (in)  : Thread entry.
  * oos_vfid (in)  : OOS file of the record's heap (must be valid).
  * record (in)	  : Heap record whose OOS references are deleted.
+ * touched_pages_out (out) : Optional; pages that lost chunks are appended, for reclaim AFTER the
+ *			     caller's sysop commits. On error, this call's appends are removed.
  */
 int
-vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record)
+vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
+				     VACUUM_OOS_TOUCHED_PAGES *touched_pages_out)
 {
   assert (!VFID_ISNULL (oos_vfid));
+  size_t n_touched_on_entry = touched_pages_out != NULL ? touched_pages_out->size () : 0;
   std::vector<OID> oos_oids;
   int error_code = heap_recdes_get_oos_oids (record, oos_oids);
   if (error_code != NO_ERROR)
@@ -413,11 +479,17 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
    * a page's values under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
   for (const OID &oos_oid : oos_oids)
     {
-      error_code = oos_delete (thread_p, *oos_vfid, oos_oid);
+      error_code = oos_delete (thread_p, *oos_vfid, oos_oid, touched_pages_out);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			       "Failed to delete OOS record %d|%d|%d.", oos_oid.volid, oos_oid.pageid, oos_oid.slotid);
+	  /* The caller's abort restores these deletes — keep its batch list committed-only. (An
+	   * OOM inside oos_delete_chain may already have cleared the list; never grow it.) */
+	  if (touched_pages_out != NULL && touched_pages_out->size () > n_touched_on_entry)
+	    {
+	      touched_pages_out->resize (n_touched_on_entry);
+	    }
 	  return error_code;
 	}
     }
