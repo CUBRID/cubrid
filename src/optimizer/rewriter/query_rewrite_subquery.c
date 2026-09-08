@@ -443,7 +443,7 @@ exit:
 void
 qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *prev, *cnf_node, *next, *subq, *inner_spec, *spec;
+  PT_NODE *prev, *cnf_node, *next, *subq, *inner_spec, *spec, *on_conds;
   QO_UNNEST_INFO info;
   short loc;
 
@@ -454,6 +454,7 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
+  on_conds = NULL;
   prev = NULL;
   for (cnf_node = node->info.query.q.select.where; cnf_node != NULL; cnf_node = next)
     {
@@ -517,7 +518,6 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 	     | PT_HINT_LEADING | PT_HINT_PARALLEL | PT_HINT_LK_TIMEOUT));
 
       inner_spec->info.spec.join_type = (info.is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
-      inner_spec->info.spec.on_cond = info.on_cond;
 
       /* count the position rather than read the last spec's location: a derived spec appended earlier by
        * qo_rewrite_subqueries () still carries the unset -1, and qo_analyze_term () indexes the node array by
@@ -549,7 +549,11 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       cnf_node->next = NULL;
       parser_free_tree (parser, cnf_node);
+
+      on_conds = parser_append_node (info.on_cond, on_conds);
     }
+
+  node->info.query.q.select.where = parser_append_node (on_conds, node->info.query.q.select.where);
 }
 
 

@@ -49,7 +49,7 @@ typedef struct qo_unnest_info QO_UNNEST_INFO;
 struct qo_unnest_info
 {
   PT_NODE *subq;		/* the [NOT] EXISTS / [NOT] IN subquery operand */
-  PT_NODE *on_cond;		/* the CNF list it would carry as the spec's ON */
+  PT_NODE *on_cond;		/* the spec's ON, parked in the WHERE until qo_rewrite_queries_post () */
   bool is_anti;			/* ANTI rather than SEMI */
   bool is_in_form;		/* an IN form, whose on_cond starts with a synthesized equality */
 };
