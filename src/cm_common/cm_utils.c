@@ -225,7 +225,9 @@ _reap_child_async (void *arg)
   int pid = *pid_ptr;
 
   free (pid_ptr);
-  waitpid (pid, NULL, 0);
+
+  while (waitpid (pid, NULL, 0) < 0 && errno == EINTR)
+    ;
   return NULL;
 }
 
@@ -295,7 +297,14 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file, char
   if (wait_flag)
     {
       int status = 0;
-      waitpid (pid, &status, 0);
+      int wait_rc;
+
+      while ((wait_rc = waitpid (pid, &status, 0)) < 0 && errno == EINTR)
+	;
+      if (wait_rc < 0)
+	{
+	  return -1;
+	}
       if (exit_status != NULL)
 	*exit_status = status;
       return 0;
@@ -315,14 +324,16 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file, char
 	  else
 	    {
 	      free (reap_pid);
-	      waitpid (pid, NULL, 0);
+	      while (waitpid (pid, NULL, 0) < 0 && errno == EINTR)
+		;
 	    }
 	}
       else
 	{
 	  /* couldn't even allocate the pid holder - fall back to reaping
 	   * it right here rather than leaking a zombie forever */
-	  waitpid (pid, NULL, 0);
+	  while (waitpid (pid, NULL, 0) < 0 && errno == EINTR)
+	    ;
 	}
       return pid;
     }
