@@ -3101,69 +3101,6 @@ sm_mark_system_class (MOP classop, int on_or_off)
   return error;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-#ifdef SA_MODE
-void
-sm_mark_system_class_for_catalog (void)
-{
-  MOP classmop;
-  SM_CLASS *class_;
-  int i;
-
-  const char *classes[] = {
-    CT_CLASS_NAME,
-    CT_ATTRIBUTE_NAME,
-    CT_DOMAIN_NAME,
-    CT_METHOD_NAME,
-    CT_METHSIG_NAME,
-    CT_METHARG_NAME,
-    CT_METHFILE_NAME,
-    CT_QUERYSPEC_NAME,
-    CT_INDEX_NAME,
-    CT_INDEXKEY_NAME,
-    CT_CLASSAUTH_NAME,
-    CT_DATATYPE_NAME,
-    CT_STORED_PROC_NAME,
-    CT_STORED_PROC_ARGS_NAME,
-    CT_PARTITION_NAME,
-    CT_HISTOGRAM_NAME,
-    CTV_CLASS_NAME,
-    CTV_SUPER_CLASS_NAME,
-    CTV_VCLASS_NAME,
-    CTV_ATTRIBUTE_NAME,
-    CTV_ATTR_SD_NAME,
-    CTV_METHOD_NAME,
-    CTV_METHARG_NAME,
-    CTV_METHARG_SD_NAME,
-    CTV_METHFILE_NAME,
-    CTV_INDEX_NAME,
-    CTV_INDEXKEY_NAME,
-    CTV_AUTH_NAME,
-    CTV_TRIGGER_NAME,
-    CTV_STORED_PROC_NAME,
-    CTV_STORED_PROC_ARGS_NAME,
-    CTV_PARTITION_NAME,
-    CT_COLLATION_NAME,
-    CT_SERVER_NAME,
-    CTV_SERVER_NAME,
-    CTV_HISTOGRAM_NAME,
-    CTV_USER_NAME,
-    CTV_AUTHORIZATION_NAME,
-    NULL
-  };
-
-  for (i = 0; classes[i] != NULL; i++)
-    {
-      classmop = locator_find_class (classes[i]);
-      if (au_fetch_class_force (classmop, &class_, AU_FETCH_UPDATE) == NO_ERROR)
-	{
-	  class_->flags |= SM_CLASSFLAG_SYSTEM;
-	}
-    }
-}
-#endif /* SA_MODE */
-#endif
-
 /*
  * sm_set_class_flag() - This turns on or off the given flag.
  *    The flag may be tested by the sm_get_class_flag function.

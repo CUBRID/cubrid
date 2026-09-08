@@ -76,13 +76,6 @@ extern const char *boot_get_lob_path (void);
 extern char *boot_get_host_name (void);
 extern char *boot_get_ip (void);
 
-#if defined(SA_MODE)
-extern int boot_build_catalog_classes (const char *dbname);
-extern int boot_destroy_catalog_classes (void);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int boot_rebuild_catalog_classes (const char *dbname);
-#endif /* ENABLE_UNUSED_FUNCTION */
-#endif /* SA_MODE */
 extern void boot_clear_host_connected (void);
 extern char *boot_get_server_session_key (void);
 extern void boot_set_server_session_key (const char *key);
