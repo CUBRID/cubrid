@@ -94,6 +94,10 @@ struct dblink_conn_entry
 {
   DBLINK_CONN_INFO conn_info;
   bool is_2pc_participant;
+  bool has_uncommitted_dml;	/* a remote DML statement of this transaction has executed on this
+				 * connection and is not committed yet. Rolling the connection's remote
+				 * transaction back would therefore lose work the transaction still
+				 * expects to commit. */
 
   DBLINK_CONN_ENTRY *next;
 };
@@ -115,6 +119,13 @@ struct dblink_dml_state
 {
   int conn_handle;
   int stmt_handle;
+  bool savepoint_set;		/* true: a remote savepoint was taken for this statement, so a failure rolls
+				 * back only this statement's work. false: the savepoint could not be taken
+				 * (unsupported by the remote, or the request failed), so a failure must roll
+				 * back and tear down the whole remote transaction; the local transaction's
+				 * commit is then refused only when that rollback discards work of earlier
+				 * statements (the connection's has_uncommitted_dml mark). */
+  bool rows_sent;		/* this statement has executed at least one row on the remote */
 };
 
 /* which statement dblink_dml_open() prepares; each kind reads only its own params below */
@@ -130,7 +141,8 @@ extern int dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const
 			    const char *key_col, const char *op, DBLINK_DML_STATE * state);
 extern int dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VALUE ** vals,
 				   int num_vals, int *affected_rows);
-extern void dblink_dml_rollback (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);
+extern void dblink_dml_stmt_done (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);
+extern void dblink_dml_stmt_abort (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);
 extern void dblink_dml_close (DBLINK_DML_STATE * state);
 
 #endif

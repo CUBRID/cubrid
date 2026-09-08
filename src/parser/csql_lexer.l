@@ -492,7 +492,9 @@ IDL       [a-zA-Z0-9_]
 [jJ][oO][bB]								{ csql_yylval.cptr = pt_makename(yytext);
 									  return JOB; }
 [jJ][sS][oO][nN]							{ return JSON; }
-[jJ][sS][oO][nN][_][aA][rR][rR][aA][yY]	                                { // JSON_ARRAY conflicts with jansson.h
+[jJ][sS][oO][nN][_][aA][rR][rR][aA][yY]	                                { // JSON_ARRAY_LEX, not JSON_ARRAY: the name once clashed with a
+								  // third-party header. The clash is gone; renaming the
+								  // token is a separate change.
 									  csql_yylval.cptr = pt_makename(yytext);
 									  return JSON_ARRAY_LEX; }
 [jJ][sS][oO][nN][_][aA][rR][rR][aA][yY][_][aA][pP][pP][eE][nN][dD]      { csql_yylval.cptr = pt_makename(yytext);
@@ -525,7 +527,7 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return JSON_MERGE_PRESERVE; }
 [jJ][sS][oO][nN][_][oO][bB][jJ][eE][cC][tT]                             { csql_yylval.cptr = pt_makename(yytext);
-                                                                          // JSON_OBJECT conflicts with jansson.h
+                                                                          // JSON_OBJECT_LEX, not JSON_OBJECT: see JSON_ARRAY_LEX above
                                                                           return JSON_OBJECT_LEX; }
 [jJ][sS][oO][nN][_][oO][bB][jJ][eE][cC][tT][aA][gG][gG]			{ csql_yylval.cptr = pt_makename(yytext);
                                                                           return JSON_OBJECTAGG; }
@@ -2152,6 +2154,15 @@ parser_yyinput_multi_line (char *buff, int max_size)
   int i = 0;
 
   assert (max_size >= 1);
+
+  /* copy the in-memory input in one step; the loop below finishes EOF and non-memory inputs */
+  i = parser_copy_memory_input (this_parser, buff, max_size);
+  if (i == max_size)
+    {
+      buff[i] = 0;
+      return i;
+    }
+
   for (;;)
     {
       c = pt_nextchar ();

@@ -11,6 +11,7 @@ public class ColumnInfo {
     public int prec;
     public byte charset;
     public String colName;
+    public String writtenColName;
     public byte isNotNull;
 
     public byte autoIncrement;
@@ -33,6 +34,7 @@ public class ColumnInfo {
         prec = unpacker.unpackInt();
 
         colName = unpacker.unpackCString();
+        writtenColName = unpacker.unpackCString();
         attrName = unpacker.unpackCString();
         className = unpacker.unpackCString();
         defaultValueString = unpacker.unpackCString();
