@@ -1875,9 +1875,39 @@ namespace parallel_scan
 		  }
 	      }
 	  }
+
+	if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	  {
+	    /* Workers merge into the original accumulators with the private heap forced to 0, so
+	     * those accumulators must be on heap 0 for as long as a worker is alive. A partitioned
+	     * scan runs one pass per partition and the previous pass's read () left them on this
+	     * thread's private heap, so borrow them back here -- paired with that read (), and
+	     * placed under m_task_started so the borrow happens exactly once per pass no matter how
+	     * often open () runs. No worker exists yet, so nothing can race with this. */
+	    if (m_result_handler->rehome_agg_list (m_thread_p, agg_rehome_dir::BORROW) == S_ERROR)
+	      {
+		return S_ERROR;
+	      }
+	  }
+
 	err_code = start_tasks();
 	if (err_code != NO_ERROR)
 	  {
+	    if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	      {
+		/* start_tasks () can fail after pushing some workers, so stop and drain them before
+		 * touching the accumulators, then give the borrow above back. Without this the
+		 * accumulators stay on heap 0 while teardown (qexec_clear_agg_list) releases them on
+		 * this thread's private heap. Best effort: if this clone fails too we are already
+		 * out of memory. */
+		m_interrupt.set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_MAIN_THREAD);
+		if (m_worker_manager != nullptr)
+		  {
+		    m_worker_manager->release_workers ();
+		    m_worker_manager = nullptr;
+		  }
+		(void) m_result_handler->rehome_agg_list (m_thread_p, agg_rehome_dir::RESTORE);
+	      }
 	    return S_ERROR;
 	  }
       }

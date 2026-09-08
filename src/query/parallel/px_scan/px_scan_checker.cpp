@@ -420,20 +420,12 @@ namespace parallel_scan
 	    result |= check<false> (arg->s.cls_node.cls_regu_list_range);
 	    result |= check<false> (arg->where_range);
 	  }
-	if (!arg->s.cls_node.cls_regu_list_pred && !arg->s.cls_node.cls_regu_list_rest)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
       }
     else if (arg->type == TARGET_LIST)
       {
 	result |= check<false> (arg->s.list_node.list_regu_list_pred);
 	result |= check<false> (arg->s.list_node.list_regu_list_rest);
 	result |= check<false> (arg->where_pred);
-	if (!arg->s.list_node.list_regu_list_pred && !arg->s.list_node.list_regu_list_rest)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
       }
     return result;
   }
@@ -560,9 +552,10 @@ namespace parallel_scan
       case BUILDLIST_PROC:
 	break;
       case BUILDVALUE_PROC:
+	/* agg-less buildvalue too: MERGEABLE_LIST would misread proc.buildlist in result_handler init. */
+	set_flag (result, CANNOT_LIST_MERGE);
 	if (arg->proc.buildvalue.agg_list)
 	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
 	    buildvalue_opt = true;
 	    AGGREGATE_TYPE *agg_it = arg->proc.buildvalue.agg_list;
 	    temp = 0;

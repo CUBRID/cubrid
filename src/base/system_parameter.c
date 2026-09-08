@@ -24,6 +24,7 @@
 
 #include "config.h"
 
+#include <algorithm>
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -734,7 +735,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
 #define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
 
-#define PRM_NAME_TASK_GROUP "task_group"
+#define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
 
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
 #define PRM_NAME_FLASHBACK_MAX_TRANSACTION "flashback_max_transaction"
@@ -789,7 +790,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
 #define PRM_NAME_TCP_KEEPALIVE_COUNT "tcp_keepalive_count"
 
-#define PRM_NAME_TASK_WORKER "task_worker"
+#define PRM_NAME_MAX_REQUEST_WORKER "max_request_worker"
+#define PRM_NAME_MAX_REQUEST_CONCURRENCY "max_request_concurrency"
 
 #define PRM_NAME_CSS_MAX_CONNECTION_WORKER "max_connection_worker"
 #define PRM_NAME_CSS_MIN_CONNECTION_WORKER "min_connection_worker"
@@ -979,6 +981,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
  * Other macros
  */
 #define PRM_DEFAULT_BUFFER_SIZE 256
+#define PRM_REQUEST_CONCURRENCY_PER_CORE 6
 
 /* initial error and integer lists */
 static const int int_list_initial[1] = { 0 };
@@ -4775,20 +4778,14 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_TASK_GROUP,
-   PRM_NAME_TASK_GROUP,
-   (PRM_FOR_SERVER),
+  {PRM_ID_THREAD_CORE_COUNT,
+   PRM_NAME_THREAD_CORE_COUNT,
+   (PRM_FOR_SERVER | PRM_DEPRECATED),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-#if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count ()}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
-#else
    {false, {.i = 1}},
    {false, {.i = 1}},
    NULL_SYSPRM_PARAM_VALUE,
-#endif
    {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5262,15 +5259,41 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_TASK_WORKER,
-   PRM_NAME_TASK_WORKER,
-   (PRM_FOR_SERVER),
+  {PRM_ID_MAX_REQUEST_WORKER,
+   PRM_NAME_MAX_REQUEST_WORKER,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = -1}},
-   {false, {.i = -1}},
-   {false, {.i = 1048576}},
+#if defined (SERVER_MODE)
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
    {false, {.i = 1}},
+   {false, {.i = 1}},
+   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = 1}},
+#endif
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_MAX_REQUEST_CONCURRENCY,
+   PRM_NAME_MAX_REQUEST_CONCURRENCY,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count () * PRM_REQUEST_CONCURRENCY_PER_CORE}},
+   {false, {.i = (int) cubthread::system_core_count () * PRM_REQUEST_CONCURRENCY_PER_CORE}},
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
+   {false, {.i = 1}},
+   {false, {.i = 1}},
+   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = 1}},
+#endif
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5298,11 +5321,13 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 4}},
-   {false, {.i = 4}},
 #if defined (SERVER_MODE)
+   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
+   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
    {false, {.i = (int) cubthread::system_core_count ()}},
 #else
+   {false, {.i = 2}},
+   {false, {.i = 2}},
    NULL_SYSPRM_PARAM_VALUE,
 #endif
    {false, {.i = 1}},
@@ -5471,12 +5496,12 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_AUTO_INCREMENT_CACHE_SIZE,
    PRM_NAME_AUTO_INCREMENT_CACHE_SIZE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 20}},
    {false, {.i = 20}},
-   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = 1000}},
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5530,6 +5555,22 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
 };
+
+/* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
+ * parameters it needs, in pl_engine/pl_server/src/main/java/com/cubrid/jsp/SysParam.java.
+ * xsysprm_get_pl_context_parameters () keys every parameter it sends by its prm_Def[] index,
+ * so inserting or removing a parameter above any of these silently shifts the ordinal the PL
+ * server is looking for: the lookup misses, Context.getSystemParameterBool () returns null and
+ * unboxing it aborts every stored procedure compile. Keep the two lists in step - if one of
+ * these fires, fix SysParam.java, not the assertion. */
+static_assert (PRM_ID_ORACLE_STYLE_EMPTY_STRING == 95, "update SysParam.java");
+static_assert (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE == 100, "update SysParam.java");
+static_assert (PRM_ID_INTL_NUMBER_LANG == 193, "update SysParam.java");
+static_assert (PRM_ID_INTL_DATE_LANG == 194, "update SysParam.java");
+static_assert (PRM_ID_INTL_COLLATION == 206, "update SysParam.java");
+static_assert (PRM_ID_TIMEZONE == 249, "update SysParam.java");
+static_assert (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR == 334, "update SysParam.java");
+static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 354, "update SysParam.java");
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
 
@@ -10062,18 +10103,19 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *call_stack_dump_activation_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
-  SYSPRM_PARAM *task_worker_prm;
-  SYSPRM_PARAM *task_group_prm;
 #if defined (SERVER_MODE)
+  SYSPRM_PARAM *max_request_worker_prm;
+  SYSPRM_PARAM *max_request_concurrency_prm;
   SYSPRM_PARAM *max_parallel_workers_prm;
   SYSPRM_PARAM *parallelism_prm;
   SYSPRM_PARAM *max_connection_workers_prm;
   SYSPRM_PARAM *min_connection_workers_prm;
+  int system_cpu_count;
+  int client_limit;
+  int max_value;
 #endif
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
-  int system_cpu_count;
-  int task_worker;
   int max_clients;
 
   /* Find the parameters that require tuning */
@@ -10121,33 +10163,34 @@ prm_tune_parameters (void)
 
 #if defined (SERVER_MODE)
       system_cpu_count = cubthread::system_core_count ();
-      task_worker = css_get_max_connections ();
-#else
-      system_cpu_count = 1;
-      task_worker = system_cpu_count * 6;
-#endif
 
-      task_worker_prm = GET_PRM (PRM_ID_TASK_WORKER);
-      if (PRM_GET_INT (task_worker_prm->value) < 0)
+      /* request worker, request concurrency */
+      max_request_worker_prm = GET_PRM (PRM_ID_MAX_REQUEST_WORKER);
+      max_request_concurrency_prm = GET_PRM (PRM_ID_MAX_REQUEST_CONCURRENCY);
+
+      if (!PRM_IS_SET (max_request_concurrency_prm))
 	{
-	  /* the value of task worker is default. */
-	  sprintf (newval, "%d", task_worker);
-	  (void) prm_set (task_worker_prm, newval, false);
+	  /* client count describes ingress pressure, not useful execution concurrency. Keep the normal target stable */
+	  /* the elastic worker pool adds temporary capacity only when queued work stops making progress. */
+	  client_limit = std::min (PRM_GET_INT (max_clients_prm->value), CSS_MAX_CLIENT_COUNT);
+	  max_value = std::min (system_cpu_count * PRM_REQUEST_CONCURRENCY_PER_CORE,
+				std::min (client_limit, CSS_MAX_CLIENT_COUNT / 2));
+	  sprintf (newval, "%d", std::max (system_cpu_count, max_value));
+	  (void) prm_set (max_request_concurrency_prm, newval, false);
+	}
+      /* max_request_worker is an absolute lazy hard cap. keep its default at CSS_MAX_CLIENT_COUNT. the worker pool */
+      /* approaches it with bounded pool-wide growth and reserves a small portion for blocking continuations. */
+      if (PRM_GET_INT (max_request_worker_prm->value) < PRM_GET_INT (max_request_concurrency_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (max_request_concurrency_prm->value));
+	  if (prm_set (max_request_worker_prm, newval, false) != PRM_ERR_NO_ERROR)
+	    {
+	      sprintf (newval, "%d", system_cpu_count);
+	      (void) prm_set (max_request_worker_prm, newval, false);
+	    }
 	}
 
-      task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
-      if (PRM_GET_INT (task_group_prm->value) > system_cpu_count)
-	{
-	  sprintf (newval, "%d", system_cpu_count);
-	  (void) prm_set (task_group_prm, newval, false);
-	}
-      if (PRM_GET_INT (task_group_prm->value) > PRM_GET_INT (task_worker_prm->value))
-	{
-	  sprintf (newval, "%d", PRM_GET_INT (task_worker_prm->value));
-	  (void) prm_set (task_group_prm, newval, false);
-	}
-
-#if defined (SERVER_MODE)
+      /* connection worker */
       max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
       min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 

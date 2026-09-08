@@ -31,7 +31,7 @@
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
-#include "jansson.h"
+#include "json_builder.h"
 
 #include "parser.h"
 #include "object_primitive.h"
@@ -191,7 +191,6 @@ static void qo_plan_compute_subquery_cost (PT_NODE *, double *, double *);
 static void qo_sscan_cost (QO_PLAN *);
 static void qo_iscan_cost (QO_PLAN *);
 static bool qo_index_forbids_key_filter (QO_INDEX_ENTRY *);
-static bool qo_get_like_derived_range_dup_sel (QO_PLAN *, double *, double *);
 static void qo_sort_cost (QO_PLAN *);
 static void qo_mjoin_cost (QO_PLAN *);
 static void qo_nljoin_cost (QO_PLAN *);
@@ -309,11 +308,11 @@ static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
 static bool qo_is_sort_limit (QO_PLAN * plan);
 static int qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg);
 
-static json_t *qo_plan_scan_print_json (QO_PLAN * plan);
-static json_t *qo_plan_sort_print_json (QO_PLAN * plan);
-static json_t *qo_plan_join_print_json (QO_PLAN * plan);
-static json_t *qo_plan_follow_print_json (QO_PLAN * plan);
-static json_t *qo_plan_print_json (QO_PLAN * plan);
+static trace_json_t *qo_plan_scan_print_json (QO_PLAN * plan);
+static trace_json_t *qo_plan_sort_print_json (QO_PLAN * plan);
+static trace_json_t *qo_plan_join_print_json (QO_PLAN * plan);
+static trace_json_t *qo_plan_follow_print_json (QO_PLAN * plan);
+static trace_json_t *qo_plan_print_json (QO_PLAN * plan);
 
 static void qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent);
 static void qo_plan_sort_print_text (FILE * fp, QO_PLAN * plan, int indent);
@@ -2115,86 +2114,6 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 }
 
 /*
- * qo_get_like_derived_range_dup_sel () - selectivities of the prefix-LIKE derived ranges that
- *   this index scan counts although the LIKEs they came from are counted too
- *   return: true when such a range takes part in this plan, false when there is none
- *   planp(in): index scan plan
- *   dup_sel(out): the selectivity to divide out of the key-range product
- *   kf_dup_sel(out): the selectivity to divide out of the key-filter product
- *
- * note: qo_rewrite_like_for_index_scan () keeps the original LIKE and adds a range derived
- *   from its fixed prefix, so one predicate turns into two terms. The rows matching the LIKE
- *   are a subset of that range, so once both terms are counted the range restricts nothing on
- *   top of the LIKE and the caller divides it back out. Which product holds the range depends
- *   on the plan, hence the two values: it is a key-range term where the scan ranges over it,
- *   and a key-filter term where another range took that place. The range and its LIKE are
- *   matched by segment rather than by identity, because qo_apply_range_intersection () may
- *   merge several derived ranges into a single term.
- *
- *   False is returned unless the LIKE became a key filter. A non-covering function index
- *   forbids key filters, and the LIKE then stays a data filter evaluated after the fetch -
- *   there the range really is the only restriction the fetch count may use.
- */
-static bool
-qo_get_like_derived_range_dup_sel (QO_PLAN * planp, double *dup_sel, double *kf_dup_sel)
-{
-  QO_ENV *env;
-  QO_TERM *termp;
-  BITSET_ITERATOR iter;
-  BITSET like_segs;
-  bool found = false;
-  int t;
-
-  *dup_sel = 1.0;
-  *kf_dup_sel = 1.0;
-
-  env = QO_NODE_ENV (planp->plan_un.scan.node);
-  bitset_init (&like_segs, env);
-
-  /* the LIKEs that a range was derived from and that ended up as key filters */
-  for (t = bitset_iterate (&(planp->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
-    {
-      termp = QO_ENV_TERM (env, t);
-      if (QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_HAS_DERIVED_RANGE))
-	{
-	  bitset_union (&like_segs, &(QO_TERM_SEGS (termp)));
-	}
-    }
-
-  if (!bitset_is_empty (&like_segs))
-    {
-      /* their derived ranges, each reported for the product that holds it. A zero selectivity
-       * is passed over: an empty range leaves nothing to divide by, and the estimate the caller
-       * already holds is as good as it gets. */
-      for (t = bitset_iterate (&(planp->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
-	{
-	  termp = QO_ENV_TERM (env, t);
-	  if (QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE) && QO_TERM_SELECTIVITY (termp) > 0.0
-	      && bitset_intersects (&(QO_TERM_SEGS (termp)), &like_segs))
-	    {
-	      *dup_sel *= QO_TERM_SELECTIVITY (termp);
-	      found = true;
-	    }
-	}
-
-      for (t = bitset_iterate (&(planp->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
-	{
-	  termp = QO_ENV_TERM (env, t);
-	  if (QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE) && QO_TERM_SELECTIVITY (termp) > 0.0
-	      && bitset_intersects (&(QO_TERM_SEGS (termp)), &like_segs))
-	    {
-	      *kf_dup_sel *= QO_TERM_SELECTIVITY (termp);
-	      found = true;
-	    }
-	}
-    }
-
-  bitset_delset (&like_segs);
-
-  return found;
-}
-
-/*
  * qo_iscan_terms_all_measured () - did every key range term of this scan get its selectivity from
  *   the column histograms, rather than from an estimate the average key share has to stand in for?
  *   return: true when every term was measured
@@ -2255,7 +2174,7 @@ qo_iscan_cost (QO_PLAN * planp)
   double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access, heap_rows;
   double heap_fanout = 0.0, iss_leaves = 0.0, first_leaf = 0.0;
   double object_IO, index_IO;
-  double heap_sel, like_dup_sel, like_kf_dup_sel, sel_before_limit;
+  double heap_sel;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
   int i, t, n, pkeys_num, index;
@@ -2328,7 +2247,6 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* check upper bound */
   sel = MIN (sel, 1.0);
-  sel_before_limit = sel;	/* the prefix-LIKE exception below divides this, not the bounded sel */
 
   sel_limit = 0.0;		/* init */
 
@@ -2396,15 +2314,10 @@ qo_iscan_cost (QO_PLAN * planp)
     }
 
   /* fraction of the rows that reach the heap: the key range and the key filter both run before
-   * the fetch */
+   * the fetch.  A derived duplicate needs no correction here: qo_derived_term_compensate ()
+   * reduced the predicate that implies it to the share it rejects on top of it, so whichever
+   * product each of the two lands in, together they charge the constraint once */
   heap_sel = sel * filter_sel;
-
-  /* exception - a prefix-LIKE rewrite counted its derived range above on top of the LIKE it
-   * came from; divide it back out of whichever product holds it */
-  if (qo_get_like_derived_range_dup_sel (planp, &like_dup_sel, &like_kf_dup_sel))
-    {
-      heap_sel = MAX (sel_before_limit / like_dup_sel, sel_limit) * (filter_sel / like_kf_dup_sel);
-    }
 
   /* number of leaf to be selected */
   leaf_access = sel * (double) QO_NODE_NCARD (nodep);
@@ -8136,11 +8049,10 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		}
 	      else
 		{
-		  /* Skip a LIKE-derived range and an OR-derived restriction in both the
-		   * row-count selectivity and the join hit probability: the former is
-		   * subset-correlated with the retained LIKE, the latter is implied by the
-		   * multi-spec factor it was extracted from, so counting either would double
-		   * count the same constraint. */
+		  /* A derived duplicate is already counted in its node's scan cardinality
+		   * (qo_node_add_sarg ()); counting it again here would charge the same
+		   * constraint twice.  Its origin predicate needs no exception: it carries the
+		   * conditional share qo_derived_term_compensate () left it with. */
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE | QO_TERM_OR_DERIVED))
 		    {
 		      double head_factor, tail_factor;
@@ -13304,19 +13216,19 @@ qo_has_like_recompile_candidate (QO_PLAN * plan, void *arg)
  *   return:
  *   plan(in):
  */
-static json_t *
+static trace_json_t *
 qo_plan_scan_print_json (QO_PLAN * plan)
 {
   BITSET_ITERATOR bi;
   QO_ENV *env;
   bool natural_desc_index = false;
-  json_t *scan, *range, *filter;
+  trace_json_t *scan, *range, *filter;
   const char *scan_string = "";
   const char *class_name;
   char buf[257] = { '\0', };
   int i;
 
-  scan = json_object ();
+  scan = trace_json_object ();
 
   class_name = QO_NODE_NAME (plan->plan_un.scan.node);
   if (class_name == NULL)
@@ -13324,7 +13236,7 @@ qo_plan_scan_print_json (QO_PLAN * plan)
       class_name = "unknown";
     }
 
-  json_object_set_new (scan, "table", json_string (class_name));
+  trace_json_object_set_new (scan, "table", trace_json_string (class_name));
 
   switch (plan->plan_un.scan.scan_method)
     {
@@ -13337,54 +13249,54 @@ qo_plan_scan_print_json (QO_PLAN * plan)
     case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:
     case QO_SCANMETHOD_INDEX_SCAN_INSPECT:
       scan_string = "INDEX SCAN";
-      json_object_set_new (scan, "index", json_string (plan->plan_un.scan.index->head->constraints->name));
+      trace_json_object_set_new (scan, "index", trace_json_string (plan->plan_un.scan.index->head->constraints->name));
 
       env = (plan->info)->env;
-      range = json_array ();
+      range = trace_json_array ();
 
       for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi); i != -1; i = bitset_next_member (&bi))
 	{
-	  json_array_append_new (range, json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
+	  trace_json_array_append_new (range, trace_json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
 	}
 
-      json_object_set_new (scan, "key range", range);
+      trace_json_object_set_new (scan, "key range", range);
 
       if (bitset_cardinality (&(plan->plan_un.scan.kf_terms)) > 0)
 	{
-	  filter = json_array ();
+	  filter = trace_json_array ();
 	  for (i = bitset_iterate (&(plan->plan_un.scan.kf_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	    {
-	      json_array_append_new (filter, json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
+	      trace_json_array_append_new (filter, trace_json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
 	    }
 
-	  json_object_set_new (scan, "key filter", filter);
+	  trace_json_object_set_new (scan, "key filter", filter);
 	}
 
       if (qo_is_index_covering_scan (plan))
 	{
-	  json_object_set_new (scan, "covered", json_true ());
+	  trace_json_object_set_new (scan, "covered", trace_json_true ());
 	}
 
       if (plan->plan_un.scan.index && plan->plan_un.scan.index->head->use_descending)
 	{
-	  json_object_set_new (scan, "desc_index", json_true ());
+	  trace_json_object_set_new (scan, "desc_index", trace_json_true ());
 	  natural_desc_index = true;
 	}
 
       if (!natural_desc_index && (QO_ENV_PT_TREE (plan->info->env)->info.query.q.select.hint & PT_HINT_USE_IDX_DESC))
 	{
-	  json_object_set_new (scan, "desc_index forced", json_true ());
+	  trace_json_object_set_new (scan, "desc_index forced", trace_json_true ());
 	}
 
       if (qo_is_index_loose_scan (plan))
 	{
-	  json_object_set_new (scan, "loose", json_true ());
+	  trace_json_object_set_new (scan, "loose", trace_json_true ());
 	}
 
       break;
     }
 
-  return json_pack ("{s:o}", scan_string, scan);
+  return trace_json_pack ("{s:o}", scan_string, scan);
 }
 
 /*
@@ -13392,10 +13304,10 @@ qo_plan_scan_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static trace_json_t *
 qo_plan_sort_print_json (QO_PLAN * plan)
 {
-  json_t *sort, *subplan = NULL;
+  trace_json_t *sort, *subplan = NULL;
   const char *type;
 
   switch (plan->plan_un.sort.sort_type)
@@ -13426,16 +13338,16 @@ qo_plan_sort_print_json (QO_PLAN * plan)
       break;
     }
 
-  sort = json_object ();
+  sort = trace_json_object ();
 
   if (plan->plan_un.sort.subplan)
     {
       subplan = qo_plan_print_json (plan->plan_un.sort.subplan);
-      json_object_set_new (sort, type, subplan);
+      trace_json_object_set_new (sort, type, subplan);
     }
   else
     {
-      json_object_set_new (sort, type, json_string (""));
+      trace_json_object_set_new (sort, type, trace_json_string (""));
     }
 
   return sort;
@@ -13446,10 +13358,10 @@ qo_plan_sort_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static trace_json_t *
 qo_plan_join_print_json (QO_PLAN * plan)
 {
-  json_t *join, *outer, *inner;
+  trace_json_t *join, *outer, *inner;
   const char *type, *method = "";
   char buf[32];
 
@@ -13513,9 +13425,20 @@ qo_plan_join_print_json (QO_PLAN * plan)
   outer = qo_plan_print_json (plan->plan_un.join.outer);
   inner = qo_plan_print_json (plan->plan_un.join.inner);
 
+  if (outer == NULL || inner == NULL)
+    {
+      /* A plan type this dump has nothing to say about. The pack stops at the
+       * NULL one and never reads the argument behind it, so the operand that
+       * did come out is released here: left owned, one node holds the thread's
+       * node pool open for good. */
+      trace_json_decref (outer);
+      trace_json_decref (inner);
+      return NULL;
+    }
+
   sprintf (buf, "%s (%s)", method, type);
 
-  join = json_pack ("{s:[o,o]}", buf, outer, inner);
+  join = trace_json_pack ("{s:[o,o]}", buf, outer, inner);
 
   return join;
 }
@@ -13525,19 +13448,19 @@ qo_plan_join_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static trace_json_t *
 qo_plan_follow_print_json (QO_PLAN * plan)
 {
-  json_t *head, *follow;
+  trace_json_t *head, *follow;
   char buf[257] = { '\0', };
 
   head = qo_plan_print_json (plan->plan_un.follow.head);
 
-  follow = json_object ();
-  json_object_set_new (follow, "edge", json_string (qo_term_string (plan->plan_un.follow.path, buf)));
-  json_object_set_new (follow, "head", head);
+  follow = trace_json_object ();
+  trace_json_object_set_new (follow, "edge", trace_json_string (qo_term_string (plan->plan_un.follow.path, buf)));
+  trace_json_object_set_new (follow, "head", head);
 
-  return json_pack ("{s:o}", "FOLLOW", follow);
+  return trace_json_pack ("{s:o}", "FOLLOW", follow);
 }
 
 /*
@@ -13545,10 +13468,10 @@ qo_plan_follow_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static trace_json_t *
 qo_plan_print_json (QO_PLAN * plan)
 {
-  json_t *json = NULL;
+  trace_json_t *json = NULL;
 
   switch (plan->plan_type)
     {
@@ -13586,7 +13509,7 @@ qo_plan_print_json (QO_PLAN * plan)
 void
 qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * select, QO_PLAN * plan)
 {
-  json_t *json;
+  trace_json_t *json;
   unsigned int save_custom;
 
   assert (parser != NULL && xasl != NULL && plan != NULL && select != NULL);
@@ -13597,12 +13520,18 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   json = qo_plan_print_json (plan);
+  if (json == NULL)
+    {
+      /* a plan type this dump has nothing to say about; recording an empty
+       * entry would only make every reader of plan_trace guard against it */
+      return;
+    }
 
   if (select->info.query.order_by)
     {
       if (xasl && xasl->spec_list && xasl->spec_list->indexptr && xasl->spec_list->indexptr->orderby_skip)
 	{
-	  json_object_set_new (json, "skip order by", json_true ());
+	  trace_json_object_set_new (json, "skip order by", trace_json_true ());
 	}
     }
 
@@ -13610,14 +13539,14 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     {
       if (xasl && xasl->spec_list && xasl->spec_list->indexptr && xasl->spec_list->indexptr->groupby_skip)
 	{
-	  json_object_set_new (json, "group by nosort", json_true ());
+	  trace_json_object_set_new (json, "group by nosort", trace_json_true ());
 	}
     }
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
 
-  json_object_set_new (json, "rewritten query", json_string (parser_print_tree (parser, select)));
+  trace_json_object_set_new (json, "rewritten query", trace_json_string (parser_print_tree (parser, select)));
 
   parser->custom_print = save_custom;
 

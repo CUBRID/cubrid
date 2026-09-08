@@ -8837,6 +8837,17 @@ fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, 
       buffer_p += nbytes;
     }
 
+#if !defined (CS_MODE)
+  if (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID && page_id == 0)
+    {
+      /* The active log header names the archive volume cdc still needs. That belongs to this database and the
+       * session attached to it, not to whatever is restored from this backup, so it is taken out of the copy.
+       * The log on disk is not touched. Only a server or a stand-alone utility takes a backup, and only those
+       * link the log module. */
+      logpb_strip_cdc_arv_num_from_header_page (&session_p->dbfile.area->iopage);
+    }
+#endif /* !defined (CS_MODE) */
+
 #if defined(SERVER_MODE)
   /* Backup Thread is reading data/log pages slowly to avoid IO burst */
   if (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID
