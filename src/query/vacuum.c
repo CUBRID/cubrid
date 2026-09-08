@@ -711,7 +711,8 @@ static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfi
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+			       VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages_out);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					    bool update_best_space_stat, bool unlatch_page);
@@ -1613,6 +1614,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   int error_code = NO_ERROR;	/* Error code. */
   int obj_index = 0;		/* Index used to iterate the object array. */
 
+  VACUUM_OOS_TOUCHED_PAGES oos_touched_pages;
+
   /* Assert expected arguments. */
   assert (heap_objects != NULL);
   assert (n_heap_objects > 0);
@@ -1774,7 +1777,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (helper.can_vacuum == VACUUM_RECORD_REMOVE)
 	    {
 	      /* Record has been deleted and it can be removed. */
-	      error_code = vacuum_heap_record (thread_p, &helper);
+	      error_code = vacuum_heap_record (thread_p, &helper, &oos_touched_pages);
 	    }
 	  else if (helper.can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
 	    {
@@ -1788,6 +1791,11 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (helper.forward_page != NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, helper.forward_page);
+	    }
+	  if (error_code == ER_INTERRUPTED)
+	    {
+	      vacuum_check_shutdown_interruption (thread_p, error_code);
+	      goto end;
 	    }
 	  if (error_code != NO_ERROR)
 	    {
@@ -1930,6 +1938,18 @@ end:
   if (helper.home_page != NULL)
     {
       vacuum_heap_page_log_and_reset (thread_p, &helper, true, true);
+    }
+
+  /* Reclaim only after the home page is unfixed: the reclaim takes the OOS stats header WRITE
+   * latch and one dealloc sysop per page, which must not extend the home page latch hold. */
+  if (error_code == NO_ERROR && !oos_touched_pages.empty ())
+    {
+      assert (!VFID_ISNULL (&helper.oos_vfid));
+      error_code = vacuum_oos_reclaim_empty_pages (thread_p, &helper.oos_vfid, &oos_touched_pages);
+      if (error_code != NO_ERROR)
+	{
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+	}
     }
 
   return error_code;
@@ -2261,11 +2281,11 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       /* Remove insert MVCCID and prev version lsa. */
       update_record = &helper->record;
       start_p = update_record->data;
-      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (start_p);
-      mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
+      repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (start_p);
+      mvcc_flags = OR_GET_MVCC_FLAGS (start_p);
 
       /* Skip bytes up to insid_offset. */
-      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
+      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
       new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
@@ -2280,7 +2300,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	}
 
       /* Clear flag for valid insert MVCCID and prev version lsa. */
-      repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+      repid_and_flag_bits &=
+	~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_RECORD_FLAG_SHIFT_BITS);
       OR_PUT_INT (start_p, repid_and_flag_bits);
 
       /* Expect new_data_p != existing_data_p in most of the cases. */
@@ -2312,7 +2333,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
        * helper->record is NOT populated for REC_BIGONE (the record body lives on overflow pages, and
        * vacuum_heap_prepare_record only reads the MVCC header from there), so the OOS flag must be
        * checked on helper->mvcc_header rather than by dereferencing the uninitialized helper->record. */
-      if (MVCC_GET_FLAG (&helper->mvcc_header) & OR_MVCC_FLAG_HAS_OOS)
+      if (RECORD_HEADER_HAS_OOS (&helper->mvcc_header))
 	{
 	  /* TEMP (CBRD-26668, ovf+oos spec change): hard-fail in BOTH debug and release. assert() is
 	   * compiled out under NDEBUG and assert_release() only logs an ER_NOTIFICATION, so neither halts
@@ -2356,11 +2377,11 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       assert (helper->record.type == REC_HOME);
       update_record = &helper->record;
       start_p = update_record->data;
-      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (start_p);
-      mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
+      repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (start_p);
+      mvcc_flags = OR_GET_MVCC_FLAGS (start_p);
 
       /* Skip bytes up to insid_offset */
-      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
+      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
       new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
@@ -2375,7 +2396,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	}
 
       /* Clear flag for valid insert MVCCID and prev version lsa. */
-      repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+      repid_and_flag_bits &=
+	~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_RECORD_FLAG_SHIFT_BITS);
       OR_PUT_INT (start_p, repid_and_flag_bits);
 
       /* Expect new_data_p != existing_data_p in most of the cases. */
@@ -2417,15 +2439,19 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
+ * oos_touched_pages_out (out) : Emptied OOS pages are appended (duplicates allowed); the caller
+ *				 reclaims them AFTER unfixing the home page, never here.
  */
 static int
-vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
+vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+		    VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages_out)
 {
   /* Assert expected arguments. */
   assert (helper != NULL);
   assert (helper->can_vacuum == VACUUM_RECORD_REMOVE);
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
+  assert (oos_touched_pages_out != NULL);
 
   /* Does removing this record touch more than the home page?  Two independent axes decide:
    *
@@ -2448,8 +2474,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
    * cannot leave it half-done (heap slot vacuumed but its OOS chunks still referenced, or vice versa).
    * Single-page REC_HOME needs no sysop: its single log record is already atomic, so it rides the bulk
    * path.  record_type alone is only a proxy for the footprint -- OOS is the orthogonal axis that can push
-   * an otherwise single-page REC_HOME into the sysop path.  See
-   * docs/adr/0001-synchronous-oos-reclaim-in-vacuum-sysop.md. */
+   * an otherwise single-page REC_HOME into the sysop path. */
   bool has_oos = (!VFID_ISNULL (&helper->oos_vfid)
 		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
 		  && heap_recdes_contains_oos (&helper->record));
@@ -2517,7 +2542,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       /* Delete OOS records (if any) before committing the sysop. */
       if (has_oos)
 	{
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record);
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
+							     oos_touched_pages_out);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
@@ -2542,7 +2568,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
        * helper->record is NOT populated for REC_BIGONE (the body lives on overflow pages — note
        * this case logs helper->forward_recdes below, never helper->record), so the OOS flag must
        * be checked on helper->mvcc_header rather than by dereferencing the uninitialized helper->record. */
-      if (MVCC_GET_FLAG (&helper->mvcc_header) & OR_MVCC_FLAG_HAS_OOS)
+      if (RECORD_HEADER_HAS_OOS (&helper->mvcc_header))
 	{
 	  /* TEMP (CBRD-26668, ovf+oos spec change): assert() is compiled out under NDEBUG and
 	   * assert_release() only logs an ER_NOTIFICATION, so neither halts a release server. abort()
@@ -2592,7 +2618,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
 					     helper->reusable);
 
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record);
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
+							     oos_touched_pages_out);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
@@ -2940,12 +2967,12 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 	  /* Remove insert MVCCID */
 	  or_mvcc_get_header (&peek_record, &rec_header);
-	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
+	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_RECORD_MVCC_FLAG_MASK];
 	  /* Clear insert MVCCID. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID);
 	  /* Clear previous version. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
-	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
+	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_RECORD_MVCC_FLAG_MASK];
 
 	  /* Rebuild record */
 	  rebuild_record.type = peek_record.type;
@@ -3586,7 +3613,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   *   - Other heap ops log no undo image, so the undo_data_size check above already skips them. */
 	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	    {
-	      vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	      error_code =
+		vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	      if (error_code != NO_ERROR)
+		{
+		  vacuum_check_shutdown_interruption (thread_p, error_code);
+		  goto end;
+		}
 	    }
 	}
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
@@ -3725,7 +3758,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   * record survives only in this delete's undo image; its OOS records are reclaimed here. This is
 	   * deliberately OUTSIDE the LOG_IS_MVCC_HEAP_OPERATION block (no slot to collect — the slot was
 	   * physically deleted). The undo image is always the forward REC_NEWHOME pre-image. */
-	  vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	  error_code =
+	    vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	  if (error_code != NO_ERROR)
+	    {
+	      vacuum_check_shutdown_interruption (thread_p, error_code);
+	      goto end;
+	    }
 	}
       else
 	{

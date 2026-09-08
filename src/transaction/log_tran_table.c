@@ -128,7 +128,6 @@ static void logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT
 
 static void logtb_tran_free_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats);
 static void logtb_tran_clear_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats);
-static void logtb_free_lockless_inserts (LOG_TDES * tdes);
 static unsigned int logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size);
 static int logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2);
 static LOG_TRAN_CLASS_COS *logtb_tran_create_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid);
@@ -564,6 +563,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->client_id = -1;
   tdes->client.set_system_internal ();
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->block_global_oldest_active_until_commit = false;
 
@@ -1544,7 +1544,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       log_2pc_free_coord_info (tdes);
     }
   tdes->m_multiupd_stats.clear ();
-  logtb_free_lockless_inserts (tdes);
   if (tdes->interrupt == (int) true)
     {
       tdes->interrupt = false;
@@ -1595,6 +1594,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->oos_suppress_insert_lsa_queueing = false;
   tdes->first_save_entry = NULL;
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
@@ -1687,6 +1687,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->suppress_replication = 0;
   tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
@@ -1716,10 +1717,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->log_upd_stats.stats_first_chunk = NULL;
   tdes->log_upd_stats.stats_current_chunk = NULL;
   tdes->log_upd_stats.unique_stats_hash = NULL;
-
-  tdes->lockless_inserts.count = 0;
-  tdes->lockless_inserts.first_chunk = NULL;
-  tdes->lockless_inserts.current_chunk = NULL;
 
   tdes->log_upd_stats.unique_stats_hash =
     mht_create ("Tran_unique_stats", 101, logtb_tran_btid_hash_func, logtb_tran_btid_hash_cmp_func);
@@ -4064,8 +4061,8 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
  * Note: shared by the acquire-at-assignment choke points and logtb_ensure_mvccid_self_lock; takes the MVCCID
  *	 explicitly so the choke points do not recurse through logtb_get_current_mvccid. Idempotent via the
  *	 self_locked_mvccid hint. A fresh MVCCID is unknown to any other transaction, so the X never waits.
- *	 A no-op during boot/recovery and for non-worker (system/vacuum) transactions -- the guard is here so
- *	 both entry points inherit it.
+ *	 A no-op during boot/recovery, for non-worker (system/vacuum) transactions and for load workers -- the
+ *	 guard is here so both entry points inherit it.
  */
 static int
 logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
@@ -4078,6 +4075,18 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
   if (curr_mvcc_info->self_locked_mvccid == mvccid)
     {
       /* already self-locked in this (sub-)transaction */
+      return NO_ERROR;
+    }
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p->type == TT_LOADDB)
+    {
+      /* Load workers rely on the session transaction's BU_LOCK, and bulk records do not expose an INSID. No waiter
+       * can address the worker's MVCCID, so a transaction self-lock is not needed. */
       return NO_ERROR;
     }
 
@@ -4189,124 +4198,6 @@ logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
 #else /* SERVER_MODE */
   return NO_ERROR;
 #endif /* SERVER_MODE */
-}
-
-/*
- * logtb_track_lockless_insert () - Remember a row inserted without its per-row X-lock for 2PC prepare
- *				    (CBRD-27079 fallback).
- *
- * return	  : NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY -- the caller must then take the per-row lock instead.
- * thread_p (in)  : Thread entry.
- * oid (in)	  : Inserted instance OID.
- * class_oid (in) : Class OID of the instance.
- */
-int
-logtb_track_lockless_insert (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid)
-{
-  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  LOG_TRAN_LOCKLESS_INSERTS *inserts;
-  LOG_TRAN_LOCKLESS_INSERT *entry;
-
-  assert (tdes != NULL && oid != NULL && class_oid != NULL);
-
-  inserts = &tdes->lockless_inserts;
-  if (inserts->count % TRAN_LOCKLESS_INSERTS_CHUNK_SIZE == 0)
-    {
-      LOG_TRAN_LOCKLESS_INSERT_CHUNK *chunk;
-      size_t size = (sizeof (LOG_TRAN_LOCKLESS_INSERT_CHUNK)
-		     + (TRAN_LOCKLESS_INSERTS_CHUNK_SIZE - 1) * sizeof (LOG_TRAN_LOCKLESS_INSERT));
-
-      chunk = (LOG_TRAN_LOCKLESS_INSERT_CHUNK *) malloc (size);
-      if (chunk == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      chunk->next_chunk = NULL;
-
-      if (inserts->first_chunk == NULL)
-	{
-	  inserts->first_chunk = chunk;
-	}
-      else
-	{
-	  inserts->current_chunk->next_chunk = chunk;
-	}
-      inserts->current_chunk = chunk;
-    }
-
-  entry = &inserts->current_chunk->buffer[inserts->count++ % TRAN_LOCKLESS_INSERTS_CHUNK_SIZE];
-  COPY_OID (&entry->oid, oid);
-  COPY_OID (&entry->class_oid, class_oid);
-
-  return NO_ERROR;
-}
-
-/*
- * logtb_2pc_lock_lockless_inserts () - X-lock the tracked lockless-insert rows so 2PC prepare serializes them
- *					into the prepare record; consumes (frees) the list on success.
- *
- * return	 : NO_ERROR, or an error code -- the caller must then refuse to prepare (vote no).
- * thread_p (in) : Thread entry, running the transaction being prepared.
- * tdes (in)	 : Transaction descriptor of that transaction.
- *
- * Note: rows undone by a partial rollback may be locked too -- only over-conservative.
- */
-int
-logtb_2pc_lock_lockless_inserts (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
-{
-  LOG_TRAN_LOCKLESS_INSERTS *inserts = &tdes->lockless_inserts;
-  LOG_TRAN_LOCKLESS_INSERT_CHUNK *chunk = inserts->first_chunk;
-  int i;
-
-  assert (tdes == LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p)));
-
-  for (i = 0; i < inserts->count; i++)
-    {
-      LOG_TRAN_LOCKLESS_INSERT *entry = &chunk->buffer[i % TRAN_LOCKLESS_INSERTS_CHUNK_SIZE];
-
-      if (lock_object (thread_p, &entry->oid, &entry->class_oid, X_LOCK, LK_COND_LOCK) != LK_GRANTED
-	  && lock_object (thread_p, &entry->oid, &entry->class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-	{
-	  int error_code = er_errid ();
-
-	  if (error_code == NO_ERROR)
-	    {
-	      error_code = ER_CANNOT_GET_LOCK;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	    }
-	  return error_code;
-	}
-
-      if ((i + 1) % TRAN_LOCKLESS_INSERTS_CHUNK_SIZE == 0)
-	{
-	  chunk = chunk->next_chunk;
-	}
-    }
-
-  logtb_free_lockless_inserts (tdes);
-  return NO_ERROR;
-}
-
-/*
- * logtb_free_lockless_inserts () - Free the tracked lockless-insert rows and reset the list.
- *
- * return     : Void.
- * tdes (in)  : Transaction descriptor.
- */
-static void
-logtb_free_lockless_inserts (LOG_TDES * tdes)
-{
-  LOG_TRAN_LOCKLESS_INSERT_CHUNK *chunk, *next_chunk;
-
-  for (chunk = tdes->lockless_inserts.first_chunk; chunk != NULL; chunk = next_chunk)
-    {
-      next_chunk = chunk->next_chunk;
-      free (chunk);
-    }
-  tdes->lockless_inserts.first_chunk = NULL;
-  tdes->lockless_inserts.current_chunk = NULL;
-  tdes->lockless_inserts.count = 0;
 }
 
 /*
@@ -4446,9 +4337,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   curr_mvcc_info->reset ();
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
-
-  /* eager release: a bulk insert may have tracked millions of rows */
-  logtb_free_lockless_inserts (tdes);
 
   if (is_perf_tracking)
     {
@@ -4593,9 +4481,9 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 {
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
-  LOG_LSA *min_lsa = NULL;	/* The smallest lsa value */
+  LOG_LSA smallest_lsa;		/* The smallest lsa value */
 
-  LSA_SET_NULL (lsa);
+  LSA_SET_NULL (&smallest_lsa);
 
   TR_TABLE_CS_ENTER_READ_MODE (thread_p);
 
@@ -4606,19 +4494,32 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 	  tdes = log_Gl.trantable.all_tdes[i];
 
 	  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->head_lsa)
-	      && (min_lsa == NULL || LSA_LT (&tdes->head_lsa, min_lsa)))
+	      && (LSA_ISNULL (&smallest_lsa) || LSA_LT (&tdes->head_lsa, &smallest_lsa)))
 	    {
-	      min_lsa = &tdes->head_lsa;
+	      LSA_COPY (&smallest_lsa, &tdes->head_lsa);
 	    }
 	}
     }
 
-  if (min_lsa != NULL)
-    {
-      LSA_COPY (lsa, min_lsa);
-    }
-
   TR_TABLE_CS_EXIT (thread_p);
+
+  /* Consider system worker transactions (e.g. online index loaders) as well.
+   * Recovery undo processes them too (see logtb_rv_read_only_map_undo_tdes),
+   * so the smallest LSA that decides log archive retention must not skip
+   * their in-flight log.
+   */
+  // *INDENT-OFF*
+  log_system_tdes::map_all_tdes ([&smallest_lsa] (log_tdes & sys_tdes)
+    {
+      if (!LSA_ISNULL (&sys_tdes.head_lsa)
+	  && (LSA_ISNULL (&smallest_lsa) || LSA_LT (&sys_tdes.head_lsa, &smallest_lsa)))
+	{
+	  LSA_COPY (&smallest_lsa, &sys_tdes.head_lsa);
+	}
+    });
+  // *INDENT-ON*
+
+  LSA_COPY (lsa, &smallest_lsa);
 }
 
 /*
@@ -6654,6 +6555,7 @@ log_tdes::copy_to (LOG_TDES & dest) const
   REPLACE_COPY_2_DEST (dest, suppress_replication);
   REPLACE_COPY_2_DEST (dest, lob_locator_root);
   REPLACE_COPY_2_DEST (dest, query_timeout);
+  REPLACE_COPY_2_DEST (dest, last_query_deadline);
   REPLACE_COPY_2_DEST (dest, query_start_time);
   REPLACE_COPY_2_DEST (dest, tran_start_time);
   REPLACE_COPY_2_DEST (dest, xasl_id);
@@ -6666,7 +6568,6 @@ log_tdes::copy_to (LOG_TDES & dest) const
 
   REPLACE_COPY_2_DEST (dest, num_log_records_written);
   REPLACE_COPY_2_DEST (dest, log_upd_stats);
-  /* lockless_inserts is not copied: chunks stay owned by the source index; the loose-end copy never prepares. */
   REPLACE_COPY_2_DEST (dest, has_deadlock_priority);
   REPLACE_COPY_2_DEST (dest, block_global_oldest_active_until_commit);
   REPLACE_COPY_2_DEST (dest, is_user_active);

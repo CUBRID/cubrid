@@ -33,6 +33,8 @@
 // Forward declaration for PT_NODE
 struct parser_node;
 typedef struct parser_node PT_NODE;
+struct parser_context;
+typedef struct parser_context PARSER_CONTEXT;
 typedef struct hist_stats HIST_STATS;
 typedef struct db_value DB_VALUE;
 
@@ -59,7 +61,7 @@ namespace hist
     std::uint64_t u64 = 0;
   };
 
-} // namespace hist
+}				// namespace hist
 
 /* Collected-but-not-yet-stored per-column histogram blobs. Lets the caller defer the _db_histogram
  * catalog write until after UPDATE STATISTICS succeeds, so a failed statistics update never leaves
@@ -80,17 +82,30 @@ int analyze_classes (THREAD_ENTRY *thread_p, const char *tbl_name, const char *a
 		     bool with_fullscan, MOP classop);
 /* server-side full-scan + reservoir sampling histogram collection (replaces the query-based path) */
 int analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name,
-				  int max_number_of_buckets, MOP classop);
+				  int max_number_of_buckets, int with_fullscan, MOP classop);
 /* single-scan variant: build histograms for all histogrammable columns of the class in one heap scan.
  * Also surfaces the per-column NDV + exact row count derived from the same scan (out_ndv_info /
  * out_total_rows, may be NULL) so the caller can feed them to UPDATE STATISTICS and skip its NDV scan.
  * If out_collect is non-NULL the per-column blobs are NOT written to the catalog; they are handed to
  * the caller (transfer of ownership) so it can store them only after UPDATE STATISTICS succeeds --
  * store with store_collected_histograms () and release with histogram_collect_clear (). When
- * out_collect is NULL the blobs are stored immediately (legacy behavior). */
+ * out_collect is NULL the blobs are stored immediately (legacy behavior).
+ * out_pages_seen / out_pages_kept (may be NULL) report the scan's realized page coverage:
+ * kept == seen means the collection was a full scan, kept < seen means page sampling ran. */
 int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, int max_number_of_buckets,
-					MOP classop, CLASS_ATTR_NDV *out_ndv_info, INT64 *out_total_rows,
-					HISTOGRAM_COLLECT *out_collect);
+					int with_fullscan, int random_seed, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
+					INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect,
+					INT64 *out_pages_seen = NULL, INT64 *out_pages_kept = NULL);
+/* fingerprint of the host-variable predicate values as the plan would see them: for each
+ * (column op ?) predicate mix in the quantized histogram selectivity of the bound value (same
+ * MCV/bucket -> same fingerprint -> same plan), or a typed value hash when no histogram applies.
+ * Returns false when the statement has no such predicate (no bind sensitivity). */
+bool histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *out_fp);
+/* structural (value-independent): true if the statement has a (column op ?) predicate the
+ * bind-sensitive planner could price. Used at plan generation to flag a plan built with
+ * unbound host-variable markers so the first execution replans under the real values. */
+bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
+
 /* store all collected per-column histograms into the catalog; returns the first error, if any. */
 int store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc);
 /* free everything owned by a HISTOGRAM_COLLECT and reset it. */
@@ -104,11 +119,18 @@ void histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool 
 				     bool *success);
 void histogram_get_join_selectivity (PT_NODE *lhs, PT_NODE *rhs, double *selectivity, bool *success);
 void histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success);
+void histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case_sensitive,
+				      double fallback_sel, double *selectivity, bool *success);
+/* the row count the column's histogram was built from, for callers that combine two probes and
+ * need the same one-row floor the single probes apply. Returns false when the column has no
+ * usable histogram. */
+bool histogram_get_total_rows (PT_NODE *lhs, double *total_rows);
 /* histogram utility functions */
 int db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
 bool is_histogrammable_type (DB_TYPE type);
 int stats_get_histogram (MOP classop, HIST_STATS **histogram);
 int stats_free_histogram_and_init (HIST_STATS *histogram);
 int dump_histogram (MOP classop, const char *attr_name, DB_TYPE attr_type, bool detailed, int error, FILE *f);
+int histogram_info_dump (const char *class_name, const char *attr_name, FILE *fpp);
 
 #endif // _HISTOGRAM_CL_HPP_

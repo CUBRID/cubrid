@@ -69,13 +69,17 @@ public class PlcsqlCompilerMain {
         }
     }
 
+    private static synchronized long getCompileSeqNo() {
+        return compileSeqNo++;
+    }
+
     public static CompileInfo compilePLCSQL(String in, String owner, boolean verbose) {
-        return compilePLCSQL(in, verbose, owner, Integer.toString(revision++));
+        return compilePLCSQL(in, verbose, owner, Long.toString(getCompileSeqNo()));
     }
     // end of temporary code
 
     public static CompileInfo compilePLCSQL(
-            String in, boolean verbose, String owner, String revision) {
+            String in, boolean verbose, String owner, String compileSeqNo) {
 
         // System.out.println("[TEMP] text to the compiler");
         // System.out.println(in);
@@ -83,7 +87,7 @@ public class PlcsqlCompilerMain {
         int optionFlags = verbose ? OPT_VERBOSE : 0;
         CharStream input = CharStreams.fromString(in);
         try {
-            return compileInner(new InstanceStore(), input, optionFlags, owner, revision);
+            return compileInner(new InstanceStore(), input, optionFlags, owner, compileSeqNo);
         } catch (SyntaxError e) {
             CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
             return err;
@@ -125,8 +129,7 @@ public class PlcsqlCompilerMain {
     // Private
     // ------------------------------------------------------------------
 
-    // temporary code - the owner and revision strings will come from the server
-    private static int revision = 1;
+    private static long compileSeqNo = 1;
 
     private static final int OPT_VERBOSE = 1;
     private static final int OPT_PRINT_PARSE_TREE = 1 << 1;
@@ -217,7 +220,7 @@ public class PlcsqlCompilerMain {
             CharStream input,
             int optionFlags,
             String owner,
-            String revision) {
+            String compileSeqNo) {
 
         boolean verbose = (optionFlags & OPT_VERBOSE) > 0;
 
@@ -259,7 +262,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // converting parse tree to AST
 
-        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, revision);
+        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, compileSeqNo);
         Unit unit = (Unit) converter.visit(tree);
 
         if (verbose) {

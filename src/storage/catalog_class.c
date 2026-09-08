@@ -3253,7 +3253,7 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
 
   OR_SET_VAR_OFFSET_SIZE (repr_id_bits, BIG_VAR_OFFSET_SIZE);	/* 4byte */
 
-  repr_id_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+  repr_id_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_RECORD_FLAG_SHIFT_BITS);
   or_put_int (buf_p, repr_id_bits);
   or_put_int (buf_p, chn);	/* CHN */
   or_put_bigint (buf_p, MVCCID_NULL);	/* MVCC insert id */
@@ -3376,10 +3376,10 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   /* header */
   assert (offset_size == BIG_VAR_OFFSET_SIZE || offset_size == SHORT_VAR_OFFSET_SIZE);
 
-  repr_id_bits = or_mvcc_get_repid_and_flags (buf_p, &rc);
+  repr_id_bits = or_get_record_repid_and_flags (buf_p, &rc);
   /* get bound_bits_flag and skip other MVCC header fields */
   bound_bits_flag = repr_id_bits & OR_BOUND_BIT_FLAG;
-  mvcc_flags = (char) ((repr_id_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  mvcc_flags = (char) ((repr_id_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_MVCC_FLAG_MASK);
   repr_id_bits = repr_id_bits & OR_MVCC_REPID_MASK;
 
   or_advance (buf_p, OR_INT_SIZE);	/* skip  CHN */
@@ -4476,7 +4476,10 @@ catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsi
   bool is_scan_inited = false;
   int old_chn;
   OR_VALUE *value_p = NULL;
-  RECDES record = RECDES_INITIALIZER;
+  /* Read into old_record and write from record, as catcls_update_instance () does: old_record.data belongs to the
+   * scan cache, record.data is this function's malloc. Reusing one RECDES for both let the error label free a
+   * scan-cache-owned buffer when the read succeeded but the parse below did not. */
+  RECDES record = RECDES_INITIALIZER, old_record = RECDES_INITIALIZER;
   HEAP_OPERATION_CONTEXT update_context;
 
   error = catcls_find_oid_by_class_name (thread_p, class_name, &oid);
@@ -4500,15 +4503,15 @@ catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsi
 
   is_scan_inited = true;
 
-  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN,
+  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &old_record, &scan, COPY, NULL_CHN,
 				HEAP_RECDES_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       ASSERT_ERROR_AND_SET (error);
       goto error;
     }
 
-  old_chn = or_chn (&record);
-  value_p = catcls_get_or_value_from_record (thread_p, &record, catalog_class_oid_p);
+  old_chn = or_chn (&old_record);
+  value_p = catcls_get_or_value_from_record (thread_p, &old_record, catalog_class_oid_p);
   if (value_p == NULL)
     {
       ASSERT_ERROR_AND_SET (error);

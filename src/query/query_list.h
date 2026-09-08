@@ -657,7 +657,9 @@ enum
   EXECUTE_QUERY_WITHOUT_DATA_BUFFERS = 0x1 << 14,
   EXECUTE_QUERY_WITH_COMMIT = 0x1 << 15,
   TRAN_AUTO_COMMIT = 0x1 << 16,
-  LIKE_RECOMPILE_CANDIDATE = 0x1 << 17
+  LIKE_RECOMPILE_CANDIDATE = 0x1 << 17,
+  HV_PRED_PLAN_UNPEEKED = 0x1 << 18	/* plan built with unbound host-var predicate markers; the
+					 * first execution replans under the actual bind values */
 };
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)

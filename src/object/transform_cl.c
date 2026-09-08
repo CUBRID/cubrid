@@ -863,7 +863,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
    * repid_bits, MVCC insert id and chn. This header may be changed later, at insert/update. So, we must be sure
    * that the record has enough free space. */
 
-  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_RECORD_FLAG_SHIFT_BITS);
   if (buf->ptr + expected_size > buf->endptr)
     {
       status = TF_OUT_OF_SPACE;
@@ -1347,10 +1347,10 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
   offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
 
   /* in case of MVCC, repid_bits contains MVCC flags */
-  repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
+  repid_bits = or_get_record_repid_and_flags (buf, &rc);
   repid = repid_bits & OR_MVCC_REPID_MASK;
 
-  mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  mvcc_flags = (char) ((repid_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_MVCC_FLAG_MASK);
 
   chn = or_get_int (buf, &rc);
 
@@ -4495,7 +4495,7 @@ tf_disk_to_class (OID * oid, RECDES * record)
 
   repid = or_get_int (buf, &rc);
   repid = repid & ~OR_OFFSET_SIZE_FLAG;
-  assert (((char) (repid >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK) == 0);
+  assert (((char) (repid >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_FLAG_MASK) == 0);
   chn = or_get_int (buf, &rc);
 
   if (oid_is_root (oid))
@@ -4603,7 +4603,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
 
       /* representation id, offset size */
       repid = class_->repid;
-      assert (((char) (repid >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK) == 0);
+      assert (((char) (repid >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_FLAG_MASK) == 0);
       OR_SET_VAR_OFFSET_SIZE (repid, BIG_VAR_OFFSET_SIZE);	/* 4byte */
 
       chn = class_->header.ch_obj_header.chn + 1;

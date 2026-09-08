@@ -123,7 +123,7 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
 
   if (state->n_var <= 0)
     {
-      /* OR_MVCC_FLAG_HAS_OOS was set but the record has no variable attributes. Corrupt record. */
+      /* OR_RECORD_FLAG_HAS_OOS was set but the record has no variable attributes. Corrupt record. */
       assert_release (false && "OOS flag set without variable attributes");
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
@@ -279,7 +279,7 @@ heap_oos_build_record (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context, const 
   /* Header: copy verbatim, then clear the OOS flag and reset the offset-size bits. */
   std::memcpy (dst, state->src, state->src_header_size);
   unsigned int repid_bits = (unsigned int) OR_GET_INT (dst + OR_REP_OFFSET);
-  repid_bits &= ~ ((unsigned int) OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
+  repid_bits &= ~ ((unsigned int) OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS);
   repid_bits &= ~ (unsigned int) OR_OFFSET_SIZE_FLAG;
   repid_bits |= OR_OFFSET_SIZE_4BYTE;
   OR_PUT_INT (dst + OR_REP_OFFSET, (int) repid_bits);
@@ -695,6 +695,10 @@ heap_oos_test_disarm_fail_before_vfid_lookup ()
  * Strict failure handling: the OOS header flag is set by the record transformer and read via
  * heap_recdes_contains_oos, so a missing OOS file or a failed OID extraction at this point
  * indicates real corruption — log and propagate.
+ *
+ * Empty-page reclaim (oos_reclaim_empty_pages) must NOT be wired here: this runs inside a live
+ * user transaction whose abort replays the per-chunk undo, and undo cannot re-insert chunks
+ * into a deallocated page. Pages emptied here stay allocated.
  *
  * op_ctx (in): short operation tag for diagnostics, e.g. "update home", "delete relocation".
  */

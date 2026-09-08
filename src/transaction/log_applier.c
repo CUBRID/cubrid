@@ -4048,8 +4048,8 @@ la_make_room_for_mvcc_insid (RECDES * recdes)
 
   assert (recdes->type != REC_BIGONE);
 
-  repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (recdes->data);
-  mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (recdes->data);
+  mvcc_flag = (char) ((repid_and_flag_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_MVCC_FLAG_MASK);
 
   assert (mvcc_flag != 0);
   assert (!(mvcc_flag & OR_MVCC_FLAG_VALID_DELID));
@@ -4079,8 +4079,8 @@ la_make_room_for_mvcc_delid_and_prev_ver (RECDES * recdes)
 
   assert (recdes->type != REC_BIGONE);
 
-  repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (recdes->data);
-  mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (recdes->data);
+  mvcc_flag = (char) ((repid_and_flag_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_MVCC_FLAG_MASK);
 
   assert ((mvcc_flag & OR_MVCC_FLAG_VALID_INSID) && (mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
 	  && (mvcc_flag & OR_MVCC_FLAG_VALID_PREV_VERSION));
@@ -4125,9 +4125,9 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
   offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
 
   /* in case of MVCC, repid_bits contains MVCC flags */
-  repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
+  repid_bits = or_get_record_repid_and_flags (buf, &rc);
 
-  mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  mvcc_flags = (char) ((repid_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_MVCC_FLAG_MASK);
   if (mvcc_flags == 0)
     {
       /* non mvcc header */
@@ -5379,20 +5379,20 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
     {
       int repid_and_flag_bits = 0;
 
-      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (recdes->data);
+      repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (recdes->data);
 
 #if !defined (NDEBUG)
       {
 	char mvcc_flag;
 
-	mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
-	/* OOS records may already carry OR_MVCC_FLAG_HAS_OOS; only MVCC lifecycle flags must be absent here. */
+	mvcc_flag = (char) ((repid_and_flag_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_MVCC_FLAG_MASK);
+	/* The record may already carry non-MVCC metadata; only MVCC lifecycle flags must be absent here. */
 	assert ((mvcc_flag & (OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID
 			      | OR_MVCC_FLAG_VALID_PREV_VERSION)) == 0);
       }
 #endif
 
-      repid_and_flag_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+      repid_and_flag_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_RECORD_FLAG_SHIFT_BITS);
 
       OR_PUT_INT (recdes->data, repid_and_flag_bits);
 
@@ -5402,7 +5402,7 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
       if (recdes->length > la_Info.maxslotted_reclength)
 	{
 	  repid_and_flag_bits |=
-	    ((OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+	    ((OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_RECORD_FLAG_SHIFT_BITS);
 
 	  OR_PUT_INT (recdes->data, repid_and_flag_bits);
 
@@ -6647,7 +6647,6 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
   int errid;
   LA_APPLY *apply;
   int apply_repl_log_cnt = 0;
-  char error_string[1024];
   char buf[256];
   static unsigned int total_repl_items = 0;
   bool release_pb = false;
@@ -6770,8 +6769,11 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
 	      sb.clear ();
 	      db_sprint_value (la_get_item_pk_value (item), sb);
-	      sprintf (error_string, "[%s,%s] %s", item->class_name, sb.get_buffer (), db_error_string (1));
-	      er_log_debug (ARG_FILE_LINE, "Internal system failure: %s", error_string);
+	      const char *pk_string = sb.get_buffer ();
+	      const char *pk_ellipsis = strlen (pk_string) > 255 ? "..." : "";
+
+	      er_log_debug (ARG_FILE_LINE, "Internal system failure: [%s,%.255s%s] %s", item->class_name, pk_string,
+			    pk_ellipsis, db_error_string (1));
 
 	      if (ER_IS_SERVER_DOWN_ERROR (errid))
 		{

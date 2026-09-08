@@ -515,6 +515,16 @@ mvcc_active_tran::reset_start_mvccid (MVCCID mvccid)
 }
 
 void
+mvcc_active_tran::rv_reactivate_mvccid (MVCCID mvccid)
+{
+  /* Restart-only: re-mark an id below the post-redo bit-area anchor as active, via the long-transaction
+   * representation. Callers must add in ascending order; set_inactive_mvccid removes it again at commit/abort. */
+  assert (MVCC_ID_PRECEDES (mvccid, m_bit_area_start_mvccid));
+  add_long_transaction (mvccid);
+  check_valid ();
+}
+
+void
 mvcc_active_tran::reset_active_transactions ()
 {
   std::memset (m_bit_area, 0, BITAREA_MAX_MEMSIZE);

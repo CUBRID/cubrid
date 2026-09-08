@@ -41,6 +41,8 @@
 
 namespace
 {
+  const char *const STORAGE_SETTINGS[] = { "PREFER_INLINE", "FORCE_OUTLINE", "PREFER_OUTLINE", "DEFAULT" };
+
   // SHOW CREATE TABLE returns one row with column 0 = table name and column 1 = the
   // CREATE TABLE statement. Read both columns directly (mirroring fetch_single_int's
   // fixed-index access) and concatenate the string values; the DDL lives in column 1.
@@ -129,15 +131,23 @@ namespace
     return xoos_get_stats_by_class_oid (thread_get_thread_entry_info (), class_oid, out_stats);
   }
 
+  enum class storage_attribute_error
+  {
+    NON_NORMAL_ATTRIBUTE,
+    NON_VARIABLE_NORMAL_ATTRIBUTE
+  };
+
   void
-  expect_force_outline_attribute_error ()
+  expect_storage_attribute_error (storage_attribute_error expected_error)
   {
     const char *message = db_error_string (3);
     ASSERT_NE (message, nullptr);
     std::string error (message);
-    EXPECT_TRUE (error.find ("STORAGE FORCE_OUTLINE") != std::string::npos
-		 || error.find ("only normal attributes can set storage options") != std::string::npos)
-	<< message;
+    const char *expected_message =
+	    expected_error == storage_attribute_error::NON_NORMAL_ATTRIBUTE
+	    ? "only normal attributes can set storage options"
+	    : "STORAGE options can be set only on variable-type normal attributes";
+    EXPECT_NE (error.find (expected_message), std::string::npos) << message;
   }
 }
 
@@ -269,14 +279,151 @@ TEST_F (OosSqlStorage, SharedAttributeRejectsPreferInline)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (s VARCHAR(4096) SHARED 'x' STORAGE PREFER_INLINE)");
   EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE TABLE t_oos_stg (s VARCHAR(4096) SHARED 'x' STORAGE PREFER_OUTLINE)");
   EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE TABLE t_oos_stg (s VARCHAR(4096) SHARED 'x' STORAGE DEFAULT)");
   EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
+  db_abort_transaction ();
+}
+
+TEST_F (OosSqlStorage, CreateRejectsAllStorageSettingsForFixedTypes)
+{
+  for (const char *setting : STORAGE_SETTINGS)
+    {
+      SCOPED_TRACE (setting);
+      std::string sql = "CREATE TABLE t_oos_stg (c INT STORAGE ";
+      sql += setting;
+      sql += ")";
+
+      int rc = exec_sql (sql.c_str ());
+      EXPECT_LT (rc, 0);
+      expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
+      db_abort_transaction ();
+    }
+
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (c BIT(128) STORAGE PREFER_INLINE)");
+  EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
+  db_abort_transaction ();
+}
+
+TEST_F (OosSqlStorage, CreateAcceptsStorageForPhysicalVariableTypes)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg ("
+		     "  c CHAR(32) STORAGE PREFER_INLINE,"
+		     "  v BIT VARYING STORAGE FORCE_OUTLINE)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  std::string ddl;
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_TRUE (ddl_has_prefer_inline (ddl)) << "DDL was:\n" << ddl;
+  EXPECT_TRUE (ddl_has_force_outline (ddl)) << "DDL was:\n" << ddl;
+}
+
+TEST_F (OosSqlStorage, VclassRejectsAllStorageSettings)
+{
+  for (const char *setting : STORAGE_SETTINGS)
+    {
+      SCOPED_TRACE (setting);
+      std::string sql = "CREATE VCLASS t_oos_stg_v (c VARCHAR(4096) STORAGE ";
+      sql += setting;
+      sql += ")";
+
+      int rc = exec_sql (sql.c_str ());
+      EXPECT_LT (rc, 0);
+      expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
+      db_abort_transaction ();
+    }
+}
+
+TEST_F (OosSqlStorage, AlterRejectsAllStorageSettingsForFixedTypes)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (c INT)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  for (const char *setting : STORAGE_SETTINGS)
+    {
+      SCOPED_TRACE (setting);
+      std::string sql = "ALTER TABLE t_oos_stg MODIFY c INT STORAGE ";
+      sql += setting;
+
+      rc = exec_sql (sql.c_str ());
+      EXPECT_LT (rc, 0);
+      expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
+      db_abort_transaction ();
+    }
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg CHANGE c c INT STORAGE PREFER_INLINE");
+  EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
+  db_abort_transaction ();
+}
+
+// ALTER ADD ATTRIBUTE runs the STORAGE eligibility check after the pre-existing template
+// checks, so a duplicate attribute name must be reported instead of the STORAGE error
+// (PR #7611 review). A non-duplicate fixed-type column still gets the STORAGE error.
+TEST_F (OosSqlStorage, AlterAddDuplicateAttributeKeepsDuplicateErrorPrecedence)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (c INT)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg ADD ATTRIBUTE c INT STORAGE PREFER_INLINE");
+  EXPECT_EQ (rc, ER_SM_NAME_RESERVED_BY_ATT);
+  db_abort_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg ADD ATTRIBUTE c INT STORAGE FORCE_OUTLINE");
+  EXPECT_EQ (rc, ER_SM_NAME_RESERVED_BY_ATT);
+  db_abort_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg ADD ATTRIBUTE d INT STORAGE PREFER_INLINE");
+  EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
+  db_abort_transaction ();
+}
+
+TEST_F (OosSqlStorage, AlterModifyClassAttributeReportsNonNormalAttributeError)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (a INT, CLASS ca VARCHAR(100))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY CLASS ATTRIBUTE ca VARCHAR(4096) STORAGE PREFER_INLINE");
+  EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
+  db_abort_transaction ();
+}
+
+TEST_F (OosSqlStorage, AlterChangeClassAttributeReportsNonNormalAttributeError)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (a INT, CLASS ca VARCHAR(100))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg CHANGE CLASS ATTRIBUTE ca ca VARCHAR(4096) STORAGE PREFER_INLINE");
+  EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
+  db_abort_transaction ();
+}
+
+TEST_F (OosSqlStorage, AlterChangeClassAttributePreservesConstraintValidation)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (a INT, CLASS ca INT)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg CHANGE CLASS ATTRIBUTE ca ca INT AUTO_INCREMENT");
+  EXPECT_EQ (rc, ER_SM_INVALID_CONSTRAINT);
   db_abort_transaction ();
 }
 
@@ -284,17 +431,17 @@ TEST_F (OosSqlStorage, ForceOutlineRejectsUnsupportedAttributes)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (c INT STORAGE FORCE_OUTLINE)");
   EXPECT_LT (rc, 0);
-  expect_force_outline_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE TABLE t_oos_stg (c VARCHAR(4096) SHARED 'x' STORAGE FORCE_OUTLINE)");
   EXPECT_LT (rc, 0);
-  expect_force_outline_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE TABLE t_oos_stg CLASS ATTRIBUTE (c VARCHAR(4096) STORAGE FORCE_OUTLINE)");
   EXPECT_LT (rc, 0);
-  expect_force_outline_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE TABLE t_oos_stg (c INT)");
@@ -303,12 +450,12 @@ TEST_F (OosSqlStorage, ForceOutlineRejectsUnsupportedAttributes)
 
   rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c INT STORAGE FORCE_OUTLINE");
   EXPECT_LT (rc, 0);
-  expect_force_outline_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE VCLASS t_oos_stg_v (c VARCHAR(4096) STORAGE FORCE_OUTLINE)");
   EXPECT_LT (rc, 0);
-  expect_force_outline_attribute_error ();
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
   db_abort_transaction ();
 }
 
@@ -334,8 +481,16 @@ TEST_F (OosSqlStorage, AlterModifyAddsAndDropsPreferInline)
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_TRUE (ddl_has_prefer_inline (ddl)) << "after MODIFY PREFER_INLINE, DDL was:\n" << ddl;
 
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c VARCHAR(8192)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_TRUE (ddl_has_prefer_inline (ddl)) << "after omitted STORAGE clause, DDL was:\n" << ddl;
+
   // LOST: STORAGE PREFER_INLINE -> STORAGE DEFAULT
-  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c VARCHAR(4096) STORAGE DEFAULT");
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c VARCHAR(8192) STORAGE DEFAULT");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
@@ -445,6 +600,54 @@ TEST_F (OosSqlStorage, AlterModifyDropsForceOutlineForFixedType)
 
   int value = 0;
   rc = fetch_single_int ("SELECT c FROM t_oos_stg", &value);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (value, 1234);
+}
+
+TEST_F (OosSqlStorage, AlterModifyDropsPreferInlineForFixedType)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (c VARCHAR(4) STORAGE PREFER_INLINE)");
+  ASSERT_GE (rc, 0);
+
+  rc = exec_sql ("INSERT INTO t_oos_stg VALUES ('1234')");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c INT");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  std::string ddl;
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "after MODIFY to fixed type, DDL was:\n" << ddl;
+
+  int value = 0;
+  rc = fetch_single_int ("SELECT c FROM t_oos_stg", &value);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (value, 1234);
+}
+
+TEST_F (OosSqlStorage, FailedExplicitFixedTypeAlterPreservesSchemaAndData)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (c VARCHAR(4) STORAGE PREFER_INLINE)");
+  ASSERT_GE (rc, 0);
+  rc = exec_sql ("INSERT INTO t_oos_stg VALUES ('1234')");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c INT STORAGE DEFAULT");
+  EXPECT_LT (rc, 0);
+  expect_storage_attribute_error (storage_attribute_error::NON_VARIABLE_NORMAL_ATTRIBUTE);
+  db_abort_transaction ();
+
+  std::string ddl;
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_TRUE (ddl_has_prefer_inline (ddl)) << "after failed ALTER, DDL was:\n" << ddl;
+
+  int value = 0;
+  rc = fetch_single_int ("SELECT CAST(c AS INT) FROM t_oos_stg", &value);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (value, 1234);
 }

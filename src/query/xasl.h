@@ -402,6 +402,18 @@ struct update_proc_node
 				 * in conditions and assignment reevaluation */
 };
 
+/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
+ * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, and UPDATE to follow) */
+typedef struct remote_dml_sink REMOTE_DML_SINK;
+struct remote_dml_sink
+{
+  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
+  char *url;			/* DBLink connection URL */
+  char *user;			/* DBLink connection user */
+  char *pwd;			/* DBLink connection password */
+  char *table_name;		/* remote target table name */
+};
+
 typedef struct insert_proc_node INSERT_PROC_NODE;
 struct insert_proc_node
 {
@@ -422,11 +434,7 @@ struct insert_proc_node
   VALPTR_LIST **valptr_lists;	/* OUTPTR lists for each list of values */
   DB_VALUE *obj_oid;		/* Inserted object OID, used for sub-inserts */
   /* remote INSERT SELECT sink fields (INSERT INTO remote SELECT FROM local) */
-  bool is_remote_insert;	/* true if inserting into a remote table via DBLink */
-  char *remote_url;		/* DBLink connection URL */
-  char *remote_user;		/* DBLink connection user */
-  char *remote_pwd;		/* DBLink connection password */
-  char *remote_table_name;	/* remote target table name */
+  REMOTE_DML_SINK sink;
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
 };
@@ -442,6 +450,10 @@ struct delete_proc_node
   int num_reev_classes;		/* no of classes involved in mvcc condition */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions */
+  /* remote DELETE + local subquery sink fields (DELETE FROM remote WHERE col op (SELECT FROM local)) */
+  REMOTE_DML_SINK sink;
+  char *remote_key_col;		/* remote target column on the WHERE left-hand side (e.g. rc1) */
+  char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<", ">", "<=", ">=" */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
@@ -595,6 +607,10 @@ struct cte_proc_node
   (((func_p)->function == PT_MEDIAN) \
    || ((func_p)->function == PT_PERCENTILE_CONT) \
    || ((func_p)->function == PT_PERCENTILE_DISC))
+
+#define QPROC_IS_CONTINUOUS_INTERPOLATION_FUNC(func_p) \
+  (((func_p)->function == PT_MEDIAN) \
+   || ((func_p)->function == PT_PERCENTILE_CONT))
 
  /* pseudocolumns offsets in tuple (from end) */
 #define	PCOL_ISCYCLE_TUPLE_OFFSET	1
@@ -990,6 +1006,7 @@ struct groupby_stat
   UINT64 groupby_pages;
   UINT64 groupby_ioreads;
   int rows;
+  INT64 read_rows;
   AGGREGATE_HASH_STATE groupby_hash;
   bool run_groupby;
   bool groupby_sort;

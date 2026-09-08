@@ -55,7 +55,6 @@ import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.Calendar;
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -73,9 +72,6 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     private int type = TYPE_FORWARD_ONLY;
     private int concurrency = CONCUR_READ_ONLY;
-
-    /* For findColumn */
-    protected HashMap<String, Integer> colNameToIdx;
 
     private boolean isInserting;
     private int currentRowIndex = -1;
@@ -449,7 +445,25 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     @Override
     public int findColumn(String columnName) throws SQLException {
-        Integer index = statementHandler.getColNameIndex().get(columnName.toLowerCase());
+
+        // NOTE: Suppose that a user wrote T.col as a column in a SELECT statement.
+        // The server sends down two names for the column:
+        //   - colName: the alias if an AS clause was given, otherwise the column name with the
+        //     table qualifier stripped off ("col"). This is the standard JDBC name.
+        //   - writtenColName: the name exactly as the user wrote it ("T.col"), which is to keep
+        //     the old behavior that deviates from JDBC standard about column names (CBRD-27242).
+        // We first try an exact match against colName ("col") to honor the JDBC convention, then
+        // fall back to an exact match against writtenColName ("T.col") for backward compatibility.
+
+        String colName = columnName.toLowerCase();
+
+        // first, try exact match against the (unqualified) column name
+        Integer index = statementHandler.getColNameIndex().get(colName);
+        if (index == null) {
+            // second, try exact match against the name as written in the SELECT statement
+            index = statementHandler.getWrittenColNameIndex().get(colName);
+        }
+
         if (index == null) {
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
                     CUBRIDServerSideJDBCErrorCode.ER_INVALID_COLUMN_NAME, null);

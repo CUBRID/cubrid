@@ -40,6 +40,12 @@ struct db_session
   bool is_subsession_for_prepared;	/* whether this session is created for running a prepared statement, as a
 					 * sub-session of a "true" client session */
   DB_SESSION *next;		/* subsessions for prepared statements */
+
+  char *kept_stmt_name;		/* set on a subsession that holds the compiled (post-transform) tree kept for the
+				 * SQL-level prepared statement of this name; such a subsession hangs on its owner's
+				 * kept_trees list instead of the transient `next` chain. NULL otherwise. */
+  DB_SESSION *kept_trees;	/* owner sessions only: the kept subsessions, linked through their `next`. Scoped
+				 * to this session, so closing it releases them; see db_close_session_local (). */
 };
 
 #endif /* _DB_SESSION_H_ */

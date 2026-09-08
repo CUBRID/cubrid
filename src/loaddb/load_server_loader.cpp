@@ -243,8 +243,9 @@ namespace cubload
 			       HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	if (scan_code == S_SUCCESS)
 	  {
+	    // record is consumed only through the attribute layer (CBRD-26847)
 	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache,
-						  PEEK, NULL_CHN, HEAP_RECDES_CONSUME_RAW_BYTES);
+						  PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	    if (scan_code == S_SNAPSHOT_NOT_SATISFIED || scan_code == S_DOESNT_EXIST)
 	      {
 		continue;
@@ -959,18 +960,12 @@ namespace cubload
     conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
 
     error_code = func (full_mon_str_p, full_mon_str_len, &attr, &db_val);
-    if (error_code != NO_ERROR)
+    if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
       {
+	char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
 
-	if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
-	  {
-	    char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
-
-	    snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
-	  }
-
-	return error_code;
+	snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
       }
 
     if (full_mon_str_p != full_mon_str)
@@ -1017,6 +1012,14 @@ namespace cubload
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
 	    break;
 
+	  case LDR_NULL:
+	    /* An element being NULL does not make the attribute NULL, so the NOT NULL constraint of the
+	     * attribute must not be checked here.
+	     * Do not use to_db_null() for elements because it checks the NOT NULL constraint.
+	     * Refer to ldr_null_elem() of the SA loader. */
+	    error_code = db_make_null (&db_val);
+	    break;
+
 	  case LDR_MONETARY:
 	    error_code = process_monetary_constant (c, attr);
 	    break;
@@ -1035,12 +1038,18 @@ namespace cubload
 
 	if (error_code != NO_ERROR)
 	  {
+	    db_value_clear (&db_val);
 	    set_free (set);
 	    return error_code;
 	  }
 
 	// add element to the set (db_val will be cloned, so it is safe to reuse same variable)
 	error_code = set_add_element (set, &db_val);
+
+	/* The element was cloned into the collection, so release whatever the conversion allocated before
+	 * the next element overwrites the slot. */
+	db_value_clear (&db_val);
+
 	if (error_code != NO_ERROR)
 	  {
 	    set_free (set);

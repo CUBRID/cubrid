@@ -19,8 +19,11 @@
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 #include <atomic>
 #endif
+#include <algorithm>
 #include <cassert>
+#include <cstdlib>
 #include <cstring>
+#include <map>
 #include <new>
 #include <vector>
 #include "byte_span_writer.hpp"
@@ -37,6 +40,7 @@
 #include "page_buffer_util.hpp"
 #include "log_comm.h"
 #include "log_impl.h"
+#include "log_system_tran.hpp"
 #include "xserver_interface.h"
 
 #include "oos_file.hpp"
@@ -80,7 +84,8 @@ oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
 static void
 oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid, RECDES *recdes_p);
 static int
-oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
+		  std::vector<VPID> *touched_vpids);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
@@ -99,6 +104,18 @@ oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid, VPID &vpid_out
 
 static const auto_unfix_page_ptr
 oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);
+
+static void
+oos_reclaim_note_recovery_delete_locked (const VFID *oos_vfid, const LOG_LSA *rollback_delete_lsa);
+
+static void
+oos_reclaim_clear_all_states (void);
+
+static void
+oos_reclaim_note_file_created (const VFID &oos_vfid);
+
+static void
+oos_reclaim_forget_file (const VFID &oos_vfid);
 
 // ****************************************************************************
 // OOS Bestspace — constants
@@ -163,6 +180,8 @@ struct oos_debug_atomic_counters
 static oos_debug_atomic_counters oos_Debug_counters = { };
 static std::atomic<int> oos_Test_fail_insert_many_after_publications { -1 };
 static std::atomic<bool> oos_Test_throw_bad_alloc_on_next_oid_publication { false };
+static std::atomic<int> oos_Test_reclaim_waiters { 0 };
+static std::atomic<bool> oos_Test_fail_next_reclaim_write_fix_armed { false };
 
 #define OOS_COUNTER_ADD(field, value) \
   do \
@@ -316,6 +335,10 @@ oos_bestspace_finalize (void)
   oos_Bestspace->free_list_count = 0;
   oos_Bestspace->num_stats_entries = 0;
 
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  oos_reclaim_clear_all_states ();
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+
   pthread_mutex_destroy (&oos_Bestspace->bestspace_mutex);
   oos_Bestspace = NULL;
 
@@ -393,7 +416,8 @@ oos_stats_add_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid, VPID *vpid, i
 }
 
 static int
-oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid)
+oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid,
+				 bool rearm_growth_sweep = false, const LOG_LSA *rollback_delete_lsa = NULL)
 {
   OOS_STATS_ENTRY *ent;
 
@@ -402,6 +426,10 @@ oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid)
   (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
 
   ent = (OOS_STATS_ENTRY *) mht_get (oos_Bestspace->vpid_ht, vpid);
+  if (rearm_growth_sweep)
+    {
+      oos_reclaim_note_recovery_delete_locked (ent == NULL ? NULL : &ent->vfid, rollback_delete_lsa);
+    }
   if (ent == NULL)
     {
       pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
@@ -509,6 +537,21 @@ oos_stats_get_second_best (OOS_HDR_STATS *oos_hdr, VPID *vpid)
 // OOS Bestspace — find page in bestspace (hash + best[])
 // ****************************************************************************
 
+static void
+oos_stats_evict_stale_hint (THREAD_ENTRY *thread_p, VPID *candidate_vpid, bool found_in_hash,
+			    OOS_BESTSPACE *bestspace, int best_array_index)
+{
+  if (found_in_hash)
+    {
+      (void) oos_stats_del_bestspace_by_vpid (thread_p, candidate_vpid);
+    }
+  else if (bestspace != NULL && best_array_index >= 0 && best_array_index < OOS_NUM_BEST_SPACESTATS)
+    {
+      VPID_SET_NULL (&bestspace[best_array_index].vpid);
+      bestspace[best_array_index].freespace = 0;
+    }
+}
+
 static OOS_FINDSPACE
 oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 				  OOS_BESTSPACE *bestspace, int *idx_badspace,
@@ -605,25 +648,63 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	  break;
 	}
 
-      /* Phase C: Try to fix the candidate page with conditional latch */
-      *out_pgptr = pgbuf_fix (thread_p, &candidate_vpid, OLD_PAGE,
+      /* Phase C: Try to fix the candidate page with conditional latch. Hints can outlive the
+       * page (reclaim deallocates), hence OLD_PAGE_MAYBE_DEALLOCATED. */
+      *out_pgptr = pgbuf_fix (thread_p, &candidate_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
 			      PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
       if (*out_pgptr == NULL)
 	{
-	  /* Page is busy — skip it and try next */
 	  int err = er_errid ();
 	  if (err == ER_INTERRUPTED)
 	    {
 	      found = OOS_FINDSPACE_ERROR;
 	      break;
 	    }
-	  /* Clear error and continue — log unexpected errors for diagnostics */
+	  if (err == ER_PB_BAD_PAGEID)
+	    {
+	      oos_trace ("stale bestspace hint to deallocated page vpid={vol=%d,page=%d} — evicting",
+			 candidate_vpid.volid, candidate_vpid.pageid);
+	      oos_stats_evict_stale_hint (thread_p, &candidate_vpid, found_in_hash, bestspace, best_array_index);
+	      er_clear ();
+	      notfound_cnt++;
+	      continue;
+	    }
+	  /* Page is busy — skip it and try next; log unexpected errors for diagnostics */
 	  if (err != NO_ERROR)
 	    {
 	      oos_trace ("conditional latch failed for vpid={vol=%d,page=%d}, er_errid=%d — skipping",
 			 candidate_vpid.volid, candidate_vpid.pageid, err);
 	      er_clear ();
 	    }
+	  notfound_cnt++;
+	  continue;
+	}
+
+      /* A reclaimed page can be reallocated to another file (e.g. PAGE_FTAB); its fix then
+       * succeeds and only the page type betrays the stale hint. Re-validate before using it. */
+      if (pgbuf_get_page_ptype (thread_p, *out_pgptr) != PAGE_OOS)
+	{
+	  oos_trace ("stale bestspace hint to reallocated non-OOS page vpid={vol=%d,page=%d} — evicting",
+		     candidate_vpid.volid, candidate_vpid.pageid);
+	  pgbuf_unfix_and_init (thread_p, *out_pgptr);
+	  oos_stats_evict_stale_hint (thread_p, &candidate_vpid, found_in_hash, bestspace, best_array_index);
+	  notfound_cnt++;
+	  continue;
+	}
+
+      DISK_ISVALID is_owned = file_is_vpid_in_file (thread_p, vfid, &candidate_vpid);
+      if (is_owned == DISK_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, *out_pgptr);
+	  found = OOS_FINDSPACE_ERROR;
+	  break;
+	}
+      if (is_owned != DISK_VALID)
+	{
+	  oos_trace ("stale bestspace hint to foreign OOS page vpid={vol=%d,page=%d} — evicting",
+		     candidate_vpid.volid, candidate_vpid.pageid);
+	  pgbuf_unfix_and_init (thread_p, *out_pgptr);
+	  oos_stats_evict_stale_hint (thread_p, &candidate_vpid, found_in_hash, bestspace, best_array_index);
 	  notfound_cnt++;
 	  continue;
 	}
@@ -651,8 +732,9 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	    {
 	      (void) oos_stats_del_bestspace_by_vpid (thread_p, &candidate_vpid);
 	    }
-	  if (best_array_index >= 0 && best_array_index < OOS_NUM_BEST_SPACESTATS)
+	  else if (best_array_index >= 0 && best_array_index < OOS_NUM_BEST_SPACESTATS)
 	    {
+	      /* best_array_index is meaningful only for a best[] candidate. */
 	      bestspace[best_array_index].freespace = actual_free;
 	    }
 	  notfound_cnt++;
@@ -689,6 +771,64 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 // OOS Bestspace — sync bestspace (scan pages to refill hints)
 // ****************************************************************************
 
+/*
+ * oos_collect_data_page_vpids () - Collect the VPIDs of the OOS file's allocated data pages from
+ *   its sector bitmaps.
+ *
+ *   The result is a frozen snapshot: pages may be deallocated or allocated while the caller
+ *   iterates. Callers MUST fix sampled pages with OLD_PAGE_MAYBE_DEALLOCATED, skip
+ *   ER_PB_BAD_PAGEID, and verify ptype == PAGE_OOS. The sticky first page IS included.
+ */
+static int
+oos_collect_data_page_vpids (THREAD_ENTRY *thread_p, const VFID *vfid, std::vector<VPID> &vpids_out)
+{
+  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+
+  int err = file_get_all_data_sectors (thread_p, vfid, &collector);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
+
+  scope_exit collector_freer ([&] ()
+  {
+    if (collector.partsect_ftab != NULL)
+      {
+	db_private_free_and_init (thread_p, collector.partsect_ftab);
+      }
+  });
+
+  try
+    {
+      vpids_out.reserve (vpids_out.size () + collector.npages);
+
+      for (int i = 0; i < collector.nsects; i++)
+	{
+	  const FILE_PARTIAL_SECTOR &partsect = collector.partsect_ftab[i];
+	  for (int bit = 0; bit < FILE_ALLOC_BITMAP_NBITS; bit++)
+	    {
+	      if ((partsect.page_bitmap & (((FILE_ALLOC_BITMAP) 1) << bit)) == 0)
+		{
+		  continue;
+		}
+	      VPID vpid;
+	      vpid.volid = partsect.vsid.volid;
+	      vpid.pageid = SECTOR_FIRST_PAGEID (partsect.vsid.sectid) + bit;
+	      vpids_out.push_back (vpid);
+	    }
+	}
+    }
+  catch (std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) collector.npages * sizeof (VPID));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  return NO_ERROR;
+}
+
 static int
 oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 			  OOS_HDR_STATS *oos_hdr, VPID *hdr_vpid,
@@ -699,12 +839,19 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
   int num_pages = 0;
   int num_recs = 0;
   float recs_sumlen = 0.0;
-  int start_idx = 1; /* Skip page 0 (header page) */
   int max_iterations;
   int total_pages;
+  int skipped_deallocated = 0;
 
-  int err_sync = file_get_num_user_pages (thread_p, vfid, &total_pages);
-  if (err_sync != NO_ERROR || total_pages <= 1)
+  std::vector<VPID> scan_vpids;
+  if (oos_collect_data_page_vpids (thread_p, vfid, scan_vpids) != NO_ERROR)
+    {
+      er_clear ();
+      return 0;
+    }
+
+  total_pages = (int) scan_vpids.size ();
+  if (total_pages <= 1)
     {
       return 0;
     }
@@ -726,13 +873,6 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	}
     }
 
-  /* Determine start position */
-  if (!VPID_ISNULL (&oos_hdr->estimates.full_search_vpid))
-    {
-      /* TODO: ideally find the index of full_search_vpid; for now start from 1 */
-      start_idx = 1;
-    }
-
   int iterations = 0;
   int best_count = 0;
 
@@ -745,27 +885,32 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	}
     }
 
-  for (int i = start_idx; i < total_pages && iterations < max_iterations; i++, iterations++)
+  for (int i = 0; i < total_pages && iterations < max_iterations; i++, iterations++)
     {
-      VPID scan_vpid;
-      int err = file_numerable_find_nth (thread_p, vfid, i, false, NULL, NULL, &scan_vpid);
-      if (err != NO_ERROR || VPID_ISNULL (&scan_vpid))
-	{
-	  break;
-	}
+      VPID scan_vpid = scan_vpids[i];
 
-      /* Skip header page (safety check) */
+      /* Skip header page (holds OOS_HDR_STATS, never a data page candidate) */
       if (!VPID_ISNULL (hdr_vpid) && VPID_EQ (&scan_vpid, hdr_vpid))
 	{
 	  continue;
 	}
 
-      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &scan_vpid, OLD_PAGE,
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &scan_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
 				     PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
-	  /* Page is busy — skip */
+	  if (er_errid () == ER_PB_BAD_PAGEID)
+	    {
+	      skipped_deallocated++;
+	    }
+	  /* Otherwise the page is busy — skip */
 	  er_clear ();
+	  continue;
+	}
+
+      if (pgbuf_get_page_ptype (thread_p, page_ptr) != PAGE_OOS)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_ptr);
 	  continue;
 	}
 
@@ -808,8 +953,8 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	    }
 	}
 
-      /* Save resume point */
-      oos_hdr->estimates.full_search_vpid = scan_vpid;
+      /* estimates.full_search_vpid is no longer written; the field stays in OOS_HDR_STATS only
+       * for on-disk layout stability. */
     }
 
   /* On full scan, clear stale best[] entries with freespace below the threshold.
@@ -855,6 +1000,12 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	}
     }
   oos_hdr->estimates.num_high_best = best_count;
+
+  if (skipped_deallocated > 0)
+    {
+      oos_trace ("bestspace sync skipped %d concurrently deallocated page(s) in file %d|%d",
+		 skipped_deallocated, VFID_AS_ARGS (vfid));
+    }
 
   return num_high_best + num_other_high_best;
 }
@@ -978,8 +1129,9 @@ oos_create_file_internal (THREAD_ENTRY *thread_p, FILE_DESCRIPTORS des, VFID &oo
   tablespace.expand_min_size = DISK_SECTOR_NPAGES * DB_PAGESIZE;
   tablespace.expand_max_size = DISK_SECTOR_NPAGES * DB_PAGESIZE * 1024;
 
+  /* Empty-page reclaim requires a non-numerable OOS file. Enumeration uses the sector bitmap. */
   err = file_create (thread_p, FILE_OOS, &tablespace, &des,
-		     false /* is_temp */, true /* is_numerable */, &oos_vfid);
+		     false /* is_temp */, false /* is_numerable */, &oos_vfid);
   if (err != NO_ERROR)
     {
       oos_error ("file_create failed");
@@ -1059,6 +1211,8 @@ oos_create_file_internal (THREAD_ENTRY *thread_p, FILE_DESCRIPTORS des, VFID &oo
 
   log_sysop_commit (thread_p);
 
+  oos_reclaim_note_file_created (oos_vfid);
+
   oos_trace ("created OOS file {fileid=%d, volid=%d} with header page {pageid=%d}",
 	     oos_vfid.fileid, oos_vfid.volid, hdr_vpid.pageid);
 
@@ -1093,24 +1247,786 @@ oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
   /* Clean up bestspace cache entries for this file */
   (void) oos_stats_del_bestspace_by_vfid (thread_p, &oos_vfid);
+  oos_reclaim_forget_file (oos_vfid);
 
   file_postpone_destroy (thread_p, &oos_vfid);
 
   return NO_ERROR;
 }
 
-// TODO: will be called by vacuum when OOS vacuum is implemented
-int
-oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid)
+// ****************************************************************************
+// OOS empty-page reclaim
+//
+// INVARIANT: an OOS file reserves a new sector only when no safely reclaimable empty page
+// exists right now. Two paths deliver it: the vacuum fast path (oos_reclaim_empty_pages)
+// reclaims the pages a committed delete batch touched; the growth-gate sweep
+// (oos_reclaim_sweep_step, run from the single growth point oos_alloc_page_with_reclaim) is
+// the backstop that rediscovers the rest from the sector bitmap. Truth is on disk (sector
+// bitmap + page emptiness); the in-memory counter and cursor are hints whose loss costs one
+// lap, never a page.
+//
+// Bounded deferrals within the invariant: a page emptied by a still-active deleter is
+// LSA-gated; a sweep failure is absorbed so reclaim never fails an INSERT. Idle files are never
+// shrunk.
+// ****************************************************************************
+
+typedef enum
 {
-  int err = file_dealloc (thread_p, &oos_vfid, &vpid, FILE_OOS);
+  OOS_RECLAIM_RECLAIMED = 0,	/* page deallocated back to the file manager */
+  OOS_RECLAIM_DEFERRED,		/* empty and LSA-gated, or WRITE fix transiently unavailable */
+  OOS_RECLAIM_SKIPPED		/* READ-busy, re-filled, already deallocated, or not an OOS data page */
+} OOS_RECLAIM_RESULT;
+
+// ****************************************************************************
+// OOS empty-page reclaim — growth-gate sweep bookkeeping (per-VFID side map)
+// ****************************************************************************
+
+/* Per-file bookkeeping for the growth-gate sweep. Every field is an in-memory HINT — the truth
+ * is on disk (sector bitmap + page emptiness), so losing an entry costs one boot-rule lap,
+ * never a page. Written by the growth sweep only. */
+struct oos_reclaim_file_state
+{
+  INT64 pending_deletes = 0;	/* deletes not yet accounted for by a completed sweep lap; > 0
+				 * arms the growth gate (only the zero/non-zero verdict matters) */
+  bool swept_this_boot = false;	/* a sweep lap has completed since boot (or the file was created
+				 * this boot); while false, the boot rule forces a sweep on every
+				 * growth regardless of the counter, absorbing hint loss */
+  bool sweep_in_progress = false;	/* single-flight guard: at most one sweep per file at a time */
+  VPID sweep_cursor = VPID_INITIALIZER;	/* the last page a sweep reclaimed; the next lap starts
+					 * just after it */
+};
+
+struct oos_vfid_order
+{
+  bool operator () (const VFID &a, const VFID &b) const
+  {
+    if (a.volid != b.volid)
+      {
+	return a.volid < b.volid;
+      }
+    return a.fileid < b.fileid;
+  }
+};
+
+/* Non-evicting by design (an evicted counter would silently disarm the growth gate); one entry
+ * per live OOS file. Guarded by oos_Bestspace->bestspace_mutex. */
+static std::map<VFID, oos_reclaim_file_state, oos_vfid_order> oos_Reclaim_states;
+/* A single condition variable is sufficient: waiters always re-check their own VFID predicate
+ * under bestspace_mutex, and a broadcast lets exactly one waiter per file claim the next step. */
+static pthread_cond_t oos_Reclaim_sweep_cond = PTHREAD_COND_INITIALIZER;
+/* The greatest rollback-delete CLR is enough: earlier CLR LSAs pass the ordinary strict gate
+ * once the horizon reaches this one. */
+static LOG_LSA oos_Last_rollback_delete_lsa = NULL_LSA;
+
+/* Caller holds bestspace_mutex. */
+static void
+oos_reclaim_release_sweep_locked (const VFID &oos_vfid)
+{
+  auto it = oos_Reclaim_states.find (oos_vfid);
+  if (it != oos_Reclaim_states.end ())
+    {
+      it->second.sweep_in_progress = false;
+    }
+  (void) pthread_cond_broadcast (&oos_Reclaim_sweep_cond);
+}
+
+/* Caller holds bestspace_mutex. */
+static void
+oos_reclaim_note_delete_locked (const VFID &oos_vfid)
+{
+  try
+    {
+      auto it = oos_Reclaim_states.find (oos_vfid);
+      if (it != oos_Reclaim_states.end ())
+	{
+	  it->second.pending_deletes++;
+	}
+      else
+	{
+	  oos_reclaim_file_state state;
+	  state.pending_deletes = 1;
+	  oos_Reclaim_states.emplace (oos_vfid, state);
+	}
+    }
+  catch (std::bad_alloc &)
+    {
+      /* Entry stays absent — the boot rule keeps the growth gate armed. */
+    }
+}
+
+/* Recovery has no owning VFID: when it is unknown, conservatively re-arm every known file.
+ * Caller holds bestspace_mutex. */
+static void
+oos_reclaim_note_recovery_delete_locked (const VFID *oos_vfid, const LOG_LSA *rollback_delete_lsa)
+{
+  if (rollback_delete_lsa != NULL
+      && (LSA_ISNULL (&oos_Last_rollback_delete_lsa)
+	  || LSA_LT (&oos_Last_rollback_delete_lsa, rollback_delete_lsa)))
+    {
+      oos_Last_rollback_delete_lsa = *rollback_delete_lsa;
+    }
+
+  if (oos_vfid != NULL)
+    {
+      oos_reclaim_note_delete_locked (*oos_vfid);
+      return;
+    }
+
+  for (auto &state : oos_Reclaim_states)
+    {
+      state.second.pending_deletes++;
+    }
+}
+
+static void
+oos_reclaim_note_delete (const VFID &oos_vfid)
+{
+  assert (oos_Bestspace != NULL);
+
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  oos_reclaim_note_delete_locked (oos_vfid);
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+}
+
+/*
+ * oos_reclaim_note_file_created () - Mark a file created THIS boot as already swept: it can hold
+ *   no empty page from a previous boot, so its first growth skips the boot-rule lap.
+ */
+static void
+oos_reclaim_note_file_created (const VFID &oos_vfid)
+{
+  assert (oos_Bestspace != NULL);
+
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+
+  try
+    {
+      oos_reclaim_file_state state;
+      state.swept_this_boot = true;
+      oos_Reclaim_states[oos_vfid] = state;
+    }
+  catch (std::bad_alloc &)
+    {
+      /* Entry stays absent — the file's first growth pays one boot-rule lap. */
+    }
+
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+}
+
+static void
+oos_reclaim_forget_file (const VFID &oos_vfid)
+{
+  assert (oos_Bestspace != NULL);
+
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  oos_Reclaim_states.erase (oos_vfid);
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+}
+
+/* Caller must hold oos_Bestspace->bestspace_mutex. */
+static void
+oos_reclaim_clear_all_states (void)
+{
+  oos_Reclaim_states.clear ();
+  LSA_SET_NULL (&oos_Last_rollback_delete_lsa);
+}
+
+/*
+ * oos_reclaim_sample_horizon () - Sample the reclaim gate horizon: the smallest head LSA over
+ *   every live undo source. Two scans, the same pairing recovery undo uses
+ *   (logtb_rv_read_only_map_undo_tdes): active regular transactions (logtb_find_smallest_lsa)
+ *   plus active system-worker sysops (log_system_tdes::map_all_tdes), because a vacuum worker's
+ *   sysop abort also replays RVOOS_DELETE undo.
+ *
+ *   The result is clamped to the append LSA sampled BEFORE the scans: head_lsa assignment is
+ *   not synchronized with them, so a transaction whose first append lands mid-scan can be
+ *   missed. The clamp can only lower the horizon — toward deferring, never toward an unsafe
+ *   dealloc.
+ *
+ *   Callers MUST sample once per reclaim call, before any page is examined, and reuse the
+ *   sample for every candidate.
+ */
+static void
+oos_reclaim_sample_horizon (THREAD_ENTRY *thread_p, LOG_LSA &horizon_out)
+{
+  const LOG_LSA append_lsa_at_sample = *log_get_append_lsa ();
+
+  LSA_SET_NULL (&horizon_out);
+  logtb_find_smallest_lsa (thread_p, &horizon_out);
+
+  log_system_tdes::map_all_tdes ([&horizon_out] (log_tdes &tdes)
+  {
+    if (!LSA_ISNULL (&tdes.head_lsa) && (LSA_ISNULL (&horizon_out) || LSA_LT (&tdes.head_lsa, &horizon_out)))
+      {
+	horizon_out = tdes.head_lsa;
+      }
+  });
+
+  if (LSA_ISNULL (&horizon_out) || LSA_LT (&append_lsa_at_sample, &horizon_out))
+    {
+      horizon_out = append_lsa_at_sample;
+    }
+}
+
+/*
+ * oos_reclaim_fix_candidate () - Zero-wait, dealloc-tolerant fix of a reclaim candidate.
+ *   page_out == NULL with NO_ERROR means "skip" (busy, or already deallocated); ER_INTERRUPTED
+ *   is propagated.
+ */
+static int
+oos_reclaim_fix_candidate (THREAD_ENTRY *thread_p, const VPID &vpid, PGBUF_LATCH_MODE latch_mode,
+			   PAGE_PTR &page_out)
+{
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  if (latch_mode == PGBUF_LATCH_WRITE
+      && oos_Test_fail_next_reclaim_write_fix_armed.exchange (false, std::memory_order_relaxed))
+    {
+      page_out = NULL;
+      return NO_ERROR;
+    }
+#endif
+
+  page_out = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, PGBUF_CONDITIONAL_LATCH);
+  if (page_out == NULL)
+    {
+      int err = er_errid ();
+      if (err == ER_INTERRUPTED)
+	{
+	  return err;
+	}
+      er_clear ();
+    }
+  return NO_ERROR;
+}
+
+static bool
+oos_page_is_reclaimable_empty (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr)
+{
+  return pgbuf_get_page_ptype (thread_p, page_ptr) == PAGE_OOS && spage_number_of_records (page_ptr) == 0;
+}
+
+/* An INSERT rollback's CLR is redo-only, but its page LSA may equal the append horizon. Equality
+ * is safe only after the live-writer horizon reaches that exact LSA; an abort still in progress
+ * keeps the horizon at its earlier transaction head. */
+static bool
+oos_reclaim_lsa_gate_passes (const LOG_LSA &page_lsa, const LOG_LSA &horizon,
+			     const LOG_LSA &rollback_delete_lsa)
+{
+  return LSA_LT (&page_lsa, &horizon)
+	 || (!LSA_ISNULL (&rollback_delete_lsa) && LSA_EQ (&page_lsa, &horizon)
+	     && LSA_EQ (&page_lsa, &rollback_delete_lsa));
+}
+
+/*
+ * oos_try_reclaim_page_internal () - Try to return one fully emptied OOS data page to the file
+ *   manager's partial sector table. Two-phase: phase 1 pre-qualifies under a zero-wait READ fix
+ *   with the OOS stats header latch NOT held; phase 2 takes the header WRITE latch, re-validates
+ *   under a zero-wait WRITE fix, and deallocates in its own immediately-committed sysop.
+ *
+ *   Idempotent and zero-wait: already-deallocated, re-filled, and READ-busy outcomes are
+ *   OOS_RECLAIM_SKIPPED with NO_ERROR. An empty page whose last writer may still be active, or
+ *   whose phase-2 WRITE fix is transiently unavailable, is OOS_RECLAIM_DEFERRED so a later
+ *   growth retries it. The sticky-first-page invariant is the caller's job.
+ *
+ *   return: NO_ERROR or error code (ER_INTERRUPTED propagates so reclaim loops stop immediately)
+ *   thread_p(in): thread entry
+ *   oos_vfid(in): OOS file identifier
+ *   vpid(in): candidate page
+ *   hdr_vpid(in): the file's sticky first page (holds OOS_HDR_STATS), resolved once by the caller
+ *   horizon(in): LSA gate horizon, sampled once by the caller BEFORE examining any page
+ *   result(out): per-page verdict; meaningful only when NO_ERROR is returned
+ *   rollback_delete_lsa(in): latest redo-only INSERT-rollback CLR, or NULL_LSA
+ *
+ * Safety argument (why the emptiness check cannot race a writer, and why undo can never reach a
+ * deallocated page):
+ *   1. The header page is WRITE-latched for all of phase 2, from the re-validation until after
+ *      the deallocation. Every insert-side page discovery starts under that latch in
+ *      oos_find_best_page, so no NEW writer can be handed this page while we hold it.
+ *   2. A writer that already claimed the page keeps it continuously WRITE-latched until its
+ *      write completes, so our conditional fix fails and we skip.
+ *   3. file_dealloc's RVFL_DEALLOC postpone runs at log_sysop_commit, still under the header
+ *      latch. The page must be unfixed before that commit (pgbuf_dealloc_page requires a single
+ *      fixer); read-only sync sampling may slip into that gap, hence hint eviction after the
+ *      commit and OLD_PAGE_MAYBE_DEALLOCATED on lookups.
+ *   4. LSA gate: the page is deallocated only when its LSA is older than the horizon (or is the
+ *      exact redo-only rollback CLR). Emptiness alone cannot tell "emptied by committed deletes"
+ *      from "emptied by a still-active deleter", whose abort replays RVOOS_DELETE undo into the
+ *      page. Every write of a live undo source carries a page LSA at or above that source's
+ *      head LSA, so a page passing the gate cannot be an undo target of anyone still running.
+ *
+ * Why not the heap's OLD_PAGE_PREVENT_DEALLOC protocol: readers reach OOS chunk pages only via
+ * the head OOS OIDs of heap record versions, and vacuum empties a chain's pages only after the
+ * owning version is invisible to every active snapshot — no reader can legally be walking them.
+ * The dealloc tolerance on lookups is defense in depth for stale hints, not a substitute for
+ * pinning, and PREVENT_DEALLOC would reintroduce a waiting edge into a zero-wait path.
+ */
+static int
+oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid,
+			       const VPID &hdr_vpid, const LOG_LSA &horizon, OOS_RECLAIM_RESULT &result,
+			       const LOG_LSA &rollback_delete_lsa)
+{
+  int err = NO_ERROR;
+
+  result = OOS_RECLAIM_SKIPPED;
+
+  if (VPID_EQ (&vpid, &hdr_vpid))
+    {
+      /* The sticky first page (OOS_HDR_STATS) must never be deallocated; file_dealloc only
+       * asserts this in debug builds. */
+      return NO_ERROR;
+    }
+
+  /* Phase 1: pre-qualify under a zero-wait READ fix, header latch NOT held. */
+  PAGE_PTR page_ptr = NULL;
+  err = oos_reclaim_fix_candidate (thread_p, vpid, PGBUF_LATCH_READ, page_ptr);
   if (err != NO_ERROR)
     {
-      oos_error ("file_dealloc failed for vpid={pageid=%d, volid=%d}", vpid.pageid, vpid.volid);
+      return err;
+    }
+  if (page_ptr == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  bool is_empty = oos_page_is_reclaimable_empty (thread_p, page_ptr);
+  bool lsa_gate_passes = is_empty
+			 && oos_reclaim_lsa_gate_passes (*pgbuf_get_lsa (page_ptr), horizon, rollback_delete_lsa);
+  pgbuf_unfix_and_init (thread_p, page_ptr);
+  if (!is_empty)
+    {
+      return NO_ERROR;
+    }
+  if (!lsa_gate_passes)
+    {
+      result = OOS_RECLAIM_DEFERRED;
+      return NO_ERROR;
+    }
+
+  /* Phase 2: serialize against insert-side page discovery via the stats header latch. */
+  PAGE_PTR hdr_page = pgbuf_fix (thread_p, &hdr_vpid, OLD_PAGE,
+				 PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (hdr_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
       return err;
     }
 
+  scope_exit hdr_unfixer ([&] ()
+  {
+    pgbuf_unfix_and_init_after_check (thread_p, hdr_page);
+  });
+
+  err = oos_reclaim_fix_candidate (thread_p, vpid, PGBUF_LATCH_WRITE, page_ptr);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  if (page_ptr == NULL)
+    {
+      /* The page passed the READ phase but became busy before the WRITE phase. Keep reclaim
+       * debt armed so a later growth retries it instead of stranding a possibly empty page. */
+      result = OOS_RECLAIM_DEFERRED;
+      return NO_ERROR;
+    }
+
+  if (!oos_page_is_reclaimable_empty (thread_p, page_ptr))
+    {
+      /* The page changed in the unlatched window between the phases; phase 2's verdict is
+       * binding. */
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      return NO_ERROR;
+    }
+
+  if (!oos_reclaim_lsa_gate_passes (*pgbuf_get_lsa (page_ptr), horizon, rollback_delete_lsa))
+    {
+      /* Binding LSA-gate verdict (safety item 4): the last writer may still be active. */
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      result = OOS_RECLAIM_DEFERRED;
+      return NO_ERROR;
+    }
+
+  log_sysop_start (thread_p);
+
+  err = file_dealloc (thread_p, &oos_vfid, &vpid, FILE_OOS);
+  if (err != NO_ERROR)
+    {
+      oos_error ("file_dealloc failed for vpid={pageid=%d, volid=%d}", vpid.pageid, vpid.volid);
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      log_sysop_abort (thread_p);
+      return err;
+    }
+
+  /* The RVFL_DEALLOC postpone registered above runs at this sysop commit, and its
+   * pgbuf_dealloc_page asserts a single fixer — so unfix before committing. */
+  pgbuf_unfix_and_init (thread_p, page_ptr);
+  log_sysop_commit (thread_p);
+
+  /* Evict hints only AFTER the dealloc commit: a concurrent sync sampling the page in the
+   * unfix-to-commit gap could have re-added it. The header page is still latched. */
+  (void) oos_stats_del_bestspace_by_vpid (thread_p, const_cast<VPID *> (&vpid));
+
+  OOS_HDR_STATS *oos_hdr = oos_get_header_stats_ptr (thread_p, hdr_page);
+  if (oos_hdr != NULL)
+    {
+      bool hdr_changed = false;
+      for (int i = 0; i < OOS_NUM_BEST_SPACESTATS; i++)
+	{
+	  if (VPID_EQ (&oos_hdr->estimates.best[i].vpid, &vpid))
+	    {
+	      VPID_SET_NULL (&oos_hdr->estimates.best[i].vpid);
+	      oos_hdr->estimates.best[i].freespace = 0;
+	      hdr_changed = true;
+	    }
+	  if (VPID_EQ (&oos_hdr->estimates.second_best[i], &vpid))
+	    {
+	      VPID_SET_NULL (&oos_hdr->estimates.second_best[i]);
+	      hdr_changed = true;
+	    }
+	}
+      if (hdr_changed)
+	{
+	  /* Non-logged update — hints don't need WAL */
+	  LOG_DATA_ADDR addr;
+	  addr.vfid = NULL;
+	  addr.pgptr = hdr_page;
+	  addr.offset = 0;
+	  log_skip_logging (thread_p, &addr);
+	  pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
+	}
+    }
+
+  oos_trace ("reclaimed empty page {volid=%d, pageid=%d} in file %d|%d",
+	     vpid.volid, vpid.pageid, VFID_AS_ARGS (&oos_vfid));
+
+  result = OOS_RECLAIM_RECLAIMED;
   return NO_ERROR;
+}
+
+/* The lap sort and the cursor's upper_bound MUST use this same order. */
+static bool
+oos_vpid_lt (const VPID &a, const VPID &b)
+{
+  return VPID_LT (&a, &b);
+}
+
+/*
+ * oos_reclaim_empty_pages () - Reclaim the fully emptied pages of an explicit candidate list
+ *   (vacuum's fast path). Public contract in oos_file.hpp.
+ *
+ *   Call only AFTER the deletes that emptied the pages are committed: a live undo could
+ *   otherwise restore chunks onto a deallocated page. Pages whose deleter is still active are
+ *   deferred by the LSA gate, not deallocated.
+ *
+ *   return: NO_ERROR or error code
+ *   thread_p(in): thread entry
+ *   oos_vfid(in): OOS file identifier
+ *   candidates(in/out): candidate pages, duplicates allowed; sorted and deduped in place
+ */
+int
+oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vector<VPID> &candidates)
+{
+  int err = NO_ERROR;
+
+  if (candidates.empty ())
+    {
+      return NO_ERROR;
+    }
+
+  VPID hdr_vpid;
+  err = file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
+
+  /* Dedupe: a value chain usually deletes several chunks from the same page. */
+  std::sort (candidates.begin (), candidates.end (), oos_vpid_lt);
+  candidates.erase (std::unique (candidates.begin (), candidates.end (),
+				 [] (const VPID &a, const VPID &b)
+  {
+    return VPID_EQ (&a, &b);
+  }), candidates.end ());
+
+  LOG_LSA horizon;
+  oos_reclaim_sample_horizon (thread_p, horizon);
+
+  int n_reclaimed = 0;
+  int n_deferred = 0;
+  for (const VPID &vpid : candidates)
+    {
+      OOS_RECLAIM_RESULT result = OOS_RECLAIM_SKIPPED;
+      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, horizon, result, NULL_LSA);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      if (result == OOS_RECLAIM_RECLAIMED)
+	{
+	  n_reclaimed++;
+	}
+      else if (result == OOS_RECLAIM_DEFERRED)
+	{
+	  n_deferred++;
+	}
+    }
+
+  oos_trace ("reclaim batch on file %d|%d: %d reclaimed, %d deferred of %d candidate(s)",
+	     VFID_AS_ARGS (&oos_vfid), n_reclaimed, n_deferred, (int) candidates.size ());
+
+  return NO_ERROR;
+}
+
+/*
+ * oos_reclaim_settle_lap () - Account a completed sweep lap. Subtract only the deletes counted
+ *   at lap start: a delete noted mid-lap may have emptied a page the lap already passed, so its
+ *   hint must survive. Deferrals stay pending so a later growth retries them.
+ */
+static void
+oos_reclaim_settle_lap (const VFID &oos_vfid, INT64 pending_at_start, INT64 n_deferred)
+{
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  auto it = oos_Reclaim_states.find (oos_vfid);
+  if (it != oos_Reclaim_states.end ())
+    {
+      it->second.pending_deletes -= pending_at_start;
+      if (it->second.pending_deletes < 0)
+	{
+	  assert (false);
+	  it->second.pending_deletes = 0;
+	}
+      it->second.pending_deletes += n_deferred;
+      it->second.swept_this_boot = true;
+    }
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+}
+
+/*
+ * oos_reclaim_sweep_step () - The growth-gate incremental sweep, run on every OOS page
+ *   allocation. If the side map says work is due (pending deletes, or the boot rule: no entry /
+ *   no lap completed since boot), walk the file's data pages from the saved cursor and stop at
+ *   the FIRST page reclaimed. That page is back in the partial sector table when this returns,
+ *   so the caller's file_alloc reuses it instead of growing.
+ *
+ *   Concurrency: at most one sweep per file (single-flight flag). A concurrent grower waits for
+ *   the active step, then re-checks the state and claims the next step when work remains. It
+ *   cannot bypass the growth gate while the active sweep may still find a reclaimable page.
+ *
+ *   return: NO_ERROR or error code. ER_INTERRUPTED propagates; on any error the claimed
+ *   bookkeeping is released untouched, so the next growth retries the same region.
+ */
+static int
+oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
+{
+  int err = NO_ERROR;
+
+  INT64 pending_at_start = 0;
+  VPID cursor;
+  VPID_SET_NULL (&cursor);
+  LOG_LSA rollback_delete_lsa;
+  LSA_SET_NULL (&rollback_delete_lsa);
+  bool claimed = false;
+
+  assert (oos_Bestspace != NULL);
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  try
+    {
+      while (true)
+	{
+	  auto it = oos_Reclaim_states.find (oos_vfid);
+	  if (it == oos_Reclaim_states.end ())
+	    {
+	      /* Boot rule: an unknown file may hold empty pages from a previous boot. */
+	      oos_reclaim_file_state state;
+	      state.sweep_in_progress = true;
+	      oos_Reclaim_states.emplace (oos_vfid, state);
+	      claimed = true;
+	      break;
+	    }
+	  if (it->second.sweep_in_progress)
+	    {
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+	      oos_Test_reclaim_waiters.fetch_add (1, std::memory_order_relaxed);
+#endif
+	      int wait_error = pthread_cond_wait (&oos_Reclaim_sweep_cond,
+						  &oos_Bestspace->bestspace_mutex);
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+	      oos_Test_reclaim_waiters.fetch_sub (1, std::memory_order_relaxed);
+#endif
+	      if (wait_error != 0)
+		{
+		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_WAIT, 0);
+		  err = ER_CSS_PTHREAD_COND_WAIT;
+		  break;
+		}
+	      continue;
+	    }
+	  if (it->second.pending_deletes > 0 || !it->second.swept_this_boot)
+	    {
+	      it->second.sweep_in_progress = true;
+	      pending_at_start = it->second.pending_deletes;
+	      cursor = it->second.sweep_cursor;
+	      claimed = true;
+	    }
+	  break;
+	}
+      if (claimed)
+	{
+	  rollback_delete_lsa = oos_Last_rollback_delete_lsa;
+	}
+    }
+  catch (std::bad_alloc &)
+    {
+      /* Entry not created — the boot rule keeps the gate armed for the next growth. */
+    }
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  if (!claimed)
+    {
+      return NO_ERROR;
+    }
+
+  scope_exit sweep_release ([&] () noexcept
+  {
+    (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+    oos_reclaim_release_sweep_locked (oos_vfid);
+    pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+  });
+
+  VPID hdr_vpid;
+  err = file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
+
+  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+  err = file_get_all_data_sectors (thread_p, &oos_vfid, &collector);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
+
+  scope_exit collector_freer ([&] ()
+  {
+    if (collector.partsect_ftab != NULL)
+      {
+	db_private_free_and_init (thread_p, collector.partsect_ftab);
+      }
+  });
+
+  /* Sort sectors, not expanded page IDs. FILE_PARTIAL_SECTOR intentionally starts with VSID,
+   * so disk_compare_vsids can compare these entries directly. */
+  if (collector.nsects > 1)
+    {
+      std::qsort (collector.partsect_ftab, collector.nsects, sizeof (*collector.partsect_ftab), disk_compare_vsids);
+    }
+
+  LOG_LSA horizon;
+  oos_reclaim_sample_horizon (thread_p, horizon);
+
+  INT64 n_deferred = 0;
+  const int n_partitions = VPID_ISNULL (&cursor) ? 1 : 2;
+  for (int partition = 0; partition < n_partitions; partition++)
+    {
+      /* The first partition visits VPIDs after the cursor; the second wraps and visits the
+       * cursor and all preceding VPIDs. Since sectors and bits are ascending, this preserves
+       * the old sorted-vector circular order exactly. */
+      for (int sector_index = 0; sector_index < collector.nsects; sector_index++)
+	{
+	  const FILE_PARTIAL_SECTOR &partsect = collector.partsect_ftab[sector_index];
+	  for (int bit = 0; bit < FILE_ALLOC_BITMAP_NBITS; bit++)
+	    {
+	      if ((partsect.page_bitmap & (((FILE_ALLOC_BITMAP) 1) << bit)) == 0)
+		{
+		  continue;
+		}
+
+	      VPID vpid;
+	      vpid.volid = partsect.vsid.volid;
+	      vpid.pageid = SECTOR_FIRST_PAGEID (partsect.vsid.sectid) + bit;
+
+	      if (!VPID_ISNULL (&cursor))
+		{
+		  const bool is_after_cursor = oos_vpid_lt (cursor, vpid);
+		  if (is_after_cursor != (partition == 0))
+		    {
+		      continue;
+		    }
+		}
+
+	      OOS_RECLAIM_RESULT result = OOS_RECLAIM_SKIPPED;
+	      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, horizon, result,
+						   rollback_delete_lsa);
+	      if (err != NO_ERROR)
+		{
+		  return err;
+		}
+	      if (result == OOS_RECLAIM_RECLAIMED)
+		{
+		  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+		  auto it = oos_Reclaim_states.find (oos_vfid);
+		  if (it != oos_Reclaim_states.end ())
+		    {
+		      it->second.sweep_cursor = vpid;
+		    }
+		  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+
+		  oos_trace ("growth-gate sweep on file %d|%d: reclaimed page {volid=%d, pageid=%d}, "
+			     "%lld deferred so far", VFID_AS_ARGS (&oos_vfid), vpid.volid, vpid.pageid,
+			     (long long) n_deferred);
+		  return NO_ERROR;
+		}
+	      if (result == OOS_RECLAIM_DEFERRED)
+		{
+		  n_deferred++;
+		}
+	    }
+	}
+    }
+
+  oos_reclaim_settle_lap (oos_vfid, pending_at_start, n_deferred);
+
+  oos_trace ("growth-gate sweep on file %d|%d: full lap over %d page(s), 0 reclaimed, %lld deferred",
+	     VFID_AS_ARGS (&oos_vfid), collector.npages, (long long) n_deferred);
+  return NO_ERROR;
+}
+
+/*
+ * oos_alloc_page_with_reclaim () - The single growth point of an OOS file.
+ *
+ *   INVARIANT: every new-page allocation for an OOS file goes through this helper, never
+ *   through oos_file_alloc_new directly. The growth-gate sweep runs first; a page it frees is
+ *   back in the partial sector table before file_alloc runs, so no retry loop is needed.
+ *
+ *   PRECONDITION: call with no OOS page latched — the sweep's reclaim primitive takes the OOS
+ *   stats header WRITE latch unconditionally.
+ *
+ *   An interrupt from the sweep propagates; any other sweep failure is absorbed, because a
+ *   space hint must never turn a healthy INSERT into an error.
+ */
+static auto_unfix_page_ptr
+oos_alloc_page_with_reclaim (THREAD_ENTRY *thread_p, const VFID &oos_vfid, VPID &vpid_out)
+{
+  int err = oos_reclaim_sweep_step (thread_p, oos_vfid);
+  if (err == ER_INTERRUPTED)
+    {
+      return nullptr;
+    }
+  if (err != NO_ERROR)
+    {
+      oos_warn ("growth-gate sweep failed with error %d on file %d|%d; allocating anyway "
+		"(unreclaimed pages stay discoverable on disk)", err, VFID_AS_ARGS (&oos_vfid));
+      er_clear ();
+    }
+
+  return oos_file_alloc_new (thread_p, oos_vfid, vpid_out);
 }
 
 
@@ -1547,6 +2463,11 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer
   assert (required_length <= DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT));
 
   auto auto_page_ptr = oos_find_best_page (thread_p, oos_vfid, required_length, vpid);
+  if (auto_page_ptr == nullptr)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
   PAGE_PTR page_ptr = auto_page_ptr.get ();
   err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, src, header, oid);
   if (err != NO_ERROR)
@@ -1876,16 +2797,19 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 // OOS Page allocation
 // ****************************************************************************
 
+/* Raw page allocation. Growth invariant: reach this ONLY through oos_alloc_page_with_reclaim —
+ * a direct call could grow the file while a safely reclaimable page exists. */
 static auto_unfix_page_ptr
 oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 		    VPID &vpid_out)
 {
   int err = NO_ERROR;
   PAGE_TYPE page_type = PAGE_OOS;
+  PAGE_PTR page = NULL;
 
   log_sysop_start (thread_p);
-  err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_type, &vpid_out, nullptr);
-  if (err != NO_ERROR)
+  err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_type, &vpid_out, &page);
+  if (err != NO_ERROR || page == NULL)
     {
       oos_error ("file_alloc failed");
       assert_release_error (er_errid () != NO_ERROR);
@@ -1899,8 +2823,9 @@ oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 
   log_sysop_commit (thread_p);
 
-  return pgbuf_fix_auto_unfix (thread_p, &vpid_out, OLD_PAGE,
-			       PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  /* Keep the WRITE latch acquired at allocation: a latch-free gap would let
+   * oos_try_reclaim_page_internal deallocate the freshly allocated (still empty) page. */
+  return auto_unfix_page_ptr (page, page_auto_unfix {thread_p});
 }
 
 
@@ -1917,21 +2842,21 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
   if (err != NO_ERROR || VPID_ISNULL (&hdr_vpid))
     {
       /* No header page — fall back to allocating new page */
-      return oos_file_alloc_new (thread_p, oos_vfid, vpid);
+      return oos_alloc_page_with_reclaim (thread_p, oos_vfid, vpid);
     }
 
   PAGE_PTR hdr_page = pgbuf_fix (thread_p, &hdr_vpid, OLD_PAGE,
 				 PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (hdr_page == NULL)
     {
-      return oos_file_alloc_new (thread_p, oos_vfid, vpid);
+      return oos_alloc_page_with_reclaim (thread_p, oos_vfid, vpid);
     }
 
   OOS_HDR_STATS *oos_hdr = oos_get_header_stats_ptr (thread_p, hdr_page);
   if (oos_hdr == NULL)
     {
       pgbuf_unfix_and_init (thread_p, hdr_page);
-      return oos_file_alloc_new (thread_p, oos_vfid, vpid);
+      return oos_alloc_page_with_reclaim (thread_p, oos_vfid, vpid);
     }
 
   int total_space = rec_length;
@@ -2003,13 +2928,13 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 		{
 		  return nullptr;
 		}
-	      return oos_file_alloc_new (thread_p, oos_vfid, vpid);
+	      return oos_alloc_page_with_reclaim (thread_p, oos_vfid, vpid);
 	    }
 	  oos_hdr = oos_get_header_stats_ptr (thread_p, hdr_page);
 	  if (oos_hdr == NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, hdr_page);
-	      return oos_file_alloc_new (thread_p, oos_vfid, vpid);
+	      return oos_alloc_page_with_reclaim (thread_p, oos_vfid, vpid);
 	    }
 	}
       else
@@ -2030,39 +2955,16 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
       pgbuf_set_dirty (thread_p, hdr_page, DONT_FREE);
       pgbuf_unfix_and_init (thread_p, hdr_page);
 
-      /* Unfix the conditional-latch page and re-fix as auto_unfix with unconditional latch.
-       * Between unfix and re-fix, another thread may fill the page (race window). */
-      pgbuf_unfix_and_init (thread_p, found_page);
-
-      auto result_page = pgbuf_fix_auto_unfix (thread_p, &vpid, OLD_PAGE,
-			 PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (result_page == nullptr)
-	{
-	  /* Re-fix failed — propagate error if it is not a benign latch timeout */
-	  int refix_err = er_errid ();
-	  if (refix_err == ER_INTERRUPTED)
-	    {
-	      return nullptr;
-	    }
-	  /* Fall through to allocate new page */
-	}
-      else
-	{
-	  /* Re-check free space after unconditional re-fix (race window protection) */
-	  int actual_free = spage_max_space_for_new_record (thread_p, result_page.get ());
-	  if (actual_free >= total_space)
-	    {
-	      return result_page;
-	    }
-	  /* Page was filled by another thread — fall through to allocate new */
-	  result_page.reset ();
-	}
+      /* Adopt the WRITE latch acquired at validation (Phase C). Safety invariant for reclaim: a
+       * page an inserter has claimed is never latch-free, so oos_try_reclaim_page_internal's
+       * conditional fix fails instead of deallocating it. */
+      return auto_unfix_page_ptr (found_page, page_auto_unfix {thread_p});
     }
 
   /* No existing page found — allocate new */
   pgbuf_unfix_and_init_after_check (thread_p, hdr_page);
 
-  auto new_page = oos_file_alloc_new (thread_p, oos_vfid, vpid);
+  auto new_page = oos_alloc_page_with_reclaim (thread_p, oos_vfid, vpid);
 
   /* Update bestspace cache with the new page — use spage_max_space_for_new_record
    * for consistency with the lookup check in oos_stats_find_page_in_bestspace */
@@ -2144,13 +3046,16 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  *   thread_p(in): thread entry
  *   oos_vfid(in): OOS file identifier
  *   oid(in): head OID of the OOS record chain
+ *   touched_vpids(out): optional; every page a chunk was deleted from is appended (duplicates
+ *			 allowed — the reclaim batch dedupes).
  *
  * NOTE: This is the inner workhorse called by oos_delete(). Each chunk
  *       deletion is logged individually with undo data, so transaction
  *       abort restores all deleted chunks in reverse order.
  */
 static int
-oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
+		  std::vector<VPID> *touched_vpids)
 {
   int error = NO_ERROR;
   OID current_oid = oid;
@@ -2208,6 +3113,24 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 
       /* Update bestspace cache — page now has more free space after delete */
       oos_stats_update (thread_p, page_ptr, &oos_vfid, 0);
+
+      if (touched_vpids != NULL)
+	{
+	  try
+	    {
+	      touched_vpids->push_back (vpid);
+	    }
+	  catch (std::bad_alloc &)
+	    {
+	      /* The candidate list is only a hint; the deletes themselves are logged and the
+	       * growth-gate sweep rediscovers the pages. Never fail a delete batch over it. */
+	      oos_warn ("dropping empty-page reclaim hints for file %d|%d: out of memory growing "
+			"the candidate list; the growth-gate sweep will rediscover the pages",
+			VFID_AS_ARGS (&oos_vfid));
+	      touched_vpids->clear ();
+	      touched_vpids = NULL;
+	    }
+	}
 
       oos_debug ("deleted chunk at oid={vol=%d,page=%d,slot=%d}, next={vol=%d,page=%d,slot=%d}",
 		 OID_AS_ARGS (&current_oid), OID_AS_ARGS (&next_chunk_oid));
@@ -2301,15 +3224,23 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *       remaining chunks are orphaned. This is acceptable because storage
  *       layer errors always propagate up and result in transaction abort.
  *
- *       Page deallocation is NOT done here. Empty pages will be reclaimed
- *       by vacuum after the transaction commits.
+ *       Page deallocation is NOT done here. Vacuum reclaims emptied pages
+ *       via oos_reclaim_empty_pages after its deletes are committed; every
+ *       successful chain delete also arms the growth-gate sweep, the
+ *       backstop for paths with no vacuum candidate list.
  */
 int
-oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
+oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
+	    std::vector<VPID> *touched_vpids)
 {
   oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
 
-  return oos_delete_chain (thread_p, oos_vfid, oid);
+  int err = oos_delete_chain (thread_p, oos_vfid, oid, touched_vpids);
+  if (err == NO_ERROR)
+    {
+      oos_reclaim_note_delete (oos_vfid);
+    }
+  return err;
 }
 
 // TODO: since this value never changes, we can make it a constant or static variable,
@@ -2356,10 +3287,14 @@ oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
     }
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
-  /* Remove stale bestspace cache entry for this page (rollback path) */
+  /* Only a runtime rollback's page LSA is redo-only and thus eligible for the reclaim gate's
+   * narrow equality case. */
   VPID page_vpid;
   pgbuf_get_vpid (rcv->pgptr, &page_vpid);
-  (void) oos_stats_del_bestspace_by_vpid (thread_p, &page_vpid);
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  const LOG_LSA *rollback_delete_lsa = LOG_ISRESTARTED () && tdes != NULL && LOG_ISTRAN_ABORTED (tdes)
+				       ? pgbuf_get_lsa (rcv->pgptr) : NULL;
+  (void) oos_stats_del_bestspace_by_vpid (thread_p, &page_vpid, true, rollback_delete_lsa);
 
   return NO_ERROR;
 }
@@ -2401,12 +3336,21 @@ oos_get_length (THREAD_ENTRY *thread_p, const OID &oid)
   const auto [pageid, slotid, volid] = oid;
   auto vpid = VPID{pageid, volid};
 
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
+  /* Tolerate a deallocated page: vacuum may have reclaimed it, so a vacuumed OID must report
+   * "gone" rather than trip the dead-page assert. */
+  PAGE_PTR page_ptr = NULL;
+  int err = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr);
+  if (err != NO_ERROR)
     {
       oos_error ("oos_get_length: pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
       assert_release_error (er_errid () != NO_ERROR);
       assert (false);
+      return -1;
+    }
+  if (page_ptr == nullptr)
+    {
+      oos_error ("oos_get_length: page deallocated for volid=%d, pageid=%d", volid, pageid);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return -1;
     }
 
@@ -2528,28 +3472,34 @@ oos_get_stats_by_vfid (THREAD_ENTRY *thread_p, const VFID &oos_vfid, OOS_STATS_I
       return er_errid ();
     }
 
+  std::vector<VPID> scan_vpids;
+  if (oos_collect_data_page_vpids (thread_p, &oos_vfid, scan_vpids) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+
   INT64 total_recs = 0;
   INT64 total_sumlen = 0;
-  for (int i = 0; i < num_user_pages; i++)
+  for (const VPID &scan_vpid : scan_vpids)
     {
-      VPID scan_vpid;
-      if (file_numerable_find_nth (thread_p, &oos_vfid, i, false, NULL, NULL, &scan_vpid) != NO_ERROR
-	  || VPID_ISNULL (&scan_vpid))
-	{
-	  er_clear ();
-	  continue;
-	}
       if (!VPID_ISNULL (&hdr_vpid) && VPID_EQ (&scan_vpid, &hdr_vpid))
 	{
 	  continue;		/* skip header page — no user records */
 	}
 
-      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &scan_vpid, OLD_PAGE,
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &scan_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
 				     PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
 	  er_clear ();
-	  continue;		/* page busy — accept a slight undercount */
+	  continue;		/* page busy or concurrently deallocated — accept a slight undercount */
+	}
+
+      if (pgbuf_get_page_ptype (thread_p, page_ptr) != PAGE_OOS)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_ptr);
+	  continue;
 	}
 
       /* Walk slots explicitly: spage_collect_statistics skips slot 0 (a heap-page
@@ -2601,6 +3551,12 @@ int
 bridge_oos_stats_del_bestspace_by_vpid (THREAD_ENTRY *thread_p, VPID *vpid)
 {
   return oos_stats_del_bestspace_by_vpid (thread_p, vpid);
+}
+
+int
+bridge_oos_stats_del_bestspace_by_vfid (THREAD_ENTRY *thread_p, const VFID *vfid)
+{
+  return oos_stats_del_bestspace_by_vfid (thread_p, vfid);
 }
 
 OOS_HDR_STATS *
@@ -2678,6 +3634,61 @@ oos_test_disarm_insert_publication_failures ()
 {
   oos_Test_fail_insert_many_after_publications.store (-1, std::memory_order_relaxed);
   oos_Test_throw_bad_alloc_on_next_oid_publication.store (false, std::memory_order_relaxed);
+}
+
+void
+oos_test_reclaim_reset_side_map ()
+{
+  assert (oos_Bestspace != NULL);
+
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  oos_reclaim_clear_all_states ();
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+}
+
+void
+oos_test_reclaim_force_sweep_in_progress (const VFID &oos_vfid)
+{
+  assert (oos_Bestspace != NULL);
+
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  oos_reclaim_file_state &state = oos_Reclaim_states[oos_vfid];
+  state.pending_deletes = 1;
+  state.swept_this_boot = true;
+  state.sweep_in_progress = true;
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+}
+
+void
+oos_test_reclaim_release_sweep (const VFID &oos_vfid)
+{
+  assert (oos_Bestspace != NULL);
+
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  auto it = oos_Reclaim_states.find (oos_vfid);
+  assert (it != oos_Reclaim_states.end ());
+  it->second.pending_deletes = 0;
+  it->second.swept_this_boot = true;
+  oos_reclaim_release_sweep_locked (oos_vfid);
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+}
+
+int
+oos_test_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
+{
+  return oos_reclaim_sweep_step (thread_p, oos_vfid);
+}
+
+int
+oos_test_reclaim_waiter_count ()
+{
+  return oos_Test_reclaim_waiters.load (std::memory_order_relaxed);
+}
+
+void
+oos_test_fail_next_reclaim_write_fix ()
+{
+  oos_Test_fail_next_reclaim_write_fix_armed.store (true, std::memory_order_relaxed);
 }
 #undef OOS_DEBUG_COUNTER_FIELDS
 #endif
