@@ -116,13 +116,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:
-  # Not the operational builds/ path -- the CircleCI test_shell still reads that.
-  CI_ROOT: /home/build-cache/gha-ci
-  CI_BUILD_ROOT: /home/build-cache/gha-ci/builds
-  TIMINGS: /home/build-cache/gha-ci/timings/shell.tsv
-  STAMPS: /home/build-cache/gha-ci/runs/${{ github.run_id }}/stamps
+  CI_ROOT: /home/gha-ci
+  CI_BUILD_ROOT: /home/gha-ci/builds
+  TIMINGS: /home/gha-ci/timings/shell.tsv
+  STAMPS: /home/gha-ci/runs/${{ github.run_id }}/stamps
   BUILD_SENTINEL: .complete
   BUILD_META: .gha-ci-build.meta
+  # Paired with arc_artifact_server_node_port in circleci-k8s-ansible.
+  ARTIFACT_URL_BASE: http://192.168.1.48:30080
 
 jobs:
   # All four triggers become one shape: every job below reads needs.gate.outputs and
@@ -350,9 +351,10 @@ jobs:
         shell: bash
 
     env:
-      # Same values as the CircleCI executor cubrid-build.
-      BUILD_MIRROR: /home/build-cache/cubrid-mirror
-      CI_LOG_ROOT: /home/build-cache/gha-ci/logs
+      BUILD_MIRROR: /home/gha-ci/repos
+      # Per mode: one path for two matrix legs is the later leg overwriting
+      # the earlier one.
+      BUILD_LOG_DIR: /home/gha-ci/runs/${{ github.run_id }}/build/${{ matrix.mode }}
       MODE: ${{ matrix.mode }}
       BUILD_ARGS: ${{ matrix.args }}
       # develop | pr. Keeps the preserved develop artifacts out of reach of PR builds.
@@ -360,7 +362,7 @@ jobs:
 
       # One cache per mode, mounted straight off GlusterFS -- there is no restore/save
       # step to gate, so "write on develop only" is enforced by ccache itself below.
-      CCACHE_DIR: /home/build-cache/ccache-develop-${{ matrix.mode }}
+      CCACHE_DIR: /home/gha-ci/cache/ccache/develop-${{ matrix.mode }}
       # The default is mtime, which a fresh clone always misses.
       CCACHE_COMPILERCHECK: content
       # `ccache --max-size` writes into the cache directory; the variable does not.
@@ -390,7 +392,7 @@ jobs:
           echo "SHA=$INPUT_SHA" >> "$GITHUB_ENV"
 
           echo "=== mounts ==="
-          ls -ld /home/build-cache "$BUILD_MIRROR/cubrid.git" "$CCACHE_DIR" || true
+          ls -ld /home/gha-ci "$BUILD_MIRROR/cubrid.git" "$CCACHE_DIR" || true
           if [ ! -d "$BUILD_MIRROR/cubrid.git" ]; then
             echo "::error::the mirror is not visible. The pod template did not reach the job pod."
             exit 1
@@ -530,6 +532,12 @@ jobs:
             mkdir -p "$tmp"
             cp -a /home/CUBRID "$tmp/CUBRID"
 
+            # The summary links this copy, not the one under the run directory: a
+            # reused build outlives the run that made it.
+            if [ -f "$GITHUB_WORKSPACE/build.log" ]; then
+              cp "$GITHUB_WORKSPACE/build.log" "$tmp/build.log"
+            fi
+
             # Inside the CUBRID tree on purpose: shard mounts it as the overlay lowerdir,
             # so reading this file proves the mount the tests actually use.
             meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
@@ -589,7 +597,7 @@ jobs:
           echo "built by : $by (this run: $GITHUB_RUN_ID)"
           cat "$dir/build.meta"
           du -sh "$dir"
-          df -h /home/build-cache | tail -1
+          df -h /home/gha-ci | tail -1
 
           printf 'end\t%s\n' "$(date -u +%s)" >> "$STAMPS/build.tsv"
 
@@ -606,9 +614,9 @@ jobs:
           # build.log is the only clue on failure, and it does not reach the GHA log.
           f="$GITHUB_WORKSPACE/build.log"
           if [ -f "$f" ]; then
-            mkdir -p "$CI_LOG_ROOT"
-            cp "$f" "$CI_LOG_ROOT/${GITHUB_RUN_ID}-build.log"
-            echo "saved: $CI_LOG_ROOT/${GITHUB_RUN_ID}-build.log ($(wc -l < "$f") lines)"
+            mkdir -p "$BUILD_LOG_DIR"
+            cp "$f" "$BUILD_LOG_DIR/build.log"
+            echo "saved: $BUILD_LOG_DIR/build.log ($(wc -l < "$f") lines)"
             echo "=== last 60 lines of build.log ==="
             tail -60 "$f"
           fi
@@ -1389,8 +1397,6 @@ jobs:
       # The wall-clock step reads the run start time. Public repos need no scope --
       # stated so it does not fail silently if this repository ever becomes private.
       actions: read
-      # Posts the result summary. The only place here that needs write.
-      pull-requests: write
     runs-on: cubrid-arc
     timeout-minutes: 30
     container:
@@ -1523,10 +1529,28 @@ jobs:
         run: |
           set -eo pipefail
           : > /tmp/failed.list
+          rm -rf /tmp/failed-logs
+          mkdir -p /tmp/failed-logs
           for x in "$RUNDIR"/results/*/test-shell.xml; do
             [ -f "$x" ] || continue
             i=$(basename "$(dirname "$x")")
-            awk -v shard="$i" '
+            # Line k of failed.list is /tmp/failed-logs/k.log. The offset carries
+            # that numbering across the shards.
+            off=$(wc -l < /tmp/failed.list)
+            awk -v shard="$i" -v off="$off" '
+              # First, so that a case log carrying the literal <testcase or
+              # <failure does not restart the scan while the body is being read.
+              body != "" {
+                if (/\]\]><\/failure>/) {
+                  sub(/\]\]><\/failure>.*$/, "")
+                  print > body
+                  close(body)
+                  body = ""
+                  next
+                }
+                print > body
+                next
+              }
               /<testcase/ {
                 cur = ""
                 # The leading space is required: CTP writes classname before name,
@@ -1536,7 +1560,22 @@ jobs:
                 }
                 next
               }
-              /<failure/ && cur != "" { printf "%s\t%s\n", shard, cur; cur = "" }
+              /<failure/ && cur != "" {
+                printf "%s\t%s\n", shard, cur
+                body = "/tmp/failed-logs/" (off + ++k) ".log"
+                rest = $0
+                sub(/^.*<!\[CDATA\[/, "", rest)
+                if (rest ~ /\]\]><\/failure>/) {
+                  sub(/\]\]><\/failure>.*$/, "", rest)
+                  print rest > body
+                  close(body)
+                  body = ""
+                } else if (rest != "") {
+                  print rest > body
+                }
+                cur = ""
+                next
+              }
               /<\/testcase>/ { cur = "" }
             ' "$x" >> /tmp/failed.list
           done
@@ -1792,13 +1831,19 @@ jobs:
             fi
             echo
             echo "---"
-            echo "Artifacts: \`$RUNDIR\`"
+            # Next to the published build, not under the run directory: a reused
+            # build outlives the run that made it. debug is what the suite mounted.
+            # A build published before this layout carries no log, so no link.
+            line="[Artifacts]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/)"
+            blog="builds/$BUILD_NS/$SHA/debug/build.log"
+            [ -f "$CI_ROOT/$blog" ] && line="$line · [build log]($ARTIFACT_URL_BASE/$blog)"
+            echo "$line"
+            echo
+            echo "Internal network only. The run directory is pruned 7 days after the run."
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "=== summary ==="
           cat "$GITHUB_STEP_SUMMARY"
-          # The summary file is append-only; leave a copy for the next step.
-          cp "$GITHUB_STEP_SUMMARY" /tmp/summary.md
 
           # Guard 3 of 3: a shard dying whole is invisible to guard 2.
           rc=0
@@ -1849,47 +1894,90 @@ jobs:
           [ "$rc" -eq 0 ] && echo "completed with no failures."
           exit $rc
 
-      - name: Post to the PR
-        # always(): a failure is exactly when the PR needs to hear about it.
-        if: always() && needs.gate.outputs.pr != ''
+      # Its own step, so it gets its own 1 MiB summary budget: when the logs are
+      # too big, the upload GitHub drops is this one and the verdict above stays.
+      - name: The log of each failed case
+        if: always()
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PR: ${{ needs.gate.outputs.pr }}
+          FAILED_N: ${{ steps.failures.outputs.n }}
         run: |
           set -eo pipefail
-          # A job summary lives on the run page only; it does not reach the PR thread.
-          if [[ ! "$PR" =~ ^[0-9]{1,7}$ ]]; then
-            echo "::error::pr must be an integer"; exit 1
-          fi
-          if [ ! -f /tmp/summary.md ]; then
-            printf '## gha-ci: shell suite\n\nCould not build a summary. Check the run.\n' > /tmp/summary.md
-          fi
+          [ "${FAILED_N:-0}" -gt 0 ] || exit 0
 
+          # Same 50 the table above lists. Sharing the budget out over them lets a
+          # run with one failure show that log whole, which is the common case.
+          shown=$FAILED_N
+          [ "$shown" -gt 50 ] && shown=50
+          budget=900000
+          # 512 for the <details> wrapper of each case, so that the cases which
+          # all reach their share still add up to less than the budget.
+          case_max=$((budget / shown - 512))
+          [ "$case_max" -gt 131072 ] && case_max=131072
+          head_b=$((case_max / 2))
+          tail_b=$((case_max - head_b))
+          echo "cases $FAILED_N / shown $shown / per case $case_max bytes"
+
+          esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
+
+          base="$ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}"
           {
-            cat /tmp/summary.md
+            echo "### The log of each failed case"
             echo
-            echo "<sub>gha-ci / run [\`${GITHUB_RUN_ID}\`](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) - artifacts \`${RUNDIR}\`</sub>"
-          } > /tmp/body.md
+            echo "What CTP wrote in the case's \`<failure>\`, trimmed to fit. Untrimmed, it is in the shard's \`test-shell.xml\`."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          # Comment bodies cap at 65536 characters, so long failure lists are trimmed.
-          head -c 60000 /tmp/body.md > /tmp/body.trim.md
-          jq -Rs '{body: .}' < /tmp/body.trim.md > /tmp/comment.json
+          used=0
+          i=0
+          left=0
+          while IFS=$'\t' read -r shard name; do
+            i=$((i + 1))
+            [ "$i" -le "$shown" ] || { left=$((left + 1)); continue; }
+            log="/tmp/failed-logs/$i.log"
+            {
+              echo "<details>"
+              echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/results/$shard/test-shell.xml\">full log</a></summary>"
+              echo
+              # <pre> opens its own line: a blank line inside the log would end the
+              # HTML block that <details> opened, and the rest would render as text.
+              echo "<pre>"
+            } > /tmp/block
+            if [ ! -f "$log" ]; then
+              echo "(this case left no log in the XML)" >> /tmp/block
+            else
+              # The 1 MiB is counted after escaping, so cut the escaped log, not
+              # the log: a share measured before escaping is not the share spent.
+              esc "$log" > /tmp/esc
+              sz=$(wc -c < /tmp/esc)
+              if [ "$sz" -le "$case_max" ]; then
+                cat /tmp/esc >> /tmp/block
+              else
+                # sed drops the line the byte cut split, so <pre> holds whole
+                # lines and no entity is left half written.
+                head -c "$head_b" /tmp/esc | sed '$d' >> /tmp/block
+                printf '\n... %d KB of the middle is not here ...\n\n' $(((sz - head_b - tail_b) / 1024)) >> /tmp/block
+                tail -c "$tail_b" /tmp/esc | sed '1d' >> /tmp/block
+              fi
+            fi
+            {
+              echo "</pre>"
+              echo
+              echo "</details>"
+              echo
+            } >> /tmp/block
+            size=$(wc -c < /tmp/block)
+            if [ $((used + size)) -gt "$budget" ]; then
+              left=$((left + 1))
+              continue
+            fi
+            cat /tmp/block >> "$GITHUB_STEP_SUMMARY"
+            used=$((used + size))
+          done < /tmp/failed.list
 
-          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
-            -d @/tmp/comment.json)
-
-          echo "HTTP $code"
-          if [ "$code" != "201" ]; then
-          # A 403 here means pull-requests: write did not reach GITHUB_TOKEN.
-            echo "::error::failed to post the PR comment"
-            jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
-            exit 1
+          if [ "$left" -gt 0 ]; then
+            echo "_$left more cases failed. Their logs are in each shard's \`test-shell.xml\`, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "posted: $(jq -r '.html_url' /tmp/resp.json)"
+          echo "wrote $((i - left)) of $i case logs, $used bytes"
 
       # 59MB per run, nothing worth keeping, and the cleanup CronJob does not see it.
       #
