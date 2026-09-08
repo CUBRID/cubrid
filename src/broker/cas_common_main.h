@@ -34,11 +34,10 @@
 int cas_get_graceful_down_timeout (void);
 void cas_sig_handler (int signo);
 void cas_final (void);
-void cas_free (bool from_sighandler);
+void cas_free (bool from_shutdown_signal);
 
-/* Set by cas_sig_handler() on SIGTERM/SIGINT to request a graceful shutdown
- * that is carried out from the main loop (CBRD-26322). */
-extern volatile sig_atomic_t cas_shutdown_requested;
+extern volatile sig_atomic_t cas_shutdown_signo; /* The SIGTERM/SIGINT that asked us to shut down, 0 if none. */
+
 #if !defined(WINDOWS)
 void cas_register_signal_handlers (void);
 #endif

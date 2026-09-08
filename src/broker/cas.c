@@ -631,7 +631,7 @@ conn_retry:
 	fn_ret = FN_KEEP_CONN;
 	as_info->con_status = CON_STATUS_OUT_TRAN;
 
-	while (fn_ret == FN_KEEP_CONN && !cas_shutdown_requested)
+	while (fn_ret == FN_KEEP_CONN && !cas_shutdown_signo)
 	  {
 #if !defined(WINDOWS)
 	    signal (SIGUSR1, query_cancel);
@@ -695,7 +695,7 @@ conn_retry:
 #endif /* WINDOWS */
 	CLOSE_SOCKET (proxy_sock_fd);
 
-	if (restart_is_needed () || cas_shutdown_requested)
+	if (restart_is_needed () || cas_shutdown_signo)
 	  {
 	    cas_final ();
 	    return 0;
@@ -949,7 +949,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
 	  if (cas_log_msg == NULL)
 	    {
-	      if (is_net_timed_out ())
+	      if (cas_shutdown_signo)
+		{
+		  cas_log_msg = "SHUTDOWN REQUESTED";
+		}
+	      else if (is_net_timed_out ())
 		{
 		  if (as_info->reset_flag == TRUE)
 		    {

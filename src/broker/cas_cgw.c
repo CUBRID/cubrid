@@ -528,7 +528,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
 	  if (cas_log_msg == NULL)
 	    {
-	      if (is_net_timed_out ())
+	      if (cas_shutdown_signo)
+		{
+		  cas_log_msg = "SHUTDOWN REQUESTED";
+		}
+	      else if (is_net_timed_out ())
 		{
 		  if (as_info->reset_flag == TRUE)
 		    {

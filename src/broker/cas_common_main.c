@@ -72,10 +72,7 @@ static int query_sequence_num;
 
 FN_RETURN cas_main_fn_ret = FN_KEEP_CONN;
 
-/* Set by the signal handler to request a graceful shutdown (CBRD-26322).
- * The handler must remain async-signal-safe, so the actual cleanup (cas_free,
- * fopen-based logging, malloc) runs later from the main loop, not here. */
-volatile sig_atomic_t cas_shutdown_requested = 0;
+volatile sig_atomic_t cas_shutdown_signo = 0;
 
 static cas_cleanup_callback_t cleanup_callback = NULL;
 static cas_database_shutdown_callback_t database_shutdown_callback = NULL;
@@ -118,7 +115,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 #endif /* WINDOWS */
     for (;;)
       {
-	if (cas_shutdown_requested)
+	if (cas_shutdown_signo)
 	  {
 	    cas_final ();	/* graceful shutdown requested by signal; does not return */
 	  }
@@ -132,7 +129,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	if (IS_INVALID_SOCKET (br_sock_fd))
 	  {
-	    if (cas_shutdown_requested)
+	    if (cas_shutdown_signo)
 	      {
 		cas_final ();	/* accept() was interrupted by a shutdown signal; does not return */
 	      }
@@ -336,7 +333,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	    fn_ret = FN_KEEP_CONN;
 	    cas_main_fn_ret = fn_ret;
-	    while (fn_ret == FN_KEEP_CONN && !cas_shutdown_requested)
+	    while (fn_ret == FN_KEEP_CONN && !cas_shutdown_signo)
 	      {
 #if !defined(WINDOWS)
 		signal (SIGUSR1, query_cancel);
@@ -539,11 +536,11 @@ cas_sig_handler (int signo)
 
   if (signo == SIGTERM || signo == SIGINT)
     {
-      /* Graceful shutdown request. Only record it here and return; the cleanup
-       * (cas_free) is async-signal-unsafe (it calls fopen/malloc) and must run
-       * from the main loop instead. Doing it in the handler can re-enter malloc
-       * and abort the process (CBRD-26322). */
-      cas_shutdown_requested = signo;
+      /* Graceful shutdown request:
+       * Record the signal and return immediately. Cleanup (cas_free) is async-signal-unsafe
+       * (calls fopen/malloc) and must run from the main loop to avoid process aborts or deadlocks.
+       */
+      cas_shutdown_signo = signo;
       return;
     }
 
@@ -557,9 +554,6 @@ cas_sig_handler (int signo)
 
   er_print_crash_callstack (signo);
 
-  /* Fatal signal (SIGSEGV/SIGABRT/SIGFPE/SIGILL/SIGBUS/SIGSYS): the process
-   * state may be corrupted, so do not attempt cas_free() cleanup here - it is
-   * async-signal-unsafe and likely to crash again. Just record status and exit. */
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
 
@@ -576,10 +570,6 @@ cas_register_signal_handlers (void)
 {
   struct sigaction act;
 
-  /* SIGTERM/SIGINT request a graceful shutdown handled later in the main loop
-   * (see cas_shutdown_requested). Install them without SA_RESTART so that a
-   * blocking accept() in an idle CAS returns EINTR and the shutdown is noticed
-   * promptly instead of being auto-restarted. */
   memset (&act, 0, sizeof (act));
   act.sa_handler = cas_sig_handler;
   sigemptyset (&act.sa_mask);
@@ -604,7 +594,7 @@ cas_final (void)
 {
   signal (SIGTERM, SIG_IGN);
   signal (SIGINT, SIG_IGN);
-  cas_free (false);
+  cas_free (cas_shutdown_signo != 0);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
   er_final (ER_ALL_FINAL);
@@ -612,23 +602,23 @@ cas_final (void)
 }
 
 void
-cas_free (bool from_sighandler)
+cas_free (bool from_shutdown_signal)
 {
 #ifdef MEM_DEBUG
   int fd;
 #endif
   int max_process_size;
 
-  if (from_sighandler)
+  if (from_shutdown_signal)
     {
-      cas_log_debug (ARG_FILE_LINE, "request cas_free() from the signal handler");
+      cas_log_debug (ARG_FILE_LINE, "request cas_free() for a shutdown signal");
     }
   else
     {
       cas_log_debug (ARG_FILE_LINE, "request cas_free() from the cas_final()");
     }
 
-  if (as_info->cur_statement_pooling && !from_sighandler)
+  if (as_info->cur_statement_pooling && !from_shutdown_signal)
     {
       hm_srv_handle_free_all (true);
     }
@@ -746,7 +736,7 @@ cas_free (bool from_sighandler)
 
   if (database_shutdown_callback != NULL)
     {
-      if (from_sighandler)
+      if (from_shutdown_signal)
 	{
 	  database_shutdown_callback (false);
 	}
@@ -949,6 +939,12 @@ net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header)
 
   do
     {
+      if (cas_shutdown_signo)
+	{
+	  ret_value = -1;
+	  break;
+	}
+
       if (as_info->con_status == CON_STATUS_OUT_TRAN)
 	{
 	  remained_timeout -= DEFAULT_CHECK_INTERVAL;
@@ -1294,6 +1290,12 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
 
   do
     {
+      if (cas_shutdown_signo)
+	{
+	  ret_value = -1;
+	  break;
+	}
+
       if (as_info->cas_log_reset)
 	{
 	  cas_log_reset (broker_name);
