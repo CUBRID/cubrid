@@ -87,6 +87,8 @@
 #if defined (SERVER_MODE)
 #include "network_interface_sr.h"
 #include "critical_section.h"
+#include "connection_sr.h"	/* css_set_user_access_status */
+#include "intl_support.h"
 #endif
 
 #include "xasl.h"
@@ -4890,6 +4892,20 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
     {
       xsession_get_row_count (thread_p, row_count);
     }
+
+#if defined (SERVER_MODE)
+  /* ssession_find_or_create_session records the login for SHOW ACCESS STATUS /
+   * db_user.last_access_* and names the transaction's client; the folded
+   * client half must do the same or every in-process login stays NULL. */
+  if (result != ER_FAILED && db_user != NULL)
+    {
+      char db_user_upper[DB_MAX_USER_LENGTH] = { '\0' };
+
+      intl_identifier_upper (db_user, db_user_upper);
+      css_set_user_access_status (db_user_upper, host != NULL ? host : "", program_name != NULL ? program_name : "");
+      logtb_set_current_user_name (thread_p, db_user_upper);
+    }
+#endif /* SERVER_MODE */
 
   exit_server (*thread_p);
 
