@@ -231,6 +231,7 @@ abort_handler (int signo, siginfo_t * siginfo, void *dummyp)
 {
   int *local_clients_pid = NULL;
   int i, num_clients, client_pid;
+  const pid_t server_pid = getpid ();
 
   if (os_set_signal_handler (signo, SIG_DFL) == SIG_ERR)
     {
@@ -255,6 +256,12 @@ abort_handler (int signo, siginfo_t * siginfo, void *dummyp)
 
       assert (client_pid > 0);
 
+      /* Adopted driver clients run in this process. Signalling ourselves
+       * with SIG_DFL would cut off the crash diagnostics below. */
+      if (client_pid == server_pid)
+	{
+	  continue;
+	}
       kill (client_pid, SIGABRT);
     }
 
