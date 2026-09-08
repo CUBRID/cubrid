@@ -3785,7 +3785,13 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     }
 #endif /* !CSQL_THIN */
 
+#if defined(CSQL_THIN)
+  /* SQL diagnostics are already rendered on the server. Replayed error
+   * records populate csql.err without printing the same message again. */
+  er_set_print_property (ER_DO_NOT_PRINT);
+#else
   er_set_print_property (ER_PRINT_TO_CONSOLE);
+#endif
 
 #if !defined(CSQL_THIN)
   /* wf122/B5: under the thin csql these are server-side session shaping —
