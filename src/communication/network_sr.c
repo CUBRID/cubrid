@@ -976,6 +976,7 @@ net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_i
 		    case THREAD_DWB_QUEUE_SUSPENDED:
 		    case THREAD_PGBUF_SUSPENDED:
 		    case THREAD_SLEEP_FUNC_SUSPENDED:
+		    case THREAD_CONCURRENCY_SLOT_SUSPENDED:
 		      wakeup_now = true;
 		      break;
 
@@ -993,6 +994,7 @@ net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_i
 		    case THREAD_LOGWR_RESUMED:
 		    case THREAD_ALLOC_BCB_RESUMED:
 		    case THREAD_DWB_QUEUE_RESUMED:
+		    case THREAD_CONCURRENCY_SLOT_RESUMED:
 		      /* thread is in resumed status, we don't need to wake up */
 		      wakeup_now = false;
 		      break;
