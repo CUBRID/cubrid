@@ -1319,6 +1319,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     }
 #endif /* CSQL_THIN */
 
+  er_clear ();
+
 #if defined (SERVER_MODE)
   if (cmd_no == S_CMD_HISTO || cmd_no == S_CMD_CLR_HISTO
       || cmd_no == S_CMD_DUMP_HISTO || cmd_no == S_CMD_DUMP_CLR_HISTO)
@@ -1341,8 +1343,6 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	? DO_CMD_SUCCESS : DO_CMD_FAILURE;
     }
 #endif
-
-  er_clear ();
 
   switch ((SESSION_CMD) cmd_no)
     {
