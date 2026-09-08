@@ -4793,6 +4793,10 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	      return ER_FAILED;
 	    }
 
+	  /* the stored tuple is later read in place (qexec_groupby, PEEK); a tuple pointer alone is not readable, so bind
+	   * the layout of the list it was saved for */
+	  qfile_slot_fill (&new_value->first_tuple, new_value->first_tuple.tpl, &groupby_list->type_list);
+
 	  /* no need to output it, we're storing it in the hash table */
 	  *output_tuple = false;
 	}

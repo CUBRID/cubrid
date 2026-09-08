@@ -2153,6 +2153,7 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
   /* initialize tuple */
   value->first_tuple.size = 0;
   value->first_tuple.tpl = NULL;
+  value->first_tuple.tl = NULL;
 
   return value;
 }
