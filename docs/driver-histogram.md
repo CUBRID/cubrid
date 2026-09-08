@@ -1,7 +1,9 @@
 # Driver request histogram
 
 Start thin csql with `communication_histogram=yes`. Histogram commands require
-the authenticated user to belong to the DBA group. Without a target they operate
+the authenticated user to belong to the DBA group for collection and access to
+collected data. An inactive local collector still reports `OFF` to a non-DBA
+after a refused `on`, as before. Without a target commands operate
 on the current connection:
 
 ```text
@@ -58,3 +60,9 @@ not used as substitutes for connection execution counters.
 `unit_tests/server_compile/probe_histogram.py BROKER_PORT DBNAME` checks live
 permissions, two-session isolation, reset semantics and wire byte equality against
 an already running isolated database and broker. The caller owns their lifecycle.
+
+`unit_tests/server_compile/measure_histogram.py BROKER_PORT DBNAME` measures seven
+alternating on/off pairs of ordinary version requests on the same release binary.
+It reports client elapsed time per request with median and range, separately from
+the server's histogram time. This measures the optional collection cost for that
+small-request workload, not an engine throughput regression against another build.

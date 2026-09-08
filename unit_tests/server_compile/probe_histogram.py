@@ -157,10 +157,15 @@ def main():
             print("HISTOGRAM: CCI/JDBC request counts/bytes/time and targeted reset/on/off PASS")
 
             unprivileged = connect(user="hist_probe_user")
+            assert "CS Name" in admin.command(";info csstat")
+            _, denied_chunks = wire.csql_session_cmd(unprivileged, ";info csstat", FLAGS)
+            denied = "".join(wire.text_of(denied_chunks, tag) for tag in (wire.CHUNK_OUT, wire.CHUNK_ERR))
+            assert "CS Name" not in denied and "DBA" in denied, denied
             for command in (";.hist on", ";.hist on session %d" % own.session,
                             ";.dump_hist session %d" % own.session,
                             ";.clear_hist session %d" % own.session):
                 assert "allowed only for DBA" in unprivileged.command(command), command
+            assert "currently OFF" in unprivileged.command(";.x_hist")
             for session in ("-1", "4294967296", "abc", "1 trailing"):
                 admin.command(";.hist on session " + session, success=False)
             admin.command(";.hist on session 4294967295", success=False)

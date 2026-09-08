@@ -86,6 +86,7 @@
 #endif /* !CS_MODE */
 #if defined (SERVER_MODE)
 #include "network_interface_sr.h"
+#include "critical_section.h"
 #endif
 
 #include "xasl.h"
@@ -8891,6 +8892,20 @@ thread_dump_cs_stat (FILE * outfp)
     }
 
   req_error = net_client_request_recv_stream (NET_SERVER_CSS_DUMP_CS_STAT, NULL, 0, NULL, 0, NULL, 0, outfp);
+#elif defined (SERVER_MODE)
+  /* The csql body now runs in the server. Preserve the old RPC's DBA gate
+   * and invoke the same synchronization-statistics dumper directly. */
+  if (outfp == NULL)
+    {
+      outfp = stdout;
+    }
+  if (!au_is_dba_group_member (Au_user))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "");
+      fprintf (outfp, "%s\n", er_msg ());
+      return;
+    }
+  sync_dump_statistics (outfp, SYNC_TYPE_ALL);
 #else /* CS_MODE */
   er_log_debug (ARG_FILE_LINE, "thread_dump_cs_stat: THIS IS ONLY a C/S function");
   return;

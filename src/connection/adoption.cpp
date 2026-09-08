@@ -449,11 +449,6 @@ namespace cubconn
       /* Check the authenticated caller even when controlling another session.
        * The existing additive csql session-command wire message is sufficient;
        * no JDBC/CCI protocol change is needed. */
-      if (!au_is_dba_group_member (Au_user))
-	{
-	  fprintf (out, "Histogram is allowed only for DBA\n");
-	  return NO_ERROR;
-	}
       histogram_active = false;
       int toggle = -1;
       const char *rest = argument;
@@ -495,6 +490,28 @@ namespace cubconn
 	{
 	  fprintf (out, "Usage: .hist [on|off] [session ID]; .dump_hist/.clear_hist/.x_hist [session ID]\n");
 	  return ER_FAILED;
+	}
+
+      if (!au_is_dba_group_member (Au_user))
+	{
+	  /* Preserve the original local OFF response after a refused ON.
+	   * No statistics are exposed here; every explicit target and every
+	   * active collector remains DBA-only. */
+	  if (target == 0 && toggle != 1 && current_histogram != NULL
+	      && !current_histogram->enabled.load (std::memory_order_acquire))
+	    {
+	      if (command != histogram_command::control)
+		{
+		  fprintf (out, ".hist IS currently OFF\n");
+		}
+	      else if (toggle == -1)
+		{
+		  fprintf (out, ".hist IS OFF\n");
+		}
+	      return NO_ERROR;
+	    }
+	  fprintf (out, "Histogram is allowed only for DBA\n");
+	  return NO_ERROR;
 	}
 
       std::shared_ptr<session_histogram> selected;
