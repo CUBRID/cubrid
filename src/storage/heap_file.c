@@ -12098,6 +12098,132 @@ exit_on_error:
 }
 
 /*
+ * heap_attrinfo_get_effective_key () - obtain the stored-value equivalent of a write's partition key
+ *   return: NO_ERROR or an error code
+ *   attr_info(in): source assignments; never initialized or otherwise modified here
+ *   attrid(in): a schema-validated partition-key attribute
+ *   old_recdes(in): the write path's old row, or NULL for INSERT
+ *   key(out): owned value, initially NULL; caller clears it
+ *
+ * Only the key is prepared. Omitted values use the same representation default
+ * reader as a normal INSERT. Unchanged UPDATE keys use an independent one-key
+ * reader of the supplied old representation. Pending increments affect only
+ * the owned key; the normal row transformer still applies the real mutation.
+ * The scalar codec operates on an owned copy because sizing/writing may
+ * normalize CHAR padding or cache string compression.
+ * No row image, LOB lifecycle operation, or OOS publication is performed.
+ */
+int
+heap_attrinfo_get_effective_key (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid,
+				 RECDES * old_recdes, DB_VALUE * key)
+{
+  HEAP_ATTRVALUE *value;
+  HEAP_ATTRVALUE omitted;
+  DB_VALUE prepared;
+  const PR_TYPE *pr_type;
+  OR_BUF buf;
+  char scratch[64 + MAX_ALIGNMENT];
+  char *data = PTR_ALIGN (scratch, MAX_ALIGNMENT);
+  char *allocated = NULL;
+  int length;
+  int error = NO_ERROR;
+
+  assert (DB_IS_NULL (key));
+  db_make_null (&prepared);
+  value = heap_attrvalue_locate (attrid, attr_info);
+  if (value == NULL)
+    {
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  if (value->state == HEAP_UNINIT_ATTRVALUE && old_recdes != NULL && old_recdes->data != NULL)
+    {
+      HEAP_CACHE_ATTRINFO old_key;
+
+      error = heap_attrinfo_start (thread_p, &attr_info->class_oid, 1, &attrid, &old_key);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      error = heap_attrinfo_read_dbvalues_without_oid (thread_p, old_recdes, &old_key);
+      if (error == NO_ERROR)
+	{
+	  error = pr_clone_value (&old_key.values[0].dbvalue, &prepared);
+	}
+      heap_attrinfo_end (thread_p, &old_key);
+    }
+  else if (value->state == HEAP_UNINIT_ATTRVALUE)
+    {
+      omitted = *value;
+      db_make_null (&omitted.dbvalue);
+      error = heap_attrvalue_read (NULL, &omitted, attr_info);
+      if (error == NO_ERROR)
+	{
+	  error = pr_clone_value (&omitted.dbvalue, &prepared);
+	}
+      pr_clear_value (&omitted.dbvalue);
+    }
+  else
+    {
+      error = pr_clone_value (&value->dbvalue, &prepared);
+    }
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  if (value->do_increment != 0)
+    {
+      error = qdata_increment_dbval (&prepared, &prepared, value->do_increment);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+  if (DB_IS_NULL (&prepared))
+    {
+      error = pr_clone_value (&prepared, key);
+      goto cleanup;
+    }
+
+  pr_type = value->last_attrepr->domain->type;
+  length = pr_type->get_disk_size_of_value (&prepared);
+  if (length <= 0)
+    {
+      error = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+      goto cleanup;
+    }
+  if (length > 64)
+    {
+      allocated = (char *) db_private_alloc (thread_p, length);
+      if (allocated == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto cleanup;
+	}
+      data = allocated;
+    }
+  or_init (&buf, data, length);
+  error = pr_type->data_writeval (&buf, &prepared);
+  if (error == NO_ERROR)
+    {
+      length = CAST_BUFLEN (buf.ptr - data);
+      or_init (&buf, data, length);
+      error = pr_type->data_readval (&buf, key, value->last_attrepr->domain, length, true, NULL, 0);
+    }
+
+cleanup:
+  pr_clear_value (&prepared);
+  if (allocated != NULL)
+    {
+      db_private_free_and_init (thread_p, allocated);
+    }
+  if (error != NO_ERROR)
+    {
+      pr_clear_value (key);
+    }
+  return error;
+}
+
+/*
  * heap_attrinfo_set_uninitialized () - Read unitialized attributes
  *   return: NO_ERROR
  *   inst_oid(in): The instance oid
@@ -12792,6 +12918,22 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 {
   return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_INCLUDE_LOB,
 						   NULL, NULL, false);
+}
+
+/*
+ * heap_attrinfo_transform_to_disk_with_oos_owner () - normal first-pass transformation with a destination OOS heap
+ *
+ * Source representation and assignment identity stay in attr_info. Only OOS ownership is overridden;
+ * value preparation, LOB handling and pending increments use the normal first-pass contract.
+ */
+SCAN_CODE
+heap_attrinfo_transform_to_disk_with_oos_owner (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+						RECDES * old_recdes, record_descriptor * new_recdes,
+						int lob_create_flag, const OID * oos_class_oid)
+{
+  assert (oos_class_oid != NULL);
+  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, lob_create_flag,
+						   oos_class_oid, NULL, false);
 }
 
 /*

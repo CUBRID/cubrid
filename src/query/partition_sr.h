@@ -119,6 +119,16 @@ extern int partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oi
 				   PRUNING_CONTEXT * pcontext, int pruning_type, OID * pruned_class_oid,
 				   HFID * pruned_hfid, OID * superclass_oid);
 
+extern int partition_prune_insert_by_attrinfo (THREAD_ENTRY * thread_p, const OID * class_oid,
+					       HEAP_CACHE_ATTRINFO * attr_info, PRUNING_CONTEXT * pcontext,
+					       int pruning_type, OID * pruned_class_oid, HFID * pruned_hfid,
+					       OID * superclass_oid);
+
+extern int partition_prune_update_by_attrinfo (THREAD_ENTRY * thread_p, const OID * class_oid,
+					       HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
+					       PRUNING_CONTEXT * pcontext, int pruning_type, OID * pruned_class_oid,
+					       HFID * pruned_hfid, OID * superclass_oid);
+
 extern int partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid, HFID * class_hfid,
 					BTID * btid);
 
