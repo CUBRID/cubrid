@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,31 +16,18 @@
  *
  */
 
-//
-// xasl_analytic - implements XASL structures for analytics
-//
+/*
+ * test_inflight_ring.hpp - interface for in-flight ring functional testing
+ */
 
-#include "xasl_analytic.hpp"
+#ifndef _TEST_INFLIGHT_RING_HPP_
+#define _TEST_INFLIGHT_RING_HPP_
 
-#include "dbtype.h"
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
-
-namespace cubxasl
+namespace test_lockfree
 {
-  void
-  analytic_list_node::init ()
-  {
-    /* is_first_exec_time */
-    is_first_exec_time = true;
 
-    /* part_value */
-    db_make_null (&part_value);
+  int test_inflight_ring_functional (void);
 
-    /* curr_cnt */
-    curr_cnt = 0;
+} // namespace test_lockfree
 
-    /* execution-only field, not part of the stream, so initialize it here */
-    sum_acc.is_active = false;
-  }
-}
+#endif // _TEST_INFLIGHT_RING_HPP_

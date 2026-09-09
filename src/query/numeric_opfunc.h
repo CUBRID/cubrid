@@ -33,6 +33,7 @@
 #include "dbtype_def.h"
 #include "error_manager.h"
 #include "byte_order.h"
+#include "query_sum_accumulator.h"
 
 /*
  * Build requirements (enforced via #error)
@@ -183,4 +184,50 @@ extern void float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_b
 extern bool numeric_db_value_is_zero (const DB_VALUE * arg);
 
 extern int numeric_db_value_is_positive (const DB_VALUE * arg);
+
+/*
+ * NUMERIC_AGG_EXPR_VAL: carrier for a {+,-,*} expression tree evaluated entirely
+ * in the word domain.
+ *
+ * The legacy path materializes a DB_VALUE at each operation, packing the
+ * coefficient into its 17-byte form and re-deriving precision each time.
+ * An agg-expr value keeps the running coefficient in 128 bits and packs once.
+ *
+ * Bit-identity with the operation-by-operation path depends on the two places
+ * where float_numeric_db_value_add/sub/mul can round:
+ *
+ *   1. A result exceeding DB_MAX_NUMERIC_PRECISION (40) digits, where
+ *      float_numeric_check_overflow_and_adjust_scale () trims the scale and
+ *      float_numeric_round_and_pack () rounds. Below 41 digits, round_and_pack
+ *      only performs a plain pack.
+ *   2. A product whose scale exceeds DB_MAX_NUMERIC_SCALE (252), which is
+ *      rescaled with rounding.
+ *
+ * A uint128 coefficient has at most 39 digits, so case 1 cannot occur during
+ * agg-expr evaluation. Each operation therefore only needs to check for uint128
+ * overflow and scale above DB_MAX_NUMERIC_SCALE; digit counting is deferred
+ * until the final pack. Division, non-NUMERIC operands, or either rejection
+ * falls back to the legacy path.
+ */
+typedef struct numeric_agg_expr_val NUMERIC_AGG_EXPR_VAL;
+struct numeric_agg_expr_val
+{
+  uint128_t coefficient;	/* unsigned magnitude; the sign lives in is_negative */
+  int scale;			/* decimal scale, <= DB_MAX_NUMERIC_SCALE */
+  bool is_negative;		/* always false when coefficient is zero */
+};
+
+extern bool numeric_agg_expr_from_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out);
+extern bool numeric_agg_expr_from_int_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out);
+extern bool numeric_agg_expr_mul (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_VAL * right,
+				  NUMERIC_AGG_EXPR_VAL * out);
+extern bool numeric_agg_expr_add (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_VAL * right,
+				  bool flip_right_sign, NUMERIC_AGG_EXPR_VAL * out);
+extern void numeric_agg_expr_to_dbv (const NUMERIC_AGG_EXPR_VAL * cv, DB_VALUE * answer);
+
+extern int numeric_sum_acc_add_dbv (SUM_ACC * acc, const DB_VALUE * dbv);
+extern void numeric_sum_acc_load_dbv (SUM_ACC * acc, const DB_VALUE * dbv);
+extern int numeric_sum_acc_merge (SUM_ACC * acc, const SUM_ACC * other);
+extern int numeric_sum_acc_add_expr_val (SUM_ACC * acc, const NUMERIC_AGG_EXPR_VAL * val);
+extern int numeric_sum_acc_snapshot (const SUM_ACC * acc, DB_VALUE * result);
 #endif /* _NUMERIC_OPFUNC_H_ */
