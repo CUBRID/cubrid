@@ -964,7 +964,6 @@ pt_find_keyword (const char *text)
 {
   static bool keyword_sorted = false;
   static KEYWORDS_TABLE_SRCH_INFO kinfo;
-  int i, len, cmp;
   KEYWORD_RECORD dummy;
 
   if (keyword_sorted == false)
@@ -1091,7 +1090,6 @@ pt_find_function_name (const char *text)
 {
   static bool function_keyword_sorted = false;
   static KEYWORDS_TABLE_SRCH_INFO finfo;
-  int i, len, cmp;
   FUNCTION_MAP dummy;
 
   if (function_keyword_sorted == false)

@@ -553,10 +553,7 @@ dl_initiate_dynamic_loader (DYNAMIC_LOADER * this_, const char *original)
   this_->candidates.entries = NULL;
   this_->candidates.num = 0;
   this_->num_need_load = 0;
-  for (i = 0; i < FNAME_TBL_SIZE; i++)
-    {
-      this_->loaded[i] = NULL;
-    }
+  memset (this_->loaded, 0x00, FNAME_TBL_SIZE * sizeof (TBL_LINK *));
 
   if (prm_get_string_value (PRM_ID_DL_FORK))
     {
@@ -583,7 +580,7 @@ dl_initiate_dynamic_loader (DYNAMIC_LOADER * this_, const char *original)
   this_->daemon.daemon_fd = DAEMON_NOT_SPAWNED;
 
 #if defined (SOLARIS) || defined(HPUX) || defined(LINUX) || defined(AIX)
-  this_->handler.handles = (void **) malloc (HANDLES_PER_EXTENT * sizeof (void *));
+  this_->handler.handles = (void **) calloc (HANDLES_PER_EXTENT, sizeof (void *));
   if (this_->handler.handles == NULL)
     {
       DL_SET_ERROR_SYSTEM_MSG ();
@@ -591,10 +588,6 @@ dl_initiate_dynamic_loader (DYNAMIC_LOADER * this_, const char *original)
     }
   this_->handler.top = 0;
   this_->handler.num = HANDLES_PER_EXTENT;
-  for (i = 0; i < this_->handler.num; i++)
-    {
-      this_->handler.handles[i] = 0;
-    }
 #endif /* SOLARIS || HPUX || LINUX || AIX */
 
   this_->loader.cmd = NULL;

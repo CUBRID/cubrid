@@ -125,6 +125,20 @@ static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_
 void sigfpe_handler (int sig);
 #endif
 
+/*  db_Keep_session is set to true only when the mode is CAS; 
+ * otherwise, there is no code that resets it to false except for the initialization */
+static bool db_Keep_session = false;
+CUB_THREAD_LOCAL SESSION_ID db_Session_id = DB_EMPTY_SESSION;
+static CUB_THREAD_LOCAL int db_Row_count = DB_ROW_COUNT_NOT_SET;
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+static BOOT_CLIENT_CREDENTIAL gv_client_credential;
+
+// *INDENT-OFF* 
+static  std::atomic <bool> g_ready_to_sub = false; // flag indicating successful connection in db_restart()
+// *INDENT-ON*
+#endif
+
 /*
  * install_static_methods() - Installs the static method definitions for the
  *        system defined classes. This may change depending upon the product
@@ -961,11 +975,72 @@ db_restart (const char *program, int print_version, const char *volume)
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+	  gv_client_credential = client_credential;
+	  (void) g_ready_to_sub.store (true, std::memory_order_release);
+#endif
 	}
     }
 
   return (error);
 }
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+/*
+ * db_restart_sub() - restart a sub-client
+ * return : error code
+ * sub_index(in) : the index of the sub-client
+ */
+int
+db_restart_sub (int sub_index)
+{
+  int error = NO_ERROR;
+  BOOT_CLIENT_CREDENTIAL client_credential;
+  char program_name[512];
+
+  if (g_ready_to_sub.load (std::memory_order_acquire) == false)
+    {
+      // TODO: Assign independent error codes.
+      return ER_FAILED;
+    }
+
+  error =
+    snprintf (program_name, sizeof (program_name), "%s(%d)", gv_client_credential.get_program_name (), sub_index + 1);
+  if (error < 0 || error >= (int) sizeof (program_name))
+    {
+      return ER_FAILED;
+    }
+
+  client_credential = gv_client_credential;
+  client_credential.program_name = program_name;
+
+  /* 
+   * Before reaching this point, db_restart() was already executed.
+   * Here, the connection is made using an already logged-in user account.
+   * Since this is an authorized user who has already gone through the login process, password verification is not strictly necessary.
+   */
+  AU_DISABLE_PASSWORDS ();
+  error = au_login (client_credential.get_db_user (), "", false);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
+
+  error = boot_restart_client_sub (&client_credential);
+  if (error != NO_ERROR)
+    {
+      db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+    }
+  else
+    {
+      db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
+    }
+
+  return (error);
+}
+#endif
 
 /*
  * db_restart_ex() - extended db_restart()
@@ -1027,6 +1102,9 @@ db_shutdown (void)
   db_Disable_modifications = 0;
 
   db_free_execution_plan ();
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  (void) g_ready_to_sub.store (false, std::memory_order_release);
+#endif
 
   return (error);
 }
@@ -1036,6 +1114,25 @@ db_shutdown_without_request_to_server (void)
 {
   boot_client_all_finalize (OPTIONAL_FINALIZATION);
 }
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+int
+db_shutdown_sub ()
+{
+  (void) db_end_session ();
+  db_Disable_modifications = 0;
+
+  // db_free_execution_plan ();
+
+  boot_finalize_client_sub ();
+  db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+
+  extern void au_ctx_destructor (void);
+  au_ctx_destructor ();
+  return NO_ERROR;
+}
+#endif
+
 
 int
 db_ping_server (int client_val, int *server_val)
@@ -1049,18 +1146,19 @@ db_ping_server (int client_val, int *server_val)
   return error;
 }
 
+#if !defined(SERVER_MODE)
 /*
  * db_disable_modification - Disable database modification operation
  *   return: error code
  *
  * NOTE: This function will change 'db_Disable_modifications'.
  */
-int
+void
 db_disable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
+  assert (db_Disable_modifications >= 0);
   db_Disable_modifications++;
-  return NO_ERROR;
 }
 
 /*
@@ -1069,13 +1167,14 @@ db_disable_modification (void)
  *
  * NOTE: This function will change 'db_Disable_modifications'.
  */
-int
+void
 db_enable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
   db_Disable_modifications--;
-  return NO_ERROR;
+  assert (db_Disable_modifications >= 0);
 }
+#endif
 
 /*
  * db_end_session - end current session
@@ -1083,7 +1182,7 @@ db_enable_modification (void)
  *
  * NOTE: This function ends the session identified by 'db_Session_id'
  */
-static int is_doing_end_session = -1;
+static CUB_THREAD_LOCAL int is_doing_end_session = -1;
 int
 db_end_session (void)
 {
