@@ -1048,20 +1048,25 @@ TEST_CASE ("Real slow draining reaches the whole exchange deadline despite write
 	}
       if (endpoint::clock::now () >= next_read)
 	{
-	  char bytes[4096];
-	  auto n = recv (fd, bytes, sizeof (bytes), MSG_DONTWAIT);
-	  REQUIRE (n == sizeof (bytes));
-	  capture.append (bytes, n);
-	  int before = 0, after = 0;
-	  REQUIRE (ioctl (fd, FIONREAD, &before) == 0);
-	  f.server.poll ();
-	  REQUIRE (ioctl (fd, FIONREAD, &after) == 0);
-	  if (after > before)
+	  // Free a kernel send allocation, whose boundary need not match a 4 KiB
+	  // read. Stop at proven write progress so the capture still drains slowly.
+	  bool progressed = false;
+	  for (int reads = 0; reads < 64 && !progressed; ++reads)
 	    {
-	      REQUIRE (endpoint::clock::now () - last_progress < std::chrono::milliseconds (250));
-	      last_progress = endpoint::clock::now ();
-	      ++progress_events;
+	      char bytes[256];
+	      auto n = recv (fd, bytes, sizeof (bytes), MSG_DONTWAIT);
+	      REQUIRE (n > 0);
+	      capture.append (bytes, n);
+	      int before = 0, after = 0;
+	      REQUIRE (ioctl (fd, FIONREAD, &before) == 0);
+	      f.server.poll ();
+	      REQUIRE (ioctl (fd, FIONREAD, &after) == 0);
+	      progressed = after > before;
 	    }
+	  REQUIRE (progressed);
+	  REQUIRE (endpoint::clock::now () - last_progress < std::chrono::milliseconds (250));
+	  last_progress = endpoint::clock::now ();
+	  ++progress_events;
 	  next_read += std::chrono::milliseconds (140);
 	}
       std::this_thread::sleep_for (std::chrono::milliseconds (1));

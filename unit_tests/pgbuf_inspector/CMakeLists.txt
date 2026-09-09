@@ -69,4 +69,13 @@ pgbuf_inspector_add_executable (pgbuf_inspector_corpus_generator pgbuf_inspector
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_sources(test_pgbuf_inspector PRIVATE test_pgbuf_inspector_socket.cpp test_pgbuf_inspector_scan.cpp ${STORAGE_DIR}/pgbuf_inspector_socket.cpp ${STORAGE_DIR}/pgbuf_inspector_scan.cpp)
+  add_executable(pgbuf_inspector_fixture pgbuf_inspector_fixture.cpp)
+  target_compile_definitions(pgbuf_inspector_fixture PRIVATE ${COMMON_DEFS} SERVER_MODE)
+  target_include_directories(pgbuf_inspector_fixture PRIVATE ${TEST_INCLUDES})
+  target_link_libraries(pgbuf_inspector_fixture PRIVATE ${EP_LIBS} cubrid)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME test_pgbuf_inspector_native
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/controlled_observation.py
+      --fixture $<TARGET_FILE:pgbuf_inspector_fixture>)
+  set_tests_properties(test_pgbuf_inspector_native PROPERTIES TIMEOUT 120)
 endif()
