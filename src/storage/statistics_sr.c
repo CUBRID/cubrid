@@ -127,8 +127,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
  *   collection, corrected by the next UPDATE STATISTICS.)
  */
 int
-xstats_enter_update_gate (THREAD_ENTRY * thread_p, OID * class_id_p, bool * out_stats_fresh,
-			  int *out_stored_fullscan)
+xstats_enter_update_gate (THREAD_ENTRY * thread_p, OID * class_id_p, bool * out_stats_fresh, int *out_stored_fullscan)
 {
   OID gate_oid;
   char *class_name = NULL;

@@ -4506,8 +4506,7 @@ catcls_get_class_stats (THREAD_ENTRY * thread_p, const char *class_name, int *ou
     }
 
   /* no snapshot: the latest committed version, straight from the heap */
-  if (heap_scancache_start (thread_p, &scan, &cls_info_p->ci_hfid, catalog_class_oid_p, true, NULL, false) !=
-      NO_ERROR)
+  if (heap_scancache_start (thread_p, &scan, &cls_info_p->ci_hfid, catalog_class_oid_p, true, NULL, false) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
       goto end;
