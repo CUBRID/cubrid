@@ -291,18 +291,29 @@ namespace parallel_scan
 		  }
 		else if (specp->type == TARGET_CLASS)
 		  {
-		    /* A dptr runs a whole subquery between two rows of this scan, so the page must not stay
-		     * fixed across it (serial: query_executor.c fixed_scan_xasl). Workers now run non-linked
-		     * dptrs per row (CBRD-27205), and scan_ptr-level dptrs run between inner rows too, so
-		     * check every level of the chain, not only the top node. */
+		    /* A dptr runs a whole subquery between two rows of this scan, so the innermost inner
+		     * heap page must not stay latched across it (serial disables fixed here). Workers now
+		     * run non-linked dptrs per row (CBRD-27205), and scan_ptr-level dptrs run between inner
+		     * rows too, so check every level of the chain, not only the top node. When a dptr is
+		     * present, use cached (copy-to-local-cache) scan (CBRD-27041) on the innermost inner
+		     * node instead: it avoids the per-row re-fix like a fixed scan but never holds the
+		     * latch across a row. */
+		    bool inner_cached_scan = false;
 		    bool chain_has_dptr = false;
 		    for (xasl_node *cn = m_xasl; cn != nullptr && !chain_has_dptr; cn = cn->scan_ptr)
 		      {
 			chain_has_dptr = (cn->dptr_list != nullptr);
 		      }
-		    if (xptr->scan_ptr == NULL && !chain_has_dptr)
+		    if (xptr->scan_ptr == NULL)
 		      {
-			fixed_scan = true;
+			if (!chain_has_dptr)
+			  {
+			    fixed_scan = true;
+			  }
+			else if (!specp->s_id.grouped)
+			  {
+			    inner_cached_scan = true;
+			  }
 		      }
 
 		    if (thread_ref.on_trace && HFID_EQ (&xptr->curr_spec->s.cls_node.hfid, &scan_info.hfid) == false)
@@ -328,10 +339,9 @@ namespace parallel_scan
 		      {
 		      case ACCESS_METHOD_SEQUENTIAL:
 		      {
-			/* Cached scan is restricted to the driving (level-0) scan, opened above with
-			 * m_is_cached_scan. Intermediate scans of the chain always open with cached
-			 * scan off (defaulted last argument), matching the serial-path gate in
-			 * qexec_execute_mainblock_internal (). */
+			/* Cached scan is used on the innermost inner scan only when a dptr on the chain
+			 * would otherwise force the page unlatched per row; other intermediate scans keep
+			 * it off. The driving (level-0) scan is opened above with m_is_cached_scan. */
 			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false,
 							S_SELECT, fixed_scan, specp->s_id.grouped,
 							specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
@@ -340,7 +350,7 @@ namespace parallel_scan
 							specp->s.cls_node.attrids_pred, specp->s.cls_node.cache_pred,
 							specp->s.cls_node.num_attrs_rest, specp->s.cls_node.attrids_rest,
 							specp->s.cls_node.cache_rest, S_HEAP_SCAN, specp->s.cls_node.cache_reserved,
-							specp->s.cls_node.cls_regu_list_reserved);
+							specp->s.cls_node.cls_regu_list_reserved, inner_cached_scan);
 			if (err_code != NO_ERROR)
 			  {
 			    return err_code;
