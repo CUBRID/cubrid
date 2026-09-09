@@ -1451,7 +1451,7 @@ static int btree_ovf_scan_locate_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * b
 static int btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR left_page,
 				   PAGE_PTR * right_page, int num_move, const VPID * dir_head_vpid);
 static int btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid,
-				    int fill_factor, int *pages_freed);
+				    int fill_factor, int *pages_freed, bool * work_done);
 static int btree_compact_fix_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 				   PAGE_PTR * leaf_page, INT16 * slot);
 
@@ -14462,10 +14462,12 @@ btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR l
  * first_ovf_vpid (in)	: VPID of the chain's first data page.
  * fill_factor (in)	: Target fill ratio in percent of the data page capacity.
  * pages_freed (out)	: Number of data pages merged away (deallocated).
+ * work_done (out)	: Set to true if the chain was modified at all. A chain can be redistributed without any page
+ *			  being freed, and the caller must still yield the leaf latch in that case.
  */
 static int
 btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid, int fill_factor,
-			 int *pages_freed)
+			 int *pages_freed, bool * work_done)
 {
   PAGE_PTR cur_page = NULL;
   PAGE_PTR next_page = NULL;
@@ -14476,13 +14478,15 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
   int target_size = (int) (((INT64) BTREE_MAX_OVERFLOW_RECORD_SIZE (btid_int) * fill_factor) / 100);
   int cur_len, next_len, next_count, room, num_move;
   OID boundary_oid, prev_oid;
+  bool dummy_continue_checking;
   int error_code = NO_ERROR;
 
   assert (first_ovf_vpid != NULL && !VPID_ISNULL (first_ovf_vpid));
   assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
-  assert (pages_freed != NULL);
+  assert (pages_freed != NULL && work_done != NULL);
 
   *pages_freed = 0;
+  *work_done = false;
 
   cur_page = pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (cur_page == NULL)
@@ -14505,6 +14509,14 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
 
   while (true)
     {
+      if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
+	{
+	  /* Every merge is its own system operation, so stopping here leaves a consistent chain. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error_code = ER_INTERRUPTED;
+	  goto exit;
+	}
+
       error_code = btree_get_next_overflow_vpid (thread_p, cur_page, &next_vpid);
       if (error_code != NO_ERROR)
 	{
@@ -14591,6 +14603,7 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
 	  goto exit;
 	}
       log_sysop_commit (thread_p);
+      *work_done = true;
 
       if (next_page == NULL)
 	{
@@ -14962,6 +14975,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
   INT16 slot;
   int key_cnt;
   int freed;
+  bool work_done;
   bool dummy_continue_checking;
   int error_code = NO_ERROR;
 
@@ -15065,22 +15079,25 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
       VPID_COPY (&ovf_vpid, &leaf_rec_info.ovfl);
       assert (!VPID_ISNULL (&ovf_vpid));
 
-      error_code = btree_ovf_compact_chain (thread_p, &btid_int, &ovf_vpid, fill_factor, &freed);
+      error_code = btree_ovf_compact_chain (thread_p, &btid_int, &ovf_vpid, fill_factor, &freed, &work_done);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
 
-      if (freed == 0)
+      if (!work_done)
 	{
-	  /* Already compact; nothing was held for long. Keep the latch and move on. */
+	  /* The chain was only read: nothing was written under this leaf latch, so keep it and move on. */
 	  btree_clear_key_value (&clear_key, &key);
 	  slot++;
 	  continue;
 	}
       *pages_freed += freed;
-      (*keys_compacted)++;
+      if (freed > 0)
+	{
+	  (*keys_compacted)++;
+	}
 
       /* Let concurrent DML on this leaf in, then come back to the key after this one. */
       pgbuf_unfix_and_init (thread_p, leaf_page);
@@ -29668,9 +29685,6 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 				 * interrupted because too many objects were processed, it will be resumed after this
 				 * overflow page. */
   PERF_UTIME_TRACKER ovf_fix_time_track;
-  int obj_fixed_size = BTREE_OBJECT_FIXED_SIZE (&bts->btid_int);	/* Fixed object size in overflow records. */
-  OID anchor_oid;		/* CBRD-27401: highest OID processed so far in this key's overflow chain. */
-  bool anchor_valid = false;	/* True once a whole overflow page has been processed. */
   int resume_offset = 0;	/* Offset of the first unprocessed object in the first (resumed) overflow page. */
 
   /* Assert b-tree scan is valid. */
@@ -29795,10 +29809,6 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 		  ASSERT_ERROR ();
 		  return error_code;
 		}
-	      /* Carry the anchor over: should this iteration be interrupted again before it finishes a page, the
-	       * resume point must stay where it is instead of falling back to the start of the chain. */
-	      COPY_OID (&anchor_oid, &bts->O_last_oid);
-	      anchor_valid = !OID_ISNULL (&anchor_oid);
 	    }
 	  else
 	    {
@@ -29844,6 +29854,9 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  return NO_ERROR;
 	}
       /* Process overflow objects. */
+      /* CBRD-27401: the resume anchor covers the overflow chain only. Leaf record objects are not ordered against
+       * the chain, so a leaf object must never become the anchor. */
+      OID_SET_NULL (&bts->O_last_visible_oid);
       /* Start processing overflow with first one. */
       VPID_COPY (&overflow_vpid, &bts->leaf_rec_info.ovfl);
       /* Fall through. */
@@ -29922,14 +29935,14 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	       * because BTREE_END_OF_SCAN () reads it. */
 	      VPID_COPY (&bts->O_vpid,
 			 VPID_ISNULL (&last_visible_overflow) ? &bts->leaf_rec_info.ovfl : &last_visible_overflow);
-	      if (anchor_valid)
-		{
-		  COPY_OID (&bts->O_last_oid, &anchor_oid);
-		}
-	      else
-		{
-		  OID_SET_NULL (&bts->O_last_oid);
-		}
+	      /* CBRD-27401: resume strictly after the last object that this snapshot accepted. Anchoring on the last
+	       * object of the processed region would not be exact: one reusable OID can have several un-vacuumed
+	       * versions in the same chain, they are stored adjacently, and the interrupt boundary can fall inside
+	       * such a run -- resuming after the run's OID would then skip a version that is visible to this
+	       * snapshot. Since at most one version of an OID is visible and it is the anchor itself, resuming after
+	       * the anchor can neither skip nor repeat a visible object; the invisible objects re-examined in between
+	       * are simply filtered out again. */
+	      COPY_OID (&bts->O_last_oid, &bts->O_last_visible_oid);
 	      /* Mark key as partially processed to know to resume from an overflow page. */
 	      bts->is_key_partially_processed = true;
 	      /* End current iteration. */
@@ -29945,7 +29958,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (resume_offset > 0)
 	{
 	  /* Resumed page: the objects up to the anchor were processed in a previous iteration. */
-	  assert (resume_offset < ovf_record.length && resume_offset % obj_fixed_size == 0);
+	  assert (resume_offset < ovf_record.length && resume_offset % BTREE_OBJECT_FIXED_SIZE (&bts->btid_int) == 0);
 	  ovf_record.data += resume_offset;
 	  ovf_record.length -= resume_offset;
 	  resume_offset = 0;
@@ -29973,12 +29986,6 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	{
 	  /* Page had at least one visible object. */
 	  VPID_COPY (&last_visible_overflow, &overflow_vpid);
-	}
-      if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk) && ovf_record.length >= obj_fixed_size)
-	{
-	  /* This page is entirely processed: its last object is how far the chain has been consumed (CBRD-27401). */
-	  BTREE_GET_OID (ovf_record.data + ovf_record.length - obj_fixed_size, &anchor_oid);
-	  anchor_valid = true;
 	}
       /* Process next overflow page. */
       error_code = btree_get_next_overflow_vpid (thread_p, overflow_page, &overflow_vpid);
@@ -30081,6 +30088,12 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
       return NO_ERROR;
     }
   /* No snapshot or snapshot was satisfied. */
+
+  /* CBRD-27401: remember the last object accepted by the snapshot. If this key's overflow chain is interrupted, it
+   * becomes the resume anchor (see btree_range_scan_select_visible_oids () and btree_ovf_scan_locate_resume ()).
+   * Objects filtered out below (class match, key limits) are consumed as well, but anchoring on the last visible
+   * object is what makes the anchor exact for reusable OIDs, so it must not be moved past them. */
+  COPY_OID (&bts->O_last_visible_oid, oid);
 
   if (BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
