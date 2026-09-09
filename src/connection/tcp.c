@@ -655,6 +655,7 @@ css_tcp_master_open (int port, SOCKET * sockfd)
   int retry_count = 0;
   int reuseaddr_flag = 1;
   struct stat unix_socket_stat;
+  const char *master_bind_address;
 
   /*
    * We have to create a socket ourselves and bind our well-known address to it.
@@ -662,7 +663,23 @@ css_tcp_master_open (int port, SOCKET * sockfd)
 
   memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
   tcp_srv_addr.sin_family = AF_INET;
-  tcp_srv_addr.sin_addr.s_addr = htonl (INADDR_ANY);
+
+  master_bind_address = prm_get_string_value (PRM_ID_MASTER_BIND_ADDRESS);
+  if (master_bind_address != NULL && master_bind_address[0] != '\0')
+    {
+      in_addr_t bind_addr = inet_addr (master_bind_address);
+
+      if (bind_addr == INADDR_NONE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_BIND_ABORT, 0);
+	  return ERR_CSS_TCP_BIND_ABORT;
+	}
+      tcp_srv_addr.sin_addr.s_addr = bind_addr;
+    }
+  else
+    {
+      tcp_srv_addr.sin_addr.s_addr = htonl (INADDR_ANY);
+    }
 
   if (port > 0)
     {

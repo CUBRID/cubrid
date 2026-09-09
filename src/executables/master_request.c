@@ -1325,15 +1325,21 @@ static void
 css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buf)
 {
 #if !defined(WINDOWS)
+  int result;
+
   if (!HA_DISABLED ())
     {
-      if (hb_is_registered_process (conn, buf))
+      result = hb_check_request_eligibility (conn->fd);
+      if (result == HB_HC_ELIGIBLE_LOCAL || result == HB_HC_ELIGIBLE_REMOTE)
 	{
-	  if (css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+	  if (hb_is_registered_process (conn, buf))
 	    {
-	      css_cleanup_info_connection (conn);
+	      if (css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+		{
+		  css_cleanup_info_connection (conn);
+		}
+	      return;
 	    }
-	  return;
 	}
     }
 
@@ -1635,8 +1641,14 @@ css_process_deact_confirm_no_server (CSS_CONN_ENTRY * conn, unsigned short reque
 {
 #if !defined(WINDOWS)
   int error;
+  int result;
 
-  if (hb_get_deactivating_server_count () == 0)
+  result = hb_check_request_eligibility (conn->fd);
+  if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
+    {
+      error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+    }
+  else if (hb_get_deactivating_server_count () == 0)
     {
       error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
 
@@ -1669,8 +1681,14 @@ css_process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn, unsigned short reques
 {
 #if !defined(WINDOWS)
   int error;
+  int result;
 
-  if (hb_is_deactivation_ready () == true)
+  result = hb_check_request_eligibility (conn->fd);
+  if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
+    {
+      error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+    }
+  else if (hb_is_deactivation_ready () == true)
     {
       error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
     }
@@ -2004,7 +2022,9 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
   rc = __gv_cvar.css_receive_request (conn, &request_id, &request, &buffer_size);
   if (rc == NO_ERRORS)
     {
-      if (buffer_size && __gv_cvar.css_receive_data (conn, request_id, &buffer, &buffer_size, -1) != NO_ERRORS)
+      if (buffer_size
+	  && __gv_cvar.css_receive_data (conn, request_id, &buffer, &buffer_size,
+					 prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)) != NO_ERRORS)
 	{
 	  if (buffer != NULL)
 	    {
