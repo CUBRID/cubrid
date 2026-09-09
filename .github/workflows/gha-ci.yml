@@ -1529,10 +1529,28 @@ jobs:
         run: |
           set -eo pipefail
           : > /tmp/failed.list
+          rm -rf /tmp/failed-logs
+          mkdir -p /tmp/failed-logs
           for x in "$RUNDIR"/results/*/test-shell.xml; do
             [ -f "$x" ] || continue
             i=$(basename "$(dirname "$x")")
-            awk -v shard="$i" '
+            # Line k of failed.list is /tmp/failed-logs/k.log. The offset carries
+            # that numbering across the shards.
+            off=$(wc -l < /tmp/failed.list)
+            awk -v shard="$i" -v off="$off" '
+              # First, so that a case log carrying the literal <testcase or
+              # <failure does not restart the scan while the body is being read.
+              body != "" {
+                if (/\]\]><\/failure>/) {
+                  sub(/\]\]><\/failure>.*$/, "")
+                  print > body
+                  close(body)
+                  body = ""
+                  next
+                }
+                print > body
+                next
+              }
               /<testcase/ {
                 cur = ""
                 # The leading space is required: CTP writes classname before name,
@@ -1542,7 +1560,22 @@ jobs:
                 }
                 next
               }
-              /<failure/ && cur != "" { printf "%s\t%s\n", shard, cur; cur = "" }
+              /<failure/ && cur != "" {
+                printf "%s\t%s\n", shard, cur
+                body = "/tmp/failed-logs/" (off + ++k) ".log"
+                rest = $0
+                sub(/^.*<!\[CDATA\[/, "", rest)
+                if (rest ~ /\]\]><\/failure>/) {
+                  sub(/\]\]><\/failure>.*$/, "", rest)
+                  print rest > body
+                  close(body)
+                  body = ""
+                } else if (rest != "") {
+                  print rest > body
+                }
+                cur = ""
+                next
+              }
               /<\/testcase>/ { cur = "" }
             ' "$x" >> /tmp/failed.list
           done
@@ -1860,6 +1893,91 @@ jobs:
           fi
           [ "$rc" -eq 0 ] && echo "completed with no failures."
           exit $rc
+
+      # Its own step, so it gets its own 1 MiB summary budget: when the logs are
+      # too big, the upload GitHub drops is this one and the verdict above stays.
+      - name: The log of each failed case
+        if: always()
+        env:
+          FAILED_N: ${{ steps.failures.outputs.n }}
+        run: |
+          set -eo pipefail
+          [ "${FAILED_N:-0}" -gt 0 ] || exit 0
+
+          # Same 50 the table above lists. Sharing the budget out over them lets a
+          # run with one failure show that log whole, which is the common case.
+          shown=$FAILED_N
+          [ "$shown" -gt 50 ] && shown=50
+          budget=900000
+          # 512 for the <details> wrapper of each case, so that the cases which
+          # all reach their share still add up to less than the budget.
+          case_max=$((budget / shown - 512))
+          [ "$case_max" -gt 131072 ] && case_max=131072
+          head_b=$((case_max / 2))
+          tail_b=$((case_max - head_b))
+          echo "cases $FAILED_N / shown $shown / per case $case_max bytes"
+
+          esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
+
+          base="$ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}"
+          {
+            echo "### The log of each failed case"
+            echo
+            echo "What CTP wrote in the case's \`<failure>\`, trimmed to fit. Untrimmed, it is in the shard's \`test-shell.xml\`."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          used=0
+          i=0
+          left=0
+          while IFS=$'\t' read -r shard name; do
+            i=$((i + 1))
+            [ "$i" -le "$shown" ] || { left=$((left + 1)); continue; }
+            log="/tmp/failed-logs/$i.log"
+            {
+              echo "<details>"
+              echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/results/$shard/test-shell.xml\">full log</a></summary>"
+              echo
+              # <pre> opens its own line: a blank line inside the log would end the
+              # HTML block that <details> opened, and the rest would render as text.
+              echo "<pre>"
+            } > /tmp/block
+            if [ ! -f "$log" ]; then
+              echo "(this case left no log in the XML)" >> /tmp/block
+            else
+              # The 1 MiB is counted after escaping, so cut the escaped log, not
+              # the log: a share measured before escaping is not the share spent.
+              esc "$log" > /tmp/esc
+              sz=$(wc -c < /tmp/esc)
+              if [ "$sz" -le "$case_max" ]; then
+                cat /tmp/esc >> /tmp/block
+              else
+                # sed drops the line the byte cut split, so <pre> holds whole
+                # lines and no entity is left half written.
+                head -c "$head_b" /tmp/esc | sed '$d' >> /tmp/block
+                printf '\n... %d KB of the middle is not here ...\n\n' $(((sz - head_b - tail_b) / 1024)) >> /tmp/block
+                tail -c "$tail_b" /tmp/esc | sed '1d' >> /tmp/block
+              fi
+            fi
+            {
+              echo "</pre>"
+              echo
+              echo "</details>"
+              echo
+            } >> /tmp/block
+            size=$(wc -c < /tmp/block)
+            if [ $((used + size)) -gt "$budget" ]; then
+              left=$((left + 1))
+              continue
+            fi
+            cat /tmp/block >> "$GITHUB_STEP_SUMMARY"
+            used=$((used + size))
+          done < /tmp/failed.list
+
+          if [ "$left" -gt 0 ]; then
+            echo "_$left more cases failed. Their logs are in each shard's \`test-shell.xml\`, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "wrote $((i - left)) of $i case logs, $used bytes"
 
       # 59MB per run, nothing worth keeping, and the cleanup CronJob does not see it.
       #
