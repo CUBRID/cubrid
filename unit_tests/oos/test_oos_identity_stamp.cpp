@@ -74,6 +74,68 @@ namespace
   {
     return test_oos_utils::make_repeated_pattern_string (bridge_oos_get_max_chunk_size_within_page () - 50);
   }
+
+  /* One variable attribute of a hand-built heap record. */
+  struct heap_var_field
+  {
+    std::string bytes;
+    bool is_oos;
+  };
+
+  /* The OOS inline stub exactly as the heap writer stores it: [OID (8B) | full length (8B) | packed stamp (8B)]. */
+  std::string
+  make_inline_stub (const OID &head_oid, DB_BIGINT full_length, const LOG_LSA &identity_stamp)
+  {
+    alignas (MAX_ALIGNMENT) char stub[OR_OOS_INLINE_SIZE];
+    OR_BUF buf;
+    or_init (&buf, stub, OR_OOS_INLINE_SIZE);
+    or_put_oid (&buf, &head_oid);
+    or_put_bigint (&buf, full_length);
+    or_put_bigint (&buf, oos_pack_identity_stamp (identity_stamp));
+    return std::string (stub, OR_OOS_INLINE_SIZE);
+  }
+
+  /* A heap record without fixed attributes and with 4-byte offsets: [rep+flags | CHN | variable offset table |
+   * fields]. As the heap writer lays it out, the table has one entry per field plus the terminator that carries
+   * OR_VAR_BIT_LAST_ELEMENT, so every field's width is defined by the table and not by the record end. */
+  std::vector<char>
+  make_heap_record (const std::vector<heap_var_field> &fields)
+  {
+    const int header_size = OR_MVCC_REP_SIZE + OR_CHN_SIZE;
+    const int n_var = (int) fields.size ();
+    const int vot_bytes = (n_var + 1) * OR_INT_SIZE;
+    std::vector<char> record (header_size + vot_bytes, 0);
+    OR_PUT_INT (record.data () + OR_REP_OFFSET,
+		(OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_4BYTE);
+    int offset = vot_bytes;
+    for (int i = 0; i < n_var; i++)
+      {
+	/* the two flag bits live in the low bits of each entry, so every field must start 4-byte aligned */
+	EXPECT_EQ (offset % INT_ALIGNMENT, 0) << "field " << i << " must start 4-byte aligned";
+	OR_PUT_INT (record.data () + header_size + i * OR_INT_SIZE, fields[i].is_oos ? OR_SET_VAR_OOS (offset) : offset);
+	offset += (int) fields[i].bytes.size ();
+      }
+    OR_PUT_INT (record.data () + header_size + n_var * OR_INT_SIZE, OR_SET_VAR_LAST_ELEMENT (offset));
+    for (const heap_var_field &field : fields)
+      {
+	record.insert (record.end (), field.bytes.begin (), field.bytes.end ());
+      }
+    return record;
+  }
+
+  RECDES
+  recdes_over (std::vector<char> &record)
+  {
+    RECDES recdes = { (int) record.size (), (int) record.size (), REC_HOME, record.data () };
+    return recdes;
+  }
+
+  /* Parses the OOS inline stub of variable attribute `location`. */
+  int
+  parse_inline_ref (RECDES &recdes, int location, oos_chain_ref &ref, DB_BIGINT &length)
+  {
+    return heap_oos_parse_inline_ref (&recdes, location, &ref, &length);
+  }
 } // namespace
 
 /* One OOS file per test. TearDown removes it and commits, so a test that has to commit (empty-page
@@ -290,23 +352,98 @@ TEST (OosIdentityStampPureTest, StubWriteThenParseRoundTripsAtTwentyFourBytes)
 
   for (const LOG_LSA &identity_stamp : stamps)
     {
-      alignas (MAX_ALIGNMENT) char stub[OR_OOS_INLINE_SIZE];
-      OR_BUF write_buf;
-      or_init (&write_buf, stub, OR_OOS_INLINE_SIZE);
-      or_put_oid (&write_buf, &head_oid);
-      or_put_bigint (&write_buf, full_length);
-      or_put_bigint (&write_buf, oos_pack_identity_stamp (identity_stamp));
-      ASSERT_EQ (write_buf.ptr - stub, OR_OOS_INLINE_SIZE);
-
-      RECDES recdes = { OR_OOS_INLINE_SIZE, OR_OOS_INLINE_SIZE, REC_HOME, stub };
+      std::vector<char> record = make_heap_record ({ { make_inline_stub (head_oid, full_length, identity_stamp), true } });
+      RECDES recdes = recdes_over (record);
       oos_chain_ref ref;
       DB_BIGINT parsed_length = 0;
-      ASSERT_EQ (heap_oos_parse_inline_ref (&recdes, stub, &ref, &parsed_length), NO_ERROR);
+      ASSERT_EQ (parse_inline_ref (recdes, 0, ref, parsed_length), NO_ERROR);
       EXPECT_TRUE (OID_EQ (&ref.head_oid, &head_oid));
       EXPECT_EQ (parsed_length, full_length);
       /* A NULL stamp parses like any other value (invariant 3). */
       EXPECT_TRUE (LSA_EQ (&ref.identity_stamp, &identity_stamp));
     }
+}
+
+TEST (OosIdentityStampPureTest, ParseReadsEachStubFieldOfARecordWithinItsOwnBounds)
+{
+  /* Two OOS attributes around an ordinary one: each stub parses from its own field. The ordinary value is
+   * 12 bytes, so the second stub sits at a 4-byte-aligned but not 8-byte-aligned offset, where the
+   * parser must still read it. */
+  OID first_oid;
+  first_oid.volid = 1;
+  first_oid.pageid = 100;
+  first_oid.slotid = 1;
+  OID second_oid;
+  second_oid.volid = 2;
+  second_oid.pageid = 200;
+  second_oid.slotid = 2;
+  const LOG_LSA first_stamp (11, 1);
+  const LOG_LSA second_stamp (22, 2);
+  std::vector<char> record = make_heap_record ({ { make_inline_stub (first_oid, 1000, first_stamp), true },
+    { std::string ("plain value!"), false },
+    { make_inline_stub (second_oid, 2000, second_stamp), true } });
+  RECDES recdes = recdes_over (record);
+
+  oos_chain_ref ref;
+  DB_BIGINT parsed_length = 0;
+  ASSERT_EQ (parse_inline_ref (recdes, 0, ref, parsed_length), NO_ERROR);
+  EXPECT_TRUE (OID_EQ (&ref.head_oid, &first_oid));
+  EXPECT_EQ (parsed_length, 1000);
+  EXPECT_TRUE (LSA_EQ (&ref.identity_stamp, &first_stamp));
+
+  ASSERT_EQ (parse_inline_ref (recdes, 2, ref, parsed_length), NO_ERROR);
+  EXPECT_TRUE (OID_EQ (&ref.head_oid, &second_oid));
+  EXPECT_EQ (parsed_length, 2000);
+  EXPECT_TRUE (LSA_EQ (&ref.identity_stamp, &second_stamp));
+}
+
+TEST (OosIdentityStampPureTest, ParseRejectsShortStubFieldBeforeAnotherAttribute)
+{
+  /* The first field holds only the former 16-byte stub (OID and full length): the identity stamp is missing and
+   * the next attribute, an ordinary value, begins where the stamp would be. The record is long enough for a
+   * 24-byte read, so only the field boundary can reveal the corruption (CBRD-26950). */
+  OID head_oid;
+  head_oid.volid = 3;
+  head_oid.pageid = 4242;
+  head_oid.slotid = 7;
+  const std::string full_stub = make_inline_stub (head_oid, 4096, LOG_LSA (0xC0FFEE, 42));
+  std::vector<char> record = make_heap_record ({ { full_stub.substr (0, OR_OID_SIZE + OR_BIGINT_SIZE), true },
+    { std::string ("SENTINEL-plain value"), false } });
+  RECDES recdes = recdes_over (record);
+  const std::vector<char> before = record;
+
+  oos_chain_ref ref;
+  DB_BIGINT parsed_length = 0;
+  er_clear ();
+  EXPECT_EQ (parse_inline_ref (recdes, 0, ref, parsed_length), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  /* the rejected reference is well-defined and names nothing */
+  EXPECT_TRUE (OID_ISNULL (&ref.head_oid));
+  EXPECT_TRUE (LSA_ISNULL (&ref.identity_stamp));
+  EXPECT_EQ (parsed_length, 0);
+  EXPECT_EQ (record, before);
+  er_clear ();
+}
+
+TEST (OosIdentityStampPureTest, ParseRejectsStubFieldPastRecordEnd)
+{
+  OID head_oid;
+  head_oid.volid = 3;
+  head_oid.pageid = 4242;
+  head_oid.slotid = 7;
+  std::vector<char> record = make_heap_record ({ { make_inline_stub (head_oid, 4096, LOG_LSA (0xC0FFEE, 42)), true } });
+  RECDES recdes = recdes_over (record);
+  /* the table still claims a 24-byte field, but the record ends inside it */
+  recdes.length -= 1;
+
+  oos_chain_ref ref;
+  DB_BIGINT parsed_length = 0;
+  er_clear ();
+  EXPECT_EQ (parse_inline_ref (recdes, 0, ref, parsed_length), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_TRUE (OID_ISNULL (&ref.head_oid));
+  EXPECT_EQ (parsed_length, 0);
+  er_clear ();
 }
 
 TEST_F (OosIdentityStampTest, ReadWithMatchingReferenceReturnsTheValue)

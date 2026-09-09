@@ -19,6 +19,7 @@
 #include "gtest/gtest.h"
 #include <cstdio>
 #include <climits>
+#include <cstring>
 
 #include "page_buffer.h"
 #include "slotted_page.h"
@@ -41,28 +42,41 @@ int bridge_oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
 /* bridge_oos_get_recently_inserted_oos_vpid removed — oos_recently_inserted_oos_vpid_map replaced by bestspace */
 
 // bridge to the static inline-OOS reader in heap_file.c (CBRD-26769)
-int bridge_heap_attrvalue_read_oos_inline (RECDES *recdes, RECDES *raw, char *oos_scratch, int oos_scratch_size,
-    bool *oos_owned_buffer);
+int bridge_heap_attrvalue_read_oos_inline (RECDES *recdes, int location, RECDES *raw, char *oos_scratch,
+    int oos_scratch_size, bool *oos_owned_buffer);
 
 namespace
 {
-  /* Drive the static heap_attrvalue_read_oos_inline through the bridge with a
-   * synthetic inline-OOS payload region. `inline_len` is the byte length of the
-   * variable region the reader sees (recdes->length); when shorter than the 24-byte
-   * [OID|length|identity stamp] stub it is treated as truncated. oos_owned_buffer is pre-poisoned to true so the
-   * error contract (reset to false) is actually exercised. */
-  int probe_oos_inline (char *payload, int inline_len, bool *oos_owned_buffer)
+  /* Drive the static heap_attrvalue_read_oos_inline through the bridge with a synthetic heap record
+   * holding one variable attribute: [rep+flags | CHN | VOT[0] | VOT[1] | field]. `inline_len` is the
+   * byte width the variable offset table assigns to the field and must be a multiple of 4, because the
+   * table keeps the two flag bits in the low bits of each entry; when it is shorter than the 24-byte
+   * [OID|length|identity stamp] stub the field is treated as truncated. The record is padded past the
+   * field so only the table, not the record end, can reject it. oos_owned_buffer is pre-poisoned to
+   * true so the error contract (reset to false) is actually exercised. */
+  int probe_oos_inline (const char *payload, int inline_len, bool *oos_owned_buffer)
   {
+    EXPECT_EQ (inline_len % INT_ALIGNMENT, 0) << "the offset table expresses only 4-byte multiples";
+    constexpr int header_size = OR_MVCC_REP_SIZE + OR_CHN_SIZE;
+    constexpr int vot_bytes = 2 * OR_INT_SIZE;
+    constexpr int padding = 16;
+    alignas (MAX_ALIGNMENT) char record[header_size + vot_bytes + 64 + padding];
+    std::memset (record, 0, sizeof record);
+    OR_PUT_INT (record + OR_REP_OFFSET, (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_4BYTE);
+    OR_PUT_INT (record + header_size, OR_SET_VAR_OOS (vot_bytes));
+    OR_PUT_INT (record + header_size + OR_INT_SIZE, OR_SET_VAR_LAST_ELEMENT (vot_bytes + inline_len));
+    std::memcpy (record + header_size + vot_bytes, payload, inline_len);
+
     RECDES recdes{};
-    recdes.data = payload;
-    recdes.length = inline_len;
+    recdes.data = record;
+    recdes.length = header_size + vot_bytes + inline_len + padding;
 
     RECDES raw{};
-    raw.data = payload;
+    raw.data = record + header_size + vot_bytes;
 
     *oos_owned_buffer = true;
     er_clear ();
-    int err = bridge_heap_attrvalue_read_oos_inline (&recdes, &raw, nullptr, 0, oos_owned_buffer);
+    int err = bridge_heap_attrvalue_read_oos_inline (&recdes, 0, &raw, nullptr, 0, oos_owned_buffer);
     if (err != NO_ERROR)
       {
 	// Contract: every error path nulls the disk pointer so the caller never reads stale data.
@@ -794,12 +808,12 @@ TEST (OosTest, OosReadRejectsCallerLengthDisagreeingWithHeader)
 TEST (OosTest, HeapAttrvalueReadOosInlineCorruptHeader)
 {
   constexpr int kInlineHeaderSize = OR_OOS_INLINE_SIZE;	// 24 bytes: [OID | length | identity stamp]
-  alignas (MAX_ALIGNMENT) char payload[64];
+  alignas (MAX_ALIGNMENT) char payload[64] = { 0 };
 
-  // Variable region shorter than the stub.
+  // Field one offset unit (4 bytes) shorter than the stub: the table expresses only 4-byte multiples.
   {
     bool owned = false;
-    int err = probe_oos_inline (payload, kInlineHeaderSize - 1, &owned);
+    int err = probe_oos_inline (payload, kInlineHeaderSize - INT_ALIGNMENT, &owned);
     EXPECT_EQ (err, ER_HEAP_OOS_BAD_INLINE_HEADER);
     EXPECT_EQ (er_errid (), ER_HEAP_OOS_BAD_INLINE_HEADER);
     EXPECT_FALSE (owned);

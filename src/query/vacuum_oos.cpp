@@ -300,8 +300,8 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
    * vacuum_forward_walk_oos_delete_atomic). If that happened, we would be parsing whatever bytes landed
    * there - usually zeros or another page's data - and quietly find nothing. (Seen live: the flags
    * byte at this address changed from 0x69 to 0x00 across the lookup.) The copy also fixes
-   * alignment: the image starts at undo_data + sizeof (INT16), and the OR_BUF readers used by
-   * heap_recdes_get_oos_refs would assert on that unaligned pointer in debug builds. */
+   * alignment: the image starts at undo_data + sizeof (INT16), while heap_recdes_get_oos_refs reads the
+   * offset table entries and the stubs as aligned integers. */
   RECDES parse_recdes = undo_recdes;
   char *stable_copy = (char *) db_private_alloc (thread_p, undo_recdes.length);
   if (stable_copy == NULL)

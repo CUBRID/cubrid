@@ -150,14 +150,13 @@ heap_oos_read_values (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 	  continue;
 	}
 
-      const int value_offset = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_entries[i]);
       oos_chain_ref oos_ref;
       DB_BIGINT oos_len;
 
-      /* Reuse the single inline-stub parser (same [OID | full_length | identity stamp] layout and
-       * the same corruption checks the lazy Resolve path uses). It has already er_set on error. */
-      RECDES rec = { state->src_length, state->src_length, REC_HOME, (char *) state->src };
-      if (heap_oos_parse_inline_ref (&rec, state->src + value_offset, &oos_ref, &oos_len) != NO_ERROR)
+      /* Reuse the single inline-stub parser (same [OID | full_length | identity stamp] layout, the same
+       * field-boundary and corruption checks the lazy Resolve path uses). It has already er_set on error. */
+      const RECDES rec = { state->src_length, state->src_length, REC_HOME, (char *) state->src };
+      if (heap_oos_parse_inline_ref (&rec, i, &oos_ref, &oos_len) != NO_ERROR)
 	{
 	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
 	}
@@ -421,17 +420,21 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
  *   attribute. Stub layout: [head OOS OID (8B) | full_length (8B bigint) | identity stamp (8B, a
  *   LOG_LSA packed into one bigint, CBRD-26950)].
  *
- *   return: NO_ERROR, or ER_HEAP_OOS_BAD_INLINE_HEADER when the stub is corrupted.
+ *   The attribute's field is located through heap_recdes_get_oos_inline_stub, which checks that the
+ *   variable offset table marks it OOS, makes it exactly one stub wide and keeps it inside the record.
+ *   Those bounds are the oracle: a field that is too short cannot borrow the next attribute's bytes
+ *   as its identity stamp, and nothing is read before the check passes.
+ *
+ *   return: NO_ERROR, or ER_HEAP_OOS_BAD_INLINE_HEADER when the field or the stub is corrupted.
  *   recdes(in): heap record holding the attribute (only data/length are read)
- *   inline_ptr(in): start of the OOS-marked variable region inside recdes
+ *   location(in): the attribute's index in the variable offset table
  *   oos_ref(out): chain reference (head OOS OID + identity stamp) for oos_read / oos_delete
  *   oos_len(out): full byte length of the referenced OOS value
  */
 int
-heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, oos_chain_ref *oos_ref, DB_BIGINT *oos_len)
+heap_oos_parse_inline_ref (const RECDES *recdes, int location, oos_chain_ref *oos_ref, DB_BIGINT *oos_len)
 {
-  OR_BUF buf;
-  int rc = NO_ERROR;
+  char *stub = NULL;
   DB_BIGINT packed_identity_stamp = 0;
 
   /* Keep the reference well-defined for corruption errors raised before it is read. */
@@ -439,27 +442,20 @@ heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, oos_chain_ref
   LSA_SET_NULL (&oos_ref->identity_stamp);
   *oos_len = 0;
 
-  buf.ptr = (char *) inline_ptr;
-  buf.endptr = recdes->data + recdes->length;
-
-  /* The OOS-marked variable region must hold a complete stub. */
-  if (buf.endptr - buf.ptr < OR_OOS_INLINE_SIZE)
+  if (heap_recdes_get_oos_inline_stub (recdes, location, &stub) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_ref->head_oid));
       return ER_HEAP_OOS_BAD_INLINE_HEADER;
     }
 
-  or_get_oid (&buf, &oos_ref->head_oid);
-  *oos_len = or_get_bigint (&buf, &rc);
-  if (rc == NO_ERROR)
-    {
-      packed_identity_stamp = or_get_bigint (&buf, &rc);
-    }
+  /* The field is exactly one stub, so the three fixed-width reads below cannot run past it. */
+  OR_GET_OID (stub, &oos_ref->head_oid);
+  OR_GET_BIGINT (stub + OR_OID_SIZE, oos_len);
+  OR_GET_BIGINT (stub + OR_OID_SIZE + OR_BIGINT_SIZE, &packed_identity_stamp);
 
-  /* Reject an unreadable length or stamp, a NULL OOS OID, or a length outside the stored-value range.
+  /* Reject a NULL OOS OID or a length outside the stored-value range.
    * A NULL identity stamp is an ordinary value and is not rejected. */
-  if (rc != NO_ERROR || OID_ISNULL (&oos_ref->head_oid) || *oos_len <= 0
-      || *oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
+  if (OID_ISNULL (&oos_ref->head_oid) || *oos_len <= 0 || *oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_ref->head_oid));
       return ER_HEAP_OOS_BAD_INLINE_HEADER;
@@ -470,39 +466,32 @@ heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, oos_chain_ref
 }
 
 /*
- * heap_oos_find_attr_inline_ref () - Find the OOS inline reference stored in a heap record for
- *   a requested variable attribute.
+ * heap_oos_attr_has_inline_ref () - Tell whether a requested variable attribute is OOS-marked in a heap
+ *   record, that is, whether its variable area holds an OOS inline stub instead of an inline value.
  *
- *   return: pointer to the [OOS OID | full length | identity stamp] stub in the variable area, or
- *           NULL when this requested attribute has no OOS reference in this record. NULL also
- *           covers conditions the per-attribute read path skips or reports itself, including corrupt
- *           offset-size metadata.
+ *   return: true when the attribute is OOS-marked here. false otherwise, which also covers conditions
+ *           the per-attribute read path skips or reports itself, including corrupt offset-size metadata.
  */
-static const char *
-heap_oos_find_attr_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
+static bool
+heap_oos_attr_has_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
 {
   OR_ATTRIBUTE *attrepr = value->read_attrepr;
   int vot_entry;
 
   if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
     {
-      return NULL;
+      return false;
     }
 
   if (recdes == NULL || recdes->data == NULL || attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
       || value->attr_type == HEAP_CLASS_ATTR || attrepr->is_fixed != 0
       || OR_VAR_IS_NULL (recdes->data, attrepr->location))
     {
-      return NULL;
+      return false;
     }
 
-  if (heap_recdes_get_var_offset_entry (recdes, attrepr->location, &vot_entry) != NO_ERROR
-      || !OR_IS_OOS (vot_entry))
-    {
-      return NULL;
-    }
-
-  return recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
+  return (heap_recdes_get_var_offset_entry (recdes, attrepr->location, &vot_entry) == NO_ERROR
+	  && OR_IS_OOS (vot_entry));
 }
 
 /*
@@ -532,7 +521,7 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 
   for (i = 0; i < attr_info->num_values; i++)
     {
-      if (heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]) != NULL)
+      if (heap_oos_attr_has_inline_ref (recdes, &attr_info->values[i]))
 	{
 	  requested_oos_count++;
 	}
@@ -559,16 +548,15 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 
   for (i = 0; i < attr_info->num_values && error == NO_ERROR; i++)
     {
-      const char *inline_ptr = heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]);
       oos_chain_ref oos_ref;
       DB_BIGINT oos_len;
 
-      if (inline_ptr == NULL)
+      if (!heap_oos_attr_has_inline_ref (recdes, &attr_info->values[i]))
 	{
 	  continue;		/* not OOS here: the per-attribute reader handles it */
 	}
 
-      error = heap_oos_parse_inline_ref (recdes, inline_ptr, &oos_ref, &oos_len);
+      error = heap_oos_parse_inline_ref (recdes, attr_info->values[i].read_attrepr->location, &oos_ref, &oos_len);
       if (error == NO_ERROR && recdes_allocate_data_area (&oos_payloads[i], (int) oos_len) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);

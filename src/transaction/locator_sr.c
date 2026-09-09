@@ -14188,7 +14188,7 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
   OR_ATTRIBUTE *attrepr = NULL;
   OID oos_oid = oid_Null_oid;
   OR_BUF buf = { NULL, NULL, NULL, NULL };
-  char *oid_ptr = NULL;
+  char *stub_ptr = NULL;
   int offset_size = 0;
   int offset = 0;
   int oos_oid_count = 0;
@@ -14258,21 +14258,19 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 	}
 
       oos_oid = thread_p->oos_oids[oos_oid_count].oid;
-      oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
 
-      /* The or_put_* writers below bound-check only via assert, so a truncated stub in a malformed
-       * replicated record would be written past in a release build. Reject it here. */
-      if (oid_ptr + OR_OOS_INLINE_SIZE > (char *) recdes->data + recdes->length)
+      /* The or_put_* writers below bound-check only via assert. Locate the stub through the shared field
+       * boundary check, so a short or truncated stub field in a malformed replicated record is rejected
+       * instead of being written past into the next attribute (CBRD-26950). */
+      if (heap_recdes_get_oos_inline_stub (recdes, attrepr->location, &stub_ptr) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
-		  "OOS inline stub exceeds record bounds while applying replicated heap record");
+		  "malformed OOS inline stub field while applying replicated heap record");
 	  error = ER_HA_GENERIC_ERROR;
 	  goto end;
 	}
 
-      buf.ptr = oid_ptr;
-      buf.endptr = (char *) recdes->data + recdes->length;
-
+      or_init (&buf, stub_ptr, OR_OOS_INLINE_SIZE);
       or_put_oid (&buf, &oos_oid);
 
       /* The stub also stores the chain's identity stamp (CBRD-26950). The slave's own oos_insert

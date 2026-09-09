@@ -66,9 +66,11 @@ extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_
 
 /* Grouped lazy OOS Resolve for heap_attrinfo_read_dbvalues (heap_file.c dispatches into it). */
 
-/* Parse an OOS-marked variable attribute's inline stub [OID (8B) | full_length (8B) | identity stamp (8B)]
- * into the chain reference oos_read consumes and the value's full length. */
-extern int heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, oos_chain_ref *oos_ref,
+/* Parse the OOS inline stub [OID (8B) | full_length (8B) | identity stamp (8B)] of OOS-marked variable
+ * attribute `location` into the chain reference oos_read consumes and the value's full length. The
+ * attribute's field is checked to be exactly one stub inside the record before any of it is read
+ * (CBRD-26950). */
+extern int heap_oos_parse_inline_ref (const RECDES *recdes, int location, oos_chain_ref *oos_ref,
 				      DB_BIGINT *oos_len);
 
 /* Prefetch requested OOS-marked attributes of an OOS-bearing record through a single oos_read_many()

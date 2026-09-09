@@ -45,11 +45,12 @@ int bridge_oos_get_max_chunk_size_within_page ();
 //   [0..3]         rep_and_flags: (OR_RECORD_FLAG_HAS_OOS << 24) | OR_OFFSET_SIZE_4BYTE
 //   [4..7]         CHN: 0  (cache coherence number)
 //   --- header ends (8 bytes) ---
-//   [8..8+4N-1]    VOT: N int32 entries, each = (offset_from_vot_start | flags)
-//   [8+4N..]       OOS inline stub: per column, OID (8b) + length (8b) + identity stamp (8b)
-//   --- total: 8 + 28*N bytes ---
+//   [8..8+4(N+1)-1] VOT: N+1 int32 entries, each = (offset_from_vot_start | flags); entry N is the
+//                  terminator carrying OR_VAR_BIT_LAST_ELEMENT and pointing at the record end
+//   [8+4(N+1)..]   OOS inline stub: per column, OID (8b) + length (8b) + identity stamp (8b)
+//   --- total: 8 + 4(N+1) + 24N bytes ---
 //
-// OR_VAR_OFFSET(obj, i) = header_size + (VOT[i] & ~0x3) = 8 + (4N + 24i)
+// OR_VAR_OFFSET(obj, i) = header_size + (VOT[i] & ~0x3) = 8 + (4(N+1) + 24i)
 //
 
 static const int HEAP_HDR_SIZE = 8;	/* OR_MVCC_REP_SIZE + OR_CHN_SIZE */
@@ -68,7 +69,7 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
   assert (n_oos > 0);
   assert ((int) oos_lengths.size () == n_oos);
 
-  const int vot_bytes = n_oos * VOT_ENTRY_SZ;
+  const int vot_bytes = (n_oos + 1) * VOT_ENTRY_SZ;	/* one entry per attribute plus the terminator */
   const int data_bytes = n_oos * OOS_INLINE_SZ;
   const int total = HEAP_HDR_SIZE + vot_bytes + data_bytes;
 
@@ -90,18 +91,15 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
 
   /* 2. CHN = 0 (already zeroed) */
 
-  /* 3. VOT entries — each stores (offset_from_vot_start | flags) */
+  /* 3. VOT entries — each stores (offset_from_vot_start | flags); the terminator entry after the last
+   * attribute carries OR_VAR_BIT_LAST_ELEMENT and points at the end of the variable area, as the heap
+   * writer lays the table out */
   char *vot = base + HEAP_HDR_SIZE;
   for (int i = 0; i < n_oos; i++)
     {
-      int offset = vot_bytes + i * OOS_INLINE_SZ;
-      int flags = OR_VAR_BIT_OOS;
-      if (i == n_oos - 1)
-	{
-	  flags |= OR_VAR_BIT_LAST_ELEMENT;
-	}
-      OR_PUT_INT (vot + i * VOT_ENTRY_SZ, offset | flags);
+      OR_PUT_INT (vot + i * VOT_ENTRY_SZ, OR_SET_VAR_OOS (vot_bytes + i * OOS_INLINE_SZ));
     }
+  OR_PUT_INT (vot + n_oos * VOT_ENTRY_SZ, OR_SET_VAR_LAST_ELEMENT (vot_bytes + n_oos * OOS_INLINE_SZ));
 
   /* 4. OOS inline stub: OID (8b) + length (8b) + identity stamp (8b) per column */
   char *oos_data = vot + vot_bytes;
@@ -135,7 +133,7 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
 static void
 make_stub_reference_stale (RECDES &rec, int n_oos, int index)
 {
-  char *stamp_ptr = rec.data + HEAP_HDR_SIZE + n_oos * VOT_ENTRY_SZ + index * OOS_INLINE_SZ + OR_OID_SIZE
+  char *stamp_ptr = rec.data + HEAP_HDR_SIZE + (n_oos + 1) * VOT_ENTRY_SZ + index * OOS_INLINE_SZ + OR_OID_SIZE
 		    + OR_BIGINT_SIZE;
   INT64 packed = 0;
   OR_GET_BIGINT (stamp_ptr, &packed);
@@ -302,6 +300,55 @@ TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosRefsMultiple)
   ASSERT_EQ (oos_get_identity_stamp (thread_p, oid2, &stamp2), NO_ERROR);
   ASSERT_TRUE (LSA_EQ (&extracted[0].identity_stamp, &stamp1));
   ASSERT_TRUE (LSA_EQ (&extracted[1].identity_stamp, &stamp2));
+}
+
+// ============================================================================
+// TC-V3b: heap_recdes_get_oos_refs rejects a stub field narrower than one stub
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosRefsRejectsShortFieldBeforeAnotherAttribute)
+{
+  /* Two OOS attributes; then the variable offset table is rewritten so the first field is 16 bytes wide and
+   * the second attribute is an ordinary value that begins where the first stub's identity stamp used to be.
+   * The record is long enough for a 24-byte read, so only the field boundary reveals the corruption
+   * (CBRD-26950). */
+  const OID oid1 = {1, 2, 3};
+  const OID oid2 = {4, 5, 6};
+  RECDES rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({oid1, oid2}, {100, 200}, rec, true /* synthetic_oids */), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec, recdes_free_data_area);
+
+  const int vot_bytes = 3 * VOT_ENTRY_SZ;
+  OR_PUT_INT (rec.data + HEAP_HDR_SIZE + VOT_ENTRY_SZ, vot_bytes + 16);	/* plain attribute: no OOS flag */
+  const std::string before (rec.data, rec.length);
+
+  OOS_REF_VECTOR extracted;
+  er_clear ();
+  EXPECT_EQ (heap_recdes_get_oos_refs (&rec, extracted), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_TRUE (extracted.empty ());
+  EXPECT_EQ (std::string (rec.data, rec.length), before);
+  er_clear ();
+}
+
+// ============================================================================
+// TC-V3c: heap_recdes_get_oos_refs rejects a stub field that runs past the record end
+// ============================================================================
+TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosRefsRejectsStubFieldPastRecordEnd)
+{
+  const OID oid1 = {1, 2, 3};
+  RECDES rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({oid1}, {100}, rec, true /* synthetic_oids */), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec, recdes_free_data_area);
+
+  /* the table still claims a 24-byte field, but the record ends inside it */
+  rec.length -= 1;
+
+  OOS_REF_VECTOR extracted;
+  er_clear ();
+  EXPECT_EQ (heap_recdes_get_oos_refs (&rec, extracted), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_TRUE (extracted.empty ());
+  er_clear ();
 }
 
 // ============================================================================

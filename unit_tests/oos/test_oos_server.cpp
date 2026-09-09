@@ -207,6 +207,16 @@ read_replicated_heap_oos_identity_stamp (RECDES &recdes, int n_variables, int in
   return oos_unpack_identity_stamp (packed);
 }
 
+static INT64
+read_replicated_heap_oos_length (RECDES &recdes, int n_variables, int index)
+{
+  const int header_size = OR_MVCC_REP_SIZE + OR_CHN_SIZE;
+  const int vot_bytes = (n_variables + 1) * OR_SHORT_SIZE;
+  INT64 length = 0;
+  OR_GET_BIGINT (recdes.data + header_size + vot_bytes + index * OR_OOS_INLINE_SIZE + OR_OID_SIZE, &length);
+  return length;
+}
+
 /* The published pair must name a chunk that really carries that stamp (CBRD-26950). */
 static void
 expect_published_pair_matches_storage (std::size_t index, const OID &expected_oid)
@@ -699,6 +709,10 @@ TEST (OosServerTest, ReplicaOosItemsAccumulateAndFixupConsumesInOrder)
   EXPECT_FALSE (LSA_EQ (&fixed_stamp1, &MASTER_PLACEHOLDER_STAMP));
   EXPECT_FALSE (LSA_EQ (&fixed_stamp2, &MASTER_PLACEHOLDER_STAMP));
 
+  /* the 8-byte full length between the OID and the stamp stays as the master wrote it */
+  EXPECT_EQ (read_replicated_heap_oos_length (heap_recdes, n_variables, 0), 1000);
+  EXPECT_EQ (read_replicated_heap_oos_length (heap_recdes, n_variables, 1), 1001);
+
   /* the rewritten stubs now read back as live chain references through the extractor */
   OOS_REF_VECTOR refs;
   ASSERT_EQ (heap_recdes_get_oos_refs (&heap_recdes, refs), NO_ERROR);
@@ -726,6 +740,38 @@ TEST (OosServerTest, ReplicaFixupRejectsTruncatedStub)
   /* cut the record short so the stub no longer fits; the fixup must reject rather than write past it */
   recdes.length -= OR_BIGINT_SIZE;
   EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes), ER_HA_GENERIC_ERROR);
+  EXPECT_EQ (er_errid (), ER_HA_GENERIC_ERROR);
+  er_clear ();
+}
+
+TEST (OosServerTest, ReplicaFixupRejectsShortFieldBeforeAnotherAttribute)
+{
+  const OID class_oid = find_db_user_class_oid ();
+  ASSERT_FALSE (OID_ISNULL (&class_oid));
+  const OID placeholder = make_test_oid (2, 765441, 41);
+  RECDES recdes = RECDES_INITIALIZER;
+  ASSERT_EQ (build_replicated_heap_recdes (class_oid, { placeholder, placeholder }, recdes), NO_ERROR);
+  scope_exit free_recdes ([&] () noexcept
+  {
+    recdes_free_data_area (&recdes);
+  });
+
+  /* The record has enough bytes, but the first field contains only the old 16-byte stub.
+   * The following ordinary attribute must not be mistaken for the missing identity stamp. */
+  const int n_variables = get_class_variable_count (class_oid);
+  ASSERT_GE (n_variables, 2);
+  const int vot_bytes = (n_variables + 1) * OR_SHORT_SIZE;
+  char *vot = recdes.data + OR_MVCC_REP_SIZE + OR_CHN_SIZE;
+  OR_PUT_SHORT (vot + OR_SHORT_SIZE, vot_bytes + 16);
+  char *next_attribute = vot + vot_bytes + 16;
+  const std::string sentinel (next_attribute, 8);
+  const std::string before (recdes.data, recdes.length);
+  thread_p->oos_oids = { { make_test_oid (1, 765440, 40), LOG_LSA (12, 34) } };
+
+  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes), ER_HA_GENERIC_ERROR);
+  EXPECT_EQ (std::string (next_attribute, 8), sentinel);
+  /* nothing is written before the field is rejected */
+  EXPECT_EQ (std::string (recdes.data, recdes.length), before);
   EXPECT_EQ (er_errid (), ER_HA_GENERIC_ERROR);
   er_clear ();
 }
