@@ -499,6 +499,7 @@ dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
   T_CCI_DATE cci_date;
   T_CCI_BIT cci_bit;
   char num_str[NUMERIC_MAX_STRING_SIZE];
+  char *json_body = NULL;
   const char *type_name;
   unsigned char type;
 
@@ -523,7 +524,8 @@ dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
     case DB_TYPE_JSON:
       a_type = CCI_A_TYPE_STR;
       u_type = CCI_U_TYPE_JSON;
-      value = (void *) db_get_json_raw_body (dbval);
+      json_body = db_get_json_raw_body (dbval);
+      value = (void *) json_body;
       break;
     case DB_TYPE_SHORT:
       a_type = CCI_A_TYPE_INT;
@@ -640,6 +642,9 @@ dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
       return ER_DBLINK_UNSUPPORTED_TYPE;
     }
   ret = cci_bind_param (stmt_handle, param_index, a_type, value, u_type, 0);
+  /* CCI copies the value unless the bind flag is CCI_BIND_PTR, so the JSON body can be released
+   * as soon as it is bound. */
+  db_private_free_and_init (NULL, json_body);
   if (ret < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_BIND_PARAM, 0);

@@ -1773,8 +1773,9 @@
 
 #define ER_AU_CANT_ALTER_LOGIN                      -1378
 
-#define ER_LAST_ERROR                               -1379
+#define ER_CDC_ARCHIVE_KEPT                         -1379
 
+#define ER_LAST_ERROR                               -1380
 
 
 /*
