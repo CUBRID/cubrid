@@ -69,3 +69,8 @@ framing/counts and completion across startup, restart and copied databases.
 Use `TMPDIR` on a filesystem with enough space for disposable databases; keep
 its path short enough for Unix sockets. Controlled dirty/eviction oracles and
 performance acceptance remain separate checks.
+
+Pass `--scan --isolation` for two stalled scans, SQL commit progress under excess
+admission, server-lifetime pathname replacement and activation-failure no-retry
+checks. See [overload and lifecycle verification](isolation.md) for boundary
+coverage, required preconditions and evidence limits.

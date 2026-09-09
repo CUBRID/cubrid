@@ -28,6 +28,9 @@
 #include <thread>
 #include <sys/wait.h>
 #include <cerrno>
+#include <sys/ioctl.h>
+#include <poll.h>
+#include <utility>
 
 using namespace cubpgbuf::inspector;
 
@@ -114,8 +117,18 @@ TEST_CASE ("Unavailable paths preserve entries and cannot be retried", "[pgbuf_i
   {
     REQUIRE (chmod (directory.c_str (), 0755) == 0);
   }
+  struct stat entry_before
+  {
+  }, entry_after {};
+  bool has_entry = lstat (path.c_str (), &entry_before) == 0;
   endpoint server;
   REQUIRE_FALSE (server.start (root, "database", db));
+  if (has_entry)
+    {
+      REQUIRE (lstat (path.c_str (), &entry_after) == 0);
+      CHECK (entry_after.st_ino == entry_before.st_ino);
+      CHECK (entry_after.st_mode == entry_before.st_mode);
+    }
   struct stat before;
   REQUIRE (lstat (directory.c_str (), &before) == 0);
   CHECK (std::filesystem::exists (directory));
@@ -149,6 +162,28 @@ TEST_CASE ("Shutdown preserves a replacement socket", "[pgbuf_inspector][socket]
 
 namespace
 {
+  // Test-owned clients close even when a fatal assertion unwinds the case.
+  class socket_client
+  {
+    public:
+      explicit socket_client (int fd) : m_fd (fd) {}
+      ~socket_client ()
+      {
+	if (m_fd >= 0)
+	  {
+	    ::close (m_fd);
+	  }
+      }
+      socket_client (const socket_client &) = delete;
+      socket_client &operator= (const socket_client &) = delete;
+      socket_client (socket_client &&other) noexcept : m_fd (std::exchange (other.m_fd, -1)) {}
+      operator int () const
+      {
+	return m_fd;
+      }
+    private:
+      int m_fd;
+  };
   struct socket_fixture
   {
     char root[64] = "/tmp/pgbuf-protocol-XXXXXX";
@@ -289,6 +324,7 @@ TEST_CASE ("Peer credentials reject another effective UID before any reply", "[.
 {
   // Run with unshare --map-auto --map-root-user to supply two real mapped identities.
   REQUIRE (geteuid () == 0);
+  REQUIRE (getegid () == 0);
   socket_fixture f;
   REQUIRE (chmod (f.root, 0755) == 0);
   REQUIRE (chmod ((std::string (f.root) + "/pgbuf-inspector").c_str (), 0755) == 0);
@@ -303,6 +339,11 @@ TEST_CASE ("Peer credentials reject another effective UID before any reply", "[.
       if (setuid (1) != 0)
 	{
 	  _exit (10);
+	}
+      // Retain the server's group deliberately: group membership grants no exception.
+      if (getegid () != 0)
+	{
+	  _exit (13);
 	}
       int fd = socket (AF_UNIX, SOCK_STREAM, 0);
       sockaddr_un address {};
@@ -711,4 +752,427 @@ TEST_CASE ("Premature requests are rejected while the completed traversal still 
   CHECK (closed);
   CHECK (visits == 100);
   close (fd);
+}
+
+TEST_CASE ("Fragmented controls and coalesced premature requests use production framing",
+	   "[pgbuf_inspector][socket]")
+{
+  socket_fixture f;
+  socket_client fd (f.connect_client ());
+  SECTION ("one byte at a time, including the final delimiter")
+  {
+    for (char byte : greeting.substr (0, greeting.size () - 1))
+      {
+	REQUIRE (send (fd, &byte, 1, MSG_NOSIGNAL) == 1);
+	f.server.poll ();
+	char response;
+	REQUIRE (recv (fd, &response, 1, MSG_DONTWAIT) == -1);
+	REQUIRE ((errno == EAGAIN || errno == EWOULDBLOCK));
+      }
+    auto request = scan_request (f.exchange (fd, "\n"));
+    for (char byte : request.substr (0, request.size () - 1))
+      {
+	REQUIRE (send (fd, &byte, 1, MSG_NOSIGNAL) == 1);
+	f.server.poll ();
+      }
+    CHECK (f.exchange (fd, "\n").find ("scan_footer") != std::string::npos);
+  }
+  SECTION ("two requests in one read never start a scan")
+  {
+    auto request = scan_request (f.exchange (fd, greeting));
+    CHECK (f.exchange (fd, request + request).empty ());
+  }
+  SECTION ("EOF in a fragmented greeting releases admission")
+  {
+    REQUIRE (send (fd, greeting.data (), 10, MSG_NOSIGNAL) == 10);
+    REQUIRE (shutdown (fd, SHUT_WR) == 0);
+    f.server.poll ();
+    f.server.poll ();
+    char response;
+    CHECK (recv (fd, &response, 1, MSG_DONTWAIT) == 0);
+  }
+
+}
+
+TEST_CASE ("Hello controls enforce each framing boundary through real sockets", "[pgbuf_inspector][socket]")
+{
+  for (int delta :
+       {
+	       -1, 0, 1
+	       })
+    {
+      for (bool depth :
+	   {
+		   false, true
+	   })
+	{
+	  CAPTURE (delta, depth);
+	  socket_fixture f;
+	  socket_client fd (f.connect_client ());
+	  std::string request = greeting;
+	  if (depth)
+	    {
+	      request.insert (request.size () - 2, ",\"extra\":" + std::string (15 + delta, '[')
+			      + "0" + std::string (15 + delta, ']'));
+	    }
+	  else
+	    {
+	      request.insert (request.size () - 2, ",\"extra\":\"\"");
+	      request.insert (request.size () - 3, 4096 + delta - request.size (), 'x');
+	    }
+	  auto reply = f.exchange (fd, request);
+	  CHECK ((reply.find ("server_hello") != std::string::npos) == (delta <= 0));
+
+	}
+    }
+}
+
+TEST_CASE ("Handshake deadline is inclusive and fragmented input cannot renew it", "[pgbuf_inspector][socket]")
+{
+  for (int elapsed :
+       {
+	       499999, 500000, 500001
+       })
+    {
+      auto now = endpoint::clock::now ();
+      socket_fixture f ({}, [&now] { return now; });
+      socket_client fd (f.connect_client ());
+      f.server.poll ();
+      REQUIRE (send (fd, greeting.data (), greeting.size () - 1, MSG_NOSIGNAL)
+	       == static_cast<ssize_t> (greeting.size () - 1));
+      now += std::chrono::microseconds (elapsed);
+      f.server.poll ();
+      char byte;
+      auto n = recv (fd, &byte, 1, MSG_DONTWAIT);
+      if (elapsed < 500000)
+	{
+	  CHECK (n == -1);
+	  CHECK ((errno == EAGAIN || errno == EWOULDBLOCK));
+	  CHECK (f.exchange (fd, "\n").find ("server_hello") != std::string::npos);
+	}
+      else
+	{
+	  CHECK ((n == 0 || (n == -1 && errno == ECONNRESET)));
+	}
+
+    }
+}
+
+TEST_CASE ("Backpressure bounds queued bytes and reserves a truthful footer", "[pgbuf_inspector][socket]")
+{
+  auto now = endpoint::clock::now ();
+  std::size_t visits = 0;
+  scan_source source;
+  source.slots = 65537;
+  source.sample = [&visits] (std::size_t, page_sample &page)
+  {
+    ++visits;
+    page.volid = 0;
+    page.pageid = 42;
+    return sample_status::RESIDENT;
+  };
+  socket_fixture f (source, [&now] { return now; });
+  socket_client fd (f.connect_client ());
+  auto hello = f.exchange (fd, greeting);
+  auto request = scan_request (hello);
+  REQUIRE (send (fd, request.data (), request.size (), MSG_NOSIGNAL) == static_cast<ssize_t> (request.size ()));
+  for (int i = 0; i < 100; ++i)
+    {
+      f.server.poll ();
+    }
+  auto stalled_visits = visits;
+  REQUIRE (stalled_visits > 0);
+  REQUIRE (stalled_visits < 65536);
+  for (int i = 0; i < 100; ++i)
+    {
+      f.server.poll ();
+    }
+  REQUIRE (visits == stalled_visits);
+  int kernel_bytes = 0;
+  REQUIRE (ioctl (fd, FIONREAD, &kernel_bytes) == 0);
+  REQUIRE (kernel_bytes > 0);
+  char bytes[65536];
+  auto n = recv (fd, bytes, sizeof (bytes), MSG_PEEK | MSG_DONTWAIT);
+  REQUIRE (n == kernel_bytes);
+  std::string prefix (bytes, n);
+  auto header_size = prefix.find ('\n') + 1;
+  auto page_size = prefix.find ('\n', header_size) + 1 - header_size;
+  REQUIRE (header_size > 0);
+  REQUIRE (page_size > 0);
+  // Identical scalar records have identical wire lengths. Account independently
+  // for frames generated, bytes still in the kernel, and the producer queue.
+  auto queued = header_size + visits * page_size - kernel_bytes;
+  CHECK (queued <= 65536);
+  CHECK (queued > 65536 - 4096);
+  now += std::chrono::milliseconds (100);
+  std::string capture;
+  for (int i = 0; i < 100; ++i)
+    {
+      auto count = recv (fd, bytes, sizeof (bytes), MSG_DONTWAIT);
+      if (count > 0)
+	{
+	  capture.append (bytes, count);
+	}
+      f.server.poll ();
+    }
+  exchange_validator validator;
+  REQUIRE (validator.feed (greeting + hello + request + capture));
+  REQUIRE (validator.published ());
+  CHECK (validator.record_count () == visits);
+  CHECK (visits == stalled_visits);
+  CHECK (validator.lookup (0, 43) == observation::UNKNOWN);
+  CHECK (capture.find ("\"truncated\":true") != std::string::npos);
+
+}
+
+TEST_CASE ("Write stall deadline closes at 250 ms without manufacturing a footer", "[pgbuf_inspector][socket]")
+{
+  for (int elapsed :
+       {
+	       249999, 250000, 250001
+       })
+    {
+      auto now = endpoint::clock::now ();
+      scan_source source;
+      source.slots = 65537;
+      source.sample = [] (std::size_t, page_sample &page)
+      {
+	page.volid = 0;
+	page.pageid = 42;
+	return sample_status::RESIDENT;
+      };
+      socket_fixture f (source, [&now] { return now; });
+      socket_client fd (f.connect_client ());
+      auto hello = f.exchange (fd, greeting);
+      auto request = scan_request (hello);
+      REQUIRE (send (fd, request.data (), request.size (), MSG_NOSIGNAL) == static_cast<ssize_t> (request.size ()));
+      for (int i = 0; i < 100; ++i)
+	{
+	  f.server.poll ();
+	}
+      now += std::chrono::microseconds (elapsed);
+      f.server.poll ();
+      char bytes[65536];
+      auto n = recv (fd, bytes, sizeof (bytes), MSG_DONTWAIT);
+      REQUIRE (n > 0);
+      exchange_validator validator;
+      REQUIRE (validator.feed (greeting + hello + request + std::string (bytes, n)));
+      CHECK_FALSE (validator.published ());
+      CHECK_FALSE (validator.finish ());
+      n = recv (fd, bytes, sizeof (bytes), MSG_DONTWAIT);
+      if (elapsed < 250000)
+	{
+	  CHECK (n == -1);
+	  CHECK ((errno == EAGAIN || errno == EWOULDBLOCK));
+	}
+      else
+	{
+	  CHECK (n == 0);
+	}
+
+    }
+}
+
+TEST_CASE ("An indeterminate backlog-full probe preserves the active socket", "[pgbuf_inspector][socket]")
+{
+  socket_fixture f;
+  std::vector<socket_client> clients;
+  bool full = false;
+  for (int i = 0; i < 16; ++i)
+    {
+      int fd = socket (AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
+      REQUIRE (fd >= 0);
+      clients.emplace_back (fd);
+      sockaddr_un address {};
+      address.sun_family = AF_UNIX;
+      std::strcpy (address.sun_path, f.server.path ().c_str ());
+      if (connect (fd, reinterpret_cast<sockaddr *> (&address), sizeof (address)) != 0)
+	{
+	  REQUIRE (errno == EAGAIN);
+	  full = true;
+	  break;
+	}
+    }
+  REQUIRE (full);
+  struct stat before, after;
+  REQUIRE (lstat (f.server.path ().c_str (), &before) == 0);
+  endpoint other;
+  REQUIRE_FALSE (other.start (f.root, "database", f.db));
+  REQUIRE (lstat (f.server.path ().c_str (), &after) == 0);
+  CHECK (before.st_ino == after.st_ino);
+  CHECK (before.st_dev == after.st_dev);
+}
+
+TEST_CASE ("Real slow draining reaches the whole exchange deadline despite write progress",
+	   "[pgbuf_inspector][socket]")
+{
+  std::size_t visits = 0;
+  scan_source source;
+  source.slots = 65537;
+  source.sample = [&visits] (std::size_t, page_sample &page)
+  {
+    ++visits;
+    page.volid = 0;
+    page.pageid = 42;
+    return sample_status::RESIDENT;
+  };
+  socket_fixture f (source);
+  socket_client fd (f.connect_client ());
+  auto hello = f.exchange (fd, greeting);
+  auto request = scan_request (hello);
+  REQUIRE (send (fd, request.data (), request.size (), MSG_NOSIGNAL) == static_cast<ssize_t> (request.size ()));
+  auto start = endpoint::clock::now ();
+  f.server.poll ();
+  // Establish saturation before the 100 ms traversal cap; a slow test host
+  // that cannot establish this condition must fail rather than claim timing proof.
+  for (int i = 0; i < 100; ++i)
+    {
+      f.server.poll ();
+    }
+  REQUIRE (endpoint::clock::now () - start < std::chrono::milliseconds (100));
+  REQUIRE (visits > 100);
+  auto next_read = start + std::chrono::milliseconds (140);
+  auto last_progress = start;
+  int progress_events = 0;
+  bool closed = false;
+  std::string capture;
+  while (endpoint::clock::now () - start < std::chrono::milliseconds (2200))
+    {
+      f.server.poll ();
+      pollfd state {fd, POLLIN, 0};
+      REQUIRE (::poll (&state, 1, 0) >= 0);
+      if (state.revents & POLLHUP)
+	{
+	  closed = true;
+	  break;
+	}
+      if (endpoint::clock::now () >= next_read)
+	{
+	  char bytes[4096];
+	  auto n = recv (fd, bytes, sizeof (bytes), MSG_DONTWAIT);
+	  REQUIRE (n == sizeof (bytes));
+	  capture.append (bytes, n);
+	  int before = 0, after = 0;
+	  REQUIRE (ioctl (fd, FIONREAD, &before) == 0);
+	  f.server.poll ();
+	  REQUIRE (ioctl (fd, FIONREAD, &after) == 0);
+	  if (after > before)
+	    {
+	      REQUIRE (endpoint::clock::now () - last_progress < std::chrono::milliseconds (250));
+	      last_progress = endpoint::clock::now ();
+	      ++progress_events;
+	    }
+	  next_read += std::chrono::milliseconds (140);
+	}
+      std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+  auto elapsed = endpoint::clock::now () - start;
+  INFO ("elapsed us: " << std::chrono::duration_cast<std::chrono::microseconds> (elapsed).count ());
+  CHECK (closed);
+  CHECK (elapsed >= std::chrono::seconds (2));
+  CHECK (elapsed < std::chrono::milliseconds (2200));
+  CHECK (progress_events >= 10);
+  CHECK (endpoint::clock::now () - last_progress < std::chrono::milliseconds (250));
+  char bytes[65536];
+  for (;;)
+    {
+      auto n = recv (fd, bytes, sizeof (bytes), MSG_DONTWAIT);
+      if (n <= 0)
+	{
+	  break;
+	}
+      capture.append (bytes, n);
+    }
+  exchange_validator validator;
+  REQUIRE (validator.feed (greeting + hello + request + capture));
+  CHECK_FALSE (validator.published ());
+  CHECK_FALSE (validator.finish ());
+
+}
+
+TEST_CASE ("Wrong-owner private directories are preserved", "[.credential]")
+{
+  REQUIRE (geteuid () == 0);
+  socket_fixture f;
+  f.server.stop ();
+  auto directory = std::string (f.root) + "/pgbuf-inspector";
+  REQUIRE (chown (directory.c_str (), 1, -1) == 0);
+  endpoint other;
+  REQUIRE_FALSE (other.start (f.root, "database", f.db));
+  struct stat st;
+  REQUIRE (lstat (directory.c_str (), &st) == 0);
+  CHECK (st.st_uid == 1);
+  CHECK ((st.st_mode & 0777) == 0700);
+}
+
+TEST_CASE ("Repeated shutdown closes descriptors and never retries activation", "[pgbuf_inspector][socket]")
+{
+  auto descriptors = [] ()
+  {
+    return std::distance (std::filesystem::directory_iterator ("/proc/self/fd"),
+			  std::filesystem::directory_iterator ());
+  };
+  auto before = descriptors ();
+  for (int i = 0; i < 20; ++i)
+    {
+      socket_fixture f;
+      socket_client first (f.connect_client ()), second (f.connect_client ());
+      f.exchange (first, greeting);
+      f.exchange (second, greeting);
+      auto start = endpoint::clock::now ();
+      f.server.stop ();
+      CHECK (endpoint::clock::now () - start < std::chrono::milliseconds (100));
+      char byte;
+      CHECK (recv (first, &byte, 1, MSG_DONTWAIT) == 0);
+      CHECK (recv (second, &byte, 1, MSG_DONTWAIT) == 0);
+
+
+      f.server.stop ();
+      CHECK_FALSE (f.server.start (f.root, "database", f.db));
+    }
+  CHECK (descriptors () == before);
+}
+
+TEST_CASE ("Admission overload leaves both admitted clients usable", "[pgbuf_inspector][socket]")
+{
+  auto now = endpoint::clock::now ();
+  socket_fixture f ({}, [&now] { return now; });
+  socket_client first (f.connect_client ()), second (f.connect_client ());
+  auto request = scan_request (f.exchange (first, greeting));
+  REQUIRE (f.exchange (second, greeting).find ("server_hello") != std::string::npos);
+  for (int i = 0; i < 128; ++i)
+    {
+      socket_client excess (f.connect_client ());
+      f.server.poll ();
+      char bytes[128];
+      auto n = recv (excess, bytes, sizeof (bytes), MSG_DONTWAIT);
+      REQUIRE (n > 0);
+      REQUIRE (std::string (bytes, n) == "{\"type\":\"error\",\"code\":\"busy\"}\n");
+
+    }
+  CHECK (f.exchange (first, request).find ("scan_footer") != std::string::npos);
+  now += std::chrono::milliseconds (100);
+  CHECK (f.exchange (second, request).find ("scan_footer") != std::string::npos);
+
+
+}
+
+TEST_CASE ("Malformed scan controls close without protocol data or manufactured success",
+	   "[pgbuf_inspector][socket]")
+{
+  for (const std::string &malformed : std::vector<std::string>
+  {
+    "{bad json}\n", "[]\n", "{\"type\":\"scan_request\"}\n",
+    "{\"type\":\"scan_request\",\"incarnation\":3}\n",
+    "{\"type\":\"scan_request\",\"type\":\"client_hello\"}\n",
+    std::string ("{\"extra\":\"") + char (0xff) + "\"}\n"
+    })
+  {
+    CAPTURE (malformed);
+    socket_fixture f;
+    socket_client fd (f.connect_client ());
+    REQUIRE (f.exchange (fd, greeting).find ("server_hello") != std::string::npos);
+    CHECK (f.exchange (fd, malformed).empty ());
+
+  }
 }
