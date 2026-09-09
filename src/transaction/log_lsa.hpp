@@ -32,6 +32,9 @@
 #include <cstring>
 #include <cinttypes>
 #include <cstddef>
+#if defined (WINDOWS)
+#include <intrin.h>
+#endif
 
 struct log_lsa
 {
@@ -74,6 +77,8 @@ constexpr log_lsa MAX_LSA = { MAX_LOG_LSA_PAGEID, MAX_LOG_LSA_OFFSET };
 
 // functions
 void lsa_to_string (char *buf, int buf_size, const log_lsa *lsa);
+inline void lsa_atomic_load (log_lsa *dest, const log_lsa *src);
+inline void lsa_atomic_store (log_lsa *dest, const log_lsa *src);
 
 // log_lsa_queue
 struct log_lsa_queue
@@ -250,6 +255,41 @@ LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2)
 {
   assert (plsa1 != NULL && plsa2 != NULL);
   return *plsa1 > *plsa2;
+}
+
+//
+// atomic copy of an LSA that one thread updates while other threads read it without a lock
+//
+// log_Gl.hdr.append_lsa is advanced under LOG_CS but copied without it by log_get_undo_record,
+// heap_get_visible_version_from_log and logpb_fetch_page. A plain copy lets the compiler access pageid and offset
+// separately, so a reader can pair the page id of one value with the offset of another (CBRD-27400). These helpers
+// copy the whole value with one 8-byte atomic access.
+//
+void
+lsa_atomic_load (log_lsa *dest, const log_lsa *src)
+{
+  assert (dest != NULL && src != NULL);
+#if defined (WINDOWS)
+  volatile std::int64_t *src_word = reinterpret_cast<volatile std::int64_t *> (const_cast<log_lsa *> (src));
+  std::int64_t word = _InterlockedCompareExchange64 (src_word, 0, 0);
+  std::memcpy (dest, &word, sizeof (word));
+#else
+  // the generic builtin takes non-const pointers (clang rejects const); *src is not modified
+  __atomic_load (const_cast<log_lsa *> (src), dest, __ATOMIC_ACQUIRE);
+#endif
+}
+
+void
+lsa_atomic_store (log_lsa *dest, const log_lsa *src)
+{
+  assert (dest != NULL && src != NULL);
+#if defined (WINDOWS)
+  std::int64_t word;
+  std::memcpy (&word, src, sizeof (word));
+  (void) _InterlockedExchange64 (reinterpret_cast<volatile std::int64_t *> (dest), word);
+#else
+  __atomic_store (dest, const_cast<log_lsa *> (src), __ATOMIC_RELEASE);
+#endif
 }
 
 #endif  // _LOG_LSA_HPP_

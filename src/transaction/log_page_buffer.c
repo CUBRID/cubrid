@@ -1751,7 +1751,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCES
 
   logpb_log ("called logpb_fetch_page with pageid = %lld\n", (long long int) req_lsa->pageid);
 
-  LSA_COPY (&append_lsa, &log_Gl.hdr.append_lsa);
+  lsa_atomic_load (&append_lsa, &log_Gl.hdr.append_lsa);
   LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
 
   /*
@@ -2633,6 +2633,7 @@ static void
 logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 {
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
+  LOG_LSA next_append_lsa;
   bool need_flush;
 #if defined(SERVER_MODE)
   int rv;
@@ -2658,8 +2659,13 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 
   log_Gl.append.log_pgptr = NULL;
 
-  log_Gl.hdr.append_lsa.pageid++;
-  log_Gl.hdr.append_lsa.offset = 0;
+  /* Move to the next page with a single 8-byte store. log_get_undo_record, heap_get_visible_version_from_log and
+   * logpb_fetch_page copy append_lsa without LOG_CS; separate stores of pageid and offset would let them observe the old
+   * page paired with the new offset, or the new page paired with the old offset. */
+  LSA_COPY (&next_append_lsa, &log_Gl.hdr.append_lsa);
+  next_append_lsa.pageid++;
+  next_append_lsa.offset = 0;
+  lsa_atomic_store (&log_Gl.hdr.append_lsa, &next_append_lsa);
 
   /*
    * Is the next logical page to archive, currently located at the physical
