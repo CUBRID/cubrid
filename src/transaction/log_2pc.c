@@ -626,6 +626,12 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	{
 	  if (participants[i].xa_unsupported)
 	    {
+#ifdef SERVER_MODE
+	      /* No XA decision is coming for it, so nothing else would settle its share
+	       * of the wait below. */
+	      dblink_2pc_completion_ref (completion);
+	      dblink_2pc_completion_settle (completion);
+#endif
 	      continue;
 	    }
 #ifdef SERVER_MODE
