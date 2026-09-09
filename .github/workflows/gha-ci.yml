@@ -840,9 +840,20 @@ jobs:
           if [ -n "$RERUN_FROM" ]; then
             src="$CI_ROOT/runs/$RERUN_FROM/failed.list"
             if [ ! -f "$src" ]; then
-              echo "::error::run $RERUN_FROM has no shell results: it never ran the suite"
-              echo "  Only a run that ran the shell suite can be re-run. A pull_request run builds only."
-              echo "  Take the id from the 'current run' row of that run's summary, not 'built by run'."
+              # Absent for three different reasons; naming the wrong one sends the
+              # reader after the wrong id. results/ is what separates them.
+              rd="$CI_ROOT/runs/$RERUN_FROM"
+              if [ ! -d "$rd" ]; then
+                echo "::error::run $RERUN_FROM has no run directory: $rd"
+                echo "  Pruned 7 days after the run, or never a gha-ci run at all."
+              elif [ ! -d "$rd/results" ]; then
+                echo "::error::run $RERUN_FROM never ran the shell suite: no $rd/results"
+                echo "  A pull_request run builds only. Take the id from the 'current run' row"
+                echo "  of a run that ran the suite, not from 'built by run'."
+              else
+                echo "::error::run $RERUN_FROM ran the suite but published no failure list"
+                echo "  collect has not finished: still running, cancelled, or it died first."
+              fi
               exit 1
             fi
             # CircleCI's rerun runs the same commit as the workflow it came from.
