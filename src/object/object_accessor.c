@@ -3661,8 +3661,8 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
 }
 
 /*
- * obj_find_multi_attr - This can be used to locate the instance whose key
- *                       has a particular unique value
+ * obj_find_multi_attr_internal - Work function of obj_find_multi_attr () and
+ *                                obj_find_multi_attr_committed ()
  *   return :  object with the key value
  *   op(in): class pointer
  *   size(in): size of value array
@@ -3670,10 +3670,15 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
  *   values(in): array of value to look for
  *   fetchmode(in): access type AU_FETCH_READ
  *                              AU_FETCH_UPDATE
+ *   committed_read(in): true to read the latest committed version of the
+ *                       object without locking it (fetchmode must then be
+ *                       AU_FETCH_READ); false to S-lock the found object and
+ *                       fetch its dirty version
  *
  */
-MOP
-obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE * values[], AU_FETCHMODE fetchmode)
+static MOP
+obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const DB_VALUE * values[],
+			      AU_FETCHMODE fetchmode, bool committed_read)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *cons;
@@ -3687,6 +3692,8 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
   DB_VALUE unique_key;
   BTREE_SEARCH result;
   OID oid;
+
+  assert (!committed_read || fetchmode == AU_FETCH_READ);
 
   if (op == NULL || attr_names == NULL || values == NULL || size < 1)
     {
@@ -3779,13 +3786,36 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
 
   BTID_COPY (&unique_btid, &cons->index_btid);
 
-  result = btree_find_unique (&unique_btid, &unique_key, ws_oid (op), &oid);
+  if (committed_read)
+    {
+      /* S_SELECT lookup: the server answers without a lock for the classes that allow it (see
+       * xbtree_find_unique ()); the found object is then fetched as its latest committed version, unlocked */
+      OID *found_oids = NULL;
+      int found_count = 0;
 
+      result =
+	btree_find_multi_uniques (ws_oid (op), DB_NOT_PARTITIONED_CLASS, &unique_btid, &unique_key, 1, S_SELECT,
+				  &found_oids, &found_count);
+      if (result == BTREE_KEY_FOUND)
+	{
+	  assert (found_oids != NULL && found_count == 1);
+	  COPY_OID (&oid, &found_oids[0]);
+	}
+      if (found_oids != NULL)
+	{
+	  free_and_init (found_oids);
+	}
+    }
+  else
+    {
+      result = btree_find_unique (&unique_btid, &unique_key, ws_oid (op), &oid);
+    }
 
   if (result == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&oid, NULL);
-      if (au_fetch_instance_force (obj, NULL, fetchmode, LC_FETCH_DIRTY_VERSION) != NO_ERROR)
+      if (au_fetch_instance_force (obj, NULL, fetchmode,
+				   committed_read ? LC_FETCH_COMMITTED_VERSION : LC_FETCH_DIRTY_VERSION) != NO_ERROR)
 	{
 	  obj = NULL;
 	}
@@ -3806,6 +3836,50 @@ end_find:
   db_value_clear (&unique_key);
 
   return obj;
+}
+
+/*
+ * obj_find_multi_attr - This can be used to locate the instance whose key
+ *                       has a particular unique value
+ *   return :  object with the key value
+ *   op(in): class pointer
+ *   size(in): size of value array
+ *   attr_names(in): array of attribute names
+ *   values(in): array of value to look for
+ *   fetchmode(in): access type AU_FETCH_READ
+ *                              AU_FETCH_UPDATE
+ *
+ */
+MOP
+obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE * values[], AU_FETCHMODE fetchmode)
+{
+  return obj_find_multi_attr_internal (op, size, attr_names, values, fetchmode, false);
+}
+
+/*
+ * obj_find_multi_attr_committed - Locate the instance whose key has a
+ *                                 particular unique value and read its latest
+ *                                 committed version without locking it
+ *   return :  object with the key value
+ *   op(in): class pointer
+ *   size(in): size of value array
+ *   attr_names(in): array of attribute names
+ *   values(in): array of value to look for
+ *
+ * Note: obj_find_multi_attr () S-locks the object it finds and fetches its
+ *       dirty version, so a concurrent writer holding the row X-locked blocks
+ *       the caller until it commits. This variant instead returns the last
+ *       committed state of the row -- lookup and fetch take no lock and do not
+ *       build the transaction's MVCC snapshot (LC_FETCH_COMMITTED_VERSION). It
+ *       is for catalog data whose last committed value is good enough for the
+ *       reader, e.g. the optimizer's histogram read (CBRD-27369); the returned
+ *       object must not be used as the base of an update. The server honors the
+ *       unlocked lookup only for the classes listed in xbtree_find_unique ().
+ */
+MOP
+obj_find_multi_attr_committed (MOP op, int size, const char *attr_names[], const DB_VALUE * values[])
+{
+  return obj_find_multi_attr_internal (op, size, attr_names, values, AU_FETCH_READ, true);
 }
 
 /*
