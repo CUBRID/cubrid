@@ -19961,12 +19961,17 @@ opt_compact_fill_factor
 	   }}
 	| WITH FILL_FACTOR opt_equalsign unsigned_integer
 	   {{
-		int fill_factor = $4->info.value.data_value.i;
+		/* unsigned_integer keeps a literal that does not fit an int in the bigint member of the value union,
+		 * so reading the int member would silently truncate it: FILL_FACTOR = 4294967386 would pass as 90.
+		 * Anything but an int literal is out of range by definition. */
+		int fill_factor =
+		  ($4->type_enum == PT_TYPE_INTEGER) ? (int) $4->info.value.data_value.i : BTREE_COMPACT_MAX_FILL_FACTOR + 1;
 		if (fill_factor < BTREE_COMPACT_MIN_FILL_FACTOR || fill_factor > BTREE_COMPACT_MAX_FILL_FACTOR)
 		  {
 		    pt_cat_error (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX,
 				  MSGCAT_SYNTAX_INVALID_FILL_FACTOR_ARGUMENT, BTREE_COMPACT_MIN_FILL_FACTOR,
 				  BTREE_COMPACT_MAX_FILL_FACTOR);
+		    fill_factor = BTREE_COMPACT_DEFAULT_FILL_FACTOR;
 		  }
 		$$ = fill_factor;
 	   }}

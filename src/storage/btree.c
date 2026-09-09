@@ -14325,12 +14325,12 @@ static int
 btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR left_page, PAGE_PTR * right_page,
 			int num_move, const VPID * dir_head_vpid)
 {
-  RECDES left_record, right_record, new_record;
+  RECDES left_record, right_record;
   char left_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char right_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  char new_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
   int move_size = num_move * obj_size;
+  int left_old_length;
   VPID right_vpid, right_next_vpid;
   OID new_sep;
   LOG_DATA_ADDR addr;
@@ -14357,18 +14357,18 @@ btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR l
   assert (num_move >= 1 && move_size <= right_record.length);
   pgbuf_get_vpid (*right_page, &right_vpid);
 
-  /* 1. Grow left's record. Partial record changes are capped at 255 bytes, so log whole record images. */
-  new_record.type = REC_HOME;
-  new_record.area_size = DB_PAGESIZE;
-  new_record.data = PTR_ALIGN (new_rec_buf, BTREE_MAX_ALIGN);
-  new_record.length = left_record.length + move_size;
-  assert (new_record.length <= (int) BTREE_MAX_OVERFLOW_RECORD_SIZE (btid_int));
-  memcpy (new_record.data, left_record.data, left_record.length);
-  memcpy (new_record.data + left_record.length, right_record.data, move_size);
+  /* 1. Grow left's record, appending in place in the copy just read: the old image stays as its prefix and serves
+   *    as the undo image, so no third page-sized buffer is needed. Partial record changes are capped at 255 bytes,
+   *    so whole record images are logged. */
+  left_old_length = left_record.length;
+  assert (left_old_length + move_size <= (int) BTREE_MAX_OVERFLOW_RECORD_SIZE (btid_int));
+  memcpy (left_record.data + left_old_length, right_record.data, move_size);
+  left_record.length = left_old_length + move_size;
+  left_record.type = REC_HOME;
 #if !defined (NDEBUG)
-  (void) btree_check_valid_record (thread_p, btid_int, &new_record, BTREE_OVERFLOW_NODE, NULL);
+  (void) btree_check_valid_record (thread_p, btid_int, &left_record, BTREE_OVERFLOW_NODE, NULL);
 #endif /* !NDEBUG */
-  if (spage_update (thread_p, left_page, 1, &new_record) != SP_SUCCESS)
+  if (spage_update (thread_p, left_page, 1, &left_record) != SP_SUCCESS)
     {
       assert_release (false);
       return ER_FAILED;
@@ -14378,20 +14378,25 @@ btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR l
   addr.vfid = &btid_int->sys_btid->vfid;
   BTREE_RV_SET_OVERFLOW_NODE (&addr);
   LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_ALL);
-  log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, left_record.length, new_record.length,
-			    left_record.data, new_record.data);
+  log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, left_old_length, left_record.length,
+			    left_record.data, left_record.data);
   pgbuf_set_dirty (thread_p, left_page, DONT_FREE);
 
   if (move_size < right_record.length)
     {
-      /* 2a. Partial move: drop the prefix from right and raise its separator to its new first object. */
-      new_record.length = right_record.length - move_size;
-      memcpy (new_record.data, right_record.data + move_size, new_record.length);
-      BTREE_GET_OID (new_record.data, &new_sep);
+      /* 2a. Partial move: drop the prefix from right and raise its separator to its new first object. The remainder
+       *     is a suffix of the copy just read, so it is written and logged straight from there. */
+      RECDES remainder;
+
+      remainder.type = REC_HOME;
+      remainder.data = right_record.data + move_size;
+      remainder.length = right_record.length - move_size;
+      remainder.area_size = remainder.length;
+      BTREE_GET_OID (remainder.data, &new_sep);
 #if !defined (NDEBUG)
-      (void) btree_check_valid_record (thread_p, btid_int, &new_record, BTREE_OVERFLOW_NODE, NULL);
+      (void) btree_check_valid_record (thread_p, btid_int, &remainder, BTREE_OVERFLOW_NODE, NULL);
 #endif /* !NDEBUG */
-      if (spage_update (thread_p, *right_page, 1, &new_record) != SP_SUCCESS)
+      if (spage_update (thread_p, *right_page, 1, &remainder) != SP_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
@@ -14401,8 +14406,8 @@ btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR l
       addr.vfid = &btid_int->sys_btid->vfid;
       BTREE_RV_SET_OVERFLOW_NODE (&addr);
       LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_ALL);
-      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, right_record.length, new_record.length,
-				right_record.data, new_record.data);
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, right_record.length, remainder.length,
+				right_record.data, remainder.data);
       pgbuf_set_dirty (thread_p, *right_page, DONT_FREE);
 
       error_code = btree_ovf_dir_set_separator (thread_p, btid_int, dir_head_vpid, &right_vpid, &new_sep);
