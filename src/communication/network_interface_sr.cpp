@@ -4495,8 +4495,9 @@ sqst_enter_update_gate (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   int error;
   OID classoid;
   bool stats_fresh = false;
+  int stored_fullscan = 0;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   if (reqlen < OR_OID_SIZE)
@@ -4509,7 +4510,7 @@ sqst_enter_update_gate (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   (void) or_unpack_oid (request, &classoid);
 
-  error = xstats_enter_update_gate (thread_p, &classoid, &stats_fresh);
+  error = xstats_enter_update_gate (thread_p, &classoid, &stats_fresh, &stored_fullscan);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -4518,6 +4519,7 @@ sqst_enter_update_gate (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 send:
   ptr = or_pack_int (reply, error);
   ptr = or_pack_int (ptr, stats_fresh ? 1 : 0);
+  ptr = or_pack_int (ptr, stored_fullscan);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 

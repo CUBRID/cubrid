@@ -4450,6 +4450,111 @@ error:
   return ER_FAILED;
 }
 
+/*
+ * catcls_get_class_stats () - read the statistics bookkeeping of a class's _db_class row
+ *   return: NO_ERROR, or an error code
+ *   class_name(in): class name
+ *   out_chn(out): the row's cache coherency number.  Every rewrite of the row bumps it
+ *                 (catcls_update_class_stats () stores old_chn + 1), so a different value
+ *                 between two reads means the row was rewritten in between -- even twice
+ *                 within one second, which the second-granular timestamp cannot tell.
+ *   out_with_fullscan(out): statistics_strategy (nonzero: the last collection was FULLSCAN)
+ *   out_found(out): false when the class has no statistics bookkeeping yet (the
+ *                   checked_time / statistics_strategy columns are NULL)
+ *
+ * Note: the read half of catcls_update_class_stats (), done through a scan cache without an
+ *       MVCC snapshot so the *latest committed* row is returned regardless of the caller's own
+ *       snapshot -- xstats_enter_update_gate () must see what a concurrent session committed
+ *       while the caller waited on the gate.  The record buffer belongs to the scan cache.
+ */
+int
+catcls_get_class_stats (THREAD_ENTRY * thread_p, const char *class_name, int *out_chn, int *out_with_fullscan,
+			bool * out_found)
+{
+  int error = NO_ERROR;
+  OID oid;
+  OID *catalog_class_oid_p = NULL;
+  CLS_INFO *cls_info_p = NULL;
+  HEAP_SCANCACHE scan;
+  bool is_scan_inited = false;
+  OR_VALUE *value_p = NULL;
+  RECDES record = RECDES_INITIALIZER;
+  DB_VALUE *checked_time_p, *strategy_p;
+
+  *out_chn = 0;
+  *out_with_fullscan = 0;
+  *out_found = false;
+
+  if (_gv_ct_Class_checked_time_idx < 0 || _gv_ct_Class_statistics_strategy_idx < 0)
+    {
+      /* bookkeeping columns not resolved yet: report "no statistics" */
+      return NO_ERROR;
+    }
+
+  error = catcls_find_oid_by_class_name (thread_p, class_name, &oid);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  catalog_class_oid_p = &ct_Class.cc_classoid;
+  cls_info_p = catalog_get_class_info (thread_p, catalog_class_oid_p, NULL);
+  if (cls_info_p == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  /* no snapshot: the latest committed version, straight from the heap */
+  if (heap_scancache_start (thread_p, &scan, &cls_info_p->ci_hfid, catalog_class_oid_p, true, NULL, false) !=
+      NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  is_scan_inited = true;
+
+  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN) != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  value_p = catcls_get_or_value_from_record (thread_p, &record, catalog_class_oid_p);
+  if (value_p == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  checked_time_p = &value_p->sub.value[_gv_ct_Class_checked_time_idx].value;
+  strategy_p = &value_p->sub.value[_gv_ct_Class_statistics_strategy_idx].value;
+  if (!db_value_is_null (checked_time_p) && !db_value_is_null (strategy_p))
+    {
+      *out_found = true;
+      *out_chn = or_chn (&record);
+      *out_with_fullscan = db_get_int (strategy_p);
+    }
+
+end:
+  if (value_p)
+    {
+      catcls_free_or_value (value_p);
+    }
+
+  if (is_scan_inited)
+    {
+      heap_scancache_end (thread_p, &scan);
+    }
+
+  if (cls_info_p)
+    {
+      catalog_free_class_info_and_init (cls_info_p);
+    }
+
+  return error;
+}
+
 int
 catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsigned int ci_time_stamp,
 			   bool with_fullscan)
