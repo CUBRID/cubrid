@@ -235,7 +235,9 @@ logtb_allocate_tdes_area (int num_indices)
   for (i = 0, tran_index = NUM_TOTAL_TRAN_INDICES; i < num_indices; tran_index++, i++)
     {
       tdes = log_Gl.trantable.all_tdes[tran_index] = &area->tdesarea[i];
-      logtb_initialize_tdes (tdes, i);
+      /* the descriptor is named by its transaction index, not by its offset in this area.
+       * The two only coincide for the first area, which starts at index zero. */
+      logtb_initialize_tdes (tdes, tran_index);
     }
 
   return area;
@@ -340,12 +342,52 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
       goto error;
     }
 
+  /* This has to stay ahead of logtb_set_number_of_total_tran_indices() below. Growing
+   * the lock manager after the transaction table has been published would leave the
+   * transaction table handing out indices the lock manager cannot index, which is the
+   * defect this notification fixes. Failing here leaves it at its old size. */
+  error_code = lock_expand_tran_lock_table (total_indices);
+  if (error_code != NO_ERROR)
+    {
+      /* *INDENT-OFF* */
+      delete [] area->tdesarea;
+      /* *INDENT-ON* */
+      free_and_init (area);
+      goto error;
+    }
+
+  error_code = file_manager_expand_tran_entries (total_indices);
+  if (error_code != NO_ERROR)
+    {
+      /* *INDENT-OFF* */
+      delete [] area->tdesarea;
+      /* *INDENT-ON* */
+      free_and_init (area);
+      goto error;
+    }
+
   log_Gl.trantable.area = area;
   log_Gl.trantable.hint_free_index = NUM_TOTAL_TRAN_INDICES;
   logtb_set_number_of_total_tran_indices (total_indices);
 
   // make sure MVCC table resizes if necessary
   log_Gl.mvcc_table.alloc_transaction_lowest_active ();
+
+#if !defined (NDEBUG)
+  {
+    /* The modules notified above size tables by transaction index, so they must now
+     * reach the new count. One left behind reads past the end of its own table the
+     * moment one of the new indices is used, and when the memory beyond happens to be
+     * zero it does so silently. A capacity of zero means the check does not apply -
+     * see the getters. qmgr and the MVCC table resize themselves and report nothing
+     * yet; they can join the same way if it ever pays to check them too. */
+    const int lock_capacity = lock_get_tran_index_capacity ();
+    const int file_capacity = file_manager_get_tran_index_capacity ();
+
+    assert (lock_capacity == 0 || lock_capacity >= NUM_TOTAL_TRAN_INDICES);
+    assert (file_capacity == 0 || file_capacity >= NUM_TOTAL_TRAN_INDICES);
+  }
+#endif /* !defined (NDEBUG) */
 
   return error_code;
 
