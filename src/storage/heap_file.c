@@ -599,8 +599,10 @@ static int heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_
 			       HEAP_SCANCACHE * scan_cache, VPID * last_vpid, PGBUF_WATCHER * pg_watcher);
 
 static int heap_vpid_init_new (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr, HEAP_HDR_STATS * heap_hdr,
 			    HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * new_pg_watcher);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static VPID *heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr, VPID * rm_vpid);
 
 static void heap_bestspace_clear_candidates (cubstorage::bestspace_entry * candidates, std::size_t * num_candidates,
@@ -643,7 +645,9 @@ static OID *heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * o
 static const OID *heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, RECDES * recdes,
 				   LOG_LSA * change_link_lsa);
 static int heap_ovf_flush (THREAD_ENTRY * thread_p, const OID * ovf_oid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int heap_ovf_get_length (THREAD_ENTRY * thread_p, const OID * ovf_oid);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static SCAN_CODE heap_ovf_get (THREAD_ENTRY * thread_p, const OID * ovf_oid, RECDES * recdes, int chn,
 			       MVCC_SNAPSHOT * mvcc_snapshot);
 static int heap_ovf_get_capacity (THREAD_ENTRY * thread_p, const OID * ovf_oid, int *ovf_len, int *ovf_num_pages,
@@ -760,8 +764,10 @@ static int heap_get_partitions_from_subclasses (THREAD_ENTRY * thread_p, const O
 						OR_PARTITION * partitions);
 static int heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, OR_PARTITION * partition_info,
 					  HFID * class_hfid, REPR_ID * repr_id, int *has_partition_info);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATTR_ID * type_id,
 					  ATTR_ID * values_id);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *count, OID ** subclasses);
 
 static SCAN_CODE heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, RECDES forward_recdes,
@@ -863,8 +869,10 @@ static void heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_
 static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid,
 				       bool vacuum_status_change);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 					      OID * partition_oid);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static SCAN_CODE heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa,
 						   LOG_PAGE * log_page_p, RECDES * recdes);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
@@ -879,8 +887,10 @@ static int heap_get_header_page (THREAD_ENTRY * thread_p, const HFID * hfid, VPI
 
 STATIC_INLINE HEAP_HDR_STATS *heap_get_header_stats_ptr (THREAD_ENTRY * thread_p, PAGE_PTR page_header)
   __attribute__ ((ALWAYS_INLINE));
+#if defined (ENABLE_UNUSED_FUNCTION)
 STATIC_INLINE int heap_copy_header_stats (THREAD_ENTRY * thread_p, PAGE_PTR page_header, HEAP_HDR_STATS * header_stats)
   __attribute__ ((ALWAYS_INLINE));
+#endif /* ENABLE_UNUSED_FUNCTION */
 STATIC_INLINE HEAP_CHAIN *heap_get_chain_ptr (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int heap_copy_chain (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, HEAP_CHAIN * chain)
@@ -2683,6 +2693,7 @@ heap_get_header_stats_ptr (THREAD_ENTRY * thread_p, PAGE_PTR page_header)
   return (HEAP_HDR_STATS *) recdes.data;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_copy_header_stats () - Copy heap header statistics
  *
@@ -2704,6 +2715,7 @@ heap_copy_header_stats (THREAD_ENTRY * thread_p, PAGE_PTR page_header, HEAP_HDR_
     }
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_get_chain_ptr () - Get pointer to chain in heap page
@@ -2871,6 +2883,7 @@ heap_vpid_init_new (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_vpid_alloc () - allocate, fetch, and initialize a new page
  *   return: error code
@@ -3004,6 +3017,7 @@ error:
 
   return error_code;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_vpid_remove () - Deallocate a heap page
@@ -6209,6 +6223,7 @@ heap_ovf_flush (THREAD_ENTRY * thread_p, const OID * ovf_oid)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_ovf_get_length () - Find length of overflow object
  *   return: length
@@ -6228,6 +6243,7 @@ heap_ovf_get_length (THREAD_ENTRY * thread_p, const OID * ovf_oid)
 
   return overflow_get_length (thread_p, &ovf_vpid);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_ovf_get () - get/retrieve the content of a multipage object from overflow
@@ -6721,6 +6737,7 @@ heap_scancache_quick_start (HEAP_SCANCACHE * scan_cache)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_scancache_quick_start_modify () - Start caching information
  *                                      for a heap modifications
@@ -6736,6 +6753,7 @@ heap_scancache_quick_start_modify (HEAP_SCANCACHE * scan_cache)
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_scancache_quick_start_internal () -
@@ -8313,7 +8331,7 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_rang
 	{
 	  /* Scanrange starts with the given object */
 	  scan_range->first_oid = *start_oid;
-	  scan = heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid,
+	  scan = heap_get_visible_version (thread_p, &scan_range->first_oid, &scan_range->scan_cache.node.class_oid,
 					   &recdes, &scan_range->scan_cache, PEEK, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
@@ -8431,7 +8449,7 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, O
 		{
 		  scan =
 		    heap_prev (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid,
-			       &scan_range->first_oid, &recdes, &scan_range->scan_cache, PEEK);
+			       &scan_range->last_oid, &recdes, &scan_range->scan_cache, PEEK);
 		  if (scan != S_SUCCESS)
 		    {
 		      return scan;
@@ -11158,6 +11176,7 @@ cleanup:
   return error;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_get_partition_attributes () - get attribute ids for columns of
  *				      _db_partition class
@@ -11259,6 +11278,7 @@ cleanup:
     }
   return error;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_get_partitions_from_subclasses () - Get partition information from a
@@ -17364,6 +17384,7 @@ exit_on_error:
   return ret;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_attrinfo_set_uninitialized_global () -
  *   return: NO_ERROR
@@ -17382,6 +17403,7 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid,
 
   return heap_attrinfo_set_uninitialized (thread_p, inst_oid, recdes, attr_info);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_get_class_info () - get HFID and file type for class.
@@ -18372,16 +18394,35 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
   int i = 0;
   int parts_count = 0;
   bool is_all = false;
-
-  assert (arg_cnt == 2);
-  assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
-  assert (DB_VALUE_TYPE (arg_values[1]) == DB_TYPE_INTEGER);
+  SHOWSTMT_SCAN_MODE scan_mode = SHOWSTMT_SCAN_EXACT;
+  LOCK class_lock;
 
   *ptr = NULL;
 
-  class_name = db_get_string (arg_values[0]);
+  /* The scan mode is the last argument, and it is missing when the request comes from a client
+   * which does not know it yet; such a client gets the default (EXACT).  The argument count comes
+   * from the XASL the client built, so it is checked and not only asserted. */
+  if (arg_cnt < 2 || arg_cnt > 3)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
+    }
+  assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
+  assert (DB_VALUE_TYPE (arg_values[1]) == DB_TYPE_INTEGER);	/* partition type */
 
+  class_name = db_get_string (arg_values[0]);
   partition_type = (DB_CLASS_PARTITION_TYPE) db_get_int (arg_values[1]);
+
+  /* S_LOCK is the default so that the statistics are consistent with the committed DML; the APPROX
+   * option asks for IS_LOCK instead, which runs concurrently with DML (IX_LOCK) at the price of
+   * approximate numbers. */
+  if (arg_cnt > 2)
+    {
+      assert (DB_VALUE_TYPE (arg_values[2]) == DB_TYPE_INTEGER);	/* scan mode */
+      scan_mode = (SHOWSTMT_SCAN_MODE) db_get_int (arg_values[2]);
+    }
+  class_lock = (scan_mode == SHOWSTMT_SCAN_APPROX) ? IS_LOCK : S_LOCK;
 
   ctx = (HEAP_SHOW_SCAN_CTX *) db_private_alloc (thread_p, sizeof (HEAP_SHOW_SCAN_CTX));
   if (ctx == NULL)
@@ -18392,10 +18433,18 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
     }
   memset (ctx, 0, sizeof (HEAP_SHOW_SCAN_CTX));
 
-  /* use IS_LOCK so that DML (IX_LOCK) can run concurrently with SHOW HEAP HEADER/CAPACITY */
-  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, IS_LOCK);
-  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
+  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, class_lock);
+  if (status == LC_CLASSNAME_ERROR)
     {
+      /* The class name is known, but the class lock could not be acquired (e.g. an S_LOCK timeout
+       * while a concurrent DML holds an IX_LOCK).  The lock manager has set the real error, so
+       * report it; this is never an unknown class. */
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+  if (status == LC_CLASSNAME_DELETED)
+    {
+      /* the class has been dropped since the statement was compiled */
       error = ER_LC_UNKNOWN_CLASSNAME;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, class_name);
       goto cleanup;
@@ -24963,6 +25012,7 @@ heap_rv_remove_flags_from_offset (INT16 offset)
   return offset & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_scancache_add_partition_node () - add a new partition information to
  *				      to the scan_cache's partition list.
@@ -25012,6 +25062,7 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * sca
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_mvcc_log_redistribute () - Log partition redistribute data
