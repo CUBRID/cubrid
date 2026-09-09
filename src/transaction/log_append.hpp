@@ -86,7 +86,7 @@ struct log_append_info
    * max (). Distinct axis from nxio_lsa (what reached disk); do not maintain either from the other.
    * todo - fold into LOG_LSA_ATOMIC together with nxio_lsa */
   std::atomic<LOG_LSA> copied_lsa;
-  
+
   /* todo - not really belonging here. should be part of page buffer. */
   LOG_LSA_ATOMIC prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */

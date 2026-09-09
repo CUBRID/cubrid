@@ -695,7 +695,7 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
 
   /* nothing is reachable through logpb_fetch_page () with the pool down */
   log_Gl.append.set_copied_lsa (NULL_LSA);
-  
+
   /* clears log_Gl.append.prev_lsa and copies it to log_Gl.prior_info.prev_lsa */
   LOG_RESET_PREV_LSA (&NULL_LSA);
 
