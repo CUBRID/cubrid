@@ -338,6 +338,8 @@ regu_init (cubxasl::aggregate_list_node &agg)
   agg.list_id = NULL;
   agg.sort_list = NULL;
   agg.is_ended = false;
+  agg.accumulator.shared_from = 0;
+  agg.accumulator.sum_acc.is_active = false;
   std::memset (&agg.info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));
 
   regu_alloc (agg.accumulator.value);
