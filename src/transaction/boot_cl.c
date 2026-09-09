@@ -76,7 +76,6 @@
 #include "environment_variable.h"
 #include "locator.h"
 #include "transform.h"
-#include "jansson.h"
 #include "jsp_cl.h"
 #include "client_support.h"
 #include "es.h"
@@ -1339,7 +1338,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       goto error;
     }
-  json_set_alloc_funcs (malloc, free);
 
   return error_code;
 
