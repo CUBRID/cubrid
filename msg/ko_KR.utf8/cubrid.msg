@@ -1484,7 +1484,9 @@ $ LOADDB
 
 1379 CDC: 클라이언트에 전달한 추출 위치 (%1$lld|%2$d) 때문에 archive log 볼륨 %3$d 를 보존합니다.
 
-1380 마지막 에러
+1380 PARALLEL_ENABLE로 선언된 저장 프로시저/함수는 서버측 연결로 SQL을 실행하거나 DBMS_OUTPUT을 사용할 수 없습니다.
+
+1381 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
