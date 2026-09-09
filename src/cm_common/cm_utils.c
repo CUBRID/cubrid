@@ -87,8 +87,8 @@ kill (int pid, int signo)
 
 #if defined(WINDOWS)
 int
-run_child (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file, char *stderr_file,
-	   int *exit_status)
+run_child (const char *const argv[], int wait_flag, const char *stdin_file, const char *stdout_file,
+	   const char *stderr_file, int *exit_status)
 {
   int new_pid;
   STARTUPINFO start_info;
@@ -232,8 +232,8 @@ _reap_child_async (void *arg)
 }
 
 int
-run_child (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file, char *stderr_file,
-	   int *exit_status)
+run_child (const char *const argv[], int wait_flag, const char *stdin_file, const char *stdout_file,
+	   const char *stderr_file, int *exit_status)
 {
   int pid;
 
@@ -452,7 +452,7 @@ uIsDatabaseActive (char *dbn)
 }
 
 int
-uIsDatabaseActive2 (T_SERVER_STATUS_RESULT * cmd_res, char *dbn)
+uIsDatabaseActive2 (T_SERVER_STATUS_RESULT *cmd_res, char *dbn)
 {
   T_SERVER_STATUS_INFO *info;
   int i;
@@ -562,7 +562,7 @@ func_clean_return:
 
 
 static void
-read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
+read_server_status_output (T_SERVER_STATUS_RESULT *res, char *out_file)
 {
   T_SERVER_STATUS_INFO *info;
   int num_info, num_alloc;
@@ -663,7 +663,7 @@ new_cmd_result (void)
 }
 
 void
-cmd_result_free (T_CMD_RESULT * res)
+cmd_result_free (T_CMD_RESULT *res)
 {
   if (res != NULL)
     {
@@ -838,7 +838,7 @@ make_temp_filename (char *tempfile, const char *prefix, int size)
 }
 
 int
-make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, int size)
+make_temp_filepath (char *tempfile, const char *tempdir, const char *prefix, int task_code, int size)
 {
   struct timeval current_time;
 
