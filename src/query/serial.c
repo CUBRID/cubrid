@@ -1485,6 +1485,12 @@ serial_flush_cache_pool_replicated (THREAD_ENTRY * thread_p)
   int save_tran_index;
   int tran_index;
 
+  if (!serial_Cache_initialized || serial_Cache_hashmap.get_element_count () == 0)
+    {
+      /* nothing to write back; do not take a transaction slot for it */
+      return;
+    }
+
   save_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
