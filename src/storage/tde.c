@@ -79,7 +79,7 @@ static int tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyi
 
 static int tde_create_keys_file (const char *keyfile_fullname);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
-static void tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
+static int tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
 static int tde_load_dks (const unsigned char *master_key, const TDE_KEYINFO * keyinfo);
 static int tde_create_dk (unsigned char *data_key);
 static int tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
@@ -540,7 +540,11 @@ tde_generate_keyinfo (TDE_KEYINFO * keyinfo, int mk_index, const unsigned char *
   int err = NO_ERROR;
 
   keyinfo->mk_index = mk_index;
-  tde_make_mk_hash (master_key, keyinfo->mk_hash);
+  err = tde_make_mk_hash (master_key, keyinfo->mk_hash);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
 
   err = tde_encrypt_dk (dks->perm_key, TDE_DATA_KEY_TYPE_PERM, master_key, keyinfo->dk_perm);
   if (err != NO_ERROR)
@@ -780,7 +784,10 @@ tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash)
 {
   unsigned char hash[SHA256_DIGEST_LENGTH];
 
-  tde_make_mk_hash (master_key, hash);
+  if (tde_make_mk_hash (master_key, hash) != NO_ERROR)
+    {
+      return false;
+    }
 
   if (memcmp (mk_hash, hash, TDE_MASTER_KEY_LENGTH) != 0)
     {
@@ -792,21 +799,50 @@ tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash)
 /*
  * tde_make_mk_hash () - Make a hash value to validate master key later
  *
+ * return             : Error code
  * master_key (in)    : Master key
  * mk_hash (out)      : Hash value created with the master key
  */
-static void
+static int
 tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash)
 {
-  SHA256_CTX sha_ctx;
+  EVP_MD_CTX *sha_ctx;
+  int err = ER_TDE_ENCRYPTION_ERROR;
 
   assert (SHA256_DIGEST_LENGTH == TDE_MASTER_KEY_LENGTH);
   assert (master_key != NULL);
   assert (mk_hash != NULL);
 
-  SHA256_Init (&sha_ctx);
-  SHA256_Update (&sha_ctx, master_key, TDE_MASTER_KEY_LENGTH);
-  SHA256_Final (mk_hash, &sha_ctx);
+  /* on failure leave a deterministic value: the buffer is on the caller's stack
+   * or goes straight into the keys file, so it must never stay uninitialized. */
+  memset (mk_hash, 0, SHA256_DIGEST_LENGTH);
+
+  /* Use the EVP digest API; the low-level SHA256_* functions are deprecated since OpenSSL 3.0. */
+  sha_ctx = EVP_MD_CTX_new ();
+  if (sha_ctx == NULL)
+    {
+      goto exit;
+    }
+
+  if (EVP_DigestInit_ex (sha_ctx, EVP_sha256 (), NULL) != 1
+      || EVP_DigestUpdate (sha_ctx, master_key, TDE_MASTER_KEY_LENGTH) != 1
+      || EVP_DigestFinal_ex (sha_ctx, mk_hash, NULL) != 1)
+    {
+      memset (mk_hash, 0, SHA256_DIGEST_LENGTH);
+      goto cleanup;
+    }
+
+  err = NO_ERROR;
+
+cleanup:
+  EVP_MD_CTX_free (sha_ctx);
+
+exit:
+  if (err != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_ERROR, 0);
+    }
+  return err;
 }
 
 /*
