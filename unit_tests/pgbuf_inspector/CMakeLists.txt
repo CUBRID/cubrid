@@ -66,3 +66,7 @@ add_test (NAME test_pgbuf_inspector COMMAND test_pgbuf_inspector)
 # hash through the same serializer the test proves. It is a maintenance tool,
 # not a test, so it is not registered with ctest.
 pgbuf_inspector_add_executable (pgbuf_inspector_corpus_generator pgbuf_inspector_corpus_generator.cpp)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_sources(test_pgbuf_inspector PRIVATE test_pgbuf_inspector_socket.cpp ${STORAGE_DIR}/pgbuf_inspector_socket.cpp)
+endif()

@@ -17181,6 +17181,13 @@ pgbuf_flush_control_daemon_init ()
  * pgbuf_daemons_init () - initialize page buffer daemon threads
  */
 void
+pgbuf_get_lru_counts (int *shared, int *private_count)
+{
+  *shared = PGBUF_SHARED_LRU_COUNT;
+  *private_count = PGBUF_PRIVATE_LRU_COUNT;
+}
+
+void
 pgbuf_daemons_init ()
 {
   pgbuf_page_maintenance_daemon_init ();

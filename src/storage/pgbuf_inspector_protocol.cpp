@@ -25,6 +25,9 @@
 #include <limits>
 #include <set>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubpgbuf
 {
   namespace inspector
@@ -445,6 +448,28 @@ namespace cubpgbuf
 	  ++native_type;
 	}
       return names[native_type];
+    }
+
+    bool
+    decode_client_hello (std::string_view line, client_hello &hello)
+    {
+      rapidjson::Document d;
+      if (line.size () > WIRE_CONTROL_FRAME_MAX_BYTES || !parse (line, d)
+	  || text (d["type"]) != "client_hello" || !valid_frame (d, false))
+	{
+	  return false;
+	}
+      hello = client_hello {};
+      for (const auto &major : d["supported_majors"].GetArray ())
+	if (major.GetInt () == WIRE_PROTOCOL_MAJOR)
+	  {
+	    hello.supports_v1 = true;
+	  }
+      if (d.HasMember ("expected_incarnation"))
+	{
+	  hello.expected_incarnation = std::string (text (d["expected_incarnation"]));
+	}
+      return true;
     }
 
     encode_status

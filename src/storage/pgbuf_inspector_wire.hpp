@@ -84,6 +84,13 @@ namespace cubpgbuf
     /* Validates semantic JSON and appends its canonical frame atomically. */
     encode_status encode_frame (std::string_view json, std::string &out);
 
+    struct client_hello
+    {
+      bool supports_v1 = false;
+      std::string expected_incarnation;
+    };
+    bool decode_client_hello (std::string_view line, client_hello &hello);
+
     /* Explicit source layout; native ordinals are translated here, never serialized. */
     enum class page_type_layout { DEVELOP, OOS };
     const char *page_kind_name (int native_type, page_type_layout layout);
