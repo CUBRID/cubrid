@@ -460,6 +460,12 @@ namespace parallel_scan
 				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
 				    m_scan_id,
 				    elapsed_time);
+	/* a worker evaluates the SPs of if_pred, and of outptr_list in list-merge mode; carry that
+	 * back or the FUNC line would report the leader's share alone */
+	m_trace_handler->add_sp_stats (perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_CALL_EVALS),
+				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_EVAL_TIME_10USEC),
+				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_FETCHES),
+				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_IOREADS));
 	perfmon_destroy_parallel_stats (&thread_ref);
       }
     m_result_handler->write_finalize (&thread_ref);
@@ -610,6 +616,12 @@ namespace parallel_scan
 	  }
 	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
       }
+
+    /* The agg-expr marking is a run-time decision and is not inherited by XASL
+     * clones. Re-derive it here for each worker; FETCH_ALL_CONST and FETCH_NOT_CONST
+     * must not be carried across, and the fixed query shape yields the same result.
+     */
+    qexec_mark_aggregate_operand_expressions (m_xasl);
 
     m_scan_id = &m_xasl->spec_list->s_id;
 
@@ -845,7 +857,11 @@ namespace parallel_scan
 		      && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index);
 	if (is_interrupt)
 	  {
-	    if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	    /* logtb_is_interrupted_tran() above cleared the transaction flag, so record the cancellation
+	     * even if a benign INST_NUM_SATISFIED got here first. Real error codes still win. */
+	    parallel_query::interrupt::interrupt_code code = m_interrupt->get_code();
+	    if (code == parallel_query::interrupt::interrupt_code::NO_INTERRUPT
+		|| code == parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 		m_err_messages->move_top_error_message_to_this();

@@ -2731,6 +2731,300 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 }
 
 /*
+ * qdata_sum_acc_start () - open the accumulator on the first value of a group
+ *   return: NO_ERROR, or ER_FAILED on a type the accumulator does not take
+ *   acc(in/out) : accumulator; becomes active in the value's mode
+ *   dbv(in)     : first NUMERIC/SHORT/INTEGER/BIGINT/DOUBLE/FLOAT value; not NULL-valued
+ */
+static int
+qdata_sum_acc_start (SUM_ACC * acc, const DB_VALUE * dbv)
+{
+  DB_TYPE vtype = DB_VALUE_DOMAIN_TYPE (dbv);
+
+  switch (vtype)
+    {
+    case DB_TYPE_NUMERIC:
+      numeric_sum_acc_load_dbv (acc, dbv);
+      return NO_ERROR;
+    case DB_TYPE_SHORT:
+      acc->v.int_sum = (int64_t) db_get_short (dbv);
+      break;
+    case DB_TYPE_INTEGER:
+      acc->v.int_sum = (int64_t) db_get_int (dbv);
+      break;
+    case DB_TYPE_BIGINT:
+      acc->v.int_sum = (int64_t) db_get_bigint (dbv);
+      break;
+    case DB_TYPE_DOUBLE:
+      acc->v.dbl_sum = db_get_double (dbv);
+      break;
+    case DB_TYPE_FLOAT:
+      acc->v.dbl_sum = (double) db_get_float (dbv);
+      break;
+    default:
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_FAILED;
+    }
+
+  acc->sum_type = sum_acc_sum_type_for (vtype);
+  acc->is_active = true;
+  return NO_ERROR;
+}
+
+/*
+ * qdata_sum_acc_add_dbv () - add one value to an active accumulator
+ *   return: NO_ERROR, or ER_QPROC_OVERFLOW_ADDITION with the same overflow
+ *           semantics as the per-row addition
+ *   acc(in/out) : active accumulator; sum_type matches the value's type
+ *   dbv(in)     : the value; not NULL-valued
+ */
+int
+qdata_sum_acc_add_dbv (SUM_ACC * acc, const DB_VALUE * dbv)
+{
+  DB_TYPE vtype;
+
+  assert (acc != NULL && acc->is_active && dbv != NULL);
+
+  vtype = DB_VALUE_DOMAIN_TYPE (dbv);
+  if (acc->sum_type != sum_acc_sum_type_for (vtype))
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_FAILED;
+    }
+
+  switch (vtype)
+    {
+    case DB_TYPE_NUMERIC:
+      return numeric_sum_acc_add_dbv (acc, dbv);
+    case DB_TYPE_SHORT:
+      acc->v.int_sum += (int64_t) db_get_short (dbv);
+      if (OR_CHECK_SHORT_OVERFLOW (acc->v.int_sum))
+	{
+	  goto overflow;
+	}
+      break;
+    case DB_TYPE_INTEGER:
+      acc->v.int_sum += (int64_t) db_get_int (dbv);
+      if (OR_CHECK_INT_OVERFLOW (acc->v.int_sum))
+	{
+	  goto overflow;
+	}
+      break;
+    case DB_TYPE_BIGINT:
+      if (__builtin_add_overflow (acc->v.int_sum, (int64_t) db_get_bigint (dbv), &acc->v.int_sum))
+	{
+	  goto overflow;
+	}
+      break;
+    case DB_TYPE_DOUBLE:
+      acc->v.dbl_sum += db_get_double (dbv);
+      if (OR_CHECK_DOUBLE_OVERFLOW (acc->v.dbl_sum))
+	{
+	  goto overflow;
+	}
+      break;
+    case DB_TYPE_FLOAT:
+      acc->v.dbl_sum += (double) db_get_float (dbv);
+      if (OR_CHECK_DOUBLE_OVERFLOW (acc->v.dbl_sum))
+	{
+	  goto overflow;
+	}
+      break;
+    default:
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+
+overflow:
+  acc->is_active = false;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
+  return ER_QPROC_OVERFLOW_ADDITION;
+}
+
+/*
+ * qdata_sum_acc_accumulate () - accumulate one value, dispatching on its type
+ *   return: NO_ERROR, or an error code
+ *   acc(in/out)   : accumulator
+ *   is_first(in)  : true for the first value of the group; seed_from is ignored
+ *   seed_from(in) : caller's running value, or NULL; used to restore a partial
+ *                   sum when the accumulator is empty
+ *   value(in)     : value to accumulate; not NULL-valued
+ *
+ * Note: The first value is always accumulated here rather than kept in the
+ *       caller's DB_VALUE. The analytic path may finalize that value mid-partition,
+ *       and AVG can overwrite it with a DOUBLE.
+ */
+int
+qdata_sum_acc_accumulate (SUM_ACC * acc, bool is_first, const DB_VALUE * seed_from, const DB_VALUE * value)
+{
+  assert (acc != NULL && value != NULL);
+
+  if (is_first)
+    {
+      /* new group: discard whatever state the previous one left behind */
+      acc->is_active = false;
+    }
+  else if (!acc->is_active && !DB_IS_NULL (seed_from)
+	   && sum_acc_sum_type_for (DB_VALUE_DOMAIN_TYPE (seed_from)) != DB_TYPE_NULL)
+    {
+      /* an empty accumulator under a running value: a spilled partial sum came
+       * back as a plain DB_VALUE. Fold it in first or it is lost. */
+      if (qdata_sum_acc_start (acc, seed_from) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return acc->is_active ? qdata_sum_acc_add_dbv (acc, value) : qdata_sum_acc_start (acc, value);
+}
+
+/*
+ * qdata_sum_acc_merge () - merge one partial accumulator into another
+ *   return: NO_ERROR, or an error code
+ *   acc(in/out) : active destination accumulator
+ *   other(in)   : active source accumulator; left untouched
+ *
+ * Note: Partial accumulators for the same aggregate have the same sum_type.
+ *       Typed merges re-check the input type's range; NUMERIC accumulators
+ *       merge directly in the word domain.
+ */
+int
+qdata_sum_acc_merge (SUM_ACC * acc, const SUM_ACC * other)
+{
+  assert (acc != NULL && acc->is_active);
+  assert (other != NULL && other->is_active);
+
+  if (acc->sum_type != other->sum_type)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_FAILED;
+    }
+
+  switch ((DB_TYPE) acc->sum_type)
+    {
+    case DB_TYPE_SHORT:
+      acc->v.int_sum += other->v.int_sum;
+      if (OR_CHECK_SHORT_OVERFLOW (acc->v.int_sum))
+	{
+	  goto overflow;
+	}
+      return NO_ERROR;
+    case DB_TYPE_INTEGER:
+      acc->v.int_sum += other->v.int_sum;
+      if (OR_CHECK_INT_OVERFLOW (acc->v.int_sum))
+	{
+	  goto overflow;
+	}
+      return NO_ERROR;
+    case DB_TYPE_BIGINT:
+      if (__builtin_add_overflow (acc->v.int_sum, other->v.int_sum, &acc->v.int_sum))
+	{
+	  goto overflow;
+	}
+      return NO_ERROR;
+    case DB_TYPE_DOUBLE:
+      acc->v.dbl_sum += other->v.dbl_sum;
+      if (OR_CHECK_DOUBLE_OVERFLOW (acc->v.dbl_sum))
+	{
+	  goto overflow;
+	}
+      return NO_ERROR;
+    case DB_TYPE_NUMERIC:
+      return numeric_sum_acc_merge (acc, other);
+    default:
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_FAILED;
+    }
+
+overflow:
+  acc->is_active = false;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
+  return ER_QPROC_OVERFLOW_ADDITION;
+}
+
+/*
+ * qdata_sum_acc_snapshot () - write the accumulator's running sum into a DB_VALUE,
+ *                             keeping the accumulator active
+ *   return: NO_ERROR, or an error code
+ *   acc(in)     : active accumulator; NOT deactivated
+ *   result(out) : the running sum as a DB_VALUE
+ *
+ * Note: Used by cumulative analytic functions, which emit a running value per
+ *       sort key group and continue accumulating. Typed sums convert losslessly;
+ *       NUMERIC mode rounds a copy, leaving the live accumulator unchanged.
+ */
+int
+qdata_sum_acc_snapshot (const SUM_ACC * acc, DB_VALUE * result)
+{
+  assert (acc != NULL && acc->is_active && result != NULL);
+
+  switch ((DB_TYPE) acc->sum_type)
+    {
+    case DB_TYPE_SHORT:
+      db_make_short (result, (short) acc->v.int_sum);
+      return NO_ERROR;
+    case DB_TYPE_INTEGER:
+      db_make_int (result, (int) acc->v.int_sum);
+      return NO_ERROR;
+    case DB_TYPE_BIGINT:
+      db_make_bigint (result, (DB_BIGINT) acc->v.int_sum);
+      return NO_ERROR;
+    case DB_TYPE_DOUBLE:
+      db_make_double (result, acc->v.dbl_sum);
+      return NO_ERROR;
+    case DB_TYPE_NUMERIC:
+      return numeric_sum_acc_snapshot (acc, result);
+    default:
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_FAILED;
+    }
+}
+
+/*
+ * qdata_sum_acc_finalize () - finalize the accumulator into the running-sum DB_VALUE
+ *   return: NO_ERROR, or an error code
+ *   acc(in/out) : active accumulator; deactivated on the way out
+ *   result(out) : the running sum as a DB_VALUE
+ *
+ * Note: Typed sums need no rounding or packing; their range is re-checked on
+ *       every add, so the final narrowing casts are lossless. NUMERIC mode
+ *       performs the single per-group rounding here.
+ */
+int
+qdata_sum_acc_finalize (SUM_ACC * acc, DB_VALUE * result)
+{
+  int ret = qdata_sum_acc_snapshot (acc, result);
+
+  acc->is_active = false;
+  return ret;
+}
+
+/*
+ * qdata_sum_acc_flatten_for_spill () - flatten the accumulator into its running
+ *                                      DB_VALUE before writing it to a spill file
+ *   return: NO_ERROR, or an error code
+ *
+ * Note: Uses the same conversion as qdata_sum_acc_finalize (). The separate name
+ *       marks the one call site where it happens mid-group. NUMERIC accumulators
+ *       cannot be stored in list file columns, so the partial sum is stored as
+ *       a DB_VALUE and restored by the accumulate seed path when reloaded.
+ *       Typed sums convert losslessly.
+ */
+int
+qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
+{
+  return qdata_sum_acc_finalize (acc, result);
+}
+
+/*
  * qdata_concatenate_dbval () -
  *   return: NO_ERROR, or ER_code
  *   dbval1(in)		  : First db_value node
@@ -4798,13 +5092,10 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 static int
 qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
 {
-  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
-  volatile short s1, stmp;
+  short s1 = db_get_short (short_val_p);
+  short stmp;
 
-  s1 = db_get_short (short_val_p);
-  stmp = s1 * s2;
-
-  if (OR_CHECK_MULT_OVERFLOW (s1, s2, stmp))
+  if (OR_MULT_OVERFLOW (s1, s2, &stmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -4818,13 +5109,10 @@ qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
 static int
 qdata_multiply_int (DB_VALUE * int_val_p, int i2, DB_VALUE * result_p)
 {
-  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
-  volatile int i1, itmp;
+  int i1 = db_get_int (int_val_p);
+  int itmp;
 
-  i1 = db_get_int (int_val_p);
-  itmp = i1 * i2;
-
-  if (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp))
+  if (OR_MULT_OVERFLOW (i1, i2, &itmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -4837,13 +5125,10 @@ qdata_multiply_int (DB_VALUE * int_val_p, int i2, DB_VALUE * result_p)
 static int
 qdata_multiply_bigint (DB_VALUE * bigint_val_p, DB_BIGINT bi2, DB_VALUE * result_p)
 {
-  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
-  volatile DB_BIGINT bi1, bitmp;
+  DB_BIGINT bi1 = db_get_bigint (bigint_val_p);
+  DB_BIGINT bitmp;
 
-  bi1 = db_get_bigint (bigint_val_p);
-  bitmp = bi1 * bi2;
-
-  if (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp))
+  if (OR_MULT_OVERFLOW (bi1, bi2, &bitmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -5417,6 +5702,12 @@ qdata_divide_short (short s1, short s2, DB_VALUE * result_p)
 {
   short stmp;
 
+  if (OR_CHECK_SHORT_DIV_OVERFLOW (s1, s2))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+      return ER_FAILED;
+    }
+
   stmp = s1 / s2;
   db_make_short (result_p, stmp);
 
@@ -5428,6 +5719,12 @@ qdata_divide_int (int i1, int i2, DB_VALUE * result_p)
 {
   int itmp;
 
+  if (OR_CHECK_INT_DIV_OVERFLOW (i1, i2))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+      return ER_FAILED;
+    }
+
   itmp = i1 / i2;
   db_make_int (result_p, itmp);
 
@@ -5438,6 +5735,12 @@ static int
 qdata_divide_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
 {
   DB_BIGINT bitmp;
+
+  if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi1, bi2))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+      return ER_FAILED;
+    }
 
   bitmp = bi1 / bi2;
   db_make_bigint (result_p, bitmp);
@@ -8194,8 +8497,8 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE op, 
 		{
 		  if (OR_CHECK_INT_DIV_OVERFLOW (bi[0], bi[1]))
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
-		      return ER_QPROC_OVERFLOW_ADDITION;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+		      return ER_QPROC_OVERFLOW_DIVISION;
 		    }
 		  db_make_int (result_p, (INT32) (bi[0] / bi[1]));
 		}
@@ -8203,8 +8506,8 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE op, 
 		{
 		  if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi[0], bi[1]))
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
-		      return ER_QPROC_OVERFLOW_ADDITION;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+		      return ER_QPROC_OVERFLOW_DIVISION;
 		    }
 		  db_make_bigint (result_p, bi[0] / bi[1]);
 		}
@@ -8212,10 +8515,26 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE op, 
 		{
 		  if (OR_CHECK_SHORT_DIV_OVERFLOW (bi[0], bi[1]))
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
-		      return ER_QPROC_OVERFLOW_ADDITION;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+		      return ER_QPROC_OVERFLOW_DIVISION;
 		    }
 		  db_make_short (result_p, (INT16) (bi[0] / bi[1]));
+		}
+	    }
+	  else if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi[0], bi[1]))
+	    {
+	      /* MIN % -1 is 0; computing it would trap on the machine divide instruction */
+	      if (type[0] == DB_TYPE_INTEGER)
+		{
+		  db_make_int (result_p, 0);
+		}
+	      else if (type[0] == DB_TYPE_BIGINT)
+		{
+		  db_make_bigint (result_p, 0);
+		}
+	      else
+		{
+		  db_make_short (result_p, 0);
 		}
 	    }
 	  else
@@ -9583,6 +9902,12 @@ qdata_update_interpolation_func_value_and_domain (DB_VALUE * src_val, DB_VALUE *
     {
       error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
       goto end;
+    }
+
+  /* clear errors from failed casts if any cast attempt succeeds. */
+  if (er_errid () != NO_ERROR)
+    {
+      er_clear ();
     }
 
   *domain = tmp_domain;

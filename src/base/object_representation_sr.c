@@ -1799,6 +1799,7 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       return NO_ERROR;
 
     case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
       /* continue */
       break;
 
@@ -2272,14 +2273,14 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
 
       if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
 	{
-          // *INDENT-OFF* 
+          // *INDENT-OFF*
 	  /* To reach this point, the inside of the set must have at least the following structure.
 	   *     0         1                2      [  3        4  ] *x         5 + x               6 + x
 	   * { btid, dedup_key_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {prefix length}, ...}
            * For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
 	   * That is, the size of this constraint_seq set must be 10 or more, and the 3rd position will be attrID.
-	   * The position 1 is deduplicate_key_attrID, which is virtual information, 
-	   * the position 3 value must be read to obtain actual column information.           
+	   * The position 1 is deduplicate_key_attrID, which is virtual information,
+	   * the position 3 value must be read to obtain actual column information.
 	   */
           // *INDENT-ON*
 	  assert (seq_size >= 10);
@@ -2535,6 +2536,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->auto_increment.serial_obj = oid_Null_oid;
       att->auto_increment.serial_name = NULL;
+      att->auto_increment.cached_num = -1;
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 
@@ -4088,6 +4090,7 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       return;
 
     case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
       /* continue */
       break;
 

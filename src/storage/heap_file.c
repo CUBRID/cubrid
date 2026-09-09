@@ -599,8 +599,10 @@ static int heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_
 			       HEAP_SCANCACHE * scan_cache, VPID * last_vpid, PGBUF_WATCHER * pg_watcher);
 
 static int heap_vpid_init_new (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr, HEAP_HDR_STATS * heap_hdr,
 			    HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * new_pg_watcher);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static VPID *heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr, VPID * rm_vpid);
 
 static void heap_bestspace_clear_candidates (cubstorage::bestspace_entry * candidates, std::size_t * num_candidates,
@@ -643,7 +645,9 @@ static OID *heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * o
 static const OID *heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, RECDES * recdes,
 				   LOG_LSA * change_link_lsa);
 static int heap_ovf_flush (THREAD_ENTRY * thread_p, const OID * ovf_oid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int heap_ovf_get_length (THREAD_ENTRY * thread_p, const OID * ovf_oid);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static SCAN_CODE heap_ovf_get (THREAD_ENTRY * thread_p, const OID * ovf_oid, RECDES * recdes, int chn,
 			       MVCC_SNAPSHOT * mvcc_snapshot);
 static int heap_ovf_get_capacity (THREAD_ENTRY * thread_p, const OID * ovf_oid, int *ovf_len, int *ovf_num_pages,
@@ -760,8 +764,10 @@ static int heap_get_partitions_from_subclasses (THREAD_ENTRY * thread_p, const O
 						OR_PARTITION * partitions);
 static int heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, OR_PARTITION * partition_info,
 					  HFID * class_hfid, REPR_ID * repr_id, int *has_partition_info);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATTR_ID * type_id,
 					  ATTR_ID * values_id);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *count, OID ** subclasses);
 
 static SCAN_CODE heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, RECDES forward_recdes,
@@ -863,8 +869,12 @@ static void heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_
 static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID mvccid,
 				       bool vacuum_status_change);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 					      OID * partition_oid);
+#endif /* ENABLE_UNUSED_FUNCTION */
+static SCAN_CODE heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa,
+						   LOG_PAGE * log_page_p, RECDES * recdes);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
@@ -877,8 +887,10 @@ static int heap_get_header_page (THREAD_ENTRY * thread_p, const HFID * hfid, VPI
 
 STATIC_INLINE HEAP_HDR_STATS *heap_get_header_stats_ptr (THREAD_ENTRY * thread_p, PAGE_PTR page_header)
   __attribute__ ((ALWAYS_INLINE));
+#if defined (ENABLE_UNUSED_FUNCTION)
 STATIC_INLINE int heap_copy_header_stats (THREAD_ENTRY * thread_p, PAGE_PTR page_header, HEAP_HDR_STATS * header_stats)
   __attribute__ ((ALWAYS_INLINE));
+#endif /* ENABLE_UNUSED_FUNCTION */
 STATIC_INLINE HEAP_CHAIN *heap_get_chain_ptr (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int heap_copy_chain (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, HEAP_CHAIN * chain)
@@ -2681,6 +2693,7 @@ heap_get_header_stats_ptr (THREAD_ENTRY * thread_p, PAGE_PTR page_header)
   return (HEAP_HDR_STATS *) recdes.data;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_copy_header_stats () - Copy heap header statistics
  *
@@ -2702,6 +2715,7 @@ heap_copy_header_stats (THREAD_ENTRY * thread_p, PAGE_PTR page_header, HEAP_HDR_
     }
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_get_chain_ptr () - Get pointer to chain in heap page
@@ -2869,6 +2883,7 @@ heap_vpid_init_new (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_vpid_alloc () - allocate, fetch, and initialize a new page
  *   return: error code
@@ -3002,6 +3017,7 @@ error:
 
   return error_code;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_vpid_remove () - Deallocate a heap page
@@ -6207,6 +6223,7 @@ heap_ovf_flush (THREAD_ENTRY * thread_p, const OID * ovf_oid)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_ovf_get_length () - Find length of overflow object
  *   return: length
@@ -6226,6 +6243,7 @@ heap_ovf_get_length (THREAD_ENTRY * thread_p, const OID * ovf_oid)
 
   return overflow_get_length (thread_p, &ovf_vpid);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_ovf_get () - get/retrieve the content of a multipage object from overflow
@@ -6719,6 +6737,7 @@ heap_scancache_quick_start (HEAP_SCANCACHE * scan_cache)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_scancache_quick_start_modify () - Start caching information
  *                                      for a heap modifications
@@ -6734,6 +6753,7 @@ heap_scancache_quick_start_modify (HEAP_SCANCACHE * scan_cache)
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_scancache_quick_start_internal () -
@@ -8311,7 +8331,7 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_rang
 	{
 	  /* Scanrange starts with the given object */
 	  scan_range->first_oid = *start_oid;
-	  scan = heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid,
+	  scan = heap_get_visible_version (thread_p, &scan_range->first_oid, &scan_range->scan_cache.node.class_oid,
 					   &recdes, &scan_range->scan_cache, PEEK, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
@@ -8429,7 +8449,7 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, O
 		{
 		  scan =
 		    heap_prev (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid,
-			       &scan_range->first_oid, &recdes, &scan_range->scan_cache, PEEK);
+			       &scan_range->last_oid, &recdes, &scan_range->scan_cache, PEEK);
 		  if (scan != S_SUCCESS)
 		    {
 		      return scan;
@@ -11156,6 +11176,7 @@ cleanup:
   return error;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_get_partition_attributes () - get attribute ids for columns of
  *				      _db_partition class
@@ -11257,6 +11278,7 @@ cleanup:
     }
   return error;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_get_partitions_from_subclasses () - Get partition information from a
@@ -17275,12 +17297,32 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	    }
 	}
 
+      /* Resolve the serial's cache block size once and cache it on the attribute rep, so the
+       * value-generation calls below take the cached driver branch. cached_num <= 1 keeps the
+       * uncached, per-row-write behavior. */
+      int ai_cached_num = att->auto_increment.cached_num.load ();
+      if (ai_cached_num < 0)
+	{
+	  OID ai_serial_oid = att->auto_increment.serial_obj.load ().oid;
+
+	  ai_cached_num = 0;
+	  if (!OID_ISNULL (&ai_serial_oid)
+	      && xserial_get_cached_num (thread_p, &ai_cached_num, &ai_serial_oid) != NO_ERROR)
+	    {
+	      /* keep the uncached behavior, and do not leave the failure on the error stack */
+	      er_clear ();
+	      ai_cached_num = 0;
+	    }
+
+	  att->auto_increment.cached_num.store (ai_cached_num);
+	}
+
       thread_p->no_supplemental_log = true;
 
       if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER) || (att->type == DB_TYPE_BIGINT))
 	{
 	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	  if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, 0,	/* no cache */
+	  if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, ai_cached_num,	/* cached block */
 				      1,	/* generate one value */
 				      GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 	    {
@@ -17297,7 +17339,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
       else if (att->type == DB_TYPE_NUMERIC)
 	{
 	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	  if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, 0,	/* no cache */
+	  if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, ai_cached_num,	/* cached block */
 				      1,	/* generate one value */
 				      GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 	    {
@@ -17342,6 +17384,7 @@ exit_on_error:
   return ret;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_attrinfo_set_uninitialized_global () -
  *   return: NO_ERROR
@@ -17360,6 +17403,7 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid,
 
   return heap_attrinfo_set_uninitialized (thread_p, inst_oid, recdes, attr_info);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_get_class_info () - get HFID and file type for class.
@@ -18350,16 +18394,35 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
   int i = 0;
   int parts_count = 0;
   bool is_all = false;
-
-  assert (arg_cnt == 2);
-  assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
-  assert (DB_VALUE_TYPE (arg_values[1]) == DB_TYPE_INTEGER);
+  SHOWSTMT_SCAN_MODE scan_mode = SHOWSTMT_SCAN_EXACT;
+  LOCK class_lock;
 
   *ptr = NULL;
 
-  class_name = db_get_string (arg_values[0]);
+  /* The scan mode is the last argument, and it is missing when the request comes from a client
+   * which does not know it yet; such a client gets the default (EXACT).  The argument count comes
+   * from the XASL the client built, so it is checked and not only asserted. */
+  if (arg_cnt < 2 || arg_cnt > 3)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
+    }
+  assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
+  assert (DB_VALUE_TYPE (arg_values[1]) == DB_TYPE_INTEGER);	/* partition type */
 
+  class_name = db_get_string (arg_values[0]);
   partition_type = (DB_CLASS_PARTITION_TYPE) db_get_int (arg_values[1]);
+
+  /* S_LOCK is the default so that the statistics are consistent with the committed DML; the APPROX
+   * option asks for IS_LOCK instead, which runs concurrently with DML (IX_LOCK) at the price of
+   * approximate numbers. */
+  if (arg_cnt > 2)
+    {
+      assert (DB_VALUE_TYPE (arg_values[2]) == DB_TYPE_INTEGER);	/* scan mode */
+      scan_mode = (SHOWSTMT_SCAN_MODE) db_get_int (arg_values[2]);
+    }
+  class_lock = (scan_mode == SHOWSTMT_SCAN_APPROX) ? IS_LOCK : S_LOCK;
 
   ctx = (HEAP_SHOW_SCAN_CTX *) db_private_alloc (thread_p, sizeof (HEAP_SHOW_SCAN_CTX));
   if (ctx == NULL)
@@ -18370,10 +18433,18 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
     }
   memset (ctx, 0, sizeof (HEAP_SHOW_SCAN_CTX));
 
-  /* use IS_LOCK so that DML (IX_LOCK) can run concurrently with SHOW HEAP HEADER/CAPACITY */
-  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, IS_LOCK);
-  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
+  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, class_lock);
+  if (status == LC_CLASSNAME_ERROR)
     {
+      /* The class name is known, but the class lock could not be acquired (e.g. an S_LOCK timeout
+       * while a concurrent DML holds an IX_LOCK).  The lock manager has set the real error, so
+       * report it; this is never an unknown class. */
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+  if (status == LC_CLASSNAME_DELETED)
+    {
+      /* the class has been dropped since the statement was compiled */
       error = ER_LC_UNKNOWN_CLASSNAME;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, class_name);
       goto cleanup;
@@ -23637,7 +23708,13 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       goto error;
     }
 
-  if (rc == NO_ERROR && context->do_supplemental_log == true)
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  if (context->do_supplemental_log == true)
     {
       (void) log_append_supplemental_lsa (thread_p,
 					  thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE :
@@ -24553,7 +24630,8 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
  *   class_oid (in)     : the class OID for which the entry will be returned
  *   hfid_out (out)     : output heap file identifier
  *   ftype_out (out)    : output heap file type
- *   classname_out (out): output classname
+ *   classname_out (out): output classname. The string is owned by the cache entry and is freed when the entry is
+ *                        deleted and reclaimed; callers must not retain it beyond the entry's lifetime.
  *   success  (out)     : true if found from cache
  */
 int
@@ -24578,8 +24656,24 @@ heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * 
 
   if (entry)
     {
+      /* The cache is publish-then-fill: heap_hfid_cache_get () exposes the entry in the hash through
+       * lf_hash_find_or_insert () first and fills it afterwards, publishing classname last (CAS). If classname is
+       * not set yet, the entry is still being filled by a concurrent thread; treat it as a cache miss. Reading
+       * classname before hfid mirrors the writer's order (hfid store, then classname CAS), so a non-NULL
+       * classname guarantees a valid hfid. ftype, however, is resolved only after classname is published, so it
+       * may still be unknown; report a miss rather than an unknown type when the caller asked for it. */
+      char *classname_local = entry->classname;
+
+      if (classname_local == NULL || HFID_IS_NULL (&entry->hfid)
+	  || (ftype_out != NULL && entry->ftype == FILE_UNKNOWN_TYPE))
+	{
+	  /* *success remains false */
+	  lf_tran_end_with_mb (t_entry);
+	  return NO_ERROR;
+	}
+
       assert (entry->hfid.hpgid != NULL_PAGEID && entry->hfid.vfid.fileid != NULL_FILEID
-	      && entry->hfid.vfid.volid != NULL_VOLID && entry->classname != NULL);
+	      && entry->hfid.vfid.volid != NULL_VOLID);
 
       if (hfid_out != NULL)
 	{
@@ -24591,7 +24685,7 @@ heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * 
 	}
       if (classname_out != NULL)
 	{
-	  *classname_out = entry->classname;
+	  *classname_out = classname_local;
 	}
 
       *success = true;
@@ -24918,6 +25012,7 @@ heap_rv_remove_flags_from_offset (INT16 offset)
   return offset & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_scancache_add_partition_node () - add a new partition information to
  *				      to the scan_cache's partition list.
@@ -24967,6 +25062,7 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * sca
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_mvcc_log_redistribute () - Log partition redistribute data
@@ -25124,6 +25220,77 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * heap_get_undo_record_for_version () - Read the undo image of one previous version, from wherever that
+ *				         version currently lives.
+ *
+ *   return: SCAN_CODE, as log_get_undo_record ()
+ *   thread_p (in): Thread entry.
+ *   version_lsa (in): Log address of the version to read.
+ *   log_page_p (in): Scratch log page, used only when the version is read from the log.
+ *   recdes (out): Record descriptor.
+ *
+ * NOTE: A version already copied into the log page buffer is read from there, or from disk, as usual.
+ *       One not copied yet is read from its staged prior node in the in-flight window; only when the
+ *       window lacks it too is a drain forced. Decided per hop, since any hop may still be uncopied.
+ */
+static SCAN_CODE
+heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa, LOG_PAGE * log_page_p,
+				  RECDES * recdes)
+{
+  LOG_LSA copied_lsa = log_Gl.append.get_copied_lsa ();
+
+  /* Inclusive, as in logpb_fetch_page (): copied_lsa is where the next record goes, so a version at
+   * exactly that address is the head of what is still staged - the case this window exists for. */
+  if (LSA_LE (&copied_lsa, version_lsa))
+    {
+      SCAN_CODE window_scan;
+      PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
+
+      if (log_get_undo_record_from_inflight (thread_p, version_lsa, recdes, &window_scan))
+	{
+	  if (window_scan == S_SUCCESS)
+	    {
+	      /* Counted where the window delivered the record. On S_DOESNT_FIT the caller grows the area and
+	       * comes back with the same version_lsa, and that retry is the same read, not a second one. */
+	      perfmon_inc_stat (thread_p, PSTAT_PRIOR_INFLIGHT_WINDOW_HIT);
+	    }
+	  return window_scan;
+	}
+
+      /* Not in the window either: type not staged, ring full when it was appended, or copied and released
+       * just now. Re-read the watermark first - in that last case a page already has the record. */
+      perfmon_inc_stat (thread_p, PSTAT_PRIOR_INFLIGHT_WINDOW_MISS);
+      copied_lsa = log_Gl.append.get_copied_lsa ();
+
+      if (LSA_LE (&copied_lsa, version_lsa))
+	{
+	  PERF_UTIME_TRACKER_START (thread_p, &time_track);
+	  LOG_CS_ENTER (thread_p);
+	  logpb_prior_lsa_append_all_list (thread_p);
+	  LOG_CS_EXIT (thread_p);
+	  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_PRIOR_DRAIN_READER_GUARD);
+
+	  copied_lsa = log_Gl.append.get_copied_lsa ();
+	}
+
+      /* The drain leaves the record below the watermark, never at it. */
+      assert (LSA_LT (version_lsa, &copied_lsa));
+    }
+
+  /* Fetch the page where version_lsa is located */
+  log_page_p->hdr.logical_pageid = NULL_PAGEID;
+  log_page_p->hdr.offset = NULL_OFFSET;
+  if (logpb_fetch_page (thread_p, version_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+    {
+      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_undo_record_for_version");
+      return S_ERROR;
+    }
+
+  return log_get_undo_record (thread_p, log_page_p, *version_lsa, recdes);
+}
+
+/*
  * heap_get_visible_version_from_log () - Iterate through old versions of object until a visible object is found
  *
  *   return: SCAN_CODE. Possible values:
@@ -25147,7 +25314,6 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
   MVCC_REC_HEADER mvcc_header;
   RECDES local_recdes;
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
-  LOG_LSA oldest_prior_lsa;
 
   assert (scan_cache != NULL);
   assert (scan_cache->mvcc_snapshot != NULL);
@@ -25158,38 +25324,18 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       recdes->data = NULL;
     }
 
-  /* make sure prev_version_lsa is flushed from prior lsa list - wake up log flush thread if it's not flushed */
-  oldest_prior_lsa = *log_get_append_lsa ();	/* TODO: fix atomicity issue on x86 */
-  if (LSA_LT (&oldest_prior_lsa, previous_version_lsa))
-    {
-      LOG_CS_ENTER (thread_p);
-      logpb_prior_lsa_append_all_list (thread_p);
-      LOG_CS_EXIT (thread_p);
-
-      oldest_prior_lsa = *log_get_append_lsa ();
-      assert (!LSA_LT (&oldest_prior_lsa, previous_version_lsa));
-    }
-
   if (recdes->data == NULL)
     {
       scan_cache->assign_recdes_to_area (*recdes);
     }
 
-  /* check visibility of old versions from log following prev_version_lsa links */
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+  /* Check visibility of old versions from log following prev_version_lsa links. Where each version is
+   * read from is decided per hop, in heap_get_undo_record_for_version (). */
   for (LSA_COPY (&process_lsa, previous_version_lsa); !LSA_ISNULL (&process_lsa);)
     {
-      /* Fetch the page where prev_vesion_lsa is located */
-      log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-      log_page_p->hdr.logical_pageid = NULL_PAGEID;
-      log_page_p->hdr.offset = NULL_OFFSET;
-      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
-	{
-	  assert (false);
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_visible_version_from_log");
-	  return S_ERROR;
-	}
-
-      scan_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
+      scan_code = heap_get_undo_record_for_version (thread_p, &process_lsa, log_page_p, recdes);
       if (scan_code != S_SUCCESS)
 	{
 	  if (scan_code == S_DOESNT_FIT && scan_cache->is_recdes_assigned_to_area (*recdes))

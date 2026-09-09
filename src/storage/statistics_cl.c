@@ -393,16 +393,23 @@ stats_dump (const char *class_name_p, FILE * file_p)
 }
 
 /*
- * stats_ndv_dump () - Dumps the NDV about a class
+ * stats_ndv_dump () - Dumps the stored NDV of every attribute of a class.
  *   return:
  *   classname(in): The name of class to be printed
  *   fp(in):
+ *
+ * Note: read-only; prints the values collected by the last UPDATE STATISTICS
+ *       and never triggers a new collection.
  */
 void
 stats_ndv_dump (const char *class_name_p, FILE * file_p)
 {
   MOP class_mop;
-  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
+  SM_CLASS *smclass_p;
+  CLASS_STATS *class_stats_p;
+  ATTR_STATS *attr_stats_p;
+  const char *name_p;
+  time_t tloc;
   int i;
 
   class_mop = sm_find_class (class_name_p);
@@ -412,16 +419,34 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
       return;
     }
 
-  /* the on-demand NDV query is deprecated; NDV is collected server-side during
-   * UPDATE STATISTICS (full-scan reservoir) and stored in the catalog. */
-  (void) i;
+  smclass_p = sm_get_class_with_statistics (class_mop);
+  if (smclass_p == NULL || smclass_p->stats == NULL)
+    {
+      fprintf (file_p, "\nNo statistics available for \"%s\".\n\n", class_name_p);
+      return;
+    }
+  class_stats_p = smclass_p->stats;
+
   fprintf (file_p, "\nNumber of Distinct Values\n");
   fprintf (file_p, "****************\n");
-  fprintf (file_p, " Class name: %s\n", sm_get_ch_name (class_mop));
-  fprintf (file_p, "  (collected server-side at UPDATE STATISTICS; see class statistics dump)\n\n");
-  if (class_attr_ndv.attr_ndv != NULL)
+  fprintf (file_p, " Class name: %s", class_name_p);
+  tloc = (time_t) class_stats_p->time_stamp;
+  if (tloc == 0)
     {
-      free_and_init (class_attr_ndv.attr_ndv);
+      fprintf (file_p, " (The 'stats' is not updated)\n");
     }
-  return;
+  else
+    {
+      fprintf (file_p, " Timestamp: %s", ctime (&tloc));
+    }
+
+  for (i = 0; i < class_stats_p->n_attrs; i++)
+    {
+      attr_stats_p = &(class_stats_p->attr_stats[i]);
+      name_p = sm_get_att_name (class_mop, attr_stats_p->id);
+      fprintf (file_p, " Attribute: %s (%s)\n", (name_p ? name_p : "not found"), pr_type_name (attr_stats_p->type));
+      fprintf (file_p, "    Number of Distinct Values: %ld\n", attr_stats_p->ndv);
+    }
+
+  fprintf (file_p, "\n");
 }

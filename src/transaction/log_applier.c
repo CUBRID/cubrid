@@ -5747,7 +5747,6 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
   int errid;
   LA_APPLY *apply;
   int apply_repl_log_cnt = 0;
-  char error_string[1024];
   char buf[256];
   static unsigned int total_repl_items = 0;
   bool release_pb = false;
@@ -5854,8 +5853,11 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
 	      sb.clear ();
 	      db_sprint_value (la_get_item_pk_value (item), sb);
-	      sprintf (error_string, "[%s,%s] %s", item->class_name, sb.get_buffer (), db_error_string (1));
-	      er_log_debug (ARG_FILE_LINE, "Internal system failure: %s", error_string);
+	      const char *pk_string = sb.get_buffer ();
+	      const char *pk_ellipsis = strlen (pk_string) > 255 ? "..." : "";
+
+	      er_log_debug (ARG_FILE_LINE, "Internal system failure: [%s,%.255s%s] %s", item->class_name, pk_string,
+			    pk_ellipsis, db_error_string (1));
 
 	      if (ER_IS_SERVER_DOWN_ERROR (errid))
 		{

@@ -31,7 +31,7 @@
 
 package com.cubrid.jsp;
 
-import com.cubrid.jsp.classloader.ClassLoaderManager;
+import com.cubrid.jsp.classloader.ClassPathHelper;
 import com.cubrid.jsp.code.CompiledCode;
 import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.SourceCode;
@@ -68,7 +68,7 @@ import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.Base64;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
 
@@ -90,6 +90,35 @@ public class ExecuteThread extends Thread {
 
     private CUBRIDUnpacker unpacker = new CUBRIDUnpacker();
     private CUBRIDPacker packer;
+
+    /*
+     * Hand-off of the request payload from listenCommand() to the process*() method that consumes
+     * it - both run on this thread, reading this thread's socket. It used to live on the session
+     * Context, which is shared: with a session executing on several ExecuteThreads at once (one
+     * per px worker running a stored procedure), the threads stole each other's payloads. The
+     * callback responses are read straight off the own socket (receiveBuffer()), so nothing else
+     * ever needed the queue to be shared.
+     */
+    private final LinkedBlockingQueue<ByteBuffer> inBound = new LinkedBlockingQueue<ByteBuffer>();
+
+    /*
+     * Whether the current invocation must not use the server-side default connection. Set from
+     * the invoke payload on every invocation: true only for a PARALLEL_ENABLE routine.
+     * Keep it per thread because the Context is shared by the session's execution threads; an
+     * undeclared routine on the leader and a routine on a px worker can carry different values.
+     */
+    private boolean serverSideSqlForbidden = false;
+
+    public boolean isServerSideSqlForbidden() {
+        return serverSideSqlForbidden;
+    }
+
+    /* true when the calling thread's invocation is forbidden from using server-side SQL */
+    public static boolean isServerSideSqlForbiddenOnCurrentThread() {
+        Thread current = Thread.currentThread();
+        return current instanceof ExecuteThread
+                && ((ExecuteThread) current).isServerSideSqlForbidden();
+    }
 
     private StoredProcedure storedProcedure = null;
     private PrepareArgs prepareArgs = null;
@@ -261,6 +290,9 @@ public class ExecuteThread extends Thread {
     }
 
     private Header listenCommand() throws Exception {
+        /* per-invocation state; makeStoredProcedure () sets the forbidden flag from the payload */
+        serverSideSqlForbidden = false;
+
         ByteBuffer inputBuffer = receiveBuffer();
 
         unpacker.setBuffer(inputBuffer);
@@ -275,7 +307,7 @@ public class ExecuteThread extends Thread {
             ByteBuffer payloadBuffer =
                     ByteBuffer.wrap(inputBuffer.array(), startOffset, payloadSize);
 
-            ctx.getInboundQueue().add(payloadBuffer);
+            inBound.add(payloadBuffer);
         }
 
         return header;
@@ -314,7 +346,7 @@ public class ExecuteThread extends Thread {
     }
 
     private void processStoredProcedure() throws Exception {
-        unpacker.setBuffer(ctx.getInboundQueue().take());
+        unpacker.setBuffer(inBound.take());
 
         // session parameters
         readSessionParameter(unpacker);
@@ -343,18 +375,13 @@ public class ExecuteThread extends Thread {
         try {
             jaos = new JarArchiveOutputStream(new BufferedOutputStream(jarStream));
 
-            for (Map.Entry<String, CompiledCode> entry : codeSet.getCodeList()) {
-                JarArchiveEntry jae =
-                        new JarArchiveEntry(entry.getValue().getClassNameWithExtention());
-                byte[] arr = entry.getValue().getByteCode();
+            for (CompiledCode cc : codeSet.codeMap.values()) {
+                JarArchiveEntry jae = new JarArchiveEntry(cc.getClassNameWithExtention());
+                byte[] arr = cc.getByteCode();
                 jae.setSize(arr.length);
                 jaos.putArchiveEntry(jae);
                 jaos.write(arr);
                 jaos.flush();
-                // ByteArrayInputStream bis = new
-                // ByteArrayInputStream(entry.getValue().getByteCode());
-                // IOUtils.copy(bis, jaos);
-                // bis.close();
 
                 jaos.closeArchiveEntry();
             }
@@ -370,7 +397,7 @@ public class ExecuteThread extends Thread {
     }
 
     private void processBootstrap() throws Exception {
-        unpacker.setBuffer(ctx.getInboundQueue().take());
+        unpacker.setBuffer(inBound.take());
 
         int result = 1; // failed
         try {
@@ -390,7 +417,7 @@ public class ExecuteThread extends Thread {
     }
 
     private void processCompile() throws Exception {
-        unpacker.setBuffer(ctx.getInboundQueue().take());
+        unpacker.setBuffer(inBound.take());
 
         // session parameters
         readSessionParameter(unpacker);
@@ -432,7 +459,7 @@ public class ExecuteThread extends Thread {
                 // write to persistent
                 if (mode == 0) {
                     Path jarPath =
-                            ClassLoaderManager.getDynamicPath().resolve(info.className + ".jar");
+                            ClassPathHelper.getDynamicPath().resolve(info.className + ".jar");
                     OutputStream jarStream = Files.newOutputStream(jarPath);
                     writeJar(codeSet, jarStream);
                     data = Files.readAllBytes(jarPath);
@@ -481,6 +508,8 @@ public class ExecuteThread extends Thread {
 
         boolean transactionControl = unpacker.unpackBool();
         getCurrentContext().setTransactionControl(transactionControl);
+
+        serverSideSqlForbidden = unpacker.unpackBool();
 
         storedProcedure = new StoredProcedure(methodSig, lang, authUser, arguments, returnType);
         return storedProcedure;
@@ -534,6 +563,10 @@ public class ExecuteThread extends Thread {
         resultBuffer = packer.getBuffer();
         writeBuffer(resultBuffer);
     }
+
+    public static final String SERVER_SIDE_SQL_REFUSED_MSG =
+            "cannot execute SQL on the server-side connection: the stored procedure is declared"
+                    + " PARALLEL_ENABLE";
 
     private void sendError(String exception) throws IOException {
         resultBuffer.clear();

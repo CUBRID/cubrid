@@ -152,12 +152,21 @@ static int xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE
 static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp,
 					    int num_alloc, SERIAL_CACHE_ENTRY * claimed_entry);
 static int serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
+static int serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * store_val,
+					   int num_alloc, bool log_supplemental);
 static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
+static int serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
+static void serial_flush_entry_best_effort (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
 					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
 					const OID * serial_oidp, DB_VALUE * key_val);
+static int serial_get_nth_value_internal (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val,
+					  DB_VALUE * max_val, DB_VALUE * cyclic, int nth, DB_VALUE * result_val,
+					  bool clamp_block);
 static int serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
 				 DB_VALUE * cyclic, int nth, DB_VALUE * result_val);
+static int serial_reserve_block_end (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
+				     DB_VALUE * cyclic, int nth, DB_VALUE * result_val);
 static void serial_set_cache_entry (SERIAL_CACHE_ENTRY * entry, DB_VALUE * inc_val, DB_VALUE * cur_val,
 				    DB_VALUE * min_val, DB_VALUE * max_val, DB_VALUE * started, DB_VALUE * cyclic,
 				    DB_VALUE * last_val, int cached_num);
@@ -204,6 +213,92 @@ xserial_get_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const
 	}
     }
 
+  return ret;
+}
+
+/*
+ * xserial_get_cached_num () - read a serial's cache block size (cached_num) from its _db_serial row.
+ *   return: NO_ERROR, or ER_code
+ *   cached_num(out)  : the serial's cached_num (0 when the serial has no cached_num column)
+ *   serial_oidp(in)  : OID of the _db_serial row
+ *
+ * The AUTO_INCREMENT insert path caches this on the attribute representation so it can pass the
+ * serial's real cached_num to xserial_get_next_value without a per-row catalog lookup.
+ */
+int
+xserial_get_cached_num (THREAD_ENTRY * thread_p, int *cached_num, const OID * serial_oidp)
+{
+  int ret = NO_ERROR;
+  HEAP_SCANCACHE scan_cache;
+  SCAN_CODE scan;
+  RECDES recdesc = RECDES_INITIALIZER;
+  HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
+  ATTR_ID attrid;
+  DB_VALUE *val;
+  OID serial_class_oid;
+
+  *cached_num = 0;
+
+  oid_get_serial_oid (&serial_class_oid);
+  heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
+
+  /* get record into record desc */
+  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  if (scan != S_SUCCESS)
+    {
+      if (er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, serial_oidp->volid, serial_oidp->pageid,
+		  serial_oidp->slotid);
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
+	}
+      goto exit_on_error;
+    }
+
+  /* retrieve the cached_num attribute */
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CACHED_NUM_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+  if (attrid != NOT_FOUND)
+    {
+      ret = heap_attrinfo_start (thread_p, &serial_class_oid, 1, &attrid, &attr_info);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      attr_info_p = &attr_info;
+
+      ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, attr_info_p);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      val = heap_attrinfo_access (attrid, attr_info_p);
+      *cached_num = db_get_int (val);
+
+      heap_attrinfo_end (thread_p, attr_info_p);
+      attr_info_p = NULL;
+    }
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  if (attr_info_p != NULL)
+    {
+      heap_attrinfo_end (thread_p, attr_info_p);
+    }
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  ret = (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
   return ret;
 }
 
@@ -401,6 +496,8 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 
   assert (1 <= num_alloc);
 
+  db_make_null (&next_val);
+
   /* check if cached numbers were already exhausted */
   if (num_alloc == 1)
     {
@@ -420,6 +517,10 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
       error =
 	serial_get_nth_value (&entry->inc_val, &entry->cur_val, &entry->min_val, &entry->max_val, &entry->cyclic,
 			      num_alloc, &next_val);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
 
       error = numeric_db_value_compare (&next_val, &entry->last_cached_val, &cmp_result);
       if (error != NO_ERROR)
@@ -437,24 +538,41 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
   /* consumed all cached value */
   if (exhausted == true)
     {
+      DB_VALUE new_last_cached_val;
+
+      db_make_null (&new_last_cached_val);
+
       nturns = CEIL_PTVDIV (num_alloc, entry->cached_num);
 
       error =
-	serial_get_nth_value (&entry->inc_val, &entry->last_cached_val, &entry->min_val, &entry->max_val,
-			      &entry->cyclic, (nturns * entry->cached_num), &entry->last_cached_val);
+	serial_reserve_block_end (&entry->inc_val, &entry->last_cached_val, &entry->min_val, &entry->max_val,
+				  &entry->cyclic, (nturns * entry->cached_num), &new_last_cached_val);
 
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
 
-      /* cur_val of _db_serial is updated to last_cached_val of entry */
-      error = serial_update_cur_val_of_serial (thread_p, entry, num_alloc);
+      error = numeric_db_value_compare (&new_last_cached_val, &entry->last_cached_val, &cmp_result);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
 
+      /* A reservation clamped to the range boundary can reserve nothing new; leave the entry and
+       * _db_serial alone then, because the value generation below raises the range overflow anyway
+       * and a durable write per failing call buys nothing. */
+      if (db_get_int (&cmp_result) != 0)
+	{
+	  pr_clone_value (&new_last_cached_val, &entry->last_cached_val);
+
+	  /* cur_val of _db_serial is updated to last_cached_val of entry */
+	  error = serial_update_cur_val_of_serial (thread_p, entry, num_alloc);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
     }
 
   /* get next value */
@@ -475,13 +593,19 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 }
 
 /*
- * serial_update_cur_val_of_serial () -
- *                cur_val of _db_serial is updated to last_cached_val of entry
+ * serial_store_cur_val_of_serial () - write store_val into the cur_val column of the entry's
+ *                _db_serial row. Its two callers store opposite values, hence the parameter.
  *   return: NO_ERROR, or ER_status
- *   entry(in)    :
+ *   entry(in)            :
+ *   store_val(in)        : the value to write into cur_val
+ *   num_alloc(in)        : values this write hands out; ignored when log_supplemental is false
+ *   log_supplemental(in) : append the supplemental (CDC) record. It is a
+ *                          "SELECT SERIAL_NEXT_VALUE (name, num_alloc)" statement, so only a write
+ *                          that hands values out may append it.
  */
 static int
-serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc)
+serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * store_val,
+				int num_alloc, bool log_supplemental)
 {
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
@@ -548,7 +672,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
       goto exit_on_error;
     }
   assert (attrid != NOT_FOUND);
-  ret = heap_attrinfo_set (&entry->oid, attrid, &entry->last_cached_val, attr_info_p);
+  ret = heap_attrinfo_set (&entry->oid, attrid, store_val, attr_info_p);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -562,7 +686,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
       goto exit_on_error;
     }
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
+  if (log_supplemental && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
     {
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
@@ -600,6 +724,110 @@ exit_on_error:
   heap_scancache_end (thread_p, &scan_cache);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * serial_update_cur_val_of_serial () - reserve the block durably: advance cur_val to the entry's
+ *                last_cached_val, so one write covers the whole block.
+ *   return: NO_ERROR, or ER_status
+ *   entry(in)    :
+ */
+static int
+serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc)
+{
+  return serial_store_cur_val_of_serial (thread_p, entry, &entry->last_cached_val, num_alloc, true);
+}
+
+/*
+ * serial_flush_cur_val_of_serial () - give the unissued tail of the reserved block back before the
+ *                entry is dropped: lower cur_val to the entry's cur_val, the last value actually
+ *                handed out. Without it a reset/rebase DDL, a DROP or a shutdown strands the values
+ *                between that and the block end, and the next block starts past them. They are lost
+ *                only when the entry disappears without running this (a crash).
+ *   return: NO_ERROR, or ER_status
+ *   entry(in)    :
+ *
+ * The write is deliberately not part of the transaction that triggered the drop: a rolled back
+ * reset DDL must still leave the lowered cur_val behind, because the values it covers were already
+ * issued. Value state is non-transactional; generation parameters are not.
+ *
+ * No supplemental (CDC) record is appended. That record reports the values a write hands out, and
+ * this one hands out none - any n would push a consumer past the master, in the direction opposite
+ * to the write.
+ */
+static int
+serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
+{
+  DB_VALUE durable_val;
+  DB_VALUE cmp_result;
+  int error;
+
+  if (DB_IS_NULL (&entry->cur_val) || DB_IS_NULL (&entry->last_cached_val))
+    {
+      /* nothing was issued from this entry yet */
+      return NO_ERROR;
+    }
+
+  error = numeric_db_value_compare (&entry->cur_val, &entry->last_cached_val, &cmp_result);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (db_get_int (&cmp_result) == 0)
+    {
+      /* the block was consumed exactly; the durable value already matches */
+      return NO_ERROR;
+    }
+
+  /* Only hand the tail back while the durable value is still the block end this entry reserved. A
+   * reset/rebase DDL writes cur_val itself and owns it from then on; it decaches before it writes,
+   * so the flush it triggers still runs here, while the block end is what is on disk. */
+  db_make_null (&durable_val);
+  if (xserial_get_current_value_internal (thread_p, &durable_val, &entry->oid) != NO_ERROR)
+    {
+      /* the row is gone (dropped serial); nothing to write back */
+      er_clear ();
+      return NO_ERROR;
+    }
+
+  error = numeric_db_value_compare (&durable_val, &entry->last_cached_val, &cmp_result);
+  pr_clear_value (&durable_val);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (db_get_int (&cmp_result) != 0)
+    {
+      return NO_ERROR;
+    }
+
+  return serial_store_cur_val_of_serial (thread_p, entry, &entry->cur_val, 0, false);
+}
+
+/*
+ * serial_flush_entry_best_effort () - write the entry's issued value back, swallowing a failure.
+ *   return: void
+ *   entry(in)    :
+ *
+ * Both callers drop the entry either way, deliberately: they run because the serial's definition
+ * changed or the object is gone, so a stale entry would keep serving values from a definition that
+ * no longer exists, while a failed write-back only leaves the bounded gap that predates this change.
+ * Clearing the error is the point - xserial_decache () runs inside the DDL that triggered it, and
+ * an error left set here surfaces as that statement's failure, the way
+ * xserial_get_cached_num ()'s fallback clears its own.
+ */
+static void
+serial_flush_entry_best_effort (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
+{
+  if (serial_flush_cur_val_of_serial (thread_p, entry) != NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "serial cache write-back failed for (%d|%d|%d); the unissued tail of its block is lost\n",
+		    OID_AS_ARGS (&entry->oid));
+      er_clear ();
+    }
 }
 
 /*
@@ -758,8 +986,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	      nturns = CEIL_PTVDIV (num_alloc, cached_num);
 
 	      ret =
-		serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * (cached_num - 1)),
-				      &last_val);
+		serial_reserve_block_end (&inc_val, &cur_val, &min_val, &max_val, &cyclic,
+					  (nturns * (cached_num - 1)), &last_val);
 	    }
 
 	  num_alloc--;
@@ -773,7 +1001,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	  nturns = CEIL_PTVDIV (num_alloc, cached_num);
 
 	  ret =
-	    serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * cached_num), &last_val);
+	    serial_reserve_block_end (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * cached_num),
+				      &last_val);
 	}
 
       if (ret == NO_ERROR)
@@ -1002,7 +1231,7 @@ exit_on_error:
 }
 
 /*
- * serial_get_nth_value () - get Nth next_value
+ * serial_get_nth_value () - get Nth next_value, for handing the value out
  *   return: NO_ERROR, or ER_status
  *   inc_val(in)        :
  *   cur_val(in)        :
@@ -1011,10 +1240,55 @@ exit_on_error:
  *   cyclic(in)         :
  *   nth(in)            :
  *   result_val(out)    :
+ *
+ * A value past max_val (min_val for a negative increment) on a non-cyclic serial is out of
+ * range, so this raises ER_QPROC_SERIAL_RANGE_OVERFLOW.
  */
 static int
 serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val, DB_VALUE * cyclic,
 		      int nth, DB_VALUE * result_val)
+{
+  return serial_get_nth_value_internal (inc_val, cur_val, min_val, max_val, cyclic, nth, result_val, false);
+}
+
+/*
+ * serial_reserve_block_end () - get Nth next_value, for reserving a cache block up to it
+ *   return: NO_ERROR, or ER_status
+ *   inc_val(in)        :
+ *   cur_val(in)        :
+ *   min_val(in)        :
+ *   max_val(in)        :
+ *   cyclic(in)         :
+ *   nth(in)            :
+ *   result_val(out)    :
+ *
+ * A block end past max_val (min_val for a negative increment) on a non-cyclic serial is
+ * clamped to that boundary, so the values up to it stay reservable instead of the whole
+ * block failing. The value generation still raises the overflow for a value past it.
+ */
+static int
+serial_reserve_block_end (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
+			  DB_VALUE * cyclic, int nth, DB_VALUE * result_val)
+{
+  return serial_get_nth_value_internal (inc_val, cur_val, min_val, max_val, cyclic, nth, result_val, true);
+}
+
+/*
+ * serial_get_nth_value_internal () - get Nth next_value
+ *   return: NO_ERROR, or ER_status
+ *   inc_val(in)        :
+ *   cur_val(in)        :
+ *   min_val(in)        :
+ *   max_val(in)        :
+ *   cyclic(in)         :
+ *   nth(in)            :
+ *   result_val(out)    :
+ *   clamp_block(in)    : what to do when the Nth value leaves the range -- see the two
+ *                        callers above, which is what a caller should use
+ */
+static int
+serial_get_nth_value_internal (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
+			       DB_VALUE * cyclic, int nth, DB_VALUE * result_val, bool clamp_block)
 {
   DB_VALUE tmp_val, cmp_result, add_val;
   unsigned char num[DB_NUMERIC_BUF_SIZE];
@@ -1062,6 +1336,12 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	    {
 	      pr_share_value (min_val, result_val);
 	    }
+	  else if (clamp_block)
+	    {
+	      /* Reserving a cache block would overshoot max_val; clamp it to the boundary so
+	       * values up through max_val stay usable instead of failing early. */
+	      pr_share_value (max_val, result_val);
+	    }
 	  else
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_RANGE_OVERFLOW, 0);
@@ -1094,6 +1374,12 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	  if (db_get_int (cyclic))
 	    {
 	      pr_share_value (max_val, result_val);
+	    }
+	  else if (clamp_block)
+	    {
+	      /* Reserving a cache block would undershoot min_val; clamp it to the boundary so
+	       * values down through min_val stay usable instead of failing early. */
+	      pr_share_value (min_val, result_val);
 	    }
 	  else
 	    {
@@ -1148,6 +1434,34 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
 
   /* Load the _db_serial attribute layout once, now that the catalog is available. */
   return serial_load_attribute_info_of_db_serial (thread_p);
+}
+
+/*
+ * serial_flush_cache_pool () - write every cached serial's issued value back to _db_serial.
+ *   return:
+ *
+ * Called during shutdown while the heap, log and buffer managers are still up, unlike
+ * serial_finalize_cache_pool, which runs after the volumes are dismounted. Without it a clean
+ * restart resumes past the end of each reserved block, and every standalone (csql -S) process
+ * consumes a whole one. The caller must be on a transaction that may run system operations - each
+ * write opens one; see xboot_shutdown_server.
+ */
+void
+serial_flush_cache_pool (THREAD_ENTRY * thread_p)
+{
+  if (!serial_Cache_initialized)
+    {
+      return;
+    }
+
+  // *INDENT-OFF*
+  serial_cache_hashmap_type::iterator it { thread_p, serial_Cache_hashmap };
+  // *INDENT-ON*
+
+  for (SERIAL_CACHE_ENTRY * entry = it.iterate (); entry != NULL; entry = it.iterate ())
+    {
+      serial_flush_entry_best_effort (thread_p, entry);
+    }
 }
 
 /*
@@ -1469,7 +1783,19 @@ xserial_decache (THREAD_ENTRY * thread_p, OID * oidp)
   if (serial_Cache_initialized)
     {
       OID key = *oidp;
-      (void) serial_Cache_hashmap.erase (thread_p, key);
+      SERIAL_CACHE_ENTRY *entry = serial_Cache_hashmap.find (thread_p, key);
+
+      if (entry != NULL)
+	{
+	  /* Hand the unissued tail back before losing the entry, so the next block resumes at the
+	   * last value actually issued instead of past the block end. */
+	  serial_flush_entry_best_effort (thread_p, entry);
+
+	  if (!serial_Cache_hashmap.erase_locked (thread_p, key, entry) && entry != NULL)
+	    {
+	      pthread_mutex_unlock (&entry->mutex);
+	    }
+	}
     }
 }
 

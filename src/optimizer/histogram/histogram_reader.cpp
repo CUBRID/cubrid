@@ -440,6 +440,7 @@ namespace hist
       case DB_TYPE_FLOAT:
       case DB_TYPE_DOUBLE:
       case DB_TYPE_NUMERIC:
+      case DB_TYPE_MONETARY:
 	return bucket_hi_dump<double> (i);
       case DB_TYPE_BIT:
       case DB_TYPE_VARBIT:
@@ -448,6 +449,7 @@ namespace hist
 	return bucket_hi_dump<std::string> (i);
       case DB_TYPE_TIME:
       case DB_TYPE_BIGINT:
+      case DB_TYPE_ENUMERATION:
 	return bucket_hi_dump<std::int64_t> (i);
       case DB_TYPE_TIMESTAMP:
       case DB_TYPE_TIMESTAMPLTZ:
@@ -473,6 +475,7 @@ namespace hist
       case DB_TYPE_FLOAT:
       case DB_TYPE_DOUBLE:
       case DB_TYPE_NUMERIC:
+      case DB_TYPE_MONETARY:
 	return std::to_string (mcv_hi<double> (i));
       case DB_TYPE_BIT:
       case DB_TYPE_VARBIT:
@@ -481,6 +484,7 @@ namespace hist
 	return mcv_hi<std::string> (i);
       case DB_TYPE_TIME:
       case DB_TYPE_BIGINT:
+      case DB_TYPE_ENUMERATION:
 	return std::to_string (mcv_hi<std::int64_t> (i));
       case DB_TYPE_TIMESTAMP:
       case DB_TYPE_TIMESTAMPLTZ:

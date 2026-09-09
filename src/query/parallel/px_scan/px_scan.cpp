@@ -28,6 +28,7 @@
 #include "query_evaluator.h"
 #include "error_context.hpp"
 #include "query_executor.h"
+#include "query_aggregate.hpp"		/* qdata_link_shared_accumulators */
 #include "system.h"
 #include "xasl.h"
 #include "fetch.h"
@@ -387,10 +388,9 @@ extern "C"
 	    return NO_ERROR;
 	  }
 
+	assert (thread_p->private_heap_id != 0);
 	if (oid_is_system_class (class_oid)
-	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed
-	    /* private_heap_id==0 means not main thread; parallel heap scan requires main thread. */
-	    || thread_p->private_heap_id == 0)
+	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed)
 	  {
 	    /* parallel-thread heap scan not supported */
 	    ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -857,11 +857,7 @@ extern "C"
 
     scan_id->type = S_LIST_SCAN;
 
-    if (thread_p->private_heap_id == 0)
-      {
-	/* not main thread; cannot use parallel list scan */
-	return NO_ERROR;
-      }
+    assert (thread_p->private_heap_id != 0);
 
     /* DML reads val_list directly from scan_id; result handler does not populate it as DML expects. */
     if (xasl->type == INSERT_PROC || xasl->type == UPDATE_PROC
@@ -1309,11 +1305,7 @@ extern "C"
     /* clear stale pending from previous open (e.g., partition pruning re-open in qexec_next_scan_block_iterations). */
     scan_clear_parallel_index_pending (thread_p, scan_id);
 
-    if (thread_p->private_heap_id == 0)
-      {
-	/* not main thread; cannot use parallel index scan */
-	return NO_ERROR;
-      }
+    assert (thread_p->private_heap_id != 0);
 
     /* DML reads val_list directly; parallel scan does not populate it the same way */
     if (xasl->type == INSERT_PROC || xasl->type == UPDATE_PROC
@@ -1884,9 +1876,39 @@ namespace parallel_scan
 		  }
 	      }
 	  }
+
+	if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	  {
+	    /* Workers merge into the original accumulators with the private heap forced to 0, so
+	     * those accumulators must be on heap 0 for as long as a worker is alive. A partitioned
+	     * scan runs one pass per partition and the previous pass's read () left them on this
+	     * thread's private heap, so borrow them back here -- paired with that read (), and
+	     * placed under m_task_started so the borrow happens exactly once per pass no matter how
+	     * often open () runs. No worker exists yet, so nothing can race with this. */
+	    if (m_result_handler->rehome_agg_list (m_thread_p, agg_rehome_dir::BORROW) == S_ERROR)
+	      {
+		return S_ERROR;
+	      }
+	  }
+
 	err_code = start_tasks();
 	if (err_code != NO_ERROR)
 	  {
+	    if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	      {
+		/* start_tasks () can fail after pushing some workers, so stop and drain them before
+		 * touching the accumulators, then give the borrow above back. Without this the
+		 * accumulators stay on heap 0 while teardown (qexec_clear_agg_list) releases them on
+		 * this thread's private heap. Best effort: if this clone fails too we are already
+		 * out of memory. */
+		m_interrupt.set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_MAIN_THREAD);
+		if (m_worker_manager != nullptr)
+		  {
+		    m_worker_manager->release_workers ();
+		    m_worker_manager = nullptr;
+		  }
+		(void) m_result_handler->rehome_agg_list (m_thread_p, agg_rehome_dir::RESTORE);
+	      }
 	    return S_ERROR;
 	  }
       }
@@ -1956,6 +1978,15 @@ namespace parallel_scan
 	  {
 	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (m_thread_p, m_xasl, m_vd,
 		&m_xasl->proc.buildlist.g_agg_domains_resolved);
+
+	    if (m_xasl->proc.buildlist.g_agg_domains_resolved)
+	      {
+		/* Sharing needs the resolved accumulator domains, so it is linked here,
+		 * at the parallel BUILDLIST's resolve point. The sort-based group-by
+		 * after the gather reads the links. */
+		qdata_link_shared_accumulators (m_xasl->proc.buildlist.g_agg_list);
+		m_g_agg_domain_resolve_need = false;
+	      }
 	  }
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
@@ -2017,6 +2048,9 @@ namespace parallel_scan
 	    return S_END;
 	  }
 	  break;
+	  case parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED:
+	    /* benign early-stop: quota met, merged list already holds the first N rows. */
+	    break;
 	  default:
 	    break;
 	  }
