@@ -1523,7 +1523,8 @@ serial_flush_cache_pool_replicated (THREAD_ENTRY * thread_p)
  * A standby follows every image, so a promotion resumes at the master's last issued value. A leaving
  * master's log tail is applied after the promotion, so an active node takes an image only if it does
  * not move cur_val backwards: below what this node has issued, it would re-issue those values. A
- * cyclic serial has no direction, and an active node leaves its row alone.
+ * cyclic serial has no direction, and an active node leaves its row alone. A skipped image is reported
+ * in the server log as a notification.
  */
 bool
 serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, const OID * serial_oidp,
@@ -1537,9 +1538,10 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
   bool old_started = false, new_started = false, failed = false, stale = false;
   HA_SERVER_STATE state;
   ATTR_ID attrid;
-  DB_VALUE *val, *old_cur, *new_cur;
+  DB_VALUE *val, *name = NULL, *old_cur = NULL, *new_cur = NULL;
   DB_VALUE cmp_result;
   int positive;
+  char old_str[NUMERIC_MAX_STRING_SIZE], new_str[NUMERIC_MAX_STRING_SIZE];
 
   if (!oid_is_serial (class_oidp))
     {
@@ -1568,6 +1570,26 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
   new_started = true;
   if (heap_attrinfo_read_dbvalues (thread_p, serial_oidp, old_recdes, &old_info) != NO_ERROR
       || heap_attrinfo_read_dbvalues (thread_p, serial_oidp, new_recdes, &new_info) != NO_ERROR)
+    {
+      failed = true;
+      goto exit;
+    }
+
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_UNIQUE_NAME_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+    {
+      failed = true;
+      goto exit;
+    }
+  name = heap_attrinfo_access (attrid, &old_info);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+    {
+      failed = true;
+      goto exit;
+    }
+  old_cur = heap_attrinfo_access (attrid, &old_info);
+  new_cur = heap_attrinfo_access (attrid, &new_info);
+  if (name == NULL || DB_IS_NULL (name) || old_cur == NULL || DB_IS_NULL (old_cur) || new_cur == NULL
+      || DB_IS_NULL (new_cur))
     {
       failed = true;
       goto exit;
@@ -1603,15 +1625,7 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
       goto exit;
     }
 
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
-    {
-      failed = true;
-      goto exit;
-    }
-  old_cur = heap_attrinfo_access (attrid, &old_info);
-  new_cur = heap_attrinfo_access (attrid, &new_info);
-  if (old_cur == NULL || new_cur == NULL || DB_IS_NULL (old_cur) || DB_IS_NULL (new_cur)
-      || numeric_db_value_compare (new_cur, old_cur, &cmp_result) != NO_ERROR || DB_IS_NULL (&cmp_result))
+  if (numeric_db_value_compare (new_cur, old_cur, &cmp_result) != NO_ERROR || DB_IS_NULL (&cmp_result))
     {
       failed = true;
       goto exit;
@@ -1625,9 +1639,12 @@ exit:
     }
   else if (stale)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "serial (%d|%d|%d): a replicated row image moves cur_val backwards on an active node; kept this node's row\n",
-		    OID_AS_ARGS (serial_oidp));
+      /* By design, so not the applier's error: report it as a notification and leave the error area as it
+       * was, and the object still counts as applied. */
+      er_stack_push ();
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_SERIAL_IMAGE_SKIPPED, 3, db_get_string (name),
+	      numeric_db_value_print (old_cur, old_str), numeric_db_value_print (new_cur, new_str));
+      er_stack_pop ();
     }
   if (new_started)
     {

@@ -1482,7 +1482,9 @@ $ LOADDB
 
 1378 사용자 "%1$s"의 login 가능 여부를 변경할 수 없습니다.
 
-1379 마지막 에러
+1379 HA repl info: 시리얼 "%1$s"의 복제된 _db_serial 이미지를 이 active 노드에 적용하지 않고 이 노드의 행을 유지합니다: current_val %2$s, 이미지 %3$s.
+
+1380 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

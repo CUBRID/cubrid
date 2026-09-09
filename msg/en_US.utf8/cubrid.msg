@@ -1483,7 +1483,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1378 Cannot change the login capability of user "%1$s".
 
-1379 Last Error
+1379 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this active node, which keeps its own row: current_val %2$s, image %3$s.
+
+1380 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
