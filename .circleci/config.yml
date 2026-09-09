@@ -342,6 +342,13 @@ commands:
           command: |
             mkdir -p /tmp/logs
             cp -f /tmp/tests/* /tmp/logs || true
+            # JVM PL server writes jvmheapdump.hprof on an OutOfMemoryError.
+            # Log the file's creation in such cases.
+            for root in CUBRID/log /home/CUBRID/log; do
+              [ -d "$root" ] && find "$root" -name '*.hprof' 2>/dev/null
+            done | while IFS= read -r hp; do
+              echo "JVM_HEAPDUMP_MARKER node=${CIRCLE_NODE_INDEX:-0} suite=${TEST_SUITE:-?} file=${hp} bytes=$(wc -c < "$hp" 2>/dev/null || echo 0)"
+            done
             if [ "$TEST_SUITE" = "shell" ]; then
               mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log || true
             else
