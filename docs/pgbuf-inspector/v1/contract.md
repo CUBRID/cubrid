@@ -18,9 +18,8 @@ the startup-only enablement parameter, the state-only wire vocabulary, the
 peer and database identity requirements, the exact LRU-list membership fields,
 the resource limits and the verification strategy. This document does not
 restate or reopen those decisions. Where a decision fixed a meaning but left the
-byte form open, this document chooses the form and says so. Where this document
-and a decision appear to disagree, the decision is amended explicitly; the
-syntax is never adjusted silently.
+byte form open, this document chooses the form and says so. A conflict with a decision requires explicit design review; concrete syntax
+does not override the accepted semantics.
 
 A reader must keep three facts in mind that the decisions state and this
 document repeats because they bound every interpretation of the data:
@@ -47,7 +46,7 @@ feed, so the line feed is the unambiguous frame terminator. Frames are objects
 only: a frame whose JSON text is an array, a string, a number or a literal is
 malformed.
 
-Every frame carries the string field `type` as its first key. The frame kinds
+Every frame carries the string field `type`; canonical producer output puts it first. The frame kinds
 of version 1 are listed in section 8.
 
 ## 3. Canonical producer form
@@ -91,7 +90,8 @@ All limits are binary byte counts that include the terminating line feed.
 The producer enforces these at encode time and never writes a frame that
 violates them. A frame that would exceed its limit is not emitted at all; the
 producer reports the condition internally and treats it as a defect, because
-the vocabulary of version 1 cannot produce such a frame from valid values. The
+ordinary state records are small. Oversized identity is instead refused with
+`identity-oversized`, and scan budgets reserve footer space before emission. The
 consumer enforces the same limits before allocating for a frame or a scan, so
 that a producer bug or a hostile peer cannot make it allocate without bound.
 
@@ -134,8 +134,7 @@ additive only:
   consumer keeps working.
 - A producer adds a field, an enumeration value or a frame kind beyond those
   version 1.0 defines only together with an increment of `protocol_minor`, a
-  new corpus revision and new conformance cases. Completing the field tables
-  of the seven version 1.0 frame kinds (section 8) is not such an addition.
+  new corpus revision and new conformance cases.
 
 An incompatible change starts a new major version. It is published as a new
 contract directory beside this one, never as an edit to this document.
@@ -154,19 +153,13 @@ inspector safe.
 
 | Kind | Direction | Limit class | Specified |
 | --- | --- | --- | --- |
-| `client_hello` | client to server | control | pending in this contract's next revision |
-| `server_hello` | server to client | handshake | pending |
+| `client_hello` | client to server | control | section 12 |
+| `server_hello` | server to client | handshake | section 12 |
 | `error` | server to client | control | section 9 |
-| `scan_request` | client to server | control | pending |
-| `scan_header` | server to client | control | pending |
-| `page` | server to client | page | pending |
-| `scan_footer` | server to client | control | pending |
-
-A kind marked pending already belongs to version 1.0: its name and direction
-are fixed by the accepted decisions, and later corpus revisions complete its
-field table in this document before any producer emits it. That completion
-does not change `protocol_minor`; section 6 governs additions beyond it. The
-frame kinds of version 1 are exactly these seven.
+| `scan_request` | client to server | control | section 12 |
+| `scan_header` | server to client | control | section 12 |
+| `page` | server to client | page | section 12 |
+| `scan_footer` | server to client | control | section 12 |
 
 ## 9. The `error` frame
 
@@ -183,7 +176,7 @@ Fields, in canonical order:
 | `type` | string `"error"` | mandatory | Frame kind |
 | `code` | string | mandatory | One of the stable codes below |
 | `supported_majors` | array of positive integers | only with `version-unsupported` | Every protocol major the producer can speak |
-| `retry_after_ms` | positive integer | only with `rate-limited` | Milliseconds until the producer will accept a scan request |
+| `retry_after_ms` | integer 1..4294967295 | only with `rate-limited` | Milliseconds until the producer will accept a scan request |
 
 A field marked "only with" a code is a producer obligation: the producer sends
 it exactly when it sends that code and never otherwise, and a producer that
@@ -240,3 +233,108 @@ producer and every consumer must show passing offline checks against the new
 hash before the change is delivered. A change to this document that alters
 what any byte means is a change to the corpus as well and carries new cases.
 A change to this document that alters wording only does not change the hash.
+
+## 12. Complete frame schemas
+
+The tables list canonical key order after `type`. All listed fields are
+mandatory unless marked optional. Identifiers `incarnation` and
+`expected_incarnation` are 32 lowercase hex characters (128 unpredictable bits).
+Every uint64 value is a canonical decimal **string**, from "0" through
+"18446744073709551615", with no sign or leading zero. This prevents JSON
+number rounding in consumers. Counts, versions, volid, pageid and fix counts
+are JSON integers, bounded as below. A timestamp is uint64 Unix microseconds;
+wall-clock steps may make an end timestamp earlier than a start timestamp.
+These times are display metadata, never the freshness clock.
+
+| Frame | Fields in canonical order |
+| --- | --- |
+| client_hello | supported_majors: nonempty array of positive int32; expected_incarnation: optional hex id |
+| server_hello | protocol_major: 1; protocol_minor: nonnegative int32; incarnation: hex id; database_creation: uint64 string; volumes: nonempty array of identity objects; shared_lru_count, private_lru_count: nonnegative int32 |
+| scan_request | incarnation: hex id |
+| scan_header | incarnation: hex id; scan_seq: positive uint64 string; start_time_us: uint64 string |
+| page | incarnation: hex id; scan_seq: positive uint64 string; volid: integer 0..32767; pageid: integer 0..2147483647; optional state fields below |
+| scan_footer | incarnation: hex id; scan_seq: positive uint64 string; end_time_us: uint64 string; record_count, visited_slots: integers 0..65536; truncated: Boolean |
+
+An identity object contains exactly these canonical fields: `volid` (0..32767),
+`volume_creation`, `device`, `inode` (uint64 strings). Volume ids are unique.
+The array is sorted by volid in producer output. Database creation and volume
+creation use the engine's creation value expressed as unsigned seconds since
+Unix epoch. Device and inode are the OS file identities, not paths. Temporary
+volumes do not participate. Complete-set equality is verified by the attaching
+consumer; syntax validation alone is not identity authentication.
+
+Page state fields, in canonical order:
+
+| Field | Type / vocabulary |
+| --- | --- |
+| latch_mode | string: none, read, write, flush, unknown |
+| waiter_present | Boolean |
+| fix_count | integer 0..2147483647 |
+| dirty, flushing, async_flush_requested, to_vacuum | Boolean |
+| lru_zone | string: lru1, lru2, lru3, void, invalid |
+| lru_list_kind | string: shared, private, none, invalid |
+| lru_list_index | nonnegative int32 or null |
+| page_lsa, oldest_unflush_lsa | null or object with pageid (uint64 string 0..9223372036854775807), offset (integer 0..32767) |
+| page_kind | string: unknown, ftab, heap, volheader, volbitmap, qresult, ehash, overflow, oos, area, catalog, btree, log, dropped_files, vacuum_data |
+
+Null LSA represents the engine's null LSA, not a negative address encoded as
+unsigned. Invalid internal latch/page-kind values become `unknown`; invalid
+internal LRU zone or index becomes the documented invalid state. OOS's native
+ordinal 8 maps to oos; develop's ordinal 8 maps to area, with subsequent values
+shifted. Native ordinals never appear in a frame. A producer includes the full
+state set it sampled; readers may accept absent state fields as unknown.
+Unknown future enum strings are accepted by readers as unknown evidence, but
+v1.0 encoders reject them. Known LRU kind/index pairs must be consistent:
+shared/private require a nonnull index within the handshake topology;
+none/invalid require null. Known LRU zones cannot carry none; they carry
+shared/private or invalid membership. Non-LRU zones carry none/null. Apply
+these consistency checks only to recognized enum values: future LRU strings
+remain unknown evidence and do not invalidate the capture. Optional missing
+fields cannot establish membership.
+
+## 13. Ordering, publication and bounded execution
+
+One connection begins with client_hello and receives server_hello or a terminal
+error. A successful hello is followed by sequential scan_request / scan_header /
+zero or more page / scan_footer exchanges. A client sends no request while a
+scan is in flight. A matching request incarnation is required. Sequence numbers
+strictly increase across scans in one server incarnation (gaps are allowed).
+A rate-limited refusal returns to ready; terminal refusals close the exchange.
+Unexpected known frame kinds, duplicate JSON member names, invalid UTF-8,
+invalid value types or malformed framing close the exchange and discard its
+unfinished capture. No new free-text protocol error is emitted. Peer refusal
+happens before this protocol begins. An incarnation mismatch invalidates the
+connection; the producer can send incarnation-changed before a scan begins.
+
+A complete scan footer validates record count before deduplication, visited
+slots at least record count, matching sequence/incarnation and the total byte
+budget. Only then is the capture published. Duplicate VPIDs are ambiguous,
+not last-write-wins. The verifier's scoped lookup returns unknown before a
+valid footer, for an unevaluated VPID, or for an omitted VPID in a truncated
+scan. Complete omission is observed nonresidency, not proof of current absence.
+No observations from separate scans are merged. A failed assembly never
+becomes a valid partial capture; a client may retain only its prior usable,
+unexpired capture with original age independently of this verifier.
+
+Unknown frame kinds inside a scan are bounded control frames, count toward
+scan bytes but not record count, and cannot establish observations. Producer
+v1.0 emits only the seven declared kinds. Unknown optional fields are bounded
+and ignored. Readers accept field reordering and whitespace; producer encoding
+emits only schema fields in canonical order. Depth, duplicate-member and frame
+bounds apply to unknown values too, before DOM allocation.
+
+Reserve footer capacity before admitting a record. Visit a slot at most once
+and rotate the next start beyond the visited span after truncation. Hitting a
+limit exactly on completion need not mean truncation. A stopped traversal is
+partial even if few resident records were emitted. The wire validates declared
+slot counts but only live collector tests can prove actual traversal.
+
+At most two clients attach. A global 100 ms scan-start floor applies across
+clients. Traversal/serialization has a 100 ms elapsed deadline from traversal
+start, including backpressure, checked between slots. Output buffering is
+64 KiB, stall disconnection occurs after 250 ms without write progress,
+connect plus handshake has a 500 ms deadline, and the whole scan exchange
+including drain/footer has a 2 s deadline. Cancellation on disconnect/shutdown
+releases resources. No deadline permits retaining a page latch or blocking a
+database worker. These are scheduling-aware bounds, not real-time guarantees;
+offline tests validate wire limits, not socket timing or collector behavior.

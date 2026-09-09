@@ -78,6 +78,11 @@ namespace cubpgbuf
     encode_status
     encode_error_frame (const error_frame &frame, std::string &out)
     {
+      if (refusal_code_wire_name (frame.code)[0] == '\0')
+	{
+	  return encode_status::INVALID_VALUE;
+	}
+
       /* Contract section 9: each detail appears exactly with its own code and never otherwise. */
       const bool wants_majors = (frame.code == refusal_code::VERSION_UNSUPPORTED);
       const bool wants_retry = (frame.code == refusal_code::RATE_LIMITED);
@@ -102,6 +107,11 @@ namespace cubpgbuf
 	  return encode_status::INVALID_VALUE;
 	}
 
+      /* Even one-digit majors need two bytes each; refuse before constructing an oversized frame. */
+      if (frame.supported_majors.size () > WIRE_CONTROL_FRAME_MAX_BYTES / 2)
+	{
+	  return encode_status::FRAME_TOO_LARGE;
+	}
       canonical_frame_writer writer ("error");
       writer.add_string ("code", refusal_code_wire_name (frame.code));
       if (wants_majors)

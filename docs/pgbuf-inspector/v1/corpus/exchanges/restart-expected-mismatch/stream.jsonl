@@ -1,0 +1,2 @@
+{"type":"client_hello","supported_majors":[1],"expected_incarnation":"ffffffffffffffffffffffffffffffff"}
+{"type":"server_hello","protocol_major":1,"protocol_minor":0,"incarnation":"0123456789abcdef0123456789abcdef","database_creation":"1","volumes":[{"volid":0,"volume_creation":"2","device":"3","inode":"18446744073709551615"}],"shared_lru_count":2,"private_lru_count":3}

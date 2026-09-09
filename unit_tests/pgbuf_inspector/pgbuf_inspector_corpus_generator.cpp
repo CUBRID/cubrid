@@ -135,6 +135,43 @@ main (int argc, char **argv)
       generated++;
     }
 
+  for (const auto &entry : std::filesystem::directory_iterator (std::filesystem::path (corpus_dir) / "exchanges"))
+    {
+      const auto input_path = entry.path () / "input.json";
+      if (!entry.is_directory () || !std::filesystem::is_regular_file (input_path))
+	{
+	  continue;
+	}
+      std::string input;
+      if (!corpus::read_file (input_path.string (), input))
+	{
+	  return 1;
+	}
+      rapidjson::Document frames;
+      frames.Parse (input.c_str ());
+      if (frames.HasParseError () || !frames.IsArray ())
+	{
+	  return 1;
+	}
+      std::string encoded;
+      for (const auto &frame : frames.GetArray ())
+	{
+	  rapidjson::StringBuffer buffer;
+	  rapidjson::Writer<rapidjson::StringBuffer> writer (buffer);
+	  frame.Accept (writer);
+	  if (encode_frame (std::string_view (buffer.GetString (), buffer.GetSize ()), encoded) != encode_status::OK)
+	    {
+	      fprintf (stderr, "invalid semantic exchange: %s\n", input_path.string ().c_str ());
+	      return 1;
+	    }
+	}
+      if (!corpus::write_file ((entry.path () / "stream.jsonl").string (), encoded))
+	{
+	  return 1;
+	}
+      ++generated;
+    }
+
   const std::string checksums = corpus::checksum_file_text (corpus_dir);
   const std::string checksum_path = (std::filesystem::path (corpus_dir) / corpus::CHECKSUM_FILE_NAME).string ();
   if (!corpus::write_file (checksum_path, checksums))

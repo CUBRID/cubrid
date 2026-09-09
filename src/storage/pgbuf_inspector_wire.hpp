@@ -35,7 +35,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace cubpgbuf
@@ -77,6 +79,57 @@ namespace cubpgbuf
       refusal_code code = refusal_code::BUSY;
       std::vector<int> supported_majors;	/* present only with VERSION_UNSUPPORTED */
       std::optional<std::uint32_t> retry_after_ms;	/* present only with RATE_LIMITED */
+    };
+
+    /* Validates semantic JSON and appends its canonical frame atomically. */
+    encode_status encode_frame (std::string_view json, std::string &out);
+
+    /* Explicit source layout; native ordinals are translated here, never serialized. */
+    enum class page_type_layout { DEVELOP, OOS };
+    const char *page_kind_name (int native_type, page_type_layout layout);
+
+    enum class observation { UNKNOWN, RESIDENT, NOT_RESIDENT, AMBIGUOUS };
+
+    /* Offline wire-state verifier. feed accepts arbitrarily chunked chronological
+     * client/server frames, not a socket or authenticated identity. A live caller
+     * must independently check direction, peer credentials, identity and clocks.
+     * Retains only bounded VPID evidence, never page payloads or previous scans. */
+    class exchange_validator
+    {
+      public:
+	bool feed (std::string_view bytes);
+	bool finish ();
+	observation lookup (int volid, int pageid, bool evaluated = true) const;
+	bool published () const
+	{
+	  return m_published;
+	}
+	bool truncated () const
+	{
+	  return m_truncated;
+	}
+	std::size_t record_count () const
+	{
+	  return m_records;
+	}
+
+      private:
+	enum class phase { CLIENT, HELLO, READY, HEADER, SCAN, CLOSED, FAILED };
+	bool accept (std::string_view line);
+	bool fail ();
+	phase m_phase = phase::CLIENT;
+	std::string m_pending;
+	std::string m_incarnation;
+	std::string m_expected;
+	bool m_offers_v1 = false;
+	std::uint64_t m_sequence = 0;
+	std::size_t m_scan_bytes = 0;
+	std::size_t m_records = 0;
+	int m_shared = 0;
+	int m_private = 0;
+	bool m_published = false;
+	bool m_truncated = false;
+	std::map<std::pair<int, int>, bool> m_pages;
     };
 
     /* Appends the canonical error frame to out, or appends nothing and reports why. */

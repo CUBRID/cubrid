@@ -22,6 +22,7 @@ project (test_pgbuf_inspector)
 # executables here rather than linked from an engine library.
 set (PGBUF_INSPECTOR_WIRE_SOURCES
   ${STORAGE_DIR}/pgbuf_inspector_wire.cpp
+  ${STORAGE_DIR}/pgbuf_inspector_protocol.cpp
   )
 
 # Shared by the unit test and the corpus generator: hashing for the checksum

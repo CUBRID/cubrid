@@ -8,7 +8,7 @@ and not by a live integration run.
 
 ## Layout
 
-Each case is one subdirectory named by its stable case identifier. A case
+The original refusal cases are top-level subdirectories. Such a case
 holds up to three files:
 
 | File | Written by | Meaning |
@@ -20,8 +20,8 @@ holds up to three files:
 A case whose bytes are deliberately malformed carries no `semantic.json`,
 because the producer serializer cannot produce them; such a case is derived by
 a documented mutation of a generated stream, and its `expected.json` names the
-source case and the mutation. This revision of the corpus contains no such
-case yet.
+source case and the mutation. The `exchanges` subtree adds complete chronological transcripts and malformed
+reader cases; its README defines the independent expected-outcome format.
 
 Two files at the top of this directory bind the corpus:
 
@@ -58,9 +58,9 @@ tooling is required for either step.
 `frames` lists the semantic frames in the order they were encoded. Each frame
 object carries `frame`, the frame kind, followed by the frame's fields under
 the names the contract uses on the wire. The generator encodes the list with
-the producer serializer and writes the result to `stream.jsonl`. There is no
-hand-authored `stream.jsonl` anywhere in the corpus: a stream the serializer
-cannot produce is not canonical.
+the producer serializer and writes the result to `stream.jsonl`. Canonical exchange cases use `input.json` with full protocol objects.
+Malformed and additive reader cases have hand-authored bytes and are never
+regenerated through the canonical encoder.
 
 ## `expected.json`
 
@@ -106,8 +106,9 @@ scan summary and normalized pages. Consumers ignore fields they do not use.
 The generator is a producer-side executable built beside the unit tests. Enable
 the CMake option `UNIT_TEST_PGBUF_INSPECTOR`, build the target
 `pgbuf_inspector_corpus_generator`, and run it with the path of the contract
-directory (the parent of this directory). It rewrites every `stream.jsonl` from
-its `semantic.json`, rewrites `SHA256SUMS`, and rewrites the aggregate hash in
+directory (the parent of this directory). It rewrites refusal streams from
+`semantic.json` and canonical exchange streams from `input.json`, preserves
+reader-only streams and all expected outcomes, rewrites `SHA256SUMS`, and rewrites the aggregate hash in
 the manifest. It never touches `expected.json` or `semantic.json`, and it does
 not increment `corpus_revision`; that is a deliberate edit by the person
 changing the corpus.
@@ -137,3 +138,30 @@ delivery of the change requires matching offline evidence from the producer's
 unit tests and from every consumer's vendored copy. A semantic disagreement
 found while implementing against the corpus is resolved by amending the
 accepted decision it concerns, never by adjusting bytes to suit one side.
+
+## Reproducible large boundaries
+
+The `test_pgbuf_inspector` executable's `[limits]` cases generate boundaries
+without storing hundreds of MiB in the repository. Byte counts include LF.
+Reproduce the same recipes in a consumer's independent tests:
+
+- Pad client_hello and page objects with spaces before LF to 4,095 / 4,096 /
+  4,097 bytes. Accept only the first two. Pad server_hello to 65,535 / 65,536 /
+  65,537 bytes with the same expectation. A frame without LF must fail before
+  its applicable buffer limit is exceeded.
+- Add an unknown member containing nested arrays of scalar zero. Count the
+  root object as depth one; total depths 15 / 16 / 17 accept / accept / reject.
+- Emit 65,535 / 65,536 / 65,537 page frames under one header. Count repeated
+  VPIDs before deduplication; the first two finish with matching counts and
+  ambiguous lookup, the last is rejected. Independently set visited_slots to
+  those values with zero records; reject only 65,537.
+- Between the complete example's header and a zero-record footer, repeat
+  unknown control frames padded up to 4,096 bytes, shortening the last frames
+  so the total header-through-footer byte count is 67,108,863 / 67,108,864 /
+  67,108,865. Accept / accept / reject at the footer. These unknown frames count
+  bytes but cannot increase record_count or establish residency.
+
+These generators exercise the production verifier and preserve a bounded
+working set. They do not prove actual slot traversal, elapsed deadlines or
+live producer memory/CPU gates. The generator is a test maintenance executable;
+no Python, hash library or other runtime dependency is added to the producer.
