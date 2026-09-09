@@ -584,6 +584,8 @@ static void ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, dat
 static int ldr_mismatch (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_ignore (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_generic (LDR_CONTEXT *context, DB_VALUE *value);
+static int ldr_convert_elem_value (LDR_CONTEXT *context, const char *str, size_t len, data_type type,
+				   LDR_ATTDESC *attdesc, DB_VALUE *val);
 static int ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
 			      data_type type, DB_VALUE *val);
 static int ldr_convert_and_setmem (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
@@ -2032,7 +2034,22 @@ ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
   else
     {
       attdesc = &context->attrs[context->next_attr];
-      CHECK_ERR (err, (* (attdesc->setter[type])) (context, str, len, attdesc));
+
+      /* ^u and ^c are refused outright rather than through the setter table, so the
+       * table is about conversion and nothing else. The server side's table has no
+       * entry for them either. */
+      if (type == LDR_SYS_USER)
+	{
+	  CHECK_ERR (err, ldr_sys_user_db_generic (context, str, len, attdesc));
+	}
+      else if (type == LDR_SYS_CLASS)
+	{
+	  CHECK_ERR (err, ldr_sys_class_db_generic (context, str, len, attdesc));
+	}
+      else
+	{
+	  CHECK_ERR (err, (* (attdesc->setter[type])) (context, str, len, attdesc));
+	}
     }
 
 error_exit:
@@ -2097,7 +2114,23 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
     }
   else
     {
-      CHECK_ERR (err, (* (elem_converter[type])) (context, str, len, &tempval));
+      switch (type)
+	{
+	case LDR_COLLECTION:
+	case LDR_OID:
+	case LDR_CLASS_OID:
+	case LDR_SYS_USER:
+	case LDR_SYS_CLASS:
+	  /* Nested sets, object references and the system object references are the
+	   * standalone loader's own business; the shared element table has no entry for
+	   * them. ^u and ^c keep landing on ldr_null_elem () here, as they always have. */
+	  CHECK_ERR (err, (* (elem_converter[type])) (context, str, len, &tempval));
+	  break;
+	default:
+	  CHECK_ERR (err, ldr_convert_elem_value (context, str, len, type, &context->attrs[context->next_attr],
+						  &tempval));
+	  break;
+	}
       if ((err = set_add_element (context->collection, &tempval)) == ER_SET_DOMAIN_CONFLICT)
 	{
 	  display_error_line (0);
@@ -2265,6 +2298,96 @@ ldr_fetch_att (LDR_CONTEXT *context, LDR_ATTDESC *attdesc)
     }
 
   return ldr_refresh_conv_att (attdesc);
+}
+
+/*
+ * ldr_elem_token_type - the type parse_error () should name for a failed element
+ *    return: DB_TYPE of the literal
+ *    type(in): parser type of the token
+ * Note:
+ *    A collection element is converted to the literal's natural type, so this is
+ *    what the token is, which is what parse_error () asks for. The collection
+ *    domain would name the collection instead of the element.
+ */
+static DB_TYPE
+ldr_elem_token_type (data_type type)
+{
+  switch (type)
+    {
+    case LDR_INT:
+      return DB_TYPE_INTEGER;
+    case LDR_NUMERIC:
+      return DB_TYPE_NUMERIC;
+    case LDR_DOUBLE:
+      return DB_TYPE_DOUBLE;
+    case LDR_FLOAT:
+      return DB_TYPE_FLOAT;
+    case LDR_STR:
+      return DB_TYPE_STRING;
+    case LDR_DATE:
+      return DB_TYPE_DATE;
+    case LDR_TIME:
+      return DB_TYPE_TIME;
+    case LDR_TIMESTAMP:
+      return DB_TYPE_TIMESTAMP;
+    case LDR_TIMESTAMPLTZ:
+      return DB_TYPE_TIMESTAMPLTZ;
+    case LDR_TIMESTAMPTZ:
+      return DB_TYPE_TIMESTAMPTZ;
+    case LDR_DATETIME:
+      return DB_TYPE_DATETIME;
+    case LDR_DATETIMELTZ:
+      return DB_TYPE_DATETIMELTZ;
+    case LDR_DATETIMETZ:
+      return DB_TYPE_DATETIMETZ;
+    case LDR_BSTR:
+    case LDR_XSTR:
+      return DB_TYPE_BIT;
+    case LDR_MONETARY:
+      return DB_TYPE_MONETARY;
+    case LDR_ELO_EXT:
+    case LDR_ELO_INT:
+      return DB_TYPE_BLOB;
+    case LDR_JSON:
+      return DB_TYPE_JSON;
+    default:
+      /* Except for LDR_NULL, the following five cannot reach here:
+       * LDR_COLLECTION, LDR_OID, LDR_CLASS_OID, LDR_SYS_USER, LDR_SYS_CLASS
+       */
+      assert (type == LDR_NULL);
+      return DB_TYPE_NULL;
+    }
+}
+
+/*
+ * ldr_convert_elem_value - turn a collection element token into a DB_VALUE
+ *    return: NO_ERROR or an error code
+ *    context(in):
+ *    str(in): token text
+ *    len(in): token length
+ *    type(in): parser type of the token
+ *    attdesc(in): descriptor the token belongs to. For a collection element this is
+ *                 the collection attribute
+ *    val(out): converted value
+ * Note:
+ *    Uses the shared element table, which the server side uses as well. The
+ *    attribute is passed for error messages only - the element converters build the
+ *    literal's natural type and never look at a target domain.
+ *    It is taken as an argument rather than read from context->next_attr because the constructor
+ *    argument path has no attribute descriptor of its own and cannot use this.
+ */
+static int
+ldr_convert_elem_value (LDR_CONTEXT *context, const char *str, size_t len, data_type type, LDR_ATTDESC *attdesc,
+			DB_VALUE *val)
+{
+  int err = NO_ERROR;
+
+  db_make_null (val);
+  CHECK_PARSE_ERR (err, cubload::get_elem_conv_func (type) (str, len, attdesc->conv_att, val), context,
+		   ldr_elem_token_type (type), str);
+
+error_exit:
+  return err;
 }
 
 /*
@@ -2480,7 +2603,16 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
     }
   else
     {
-      CHECK_ERR (err, (* (elem_converter[type])) (context, str, len, &src_val));
+      if (type == LDR_OID || type == LDR_CLASS_OID || type == LDR_SYS_USER || type == LDR_SYS_CLASS)
+	{
+	  /* Object references are the SA loader's own; the shared table has none. */
+	  CHECK_ERR (err, (* (elem_converter[type])) (context, str, len, &src_val));
+	}
+      else
+	{
+	  CHECK_ERR (err, ldr_convert_elem_value (context, str, len, type,
+						  &context->attrs[context->next_attr], &src_val));
+	}
       GET_DOMAIN (context, domain);
       CHECK_ERR (err, db_value_domain_init (&dest_val, TP_DOMAIN_TYPE (domain), domain->precision, domain->scale));
 
@@ -2647,14 +2779,7 @@ error_exit:
 static int
 ldr_int_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
 {
-  int err;
-  DB_VALUE val;
-
-  CHECK_ERR (err, ldr_int_elem (context, str, len, &val));
-  CHECK_ERR (err, ldr_generic (context, &val));
-
-error_exit:
-  return err;
+  return ldr_convert_and_generic (context, str, len, attdesc, LDR_INT);
 }
 
 /*
@@ -2769,11 +2894,7 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDE
 static int
 ldr_str_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
 {
-  DB_VALUE val;
-
-  /* todo: switch this to db_make_string_copy and avoid any possible leaks */
-  db_make_string (&val, str);
-  return ldr_generic (context, &val);
+  return ldr_convert_and_generic (context, str, len, attdesc, LDR_STR);
 }
 
 /*
@@ -2983,14 +3104,7 @@ error_exit:
 static int
 ldr_numeric_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
 {
-  int err;
-  DB_VALUE val;
-
-  CHECK_ERR (err, ldr_numeric_elem (context, str, len, &val));
-  CHECK_ERR (err, ldr_generic (context, &val));
-
-error_exit:
-  return err;
+  return ldr_convert_and_generic (context, str, len, attdesc, LDR_NUMERIC);
 }
 
 /*
@@ -3080,14 +3194,7 @@ error_exit:
 static int
 ldr_real_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
 {
-  int err;
-  DB_VALUE val;
-
-  CHECK_ERR (err, ldr_double_elem (context, str, len, &val));
-  CHECK_ERR (err, ldr_generic (context, &val));
-
-error_exit:
-  return err;
+  return ldr_convert_and_generic (context, str, len, attdesc, LDR_DOUBLE);
 }
 
 /*
@@ -4969,19 +5076,19 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       attdesc->setter[i] = &ldr_mismatch;
     }
 
+  /*
+   * Allow loaddb to support the typecasts implicitly permitted by INSERT, ensuring identical results between INSERT and loaddb
+   * These 5 literal kinds are converted to their natural type and handed to the object template, whose
+   * check_att_domain () performs the same cast INSERT would.
+   */
   attdesc->setter[LDR_NULL] = &ldr_null_db_generic;
   attdesc->setter[LDR_INT] = &ldr_int_db_generic;
   attdesc->setter[LDR_NUMERIC] = &ldr_numeric_db_generic;
   attdesc->setter[LDR_DOUBLE] = &ldr_real_db_generic;
   attdesc->setter[LDR_FLOAT] = &ldr_real_db_generic;
 
-  /*
-   * These two system object setters are setup to return an
-   * appropriate error message to the user.
-   */
-
-  attdesc->setter[LDR_SYS_USER] = &ldr_sys_user_db_generic;
-  attdesc->setter[LDR_SYS_CLASS] = &ldr_sys_class_db_generic;
+  /* To behave identically to CS mode, change LDR_STR for unspecified domains from ldr_mismatch() to ldr_str_db_generic() */
+  attdesc->setter[LDR_STR] = &ldr_str_db_generic;
 
   switch (TP_DOMAIN_TYPE (attdesc->att->domain))
     {
@@ -5027,42 +5134,34 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       break;
 
     case DB_TYPE_DATE:
-      attdesc->setter[LDR_STR] = &ldr_str_db_generic;
       attdesc->setter[LDR_DATE] = &ldr_date_db_date;
       break;
 
     case DB_TYPE_TIME:
-      attdesc->setter[LDR_STR] = &ldr_str_db_generic;
       attdesc->setter[LDR_TIME] = &ldr_time_db_time;
       break;
 
     case DB_TYPE_TIMESTAMP:
-      attdesc->setter[LDR_STR] = &ldr_str_db_generic;
       attdesc->setter[LDR_TIMESTAMP] = &ldr_timestamp_db_timestamp;
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
-      attdesc->setter[LDR_STR] = &ldr_str_db_generic;
       attdesc->setter[LDR_TIMESTAMPLTZ] = &ldr_timestampltz_db_timestampltz;
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
-      attdesc->setter[LDR_STR] = &ldr_str_db_generic;
       attdesc->setter[LDR_TIMESTAMPTZ] = &ldr_timestamptz_db_timestamptz;
       break;
 
     case DB_TYPE_DATETIME:
-      attdesc->setter[LDR_STR] = &ldr_str_db_generic;
       attdesc->setter[LDR_DATETIME] = &ldr_datetime_db_datetime;
       break;
 
     case DB_TYPE_DATETIMELTZ:
-      attdesc->setter[LDR_STR] = &ldr_str_db_generic;
       attdesc->setter[LDR_DATETIMELTZ] = &ldr_datetimeltz_db_datetimeltz;
       break;
 
     case DB_TYPE_DATETIMETZ:
-      attdesc->setter[LDR_STR] = &ldr_str_db_generic;
       attdesc->setter[LDR_DATETIMETZ] = &ldr_datetimetz_db_datetimetz;
       break;
 
