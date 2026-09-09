@@ -4144,8 +4144,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 		  goto error;
 		}
 	    }
-	  ret =
-	    xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, key_dbvalue, &part_oid, &unique_oid, true);
+	  ret = xbtree_find_unique_fk_existence (thread_p, &local_btid, key_dbvalue, &part_oid, &unique_oid, true);
 	  if (ret == BTREE_KEY_NOTFOUND)
 	    {
 	      char *val_print = NULL;
@@ -4177,7 +4176,6 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	      goto error;
 	    }
 	  assert (ret == BTREE_KEY_FOUND);
-	  /* TODO: For read committed... Do we need to keep the lock? */
 	}
 
       if (key_dbvalue == &dbvalue)
@@ -5353,7 +5351,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  goto error1;
 	}
 
-      /* check the foreign key constraints */
+      /* check the foreign key constraints.  Keep this after the index insert above: the check takes no parent row
+       * lock, so a parent DELETE must find this child's foreign-key entries. */
       if (has_index && !skip_checking_fk)
 	{
 	  error_code =
@@ -6170,7 +6169,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 	    }
 
-	  /* check the foreign key constraints */
+	  /* check the foreign key constraints, after the index update above (see locator_insert_force ()) */
 	  if (!not_check_fk && !locator_Dont_check_foreign_key)
 	    {
 	      error_code =
@@ -8290,6 +8289,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	    }
 	  else
 	    {
+	      /* Scan for children only after btree_mvcc_delete () above delete-marked the key: a child's foreign-key
+	       * check takes no lock on this row and must meet that mark. */
 	      if (idx_action_flag == FOR_MOVE)
 		{
 		  /* This delete is caused by 'UPDATE ... SET ...' between partitioned tables. It first delete a
@@ -9016,6 +9017,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		  LSA_SET_NULL (&tdes->repl_insert_lsa);
 		}
 
+	      /* The old key is already delete-marked: see locator_add_or_remove_index_internal () for the order. */
 	      error_code = locator_check_primary_key_update (thread_p, index, old_key);
 	      if (error_code != NO_ERROR)
 		{
