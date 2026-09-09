@@ -7469,9 +7469,9 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 	      continue;
 	    }
 	}
-      else if (spec->info.spec.join_type == PT_JOIN_ANTI)
+      else if (spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI)
 	{
-	  /* SELECT * : ANTI inner columns are not part of the output (right columns forbidden for anti) */
+	  /* SELECT * : SEMI / ANTI inner columns are not part of the output (right columns are not referenceable) */
 	  spec = spec->next;
 	  continue;
 	}
