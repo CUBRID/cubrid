@@ -1948,12 +1948,22 @@ send_to_client:
 /*
  * IS_MASTER_REQUEST_ALLOWED_ON_REMOTE () - administrative requests a remote
  *   peer is permitted to issue. This mirrors the client-side
- *   COMMDB_CMD_ALLOWED_ON_REMOTE () allow-list in commdb.c and moves the
- *   enforcement to the master, so a raw client that does not use the commdb
- *   utility cannot bypass it. Every request NOT in this list (server/master
- *   kill, shutdown, server list, ...) must originate from a local peer.
- *   Requests in this list are additionally restricted to eligible peers by
- *   hb_check_request_eligibility() inside their own handlers.
+ *   COMMDB_CMD_ALLOWED_ON_REMOTE () allow-list in commdb.c, plus
+ *   GET_SERVER_STATE which commdb.c never issues but which a broker
+ *   (cub_broker) on a host separate from cub_server/cub_master legitimately
+ *   sends to monitor a remote database server's HA state
+ *   (connect_to_master_for_server_monitor ()/get_server_state_from_master ()
+ *   in broker.c). GET_SERVER_STATE intentionally has no
+ *   hb_check_request_eligibility () gate of its own: that check only admits
+ *   peers registered as HA cluster nodes, which a plain broker host is not.
+ *   It only discloses a coarse HA state for a caller-supplied database name,
+ *   no more sensitive than the already-remote-allowed GET_HA_* queries.
+ *   The enforcement is done on the master so a raw client that does not use
+ *   the commdb utility cannot bypass it. Every request NOT in this list
+ *   (server/master kill, shutdown, server list, ...) must originate from a
+ *   local peer. The HA requests in this list are additionally restricted to
+ *   eligible peers by hb_check_request_eligibility () inside their own
+ *   handlers.
  */
 #define IS_MASTER_REQUEST_ALLOWED_ON_REMOTE(req) \
   ((req) == DEACT_STOP_ALL || (req) == DEACT_CONFIRM_STOP_ALL \
@@ -1962,7 +1972,7 @@ send_to_client:
    || (req) == GET_HA_NODE_LIST || (req) == GET_HA_NODE_LIST_VERBOSE \
    || (req) == GET_HA_PROCESS_LIST || (req) == GET_HA_PROCESS_LIST_VERBOSE \
    || (req) == GET_HA_PING_HOST_INFO || (req) == GET_HA_ADMIN_INFO \
-   || (req) == START_HA_UTIL_PROCESS)
+   || (req) == START_HA_UTIL_PROCESS || (req) == GET_SERVER_STATE)
 
 /*
  * css_master_request_is_local () - is the request peer local?
