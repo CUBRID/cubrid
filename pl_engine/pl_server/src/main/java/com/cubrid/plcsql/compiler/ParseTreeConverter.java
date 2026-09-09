@@ -2994,20 +2994,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String colName = ci.colName;
         assert colName != null;
 
-        int dotIdx = colName.lastIndexOf(".");
-        if (dotIdx > 0
-                && dotIdx < colName.length() - 1
-                && ci.className != null
-                && ci.className.length() > 0
-                && ci.attrName != null) {
-
-            String afterDot = colName.substring(dotIdx + 1);
-            if (afterDot.equalsIgnoreCase(ci.attrName)) {
-                // In this case, colName must be of the form <table name alias>.<attr name>
-                colName = ci.attrName;
-            }
-        }
-
         Matcher matcher = patternId.matcher(colName);
         return matcher.matches() ? colName : null;
     }

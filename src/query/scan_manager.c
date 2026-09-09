@@ -27,7 +27,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include "jansson.h"
+#include "json_builder.h"
 
 #include "error_manager.h"
 #include "heap_file.h"
@@ -8470,17 +8470,17 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
  * scan_id(in):
  */
 void
-scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
+scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
 {
-  json_t *scan, *lookup;
+  trace_json_t *scan, *lookup;
 
   if (scan_id == NULL || scan_stats == NULL)
     {
       return;
     }
 
-  scan = json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.elapsed_scan), "fetch",
-		    scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
+  scan = trace_json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.elapsed_scan), "fetch",
+			  scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
 
   switch (scan_id->type)
     {
@@ -8488,8 +8488,8 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
     case S_LIST_SCAN:
     case S_PARALLEL_HEAP_SCAN:
     case S_PARALLEL_LIST_SCAN:
-      json_object_set_new (scan, "readrows", json_integer (scan_id->scan_stats.read_rows));
-      json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.qualified_rows));
+      trace_json_object_set_new (scan, "readrows", trace_json_integer (scan_id->scan_stats.read_rows));
+      trace_json_object_set_new (scan, "rows", trace_json_integer (scan_id->scan_stats.qualified_rows));
 
       if (scan_id->type == S_HEAP_SCAN || scan_id->type == S_PARALLEL_HEAP_SCAN)
 	{
@@ -8507,6 +8507,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 	      agl_index = (char *) malloc (len);
 	      if (agl_index == NULL)
 		{
+		  trace_json_decref (scan);
 		  return;
 		}
 
@@ -8522,82 +8523,82 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 		      sprintf (agl_index, "%s", agl->agg_index_name);
 		    }
 		}
-	      json_object_set_new (scan, "agl", json_string (agl_index));
+	      trace_json_object_set_new (scan, "agl", trace_json_string (agl_index));
 	      free (agl_index);
 	    }
 
 	  if (scan_id->scan_stats.noscan)
 	    {
-	      json_object_set_new (scan_stats, "noscan", scan);
+	      trace_json_object_set_new (scan_stats, "noscan", scan);
 	    }
 	  else
 	    {
-	      json_object_set_new (scan_stats, "heap", scan);
+	      trace_json_object_set_new (scan_stats, "heap", scan);
 	    }
 	}
       else
 	{
-	  json_object_set_new (scan_stats, "temp", scan);
+	  trace_json_object_set_new (scan_stats, "temp", scan);
 	}
       break;
 
     case S_INDX_SCAN:
     case S_PARALLEL_INDEX_SCAN:
-      json_object_set_new (scan, "readkeys", json_integer (scan_id->scan_stats.read_keys));
-      json_object_set_new (scan, "filteredkeys", json_integer (scan_id->scan_stats.qualified_keys));
-      json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.key_qualified_rows));
-      json_object_set_new (scan_stats, "btree", scan);
+      trace_json_object_set_new (scan, "readkeys", trace_json_integer (scan_id->scan_stats.read_keys));
+      trace_json_object_set_new (scan, "filteredkeys", trace_json_integer (scan_id->scan_stats.qualified_keys));
+      trace_json_object_set_new (scan, "rows", trace_json_integer (scan_id->scan_stats.key_qualified_rows));
+      trace_json_object_set_new (scan_stats, "btree", scan);
 
       if (scan_id->scan_stats.covered_index == true)
 	{
-	  json_object_set_new (scan_stats, "covered", json_true ());
+	  trace_json_object_set_new (scan_stats, "covered", trace_json_true ());
 	}
       else
 	{
-	  lookup = json_pack ("{s:i, s:i}", "time", TO_MSEC (scan_id->scan_stats.elapsed_lookup), "rows",
-			      scan_id->scan_stats.data_qualified_rows);
+	  lookup = trace_json_pack ("{s:i, s:i}", "time", TO_MSEC (scan_id->scan_stats.elapsed_lookup), "rows",
+				    scan_id->scan_stats.data_qualified_rows);
 
-	  json_object_set_new (scan_stats, "lookup", lookup);
+	  trace_json_object_set_new (scan_stats, "lookup", lookup);
 	}
 
       if (scan_id->scan_stats.multi_range_opt == true)
 	{
-	  json_object_set_new (scan_stats, "mro", json_true ());
+	  trace_json_object_set_new (scan_stats, "mro", trace_json_true ());
 	}
 
       if (scan_id->scan_stats.index_skip_scan == true)
 	{
-	  json_object_set_new (scan_stats, "iss", json_true ());
+	  trace_json_object_set_new (scan_stats, "iss", trace_json_true ());
 	}
 
       if (scan_id->scan_stats.loose_index_scan == true)
 	{
-	  json_object_set_new (scan_stats, "loose", json_true ());
+	  trace_json_object_set_new (scan_stats, "loose", trace_json_true ());
 	}
       break;
 
     case S_SHOWSTMT_SCAN:
-      json_object_set_new (scan_stats, "show", scan);
+      trace_json_object_set_new (scan_stats, "show", scan);
       break;
 
     case S_SET_SCAN:
-      json_object_set_new (scan_stats, "set", scan);
+      trace_json_object_set_new (scan_stats, "set", scan);
       break;
 
     case S_METHOD_SCAN:
-      json_object_set_new (scan_stats, "method", scan);
+      trace_json_object_set_new (scan_stats, "method", scan);
       break;
 
     case S_DBLINK_SCAN:
-      json_object_set_new (scan_stats, "dblink", scan);
+      trace_json_object_set_new (scan_stats, "dblink", scan);
       break;
 
     case S_CLASS_ATTR_SCAN:
-      json_object_set_new (scan_stats, "class_attr", scan);
+      trace_json_object_set_new (scan_stats, "class_attr", scan);
       break;
 
     default:
-      json_object_set_new (scan_stats, "noscan", scan);
+      trace_json_object_set_new (scan_stats, "noscan", scan);
       break;
     }
 }

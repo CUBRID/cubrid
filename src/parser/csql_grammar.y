@@ -324,6 +324,7 @@ static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_C
 static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                                       size_t min_args, size_t max_args, size_t mod2);
 
+static PT_NODE *parser_reverse_link (PT_NODE * list);
 static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
 static PT_NODE *parser_make_link_or (PT_NODE * list, PT_NODE * node);
 
@@ -648,7 +649,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> show_type_arg1_opt
 %type <number> show_type_arg_named
 %type <number> show_type_id
+%type <number> show_heap_type_id
 %type <number> show_type_id_dot_id
+%type <number> opt_show_scan_mode
 %type <number> kill_type
 %type <number> procedure_or_function
 %type <boolean> opt_analytic_from_last
@@ -1515,6 +1518,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> AES
 %token <cptr> ANALYZE
 %token <cptr> ANTI
+%token <cptr> APPROX
 %token <cptr> ARCHIVE
 %token <cptr> ARIA
 %token <cptr> AUTHID
@@ -1554,6 +1558,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> EMPTY
 %token <cptr> ENCRYPT
 %token <cptr> ERROR_
+%token <cptr> EXACT
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
 %token <cptr> FORCE
@@ -6928,7 +6933,9 @@ insert_stmt_value_clause
 insert_expression_value_clause
 	: of_value_values insert_value_clause_list
 		{{
-			$$ = $2;
+			/* insert_value_clause_list prepends to avoid walking to the tail on every row,
+			 * so the rows arrive back to front and are put back in the original order here. */
+			$$ = parser_reverse_link ($2);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| DEFAULT opt_values
@@ -6974,7 +6981,12 @@ into_clause_opt
 insert_value_clause_list
 	: insert_value_clause_list ',' insert_value_clause
 		{{
-			$$ = parser_make_link ($1, $3);
+			/* parser_make_link walks to the tail on every row,
+			 * which makes building a multi-row VALUES quadratic in the number of rows.
+			 * Prepended instead, so the list is built back to front,
+			 * and insert_expression_value_clause puts it back in the original order. */
+			$3->next = $1;
+			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| insert_value_clause
@@ -7399,6 +7411,26 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| SHOW show_heap_type_id OF class_name opt_show_scan_mode
+		{{
+			int type = $2;
+			PT_NODE *node, *args = $4;
+			PT_NODE *scan_mode = pt_make_integer_value (this_parser, $5);
+
+			if (scan_mode == NULL)
+			  {
+			    PT_INTERNAL_ERROR (this_parser, "allocate new node");
+			  }
+
+			/* pt_check_table_in_show_heap () inserts the partition type BEFORE the scan mode,
+			 * so the scan mode always stays last */
+			args->next = scan_mode;
+
+			node = pt_make_query_showstmt (this_parser, type, args, 0, NULL);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	| SHOW show_type_id_dot_id OF class_name DOT identifier
 		{{
 			int type = $2;
@@ -7551,7 +7583,7 @@ show_type_arg_named
 		}}
 	;
 
-show_type_id
+show_heap_type_id
 	: HEAP HEADER
 		{{
 			$$ = SHOWSTMT_HEAP_HEADER;
@@ -7568,13 +7600,31 @@ show_type_id
 		{{
 			$$ = SHOWSTMT_ALL_HEAP_CAPACITY;
 		}}
-	| ALL INDEXES HEADER
+	;
+
+show_type_id
+	: ALL INDEXES HEADER
 		{{
 			$$ = SHOWSTMT_ALL_INDEXES_HEADER;
 		}}
 	| ALL INDEXES CAPACITY
 		{{
 			$$ = SHOWSTMT_ALL_INDEXES_CAPACITY;
+		}}
+	;
+
+opt_show_scan_mode
+	: /* empty */
+		{{
+			$$ = SHOWSTMT_SCAN_EXACT;
+		}}
+	| EXACT
+		{{
+			$$ = SHOWSTMT_SCAN_EXACT;
+		}}
+	| APPROX
+		{{
+			$$ = SHOWSTMT_SCAN_APPROX;
 		}}
 	;
 
@@ -20598,6 +20648,7 @@ identifier
 	| ADDDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| AES                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ANALYZE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| APPROX                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ARCHIVE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ARIA                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| AUTHID                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20639,6 +20690,7 @@ identifier
 	| EMPTY                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ENCRYPT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| EXACT                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -22729,6 +22781,22 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
     }
 
   return expr;
+}
+
+static PT_NODE *
+parser_reverse_link (PT_NODE * list)
+{
+  PT_NODE *prev = NULL, *curr = list, *next;
+
+  while (curr != NULL)
+    {
+      next = curr->next;
+      curr->next = prev;
+      prev = curr;
+      curr = next;
+    }
+
+  return prev;
 }
 
 static PT_NODE *
@@ -25345,7 +25413,18 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
         node->type_enum = char_type;
         node->info.value.string_type = ' ';
 
-        PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
+	/* A fresh plain literal prints as the quoted string and nothing else:
+	 * everything that could change the printed form is still unset here.
+	 * Set info.value.text here instead of running the tree printer per literal.
+	 * The char_type test guards a future caller; this file defines NCHAR as CHAR. */
+	if (char_type == PT_TYPE_CHAR && parser->custom_print == 0 && parser->flag.dont_prt_long_string == 0)
+	  {
+	    node->info.value.text = pt_print_quoted_value_text (parser, (const char *) string, length);
+	  }
+	else
+	  {
+	    PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
+	  }
       }
 
   return node;
