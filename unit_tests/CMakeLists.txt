@@ -32,6 +32,7 @@ set (TEST_INCLUDES
 option (UNIT_TEST_MEMORY_ALLOC  "Unit testing: memory allocation")
 option (UNIT_TEST_STRING_BUFFER "Unit testing: string buffer with format")
 option (UNIT_TEST_LOCKFREE "Unit testing: lockfree module")
+option (UNIT_TEST_LOG_PRIOR_INFLIGHT "Unit testing: in-flight window over the prior list")
 option (UNIT_TEST_THREAD "Unit testing: thread module")
 option (UNIT_TEST_PACKING "Unit testing: packing")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
@@ -39,6 +40,7 @@ option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
+option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output")
 
 message("  unit_tests/...")
 
@@ -76,6 +78,12 @@ if (UNIT_TESTS OR UNIT_TEST_LOCKFREE)
   add_subdirectory(lockfree)
 endif (UNIT_TESTS OR UNIT_TEST_LOCKFREE)
 
+# Separate from lockfree/ only while that module does not compile; folds into it once it does.
+if (UNIT_TESTS OR UNIT_TEST_LOG_PRIOR_INFLIGHT)
+  message("    log_prior_inflight")
+  add_subdirectory(log_prior_inflight)
+endif (UNIT_TESTS OR UNIT_TEST_LOG_PRIOR_INFLIGHT)
+
 if (UNIT_TESTS OR UNIT_TEST_THREAD)
   message("    thread")
   add_subdirectory(thread)
@@ -105,6 +113,11 @@ if (UNIT_TESTS OR UNIT_TEST_DOUBLE_WRITE_BUFFER)
   message("    double_write_buffer")
   add_subdirectory(double_write_buffer)
 endif(UNIT_TESTS OR UNIT_TEST_DOUBLE_WRITE_BUFFER)
+
+if (UNIT_TESTS OR UNIT_TEST_JSON_BUILDER)
+  message("    json_builder")
+  add_subdirectory(json_builder)
+endif(UNIT_TESTS OR UNIT_TEST_JSON_BUILDER)
 
 #[[
 TODO compilation fails

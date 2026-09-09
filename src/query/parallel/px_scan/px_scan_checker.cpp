@@ -22,6 +22,7 @@
 
 #include "px_scan_checker.hpp"
 #include "px_scan_instnum.hpp"
+#include "px_sp_eligibility.hpp"
 
 #include "dbtype_def.h"
 #include "error_manager.h"
@@ -181,15 +182,15 @@ namespace parallel_scan
 	break;
       case TYPE_SP:
 	result |= check<is_outptr_list> (arg->value.sp_ptr->args);
-	/* SP not executable in child threads. */
-	if (is_outptr_list)
+	if (!px_sp_is_parallel_eligible (arg->value.sp_ptr->sig))
 	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
+	    /* SP not executable in child threads. */
+	    set_flag (result, is_outptr_list ? CANNOT_LIST_MERGE : CANNOT_PARALLEL_SCAN);
 	  }
-	else
-	  {
-	    set_flag (result, CANNOT_PARALLEL_SCAN);
-	  }
+	/* declared PARALLEL_ENABLE: executable in px workers, so it blocks nothing. In the
+	 * output list that means the list-merge mode as well, where the workers evaluate
+	 * outptr_list themselves - an order-sensitive SP there is a false declaration, and the
+	 * trust model puts that on the declarer. */
 	break;
       case TYPE_FUNC:
 	temp = check<is_outptr_list> (arg->value.funcp->operand);
@@ -421,20 +422,12 @@ namespace parallel_scan
 	    result |= check<false> (arg->s.cls_node.cls_regu_list_range);
 	    result |= check<false> (arg->where_range);
 	  }
-	if (!arg->s.cls_node.cls_regu_list_pred && !arg->s.cls_node.cls_regu_list_rest)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
       }
     else if (arg->type == TARGET_LIST)
       {
 	result |= check<false> (arg->s.list_node.list_regu_list_pred);
 	result |= check<false> (arg->s.list_node.list_regu_list_rest);
 	result |= check<false> (arg->where_pred);
-	if (!arg->s.list_node.list_regu_list_pred && !arg->s.list_node.list_regu_list_rest)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
       }
     return result;
   }
@@ -561,9 +554,10 @@ namespace parallel_scan
       case BUILDLIST_PROC:
 	break;
       case BUILDVALUE_PROC:
+	/* agg-less buildvalue too: MERGEABLE_LIST would misread proc.buildlist in result_handler init. */
+	set_flag (result, CANNOT_LIST_MERGE);
 	if (arg->proc.buildvalue.agg_list)
 	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
 	    buildvalue_opt = true;
 	    AGGREGATE_TYPE *agg_it = arg->proc.buildvalue.agg_list;
 	    temp = 0;
