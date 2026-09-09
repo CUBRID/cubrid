@@ -9365,7 +9365,7 @@ struct heap_capacity_accum
  * heap_capacity_accumulate_one_page () - fold one fixed heap page's stats into accum.
  *   Per-page logic mirrors the serial loop in heap_get_capacity; keep the two in sync.
  */
-static int
+static void
 heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, HEAP_CAPACITY_ACCUM * accum)
 {
   RECDES recdes;		/* Header record descriptor */
@@ -9411,6 +9411,7 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
 		  accum->sum_overhead += spage_get_record_length (thread_p, page_ptr, slotid);
 
 		  ovf_oid = (OID *) recdes.data;
+		  /* best-effort: a failed overflow probe contributes nothing, matching the serial loop */
 		  if (heap_ovf_get_capacity (thread_p, ovf_oid, &ovf_len, &ovf_num_pages, &ovf_overhead,
 					     &ovf_free_space) == NO_ERROR)
 		    {
@@ -9430,8 +9431,6 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
 	    }
 	}
     }
-
-  return NO_ERROR;
 }
 
 /*
@@ -9452,6 +9451,7 @@ struct heap_capacity_worker_arg
 // *INDENT-OFF*
   std::atomic<bool> *failed;
   std::atomic<int> *fail_errid;	/* a failing worker's errid, last writer wins (0 = none) */
+  std::atomic<int> *completed;	/* workers that ran to the end; a short count means unexecuted tasks */
 // *INDENT-ON*
 };
 
@@ -9545,7 +9545,17 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
-	  (void) heap_capacity_accumulate_one_page (&thread_ref, page, arg->accum);
+	  /* persistent bestspace pages are internal heap metadata that cannot hold user records; the
+	   * serial loop skips them too (heap_page_is_bestspace in heap_get_capacity_serial). Counting
+	   * them here would inflate num_pages/num_recs by up to MAX_SHARD_PAGE_COUNT pages and their
+	   * REC_HOME entry records, so the parallel answer would not match serial. */
+	  if (heap_page_is_bestspace (&thread_ref, page))
+	    {
+	      pgbuf_unfix_and_init (&thread_ref, page);
+	      continue;
+	    }
+
+	  heap_capacity_accumulate_one_page (&thread_ref, page, arg->accum);
 	  pgbuf_unfix_and_init (&thread_ref, page);
 	}
 
@@ -9562,6 +9572,9 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
        * otherwise see thread_is_on_trace () as true (see px_hash_join_task_manager.hpp). */
       thread_ref.on_trace = false;
     }
+
+  /* let the reducer tell "ran to completion" apart from "retired without ever running" */
+  arg->completed->fetch_add (1, std::memory_order_relaxed);
 }
 
 /*
@@ -9601,7 +9614,7 @@ heap_capacity_vpid_is_counted (const FILE_FTAB_COLLECTOR * collector, const VPID
 /*
  * heap_get_capacity_parallel () - parallel implementation behind heap_get_capacity.
  *   return: NO_ERROR when the capacity was produced in parallel or parallel was simply declined;
- *           ER_INTERRUPTED / ER_FAILED on a genuine worker or setup error (propagated).
+ *           ER_INTERRUPTED / ER_GENERIC_ERROR on a genuine worker or setup error (propagated).
  *   capacity(out): the 8 capacity statistics (same as heap_get_capacity_serial); valid only
  *                  when *applied is true.
  *   applied(out): true  -> *capacity holds the parallel result.
@@ -9618,16 +9631,22 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 // *INDENT-OFF*
   std::atomic<bool> failed (false);
   std::atomic<int> fail_errid (NO_ERROR);
+  std::atomic<int> completed (0);
 // *INDENT-ON*
   int n_pages = 0;
   UINT32 degree;
   int n_workers;
   parallel_query::worker_manager * wm = NULL;
   FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
-  int setup_errid = NO_ERROR;
-  int last_page_errid = NO_ERROR;
+  int error_code = NO_ERROR;
 
   *applied = false;
+
+  /* Every way out runs the one cleanup at "exit": error_code says what to report, and NO_ERROR with
+   * *applied still false is the normal "declined, run serial" answer. The locals the workers read
+   * (slices/accums/args) belong to the nested block below, so a goto out of it destroys them on the
+   * way -- which is why the single path that jumps while tasks may still be in flight releases the
+   * workers there (release_workers joins first) instead of leaving it to "exit". */
 
   /* 1. eligibility: size the work by the heap page count. A failed probe or a degree below 2
    *    (small heap / parallelism disabled) means "not worthwhile" -> decline, caller runs serial. */
@@ -9638,29 +9657,36 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
        * and answer. Propagate it, as the sector enumeration below already does. */
       if (er_errid () == ER_INTERRUPTED)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	  return ER_INTERRUPTED;
+	  error_code = ER_INTERRUPTED;
+	  goto exit;
 	}
       er_clear ();
-      return NO_ERROR;
+      goto exit;
     }
   degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN, (UINT64) n_pages, -1);
   if (degree < 2)
     {
-      return NO_ERROR;
+      goto exit;
     }
 
   /* 2. reserve workers (best-effort, never blocks: the pool may grant fewer than requested). */
   wm = parallel_query::worker_manager::try_reserve_workers ((int) degree);
   if (wm == NULL)
     {
-      return NO_ERROR;
+      /* NULL has two causes and the pointer alone cannot tell them apart: the pool had no idle
+       * worker, which raises nothing and just declines to serial, or the manager allocation
+       * failed, which leaves ER_OUT_OF_VIRTUAL_MEMORY behind (db_private_alloc reports OOM from
+       * either of its branches). Report whatever was raised instead of hiding it behind a serial
+       * run that answers as if nothing happened; er_errid_if_has_error () ignores a warning that
+       * some earlier step left on the stack. */
+      error_code = er_errid_if_has_error ();
+      goto exit;
     }
   n_workers = wm->get_reserved_workers ();
   if (n_workers < 2)
     {
-      wm->release_workers ();
-      return NO_ERROR;
+      /* not enough idle workers -> decline */
+      goto exit;
     }
 
   /* 3. enumerate the heap's data sectors (parallel-only prep). file_get_all_data_sectors collapses
@@ -9670,19 +9696,13 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
    *    chain (a different access path) and may still answer. */
   if (file_get_all_data_sectors (thread_p, &hfid->vfid, &collector) != NO_ERROR)
     {
-      setup_errid = er_errid ();
-      if (collector.partsect_ftab != NULL)
+      if (er_errid () == ER_INTERRUPTED)
 	{
-	  db_private_free_and_init (thread_p, collector.partsect_ftab);
-	}
-      wm->release_workers ();
-      if (setup_errid == ER_INTERRUPTED)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	  return ER_INTERRUPTED;
+	  error_code = ER_INTERRUPTED;
+	  goto exit;
 	}
       er_clear ();
-      return NO_ERROR;
+      goto exit;
     }
 
   {
@@ -9693,38 +9713,40 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
      * the heap header rather than guessing: the largest VPID is not the tail in general, because
      * removing the tail moves last_vpid back to its prev_vpid and file_alloc may reuse a lower page.
      * It must also be one of the pages the workers count, or subtracting its free space would not
-     * match their sums - hence the containment check. When either step fails, last_page_vpid is not
-     * usable and the reduce step below simply excludes nothing. */
+     * match their sums - hence the containment check. When either step fails for any reason other
+     * than a cancellation, last_page_vpid is not usable and the reduce step below simply excludes
+     * nothing; a cancellation aborts the whole attempt instead. */
     VPID last_page_vpid = VPID_INITIALIZER;
     bool have_last_page = false;
 
-    if (heap_get_last_vpid (thread_p, hfid, &last_page_vpid) == NO_ERROR && !VPID_ISNULL (&last_page_vpid))
+    int last_vpid_error = heap_get_last_vpid (thread_p, hfid, &last_page_vpid);
+
+    if (last_vpid_error == NO_ERROR && !VPID_ISNULL (&last_page_vpid))
       {
 	have_last_page = heap_capacity_vpid_is_counted (&collector, &last_page_vpid);
       }
-    else if (er_errid () == ER_INTERRUPTED)
+    else if (last_vpid_error == ER_INTERRUPTED)
       {
 	/* the header fix consumed the transaction's interrupt flag, so clearing it here would be
 	 * worse than on the paths above: those decline to serial, while this one would run every
-	 * worker and hand back a complete answer for a query the user cancelled. */
-	if (collector.partsect_ftab != NULL)
-	  {
-	    db_private_free_and_init (thread_p, collector.partsect_ftab);
-	  }
-	wm->release_workers ();
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	return ER_INTERRUPTED;
+	 * worker and hand back a complete answer for a query the user cancelled. Decide on the
+	 * return value: a call that succeeded but yielded a NULL vpid must not consult er_errid (),
+	 * which could still hold an older error. */
+	error_code = ER_INTERRUPTED;
+	goto exit;
       }
-    else
+    else if (last_vpid_error != NO_ERROR)
       {
 	er_clear ();
       }
 
+// *INDENT-OFF*
     std::vector < ftab_set > slices = fs.split (n_workers);
     fs.clear ();
 
     std::vector < HEAP_CAPACITY_ACCUM > accums ((size_t) n_workers);	/* value-initialized to 0 */
     std::vector < HEAP_CAPACITY_WORKER_ARG > args ((size_t) n_workers);
+// *INDENT-ON*
 
     /* 4. launch one worker per slice */
     for (int i = 0; i < n_workers; i++)
@@ -9735,6 +9757,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 	args[i].accum = &accums[i];
 	args[i].failed = &failed;
 	args[i].fail_errid = &fail_errid;
+	args[i].completed = &completed;
 
 	parallel_query::callable_task * task =
 	  new parallel_query::callable_task (wm,
@@ -9743,15 +9766,12 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 	if (task == NULL)
 	  {
 	    /* this project's operator new is a noexcept wrapper over malloc, so OOM yields NULL with
-	     * no constructor run and no exception. Tasks already pushed still reference the local
-	     * args/accums/slices, so join them before unwinding, then decline to serial. */
-	    wm->wait_workers ();
-	    if (collector.partsect_ftab != NULL)
-	      {
-		db_private_free_and_init (thread_p, collector.partsect_ftab);
-	      }
+	     * no constructor run and no exception. The tasks already pushed still reference this
+	     * scope's args/accums/slices, which the goto below destroys, so join them here --
+	     * release_workers waits for them -- and let "exit" skip a released manager. */
 	    wm->release_workers ();
-	    return NO_ERROR;
+	    wm = NULL;
+	    goto exit;
 	  }
 	wm->push_task (task);
       }
@@ -9764,16 +9784,12 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 	 * same error and wrongly ignore ER_INTERRUPTED). */
 	int errid = fail_errid.load ();
 	er_log_debug (ARG_FILE_LINE, "heap_get_capacity_parallel: worker error errid=%d; aborting parallel\n", errid);
-	fs.clear ();
-	if (collector.partsect_ftab != NULL)
-	  {
-	    db_private_free_and_init (thread_p, collector.partsect_ftab);
-	  }
-	wm->release_workers ();
 	if (errid == ER_INTERRUPTED)
 	  {
+	    /* the worker cleared its own thread-local error context, so raise it again here */
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	    return ER_INTERRUPTED;
+	    error_code = ER_INTERRUPTED;
+	    goto exit;
 	  }
 
 	/* ER_FAILED (-1) is a return-value marker, not an error id - er_set and er_find_fmt both
@@ -9781,89 +9797,109 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 	 * catalog entry takes no argument, so the worker's errid is only available from the log line
 	 * above (enable er_log_debug to see it). */
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	return ER_GENERIC_ERROR;
+	error_code = ER_GENERIC_ERROR;
+	goto exit;
+      }
+
+    if (completed.load () != n_workers)
+      {
+	/* a task was retired without ever running (the pool was stopped, e.g. while the server shuts
+	 * down): its slice was never scanned, so the partials are incomplete. Report a failure instead
+	 * of handing back numbers that silently omit whole sectors. */
+	er_log_debug (ARG_FILE_LINE, "heap_get_capacity_parallel: only %d of %d workers completed\n",
+		      completed.load (), n_workers);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	error_code = ER_GENERIC_ERROR;
+	goto exit;
       }
 
     /* 5. reduce per-worker partials into the 8 outputs (averages computed once, as in serial) */
-    {
-      INT64 t_num_recs = 0, t_reloc = 0, t_inovf = 0, t_pages = 0;
-      INT64 t_freespace = 0, t_reclength = 0, t_overhead = 0;
-      int last_page_freespace = 0;
+    INT64 t_num_recs = 0, t_reloc = 0, t_inovf = 0, t_pages = 0;
+    INT64 t_freespace = 0, t_reclength = 0, t_overhead = 0;
+    int last_page_freespace = 0;
 
-      for (int i = 0; i < n_workers; i++)
-	{
-	  HEAP_CAPACITY_ACCUM *a = &accums[i];
+    for (int i = 0; i < n_workers; i++)
+      {
+	HEAP_CAPACITY_ACCUM *a = &accums[i];
 
-	  t_num_recs += a->num_recs;
-	  t_reloc += a->num_recs_relocated;
-	  t_inovf += a->num_recs_inovf;
-	  t_pages += a->num_pages;
-	  t_freespace += a->sum_freespace;
-	  t_reclength += a->sum_reclength;
-	  t_overhead += a->sum_overhead;
-	}
+	t_num_recs += a->num_recs;
+	t_reloc += a->num_recs_relocated;
+	t_inovf += a->num_recs_inovf;
+	t_pages += a->num_pages;
+	t_freespace += a->sum_freespace;
+	t_reclength += a->sum_reclength;
+	t_overhead += a->sum_overhead;
+      }
 
-      /* read the "last page" free space to exclude from avg_freespace_nolast (best-effort: re-read
-       * after join; 0 if it was deallocated meanwhile). */
-      if (have_last_page && t_pages > 1)
-	{
-	  PGBUF_WATCHER last_page_watcher;
+    /* read the "last page" free space to exclude from avg_freespace_nolast (best-effort: re-read
+     * after join; 0 if it was deallocated meanwhile). */
+    if (have_last_page && t_pages > 1)
+      {
+	PAGE_PTR last_page;
 
-	  PGBUF_INIT_WATCHER (&last_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-	  (void) pgbuf_ordered_fix (thread_p, &last_page_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
-				    &last_page_watcher);
-	  if (last_page_watcher.pgptr != NULL)
-	    {
-	      last_page_freespace = spage_get_free_space (thread_p, last_page_watcher.pgptr);
-	      pgbuf_ordered_unfix (thread_p, &last_page_watcher);
-	    }
-	  else
-	    {
-	      /* remember why: er_clear would swallow a cancellation the fix already consumed. The
-	       * resources are released at the end of the function, so propagate it from there. */
-	      last_page_errid = er_errid ();
-	      er_clear ();
-	    }
-	}
+	/* nothing else is latched at this point, so a plain fix suffices -- the same reasoning the
+	 * worker states for its own page loop. */
+	last_page = pgbuf_fix (thread_p, &last_page_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
+			       PGBUF_UNCONDITIONAL_LATCH);
+	if (last_page != NULL)
+	  {
+	    /* only subtract a page the workers actually counted: one that was deallocated and reused
+	     * for something else, or a bestspace page, is not part of the sums. */
+	    if (pgbuf_get_page_ptype (thread_p, last_page) == PAGE_HEAP
+		&& !heap_page_is_bestspace (thread_p, last_page))
+	      {
+		last_page_freespace = spage_get_free_space (thread_p, last_page);
+	      }
+	    pgbuf_unfix_and_init (thread_p, last_page);
+	  }
+	else if (er_errid () == ER_INTERRUPTED)
+	  {
+	    /* er_clear would swallow a cancellation the fix already consumed */
+	    error_code = ER_INTERRUPTED;
+	    goto exit;
+	  }
+	else
+	  {
+	    /* deallocated meanwhile, or the fix failed for another reason: exclude nothing */
+	    er_clear ();
+	  }
+      }
 
-      capacity->num_recs = t_num_recs;
-      capacity->num_recs_relocated = t_reloc;
-      capacity->num_recs_inovf = t_inovf;
-      capacity->num_pages = t_pages;
-      capacity->avg_freespace = 0;
-      capacity->avg_freespace_nolast = 0;
-      capacity->avg_reclength = 0;
-      capacity->avg_overhead = 0;
+    capacity->num_recs = t_num_recs;
+    capacity->num_recs_relocated = t_reloc;
+    capacity->num_recs_inovf = t_inovf;
+    capacity->num_pages = t_pages;
+    capacity->avg_freespace = 0;
+    capacity->avg_freespace_nolast = 0;
+    capacity->avg_reclength = 0;
+    capacity->avg_overhead = 0;
 
-      if (t_pages > 0)
-	{
-	  capacity->avg_freespace_nolast =
-	    (t_pages > 1) ? (int) ((t_freespace - last_page_freespace) / (t_pages - 1)) : 0;
-	  capacity->avg_freespace = (int) (t_freespace / t_pages);
-	  capacity->avg_overhead = (int) (t_overhead / t_pages);
-	}
-      if (t_num_recs != 0)
-	{
-	  capacity->avg_reclength = (int) (t_reclength / t_num_recs);
-	}
-    }
+    if (t_pages > 0)
+      {
+	capacity->avg_freespace_nolast =
+	  (t_pages > 1) ? (int) ((t_freespace - last_page_freespace) / (t_pages - 1)) : 0;
+	capacity->avg_freespace = (int) (t_freespace / t_pages);
+	capacity->avg_overhead = (int) (t_overhead / t_pages);
+      }
+    if (t_num_recs != 0)
+      {
+	capacity->avg_reclength = (int) (t_reclength / t_num_recs);
+      }
   }
 
+  /* the parallel result is complete: tell the caller to use *capacity instead of running serial */
+  *applied = true;
+
+exit:
   if (collector.partsect_ftab != NULL)
     {
       db_private_free_and_init (thread_p, collector.partsect_ftab);
     }
-  wm->release_workers ();
-
-  if (last_page_errid == ER_INTERRUPTED)
+  if (wm != NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-      return ER_INTERRUPTED;
+      wm->release_workers ();
     }
-
-  /* the parallel result is complete: tell the caller to use *capacity instead of running serial */
-  *applied = true;
-  return NO_ERROR;
+  return error_code;
 }
 #endif /* SERVER_MODE */
 
