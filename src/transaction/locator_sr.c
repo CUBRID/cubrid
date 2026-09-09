@@ -46,7 +46,6 @@
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
-#include "serial.h"
 #include "list_file.h"
 #include "log_lsa.hpp"
 #include "lock_manager.h"
@@ -60,6 +59,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "record_descriptor.hpp"
+#include "serial.h"
 #include "slotted_page.h"
 #include "xasl_cache.h"
 #include "xasl_predicate.hpp"
