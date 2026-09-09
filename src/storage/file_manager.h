@@ -179,6 +179,32 @@ struct file_ftab_collector
 typedef int (*FILE_INIT_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 typedef int (*FILE_MAP_PAGE_FUNC) (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args);
 
+/* FILE_FIND_NTH_CURSOR -
+ * Caller owned search position for file_numerable_find_nth_cursor ().
+ *
+ * The usual access pattern on external sort temporary files is find nth, find nth+1, find nth+2 and so on. Remembering
+ * where the previous search landed in the user page table turns each search from a walk of the whole extensible data
+ * list into a lookup inside a single page.
+ *
+ * The position used to be cached in the file header, updated under a read latch and without setting the page dirty,
+ * which meant it could only be used while a single thread accessed the file. Parallel sort broke that assumption, so
+ * the position lives here instead: every reader keeps its own cursor and no shared page is written. A cursor is a pure
+ * hint. If it cannot be used, the search simply starts over from the beginning of the user page table.
+ *
+ * A cursor must be reset (see file_find_nth_cursor_reset) whenever the slot holding it is handed a different file.
+ * The cursor names the file it belongs to, but a temporary file identifier is handed out again after the previous
+ * file was retired, so the name alone cannot tell the two apart. In external sort every assignment to a temp file
+ * identifier is paired with a reset of the cursor sitting beside it; keep that pairing when adding new ones.
+ */
+typedef struct file_find_nth_cursor FILE_FIND_NTH_CURSOR;
+struct file_find_nth_cursor
+{
+  VFID vfid;			/* file this position belongs to */
+  VPID vpid_extdata;		/* user page table page the previous search landed in */
+  int first_index;		/* index of the first entry of that page */
+};
+#define FILE_FIND_NTH_CURSOR_INITIALIZER { VFID_INITIALIZER, VPID_INITIALIZER, 0 }
+
 extern int file_manager_init (void);
 extern void file_manager_final (void);
 
@@ -228,6 +254,10 @@ extern int file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb);
 
 extern int file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    FILE_INIT_PAGE_FUNC f_init, void *f_init_args, VPID * vpid_nth);
+extern int file_numerable_find_nth_cursor (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
+					   FILE_INIT_PAGE_FUNC f_init, void *f_init_args,
+					   FILE_FIND_NTH_CURSOR * cursor, VPID * vpid_nth);
+extern void file_find_nth_cursor_reset (FILE_FIND_NTH_CURSOR * cursor);
 extern int file_numerable_truncate (THREAD_ENTRY * thread_p, const VFID * vfid, DKNPAGES npages);
 
 extern void file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p);

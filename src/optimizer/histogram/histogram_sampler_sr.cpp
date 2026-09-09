@@ -1047,13 +1047,14 @@ cleanup:
       }
     degree = wm->get_reserved_workers ();
 
-    FILE_FTAB_COLLECTOR collector;
+    /* on failure file_get_all_data_sectors () owns the cleanup: its earliest exit returns before
+     * touching the collector at all, and every later one frees and NULLs the ftab it allocated.
+     * Freeing here on failure therefore either double-handled a NULL or -- for the earliest exit,
+     * reached through an interrupt or a latch timeout -- freed this UNINITIALIZED stack value and
+     * aborted the server in mspace_free () (CBRD-27285) */
+    FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
     if (file_get_all_data_sectors (thread_p, &hfid->vfid, &collector) != NO_ERROR)
       {
-	if (collector.partsect_ftab != NULL)
-	  {
-	    db_private_free_and_init (thread_p, collector.partsect_ftab);
-	  }
 	wm->release_workers ();
 	er_clear ();
 	return 0;		/* metadata read failed -> serial */
@@ -2323,13 +2324,14 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
       const HFID *tgt_hfid = &tgt.second;
       std::int64_t tgt_rows = 0;
 
-      FILE_FTAB_COLLECTOR ftab_collector;
+      /* on failure file_get_all_data_sectors () owns the cleanup: its earliest exit returns
+       * before touching the collector at all, and every later one frees and NULLs the ftab it
+       * allocated. Freeing here on failure therefore either double-handled a NULL or -- for the
+       * earliest exit, reached through an interrupt or a latch timeout -- freed this
+       * UNINITIALIZED stack value and aborted the server in mspace_free () (CBRD-27285) */
+      FILE_FTAB_COLLECTOR ftab_collector = FILE_FTAB_COLLECTOR_INITIALIZER;
       if (file_get_all_data_sectors (thread_p, &tgt_hfid->vfid, &ftab_collector) != NO_ERROR)
 	{
-	  if (ftab_collector.partsect_ftab != NULL)
-	    {
-	      db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
-	    }
 	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}

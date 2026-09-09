@@ -452,8 +452,32 @@ namespace cubconn::connection
       {
 	m_thread.join ();
       }
-    ::close (m_eventfd);
-    ::close (m_timerfd);
+
+    /* release the dummy contexts registered for m_eventfd and m_timerfd.
+     * they are not tracked in m_context, so nothing else releases them.
+     */
+    for (int i = 0; i < DIM (m_eventfd_contexts); i++)
+      {
+	if (m_eventfd_contexts[i])
+	  {
+	    (void) m_events.remove_descriptor ((i == 0) ? m_eventfd : m_timerfd);
+	    /* m_conn is not a real connection entry. see eventfd_register (). */
+	    if (m_eventfd_contexts[i]->m_conn)
+	      {
+		delete reinterpret_cast<int *> (m_eventfd_contexts[i]->m_conn);
+	      }
+	    delete m_eventfd_contexts[i];
+	  }
+      }
+
+    if (m_eventfd != -1)
+      {
+	::close (m_eventfd);
+      }
+    if (m_timerfd != -1)
+      {
+	::close (m_timerfd);
+      }
 
     assert (m_context.size () == 0);
   }
@@ -593,8 +617,16 @@ namespace cubconn::connection
 
   void worker::push_task_into_worker_pool (context *ctx)
   {
+    cubthread::task_submission_options options;
+    if ((ctx->m_recv.m_command_flags & NET_HEADER_FLAG_METHOD_MODE) != 0
+	&& ctx->m_conn->has_outstanding_method_callback ())
+      {
+	options.admission = cubthread::task_admission::blocking_continuation;
+      }
+
     /* push new task into worker pool */
-    css_push_server_task (*ctx->m_conn);
+    css_push_server_task (*ctx->m_conn, options);
+    ctx->m_recv.m_command_flags = 0;
   }
 
   void worker::purge_stale_contexts ()
@@ -996,10 +1028,20 @@ retry:
     css_conn_entry *conn;
 
     ctx = new context ();
-    conn = reinterpret_cast<css_conn_entry *> (new int { fd });
-    if (!ctx || !conn)
+    if (!ctx)
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_register: failed to allocate memory\n");
+	return false;
+      }
+
+    /* the eventfd has no connection entry. keep the descriptor itself in m_conn so that
+     * ctx->m_conn->fd reads back the eventfd (fd is the first member of css_conn_entry).
+     */
+    conn = reinterpret_cast<css_conn_entry *> (new int { fd });
+    if (!conn)
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_register: failed to allocate memory\n");
+	delete ctx;
 	return false;
       }
     ctx->m_conn = conn;
@@ -1008,10 +1050,13 @@ retry:
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_register: add_descriptor failed\n");
 
+	delete reinterpret_cast<int *> (conn);
 	delete ctx;
-	delete conn;
 	return false;
       }
+
+    /* epoll holds ctx as its user data. release it in the destructor. */
+    m_eventfd_contexts[ (fd == m_eventfd) ? 0 : 1] = ctx;
 
     return true;
   }
@@ -1749,10 +1794,8 @@ respond:
     NET_HEADER *header;
     int size;
 
-    assert (ctx->m_recv.m_header.size () == sizeof (NET_HEADER));
-
     conn = ctx->m_conn;
-    header = reinterpret_cast<NET_HEADER *> (ctx->m_recv.m_header.data ());
+    header = &ctx->m_recv.m_header;
 
     size = ntohl (header->buffer_size);
     if (packet.size () != static_cast<std::size_t> (size) && packet.size () != ((static_cast<std::size_t> (size) + 7) & ~7))
@@ -1778,6 +1821,7 @@ respond:
 	ctx->m_recv.m_receiver.release (packet.data ());
       }
     ctx->m_recv.m_command = false;
+    ctx->m_recv.m_command_flags = 0;
     NEXT_STATE (ctx, m_recv, HEADER);
     return result::Ok;
   }
@@ -1791,10 +1835,8 @@ respond:
     NET_HEADER *header;
     int size;
 
-    assert (ctx->m_recv.m_header.size () == sizeof (NET_HEADER));
-
     conn = ctx->m_conn;
-    header = reinterpret_cast<NET_HEADER *> (ctx->m_recv.m_header.data ());
+    header = &ctx->m_recv.m_header;
 
     size = ntohl (header->buffer_size);
     if (packet.size () != static_cast<std::size_t> (size) && packet.size () != ((static_cast<std::size_t> (size) + 7) & ~7))
@@ -1877,7 +1919,7 @@ respond:
     return result::Ok;
   }
 
-  result worker::handle_command_header_packet (context *ctx)
+  result worker::handle_command_header_packet (context *ctx, cubbase::span<std::byte> &packet)
   {
     css_conn_entry *conn;
     NET_HEADER *header;
@@ -1885,21 +1927,23 @@ respond:
 
     if (css_is_request_aborted (ctx->m_conn, ctx->m_recv.m_request_id))
       {
-	ctx->m_recv.m_receiver.release (ctx->m_recv.m_header.data ());
+	ctx->m_recv.m_command_flags = 0;
+	ctx->m_recv.m_receiver.release (packet.data ());
 	return result::Aborted;
       }
 
-    assert (ctx->m_recv.m_header.size () == sizeof (NET_HEADER));
+    assert (packet.size () == sizeof (NET_HEADER));
 
     conn = ctx->m_conn;
-    header = reinterpret_cast<NET_HEADER *> (ctx->m_recv.m_header.data ());
+    header = reinterpret_cast<NET_HEADER *> (packet.data ());
 
     error = css_add_queue_entry (conn, &conn->request_queue, ctx->m_recv.m_request_id,
-				 reinterpret_cast<char *> (ctx->m_recv.m_header.data ()), ctx->m_recv.m_header.size (), NO_ERRORS,
+				 reinterpret_cast<char *> (packet.data ()), packet.size (), NO_ERRORS,
 				 conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
     if (error != NO_ERRORS)
       {
-	ctx->m_recv.m_receiver.release (ctx->m_recv.m_header.data ());
+	ctx->m_recv.m_command_flags = 0;
+	ctx->m_recv.m_receiver.release (packet.data ());
 	return result::Error;
       }
 
@@ -1939,10 +1983,10 @@ respond:
 	return result::Skewed;
       }
 
-    ctx->m_recv.m_header = packet;
+    std::memcpy (&ctx->m_recv.m_header, packet.data (), sizeof (NET_HEADER));
 
     conn = ctx->m_conn;
-    header = reinterpret_cast<NET_HEADER *> (ctx->m_recv.m_header.data ());
+    header = &ctx->m_recv.m_header;
 
     ctx->m_recv.m_request_id = ntohl (header->request_id);
 
@@ -1962,7 +2006,8 @@ respond:
       {
       case COMMAND_TYPE:
 	/* no more packets are requested */
-	status = this->handle_command_header_packet (ctx);
+	ctx->m_recv.m_command_flags = flags;
+	status = this->handle_command_header_packet (ctx, packet);
 	break;
 
       case DATA_TYPE:
@@ -1974,6 +2019,7 @@ respond:
 	/* no more packets are requested */
 	ctx->m_recv.m_receiver.release (packet.data ());
 	ctx->m_recv.m_command = false;
+	ctx->m_recv.m_command_flags = 0;
 	css_process_abort_packet (ctx->m_conn, ctx->m_recv.m_request_id);
 	break;
 
