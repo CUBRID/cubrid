@@ -208,7 +208,9 @@ static void pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node);
-static void pt_check_server_owner (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_check_one_server_owner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * owner_name,
+				       const char *statement);
+static void pt_check_server_owners (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_update_stats (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -10367,53 +10369,27 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_check_server_owner () - is the caller authorized for the owner named on a dblink server object?
- *   return:  none
+ * pt_check_one_server_owner () - is the caller authorized for one owner named on a server statement?
+ *   return:  false if it raised an error, true otherwise
  *   parser(in): the parser context used to derive the statement
- *   node(in): a PT_CREATE_SERVER or PT_ALTER_SERVER statement
- *
- * Note: these two statements name the schema to place a server object in - CREATE the one to create it
- * under, ALTER ... OWNER TO the one to move it to. The other server statements act on a row that is
- * already there, and server_find () authorizes those against the same predicate.
+ *   node(in): the statement, for error positioning
+ *   owner_name(in): the owner qualifier, or NULL when the statement carries none
+ *   statement(in): the statement name to name in the error
  */
-static void
-pt_check_server_owner (PARSER_CONTEXT * parser, PT_NODE * node)
+static bool
+pt_check_one_server_owner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * owner_name, const char *statement)
 {
-  PT_NODE *owner_name = NULL;
   const char *name = NULL;
-  const char *statement = NULL;
   DB_OBJECT *owner = NULL;
   DB_VALUE owner_val;
 
-  if (parser == NULL || node == NULL)
+  if (owner_name == NULL)
     {
-      return;
+      /* No qualifier, so the caller's own schema. */
+      return true;
     }
 
-  if (node->node_type == PT_CREATE_SERVER)
-    {
-      owner_name = node->info.create_server.owner_name;
-      if (owner_name == NULL)
-	{
-	  /* No qualifier, so the object goes under the caller. */
-	  return;
-	}
-      statement = "CREATE SERVER";
-    }
-  else
-    {
-      assert (node->node_type == PT_ALTER_SERVER);
-
-      if (node->info.alter_server.xbits.bit_owner == 0)
-	{
-	  return;
-	}
-      /* The grammar dereferences owner_name when it sets bit_owner, so it is here. */
-      owner_name = node->info.alter_server.owner_name;
-      statement = "ALTER SERVER OWNER TO";
-    }
-
-  assert (owner_name != NULL && owner_name->node_type == PT_NAME);
+  assert (owner_name->node_type == PT_NAME);
   name = PT_NAME_ORIGINAL (owner_name);
   assert (name != NULL && *name != '\0');
 
@@ -10427,14 +10403,66 @@ pt_check_server_owner (PARSER_CONTEXT * parser, PT_NODE * node)
       if (er_errid () == ER_AU_INVALID_USER)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, name);
+	  return false;
 	}
-      return;
+      return true;
     }
 
   db_make_object (&owner_val, owner);
   if (au_is_server_authorized_user (&owner_val) == false)
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER, statement);
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * pt_check_server_owners () - is the caller authorized for the owners named on a dblink server statement?
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a server statement
+ *
+ * Note: the check sits here rather than in server_find () so that it does not depend on whether the
+ * object exists. DROP ... IF EXISTS then still means "skip a missing object", not "skip one the caller
+ * is not authorized for". DROP SYNONYM orders its two checks the same way.
+ */
+static void
+pt_check_server_owners (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (parser == NULL || node == NULL)
+    {
+      return;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_CREATE_SERVER:
+      pt_check_one_server_owner (parser, node, node->info.create_server.owner_name, "CREATE SERVER");
+      break;
+
+    case PT_ALTER_SERVER:
+      /* Two owners can be named - the one the object sits under, and the one OWNER TO moves it to. */
+      if (pt_check_one_server_owner (parser, node, node->info.alter_server.current_owner_name, "ALTER SERVER")
+	  && node->info.alter_server.xbits.bit_owner != 0)
+	{
+	  /* The grammar dereferences owner_name when it sets bit_owner, so it is here. */
+	  pt_check_one_server_owner (parser, node, node->info.alter_server.owner_name, "ALTER SERVER OWNER TO");
+	}
+      break;
+
+    case PT_DROP_SERVER:
+      pt_check_one_server_owner (parser, node, node->info.drop_server.owner_name, "DROP SERVER");
+      break;
+
+    case PT_RENAME_SERVER:
+      pt_check_one_server_owner (parser, node, node->info.rename_server.owner_name, "RENAME SERVER");
+      break;
+
+    default:
+      assert (false);
+      break;
     }
 }
 
@@ -12672,11 +12700,9 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
     case PT_CREATE_SERVER:
     case PT_ALTER_SERVER:
-      pt_check_server_owner (parser, node);
-      break;
-
     case PT_DROP_SERVER:
     case PT_RENAME_SERVER:
+      pt_check_server_owners (parser, node);
       break;
 
     case PT_ALTER:
