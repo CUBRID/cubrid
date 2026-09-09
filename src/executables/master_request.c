@@ -2024,7 +2024,7 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
     {
       if (buffer_size
 	  && __gv_cvar.css_receive_data (conn, request_id, &buffer, &buffer_size,
-					 prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT)) != NO_ERRORS)
+					 prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000) != NO_ERRORS)
 	{
 	  if (buffer != NULL)
 	    {
