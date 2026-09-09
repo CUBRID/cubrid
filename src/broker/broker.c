@@ -1012,14 +1012,18 @@ receiver_thr_f (void *arg)
 
 		      /* has_session_id is a bit the sender sets on this very (unauthenticated) cancel
 		       * request, so an attacker who otherwise matches the IP/port checks above could
-		       * defeat the session-id check entirely just by not setting it.
+		       * defeat the session-id check entirely just by not setting it (e.g. by using the
+		       * legacy "CANCEL" wire format, which cannot carry a session id at all).
 		       * Rather than trust that self-declared bit to decide whether the
 		       * check is mandatory, ask whether the TARGET session's own client is new enough
 		       * to be expected to send it, using clt_version as recorded from that session's
-		       * real connect handshake; a forged cancel request cannot alter that value.
-		       * Legacy CANCEL never carries a session id and always keeps using the
-		       * IP/port-only check below. */
-		      if (cas_req_header[0] != 'C' && !has_session_id
+		       * real connect handshake; a forged cancel request cannot alter that value. A
+		       * genuine client whose session is PROTOCOL_V13-or-later never issues a bare
+		       * "CANCEL" for itself (it always has QC/X1 available), so this applies uniformly
+		       * to QC/CANCEL/X1 with no legitimate-client fallout; it only forces an attacker
+		       * using "CANCEL" against such a session to be rejected here instead of falling
+		       * through to the IP/port-only check below. */
+		      if (!has_session_id
 			  && DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (shm_appl->as_info[i].clt_version, PROTOCOL_V13))
 			{
 			  continue;
