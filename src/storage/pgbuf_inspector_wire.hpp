@@ -91,6 +91,8 @@ namespace cubpgbuf
     };
     bool decode_client_hello (std::string_view line, client_hello &hello);
 
+    bool decode_scan_request (std::string_view line, std::string &incarnation);
+
     /* Explicit source layout; native ordinals are translated here, never serialized. */
     enum class page_type_layout { DEVELOP, OOS };
     const char *page_kind_name (int native_type, page_type_layout layout);

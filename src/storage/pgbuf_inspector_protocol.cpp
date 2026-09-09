@@ -472,6 +472,18 @@ namespace cubpgbuf
       return true;
     }
 
+    bool decode_scan_request (std::string_view line, std::string &incarnation)
+    {
+      rapidjson::Document d;
+      if (line.size () > WIRE_CONTROL_FRAME_MAX_BYTES || !parse (line, d)
+	  || text (d["type"]) != "scan_request" || !valid_frame (d, false))
+	{
+	  return false;
+	}
+      incarnation = std::string (text (d["incarnation"]));
+      return true;
+    }
+
     encode_status
     encode_frame (std::string_view json, std::string &out)
     {

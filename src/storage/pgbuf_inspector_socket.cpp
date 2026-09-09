@@ -38,6 +38,17 @@ namespace cubpgbuf
   {
     namespace
     {
+      std::uint64_t monotonic_us (std::chrono::steady_clock::time_point now)
+      {
+	return std::chrono::duration_cast<std::chrono::microseconds> (
+		       now.time_since_epoch ()).count ();
+      }
+      std::uint64_t wall_us ()
+      {
+	auto value = std::chrono::duration_cast<std::chrono::microseconds> (
+			     std::chrono::system_clock::now ().time_since_epoch ()).count ();
+	return value < 0 ? 0 : static_cast<std::uint64_t> (value);
+      }
       bool same_socket (const struct stat &a, const struct stat &b)
       {
 	return S_ISSOCK (a.st_mode) && a.st_uid == b.st_uid && a.st_dev == b.st_dev && a.st_ino == b.st_ino;
@@ -89,7 +100,7 @@ namespace cubpgbuf
       m_directory = -1;
     }
     bool endpoint::start (const std::string &root, const std::string &key, const identity &db,
-			  std::function<bool (identity &)> refresh)
+			  std::function<bool (identity &)> refresh, std::optional<scan_source> source)
     {
       if (m_attempted)
 	{
@@ -97,6 +108,13 @@ namespace cubpgbuf
 	}
       m_attempted = true;
       m_refresh = std::move (refresh);
+      m_has_source = source.has_value ();
+      if (source)
+	{
+	  m_source = std::move (*source);
+	}
+      m_source.shared = db.shared_lru_count;
+      m_source.private_count = db.private_lru_count;
       if (key.empty () || key.size () > 64
 	  || key.find_first_not_of ("abcdefghijklmnopqrstuvwxyz0123456789-") != std::string::npos)
 	{
@@ -262,10 +280,47 @@ namespace cubpgbuf
 	    }
 	  return;
 	}
-      // No scan collector exists yet: close requests without manufacturing scan completion.
       if (c.ready)
 	{
-	  close_client (c);
+	  std::string incarnation;
+	  if (!decode_scan_request (std::string_view (c.input.data (), lf + 1), incarnation)
+	      || lf + 1 != c.input.size ())
+	    {
+	      close_client (c);
+	      return;
+	    }
+	  c.input.clear ();
+	  auto now = m_now ();
+	  c.progress = now;
+	  if (incarnation != m_incarnation)
+	    {
+	      c.output = refusal (refusal_code::INCARNATION_CHANGED);
+	      c.closing = true;
+	    }
+	  else if (m_sequence && now - m_last_scan < std::chrono::milliseconds (100))
+	    {
+	      error_frame frame;
+	      frame.code = refusal_code::RATE_LIMITED;
+	      auto remaining = std::chrono::milliseconds (100) - (now - m_last_scan);
+	      frame.retry_after_ms = 1 + std::chrono::duration_cast<std::chrono::milliseconds> (remaining).count ();
+	      encode_error_frame (frame, c.output);
+	    }
+	  else
+	    {
+	      if (!m_has_source || m_sequence == UINT64_MAX)
+		{
+		  close_client (c);
+		  return;
+		}
+	      m_last_scan = c.scan_started = now;
+	      c.output.reserve (OUTPUT_BUFFER_BYTES);
+	      c.scanning = true;
+	      if (!c.scan.begin (m_source, m_incarnation, ++m_sequence, m_next_start,
+				 monotonic_us (m_now ()), wall_us (), c.output))
+		{
+		  close_client (c);
+		}
+	    }
 	  return;
 	}
       client_hello hello;
@@ -299,11 +354,12 @@ namespace cubpgbuf
 	  c.output = m_hello;
 	  c.closing = m_hello.find ("\"error\"") != std::string::npos;
 	}
-      c.progress = clock::now ();
+      c.progress = m_now ();
     }
     void endpoint::write (client &c)
     {
-      if (!c.ready && clock::now () - c.attached >= std::chrono::milliseconds (500))
+      if ((!c.ready && m_now () - c.attached >= std::chrono::milliseconds (500))
+	  || (c.scanning && m_now () - c.scan_started >= std::chrono::seconds (2)))
 	{
 	  close_client (c);
 	  return;
@@ -319,7 +375,7 @@ namespace cubpgbuf
 	  return;
 	}
       c.written += n;
-      c.progress = clock::now ();
+      c.progress = m_now ();
       if (c.written == c.output.size ())
 	{
 	  if (c.closing || !c.input.empty ())
@@ -330,8 +386,51 @@ namespace cubpgbuf
 	  c.output.clear ();
 	  c.written = 0;
 	  c.ready = true;
+	  if (c.scanning && c.scan.done ())
+	    {
+	      c.scanning = false;
+	    }
 	}
     }
+    void endpoint::advance_scan (client &c)
+    {
+      // A poll turn is bounded too, so shutdown need not wait for a scan deadline.
+      auto turn_end = clock::now () + std::chrono::milliseconds (2);
+      while (c.fd >= 0 && c.scanning && clock::now () < turn_end)
+	{
+	  char unexpected;
+	  auto n = recv (c.fd, &unexpected, 1, MSG_PEEK | MSG_DONTWAIT);
+	  if (n == 0 || n > 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR))
+	    {
+	      close_client (c);
+	      return;
+	    }
+	  if (c.scan.done ())
+	    {
+	      return;
+	    }
+	  // Compact only the bounded queue; never retain the scan's already sent frames.
+	  if (c.written)
+	    {
+	      c.output.erase (0, c.written);
+	      c.written = 0;
+	    }
+	  if (c.output.size () + WIRE_PAGE_FRAME_MAX_BYTES > OUTPUT_BUFFER_BYTES)
+	    {
+	      return;
+	    }
+	  if (!c.scan.step (monotonic_us (m_now ()), wall_us (), c.output))
+	    {
+	      close_client (c);
+	      return;
+	    }
+	  if (c.scan.done ())
+	    {
+	      m_next_start = c.scan.next_start ();
+	    }
+	}
+    }
+
     void endpoint::poll ()
     {
       if (m_listener < 0)
@@ -369,7 +468,7 @@ namespace cubpgbuf
 		  else
 		    {
 		      slot->fd = fd;
-		      slot->attached = slot->progress = clock::now ();
+		      slot->attached = slot->progress = m_now ();
 		    }
 		}
 	    }
@@ -380,16 +479,21 @@ namespace cubpgbuf
 	    {
 	      continue;
 	    }
-	  auto now = clock::now ();
+	  auto now = m_now ();
 	  if ((!c.ready && now - c.attached >= std::chrono::milliseconds (500))
-	      || (!c.output.empty () && now - c.progress >= std::chrono::milliseconds (250)))
+	      || (!c.output.empty () && now - c.progress >= std::chrono::milliseconds (250))
+	      || (c.scanning && now - c.scan_started >= std::chrono::seconds (2)))
 	    {
 	      close_client (c);
 	      continue;
 	    }
-	  if (c.output.empty ())
+	  if (c.output.empty () && !c.scanning)
 	    {
 	      receive (c);
+	    }
+	  if (c.fd >= 0 && c.scanning)
+	    {
+	      advance_scan (c);
 	    }
 	  if (c.fd >= 0 && !c.output.empty ())
 	    {

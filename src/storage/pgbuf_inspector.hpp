@@ -20,10 +20,12 @@
 #define _PGBUF_INSPECTOR_HPP_
 
 #if defined (SERVER_MODE) && defined (LINUX)
+#include "pgbuf_inspector_scan.hpp"
 namespace cubpgbuf
 {
   namespace inspector
   {
+    scan_source make_scan_source ();
     void initialize ();
     void finalize ();
   }

@@ -19,6 +19,8 @@
 #ifndef _PGBUF_INSPECTOR_SOCKET_HPP_
 #define _PGBUF_INSPECTOR_SOCKET_HPP_
 
+#include "pgbuf_inspector_scan.hpp"
+
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -49,12 +51,13 @@ namespace cubpgbuf
     class endpoint
     {
       public:
-	endpoint () = default;
+	using clock = std::chrono::steady_clock;
+	explicit endpoint (std::function<clock::time_point ()> now = clock::now) : m_now (std::move (now)) {}
 	~endpoint ();
 	endpoint (const endpoint &) = delete;
 	endpoint &operator= (const endpoint &) = delete;
 	bool start (const std::string &root, const std::string &key, const identity &db,
-		    std::function<bool (identity &)> refresh = {});
+		    std::function<bool (identity &)> refresh = {}, std::optional<scan_source> source = std::nullopt);
 	void poll ();
 	void stop ();
 	const std::string &path () const
@@ -62,15 +65,21 @@ namespace cubpgbuf
 	  return m_path;
 	}
       private:
-	using clock = std::chrono::steady_clock;
+	std::function<clock::time_point ()> m_now;
 	struct client
 	{
 	  int fd = -1;
-	  bool ready = false, closing = false;
+	  bool ready = false, closing = false, scanning = false;
+	  resident_scan scan;
 	  std::string input, output;
 	  std::size_t written = 0;
-	  clock::time_point attached, progress;
+	  clock::time_point attached, progress, scan_started;
 	};
+	scan_source m_source;
+	bool m_has_source = false;
+	std::uint64_t m_sequence = 0;
+	std::size_t m_next_start = 0;
+	clock::time_point m_last_scan {};
 	bool m_attempted = false;
 	int m_listener = -1, m_directory = -1;
 	struct stat m_socket {};
@@ -82,6 +91,7 @@ namespace cubpgbuf
 	void close_client (client &c);
 	void receive (client &c);
 	void write (client &c);
+	void advance_scan (client &c);
     };
   }
 }

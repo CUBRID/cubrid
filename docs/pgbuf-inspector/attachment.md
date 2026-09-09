@@ -39,9 +39,9 @@ without write progress. Output uses a small kernel send buffer so a non-reading
 peer cannot hide indefinitely behind kernel buffering. Identity preparation does
 not extend the attachment deadline. Clients also enforce their end-to-end deadline.
 
-This attachment slice has no collector. A scan request closes the connection
-without a scan header or footer; it cannot establish an empty resident set.
-Resident-set collection belongs to the next implementation ticket.
+An authenticated client can request a bounded resident-set scan. See
+[scan sampling and limits](scanning.md) for the sampling policy, unknown fields,
+partial coverage and resource guarantees.
 
 ## Verification
 
@@ -64,4 +64,8 @@ checks SQL service alongside endpoint behavior, and prints its retained evidence
 directory. It checks default-off absence, physical identity, private permissions,
 restart incarnation, copied-database identity, conflicting-path startup and cleanup.
 Its copy check also exercises utility mounts with negative system volume IDs.
-These checks establish attachment behavior, not scan correctness or performance.
+Pass `--scan` to also validate real resident records, semantic fields, topology,
+framing/counts and completion across startup, restart and copied databases.
+Use `TMPDIR` on a filesystem with enough space for disposable databases; keep
+its path short enough for Unix sockets. Controlled dirty/eviction oracles and
+performance acceptance remain separate checks.

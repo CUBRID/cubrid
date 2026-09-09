@@ -134,7 +134,7 @@ namespace cubpgbuf
       std::string master = css_get_master_domain_path ();
       std::string root = master.substr (0, master.rfind ('/'));
       auto *task = new attachment_task ();
-      if (!task->socket.start (root, key, db, read_identity))
+      if (!task->socket.start (root, key, db, read_identity, make_scan_source ()))
 	{
 	  delete task;
 	  unavailable ();
