@@ -1569,14 +1569,14 @@ sql_build_error:
  *
  * One rule, after the first prepare, from the marker:
  *
- *   marker resolved, differs from the source type        | CAST(? AS <source>) + re-prepare
- *   marker resolved, agrees                              | bare "?"
- *   marker unresolved (numeric target), date/time source | CAST(? AS <source>) + re-prepare
- *   marker unresolved, any other source                  | bare "?"
+ *   marker resolved, differs from the source type          | CAST(? AS <source>) + re-prepare
+ *   marker resolved, agrees                                | bare "?"
+ *   marker unresolved (numeric target), date/time or JSON  | CAST(? AS <source>) + re-prepare
+ *   marker unresolved, any other source                    | bare "?"
  *
  * The last two rows are the fallback: unresolved means CCI_U_TYPE_NULL, so there is no target type to
- * compare. Only a date/time source was measured to diverge there; casting the rest would rewrite every
- * numeric-key statement for no change in result.
+ * compare. Only date/time and JSON sources were measured to differ there; casting the rest would
+ * rewrite every numeric-key statement for no change in result.
  *
  * CUBRID remotes only -- the cast text is CUBRID syntax. Asking the marker costs one CAS round trip per
  * statement; a DML prepare does not name the target type.
@@ -1599,18 +1599,21 @@ dblink_dml_remote_is_cubrid (int conn_handle)
 }
 
 /*
- * dblink_dml_is_datetime_type () - Is this source type one the unresolved-marker fallback casts?
- *   return: true for the four date/time types the fallback covers
+ * dblink_dml_unresolved_fallback_casts () - Is this source type one of those the unresolved-marker
+ *   fallback casts?
+ *   return: true for the four date/time types and JSON
  *   src_type(in): DB_TYPE of the local subquery's source column
  *
- * The zone-qualified types are out because cci_bind_param rejects them (dblink_cast_types[] has no
- * row for them either).
+ * Two kinds of source were measured to differ from the all-local form on a numeric target:
+ *   date/time -- the remote deletes a row that the all-local form keeps
+ *   JSON      -- the remote refuses a comparison that the all-local form answers false
+ * Zone-qualified types are out -- cci_bind_param rejects them, and dblink_cast_types[] omits them too.
  */
 static bool
-dblink_dml_is_datetime_type (DB_TYPE src_type)
+dblink_dml_unresolved_fallback_casts (DB_TYPE src_type)
 {
   return (src_type == DB_TYPE_DATE || src_type == DB_TYPE_TIME || src_type == DB_TYPE_DATETIME
-	  || src_type == DB_TYPE_TIMESTAMP);
+	  || src_type == DB_TYPE_TIMESTAMP || src_type == DB_TYPE_JSON);
 }
 
 /*
@@ -1657,7 +1660,8 @@ static const struct
   {DB_TYPE_DATE,      "DATE",        DBLINK_PREC_NONE},
   {DB_TYPE_TIME,      "TIME",        DBLINK_PREC_NONE},
   {DB_TYPE_DATETIME,  "DATETIME",    DBLINK_PREC_NONE},
-  {DB_TYPE_TIMESTAMP, "TIMESTAMP",   DBLINK_PREC_NONE}
+  {DB_TYPE_TIMESTAMP, "TIMESTAMP",   DBLINK_PREC_NONE},
+  {DB_TYPE_JSON,      "JSON",        DBLINK_PREC_NONE}
 };
 // *INDENT-ON*
 
@@ -1775,9 +1779,9 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
 
   if (marker_type == (int) CCI_U_TYPE_NULL)
     {
-      /* Fallback: a numeric target leaves the domain unresolved. Why only date/time casts here is in the
-       * policy comment above. */
-      if (dblink_dml_is_datetime_type (src_type))
+      /* Fallback: a numeric target leaves the domain unresolved. Which source types cast here, and why
+       * only those, is in the policy comment above. */
+      if (dblink_dml_unresolved_fallback_casts (src_type))
 	{
 	  cast_type = dblink_dml_cast_type (src_dom, buf, buflen);
 	}
