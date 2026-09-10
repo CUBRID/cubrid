@@ -869,7 +869,7 @@ heap_oos_diagnose_skipped_cleanup (const HEAP_OPERATION_CONTEXT *context, const 
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 int
-heap_oos_test_skipped_cleanup_diagnostics ()
+heap_oos_test_skipped_cleanup_notifications ()
 {
   return heap_Oos_test_skipped_cleanup_diagnostics.load (std::memory_order_relaxed);
 }

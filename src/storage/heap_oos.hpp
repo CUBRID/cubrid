@@ -109,7 +109,7 @@ extern int heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_
 /* Observability of the skipped-cleanup diagnostic: how many notifications heap_oos_delete_unreferenced
  * emitted since the last reset, and the first outcome (-1 when none) and chain count (0 when none) the
  * last one carried. */
-extern int heap_oos_test_skipped_cleanup_diagnostics ();
+extern int heap_oos_test_skipped_cleanup_notifications ();
 extern int heap_oos_test_last_skipped_cleanup_outcome ();
 extern int heap_oos_test_last_skipped_cleanup_count ();
 extern void heap_oos_test_reset_skipped_cleanup_diagnostics ();

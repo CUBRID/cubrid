@@ -962,20 +962,20 @@ TEST_F (OosVacuumHeapSeamServer, EagerDeleteReclaimsLiveReferenceAndSkipsStaleOn
   EXPECT_EQ (er_errid (), NO_ERROR) << "user DML on the eager path must report success cleanly";
   EXPECT_TRUE (chunk_is_present (reused_oid)) << "the eager path must skip a stale OOS reference";
   /* Unlike vacuum, the eager path diagnoses the skip: the row it completes was the chain's only reference. */
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_count (), 1);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
 
   ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &live_rec, NULL, "unit test live"), NO_ERROR);
   EXPECT_FALSE (chunk_is_present (live_oid)) << "the eager path must reclaim a live reference";
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1) << "a real reclamation is not diagnosed";
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1) << "a real reclamation is not diagnosed";
 
   /* An UPDATE whose post-image still references the chain keeps it, quietly. */
   ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &kept_rec, &kept_rec, "unit test kept"), NO_ERROR);
   EXPECT_TRUE (chunk_is_present (kept_oid));
   EXPECT_TRUE (chunk_is_present (reused_oid));
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
 }
 
 int

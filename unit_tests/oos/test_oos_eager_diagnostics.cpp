@@ -503,7 +503,7 @@ TEST_F (OosEagerDiagnostics, DeleteCompletesAndDiagnosesAStampMismatch)
   EXPECT_EQ (er_errid (), NO_ERROR) << "successful DML leaves no stray error";
   EXPECT_FALSE (row_exists (row)) << "the DELETE must have completed";
 
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1) << "one notification per operation";
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1) << "one notification per operation";
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_count (), 1) << "the record referenced one chain";
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED))
@@ -542,7 +542,7 @@ TEST_F (OosEagerDiagnostics, UpdateCompletesAndDiagnosesAStampMismatch)
   ASSERT_EQ (update_row (row, new_rec), NO_ERROR) << "a skipped cleanup must not fail the UPDATE";
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_TRUE (row_exists (row));
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_count (), 1);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
@@ -576,7 +576,7 @@ TEST_F (OosEagerDiagnostics, DeleteDiagnosesAHeadSlotAlreadyEmpty)
   ASSERT_EQ (delete_row (row), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row));
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_SLOT_EMPTY);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
   commit ();
@@ -592,16 +592,20 @@ TEST_F (OosEagerDiagnostics, DeleteDiagnosesADeallocatedAndAReusedHeadPage)
   insert_row (gone, (INT64) payload.size () + 1, row);
   reclaim_chain_and_its_page (gone);
 
+  long log_offset = error_log_size ();
   heap_oos_test_reset_skipped_cleanup_diagnostics ();
   er_clear ();
   ASSERT_EQ (delete_row (row), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row));
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_PAGE_GONE);
+  EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
   commit ();
 
-  /* Reused head page: the same file took the reclaimed page back as metadata that is not a slotted page. */
+  /* Reused head page: the same file took the reclaimed page back as metadata that is not a slotted page.
+   * The OOS code sees the same thing in both halves, a head page that is no longer an OOS page, which is
+   * why one outcome covers them; only the debug-level OOS log distinguishes them. */
   oos_chain_ref retyped;
   insert_chain (payload, retyped);
   OID row2 = OID_INITIALIZER;
@@ -611,13 +615,13 @@ TEST_F (OosEagerDiagnostics, DeleteDiagnosesADeallocatedAndAReusedHeadPage)
   reuse_reclaimed_page_as_metadata (page);
   ASSERT_TRUE (metadata_page_is_intact (page));
 
-  const long log_offset = error_log_size ();
+  log_offset = error_log_size ();
   heap_oos_test_reset_skipped_cleanup_diagnostics ();
   er_clear ();
   ASSERT_EQ (delete_row (row2), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row2));
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_PAGE_GONE);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
   EXPECT_TRUE (metadata_page_is_intact (page)) << "the skipped cleanup modified the metadata page";
@@ -644,29 +648,52 @@ TEST_F (OosEagerDiagnostics, LiveReferenceIsReclaimedWithoutADiagnostic)
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row));
   EXPECT_FALSE (chunk_present (ref.head_oid)) << "a live reference must reclaim its chain";
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 0);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0);
   EXPECT_FALSE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
   commit ();
 }
 
-TEST_F (OosEagerDiagnostics, UpdateKeepsAChainTheNewImageStillReferences)
+TEST_F (OosEagerDiagnostics, UpdateKeepsAChainTheNewImageStillReferencesAndDiagnosesOnlyTheDropped)
 {
-  const std::string payload = "referenced before and after";
-  oos_chain_ref ref;
-  insert_chain (payload, ref);
-  OID row = OID_INITIALIZER;
-  insert_row (ref, (INT64) payload.size () + 1, row);
+  /* The record holds two OOS-backed attributes: one the new image still references, one it drops and
+   * whose target has since been reused. Mixing them in a single UPDATE proves the cleanup loop really
+   * ran and made a per-chain decision, which a kept-chain-only test cannot distinguish from a cleanup
+   * that never happened. */
+  const std::string kept_payload = "referenced before and after";
+  const std::string dropped_payload = "referenced only before";
+  oos_chain_ref kept;
+  oos_chain_ref dropped_occupant;
+  insert_chain (kept_payload, kept);
+  insert_chain (dropped_payload, dropped_occupant);
+  const oos_chain_ref dropped_stale = { dropped_occupant.head_oid, stale_stamp (dropped_occupant.identity_stamp) };
 
+  OID row = OID_INITIALIZER;
+  insert_row_with_stubs ({ kept, dropped_stale },
+  { (INT64) kept_payload.size () + 1, (INT64) dropped_payload.size () + 1 }, row);
+
+  /* The post-image keeps the first chain and names no second one. */
   RECDES new_rec{};
-  ASSERT_EQ (build_record_with_stubs ({ref}, { (INT64) payload.size () + 1}, new_rec), NO_ERROR);
+  ASSERT_EQ (build_record_with_stubs ({kept}, { (INT64) kept_payload.size () + 1}, new_rec), NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer (&new_rec, recdes_free_data_area);
 
+  const long log_offset = error_log_size ();
   heap_oos_test_reset_skipped_cleanup_diagnostics ();
   er_clear ();
   ASSERT_EQ (update_row (row, new_rec), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
-  EXPECT_TRUE (chunk_present (ref.head_oid)) << "a chain the post-image references is kept";
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 0);
+
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1) << "the dropped chain's skip is reported";
+  EXPECT_EQ (heap_oos_test_last_skipped_cleanup_count (), 1) << "the kept chain is not counted as skipped";
+  EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
+  EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
+
+  std::string out;
+  ASSERT_EQ (read_chain (kept, kept_payload.size () + 1, out), NO_ERROR)
+      << "a chain the post-image references is kept";
+  EXPECT_STREQ (out.c_str (), kept_payload.c_str ());
+  ASSERT_EQ (read_chain (dropped_occupant, dropped_payload.size () + 1, out), NO_ERROR)
+      << "the occupant of the dropped reference's slot survives the skip";
+  EXPECT_STREQ (out.c_str (), dropped_payload.c_str ());
   commit ();
 }
 
@@ -688,7 +715,7 @@ TEST_F (OosEagerDiagnostics, RelocatedUpdateAndDeleteDiagnoseTheForwardRecordsSt
   heap_oos_test_reset_skipped_cleanup_diagnostics ();
   er_clear ();
   relocate_row (row, first_stale, (INT64) first_payload.size () + 1, 2048);
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 0) << "a kept chain is not a skipped cleanup";
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0) << "a kept chain is not a skipped cleanup";
   EXPECT_TRUE (chunk_present (first.head_oid));
 
   /* UPDATE of the relocated row: the old forward record's stale stub is unreferenced by the new image. */
@@ -706,7 +733,7 @@ TEST_F (OosEagerDiagnostics, RelocatedUpdateAndDeleteDiagnoseTheForwardRecordsSt
   er_clear ();
   ASSERT_EQ (update_row (row, new_rec), NO_ERROR) << "a skipped cleanup must not fail the relocated UPDATE";
   EXPECT_EQ (er_errid (), NO_ERROR);
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
   EXPECT_TRUE (error_log_contains_since (log_offset, "update relocation"))
@@ -724,7 +751,7 @@ TEST_F (OosEagerDiagnostics, RelocatedUpdateAndDeleteDiagnoseTheForwardRecordsSt
   ASSERT_EQ (delete_row (row), NO_ERROR) << "a skipped cleanup must not fail the relocated DELETE";
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row));
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
   EXPECT_TRUE (error_log_contains_since (log_offset, "delete relocation"))
@@ -766,7 +793,7 @@ TEST_F (OosEagerDiagnostics, ThreeStaleChainsInOneRecordAreOneNotification)
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row));
 
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1) << "three skipped chains, one notification";
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1) << "three skipped chains, one notification";
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_count (), 3) << "the notification must carry the count";
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
@@ -805,7 +832,7 @@ TEST_F (OosEagerDiagnostics, MatchingNonHeadReferenceFailsTheDelete)
   er_clear ();
   EXPECT_EQ (delete_row (row), ER_HEAP_OOS_CORRUPTED_RECORD) << "a malformed reference is an error, not a skip";
   EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 0);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0);
   EXPECT_FALSE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
   ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
   er_clear ();
@@ -844,7 +871,7 @@ TEST_F (OosEagerDiagnostics, InterruptedCleanupIsAnErrorNotASkip)
   EXPECT_EQ (er_errid (), ER_INTERRUPTED) << "an operational failure must not be converted to a clean skip";
   (void) logtb_set_tran_index_interrupt (thread_p, tran_index, false);
   er_clear ();
-  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 0);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0);
 
   EXPECT_TRUE (chunk_present (ref.head_oid));
   std::string out;
