@@ -319,7 +319,11 @@ static int numeric_sum_acc_add_rounded (SUM_ACC * acc, const DB_VALUE * val_dbv)
 /* the addition exceeds the accumulator's capacity, so the caller retries with numeric_sum_acc_add_rounded () */
 #define SUM_ACC_NUMERIC_CAPACITY (1)
 
-/* 10^40 (41 digits) as a 3-word coefficient */
+/* 10^40 (41 digits) as a big-endian 3-word coefficient
+ *   0x1DULL               =                   29 * 2^128 = 9868188640707215440437863615521278132224
+ *   0x6329F1C35CA4BFABULL =  7145508105175220139 * 2^64  =  131811359292784559548736661559783194624
+ *   0xB9F5610000000000ULL                                =                     13399722918938673152
+ *                                                        = 10000000000000000000000000000000000000000 */
 static const uint64_t _gv_numeric_sum_acc_pow10_max_prec[SUM_ACC_NUMERIC_WORDS] =
   { 0x1DULL, 0x6329F1C35CA4BFABULL, 0xB9F5610000000000ULL };
 
