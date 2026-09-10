@@ -43,13 +43,13 @@
  */
 static void
 qfile_type_list_compute (TP_DOMAIN ** domp, int type_cnt, int hdr_size, QFILE_COL_LAYOUT * column_layout_array,
-			 int *max_fixed_length_col_cnt, int16_t data_off[2], int16_t * bitmap_size)
+			 int *max_fixed_length_col_cnt, int16_t data_offset[2], int16_t * bitmap_size)
 {
   int i, off = 0;
 
   *bitmap_size = (int16_t) ((type_cnt + 7) >> 3);
-  data_off[0] = (int16_t) DB_ALIGN (hdr_size, QFILE_TUPLE_ALIGNMENT);
-  data_off[1] = (int16_t) DB_ALIGN (hdr_size + *bitmap_size, QFILE_TUPLE_ALIGNMENT);
+  data_offset[0] = (int16_t) DB_ALIGN (hdr_size, QFILE_TUPLE_ALIGNMENT);
+  data_offset[1] = (int16_t) DB_ALIGN (hdr_size + *bitmap_size, QFILE_TUPLE_ALIGNMENT);
   *max_fixed_length_col_cnt = type_cnt;
 
   for (i = 0; i < type_cnt; i++)
@@ -93,8 +93,8 @@ qfile_type_list_alloc (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int type_cnt, in
   type_list->domp = NULL;
   type_list->column_layout_array = NULL;
   type_list->max_fixed_length_col_cnt = 0;
-  type_list->data_off[0] = 0;
-  type_list->data_off[1] = 0;
+  type_list->data_offset[0] = 0;
+  type_list->data_offset[1] = 0;
   type_list->bitmap_size = 0;
   type_list->hdr_size = (uint8_t) hdr_size;
   type_list->layout_ready = false;
@@ -148,8 +148,8 @@ qfile_type_list_copy (QFILE_TUPLE_VALUE_TYPE_LIST * dest, const QFILE_TUPLE_VALU
     }
 
   dest->max_fixed_length_col_cnt = src->max_fixed_length_col_cnt;
-  dest->data_off[0] = src->data_off[0];
-  dest->data_off[1] = src->data_off[1];
+  dest->data_offset[0] = src->data_offset[0];
+  dest->data_offset[1] = src->data_offset[1];
   dest->bitmap_size = src->bitmap_size;
   dest->layout_ready = src->layout_ready;
 
@@ -172,14 +172,14 @@ qfile_set_layout (QFILE_TUPLE_VALUE_TYPE_LIST * type_list)
       assert (type_list->column_layout_array == (QFILE_COL_LAYOUT *) (type_list->domp + type_list->type_cnt));
       qfile_type_list_compute (type_list->domp, type_list->type_cnt, type_list->hdr_size,
 			       type_list->column_layout_array, &type_list->max_fixed_length_col_cnt,
-			       type_list->data_off, &type_list->bitmap_size);
+			       type_list->data_offset, &type_list->bitmap_size);
     }
   else
     {
       type_list->max_fixed_length_col_cnt = 0;
       type_list->bitmap_size = 0;
-      type_list->data_off[0] = (int16_t) DB_ALIGN (type_list->hdr_size, QFILE_TUPLE_ALIGNMENT);
-      type_list->data_off[1] = type_list->data_off[0];
+      type_list->data_offset[0] = (int16_t) DB_ALIGN (type_list->hdr_size, QFILE_TUPLE_ALIGNMENT);
+      type_list->data_offset[1] = type_list->data_offset[0];
     }
 
   type_list->layout_ready = true;
@@ -195,7 +195,7 @@ qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list)
 {
   QFILE_COL_LAYOUT *column_layout_array;
   int max_fixed_length_col_cnt;
-  int16_t data_off[2], bitmap_size;
+  int16_t data_offset[2], bitmap_size;
   bool ok;
 
   if (type_list->type_cnt <= 0)
@@ -220,12 +220,12 @@ qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list)
     }
 
   qfile_type_list_compute (type_list->domp, type_list->type_cnt, type_list->hdr_size, column_layout_array,
-			   &max_fixed_length_col_cnt, data_off, &bitmap_size);
+			   &max_fixed_length_col_cnt, data_offset, &bitmap_size);
 
   ok =
     (memcmp (column_layout_array, type_list->column_layout_array, type_list->type_cnt * sizeof (QFILE_COL_LAYOUT)) == 0
-     && max_fixed_length_col_cnt == type_list->max_fixed_length_col_cnt && data_off[0] == type_list->data_off[0]
-     && data_off[1] == type_list->data_off[1] && bitmap_size == type_list->bitmap_size);
+     && max_fixed_length_col_cnt == type_list->max_fixed_length_col_cnt && data_offset[0] == type_list->data_offset[0]
+     && data_offset[1] == type_list->data_offset[1] && bitmap_size == type_list->bitmap_size);
 
   free (column_layout_array);
   return ok;
@@ -256,7 +256,7 @@ qfile_slot_get_column_data_walk (QFILE_TUPLE_RECORD * tuple_slot, int column_ind
       column_layout = &type_list->column_layout_array[column_index];
       *column_data_size = column_layout->size;
       *is_null = false;
-      return tuple_ptr + tuple_slot->data_off + column_layout->byte_offset_in_values;
+      return tuple_ptr + tuple_slot->data_offset + column_layout->byte_offset_in_values;
     }
 
   if (column_index >= tuple_slot->cached_column_index_in_tuple)
@@ -267,7 +267,7 @@ qfile_slot_get_column_data_walk (QFILE_TUPLE_RECORD * tuple_slot, int column_ind
   else
     {
       i = tuple_slot->fixed_length_col_cnt;
-      off = tuple_slot->data_off + qfile_prefix_end (type_list, i);
+      off = tuple_slot->data_offset + qfile_prefix_end (type_list, i);
     }
 
   bm = tuple_slot->has_null ? QFILE_TUPLE_BITMAP (tuple_ptr, type_list->hdr_size) : NULL;

@@ -231,7 +231,7 @@ typedef enum
  *   prev_len  : length of the previous tuple in the page (qfile_scan_prev / cursor_prev_tuple); present iff the
  *               list's type_list.hdr_size == 8
  *   bitmap    : ceil (type_cnt / 8) bytes, bit i = byte[i >> 3] & (1 << (i & 7)), 1 = bound, 0 = NULL
- *   values    : logical column order from data_off = ALIGN4 (hdr_size + bitmap size). NULL = 0 bytes.
+ *   values    : logical column order from data_offset = ALIGN4 (hdr_size + bitmap size). NULL = 0 bytes.
  *               FIXED column: ALIGN (alignby in {2,4}) then disksize bytes of data_writeval (8-byte values are read
  *               by memcpy). VAR/DIRECT column (string/BIT/NUMERIC, index_* encoding): no alignment, 1-byte (<= 127)
  *               or 4-byte (bit 7 of the first byte set, ntohl & 0x7FFFFFFF) body length header, then the body.
@@ -304,7 +304,7 @@ struct qfile_tuple_record
   int16_t cached_column_index_in_tuple;	/* cached column position; -1 = cache not started */
   /* Constant-offset prefix length, limited by the layout, first NULL and INT16_MAX; not the total FIXED count. */
   int16_t fixed_length_col_cnt;
-  int16_t data_off;		/* type_list->data_off[has_null] of this tuple */
+  int16_t data_offset;		/* type_list->data_offset[has_null] of this tuple */
   bool has_null;		/* has-null bit of this tuple's length word */
   int32_t cached_byte_offset_in_tuple;	/* cached column start from tuple start, before alignment */
 };
@@ -316,7 +316,7 @@ struct qfile_tuple_record
 typedef struct qfile_col_layout QFILE_COL_LAYOUT;
 struct qfile_col_layout
 {
-  /* Constant offset from data_off; -1 after the first VAR column or when the offset exceeds INT16_MAX. */
+  /* Constant offset from data_offset; -1 after the first VAR column or when the offset exceeds INT16_MAX. */
   int16_t byte_offset_in_values;
   int16_t size;			/* FIXED: disksize (max 12). VAR: -1 */
   uint8_t kind;			/* QFILE_COL_FIXED | QFILE_COL_VAR */
@@ -344,7 +344,7 @@ struct qfile_tuple_value_type_list
   QFILE_COL_LAYOUT *column_layout_array;	/* points at domp + type_cnt; not a separate allocation */
   /* NULL-independent prefix limit: first VAR or offset > INT16_MAX; type_cnt if none. Not the total FIXED count. */
   int max_fixed_length_col_cnt;
-  int16_t data_off[2];		/* [0] = no-null, [1] = has-null : ALIGN4 (hdr_size + bitmap) */
+  int16_t data_offset[2];	/* [0] = no-null, [1] = has-null : ALIGN4 (hdr_size + bitmap) */
   int16_t bitmap_size;		/* (type_cnt + 7) >> 3 */
   uint8_t hdr_size;		/* 4 | 8 ; 8 <=> backward capable */
   bool layout_ready;
@@ -514,8 +514,8 @@ struct qfile_list_id
       (list_id)->type_list.domp = NULL; \
       (list_id)->type_list.column_layout_array = NULL; \
       (list_id)->type_list.max_fixed_length_col_cnt = 0; \
-      (list_id)->type_list.data_off[0] = 0; \
-      (list_id)->type_list.data_off[1] = 0; \
+      (list_id)->type_list.data_offset[0] = 0; \
+      (list_id)->type_list.data_offset[1] = 0; \
       (list_id)->type_list.bitmap_size = 0; \
       (list_id)->type_list.hdr_size = 0; \
       (list_id)->type_list.layout_ready = false; \

@@ -1521,7 +1521,7 @@ qfile_add_tuple_to_list_id (QFILE_LIST_ID * list_id_p, PAGE_PTR page_p, int tupl
 
 /*
  * qfile_tuple_copy_bytes () - copy n bytes of the tuple as it would look with dst_hdr_size, starting at dst offset off.
- *   The two header sizes only shift the bitmap/values block by (dst_hdr - src_hdr) bytes: data_off = ALIGN4 (hdr +
+ *   The two header sizes only shift the bitmap/values block by (dst_hdr - src_hdr) bytes: data_offset = ALIGN4 (hdr +
  *   bitmap) differs by exactly that amount, so everything after the header is copied verbatim.
  */
 static void
@@ -3933,7 +3933,7 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
   int i, n, order;
 
   /* Fast path: every key is a FIXED column inside the constant-offset prefix and neither key tuple has a NULL, so
-   * each key body sits at type_list->column_layout_array[i].byte_offset_in_values from data_off[0]. The general path (NULLs, variable-width keys, COMPOSITE
+   * each key body sits at type_list->column_layout_array[i].byte_offset_in_values from data_offset[0]. The general path (NULLs, variable-width keys, COMPOSITE
    * keys) lives in a separate non-inlined function to keep this hot frame small. */
   t0 = PTR_ALIGN (&(k0->s.original.body[0]), MAX_ALIGNMENT);
   t1 = PTR_ALIGN (&(k1->s.original.body[0]), MAX_ALIGNMENT);
@@ -3942,8 +3942,8 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
     {
       return qfile_compare_partial_sort_record_general (key_info_p, k0, k1);
     }
-  b0 = t0 + type_list->data_off[0];
-  b1 = t1 + type_list->data_off[0];
+  b0 = t0 + type_list->data_offset[0];
+  b1 = t1 + type_list->data_offset[0];
   order = 0;
   if (type_list->max_fixed_length_col_cnt >= n)
     {

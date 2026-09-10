@@ -195,7 +195,7 @@ qfile_slot_set_tuple_ptr_and_layout (QFILE_TUPLE_RECORD * tuple_slot, char *tupl
 extern void qfile_slot_clear (QFILE_TUPLE_RECORD * tuple_slot);
 
 /*
- * qfile_prefix_end () - offset (from data_off) where prefix columns [0, lim) end; lim <= max_fixed_length_col_cnt.
+ * qfile_prefix_end () - offset (from data_offset) where prefix columns [0, lim) end; lim <= max_fixed_length_col_cnt.
  */
 inline int
 qfile_prefix_end (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int lim)
@@ -222,7 +222,7 @@ qfile_slot_start (QFILE_TUPLE_RECORD * tuple_slot)
   lim = type_list->max_fixed_length_col_cnt;
 
   tuple_slot->has_null = QFILE_GET_TUPLE_HAS_NULL (tuple_slot->tpl);
-  tuple_slot->data_off = type_list->data_off[tuple_slot->has_null ? 1 : 0];
+  tuple_slot->data_offset = type_list->data_offset[tuple_slot->has_null ? 1 : 0];
   if (tuple_slot->has_null)
     {
       int fn = qfile_first_null_col (QFILE_TUPLE_BITMAP (tuple_slot->tpl, type_list->hdr_size), type_list->type_cnt);
@@ -230,7 +230,7 @@ qfile_slot_start (QFILE_TUPLE_RECORD * tuple_slot)
     }
   tuple_slot->fixed_length_col_cnt = (int16_t) MIN (lim, INT16_MAX);
   tuple_slot->cached_column_index_in_tuple = tuple_slot->fixed_length_col_cnt;
-  tuple_slot->cached_byte_offset_in_tuple = tuple_slot->data_off + qfile_prefix_end (type_list, lim);
+  tuple_slot->cached_byte_offset_in_tuple = tuple_slot->data_offset + qfile_prefix_end (type_list, lim);
 }
 
 /*
@@ -256,7 +256,7 @@ qfile_slot_get_column_data (QFILE_TUPLE_RECORD * tuple_slot, int column_index, i
 
       *column_data_size = column_layout->size;
       *is_null = false;
-      return tuple_slot->tpl + tuple_slot->data_off + column_layout->byte_offset_in_values;
+      return tuple_slot->tpl + tuple_slot->data_offset + column_layout->byte_offset_in_values;
     }
   return qfile_slot_get_column_data_walk (tuple_slot, column_index, column_data_size, is_null);
 }
@@ -551,7 +551,7 @@ qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_COL_SRC *
     {
       qfile_set_layout (type_list);
     }
-  size = type_list->data_off[hn ? 1 : 0];
+  size = type_list->data_offset[hn ? 1 : 0];
 
   for (i = 0; i < n; i++)
     {
@@ -674,7 +674,7 @@ qfile_tuple_fill (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, const QFILE_TUP
   assert (type_list != NULL && type_list->layout_ready && type_list->type_cnt == n);
 
   QFILE_PUT_TUPLE_LENGTH (out, size, has_null);
-  off = type_list->data_off[has_null ? 1 : 0];
+  off = type_list->data_offset[has_null ? 1 : 0];
 #if !defined(NDEBUG)
   memset (out + QFILE_TUPLE_LENGTH_OFFSET + 4, 0, off - 4);	/* prev_len slot, bitmap, pad: deterministic for valgrind */
 #endif
@@ -742,10 +742,11 @@ qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, DB_VALUE 
 
   assert (type_list != NULL && type_list->layout_ready && type_list->type_cnt == n);
   assert (lens != NULL || n == 0);	/* a zero-column list never allocates f_valp/f_len (INSERT ... SELECT inner block) */
-  assert (type_list->data_off[0] % QFILE_TUPLE_ALIGNMENT == 0 && type_list->data_off[1] % QFILE_TUPLE_ALIGNMENT == 0);
+  assert (type_list->data_offset[0] % QFILE_TUPLE_ALIGNMENT == 0
+	  && type_list->data_offset[1] % QFILE_TUPLE_ALIGNMENT == 0);
 
 restart:
-  /* one pass: values_size summed from 0, data_off added at the end (has-null verdict is only known after the pass) */
+  /* one pass: values_size summed from 0, data_offset added at the end (has-null verdict is only known after the pass) */
   values_size = 0;
   hn = false;
   for (i = 0; i < n; i++)
@@ -805,7 +806,7 @@ restart:
     }
 
   *has_null = hn;
-  return DB_ALIGN (type_list->data_off[hn ? 1 : 0] + values_size, QFILE_TUPLE_ALIGNMENT);
+  return DB_ALIGN (type_list->data_offset[hn ? 1 : 0] + values_size, QFILE_TUPLE_ALIGNMENT);
 }
 
 inline int
@@ -821,7 +822,7 @@ qfile_tuple_fill_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, DB_
   assert (lens != NULL || n == 0);
 
   QFILE_PUT_TUPLE_LENGTH (out, size, has_null);
-  off = type_list->data_off[has_null ? 1 : 0];
+  off = type_list->data_offset[has_null ? 1 : 0];
 #if !defined(NDEBUG)
   memset (out + QFILE_TUPLE_LENGTH_OFFSET + 4, 0, off - 4);
 #endif
