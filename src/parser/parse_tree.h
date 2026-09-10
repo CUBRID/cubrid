@@ -3955,6 +3955,9 @@ struct parser_context
   double drand;			/* floating-point random value used by drand() */
   UINT64 uuidv7_last_ms;	/* last used millisecond timestamp for local UUIDv7 generation */
   UINT8 uuidv7_seq;		/* local UUIDv7 sequence within the same millisecond */
+  struct pt_cdt_registry_entry *cdt_registry;	/* CDT registry: rehydrated Compact DEFAULT Trees, one per
+						 * attribute per parser (pt_cdt_registry_tree); a parser_alloc'd
+						 * list released with the parser, NULL until used */
 
   COMPILE_CONTEXT context;
   struct xasl_node *parent_proc_xasl;

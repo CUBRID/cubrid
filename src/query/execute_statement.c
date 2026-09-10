@@ -546,18 +546,18 @@ typedef enum
  *
  * A residual DEFAULT is exactly a DEFAULT that has a CDT: an Expression-Derived
  * Literal is frozen to a value and a legacy pseudo-column DEFAULT has no stream,
- * so neither appears here.  On this path a residual's effective volatility is not
- * persisted, so each CDT is rehydrated (pt_compact_default_tree_from_stream) and
- * classified (pt_get_expr_tree_volatility) once per statement, into this set,
- * and the rehydrated tree is then evaluated in place.  The set pins, for one
- * statement, WHICH CDTs it consumes -- a column the object template already
- * assigns a real value (an explicitly listed INSERT column, a SELECT-supplied
- * column, a Default Reference) never has its DEFAULT read by populate_defaults,
- * so its CDT is left out (see is_template_assigned_attr) instead of being
- * rehydrated and evaluated for a discarded result -- or failing the INSERT on a
- * runtime error the SERVER path, which evaluates only the omitted columns, never
- * raises.  One statement assigns the same column set on every row, so the filter
- * taken from the first row's template holds for the whole statement.
+ * so neither appears here.  Tree and volatility come from the parser-wide CDT
+ * registry (pt_cdt_registry_tree): decoded once per parser, shared with the
+ * statement's Default References and its statement-clock probe, read-only parser
+ * memory this set never frees.  The set pins, for one statement, WHICH CDTs it
+ * consumes -- a column the object template already assigns a real value (an
+ * explicitly listed INSERT column, a SELECT-supplied column, a Default Reference)
+ * never has its DEFAULT read by populate_defaults, so its CDT is left out (see
+ * is_template_assigned_attr) instead of being evaluated for a discarded result --
+ * or failing the INSERT on a runtime error the SERVER path, which evaluates only
+ * the omitted columns, never raises.  One statement assigns the same column set
+ * on every row, so the filter taken from the first row's template holds for the
+ * whole statement.
  *
  * The set drives the evaluation cadence: STABLE CDTs once, right after the set is
  * built for a class, VOLATILE ones once per row, by walking the set itself.
@@ -573,7 +573,7 @@ typedef struct cdt_eval_entry CDT_EVAL_ENTRY;
 struct cdt_eval_entry
 {
   SM_ATTRIBUTE *att;		/* residual attribute this entry maps to */
-  PT_NODE *tree;		/* rehydrated Compact DEFAULT Tree (parser-allocated) */
+  PT_NODE *tree;		/* rehydrated Compact DEFAULT Tree, shared parser memory owned by the CDT registry (never freed here) */
   PT_VOLATILITY vol;		/* effective volatility */
 };
 
@@ -586,25 +586,17 @@ struct cdt_eval_set
 };
 
 /*
- * do_clear_cdt_eval_set () - free a CDT eval set: release each rehydrated tree
- *	(parser memory) and the entry array, and reset the set to empty.  Safe on an
- *	unbuilt (zero-initialized) set.
+ * do_clear_cdt_eval_set () - free a CDT eval set: release the
+ *	entry array and reset the eval set to empty.  The trees belong to the parser's
+ *	CDT registry and are not touched.  Safe on an unbuilt
+ *	(zero-initialized) eval set.
  */
 static void
-do_clear_cdt_eval_set (PARSER_CONTEXT * parser, CDT_EVAL_SET * eval_set)
+do_clear_cdt_eval_set (CDT_EVAL_SET * eval_set)
 {
-  int i;
-
   if (eval_set == NULL || eval_set->entries == NULL)
     {
       return;
-    }
-  for (i = 0; i < eval_set->count; i++)
-    {
-      if (eval_set->entries[i].tree != NULL)
-	{
-	  parser_free_tree (parser, eval_set->entries[i].tree);
-	}
     }
   free_and_init (eval_set->entries);
   eval_set->count = 0;
@@ -640,12 +632,12 @@ is_template_assigned_attr (const DB_OTMPL * otemplate, const SM_ATTRIBUTE * att)
 }
 
 /*
- * do_build_cdt_eval_set () - rehydrate and classify every residual DEFAULT of
- *	smclass the statement can consume, populating eval_set.  Residuals of the
- *	columns otemplate already assigns are left out (see CDT_EVAL_SET).  No value
- *	is evaluated here; the caller evaluates the collected trees per
- *	row/statement.  Any prior contents (e.g. for a different partition class) are
- *	released first.
+ * do_build_cdt_eval_set () - collect (from the CDT registry) the tree and
+ *	volatility of every residual DEFAULT of smclass the statement can consume,
+ *	populating eval_set.  Residuals of the columns otemplate already assigns are
+ *	left out (see CDT_EVAL_SET).  No value is evaluated here; the caller
+ *	evaluates the collected trees per row/statement.  Any prior contents (e.g.
+ *	for a different partition class) are released first.
  *   return: NO_ERROR or ER_code
  */
 static int
@@ -654,7 +646,7 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
   SM_ATTRIBUTE *att;
   int n = 0;
 
-  do_clear_cdt_eval_set (parser, eval_set);
+  do_clear_cdt_eval_set (eval_set);
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
@@ -683,21 +675,24 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       PT_NODE *residual;
-      PT_NODE *unclassified_node = NULL;
+      PT_VOLATILITY vol;
 
       if (!is_residual_default_attr (att) || is_template_assigned_attr (otemplate, att))
 	{
 	  continue;
 	}
 
-      residual =
-	pt_compact_default_tree_from_stream (parser, att->default_value.default_expr.default_expr_tree_stream,
-					     att->default_value.default_expr.default_expr_tree_stream_size);
+      /* shared, read-only tree from the CDT registry: decoded once per parser (also serving this statement's
+       * Default References), evaluated in place per row */
+      residual = pt_cdt_registry_tree (parser, att, &vol);
       if (residual == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  do_clear_cdt_eval_set (parser, eval_set);
-	  return ER_GENERIC_ERROR;
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    }
+	  do_clear_cdt_eval_set (eval_set);
+	  return er_errid ();
 	}
 
       /* the volatility only picks the evaluation cadence of an already DDL-validated
@@ -705,7 +700,7 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
        * residual falls back to once-per-statement evaluation */
       eval_set->entries[eval_set->count].att = att;
       eval_set->entries[eval_set->count].tree = residual;
-      eval_set->entries[eval_set->count].vol = pt_get_expr_tree_volatility (residual, &unclassified_node);
+      eval_set->entries[eval_set->count].vol = vol;
       eval_set->count++;
     }
 
@@ -13924,7 +13919,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
     }
 
 cleanup:
-  do_clear_cdt_eval_set (parser, &cdt_eval);
+  do_clear_cdt_eval_set (&cdt_eval);
 
   /* free attribute descriptors */
   if (attr_descs)
@@ -14371,7 +14366,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
 
 cleanup:
-  do_clear_cdt_eval_set (parser, &cdt_eval);
+  do_clear_cdt_eval_set (&cdt_eval);
 
   if (update != NULL)
     {

@@ -1928,9 +1928,10 @@ pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * a
   PT_NODE *residual;
   bool needs_si_datetime = false;
 
-  residual =
-    pt_compact_default_tree_from_stream (parser, attr->default_value.default_expr.default_expr_tree_stream,
-					 attr->default_value.default_expr.default_expr_tree_stream_size);
+  /* the parser-wide CDT registry tree (pt_cdt_registry_tree): shared and read-only, so it is only walked
+   * here -- the Default References and the Local Evaluation CDT_EVAL_SET of this statement reuse the same
+   * decoding */
+  residual = pt_cdt_registry_tree (parser, attr, NULL);
   if (residual == NULL)
     {
       /* let the evaluation path report the broken stream; synchronize conservatively */
@@ -1938,7 +1939,6 @@ pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * a
     }
 
   (void) parser_walk_tree (parser, residual, pt_residual_needs_si_datetime_walk, &needs_si_datetime, NULL, NULL);
-  parser_free_tree (parser, residual);
 
   return needs_si_datetime;
 }
@@ -3960,16 +3960,23 @@ pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * at
   if (default_expr->default_expr_type == DB_DEFAULT_NONE && default_expr->default_expr_tree_stream != NULL
       && default_expr->default_expr_tree_stream_size > 0)
     {
-      /* residual DEFAULT expression: rehydrate it so the reference evaluates at execution time; the
-       * rehydrated nodes carry do_not_fold, keeping generic constant folding from freezing it */
-      node = pt_compact_default_tree_from_stream (parser, default_expr->default_expr_tree_stream,
-						  default_expr->default_expr_tree_stream_size);
-      if (node == NULL && !pt_has_error (parser))
+      /* residual DEFAULT expression: the reference evaluates at execution time, so it gets the rehydrated
+       * tree (its nodes carry do_not_fold, keeping generic constant folding from freezing it).  The CDT
+       * registry decodes the stream once per attribute and shares the tree; every reference takes its own
+       * copy, because the DEFAULTF fold and the release of the reference node both assume ownership. */
+      PT_NODE *shared = pt_cdt_registry_tree (parser, att, NULL);
+
+      if (shared == NULL)
 	{
-	  /* a stored stream this build cannot interpret (version mismatch or corruption), not an
-	   * allocation failure -- diagnose it so the caller does not misreport out-of-memory */
-	  PT_INTERNAL_ERROR (parser, "invalid Compact DEFAULT Tree stream");
+	  if (!pt_has_error (parser))
+	    {
+	      /* a stored stream this build cannot interpret (version mismatch or corruption), not an
+	       * allocation failure -- diagnose it so the caller does not misreport out-of-memory */
+	      PT_INTERNAL_ERROR (parser, "invalid Compact DEFAULT Tree stream");
+	    }
+	  return NULL;
 	}
+      node = parser_copy_tree (parser, shared);
       return node;
     }
 

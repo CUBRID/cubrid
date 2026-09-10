@@ -11182,6 +11182,124 @@ pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream
 }
 
 /*
+ * CDT registry -- the Compact DEFAULT Trees a parser has rehydrated, one per attribute.
+ *
+ * "CDT" names the residual DEFAULT expression itself: a residual DEFAULT is exactly a
+ * DEFAULT stored as a Compact DEFAULT Tree (an Expression-Derived Literal is frozen
+ * to a value, a legacy pseudo-column DEFAULT has no stream), and the registry holds
+ * its rehydrated PT_NODE form.
+ *
+ * Every client-side reader of a CDT (a Default Reference -- the DEFAULT keyword or
+ * DEFAULT(col) --, the statement-clock probe of an INSERT and the Local Evaluation
+ * CDT_EVAL_SET) used to rehydrate the stream on its own, so one multi-row INSERT
+ * decoded the same stream once per DEFAULT keyword plus once per pass.  The registry
+ * decodes each attribute's stream once per parser -- once per compile, and once per
+ * prepare for a prepared statement -- and hands out the SAME tree.  Entries and
+ * trees are both parser memory (parser_alloc / parser nodes): they live exactly as
+ * long as the parser and go away with it, so there is nothing to free and no
+ * capacity to manage; the list is as long as the number of CDT attributes this
+ * parser has asked about.
+ *
+ * Callers treat the tree as shared and read-only: walk it, evaluate it
+ * (pt_evaluate_tree never memoizes onto the nodes), or parser_copy_tree it when
+ * they need a subtree of their own -- never mutate or parser_free_tree it.
+ *
+ * An entry is keyed on the attribute (class, id) and validated against the
+ * stream bytes, so a class re-fetched after an ALTER (a new stream) gets a fresh
+ * tree while the old one simply stays until the parser is freed.
+ */
+struct pt_cdt_registry_entry
+{
+  struct pt_cdt_registry_entry *next;
+  MOP class_mop;		/* att->class_mop */
+  int att_id;			/* att->id */
+  const char *stream;		/* stream the tree was decoded from (identity + content check) */
+  int stream_size;
+  PT_NODE *tree;		/* the shared rehydrated tree */
+  PT_VOLATILITY volatility;	/* effective volatility of tree (pt_get_expr_tree_volatility) */
+};
+
+/*
+ * pt_cdt_registry_tree () - the rehydrated Compact DEFAULT Tree of a residual
+ *	DEFAULT attribute, decoded once per parser and shared afterwards (see the
+ *	registry note above).  The caller must not mutate or free the returned tree.
+ *   return: shared tree, or NULL when att has no residual DEFAULT or the stream
+ *	could not be decoded (the reader or er_set carries the cause)
+ *   parser(in): parser context owning the registry and the tree
+ *   att(in): attribute
+ *   volatility(out): effective volatility of the tree; may be NULL
+ */
+PT_NODE *
+pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLATILITY * volatility)
+{
+  struct pt_cdt_registry_entry *entry;
+  const DB_DEFAULT_EXPR *default_expr;
+  PT_NODE *tree, *unclassified_node = NULL;
+
+  assert (parser != NULL && att != NULL);
+
+  default_expr = &att->default_value.default_expr;
+  if (default_expr->default_expr_tree_stream == NULL || default_expr->default_expr_tree_stream_size <= 0)
+    {
+      return NULL;
+    }
+
+  for (entry = parser->cdt_registry; entry != NULL; entry = entry->next)
+    {
+      if (entry->class_mop == att->class_mop && entry->att_id == att->id)
+	{
+	  break;
+	}
+    }
+
+  if (entry != NULL && entry->stream_size == default_expr->default_expr_tree_stream_size
+      && (entry->stream == default_expr->default_expr_tree_stream
+	  || memcmp (entry->stream, default_expr->default_expr_tree_stream, entry->stream_size) == 0))
+    {
+      if (volatility != NULL)
+	{
+	  *volatility = entry->volatility;
+	}
+      return entry->tree;
+    }
+
+  tree = pt_compact_default_tree_from_stream (parser, default_expr->default_expr_tree_stream,
+					      default_expr->default_expr_tree_stream_size);
+  if (tree == NULL)
+    {
+      /* never register a failure: the next reader gets to diagnose it too */
+      return NULL;
+    }
+
+  if (entry == NULL)
+    {
+      entry = (struct pt_cdt_registry_entry *) parser_alloc (parser, sizeof (*entry));
+      if (entry == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
+	  parser_free_tree (parser, tree);
+	  return NULL;
+	}
+      entry->class_mop = att->class_mop;
+      entry->att_id = att->id;
+      entry->next = parser->cdt_registry;
+      parser->cdt_registry = entry;
+    }
+  /* a re-fetched attribute (new stream after an ALTER) replaces its entry; the previous tree may still be
+   * referenced by a pass of this statement, so it is left to the parser to release */
+  entry->stream = default_expr->default_expr_tree_stream;
+  entry->stream_size = default_expr->default_expr_tree_stream_size;
+  entry->tree = tree;
+  entry->volatility = pt_get_expr_tree_volatility (tree, &unclassified_node);
+
+  if (volatility != NULL)
+    {
+      *volatility = entry->volatility;
+    }
+  return tree;
+}
+
+/*
  * pt_has_name_oid () - Check whether the node is oid name
  *   return:
  *   parser(in):
