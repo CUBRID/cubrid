@@ -541,68 +541,67 @@ typedef enum
 } DEFAULT_EXPR_EVAL_MODE;
 
 /*
- * Per-INSERT cache of rehydrated residual DEFAULT expression trees.
+ * CDT_EVAL_SET -- the Compact DEFAULT Trees (residual DEFAULTs) one INSERT must
+ * evaluate on the client (Local Evaluation) path, with their volatility.
  *
- * On the client (Local Evaluation) path a residual DEFAULT's effective
- * volatility is not persisted, so each residual must be rehydrated from its
- * Compact DEFAULT Tree (pt_compact_default_tree_from_stream) and classified
- * (pt_get_expr_tree_volatility) before it can be evaluated.  Without a cache,
- * do_evaluate_default_expr_by_smclass would redo that work on every call -- once
- * per row for an INSERT -- and a residual whose volatility does not match the
- * current eval mode would be rehydrated only to be thrown away.  This cache
- * holds the rehydrated tree and its volatility so the rehydrate+classify happens
- * once per statement; re-evaluating the SAME tree per row is safe because
- * pt_evaluate_tree recomputes volatile leaves (UUID/...) on every call and never
- * memoizes a result onto the node.
+ * A residual DEFAULT is exactly a DEFAULT that has a CDT: an Expression-Derived
+ * Literal is frozen to a value and a legacy pseudo-column DEFAULT has no stream,
+ * so neither appears here.  On this path a residual's effective volatility is not
+ * persisted, so each CDT is rehydrated (pt_compact_default_tree_from_stream) and
+ * classified (pt_get_expr_tree_volatility) once per statement, into this set,
+ * and the rehydrated tree is then evaluated in place; without the set,
+ * do_evaluate_default_expr_by_smclass would redo that work once per row.
  *
- * The cache is owned by the row-loop owner (do_insert_template,
- * insert_subquery_results) and is the only place residual DEFAULTs are evaluated
- * on this path: STABLE ones once, right after the cache is built for a class,
- * VOLATILE ones once per row, by walking the cache itself.  The per-statement
- * pass (do_evaluate_statement_default_expr) does not touch residuals at all, and
- * the attribute walk in do_evaluate_default_expr_by_smclass serves only the
+ * The set drives the evaluation cadence: STABLE CDTs once, right after the set is
+ * built for a class, VOLATILE ones once per row, by walking the set itself.
+ * Re-evaluating the SAME tree per row is safe because pt_evaluate_tree recomputes
+ * volatile leaves (UUID/...) on every call and never memoizes a result onto the
+ * node.  The set is owned by the row-loop owner (do_insert_template,
+ * insert_subquery_results) and is the only place CDTs are evaluated on this path;
+ * the per-statement pass (do_evaluate_statement_default_expr) does not touch them,
+ * and the attribute walk in do_evaluate_default_expr_by_smclass serves only the
  * legacy pseudo-column enum path.
  */
-typedef struct residual_default_entry RESIDUAL_DEFAULT_ENTRY;
-struct residual_default_entry
+typedef struct cdt_eval_entry CDT_EVAL_ENTRY;
+struct cdt_eval_entry
 {
   SM_ATTRIBUTE *att;		/* residual attribute this entry maps to */
   PT_NODE *tree;		/* rehydrated Compact DEFAULT Tree (parser-allocated) */
   PT_VOLATILITY vol;		/* effective volatility */
 };
 
-typedef struct residual_default_cache RESIDUAL_DEFAULT_CACHE;
-struct residual_default_cache
+typedef struct cdt_eval_set CDT_EVAL_SET;
+struct cdt_eval_set
 {
   SM_CLASS *smclass;		/* class the entries were built for; NULL if not built */
   int count;			/* number of residual entries */
-  RESIDUAL_DEFAULT_ENTRY *entries;
+  CDT_EVAL_ENTRY *entries;
 };
 
 /*
- * do_clear_residual_default_cache () - free a residual DEFAULT cache: release
- *	each rehydrated tree (parser memory) and the entry array, and reset the
- *	cache to empty.  Safe on an unbuilt (zero-initialized) cache.
+ * do_clear_cdt_eval_set () - free a CDT eval set: release each rehydrated tree
+ *	(parser memory) and the entry array, and reset the set to empty.  Safe on an
+ *	unbuilt (zero-initialized) set.
  */
 static void
-do_clear_residual_default_cache (PARSER_CONTEXT * parser, RESIDUAL_DEFAULT_CACHE * cache)
+do_clear_cdt_eval_set (PARSER_CONTEXT * parser, CDT_EVAL_SET * eval_set)
 {
   int i;
 
-  if (cache == NULL || cache->entries == NULL)
+  if (eval_set == NULL || eval_set->entries == NULL)
     {
       return;
     }
-  for (i = 0; i < cache->count; i++)
+  for (i = 0; i < eval_set->count; i++)
     {
-      if (cache->entries[i].tree != NULL)
+      if (eval_set->entries[i].tree != NULL)
 	{
-	  parser_free_tree (parser, cache->entries[i].tree);
+	  parser_free_tree (parser, eval_set->entries[i].tree);
 	}
     }
-  free_and_init (cache->entries);
-  cache->count = 0;
-  cache->smclass = NULL;
+  free_and_init (eval_set->entries);
+  eval_set->count = 0;
+  eval_set->smclass = NULL;
 }
 
 /*
@@ -619,19 +618,19 @@ is_residual_default_attr (const SM_ATTRIBUTE * att)
 }
 
 /*
- * do_build_residual_default_cache () - rehydrate and classify every residual
- *	DEFAULT of smclass once, populating cache.  No value is evaluated here;
- *	the caller evaluates the cached trees per row/statement.  Any prior
- *	contents (e.g. for a different partition class) are released first.
+ * do_build_cdt_eval_set () - rehydrate and classify every residual DEFAULT of
+ *	smclass once, populating eval_set.  No value is evaluated here; the caller
+ *	evaluates the collected trees per row/statement.  Any prior contents (e.g.
+ *	for a different partition class) are released first.
  *   return: NO_ERROR or ER_code
  */
 static int
-do_build_residual_default_cache (PARSER_CONTEXT * parser, SM_CLASS * smclass, RESIDUAL_DEFAULT_CACHE * cache)
+do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, CDT_EVAL_SET * eval_set)
 {
   SM_ATTRIBUTE *att;
   int n = 0;
 
-  do_clear_residual_default_cache (parser, cache);
+  do_clear_cdt_eval_set (parser, eval_set);
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
@@ -641,20 +640,19 @@ do_build_residual_default_cache (PARSER_CONTEXT * parser, SM_CLASS * smclass, RE
 	}
     }
 
-  cache->smclass = smclass;
-  cache->count = 0;
-  cache->entries = NULL;
+  eval_set->smclass = smclass;
+  eval_set->count = 0;
+  eval_set->entries = NULL;
   if (n == 0)
     {
       return NO_ERROR;
     }
 
-  cache->entries = (RESIDUAL_DEFAULT_ENTRY *) malloc (n * sizeof (RESIDUAL_DEFAULT_ENTRY));
-  if (cache->entries == NULL)
+  eval_set->entries = (CDT_EVAL_ENTRY *) malloc (n * sizeof (CDT_EVAL_ENTRY));
+  if (eval_set->entries == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) n * sizeof (RESIDUAL_DEFAULT_ENTRY));
-      cache->smclass = NULL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) n * sizeof (CDT_EVAL_ENTRY));
+      eval_set->smclass = NULL;
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -674,24 +672,24 @@ do_build_residual_default_cache (PARSER_CONTEXT * parser, SM_CLASS * smclass, RE
       if (residual == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  do_clear_residual_default_cache (parser, cache);
+	  do_clear_cdt_eval_set (parser, eval_set);
 	  return ER_GENERIC_ERROR;
 	}
 
       /* the volatility only picks the evaluation cadence of an already DDL-validated
        * residual; should a node have lost its classification since (UNSET), the
        * residual falls back to once-per-statement evaluation */
-      cache->entries[cache->count].att = att;
-      cache->entries[cache->count].tree = residual;
-      cache->entries[cache->count].vol = pt_get_expr_tree_volatility (residual, &unclassified_node);
-      cache->count++;
+      eval_set->entries[eval_set->count].att = att;
+      eval_set->entries[eval_set->count].tree = residual;
+      eval_set->entries[eval_set->count].vol = pt_get_expr_tree_volatility (residual, &unclassified_node);
+      eval_set->count++;
     }
 
   return NO_ERROR;
 }
 
 /*
- * do_evaluate_residual_default () - evaluate one rehydrated residual DEFAULT tree
+ * do_evaluate_cdt () - evaluate one rehydrated residual DEFAULT tree
  *	and refresh the attribute's in-memory default value with the result, cast to
  *	the attribute domain.  att->default_value.value is what the object template
  *	consumes (populate_defaults) -- the same channel the legacy
@@ -699,7 +697,7 @@ do_build_residual_default_cache (PARSER_CONTEXT * parser, SM_CLASS * smclass, RE
  *   return: NO_ERROR or ER_code
  */
 static int
-do_evaluate_residual_default (PARSER_CONTEXT * parser, SM_ATTRIBUTE * att, PT_NODE * residual)
+do_evaluate_cdt (PARSER_CONTEXT * parser, SM_ATTRIBUTE * att, PT_NODE * residual)
 {
   DB_VALUE default_value;
   TP_DOMAIN_STATUS dom_status;
@@ -732,25 +730,25 @@ do_evaluate_residual_default (PARSER_CONTEXT * parser, SM_ATTRIBUTE * att, PT_NO
 }
 
 /*
- * do_evaluate_stable_residual_defaults () - evaluate every STABLE residual of a
- *	freshly built cache exactly once.  Called right after the cache is built for
+ * do_evaluate_stable_cdts () - evaluate every STABLE residual of a
+ *	freshly built eval set exactly once.  Called right after the eval set is built for
  *	a class (the statement's first row, or the first row of a new partition
  *	class), so the per-statement value is in place before any row's template
  *	consumes it.  VOLATILE residuals are left to the per-row pass.
  *   return: NO_ERROR or ER_code
  */
 static int
-do_evaluate_stable_residual_defaults (PARSER_CONTEXT * parser, RESIDUAL_DEFAULT_CACHE * cache)
+do_evaluate_stable_cdts (PARSER_CONTEXT * parser, CDT_EVAL_SET * eval_set)
 {
   int j, error;
 
-  for (j = 0; j < cache->count; j++)
+  for (j = 0; j < eval_set->count; j++)
     {
-      if (PT_VOLATILITY_IS_VOLATILE_RESIDUAL (cache->entries[j].vol))
+      if (PT_VOLATILITY_IS_VOLATILE_RESIDUAL (eval_set->entries[j].vol))
 	{
 	  continue;
 	}
-      error = do_evaluate_residual_default (parser, cache->entries[j].att, cache->entries[j].tree);
+      error = do_evaluate_cdt (parser, eval_set->entries[j].att, eval_set->entries[j].tree);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -766,15 +764,15 @@ do_evaluate_stable_residual_defaults (PARSER_CONTEXT * parser, RESIDUAL_DEFAULT_
  *   parser(in):
  *   smclass(in):
  *   eval_mode(in):
- *   cache(in/out): per-statement residual cache -- required on the per-row pass, ignored
+ *   eval_set(in/out): per-statement CDT eval set -- required on the per-row pass, ignored
  *	(may be NULL) on the per-statement pass.  Residual DEFAULTs belong to the row-loop
- *	owner holding this cache: STABLE ones are evaluated once when the cache is built,
+ *	owner holding this eval set: STABLE ones are evaluated once when the eval set is built,
  *	VOLATILE ones once per row.  The per-statement pass handles only the legacy
  *	statement-determined pseudo-columns.
  */
 static int
 do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode,
-				     RESIDUAL_DEFAULT_CACHE * cache)
+				     CDT_EVAL_SET * eval_set)
 {
   SM_ATTRIBUTE *att;
   int error = NO_ERROR;
@@ -793,19 +791,19 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 
   if (eval_mode == DEFAULT_EXPR_EVAL_BY_ROW_ONLY)
     {
-      assert (cache != NULL);
+      assert (eval_set != NULL);
 
       /* Residual DEFAULT expressions (Compact DEFAULT Trees), evaluated on the client (Local Evaluation)
        * path to the same value the server path would produce.  Rehydrated+classified once per statement
-       * into the cache (see RESIDUAL_DEFAULT_CACHE), built lazily here and rebuilt if a different (e.g.
+       * into the eval set (see CDT_EVAL_SET), built lazily here and rebuilt if a different (e.g.
        * partition) class arrives; the STABLE residuals are evaluated right then, once, so their value is in
        * place before the first row's template consumes it. */
-      if (cache->smclass != smclass)
+      if (eval_set->smclass != smclass)
 	{
-	  error = do_build_residual_default_cache (parser, smclass, cache);
+	  error = do_build_cdt_eval_set (parser, smclass, eval_set);
 	  if (error == NO_ERROR)
 	    {
-	      error = do_evaluate_stable_residual_defaults (parser, cache);
+	      error = do_evaluate_stable_cdts (parser, eval_set);
 	    }
 	  if (error != NO_ERROR)
 	    {
@@ -813,14 +811,14 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	    }
 	}
 
-      /* VOLATILE residuals: a fresh value for this row, straight from the cache */
-      for (j = 0; j < cache->count; j++)
+      /* VOLATILE residuals: a fresh value for this row, straight from the eval set */
+      for (j = 0; j < eval_set->count; j++)
 	{
-	  if (!PT_VOLATILITY_IS_VOLATILE_RESIDUAL (cache->entries[j].vol))
+	  if (!PT_VOLATILITY_IS_VOLATILE_RESIDUAL (eval_set->entries[j].vol))
 	    {
 	      continue;
 	    }
-	  error = do_evaluate_residual_default (parser, cache->entries[j].att, cache->entries[j].tree);
+	  error = do_evaluate_cdt (parser, eval_set->entries[j].att, eval_set->entries[j].tree);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -830,7 +828,7 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 
   /* Legacy pseudo-column enum defaults (default_expr_type != DB_DEFAULT_NONE): statement-determined ones on
    * the per-statement pass, row-determined ones (UUID()/SYS_GUID()) on the per-row pass.  Residual
-   * attributes were handled above through the cache. */
+   * attributes were handled above through the eval set. */
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       DB_DEFAULT_EXPR_TYPE default_expr_type = att->default_value.default_expr.default_expr_type;
@@ -1093,29 +1091,28 @@ do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_nam
     }
 
   /* Legacy statement-determined pseudo-columns only.  A residual DEFAULT is evaluated by the row-loop owner
-   * (do_insert_template / insert_subquery_results) through its per-statement cache -- STABLE once when the
-   * cache is built, VOLATILE once per row -- so it is rehydrated exactly once per statement. */
+   * (do_insert_template / insert_subquery_results) through its per-statement eval set -- STABLE once when the
+   * eval set is built, VOLATILE once per row -- so it is rehydrated exactly once per statement. */
   return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY, NULL);
 }
 
 /*
  * do_evaluate_row_default_expr_for_otemplate() - per-row DEFAULT pass for a class's object template: VOLATILE
- *				residuals from the cache and legacy row-determined pseudo-columns; the first
- *				call of a statement also builds the residual cache and evaluates its STABLE
+ *				residuals from the eval set and legacy row-determined pseudo-columns; the first
+ *				call of a statement also builds the CDT eval set and evaluates its STABLE
  *				residuals
  *   return: Error code
  *   parser(in):
  *   otemplate(in):
- *   cache(in/out): per-statement residual cache (required), reused across this INSERT's rows
+ *   eval_set(in/out): per-statement CDT eval set (required), reused across this INSERT's rows
  */
 static int
-do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate,
-					    RESIDUAL_DEFAULT_CACHE * cache)
+do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate, CDT_EVAL_SET * eval_set)
 {
   assert (otemplate != NULL);
   assert (otemplate->class_ != NULL);
 
-  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY, cache);
+  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY, eval_set);
 }
 
 /*
@@ -13437,7 +13434,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   DB_VALUE *value = NULL;
   DB_SEQ *seq = NULL;
   int obj_count = 0;
-  RESIDUAL_DEFAULT_CACHE rdcache = { NULL, 0, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
+  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (otemplate != NULL);
   if (otemplate == NULL)
@@ -13691,7 +13688,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	      i++;
 	    }
 
-	  error = do_evaluate_row_default_expr_for_otemplate (parser, *otemplate, &rdcache);
+	  error = do_evaluate_row_default_expr_for_otemplate (parser, *otemplate, &cdt_eval);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -13898,7 +13895,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
     }
 
 cleanup:
-  do_clear_residual_default_cache (parser, &rdcache);
+  do_clear_cdt_eval_set (parser, &cdt_eval);
 
   /* free attribute descriptors */
   if (attr_descs)
@@ -14003,7 +14000,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   DB_SEQ *seq = NULL;
   DB_VALUE db_value;
   DB_VALUE *value = NULL;
-  RESIDUAL_DEFAULT_CACHE rdcache = { NULL, 0, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
+  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (parser != NULL);
 
@@ -14198,7 +14195,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 			}
 		    }
 
-		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate, &rdcache);
+		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate, &cdt_eval);
 		  if (error != NO_ERROR)
 		    {
 		      dbt_abort_object (otemplate);
@@ -14345,7 +14342,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
 
 cleanup:
-  do_clear_residual_default_cache (parser, &rdcache);
+  do_clear_cdt_eval_set (parser, &cdt_eval);
 
   if (update != NULL)
     {
