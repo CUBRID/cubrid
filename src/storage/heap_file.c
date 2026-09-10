@@ -690,18 +690,17 @@ static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, 
 #endif /* ENABLE_UNUSED_FUNCTION */
 static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen);
 static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INFO * capacity);
-static int heap_get_capacity_serial (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
-				     INT64 * num_recs_relocated, INT64 * num_recs_inovf, INT64 * num_pages,
-				     int *avg_freespace, int *avg_freespace_nolast, int *avg_reclength,
-				     int *avg_overhead);
+static int heap_get_capacity_serial (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INFO * capacity);
+/* the argument structs are defined next to the implementations below */
+struct heap_capacity_accum;
+static int heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr,
+					      struct heap_capacity_accum *accum, int *page_freespace_out);
+static void heap_capacity_accum_to_info (const struct heap_capacity_accum *accum, int last_page_freespace,
+					 HEAP_CAPACITY_INFO * capacity);
 #if defined (SERVER_MODE)
+struct heap_capacity_worker_arg;
 static int heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INFO * capacity,
 				       bool * applied);
-/* the argument structs are defined next to the implementation below */
-struct heap_capacity_accum;
-struct heap_capacity_worker_arg;
-static int heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr,
-					      struct heap_capacity_accum *accum);
 static void heap_capacity_parallel_worker (cubthread::entry & thread_ref, struct heap_capacity_worker_arg *arg);
 static bool heap_capacity_vpid_is_counted (const FILE_FTAB_COLLECTOR * collector, const VPID * vpid);
 #endif /* SERVER_MODE */
@@ -9352,9 +9351,6 @@ heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_r
   return NO_ERROR;
 }
 
-#if defined (SERVER_MODE)	/* parallel_query is linked into cub_server only (excludes SA / CS) */
-/* Parallel reducer for SHOW HEAP CAPACITY (entry point: heap_get_capacity_parallel). */
-
 /* heap_capacity_accum - per-worker partial sums, merged after join. Zero-initialize before use. */
 typedef struct heap_capacity_accum HEAP_CAPACITY_ACCUM;
 struct heap_capacity_accum
@@ -9371,9 +9367,13 @@ struct heap_capacity_accum
 /*
  * heap_capacity_accumulate_one_page () - fold one fixed heap page's stats into accum.
  *   return: NO_ERROR, or the error of a failed overflow probe.
+ *   page_freespace_out(out): the free space this page contributed to accum->sum_freespace, NULL if not needed.
+ *     Free space is not stable under our latch, so a caller that must subtract this page again has to reuse this
+ *     value instead of reading it a second time.
  */
 static int
-heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, HEAP_CAPACITY_ACCUM * accum)
+heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, HEAP_CAPACITY_ACCUM * accum,
+				   int *page_freespace_out)
 {
   RECDES recdes;		/* Header record descriptor */
   INT16 slotid = -1;		/* Slot of one object */
@@ -9394,6 +9394,11 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
   accum->sum_freespace += page_freespace;
   accum->sum_overhead += j * SPAGE_SLOT_SIZE;
 
+  if (page_freespace_out != NULL)
+    {
+      *page_freespace_out = page_freespace;
+    }
+
   while ((j--) > 0)
     {
       if (spage_next_record (page_ptr, &slotid, &recdes, PEEK) == S_SUCCESS)
@@ -9410,6 +9415,9 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
 		case REC_ASSIGN_ADDRESS:
 		case REC_HOME:
 		case REC_NEWHOME:
+		  /* Note: for newhome (relocated), we are including the length and number of records. In the
+		   *       relocation record (above) we are just adding the overhead and number of reclocation
+		   *       records. For assign address, we assume the given size. */
 		  accum->num_recs += 1;
 		  accum->sum_reclength += spage_get_record_length (thread_p, page_ptr, slotid);
 		  break;
@@ -9434,6 +9442,9 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
 		  accum->sum_overhead += ovf_overhead;
 		  break;
 		case REC_MARKDELETED:
+		  /* TODO Find out and document here why this is added to the overhead. The record has been deleted
+		   *      so its length should no longer have any meaning. Perhaps the length of the slot should have
+		   *      been added instead? */
 		  accum->sum_overhead += spage_get_record_length (thread_p, page_ptr, slotid);
 		  break;
 		case REC_DELETED_WILL_REUSE:
@@ -9446,6 +9457,44 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
 
   return error_code;
 }
+
+/*
+ * heap_capacity_accum_to_info () - derive the 8 reported statistics from an accumulator.
+ *   accum(in): totals collected by heap_capacity_accumulate_one_page
+ *   last_page_freespace(in): free space of the page to leave out of avg_freespace_nolast, 0 for none.
+ *     Free space is not stable under our latch, so the serial walk passes back the value the helper reported.
+ *     The parallel reducer can only re-read it after the join, which is why its value is best-effort.
+ *   capacity(out): the 8 statistics
+ */
+static void
+heap_capacity_accum_to_info (const HEAP_CAPACITY_ACCUM * accum, int last_page_freespace, HEAP_CAPACITY_INFO * capacity)
+{
+  capacity->num_recs = accum->num_recs;
+  capacity->num_recs_relocated = accum->num_recs_relocated;
+  capacity->num_recs_inovf = accum->num_recs_inovf;
+  capacity->num_pages = accum->num_pages;
+  capacity->avg_freespace = 0;
+  capacity->avg_freespace_nolast = 0;
+  capacity->avg_reclength = 0;
+  capacity->avg_overhead = 0;
+
+  if (accum->num_pages > 0)
+    {
+      /* the chain tail is left out of avg_freespace_nolast because it would contaminate the average.
+       * num_pages also counts overflow pages, so the divisor is only approximate. */
+      capacity->avg_freespace_nolast =
+	(accum->num_pages > 1) ? (int) ((accum->sum_freespace - last_page_freespace) / (accum->num_pages - 1)) : 0;
+      capacity->avg_freespace = (int) (accum->sum_freespace / accum->num_pages);
+      capacity->avg_overhead = (int) (accum->sum_overhead / accum->num_pages);
+    }
+  if (accum->num_recs != 0)
+    {
+      capacity->avg_reclength = (int) (accum->sum_reclength / accum->num_recs);
+    }
+}
+
+#if defined (SERVER_MODE)	/* parallel_query is linked into cub_server only (excludes SA) */
+/* Parallel reducer for SHOW HEAP CAPACITY (entry point: heap_get_capacity_parallel). */
 
 /*
  * heap_capacity_worker_arg - per-worker argument for the parallel SHOW HEAP CAPACITY reducer.
@@ -9561,7 +9610,7 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
-	  error_code = heap_capacity_accumulate_one_page (&thread_ref, page, arg->accum);
+	  error_code = heap_capacity_accumulate_one_page (&thread_ref, page, arg->accum, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      /* capture the errid before anything else runs; the callee may have flattened it to
@@ -9807,31 +9856,30 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 	goto exit;
       }
 
-    /* 5. reduce per-worker partials into the 8 outputs (averages computed once, as in serial) */
-    INT64 t_num_recs = 0, t_reloc = 0, t_inovf = 0, t_pages = 0;
-    INT64 t_freespace = 0, t_reclength = 0, t_overhead = 0;
+    /* 5. merge the per-worker partials, then derive the 8 outputs */
+    HEAP_CAPACITY_ACCUM total = { 0 };
     int last_page_freespace = 0;
 
     for (int i = 0; i < n_workers; i++)
       {
-	HEAP_CAPACITY_ACCUM *a = &accums[i];
+	const HEAP_CAPACITY_ACCUM *a = &accums[i];
 
-	t_num_recs += a->num_recs;
-	t_reloc += a->num_recs_relocated;
-	t_inovf += a->num_recs_inovf;
-	t_pages += a->num_pages;
-	t_freespace += a->sum_freespace;
-	t_reclength += a->sum_reclength;
-	t_overhead += a->sum_overhead;
+	total.num_recs += a->num_recs;
+	total.num_recs_relocated += a->num_recs_relocated;
+	total.num_recs_inovf += a->num_recs_inovf;
+	total.num_pages += a->num_pages;
+	total.sum_freespace += a->sum_freespace;
+	total.sum_reclength += a->sum_reclength;
+	total.sum_overhead += a->sum_overhead;
       }
 
     /* re-read the last page's free space after join: a later observation than the workers' sums,
      * and 0 if the page is gone -- avg_freespace_nolast is best-effort */
-    if (have_last_page && t_pages > 1)
+    if (have_last_page && total.num_pages > 1)
       {
 	PAGE_PTR last_page;
 
-	/* nothing else is latched here, so pgbuf_fix is enough -- same reasoning as the worker */
+	/* nothing else is latched here, so pgbuf_fix is enough */
 	last_page = pgbuf_fix (thread_p, &last_page_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
 			       PGBUF_UNCONDITIONAL_LATCH);
 	if (last_page != NULL)
@@ -9857,26 +9905,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 	  }
       }
 
-    capacity->num_recs = t_num_recs;
-    capacity->num_recs_relocated = t_reloc;
-    capacity->num_recs_inovf = t_inovf;
-    capacity->num_pages = t_pages;
-    capacity->avg_freespace = 0;
-    capacity->avg_freespace_nolast = 0;
-    capacity->avg_reclength = 0;
-    capacity->avg_overhead = 0;
-
-    if (t_pages > 0)
-      {
-	capacity->avg_freespace_nolast =
-	  (t_pages > 1) ? (int) ((t_freespace - last_page_freespace) / (t_pages - 1)) : 0;
-	capacity->avg_freespace = (int) (t_freespace / t_pages);
-	capacity->avg_overhead = (int) (t_overhead / t_pages);
-      }
-    if (t_num_recs != 0)
-      {
-	capacity->avg_reclength = (int) (t_reclength / t_num_recs);
-      }
+    heap_capacity_accum_to_info (&total, last_page_freespace, capacity);
   }
 
   /* complete: tell the caller to use *capacity instead of running serial */
@@ -9897,55 +9926,25 @@ exit:
 
 /*
  * heap_get_capacity_serial () - serial implementation behind heap_get_capacity
- *   return: NO_ERROR
+ *   return: NO_ERROR, or the error of a failed page fix or overflow probe
  *   hfid(in): Object heap file identifier
- *   num_recs(in/out): Total Number of objects
- *   num_recs_relocated(in/out):
- *   num_recs_inovf(in/out):
- *   num_pages(in/out): Total number of heap pages
- *   avg_freespace(in/out): Average free space per page
- *   avg_freespace_nolast(in/out): Average free space per page without taking in
- *                                 consideration last page
- *   avg_reclength(in/out): Average object length
- *   avg_overhead(in/out): Average overhead per page
+ *   capacity(out): the 8 statistics, filled only on success
  *
- * Note: Find the current storage facts/capacity for given heap.
+ * Note: Find the current storage facts/capacity for given heap by walking its page chain. A failed overflow probe
+ *       aborts here, where the pre-merge code silently under-counted; this matches heap_get_capacity_parallel.
  */
 static int
-heap_get_capacity_serial (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
-			  INT64 * num_recs_relocated, INT64 * num_recs_inovf, INT64 * num_pages,
-			  int *avg_freespace, int *avg_freespace_nolast, int *avg_reclength, int *avg_overhead)
+heap_get_capacity_serial (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INFO * capacity)
 {
   VPID vpid;			/* Page-volume identifier */
-  RECDES recdes;		/* Header record descriptor */
-  INT16 slotid;			/* Slot of one object */
-  OID *ovf_oid;
-  int last_freespace;
-  int ovf_len;
-  int ovf_num_pages;
-  int ovf_free_space;
-  int ovf_overhead;
-  int j;
-  INT16 type = REC_UNKNOWN;
+  HEAP_CAPACITY_ACCUM accum = { 0 };
+  int last_freespace = 0;
   int ret = NO_ERROR;
-  INT64 sum_freespace = 0;
-  INT64 sum_reclength = 0;
-  INT64 sum_overhead = 0;
   PGBUF_WATCHER pg_watcher;
   PGBUF_WATCHER old_pg_watcher;
 
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-
-  *num_recs = 0;
-  *num_pages = 0;
-  *avg_freespace = 0;
-  *avg_reclength = 0;
-  *avg_overhead = 0;
-  *num_recs_relocated = 0;
-  *num_recs_inovf = 0;
-  *avg_freespace_nolast = 0;
-  last_freespace = 0;
 
   vpid.volid = hfid->vfid.volid;
   vpid.pageid = hfid->hpgid;
@@ -9972,72 +9971,14 @@ heap_get_capacity_serial (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * nu
 	  continue;
 	}
 
-      slotid = -1;
-      j = spage_number_of_records (pg_watcher.pgptr);
-
-      last_freespace = spage_get_free_space (thread_p, pg_watcher.pgptr);
-
-      *num_pages += 1;
-      sum_freespace += last_freespace;
-      sum_overhead += j * SPAGE_SLOT_SIZE;
-
-      while ((j--) > 0)
+      /* the walk ends on the page left out of avg_freespace_nolast, so keep overwriting this */
+      ret = heap_capacity_accumulate_one_page (thread_p, pg_watcher.pgptr, &accum, &last_freespace);
+      if (ret != NO_ERROR)
 	{
-	  if (spage_next_record (pg_watcher.pgptr, &slotid, &recdes, PEEK) == S_SUCCESS)
-	    {
-	      if (slotid != HEAP_HEADER_AND_CHAIN_SLOTID)
-		{
-		  type = spage_get_record_type (pg_watcher.pgptr, slotid);
-		  switch (type)
-		    {
-		    case REC_RELOCATION:
-		      *num_recs_relocated += 1;
-		      sum_overhead += spage_get_record_length (thread_p, pg_watcher.pgptr, slotid);
-		      break;
-		    case REC_ASSIGN_ADDRESS:
-		    case REC_HOME:
-		    case REC_NEWHOME:
-		      /*
-		       * Note: for newhome (relocated), we are including the length
-		       *       and number of records. In the relocation record (above)
-		       *       we are just adding the overhead and number of
-		       *       reclocation records.
-		       *       for assign address, we assume the given size.
-		       */
-		      *num_recs += 1;
-		      sum_reclength += spage_get_record_length (thread_p, pg_watcher.pgptr, slotid);
-		      break;
-		    case REC_BIGONE:
-		      *num_recs += 1;
-		      *num_recs_inovf += 1;
-		      sum_overhead += spage_get_record_length (thread_p, pg_watcher.pgptr, slotid);
-
-		      ovf_oid = (OID *) recdes.data;
-		      if (heap_ovf_get_capacity (thread_p, ovf_oid, &ovf_len, &ovf_num_pages, &ovf_overhead,
-						 &ovf_free_space) == NO_ERROR)
-			{
-			  sum_reclength += ovf_len;
-			  *num_pages += ovf_num_pages;
-			  sum_freespace += ovf_free_space;
-			  sum_overhead += ovf_overhead;
-			}
-		      break;
-		    case REC_MARKDELETED:
-		      /*
-		       * TODO Find out and document here why this is added to
-		       * the overhead. The record has been deleted so its
-		       * length should no longer have any meaning. Perhaps
-		       * the length of the slot should have been added instead?
-		       */
-		      sum_overhead += spage_get_record_length (thread_p, pg_watcher.pgptr, slotid);
-		      break;
-		    case REC_DELETED_WILL_REUSE:
-		    default:
-		      break;
-		    }
-		}
-	    }
+	  pgbuf_ordered_unfix (thread_p, &pg_watcher);
+	  goto exit_on_error;
 	}
+
       (void) heap_vpid_next (thread_p, hfid, pg_watcher.pgptr, &vpid);
       pgbuf_replace_watcher (thread_p, &pg_watcher, &old_pg_watcher);
     }
@@ -10049,21 +9990,7 @@ heap_get_capacity_serial (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * nu
 
   assert (pg_watcher.pgptr == NULL);
 
-  if (*num_pages > 0)
-    {
-      /*
-       * Don't take in consideration the last page for free space
-       * considerations since the average free space will be contaminated.
-       */
-      *avg_freespace_nolast = ((*num_pages > 1) ? (int) ((sum_freespace - last_freespace) / (*num_pages - 1)) : 0);
-      *avg_freespace = (int) (sum_freespace / *num_pages);
-      *avg_overhead = (int) (sum_overhead / *num_pages);
-    }
-
-  if (*num_recs != 0)
-    {
-      *avg_reclength = (int) (sum_reclength / *num_recs);
-    }
+  heap_capacity_accum_to_info (&accum, last_freespace, capacity);
 
   return ret;
 
@@ -10082,7 +10009,7 @@ exit_on_error:
  * heap_get_capacity () - Find space consumed by heap (SHOW HEAP CAPACITY entry point).
  *   return: NO_ERROR, or a propagated error from the parallel attempt or the serial fallback
  *   hfid(in): Object heap file identifier
- *   capacity(out): the storage facts/capacity (see HEAP_CAPACITY_INFO)
+ *   capacity(out): the storage facts/capacity (see HEAP_CAPACITY_INFO), filled only on success
  *
  * Note: tries parallel first; heap_get_capacity_parallel declines (applied == false) for the cases
  *       serial can still answer, and returns an error for a genuine failure.
@@ -10106,10 +10033,7 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INF
     }
 #endif /* SERVER_MODE */
 
-  error_code =
-    heap_get_capacity_serial (thread_p, hfid, &capacity->num_recs, &capacity->num_recs_relocated,
-			      &capacity->num_recs_inovf, &capacity->num_pages, &capacity->avg_freespace,
-			      &capacity->avg_freespace_nolast, &capacity->avg_reclength, &capacity->avg_overhead);
+  error_code = heap_get_capacity_serial (thread_p, hfid, capacity);
   return error_code;
 }
 
@@ -15561,14 +15485,7 @@ exit:
 int
 heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
 {
-  INT64 num_recs = 0;
-  INT64 num_recs_relocated = 0;
-  INT64 num_recs_inovf = 0;
-  INT64 num_pages = 0;
-  int avg_freespace = 0;
-  int avg_freespace_nolast = 0;
-  int avg_reclength = 0;
-  int avg_overhead = 0;
+  HEAP_CAPACITY_INFO capacity = { 0 };
   HEAP_CACHE_ATTRINFO attr_info;
   FILE_DESCRIPTORS fdes;
 
@@ -15578,9 +15495,7 @@ heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
 	   IO_PAGESIZE - DB_PAGESIZE);
 
   /* Go to each file, check only the heap files */
-  error_code =
-    heap_get_capacity_serial (thread_p, hfid, &num_recs, &num_recs_relocated, &num_recs_inovf, &num_pages,
-			      &avg_freespace, &avg_freespace_nolast, &avg_reclength, &avg_overhead);
+  error_code = heap_get_capacity_serial (thread_p, hfid, &capacity);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -15589,8 +15504,9 @@ heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
   fprintf (fp, "HFID:%d|%d|%d, Num_recs = %" PRId64 ", Num_reloc_recs = %" PRId64 ",\n    Num_recs_inovf = %" PRId64
 	   ", Avg_reclength = %d,\n    Num_pages = %" PRId64 ", Avg_free_space_per_page = %d,\n"
 	   "    Avg_free_space_per_page_without_lastpage = %d\n    Avg_overhead_per_page = %d\n",
-	   (int) hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, num_recs, num_recs_relocated, num_recs_inovf,
-	   avg_reclength, num_pages, avg_freespace, avg_freespace_nolast, avg_overhead);
+	   (int) hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, capacity.num_recs, capacity.num_recs_relocated,
+	   capacity.num_recs_inovf, capacity.avg_reclength, capacity.num_pages, capacity.avg_freespace,
+	   capacity.avg_freespace_nolast, capacity.avg_overhead);
 
   /* Dump schema definition */
   error_code = file_descriptor_get (thread_p, &hfid->vfid, &fdes);
