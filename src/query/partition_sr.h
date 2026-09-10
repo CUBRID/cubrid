@@ -119,9 +119,11 @@ extern int partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oi
                                    heap_prepared_row *prepared = nullptr);
 /* *INDENT-ON* */
 
+/* *INDENT-OFF* */
 extern int partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
 				   PRUNING_CONTEXT * pcontext, int pruning_type, OID * pruned_class_oid,
-				   HFID * pruned_hfid, OID * superclass_oid);
+				   HFID * pruned_hfid, OID * superclass_oid, heap_prepared_row *prepared = nullptr);
+/* *INDENT-ON* */
 
 extern int partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid, HFID * class_hfid,
 					BTID * btid);

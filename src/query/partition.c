@@ -3717,7 +3717,8 @@ cleanup:
  */
 int
 partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes, PRUNING_CONTEXT * pcontext,
-			int pruning_type, OID * pruned_class_oid, HFID * pruned_hfid, OID * superclass_oid)
+			int pruning_type, OID * pruned_class_oid, HFID * pruned_hfid, OID * superclass_oid,
+			heap_prepared_row * prepared)
 {
   PRUNING_CONTEXT pinfo;
   int error = NO_ERROR;
@@ -3797,7 +3798,7 @@ partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES *
       goto cleanup;
     }
 
-  error = partition_find_partition_for_record (pcontext, class_oid, recdes, pruned_class_oid, pruned_hfid);
+  error = partition_find_partition_for_record (pcontext, class_oid, recdes, pruned_class_oid, pruned_hfid, prepared);
   if (error != NO_ERROR)
     {
       goto cleanup;

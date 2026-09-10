@@ -48,6 +48,27 @@ namespace
     COL_OOS_UNUSED_BYTES
   };
 
+  struct domain_case
+  {
+    const char *type;
+    const char *value;
+    const char *boundary;
+  };
+  const domain_case partition_domains[] =
+  {
+    { "SMALLINT", "1", "10" }, { "INTEGER", "1", "10" }, { "BIGINT", "1", "10" },
+    { "DATE", "'2020-01-01'", "'2021-01-01'" },
+    { "TIME", "'01:00:00'", "'02:00:00'" },
+    { "TIMESTAMP", "'2020-01-01 01:00:00'", "'2021-01-01 01:00:00'" },
+    { "TIMESTAMPTZ", "'2020-01-01 01:00:00 +00:00'", "'2021-01-01 01:00:00 +00:00'" },
+    { "TIMESTAMPLTZ", "'2020-01-01 01:00:00 +00:00'", "'2021-01-01 01:00:00 +00:00'" },
+    { "DATETIME", "'2020-01-01 01:00:00.123'", "'2021-01-01 01:00:00.123'" },
+    { "DATETIMETZ", "'2020-01-01 01:00:00.123 +00:00'", "'2021-01-01 01:00:00.123 +00:00'" },
+    { "DATETIMELTZ", "'2020-01-01 01:00:00.123 +00:00'", "'2021-01-01 01:00:00.123 +00:00'" },
+    { "CHAR(40)", "'abcdefghijklmnopqrst'", "'m'" },
+    { "VARCHAR(80)", "'abcdefghijklmnopqrst'", "'m'" }
+  };
+
   static int
   show_heap_oos_query (const char *sql, DB_QUERY_RESULT **result)
   {
@@ -165,16 +186,16 @@ class OosSqlShow : public ::testing::Test
   protected:
     void SetUp () override
     {
-      exec_sql ("DROP TABLE IF EXISTS t_oos_show_no");
       exec_sql ("DROP TABLE IF EXISTS t_oos_show_yes");
+      exec_sql ("DROP TABLE IF EXISTS t_oos_show_no");
       exec_sql ("DROP TABLE IF EXISTS t_oos_show_part");
       db_commit_transaction ();
     }
 
     void TearDown () override
     {
-      exec_sql ("DROP TABLE IF EXISTS t_oos_show_no");
       exec_sql ("DROP TABLE IF EXISTS t_oos_show_yes");
+      exec_sql ("DROP TABLE IF EXISTS t_oos_show_no");
       exec_sql ("DROP TABLE IF EXISTS t_oos_show_part");
       db_commit_transaction ();
     }
@@ -466,27 +487,7 @@ TEST_F (OosSqlShow, LobPreparationPreservesSourceAndDestinationValues)
 
 TEST_F (OosSqlShow, SupportedPartitionDomainsPreserveValuesAndOwnership)
 {
-  struct domain_case
-  {
-    const char *type;
-    const char *value;
-    const char *boundary;
-  };
-  const domain_case cases[] =
-  {
-    { "SMALLINT", "1", "10" }, { "INTEGER", "1", "10" }, { "BIGINT", "1", "10" },
-    { "DATE", "'2020-01-01'", "'2021-01-01'" },
-    { "TIME", "'01:00:00'", "'02:00:00'" },
-    { "TIMESTAMP", "'2020-01-01 01:00:00'", "'2021-01-01 01:00:00'" },
-    { "TIMESTAMPTZ", "'2020-01-01 01:00:00 +00:00'", "'2021-01-01 01:00:00 +00:00'" },
-    { "TIMESTAMPLTZ", "'2020-01-01 01:00:00 +00:00'", "'2021-01-01 01:00:00 +00:00'" },
-    { "DATETIME", "'2020-01-01 01:00:00.123'", "'2021-01-01 01:00:00.123'" },
-    { "DATETIMETZ", "'2020-01-01 01:00:00.123 +00:00'", "'2021-01-01 01:00:00.123 +00:00'" },
-    { "DATETIMELTZ", "'2020-01-01 01:00:00.123 +00:00'", "'2021-01-01 01:00:00.123 +00:00'" },
-    { "CHAR(40)", "'abcdefghijklmnopqrst'", "'m'" },
-    { "VARCHAR(80)", "'abcdefghijklmnopqrst'", "'m'" }
-  };
-  for (const auto &entry : cases)
+  for (const auto &entry : partition_domains)
     {
       SCOPED_TRACE (entry.type);
       char sql[1024];
@@ -557,6 +558,33 @@ TEST_F (OosSqlShow, MovedPreparationOutlivesAttributeCache)
   EXPECT_EQ (matches, 1);
   EXPECT_LT (destination.finalize (thread_p, &class_oid), 0);
   er_clear ();
+
+  /* UPDATE reads unassigned values from the borrowed old record, and applies the fixed decrement once. */
+  const std::string old_bytes (destination.record ()->data, destination.record ()->length);
+  ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
+  attrs.inst_oid = context.res_oid;
+  for (int i = 0; i < attrs.num_values; ++i)
+    {
+      if (attrs.values[i].attrid == db_attribute_id (id_attr))
+	{
+	  attrs.values[i].do_increment = -1;
+	}
+    }
+  heap_prepared_row update;
+  error = update.prepare (thread_p, &attrs, destination.record ());
+  heap_attrinfo_end (thread_p, &attrs);
+  ASSERT_EQ (error, NO_ERROR);
+  EXPECT_EQ (std::string (destination.record ()->data, destination.record ()->length), old_bytes);
+  heap_prepared_row moved_update (std::move (update));
+  ASSERT_EQ (moved_update.finalize (thread_p, &class_oid), NO_ERROR);
+  HEAP_OPERATION_CONTEXT update_context;
+  heap_create_update_context (&update_context, &hfid, &context.res_oid, &class_oid, moved_update.record (), nullptr,
+			      UPDATE_INPLACE_CURRENT_MVCCID);
+  ASSERT_EQ (heap_update_logical (thread_p, &update_context), NO_ERROR);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE id = 7 "
+			       "AND a = 'abcdefghijklmnopqrstuvwxyz' AND b = 'zyxwvutsrqponmlkjihgfedcba'",
+			       &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
 }
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
@@ -612,6 +640,272 @@ TEST_F (OosSqlShow, ConstraintFailureAfterOosAllowsNextInsert)
 			       "(id = 1 AND payload = CAST(REPEAT(X'AB', 8192) AS BIT VARYING)) OR "
 			       "(id = 2 AND payload = CAST(REPEAT(X'EF', 8192) AS BIT VARYING))", &matches), NO_ERROR);
   EXPECT_EQ (matches, 2);
+}
+
+TEST_F (OosSqlShow, UpdateMovementAllocatesOnlyAtDestination)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, payload BIT VARYING) "
+		       "PARTITION BY RANGE(id) (PARTITION p0 VALUES LESS THAN(10), "
+		       "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES(1, X'AB')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  ASSERT_GE (exec_sql ("UPDATE t_oos_show_part SET id = 11, payload = REPEAT(X'CD', 8192) WHERE id = 1"), 0);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p1 WHERE id = 11 "
+			       "AND payload = CAST(REPEAT(X'CD', 8192) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  DB_QUERY_RESULT *result = nullptr;
+  int has_oos = -1;
+  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part__p__p0", &result), NO_ERROR);
+  EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+  EXPECT_EQ (has_oos, 0);
+  db_query_end (result);
+  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part__p__p1", &result), NO_ERROR);
+  EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+  EXPECT_EQ (has_oos, 1);
+  db_query_end (result);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p0 WHERE id = 1 AND payload = X'AB'",
+			       &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+}
+
+TEST_F (OosSqlShow, UpdateDomainsPreserveUnassignedValuesThroughMovementAndRollback)
+{
+  for (const auto &entry : partition_domains)
+    {
+      SCOPED_TRACE (entry.type);
+      char sql[1536];
+      snprintf (sql, sizeof (sql), "CREATE TABLE t_oos_show_part (k %s, payload BIT VARYING, n INT DEFAULT 7) "
+		"PARTITION BY RANGE(k) (PARTITION p0 VALUES LESS THAN(%s), "
+		"PARTITION p1 VALUES LESS THAN MAXVALUE)", entry.type, entry.boundary);
+      ASSERT_GE (exec_sql (sql), 0) << db_error_string (1);
+      snprintf (sql, sizeof (sql), "INSERT INTO t_oos_show_part(k, payload) VALUES(%s, REPEAT(X'AB', 40000))",
+		entry.value);
+      ASSERT_GE (exec_sql (sql), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      ASSERT_GE (exec_sql ("UPDATE t_oos_show_part SET n = n + 1"), 0);
+      int matches = 0;
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p0 WHERE n = 8 "
+				   "AND payload = CAST(REPEAT(X'AB', 40000) AS BIT VARYING)", &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      snprintf (sql, sizeof (sql), "UPDATE t_oos_show_part SET k = %s, n = n - 1", entry.boundary);
+      ASSERT_GE (exec_sql (sql), 0) << db_error_string (1);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p1 WHERE n = 6 "
+				   "AND payload = CAST(REPEAT(X'AB', 40000) AS BIT VARYING)", &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      DB_QUERY_RESULT *stats = nullptr;
+      ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part__p__p1", &stats), NO_ERROR);
+      int chunks = 0;
+      EXPECT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &chunks), NO_ERROR);
+      EXPECT_GT (chunks, 2);
+      db_query_end (stats);
+      ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part", &stats), NO_ERROR);
+      EXPECT_EQ (get_int_column (stats, COL_HAS_OOS_FILE, &chunks), NO_ERROR);
+      EXPECT_EQ (chunks, 0);
+      db_query_end (stats);
+      ASSERT_GE (exec_sql ("UPDATE t_oos_show_part SET k = NULL"), 0);
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p0 WHERE k IS NULL AND n = 6",
+				   &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p1 WHERE n = 6", &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      ASSERT_GE (exec_sql ("UPDATE t_oos_show_part SET payload = REPEAT(X'CD', 8192)"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p1 WHERE n = 6 "
+				   "AND payload = CAST(REPEAT(X'CD', 8192) AS BIT VARYING)", &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_part"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+    }
+}
+
+TEST_F (OosSqlShow, UpdateForcedKeyUsesCanonicalValueAndRejectsWrongPartition)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (k VARCHAR(80) DEFAULT 'abcdefghijklmnopqrst' "
+		       "STORAGE FORCE_OUTLINE, payload BIT VARYING) PARTITION BY RANGE(k) "
+		       "(PARTITION p0 VALUES LESS THAN('m'), PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part(payload) VALUES(REPEAT(X'AB', 8192))"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  EXPECT_LT (exec_sql ("UPDATE t_oos_show_part__p__p0 SET k = 'zyxwvutsrqponmlkjihg'"), 0);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+  ASSERT_GE (exec_sql ("UPDATE t_oos_show_part SET k = 'zyxwvutsrqponmlkjihg'"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p1 WHERE k = 'zyxwvutsrqponmlkjihg' "
+			       "AND payload = CAST(REPEAT(X'AB', 8192) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  ASSERT_GE (exec_sql ("UPDATE t_oos_show_part SET k = DEFAULT"), 0);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p0 WHERE k = 'abcdefghijklmnopqrst'",
+			       &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+}
+
+TEST_F (OosSqlShow, UpdateLayoutGrowthAndLobOverwritePreserveValues)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, c CLOB STORAGE FORCE_OUTLINE, "
+		       "payload BIT VARYING STORAGE PREFER_INLINE, other_payload BIT VARYING) "
+		       "PARTITION BY RANGE(id) (PARTITION p0 VALUES LESS THAN(10), "
+		       "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES(1, CHAR_TO_CLOB('original'), X'', X'')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  const int sizes[] = { 120, 248, 256, 2048, 8000 };
+  for (int size : sizes)
+    {
+      SCOPED_TRACE (size);
+      char sql[1024];
+      snprintf (sql, sizeof (sql), "UPDATE t_oos_show_part SET payload = REPEAT(X'AB', %d), "
+		"other_payload = REPEAT(X'CD', 40000), c = CHAR_TO_CLOB('replacement')", size);
+      ASSERT_GE (exec_sql (sql), 0) << db_error_string (1);
+      snprintf (sql, sizeof (sql), "SELECT COUNT(*) FROM t_oos_show_part WHERE "
+		"payload = CAST(REPEAT(X'AB', %d) AS BIT VARYING) AND "
+		"other_payload = CAST(REPEAT(X'CD', 40000) AS BIT VARYING) AND CLOB_TO_CHAR(c) = 'replacement'", size);
+      int matches = 0;
+      ASSERT_EQ (fetch_single_int (sql, &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE CLOB_TO_CHAR(c) = 'original' "
+				   "AND payload = X'' AND other_payload = X''", &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+    }
+  ASSERT_GE (exec_sql ("UPDATE t_oos_show_part SET id = 11, c = CHAR_TO_CLOB('moved')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  ASSERT_GE (exec_sql ("UPDATE t_oos_show_part SET id = 1"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p0 WHERE CLOB_TO_CHAR(c) = 'moved'",
+			       &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+}
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+TEST_F (OosSqlShow, UpdateFailureClearsPublicationAndRollsBackBothDestinations)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, a BIT VARYING, b BIT VARYING) "
+		       "PARTITION BY RANGE(id) (PARTITION p0 VALUES LESS THAN(10), "
+		       "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES(1, X'AB', X'CD')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  for (int target :
+       {
+	       1, 11
+       })
+    {
+      for (int boundary = 0; boundary < 4; ++boundary)
+	{
+	  SCOPED_TRACE (target);
+	  SCOPED_TRACE (boundary);
+	  if (boundary == 3)
+	    {
+	      oos_test_fail_insert_many_after_publications (1);
+	    }
+	  else if (boundary == 2)
+	    {
+	      heap_oos_test_fail_before_vfid_lookup_once ();
+	    }
+	  else
+	    {
+	      heap_prepared_row_test_fail_allocation_once (boundary == 0 ? heap_prepared_row_allocation::owner
+		  : heap_prepared_row_allocation::record);
+	    }
+	  char sql[512];
+	  snprintf (sql, sizeof (sql), "UPDATE t_oos_show_part SET id = %d, "
+		    "a = REPEAT(X'EF', 8192), b = REPEAT(X'01', 8192)", target);
+	  EXPECT_LT (exec_sql (sql), 0);
+	  EXPECT_TRUE (thread_get_thread_entry_info ()->oos_oids.empty ());
+	  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+	  int matches = 0;
+	  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p0 "
+				       "WHERE id = 1 AND a = X'AB' AND b = X'CD'", &matches), NO_ERROR);
+	  EXPECT_EQ (matches, 1);
+	  for (const char *stats_sql :
+	       { "SHOW HEAP OOS OF t_oos_show_part__p__p0",
+		 "SHOW HEAP OOS OF t_oos_show_part__p__p1"
+	       })
+	    {
+	      DB_QUERY_RESULT *stats = nullptr;
+	      ASSERT_EQ (show_heap_oos_query (stats_sql, &stats), NO_ERROR);
+	      EXPECT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &matches), NO_ERROR);
+	      EXPECT_EQ (matches, 0);
+	      db_query_end (stats);
+	    }
+	  ASSERT_GE (exec_sql (sql), 0);
+	  snprintf (sql, sizeof (sql), "SELECT COUNT(*) FROM t_oos_show_part WHERE id = %d AND "
+		    "a = CAST(REPEAT(X'EF', 8192) AS BIT VARYING) AND b = CAST(REPEAT(X'01', 8192) AS BIT VARYING)",
+		    target);
+	  ASSERT_EQ (fetch_single_int (sql, &matches), NO_ERROR);
+	  EXPECT_EQ (matches, 1);
+	  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+	}
+    }
+}
+#endif
+
+TEST_F (OosSqlShow, UpdateIndexFailureRollsBackMovementAndNonmovement)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT PRIMARY KEY, payload BIT VARYING) "
+		       "PARTITION BY RANGE(id) (PARTITION p0 VALUES LESS THAN(10), "
+		       "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES(1, X'AB'), (2, X'CD'), (11, X'EF')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  for (int duplicate :
+       {
+	       2, 11
+       })
+    {
+      char sql[512];
+      snprintf (sql, sizeof (sql), "UPDATE t_oos_show_part SET id = %d, payload = REPEAT(X'01', 8192) WHERE id = 1",
+		duplicate);
+      EXPECT_LT (exec_sql (sql), 0);
+      EXPECT_TRUE (thread_get_thread_entry_info ()->oos_oids.empty ());
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      int matches = 0;
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE "
+				   "(id = 1 AND payload = X'AB') OR (id = 2 AND payload = X'CD') OR "
+				   "(id = 11 AND payload = X'EF')", &matches), NO_ERROR);
+      EXPECT_EQ (matches, 3);
+      for (const char *stats_sql :
+	   { "SHOW HEAP OOS OF t_oos_show_part__p__p0",
+	     "SHOW HEAP OOS OF t_oos_show_part__p__p1"
+	   })
+	{
+	  DB_QUERY_RESULT *stats = nullptr;
+	  ASSERT_EQ (show_heap_oos_query (stats_sql, &stats), NO_ERROR);
+	  EXPECT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &matches), NO_ERROR);
+	  EXPECT_EQ (matches, 0);
+	  db_query_end (stats);
+	}
+      snprintf (sql, sizeof (sql), "UPDATE t_oos_show_part SET id = %d, payload = REPEAT(X'01', 8192) WHERE id = 1",
+		duplicate + 1);
+      ASSERT_GE (exec_sql (sql), 0);
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+    }
+}
+
+TEST_F (OosSqlShow, NonpartitionedUpdateChecksForeignKeysAfterFinalization)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_no (id INT PRIMARY KEY)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_no VALUES(1), (2)"), 0);
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT PRIMARY KEY, ref_id INT REFERENCES t_oos_show_no(id), "
+		       "payload BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_yes VALUES(1, 1, X'AB')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  EXPECT_LT (exec_sql ("UPDATE t_oos_show_yes SET ref_id = 3, payload = REPEAT(X'CD', 8192)"), 0);
+  EXPECT_TRUE (thread_get_thread_entry_info ()->oos_oids.empty ());
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE ref_id = 1 AND payload = X'AB'",
+			       &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  ASSERT_GE (exec_sql ("UPDATE t_oos_show_yes SET ref_id = 2, payload = REPEAT(X'EF', 8192)"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE ref_id = 2 "
+			       "AND payload = CAST(REPEAT(X'EF', 8192) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_yes"), 0);
 }
 
 int
