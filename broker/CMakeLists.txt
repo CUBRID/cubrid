@@ -22,6 +22,7 @@ set(BROKER_DEFS _XOPEN_SOURCE ASYNC_MODE CAS_BROKER)
 set(CUB_BROKER_SOURCES
   ${BROKER_DIR}/broker.c
   ${BROKER_DIR}/broker_shm.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/broker_process_size.c
@@ -53,6 +54,8 @@ endif(UNIX)
 # cub_broker use WinMain() on Windows platform
 add_executable(cub_broker WIN32 ${CUB_BROKER_SOURCES})
 target_compile_definitions(cub_broker PRIVATE ${BROKER_DEFS})
+# query_replace.c includes parse_tree.h -> string_regex.hpp -> re2/re2.h
+target_include_directories(cub_broker PRIVATE ${EP_INCLUDES})
 if(WIN32)
   target_link_libraries(cub_broker LINK_PRIVATE ws2_32)
 endif(WIN32)
@@ -63,6 +66,7 @@ endif(UNIX)
 
 add_executable(cub_gateway WIN32 ${CUB_BROKER_SOURCES})
 target_compile_definitions(cub_gateway PRIVATE ${BROKER_DEFS} FOR_ODBC_GATEWAY)
+target_include_directories(cub_gateway PRIVATE ${EP_INCLUDES})
 if(WIN32)
   target_link_libraries(cub_gateway LINK_PRIVATE ws2_32)
 endif(WIN32)
@@ -75,6 +79,7 @@ set(BROKER_MONITOR_SOURCES
   ${BROKER_DIR}/broker_monitor.c
   ${BROKER_DIR}/broker_config.c
   ${BROKER_DIR}/broker_shm.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/broker_process_size.c
@@ -107,6 +112,7 @@ if(WIN32)
 endif(WIN32)
 add_executable(broker_monitor ${BROKER_MONITOR_SOURCES})
 target_compile_definitions(broker_monitor PRIVATE ${BROKER_DEFS})
+target_include_directories(broker_monitor PRIVATE ${EP_INCLUDES})
 target_link_libraries(broker_monitor LINK_PRIVATE cubridcs)
 if(WIN32)
   target_link_libraries(broker_monitor LINK_PRIVATE ws2_32)
@@ -114,6 +120,7 @@ endif(WIN32)
 
 add_executable(gateway_monitor ${BROKER_MONITOR_SOURCES})
 target_compile_definitions(gateway_monitor PRIVATE ${BROKER_DEFS} FOR_ODBC_GATEWAY)
+target_include_directories(gateway_monitor PRIVATE ${EP_INCLUDES})
 target_link_libraries(gateway_monitor LINK_PRIVATE cubridcs)
 if(WIN32)
   target_link_libraries(gateway_monitor LINK_PRIVATE ws2_32)
@@ -124,6 +131,7 @@ set(BROKER_CHANGER_SOURCES
   ${BROKER_DIR}/broker_changer.c
   ${BROKER_DIR}/broker_admin_pub.c
   ${BROKER_DIR}/broker_shm.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_process_size.c
   ${BROKER_DIR}/broker_config.c
@@ -152,6 +160,7 @@ else(WIN32)
 endif(WIN32)
 add_executable(broker_changer ${BROKER_CHANGER_SOURCES})
 target_compile_definitions(broker_changer PRIVATE ${BROKER_DEFS})
+target_include_directories(broker_changer PRIVATE ${EP_INCLUDES})
 target_link_libraries(broker_changer LINK_PRIVATE cubridcs)
 if(UNIX)
   target_link_libraries(broker_changer LINK_PRIVATE rt)
@@ -175,6 +184,7 @@ set(CUBRID_BROKER_SOURCES
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/broker_admin_pub.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_process_size.c
   ${BROKER_DIR}/broker_max_heap.c
   ${BROKER_DIR}/broker_filename.c
@@ -202,6 +212,7 @@ if(WIN32)
 endif(WIN32)
 add_executable(cubrid_broker ${CUBRID_BROKER_SOURCES})
 target_compile_definitions(cubrid_broker PRIVATE ${BROKER_DEFS})
+target_include_directories(cubrid_broker PRIVATE ${EP_INCLUDES})
 target_link_libraries(cubrid_broker LINK_PRIVATE cubridcs)
 if(UNIX)
   target_link_libraries(cubrid_broker LINK_PRIVATE m)
@@ -218,6 +229,7 @@ endif(WIN32)
 
 add_executable(cubrid_gateway ${CUBRID_BROKER_SOURCES})
 target_compile_definitions(cubrid_gateway PRIVATE ${BROKER_DEFS} FOR_ODBC_GATEWAY)
+target_include_directories(cubrid_gateway PRIVATE ${EP_INCLUDES})
 target_link_libraries(cubrid_gateway LINK_PRIVATE cubridcs)
 if(UNIX)
   target_link_libraries(cubrid_gateway LINK_PRIVATE m)
@@ -252,6 +264,7 @@ set(CAS_COMMON_LIB_SOURCES
   ${BROKER_DIR}/broker_filename.c
   ${BROKER_DIR}/broker_acl.c
   ${BROKER_DIR}/broker_shm.c
+  ${BROKER_DIR}/query_replace.c
 )
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -330,7 +343,10 @@ target_compile_definitions(cub_cas PRIVATE ${BROKER_DEFS} CAS_CUBRID)
 target_include_directories(cub_cas PRIVATE ${EP_INCLUDES})
 target_link_libraries(cub_cas LINK_PRIVATE cas_common_lib cubridcs)
 if(UNIX)
-  target_link_libraries(cub_cas LINK_PRIVATE rt)
+  target_link_libraries(cub_cas LINK_PRIVATE rt ${LIBOPENSSL_LIBS})
+  if(TARGET ${LIBOPENSSL_TARGET})
+    add_dependencies(cub_cas ${LIBOPENSSL_TARGET})
+  endif()
 else(UNIX)
   target_link_libraries(cub_cas LINK_PRIVATE ws2_32 dbghelp ${LIBOPENSSL_LIBS})
 endif(UNIX)
@@ -362,6 +378,12 @@ add_executable(cub_cas_cgw WIN32 ${CUB_CAS_CGW_SOURCES})
 target_compile_definitions(cub_cas_cgw PRIVATE ${BROKER_DEFS} CAS_FOR_CGW CAS_CUBRID)
 target_include_directories(cub_cas_cgw PRIVATE ${EP_INCLUDES})
 target_link_libraries(cub_cas_cgw LINK_PRIVATE cas_cgw_lib cas_common_lib cubridcs)
+if(UNIX)
+  target_link_libraries(cub_cas_cgw LINK_PRIVATE ${LIBOPENSSL_LIBS})
+  if(TARGET ${LIBOPENSSL_TARGET})
+    add_dependencies(cub_cas_cgw ${LIBOPENSSL_TARGET})
+  endif()
+endif(UNIX)
 
 
 set(CUB_PROXY_SOURCES
@@ -370,6 +392,7 @@ set(CUB_PROXY_SOURCES
   ${BROKER_DIR}/shard_proxy_function.c
   ${BROKER_DIR}/broker_process_size.c
   ${BROKER_DIR}/broker_shm.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_filename.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
@@ -470,6 +493,7 @@ if(WITH_CCI)
     ${BROKER_DIR}/broker_tester.c
     ${BROKER_DIR}/broker_config.c
     ${BROKER_DIR}/broker_shm.c
+    ${BROKER_DIR}/query_replace.c
     ${BROKER_DIR}/broker_error.c
     ${BROKER_DIR}/broker_util.c
     ${BROKER_DIR}/broker_filename.c
@@ -495,6 +519,7 @@ if(WITH_CCI)
   endif(WIN32)
   add_executable(broker_tester ${BROKER_TESTER_SOURCES})
   target_compile_definitions(broker_tester PRIVATE ${BROKER_DEFS} BROKER_TESTER)
+  target_include_directories(broker_tester PRIVATE ${EP_INCLUDES})
   target_link_libraries(broker_tester LINK_PRIVATE cubridcs cascci)
   if(WIN32)
     target_link_libraries(broker_tester LINK_PRIVATE ws2_32)
@@ -511,6 +536,7 @@ set(BROKER_LOG_TOP_SOURCES
   ${BROKER_DIR}/broker_log_top_tran.c
   ${BROKER_DIR}/broker_config.c
   ${BROKER_DIR}/broker_shm.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/broker_filename.c
@@ -526,6 +552,7 @@ if(WIN32)
 endif(WIN32)
 add_executable(broker_log_top ${BROKER_LOG_TOP_SOURCES})
 target_compile_definitions(broker_log_top PRIVATE ${BROKER_DEFS} BROKER_LOG_TOP)
+target_include_directories(broker_log_top PRIVATE ${EP_INCLUDES})
 target_link_libraries(broker_log_top LINK_PRIVATE cubridcs)
 
 if(WITH_CCI)
@@ -559,6 +586,7 @@ set(BROKERADMIN_SOURCES
   ${BROKER_DIR}/broker_admin_so.c
   ${BROKER_DIR}/broker_admin_pub.c
   ${BROKER_DIR}/broker_shm.c
+  ${BROKER_DIR}/query_replace.c
   ${BROKER_DIR}/broker_error.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/broker_config.c
@@ -589,6 +617,7 @@ endif(WIN32)
 add_library(brokeradmin SHARED ${BROKERADMIN_SOURCES})
 set_target_properties(brokeradmin PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 target_compile_definitions(brokeradmin PRIVATE ${BROKER_DEFS} _UC_ADMIN_SO_)
+target_include_directories(brokeradmin PRIVATE ${EP_INCLUDES})
 target_link_libraries(brokeradmin LINK_PRIVATE cubridcs)
 if(WIN32)
   target_link_libraries(brokeradmin LINK_PRIVATE ws2_32)
