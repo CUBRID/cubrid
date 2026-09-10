@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,31 +16,18 @@
  *
  */
 
-//
-// xasl_analytic - implements XASL structures for analytics
-//
+/*
+ * test_main.cpp - entry point for log_prior_inflight testing
+ *
+ * A module of its own only because unit_tests/lockfree/ does not compile, and its three older tests are
+ * the reason rather than this one. The ring test keeps the test_lockfree namespace so that folding it
+ * back in, once that module builds again, is a move and nothing else.
+ */
 
-#include "xasl_analytic.hpp"
+#include "test_inflight_ring.hpp"
 
-#include "dbtype.h"
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
-
-namespace cubxasl
+int
+main (void)
 {
-  void
-  analytic_list_node::init ()
-  {
-    /* is_first_exec_time */
-    is_first_exec_time = true;
-
-    /* part_value */
-    db_make_null (&part_value);
-
-    /* curr_cnt */
-    curr_cnt = 0;
-
-    /* execution-only field, not part of the stream, so initialize it here */
-    sum_acc.is_active = false;
-  }
+  return test_lockfree::test_inflight_ring_functional ();
 }
