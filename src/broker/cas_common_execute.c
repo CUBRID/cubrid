@@ -27,6 +27,7 @@
 #include "cas_util.h"
 #include "perf_monitor.h"
 #include "release_string.h"
+#include "chartype.h"
 #include "dbi.h"
 #include <string.h>
 #include <strings.h>
@@ -247,6 +248,49 @@ consume_tokens (char *stmt, STATEMENT_STATUS stmt_status)
 	    {
 	      break;
 	    }
+	}
+    }
+
+  return p;
+}
+
+/*
+ * skip_leading_whitespace_and_comment () - non-destructively skip leading
+ *   whitespace and comments (C-style, line comments) and return a pointer to
+ *   the first meaningful character. The original buffer is not modified.
+ */
+char *
+skip_leading_whitespace_and_comment (char *stmt)
+{
+  char *p = stmt;
+
+  while (*p)
+    {
+      if (char_isspace ((int) *p))
+	{
+	  p++;
+	}
+      else if (*p == '-' && *(p + 1) == '-')
+	{
+	  /* stops at '\n' or '\0'; the '\n' is consumed by the whitespace branch */
+	  p = consume_tokens (p + 2, SQL_STYLE_COMMENT);
+	}
+      else if (*p == '/' && *(p + 1) == '/')
+	{
+	  p = consume_tokens (p + 2, CPP_STYLE_COMMENT);
+	}
+      else if (*p == '/' && *(p + 1) == '*')
+	{
+	  /* stops at the closing slash of the block comment (or '\0' when unterminated) */
+	  p = consume_tokens (p + 2, C_STYLE_COMMENT);
+	  if (*p == '/')
+	    {
+	      p++;
+	    }
+	}
+      else
+	{
+	  break;
 	}
     }
 
