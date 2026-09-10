@@ -857,8 +857,8 @@ parser_free_node_resources (PT_NODE * node)
     }
   if (node->xasl_id != NULL)
     {
-      /* covers cached-subquery nodes buried in FROM/WHERE, which db_close_session_local() and friends never
-       * reach directly since they only walk the session's top-level statements[] array. */
+      /* covers cached-subquery nodes anywhere in the tree,
+       * unreached by statements[]-only walkers like db_close_session_local(). */
       free_and_init (node->xasl_id);
     }
 }
