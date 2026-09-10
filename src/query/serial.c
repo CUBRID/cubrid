@@ -1517,7 +1517,6 @@ serial_flush_cache_pool_replicated (THREAD_ENTRY * thread_p)
  *   return: true when the image must not be applied here
  *   class_oidp(in)  : class of the row; rows of other classes are never stale
  *   serial_oidp(in) : OID of the row
- *   old_recdes(in)  : the row on this node
  *   new_recdes(in)  : the image from the other node
  *
  * A standby follows every image, so a promotion resumes at the master's last issued value. A leaving
@@ -1525,17 +1524,23 @@ serial_flush_cache_pool_replicated (THREAD_ENTRY * thread_p)
  * not move cur_val backwards: below what this node has issued, it would re-issue those values. A
  * cyclic serial has no direction, and an active node leaves its row alone. A skipped image is reported
  * in the server log as a notification.
+ *
+ * The row on this node is read here instead of being taken from the caller: the caller reads it with
+ * a scan cache that does not keep the page fixed, so its record points into an unfixed page. The
+ * applier holds the row's X lock, so what is read here is the row the update is about to replace.
  */
 bool
 serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, const OID * serial_oidp,
-			    RECDES * old_recdes, RECDES * new_recdes)
+			    RECDES * new_recdes)
 {
 #if !defined (SERVER_MODE)
   /* the log applier forces rows into a server only */
   return false;
 #else /* SERVER_MODE */
+  HEAP_SCANCACHE scan_cache;
+  RECDES old_recdes = RECDES_INITIALIZER;
   HEAP_CACHE_ATTRINFO old_info, new_info;
-  bool old_started = false, new_started = false, failed = false, stale = false;
+  bool scan_started = false, old_started = false, new_started = false, failed = false, stale = false;
   HA_SERVER_STATE state;
   ATTR_ID attrid;
   DB_VALUE *val, *name = NULL, *old_cur = NULL, *new_cur = NULL;
@@ -1556,6 +1561,14 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
     {
       return false;
     }
+  heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, oid_Serial_class_oid);
+  scan_started = true;
+  if (heap_get_visible_version (thread_p, serial_oidp, oid_Serial_class_oid, &old_recdes, &scan_cache, PEEK, NULL_CHN)
+      != S_SUCCESS)
+    {
+      failed = true;
+      goto exit;
+    }
   if (heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &old_info) != NO_ERROR)
     {
       failed = true;
@@ -1568,7 +1581,7 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
       goto exit;
     }
   new_started = true;
-  if (heap_attrinfo_read_dbvalues (thread_p, serial_oidp, old_recdes, &old_info) != NO_ERROR
+  if (heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &old_recdes, &old_info) != NO_ERROR
       || heap_attrinfo_read_dbvalues (thread_p, serial_oidp, new_recdes, &new_info) != NO_ERROR)
     {
       failed = true;
@@ -1653,6 +1666,10 @@ exit:
   if (old_started)
     {
       heap_attrinfo_end (thread_p, &old_info);
+    }
+  if (scan_started)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
     }
   return stale;
 #endif /* SERVER_MODE */

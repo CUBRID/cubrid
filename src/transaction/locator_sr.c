@@ -7029,7 +7029,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    case LC_FLUSH_UPDATE:
 	    case LC_FLUSH_UPDATE_PRUNE:
 	    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
-	      if (serial_repl_image_is_stale (thread_p, &obj->class_oid, &obj->oid, &old_recdes, &recdes))
+	      if (serial_repl_image_is_stale (thread_p, &obj->class_oid, &obj->oid, &recdes))
 		{
 		  break;	/* the row on this node is newer; the object counts as applied */
 		}
