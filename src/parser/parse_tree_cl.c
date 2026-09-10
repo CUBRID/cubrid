@@ -948,8 +948,11 @@ pt_find_id_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *c
 static XASL_ID *
 pt_clone_xasl_id (const XASL_ID * src)
 {
-  XASL_ID *dst = (XASL_ID *) malloc (sizeof (XASL_ID));
+  XASL_ID *dst;
 
+  assert (src != NULL);
+
+  dst = (XASL_ID *) malloc (sizeof (XASL_ID));
   if (dst == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_ID));
@@ -986,7 +989,7 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 
   *new_node = *old_node;
 
-  /* clone XASL_ID; aliasing old_node's would double-free in parser_free_node_resources () (CBRD-27406) */
+  /* clone XASL_ID; aliasing old_node's would double-free in parser_free_node_resources () */
   new_node->xasl_id = NULL;
   if (old_node->xasl_id != NULL)
     {
