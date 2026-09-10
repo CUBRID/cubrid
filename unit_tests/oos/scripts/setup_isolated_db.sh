@@ -24,7 +24,7 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-source "$script_dir/oos_unittestdb_common.sh"
+source "$script_dir/oos_db_common.sh"
 
 db_name="${1:?database name required}"
 
@@ -35,10 +35,10 @@ if [ "$db_name" = "$OOS_UNITTESTDB_NAME" ]; then
   exit 1
 fi
 
-db_dir=$(oos_named_database_dir "$db_name")
+db_dir=$(oos_database_dir "$db_name")
 
 cubrid server stop "$db_name" 2>/dev/null || true
-if oos_named_database_exists "$db_name"; then
+if oos_database_exists "$db_name"; then
   cubrid deletedb "$db_name"
 fi
 

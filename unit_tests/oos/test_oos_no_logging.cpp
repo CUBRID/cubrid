@@ -23,23 +23,29 @@
  * is the page LSA read before the chunk's own log append, and a skipped append leaves the page LSA
  * where it was, so with logging disabled two occupants of one slot can carry the same stamp. The
  * accepted policy (2026-09-09) keeps documented no-logging bulk loads working and states that
- * precondition rather than rejecting the write, so these tests pin down both halves: the same
+ * precondition rather than rejecting the write, so this test pins down both halves: the same
  * scenario separates the stamps while logging is on and repeats them while it is off, and a
  * no-logging bulk load of large values still stores values that read back byte for byte.
  *
  * Two properties of the runtime shape this binary:
  *
- * - The actual logging state is process-global and one-way. log_set_no_logging() has no inverse, so
- *   the logged-mode case has to run before the switch. Every case states its own precondition
- *   instead of trusting the order.
+ * - The actual logging state is process-global and one-way: log_set_no_logging() has no inverse. So
+ *   this binary holds exactly ONE test, which walks the transition in order. Split into several, the
+ *   ones needing logging on could only defend themselves against a shuffled run by skipping, and a
+ *   skip is how logged-mode identity coverage gets quietly lost - a shuffled run really does put the
+ *   no-logging case first and leave the logged one unrunnable.
  * - No-logging writes are not recoverable, which is exactly why the utility that offers them tells
  *   the operator to back up first. This binary therefore owns its database (oosnologdb) instead of
  *   sharing the unittestdb fixture with the rest of the OOS suite.
  *
  * What a repeated stamp here does NOT show: that ordinary bulk loading produces a stale reclamation
- * request that deletes live data. No-logging is standalone-only, where there is no vacuum block
- * retry to replay a stale reference, and the loss scenario CBRD-26950 fixes needs such a replay. The
- * case below is the disclosed limit of the guarantee, not a reproduction of the bug.
+ * request that deletes live data. It is the disclosed limit of the guarantee, not a reproduction of
+ * the bug. Note what it also does not show: that the limit is confined to standalone mode. Runtime
+ * activation is - log_set_no_logging() fails outside SA_MODE - but the hidden `no_logging` parameter
+ * is PRM_FOR_SERVER and log_initialize assigns log_No_logging from it with no mode guard, so a
+ * server can boot unlogged, and a server is where vacuum block retries live. No such production
+ * path was established by this repair; the accepted policy states the precondition instead, and any
+ * future producer of stale references has to preserve it or revisit the design.
  */
 
 #include "gtest/gtest.h"
@@ -65,7 +71,10 @@ int bridge_oos_get_max_chunk_size_within_page ();
 
 namespace
 {
-  /* Inserts payload and returns both outputs of oos_insert. */
+  /* Inserts payload and returns both outputs of oos_insert. Deliberately a copy of the adapter in
+   * test_oos_identity_stamp.cpp: sharing it would mean a helper that takes thread_p, and rewriting the
+   * 35 call sites there is not worth it for twelve lines. The repair plan files sharing duplicated test
+   * adapters as a lower-priority follow-up. */
   int
   insert_with_stamp (const VFID &oos_vfid, const std::string &payload, OID &oid_out, LOG_LSA &stamp_out)
   {
@@ -107,16 +116,6 @@ class OosNoLoggingTest : public ::testing::Test
       ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
     }
 
-    /* Turns the actual logging state off if it is still on. */
-    static void ensure_no_logging ()
-    {
-      if (!log_is_no_logging ())
-	{
-	  ASSERT_EQ (log_set_no_logging (), NO_ERROR);
-	}
-      ASSERT_TRUE (log_is_no_logging ());
-    }
-
     /* Inserts payload, deletes it, inserts a payload of the same size, and reports the stamp each
      * occupant of the reused slot carried. Fails the calling test unless the slot was really reused,
      * so a repeated or a distinct stamp is always a statement about one physical slot. */
@@ -140,62 +139,50 @@ class OosNoLoggingTest : public ::testing::Test
     }
 };
 
-/* The logged-mode half of the contract, on this binary's own database so that the no-logging case
- * below differs from it in the logging state and in nothing else. Skips rather than fails if the
- * switch has already happened, because it is one-way and this case needs it off. */
-TEST_F (OosNoLoggingTest, LoggedModeSeparatesTheStampsOfTwoOccupantsOfOneSlot)
+/* Both halves of the contract, in the only order the runtime allows, on one database so that they
+ * differ in the logging state and in nothing else. Keeping them in one test is what makes the
+ * logged-mode half unskippable: were it a test of its own it could only guard itself against a
+ * shuffled run by skipping, and skipping is how logged-mode identity coverage gets quietly lost.
+ * (test_oos_identity_stamp.SuccessiveOccupantsOfOneSlotCarryDifferentStamps covers the logged case
+ * too, and is order-independent because that binary never turns logging off.)
+ *
+ * The switch in the middle is also the point about which state is authoritative: SA
+ * loaddb --no-logging turns logging off through log_set_no_logging() long after the startup
+ * parameter was read, so code that must know whether the stamp guarantee holds has to ask
+ * log_is_no_logging(). See the file header for what a repeated stamp does NOT show. */
+TEST_F (OosNoLoggingTest, SlotReuseSeparatesStampsWithLoggingRepeatsThemWithoutAndLoadsStillReadBack)
 {
-  if (log_is_no_logging ())
-    {
-      GTEST_SKIP () << "logging is already disabled in this process and cannot be turned back on";
-    }
-
-  LOG_LSA first_stamp = NULL_LSA;
-  LOG_LSA second_stamp = NULL_LSA;
-  stamps_of_two_occupants_of_one_slot (first_stamp, second_stamp);
-
-  EXPECT_FALSE (LSA_EQ (&first_stamp, &second_stamp))
-      << "logged inserts and deletes advance the page LSA, so the occupants cannot share a stamp";
-}
-
-/* The startup parameter is not the logging state: loaddb --no-logging turns logging off through
- * log_set_no_logging() long after the parameter was read, so code that must know whether the stamp
- * guarantee holds has to ask log_is_no_logging(). */
-TEST_F (OosNoLoggingTest, RuntimeActivationChangesTheStateWithoutChangingTheStartupParameter)
-{
-  if (log_is_no_logging ())
-    {
-      GTEST_SKIP () << "logging is already disabled in this process and cannot be turned back on";
-    }
+  ASSERT_FALSE (log_is_no_logging ()) << "logging is off before this test ran; nothing can turn it back on";
   ASSERT_FALSE (prm_get_bool_value (PRM_ID_LOG_NO_LOGGING)) << "this database is configured to log";
 
-  ASSERT_EQ (log_set_no_logging (), NO_ERROR);
+  LOG_LSA logged_first = NULL_LSA;
+  LOG_LSA logged_second = NULL_LSA;
+  stamps_of_two_occupants_of_one_slot (logged_first, logged_second);
+  EXPECT_FALSE (LSA_EQ (&logged_first, &logged_second))
+      << "logged inserts and deletes advance the page LSA, so the occupants cannot share a stamp";
 
-  EXPECT_TRUE (log_is_no_logging ());
+  /* Retire the logged half's file here, while its removal can still be logged: TearDown skips the
+   * removal once logging is off, for the reason stated there. */
+  ASSERT_EQ (oos_remove_file (thread_p, oos_vfid), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  ASSERT_EQ (log_set_no_logging (), NO_ERROR);
+  ASSERT_TRUE (log_is_no_logging ());
   EXPECT_FALSE (prm_get_bool_value (PRM_ID_LOG_NO_LOGGING))
       << "the parameter still says logging is on, so a parameter check would read the state wrong";
-}
 
-/* The disclosed limit of the guarantee. See the file header for what this does not show. */
-TEST_F (OosNoLoggingTest, SameSlotReuseWithoutLoggingCanRepeatTheStamp)
-{
-  ensure_no_logging ();
+  /* A file of its own, so the slot the unlogged half reuses is not one the logged half touched. */
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
 
-  LOG_LSA first_stamp = NULL_LSA;
-  LOG_LSA second_stamp = NULL_LSA;
-  stamps_of_two_occupants_of_one_slot (first_stamp, second_stamp);
-
-  EXPECT_TRUE (LSA_EQ (&first_stamp, &second_stamp))
+  LOG_LSA unlogged_first = NULL_LSA;
+  LOG_LSA unlogged_second = NULL_LSA;
+  stamps_of_two_occupants_of_one_slot (unlogged_first, unlogged_second);
+  EXPECT_TRUE (LSA_EQ (&unlogged_first, &unlogged_second))
       << "with the log appends skipped the page LSA does not move, so both occupants read the same value";
-}
 
-/* Documented no-logging bulk loads stay usable: the values a load stores are the values it reads
- * back. Large enough to span several chunks each, since a multi-chunk chain is where the stub keeps
- * only the head chunk's stamp. */
-TEST_F (OosNoLoggingTest, BulkLoadWithoutLoggingStoresLargeValuesThatReadBack)
-{
-  ensure_no_logging ();
-
+  /* And the other half of the accepted policy: documented no-logging bulk loads stay usable, so the
+   * values a load stores are the values it reads back. Large enough to span several chunks each,
+   * since a multi-chunk chain is where the stub keeps only the head chunk's stamp. */
   const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
   const int batch_size = 8;
   const int batches = 4;
@@ -213,7 +200,7 @@ TEST_F (OosNoLoggingTest, BulkLoadWithoutLoggingStoresLargeValuesThatReadBack)
 	  /* Between two and three chunks each, and every value a different length so a mixed-up
 	   * chain cannot read back as the right bytes. */
 	  payloads.push_back (test_oos_utils::make_repeated_pattern_string (2 * max_chunk_size + 97 * (int) payloads.size ()
-					   + 11));
+			      + 11));
 	}
 
       std::vector<OID> oids (batch_size, OID_INITIALIZER);

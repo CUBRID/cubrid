@@ -18,6 +18,11 @@
 
 set -euo pipefail
 
+# Helpers shared by the OOS test-database fixtures. Two kinds of database use them: the
+# unittestdb fixture the whole OOS suite shares, and the databases a single binary owns because
+# it changes process-global state (no-logging) or kills a writer and recovers. The name of the
+# database is always a parameter; only the shared fixture's own name and its cubrid.conf section
+# are fixed here.
 readonly OOS_UNITTESTDB_NAME="unittestdb"
 readonly OOS_UNITTESTDB_MARKER_BEGIN="# BEGIN OOS unittestdb fixture"
 readonly OOS_UNITTESTDB_MARKER_END="# END OOS unittestdb fixture"
@@ -33,17 +38,18 @@ oos_cubrid_conf ()
   printf '%s/conf/cubrid.conf\n' "$CUBRID"
 }
 
-oos_unittestdb_dir ()
+oos_database_dir ()
 {
-  printf '%s/%s\n' "$CUBRID_DATABASES" "$OOS_UNITTESTDB_NAME"
+  printf '%s/%s\n' "$CUBRID_DATABASES" "$1"
 }
 
 oos_database_exists ()
 {
+  local db_name="$1"
   local databases_txt="$CUBRID_DATABASES/databases.txt"
 
   [ -f "$databases_txt" ] || return 1
-  awk -v db="$OOS_UNITTESTDB_NAME" '$1 == db { found = 1 } END { exit found ? 0 : 1 }' "$databases_txt"
+  awk -v db="$db_name" '$1 == db { found = 1 } END { exit found ? 0 : 1 }' "$databases_txt"
 }
 
 oos_remove_fixture_sections ()
@@ -113,28 +119,4 @@ oos_append_fixture_section ()
     printf 'vacuum_log_block_pages=4\n'
     printf '%s\n' "$OOS_UNITTESTDB_MARKER_END"
   } >> "$conf"
-}
-
-# ---------------------------------------------------------------------------
-# Isolated databases owned by a single test binary
-#
-# A binary that changes process-global state (no-logging) or that crashes and
-# recovers must not run against the shared unittestdb fixture: a failure there
-# would break every other OOS binary. Such a binary owns a database of its own,
-# created fresh for every run so its on-disk layout is always the one the build
-# under test writes.
-# ---------------------------------------------------------------------------
-
-oos_named_database_exists ()
-{
-  local db_name="$1"
-  local databases_txt="$CUBRID_DATABASES/databases.txt"
-
-  [ -f "$databases_txt" ] || return 1
-  awk -v db="$db_name" '$1 == db { found = 1 } END { exit found ? 0 : 1 }' "$databases_txt"
-}
-
-oos_named_database_dir ()
-{
-  printf '%s/%s\n' "$CUBRID_DATABASES" "$1"
 }

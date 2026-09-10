@@ -3249,6 +3249,8 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  *       reused page's bytes need not be a slotted page at all. This is what makes a vacuum block
  *       retry, or any duplicate deleter of the same chain, safe without a caller-side lock: the page
  *       latch serializes them at the head, the first one deletes it, every later one no-ops there.
+ *       That safety needs the chain to have been written with logging enabled, which is what makes
+ *       two occupants of one slot carry different stamps; see the invariants at the issuing site.
  *       A reference whose stamp matches but whose target is a continuation chunk is malformed and is
  *       rejected with ER_HEAP_OOS_CORRUPTED_RECORD before anything is modified. Pages of later
  *       chunks keep the plain fix because a verified head proves the chain is live and its links
@@ -3490,9 +3492,12 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *       block retry re-deleting what an earlier committed sysop already reclaimed) and a stamp
  *       mismatch (the slot was freed and reused by a live chain) are all successful no-ops that
  *       modify nothing, leave the error stack clean and report no reclaim candidate. Without this
- *       identity check a retried delete would destroy the reusing chain's data (CBRD-26950). A
- *       reference whose stamp matches a continuation chunk is malformed and fails with
- *       ER_HEAP_OOS_CORRUPTED_RECORD before any chunk is touched.
+ *       identity check a retried delete would destroy the reusing chain's data (CBRD-26950). It
+ *       discriminates the two occupants only for chains written with logging enabled: a skipped log
+ *       append does not advance the page LSA, so two occupants of one slot can then carry the same
+ *       stamp (see the invariants at the issuing site). A reference whose stamp matches a
+ *       continuation chunk is malformed and fails with ER_HEAP_OOS_CORRUPTED_RECORD before any chunk
+ *       is touched.
  *
  *       No sysop is used. Each chunk deletion is logged individually
  *       (RVOOS_DELETE with full record as undo data).

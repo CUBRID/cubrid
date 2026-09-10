@@ -1232,7 +1232,7 @@ TEST_F (OosIdentityStampTest, InterruptedDeleteAndReadReportTheInterruptNotASkip
 // stamp the head chunk currently carries cannot prove this: they would agree with whatever the undo
 // happened to restore. Transaction abort, system-operation abort and a directly invoked recovery
 // callback are separate cases because each replays a different part of the machinery; the crash-redo
-// half of the ticket needs its own database and lives in test_oos_crash_recovery.
+// half of the ticket needs its own database and lives in sql/test_oos_sql_crash_recovery.cpp.
 // ===========================================================================
 
 TEST_F (OosIdentityStampTest, TransactionAbortRestoresTheStampTheChainWasCreatedWith)
@@ -1260,8 +1260,8 @@ TEST_F (OosIdentityStampTest, TransactionAbortRestoresTheStampTheChainWasCreated
   LOG_LSA restored = NULL_LSA;
   ASSERT_EQ (oos_get_identity_stamp (thread_p, oid, &restored), NO_ERROR);
   EXPECT_TRUE (LSA_EQ (&issued, &restored)) << "undo restored the chunk with stamp " << restored.pageid << "|"
-					    << restored.offset << " instead of the issued " << issued.pageid << "|"
-					    << issued.offset;
+      << restored.offset << " instead of the issued " << issued.pageid << "|"
+      << issued.offset;
 
   std::string out;
   ASSERT_EQ (read_scalar (original, length, out), NO_ERROR) << "the original reference no longer reads";
@@ -1398,13 +1398,18 @@ TEST_F (OosIdentityStampTest, PartiallyAppliedDeleteRolledBackRestoresEveryChain
   EXPECT_EQ (out.compare (0, second_payload.size (), second_payload), 0);
 }
 
-TEST_F (OosIdentityStampTest, ReplayingTheLoggedChunkImageRestoresTheStampItCarried)
+TEST_F (OosIdentityStampTest, RecoveryCallbackWritesBackTheChunkImageStampIncluded)
 {
-  /* The recovery callback itself, invoked directly on the image a chunk insert logs. Redo of
-   * RVOOS_INSERT and undo of RVOOS_DELETE are the same function fed the same image, so this one case
-   * pins down what both of them restore: the stamp is part of the logged bytes, which is why redo does
-   * not have to know the LSA of the record it replays. It stands next to, not instead of, the abort
-   * cases above, which exercise the real undo, and the crash case in test_oos_crash_recovery. */
+  /* The recovery callback itself, invoked directly on a chunk image. Redo of RVOOS_INSERT and undo of
+   * RVOOS_DELETE are the same function fed the same image, so this one case pins down what both of
+   * them do with it: they write it back whole, the stamp included, which is why redo does not have to
+   * know the LSA of the record it replays.
+   *
+   * What it does not and cannot show, and what covers it instead: the image here is read off the page,
+   * not out of the log, because a unit test has no log reader. So this case cannot notice a stamp that
+   * never reached the logged image. The abort cases above and the crash case in
+   * sql/test_oos_sql_crash_recovery.cpp do go through the real log, and they are what proves the
+   * logged image carries it. */
   const std::string payload = "chunk image replayed by the recovery callback";
   OID oid = OID_INITIALIZER;
   LOG_LSA issued = NULL_LSA;
@@ -1425,7 +1430,7 @@ TEST_F (OosIdentityStampTest, ReplayingTheLoggedChunkImageRestoresTheStampItCarr
     RECDES peeked = RECDES_INITIALIZER;
     ASSERT_EQ (spage_get_record (thread_p, page_ptr, oid.slotid, &peeked, PEEK), S_SUCCESS);
     logged_image.assign (sizeof (INT16) + (std::size_t) peeked.length, '\0');
-    * (INT16 *) logged_image.data () = peeked.type;
+    std::memcpy (logged_image.data (), &peeked.type, sizeof (INT16));
     std::memcpy (logged_image.data () + sizeof (INT16), peeked.data, (std::size_t) peeked.length);
     pgbuf_unfix_and_init (thread_p, page_ptr);
   }
@@ -1454,7 +1459,7 @@ TEST_F (OosIdentityStampTest, ReplayingTheLoggedChunkImageRestoresTheStampItCarr
   LOG_LSA replayed = NULL_LSA;
   ASSERT_EQ (oos_get_identity_stamp (thread_p, oid, &replayed), NO_ERROR);
   EXPECT_TRUE (LSA_EQ (&issued, &replayed)) << "the replay wrote stamp " << replayed.pageid << "|" << replayed.offset
-					    << " instead of the issued " << issued.pageid << "|" << issued.offset;
+      << " instead of the issued " << issued.pageid << "|" << issued.offset;
 
   std::string out;
   ASSERT_EQ (read_scalar (original, length, out), NO_ERROR);

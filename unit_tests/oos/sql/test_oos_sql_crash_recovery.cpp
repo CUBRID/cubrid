@@ -35,6 +35,15 @@
  *   header still says the database is up and the data pages it dirtied were never flushed. The parent
  *   then boots, and the redo phase has to rebuild the pages from the log.
  *
+ * What the crash case asserts from inside the process is that recovery ran and that the redo phase
+ * had at least this load's worth of records in front of it. It cannot name the records redo applied,
+ * so it does not by itself prove the OOS chunk inserts were among them. Two things outside it do:
+ * the load's pages are never flushed, so the bytes have nowhere else to come from, and the recorded
+ * sensitivity experiment (shift the replayed stamp inside oos_rv_redo_insert; this case fails on
+ * every row while the clean-restart control still passes) both established that and confirmed, by
+ * instrumenting the redo phase, that it applies the chunk inserts rather than finding the pages
+ * already current.
+ *
  * Neither case stands in for the other, and neither stands in for the abort cases or the direct
  * recovery-callback case in test_oos_identity_stamp: recovery redo, transaction rollback and system
  * operation rollback reach the chunk image by different routes.
@@ -50,6 +59,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
+#include <limits.h>
 #include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -57,8 +67,9 @@
 #include <vector>
 
 #include "environment_variable.h"
-#include "test_oos_sql_common.hpp"
 #include "test_oos_error_log.hpp"
+/* last: it ends with memory_wrapper.hpp, which must stay the last include of the file */
+#include "test_oos_sql_common.hpp"
 
 namespace
 {
@@ -337,6 +348,9 @@ TEST_F (OosCrashRecoveryTest, CleanRestartReadsEveryValueAndRunsNoRecovery)
 
   boot_and_record ("clean_restart_reader");
 
+  /* The boot has to have written a log this test can read, or the two assertions below would hold
+   * for the wrong reason. */
+  ASSERT_FALSE (database_error_logs ().empty ()) << "no error log found in " << server_log_dir ();
   const std::string logged = database_error_log_text ();
   EXPECT_FALSE (test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_STARTED))
       << "a clean restart must not run recovery";
@@ -367,7 +381,12 @@ TEST_F (OosCrashRecoveryTest, CommittedValuesSurviveCrashRedoThroughTheirPersist
   ASSERT_TRUE (test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_STARTED))
       << "the restart found the database clean, so this run proves nothing about redo";
   ASSERT_TRUE (test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_REDO_STARTED));
-  EXPECT_GT (log_records_redone (logged), 0) << "the redo phase was entered with nothing to replay";
+  /* The load could not have written fewer than one chunk insert per OOS-backed value, and vc1 spans
+   * several, so a redo phase with less than that in front of it did not replay this load. The count
+   * is every kind of log record, not only the OOS ones, so this bounds the phase from below rather
+   * than proving which records it applied; see the file header. */
+  EXPECT_GT (log_records_redone (logged), 3 * NUM_ROWS)
+      << "the redo phase had less to replay than this load must have logged";
 
   expect_every_row_readable (table);
 }
