@@ -479,8 +479,8 @@ struct heap_show_scan_ctx
 };
 
 /*
- * heap_capacity_info - storage facts/capacity of a heap. Shared output shape of heap_get_capacity
- *   (serial) and heap_get_capacity_parallel: num_* are totals, avg_* are final per-page averages.
+ * heap_capacity_info - storage facts/capacity of a heap. Output shape of heap_get_capacity and
+ *   heap_get_capacity_parallel: num_* are totals, avg_* are final per-page averages.
  */
 typedef struct heap_capacity_info HEAP_CAPACITY_INFO;
 struct heap_capacity_info
@@ -697,6 +697,13 @@ static int heap_get_capacity_serial (THREAD_ENTRY * thread_p, const HFID * hfid,
 #if defined (SERVER_MODE)
 static int heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INFO * capacity,
 				       bool * applied);
+/* the argument structs are defined next to the implementation below */
+struct heap_capacity_accum;
+struct heap_capacity_worker_arg;
+static int heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr,
+					      struct heap_capacity_accum *accum);
+static void heap_capacity_parallel_worker (cubthread::entry & thread_ref, struct heap_capacity_worker_arg *arg);
+static bool heap_capacity_vpid_is_counted (const FILE_FTAB_COLLECTOR * collector, const VPID * vpid);
 #endif /* SERVER_MODE */
 
 static int heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_reset);
@@ -9363,9 +9370,9 @@ struct heap_capacity_accum
 
 /*
  * heap_capacity_accumulate_one_page () - fold one fixed heap page's stats into accum.
- *   Per-page logic mirrors the serial loop in heap_get_capacity; keep the two in sync.
+ *   return: NO_ERROR, or the error of a failed overflow probe.
  */
-static void
+static int
 heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, HEAP_CAPACITY_ACCUM * accum)
 {
   RECDES recdes;		/* Header record descriptor */
@@ -9377,6 +9384,7 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
   int ovf_num_pages;
   int ovf_free_space;
   int ovf_overhead;
+  int error_code;
   int j;
 
   j = spage_number_of_records (page_ptr);
@@ -9411,15 +9419,19 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
 		  accum->sum_overhead += spage_get_record_length (thread_p, page_ptr, slotid);
 
 		  ovf_oid = (OID *) recdes.data;
-		  /* best-effort: a failed overflow probe contributes nothing, matching the serial loop */
-		  if (heap_ovf_get_capacity (thread_p, ovf_oid, &ovf_len, &ovf_num_pages, &ovf_overhead,
-					     &ovf_free_space) == NO_ERROR)
+		  /* the overflow of a live REC_BIGONE cannot go away under our latch on the home page, so a
+		   * failure here is an I/O error, corruption or a cancellation, not a race: report it
+		   * rather than under-count quietly */
+		  error_code = heap_ovf_get_capacity (thread_p, ovf_oid, &ovf_len, &ovf_num_pages, &ovf_overhead,
+						      &ovf_free_space);
+		  if (error_code != NO_ERROR)
 		    {
-		      accum->sum_reclength += ovf_len;
-		      accum->num_pages += ovf_num_pages;
-		      accum->sum_freespace += ovf_free_space;
-		      accum->sum_overhead += ovf_overhead;
+		      return error_code;
 		    }
+		  accum->sum_reclength += ovf_len;
+		  accum->num_pages += ovf_num_pages;
+		  accum->sum_freespace += ovf_free_space;
+		  accum->sum_overhead += ovf_overhead;
 		  break;
 		case REC_MARKDELETED:
 		  accum->sum_overhead += spage_get_record_length (thread_p, page_ptr, slotid);
@@ -9431,6 +9443,8 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
 	    }
 	}
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -9454,13 +9468,14 @@ struct heap_capacity_worker_arg
 
 /*
  * heap_capacity_parallel_worker () - accumulate this worker's sector slice into its accum.
- *   Pages that are gone or hold no user data are skipped; a genuine error sets *failed and
- *   *fail_errid to propagate.
+ *   Pages that are gone or hold no user data are skipped; a genuine error in any worker sets
+ *   *failed / *fail_errid and every worker stops early.
  */
 static void
 heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORKER_ARG * arg)
 {
   FILE_PARTIAL_SECTOR ps;
+  int error_code;
 
   /* the worker runs on a pool thread; inherit the caller's transaction/connection context */
   thread_ref.tran_index = arg->main_thread_p->tran_index;
@@ -9475,8 +9490,8 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
       perfmon_initialize_parallel_stats (&thread_ref);
       if (!thread_ref.m_uses_px_stats)
 	{
-	  /* clear the OOM it left behind so the page loop does not mistake it for its own error;
-	   * stats fall back to the shared counters */
+	  /* clear the OOM it left behind so the page loop does not mistake it for its own error.
+	   * Isolation is lost: the workers then race on the shared counter, as they did before it. */
 	  er_clear ();
 	}
     }
@@ -9525,7 +9540,8 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 		  er_clear ();
 		  break;
 		}
-	      /* deallocated since the snapshot (DDL/vacuum race); skip it. Best-effort, like serial. */
+	      /* deallocated since the snapshot (DDL/vacuum race); skip it. Serial cannot reach this:
+	       * it walks the chain with OLD_PAGE_PREVENT_DEALLOC and fails instead. */
 	      er_clear ();
 	      continue;
 	    }
@@ -9546,7 +9562,17 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
-	  heap_capacity_accumulate_one_page (&thread_ref, page, arg->accum);
+	  error_code = heap_capacity_accumulate_one_page (&thread_ref, page, arg->accum);
+	  if (error_code != NO_ERROR)
+	    {
+	      /* capture the errid before anything else runs; the callee may have flattened it to
+	       * ER_FAILED, so take the one still on the stack */
+	      arg->fail_errid->store (er_errid (), std::memory_order_relaxed);
+	      arg->failed->store (true, std::memory_order_relaxed);
+	      er_clear ();
+	      pgbuf_unfix_and_init (&thread_ref, page);
+	      break;
+	    }
 	  pgbuf_unfix_and_init (&thread_ref, page);
 	}
 
@@ -9574,8 +9600,8 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
  *   collector(in): heap data sectors enumerated for this parallel run
  *   vpid(in): page to look for
  *
- * Note: the workers read only pages of this collector, so a page failing this check was certainly
- *       not counted and must not be subtracted. Passing is necessary, not sufficient.
+ * Note: the workers read no heap data page outside this collector (overflow pages aside), so a
+ *       page failing this check was not counted. Passing is necessary, not sufficient.
  */
 static bool
 heap_capacity_vpid_is_counted (const FILE_FTAB_COLLECTOR * collector, const VPID * vpid)
@@ -9637,7 +9663,8 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
    *    except for a cancellation, which propagates */
   if (file_get_num_user_pages (thread_p, &hfid->vfid, &n_pages) != NO_ERROR)
     {
-      /* do not clear a cancellation: serial would then answer a query the user cancelled */
+      /* the fix usually consumes the interrupt flag, so clearing here can drop the cancellation for
+       * good and let serial answer a query the user cancelled */
       if (er_errid () == ER_INTERRUPTED)
 	{
 	  error_code = ER_INTERRUPTED;
@@ -9657,8 +9684,8 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
   if (wm == NULL)
     {
       /* NULL means either fewer than two workers were free, which raises nothing and declines, or
-       * the manager allocation failed, which normally raises OOM. Report whatever is on the stack
-       * rather than hide a failure behind a serial run; this assumes nothing stale is left there. */
+       * the manager allocation failed, which normally raises OOM. Report any error-severity errid
+       * on the stack rather than hide a failure; this assumes nothing stale is left there. */
       error_code = er_errid_if_has_error ();
       goto exit;
     }
@@ -9686,9 +9713,10 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
     ftab_set fs;
     fs.convert (&collector);
 
-    /* The page serial leaves out of avg_freespace_nolast is the chain tail, so take it from the
-     * heap header: the largest VPID is not the tail in general. It must also be one of the pages
-     * the workers count, or subtracting its free space would not match their sums. */
+    /* The page serial leaves out of avg_freespace_nolast is the last one it walks to, so take the
+     * tail from the heap header: the largest VPID is not the tail, because removing the tail moves
+     * last_vpid back and file_alloc may reuse a lower page. It must also be one of the pages the
+     * workers count, or subtracting its free space would not match their sums. */
     VPID last_page_vpid = VPID_INITIALIZER;
     bool have_last_page = false;
     int last_vpid_error;
@@ -9750,7 +9778,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 
     if (failed.load ())
       {
-	/* propagate the worker's error; a serial retry would hit it again and lose ER_INTERRUPTED */
+	/* propagate the worker's error rather than retry serially, which would lose ER_INTERRUPTED */
 	int errid = fail_errid.load ();
 	er_log_debug (ARG_FILE_LINE, "heap_get_capacity_parallel: worker error errid=%d; aborting parallel\n", errid);
 	if (errid == ER_INTERRUPTED)
@@ -10053,12 +10081,12 @@ exit_on_error:
 
 /*
  * heap_get_capacity () - Find space consumed by heap (SHOW HEAP CAPACITY entry point).
- *   return: NO_ERROR (or a propagated error from the parallel attempt)
+ *   return: NO_ERROR, or a propagated error from the parallel attempt or the serial fallback
  *   hfid(in): Object heap file identifier
  *   capacity(out): the storage facts/capacity (see HEAP_CAPACITY_INFO)
  *
- * Note: tries parallel first; heap_get_capacity_parallel declines (applied == false) whenever
- *       parallel is not worthwhile or not possible, and then serial answers.
+ * Note: tries parallel first; heap_get_capacity_parallel declines (applied == false) for the cases
+ *       serial can still answer, and returns an error for a genuine failure.
  */
 static int
 heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INFO * capacity)
