@@ -1483,7 +1483,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1378 Cannot change the login capability of user "%1$s".
 
-1379 Last Error
+1379 The stored DEFAULT expression of attribute "%1$s" cannot be restored.
+
+1380 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
