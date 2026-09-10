@@ -497,6 +497,16 @@ conn_retry:
       do
 	{
 	  SLEEP_SEC (1);
+	  /*
+	   * Waits for the RESTART/STOP status set on our slot by the broker to clear.
+	   * Because sleep() returns early upon receiving a signal, we must check for 
+	   * shutdown signals here; otherwise, the wait will simply resume and the 
+	   * shutdown request will be ignored without being acted on.
+	   */
+	  if (cas_shutdown_signo)
+	    {
+	      cas_final ();	/* does not return */
+	    }
 	}
       while (as_info->uts_status == UTS_STATUS_RESTART || as_info->uts_status == UTS_STATUS_STOP);
     }
@@ -558,6 +568,15 @@ conn_retry:
     as_info->uts_status = UTS_STATUS_IDLE;
 
   conn_proxy_retry:
+    /*
+     * Both retry branches below sleep and jump back here. Without this check,
+     * a shutdown signal arriving while the proxy is unreachable would be ignored.
+     */
+    if (cas_shutdown_signo)
+      {
+	cas_final ();		/* does not return */
+      }
+
     net_timeout_set (NET_DEFAULT_TIMEOUT);
 
 #if defined(WINDOWS)
@@ -741,6 +760,12 @@ cas_init ()
 
   /* Set database shutdown callback for cas.c specific implementation */
   cas_set_database_shutdown_callback (ux_database_shutdown);
+
+  /*
+   * Registered unconditionally: a shard CAS must notice a shutdown request while
+   * waiting on the server, just as a CAS does.
+   */
+  css_register_abort_server_wait_fn (cas_abort_server_wait);
 
   if (cas_shard_flag == OFF)
     {

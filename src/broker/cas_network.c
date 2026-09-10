@@ -640,6 +640,12 @@ write_buffer (SOCKET sock_fd, const char *buf, int size)
       return -1;
     }
 
+  if (cas_shutdown_signo)
+    {
+      net_error_flag = 1;
+      return -1;
+    }
+
 #ifdef ASYNC_MODE
   po[0].fd = sock_fd;
   po[0].events = POLLOUT;
@@ -650,6 +656,11 @@ retry_poll:
     {
       if (errno == EINTR)
 	{
+	  if (cas_shutdown_signo)
+	    {
+	      net_error_flag = 1;
+	      return -1;
+	    }
 	  goto retry_poll;
 	}
       else

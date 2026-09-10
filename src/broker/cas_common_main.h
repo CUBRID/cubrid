@@ -36,7 +36,7 @@ void cas_sig_handler (int signo);
 void cas_final (void);
 void cas_free (bool from_shutdown_signal);
 
-extern volatile sig_atomic_t cas_shutdown_signo; /* The SIGTERM/SIGINT that asked us to shut down, 0 if none. */
+extern volatile sig_atomic_t cas_shutdown_signo;	/* The SIGTERM/SIGINT that asked us to shut down, 0 if none. */
 
 #if !defined(WINDOWS)
 void cas_register_signal_handlers (void);
@@ -52,6 +52,7 @@ void cas_set_database_shutdown_callback (cas_database_shutdown_callback_t callba
 void set_hang_check_time (void);
 void unset_hang_check_time (void);
 bool check_server_alive (const char *db_name, const char *db_host);
+bool cas_abort_server_wait (void);
 extern int restart_is_needed (void);
 extern int query_seq_num_next_value (void);
 extern int query_seq_num_current_value (void);

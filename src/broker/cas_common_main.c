@@ -536,10 +536,7 @@ cas_sig_handler (int signo)
 
   if (signo == SIGTERM || signo == SIGINT)
     {
-      /* Graceful shutdown request:
-       * Record the signal and return immediately. Cleanup (cas_free) is async-signal-unsafe
-       * (calls fopen/malloc) and must run from the main loop to avoid process aborts or deadlocks.
-       */
+      /* Avoid async-signal-unsafe functions in signal handlers to prevent aborts; defer graceful shutdown to the main loop. */
       cas_shutdown_signo = signo;
       return;
     }
@@ -777,6 +774,21 @@ unset_hang_check_time (void)
       as_info->claimed_alive_time = (time_t) 0;
     }
   return;
+}
+
+/*
+ * cas_abort_server_wait () -
+ *   return: true to give up waiting for the database server.
+ *
+ * Registered as CSS_ABORT_SERVER_WAIT_FN, so the shared client layer calls
+ * this whenever a wait for the server is interrupted by a signal.
+ * The wait is given up once a shutdown signal is recorded, allowing the wait
+ * to unwind so the main loop can execute cas_free().
+ */
+bool
+cas_abort_server_wait (void)
+{
+  return cas_shutdown_signo != 0;
 }
 
 bool

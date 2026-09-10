@@ -113,6 +113,8 @@ static const int CSS_TCP_MIN_NUM_RETRIES = 3;
 #if !defined (SERVER_MODE)
 static void css_default_server_timeout_fn (void);
 static CSS_SERVER_TIMEOUT_FN css_server_timeout_fn = css_default_server_timeout_fn;
+static bool css_default_abort_server_wait_fn (void);
+static CSS_ABORT_SERVER_WAIT_FN css_abort_server_wait_fn = css_default_abort_server_wait_fn;
 static bool css_default_check_server_alive_fn (const char *db_name, const char *db_host);
 CSS_CHECK_SERVER_ALIVE_FN css_check_server_alive_fn = css_default_check_server_alive_fn;
 #endif /* !SERVER_MODE */
@@ -202,6 +204,13 @@ css_default_server_timeout_fn (void)
 {
   /* do nothing */
   return;
+}
+
+static bool
+css_default_abort_server_wait_fn (void)
+{
+  /* do nothing */
+  return false;
 }
 
 #elif defined(WINDOWS)
@@ -425,6 +434,13 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 		{
 		  css_server_timeout_fn ();
 		}
+
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
+		}
 #endif /* !SERVER_MODE */
 
 	      continue;
@@ -468,6 +484,13 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	      if (css_server_timeout_fn != NULL)
 		{
 		  css_server_timeout_fn ();
+		}
+
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
 		}
 #endif /* !SERVER_MODE */
 
@@ -1032,6 +1055,15 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 	{
 	  if (errno == EINTR)
 	    {
+#if !defined (SERVER_MODE)
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
+		}
+#endif /* !SERVER_MODE */
+
 	      continue;
 	    }
 
@@ -1083,6 +1115,15 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
       /* n < 0 */
       if (unlikely (errno == EINTR))
 	{
+#if !defined (SERVER_MODE)
+	  if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+	    {
+	      /* the client gave this wait up (e.g. it is shutting down) */
+	      errno = EINTR;
+	      return -1;
+	    }
+#endif /* !SERVER_MODE */
+
 	  continue;
 	}
 
@@ -1940,6 +1981,18 @@ void
 css_register_server_timeout_fn (CSS_SERVER_TIMEOUT_FN callback_fn)
 {
   css_server_timeout_fn = callback_fn;
+}
+
+/*
+ * css_register_abort_server_wait_fn () - regist the callback function
+ *   return: void
+ *   callback_fn(in): asked when a wait for the server is interrupted by a
+ *                    signal; returning true gives that wait up
+ */
+void
+css_register_abort_server_wait_fn (CSS_ABORT_SERVER_WAIT_FN callback_fn)
+{
+  css_abort_server_wait_fn = callback_fn;
 }
 #endif /* !SERVER_MODE */
 
