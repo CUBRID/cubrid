@@ -209,7 +209,11 @@ namespace cubscan
 	      db_value_clear (&result);
 	    }
 
-	  m_method_group->reset (false);
+	  error = m_method_group->reset (false);
+	  if (error != NO_ERROR)
+	    {
+	      scan_code = S_ERROR;
+	    }
 	}
 
       if (scan_code == S_ERROR)
