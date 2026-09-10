@@ -11937,6 +11937,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
   OID class_oid, pruned_oid;
   BTID btid;
   bool is_global_index;
+  bool probe_would_demote_oos = false;
   HFID class_hfid, pruned_hfid;
   int local_op_type = SINGLE_ROW_DELETE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
@@ -11951,7 +11952,11 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, LOB_FLAG_EXCLUDE_LOB);
+  /* This record image is only probed for duplicate keys, never inserted: suppress OOS demotion so
+   * no OOS value chain is written (and later orphaned) for it. */
+  copyarea =
+    locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, LOB_FLAG_EXCLUDE_LOB, NULL,
+					     &probe_would_demote_oos);
   if (copyarea == NULL)
     {
       goto error_exit;
@@ -12170,6 +12175,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
   OID class_oid;
   HFID class_hfid;
   bool is_global_index = false;
+  bool probe_would_demote_oos = false;
   int local_op_type = SINGLE_ROW_UPDATE;
   BTREE_SEARCH r;
 
@@ -12189,7 +12195,11 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, LOB_FLAG_INCLUDE_LOB);
+  /* This record image is only probed for unique-index duplicates, never inserted: suppress OOS
+   * demotion so no OOS value chain is written (and later orphaned) for it. */
+  copyarea =
+    locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, LOB_FLAG_INCLUDE_LOB, NULL,
+					     &probe_would_demote_oos);
   if (copyarea == NULL)
     {
       goto error_exit;
