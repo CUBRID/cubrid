@@ -157,18 +157,34 @@ struct expr_prog
    * already computes for the row, read here instead of recomputed (see share_spec) */
   int n_shared;
 
-  /* host variable domain signature recorded at compile time; a later execution whose
-   * bound types differ must not reuse this program.  sig_stamp records the execution the
-   * signature was last verified for, so the walk is charged once per execution
-   * (expr_prog_signature_ok ()) rather than once per row.  With the current lifetime --
-   * every consumer frees its program when the execution ends (qexec_clear_xasl ()) -- a
-   * program only ever meets the bind types it was compiled for, so the mismatch branch is
-   * not reached today; it is what would make keeping a program across executions of a
-   * cached clone safe, should the per-execution compile cost ever warrant that. */
+  /* host variable domain signature recorded at compile time: the DB_TYPE of every bound
+   * value the execution supplied.  A program lives with its XASL clone across executions
+   * (see "lifetime" below), and a later execution may bind other types (a JDBC prepared
+   * statement re-executed with different parameter types); every kernel and comparison
+   * leaf was specialized for the recorded types, so a consumer verifies the signature on
+   * the first row of each execution (expr_prog_signature_ok ()) and recompiles on a
+   * mismatch.  sig_stamp records the execution the signature was last verified for, so
+   * the walk is charged once per execution rather than once per row. */
   DB_TYPE *hv_types;
   int n_hv;
   unsigned long long sig_stamp;
   bool sig_stamp_valid;
+
+  /* Lifetime.  A program is compiled on the first row of an execution and then KEPT with
+   * the XASL clone: when the execution ends (qexec_clear_xasl () with is_final) the owner
+   * calls expr_prog_reset () -- the slot VALUES are released (they may own memory of the
+   * executing thread's private heap, which is reclaimed with the request) and the
+   * prologues are re-armed, while the steps, cells and slot array stay.  The next
+   * execution of the same clone, on any thread, re-runs the prologues (host variable
+   * cells are rebound), re-verifies the signature above, and reuses the steps.  The
+   * program is freed only when the clone itself is released (XASL_DECACHE_CLONE).
+   * n_executions counts the executions that entered this program (;trace shows it). */
+  int n_executions;
+
+  /* consumers that read a scan filter's result slots (n_shared > 0) record the filter
+   * program's compile generation here; a filter recompiled since (bind types changed)
+   * owns other slots, so the consumer recompiles too (expr_prog_share_current ()) */
+  unsigned int share_gen;
 };
 
 /* compile the regu list into a program; returns NULL when nothing in the list benefits
@@ -204,6 +220,15 @@ extern EXPR_PROG *expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VAR
  * bound value, so consumers call it through expr_prog_signature_ok () below rather than
  * per row. */
 extern bool expr_prog_signature_matches (const EXPR_PROG * prog, const val_descr * vd);
+
+/* end of an execution: release the slot values and re-arm the prologues, keep the program
+ * for the clone's next execution (see the lifetime note on struct expr_prog) */
+extern void expr_prog_reset (EXPR_PROG * prog);
+
+/* true when the scan filter this program shares slots with is still the one it was compiled
+ * against (or when it shares nothing); share_spec is the ACCESS_SPEC_TYPE the consumer
+ * compiled with */
+extern bool expr_prog_share_current (const EXPR_PROG * prog, const void *share_spec);
 
 /* Host variables are bound before an execution starts and cannot change while it runs, so
  * the signature only has to be verified when the executing query changes.  This charges the
@@ -265,6 +290,13 @@ extern int expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain
 extern void *expr_scan_pred_compile (cubthread::entry * thread_p, const cubxasl::pred_expr * pr, val_descr * vd);
 extern DB_LOGICAL expr_scan_pred_eval (void *compiled, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid);
 extern void expr_scan_pred_free (void *compiled);
+
+/* end of an execution for a compiled scan filter: expr_prog_reset () of its operand program */
+extern void expr_scan_pred_reset (void *compiled);
+
+/* the filter's host-variable type signature check, once per execution (the leaves and the
+ * operand steps were resolved for the bound types of the compiling execution) */
+extern bool expr_scan_pred_signature_ok (void *compiled, const val_descr * vd, unsigned long long exec_stamp);
 /* the operand program of a compiled scan filter, if it has one (SQL trace) */
 extern void expr_scan_pred_dump (FILE * fp, const void *compiled, int indent);
 

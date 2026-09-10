@@ -1100,9 +1100,11 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       if (agg_list_p->operand_prog_state == 1)
 	{
 	  operand_prog = (EXPR_PROG *) agg_list_p->operand_prog;
-	  if (!expr_prog_signature_ok (operand_prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p)))
+	  if (!expr_prog_signature_ok (operand_prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p))
+	      || !expr_prog_share_current (operand_prog, agg_list_p->operand_prog_share_spec))
 	    {
-	      /* different bind types than the program was specialized for: recompile */
+	      /* different bind types than the program was specialized for, or the scan filter
+	       * whose slots it reads was recompiled: recompile */
 	      expr_prog_free (operand_prog);
 	      free_and_init (agg_list_p->operand_prog_idx);
 	      agg_list_p->operand_prog = NULL;

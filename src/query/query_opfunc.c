@@ -524,9 +524,11 @@ qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_lis
   if (valptr_list_p->eval_prog_state == 1)
     {
       prog = (EXPR_PROG *) valptr_list_p->eval_prog;
-      if (!expr_prog_signature_ok (prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p)))
+      if (!expr_prog_signature_ok (prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p))
+	  || !expr_prog_share_current (prog, valptr_list_p->eval_prog_share_spec))
 	{
-	  /* different bind types than the program was specialized for: recompile */
+	  /* different bind types than the program was specialized for, or the scan filter
+	   * whose slots it reads was recompiled: recompile */
 	  qdata_free_valptr_list_prog (thread_p, valptr_list_p);
 	  valptr_list_p->eval_prog_state = 0;
 	  qdata_valptr_prog_compile (thread_p, valptr_list_p, val_desc_p);
@@ -545,10 +547,8 @@ qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_lis
 /*
  * qdata_free_valptr_list_prog () - release a value pointer list's compiled program
  *
- * Note: the state goes back to 0 (compile on next use), matching the per-execution
- * lifetime of scan_prog and operand_prog. Leaving it at 2 (disabled) made every
- * cached-clone reuse after the first execution fall back to the interpreter for
- * good. State 2 is reserved for "compilation declined" set by the compile step.
+ * Note: the state goes back to 0 (compile on next use).  State 2 is reserved for
+ * "compilation declined" set by the compile step.
  */
 void
 qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p)
@@ -561,6 +561,29 @@ qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_
   valptr_list_p->eval_prog = NULL;
   free_and_init (valptr_list_p->eval_prog_idx);
   valptr_list_p->eval_prog_state = 0;
+  valptr_list_p->eval_prog_row_ready = false;
+}
+
+/*
+ * qdata_release_valptr_list_prog () - end of an execution for the list's compiled program
+ *
+ * free_it: the XASL clone is being released (XASL_DECACHE_CLONE): free the program.
+ * Otherwise the program stays with the clone for its next execution and only its slot
+ * values are released (expr_prog_reset ()); the row-ready mark cannot survive the execution.
+ */
+void
+qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, bool free_it)
+{
+  if (valptr_list_p == NULL || valptr_list_p->eval_prog == NULL)
+    {
+      return;
+    }
+  if (free_it)
+    {
+      qdata_free_valptr_list_prog (thread_p, valptr_list_p);
+      return;
+    }
+  expr_prog_reset ((EXPR_PROG *) valptr_list_p->eval_prog);
   valptr_list_p->eval_prog_row_ready = false;
 }
 

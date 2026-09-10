@@ -501,6 +501,12 @@ namespace parallel_scan
 
     db_private_free (&thread_ref, m_vd->dbval_ptr);
     db_private_free (&thread_ref, m_xasl_state);
+    if (!m_uses_xasl_clone)
+      {
+	/* a worker XASL that is not a cached clone is freed right below: its compiled expression
+	 * programs (kept with a clone across executions) must go with it */
+	XASL_SET_FLAG (m_xasl, XASL_DECACHE_CLONE);
+      }
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);

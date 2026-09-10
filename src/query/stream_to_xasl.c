@@ -4250,6 +4250,7 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred_expr)
   /* server-side only: compiled lazily on the first evaluation (eval_data_filter ()) */
   pred_expr->scan_prog = NULL;
   pred_expr->scan_prog_state = 0;
+  pred_expr->scan_prog_gen = 0;
 
   switch (pred_expr->type)
     {

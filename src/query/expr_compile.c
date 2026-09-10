@@ -129,6 +129,15 @@ struct expr_pred
    * evaluated (see expr_scan_pred_build ()), with the slot the node publishes into */
   struct expr_share *share;
   int n_share;
+
+  /* the tree's root only: the host-variable type signature the leaves and operand steps were
+   * resolved for, verified once per execution (expr_scan_pred_signature_ok ()) -- same
+   * contract as EXPR_PROG.hv_types, kept here because a tree without compiled operand
+   * steps has no program to carry it */
+  DB_TYPE *sig_types;
+  int sig_n;
+  unsigned long long sig_stamp;
+  bool sig_stamp_valid;
 };
 
 /* growable build-time buffers, sized once and converted to tight arrays at the end */
@@ -202,6 +211,7 @@ struct expr_build_ctx
    * filter already computes for the same expression (expr_share_find ()) */
   const ACCESS_SPEC_TYPE *share_spec;	/* the scan: its regu lists map value-list slots to attributes */
   const EXPR_PRED *share_pred;	/* the filter's compiled tree, holding the registry */
+  unsigned int share_gen;	/* that filter's compile generation (PRED_EXPR.scan_prog_gen) */
   bool cell_shared[EXPR_MAX_STEPS];	/* the cell reads a filter slot: computed, though no step here */
   int n_shared;
 
@@ -1314,6 +1324,7 @@ expr_share_attach (EXPR_BUILD_CTX * bctx, const void *share_spec)
     }
   bctx->share_spec = spec;
   bctx->share_pred = (const EXPR_PRED *) spec->where_pred->scan_prog;
+  bctx->share_gen = spec->where_pred->scan_prog_gen;
 }
 
 /* the attribute the scan fetches into a value-list slot, or -1 */
@@ -2332,6 +2343,24 @@ expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_d
 	}
       expr_scan_pred_share_build (bctx, pred);
     }
+  /* the bound types the leaves and operand steps were resolved for (see sig_types) */
+  if (vd != NULL && vd->dbval_cnt > 0)
+    {
+      int i;
+
+      pred->sig_types = (DB_TYPE *) malloc (sizeof (DB_TYPE) * vd->dbval_cnt);
+      if (pred->sig_types == NULL)
+	{
+	  expr_scan_pred_free (pred);
+	  free_and_init (bctx);
+	  return NULL;
+	}
+      pred->sig_n = vd->dbval_cnt;
+      for (i = 0; i < pred->sig_n; i++)
+	{
+	  pred->sig_types[i] = DB_VALUE_DOMAIN_TYPE (&vd->dbval_ptr[i]);
+	}
+    }
   free_and_init (bctx);
   return pred;
 }
@@ -2540,7 +2569,59 @@ expr_scan_pred_free (void *compiled)
     {
       free_and_init (root->share);
     }
+  if (root->sig_types != NULL)
+    {
+      free_and_init (root->sig_types);
+    }
   expr_pred_free (root);
+}
+
+void
+expr_scan_pred_reset (void *compiled)
+{
+  EXPR_PRED *root = (EXPR_PRED *) compiled;
+
+  if (root != NULL)
+    {
+      root->sig_stamp_valid = false;
+      if (root->prog != NULL)
+	{
+	  expr_prog_reset (root->prog);
+	}
+    }
+}
+
+bool
+expr_scan_pred_signature_ok (void *compiled, const val_descr * vd, unsigned long long exec_stamp)
+{
+  EXPR_PRED *root = (EXPR_PRED *) compiled;
+  int i;
+
+  if (root == NULL)
+    {
+      return true;
+    }
+  if (exec_stamp != 0 && root->sig_stamp_valid && root->sig_stamp == exec_stamp)
+    {
+      return true;
+    }
+  if (root->sig_n > 0)
+    {
+      if (vd == NULL || vd->dbval_cnt != root->sig_n)
+	{
+	  return false;
+	}
+      for (i = 0; i < root->sig_n; i++)
+	{
+	  if (DB_VALUE_DOMAIN_TYPE (&vd->dbval_ptr[i]) != root->sig_types[i])
+	    {
+	      return false;
+	    }
+	}
+    }
+  root->sig_stamp = exec_stamp;
+  root->sig_stamp_valid = (exec_stamp != 0);
+  return true;
 }
 
 void
@@ -3654,6 +3735,7 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
   prog->n_slots = bctx->n_slots;
   prog->n_roots = n_roots;
   prog->n_shared = bctx->n_shared;
+  prog->share_gen = bctx->share_gen;
 
   prog->steps = (EXPR_STEP *) malloc (sizeof (EXPR_STEP) * MAX (1, prog->n_steps));
   prog->cells = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * MAX (1, prog->n_cells));
@@ -3990,6 +4072,7 @@ expr_prog_enter_execution (EXPR_PROG * prog, val_descr * vd)
   /* after this row the exec-prologue is settled for the whole execution -- unless the
    * value descriptor carries no execution identity, in which case stay pessimistic */
   prog->row_start = prog->n_prologue + prog->n_exec_prologue;
+  prog->n_executions++;
   prog->exec_stamp = stamp;
   prog->exec_stamp_valid = (stamp != 0);
   return start;
@@ -4208,7 +4291,7 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
     {
       fprintf (fp, ", shared from data filter: %d", prog->n_shared);
     }
-  fprintf (fp, "\n");
+  fprintf (fp, ", executions: %d\n", prog->n_executions);
 
   for (i = 0; i < prog->n_steps; i++)
     {
@@ -4271,6 +4354,40 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
       fprintf (fp, " [%d]=c%d", i, prog->root_cells[i]);
     }
   fprintf (fp, "\n");
+}
+
+void
+expr_prog_reset (EXPR_PROG * prog)
+{
+  int i;
+
+  if (prog == NULL)
+    {
+      return;
+    }
+  /* the slot values may own memory of the executing thread's private heap: release them in
+   * the request that allocated them.  The literal prologue's outputs are slots too, so it
+   * runs again on the next execution (prologue_done). */
+  for (i = 0; i < prog->n_slots; i++)
+    {
+      pr_clear_value (&prog->slots[i]);
+    }
+  prog->prologue_done = false;
+  prog->exec_stamp_valid = false;
+  prog->sig_stamp_valid = false;
+}
+
+bool
+expr_prog_share_current (const EXPR_PROG * prog, const void *share_spec)
+{
+  const ACCESS_SPEC_TYPE *spec = (const ACCESS_SPEC_TYPE *) share_spec;
+
+  if (prog == NULL || prog->n_shared == 0)
+    {
+      return true;
+    }
+  return spec != NULL && spec->where_pred != NULL && spec->where_pred->scan_prog_state == 1
+    && spec->where_pred->scan_prog != NULL && spec->where_pred->scan_prog_gen == prog->share_gen;
 }
 
 void

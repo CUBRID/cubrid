@@ -2960,13 +2960,24 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
 
       /* compiled form of the tree (expr_compile.h): the shape, the term kinds and the
        * operand types eval_pred () re-discovers per row are fixed in the XASL, so they
-       * are resolved once per execution here, on the scan's first row (qexec_clear_pred ()
-       * releases the result when the execution ends); anything not covered keeps
-       * pr_eval_fnc */
+       * are resolved once here, on the scan's first row, and kept with the clone
+       * (qexec_clear_pred () releases the slot values when the execution ends).  The leaves
+       * and operand steps were resolved for the bound types of the compiling execution:
+       * an execution that binds other types recompiles.  Anything not covered keeps
+       * pr_eval_fnc. */
+      if (pred_root->scan_prog_state == 1
+	  && unlikely (!expr_scan_pred_signature_ok (pred_root->scan_prog, filterp->val_descr,
+						      EXPR_PROG_EXEC_STAMP (filterp->val_descr))))
+	{
+	  expr_scan_pred_free (pred_root->scan_prog);
+	  pred_root->scan_prog = NULL;
+	  pred_root->scan_prog_state = 0;
+	}
       if (unlikely (pred_root->scan_prog_state == 0))
 	{
 	  pred_root->scan_prog = expr_scan_pred_compile (thread_p, pred_root, filterp->val_descr);
 	  pred_root->scan_prog_state = (pred_root->scan_prog != NULL) ? 1 : 2;
+	  pred_root->scan_prog_gen++;
 	}
       if (pred_root->scan_prog_state == 1)
 	{

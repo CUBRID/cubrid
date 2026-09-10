@@ -1784,17 +1784,22 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
       return pg_cnt;
     }
 
-  /* release the compiled scan-filter form (root node only; see expr_compile.h).  Like
-   * operand_prog and eval_prog it is per-EXECUTION state: every qexec_clear_xasl () caller
-   * passes is_final, so a clone that stays cached starts its next execution with state 0
-   * and compiles again on the first row -- the compile is charged once per execution, not
-   * once per clone.  Freeing unconditionally is safe for the same reason (state 0 means
-   * "compile on next use"). */
+  /* the compiled scan-filter form (root node only; see expr_compile.h) lives with the
+   * clone: at the end of an execution only its slot values are released and it stays for
+   * the clone's next execution (which re-verifies the bind-type signature); it is freed
+   * with the clone itself (XASL_DECACHE_CLONE). */
   if (pr->scan_prog != NULL)
     {
-      expr_scan_pred_free (pr->scan_prog);
-      pr->scan_prog = NULL;
-      pr->scan_prog_state = 0;
+      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
+	{
+	  expr_scan_pred_free (pr->scan_prog);
+	  pr->scan_prog = NULL;
+	  pr->scan_prog_state = 0;
+	}
+      else
+	{
+	  expr_scan_pred_reset (pr->scan_prog);
+	}
     }
 
   switch (pr->type)
@@ -2308,13 +2313,21 @@ qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AGGREGATE_TYP
 
   pg_cnt = 0;
 
-  /* release the compiled operand program (head node only; see expr_compile.h) */
+  /* the compiled operand program (head node only; see expr_compile.h) lives with the
+   * clone: release its slot values at the end of the execution, free it with the clone */
   if (list != NULL && list->operand_prog != NULL)
     {
-      expr_prog_free ((EXPR_PROG *) list->operand_prog);
-      list->operand_prog = NULL;
-      free_and_init (list->operand_prog_idx);
-      list->operand_prog_state = 0;
+      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
+	{
+	  expr_prog_free ((EXPR_PROG *) list->operand_prog);
+	  list->operand_prog = NULL;
+	  free_and_init (list->operand_prog_idx);
+	  list->operand_prog_state = 0;
+	}
+      else
+	{
+	  expr_prog_reset ((EXPR_PROG *) list->operand_prog);
+	}
     }
 
   for (p = list; p; p = p->next)
@@ -2517,10 +2530,9 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	if (connect_by->prior_outptr_list)
 	  {
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, connect_by->prior_outptr_list->valptrp, is_final, false);
-	    /* the compiled projection program owns slot values on the private heap; it must not
-	     * outlive the request (leak tracker aborts on the request boundary in debug builds,
-	     * and a cached clone would carry dangling slot values into its next execution) */
-	    qdata_free_valptr_list_prog (thread_p, connect_by->prior_outptr_list);
+	    /* slot values go with the request, the program stays with the clone (see outptr_list) */
+	    qdata_release_valptr_list_prog (thread_p, connect_by->prior_outptr_list,
+					    XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	  }
 
 	pg_cnt += qexec_clear_regu_list (thread_p, xasl, connect_by->prior_regu_list_pred, is_final, false);
@@ -2568,8 +2580,9 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	    if (buildlist->g_outptr_list)
 	      {
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_outptr_list->valptrp, is_final, false);
-		/* see the outptr_list note below: compiled programs must not outlive the request */
-		qdata_free_valptr_list_prog (thread_p, buildlist->g_outptr_list);
+		/* see the outptr_list note below: slot values go with the request, the program stays */
+		qdata_release_valptr_list_prog (thread_p, buildlist->g_outptr_list,
+						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	      }
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_regu_list, is_final, false);
 	    if (buildlist->g_val_list)
@@ -2606,18 +2619,18 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	    if (buildlist->a_outptr_list)
 	      {
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list->valptrp, is_final, false);
-		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list);
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	      }
 	    if (buildlist->a_outptr_list_ex)
 	      {
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_ex->valptrp, is_final, false);
-		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex);
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	      }
 	    if (buildlist->a_outptr_list_interm)
 	      {
 		pg_cnt +=
 		  qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_interm->valptrp, is_final, false);
-		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm);
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	      }
 	    if (buildlist->a_val_list)
 	      {
@@ -2808,12 +2821,12 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
       if (xasl->outptr_list)
 	{
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->outptr_list->valptrp, is_final, false);
-	  /* The compiled projection program owns slot values allocated on the private heap of the
-	   * executing thread. It must be released with the execution, like scan_prog and
-	   * operand_prog: a program that outlives the request trips the per-request leak tracker
-	   * (debug abort at the request boundary), and a cached clone would carry dangling slot
-	   * values into its next execution once db_clear_private_heap () reclaims the heap. */
-	  qdata_free_valptr_list_prog (thread_p, xasl->outptr_list);
+	  /* The compiled projection program's slot values may live on the private heap of the
+	   * executing thread, which is reclaimed with the request: release the values here, in
+	   * the request that made them.  The program itself stays with the clone (its steps are
+	   * reused by the next execution after a bind-type signature check) and is freed when
+	   * the clone is released. */
+	  qdata_release_valptr_list_prog (thread_p, xasl->outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	}
       pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->spec_list, is_final, false, false);
       pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->merge_spec, is_final, false, false);
@@ -3038,7 +3051,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       /* clear the db_values in the tree */
       if (xasl->outptr_list)
 	{
-	  qdata_free_valptr_list_prog (thread_p, xasl->outptr_list);
+	  qdata_release_valptr_list_prog (thread_p, xasl->outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->outptr_list->valptrp, is_final, true);
 	}
       pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->spec_list, is_final, true, true);
@@ -3151,7 +3164,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	  }
 	if (connect_by->prior_outptr_list)
 	  {
-	    qdata_free_valptr_list_prog (thread_p, connect_by->prior_outptr_list);
+	    qdata_release_valptr_list_prog (thread_p, connect_by->prior_outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, connect_by->prior_outptr_list->valptrp, is_final, true);
 	  }
 
@@ -3199,7 +3212,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	  {
 	    if (buildlist->g_outptr_list)
 	      {
-		qdata_free_valptr_list_prog (thread_p, buildlist->g_outptr_list);
+		qdata_release_valptr_list_prog (thread_p, buildlist->g_outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_outptr_list->valptrp, is_final, true);
 	      }
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_regu_list, is_final, true);
@@ -3236,17 +3249,17 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 
 	    if (buildlist->a_outptr_list)
 	      {
-		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list);
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list->valptrp, is_final, true);
 	      }
 	    if (buildlist->a_outptr_list_ex)
 	      {
-		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex);
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_ex->valptrp, is_final, true);
 	      }
 	    if (buildlist->a_outptr_list_interm)
 	      {
-		qdata_free_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm);
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt +=
 		  qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_interm->valptrp, is_final, true);
 	      }
