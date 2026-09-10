@@ -92,6 +92,7 @@ typedef enum
   SC_COPYLOGDB,
   SC_APPLYLOGDB,
   GET_SHARID,
+  QUERY_REPLACE,
   TEST,
   REPLICATION
 } UTIL_SERVICE_COMMAND_E;
@@ -220,6 +221,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_COPYLOGDB  "copylogdb"
 #define COMMAND_TYPE_APPLYLOGDB "applylogdb"
 #define COMMAND_TYPE_GETID      "getid"
+#define COMMAND_TYPE_QR         "qr"
 #define COMMAND_TYPE_TEST       "test"
 #define COMMAND_TYPE_REPLICATION	"replication"
 #define COMMAND_TYPE_REPLICATION_SHORT	"repl"
@@ -240,6 +242,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {SC_COPYLOGDB, COMMAND_TYPE_COPYLOGDB, MASK_HEARTBEAT},
   {SC_APPLYLOGDB, COMMAND_TYPE_APPLYLOGDB, MASK_HEARTBEAT},
   {GET_SHARID, COMMAND_TYPE_GETID, MASK_BROKER},
+  {QUERY_REPLACE, COMMAND_TYPE_QR, MASK_BROKER},
   {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
   {REPLICATION, COMMAND_TYPE_REPLICATION, MASK_HEARTBEAT},
   {REPLICATION, COMMAND_TYPE_REPLICATION_SHORT, MASK_HEARTBEAT},
@@ -2198,6 +2201,42 @@ process_broker (int command_type, int argc, const char **argv, bool process_wind
 
 	args[0] = UTIL_BROKER_NAME;
 	args[1] = PRINT_CMD_GETID;
+
+	for (i = 0; i < argc; i++)
+	  {
+	    args[i + 2] = argv[i];
+	  }
+	args[argc + 2] = NULL;
+
+	status = proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
+
+	free (args);
+      }
+      break;
+
+    case QUERY_REPLACE:
+      {
+	int i;
+	const char **args;
+
+	if (is_broker_running ())
+	  {
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_BROKER_NAME);
+	    util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_BROKER_NAME);
+	    status = ER_GENERIC_ERROR;
+	    break;
+	  }
+
+	args = (const char **) malloc (sizeof (char *) * (argc + 3));
+	if (args == NULL)
+	  {
+	    status = ER_GENERIC_ERROR;
+	    util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	    break;
+	  }
+
+	args[0] = UTIL_BROKER_NAME;
+	args[1] = COMMAND_TYPE_QR;
 
 	for (i = 0; i < argc; i++)
 	  {

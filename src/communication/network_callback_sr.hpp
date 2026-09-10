@@ -56,11 +56,13 @@ using xs_callback_func = std::function <int (cubmem::block &)>;
 
 int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &func);
 int xs_callback_send (cubthread::entry *thread_p, const cubmem::extensible_block &mem);
+void xs_callback_begin_wait (cubthread::entry *thread_p);
+void xs_callback_end_wait (cubthread::entry *thread_p);
 
 template <typename ... Args>
 int xs_callback_send_args (cubthread::entry *thread_p, Args &&... args)
 {
-  const cubmem::extensible_block b = std::move (pack_data (std::forward<Args> (args)...));
+  const cubmem::extensible_block b = pack_data (std::forward<Args> (args)...);
   return xs_callback_send (thread_p, b);
 }
 
@@ -73,15 +75,18 @@ int xs_callback_send_no_receive (cubthread::entry *thread_p, Args &&... args)
 template <typename ... Args>
 int xs_callback_send_and_receive (cubthread::entry *thread_p, const xs_callback_func &func, Args &&... args)
 {
-  int error_code = NO_ERROR;
+  const cubmem::extensible_block b = pack_data (std::forward<Args> (args)...);
+  int error_code;
 
-  error_code = xs_callback_send_args (thread_p, std::forward<Args> (args)...);
-  if (error_code != NO_ERROR)
+  xs_callback_begin_wait (thread_p);
+  error_code = xs_callback_send (thread_p, b);
+  if (error_code == NO_ERROR)
     {
-      return error_code;
+      error_code = xs_callback_receive (thread_p, func);
     }
+  xs_callback_end_wait (thread_p);
 
-  return xs_callback_receive (thread_p, func);
+  return error_code;
 }
 
 #endif // _NETWORK_CALLBACK_SR_HPP_
