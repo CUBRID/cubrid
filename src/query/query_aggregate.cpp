@@ -844,6 +844,19 @@ qdata_acc_kernel_sum_numeric (cubthread::entry *thread_p, cubxasl::aggregate_lis
 }
 
 /*
+ * qdata_acc_kernel_run () - accumulate one row through the kernel resolved for agg_p
+ *   (the parallel BUILDVALUE_OPT hook shares the serial per-row tail this way, so the
+ *   deferred NUMERIC sum and the typed SUM kernels give the same result on both paths)
+ */
+int
+qdata_acc_kernel_run (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
+		      cubxasl::aggregate_accumulator *acc, DB_VALUE *value)
+{
+  assert (agg_p->acc_kernel != NULL);
+  return ((QDATA_ACC_KERNEL_FN) agg_p->acc_kernel) (thread_p, agg_p, acc, value);
+}
+
+/*
  * qdata_acc_kernel_name () - display name of an accumulate kernel for SQL trace
  */
 const char *

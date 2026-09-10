@@ -72,6 +72,8 @@ extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_n
 extern void qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list);
 extern void qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, bool free_it);
 extern const char *qdata_acc_kernel_name (const void *kernel);
+extern int qdata_acc_kernel_run (cubthread::entry * thread_p, cubxasl::aggregate_list_node * agg_p,
+				 cubxasl::aggregate_accumulator * acc, DB_VALUE * value);
 extern int qdata_numeric_sum_flush (cubxasl::aggregate_accumulator * acc);
 extern void qdata_numeric_sum_discard (cubxasl::aggregate_accumulator * acc);
 extern void qdata_agg_operand_prog_compile (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list_p,

@@ -1770,12 +1770,9 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    /* NOTE: this worker-local SUM rounds per row (qdata_add_dbval ()), while the serial
-	     * qdata_evaluate_aggregate_list () and the px hash GROUP BY accumulate NUMERIC through
-	     * the deferred-carry sum_state and round once at materialization.  The two agree up to
-	     * DB_MAX_NUMERIC_PRECISION digits of running sum; beyond that the per-row rounding
-	     * differs in the last digits.  Unifying this path onto sum_state (accumulate here,
-	     * flush before the write_finalize () merge) is tracked as a follow-up of CBRD-27215. */
+	    /* per-row add for an operand the compiled program did not evaluate (the caller
+	     * runs the resolved accumulate kernel for compiled SUM/AVG operands, see the hook);
+	     * the serial path rounds per row in the same case */
 	    if (qdata_add_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
 	      {
 		return false;
@@ -2192,6 +2189,29 @@ namespace parallel_scan
 	      {
 		return false;
 	      }
+	  }
+
+	if (prog_root >= 0 && agg_node->acc_kernel != NULL
+	    && (agg_node->function == PT_SUM || agg_node->function == PT_AVG)
+	    && agg_node->accumulator_domain.value_dom != NULL
+	    && agg_node->accumulator_domain.value_dom != &tp_Null_domain)
+	  {
+	    /* SUM/AVG of a compiled operand: the same accumulate kernel the serial
+	     * qdata_evaluate_aggregate_list () resolved for this aggregate.  A NUMERIC sum then
+	     * accumulates exactly (deferred carry, sum_state) on the worker and is rounded once
+	     * when write_finalize () merges it into the coordinator's accumulator
+	     * (qdata_aggregate_accumulator_to_accumulator () flushes the state), so the
+	     * parallel result matches the serial and the hash GROUP BY paths beyond
+	     * DB_MAX_NUMERIC_PRECISION digits of running sum.  The kernel skips NULL and
+	     * counts the row itself; a worker whose domain is still unresolved keeps the
+	     * per-row path below, which resolves it from the value. */
+	    if (qdata_acc_kernel_run (thread_p, agg_node, acc, db_value_p) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return false;
+	      }
+	    continue;
 	  }
 
 	if (DB_IS_NULL (db_value_p))
