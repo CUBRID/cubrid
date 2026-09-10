@@ -31,7 +31,7 @@
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
-#include "jansson.h"
+#include "json_builder.h"
 
 #include "parser.h"
 #include "object_primitive.h"
@@ -54,6 +54,7 @@
 #include "regu_var.hpp"
 #include "memory_hash.h"	/* MHT_HLS_ENTRY for hash-join spill cost */
 #include "histogram_cl.hpp"
+#include "jsp_cl.h"		/* jsp_is_sp_parallel_eligible () */
 
 #define TEST_DUMP_PLAN_SCAN_COST 0
 #define TEST_DUMP_PLAN_SORT_COST 0
@@ -293,6 +294,8 @@ static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni
 static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
+							   int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
 				BITSET * cur_visited_terms);
@@ -308,11 +311,11 @@ static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
 static bool qo_is_sort_limit (QO_PLAN * plan);
 static int qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg);
 
-static json_t *qo_plan_scan_print_json (QO_PLAN * plan);
-static json_t *qo_plan_sort_print_json (QO_PLAN * plan);
-static json_t *qo_plan_join_print_json (QO_PLAN * plan);
-static json_t *qo_plan_follow_print_json (QO_PLAN * plan);
-static json_t *qo_plan_print_json (QO_PLAN * plan);
+static trace_json_t *qo_plan_scan_print_json (QO_PLAN * plan);
+static trace_json_t *qo_plan_sort_print_json (QO_PLAN * plan);
+static trace_json_t *qo_plan_join_print_json (QO_PLAN * plan);
+static trace_json_t *qo_plan_follow_print_json (QO_PLAN * plan);
+static trace_json_t *qo_plan_print_json (QO_PLAN * plan);
 
 static void qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent);
 static void qo_plan_sort_print_text (FILE * fp, QO_PLAN * plan, int indent);
@@ -13216,19 +13219,19 @@ qo_has_like_recompile_candidate (QO_PLAN * plan, void *arg)
  *   return:
  *   plan(in):
  */
-static json_t *
+static trace_json_t *
 qo_plan_scan_print_json (QO_PLAN * plan)
 {
   BITSET_ITERATOR bi;
   QO_ENV *env;
   bool natural_desc_index = false;
-  json_t *scan, *range, *filter;
+  trace_json_t *scan, *range, *filter;
   const char *scan_string = "";
   const char *class_name;
   char buf[257] = { '\0', };
   int i;
 
-  scan = json_object ();
+  scan = trace_json_object ();
 
   class_name = QO_NODE_NAME (plan->plan_un.scan.node);
   if (class_name == NULL)
@@ -13236,7 +13239,7 @@ qo_plan_scan_print_json (QO_PLAN * plan)
       class_name = "unknown";
     }
 
-  json_object_set_new (scan, "table", json_string (class_name));
+  trace_json_object_set_new (scan, "table", trace_json_string (class_name));
 
   switch (plan->plan_un.scan.scan_method)
     {
@@ -13249,54 +13252,54 @@ qo_plan_scan_print_json (QO_PLAN * plan)
     case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:
     case QO_SCANMETHOD_INDEX_SCAN_INSPECT:
       scan_string = "INDEX SCAN";
-      json_object_set_new (scan, "index", json_string (plan->plan_un.scan.index->head->constraints->name));
+      trace_json_object_set_new (scan, "index", trace_json_string (plan->plan_un.scan.index->head->constraints->name));
 
       env = (plan->info)->env;
-      range = json_array ();
+      range = trace_json_array ();
 
       for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi); i != -1; i = bitset_next_member (&bi))
 	{
-	  json_array_append_new (range, json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
+	  trace_json_array_append_new (range, trace_json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
 	}
 
-      json_object_set_new (scan, "key range", range);
+      trace_json_object_set_new (scan, "key range", range);
 
       if (bitset_cardinality (&(plan->plan_un.scan.kf_terms)) > 0)
 	{
-	  filter = json_array ();
+	  filter = trace_json_array ();
 	  for (i = bitset_iterate (&(plan->plan_un.scan.kf_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	    {
-	      json_array_append_new (filter, json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
+	      trace_json_array_append_new (filter, trace_json_string (qo_term_string (QO_ENV_TERM (env, i), buf)));
 	    }
 
-	  json_object_set_new (scan, "key filter", filter);
+	  trace_json_object_set_new (scan, "key filter", filter);
 	}
 
       if (qo_is_index_covering_scan (plan))
 	{
-	  json_object_set_new (scan, "covered", json_true ());
+	  trace_json_object_set_new (scan, "covered", trace_json_true ());
 	}
 
       if (plan->plan_un.scan.index && plan->plan_un.scan.index->head->use_descending)
 	{
-	  json_object_set_new (scan, "desc_index", json_true ());
+	  trace_json_object_set_new (scan, "desc_index", trace_json_true ());
 	  natural_desc_index = true;
 	}
 
       if (!natural_desc_index && (QO_ENV_PT_TREE (plan->info->env)->info.query.q.select.hint & PT_HINT_USE_IDX_DESC))
 	{
-	  json_object_set_new (scan, "desc_index forced", json_true ());
+	  trace_json_object_set_new (scan, "desc_index forced", trace_json_true ());
 	}
 
       if (qo_is_index_loose_scan (plan))
 	{
-	  json_object_set_new (scan, "loose", json_true ());
+	  trace_json_object_set_new (scan, "loose", trace_json_true ());
 	}
 
       break;
     }
 
-  return json_pack ("{s:o}", scan_string, scan);
+  return trace_json_pack ("{s:o}", scan_string, scan);
 }
 
 /*
@@ -13304,10 +13307,10 @@ qo_plan_scan_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static trace_json_t *
 qo_plan_sort_print_json (QO_PLAN * plan)
 {
-  json_t *sort, *subplan = NULL;
+  trace_json_t *sort, *subplan = NULL;
   const char *type;
 
   switch (plan->plan_un.sort.sort_type)
@@ -13338,16 +13341,16 @@ qo_plan_sort_print_json (QO_PLAN * plan)
       break;
     }
 
-  sort = json_object ();
+  sort = trace_json_object ();
 
   if (plan->plan_un.sort.subplan)
     {
       subplan = qo_plan_print_json (plan->plan_un.sort.subplan);
-      json_object_set_new (sort, type, subplan);
+      trace_json_object_set_new (sort, type, subplan);
     }
   else
     {
-      json_object_set_new (sort, type, json_string (""));
+      trace_json_object_set_new (sort, type, trace_json_string (""));
     }
 
   return sort;
@@ -13358,10 +13361,10 @@ qo_plan_sort_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static trace_json_t *
 qo_plan_join_print_json (QO_PLAN * plan)
 {
-  json_t *join, *outer, *inner;
+  trace_json_t *join, *outer, *inner;
   const char *type, *method = "";
   char buf[32];
 
@@ -13425,9 +13428,20 @@ qo_plan_join_print_json (QO_PLAN * plan)
   outer = qo_plan_print_json (plan->plan_un.join.outer);
   inner = qo_plan_print_json (plan->plan_un.join.inner);
 
+  if (outer == NULL || inner == NULL)
+    {
+      /* A plan type this dump has nothing to say about. The pack stops at the
+       * NULL one and never reads the argument behind it, so the operand that
+       * did come out is released here: left owned, one node holds the thread's
+       * node pool open for good. */
+      trace_json_decref (outer);
+      trace_json_decref (inner);
+      return NULL;
+    }
+
   sprintf (buf, "%s (%s)", method, type);
 
-  join = json_pack ("{s:[o,o]}", buf, outer, inner);
+  join = trace_json_pack ("{s:[o,o]}", buf, outer, inner);
 
   return join;
 }
@@ -13437,19 +13451,19 @@ qo_plan_join_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static trace_json_t *
 qo_plan_follow_print_json (QO_PLAN * plan)
 {
-  json_t *head, *follow;
+  trace_json_t *head, *follow;
   char buf[257] = { '\0', };
 
   head = qo_plan_print_json (plan->plan_un.follow.head);
 
-  follow = json_object ();
-  json_object_set_new (follow, "edge", json_string (qo_term_string (plan->plan_un.follow.path, buf)));
-  json_object_set_new (follow, "head", head);
+  follow = trace_json_object ();
+  trace_json_object_set_new (follow, "edge", trace_json_string (qo_term_string (plan->plan_un.follow.path, buf)));
+  trace_json_object_set_new (follow, "head", head);
 
-  return json_pack ("{s:o}", "FOLLOW", follow);
+  return trace_json_pack ("{s:o}", "FOLLOW", follow);
 }
 
 /*
@@ -13457,10 +13471,10 @@ qo_plan_follow_print_json (QO_PLAN * plan)
  *   return:
  *   plan(in):
  */
-static json_t *
+static trace_json_t *
 qo_plan_print_json (QO_PLAN * plan)
 {
-  json_t *json = NULL;
+  trace_json_t *json = NULL;
 
   switch (plan->plan_type)
     {
@@ -13498,7 +13512,7 @@ qo_plan_print_json (QO_PLAN * plan)
 void
 qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * select, QO_PLAN * plan)
 {
-  json_t *json;
+  trace_json_t *json;
   unsigned int save_custom;
 
   assert (parser != NULL && xasl != NULL && plan != NULL && select != NULL);
@@ -13509,12 +13523,18 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   json = qo_plan_print_json (plan);
+  if (json == NULL)
+    {
+      /* a plan type this dump has nothing to say about; recording an empty
+       * entry would only make every reader of plan_trace guard against it */
+      return;
+    }
 
   if (select->info.query.order_by)
     {
       if (xasl && xasl->spec_list && xasl->spec_list->indexptr && xasl->spec_list->indexptr->orderby_skip)
 	{
-	  json_object_set_new (json, "skip order by", json_true ());
+	  trace_json_object_set_new (json, "skip order by", trace_json_true ());
 	}
     }
 
@@ -13522,14 +13542,14 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     {
       if (xasl && xasl->spec_list && xasl->spec_list->indexptr && xasl->spec_list->indexptr->groupby_skip)
 	{
-	  json_object_set_new (json, "group by nosort", json_true ());
+	  trace_json_object_set_new (json, "group by nosort", trace_json_true ());
 	}
     }
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
 
-  json_object_set_new (json, "rewritten query", json_string (parser_print_tree (parser, select)));
+  trace_json_object_set_new (json, "rewritten query", trace_json_string (parser_print_tree (parser, select)));
 
   parser->custom_print = save_custom;
 
@@ -13881,6 +13901,56 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
 }
 
 /*
+ * qo_check_method_call_parallel_eligibility () - parser_walk_tree callback looking for a
+ *   PT_METHOD_CALL node that may not run inside a parallel hash join worker: a method, or
+ *   a stored procedure without the PARALLEL_ENABLE declaration
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_ineligible = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (tree != NULL && tree->node_type == PT_METHOD_CALL)
+    {
+      const char *name = NULL;
+
+      if (!PT_IS_METHOD (tree) && tree->info.method_call.method_name != NULL)
+	{
+	  PT_NODE *method_name_node = tree->info.method_call.method_name;
+
+	  if (PT_NAME_RESOLVED (method_name_node))
+	    {
+	      int custom_print_saved = parser->custom_print;
+	      parser->custom_print |= PT_SUPPRESS_QUOTES;
+	      parser->custom_print &= ~PT_PRINT_QUOTES;
+	      name = parser_print_tree (parser, method_name_node);
+	      parser->custom_print = custom_print_saved;
+	    }
+	  else
+	    {
+	      name = PT_NAME_ORIGINAL (method_name_node);
+	    }
+	}
+
+      if (name == NULL || !jsp_is_sp_parallel_eligible (name))
+	{
+	  *has_ineligible = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      /* eligible: keep walking, an argument may hold another method call */
+    }
+
+  return tree;
+}
+
+/*
  * qo_check_hjoin_for_parallel_opt() -
  *   return: One of the following QO_PLAN_PARALLEL_OPT_USE values:
  *           - PLAN_PARALLEL_OPT_USE: Parallel hash join is enabled by hint.
@@ -13900,7 +13970,9 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
   BITSET_ITERATOR bitset_iter;
   int bitset_index;
 
-  bool is_method_call = false;
+  bool has_ineligible_method_call = false;
+  BITSET *term_sets[3];
+  int set_index;
 
   if (plan == NULL || plan->info == NULL || plan->plan_type != QO_PLANTYPE_JOIN
       || plan->plan_un.join.join_method != QO_JOINMETHOD_HASH_JOIN)
@@ -13950,9 +14022,27 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
       return PLAN_PARALLEL_OPT_CANNOT_USE;
     }
 
-  if (!bitset_is_empty (&plan->plan_un.join.during_join_terms))
+  /* during/after join terms become the join predicates the parallel hash join workers
+   * evaluate per row, so both sets must hold only parallel-eligible method calls.
+   * The plan's sarged_terms must be checked as well: for an inner join the residual
+   * (non-equi) join terms are never classified as during/after join terms but stay in
+   * sarged_terms, and qo_init_projection_info () moves any of them whose columns both
+   * children project into the hash join proc's after_join_pred, which the workers evaluate.
+   * hash_terms are excluded on purpose: the key expressions are materialized into the
+   * child buildlist outputs and the workers read them by tuple position, so an SP there
+   * never executes on a worker (its evaluation is governed by the scan-path judge). */
+  term_sets[0] = &plan->plan_un.join.during_join_terms;
+  term_sets[1] = &plan->plan_un.join.after_join_terms;
+  term_sets[2] = &plan->sarged_terms;
+
+  for (set_index = 0; set_index < 3; set_index++)
     {
-      for (bitset_index = bitset_iterate (&plan->plan_un.join.during_join_terms, &bitset_iter); bitset_index != -1;
+      if (bitset_is_empty (term_sets[set_index]))
+	{
+	  continue;
+	}
+
+      for (bitset_index = bitset_iterate (term_sets[set_index], &bitset_iter); bitset_index != -1;
 	   bitset_index = bitset_next_member (&bitset_iter))
 	{
 	  term = QO_ENV_TERM (env, bitset_index);
@@ -13964,12 +14054,19 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 	  expr = QO_TERM_PT_EXPR (term);
 	  if (expr == NULL)
 	    {
-	      return PLAN_PARALLEL_OPT_CANNOT_USE;
+	      if (set_index == 0)
+		{
+		  /* keep the historical during_join_terms behavior */
+		  return PLAN_PARALLEL_OPT_CANNOT_USE;
+		}
+	      /* a term without a parse-tree expression cannot contain a method call */
+	      continue;
 	    }
 
-	  (void) parser_walk_tree (parser, expr, pt_is_method_call_node, &is_method_call, NULL, NULL);
+	  (void) parser_walk_tree (parser, expr, qo_check_method_call_parallel_eligibility,
+				   &has_ineligible_method_call, NULL, NULL);
 
-	  if (is_method_call)
+	  if (has_ineligible_method_call)
 	    {
 	      return PLAN_PARALLEL_OPT_CANNOT_USE;
 	    }
