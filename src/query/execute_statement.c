@@ -15713,6 +15713,9 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
       cursor_free_self_list_id (list_id);
     }
 
+  /* end the query; reset query_id and call qmgr_end_query() */
+  pt_end_query (parser, query_id);
+
   if (err == ER_QPROC_RESULT_CACHE_INVALID)
     {
       /* retry the statement once */
