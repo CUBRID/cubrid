@@ -57,6 +57,7 @@
 #include "parser_allocator.hpp"
 #include "tde.h"
 #include "jsp_cl.h"
+#include "xasl.h"
 
 #include <malloc.h>
 
@@ -939,6 +940,29 @@ pt_find_id_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *c
 }
 
 /*
+ * pt_clone_xasl_id () - deep-copies src into a freshly allocated XASL_ID,
+ * 	giving the caller an independent cache identity instead of aliasing src
+ *   return: new XASL_ID with the same sha1/time_stored, or NULL on allocation failure
+ *   src(in): XASL_ID to copy; must not be NULL
+ */
+static XASL_ID *
+pt_clone_xasl_id (const XASL_ID * src)
+{
+  XASL_ID *dst = (XASL_ID *) malloc (sizeof (XASL_ID));
+
+  if (dst == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_ID));
+      return NULL;
+    }
+
+  XASL_ID_SET_NULL (dst);
+  XASL_ID_COPY (dst, src);
+
+  return dst;
+}
+
+/*
  * copy_node_in_tree_pre () - copies exactly a node passed to it, and returns
  * 	a pointer to the copy. It is eligible for a walk "pre" function
  *   return:
@@ -962,8 +986,17 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 
   *new_node = *old_node;
 
-  /* a copy must not alias the original's XASL_ID, or parser_free_node_resources () frees it twice, once per node. */
+  /* clone XASL_ID; aliasing old_node's would double-free in parser_free_node_resources () (CBRD-27406) */
   new_node->xasl_id = NULL;
+  if (old_node->xasl_id != NULL)
+    {
+      new_node->xasl_id = pt_clone_xasl_id (old_node->xasl_id);
+      if (new_node->xasl_id == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "clone XASL_ID");
+	  return NULL;
+	}
+    }
 
   /* if node is copied from another parser context, deepcopy string contents */
   if (old_node->parser_id != parser->id)
