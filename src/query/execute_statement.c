@@ -541,14 +541,262 @@ typedef enum
 } DEFAULT_EXPR_EVAL_MODE;
 
 /*
+ * CDT_EVAL_SET -- the Compact DEFAULT Trees (residual DEFAULTs) one INSERT must
+ * evaluate on the client (Local Evaluation) path, with their volatility.
+ *
+ * A residual DEFAULT is exactly a DEFAULT that has a CDT: an Expression-Derived
+ * Literal is frozen to a value and a legacy pseudo-column DEFAULT has no stream,
+ * so neither appears here.  Tree and volatility come from the parser-wide CDT
+ * registry (pt_cdt_registry_tree): decoded once per parser, shared with the
+ * statement's Default References and its statement-clock probe, read-only parser
+ * memory this set never frees.  The set pins, for one statement, WHICH CDTs it
+ * consumes -- a column the object template already assigns a real value (an
+ * explicitly listed INSERT column, a SELECT-supplied column, a Default Reference)
+ * never has its DEFAULT read by populate_defaults, so its CDT is left out (see
+ * is_template_assigned_attr) instead of being evaluated for a discarded result --
+ * or failing the INSERT on a runtime error the SERVER path, which evaluates only
+ * the omitted columns, never raises.  One statement assigns the same column set
+ * on every row, so the filter taken from the first row's template holds for the
+ * whole statement.
+ *
+ * The set drives the evaluation cadence: STABLE CDTs once, right after the set is
+ * built for a class, VOLATILE ones once per row, by walking the set itself.
+ * Re-evaluating the SAME tree per row is safe because pt_evaluate_tree recomputes
+ * volatile leaves (UUID/...) on every call and never memoizes a result onto the
+ * node.  The set is owned by the row-loop owner (do_insert_template,
+ * insert_subquery_results) and is the only place CDTs are evaluated on this path;
+ * the per-statement pass (do_evaluate_statement_default_expr) does not touch them,
+ * and the attribute walk in do_evaluate_default_expr_by_smclass serves only the
+ * legacy pseudo-column enum path.
+ */
+typedef struct cdt_eval_entry CDT_EVAL_ENTRY;
+struct cdt_eval_entry
+{
+  SM_ATTRIBUTE *att;		/* residual attribute this entry maps to */
+  PT_NODE *tree;		/* rehydrated Compact DEFAULT Tree, shared parser memory owned by the CDT registry (never freed here) */
+  PT_VOLATILITY vol;		/* effective volatility */
+};
+
+typedef struct cdt_eval_set CDT_EVAL_SET;
+struct cdt_eval_set
+{
+  SM_CLASS *smclass;		/* class the entries were built for; NULL if not built */
+  int count;			/* number of residual entries */
+  CDT_EVAL_ENTRY *entries;
+};
+
+/*
+ * do_clear_cdt_eval_set () - free a CDT eval set: release the
+ *	entry array and reset the eval set to empty.  The trees belong to the parser's
+ *	CDT registry and are not touched.  Safe on an unbuilt
+ *	(zero-initialized) eval set.
+ */
+static void
+do_clear_cdt_eval_set (CDT_EVAL_SET * eval_set)
+{
+  if (eval_set == NULL || eval_set->entries == NULL)
+    {
+      return;
+    }
+  free_and_init (eval_set->entries);
+  eval_set->count = 0;
+  eval_set->smclass = NULL;
+}
+
+/*
+ * is_residual_default_attr () - true iff att carries a residual (STABLE or VOLATILE)
+ *	column DEFAULT stored as a Compact DEFAULT Tree (DB_DEFAULT_NONE with a tree
+ *	stream), as opposed to a legacy pseudo-column DEFAULT or no DEFAULT at all.
+ */
+static bool
+is_residual_default_attr (const SM_ATTRIBUTE * att)
+{
+  return (att->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
+	  && att->default_value.default_expr.default_expr_tree_stream != NULL
+	  && att->default_value.default_expr.default_expr_tree_stream_size > 0);
+}
+
+/*
+ * is_template_assigned_attr () - true iff the object template already assigns att a
+ *	real value (an is_default entry is a default fill, not a user value), so the
+ *	row will never consume att's DEFAULT.  A virtual-class template indexes its
+ *	assignments by the BASE class attribute order (populate_defaults), so the
+ *	lookup is only meaningful for a plain class template; otemplate may be NULL.
+ */
+static bool
+is_template_assigned_attr (const DB_OTMPL * otemplate, const SM_ATTRIBUTE * att)
+{
+  return (otemplate != NULL && otemplate->base_class == NULL && otemplate->assignments != NULL
+	  && att->order < otemplate->nassigns && otemplate->assignments[att->order] != NULL
+	  && !otemplate->assignments[att->order]->is_default);
+}
+
+/*
+ * do_build_cdt_eval_set () - collect (from the CDT registry) the tree and
+ *	volatility of every residual DEFAULT of smclass the statement can consume,
+ *	populating eval_set.  Residuals of the columns otemplate already assigns are
+ *	left out (see CDT_EVAL_SET).  No value is evaluated here; the caller
+ *	evaluates the collected trees per row/statement.  Any prior contents (e.g.
+ *	for a different partition class) are released first.
+ *   return: NO_ERROR or ER_code
+ */
+static int
+do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTMPL * otemplate, CDT_EVAL_SET * eval_set)
+{
+  SM_ATTRIBUTE *att;
+  int n = 0;
+
+  do_clear_cdt_eval_set (eval_set);
+
+  for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (is_residual_default_attr (att) && !is_template_assigned_attr (otemplate, att))
+	{
+	  n++;
+	}
+    }
+
+  eval_set->smclass = smclass;
+  eval_set->count = 0;
+  eval_set->entries = NULL;
+  if (n == 0)
+    {
+      return NO_ERROR;
+    }
+
+  eval_set->entries = (CDT_EVAL_ENTRY *) malloc (n * sizeof (CDT_EVAL_ENTRY));
+  if (eval_set->entries == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) n * sizeof (CDT_EVAL_ENTRY));
+      eval_set->smclass = NULL;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      PT_NODE *residual;
+      PT_VOLATILITY vol;
+
+      if (!is_residual_default_attr (att) || is_template_assigned_attr (otemplate, att))
+	{
+	  continue;
+	}
+
+      /* shared, read-only tree from the CDT registry: decoded once per parser (also serving this statement's
+       * Default References), evaluated in place per row */
+      residual = pt_cdt_registry_tree (parser, att, &vol);
+      if (residual == NULL)
+	{
+	  /* the registry reports only allocation failures itself; anything else is a stored stream this build
+	   * cannot restore (version mismatch or corruption) */
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_DEFAULT_EXPR_STREAM, 1, att->header.name);
+	    }
+	  do_clear_cdt_eval_set (eval_set);
+	  return er_errid ();
+	}
+
+      /* the volatility only picks the evaluation cadence of an already DDL-validated
+       * residual; should a node have lost its classification since (UNSET), the
+       * residual falls back to once-per-statement evaluation */
+      eval_set->entries[eval_set->count].att = att;
+      eval_set->entries[eval_set->count].tree = residual;
+      eval_set->entries[eval_set->count].vol = vol;
+      eval_set->count++;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * do_evaluate_cdt () - evaluate one rehydrated residual DEFAULT tree
+ *	and refresh the attribute's in-memory default value with the result, cast to
+ *	the attribute domain.  att->default_value.value is what the object template
+ *	consumes (populate_defaults) -- the same channel the legacy
+ *	statement-determined expressions refresh in place.
+ *   return: NO_ERROR or ER_code
+ */
+static int
+do_evaluate_cdt (PARSER_CONTEXT * parser, SM_ATTRIBUTE * att, PT_NODE * residual)
+{
+  DB_VALUE default_value;
+  TP_DOMAIN_STATUS dom_status;
+  int error;
+
+  db_make_null (&default_value);
+  pt_evaluate_tree (parser, residual, &default_value, 1);
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_EXECUTION);
+      pt_reset_error (parser);
+      db_value_clear (&default_value);
+      return er_errid ();
+    }
+
+  pr_clear_value (&att->default_value.value);
+  pr_clone_value (&default_value, &att->default_value.value);
+  db_value_clear (&default_value);
+
+  /* make sure the default value can be used for this attribute */
+  dom_status = tp_value_cast (&att->default_value.value, &att->default_value.value, att->domain, false);
+  if (dom_status != DOMAIN_COMPATIBLE)
+    {
+      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &att->default_value.value, att->domain);
+      assert_release (error != NO_ERROR);
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * do_evaluate_stable_cdts () - evaluate every STABLE residual of a
+ *	freshly built eval set exactly once.  Called right after the eval set is built for
+ *	a class (the statement's first row, or the first row of a new partition
+ *	class), so the per-statement value is in place before any row's template
+ *	consumes it.  VOLATILE residuals are left to the per-row pass.
+ *   return: NO_ERROR or ER_code
+ */
+static int
+do_evaluate_stable_cdts (PARSER_CONTEXT * parser, CDT_EVAL_SET * eval_set)
+{
+  int j, error;
+
+  for (j = 0; j < eval_set->count; j++)
+    {
+      if (PT_VOLATILITY_IS_VOLATILE_RESIDUAL (eval_set->entries[j].vol))
+	{
+	  continue;
+	}
+      error = do_evaluate_cdt (parser, eval_set->entries[j].att, eval_set->entries[j].tree);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * do_evaluate_default_expr_by_smclass () - evaluates default expressions for class attributes.
  *   return: Error code
  *   parser(in):
  *   smclass(in):
- *   eval_mode(in): 
+ *   eval_mode(in):
+ *   otemplate(in): the row's object template on the per-row pass (NULL on the per-statement
+ *	pass); the residuals of the columns it already assigns a real value are left out of
+ *	the eval set -- their DEFAULT is never consumed by this statement
+ *   eval_set(in/out): per-statement CDT eval set -- required on the per-row pass, ignored
+ *	(may be NULL) on the per-statement pass.  Residual DEFAULTs belong to the row-loop
+ *	owner holding this eval set: STABLE ones are evaluated once when the eval set is built,
+ *	VOLATILE ones once per row.  The per-statement pass handles only the legacy
+ *	statement-determined pseudo-columns.
  */
 static int
-do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode)
+do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode,
+				     DB_OTMPL * otemplate, CDT_EVAL_SET * eval_set)
 {
   SM_ATTRIBUTE *att;
   int error = NO_ERROR;
@@ -561,64 +809,57 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
   int flag;
   TP_DOMAIN *result_domain = NULL;
   bool has_user_format;
+  int j;
 
   assert (smclass != NULL);
 
+  if (eval_mode == DEFAULT_EXPR_EVAL_BY_ROW_ONLY)
+    {
+      assert (eval_set != NULL);
+
+      /* Residual DEFAULT expressions (Compact DEFAULT Trees), evaluated on the client (Local Evaluation)
+       * path to the same value the server path would produce.  Rehydrated+classified once per statement
+       * into the eval set (see CDT_EVAL_SET), built lazily here and rebuilt if a different (e.g.
+       * partition) class arrives, from the residuals this statement's template can consume; the STABLE
+       * residuals are evaluated right then, once, so their value is in place before the first row's template
+       * consumes it. */
+      if (eval_set->smclass != smclass)
+	{
+	  error = do_build_cdt_eval_set (parser, smclass, otemplate, eval_set);
+	  if (error == NO_ERROR)
+	    {
+	      error = do_evaluate_stable_cdts (parser, eval_set);
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+
+      /* VOLATILE residuals: a fresh value for this row, straight from the eval set */
+      for (j = 0; j < eval_set->count; j++)
+	{
+	  if (!PT_VOLATILITY_IS_VOLATILE_RESIDUAL (eval_set->entries[j].vol))
+	    {
+	      continue;
+	    }
+	  error = do_evaluate_cdt (parser, eval_set->entries[j].att, eval_set->entries[j].tree);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+
+  /* Legacy pseudo-column enum defaults (default_expr_type != DB_DEFAULT_NONE): statement-determined ones on
+   * the per-statement pass, row-determined ones (UUID()/SYS_GUID()) on the per-row pass.  Residual
+   * attributes were handled above through the eval set. */
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       DB_DEFAULT_EXPR_TYPE default_expr_type = att->default_value.default_expr.default_expr_type;
 
-      if (default_expr_type == DB_DEFAULT_NONE && att->default_value.default_expr.default_expr_tree_stream != NULL
-	  && att->default_value.default_expr.default_expr_tree_stream_size > 0)
+      if (is_residual_default_attr (att))
 	{
-	  /* STABLE residual DEFAULT expression: rehydrate the Compact DEFAULT Tree and evaluate it once per
-	   * statement, so the client (Local Evaluation) path fills the same statement-time value the server
-	   * path would.  The frozen DDL-time snapshot in att->default_value.value is refreshed in place, the
-	   * same way the legacy statement-determined expressions below refresh it. */
-	  PT_NODE *residual;
-
-	  if (eval_mode != DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY)
-	    {
-	      continue;
-	    }
-
-	  residual =
-	    pt_compact_default_tree_from_stream (parser, att->default_value.default_expr.default_expr_tree_stream,
-						 att->default_value.default_expr.default_expr_tree_stream_size);
-	  if (residual == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	      error = ER_GENERIC_ERROR;
-	      break;
-	    }
-
-	  db_make_null (&default_value);
-	  pt_evaluate_tree (parser, residual, &default_value, 1);
-	  if (pt_has_error (parser))
-	    {
-	      pt_report_to_ersys (parser, PT_EXECUTION);
-	      pt_reset_error (parser);
-	      parser_free_tree (parser, residual);
-	      db_value_clear (&default_value);
-	      error = er_errid ();
-	      break;
-	    }
-	  parser_free_tree (parser, residual);
-
-	  pr_clear_value (&att->default_value.value);
-	  pr_clone_value (&default_value, &att->default_value.value);
-	  db_value_clear (&default_value);
-
-	  /* make sure the default value can be used for this attribute */
-	  dom_status = tp_value_cast (&att->default_value.value, &att->default_value.value, att->domain, false);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &att->default_value.value, att->domain);
-	      assert_release (error != NO_ERROR);
-
-	      break;
-	    }
-
 	  continue;
 	}
 
@@ -874,23 +1115,30 @@ do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_nam
       return error;
     }
 
-  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY);
+  /* Legacy statement-determined pseudo-columns only.  A residual DEFAULT is evaluated by the row-loop owner
+   * (do_insert_template / insert_subquery_results) through its per-statement eval set -- STABLE once when the
+   * eval set is built, VOLATILE once per row -- so it is rehydrated exactly once per statement. */
+  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY, NULL, NULL);
 }
 
 /*
- * do_evaluate_row_default_expr_for_otemplate() - evaluates the default expressions determined by row, if any, for
- *				the attributes of a given class's object template
+ * do_evaluate_row_default_expr_for_otemplate() - per-row DEFAULT pass for a class's object template: VOLATILE
+ *				residuals from the eval set and legacy row-determined pseudo-columns; the first
+ *				call of a statement also builds the CDT eval set (residuals of the columns
+ *				the template assigns explicitly left out) and evaluates its STABLE residuals
  *   return: Error code
  *   parser(in):
- *   class_name(in):
+ *   otemplate(in):
+ *   eval_set(in/out): per-statement CDT eval set (required), reused across this INSERT's rows
  */
 static int
-do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate)
+do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate, CDT_EVAL_SET * eval_set)
 {
   assert (otemplate != NULL);
   assert (otemplate->class_ != NULL);
 
-  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY);
+  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY, otemplate,
+					      eval_set);
 }
 
 /*
@@ -13212,6 +13460,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   DB_VALUE *value = NULL;
   DB_SEQ *seq = NULL;
   int obj_count = 0;
+  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (otemplate != NULL);
   if (otemplate == NULL)
@@ -13465,7 +13714,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	      i++;
 	    }
 
-	  error = do_evaluate_row_default_expr_for_otemplate (parser, *otemplate);
+	  error = do_evaluate_row_default_expr_for_otemplate (parser, *otemplate, &cdt_eval);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -13672,6 +13921,8 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
     }
 
 cleanup:
+  do_clear_cdt_eval_set (&cdt_eval);
+
   /* free attribute descriptors */
   if (attr_descs)
     {
@@ -13775,6 +14026,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   DB_SEQ *seq = NULL;
   DB_VALUE db_value;
   DB_VALUE *value = NULL;
+  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (parser != NULL);
 
@@ -13969,7 +14221,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 			}
 		    }
 
-		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate);
+		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate, &cdt_eval);
 		  if (error != NO_ERROR)
 		    {
 		      dbt_abort_object (otemplate);
@@ -14116,6 +14368,8 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
 
 cleanup:
+  do_clear_cdt_eval_set (&cdt_eval);
+
   if (update != NULL)
     {
       /* restore flags */

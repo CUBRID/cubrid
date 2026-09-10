@@ -1360,30 +1360,39 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 	   * to be coerced
 	   */
 
+	  exists = template_ptr->assignments[att->order];
+	  if (exists != NULL)
+	    {
+	      continue;
+	    }
+
 	  if (DB_VALUE_TYPE (&att->default_value.value) != DB_TYPE_NULL)
 	    {
-
-	      exists = template_ptr->assignments[att->order];
-
-	      if (exists == NULL)
+	      a = obt_make_assignment (template_ptr, att);
+	      if (a == NULL)
 		{
-		  a = obt_make_assignment (template_ptr, att);
-		  if (a == NULL)
-		    {
-		      goto memory_error;
-		    }
-		  a->is_default = 1;
-		  a->variable = pr_make_ext_value ();
-		  if (a->variable == NULL)
-		    {
-		      goto memory_error;
-		    }
-		  /* would be nice if we could avoid copying here */
-		  if (pr_clone_value (&att->default_value.value, a->variable))
-		    {
-		      goto memory_error;
-		    }
+		  goto memory_error;
 		}
+	      a->is_default = 1;
+	      a->variable = pr_make_ext_value ();
+	      if (a->variable == NULL)
+		{
+		  goto memory_error;
+		}
+	      /* would be nice if we could avoid copying here */
+	      if (pr_clone_value (&att->default_value.value, a->variable))
+		{
+		  goto memory_error;
+		}
+	    }
+	  else if ((att->flags & SM_ATTFLAG_NON_NULL)
+		   && att->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
+		   && att->default_value.default_expr.default_expr_tree_stream != NULL)
+	    {
+	      int error = NO_ERROR;
+
+	      ERROR1 (error, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, att->header.name);
+	      return error;
 	    }
 	}
     }
