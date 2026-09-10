@@ -11204,16 +11204,20 @@ pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream
  * (pt_evaluate_tree never memoizes onto the nodes), or parser_copy_tree it when
  * they need a subtree of their own -- never mutate or parser_free_tree it.
  *
- * An entry is keyed on the attribute (class, id) and validated against the
- * stream bytes, so a class re-fetched after an ALTER (a new stream) gets a fresh
- * tree while the old one simply stays until the parser is freed.
+ * An entry is keyed on the attribute (class, id) and validated against a
+ * parser-owned COPY of the stream bytes, so a class re-fetched after an ALTER (a
+ * new stream) gets a fresh tree while the old one simply stays until the parser
+ * is freed.  The copy matters: the attribute's own stream buffer belongs to the
+ * workspace and can be released -- and its address reused -- while this parser
+ * (a prepared statement, say) lives on, so neither the pointer nor its bytes may
+ * be consulted after registration.
  */
 struct pt_cdt_registry_entry
 {
   struct pt_cdt_registry_entry *next;
   MOP class_mop;		/* att->class_mop */
   int att_id;			/* att->id */
-  const char *stream;		/* stream the tree was decoded from (identity + content check) */
+  const char *stream;		/* parser-owned copy of the stream the tree was decoded from (content check) */
   int stream_size;
   PT_NODE *tree;		/* the shared rehydrated tree */
   PT_VOLATILITY volatility;	/* effective volatility of tree (pt_get_expr_tree_volatility) */
@@ -11235,6 +11239,7 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
   struct pt_cdt_registry_entry *entry;
   const DB_DEFAULT_EXPR *default_expr;
   PT_NODE *tree, *unclassified_node = NULL;
+  char *stream_copy;
 
   assert (parser != NULL && att != NULL);
 
@@ -11253,8 +11258,7 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
     }
 
   if (entry != NULL && entry->stream_size == default_expr->default_expr_tree_stream_size
-      && (entry->stream == default_expr->default_expr_tree_stream
-	  || memcmp (entry->stream, default_expr->default_expr_tree_stream, entry->stream_size) == 0))
+      && memcmp (entry->stream, default_expr->default_expr_tree_stream, entry->stream_size) == 0)
     {
       if (volatility != NULL)
 	{
@@ -11271,6 +11275,17 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
       return NULL;
     }
 
+  /* the copy of the stream this tree was decoded from, in parser memory (see the registry note) */
+  stream_copy = (char *) parser_alloc (parser, default_expr->default_expr_tree_stream_size);
+  if (stream_copy == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) default_expr->default_expr_tree_stream_size);
+      parser_free_tree (parser, tree);
+      return NULL;
+    }
+  memcpy (stream_copy, default_expr->default_expr_tree_stream, default_expr->default_expr_tree_stream_size);
+
   if (entry == NULL)
     {
       entry = (struct pt_cdt_registry_entry *) parser_alloc (parser, sizeof (*entry));
@@ -11285,9 +11300,9 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
       entry->next = parser->cdt_registry;
       parser->cdt_registry = entry;
     }
-  /* a re-fetched attribute (new stream after an ALTER) replaces its entry; the previous tree may still be
-   * referenced by a pass of this statement, so it is left to the parser to release */
-  entry->stream = default_expr->default_expr_tree_stream;
+  /* a re-fetched attribute (new stream after an ALTER) replaces its entry; the previous tree and stream copy
+   * may still be referenced by a pass of this statement, so they are left to the parser to release */
+  entry->stream = stream_copy;
   entry->stream_size = default_expr->default_expr_tree_stream_size;
   entry->tree = tree;
   entry->volatility = pt_get_expr_tree_volatility (tree, &unclassified_node);
