@@ -42,6 +42,7 @@ set (COMPAT_HEADERS
   )
 
 set(THREAD_SOURCES
+  ${THREAD_DIR}/concurrency_slot.cpp
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_daemon.cpp
@@ -55,6 +56,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_worker_pool_taskcap.cpp
   )
 set(THREAD_HEADERS
+  ${THREAD_DIR}/concurrency_slot.hpp
   ${THREAD_DIR}/critical_section_tracker.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
@@ -67,6 +69,7 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_waiter.hpp
   ${THREAD_DIR}/thread_worker_pool.hpp
   ${THREAD_DIR}/thread_worker_pool_impl.hpp
+  ${THREAD_DIR}/thread_worker_pool_elastic.hpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.hpp
   )
 
@@ -463,6 +466,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
+  ${TRANSACTION_DIR}/log_prior_inflight.cpp
   ${TRANSACTION_DIR}/log_recovery.c
   ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
@@ -487,6 +491,8 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
+  ${TRANSACTION_DIR}/log_prior_inflight.hpp
+  ${TRANSACTION_DIR}/log_prior_inflight_ring.hpp
   ${TRANSACTION_DIR}/log_reader.hpp
   ${TRANSACTION_DIR}/log_recovery.h
   ${TRANSACTION_DIR}/log_recovery_redo_perf.hpp

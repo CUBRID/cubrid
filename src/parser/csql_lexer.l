@@ -182,6 +182,8 @@ IDL       [a-zA-Z0-9_]
 									  return ANALYZE; }
 [aA][nN][dD]								{ return AND; }
 [aA][nN][yY]								{ return ANY; }
+[aA][pP][pP][rR][oO][xX]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return APPROX; }
 [aA][rR][cC][hH][iI][vV][eE]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return ARCHIVE; }
 [aA][rR][eE]								{ return ARE; }
@@ -371,6 +373,8 @@ IDL       [a-zA-Z0-9_]
                                                                           return ERROR_; }
 [eE][sS][cC][aA][pP][eE]						{ return ESCAPE; }
 [eE][vV][aA][lL][uU][aA][tT][eE]					{ return EVALUATE; }
+[eE][xX][aA][cC][tT]							{ csql_yylval.cptr = pt_makename(yytext);
+									  return EXACT; }
 [eE][xX][cC][eE][pP][tT]						{ return EXCEPT; }
 [eE][xX][cC][eE][pP][tT][iI][oO][nN]					{ return EXCEPTION; }
 [eE][xX][eE][cC]							{ return EXEC; }
@@ -680,7 +684,9 @@ IDL       [a-zA-Z0-9_]
 									  return PAGE; }
                                                                                 
 [pP][aA][rR][aA][lL][lL][eE][lL]					{ csql_yylval.cptr = pt_makename(yytext);
-                                                                          return PARALLEL; }										
+                                                                          return PARALLEL; }
+[pP][aA][rR][aA][lL][lL][eE][lL]_[eE][nN][aA][bB][lL][eE]		{ csql_yylval.cptr = pt_makename(yytext);
+                                                                          return PARALLEL_ENABLE; }
 [pP][aA][rR][aA][mM][eE][tT][eE][rR][sS]				{ return PARAMETERS; }
 [pP][aA][rR][tT][iI][aA][lL]						{ return PARTIAL; }
 [pP][aA][rR][tT][iI][tT][iI][oO][nN]					{ csql_yylval.cptr = pt_makename(yytext);
