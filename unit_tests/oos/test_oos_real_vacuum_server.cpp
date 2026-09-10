@@ -825,6 +825,50 @@ TEST_F (OosRealVacuum, ReVacuumAfterDrainIsIdempotent)
   expect_oos_gone (oos_oid, "drained OOS after re-vacuum");
 }
 
+/* A rolled-back replacement does not supersede the committed version. A
+ * separate committed delete witnesses real vacuum progress before readback;
+ * waking a daemon or freeing the replacement buffer alone proves nothing. */
+/* TODO (CBRD-27237): Remove DISABLED_ after the rollback/vacuum fix lands and
+ * this regression passes with real vacuum progress. */
+TEST_F (OosRealVacuum, DISABLED_RolledBackUpdateKeepsCommittedOosAfterVacuum)
+{
+  const std::string original (4096, 'a');
+  OID heap_oid, original_oid;
+  insert_row_with_oos (original, heap_oid, original_oid);
+
+  /* Allocate the progress witness before creating any reclaimable version,
+   * so a recycled OOS slot cannot alias the original OID in this test. */
+  OID witness_heap_oid, witness_oos_oid;
+  insert_row_with_oos (std::string (4096, 'w'), witness_heap_oid, witness_oos_oid);
+
+  RECDES replacement {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (std::string (4096, 'b'), replacement), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_replacement (&replacement, recdes_free_data_area);
+  OID replacement_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, replacement, replacement_oid), NO_ERROR);
+
+  RECDES new_heap_rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({replacement_oid}, { (INT64) replacement.length}, new_heap_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_heap (&new_heap_rec, recdes_free_data_area);
+  ASSERT_EQ (heap_update_mvcc (hfid, class_oid, scan_cache, heap_oid, new_heap_rec), NO_ERROR);
+  ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
+
+  RECDES before_vacuum {};
+  ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, original_oid, before_vacuum), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_before (&before_vacuum, recdes_free_data_area);
+  ASSERT_EQ (std::string (before_vacuum.data, before_vacuum.length - 1), original);
+
+  delete_row_and_close_block (witness_heap_oid);
+  ASSERT_TRUE (wait_for_vacuum ([this, &witness_oos_oid] { return oos_unreadable (witness_oos_oid); }, 60))
+      << "committed-delete witness did not establish vacuum progress";
+
+  RECDES after_vacuum {};
+  ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, original_oid, after_vacuum), NO_ERROR)
+      << "rolled-back UPDATE must not make the committed OOS value reclaimable";
+  test_oos_utils::auto_freed_recdes_ptr defer_after (&after_vacuum, recdes_free_data_area);
+  EXPECT_EQ (std::string (after_vacuum.data, after_vacuum.length - 1), original);
+}
+
 int
 main (int argc, char **argv)
 {
