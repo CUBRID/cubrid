@@ -66,8 +66,13 @@
 #include "memory_wrapper.hpp"
 
 /* protocol violation bound for a single request body (mirrors
- * driver_session.cpp REQUEST_BODY_MAX) */
-#define CAS_DISPATCH_REQUEST_BODY_MAX (16 * 1024 * 1024)
+ * driver_session.cpp REQUEST_BODY_MAX).  1 GiB covers the documented maximum
+ * single value (DB_MAX_STRING_LENGTH = 0x3fffffff, ~1 GiB — a bit varying /
+ * string / bound BLOB) plus framing; legacy CAS applied no upper bound, so a
+ * smaller cap silently broke large binds (workspace#227 bug_bts_6290).  The
+ * negative/garbage guard is what actually matters now that the length lands in
+ * cub_server's address space. */
+#define CAS_DISPATCH_REQUEST_BODY_MAX (1024 * 1024 * 1024)
 
 static void set_db_parameter (void);
 

@@ -2512,7 +2512,12 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   if (status < 0)
     {
       csql_Error_code = CSQL_ERR_SQL_ERROR;
-      csql_thin_display_wire_error ();
+      /* a dropped connection is reported once, by csql_check_server_down
+       * (fat parity: one abort message, then "Exiting ..."; #227) */
+      if (csql_wire_is_connected () || csql_wire_last_error (NULL) != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
+	{
+	  csql_thin_display_wire_error ();
+	}
       csql_check_server_down ();
       csql_Num_failures = 1;
       return 1;

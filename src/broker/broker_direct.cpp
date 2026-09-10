@@ -69,6 +69,9 @@
 #include "cas_error.h"
 #include "cas_protocol.h"
 #include "environment_variable.h"
+#include "error_code.h"
+#include "language_support.h"
+#include "message_catalog.h"
 #include "broker_filename.h"
 
 namespace brd
@@ -274,6 +277,34 @@ namespace brd
   /* token table                                                        */
   /* ------------------------------------------------------------------ */
 
+  /* brd_park_client already acknowledged the driver header. A cleartext
+   * driver is now waiting for a length-prefixed CAS connect reply, not
+   * another four-byte broker acknowledgement. A bare negative integer is
+   * otherwise read as a length and reported as an IOException. Same byte
+   * layout as net_write_error (cas_network.c) for a V12 driver. */
+  static void
+  send_connect_error_frame (SOCKET fd, int indicator, int code, const char *message)
+  {
+    const std::size_t msg_len = std::strlen (message) + 1;
+    std::vector<char> reply (sizeof (int) + CAS_INFO_SIZE + 2 * sizeof (int) + msg_len);
+    char *ptr = reply.data ();
+    int value = htonl ((int) (2 * sizeof (int) + msg_len));
+    std::memcpy (ptr, &value, sizeof (value));
+    ptr += sizeof (value);
+    const char cas_info[CAS_INFO_SIZE] =
+    { CAS_INFO_STATUS_INACTIVE, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT };
+    std::memcpy (ptr, cas_info, sizeof (cas_info));
+    ptr += sizeof (cas_info);
+    value = htonl (indicator);
+    std::memcpy (ptr, &value, sizeof (value));
+    ptr += sizeof (value);
+    value = htonl (code);
+    std::memcpy (ptr, &value, sizeof (value));
+    ptr += sizeof (value);
+    std::memcpy (ptr, message, msg_len);
+    (void) send_all (fd, reply.data (), reply.size ());
+  }
+
   /* front rejection: count it (#116 D10) and answer the driver.  Callers on
    * the receiver, peek, and dispatch threads share the counter — atomic. */
   static void
@@ -287,29 +318,87 @@ namespace brd
 	send_error_code_to_driver (fd, error, driver_info);
 	return;
       }
+    send_connect_error_frame (fd, CAS_ERROR_INDICATOR, error, "Cannot hand off the connection to the database server");
+  }
 
-    /* brd_park_client already acknowledged the driver header. A cleartext
-     * driver is now waiting for a length-prefixed CAS connect reply, not
-     * another four-byte broker acknowledgement. A bare negative integer is
-     * otherwise read as a length and reported as an IOException. */
-    static const char message[] = "Cannot hand off the connection to the database server";
-    char reply[sizeof (int) + CAS_INFO_SIZE + 2 * sizeof (int) + sizeof (message)];
-    char *ptr = reply;
-    int value = htonl (2 * sizeof (int) + sizeof (message));
-    std::memcpy (ptr, &value, sizeof (value));
-    ptr += sizeof (value);
-    const char cas_info[CAS_INFO_SIZE] =
-    { CAS_INFO_STATUS_INACTIVE, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT };
-    std::memcpy (ptr, cas_info, sizeof (cas_info));
-    ptr += sizeof (cas_info);
-    value = htonl (CAS_ERROR_INDICATOR);
-    std::memcpy (ptr, &value, sizeof (value));
-    ptr += sizeof (value);
-    value = htonl (error);
-    std::memcpy (ptr, &value, sizeof (value));
-    ptr += sizeof (value);
-    std::memcpy (ptr, message, sizeof (message));
-    (void) send_all (fd, reply, sizeof (reply));
+  /* The host list the legacy CAS reported when db_restart_ex() could reach
+   * no server: the databases.txt hosts of <db> (third column, already
+   * ':'-joined), and "localhost" for a database the file does not know
+   * (boot_restart_client -> cfg_find_db / cfg_new_db).  Read directly:
+   * cub_broker never calls er_init(), and cfg_find_db() reports a missing
+   * entry through er_set(), which asserts in an uninitialized error module
+   * (phase-2a crash, workspace#227). */
+  static std::string
+  connect_failed_host_list (const char *db_name)
+  {
+    std::string hosts;
+    const char *dir = envvar_get ("DATABASES");
+    if (dir != NULL && *dir != '\0')
+      {
+	std::string path = std::string (dir) + (dir[std::strlen (dir) - 1] == '/' ? "" : "/") + "databases.txt";
+	FILE *fp = fopen (path.c_str (), "r");
+	if (fp != NULL)
+	  {
+	    char line[4096];
+	    while (fgets (line, sizeof (line), fp) != NULL)
+	      {
+		char name[256], vol[1024], host[1024];
+		if (line[0] == '#' || sscanf (line, "%255s %1023s %1023s", name, vol, host) != 3)
+		  {
+		    continue;
+		  }
+		if (std::strcmp (name, db_name) == 0)
+		  {
+		    hosts = host;
+		    break;
+		  }
+	      }
+	    fclose (fp);
+	  }
+      }
+    if (hosts.empty ())
+      {
+	hosts = "localhost";
+      }
+    return hosts;
+  }
+
+  /* No server is listening on <db>'s adoption socket.  Before the fold this
+   * driver reached a CAS whose db_restart_ex() failed and answered with the
+   * DBMS error ER_BO_CONNECT_FAILED (-677) — the code JDBC/CCI key their
+   * alt-host failover on (UConnection.isErrorToReconnect, cci alt-host
+   * retry).  The fold dials the socket instead of booting a client, so the
+   * broker composes that same reply itself; CAS_ER_FREE_SERVER stays for the
+   * genuinely transient admission cases (workspace#227, policy #209 D5). */
+  static void
+  reject_client_connect_failed (manager &m, SOCKET fd, const char *db_name, const char *driver_info)
+  {
+    if (IS_SSL_CLIENT (driver_info))
+      {
+	reject_client (m, fd, CAS_ER_FREE_SERVER, driver_info);
+	return;
+      }
+    __atomic_add_fetch (&m.shm->brd_num_rejected, 1, __ATOMIC_RELAXED);
+
+    /* catalog text in the broker's own CUBRID_MSG_LANG, as the CAS process
+     * rendered it.  lang_init_builtin() only reads the environment (no
+     * locale library load, no er_set); the catalog itself opens lazily on
+     * the first lookup, hence the once-guard around both. */
+    static std::once_flag msg_once;
+    static const char *fmt = NULL;
+    std::call_once (msg_once, [] ()
+    {
+      (void) lang_init_builtin ();
+      fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_BO_CONNECT_FAILED);
+      if (fmt == NULL || *fmt == '\0')
+	{
+	  fmt = "Failed to connect to database server, '%1$s', on the following host(s): %2$s";
+	}
+    });
+    std::string hosts = connect_failed_host_list (db_name);
+    char message[1024];
+    snprintf (message, sizeof (message), fmt, db_name, hosts.c_str ());
+    send_connect_error_frame (fd, DBMS_ERROR_INDICATOR, ER_BO_CONNECT_FAILED, message);
   }
 
   /* slot accounting, mirrored into shm for `cubrid broker status` (#116 D10) */
@@ -1437,8 +1526,9 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
       std::shared_ptr<channel> ch = channel_get_or_dial (*m, db_name);
       if (ch == NULL)
 	{
-	  /* server not up: immediate retryable rejection (#117 D5/D7) */
-	  reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
+	  /* server not up: the legacy connect failure (-677), which drivers
+	   * treat as retryable/failover the same way (#117 D5/D7, #227) */
+	  reject_client_connect_failed (*m, job->clt_sock_fd, db_name, job->driver_info);
 	  close (job->clt_sock_fd);
 	  return;
 	}

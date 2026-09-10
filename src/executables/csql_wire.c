@@ -323,7 +323,7 @@ wire_read_connect_reply (int fd, int length)
  * DIRECT_CONNECT refusal arrives as an adoption HANDOFF_REJECT frame whose
  * first bytes are the "ADOP" magic in host order */
 static int
-wire_finish_connect (int fd)
+wire_finish_connect (int fd, const char *db)
 {
   char first4[4];
   if (wire_read_exact (fd, first4, 4) != NO_ERROR)
@@ -354,7 +354,15 @@ wire_finish_connect (int fd)
       switch ((cubconn::adoption::reject_reason) reason)
 	{
 	case cubconn::adoption::reject_reason::CLIENTS_EXCEEDED:
-	  wire_set_error (ER_CSS_CLIENTS_EXCEEDED, "too many clients");
+	  {
+	    /* boot_restart_client folded ER_CSS_CLIENTS_EXCEEDED into the
+	     * connect failure it reports for every unreachable host
+	     * (-677), and that is what csql users and TCs see (#227) */
+	    char msg[WIRE_ERR_MSG_MAX];
+	    snprintf (msg, sizeof (msg),
+		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_BO_CONNECT_FAILED), db, "localhost");
+	    wire_set_error (ER_BO_CONNECT_FAILED, msg);
+	  }
 	  break;
 	case cubconn::adoption::reject_reason::DBNAME_MISMATCH:
 	  wire_set_error (ER_FAILED, "database name does not match this server");
@@ -416,7 +424,7 @@ wire_connect_local (const char *db, const char *user, const char *passwd, int cl
       return ER_FAILED;
     }
 
-  int err = wire_finish_connect (fd);
+  int err = wire_finish_connect (fd, db);
   if (err != NO_ERROR)
     {
       close (fd);
@@ -522,6 +530,14 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
     {
       wire_set_error (ER_FAILED, "no database name");
       return ER_FAILED;
+    }
+  if (user_name != NULL && strlen (user_name) >= DB_MAX_USER_LENGTH)
+    {
+      /* au_login's check, which the fat csql hit before any network I/O;
+       * the wire's db_info user field would silently truncate it (#227) */
+      wire_set_error (ER_USER_NAME_TOO_LONG,
+		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -ER_USER_NAME_TOO_LONG));
+      return ER_USER_NAME_TOO_LONG;
     }
   at = strchr (db_name, '@');
   if (at != NULL)
