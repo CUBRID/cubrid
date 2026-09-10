@@ -419,6 +419,7 @@ static void pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_J
 						   json_table_node & result);
 static XASL_NODE *pt_find_xasl (XASL_NODE * list, XASL_NODE * match);
 static void pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl);
+static void pt_mark_union_children_backward (XASL_NODE * xasl);
 static XASL_NODE *pt_append_scan (const XASL_NODE * to, const XASL_NODE * from);
 static PT_NODE *pt_uncorr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -17731,6 +17732,37 @@ exit_on_error:
 
 
 /*
+ * pt_mark_union_children_backward () - flags the children of a UNION_PROC whose result is scrolled by the client
+ *   return: none
+ *   xasl(in): a UNION_PROC (nothing to do for any other proc type)
+ *
+ * Note: qfile_union_list () serves UNION ALL by cloning one child list file as the result instead of copying, so the
+ *       result inherits that child's tuple header. A backward capable result (the top-most XASL's, scrolled by the
+ *       client cursor) therefore needs children written with prev_len, the same way ptqo_to_merge_list_proc () marks
+ *       MERGELIST_PROC children. Nested UNION_PROC children hand their own child up the same way, so recurse.
+ */
+static void
+pt_mark_union_children_backward (XASL_NODE * xasl)
+{
+  while (xasl != NULL && xasl->type == UNION_PROC)
+    {
+      XASL_NODE *left = xasl->proc.union_.left;
+      XASL_NODE *right = xasl->proc.union_.right;
+
+      if (left != NULL)
+	{
+	  XASL_SET_FLAG (left, XASL_LIST_BACKWARD);
+	  pt_mark_union_children_backward (left);
+	}
+      if (right != NULL)
+	{
+	  XASL_SET_FLAG (right, XASL_LIST_BACKWARD);
+	}
+      xasl = right;
+    }
+}
+
+/*
  * pt_to_union_proc () - converts a PT_NODE tree of a query
  * 	                 union/intersection/difference to an XASL tree
  *   return: XASL_NODE, NULL indicates error
@@ -23696,6 +23728,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       xasl->query_alias = node->alias_print;
       XASL_SET_FLAG (xasl, XASL_TOP_MOST_XASL);
+      pt_mark_union_children_backward (xasl);
     }
 
   if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))

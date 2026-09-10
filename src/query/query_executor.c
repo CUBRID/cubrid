@@ -15493,6 +15493,7 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
+      qexec_assert_result_list_backward (xasl, t_list_id);	/* the combined list becomes this xasl's result */
       if (qfile_copy_list_id (xasl->list_id, t_list_id, true, QFILE_MOVE_DEPENDENT) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;

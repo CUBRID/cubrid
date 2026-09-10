@@ -541,7 +541,7 @@ struct cte_proc_node
 #define XASL_ANALYTIC_SKIP_SORT (0x1 << 21)	/* analytic skip sort optimization */
 #define XASL_DBLINK_CURSOR_REWIND	(0x1 << 22)	/* correlated DBLink subquery: rewind CCI cursor instead of re-issuing cci_execute per outer row */
 #define XASL_CORR_DBLINK		(0x1 << 23)	/* correlated push-down (per-row bind); mutually exclusive with XASL_DBLINK_CURSOR_REWIND */
-#define XASL_LIST_BACKWARD		(0x1 << 24)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent */
+#define XASL_LIST_BACKWARD		(0x1 << 24)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define IS_DBLINK_CURSOR_REWIND_XASL(x)     XASL_IS_FLAGED ((x), XASL_DBLINK_CURSOR_REWIND)

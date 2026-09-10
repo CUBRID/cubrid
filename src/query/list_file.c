@@ -2434,7 +2434,11 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
   /* result cached list_id cannot be used to append the union of results */
   if (!lhs_file_p->is_result_cached && !rhs_file_p->is_result_cached)
     {
-      if (QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL))
+      /* the fast path clones one input as the result, so a backward capable result needs inputs written with
+       * prev_len (parser_generate_xasl () marks a top-most UNION_PROC's children); otherwise copy into a new list */
+      if (QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL)
+	  && (!QFILE_IS_FLAG_SET (flag, QFILE_FLAG_BACKWARD)
+	      || (QFILE_LIST_IS_BACKWARD (lhs_file_p) && QFILE_LIST_IS_BACKWARD (rhs_file_p))))
 	{
 	  return qfile_union_list (thread_p, lhs_file_p, rhs_file_p, flag);
 	}
@@ -5051,8 +5055,14 @@ qfile_scan_prev (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
     {
       if (scan_id_p->curr_tplno > 0)
 	{
-	  /* prev_len exists only in the header of a backward capable list */
-	  assert (QFILE_LIST_IS_BACKWARD (&scan_id_p->list_id));
+	  /* refuse instead of stepping to a garbage offset: prev_len only exists in a backward capable list's header
+	   * (same guard as cursor_prev_tuple) */
+	  if (!QFILE_LIST_IS_BACKWARD (&scan_id_p->list_id))
+	    {
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_CRSOPR, 0);
+	      return S_ERROR;
+	    }
 	  scan_id_p->curr_offset -= QFILE_GET_PREV_TUPLE_LENGTH (scan_id_p->curr_tpl);
 	  scan_id_p->curr_tpl -= QFILE_GET_PREV_TUPLE_LENGTH (scan_id_p->curr_tpl);
 	  scan_id_p->curr_tplno--;
