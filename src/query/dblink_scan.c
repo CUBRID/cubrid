@@ -440,15 +440,18 @@ dblink_remote_is_cubrid (int conn_handle)
  *   connection opened.  So the value is matched to that name, not the name to the value: the name is
  *   per connection while the codeset is per value, and only one of the two can move.
  *
- *   A character the target codeset cannot encode is replaced with '?' rather than reported: the
- *   converters substitute it and qstr_coerce () hands back DATA_STATUS_OK either way.  A binary
- *   column reaches the same path, where the conversion only validates -- well-formed sequences pass
- *   through and the rest are replaced.
+ *   The converters replace a character the target cannot encode with '?' and qstr_coerce () still
+ *   returns DATA_STATUS_OK, so this function cannot trust that status.  It converts back and
+ *   compares the bytes; a value that does not come back unchanged is refused, so the substitution
+ *   is never bound.  A binary column uses the same check: well-formed sequences survive the round
+ *   trip and the rest do not.
  */
 static int
 dblink_coerce_to_declared_codeset (DB_VALUE * dbval, DB_VALUE * conv_val)
 {
   DB_DATA_STATUS data_status = DATA_STATUS_OK;
+  DB_VALUE back_val;
+  bool restored;
 
   db_value_domain_init (conv_val, DB_VALUE_TYPE (dbval), DB_VALUE_PRECISION (dbval), 0);
   db_string_put_cs_and_collation (conv_val, LANG_SYS_CODESET, LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET));
@@ -458,6 +461,31 @@ dblink_coerce_to_declared_codeset (DB_VALUE * dbval, DB_VALUE * conv_val)
       pr_clear_value (conv_val);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
 	      "a bound value could not be converted to the codeset declared to the remote");
+      return ER_DBLINK;
+    }
+
+  db_value_domain_init (&back_val, DB_VALUE_TYPE (dbval), DB_VALUE_PRECISION (dbval), 0);
+  db_string_put_cs_and_collation (&back_val, db_get_string_codeset (dbval), db_get_string_collation (dbval));
+
+  if (db_char_string_coerce (conv_val, &back_val, &data_status) != NO_ERROR || data_status != DATA_STATUS_OK)
+    {
+      restored = false;
+    }
+  else
+    {
+      int size = db_get_string_size (dbval);
+
+      restored = (db_get_string_size (&back_val) == size
+		  && memcmp (db_get_string (&back_val), db_get_string (dbval), size) == 0);
+    }
+
+  pr_clear_value (&back_val);
+
+  if (!restored)
+    {
+      pr_clear_value (conv_val);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "a bound value has a character the codeset declared to the remote cannot encode");
       return ER_DBLINK;
     }
 
