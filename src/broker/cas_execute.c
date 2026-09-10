@@ -686,16 +686,22 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
     {
       T_PREPARE_CALL_INFO *prepare_call_info;
 
-      tmp = sql_stmt;
-      if (sql_stmt[0] == '?')
+      /* skip leading whitespace/comments before detecting the out parameter */
+      tmp = skip_leading_whitespace_and_comment (sql_stmt);
+      if (*tmp == '?')
 	{
 	  is_first_out = 1;
+
+	  /* find '=' skipping any comment placed between "?" and "=" */
+	  tmp++;
 	  while (*tmp)
 	    {
-	      if (*tmp == '=')
+	      tmp = skip_leading_whitespace_and_comment (tmp);
+	      if (*tmp == '\0' || *tmp == '=')
 		{
 		  break;
 		}
+
 	      tmp++;
 	    }
 
@@ -708,7 +714,8 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  tmp++;
 	}
 
-      ut_trim (tmp);
+      /* skip again after removing "? =" before classifying the statement */
+      tmp = skip_leading_whitespace_and_comment (tmp);
       stmt_type = get_stmt_type (tmp);
       if (stmt_type != CUBRID_STMT_CALL)
 	{
@@ -786,11 +793,18 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 
   if (stmt_id < 0)
     {
-      stmt_type = get_stmt_type (sql_stmt);
-      if (stmt_id == ER_PT_SEMANTIC && stmt_type != CUBRID_STMT_SELECT && stmt_type != CUBRID_MAX_STMT_TYPE)
+      /* use the exact node type decided by the parser; read it before closing the session */
+      PT_NODE_TYPE ntype = (session->statements && session->statements[0])
+	? (PT_NODE_TYPE) session->statements[0]->node_type : PT_NODE_NONE;
+
+      if (stmt_id == ER_PT_SEMANTIC
+	  && (ntype == PT_INSERT || ntype == PT_UPDATE || ntype == PT_DELETE
+	      || ntype == PT_MERGE || ntype == PT_METHOD_CALL || ntype == PT_EVALUATE))
 	{
 	  db_close_session (session);
 	  session = NULL;
+	  /* PT_* node types map 1:1 to CUBRID_STMT_*; REPLACE is parsed as PT_INSERT */
+	  stmt_type = (char) ntype;
 	  num_markers = get_num_markers (sql_stmt);
 	}
       else
