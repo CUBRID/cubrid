@@ -82,13 +82,13 @@ typedef enum
 static AGG_EXPR_TYPE_GROUP fetch_agg_expr_type_group (const REGU_VARIABLE * regu_var);
 static bool fetch_is_agg_expr_node (const REGU_VARIABLE * regu_var, AGG_EXPR_TYPE_GROUP type_group, int budget);
 static bool fetch_agg_expr_eval_numeric (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd,
-					 OID * obj_oid, QFILE_TUPLE tpl, NUMERIC_AGG_EXPR_VAL * out);
+					 OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, NUMERIC_AGG_EXPR_VAL * out);
 static bool fetch_agg_expr_int_from_dbv (const DB_VALUE * dbv, int64_t * out);
 static bool fetch_agg_expr_eval_int (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd,
-				     OID * obj_oid, QFILE_TUPLE tpl, int64_t * out);
+				     OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, int64_t * out);
 static bool fetch_agg_expr_dbl_from_dbv (const DB_VALUE * dbv, double *out);
 static bool fetch_agg_expr_eval_dbl (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd,
-				     OID * obj_oid, QFILE_TUPLE tpl, double *out);
+				     OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, double *out);
 
 static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
 static int fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * tplrec);
@@ -324,7 +324,7 @@ fetch_is_agg_expr_node (const REGU_VARIABLE * regu_var, AGG_EXPR_TYPE_GROUP type
  */
 static bool
 fetch_agg_expr_eval_numeric (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
-			     QFILE_TUPLE tpl, NUMERIC_AGG_EXPR_VAL * out)
+			     QFILE_TUPLE_RECORD * tplrec, NUMERIC_AGG_EXPR_VAL * out)
 {
   ARITH_TYPE *arithptr;
   NUMERIC_AGG_EXPR_VAL left, right;
@@ -333,7 +333,7 @@ fetch_agg_expr_eval_numeric (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, 
     {
       DB_VALUE *peek_leaf = NULL;
 
-      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, obj_oid, tpl, &peek_leaf) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, obj_oid, tplrec, &peek_leaf) != NO_ERROR)
 	{
 	  return false;
 	}
@@ -351,15 +351,15 @@ fetch_agg_expr_eval_numeric (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, 
        * The general path creates and then unpacks a 17-byte NUMERIC value; here, the
        * conversion is reduced to an int64 read and widening.
        */
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_int) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_int) != NO_ERROR)
 	{
 	  return false;
 	}
       return numeric_agg_expr_from_int_dbv (peek_int, out);
     }
 
-  if (!fetch_agg_expr_eval_numeric (thread_p, arithptr->leftptr, vd, obj_oid, tpl, &left)
-      || !fetch_agg_expr_eval_numeric (thread_p, arithptr->rightptr, vd, obj_oid, tpl, &right))
+  if (!fetch_agg_expr_eval_numeric (thread_p, arithptr->leftptr, vd, obj_oid, tplrec, &left)
+      || !fetch_agg_expr_eval_numeric (thread_p, arithptr->rightptr, vd, obj_oid, tplrec, &right))
     {
       return false;
     }
@@ -413,7 +413,7 @@ fetch_agg_expr_int_from_dbv (const DB_VALUE * dbv, int64_t * out)
  */
 static bool
 fetch_agg_expr_eval_int (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
-			 QFILE_TUPLE tpl, int64_t * out)
+			 QFILE_TUPLE_RECORD * tplrec, int64_t * out)
 {
   ARITH_TYPE *arithptr;
   int64_t left, right, result;
@@ -422,7 +422,7 @@ fetch_agg_expr_eval_int (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_
     {
       DB_VALUE *peek_leaf = NULL;
 
-      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, obj_oid, tpl, &peek_leaf) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, obj_oid, tplrec, &peek_leaf) != NO_ERROR)
 	{
 	  return false;
 	}
@@ -435,15 +435,15 @@ fetch_agg_expr_eval_int (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_
     {
       DB_VALUE *peek_int = NULL;
 
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_int) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_int) != NO_ERROR)
 	{
 	  return false;
 	}
       return fetch_agg_expr_int_from_dbv (peek_int, out);
     }
 
-  if (!fetch_agg_expr_eval_int (thread_p, arithptr->leftptr, vd, obj_oid, tpl, &left)
-      || !fetch_agg_expr_eval_int (thread_p, arithptr->rightptr, vd, obj_oid, tpl, &right))
+  if (!fetch_agg_expr_eval_int (thread_p, arithptr->leftptr, vd, obj_oid, tplrec, &left)
+      || !fetch_agg_expr_eval_int (thread_p, arithptr->rightptr, vd, obj_oid, tplrec, &right))
     {
       return false;
     }
@@ -564,7 +564,7 @@ fetch_agg_expr_dbl_from_dbv (const DB_VALUE * dbv, double *out)
  */
 static bool
 fetch_agg_expr_eval_dbl (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
-			 QFILE_TUPLE tpl, double *out)
+			 QFILE_TUPLE_RECORD * tplrec, double *out)
 {
   ARITH_TYPE *arithptr;
   double left, right, result;
@@ -573,7 +573,7 @@ fetch_agg_expr_eval_dbl (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_
     {
       DB_VALUE *peek_leaf = NULL;
 
-      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, obj_oid, tpl, &peek_leaf) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, obj_oid, tplrec, &peek_leaf) != NO_ERROR)
 	{
 	  return false;
 	}
@@ -586,15 +586,15 @@ fetch_agg_expr_eval_dbl (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_
     {
       DB_VALUE *peek_src = NULL;
 
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_src) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_src) != NO_ERROR)
 	{
 	  return false;
 	}
       return fetch_agg_expr_dbl_from_dbv (peek_src, out);
     }
 
-  if (!fetch_agg_expr_eval_dbl (thread_p, arithptr->leftptr, vd, obj_oid, tpl, &left)
-      || !fetch_agg_expr_eval_dbl (thread_p, arithptr->rightptr, vd, obj_oid, tpl, &right))
+  if (!fetch_agg_expr_eval_dbl (thread_p, arithptr->leftptr, vd, obj_oid, tplrec, &left)
+      || !fetch_agg_expr_eval_dbl (thread_p, arithptr->rightptr, vd, obj_oid, tplrec, &right))
     {
       return false;
     }
@@ -681,7 +681,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  {
 	    NUMERIC_AGG_EXPR_VAL expr_val;
 
-	    if (fetch_agg_expr_eval_numeric (thread_p, regu_var, vd, obj_oid, tpl, &expr_val))
+	    if (fetch_agg_expr_eval_numeric (thread_p, regu_var, vd, obj_oid, tplrec, &expr_val))
 	      {
 		numeric_agg_expr_to_dbv (&expr_val, arithptr->value);
 		fused = true;
@@ -693,7 +693,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  {
 	    int64_t int_val;
 
-	    if (fetch_agg_expr_eval_int (thread_p, regu_var, vd, obj_oid, tpl, &int_val))
+	    if (fetch_agg_expr_eval_int (thread_p, regu_var, vd, obj_oid, tplrec, &int_val))
 	      {
 		switch (TP_DOMAIN_TYPE (regu_var->domain))
 		  {
@@ -716,7 +716,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  {
 	    double dbl_val;
 
-	    if (fetch_agg_expr_eval_dbl (thread_p, regu_var, vd, obj_oid, tpl, &dbl_val))
+	    if (fetch_agg_expr_eval_dbl (thread_p, regu_var, vd, obj_oid, tplrec, &dbl_val))
 	      {
 		db_make_double (arithptr->value, dbl_val);
 		fused = true;
