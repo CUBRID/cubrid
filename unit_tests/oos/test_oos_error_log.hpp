@@ -98,13 +98,12 @@ namespace test_oos_error_log
     return tail;
   }
 
-  /* True iff the error log gained a line for error_code after the given offset. The character after the
-   * number differs by build (a standalone log writes "CODE = -1385 Tran", a server log
-   * "CODE = -1385, Tran"), so the match requires only that a digit does not follow: without that, -1385
-   * would also match a hypothetical -13850. */
-  inline bool error_log_mentions_since (long offset, int error_code)
+  /* True iff the text holds an error-log line for error_code. The character after the number differs by
+   * build (a standalone log writes "CODE = -1385 Tran", a server log "CODE = -1385, Tran"), so the match
+   * requires only that a digit does not follow: without that, -1385 would also match a hypothetical
+   * -13850. */
+  inline bool text_mentions_error (const std::string &tail, int error_code)
   {
-    const std::string tail = error_log_tail (offset);
     const std::string needle = "CODE = " + std::to_string (error_code);
     for (std::size_t at = tail.find (needle); at != std::string::npos; at = tail.find (needle, at + 1))
       {
@@ -115,6 +114,12 @@ namespace test_oos_error_log
 	  }
       }
     return false;
+  }
+
+  /* True iff the error log gained a line for error_code after the given offset. */
+  inline bool error_log_mentions_since (long offset, int error_code)
+  {
+    return text_mentions_error (error_log_tail (offset), error_code);
   }
 
   /* True iff the error log gained the given text after the given offset. */

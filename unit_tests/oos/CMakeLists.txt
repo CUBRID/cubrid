@@ -107,6 +107,23 @@ add_test(NAME oos_cleanup_no_logging_db
 )
 set_tests_properties(oos_cleanup_no_logging_db PROPERTIES FIXTURES_CLEANUP OOS_NO_LOGGING_DB TIMEOUT 60)
 
+add_test(NAME oos_setup_recovery_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosrecoverydb
+)
+set_tests_properties(oos_setup_recovery_db PROPERTIES FIXTURES_SETUP OOS_RECOVERY_DB TIMEOUT 180)
+
+add_test(NAME oos_cleanup_recovery_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosrecoverydb
+)
+set_tests_properties(oos_cleanup_recovery_db PROPERTIES FIXTURES_CLEANUP OOS_RECOVERY_DB TIMEOUT 60)
 
 # =============================================================================
 # Register SA_MODE tests

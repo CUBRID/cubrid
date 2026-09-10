@@ -1223,6 +1223,249 @@ TEST_F (OosIdentityStampTest, InterruptedDeleteAndReadReportTheInterruptNotASkip
   EXPECT_STREQ (out.c_str (), payload.c_str ());
 }
 
+// ===========================================================================
+// Repair ticket 05: undo restores the identity a chain was created with
+//
+// Every case here retains the ORIGINAL chain reference - the head OOS OID together with the stamp
+// insert reported - and the original payload before the chain is deleted, then reads back through
+// that retained reference after the rollback. The convenience helpers that build a reference from the
+// stamp the head chunk currently carries cannot prove this: they would agree with whatever the undo
+// happened to restore. Transaction abort, system-operation abort and a directly invoked recovery
+// callback are separate cases because each replays a different part of the machinery; the crash-redo
+// half of the ticket needs its own database and lives in test_oos_crash_recovery.
+// ===========================================================================
+
+TEST_F (OosIdentityStampTest, TransactionAbortRestoresTheStampTheChainWasCreatedWith)
+{
+  const std::string payload = "value that outlives the rollback of its own deletion";
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, payload, oid, issued), NO_ERROR);
+  /* The insert has to be committed, or the abort below would undo it too and there would be nothing
+   * left to restore. */
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  oos_chain_ref original;
+  original.head_oid = oid;
+  original.identity_stamp = issued;
+  const std::size_t length = payload.size () + 1;
+
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, original), NO_ERROR);
+  LOG_LSA gone = NULL_LSA;
+  ASSERT_NE (oos_get_identity_stamp (thread_p, oid, &gone), NO_ERROR) << "the delete must have taken effect";
+  er_clear ();
+
+  ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
+
+  LOG_LSA restored = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oid, &restored), NO_ERROR);
+  EXPECT_TRUE (LSA_EQ (&issued, &restored)) << "undo restored the chunk with stamp " << restored.pageid << "|"
+					    << restored.offset << " instead of the issued " << issued.pageid << "|"
+					    << issued.offset;
+
+  std::string out;
+  ASSERT_EQ (read_scalar (original, length, out), NO_ERROR) << "the original reference no longer reads";
+  EXPECT_STREQ (out.c_str (), payload.c_str ());
+}
+
+TEST_F (OosIdentityStampTest, SysopAbortRestoresTheStampTheChainWasCreatedWith)
+{
+  const std::string payload = "value whose deletion is undone by its own system operation";
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, payload, oid, issued), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  oos_chain_ref original;
+  original.head_oid = oid;
+  original.identity_stamp = issued;
+  const std::size_t length = payload.size () + 1;
+
+  /* A system-operation abort undoes only its own deletes and leaves the transaction running, which is
+   * how the vacuum forward walk isolates a mid-walk failure. */
+  log_sysop_start (thread_p);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, original), NO_ERROR);
+  log_sysop_abort (thread_p);
+
+  LOG_LSA restored = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oid, &restored), NO_ERROR);
+  EXPECT_TRUE (LSA_EQ (&issued, &restored));
+
+  std::string out;
+  ASSERT_EQ (read_scalar (original, length, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), payload.c_str ());
+
+  /* The transaction is still active: the restored chain is deletable again through the same reference. */
+  EXPECT_EQ (oos_delete (thread_p, oos_vfid, original), NO_ERROR);
+}
+
+TEST_F (OosIdentityStampTest, MultiChunkDeleteRolledBackRestoresEveryChunkAndByte)
+{
+  /* Three chunks, so the walk deletes on more than one page and the undo has to put every one of them
+   * back. A read through the original reference is the strongest external check available: it verifies
+   * the head's stamp, then follows next-chunk links across all chunks and cross-checks the chain's
+   * total length before delivering a byte. */
+  const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
+  const std::string payload = test_oos_utils::make_repeated_pattern_string (2 * max_chunk_size + 100);
+  OID head_oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, payload, head_oid, issued), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  oos_chain_ref original;
+  original.head_oid = head_oid;
+  original.identity_stamp = issued;
+  const int length = (int) payload.size () + 1;
+  ASSERT_EQ (oos_get_length (thread_p, head_oid), length);
+
+  std::vector<VPID> emptied;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, original, &emptied), NO_ERROR);
+  ASSERT_FALSE (emptied.empty ()) << "a chain of its own pages must have emptied at least one";
+  /* The emptied pages are deliberately NOT reclaimed: reclaim needs committed deletes, and this
+   * transaction is about to abort. */
+  LOG_LSA gone = NULL_LSA;
+  ASSERT_NE (oos_get_identity_stamp (thread_p, head_oid, &gone), NO_ERROR);
+  er_clear ();
+
+  ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
+
+  LOG_LSA restored = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, head_oid, &restored), NO_ERROR);
+  EXPECT_TRUE (LSA_EQ (&issued, &restored));
+  EXPECT_EQ (oos_get_length (thread_p, head_oid), length) << "the restored head reports another chain length";
+
+  std::string out;
+  ASSERT_EQ (read_scalar (original, (std::size_t) length, out), NO_ERROR);
+  EXPECT_EQ (out.compare (0, payload.size (), payload), 0) << "some chunk did not come back byte for byte";
+}
+
+TEST_F (OosIdentityStampTest, PartiallyAppliedDeleteRolledBackRestoresEveryChain)
+{
+  /* A transaction that got one multi-chunk chain deleted and then failed inside the next delete. The
+   * interrupt is consumed by the first page fix of the second delete, so that chain is untouched while
+   * the first one is gone: the transaction's deletes are partially applied. The rollback has to bring
+   * the first chain back whole, under the identity it was created with.
+   *
+   * The failure is placed at a chain boundary rather than in the middle of one chain because that is
+   * the only injection point the public interfaces offer: the interrupt flag is cleared by the first
+   * page fix that observes it, so it cannot be aimed at a later chunk of the same chain. */
+  const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
+  const std::string first_payload = test_oos_utils::make_repeated_pattern_string (2 * max_chunk_size + 100);
+  const std::string second_payload = test_oos_utils::make_repeated_pattern_string (max_chunk_size + 300);
+
+  OID first_oid = OID_INITIALIZER;
+  LOG_LSA first_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, first_payload, first_oid, first_stamp), NO_ERROR);
+  OID second_oid = OID_INITIALIZER;
+  LOG_LSA second_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, second_payload, second_oid, second_stamp), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  oos_chain_ref first;
+  first.head_oid = first_oid;
+  first.identity_stamp = first_stamp;
+  oos_chain_ref second;
+  second.head_oid = second_oid;
+  second.identity_stamp = second_stamp;
+
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, first), NO_ERROR);
+
+  const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  (void) logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+  er_clear ();
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, second), ER_INTERRUPTED);
+  (void) logtb_set_tran_index_interrupt (thread_p, tran_index, false);
+  er_clear ();
+
+  LOG_LSA probe = NULL_LSA;
+  ASSERT_NE (oos_get_identity_stamp (thread_p, first_oid, &probe), NO_ERROR) << "the first delete must have applied";
+  er_clear ();
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, second_oid, &probe), NO_ERROR) << "the failed delete changed nothing";
+  ASSERT_TRUE (LSA_EQ (&probe, &second_stamp));
+
+  ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
+
+  LOG_LSA restored = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, first_oid, &restored), NO_ERROR);
+  EXPECT_TRUE (LSA_EQ (&first_stamp, &restored));
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, second_oid, &restored), NO_ERROR);
+  EXPECT_TRUE (LSA_EQ (&second_stamp, &restored));
+
+  std::string out;
+  ASSERT_EQ (read_scalar (first, first_payload.size () + 1, out), NO_ERROR);
+  EXPECT_EQ (out.compare (0, first_payload.size (), first_payload), 0);
+  ASSERT_EQ (read_scalar (second, second_payload.size () + 1, out), NO_ERROR);
+  EXPECT_EQ (out.compare (0, second_payload.size (), second_payload), 0);
+}
+
+TEST_F (OosIdentityStampTest, ReplayingTheLoggedChunkImageRestoresTheStampItCarried)
+{
+  /* The recovery callback itself, invoked directly on the image a chunk insert logs. Redo of
+   * RVOOS_INSERT and undo of RVOOS_DELETE are the same function fed the same image, so this one case
+   * pins down what both of them restore: the stamp is part of the logged bytes, which is why redo does
+   * not have to know the LSA of the record it replays. It stands next to, not instead of, the abort
+   * cases above, which exercise the real undo, and the crash case in test_oos_crash_recovery. */
+  const std::string payload = "chunk image replayed by the recovery callback";
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, payload, oid, issued), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  oos_chain_ref original;
+  original.head_oid = oid;
+  original.identity_stamp = issued;
+  const std::size_t length = payload.size () + 1;
+
+  /* The image log_append_undoredo_recdes stores: the record type in two bytes, then the record. */
+  std::string logged_image;
+  {
+    VPID vpid = { oid.pageid, oid.volid };
+    PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    ASSERT_NE (page_ptr, nullptr);
+    RECDES peeked = RECDES_INITIALIZER;
+    ASSERT_EQ (spage_get_record (thread_p, page_ptr, oid.slotid, &peeked, PEEK), S_SUCCESS);
+    logged_image.assign (sizeof (INT16) + (std::size_t) peeked.length, '\0');
+    * (INT16 *) logged_image.data () = peeked.type;
+    std::memcpy (logged_image.data () + sizeof (INT16), peeked.data, (std::size_t) peeked.length);
+    pgbuf_unfix_and_init (thread_p, page_ptr);
+  }
+
+  /* Commit the delete before replaying, so its undo can never run against the slot the replay refills. */
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, original), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  LOG_LSA gone = NULL_LSA;
+  ASSERT_NE (oos_get_identity_stamp (thread_p, oid, &gone), NO_ERROR);
+  er_clear ();
+
+  {
+    VPID vpid = { oid.pageid, oid.volid };
+    PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+    ASSERT_NE (page_ptr, nullptr) << "the delete must not have reclaimed the page; no reclaim was asked for";
+    LOG_RCV rcv;
+    rcv.pgptr = page_ptr;
+    rcv.offset = oid.slotid;
+    rcv.data = logged_image.data ();
+    rcv.length = (int) logged_image.size ();
+    const int err = oos_rv_redo_insert (thread_p, &rcv);
+    pgbuf_unfix_and_init (thread_p, page_ptr);
+    ASSERT_EQ (err, NO_ERROR);
+  }
+
+  LOG_LSA replayed = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oid, &replayed), NO_ERROR);
+  EXPECT_TRUE (LSA_EQ (&issued, &replayed)) << "the replay wrote stamp " << replayed.pageid << "|" << replayed.offset
+					    << " instead of the issued " << issued.pageid << "|" << issued.offset;
+
+  std::string out;
+  ASSERT_EQ (read_scalar (original, length, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), payload.c_str ());
+
+  /* Take the replayed chunk out through the logged path and commit, so the page and the log agree
+   * again before TearDown destroys the file. */
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, original), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+}
+
 int
 main (int argc, char **argv)
 {
