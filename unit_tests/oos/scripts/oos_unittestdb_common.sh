@@ -114,3 +114,27 @@ oos_append_fixture_section ()
     printf '%s\n' "$OOS_UNITTESTDB_MARKER_END"
   } >> "$conf"
 }
+
+# ---------------------------------------------------------------------------
+# Isolated databases owned by a single test binary
+#
+# A binary that changes process-global state (no-logging) or that crashes and
+# recovers must not run against the shared unittestdb fixture: a failure there
+# would break every other OOS binary. Such a binary owns a database of its own,
+# created fresh for every run so its on-disk layout is always the one the build
+# under test writes.
+# ---------------------------------------------------------------------------
+
+oos_named_database_exists ()
+{
+  local db_name="$1"
+  local databases_txt="$CUBRID_DATABASES/databases.txt"
+
+  [ -f "$databases_txt" ] || return 1
+  awk -v db="$db_name" '$1 == db { found = 1 } END { exit found ? 0 : 1 }' "$databases_txt"
+}
+
+oos_named_database_dir ()
+{
+  printf '%s/%s\n' "$CUBRID_DATABASES" "$1"
+}

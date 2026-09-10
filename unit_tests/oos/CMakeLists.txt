@@ -25,6 +25,7 @@ set(SA_MODE_TESTS
   test_oos_delete
   test_oos_identity_stamp
   test_oos_eager_diagnostics
+  test_oos_no_logging
   test_oos_remove_file
   test_oos_bestspace
   test_oos_growth_sweep
@@ -81,6 +82,33 @@ add_test(NAME oos_cleanup_db
 set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB TIMEOUT 30)
 
 # =============================================================================
+# CTest fixtures: databases owned by a single binary
+#
+# A binary that turns logging off for its whole process, or that kills a writer and recovers, must
+# not run against the shared unittestdb fixture: what it leaves behind would reach every other OOS
+# binary. Each such binary gets its own database, recreated from scratch by its setup so its disk
+# layout is always the one this build writes (CBRD-26950).
+# =============================================================================
+add_test(NAME oos_setup_no_logging_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosnologdb
+)
+set_tests_properties(oos_setup_no_logging_db PROPERTIES FIXTURES_SETUP OOS_NO_LOGGING_DB TIMEOUT 180)
+
+add_test(NAME oos_cleanup_no_logging_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosnologdb
+)
+set_tests_properties(oos_cleanup_no_logging_db PROPERTIES FIXTURES_CLEANUP OOS_NO_LOGGING_DB TIMEOUT 60)
+
+
+# =============================================================================
 # Register SA_MODE tests
 # =============================================================================
 add_test(NAME test_oos COMMAND test_oos)
@@ -90,6 +118,13 @@ add_test(NAME test_oos_identity_stamp COMMAND test_oos_identity_stamp)
 # eager (non-MVCC) DML completes and diagnoses skipped OOS reclamation (CBRD-26950); the SQL-level
 # test_oos_sql_eager_cleanup covers that unskipped eager reclamation actually reclaims.
 add_test(NAME test_oos_eager_diagnostics COMMAND test_oos_eager_diagnostics)
+# the identity stamp's logging precondition (CBRD-26950): distinct stamps across slot reuse need
+# logged operations. Owns oosnologdb because log_set_no_logging() is process-global and one-way and
+# what it writes is not recoverable.
+add_test(NAME test_oos_no_logging COMMAND test_oos_no_logging)
+set_tests_properties(test_oos_no_logging
+  PROPERTIES FIXTURES_REQUIRED OOS_NO_LOGGING_DB RUN_SERIAL TRUE TIMEOUT 120
+)
 add_test(NAME test_oos_remove_file COMMAND test_oos_remove_file)
 add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
 # growth-gate incremental sweep: delete bursts must not grow the OOS file on re-insert (CBRD-26786).

@@ -2455,12 +2455,17 @@ oos_insert_record_in_fixed_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, P
    * LSA of the record it is replaying, but the stamp is part of the logged chunk image, so redo
    * (and the undo of a later delete) restores exactly what was written.
    *
-   * Invariant 2: at least one logged page operation separates two incarnations of one slot. The
-   * first occupant's own logged insert already advances the page LSA past its stamp, and page LSAs
-   * never regress in normal operation, so a later occupant of the same slot always carries a
-   * different stamp. Today every chunk insert and every chunk delete is its own log record,
-   * including batch inserts; a future optimization that merges several inserts into one log record
-   * must preserve this.
+   * Invariant 2, and it holds only while logging is enabled: at least one logged page operation
+   * separates two incarnations of one slot. The first occupant's own logged insert already advances
+   * the page LSA past its stamp, and page LSAs never regress in normal operation, so a later
+   * occupant of the same slot always carries a different stamp. Today every chunk insert and every
+   * chunk delete is its own log record, including batch inserts; a future optimization that merges
+   * several inserts into one log record must preserve this. With logging disabled the append is
+   * skipped and leaves the page LSA where it was, so two incarnations of one slot can carry the same
+   * stamp; the accepted policy keeps documented no-logging bulk loads working and states the
+   * precondition instead of rejecting the write, so a caller must not rely on stamp-based
+   * stale-reference discrimination in that mode. Actual logging state is log_is_no_logging(), which
+   * SA loaddb --no-logging turns on after startup, so the startup parameter does not answer it.
    *
    * Invariant 3: NULL is an ordinary stamp value with no special handling. Only the offline log
    * re-creation utility produces NULL page LSAs, and it also discards the log and therefore every

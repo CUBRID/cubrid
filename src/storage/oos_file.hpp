@@ -37,10 +37,13 @@ struct oos_record_header
   LOG_LSA identity_stamp;	/* Identity stamp of this chunk (CBRD-26950): the page LSA observed under
 				 * the write latch immediately before this chunk's insert was logged. The
 				 * head chunk's value is also stored in the owning heap record's OOS inline
-				 * stub, and oos_delete reclaims a chain only when the two are equal, so a
-				 * reused (volid|pageid|slotid) is never mistaken for the chunk a stale
-				 * OOS reference was created for. Each chunk carries the LSA of its own
-				 * page; only the head chunk's value reaches the stub. */
+				 * stub, and oos_delete reclaims a chain only when the two are equal, so with
+				 * logging enabled a reused (volid|pageid|slotid) is never mistaken for the
+				 * chunk a stale OOS reference was created for. Distinct stamps across slot
+				 * reuse need the skipped-append case to be impossible, so they are a
+				 * logged-operation guarantee only; see the invariants at the issuing site in
+				 * oos_file.cpp. Each chunk carries the LSA of its own page; only the head
+				 * chunk's value reaches the stub. */
 };
 using OOS_RECORD_HEADER = struct oos_record_header;
 
@@ -189,7 +192,8 @@ extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request
  * carry ref.identity_stamp. A deallocated head page, a head page that is no longer an OOS page, a
  * missing head slot or a mismatched stamp is a successful no-op that modifies nothing, leaves the
  * error stack clean and reports no candidate, which gives every caller retry idempotency without
- * extra state; the page type is checked under the latch before the page is read as a slotted page.
+ * extra state as long as the chain was written with logging enabled; the page type is checked under
+ * the latch before the page is read as a slotted page.
  * A stamp-matching reference to a continuation chunk is malformed and fails with
  * ER_HEAP_OOS_CORRUPTED_RECORD before any chunk is modified, and a reference with no head OOS OID at
  * all fails with ER_HEAP_OOS_INVALID_ARGUMENT. Operational failures keep their own error (CBRD-26950).

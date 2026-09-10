@@ -31,9 +31,19 @@
 
 static cubthread::entry *thread_p;
 
+/* Boots one database in-process for the whole binary. The defaults are the shared unittestdb
+ * fixture; a binary that must own its database (it changes process-global state, or it crashes and
+ * recovers) passes its own name and error-log prefix so a failure there cannot damage the fixture
+ * every other OOS binary shares. */
 class ServerEnv : public ::testing::Environment
 {
   public:
+    explicit ServerEnv (const char *db_name = "unittestdb", const char *er_log_prefix = "./test_oos_log")
+      : m_db_name (db_name)
+      , m_er_log_prefix (er_log_prefix)
+    {
+    }
+
     void SetUp() override
     {
       StartServer();
@@ -43,20 +53,23 @@ class ServerEnv : public ::testing::Environment
       StopServer();
     }
   private:
+    const char *m_db_name;
+    const char *m_er_log_prefix;
+
     void StartServer()
     {
-      printf ("##### Starting Server For OOS Unit Testing #####\n");
+      printf ("##### Starting Server For OOS Unit Testing (%s) #####\n", m_db_name);
 
       // CUBRID log files will be created in $BUILD_DIR/unit_tests/oos/ when run ctest --test-dir $BUILD_DIR
       // when run directly, log files will be created in the current working directory
       //
       // Note that oos_error/oos_warn write through the server error log. Debug-only OOS trace/debug/info
       // messages go to $CUBRID/log/oos.log.
-      er_init ("./test_oos_log",ER_NEVER_EXIT);
+      er_init (m_er_log_prefix,ER_NEVER_EXIT);
 
       // hacky way to detour pl_server_init(), not needed for oos unit tests
       db_set_client_type (DB_CLIENT_TYPE_MAX);
-      auto err = db_restart ("unit_test", TRUE, "unittestdb");
+      auto err = db_restart ("unit_test", TRUE, m_db_name);
 
       printf ("will be written at %s\n", er_get_msglog_filename());
       assert (err == NO_ERROR);
