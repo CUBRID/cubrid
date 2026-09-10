@@ -9610,6 +9610,15 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
+	  /* allocated but not published to the heap yet (bulk load links its pages on commit postpone), so the
+	   * serial chain walk cannot reach it. This is the predicate bestspace uses, and it covers only this
+	   * direction: a page already unlinked but not yet deallocated is still counted here, not by serial. */
+	  if (heap_page_is_not_in_heap (&thread_ref, page))
+	    {
+	      pgbuf_unfix_and_init (&thread_ref, page);
+	      continue;
+	    }
+
 	  error_code = heap_capacity_accumulate_one_page (&thread_ref, page, arg->accum, NULL);
 	  if (error_code != NO_ERROR)
 	    {
@@ -9884,9 +9893,9 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
 			       PGBUF_UNCONDITIONAL_LATCH);
 	if (last_page != NULL)
 	  {
-	    /* subtract only a page the workers counted: not a reused one, not a bestspace page */
+	    /* subtract only a page the workers counted: same skip list they use */
 	    if (pgbuf_get_page_ptype (thread_p, last_page) == PAGE_HEAP
-		&& !heap_page_is_bestspace (thread_p, last_page))
+		&& !heap_page_is_bestspace (thread_p, last_page) && !heap_page_is_not_in_heap (thread_p, last_page))
 	      {
 		last_page_freespace = spage_get_free_space (thread_p, last_page);
 	      }
