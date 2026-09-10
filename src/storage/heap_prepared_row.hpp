@@ -33,7 +33,7 @@ class heap_prepared_row
     heap_prepared_row (heap_prepared_row &&other) noexcept;
     heap_prepared_row &operator= (heap_prepared_row &&other) noexcept;
 
-    int prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info);
+    int prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes = nullptr);
     int read_values (HEAP_CACHE_ATTRINFO *attr_info) const;
     int finalize (THREAD_ENTRY *thread_p, const OID *destination);
     RECDES *record ();

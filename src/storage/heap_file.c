@@ -13471,7 +13471,7 @@ heap_prepared_row::record ()
 }
 
 int
-heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info)
+heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes)
 {
   assert (m_storage == nullptr);
   if (attr_info->num_values < 0)
@@ -13489,7 +13489,7 @@ heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_in
       owner.columns.resize (attr_info->num_values);
       owner.plans.resize (attr_info->num_values);
       std::vector<int> serialized_sizes (attr_info->num_values);
-      if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, nullptr, attr_info) != NO_ERROR)
+      if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info) != NO_ERROR)
         {
           return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
         }
@@ -13553,6 +13553,11 @@ heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_in
         }
       size_t mvcc_extra = is_mvcc ? OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE : 0;
       size_t capacity = inline_size + mvcc_extra;
+      bool is_update = old_recdes != nullptr;
+      if (is_mvcc && is_update)
+        {
+          mvcc_extra -= OR_MVCC_PREV_VERSION_LSA_SIZE;
+        }
       if (has_oos && (capacity > INT_MAX || heap_is_big_length ((int) capacity)))
         {
           er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE, 2,
@@ -13579,11 +13584,11 @@ heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_in
       OR_BUF buf;
       or_init (&buf, owner.recdes.data, owner.recdes.area_size);
       if (heap_attrinfo_transform_header_to_disk (thread_p, attr_info, &buf, (int) offset_size,
-                                                  is_mvcc, false, has_oos) != S_SUCCESS)
+                                                  is_mvcc, is_update, has_oos) != S_SUCCESS)
         {
           return ER_FAILED;
         }
-      const int header_size = is_mvcc ? OR_MVCC_INSERT_HEADER_SIZE : OR_NON_MVCC_HEADER_SIZE;
+      const int header_size = OR_HEADER_SIZE (buf.buffer);
       const int n_variable = attr_info->last_classrepr->n_variable;
       char *bound = OR_GET_BOUND_BITS (buf.buffer, n_variable, attr_info->last_classrepr->fixed_length);
       char *cursor = bound + OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes - n_variable);
