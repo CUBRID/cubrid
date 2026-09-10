@@ -61,7 +61,7 @@
 #include "db.h"
 #include "tz_support.h"
 #include "func_type.hpp"
-#include "pt_volatility.h"
+#include "volatility.h"
 
 #include "dbtype.h"
 

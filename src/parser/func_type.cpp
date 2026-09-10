@@ -27,7 +27,7 @@
 #include "parse_tree.h"
 #include "parser.h"
 #include "parser_message.h"
-#include "pt_volatility.h"
+#include "volatility.h"
 
 #include <algorithm>
 

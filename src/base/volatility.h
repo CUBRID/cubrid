@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,7 @@
  */
 
 /*
- * pt_volatility.h - volatility classification of functions/operators
+ * volatility.h - volatility classification of functions/operators
  *
  * A cross-cutting concept, not parser-specific: the client/parser uses it to
  * decide DEFAULT-expression folding, and the server reads it (stamped on the
@@ -25,8 +25,8 @@
  * DEFAULT is evaluated (STABLE -> once per statement, VOLATILE -> once per row).
  */
 
-#ifndef _PT_VOLATILITY_H_
-#define _PT_VOLATILITY_H_
+#ifndef _VOLATILITY_H_
+#define _VOLATILITY_H_
 
 /*
  * Volatility governs *when* and *how often* a column DEFAULT expression is
@@ -73,4 +73,4 @@ pt_volatility_max (PT_VOLATILITY a, PT_VOLATILITY b)
 #define PT_VOLATILITY_IS_RESIDUAL(vol)          ((vol) >= PT_VOLATILITY_STABLE)
 #define PT_VOLATILITY_IS_VOLATILE_RESIDUAL(vol) ((vol) == PT_VOLATILITY_VOLATILE)
 
-#endif /* _PT_VOLATILITY_H_ */
+#endif /* _VOLATILITY_H_ */

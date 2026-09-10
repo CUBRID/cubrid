@@ -30,7 +30,7 @@
 #include "object_primitive.h"
 #include "db_function.hpp"
 #include "xasl_sp.hpp"
-#include "pt_volatility.h"
+#include "volatility.h"
 
 #include <functional>
 
