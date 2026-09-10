@@ -1918,7 +1918,10 @@ cgw_qualifier_is_catalog (SQLHDBC hdbc)
 
 /*
  * cgw_describe_invisible_attrs () - type the invisible columns from a describe
- *   return: 0 on success (or when there is nothing to do), ER_FAILED otherwise
+ *   return: 0 when every invisible column was typed (or there is none), ER_FAILED
+ *           otherwise - a describe that answers a different column count, or a label that
+ *           is not the identifier asked for, is a failure too, since the untyped column
+ *           would keep its SQLColumns metadata
  *   hdbc(in): connected ODBC handle
  *   table_name(in): remote table name
  *   attrs(in/out): schema_info rows, is_invisible already resolved
@@ -1999,27 +2002,35 @@ cgw_describe_invisible_attrs (SQLHDBC hdbc, const char *table_name, T_CGW_SCHEMA
     }
 
   /* cgw_get_num_cols () rather than SQLNumResultCols () directly: a driver that fills
-   * the IRD only on execute needs the same execute retry the prepare path relies on */
-  if (cgw_get_num_cols (hstmt, &num_cols) < 0 || num_cols <= 0)
+   * the IRD only on execute needs the same execute retry the prepare path relies on.
+   *
+   * The result has to describe exactly the select list built above - one column per
+   * invisible attribute.  Fewer means the driver answered for a column it could not
+   * resolve, more means it expanded something; either way some attribute would keep its
+   * SQLColumns typing (no unsigned flag, no per-driver precision fixup) and the statement
+   * would compile against a wrong type.  Refuse, like a failed describe. */
+  if (cgw_get_num_cols (hstmt, &num_cols) < 0 || num_cols != num_invisible)
     {
       goto end;
     }
 
-  for (c = 1; c <= num_cols; c++)
+  /* one result column per invisible attribute, in the order the select list named them:
+   * SQL keeps the select-list order, so the position is the mapping and the label is only
+   * checked to confirm the driver described the identifier that was asked for */
+  for (c = 1, i = 0; c <= num_cols; c++, i++)
     {
-      if (cgw_get_col_info (hstmt, c, &col_info) < 0)
+      while (i < count && !attrs[i].is_invisible)
+	{
+	  i++;
+	}
+
+      if (i >= count || cgw_get_col_info (hstmt, c, &col_info) < 0
+	  || strcasecmp (col_info.col_name, attrs[i].attr_name) != 0)
 	{
 	  goto end;
 	}
 
-      for (i = 0; i < count; i++)
-	{
-	  if (attrs[i].is_invisible && strcasecmp (col_info.col_name, attrs[i].attr_name) == 0)
-	    {
-	      cgw_schema_attr_set_type (&attrs[i], &col_info);
-	      break;
-	    }
-	}
+      cgw_schema_attr_set_type (&attrs[i], &col_info);
     }
 
   err = NO_ERROR;
