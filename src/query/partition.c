@@ -26,6 +26,7 @@
 #include "dbtype.h"
 #include "fetch.h"
 #include "heap_file.h"
+#include "heap_prepared_row.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "query_aggregate.hpp"
@@ -155,8 +156,11 @@ static MATCH_STATUS partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALU
 					  PRUNING_BITSET * pruned);
 static MATCH_STATUS partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op,
 					  PRUNING_BITSET * pruned);
+
+/* *INDENT-OFF* */
 static int partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_oid, RECDES * recdes,
-						OID * partition_oid, HFID * partition_hfid);
+						OID * partition_oid, HFID * partition_hfid, heap_prepared_row *prepared = nullptr);
+/* *INDENT-ON* */
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int partition_prune_heap_scan (PRUNING_CONTEXT * pinfo);
 static int partition_prune_index_scan (PRUNING_CONTEXT * pinfo);
@@ -3465,7 +3469,7 @@ error_exit:
  */
 static int
 partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_oid, RECDES * recdes,
-				     OID * partition_oid, HFID * partition_hfid)
+				     OID * partition_oid, HFID * partition_hfid, heap_prepared_row * prepared)
 {
   PRUNING_BITSET pruned;
   PRUNING_BITSET_ITERATOR it;
@@ -3497,7 +3501,10 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
   repr_id = or_rep_id (recdes);
   or_set_rep_id (recdes, pinfo->root_repr_id);
 
-  error = heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, &pinfo->attr_info);
+  /* *INDENT-OFF* */
+  error = prepared != nullptr ? prepared->read_values (&pinfo->attr_info)
+          : heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, &pinfo->attr_info);
+  /* *INDENT-ON* */
 
   or_set_rep_id (recdes, repr_id);
   if (error != NO_ERROR)
@@ -3604,7 +3611,7 @@ cleanup:
 int
 partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 			PRUNING_CONTEXT * pcontext, int pruning_type, OID * pruned_class_oid, HFID * pruned_hfid,
-			OID * superclass_oid)
+			OID * superclass_oid, heap_prepared_row * prepared)
 {
   PRUNING_CONTEXT pinfo;
   bool keep_pruning_context = false;
@@ -3657,7 +3664,7 @@ partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES *
       goto cleanup;
     }
 
-  error = partition_find_partition_for_record (pcontext, class_oid, recdes, pruned_class_oid, pruned_hfid);
+  error = partition_find_partition_for_record (pcontext, class_oid, recdes, pruned_class_oid, pruned_hfid, prepared);
   if (error != NO_ERROR)
     {
       goto cleanup;
