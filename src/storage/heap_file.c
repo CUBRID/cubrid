@@ -9384,7 +9384,7 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
   int ovf_num_pages;
   int ovf_free_space;
   int ovf_overhead;
-  int error_code;
+  int error_code = NO_ERROR;
   int j;
 
   j = spage_number_of_records (page_ptr);
@@ -9420,8 +9420,8 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
 
 		  ovf_oid = (OID *) recdes.data;
 		  /* the overflow of a live REC_BIGONE cannot go away under our latch on the home page, so a
-		   * failure here is an I/O error, corruption or a cancellation, not a race: report it
-		   * rather than under-count quietly */
+		   * failure here is an I/O error or corruption, not a race: report it rather than
+		   * under-count quietly */
 		  error_code = heap_ovf_get_capacity (thread_p, ovf_oid, &ovf_len, &ovf_num_pages, &ovf_overhead,
 						      &ovf_free_space);
 		  if (error_code != NO_ERROR)
@@ -9444,7 +9444,7 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, H
 	}
     }
 
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -9488,7 +9488,7 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
   if (thread_ref.on_trace)
     {
       perfmon_initialize_parallel_stats (&thread_ref);
-      if (!thread_ref.m_uses_px_stats)
+      if (thread_ref.m_uses_px_stats == false)
 	{
 	  /* clear the OOM it left behind so the page loop does not mistake it for its own error.
 	   * Isolation is lost: the workers then race on the shared counter, as they did before it. */
@@ -9530,12 +9530,11 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	    pgbuf_fix (&thread_ref, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	  if (page == NULL)
 	    {
-	      int err = er_errid ();
-
-	      if (err != NO_ERROR && err != ER_PB_BAD_PAGEID)
+	      error_code = er_errid ();
+	      if (error_code != NO_ERROR && error_code != ER_PB_BAD_PAGEID)
 		{
 		  /* genuine error: record errid and abort so the caller propagates it (no serial retry) */
-		  arg->fail_errid->store (err, std::memory_order_relaxed);
+		  arg->fail_errid->store (error_code, std::memory_order_relaxed);
 		  arg->failed->store (true, std::memory_order_relaxed);
 		  er_clear ();
 		  break;
