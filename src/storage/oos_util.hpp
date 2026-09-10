@@ -31,7 +31,10 @@
 
 #include <vector>
 
-extern bool oos_ref_in_vector (const std::vector<oos_chain_ref> &refs, const OID *oid);
+/* Address membership: true iff head_oid is the head OOS OID of some reference in refs. Only the address is
+ * compared, never the identity stamp, so a caller keeping "whatever the new image still names" keeps a
+ * chain by location alone. */
+extern bool oos_refs_contain_head_oid (const std::vector<oos_chain_ref> &refs, const OID *head_oid);
 
 #if !defined (NDEBUG)
 // DO NOT REMOVE THIS. Debug-only VOT auditor; it has no release-build caller, so

@@ -71,7 +71,13 @@ struct HEAP_OOS_EXPAND_STATE
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 static std::atomic<bool> heap_Oos_test_fail_before_vfid_lookup { false };
+static std::atomic<int> heap_Oos_test_skipped_cleanup_diagnostics { 0 };
+static std::atomic<int> heap_Oos_test_last_skipped_cleanup_outcome { -1 };
+static std::atomic<int> heap_Oos_test_last_skipped_cleanup_count { 0 };
 #endif
+
+static void heap_oos_diagnose_skipped_cleanup (const HEAP_OPERATION_CONTEXT *context, const char *op_ctx,
+    const oos_chain_ref &first_ref, oos_delete_outcome first_outcome, int skipped_count);
 
 /*
  * heap_oos_parse_vot () - Walk the source VOT and collect each entry (including flag bits).
@@ -692,7 +698,22 @@ heap_oos_test_disarm_fail_before_vfid_lookup ()
  *
  * Strict failure handling: the OOS header flag is set by the record transformer and read via
  * heap_recdes_contains_oos, so a missing OOS file or a failed OID extraction at this point
- * indicates real corruption — log and propagate.
+ * indicates real corruption — log and propagate. A failed OOS file lookup (I/O, interrupt) is an
+ * operational error and is propagated as the error it set.
+ *
+ * Skipped targets (CBRD-26950): oos_delete skips a reference whose head page is deallocated or no
+ * longer an OOS page, whose head slot is empty, or whose head chunk carries another identity stamp,
+ * because the chain the reference described is gone. Vacuum expects that on a block retry and stays
+ * quiet. Here the old record was the chain's only reference and nothing has been retried, so a skip
+ * is unexpected: the DML still completes (accepted policy), but the skips are reported through
+ * heap_oos_diagnose_skipped_cleanup as a notification that leaves the error stack clean. A
+ * stamp-matching non-head target and operational failures remain errors.
+ *
+ * The report is one notification per call, naming how many of the record's chains were skipped and
+ * describing the first, rather than one per chain: the caller holds a write latch on the heap page
+ * across this function and each notification is a synchronous flushed write to the server error log,
+ * so a record with many OOS-backed attributes must not turn into many latch-held writes. A call that
+ * fails part way reports nothing, because its DML is about to be rolled back.
  *
  * Empty-page reclaim (oos_reclaim_empty_pages) must NOT be wired here: this runs inside a live
  * user transaction whose abort replays the per-chunk undo, and undo cannot re-insert chunks
@@ -744,25 +765,44 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
 
   if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
     {
+      /* A false return is a failure to read the heap header (I/O, interrupt), never "no OOS file";
+       * it is an operational error with its own code, not a skip and not corruption. */
+      ASSERT_ERROR_AND_SET (error_code);
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (%s): OOS file lookup failed for hfid %d|%d (oid=%d|%d|%d).",
+		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid);
+      return error_code;
+    }
+  if (VFID_ISNULL (&oos_vfid))
+    {
       er_log_debug (ARG_FILE_LINE,
 		    "SA_MODE eager OOS cleanup (%s): OOS flag set but no OOS VFID found for hfid %d|%d"
 		    " (oid=%d|%d|%d).",
 		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
 		    context->oid.volid, context->oid.pageid, context->oid.slotid);
       assert_release (false);
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
+
+  int skipped_count = 0;
+  oos_chain_ref first_skipped_ref = old_oos_refs[0];
+  oos_delete_outcome first_skipped_outcome = OOS_DELETE_OUTCOME_UNKNOWN;
 
   for (const oos_chain_ref &old_ref : old_oos_refs)
     {
-      if (oos_ref_in_vector (new_oos_refs, &old_ref.head_oid))
+      if (oos_refs_contain_head_oid (new_oos_refs, &old_ref.head_oid))
 	{
-	  /* Same physical OOS referenced by both old and new recdes; keep it. */
+	  /* The new image still names this address; keep the chain. */
 	  continue;
 	}
-      /* Same no-op contract as vacuum: a stale OOS reference whose slot or page has begun a new
-       * incarnation is skipped, so immediate reclamation is equally retry-safe (CBRD-26950). */
-      error_code = oos_delete (thread_p, oos_vfid, old_ref);
+      /* A stale reference (page gone, slot empty, stamp mismatch) is skipped rather than failed, so the
+       * DML completes; the skips are diagnosed after the loop because, unlike a vacuum retry, they are
+       * unexpected here (CBRD-26950). A stamp-matching non-head reference and operational failures are
+       * errors. */
+      oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
+      error_code = oos_delete (thread_p, oos_vfid, old_ref, NULL, &outcome);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -774,10 +814,86 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
 			context->oid.volid, context->oid.pageid, context->oid.slotid);
 	  return error_code;
 	}
+      if (outcome != OOS_DELETE_RECLAIMED)
+	{
+	  if (skipped_count == 0)
+	    {
+	      first_skipped_ref = old_ref;
+	      first_skipped_outcome = outcome;
+	    }
+	  skipped_count++;
+	}
+    }
+
+  if (skipped_count > 0)
+    {
+      heap_oos_diagnose_skipped_cleanup (context, op_ctx, first_skipped_ref, first_skipped_outcome,
+					 skipped_count);
     }
 
   return NO_ERROR;
 }
+
+/*
+ * heap_oos_diagnose_skipped_cleanup () - Report the OOS value chains one eager cleanup could not
+ *   reclaim because their targets were gone or reused.
+ *   context(in): heap operation whose old record held the references
+ *   op_ctx(in): short operation tag, e.g. "delete home"
+ *   first_ref(in): the first skipped chain reference, the one the message describes
+ *   first_outcome(in): why oos_delete skipped that one (never OOS_DELETE_RECLAIMED)
+ *   skipped_count(in): how many of the record's chains were skipped, at least one
+ *
+ * The report is a notification: it is written to the server error log and does not become the current
+ * error, so the DML that continues past it still reports success (accepted policy, CBRD-26950). Note
+ * that oos_delete already clears the error stack in each skip branch, so a notification here has no
+ * earlier error to preserve.
+ */
+static void
+heap_oos_diagnose_skipped_cleanup (const HEAP_OPERATION_CONTEXT *context, const char *op_ctx,
+				   const oos_chain_ref &first_ref, oos_delete_outcome first_outcome,
+				   int skipped_count)
+{
+  assert (first_outcome != OOS_DELETE_RECLAIMED && first_outcome != OOS_DELETE_OUTCOME_UNKNOWN);
+  assert (skipped_count > 0);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED, 9, op_ctx,
+	  OID_AS_ARGS (&context->oid), OID_AS_ARGS (&first_ref.head_oid),
+	  oos_delete_outcome_string (first_outcome), skipped_count);
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  heap_Oos_test_skipped_cleanup_diagnostics.fetch_add (1, std::memory_order_relaxed);
+  heap_Oos_test_last_skipped_cleanup_outcome.store ((int) first_outcome, std::memory_order_relaxed);
+  heap_Oos_test_last_skipped_cleanup_count.store (skipped_count, std::memory_order_relaxed);
+#endif
+}
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+int
+heap_oos_test_skipped_cleanup_diagnostics ()
+{
+  return heap_Oos_test_skipped_cleanup_diagnostics.load (std::memory_order_relaxed);
+}
+
+int
+heap_oos_test_last_skipped_cleanup_outcome ()
+{
+  return heap_Oos_test_last_skipped_cleanup_outcome.load (std::memory_order_relaxed);
+}
+
+int
+heap_oos_test_last_skipped_cleanup_count ()
+{
+  return heap_Oos_test_last_skipped_cleanup_count.load (std::memory_order_relaxed);
+}
+
+void
+heap_oos_test_reset_skipped_cleanup_diagnostics ()
+{
+  heap_Oos_test_skipped_cleanup_diagnostics.store (0, std::memory_order_relaxed);
+  heap_Oos_test_last_skipped_cleanup_outcome.store (-1, std::memory_order_relaxed);
+  heap_Oos_test_last_skipped_cleanup_count.store (0, std::memory_order_relaxed);
+}
+#endif
 
 /*
  * heap_oos_next_scan () - next scan function for

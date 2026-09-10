@@ -1094,6 +1094,101 @@ TEST_F (OosIdentityStampTest, StaleReferenceToPageReusedAsFileMetadataSkipsDelet
   release_metadata_page (page);
 }
 
+// ===========================================================================
+// Repair ticket 03: the delete reports whether it reclaimed the chain or skipped a stale target
+// ===========================================================================
+
+TEST_F (OosIdentityStampTest, DeleteOutcomeNamesEachSkipReason)
+{
+  /* A reclaimed chain, then a retry of the same request: the retry finds the head slot empty. */
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, "reclaimed, then retried", oid, issued), NO_ERROR);
+  oos_chain_ref ref = { oid, issued };
+  std::vector<VPID> emptied;
+  oos_delete_outcome outcome = OOS_DELETE_SKIPPED_PAGE_GONE;
+  er_clear ();
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, ref, &emptied, &outcome), NO_ERROR);
+  EXPECT_EQ (outcome, OOS_DELETE_RECLAIMED);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, ref, &emptied, &outcome), NO_ERROR);
+  EXPECT_EQ (outcome, OOS_DELETE_SKIPPED_SLOT_EMPTY);
+  EXPECT_EQ (er_errid (), NO_ERROR) << "a reported skip is still a clean success";
+  emptied.clear ();
+
+  /* A deallocated head page, then the same page reused as file metadata: both are "page gone". The file
+   * holds no other live chunk here, so the page-filling chain has its page to itself. */
+  OID paged_oid = OID_INITIALIZER;
+  LOG_LSA paged_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, page_filling_payload (), paged_oid, paged_stamp), NO_ERROR);
+  oos_chain_ref gone = { paged_oid, paged_stamp };
+  reclaim_own_page (gone);
+  outcome = OOS_DELETE_RECLAIMED;
+  er_clear ();
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, gone, &emptied, &outcome), NO_ERROR);
+  EXPECT_EQ (outcome, OOS_DELETE_SKIPPED_PAGE_GONE);
+  const VPID page = { paged_oid.pageid, paged_oid.volid };
+  reuse_reclaimed_page_as_metadata (page);
+  outcome = OOS_DELETE_RECLAIMED;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, gone, &emptied, &outcome), NO_ERROR);
+  EXPECT_EQ (outcome, OOS_DELETE_SKIPPED_PAGE_GONE);
+  EXPECT_TRUE (metadata_page_is_intact (page));
+  EXPECT_TRUE (emptied.empty ());
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  release_metadata_page (page);
+
+  /* A stale stamp against a live occupant of the slot. */
+  const std::string live_payload = "live occupant";
+  OID live_oid = OID_INITIALIZER;
+  LOG_LSA live_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, live_payload, live_oid, live_stamp), NO_ERROR);
+  oos_chain_ref stale = { live_oid, LOG_LSA (live_stamp.pageid + 1, (std::int16_t) live_stamp.offset) };
+  outcome = OOS_DELETE_RECLAIMED;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale, &emptied, &outcome), NO_ERROR);
+  EXPECT_EQ (outcome, OOS_DELETE_SKIPPED_STAMP_MISMATCH);
+  EXPECT_TRUE (emptied.empty ());
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  std::string out;
+  oos_chain_ref live = { live_oid, live_stamp };
+  ASSERT_EQ (read_through (live, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), live_payload.c_str ());
+
+  /* A failed call reports no outcome at all, so a caller reading the outcome before the return code is
+   * never told a chain was reclaimed. A reference with no head OOS OID is such a failure: the stub parser
+   * rejects one, so it can only come from a caller passing an invalid argument. */
+  oos_chain_ref headless = { OID_INITIALIZER, live_stamp };
+  outcome = OOS_DELETE_RECLAIMED;
+  er_clear ();
+  EXPECT_EQ (oos_delete (thread_p, oos_vfid, headless, &emptied, &outcome), ER_HEAP_OOS_INVALID_ARGUMENT);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_INVALID_ARGUMENT);
+  EXPECT_EQ (outcome, OOS_DELETE_OUTCOME_UNKNOWN);
+  EXPECT_TRUE (emptied.empty ());
+  er_clear ();
+  ASSERT_EQ (read_through (live, out), NO_ERROR) << "a rejected delete touches nothing";
+
+  /* The outcome is optional and does not change the result a caller that does not ask for it sees. */
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale, &emptied), NO_ERROR);
+  ASSERT_EQ (read_through (live, out), NO_ERROR);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, live, &emptied, &outcome), NO_ERROR);
+  EXPECT_EQ (outcome, OOS_DELETE_RECLAIMED);
+
+  /* Every outcome has its own name for diagnostics. */
+  const oos_delete_outcome all[] = { OOS_DELETE_OUTCOME_UNKNOWN, OOS_DELETE_RECLAIMED, OOS_DELETE_SKIPPED_PAGE_GONE,
+				     OOS_DELETE_SKIPPED_SLOT_EMPTY, OOS_DELETE_SKIPPED_STAMP_MISMATCH
+				   };
+  for (oos_delete_outcome a : all)
+    {
+      ASSERT_NE (oos_delete_outcome_string (a), nullptr);
+      EXPECT_GT (std::strlen (oos_delete_outcome_string (a)), 0U);
+      for (oos_delete_outcome b : all)
+	{
+	  if (a != b)
+	    {
+	      EXPECT_STRNE (oos_delete_outcome_string (a), oos_delete_outcome_string (b));
+	    }
+	}
+    }
+}
+
 TEST_F (OosIdentityStampTest, InterruptedDeleteAndReadReportTheInterruptNotASkip)
 {
   const std::string payload = "operational failures stay errors";

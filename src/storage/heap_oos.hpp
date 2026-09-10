@@ -96,9 +96,23 @@ extern void heap_oos_test_fail_before_vfid_lookup_once ();
 extern void heap_oos_test_disarm_fail_before_vfid_lookup ();
 #endif
 
-/* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS
- * records referenced by old_recdes and not referenced by new_recdes (NULL = delete all). */
+/* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS value
+ * chains referenced by old_recdes and not referenced by new_recdes (NULL = delete all). A reference
+ * whose target is gone or reused (deallocated or retyped head page, empty head slot, identity stamp
+ * mismatch) is skipped: the DML completes and the error stack stays clean. Skips are reported once per
+ * call as a notification in the server error log, naming how many chains were skipped and describing
+ * the first. A stamp-matching non-head target and operational failures are errors (CBRD-26950). */
 extern int heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
     const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx);
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+/* Observability of the skipped-cleanup diagnostic: how many notifications heap_oos_delete_unreferenced
+ * emitted since the last reset, and the first outcome (-1 when none) and chain count (0 when none) the
+ * last one carried. */
+extern int heap_oos_test_skipped_cleanup_diagnostics ();
+extern int heap_oos_test_last_skipped_cleanup_outcome ();
+extern int heap_oos_test_last_skipped_cleanup_count ();
+extern void heap_oos_test_reset_skipped_cleanup_diagnostics ();
+#endif
 
 #endif /* _HEAP_OOS_HPP_ */

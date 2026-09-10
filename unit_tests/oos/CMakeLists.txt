@@ -24,6 +24,7 @@ set(SA_MODE_TESTS
   test_oos
   test_oos_delete
   test_oos_identity_stamp
+  test_oos_eager_diagnostics
   test_oos_remove_file
   test_oos_bestspace
   test_oos_growth_sweep
@@ -86,6 +87,9 @@ add_test(NAME test_oos COMMAND test_oos)
 add_test(NAME test_oos_delete COMMAND test_oos_delete)
 # identity stamp contract: insert issues it, reads verify it, deletes require it (CBRD-26950).
 add_test(NAME test_oos_identity_stamp COMMAND test_oos_identity_stamp)
+# eager (non-MVCC) DML completes and diagnoses skipped OOS reclamation (CBRD-26950); the SQL-level
+# test_oos_sql_eager_cleanup covers that unskipped eager reclamation actually reclaims.
+add_test(NAME test_oos_eager_diagnostics COMMAND test_oos_eager_diagnostics)
 add_test(NAME test_oos_remove_file COMMAND test_oos_remove_file)
 add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
 # growth-gate incremental sweep: delete bursts must not grow the OOS file on re-insert (CBRD-26786).
@@ -102,8 +106,11 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 30
 )
 # Error-path cases pay for an error-stack dump each in debug builds: test_oos_identity_stamp runs 22 to 39 s
-# alone and test_oos has exceeded 30 s under full-suite load.
-set_tests_properties(test_oos test_oos_identity_stamp PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 60)
+# alone and test_oos has exceeded 30 s under full-suite load. test_oos_eager_diagnostics runs real heap DML
+# with page reclaim and relocation and measured 11 to 13 s; it shares the headroom for the same reason.
+set_tests_properties(test_oos test_oos_identity_stamp test_oos_eager_diagnostics
+  PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 60
+)
 
 # =============================================================================
 # Register SERVER_MODE tests

@@ -89,7 +89,7 @@ static void
 oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid, RECDES *recdes_p);
 static int
 oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
-		  std::vector<VPID> *emptied_vpids, bool *deleted_out);
+		  std::vector<VPID> *emptied_vpids, oos_delete_outcome *outcome_out);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
@@ -3227,7 +3227,8 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  *   emptied_vpids(out): optional; every page that holds zero records after one of this chain's
  *			 chunks was deleted from it is appended, once. A page that still holds
  *			 other chunks is not a reclaim candidate and is not reported.
- *   deleted_out(out): true when the chain was deleted, false when the call was a no-op
+ *   outcome_out(out): OOS_DELETE_RECLAIMED when the chain was deleted, which stale condition made the
+ *		       call a no-op, or OOS_DELETE_OUTCOME_UNKNOWN when the call failed
  *
  * NOTE: This is the inner workhorse called by oos_delete(). Each chunk
  *       deletion is logged individually with undo data, so transaction
@@ -3250,13 +3251,22 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  */
 static int
 oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
-		  std::vector<VPID> *emptied_vpids, bool *deleted_out)
+		  std::vector<VPID> *emptied_vpids, oos_delete_outcome *outcome_out)
 {
   int error = NO_ERROR;
   OID current_oid = ref.head_oid;
   bool is_head_chunk = true;
 
-  *deleted_out = false;
+  if (OID_ISNULL (&ref.head_oid))
+    {
+      /* A chain reference must name a head chunk. The stub parser rejects a null head OOS OID with
+       * ER_HEAP_OOS_BAD_INLINE_HEADER, so no heap-derived reference arrives here with one; a caller that
+       * passes one has an invalid argument, not a stale target, and must not be told a chain was
+       * reclaimed. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_INVALID_ARGUMENT, 0);
+      return ER_HEAP_OOS_INVALID_ARGUMENT;
+    }
+
   while (!OID_ISNULL (&current_oid))
     {
       VPID vpid = {current_oid.pageid, current_oid.volid};
@@ -3279,6 +3289,7 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
 			 " (expected identity_stamp %lld|%d)", OID_AS_ARGS (&current_oid),
 			 LSA_AS_ARGS (&ref.identity_stamp));
 	      er_clear ();
+	      *outcome_out = OOS_DELETE_SKIPPED_PAGE_GONE;
 	      return NO_ERROR;
 	    }
 	}
@@ -3307,6 +3318,7 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
 	      oos_debug ("delete no-op at oid={vol=%d,page=%d,slot=%d}: head chunk gone (expected identity_stamp"
 			 " %lld|%d)", OID_AS_ARGS (&current_oid), LSA_AS_ARGS (&ref.identity_stamp));
 	      er_clear ();
+	      *outcome_out = OOS_DELETE_SKIPPED_SLOT_EMPTY;
 	      return NO_ERROR;
 	    }
 	  ASSERT_ERROR_AND_SET (error);
@@ -3336,6 +3348,7 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
 			 " %lld|%d, stored %lld|%d", OID_AS_ARGS (&current_oid), LSA_AS_ARGS (&ref.identity_stamp),
 			 LSA_AS_ARGS (&header.identity_stamp));
 	      er_clear ();
+	      *outcome_out = OOS_DELETE_SKIPPED_STAMP_MISMATCH;
 	      return NO_ERROR;
 	    }
 	  if (header.chunk_index != 0)
@@ -3395,10 +3408,11 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
       oos_debug ("deleted chunk at oid={vol=%d,page=%d,slot=%d}, next={vol=%d,page=%d,slot=%d}",
 		 OID_AS_ARGS (&current_oid), OID_AS_ARGS (&next_chunk_oid));
 
-      *deleted_out = true;
       current_oid = next_chunk_oid;
     }
 
+  /* Only a completed walk is a reclamation: every earlier exit either skipped at the head or failed. */
+  *outcome_out = OOS_DELETE_RECLAIMED;
   return NO_ERROR;
 }
 
@@ -3462,6 +3476,8 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *   oos_vfid(in): OOS file identifier
  *   ref(in): head OOS OID plus the identity stamp stored in the caller's OOS inline stub
  *   emptied_vpids(out): optional reclaim candidate list, see oos_file.hpp
+ *   outcome_out(out): optional; reclaimed, which stale condition was skipped, or unknown after a
+ *		       failure, see oos_file.hpp
  *
  * NOTE: The delete happens only when the head chunk's stored identity stamp equals
  *       ref.identity_stamp and the chunk is a chain head. A deallocated head page, a head page that
@@ -3499,18 +3515,49 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  */
 int
 oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
-	    std::vector<VPID> *emptied_vpids)
+	    std::vector<VPID> *emptied_vpids, oos_delete_outcome *outcome_out)
 {
   oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}, expected identity_stamp=%lld|%d",
 	     OID_AS_ARGS (&ref.head_oid), LSA_AS_ARGS (&ref.identity_stamp));
 
-  bool deleted = false;
-  int err = oos_delete_chain (thread_p, oos_vfid, ref, emptied_vpids, &deleted);
-  if (err == NO_ERROR && deleted)
+  oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
+  int err = oos_delete_chain (thread_p, oos_vfid, ref, emptied_vpids, &outcome);
+  if (err == NO_ERROR && outcome == OOS_DELETE_RECLAIMED)
     {
       oos_reclaim_note_delete (oos_vfid);
     }
+  if (outcome_out != NULL)
+    {
+      *outcome_out = outcome;
+    }
   return err;
+}
+
+/*
+ * oos_delete_outcome_string () - Short identifier-shaped name of an oos_delete outcome. It is embedded in
+ *   a localized diagnostic message, so it stays a label a reader of any locale can match against this
+ *   list, not an English sentence; the human-readable wording lives in the oos_debug lines above.
+ */
+const char *
+oos_delete_outcome_string (oos_delete_outcome outcome)
+{
+  switch (outcome)
+    {
+    case OOS_DELETE_OUTCOME_UNKNOWN:
+      return "unknown";
+    case OOS_DELETE_RECLAIMED:
+      return "reclaimed";
+    case OOS_DELETE_SKIPPED_PAGE_GONE:
+      return "page_gone";
+    case OOS_DELETE_SKIPPED_SLOT_EMPTY:
+      return "slot_empty";
+    case OOS_DELETE_SKIPPED_STAMP_MISMATCH:
+      return "stamp_mismatch";
+    }
+
+  /* No default label, so a new outcome without a name here is a -Wswitch warning rather than a surprise. */
+  assert (false);
+  return "unknown";
 }
 
 /*

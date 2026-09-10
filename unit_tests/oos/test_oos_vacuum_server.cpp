@@ -30,8 +30,13 @@
 #include "heap_oos.hpp"
 #include "object_representation.h"
 #include "xserver_interface.h"
+#include "test_oos_error_log.hpp"
 #include "test_oos_server_common.hpp"
 #include "vacuum_oos.hpp"
+
+using test_oos_error_log::error_log_mentions_since;
+using test_oos_error_log::error_log_size;
+using test_oos_error_log::notification_log_scope;
 
 /* bridge functions */
 int bridge_oos_get_max_chunk_size_within_page ();
@@ -807,11 +812,23 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteReclaimsLiveReferenceAndSkip
   make_stub_reference_stale (stale_rec, 1, 0);
 
   VACUUM_OOS_EMPTIED_PAGES emptied_pages;
+  notification_log_scope admit_notifications;
+  const long log_offset = error_log_size ();
+  ASSERT_GE (log_offset, 0) << "the fixture requires the error log to be a readable file";
   er_clear ();
   ASSERT_EQ (vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &stale_rec, &emptied_pages), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR) << "a skipped reclamation must leave no stray error";
   EXPECT_TRUE (emptied_pages.empty ());
   EXPECT_TRUE (chunk_is_present (reused_oid)) << "the live occupant must survive the stale reference";
+  EXPECT_FALSE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED))
+      << "a vacuum skip is expected and must stay quiet";
+  /* Positive control: the reader must be able to see a notification of that code at all, otherwise the
+   * assertion above would pass even with a broken reader. */
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED, 9, "log reader control",
+	  0, 0, 0, 0, 0, 0, "control", 1);
+  EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED))
+      << "the error-log reader itself must work for the assertion above to mean anything";
+  EXPECT_EQ (er_errid (), NO_ERROR);
 
   RECDES live_rec {};
   ASSERT_EQ (build_heap_recdes_with_oos ({live_oid}, { (INT64) live_chunk.length}, live_rec), NO_ERROR);
@@ -881,6 +898,9 @@ TEST_F (OosVacuumHeapSeamServer, ForwardWalkReclaimsLiveReferenceAndSkipsStaleOn
   make_stub_reference_stale (stale_rec, 1, 0);
 
   VACUUM_OOS_VFID_MEMO memo;
+  notification_log_scope admit_notifications;
+  const long log_offset = error_log_size ();
+  ASSERT_GE (log_offset, 0) << "the fixture requires the error log to be a readable file";
 
   std::vector<char> stale_undo = make_undo_image (stale_rec);
   er_clear ();
@@ -896,9 +916,17 @@ TEST_F (OosVacuumHeapSeamServer, ForwardWalkReclaimsLiveReferenceAndSkipsStaleOn
   EXPECT_FALSE (chunk_is_present (live_oid)) << "the forward walk must reclaim a live reference";
   EXPECT_TRUE (chunk_is_present (reused_oid));
 
-  /* A block retry replays the already-reclaimed request: still a clean success. */
+  /* A block retry replays the already-reclaimed request: still a clean success, and still quiet. */
   ASSERT_EQ (vacuum_forward_walk_reclaim_oos (thread_p, live_undo.data (), (int) live_undo.size (), &hfid.vfid,
 	     &memo), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_FALSE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED))
+      << "vacuum skips and retries are expected and must stay quiet";
+  /* Positive control, as in TC-V10. */
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED, 9, "log reader control",
+	  0, 0, 0, 0, 0, 0, "control", 1);
+  EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED))
+      << "the error-log reader itself must work for the assertion above to mean anything";
   EXPECT_EQ (er_errid (), NO_ERROR);
 }
 
@@ -925,18 +953,29 @@ TEST_F (OosVacuumHeapSeamServer, EagerDeleteReclaimsLiveReferenceAndSkipsStaleOn
   context.oid.pageid = hfid.hpgid;
   context.oid.slotid = 1;
 
+  notification_log_scope admit_notifications;
+  const long log_offset = error_log_size ();
+  ASSERT_GE (log_offset, 0) << "the fixture requires the error log to be a readable file";
+  heap_oos_test_reset_skipped_cleanup_diagnostics ();
   er_clear ();
   ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &stale_rec, NULL, "unit test stale"), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR) << "user DML on the eager path must report success cleanly";
   EXPECT_TRUE (chunk_is_present (reused_oid)) << "the eager path must skip a stale OOS reference";
+  /* Unlike vacuum, the eager path diagnoses the skip: the row it completes was the chain's only reference. */
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1);
+  EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
+  EXPECT_EQ (heap_oos_test_last_skipped_cleanup_count (), 1);
+  EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
 
   ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &live_rec, NULL, "unit test live"), NO_ERROR);
   EXPECT_FALSE (chunk_is_present (live_oid)) << "the eager path must reclaim a live reference";
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1) << "a real reclamation is not diagnosed";
 
-  /* An UPDATE whose post-image still references the chain keeps it. */
+  /* An UPDATE whose post-image still references the chain keeps it, quietly. */
   ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &kept_rec, &kept_rec, "unit test kept"), NO_ERROR);
   EXPECT_TRUE (chunk_is_present (kept_oid));
   EXPECT_TRUE (chunk_is_present (reused_oid));
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_diagnostics (), 1);
 }
 
 int
