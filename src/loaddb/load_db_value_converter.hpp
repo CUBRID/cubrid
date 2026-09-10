@@ -34,6 +34,7 @@ namespace cubload
   typedef int (*conv_func) (const char *, const size_t, const attribute *, db_value *);
 
   conv_func &get_conv_func (const data_type ldr_type, const DB_TYPE db_type);
+  conv_func &get_elem_conv_func (const data_type ldr_type);
 
 } // namespace cubload
 

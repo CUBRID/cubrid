@@ -595,8 +595,10 @@ set(HISTOGRAM_HEADERS
 set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
+  ${LOADDB_DIR}/load_class_registry.cpp
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
+  ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp
   ${LOADDB_DIR}/load_error_handler.cpp
   ${LOADDB_DIR}/load_object.c
@@ -607,7 +609,9 @@ set(LOADDB_SOURCES
 
 set(LOADDB_HEADERS
   ${BISON_loader_grammar_OUTPUT_HEADER}
+  ${LOADDB_DIR}/load_class_registry.hpp
   ${LOADDB_DIR}/load_common.hpp
+  ${LOADDB_DIR}/load_db_value_converter.hpp
   ${LOADDB_DIR}/load_driver.hpp
   ${LOADDB_DIR}/load_error_handler.hpp
   ${LOADDB_DIR}/load_object.h
