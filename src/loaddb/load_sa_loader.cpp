@@ -177,6 +177,19 @@ typedef struct ldr_context LDR_CONTEXT;
 typedef void (*LDR_POST_COMMIT_HANDLER) (int64_t);
 typedef void (*LDR_POST_INTERRUPT_HANDLER) (int64_t);
 
+/*
+ * LDR_ACT_MODE
+ *    What the values of the current line are being loaded into.
+ *    This is decided once per line, before any value arrives,
+ *    and does not change while the line is being read.
+ */
+typedef enum
+{
+  LDR_ACT_ATTR,			/* instance attribute */
+  LDR_ACT_CLASS_ATTR,		/* class, shared or default attribute */
+  LDR_ACT_METH			/* constructor argument */
+} LDR_ACT_MODE;
+
 struct LDR_ATTDESC;
 
 typedef int (*LDR_SETTER) (LDR_CONTEXT *, const char *, size_t, struct LDR_ATTDESC *);
@@ -344,6 +357,8 @@ struct ldr_context
 
   attribute_type attr_type;	/* type of attribute if class */
   /* attribute, shared, default */
+
+  LDR_ACT_MODE act_mode;
 
   int status_count;		/* Count used to indicate number of */
   /* instances committed for internal */
@@ -671,13 +686,55 @@ static int add_argument (LDR_CONTEXT *context);
 static void invalid_class_id_error (LDR_CONTEXT *context, int id);
 static int ldr_init_loader (LDR_CONTEXT *context);
 static void ldr_abort (void);
-static void ldr_process_object_ref (object_ref_type *ref, int type);
+static void ldr_process_object_ref (object_ref_type *ref, int type, bool is_element);
 static int ldr_act_add_class_all_attrs (const char *class_name);
 static int ldr_json_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_json_db_json (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 
-/* default action */
-void (*ldr_act) (LDR_CONTEXT *context, const char *str, size_t len, data_type type) = ldr_act_attr;
+/*
+ * LDR_IS_INSIDE_COLLECTION - is this value the leading brace of a collection
+ *    str(in): token text. NULL marks the trailing brace
+ *    type(in): parser type of the token
+ * Note:
+ *    A collection is one attribute however many elements it holds, so the leading brace
+ *    must not advance next_attr - only the trailing brace does.
+ *    Deciding this from the token alone needs no state: there used to be a decrement inside
+ *    ldr_collection_db_collection () cancelling the increment, with the two halves of
+ *    the rule sitting in different functions.
+ *    When type is LDR_COLLECTION, str is either "{" or NULL. Refer to process_values()
+ */
+#define LDR_IS_INSIDE_COLLECTION(str, type) ((type) == LDR_COLLECTION && (str) != NULL)
+
+/*
+ * ldr_act_value - hand one value to whatever is reading this line
+ *    context(in):
+ *    str(in), len(in): the token
+ *    type(in): parser type of the token
+ *    is_element(in): true when the value is a collection element
+ */
+static void
+ldr_act_value (LDR_CONTEXT *context, const char *str, size_t len, data_type type, bool is_element)
+{
+  if (is_element)
+    {
+      ldr_act_elem (context, str, len, type);
+      return;
+    }
+
+  switch (context->act_mode)
+    {
+    case LDR_ACT_CLASS_ATTR:
+      ldr_act_class_attr (context, str, len, type);
+      break;
+    case LDR_ACT_METH:
+      ldr_act_meth (context, str, len, type);
+      break;
+    case LDR_ACT_ATTR:
+    default:
+      ldr_act_attr (context, str, len, type);
+      break;
+    }
+}
 
 namespace cubload
 {
@@ -877,12 +934,23 @@ error_exit:
 	return;
       }
 
+    process_values (cons, false);
+  }
+
+  /*
+   * sa_object_loader::process_values - walk a value list
+   *    cons(in): first value
+   *    is_element(in): true when the list is a collection's elements
+   */
+  void
+  sa_object_loader::process_values (constant_type *cons, bool is_element)
+  {
     for (constant_type *c = cons; c != NULL; c = c->next)
       {
 	switch (c->type)
 	  {
 	  case LDR_NULL:
-	    (*ldr_act) (ldr_Current_context, NULL, 0, LDR_NULL);
+	    ldr_act_value (ldr_Current_context, NULL, 0, LDR_NULL, is_element);
 	    break;
 
 	  case LDR_INT:
@@ -901,7 +969,7 @@ error_exit:
 	  {
 	    string_type *str = (string_type *) c->val;
 
-	    (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
+	    ldr_act_value (ldr_Current_context, str->val, str->size, c->type, is_element);
 	  }
 	  break;
 
@@ -924,7 +992,8 @@ error_exit:
 	    strcpy (full_mon_str_p, curr_str);
 	    strcat (full_mon_str_p, str->val);
 
-	    (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), c->type);
+	    ldr_act_value (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), c->type,
+			   is_element);
 	    if (full_mon_str_p != full_mon_str)
 	      {
 		delete [] full_mon_str_p;
@@ -943,18 +1012,20 @@ error_exit:
 	  {
 	    string_type *str = (string_type *) c->val;
 
-	    (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
+	    ldr_act_value (ldr_Current_context, str->val, str->size, c->type, is_element);
 	  }
 	  break;
 
 	  case LDR_OID:
 	  case LDR_CLASS_OID:
-	    ldr_process_object_ref ((object_ref_type *) c->val, c->type);
+	    ldr_process_object_ref ((object_ref_type *) c->val, c->type, is_element);
 	    break;
 
 	  case LDR_COLLECTION:
-	    (*ldr_act) (ldr_Current_context, "{", 1, LDR_COLLECTION);
-	    process_line ((constant_type *) c->val);
+	    ldr_act_value (ldr_Current_context, "{", 1, LDR_COLLECTION, is_element);
+	    process_values ((constant_type *) c->val, true);
+	    /* The trailing brace always goes through the attribute path: the collection is
+	     * finished and stored there, for a class attribute as well. */
 	    ldr_act_attr (ldr_Current_context, NULL, 0, LDR_COLLECTION);
 	    break;
 
@@ -2008,12 +2079,10 @@ ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 	  /* ending brace of collection */
 	  if (str == NULL)
 	    {
-	      ldr_act = ldr_act_attr;
 	      goto error_exit;
 	    }
 	  else
 	    {
-	      ldr_act = ldr_act_elem;
 	      return;
 	    }
 	/* Check validity of date/time/timestamp string during validation */
@@ -2053,7 +2122,10 @@ ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
     }
 
 error_exit:
-  context->next_attr += 1;
+  if (!LDR_IS_INSIDE_COLLECTION (str, type))
+    {
+      context->next_attr += 1;
+    }
   ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
@@ -2641,7 +2713,10 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
     }
 
 error_exit:
-  context->next_attr += 1;
+  if (!LDR_IS_INSIDE_COLLECTION (str, type))
+    {
+      context->next_attr += 1;
+    }
   ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
@@ -4355,21 +4430,9 @@ ldr_collection_db_collection (LDR_CONTEXT *context, const char *str, size_t len,
   SM_ATTRIBUTE *att = attdesc->att;
   int err = NO_ERROR;
 
-  /* Set the approriate action function to deal with collection elements */
-
-  ldr_act = ldr_act_elem;
 
   if (context->collection == NULL)
     {
-      /*
-       * This kind of bites:  we need to avoid advancing the next_attr
-       * counter until we actually hit the closing brace.  Since ldr_act_attr
-       * (which has called this function) will increment the counter
-       * unconditionally, we decrement it here to compensate.  I with there
-       * were a better way of dealing with this.
-       */
-      context->next_attr -= 1;
-
       /*
        * We've just seen the leading brace of a collection, and we need to
        * create the "holding" collection.
@@ -4399,15 +4462,13 @@ ldr_collection_db_collection (LDR_CONTEXT *context, const char *str, size_t len,
       context->collection = NULL;
       context->set_domain = NULL;
 
-      /* We finished dealing with elements of a collection, set the action function to deal with normal attributes. */
+      /* We finished dealing with elements of a collection. */
       if (context->attr_type == LDR_ATTRIBUTE_ANY)
 	{
-	  ldr_act = ldr_act_attr;
 	  err = ldr_generic (context, &tmp);
 	}
       else
 	{
-	  ldr_act = ldr_act_class_attr;
 	  err = ldr_class_attr_db_generic (context, str, len, context->attrs[context->next_attr].att, &tmp);
 	}
     }
@@ -4683,8 +4744,8 @@ ldr_finish_context (LDR_CONTEXT *context)
 	}
     }
 
-  /* Reset the action function to deal with attributes */
-  ldr_act = ldr_act_attr;
+  /* Reset the mode to deal with attributes */
+  context->act_mode = LDR_ACT_ATTR;
 
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   if (err == NO_ERROR)
@@ -5273,8 +5334,8 @@ ldr_act_restrict_attributes (LDR_CONTEXT *context, attribute_type type)
 
   if (!context->validation_only)
     {
-      /* Set the appropriate functions to handle class attributes */
-      ldr_act = ldr_act_class_attr;
+      /* Set the appropriate mode to handle class attributes */
+      context->act_mode = LDR_ACT_CLASS_ATTR;
     }
 }
 
@@ -5584,9 +5645,9 @@ ldr_act_set_constructor (LDR_CONTEXT *context, const char *name)
     {
       context->arg_index = context->num_attrs;
 
-      /* setup the appropriate constructor handling functions */
+      /* setup the appropriate constructor handling mode */
 
-      ldr_act = ldr_act_meth;
+      context->act_mode = LDR_ACT_METH;
       goto error_exit;
     }
 
@@ -5605,9 +5666,9 @@ ldr_act_set_constructor (LDR_CONTEXT *context, const char *name)
 	  context->constructor = meth;
 	  context->arg_index = context->num_attrs;
 
-	  /* setup the appropriate constructor handling functions */
+	  /* setup the appropriate constructor handling mode */
 
-	  ldr_act = ldr_act_meth;
+	  context->act_mode = LDR_ACT_METH;
 	}
     }
 
@@ -5897,9 +5958,9 @@ ldr_init_loader (LDR_CONTEXT *context)
    */
   tm_Use_OID_preflush = false;
 
-  /* Set the appropriate action function for normal attribute values */
+  /* Set the appropriate mode for normal attribute values */
 
-  ldr_act = ldr_act_attr;
+  ldr_Current_context->act_mode = LDR_ACT_ATTR;
 
   /*
    * Optimization to avoid calling db_value_domain_init all of the time
@@ -6515,7 +6576,7 @@ ldr_is_ignore_class (const char *class_name, size_t size)
 }
 
 static void
-ldr_process_object_ref (object_ref_type *ref, int type)
+ldr_process_object_ref (object_ref_type *ref, int type, bool is_element)
 {
   bool ignore_class = false;
   const char *class_name;
@@ -6548,22 +6609,22 @@ ldr_process_object_ref (object_ref_type *ref, int type)
 
   if (type == LDR_OID)
     {
-      (*ldr_act) (ldr_Current_context, ref->instance_number->val,
-		  ((ref->instance_number->val == NULL) ? 0 : ref->instance_number->size),
-		  (ignore_class) ? LDR_NULL : LDR_OID);
+      ldr_act_value (ldr_Current_context, ref->instance_number->val,
+		     ((ref->instance_number->val == NULL) ? 0 : ref->instance_number->size),
+		     (ignore_class) ? LDR_NULL : LDR_OID, is_element);
     }
   else
     {
       /* right ?? */
       if (ref->class_name)
 	{
-	  (*ldr_act) (ldr_Current_context, ref->class_name->val, ref->class_name->size,
-		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
+	  ldr_act_value (ldr_Current_context, ref->class_name->val, ref->class_name->size,
+			 (ignore_class) ? LDR_NULL : LDR_CLASS_OID, is_element);
 	}
       else
 	{
-	  (*ldr_act) (ldr_Current_context, ref->class_id->val, ((ref->class_id->val == NULL) ? 0 : ref->class_id->size),
-		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
+	  ldr_act_value (ldr_Current_context, ref->class_id->val, ((ref->class_id->val == NULL) ? 0 : ref->class_id->size),
+			 (ignore_class) ? LDR_NULL : LDR_CLASS_OID, is_element);
 	}
     }
 
