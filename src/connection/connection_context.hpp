@@ -184,6 +184,11 @@ namespace cubconn::connection
       /* shared by every sender blocked on this transmitter (bad case) all of them are woken */
       /* together (notify_all) when the pending transmission drains or is discarded */
       std::shared_ptr<message_blocker> m_blocker;
+
+      /* Woken when the queue frees an iovec slot, which a partial drain already does. m_blocker
+       * above cannot serve: it fires only on a complete drain, which a congested connection
+       * rarely reaches. */
+      std::shared_ptr<message_blocker> m_room;
     } m_send;
 
     /* --------------------------------------------------------------------------- */

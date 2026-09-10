@@ -72,6 +72,115 @@ namespace cubconn::connection
     return prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
   });
 
+  /* One turn of the wait: how long a sender goes without re-reading the connection and the
+   * interrupt flag. send_queue_room_wait_msecs bounds the whole wait, and is provisional -- whether
+   * a full queue should give up at all is a connection-layer policy call; 0 restores dropping. */
+  static constexpr std::chrono::milliseconds SEND_QUEUE_ROOM_WAIT_TURN (100);
+
+  /* Why a sender stopped waiting. All but the first share the drop path, and are told apart in the
+   * log because they need different answers from whoever reads it. */
+  enum class room_wait_result
+  {
+    ROOM_AVAILABLE,
+    TIMED_OUT,
+    INTERRUPTED,
+    RMUTEX_HELD,
+    CONNECTION_GONE
+  };
+
+  static const char *
+  room_wait_result_name (room_wait_result r)
+  {
+    switch (r)
+      {
+      case room_wait_result::TIMED_OUT:
+	return "no room within send_queue_room_wait_msecs";
+      case room_wait_result::INTERRUPTED:
+	return "the query was interrupted";
+      case room_wait_result::RMUTEX_HELD:
+	return "the sender holds conn->rmutex and may not wait";
+      case room_wait_result::CONNECTION_GONE:
+	return "the connection was closed or taken over";
+      default:
+	return "room is available";
+      }
+  }
+
+  /* Wait for one more iovec of room; conn->cmutex is held on entry and on return. A full queue
+   * means the producer is ahead of the connection worker draining it -- flow control, not a dead
+   * peer -- and the drain never needs this thread, so waiting is safe.
+   *
+   * Except while this thread holds conn->rmutex: the connection worker takes that mutex before it
+   * can drain (handle_reception), so parking with it held stops the drain for every connection
+   * that worker owns. sboot_notify_unregister_client sends with it held on purpose (CBRD-21375). */
+  static room_wait_result
+  wait_for_send_queue_room (cubthread::entry *thread_p, css_conn_entry *conn, context *ctx,
+			    worker *&owner)
+  {
+    int budget_msecs = prm_get_integer_value (PRM_ID_CSS_SEND_QUEUE_ROOM_WAIT_MSECS);
+    bool continue_checking = true;
+    int r;
+
+    if (budget_msecs <= 0)
+      {
+	return room_wait_result::TIMED_OUT;
+      }
+
+    if (thread_p != NULL && conn->rmutex.owner == thread_p->get_id ())
+      {
+	return room_wait_result::RMUTEX_HELD;
+      }
+
+    std::chrono::steady_clock::time_point deadline =
+	    std::chrono::steady_clock::now () + std::chrono::milliseconds (budget_msecs);
+
+    while (std::chrono::steady_clock::now () < deadline)
+      {
+	std::shared_ptr<message_blocker> waiter = ctx->m_send.m_room;
+
+	/* A woken signal is not ours to wait on -- every waker moves it out of the context. */
+	if (waiter == nullptr || waiter->done)
+	  {
+	    waiter = std::make_shared<message_blocker> ();
+	    waiter->done = false;
+	    ctx->m_send.m_room = waiter;
+	  }
+
+	r = rmutex_unlock (NULL, &conn->cmutex);
+	assert (r == NO_ERROR);
+
+	{
+	  std::unique_lock<std::mutex> lock (waiter->m);
+	  waiter->cv.wait_for (lock, SEND_QUEUE_ROOM_WAIT_TURN, [&waiter] { return waiter->done; });
+	}
+
+	r = rmutex_lock (NULL, &conn->cmutex);
+	assert (r == NO_ERROR);
+
+	/* A handoff changes only which worker drains this connection, so adopt the new owner rather
+	 * than dropping a healthy one. Anything else leaves these bytes nowhere to go in order. */
+	owner = conn->worker;
+	if (owner == nullptr || conn->context != ctx || IS_INVALID_SOCKET (conn->fd)
+	    || conn->status != CONN_OPEN || ctx->m_ignore != ignore_level::DONT_IGNORE)
+	  {
+	    return room_wait_result::CONNECTION_GONE;
+	  }
+
+	/* A cancel does not close the connection, so it is only visible here. */
+	if (thread_p != NULL && logtb_is_interrupted (thread_p, false, &continue_checking))
+	  {
+	    return room_wait_result::INTERRUPTED;
+	  }
+
+	if (ctx->m_send.m_transmitter.prepare_append (1))
+	  {
+	    return room_wait_result::ROOM_AVAILABLE;
+	  }
+      }
+
+    return room_wait_result::TIMED_OUT;
+  }
+
   unsigned int
   worker::send_packet (css_conn_entry *conn, const cubbase::span<std::byte> *packet, std::size_t packet_count,
 		       const bool *retain_packet, std::function<void ()> &&deleter, int wait_time)
@@ -248,16 +357,23 @@ namespace cubconn::connection
 
 	if (!ctx->m_send.m_transmitter.prepare_append (1))
 	  {
-	    release_allocated ();
-	    r = rmutex_unlock (NULL, &conn->cmutex);
-	    assert (r == NO_ERROR);
-	    if (deleter)
+	    room_wait_result waited =
+		    wait_for_send_queue_room (thread_get_thread_entry_info (), conn, ctx, owner);
+
+	    if (waited != room_wait_result::ROOM_AVAILABLE)
 	      {
-		deleter ();
+		release_allocated ();
+		r = rmutex_unlock (NULL, &conn->cmutex);
+		assert (r == NO_ERROR);
+		if (deleter)
+		  {
+		    deleter ();
+		  }
+		er_log_debug (ARG_FILE_LINE, "send queue full for connection %d: %s\n", conn->idx,
+			      room_wait_result_name (waited));
+		css_request_shutdown_conn (conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+		return INTERNAL_CSS_ERROR;
 	      }
-	    er_log_debug (ARG_FILE_LINE, "pending transmission reached IOV_MAX for connection %d\n", conn->idx);
-	    css_request_shutdown_conn (conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
-	    return INTERNAL_CSS_ERROR;
 	  }
 
 	release_allocated ();
@@ -2168,6 +2284,7 @@ respond:
   result worker::handle_transmission (context *ctx, bool in_exhausted)
   {
     std::shared_ptr<message_blocker> blocker;
+    std::shared_ptr<message_blocker> room;
     result status;
     int r;
 
@@ -2194,11 +2311,20 @@ respond:
 	assert (r == NO_ERROR);
 
 	this->wakeup_blocked_worker (blocker);
+	this->wakeup_blocked_worker (room);
 	this->handle_connection_close (ctx);
 	return status == result::PeerReset ? result::PeerReset : result::ClosedConnection;
       }
 
     assert (status == result::Ok || status == result::Pending || status == result::BudgetExhausted);
+
+    /* Only when there is actually room: a drain that advances inside the first iovec frees no slot,
+     * because prepare_append reclaims only the fully consumed prefix. Teardown does not signal
+     * here; a waiter re-reads the connection each turn. */
+    if (ctx->m_send.m_transmitter.prepare_append (1))
+      {
+	room = std::move (ctx->m_send.m_room);
+      }
 
     if (status == result::Ok)
       {
@@ -2214,6 +2340,7 @@ respond:
 	    assert (r == NO_ERROR);
 
 	    this->wakeup_blocked_worker (blocker);
+	    this->wakeup_blocked_worker (room);
 	    this->handle_connection_close (ctx);
 	    return result::ClosedConnection;
 	  }
@@ -2222,6 +2349,7 @@ respond:
 	assert (r == NO_ERROR);
 
 	this->wakeup_blocked_worker (blocker);
+	this->wakeup_blocked_worker (room);
 
 	rmutex_lock (m_entry, &ctx->m_conn->rmutex);
 	if (ctx->m_conn->status == CONN_CLOSING)
@@ -2246,6 +2374,8 @@ respond:
 	    handle_exhausted_add_context (ctx, EPOLLOUT);
 	  }
       }
+    this->wakeup_blocked_worker (room);
+
     return status;
   }
 
