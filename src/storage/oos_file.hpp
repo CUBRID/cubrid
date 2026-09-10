@@ -157,28 +157,38 @@ extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer 
  * head chunk's identity stamp. */
 extern int oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos_insert_request> requests);
 /* Reads exactly dest.size() bytes of the chain ref names; the caller obtains the length from the
- * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. The head chunk's
- * identity stamp must equal ref.identity_stamp, otherwise the read fails with
- * ER_HEAP_OOS_CORRUPTED_RECORD instead of returning another chain's bytes (CBRD-26950). */
+ * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. A stale reference fails
+ * with ER_HEAP_OOS_CORRUPTED_RECORD and never delivers another chain's bytes into dest: a
+ * deallocated head page, a head page that is no longer an OOS page, a missing head slot, a head
+ * chunk whose identity stamp differs from ref.identity_stamp, and a stamp-matching target that is
+ * not a chain head are all rejected before any payload is copied. Identity is compared before any
+ * other property of the current occupant is interpreted. Operational failures (I/O, interrupt)
+ * keep their own error. The head page is fixed with the deallocation-tolerant fix, which adds a
+ * sector-reservation check (two fixes of cached volume pages) per head page (CBRD-26950). */
 extern int oos_read (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, oos_buffer dest);
 extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests);
 /* Deletes the OOS value chain ref names only after proving target identity: the head chunk must
- * carry ref.identity_stamp. A deallocated head page, a missing head slot or a mismatched stamp is
- * a successful no-op that modifies nothing, leaves the error stack clean and reports no candidate,
- * which gives every caller retry idempotency without extra state (CBRD-26950).
+ * carry ref.identity_stamp. A deallocated head page, a head page that is no longer an OOS page, a
+ * missing head slot or a mismatched stamp is a successful no-op that modifies nothing, leaves the
+ * error stack clean and reports no candidate, which gives every caller retry idempotency without
+ * extra state; the page type is checked under the latch before the page is read as a slotted page.
+ * A stamp-matching reference to a continuation chunk is malformed and fails with
+ * ER_HEAP_OOS_CORRUPTED_RECORD before any chunk is modified. Operational failures keep their own
+ * error (CBRD-26950).
  * emptied_vpids (optional): every page this delete left with zero records is appended once, so
  * batch-boundary callers can feed oos_reclaim_empty_pages after committing. Pages that still
  * hold other chunks are not candidates and are not reported. */
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
 		       std::vector<VPID> *emptied_vpids = NULL);
 /* Occupancy probe for tests and diagnostics: *out_exists is true iff SOME record occupies the slot
- * at oid. A deallocated page or a removed slot both report "gone" with NO_ERROR; any other failure
- * is propagated. It proves occupancy, not identity: it cannot tell the chunk a reference was
- * created for from a later occupant of the same slot, so it must never gate a delete. oos_delete
- * verifies identity itself (CBRD-26950). */
+ * at oid. A deallocated page, a page that is no longer an OOS page and a removed slot all report
+ * "gone" with NO_ERROR; any other failure is propagated. It proves occupancy, not identity: it
+ * cannot tell the chunk a reference was created for from a later occupant of the same slot, so it
+ * must never gate a delete. oos_delete verifies identity itself (CBRD-26950). */
 extern int oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists);
 /* Reads the identity stamp the head chunk at head_oid currently carries, for building a chain
- * reference in tests and diagnostics. Fails when the page is deallocated or the slot is absent. */
+ * reference in tests and diagnostics. Fails when the page is deallocated or no longer an OOS page,
+ * or the slot is absent. */
 extern int oos_get_identity_stamp (THREAD_ENTRY *thread_p, const OID &head_oid, LOG_LSA *identity_stamp_out);
 extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
 

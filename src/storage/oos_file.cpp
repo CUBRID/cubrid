@@ -70,8 +70,11 @@ oos_insert_single_page_batch (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 			      cubbase::span<oos_insert_request> requests,
 			      int needed_space);
 static int
+oos_fix_page_if_oos (THREAD_ENTRY *thread_p, const OID &oid, PGBUF_LATCH_MODE latch_mode, PAGE_PTR &page_out);
+static int
 oos_read_chunk_in_page (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr, const OID &oid,
-			cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out);
+			cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out,
+			const oos_chain_ref *head_ref);
 static int
 oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
 		      cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out);
@@ -2535,14 +2538,84 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer
 }
 
 
-/* Reads one chunk from an already-fixed OOS page: copies the chain header to
- * header_out and appends the chunk payload to writer. */
+
+/* Fixes the page an OOS OID names, for a read, a delete or a probe, and decides under the latch
+ * whether that page can still hold the chunk the OID was issued for (CBRD-26950). An OOS OID is a
+ * physical address, so since it was issued the page may have been deallocated, or it may have begun
+ * a new page incarnation for another purpose and no longer be a slotted OOS page at all (the file
+ * manager, for one, grows its own partial-sector table into a freed page of the same file). Both
+ * are reported as page_out == NULL with NO_ERROR and nothing latched, so the caller can treat the
+ * target as stale; the page type is checked BEFORE any slotted-page interpretation because the bytes
+ * of a retyped page are not a slotted-page header. Only a live OOS page is returned latched; the
+ * caller then inspects the slot and, for a chain head, the stamp. Operational failures (I/O,
+ * interrupt) are propagated with their error set.
+ * The deallocation-tolerant fix first proves the page's sector is still reserved, which is what
+ * keeps the debug page-validation level from failing the fetch of a page whose sector was released;
+ * that probe costs two extra fixes of cached volume pages per call, on the read path too. */
+static int
+oos_fix_page_if_oos (THREAD_ENTRY *thread_p, const OID &oid, PGBUF_LATCH_MODE latch_mode, PAGE_PTR &page_out)
+{
+  VPID vpid = {oid.pageid, oid.volid};
+
+  page_out = NULL;
+  int error = pgbuf_fix_if_not_deallocated (thread_p, &vpid, latch_mode, PGBUF_UNCONDITIONAL_LATCH, &page_out);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      oos_error ("pgbuf_fix_if_not_deallocated failed at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
+      return error;
+    }
+  if (page_out == NULL)
+    {
+      oos_debug ("page deallocated at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
+      return NO_ERROR;
+    }
+
+  const PAGE_TYPE ptype = pgbuf_get_page_ptype (thread_p, page_out);
+  if (ptype != PAGE_OOS)
+    {
+      oos_debug ("page is no longer an OOS page (ptype=%d) at oid={vol=%d,page=%d,slot=%d}", (int) ptype,
+		 OID_AS_ARGS (&oid));
+      pgbuf_unfix_and_init (thread_p, page_out);
+      return NO_ERROR;
+    }
+  return NO_ERROR;
+}
+
+
+/* Reports a read through a stale reference whose head page is gone: deallocated, or no longer an
+ * OOS page. The owning record's OOS metadata disagrees with storage, so both read APIs fail with
+ * ER_HEAP_OOS_CORRUPTED_RECORD, the same error a stale slot or stamp produces (CBRD-26950). */
+static int
+oos_stale_head_page_read_error (const OID &head_oid)
+{
+  oos_error ("OOS read through a stale reference: head page deallocated or no longer an OOS page at"
+	     " oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&head_oid));
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+  return ER_HEAP_OOS_CORRUPTED_RECORD;
+}
+
+
+/* Reads one chunk from an already-fixed OOS page: copies the chain header to header_out and appends
+ * the chunk payload to writer. For the head chunk of a chain the caller passes head_ref and the head
+ * checks run on the header BEFORE the payload is copied, so a stale or malformed reference never
+ * delivers a byte of the current occupant into the caller's buffer (CBRD-26950). Continuation
+ * chunks pass NULL. */
 static int
 oos_read_chunk_in_page (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr, const OID &oid,
-			cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out)
+			cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out, const oos_chain_ref *head_ref)
 {
   OOS_RECDES oos_recdes;
   SCAN_CODE code = spage_get_record (thread_p, page_ptr, oid.slotid, &oos_recdes, PEEK);
+  if (code == S_DOESNT_EXIST)
+    {
+      /* No record occupies the slot the reference or chain link names: a stale reference whose chunk
+       * was reclaimed, or a broken link. Either way the owning record's OOS metadata disagrees with
+       * storage. Reported, never asserted: a stale reference is a legal input here. */
+      oos_error ("OOS slot holds no record at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
   if (code != S_SUCCESS)
     {
       oos_error ("spage_get_record failed (code=%d) at oid={vol=%d,page=%d,slot=%d}", (int) code, OID_AS_ARGS (&oid));
@@ -2566,6 +2639,18 @@ oos_read_chunk_in_page (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr, const OID &oi
 
   std::memcpy (&header_out, oos_recdes.data, OOS_RECORD_HEADER_SIZE);
 
+  if (head_ref != NULL)
+    {
+      /* The head is always read into a fresh writer, so its remaining capacity is the caller's inline
+       * length; a partially written writer here would silently change what the length check means. */
+      assert (writer.written () == 0);
+      int err = oos_check_head_header (header_out, static_cast<int> (writer.remaining ()), *head_ref);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+    }
+
   const int payload_len = oos_recdes.length - OOS_RECORD_HEADER_SIZE;
   if (!writer.append (oos_recdes.data + OOS_RECORD_HEADER_SIZE, static_cast<std::size_t> (payload_len)))
     {
@@ -2578,6 +2663,10 @@ oos_read_chunk_in_page (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr, const OID &oi
 }
 
 
+
+/* Fixes the page of a continuation chunk and reads it. Continuation pages keep the plain fix: the
+ * caller has already verified the head chunk's identity, which proves the chain is live and its
+ * links intact, so a vanished continuation page is corruption rather than a stale reference. */
 static int
 oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
 		      cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out)
@@ -2596,7 +2685,7 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
     pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
   });
 
-  return oos_read_chunk_in_page (thread_p, page_ptr, oid, writer, header_out);
+  return oos_read_chunk_in_page (thread_p, page_ptr, oid, writer, header_out, NULL);
 }
 
 
@@ -2644,16 +2733,31 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 }
 
 
-/* Head-chunk validation shared by oos_read and oos_read_many: the caller's OID must be
- * the chain head (a mid-chain target means a corrupted inline OID), the caller's
- * inline length (dest.size()) must agree with the chain header, and the head chunk must
- * carry the identity stamp the caller's reference was created with (CBRD-26950). */
+
+/* Head-chunk validation shared by oos_read and oos_read_many, run on the header BEFORE any payload is
+ * copied (CBRD-26950). Identity comes first: only when the head chunk carries the stamp the caller's
+ * reference was created with may the occupant's other properties be read as properties of the
+ * referenced chain. A different stamp means the slot has begun a new slot incarnation, and whatever
+ * occupies it now (its chunk index, its length) says nothing about this reference. With identity
+ * proven, the chunk must be a chain head (a continuation chunk means a malformed reference) and the
+ * caller's inline length must agree with the chain header. Nothing here is asserted: a stale
+ * reference is a legal input, and an equal stamp does not prove the reference is well-formed
+ * (no-logging operation can repeat stamps), so every mismatch is reported as
+ * ER_HEAP_OOS_CORRUPTED_RECORD. */
 static int
 oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, const oos_chain_ref &ref)
 {
   const OID &oid = ref.head_oid;
 
-  assert (header.chunk_index == 0);
+  /* NULL is an ordinary stamp value and is compared like any other. */
+  if (!LSA_EQ (&header.identity_stamp, &ref.identity_stamp))
+    {
+      oos_error ("OOS identity stamp mismatch: reference=%lld|%d head chunk=%lld|%d at oid={vol=%d,page=%d,slot=%d}",
+		 LSA_AS_ARGS (&ref.identity_stamp), LSA_AS_ARGS (&header.identity_stamp), OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
+
   if (header.chunk_index != 0)
     {
       oos_error ("OOS read at non-head chunk: chunk_index=%d at oid={vol=%d,page=%d,slot=%d}",
@@ -2669,24 +2773,17 @@ oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, con
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
       return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
-
-  /* A different stamp means the slot has begun a new slot incarnation since the reference was
-   * created: the bytes here belong to another chain and must never be returned as this value.
-   * NULL is an ordinary stamp value and is compared like any other. */
-  if (!LSA_EQ (&header.identity_stamp, &ref.identity_stamp))
-    {
-      oos_error ("OOS identity stamp mismatch: reference=%lld|%d head chunk=%lld|%d at oid={vol=%d,page=%d,slot=%d}",
-		 LSA_AS_ARGS (&ref.identity_stamp), LSA_AS_ARGS (&header.identity_stamp), OID_AS_ARGS (&oid));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
-      return ER_HEAP_OOS_CORRUPTED_RECORD;
-    }
   return NO_ERROR;
 }
 
 
-/* Cross-validates dest.size() against the chain header's total_data_length;
- * mismatch (corruption) is rejected. byte_span_writer guards each chunk
- * against payload_len overflow inside the loop. */
+
+/* Reads the chain ref names into dest. The head page goes through oos_fix_page_if_oos, so a reference
+ * whose page was deallocated or retyped fails with ER_HEAP_OOS_CORRUPTED_RECORD instead of tripping
+ * the page buffer's dead-page assertion; a missing slot, a stamp mismatch and a non-head target fail
+ * the same way inside the chunk read, before any byte is copied. dest.size() is cross-validated
+ * against the chain header's total_data_length, and byte_span_writer guards each chunk against
+ * payload overflow inside the loop. */
 int
 oos_read (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, oos_buffer dest)
 {
@@ -2698,11 +2795,23 @@ oos_read (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, oos_buffer dest)
   cubbase::byte_span_writer writer (dest);
   OOS_RECORD_HEADER first_header;
 
-  int err = oos_read_within_page (thread_p, oid, writer, first_header);
-  if (err == NO_ERROR)
+  PAGE_PTR page_ptr = NULL;
+  int err = oos_fix_page_if_oos (thread_p, oid, PGBUF_LATCH_READ, page_ptr);
+  if (err != NO_ERROR)
     {
-      err = oos_check_head_header (first_header, expected_length, ref);
+      return err;
     }
+  if (page_ptr == NULL)
+    {
+      return oos_stale_head_page_read_error (oid);
+    }
+  {
+    scope_exit page_unfixer ([&]()
+    {
+      pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+    });
+    err = oos_read_chunk_in_page (thread_p, page_ptr, oid, writer, first_header, &ref);
+  }
   if (err != NO_ERROR)
     {
       return err;
@@ -2730,7 +2839,12 @@ oos_read (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, oos_buffer dest)
 
 /* Grouped OOS read: requests whose head chunks share a page are resolved under one
  * page fix. Multi-chunk chains are continued after the shared page is unfixed so
- * only one OOS page stays fixed at a time (same as the scalar oos_read). */
+ * only one OOS page stays fixed at a time (same as the scalar oos_read). A stale
+ * reference fails the group with ER_HEAP_OOS_CORRUPTED_RECORD exactly as the scalar
+ * read fails: at the head page fix when the page is deallocated or retyped, and in
+ * the head checks (identity first) before any payload byte is copied otherwise.
+ * The head page fix goes through oos_fix_page_if_oos, so each distinct head page costs
+ * the deallocation-tolerant fix's sector probe once per group, not once per request. */
 int
 oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 {
@@ -2772,12 +2886,15 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 	  continuations.clear ();
 
 	  {
-	    PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	    PAGE_PTR page_ptr = NULL;
+	    int fix_err = oos_fix_page_if_oos (thread_p, requests[i].ref.head_oid, PGBUF_LATCH_READ, page_ptr);
+	    if (fix_err != NO_ERROR)
+	      {
+		return fix_err;
+	      }
 	    if (page_ptr == nullptr)
 	      {
-		oos_error ("pgbuf_fix failed for grouped OOS read at vpid={vol=%d,page=%d}", vpid.volid, vpid.pageid);
-		assert_release_error (er_errid () != NO_ERROR);
-		return er_errid ();
+		return oos_stale_head_page_read_error (requests[i].ref.head_oid);
 	      }
 	    scope_exit page_unfixer ([&]()
 	    {
@@ -2800,11 +2917,8 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 		cubbase::byte_span_writer writer (requests[j].dest);
 		OOS_RECORD_HEADER header;
 
-		int err = oos_read_chunk_in_page (thread_p, page_ptr, requests[j].ref.head_oid, writer, header);
-		if (err == NO_ERROR)
-		  {
-		    err = oos_check_head_header (header, static_cast<int> (requests[j].dest.size ()), requests[j].ref);
-		  }
+		int err = oos_read_chunk_in_page (thread_p, page_ptr, requests[j].ref.head_oid, writer, header,
+						  &requests[j].ref);
 		if (err != NO_ERROR)
 		  {
 		    return err;
@@ -3122,13 +3236,17 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  *       Target identity (CBRD-26950): the head chunk's stored identity stamp is compared with
  *       ref.identity_stamp under the same write latch that deletes it, so there is no window
  *       between the check and the delete in which the slot could be freed and reused. A
- *       deallocated head page, a missing head slot and a stamp mismatch are all successful no-ops:
- *       the chain the reference described is gone, and whatever occupies the location now belongs
- *       to another slot incarnation or page incarnation. This is what makes a vacuum block retry,
- *       or any duplicate deleter of the same chain, safe without a caller-side lock: the page latch
- *       serializes them at the head, the first one deletes it, every later one no-ops there.
- *       Pages of later chunks keep the plain fix because a verified head proves the chain is live
- *       and its links are intact. NULL is an ordinary stamp value here.
+ *       deallocated head page, a head page that is no longer an OOS page, a missing head slot and a
+ *       stamp mismatch are all successful no-ops: the chain the reference described is gone, and
+ *       whatever occupies the location now belongs to another slot incarnation or page incarnation.
+ *       The page type is checked under the latch before the slotted-page header is read, because a
+ *       reused page's bytes need not be a slotted page at all. This is what makes a vacuum block
+ *       retry, or any duplicate deleter of the same chain, safe without a caller-side lock: the page
+ *       latch serializes them at the head, the first one deletes it, every later one no-ops there.
+ *       A reference whose stamp matches but whose target is a continuation chunk is malformed and is
+ *       rejected with ER_HEAP_OOS_CORRUPTED_RECORD before anything is modified. Pages of later
+ *       chunks keep the plain fix because a verified head proves the chain is live and its links
+ *       are intact. NULL is an ordinary stamp value here.
  */
 static int
 oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
@@ -3146,21 +3264,20 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
 
       if (is_head_chunk)
 	{
-	  /* The head fix must tolerate a vanished page: a retried delete may hold a stale OOS
-	   * reference whose whole page was reclaimed since (CBRD-26786). */
-	  error = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH,
-						&page_ptr);
+	  /* The head fix must tolerate a vanished or retyped page: a retried delete may hold a stale OOS
+	   * reference whose whole page was reclaimed since (CBRD-26786) and possibly reused for another
+	   * purpose. The page type is checked under the latch before the slotted-page header is read. */
+	  error = oos_fix_page_if_oos (thread_p, current_oid, PGBUF_LATCH_WRITE, page_ptr);
 	  if (error != NO_ERROR)
 	    {
-	      ASSERT_ERROR ();
-	      oos_error ("pgbuf_fix_if_not_deallocated failed for volid=%d, pageid=%d",
-			 current_oid.volid, current_oid.pageid);
+	      oos_error ("head page fix failed for volid=%d, pageid=%d", current_oid.volid, current_oid.pageid);
 	      return error;
 	    }
 	  if (page_ptr == nullptr)
 	    {
-	      oos_debug ("delete no-op at oid={vol=%d,page=%d,slot=%d}: page deallocated (expected identity_stamp"
-			 " %lld|%d)", OID_AS_ARGS (&current_oid), LSA_AS_ARGS (&ref.identity_stamp));
+	      oos_debug ("delete no-op at oid={vol=%d,page=%d,slot=%d}: page deallocated or no longer an OOS page"
+			 " (expected identity_stamp %lld|%d)", OID_AS_ARGS (&current_oid),
+			 LSA_AS_ARGS (&ref.identity_stamp));
 	      er_clear ();
 	      return NO_ERROR;
 	    }
@@ -3220,6 +3337,18 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
 			 LSA_AS_ARGS (&header.identity_stamp));
 	      er_clear ();
 	      return NO_ERROR;
+	    }
+	  if (header.chunk_index != 0)
+	    {
+	      /* Identity matched, but the reference names a continuation chunk: a malformed head
+	       * reference. Deleting from here would orphan the chunks before it and destroy part of a
+	       * live chain, so it is rejected before anything is modified. This is an error, not a skip:
+	       * the caller's stub disagrees with storage. It is not asserted because an equal stamp does
+	       * not prove the reference is well-formed (no-logging operation can repeat stamps). */
+	      oos_error ("OOS delete rejected: reference names a non-head chunk (chunk_index=%d) at"
+			 " oid={vol=%d,page=%d,slot=%d}", header.chunk_index, OID_AS_ARGS (&current_oid));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+	      return ER_HEAP_OOS_CORRUPTED_RECORD;
 	    }
 	  is_head_chunk = false;
 	}
@@ -3281,7 +3410,7 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
  *   identity itself, under the latch that performs the delete (CBRD-26950).
  *
  *   "Already gone" is narrowly defined:
- *     - pgbuf_fix_if_not_deallocated returns NO_ERROR with page_ptr==NULL (page deallocated), OR
+ *     - oos_fix_page_if_oos reports no page (page deallocated, or no longer an OOS page), OR
  *     - spage_get_record returns S_DOESNT_EXIST (slot removed but page still alive).
  *
  *   Any other failure (real pgbuf_fix error from I/O / interrupt / buffer corruption, or
@@ -3293,21 +3422,15 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
 {
   *out_exists = false;
 
-  VPID vpid;
-  vpid.volid = oid.volid;
-  vpid.pageid = oid.pageid;
-
   PAGE_PTR page_ptr = NULL;
-  int error_code = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
-		   &page_ptr);
+  int error_code = oos_fix_page_if_oos (thread_p, oid, PGBUF_LATCH_READ, page_ptr);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
       return error_code;
     }
   if (page_ptr == NULL)
     {
-      /* Page legitimately deallocated; chunk is gone. */
+      /* Page legitimately deallocated or no longer an OOS page; no chunk can be there. */
       return NO_ERROR;
     }
 
@@ -3341,11 +3464,14 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *   emptied_vpids(out): optional reclaim candidate list, see oos_file.hpp
  *
  * NOTE: The delete happens only when the head chunk's stored identity stamp equals
- *       ref.identity_stamp. A deallocated head page, a missing head slot (a block retry
- *       re-deleting what an earlier committed sysop already reclaimed) and a stamp mismatch (the
- *       slot was freed and reused by a live chain) are all successful no-ops that modify nothing,
- *       leave the error stack clean and report no reclaim candidate. Without this identity check a
- *       retried delete would destroy the reusing chain's data (CBRD-26950).
+ *       ref.identity_stamp and the chunk is a chain head. A deallocated head page, a head page that
+ *       is no longer an OOS page (reclaimed and reused for another purpose), a missing head slot (a
+ *       block retry re-deleting what an earlier committed sysop already reclaimed) and a stamp
+ *       mismatch (the slot was freed and reused by a live chain) are all successful no-ops that
+ *       modify nothing, leave the error stack clean and report no reclaim candidate. Without this
+ *       identity check a retried delete would destroy the reusing chain's data (CBRD-26950). A
+ *       reference whose stamp matches a continuation chunk is malformed and fails with
+ *       ER_HEAP_OOS_CORRUPTED_RECORD before any chunk is touched.
  *
  *       No sysop is used. Each chunk deletion is logged individually
  *       (RVOOS_DELETE with full record as undo data).
@@ -3390,9 +3516,9 @@ oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &r
 /*
  * oos_get_identity_stamp () - Read the identity stamp the head chunk at head_oid currently carries.
  *
- *   return: NO_ERROR, or an error when the page is deallocated or the slot is absent. Unlike
- *           oos_delete, an absent target is an error here: the caller asks about a chunk it knows
- *           to exist, to build a correct chain reference for a test or a diagnostic.
+ *   return: NO_ERROR, or an error when the page is deallocated or no longer an OOS page, or the slot
+ *           is absent. Unlike oos_delete, an absent target is an error here: the caller asks about a
+ *           chunk it knows to exist, to build a correct chain reference for a test or a diagnostic.
  *   thread_p(in): thread entry
  *   head_oid(in): OID of the head chunk
  *   identity_stamp_out(out): the stamp stored in the chunk header
@@ -3407,23 +3533,19 @@ oos_get_identity_stamp (THREAD_ENTRY *thread_p, const OID &head_oid, LOG_LSA *id
   assert (identity_stamp_out != NULL);
   LSA_SET_NULL (identity_stamp_out);
 
-  VPID vpid;
-  vpid.volid = head_oid.volid;
-  vpid.pageid = head_oid.pageid;
-
-  /* Tolerate a deallocated page the same way oos_get_length does: a vacuumed reference must report
-   * an error rather than trip the dead-page assert inside pgbuf_fix. */
+  /* Tolerate a deallocated or retyped page the same way oos_get_length does: a vacuumed reference
+   * must report an error rather than trip the dead-page assert inside pgbuf_fix or read a non-OOS
+   * page as a slotted page. */
   PAGE_PTR page_ptr = NULL;
-  int err = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr);
+  int err = oos_fix_page_if_oos (thread_p, head_oid, PGBUF_LATCH_READ, page_ptr);
   if (err != NO_ERROR)
     {
-      ASSERT_ERROR ();
-      oos_error ("oos_get_identity_stamp: pgbuf_fix failed at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&head_oid));
       return err;
     }
   if (page_ptr == nullptr)
     {
-      oos_error ("oos_get_identity_stamp: page deallocated at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&head_oid));
+      oos_error ("oos_get_identity_stamp: page deallocated or no longer an OOS page at oid={vol=%d,page=%d,slot=%d}",
+		 OID_AS_ARGS (&head_oid));
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
     }
@@ -3551,22 +3673,22 @@ int
 oos_get_length (THREAD_ENTRY *thread_p, const OID &oid)
 {
   const auto [pageid, slotid, volid] = oid;
-  auto vpid = VPID{pageid, volid};
 
-  /* Tolerate a deallocated page: vacuum may have reclaimed it, so a vacuumed OID must report
-   * "gone" rather than trip the dead-page assert. */
+  /* Tolerate a deallocated or retyped page: vacuum may have reclaimed it and the file may have reused
+   * it, so a vacuumed OID must report "gone" rather than trip the dead-page assert or read a non-OOS
+   * page as a slotted page. */
   PAGE_PTR page_ptr = NULL;
-  int err = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr);
+  int err = oos_fix_page_if_oos (thread_p, oid, PGBUF_LATCH_READ, page_ptr);
   if (err != NO_ERROR)
     {
-      oos_error ("oos_get_length: pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
+      /* An operational failure (I/O, interrupt) is not a bug, so it is reported and not asserted. */
+      oos_error ("oos_get_length: page fix failed for volid=%d, pageid=%d", volid, pageid);
       assert_release_error (er_errid () != NO_ERROR);
-      assert (false);
       return -1;
     }
   if (page_ptr == nullptr)
     {
-      oos_error ("oos_get_length: page deallocated for volid=%d, pageid=%d", volid, pageid);
+      oos_error ("oos_get_length: page deallocated or no longer an OOS page for volid=%d, pageid=%d", volid, pageid);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return -1;
     }

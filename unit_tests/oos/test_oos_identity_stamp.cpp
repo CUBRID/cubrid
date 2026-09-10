@@ -34,8 +34,11 @@
 #include <vector>
 
 #include "error_manager.h"
+#include "file_manager.h"
 #include "heap_oos.hpp"
+#include "log_impl.h"
 #include "log_lsa.hpp"
+#include "log_manager.h"
 #include "object_representation.h"
 #include "oos_file.hpp"
 #include "oos_log.hpp"
@@ -136,6 +139,23 @@ namespace
   {
     return heap_oos_parse_inline_ref (&recdes, location, &ref, &length);
   }
+
+  /* Byte a page reused as file-table metadata inside the OOS file is filled with. */
+  constexpr char METADATA_SENTINEL = '\x5A';
+
+  /* file_alloc page initializer: the page becomes PAGE_FTAB metadata holding only the sentinel. It stands in
+   * for a freed page of the same file that file_perm_dealloc reuses for its partial-sector table: the real
+   * table page is allocated as a table page and holds extensible-data headers, but what the OOS code sees
+   * is the same, a PAGE_FTAB page whose bytes are not a slotted page and must never be read as one. */
+  int
+  init_as_metadata_page (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
+  {
+    (void) args;
+    pgbuf_set_page_ptype (thread_p, page, PAGE_FTAB);
+    std::memset (page, METADATA_SENTINEL, DB_PAGESIZE);
+    pgbuf_log_new_page (thread_p, page, DB_PAGESIZE, PAGE_FTAB);
+    return NO_ERROR;
+  }
 } // namespace
 
 /* One OOS file per test. TearDown removes it and commits, so a test that has to commit (empty-page
@@ -167,6 +187,141 @@ class OosIdentityStampTest : public ::testing::Test
 	}
       out.assign ((std::size_t) len, '?');
       return oos_read (thread_p, ref, oos_buffer (out.data (), out.size ()));
+    }
+
+    /* Scalar read through a retained reference into a buffer of the retained length. Bytes the read did
+     * not deliver keep the '?' fill, so a caller can tell that nothing of another occupant arrived. */
+    int read_scalar (const oos_chain_ref &ref, std::size_t length, std::string &out)
+    {
+      out.assign (length, '?');
+      return oos_read (thread_p, ref, oos_buffer (out.data (), out.size ()));
+    }
+
+    /* The same request through the grouped API. */
+    int read_grouped (const oos_chain_ref &ref, std::size_t length, std::string &out)
+    {
+      out.assign (length, '?');
+      oos_read_request request = { ref, oos_buffer (out.data (), out.size ()) };
+      return oos_read_many (thread_p, cubbase::span<oos_read_request> (&request, 1));
+    }
+
+    bool page_is_deallocated (const VPID &vpid)
+    {
+      VPID probe = vpid;
+      PAGE_PTR page_ptr = NULL;
+      if (pgbuf_fix_if_not_deallocated (thread_p, &probe, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr)
+	  != NO_ERROR)
+	{
+	  return false;
+	}
+      if (page_ptr != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_ptr);
+	  return false;
+	}
+      return true;
+    }
+
+    /* Deletes the chain through ref, commits and reclaims its page. The chain must have had the page to itself. */
+    void reclaim_own_page (const oos_chain_ref &ref)
+    {
+      const VPID page = { ref.head_oid.pageid, ref.head_oid.volid };
+      std::vector<VPID> emptied;
+      ASSERT_EQ (oos_delete (thread_p, oos_vfid, ref, &emptied), NO_ERROR);
+      ASSERT_EQ (emptied.size (), 1U);
+      ASSERT_TRUE (VPID_EQ (&emptied[0], &page));
+      /* Reclaim requires committed deletes (the LSA gate defers a live deleter's pages). */
+      ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+      ASSERT_EQ (oos_reclaim_empty_pages (thread_p, oos_vfid, emptied), NO_ERROR);
+      ASSERT_TRUE (page_is_deallocated (page)) << "the fixture requires the page to be deallocated";
+    }
+
+    /* Reallocates the reclaimed page inside the same OOS file as file-table metadata filled with the sentinel.
+     * The file manager hands out the first free page of the first partial sector, which is the page just
+     * reclaimed, the same choice it makes when it needs a new partial-sector table page. */
+    void reuse_reclaimed_page_as_metadata (const VPID &expected)
+    {
+      VPID vpid = VPID_INITIALIZER;
+      PAGE_PTR page_ptr = NULL;
+      log_sysop_start (thread_p);
+      int err = file_alloc (thread_p, &oos_vfid, init_as_metadata_page, NULL, &vpid, &page_ptr);
+      if (err != NO_ERROR || page_ptr == NULL)
+	{
+	  log_sysop_abort (thread_p);
+	  FAIL () << "file_alloc failed: " << err;
+	}
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      log_sysop_commit (thread_p);
+      ASSERT_TRUE (VPID_EQ (&vpid, &expected)) << "the scenario requires the reclaimed page to be reused, got "
+	  << vpid.volid << "|" << vpid.pageid;
+    }
+
+    /* Gives the metadata page back to the file manager before TearDown destroys the file. file_destroy
+     * deallocates real table pages through the file-table chain and skips PAGE_FTAB pages in its sector
+     * walk, so a simulated metadata page that stays typed would collide with the next test's page
+     * allocations. The postponed deallocation runs at the sysop commit, as in empty-page reclaim. */
+    void release_metadata_page (const VPID &vpid)
+    {
+      VPID page = vpid;
+      log_sysop_start (thread_p);
+      int err = file_dealloc (thread_p, &oos_vfid, &page, FILE_OOS);
+      if (err != NO_ERROR)
+	{
+	  log_sysop_abort (thread_p);
+	  FAIL () << "file_dealloc failed: " << err;
+	}
+      log_sysop_commit (thread_p);
+      ASSERT_TRUE (page_is_deallocated (page));
+    }
+
+    /* True iff the page is still PAGE_FTAB metadata and every byte still equals the sentinel. */
+    bool metadata_page_is_intact (const VPID &vpid)
+    {
+      VPID probe = vpid;
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &probe, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ptr == NULL)
+	{
+	  return false;
+	}
+      bool intact = pgbuf_get_page_ptype (thread_p, page_ptr) == PAGE_FTAB;
+      for (int i = 0; intact && i < DB_PAGESIZE; i++)
+	{
+	  intact = page_ptr[i] == METADATA_SENTINEL;
+	}
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      return intact;
+    }
+
+    /* Retires a small chain and lets a two-chunk chain follow it. Chains are written tail first, and the
+     * tail is small enough for the page that just freed the small chain's slot, so the follower's
+     * continuation chunk begins a new incarnation of that slot while the follower's head gets a page of
+     * its own. stale_ref names the retired chain; live_ref and live_payload describe the follower. */
+    void reuse_slot_with_continuation_chunk (oos_chain_ref &stale_ref, std::size_t &stale_length,
+	oos_chain_ref &live_ref, std::string &live_payload)
+    {
+      /* Longer than the follower's tail chunk, so a stale read of the reused slot is decided by the head
+       * checks and not by the caller-buffer bound. */
+      const std::string retired_payload = test_oos_utils::make_repeated_pattern_string (400);
+      OID retired_oid = OID_INITIALIZER;
+      LOG_LSA retired_stamp = NULL_LSA;
+      ASSERT_EQ (insert_with_stamp (oos_vfid, retired_payload, retired_oid, retired_stamp), NO_ERROR);
+      stale_ref.head_oid = retired_oid;
+      stale_ref.identity_stamp = retired_stamp;
+      stale_length = retired_payload.size () + 1;
+      ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale_ref), NO_ERROR);
+
+      live_payload = test_oos_utils::make_repeated_pattern_string (bridge_oos_get_max_chunk_size_within_page () + 200);
+      OID live_oid = OID_INITIALIZER;
+      LOG_LSA live_stamp = NULL_LSA;
+      ASSERT_EQ (insert_with_stamp (oos_vfid, live_payload, live_oid, live_stamp), NO_ERROR);
+      live_ref.head_oid = live_oid;
+      live_ref.identity_stamp = live_stamp;
+      ASSERT_FALSE (OID_EQ (&live_oid, &retired_oid)) << "the follower's head must live on its own page";
+
+      LOG_LSA occupant_stamp = NULL_LSA;
+      ASSERT_EQ (oos_get_identity_stamp (thread_p, retired_oid, &occupant_stamp), NO_ERROR)
+	  << "the scenario requires the follower's continuation chunk to reuse the retired slot";
+      ASSERT_FALSE (LSA_EQ (&occupant_stamp, &retired_stamp));
     }
 };
 
@@ -713,6 +868,264 @@ TEST_F (OosIdentityStampTest, OccupancyProbeCannotTellOccupantsApart)
   ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale_ref), NO_ERROR);
   ASSERT_EQ (oos_chunk_exists (thread_p, new_oid, &exists), NO_ERROR);
   EXPECT_TRUE (exists) << "the identity-checked delete left the later occupant alone";
+}
+
+// ===========================================================================
+// Review repair 02: stale and malformed OOS references
+//
+// Each test retains the original chain reference and the original payload length before the target
+// changes, then drives oos_read, oos_read_many and oos_delete with that retained reference. Helpers that
+// fetch the current occupant's length or stamp would fail before the API under test runs.
+// ===========================================================================
+
+TEST_F (OosIdentityStampTest, StaleReadOfMissingSlotIsAControlledFailure)
+{
+  const std::string payload = "value whose slot is vacated";
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, payload, oid, issued), NO_ERROR);
+  const std::string neighbour_payload = "neighbour that stays on the page";
+  OID neighbour_oid = OID_INITIALIZER;
+  LOG_LSA neighbour_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, neighbour_payload, neighbour_oid, neighbour_stamp), NO_ERROR);
+  ASSERT_EQ (oid.pageid, neighbour_oid.pageid) << "the scenario keeps both chains on one page";
+
+  oos_chain_ref stale;
+  stale.head_oid = oid;
+  stale.identity_stamp = issued;
+  const std::size_t stale_length = payload.size () + 1;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale), NO_ERROR);
+
+  std::string out;
+  er_clear ();
+  EXPECT_EQ (read_scalar (stale, stale_length, out), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+
+  /* The grouped read fails the group at the stale request even when a live request shares the page. */
+  std::string neighbour_out (neighbour_payload.size () + 1, '?');
+  out.assign (stale_length, '?');
+  oos_chain_ref neighbour;
+  neighbour.head_oid = neighbour_oid;
+  neighbour.identity_stamp = neighbour_stamp;
+  oos_read_request requests[] =
+  {
+    { neighbour, oos_buffer (neighbour_out.data (), neighbour_out.size ()) },
+    { stale, oos_buffer (out.data (), out.size ()) },
+  };
+  EXPECT_EQ (oos_read_many (thread_p, cubbase::span<oos_read_request> (requests, 2)), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+
+  ASSERT_EQ (read_scalar (neighbour, neighbour_payload.size () + 1, neighbour_out), NO_ERROR);
+  EXPECT_STREQ (neighbour_out.c_str (), neighbour_payload.c_str ());
+}
+
+TEST_F (OosIdentityStampTest, StaleReadOfDeallocatedPageIsAControlledFailure)
+{
+  const std::string payload = page_filling_payload ();
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, payload, oid, issued), NO_ERROR);
+  oos_chain_ref stale;
+  stale.head_oid = oid;
+  stale.identity_stamp = issued;
+  const std::size_t stale_length = payload.size () + 1;
+  reclaim_own_page (stale);
+
+  /* A deallocated head page must be reported, not asserted on inside the page fix. */
+  std::string out;
+  er_clear ();
+  EXPECT_EQ (read_scalar (stale, stale_length, out), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+  EXPECT_EQ (read_grouped (stale, stale_length, out), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+}
+
+TEST_F (OosIdentityStampTest, StaleReadOfReusedHeadSlotDeliversNoBytesOfTheNewOccupant)
+{
+  /* Equal lengths: only the identity stamp tells the two occupants apart. */
+  const std::string retired_payload (64, 'A');
+  const std::string live_payload (64, 'B');
+  OID retired_oid = OID_INITIALIZER;
+  LOG_LSA retired_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, retired_payload, retired_oid, retired_stamp), NO_ERROR);
+  oos_chain_ref stale;
+  stale.head_oid = retired_oid;
+  stale.identity_stamp = retired_stamp;
+  const std::size_t length = retired_payload.size () + 1;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale), NO_ERROR);
+
+  OID live_oid = OID_INITIALIZER;
+  LOG_LSA live_stamp = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, live_payload, live_oid, live_stamp), NO_ERROR);
+  ASSERT_TRUE (OID_EQ (&live_oid, &retired_oid)) << "the scenario requires physical slot reuse";
+
+  /* The identity check happens before any payload byte is copied: the caller's buffer stays untouched. */
+  const std::string untouched (length, '?');
+  std::string out;
+  er_clear ();
+  EXPECT_EQ (read_scalar (stale, length, out), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (out, untouched) << "bytes of the new occupant reached the caller's buffer";
+  er_clear ();
+  EXPECT_EQ (read_grouped (stale, length, out), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (out, untouched) << "bytes of the new occupant reached the caller's buffer";
+  er_clear ();
+
+  oos_chain_ref live;
+  live.head_oid = live_oid;
+  live.identity_stamp = live_stamp;
+  ASSERT_EQ (read_scalar (live, length, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), live_payload.c_str ());
+}
+
+TEST_F (OosIdentityStampTest, StaleReferenceToSlotReusedByContinuationChunkFailsReadsAndSkipsDelete)
+{
+  oos_chain_ref stale, live;
+  std::size_t stale_length = 0;
+  std::string live_payload;
+  reuse_slot_with_continuation_chunk (stale, stale_length, live, live_payload);
+
+  /* The occupant is a continuation chunk of another chain. Identity is compared first, so this is a stale
+   * reference, not a head-index assertion. */
+  std::string out;
+  er_clear ();
+  EXPECT_EQ (read_scalar (stale, stale_length, out), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+  EXPECT_EQ (read_grouped (stale, stale_length, out), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+
+  /* A retried delete through the same stale reference is a clean skip that leaves the continuation chunk,
+   * and with it the whole live chain, in place. */
+  std::vector<VPID> emptied;
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale, &emptied), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR) << "a skipped reclamation must leave no stray error";
+  EXPECT_TRUE (emptied.empty ()) << "a no-op reports no reclaim candidate";
+
+  const std::size_t live_length = live_payload.size () + 1;
+  ASSERT_EQ (read_scalar (live, live_length, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), live_payload.c_str ());
+  ASSERT_EQ (read_grouped (live, live_length, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), live_payload.c_str ());
+}
+
+TEST_F (OosIdentityStampTest, MatchingNonHeadReferenceIsRejectedBeforeAnyDelete)
+{
+  oos_chain_ref stale, live;
+  std::size_t stale_length = 0;
+  std::string live_payload;
+  reuse_slot_with_continuation_chunk (stale, stale_length, live, live_payload);
+
+  /* A reference that names the continuation chunk with the stamp it actually carries is malformed: identity
+   * matches, but the target is not a chain head. */
+  oos_chain_ref non_head;
+  non_head.head_oid = stale.head_oid;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, non_head.head_oid, &non_head.identity_stamp), NO_ERROR);
+
+  std::vector<VPID> emptied;
+  er_clear ();
+  EXPECT_EQ (oos_delete (thread_p, oos_vfid, non_head, &emptied), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD) << "a malformed head reference is an error, not a skip";
+  EXPECT_TRUE (emptied.empty ());
+  er_clear ();
+
+  const std::size_t live_length = live_payload.size () + 1;
+  std::string out;
+  EXPECT_EQ (read_scalar (non_head, live_length, out), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+  EXPECT_EQ (read_grouped (non_head, live_length, out), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+
+  /* Every original chunk and byte of the live chain survives, through its own reference. */
+  ASSERT_EQ (read_scalar (live, live_length, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), live_payload.c_str ());
+  ASSERT_EQ (read_grouped (live, live_length, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), live_payload.c_str ());
+}
+
+TEST_F (OosIdentityStampTest, StaleReferenceToPageReusedAsFileMetadataSkipsDeleteAndFailsReads)
+{
+  const std::string payload = page_filling_payload ();
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, payload, oid, issued), NO_ERROR);
+  oos_chain_ref stale;
+  stale.head_oid = oid;
+  stale.identity_stamp = issued;
+  const std::size_t stale_length = payload.size () + 1;
+  reclaim_own_page (stale);
+
+  /* The same file reuses the page for its own metadata: the page fixes successfully but is not a slotted
+   * page. Its type must be checked under the latch before any slotted-page interpretation. */
+  const VPID page = { oid.pageid, oid.volid };
+  reuse_reclaimed_page_as_metadata (page);
+  ASSERT_TRUE (metadata_page_is_intact (page));
+
+  std::vector<VPID> emptied;
+  er_clear ();
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale, &emptied), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR) << "a skipped reclamation must leave no stray error";
+  EXPECT_TRUE (emptied.empty ()) << "a no-op reports no reclaim candidate";
+  EXPECT_TRUE (metadata_page_is_intact (page)) << "the stale delete modified the metadata page";
+
+  std::string out;
+  EXPECT_EQ (read_scalar (stale, stale_length, out), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+  EXPECT_EQ (read_grouped (stale, stale_length, out), ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
+  er_clear ();
+  EXPECT_TRUE (metadata_page_is_intact (page));
+
+  /* The diagnostics agree that no chunk is there. */
+  bool exists = true;
+  ASSERT_EQ (oos_chunk_exists (thread_p, oid, &exists), NO_ERROR);
+  EXPECT_FALSE (exists);
+  LOG_LSA stored = NULL_LSA;
+  EXPECT_NE (oos_get_identity_stamp (thread_p, oid, &stored), NO_ERROR);
+  er_clear ();
+  EXPECT_TRUE (metadata_page_is_intact (page));
+
+  release_metadata_page (page);
+}
+
+TEST_F (OosIdentityStampTest, InterruptedDeleteAndReadReportTheInterruptNotASkip)
+{
+  const std::string payload = "operational failures stay errors";
+  OID oid = OID_INITIALIZER;
+  LOG_LSA issued = NULL_LSA;
+  ASSERT_EQ (insert_with_stamp (oos_vfid, payload, oid, issued), NO_ERROR);
+  oos_chain_ref live;
+  live.head_oid = oid;
+  live.identity_stamp = issued;
+  const std::size_t length = payload.size () + 1;
+
+  /* An interrupted transaction fails its next page fix with ER_INTERRUPTED; the fix consumes the flag. */
+  const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  std::vector<VPID> emptied;
+  (void) logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+  er_clear ();
+  EXPECT_EQ (oos_delete (thread_p, oos_vfid, live, &emptied), ER_INTERRUPTED);
+  EXPECT_EQ (er_errid (), ER_INTERRUPTED) << "an operational failure must not be converted to a clean skip";
+  EXPECT_TRUE (emptied.empty ());
+  (void) logtb_set_tran_index_interrupt (thread_p, tran_index, false);
+  er_clear ();
+
+  std::string out;
+  (void) logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+  EXPECT_EQ (read_scalar (live, length, out), ER_INTERRUPTED);
+  EXPECT_EQ (er_errid (), ER_INTERRUPTED) << "an operational failure must not be reported as a stale reference";
+  (void) logtb_set_tran_index_interrupt (thread_p, tran_index, false);
+  er_clear ();
+
+  /* Nothing was deleted or skipped: the chain reads back whole. */
+  ASSERT_EQ (read_scalar (live, length, out), NO_ERROR);
+  EXPECT_STREQ (out.c_str (), payload.c_str ());
 }
 
 int

@@ -98,10 +98,12 @@ add_test(NAME test_byte_span_writer COMMAND test_byte_span_writer)
 add_test(NAME test_oos_tde_gate COMMAND test_oos_tde_gate)
 
 set_tests_properties(
-  test_oos test_oos_delete test_oos_identity_stamp test_oos_remove_file test_oos_bestspace
-  test_oos_growth_sweep
+  test_oos_delete test_oos_remove_file test_oos_bestspace test_oos_growth_sweep
   PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 30
 )
+# Error-path cases pay for an error-stack dump each in debug builds: test_oos_identity_stamp runs 22 to 39 s
+# alone and test_oos has exceeded 30 s under full-suite load.
+set_tests_properties(test_oos test_oos_identity_stamp PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 60)
 
 # =============================================================================
 # Register SERVER_MODE tests
