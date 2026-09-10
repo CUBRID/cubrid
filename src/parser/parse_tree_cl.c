@@ -962,6 +962,10 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 
   *new_node = *old_node;
 
+  /* a copy is not itself a prepared statement; it must not alias the original's XASL_ID
+   * (parser_free_node_resources () would otherwise free the same XASL_ID twice, once per node) */
+  new_node->xasl_id = NULL;
+
   /* if node is copied from another parser context, deepcopy string contents */
   if (old_node->parser_id != parser->id)
     {

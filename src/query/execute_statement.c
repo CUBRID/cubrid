@@ -15707,6 +15707,13 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
       free (host_variables);
     }
 
+  /* execute_query () always sets list_id, NULL on failure. The server has already cached the result
+   * (RESULT_CACHE_REQUIRED); this function only needs to trigger that, not read the rows back. */
+  if (list_id != NULL)
+    {
+      cursor_free_self_list_id (list_id);
+    }
+
   if (err == ER_QPROC_RESULT_CACHE_INVALID)
     {
       /* retry the statement once */
