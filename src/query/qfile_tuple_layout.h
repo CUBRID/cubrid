@@ -215,9 +215,11 @@ inline void
 qfile_slot_start (QFILE_TUPLE_RECORD * tuple_slot)
 {
   const QFILE_TUPLE_VALUE_TYPE_LIST *type_list = tuple_slot->type_list;
-  int lim = type_list->max_fixed_length_col_cnt;
+  int lim;
 
   assert (tuple_slot->tpl != NULL && type_list != NULL && type_list->layout_ready);
+
+  lim = type_list->max_fixed_length_col_cnt;
 
   tuple_slot->has_null = QFILE_GET_TUPLE_HAS_NULL (tuple_slot->tpl);
   tuple_slot->data_off = type_list->data_off[tuple_slot->has_null ? 1 : 0];

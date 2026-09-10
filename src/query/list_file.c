@@ -2413,10 +2413,10 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
   QFILE_LIST_SCAN_ID *lhs_scan_p = NULL, *rhs_scan_p = NULL;
   QFILE_LIST_SCAN_ID *last_lhs_scan_p = NULL, *last_rhs_scan_p = NULL;
   int have_lhs = 0, have_rhs = 0, cmp;
-  QFILE_TUPLE_RECORD lhs = { NULL, 0 };
-  QFILE_TUPLE_RECORD rhs = { NULL, 0 };
-  QFILE_TUPLE_RECORD last_lhs = { NULL, 0 };
-  QFILE_TUPLE_RECORD last_rhs = { NULL, 0 };
+  QFILE_TUPLE_RECORD lhs = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_TUPLE_RECORD rhs = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_TUPLE_RECORD last_lhs = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_TUPLE_RECORD last_rhs = QFILE_TUPLE_RECORD_INITIALIZER;
   QUERY_OPTIONS distinct_or_all;
 
   ADVANCE_FUCTION advance_func;
@@ -3028,7 +3028,7 @@ static int
 qfile_copy_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_ID * to_list_id_p, QFILE_LIST_ID * from_list_id_p)
 {
   QFILE_LIST_SCAN_ID scan_id;
-  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE qp_scan;
 
   /* scan through the first list file and add the tuples to the result list file. */
@@ -3191,7 +3191,7 @@ void
 qfile_print_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 {
   QFILE_LIST_SCAN_ID scan_id;
-  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
 
   if (!list_id_p || list_id_p->type_list.type_cnt < 0)
     {
@@ -3662,7 +3662,7 @@ qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *
 	    }
 
 	  /* same SORT_REC builder as qfile_make_sort_key () */
-	  QFILE_TUPLE_RECORD key_slot = { NULL, 0 };
+	  QFILE_TUPLE_RECORD key_slot = QFILE_TUPLE_RECORD_INITIALIZER;
 	  int length;
 
 	  qfile_slot_set_tuple_ptr_and_layout (&key_slot, tpl, &input_file->type_list);
@@ -3846,7 +3846,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	  else
 	    {
 	      /* overflow tuple whose header must be rewritten: assemble it, then append it as one tuple */
-	      QFILE_TUPLE_RECORD ovf_rec = { NULL, 0 };
+	      QFILE_TUPLE_RECORD ovf_rec = QFILE_TUPLE_RECORD_INITIALIZER;
 
 	      if (qfile_get_tuple (thread_p, page_p, page_p + key_p->s.original.offset, &ovf_rec, list_id_p) !=
 		  NO_ERROR)
@@ -4040,8 +4040,8 @@ qfile_compare_partial_sort_record (const void *pk0, const void *pk1, void *arg)
 static QFILE_NOINLINE int
 qfile_compare_partial_sort_record_general (SORTKEY_INFO * key_info_p, SORT_REC * k0, SORT_REC * k1)
 {
-  QFILE_TUPLE_RECORD s0 = { NULL, 0 };
-  QFILE_TUPLE_RECORD s1 = { NULL, 0 };
+  QFILE_TUPLE_RECORD s0 = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_TUPLE_RECORD s1 = QFILE_TUPLE_RECORD_INITIALIZER;
   const QFILE_COL_LAYOUT *c;
   const char *d0, *d1;
   int l0, l1;
@@ -7003,7 +7003,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
 			      QFILE_TUPLE tuple_p, int col_num, DB_VALUE * value_p, TP_DOMAIN * domain_p)
 {
   PAGE_PTR page_p;
-  QFILE_TUPLE_RECORD tuple_rec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tuple_rec = QFILE_TUPLE_RECORD_INITIALIZER;
   const PR_TYPE *pr_type;
   int error = NO_ERROR;
 

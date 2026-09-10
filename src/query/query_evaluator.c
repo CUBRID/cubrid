@@ -551,7 +551,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 {
   DB_LOGICAL res, t_res;
   QFILE_LIST_SCAN_ID s_id;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   DB_VALUE list_val;
   SCAN_CODE qp_scan;
   const PR_TYPE *pr_type;
@@ -695,7 +695,7 @@ static int
 eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id)
 {
   QFILE_LIST_SCAN_ID s_id;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   DB_VALUE list_val;
   SCAN_CODE qp_scan;
   const PR_TYPE *pr_type;

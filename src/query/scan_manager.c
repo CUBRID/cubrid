@@ -6416,7 +6416,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   INDX_SCAN_ID *isidp;
   FILTER_INFO data_filter;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE lookup_status;
   TRAN_ISOLATION isolation;
 
@@ -6803,7 +6803,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   BTID *btid;
   char *indx_name_p;
   char *class_name_p;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   assert (scan_id != NULL);
   assert (isidp != NULL);
@@ -7157,7 +7157,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   llsidp = &scan_id->s.llsid;
 
@@ -7604,7 +7604,7 @@ scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   DBLINK_SCAN_ID *vaidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   vaidp = &scan_id->s.dblid;
 
@@ -7853,7 +7853,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   switch (scan_id->type)
     {
@@ -7999,7 +7999,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 {
   LLIST_SCAN_ID *llsidp;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE qp_scan;
 
   llsidp = &s_id->s.llsid;
@@ -8780,7 +8780,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   HASH_SCAN_KEY *key, *new_key;
   unsigned int hash_key;
   MHT_HLS_ENTRY *entry;
@@ -8893,7 +8893,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   QFILE_TUPLE tpl = NULL;
 
   tplrec.size = 0;
@@ -9009,7 +9009,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
   MHT_HLS_ENTRY *entry;
   QFILE_TUPLE_SIMPLE_POS *simple_pos;
   QFILE_TUPLE_POSITION tuple_pos;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   EH_SEARCH eh_search;
   TFTID result;
 

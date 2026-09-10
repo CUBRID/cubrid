@@ -438,7 +438,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
       return false;
     }
 
-  QFILE_TUPLE_RECORD slot = { NULL, 0 };
+  QFILE_TUPLE_RECORD slot = QFILE_TUPLE_RECORD_INITIALIZER;
   int len;
   bool is_null;
 

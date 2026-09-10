@@ -778,7 +778,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   DB_VALUE xavgval, xavg_1val, x2avgval;
   DB_VALUE xavg2val, varval, sqr_val, dval;
   double dtmp;
-  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   TP_DOMAIN *tmp_domain_ptr = NULL;
   int err = NO_ERROR;
 

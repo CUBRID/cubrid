@@ -187,8 +187,8 @@ namespace parallel_query
       QFILE_LIST_ID **temp_part_list_id = nullptr;
 
       PAGE_PTR page = nullptr;
-      QFILE_TUPLE_RECORD tuple_record = { nullptr, 0 };
-      QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
+      QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
+      QFILE_TUPLE_RECORD overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
       int tuple_cnt, tuple_index, tuple_length;
 
       HASH_SCAN_KEY *temp_key = nullptr;
@@ -899,8 +899,8 @@ cleanup:
       QFILE_LIST_ID *list_id;
 
       PAGE_PTR page = nullptr;
-      QFILE_TUPLE_RECORD probe_overflow_record = { nullptr, 0 };
-      QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
+      QFILE_TUPLE_RECORD probe_overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
+      QFILE_TUPLE_RECORD overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
       int tuple_cnt, tuple_index, tuple_length;
 
       HASHJOIN_FETCH_INFO *outer, *inner;
@@ -1196,8 +1196,8 @@ cleanup:
       QFILE_LIST_ID *list_id;
 
       PAGE_PTR page = nullptr;
-      QFILE_TUPLE_RECORD probe_overflow_record = { nullptr, 0 };
-      QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
+      QFILE_TUPLE_RECORD probe_overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
+      QFILE_TUPLE_RECORD overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
       int tuple_cnt, tuple_index, tuple_length;
 
       HASHJOIN_FETCH_INFO *outer, *inner;

@@ -119,7 +119,7 @@ namespace parallel_scan
     while (m_curr_tplno < m_tuple_count)
       {
 	QFILE_TUPLE tpl;
-	QFILE_TUPLE_RECORD tpl_slot = { NULL, 0 };
+	QFILE_TUPLE_RECORD tpl_slot = QFILE_TUPLE_RECORD_INITIALIZER;
 
 	qfile_slot_set_layout (&tpl_slot, &m_list_id->type_list);	/* raw page tuple wrapped in a slot */
 

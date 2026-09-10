@@ -309,6 +309,9 @@ struct qfile_tuple_record
   int32_t cached_byte_offset_in_tuple;	/* cached column start from tuple start, before alignment */
 };
 
+/* Initialize the unbound record with an unstarted cache; bind tuple and layout with the slot setters before reading. */
+#define QFILE_TUPLE_RECORD_INITIALIZER { NULL, 0, NULL, -1, 0, 0, false, 0 }
+
 /* Per-column layout entry of the tuple layout descriptor. Kept at 8 bytes; consider the cost before growing it. */
 typedef struct qfile_col_layout QFILE_COL_LAYOUT;
 struct qfile_col_layout

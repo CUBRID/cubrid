@@ -464,7 +464,7 @@ static int
 cursor_get_first_tuple_value (char *tuple_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, DB_VALUE * value_p,
 			      bool is_copy)
 {
-  QFILE_TUPLE_RECORD slot = { NULL, 0 };
+  QFILE_TUPLE_RECORD slot = QFILE_TUPLE_RECORD_INITIALIZER;
   int rc;
 
   qfile_slot_set_tuple_ptr_and_layout (&slot, tuple_p, type_list_p);
@@ -766,7 +766,7 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
   int tuple_count;
   int oid_index = 0, current_tuple_length, i;
   DB_TYPE type;
-  QFILE_TUPLE_RECORD slot = { NULL, 0 };
+  QFILE_TUPLE_RECORD slot = QFILE_TUPLE_RECORD_INITIALIZER;
   int length;
   bool is_null;
 
@@ -827,7 +827,7 @@ cursor_prefetch_column_oids (CURSOR_ID * cursor_id_p)
   int tuple_count, oid_index = 0, current_tuple_length;
   int tuple_index, col_index, col_num;
   DB_TYPE type;
-  QFILE_TUPLE_RECORD slot = { NULL, 0 };
+  QFILE_TUPLE_RECORD slot = QFILE_TUPLE_RECORD_INITIALIZER;
   int length;
   bool is_null;
 

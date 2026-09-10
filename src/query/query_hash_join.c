@@ -447,7 +447,7 @@ static int
 hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
   QFILE_LIST_ID *list_id = NULL;
-  QFILE_TUPLE_RECORD overflow_record = { NULL, 0 };
+  QFILE_TUPLE_RECORD overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE scan_code;
 
   HASHJOIN_FETCH_INFO *outer, *inner;
@@ -1643,7 +1643,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   QFILE_LIST_ID *list_id;
   QFILE_LIST_ID **part_list_id;
   QFILE_LIST_SCAN_ID list_scan_id;
-  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE scan_code;
 
   unsigned int hash_key;
@@ -3401,7 +3401,7 @@ static int
 hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
 		   QFILE_LIST_ID * list_id)
 {
-  QFILE_TUPLE_RECORD overflow_record = { NULL, 0 };
+  QFILE_TUPLE_RECORD overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE scan_code;
   bool need_skip_next = false;
 
@@ -3660,7 +3660,7 @@ static int
 hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
 		   QFILE_LIST_ID * list_id)
 {
-  QFILE_TUPLE_RECORD overflow_record = { NULL, 0 };
+  QFILE_TUPLE_RECORD overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE scan_code;
   bool need_skip_next = false;
   bool any_key_matched;
