@@ -15713,6 +15713,7 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
       cursor_free_self_list_id (list_id);
     }
 
+  /* ends only this query's own use; the cached list entry outlives it for later reuse. */
   if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
     {
       qmgr_end_query (query_id);
