@@ -129,11 +129,15 @@ extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, O
 extern SCAN_OPERATION_TYPE locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern LOCK locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
 
+/* *INDENT-OFF* */
+class heap_prepared_row;
 extern int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
 				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
 				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
-				 bool dont_check_fk, bool use_bulk_logging = false);
+				 bool dont_check_fk, bool use_bulk_logging = false,
+                                 heap_prepared_row *prepared = nullptr);
+/* *INDENT-ON* */
 
 extern int locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes);
  // *INDENT-OFF*

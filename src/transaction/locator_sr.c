@@ -46,6 +46,8 @@
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
+#include "heap_prepared_row.hpp"
+#include "heap_oos.hpp"
 #include "oos_file.hpp"
 #include "list_file.h"
 #include "log_lsa.hpp"
@@ -4953,7 +4955,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      int op_type, HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 		      PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 		      UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
-		      bool dont_check_fk, bool use_bulk_logging)
+		      bool dont_check_fk, bool use_bulk_logging, heap_prepared_row * prepared)
 {
 #if 0				/* TODO - dead code; do not delete me */
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -4987,7 +4989,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       /* Perform partition pruning on the given class */
       error_code =
 	partition_prune_insert (thread_p, class_oid, recdes, scan_cache, pcontext, pruning_type, &real_class_oid,
-				&real_hfid, &superclass_oid);
+				&real_hfid, &superclass_oid, prepared);
       if (error_code != NO_ERROR)
 	{
 	  goto error2;
@@ -5041,6 +5043,17 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  assert_release (OID_EQ (class_oid, &real_class_oid));
 	}
     }
+
+  /* *INDENT-OFF* */
+  if (prepared != nullptr)
+    {
+      error_code = prepared->finalize (thread_p, &real_class_oid);
+      if (error_code != NO_ERROR)
+        {
+          goto error2;
+        }
+    }
+  /* *INDENT-ON* */
 
   *force_count = 0;
 
@@ -7610,6 +7623,31 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     {
       COPY_OID (&class_oid, &attr_info->class_oid);
     }
+  /* SQL INSERT owns preparation through routing, storage and all index consumers. */
+  /* *INDENT-OFF* */
+  if (LC_IS_FLUSH_INSERT (operation))
+    {
+      heap_prepared_row prepared;
+      *force_count = 0;
+      if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+        {
+          return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+        }
+      error_code = prepared.prepare (thread_p, attr_info);
+      if (error_code == NO_ERROR)
+        {
+          error_code = locator_insert_force (thread_p, &class_hfid, &class_oid, oid, prepared.record (), true,
+                          op_type, scan_cache, force_count, pruning_type, pcontext, func_preds,
+                          UPDATE_INPLACE_NONE, nullptr, false, false, false, &prepared);
+        }
+      if (error_code != NO_ERROR)
+        {
+          (void) heap_oos_begin_insert_publication (thread_p);
+        }
+      return error_code;
+    }
+  /* *INDENT-ON* */
+
   switch (operation)
     {
     case LC_FLUSH_UPDATE:

@@ -21,6 +21,10 @@
  */
 
 #include <algorithm>
+#include <utility>
+
+#include "heap_prepared_row.hpp"
+#include "heap_oos.hpp"
 
 #include "test_oos_sql_common.hpp"
 
@@ -349,6 +353,265 @@ TEST_F (OosSqlShow, ShowAllHeapOosReportsPartitionRows)
   EXPECT_GE (oos_heap_count, 1);
 
   db_query_end (result);
+}
+
+TEST_F (OosSqlShow, InsertOwnsOosInDestinationHeap)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, data_col BIT VARYING) "
+		       "PARTITION BY RANGE (id) (PARTITION p0 VALUES LESS THAN (10), "
+		       "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES (1, REPEAT(X'CC', 8192))"), 0);
+
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part "
+			       "WHERE id = 1 AND data_col = CAST(REPEAT(X'CC', 8192) AS BIT VARYING)",
+			       &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+
+  const char *queries[] = { "SHOW HEAP OOS OF t_oos_show_part",
+			    "SHOW HEAP OOS OF t_oos_show_part__p__p0",
+			    "SHOW HEAP OOS OF t_oos_show_part__p__p1"
+			  };
+  const int expected[] = { 0, 1, 0 };
+  for (int i = 0; i < 3; ++i)
+    {
+      DB_QUERY_RESULT *result = nullptr;
+      ASSERT_EQ (show_heap_oos_query (queries[i], &result), NO_ERROR);
+      int has_oos = -1;
+      EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+      EXPECT_EQ (has_oos, expected[i]) << queries[i];
+      db_query_end (result);
+    }
+}
+
+TEST_F (OosSqlShow, ForcedOutlineKeyRoutesFromPreparedBytes)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part ("
+		       "k VARCHAR(80) DEFAULT 'abcdefghijklmnopqrst' STORAGE FORCE_OUTLINE, "
+		       "payload BIT VARYING) PARTITION BY RANGE(k) ("
+		       "PARTITION p0 VALUES LESS THAN ('m'), PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part(payload) VALUES(REPEAT(X'AB', 40000))"), 0);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE k = 'abcdefghijklmnopqrst' "
+			       "AND payload = CAST(REPEAT(X'AB', 40000) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  DB_QUERY_RESULT *result = nullptr;
+  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part", &result), NO_ERROR);
+  int has_oos = -1;
+  EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+  EXPECT_EQ (has_oos, 0);
+  db_query_end (result);
+  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part__p__p0", &result), NO_ERROR);
+  int chunks = 0;
+  EXPECT_EQ (get_int_column (result, COL_OOS_NUM_RECS, &chunks), NO_ERROR);
+  EXPECT_GT (chunks, 2);
+  db_query_end (result);
+}
+
+TEST_F (OosSqlShow, RejectedDestinationCreatesNoOosAndNextInsertSucceeds)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, payload BIT VARYING) "
+		       "PARTITION BY RANGE(id) (PARTITION p0 VALUES LESS THAN(10))"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  EXPECT_LT (exec_sql ("INSERT INTO t_oos_show_part VALUES(20, REPEAT(X'AB', 8192))"), 0);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+  DB_QUERY_RESULT *result = nullptr;
+  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part", &result), NO_ERROR);
+  int has_oos = -1;
+  EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+  EXPECT_EQ (has_oos, 0);
+  db_query_end (result);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES(NULL, REPEAT(X'CD', 8192))"), 0);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE id IS NULL "
+			       "AND payload = CAST(REPEAT(X'CD', 8192) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part__p__p0", &result), NO_ERROR);
+  EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+  EXPECT_EQ (has_oos, 1);
+  db_query_end (result);
+}
+
+TEST_F (OosSqlShow, LobPreparationPreservesSourceAndDestinationValues)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_no (c CLOB)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_no VALUES(CHAR_TO_CLOB('source clob value'))"), 0);
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, c CLOB STORAGE FORCE_OUTLINE) "
+		       "PARTITION BY RANGE(id) (PARTITION p0 VALUES LESS THAN(10))"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part SELECT 1, c FROM t_oos_show_no"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_no WHERE CLOB_TO_CHAR(c) = 'source clob value'",
+			       &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE CLOB_TO_CHAR(c) = 'source clob value'",
+			       &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_no"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE CLOB_TO_CHAR(c) = 'source clob value'",
+			       &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  DB_QUERY_RESULT *result = nullptr;
+  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part", &result), NO_ERROR);
+  int has_oos = -1;
+  EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+  EXPECT_EQ (has_oos, 0);
+  db_query_end (result);
+  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part__p__p0", &result), NO_ERROR);
+  EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+  EXPECT_EQ (has_oos, 1);
+  db_query_end (result);
+}
+
+TEST_F (OosSqlShow, SupportedPartitionDomainsPreserveValuesAndOwnership)
+{
+  struct domain_case
+  {
+    const char *type;
+    const char *value;
+    const char *boundary;
+  };
+  const domain_case cases[] =
+  {
+    { "SMALLINT", "1", "10" }, { "INTEGER", "1", "10" }, { "BIGINT", "1", "10" },
+    { "DATE", "'2020-01-01'", "'2021-01-01'" },
+    { "TIME", "'01:00:00'", "'02:00:00'" },
+    { "TIMESTAMP", "'2020-01-01 01:00:00'", "'2021-01-01 01:00:00'" },
+    { "TIMESTAMPTZ", "'2020-01-01 01:00:00 +00:00'", "'2021-01-01 01:00:00 +00:00'" },
+    { "TIMESTAMPLTZ", "'2020-01-01 01:00:00 +00:00'", "'2021-01-01 01:00:00 +00:00'" },
+    { "DATETIME", "'2020-01-01 01:00:00.123'", "'2021-01-01 01:00:00.123'" },
+    { "DATETIMETZ", "'2020-01-01 01:00:00.123 +00:00'", "'2021-01-01 01:00:00.123 +00:00'" },
+    { "DATETIMELTZ", "'2020-01-01 01:00:00.123 +00:00'", "'2021-01-01 01:00:00.123 +00:00'" },
+    { "CHAR(40)", "'abcdefghijklmnopqrst'", "'m'" },
+    { "VARCHAR(80)", "'abcdefghijklmnopqrst'", "'m'" }
+  };
+  for (const auto &entry : cases)
+    {
+      SCOPED_TRACE (entry.type);
+      char sql[1024];
+      snprintf (sql, sizeof (sql), "CREATE TABLE t_oos_show_part (k %s, payload BIT VARYING) "
+		"PARTITION BY RANGE(k) (PARTITION p0 VALUES LESS THAN(%s), "
+		"PARTITION p1 VALUES LESS THAN MAXVALUE)", entry.type, entry.boundary);
+      ASSERT_GE (exec_sql (sql), 0) << db_error_string (1);
+      snprintf (sql, sizeof (sql), "INSERT INTO t_oos_show_part VALUES(%s, REPEAT(X'AB', 8192))", entry.value);
+      ASSERT_GE (exec_sql (sql), 0) << db_error_string (1);
+      snprintf (sql, sizeof (sql), "SELECT COUNT(*) FROM t_oos_show_part WHERE k = CAST(%s AS %s) "
+		"AND payload = CAST(REPEAT(X'AB', 8192) AS BIT VARYING)", entry.value, entry.type);
+      int matches = 0;
+      ASSERT_EQ (fetch_single_int (sql, &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      DB_QUERY_RESULT *result = nullptr;
+      ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part", &result), NO_ERROR);
+      int has_oos = -1;
+      EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+      EXPECT_EQ (has_oos, 0);
+      db_query_end (result);
+      ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part__p__p0", &result), NO_ERROR);
+      EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+      EXPECT_EQ (has_oos, 1);
+      db_query_end (result);
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_part"), 0);
+    }
+}
+
+TEST_F (OosSqlShow, MovedPreparationOutlivesAttributeCache)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT DEFAULT 7, "
+		       "a VARCHAR(100) DEFAULT 'abcdefghijklmnopqrstuvwxyz' STORAGE FORCE_OUTLINE, "
+		       "b VARCHAR(100) DEFAULT 'zyxwvutsrqponmlkjihgfedcba' STORAGE FORCE_OUTLINE)"), 0);
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
+  ASSERT_NE (cls, nullptr);
+  OID class_oid = *db_identifier (cls);
+  HFID hfid;
+  ASSERT_EQ (heap_get_class_info (thread_p, &class_oid, &hfid, nullptr, nullptr), NO_ERROR);
+  HEAP_CACHE_ATTRINFO attrs;
+  ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
+  DB_ATTRIBUTE *id_attr = db_get_attribute (cls, "id");
+  ASSERT_NE (id_attr, nullptr);
+  for (int i = 0; i < attrs.num_values; ++i)
+    {
+      if (attrs.values[i].attrid == db_attribute_id (id_attr))
+	{
+	  attrs.values[i].do_increment = 1;
+	}
+    }
+  heap_prepared_row source;
+  int error = source.prepare (thread_p, &attrs);
+  heap_attrinfo_end (thread_p, &attrs);
+  ASSERT_EQ (error, NO_ERROR);
+  heap_prepared_row moved (std::move (source));
+  heap_prepared_row destination;
+  destination = std::move (moved);
+  EXPECT_EQ (source.record (), nullptr);
+  EXPECT_EQ (moved.record (), nullptr);
+  ASSERT_EQ (destination.finalize (thread_p, &class_oid), NO_ERROR);
+  HEAP_OPERATION_CONTEXT context;
+  heap_create_insert_context (&context, &hfid, &class_oid, destination.record (), nullptr);
+  ASSERT_EQ (heap_insert_logical (thread_p, &context, nullptr), NO_ERROR);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE id = 8 "
+			       "AND a = 'abcdefghijklmnopqrstuvwxyz' AND b = 'zyxwvutsrqponmlkjihgfedcba'",
+			       &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  EXPECT_LT (destination.finalize (thread_p, &class_oid), 0);
+  er_clear ();
+}
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+TEST_F (OosSqlShow, AllocationAndStorageFailureLeaveNextInsertUsable)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT PRIMARY KEY, payload BIT VARYING, payload2 BIT VARYING)"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  for (int boundary = 0; boundary < 4; ++boundary)
+    {
+      if (boundary == 3)
+	{
+	  oos_test_fail_insert_many_after_publications (1);
+	}
+      else if (boundary == 2)
+	{
+	  heap_oos_test_fail_before_vfid_lookup_once ();
+	}
+      else
+	{
+	  heap_prepared_row_test_fail_allocation_once (boundary == 0 ? heap_prepared_row_allocation::owner
+	      : heap_prepared_row_allocation::record);
+	}
+      EXPECT_LT (exec_sql ("INSERT INTO t_oos_show_yes VALUES(1, REPEAT(X'AB', 8192), REPEAT(X'EF', 8192))"), 0);
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      int count = -1;
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes", &count), NO_ERROR);
+      EXPECT_EQ (count, 0);
+      DB_QUERY_RESULT *stats = nullptr;
+      ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_yes", &stats), NO_ERROR);
+      EXPECT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &count), NO_ERROR);
+      EXPECT_EQ (count, 0);
+      db_query_end (stats);
+      ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_yes VALUES(2, REPEAT(X'CD', 8192), REPEAT(X'01', 8192))"), 0);
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE id = 2 "
+				   "AND payload = CAST(REPEAT(X'CD', 8192) AS BIT VARYING) "
+				   "AND payload2 = CAST(REPEAT(X'01', 8192) AS BIT VARYING)", &count), NO_ERROR);
+      EXPECT_EQ (count, 1);
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+    }
+}
+#endif
+
+TEST_F (OosSqlShow, ConstraintFailureAfterOosAllowsNextInsert)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT PRIMARY KEY, payload BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_yes VALUES(1, REPEAT(X'AB', 8192))"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  EXPECT_LT (exec_sql ("INSERT INTO t_oos_show_yes VALUES(1, REPEAT(X'CD', 8192))"), 0);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_yes VALUES(2, REPEAT(X'EF', 8192))"), 0);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE "
+			       "(id = 1 AND payload = CAST(REPEAT(X'AB', 8192) AS BIT VARYING)) OR "
+			       "(id = 2 AND payload = CAST(REPEAT(X'EF', 8192) AS BIT VARYING))", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 2);
 }
 
 int

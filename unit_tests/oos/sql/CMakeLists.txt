@@ -54,3 +54,6 @@ set_tests_properties(
   test_oos_sql_visible_version
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )
+
+# Expected-error tests also collect debug stack traces at allocation and storage failure boundaries.
+set_tests_properties(test_oos_sql_show PROPERTIES TIMEOUT 90)
