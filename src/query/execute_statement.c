@@ -15494,7 +15494,10 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  goto err_exit;
 	}
 
-      stmt->sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+      /* this scope operates on context, so alloc through it rather than parser.
+       * blocks added to context's string_blocks move to parser's own list
+       * after do_prepare_select, for parser_free_parser() to free later. */
+      stmt->sub_host_var_index = (int *) parser_alloc (&context, var_count * sizeof (int));
       if (stmt->sub_host_var_index == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
@@ -15546,6 +15549,9 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   save_flag = stmt->info.query.is_subquery;
 
   err = do_prepare_select (&context, stmt);
+
+  /* move blocks context added into parser's own list to avoid leaking them. */
+  parser->string_blocks = context.string_blocks;
 
   /* restore the flag */
   stmt->info.query.is_subquery = save_flag;
