@@ -2509,6 +2509,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     case LOG_REPLICATION_STATEMENT:
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_OOS_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_SUPPLEMENTAL_INFO:
       break;
@@ -3984,6 +3985,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
+	    case LOG_DUMMY_OOS_RECORD:
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_SUPPLEMENTAL_INFO:
 	    case LOG_END_OF_LOG:
@@ -4926,6 +4928,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_REPLICATION_STATEMENT:
 		case LOG_DUMMY_HA_SERVER_STATE:
 		case LOG_DUMMY_OVF_RECORD:
+		case LOG_DUMMY_OOS_RECORD:
 		case LOG_DUMMY_GENERIC:
 		case LOG_SUPPLEMENTAL_INFO:
 		case LOG_SYSOP_ATOMIC_START:
@@ -5921,6 +5924,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_OOS_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_SYSOP_ATOMIC_START:
       break;

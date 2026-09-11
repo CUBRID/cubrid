@@ -93,6 +93,8 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"rollback", S_CMD_ROLLBACK, CMD_CHECK_CONNECT},
   {"autocommit", S_CMD_AUTOCOMMIT, CMD_EMPTY_FLAG},
   {"checkpoint", S_CMD_CHECKPOINT, CMD_CHECK_CONNECT},
+  {"vacuum", S_CMD_VACUUM, CMD_CHECK_CONNECT},
+  {"oos_stats", S_CMD_OOS_STATS, CMD_CHECK_CONNECT},
   {"killtran", S_CMD_KILLTRAN, CMD_CHECK_CONNECT},
   {"restart", S_CMD_RESTART, CMD_EMPTY_FLAG},
   /* Environment stuffs */

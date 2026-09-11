@@ -287,7 +287,10 @@
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE) /* Debug only: unsafe, may break DB consistency */ \
   \
   /* server-side full-scan reservoir histogram build */ \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR)
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR) \
+  \
+  /* oos verification helpers (CBRD-26720) */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_OOS_STATS)
 
 enum net_server_request
 {
