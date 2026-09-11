@@ -344,8 +344,11 @@ fn_cgw_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_
     }
   srv_handle = hm_find_srv_handle (srv_h_id);
 
-  if (srv_handle == NULL)
+  if (srv_handle == NULL || srv_handle->cgw_schema_info != NULL)
     {
+      /* a schema_info handle carries no prepared statement: executing it would run
+       * cgw_sql_prepare () on a NULL sql_stmt.  ux_execute () rejects the same case
+       * with its schema_type check. */
       ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
 
       cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "execute_internal srv_h_id %d %s%d",
@@ -659,7 +662,44 @@ fn_cgw_get_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch srv_h_id %d cursor_pos %d fetch_count %d",
 		 srv_h_id, cursor_pos, fetch_count);
 
+  if (srv_handle->cgw_schema_info != NULL)
+    {
+      ux_cgw_fetch_schema_attribute (srv_handle, cursor_pos, fetch_count, net_buf, req_info);
+      return FN_KEEP_CONN;
+    }
+
   ux_cgw_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag, result_set_index, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_cgw_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int schema_type;
+  char *arg1, *arg2;
+  char flag;
+  int arg1_size, arg2_size;
+  int srv_h_id;
+
+  if (argc < 4)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_int (&schema_type, argv[0]);
+  net_arg_get_str (&arg1, &arg1_size, argv[1]);
+  net_arg_get_str (&arg2, &arg2_size, argv[2]);
+  net_arg_get_char (flag, argv[3]);
+
+  cas_log_write (query_seq_num_next_value (), true, "schema_info %d %s %s", schema_type, (arg1 ? arg1 : "NULL"),
+		 (arg2 ? arg2 : "NULL"));
+
+  srv_h_id = ux_cgw_schema_info (schema_type, arg1, arg2, flag, net_buf, req_info, query_seq_num_current_value ());
+
+  cas_log_write (query_seq_num_current_value (), false, "schema_info srv_h_id %d", srv_h_id);
 
   return FN_KEEP_CONN;
 }

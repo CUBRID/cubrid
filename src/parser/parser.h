@@ -723,6 +723,7 @@ extern "C"
 
   extern void pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern void pt_gather_dblink_cols_in_dml (PARSER_CONTEXT * parser, PT_NODE * stmt);
 
   extern int pt_resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec);
 
