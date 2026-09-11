@@ -351,6 +351,7 @@ regu_init (cubxasl::aggregate_list_node &agg)
   agg.operand_prog_state = 0;
   agg.operand_prog_base = -1;
   agg.operand_prog_share_spec = NULL;
+  agg.operand_prog_link_stamp = 0;
 #endif
 
   regu_alloc (agg.accumulator.value);

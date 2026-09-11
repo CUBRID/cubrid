@@ -1227,9 +1227,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    {
 	      /* Sharing needs the resolved accumulator domains, so it is linked here. */
 	      qdata_link_shared_accumulators (xasl->proc.buildlist.g_agg_list);
-	      /* a clone that kept its compiled operand program from an earlier execution
-	       * (expr_compile.h) also shares operands the program evaluates into one cell */
-	      qdata_link_shared_accumulators_by_cell (xasl->proc.buildlist.g_agg_list);
 	    }
 	}
 
@@ -1344,7 +1341,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		{
 		  /* Sharing needs the resolved accumulator domains, so it is linked here. */
 		  qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list);
-		  qdata_link_shared_accumulators_by_cell (xasl->proc.buildvalue.agg_list);
 		}
 	    }
 
@@ -5374,20 +5370,14 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		  info->input_recs += hvalue->tuple_count;
 
 		  /* replace aggregate accumulators */
-		  if (qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[0].d_agg_list, false) != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
+		  qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[0].d_agg_list, false);
 
 		  if (info->with_rollup)
 		    {
 		      for (i = 1; i < info->g_dim_levels; i++)
 			{
 			  /* replace accumulators for restarted rollup groups */
-			  if (qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[i].d_agg_list, true) != NO_ERROR)
-			    {
-			      goto exit_on_error;
-			    }
+			  qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[i].d_agg_list, true);
 			}
 		    }
 		}
@@ -5439,20 +5429,14 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		  info->input_recs += hvalue->tuple_count;
 
 		  /* replace aggregate accumulators */
-		  if (qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[0].d_agg_list, false) != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
+		  qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[0].d_agg_list, false);
 
 		  if (info->with_rollup)
 		    {
 		      /* replace accumulators for restarted rollup groups */
 		      for (i = rollup_level; i < info->g_dim_levels; i++)
 			{
-			  if (qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[i].d_agg_list, true) != NO_ERROR)
-			    {
-			      goto exit_on_error;
-			    }
+			  qdata_load_agg_hvalue_in_agg_list (hvalue, info->g_dim[i].d_agg_list, true);
 			}
 
 		      /* compose accumulators for active rollup groups */
@@ -5673,10 +5657,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	      qexec_gby_start_group_dim (thread_p, &gbstate, NULL);
 
 	      /* load values in list and aggregate first tuple */
-	      if (qdata_load_agg_hvalue_in_agg_list (value, gbstate.g_dim[0].d_agg_list, false) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
+	      qdata_load_agg_hvalue_in_agg_list (value, gbstate.g_dim[0].d_agg_list, false);
 	      qexec_gby_agg_tuple (thread_p, &gbstate, value->first_tuple.tpl, PEEK);
 
 	      /* finalize */
@@ -15507,7 +15488,6 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (buildvalue->agg_list != NULL)
     {
       qdata_link_shared_accumulators (buildvalue->agg_list);
-      qdata_link_shared_accumulators_by_cell (buildvalue->agg_list);
     }
 
   if (buildvalue->agg_list && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false) != NO_ERROR)
@@ -20743,6 +20723,7 @@ qexec_gby_init_group_dim (GROUPBY_STATE * gbstate)
 	      aggr->operand_prog_state = 0;
 	      aggr->operand_prog_base = -1;
 	      aggr->operand_prog_share_spec = NULL;
+	      aggr->operand_prog_link_stamp = 0;
 	    }
 	}
       else

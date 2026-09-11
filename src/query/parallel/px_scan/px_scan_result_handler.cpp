@@ -2176,9 +2176,11 @@ namespace parallel_scan
 	if (agg_list->operand_prog_state == 1)
 	  {
 	    operand_prog = (EXPR_PROG *) agg_list->operand_prog;
-	    if (!expr_prog_signature_ok (operand_prog, tl_vd, EXPR_PROG_EXEC_STAMP (tl_vd)))
+	    if (!expr_prog_signature_ok (operand_prog, tl_vd, EXPR_PROG_EXEC_STAMP (tl_vd))
+		|| !expr_prog_share_current (operand_prog, agg_list->operand_prog_share_spec))
 	      {
-		/* different bind types than the program was specialized for: recompile */
+		/* different bind types than the program was specialized for, or the scan filter
+		 * whose slots it reads was recompiled: recompile */
 		expr_prog_free (operand_prog);
 		free_and_init (agg_list->operand_prog_idx);
 		agg_list->operand_prog = NULL;

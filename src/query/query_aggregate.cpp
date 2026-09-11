@@ -912,12 +912,13 @@ qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
  * operands to one cell -- common sub-expressions once, commuted operands, literals by value
  * -- and a root cell holds the operand's value for the row unconditionally, so two plain
  * SUM/AVG whose roots are the same cell compute the identical value on every row and may
- * share exactly like regu-equal ones.  Only adds links; runs after the program exists (the
- * first row of the first execution, and every later execution start of a clone that kept
- * its program) and, like the regu-based link, needs the accumulator domains resolved.
+ * share exactly like regu-equal ones.  Only adds links; runs on the first evaluation of
+ * every execution, after the program was verified (or recompiled) for that execution's
+ * bind types -- the unification of two roots can depend on them (a coercion step inserted
+ * for one binding and not another), so a link is never taken from an earlier execution's
+ * program.  Like the regu-based link it needs the accumulator domains resolved.
  *
- * Callers are the serial paths (qdata_evaluate_aggregate_list (), the executor's
- * execution-start link sites).  The parallel BUILDVALUE_OPT hook must NOT link by cell: its
+ * The caller is the serial path (qdata_evaluate_aggregate_list ()).  The parallel BUILDVALUE_OPT hook must NOT link by cell: its
  * write_finalize () merges a worker's accumulators into the coordinator's without
  * propagating shared sums first, and the coordinator (no program) would not know the link.
  * The parallel hash GROUP BY worker is fine: its partial groups leave through
@@ -1112,7 +1113,7 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
       free_and_init (idx);
       agg_list_p->operand_prog = NULL;
       agg_list_p->operand_prog_idx = NULL;
-      agg_list_p->operand_prog_state = 2;
+      agg_list_p->operand_prog_state = 3;
     }
 }
 
@@ -1158,12 +1159,21 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      compiled_now = true;
 	    }
 	}
-      if (compiled_now)
+      if (operand_prog != NULL)
 	{
-	  /* the program now says which operands are one and the same cell: let SUM/AVG over
-	   * them share an accumulator (a hash GROUP BY entry created before this row keeps its
-	   * own links and accumulates such a pair separately -- correct, just not shared) */
-	  qdata_link_shared_accumulators_by_cell (agg_list_p);
+	  /* The program (verified for this execution's bind types just above) says which
+	   * operands are one and the same cell: let SUM/AVG over them share an accumulator.
+	   * Derived once per execution -- qdata_link_shared_accumulators () reset the links
+	   * at execution start -- from the program of THIS execution, never from a program a
+	   * later row may replace.  A hash GROUP BY entry created before this row keeps its
+	   * own links and accumulates such a pair separately (correct, just not shared). */
+	  unsigned long long stamp = EXPR_PROG_EXEC_STAMP (val_desc_p);
+
+	  if (compiled_now || (stamp != 0 && agg_list_p->operand_prog_link_stamp != stamp))
+	    {
+	      qdata_link_shared_accumulators_by_cell (agg_list_p);
+	      agg_list_p->operand_prog_link_stamp = stamp;
+	    }
 	}
       /* every participating operand of the row is evaluated here, before any aggregate
        * accumulates; see qdata_agg_operand_prog_compile () for why and for the error
@@ -3146,12 +3156,12 @@ qdata_copy_agg_hkey (cubthread::entry *thread_p, aggregate_hash_key *key)
 
 /*
  * qdata_load_agg_hvalue_in_agg_list () - load hash value in aggregate list
- *   return: NO_ERROR, or ER_FAILED when a deferred NUMERIC sum cannot be materialized
+ *   return: void
  *   value(in): aggregate hash value
  *   agg_list(in): aggregate list
  *   copy_vals(in): true for deep copy of DB_VALUES, false for shallow copy
  */
-int
+void
 qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list,
 				   bool copy_vals)
 {
@@ -3160,13 +3170,13 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
   if (value == NULL)
     {
       assert (false);
-      return ER_FAILED;
+      return;
     }
 
   if (value->func_count != 0 && agg_list == NULL)
     {
       assert (false);
-      return ER_FAILED;
+      return;
     }
 
   while (agg_list != NULL)
@@ -3228,8 +3238,6 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
     }
 
   assert (i == value->func_count);
-
-  return NO_ERROR;
 }
 
 /*

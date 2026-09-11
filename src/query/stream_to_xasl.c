@@ -5994,6 +5994,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   aggregate->operand_prog_state = 0;
   aggregate->operand_prog_base = -1;
   aggregate->operand_prog_share_spec = NULL;
+  aggregate->operand_prog_link_stamp = 0;
 
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);

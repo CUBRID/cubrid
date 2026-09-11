@@ -3767,7 +3767,14 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
       agg_list = xasl_p->proc.buildvalue.agg_list;
     }
 
-  if (agg_list != NULL && agg_list->operand_prog_state != 0)
+  if (agg_list != NULL && agg_list->operand_prog_state == 3)
+    {
+      /* every candidate operand is a plain column or a wired constant: no program is
+       * needed, the accumulator's fast path reads such an operand in place */
+      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): plain operands (peeked in place, no program)%s\n", indent, ' ',
+	       sfx);
+    }
+  else if (agg_list != NULL && agg_list->operand_prog_state != 0)
     {
       if (agg_list->operand_prog_state != 1)
 	{
