@@ -1,0 +1,55 @@
+{
+  "schema": "volmap.runtime.page-buffer",
+  "schema_version": 1,
+  "capability": {
+    "schema": "volmap.runtime",
+    "schema_version": 1,
+    "source": "cubrid-page-buffer-observation",
+    "state": "active",
+    "verification": "verified",
+    "reason": "observation-available",
+    "incarnation_binding": "5290fed13f8bafb1427966076828e792e31e30a1ef9f751893b51dbb5e233785",
+    "capture_identity": "3b42658aad14039355ae41cd2157a3e75c6c2324c763ee6ca922918c26741d9c",
+    "revision": "4"
+  },
+  "pages": [
+    {
+      "volid": 1,
+      "pageid": 577
+    }
+  ],
+  "epoch": "3",
+  "generation": "0",
+  "requested_count": 1,
+  "evaluated_count": 1,
+  "producer_complete": true,
+  "capture": {
+    "identity": "3b42658aad14039355ae41cd2157a3e75c6c2324c763ee6ca922918c26741d9c",
+    "incarnation_binding": "5290fed13f8bafb1427966076828e792e31e30a1ef9f751893b51dbb5e233785",
+    "incarnation": "380cc6429a8a",
+    "protocol_major": 1,
+    "protocol_minor": 0,
+    "database_fingerprint": "0ccc7b8fdbd5fba594b7e2f03ad55712f9cc82555aea3891fd6f862768a2a70c",
+    "sequence": "7",
+    "start_time_us": "1789106304230055",
+    "end_time_us": "1789106304231689",
+    "upper_age_ms": 107,
+    "shared_lru_count": 4,
+    "private_lru_count": 152
+  },
+  "observations": [
+    {
+      "volid": 1,
+      "pageid": 577,
+      "state": "not-resident",
+      "reason": "observed-not-resident",
+      "evidence": null
+    }
+  ],
+  "limitations": [
+    "Capture interval, not a page timestamp.",
+    "Latch and LRU tuples are individually coherent; records and scans are not atomic.",
+    "Observed residency is not current residency.",
+    "No page-image correspondence, commit visibility, durability or event causality is established."
+  ]
+}

@@ -36,8 +36,13 @@ if not __debug__:
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--fixture", type=Path, required=True)
+parser.add_argument("--volmap-run", type=Path, help="Explicit cross-repository integration input JSON")
 args = parser.parse_args()
 fixture = args.fixture.resolve(strict=True)
+integration = None
+if args.volmap_run:
+    from volmap_observation import VolmapObservation
+    integration = VolmapObservation(args.volmap_run, fixture)
 root = Path(tempfile.mkdtemp(prefix="pgbuf-native-"))
 env = os.environ.copy()
 env.update(CUBRID_DATABASES=str(root), CUBRID_TMP=str(root), CUBRID_CONF_FILE=str(root / "cubrid.conf"))
@@ -149,14 +154,20 @@ observer = None
 try:
     subprocess.run(["cubrid", "createdb", "--db-volume-size=20M", "--log-volume-size=20M", "-F", str(root), name,
                     "en_US.utf8"], cwd=root, env=env, stdout=commands, stderr=subprocess.STDOUT, timeout=60, check=True)
-    child = subprocess.Popen([str(fixture), name], cwd=root, env=env,
+    if integration:
+        assert not (root / "pgbuf-inspector").exists(), "non-server utility created an endpoint"
+        print("PASS non-server createdb exposes no endpoint with inspector enabled", flush=True)
+    child = subprocess.Popen([str(fixture), name] + (["--permanent"] if integration else []), cwd=root, env=env,
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=native_log)
     ready = acknowledgement()
     assert ready["state"] == "clean-held"
     target = ready["volid"], ready["pageid"]
     paths = list((root / "pgbuf-inspector").glob("*.sock"))
     assert len(paths) == 1
+    if integration:
+        integration.start(root, name, paths[0], target, env)
     observer = Observation(paths[0])
+    (root / "handshake.json").write_text(json.dumps(observer.hello, indent=2))
     for phase, dirty in [("clean", False), ("dirty", True)]:
         before = acknowledgement("dirty" if dirty else "held")
         pages, footer = observer.scan(phase)
@@ -168,6 +179,9 @@ try:
         page = matches[0]
         assert page["dirty"] is dirty and page["latch_mode"] == "write" and page["fix_count"] == 1
         assert "page_lsa" not in page and "oldest_unflush_lsa" not in page and "page_kind" not in page
+        if integration:
+            integration.check(phase, "resident", dirty)
+            acknowledgement("held")
         print("PASS", phase, "held native VPID", target, "complete records", len(pages), flush=True)
     assert acknowledgement("populate")["state"] == "populated"
     assert acknowledgement("held")["state"] == "held"
@@ -189,6 +203,12 @@ try:
         # The independently proven native state does not upgrade partial wire
         # coverage: an observer can infer nonresidency only from a complete scan.
         conclusion = "unknown" if footer["truncated"] else "observed-nonresident"
+        if integration:
+            if partial:
+                integration.partial_shared()
+            else:
+                integration.check(label, "not-resident")
+            acknowledgement("absent")
         (root / (label + "-conclusion.json")).write_text(json.dumps({"target": target, "state": conclusion}))
         print("PASS", label, target, conclusion, "records", len(pages), flush=True)
     observer.close()
@@ -202,7 +222,15 @@ finally:
     if observer:
         observer.close()
     if child is not None and child.poll() is None:
-        child.kill()
-        child.wait()
+        try:
+            child.stdin.write(b"stop\n")
+            child.stdin.flush()
+            child.wait(timeout=10)
+        except (BrokenPipeError, subprocess.TimeoutExpired):
+            child.kill()
+            child.wait()
     commands.close()
     native_log.close()
+
+    if integration:
+        integration.close(root)

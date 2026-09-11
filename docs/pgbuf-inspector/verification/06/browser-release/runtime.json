@@ -1,0 +1,52 @@
+{
+  "producer_source": "/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract",
+  "producer_build": "/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/build_preset_release_gcc",
+  "producer_install": "/home/vimkim/.cub/install/CBRD-27398-pgbuf-inspector-contract/release_gcc",
+  "consumer_binary": "/home/vimkim/temp/volmap-producer06-5dacafb/target/x86_64-unknown-linux-musl/release/volmap",
+  "format_profile": "feat-oos",
+  "listen_port": 54709,
+  "output_directory": "/tmp/producer06-evidence/browser-release",
+  "copy_listen_port": 49239,
+  "database_root": "/tmp/volmap-real-dnc8b21q",
+  "socket": "/tmp/volmap-real-dnc8b21q/pgbuf-inspector/51946159fc4b3897e5d47cc7cad80ee8.sock",
+  "copy_origin": "http://127.0.0.1:49239",
+  "producer_commit": "f8c068f771ccd141a3c2f08541fe75c84e41ce53",
+  "binary_sha256": {
+    "/home/vimkim/temp/volmap-producer06-5dacafb/target/x86_64-unknown-linux-musl/release/volmap": "5a9b2b6f432783f94346c8673a5ca3bc10e83c9744c6cce2bcb0991063df9649",
+    "/home/vimkim/.cub/install/CBRD-27398-pgbuf-inspector-contract/release_gcc/bin/cub_server": "3e65212cdd338f29a84aa9de6d5e1a53d158ad1ba9a8eb2336d074a9d0cc6cec",
+    "/home/vimkim/.cub/install/CBRD-27398-pgbuf-inspector-contract/release_gcc/lib/libcubrid.so": "0aeaeee76c0d977f85eb8d8adf014bb9f9a4a9ffb6714b08cbd4cde789ba27c0"
+  },
+  "producer_worktree_status": " m cubrid-cci\n M unit_tests/pgbuf_inspector/controlled_observation.py\n M unit_tests/pgbuf_inspector/pgbuf_inspector_fixture.cpp\n?? demodb_loaddb.log\n?? unit_tests/pgbuf_inspector/__pycache__/\n?? unit_tests/pgbuf_inspector/volmap_observation.py\n",
+  "consumer_commit": "5dacafbb248600fd6a27b6aae8b5a1655cfa12c9",
+  "consumer_worktree_status": " M .scratch/pgbuf-overlay-implementation/verification/05-sector-chromium.png\n M .scratch/pgbuf-overlay-implementation/verification/05-sector-firefox.png\n M .scratch/pgbuf-overlay-implementation/verification/05-volume-chromium.png\n M .scratch/pgbuf-overlay-implementation/verification/05-volume-firefox.png\n M .scratch/pgbuf-overlay-implementation/verification/lifecycle-expired-chromium.png\n M .scratch/pgbuf-overlay-implementation/verification/lifecycle-expired-firefox.png\n M .scratch/pgbuf-overlay-implementation/verification/selected-observation-chromium.png\n M .scratch/pgbuf-overlay-implementation/verification/selected-observation-firefox.png\n M .scratch/pgbuf-overlay-implementation/verification/visible-sector-chromium.png\n M .scratch/pgbuf-overlay-implementation/verification/visible-sector-firefox.png\n M .scratch/pgbuf-overlay-implementation/verification/visible-volume-chromium.png\n M .scratch/pgbuf-overlay-implementation/verification/visible-volume-firefox.png\n",
+  "producer_build_type": [
+    "CMAKE_BUILD_TYPE:STRING=RelWithDebInfo"
+  ],
+  "corpus": {
+    "contract_version": "1.0",
+    "corpus_revision": 2,
+    "corpus_sha256": "11dbecc72e4b9dd78e22080f138c801c189c7e047c0db23af8233f44a804d5ce"
+  },
+  "corpus_identical_files": 109,
+  "corpus_sha256": "11dbecc72e4b9dd78e22080f138c801c189c7e047c0db23af8233f44a804d5ce",
+  "copied_identities": [
+    {
+      "volid": 0,
+      "original_inode": 136666598,
+      "copied_inode": 136666595,
+      "device": 64768
+    },
+    {
+      "volid": 1,
+      "original_inode": 136666599,
+      "copied_inode": 136666600,
+      "device": 64768
+    }
+  ],
+  "omitted_parameter_sql_startup": "passed-with-no-inspector-directory",
+  "harness_sha256": {
+    "web/../tools/serve-real-producer.py": "d81afd03632b199cdc30e4259002112622af5b8af058c870a5f384ce94e6ea15",
+    "web/e2e/real-producer.spec.ts": "23e9a59c4b44cd598db44430f1fa440c3bbfa4703af5515bd679a1f4417e022f",
+    "web/playwright.producer.config.ts": "446f4797555520dffe741d4c0a8ae0b8e97ba6c587ecb47932aaa4404e4bf5ca"
+  }
+}

@@ -234,21 +234,32 @@ namespace
 // synchronization. It is neither installed nor exposed as a production command.
 int main (int argc, char **argv)
 {
-  if (argc != 2 || !boot (argv[1]))
+  const bool permanent = argc == 3 && std::strcmp (argv[2], "--permanent") == 0;
+  if ((argc != 2 && !permanent) || !boot (argv[1]))
     {
       std::fprintf (stderr, "fixture boot failed: %d\n", er_errid ());
       return 1;
     }
   VFID file;
   VFID_SET_NULL (&file);
+  VFID permanent_file;
+  VFID_SET_NULL (&permanent_file);
   VPID target;
   VPID_SET_NULL (&target);
   PAGE_PTR held = nullptr;
   PAGE_TYPE kind = PAGE_QRESULT;
   int result = 1;
   std::vector<VPID> workload;
+  // A private permanent allocation lets the actual consumer address the target
+  // in its inspected volume set. No SQL/index owner can refix this page.
+  bool target_file_ready = !permanent
+			   || file_create_with_npages (fixture_thread, FILE_BTREE_OVERFLOW_KEY, 1,
+			       nullptr, &permanent_file) == NO_ERROR;
+  PAGE_TYPE target_kind = permanent ? PAGE_OVERFLOW : PAGE_QRESULT;
   if (file_create_temp (fixture_thread, 1, &file) != NO_ERROR
-      || file_alloc (fixture_thread, &file, file_init_temp_page_type, &kind, &target, &held) != NO_ERROR
+      || !target_file_ready
+      || file_alloc (fixture_thread, permanent ? &permanent_file : &file,
+		     permanent ? file_init_page_type : file_init_temp_page_type, &target_kind, &target, &held) != NO_ERROR
       || !held || !pgbuf_flush_with_wal (fixture_thread, held) || !owns_write_fix (held, target))
     {
       std::fprintf (stderr, "fixture allocation/clean flush failed: %d\n", er_errid ());
@@ -357,6 +368,8 @@ int main (int argc, char **argv)
   int transaction = LOG_FIND_THREAD_TRAN_INDEX (fixture_thread);
   if (transaction > LOG_SYSTEM_TRAN_INDEX)
     {
+      // Abort also undoes the private permanent allocation, through the normal
+      // recovery system operation required by permanent file destruction.
       log_abort (fixture_thread, transaction);
       logtb_release_tran_index (fixture_thread, transaction);
     }

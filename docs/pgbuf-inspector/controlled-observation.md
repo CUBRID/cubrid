@@ -104,3 +104,10 @@ then independently runs `server_attachment.py --scan` against an unmodified
 Its README documents the standard CTP configuration and required matching-helper
 environment. Ticket 05 requires both Debug and Release evidence, plus that
 separate unmodified Release server run, before it can be completed.
+
+## Actual consumer integration
+
+The opt-in [producer 06 driver](volmap-integration.md) adds a private permanent
+VPID and actual Volmap HTTP adoption, including complete/partial omission and
+shared demand. The default temporary-page mode and companion shell interface
+remain available.
