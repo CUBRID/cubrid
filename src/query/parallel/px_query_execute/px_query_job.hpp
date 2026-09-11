@@ -87,6 +87,14 @@ namespace parallel_query_execute
 
       std::mutex m_mutex;
       std::vector<stat> m_stats;
+      /* Stored-procedure (regu call) evaluation counters the job workers accumulated, guarded by
+       * m_mutex. The root executor folds them into the leader's own perfmon, which is what feeds
+       * xasl->func_stats and the trace's FUNC line; a worker's copy is otherwise discarded with
+       * its px_stats array. One aggregate, not per job, like the FUNC line itself. */
+      UINT64 m_sp_calls = 0;
+      UINT64 m_sp_time = 0;
+      UINT64 m_sp_fetches = 0;
+      UINT64 m_sp_ioreads = 0;
   };
   class job
   {
