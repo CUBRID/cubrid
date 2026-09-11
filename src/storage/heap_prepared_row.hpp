@@ -57,7 +57,8 @@ class heap_prepared_row
 enum class heap_prepared_row_allocation
 {
   owner = 1,
-  record = 2
+  record = 2,
+  requests = 3
 };
 void heap_prepared_row_test_fail_allocation_once (heap_prepared_row_allocation boundary);
 #endif
