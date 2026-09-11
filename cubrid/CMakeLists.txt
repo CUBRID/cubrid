@@ -525,6 +525,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/heap_oos.cpp
+  ${STORAGE_DIR}/internal_lob_file.cpp
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/oos_file.cpp
   ${STORAGE_DIR}/oos_util.cpp
