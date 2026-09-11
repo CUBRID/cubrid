@@ -661,8 +661,12 @@ jobs:
   build_status:
     name: build status
     needs: [gate, build]
-    # always(), not success(): a red build is what the required check exists to show.
-    if: ${{ always() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.pr != '' }}
+    # Not success(), because a red build is what the required check exists to show.
+    # !cancelled() rather than always(), the way plan and collect read it: a run this
+    # run's group superseded has nothing to say about this build, and the run that
+    # replaced it posts its own pending and its own verdict. Under always() the dead
+    # run's failure can land after that verdict and leave a passing build red.
+    if: ${{ !cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.pr != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -698,10 +702,9 @@ jobs:
           missing=0
           post() { # context, mode, conclusion
             case "$3" in
-              success)   state=success; desc="$2 build passed" ;;
-              cancelled) state=failure; desc="run was superseded or cancelled" ;;
-              '')        state=failure; desc="no $2 build job in this run"; missing=1 ;;
-              *)         state=failure; desc="$2 build $3 -- see the run" ;;
+              success) state=success; desc="$2 build passed" ;;
+              '')      state=failure; desc="no $2 build job in this run"; missing=1 ;;
+              *)       state=failure; desc="$2 build $3 -- see the run" ;;
             esac
             jq -n --arg s "$state" --arg c "$1" --arg d "$desc" \
               --arg u "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
