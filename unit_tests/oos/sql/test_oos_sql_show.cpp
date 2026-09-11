@@ -849,6 +849,88 @@ TEST_F (OosSqlShow, SupportedPartitionDomainsPreserveValuesAndOwnership)
     }
 }
 
+TEST_F (OosSqlShow, LoaderQueueRetainsClearedInputsAndRollsBackBulkFailure)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, payload BIT VARYING)"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
+  OID class_oid = *db_identifier (cls);
+  HFID hfid;
+  ASSERT_EQ (heap_get_class_info (thread_p, &class_oid, &hfid, nullptr, nullptr), NO_ERROR);
+  ATTR_ID id_attr = db_attribute_id (db_get_attribute (cls, "id"));
+  ATTR_ID payload_attr = db_attribute_id (db_get_attribute (cls, "payload"));
+  const std::string payload (50000, static_cast<char> (0xab));
+  for (int attempt = 0; attempt < 2; ++attempt)
+    {
+      std::vector<heap_prepared_row> rows;
+      HEAP_CACHE_ATTRINFO attrs;
+      ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
+      for (int id = 0; id < 64; ++id)
+	{
+	  DB_VALUE value;
+	  db_make_int (&value, id);
+	  ASSERT_EQ (heap_attrinfo_set (nullptr, id_attr, &value, &attrs), NO_ERROR);
+	  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, payload.data (), payload.size () * 8);
+	  ASSERT_EQ (heap_attrinfo_set (nullptr, payload_attr, &value, &attrs), NO_ERROR);
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+	  if (id == 0)
+	    {
+	      for (auto boundary :
+		   {
+			   heap_prepared_row_allocation::owner, heap_prepared_row_allocation::record
+		   })
+		{
+		  heap_prepared_row failed;
+		  heap_prepared_row_test_fail_allocation_once (boundary);
+		  EXPECT_EQ (failed.prepare (thread_p, &attrs, nullptr, false), ER_OUT_OF_VIRTUAL_MEMORY);
+		  er_clear ();
+		}
+	    }
+#endif
+	  heap_prepared_row row;
+	  ASSERT_EQ (row.prepare (thread_p, &attrs, nullptr, false), NO_ERROR);
+	  EXPECT_GE (row.retained_bytes (), payload.size ());
+	  EXPECT_LT (row.record ()->length, 1000);
+	  rows.push_back (std::move (row));
+	  db_value_clear (&value);
+	  heap_attrinfo_clear_dbvalues (&attrs);
+	}
+      heap_attrinfo_end (thread_p, &attrs);
+      HEAP_SCANCACHE cache;
+      ASSERT_EQ (heap_scancache_start_modify (thread_p, &cache, &hfid, &class_oid, MULTI_ROW_INSERT, nullptr), NO_ERROR);
+      int force_count = 0;
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+      if (attempt == 0)
+	{
+	  heap_oos_test_fail_before_vfid_lookup_once ();
+	}
+#endif
+      int error = locator_multi_insert_force (thread_p, &hfid, &class_oid, rows, false, MULTI_ROW_INSERT,
+					      &cache, &force_count, DB_NOT_PARTITIONED_CLASS, nullptr, nullptr,
+					      UPDATE_INPLACE_NONE, true);
+      heap_scancache_end_modify (thread_p, &cache);
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+      if (attempt == 0)
+	{
+	  EXPECT_NE (error, NO_ERROR);
+	  EXPECT_TRUE (thread_p->oos_oids.empty ());
+	  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+	  int count = -1;
+	  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes", &count), NO_ERROR);
+	  EXPECT_EQ (count, 0);
+	  continue;
+	}
+#endif
+      ASSERT_EQ (error, NO_ERROR);
+      int matches = 0;
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE "
+				   "payload=CAST(REPEAT('AB',50000) AS BIT VARYING)", &matches), NO_ERROR);
+      EXPECT_EQ (matches, 64);
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+    }
+}
+
 TEST_F (OosSqlShow, MovedPreparationOutlivesAttributeCache)
 {
   ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT DEFAULT 7, "

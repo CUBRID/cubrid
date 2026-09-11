@@ -13479,6 +13479,24 @@ heap_prepared_row::record ()
          ? &m_storage->recdes : nullptr;
 }
 
+std::size_t
+heap_prepared_row::retained_bytes () const noexcept
+{
+  if (m_storage == nullptr)
+    {
+      return 0;
+    }
+  const storage &owner = *m_storage;
+  std::size_t bytes = sizeof (storage) + owner.columns.capacity () * sizeof (storage::column)
+                      + owner.plans.capacity () * sizeof (heap_oos_column_plan)
+                      + owner.requests.capacity () * sizeof (oos_insert_request) + owner.recdes.area_size;
+  for (const auto &col : owner.columns)
+    {
+      bytes += col.bytes.area_size;
+    }
+  return bytes;
+}
+
 int
 heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes,
                             bool copy_lobs)
