@@ -22572,7 +22572,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
 	    {
 	      goto err;
 	    }
-	  /* check if user is creator or DBA  */
+	  /* check if user is the owner, a member of the owning group, or a DBA */
 	  if (au_is_server_authorized_user (&values[1]))
 	    {
 	      rec_cnt++;
@@ -22592,7 +22592,11 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
       while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
       if (rec_cnt == 0)
 	{
-	  error = ER_DBLINK_SERVER_ALTER_NOT_ALLOWED;	// ER_DBLINK_CANNOT_UPDATE_SERVER
+	  /* Treat "exists but not authorized" as missing - a distinct error would tell the caller that
+	   * this name is taken in another user's schema. The duplicate-name checks read a miss as "this
+	   * name is free", which holds because pt_check_server_owners () has authorized the caller for
+	   * the owner they look up. Query name resolution is what still arrives here unauthorized. */
+	  error = ER_DBLINK_SERVER_NOT_FOUND;
 	}
     }
 
