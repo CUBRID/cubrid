@@ -221,6 +221,8 @@ static void qo_dump_planvec (QO_PLANVEC *, FILE *, int);
 static void qo_dump_info (QO_INFO *, FILE *);
 static void qo_dump_planner_info (QO_PLANNER *, QO_PARTITION *, FILE *);
 
+static void qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
+				  double *out_head_factor, double *out_tail_factor);
 static void planner_visit_node (QO_PLANNER *, QO_PARTITION *, PT_HINT_ENUM, QO_NODE *, QO_NODE *, BITSET *, BITSET *,
 				BITSET *, BITSET *, BITSET *, BITSET *, BITSET *, int);
 static double planner_nodeset_join_cost (QO_PLANNER *, BITSET *);
@@ -1464,9 +1466,9 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
   fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f card %.0f", (int) howfar, ' ', "cost:", fixed + variable, card);
 
 #if TEST_DUMP_PLAN_SCAN_COST
-  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f", (int) howfar, ' ',
-	   "cost:", fixed + variable, (plan->info)->cardinality, (plan->info)->scan_rows, (plan->info)->total_rows,
-	   (plan->info)->group_rows);
+  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f hit_prob %.5f", (int) howfar,
+	   ' ', "cost:", fixed + variable, (plan->info)->cardinality, (plan->info)->scan_rows, (plan->info)->total_rows,
+	   (plan->info)->group_rows, (plan->info)->hit_prob);
 #endif /* TEST_DUMP_PLAN_SCAN_COST */
 }
 
@@ -3460,7 +3462,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
-  double guessed_result_cardinality, limit_val, outer_card, required_card, fanout;
+  double guessed_result_cardinality, limit_val, outer_card, required_card;
 
   inner = planp->plan_un.join.inner;
 
@@ -3500,17 +3502,13 @@ qo_nljoin_cost (QO_PLAN * planp)
 
       if (outer->plan_type == QO_PLANTYPE_SCAN)
 	{
-	  /* rows this join emits per outer row (join selectivity and inner filters included). Capped at 1:
-	   * several matches per outer row never justify reading fewer than LIMIT outer rows, while fewer
-	   * matches per outer row mean more outer rows must be read. */
-	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
-	  fanout = (planp->info)->cardinality / outer_card;
-	  fanout = (fanout > 0.0) ? MIN (1.0, fanout) : 1.0;
 	  /* outer rows required to satisfy the LIMIT; the outer scan cannot read more rows than it has */
-	  required_card = MAX (limit_val / fanout, 1.0);
+	  required_card = MAX (limit_val / (outer->info)->hit_prob, 1.0);
 	  guessed_result_cardinality = MIN (required_card, (outer->info)->cardinality);
 	  /* rows this join emits (shown as card, handed to the next join level): the query stops at the
-	   * LIMIT, and when the outer is exhausted first it is what the rows read actually produce. */
+	   * LIMIT, and when the outer is exhausted first it is what the rows read actually produce
+	   * (rows read * plan_card/outer_card). */
+	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
 	  planp->limit_nljoin_guessed_card =
 	    MAX (1.0, MIN (limit_val, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
 	}
@@ -5940,6 +5938,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   info->scan_rows = cardinality;	/* after iscan_cost, sscan_cost. it'll be replaced accurately */
   info->total_rows = total_rows;
   info->group_rows = cardinality;	/* it is recalculated in qo_sort_new() */
+  info->hit_prob = 1.0;
 
   qo_init_planvec (&info->best_no_order);
 
@@ -7414,6 +7413,90 @@ qo_dump_planner_info (QO_PLANNER * planner, QO_PARTITION * partition, FILE * f)
  *   remaining_subqueries(in):
  *   num_path_inner(in):
  */
+/*
+ * qo_get_term_hit_prob () -
+ *
+ * hit_prob = min(1, ndv(tail after its filters) / ndv(head))
+ *
+ * The NDV of a side's join key is reduced by that side's own
+ * search conditions with qo_estimate_ndv (), the same estimate
+ * GROUP BY uses for the number of groups after filtering.
+ */
+static void
+qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
+		      double *out_head_factor, double *out_tail_factor)
+{
+  const BITSET *term_segs = (const BITSET *) &(term->segments);
+  BITSET_ITERATOR seg_iter;
+  int seg_idx;
+  QO_SEGMENT *head_seg = NULL, *tail_seg = NULL;
+  INT64 head_ndv = 1, tail_ndv = 1;
+  double head_ndv_eff, tail_ndv_eff;
+
+  *out_head_factor = 1.0;
+  *out_tail_factor = 1.0;
+  if (bitset_cardinality (term_segs) != 2)
+    {
+      return;
+    }
+
+  for (seg_idx = bitset_iterate (term_segs, &seg_iter); seg_idx != -1; seg_idx = bitset_next_member (&seg_iter))
+    {
+      QO_SEGMENT *seg = QO_ENV_SEG (env, seg_idx);
+      QO_NODE *node = QO_SEG_HEAD (seg);
+      int node_idx = QO_NODE_IDX (node);
+
+      if (BITSET_MEMBER (head_info->nodes, node_idx))
+	{
+	  head_seg = seg;
+	}
+      else if (BITSET_MEMBER (tail_info->nodes, node_idx))
+	{
+	  tail_seg = seg;
+	}
+    }
+  if (head_seg == NULL || tail_seg == NULL)
+    {
+      return;
+    }
+
+  if (QO_SEG_INFO (head_seg) != NULL && QO_SEG_INFO (head_seg)->ndv > 0)
+    {
+      head_ndv = QO_SEG_INFO (head_seg)->ndv;
+    }
+  else
+    {
+      return;
+    }
+
+  if (QO_SEG_INFO (tail_seg) != NULL && QO_SEG_INFO (tail_seg)->ndv > 0)
+    {
+      tail_ndv = QO_SEG_INFO (tail_seg)->ndv;
+    }
+  else
+    {
+      return;
+    }
+
+  /* Distinct join-key values that survive each side's own search conditions: the NDV shrinks the way
+   * qo_estimate_ndv () models it for GROUP BY, and stays as is when there is no filter
+   * (cardinality == total_rows). The denominator keeps the full NDV: it is the domain the outer
+   * row's value is drawn from. */
+  head_ndv_eff = qo_estimate_ndv (head_info->total_rows, head_info->cardinality, (double) head_ndv);
+  tail_ndv_eff = qo_estimate_ndv (tail_info->total_rows, tail_info->cardinality, (double) tail_ndv);
+  if (head_ndv_eff <= 0.0)
+    {
+      head_ndv_eff = (double) head_ndv;
+    }
+  if (tail_ndv_eff <= 0.0)
+    {
+      tail_ndv_eff = (double) tail_ndv;
+    }
+
+  *out_head_factor = MIN (1.0, tail_ndv_eff / (double) head_ndv);
+  *out_tail_factor = MIN (1.0, head_ndv_eff / (double) tail_ndv);
+}
+
 static void
 planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM hint, QO_NODE * head_node,
 		    QO_NODE * tail_node, BITSET * visited_nodes, BITSET * visited_rel_nodes, BITSET * visited_terms,
@@ -7948,7 +8031,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   if (new_info == NULL)
     {
 
-      double selectivity, cardinality, total_rows;
+      double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
       BITSET eqclasses;
 
       bitset_init (&eqclasses, planner->env);
@@ -7958,6 +8041,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
       cardinality = head_info->cardinality * tail_info->cardinality;
       total_rows = head_info->total_rows * tail_info->total_rows;
+      head_hit_prob = 1.0;
+      tail_hit_prob = 1.0;
       if (IS_OUTER_JOIN_TYPE (join_type))
 	{
 	  /* set lower bound of outer join result */
@@ -7994,8 +8079,14 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		   * conditional share qo_derived_term_compensate () left it with. */
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE | QO_TERM_OR_DERIVED))
 		    {
+		      double head_factor, tail_factor;
+
 		      selectivity *= QO_TERM_SELECTIVITY (term);
 		      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+
+		      qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
+		      head_hit_prob *= head_factor;
+		      tail_hit_prob *= tail_factor;
 		    }
 		}
 	    }
@@ -8020,6 +8111,21 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
       bitset_assign (&eqclasses, &(head_info->eqclasses));
       bitset_union (&eqclasses, &(tail_info->eqclasses));
+
+      head_info->hit_prob = head_hit_prob;
+      tail_info->hit_prob = tail_hit_prob;
+      if (IS_OUTER_JOIN_TYPE (join_type))
+	{
+	  /* set lower bound of outer join result */
+	  if (join_type == JOIN_RIGHT)
+	    {
+	      tail_info->hit_prob = 1.0;
+	    }
+	  else
+	    {
+	      head_info->hit_prob = 1.0;
+	    }
+	}
 
       new_info = planner->join_info[QO_INFO_INDEX (QO_PARTITION_M_OFFSET (partition), *visited_rel_nodes)] =
 	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality, total_rows);
