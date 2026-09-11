@@ -45,6 +45,10 @@
 #else
 #include "tcp.h"
 #endif
+#include "error_manager.h"
+#if !defined (SERVER_MODE)
+#include "db.h"
+#endif /* !SERVER_MODE */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -406,6 +410,50 @@ utility_check_class_name (const char *class_name)
 
   return NO_ERROR;
 }
+
+#if !defined (SERVER_MODE)
+/*
+ * utility_check_class_is_vclass() - Check that a class given to a utility is not a view.
+ *   return: ER_FAILED if the class exists and is a view (reported and logged here, like
+ *           utility_check_class_name ()); NO_ERROR otherwise. An unknown class is not an error here - it is left
+ *           to the caller so that its existing unknown-class report is unchanged.
+ *   class_name(in): class name given to the utility
+ *
+ * Note: a view is a class without a heap, so a utility that operates on a class's heap (e.g. diagdb heap dump)
+ *       must reject it up front, the same way it rejects an unknown class.
+ */
+int
+utility_check_class_is_vclass (const char *class_name)
+{
+  DB_OBJECT *class_mop;
+  int is_vclass;
+
+  class_mop = db_find_class (class_name);
+  if (class_mop == NULL)
+    {
+      er_clear ();
+      return NO_ERROR;
+    }
+
+  is_vclass = db_is_vclass (class_mop);
+  if (is_vclass < 0)
+    {
+      er_clear ();
+      return NO_ERROR;
+    }
+
+  if (is_vclass > 0)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_CLASS_IS_VCLASS),
+			     class_name);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASS_IS_VCLASS, class_name);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+#endif /* !SERVER_MODE */
 
 /*
  * fopen_ex - open a file for variable architecture
