@@ -192,6 +192,8 @@ extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
 					DB_VALUE * key, OID * class_oid, OID * oid, bool is_all_class_srch);
 extern int xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size);
+extern int xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, INT64 * keys_compacted,
+				    INT64 * pages_freed);
 extern BTREE_SEARCH xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid, int pruning_type, BTID * btids,
 					       DB_VALUE * values, int count, SCAN_OPERATION_TYPE op_type, OID ** oids,
 					       int *oids_count);

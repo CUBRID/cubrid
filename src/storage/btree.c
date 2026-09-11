@@ -1444,6 +1444,16 @@ static int btree_ovf_dir_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid
 					BTREE_INSERT_HELPER * insert_helper, BTREE_OBJECT_INFO * object_info,
 					const VPID * first_ovf_vpid);
 static DISK_ISVALID btree_ovf_dir_check (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid);
+static int btree_ovf_dir_set_separator (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * dir_head_vpid,
+					const VPID * data_vpid, const OID * new_sep);
+static int btree_ovf_scan_locate_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, VPID * resume_vpid,
+					 int *resume_offset);
+static int btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR left_page,
+				   PAGE_PTR * right_page, int num_move, const VPID * dir_head_vpid);
+static int btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid,
+				    int fill_factor, int *pages_freed, bool * work_done);
+static int btree_compact_fix_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+				   PAGE_PTR * leaf_page, INT16 * slot);
 
 static int btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR leaf_pg,
 				       LEAF_REC * leafrec_pnt, BTREE_DELETE_HELPER * delete_helper,
@@ -12346,7 +12356,9 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VP
  * Invariants:
  * - A data page owns the OID range [its separator, next separator); the first page also catches anything below its
  *   separator. Separators are fixed at page creation: inserts are routed by separator and deletions only remove
- *   objects, so a separator never becomes invalid.
+ *   objects, so a separator never becomes invalid. The one exception is ALTER INDEX ... COMPACT (CBRD-27401), which
+ *   raises a separator when it moves a page's lowest objects to the left neighbor -- under the leaf write latch, and
+ *   only within (max OID of the left neighbor, min OID of the page], so the directory stays sorted.
  * - The directory exists if and only if the chain has grown to two or more data pages. Every directory-format data page header
  *   stores the (immutable) directory head VPID, stamped at page creation.
  * - Directory entries are sorted by separator and their order matches the chain (next_vpid) order.
@@ -14152,6 +14164,974 @@ btree_ovf_dir_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VA
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+    }
+  return error_code;
+}
+
+/*
+ * CBRD-27401: online compaction of directory (OID-ordered) overflow chains -- ALTER INDEX ... COMPACT.
+ *
+ * Splitting a full overflow data page in half (btree_ovf_dir_grow_chain) leaves both halves 50% full, so a chain that
+ * received many scattered (reused) OIDs can end up with a fill ratio anywhere between 50% and 100%. Compaction walks
+ * the chain left to right and fills each data page up to the requested fill factor from its right neighbor: the
+ * neighbor's lowest objects are appended to the page's record (both are OID-ordered and left < right, so the result
+ * stays ordered). When all of the neighbor's objects fit it is merged away -- unlinked from the chain, its directory
+ * entry removed and the page deallocated; separators are lower bounds, so dropping the entry silently extends the
+ * left page's range. When only a prefix fits, the neighbor keeps the rest and its separator is raised to its new
+ * first OID, which keeps the directory sorted and every object routable. The directory is never rebuilt.
+ *
+ * Every merge is one system operation performed under the key's leaf write latch (the same serialization rule as
+ * insert/delete/vacuum) and logged with the generic RVBT_RECORD_MODIFY_UNDOREDO record modifications, so no new
+ * recovery handlers are needed and a crash in the middle leaves either the merged or the un-merged state. Only the
+ * physical layout changes; no key or object is added or removed, so the system operations are committed
+ * independently of the outcome of the invoking transaction.
+ */
+
+/*
+ * btree_ovf_dir_set_separator () - Raise the separator of a data page's directory entry (compaction moved the page's
+ *				    lowest objects to its left neighbor). The new separator must stay within
+ *				    (max OID of the left neighbor, min OID of the page], which keeps the directory sorted
+ *				    and every object routable.
+ *
+ * return	      : Error code.
+ * thread_p (in)      : Thread entry.
+ * btid_int (in)      : B-tree info.
+ * dir_head_vpid (in) : Directory head page VPID.
+ * data_vpid (in)     : Data page whose entry is updated.
+ * new_sep (in)	      : New separator OID.
+ */
+static int
+btree_ovf_dir_set_separator (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * dir_head_vpid,
+			     const VPID * data_vpid, const OID * new_sep)
+{
+  PAGE_PTR dir_page = NULL;
+  RECDES dir_record;
+  char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  BTREE_OVF_DIR_ENTRY *entries;
+  const int entry_size = (int) sizeof (BTREE_OVF_DIR_ENTRY);
+  int num_entries, pos, offset;
+  VPID cur_vpid, next_dir_vpid;
+  LOG_DATA_ADDR addr;
+  char rv_undo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
+  char *rv_undo_data = PTR_ALIGN (rv_undo_data_buffer, BTREE_MAX_ALIGN);
+  char *rv_undo_data_ptr = rv_undo_data;
+  char rv_redo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
+  char *rv_redo_data = PTR_ALIGN (rv_redo_data_buffer, BTREE_MAX_ALIGN);
+  char *rv_redo_data_ptr = rv_redo_data;
+  int rv_undo_data_length, rv_redo_data_length;
+  int error_code = NO_ERROR;
+
+  assert (log_check_system_op_is_started (thread_p));
+
+  VPID_COPY (&cur_vpid, dir_head_vpid);
+  while (true)
+    {
+      dir_page = pgbuf_fix (thread_p, &cur_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (dir_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      dir_record.area_size = DB_PAGESIZE;
+      dir_record.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
+      if (spage_get_record (thread_p, dir_page, 1, &dir_record, COPY) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  return ER_FAILED;
+	}
+      entries = (BTREE_OVF_DIR_ENTRY *) dir_record.data;
+      num_entries = (int) (dir_record.length / entry_size);
+      for (pos = 0; pos < num_entries; pos++)
+	{
+	  if (VPID_EQ (&entries[pos].vpid, data_vpid))
+	    {
+	      break;
+	    }
+	}
+      if (pos < num_entries)
+	{
+	  break;
+	}
+      error_code = btree_get_next_overflow_vpid (thread_p, dir_page, &next_dir_vpid);
+      pgbuf_unfix_and_init (thread_p, dir_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      if (VPID_ISNULL (&next_dir_vpid))
+	{
+	  /* Entry not found; broken directory. */
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      VPID_COPY (&cur_vpid, &next_dir_vpid);
+    }
+
+  /* The first data page (entry 0 of the head directory page) is the catch-all: it is only ever a left neighbor, so
+   * its separator is never raised. */
+  assert (pos > 0 || !VPID_EQ (&cur_vpid, dir_head_vpid));
+  /* A separator only ever moves up, and stays below the next one, so the directory stays sorted and every object
+   * stays routable. The catch-all's stored separator is not a real lower bound (btree_ovf_dir_locate () anchors it
+   * at -infinity) and may legally be greater than the separators that follow it, so it is not compared here. */
+  assert (!OID_GT (&entries[pos].sep_oid, new_sep));
+  assert (pos == 0 || (pos == 1 && VPID_EQ (&cur_vpid, dir_head_vpid)) || !OID_GT (&entries[pos - 1].sep_oid, new_sep));
+  assert (pos == num_entries - 1 || !OID_GT (new_sep, &entries[pos + 1].sep_oid));
+
+  offset = pos * entry_size;
+  rv_undo_data_ptr =
+    log_rv_pack_undo_record_changes (rv_undo_data_ptr, offset, OR_OID_SIZE, OR_OID_SIZE, dir_record.data + offset);
+  COPY_OID (&entries[pos].sep_oid, new_sep);
+  rv_redo_data_ptr =
+    log_rv_pack_redo_record_changes (rv_redo_data_ptr, offset, OR_OID_SIZE, OR_OID_SIZE, dir_record.data + offset);
+
+  if (spage_update (thread_p, dir_page, 1, &dir_record) != SP_SUCCESS)
+    {
+      assert_release (false);
+      pgbuf_unfix_and_init (thread_p, dir_page);
+      return ER_FAILED;
+    }
+  addr.offset = 1;
+  addr.pgptr = dir_page;
+  addr.vfid = &btid_int->sys_btid->vfid;
+  BTREE_RV_SET_OVERFLOW_NODE (&addr);
+  LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
+  BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
+  BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
+  log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, rv_undo_data_length, rv_redo_data_length,
+			    rv_undo_data, rv_redo_data);
+  pgbuf_set_dirty (thread_p, dir_page, DONT_FREE);
+  pgbuf_unfix_and_init (thread_p, dir_page);
+  return NO_ERROR;
+}
+
+/*
+ * btree_ovf_compact_pull () - Move the first num_move objects of the right data page to the end of the left data page
+ *			       (both OID-ordered, left < right, so the result stays ordered). Moving all of them merges
+ *			       the pages: right is unlinked, its directory entry dropped and the page deallocated.
+ *			       Moving a prefix raises right's separator to its new first OID instead. Caller checked
+ *			       that the objects fit and started a system operation.
+ *
+ * return		: Error code.
+ * thread_p (in)	: Thread entry.
+ * btid_int (in)	: B-tree info.
+ * left_page (in)	: Left data page (write latched); receives the objects.
+ * right_page (in/out)	: Right data page (write latched); unfixed and deallocated when emptied.
+ * num_move (in)	: Number of objects to move (1..object count of right).
+ * dir_head_vpid (in)	: Directory head page VPID of the chain.
+ */
+static int
+btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR left_page, PAGE_PTR * right_page,
+			int num_move, const VPID * dir_head_vpid)
+{
+  RECDES left_record, right_record;
+  char left_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  char right_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
+  int move_size = num_move * obj_size;
+  int left_old_length;
+  VPID right_vpid, right_next_vpid;
+  OID new_sep;
+  LOG_DATA_ADDR addr;
+  int error_code = NO_ERROR;
+
+  assert (left_page != NULL && right_page != NULL && *right_page != NULL);
+  assert (dir_head_vpid != NULL && !VPID_ISNULL (dir_head_vpid));
+  assert (log_check_system_op_is_started (thread_p));
+
+  left_record.area_size = DB_PAGESIZE;
+  left_record.data = PTR_ALIGN (left_rec_buf, BTREE_MAX_ALIGN);
+  if (spage_get_record (thread_p, left_page, 1, &left_record, COPY) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  right_record.area_size = DB_PAGESIZE;
+  right_record.data = PTR_ALIGN (right_rec_buf, BTREE_MAX_ALIGN);
+  if (spage_get_record (thread_p, *right_page, 1, &right_record, COPY) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  assert (num_move >= 1 && move_size <= right_record.length);
+  pgbuf_get_vpid (*right_page, &right_vpid);
+
+  /* 1. Grow left's record, appending in place in the copy just read: the old image stays as its prefix and serves
+   *    as the undo image, so no third page-sized buffer is needed. Partial record changes are capped at 255 bytes,
+   *    so whole record images are logged. */
+  left_old_length = left_record.length;
+  assert (left_old_length + move_size <= (int) BTREE_MAX_OVERFLOW_RECORD_SIZE (btid_int));
+  memcpy (left_record.data + left_old_length, right_record.data, move_size);
+  left_record.length = left_old_length + move_size;
+  left_record.type = REC_HOME;
+#if !defined (NDEBUG)
+  (void) btree_check_valid_record (thread_p, btid_int, &left_record, BTREE_OVERFLOW_NODE, NULL);
+#endif /* !NDEBUG */
+  if (spage_update (thread_p, left_page, 1, &left_record) != SP_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  addr.offset = 1;
+  addr.pgptr = left_page;
+  addr.vfid = &btid_int->sys_btid->vfid;
+  BTREE_RV_SET_OVERFLOW_NODE (&addr);
+  LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_ALL);
+  log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, left_old_length, left_record.length,
+			    left_record.data, left_record.data);
+  pgbuf_set_dirty (thread_p, left_page, DONT_FREE);
+
+  if (move_size < right_record.length)
+    {
+      /* 2a. Partial move: drop the prefix from right and raise its separator to its new first object. The remainder
+       *     is a suffix of the copy just read, so it is written and logged straight from there. */
+      RECDES remainder;
+
+      remainder.type = REC_HOME;
+      remainder.data = right_record.data + move_size;
+      remainder.length = right_record.length - move_size;
+      remainder.area_size = remainder.length;
+      BTREE_GET_OID (remainder.data, &new_sep);
+#if !defined (NDEBUG)
+      (void) btree_check_valid_record (thread_p, btid_int, &remainder, BTREE_OVERFLOW_NODE, NULL);
+#endif /* !NDEBUG */
+      if (spage_update (thread_p, *right_page, 1, &remainder) != SP_SUCCESS)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      addr.offset = 1;
+      addr.pgptr = *right_page;
+      addr.vfid = &btid_int->sys_btid->vfid;
+      BTREE_RV_SET_OVERFLOW_NODE (&addr);
+      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_ALL);
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, right_record.length, remainder.length,
+				right_record.data, remainder.data);
+      pgbuf_set_dirty (thread_p, *right_page, DONT_FREE);
+
+      error_code = btree_ovf_dir_set_separator (thread_p, btid_int, dir_head_vpid, &right_vpid, &new_sep);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      return NO_ERROR;
+    }
+
+  /* 2b. Full merge: unlink right (left -> right's successor, directory pointer kept stamped). */
+  error_code = btree_get_next_overflow_vpid (thread_p, *right_page, &right_next_vpid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  error_code = btree_ovf_dir_write_header (thread_p, btid_int, left_page, &right_next_vpid, dir_head_vpid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* 3. Deallocate right. Unfix before deallocating, like the delete path does. */
+  pgbuf_unfix_and_init (thread_p, *right_page);
+  error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+  /* 4. Drop right's directory entry; left's range extends over it. */
+  error_code = btree_ovf_dir_remove_entry (thread_p, btid_int, dir_head_vpid, &right_vpid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * btree_ovf_compact_chain () - Compact one key's directory overflow chain: walk the data pages left to right and fill
+ *				each page up to the fill factor from its right neighbor (merging the neighbor away when
+ *				all of its objects fit). Called under the key's leaf write latch. Legacy chains and
+ *				single-page chains are left untouched.
+ *
+ * return		: Error code.
+ * thread_p (in)	: Thread entry.
+ * btid_int (in)	: B-tree info.
+ * first_ovf_vpid (in)	: VPID of the chain's first data page.
+ * fill_factor (in)	: Target fill ratio in percent of the data page capacity.
+ * pages_freed (out)	: Number of data pages merged away (deallocated).
+ * work_done (out)	: Set to true if the chain was modified at all. A chain can be redistributed without any page
+ *			  being freed, and the caller must still yield the leaf latch in that case.
+ */
+static int
+btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid, int fill_factor,
+			 int *pages_freed, bool * work_done)
+{
+  PAGE_PTR cur_page = NULL;
+  PAGE_PTR next_page = NULL;
+  BTREE_OVF_DIR_HEADER *dir_hdr;
+  VPID dir_head_vpid, next_vpid;
+  RECDES next_record;
+  int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
+  int target_size = (int) (((INT64) BTREE_MAX_OVERFLOW_RECORD_SIZE (btid_int) * fill_factor) / 100);
+  int cur_len, next_len, next_count, room, num_move;
+  OID boundary_oid, prev_oid;
+  bool dummy_continue_checking;
+  int error_code = NO_ERROR;
+
+  assert (first_ovf_vpid != NULL && !VPID_ISNULL (first_ovf_vpid));
+  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
+  assert (pages_freed != NULL && work_done != NULL);
+
+  *pages_freed = 0;
+  *work_done = false;
+
+  cur_page = pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (cur_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, cur_page, PAGE_BTREE);
+#endif /* !NDEBUG */
+
+  dir_hdr = btree_ovf_dir_get_header (thread_p, cur_page);
+  if (dir_hdr == NULL || VPID_ISNULL (&dir_hdr->dir_vpid))
+    {
+      /* Legacy chain (nothing we know how to compact) or a single-page chain. */
+      pgbuf_unfix_and_init (thread_p, cur_page);
+      return NO_ERROR;
+    }
+  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
+
+  while (true)
+    {
+      if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
+	{
+	  /* Every merge is its own system operation, so stopping here leaves a consistent chain. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error_code = ER_INTERRUPTED;
+	  goto exit;
+	}
+
+      error_code = btree_get_next_overflow_vpid (thread_p, cur_page, &next_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      if (VPID_ISNULL (&next_vpid))
+	{
+	  break;
+	}
+
+      cur_len = spage_get_record_length (thread_p, cur_page, 1);
+      if (cur_len < 0)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+      room = MIN (target_size - cur_len, spage_get_free_space_without_saving (thread_p, cur_page));
+      if (room < obj_size)
+	{
+	  /* Current page is already at (or above) the target; nothing can be pulled into it. */
+	  next_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (next_page == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+	  pgbuf_unfix_and_init (thread_p, cur_page);
+	  cur_page = next_page;
+	  next_page = NULL;
+	  continue;
+	}
+
+      next_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (next_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+#if !defined (NDEBUG)
+      (void) pgbuf_check_page_ptype (thread_p, next_page, PAGE_BTREE);
+#endif /* !NDEBUG */
+      if (spage_get_record (thread_p, next_page, 1, &next_record, PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+      next_len = next_record.length;
+      next_count = next_len / obj_size;
+      num_move = MIN (next_count, room / obj_size);
+
+      if (num_move < next_count)
+	{
+	  /* Partial move: the objects left behind get the new separator, which has to be strictly greater than the
+	   * last object moved so the separator stays a lower bound. Back off to a boundary between distinct OIDs
+	   * (a run of one reusable OID's un-vacuumed duplicates is never split). */
+	  while (num_move > 0)
+	    {
+	      BTREE_GET_OID (next_record.data + (num_move - 1) * obj_size, &prev_oid);
+	      BTREE_GET_OID (next_record.data + num_move * obj_size, &boundary_oid);
+	      if (OID_LT (&prev_oid, &boundary_oid))
+		{
+		  break;
+		}
+	      num_move--;
+	    }
+	}
+      if (num_move <= 0)
+	{
+	  pgbuf_unfix_and_init (thread_p, cur_page);
+	  cur_page = next_page;
+	  next_page = NULL;
+	  continue;
+	}
+
+      log_sysop_start (thread_p);
+      error_code = btree_ovf_compact_pull (thread_p, btid_int, cur_page, &next_page, num_move, &dir_head_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
+	  goto exit;
+	}
+      log_sysop_commit (thread_p);
+      *work_done = true;
+
+      if (next_page == NULL)
+	{
+	  /* Merged away; cur_page now links to next's successor. Try to fill cur_page further. */
+	  (*pages_freed)++;
+	}
+      else
+	{
+	  /* cur_page is filled to the target; continue with the (shrunk) next page. */
+	  pgbuf_unfix_and_init (thread_p, cur_page);
+	  cur_page = next_page;
+	  next_page = NULL;
+	}
+    }
+
+exit:
+  if (next_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, next_page);
+    }
+  if (cur_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, cur_page);
+    }
+  return error_code;
+}
+
+/*
+ * btree_ovf_scan_locate_resume () - Find where a range scan interrupted in the middle of a key must resume in the
+ *				     key's overflow chain. The chain of a non-unique index is globally OID-ordered
+ *				     (CBRD-24094), so the resume point is the last OID processed and not the page that
+ *				     held it: pages can be split, merged or freed while the scan holds no latch (an
+ *				     insert splitting a page, or ALTER INDEX ... COMPACT merging one away), which would
+ *				     silently repeat or skip objects if the position were a page. Routes by the OID
+ *				     directory and then walks forward over the pages that are entirely processed.
+ *
+ * return		 : Error code.
+ * thread_p (in)	 : Thread entry.
+ * bts (in)		 : B-tree scan info; O_last_oid is the last OID processed (NULL OID for "nothing yet").
+ * resume_vpid (out)	 : Data page to resume from, NULL VPID if the whole chain is already processed.
+ * resume_offset (out)	 : Offset in that page's record where the first unprocessed object starts.
+ */
+static int
+btree_ovf_scan_locate_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, VPID * resume_vpid, int *resume_offset)
+{
+  BTREE_OVF_DIR_HEADER *dir_hdr;
+  PAGE_PTR page = NULL;
+  PAGE_PTR dir_page = NULL;
+  RECDES record, dir_record;
+  VPID cur_vpid, next_vpid, dir_head_vpid, target_vpid;
+  const OID *anchor = &bts->O_last_oid;
+  int obj_size = BTREE_OBJECT_FIXED_SIZE (&bts->btid_int);
+  int num_objects, min, max, mid, idx;
+  OID cur_oid;
+  int error_code = NO_ERROR;
+
+  assert (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk));
+  assert (resume_vpid != NULL && resume_offset != NULL);
+
+  VPID_SET_NULL (resume_vpid);
+  *resume_offset = 0;
+
+  if (VPID_ISNULL (&bts->leaf_rec_info.ovfl))
+    {
+      /* The chain is gone (all its objects were vacuumed); nothing left to process. */
+      return NO_ERROR;
+    }
+  VPID_COPY (&cur_vpid, &bts->leaf_rec_info.ovfl);
+
+  if (OID_ISNULL (anchor))
+    {
+      /* Interrupted before any object of the chain was processed: resume at its first page. */
+      VPID_COPY (resume_vpid, &cur_vpid);
+      return NO_ERROR;
+    }
+
+  page = pgbuf_fix (thread_p, &cur_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  dir_hdr = btree_ovf_dir_get_header (thread_p, page);
+  if (dir_hdr == NULL)
+    {
+      /* Non-unique chains are always directory-format. */
+      assert_release (false);
+      pgbuf_unfix_and_init (thread_p, page);
+      return ER_FAILED;
+    }
+  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
+
+  if (!VPID_ISNULL (&dir_head_vpid))
+    {
+      /* Jump straight to the page owning the anchor's range. */
+      error_code =
+	btree_ovf_dir_locate (thread_p, &bts->btid_int, &dir_head_vpid, anchor, PGBUF_LATCH_READ, &dir_page, &idx);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, page);
+	  return error_code;
+	}
+      if (spage_get_record (thread_p, dir_page, 1, &dir_record, PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  pgbuf_unfix_and_init (thread_p, page);
+	  return ER_FAILED;
+	}
+      VPID_COPY (&target_vpid, &((BTREE_OVF_DIR_ENTRY *) dir_record.data)[idx].vpid);
+      pgbuf_unfix_and_init (thread_p, dir_page);
+      if (!VPID_EQ (&target_vpid, &cur_vpid))
+	{
+	  pgbuf_unfix_and_init (thread_p, page);
+	  VPID_COPY (&cur_vpid, &target_vpid);
+	  page = pgbuf_fix (thread_p, &cur_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
+	}
+    }
+
+  /* Walk forward over the pages whose objects are all processed. Routing lands on the page owning the anchor, but a
+   * merge may have moved the anchor's neighbourhood into an earlier page, so the first unprocessed object can be
+   * anywhere from this page on. */
+  while (true)
+    {
+      if (spage_get_record (thread_p, page, 1, &record, PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, page);
+	  return ER_FAILED;
+	}
+      num_objects = record.length / obj_size;
+      assert (num_objects > 0);
+
+      BTREE_GET_OID (record.data + (num_objects - 1) * obj_size, &cur_oid);
+      if (OID_GT (&cur_oid, anchor))
+	{
+	  /* Leftmost object greater than the anchor. */
+	  idx = num_objects - 1;
+	  min = 0;
+	  max = num_objects - 2;
+	  while (min <= max)
+	    {
+	      mid = (min + max) / 2;
+	      BTREE_GET_OID (record.data + mid * obj_size, &cur_oid);
+	      if (OID_GT (&cur_oid, anchor))
+		{
+		  idx = mid;
+		  max = mid - 1;
+		}
+	      else
+		{
+		  min = mid + 1;
+		}
+	    }
+	  VPID_COPY (resume_vpid, &cur_vpid);
+	  *resume_offset = idx * obj_size;
+	  pgbuf_unfix_and_init (thread_p, page);
+	  return NO_ERROR;
+	}
+
+      /* Every object of this page is processed; try the next one. */
+      error_code = btree_get_next_overflow_vpid (thread_p, page, &next_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, page);
+	  return error_code;
+	}
+      pgbuf_unfix_and_init (thread_p, page);
+      if (VPID_ISNULL (&next_vpid))
+	{
+	  /* Whole chain processed. */
+	  return NO_ERROR;
+	}
+      VPID_COPY (&cur_vpid, &next_vpid);
+      page = pgbuf_fix (thread_p, &cur_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+    }
+}
+
+/*
+ * btree_compact_fix_leaf () - Descend from the root and fix (write latch) the leaf page that owns key, or the leftmost
+ *			       leaf when key is NULL. Non-leaf pages are read latched and latch-coupled top-down, like
+ *			       the insert descent.
+ *
+ * return	   : Error code.
+ * thread_p (in)   : Thread entry.
+ * btid_int (in)   : B-tree info.
+ * key (in)	   : Key to locate, or NULL for the leftmost leaf.
+ * leaf_page (out) : Write latched leaf page.
+ * slot (out)	   : First slot to process: the slot after key when key is found, otherwise the slot of the first key
+ *		     greater than key (key count + 1 when there is none); 1 for the leftmost leaf.
+ */
+static int
+btree_compact_fix_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf_page,
+			INT16 * slot)
+{
+  PAGE_PTR page = NULL;
+  PAGE_PTR child_page = NULL;
+  BTREE_NODE_HEADER *header;
+  VPID vpid, child_vpid;
+  PGBUF_LATCH_MODE latch_mode = PGBUF_LATCH_READ;
+  INT16 child_slot;
+  int level;
+  BTREE_SEARCH_KEY_HELPER search_key = BTREE_SEARCH_KEY_HELPER_INITIALIZER;
+  int error_code = NO_ERROR;
+
+  assert (leaf_page != NULL && *leaf_page == NULL);
+  assert (slot != NULL);
+
+  vpid.volid = btid_int->sys_btid->vfid.volid;
+  vpid.pageid = btid_int->sys_btid->root_pageid;
+
+retry_root:
+  page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  if (page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  header = btree_get_node_header (thread_p, page);
+  if (header == NULL)
+    {
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto error;
+    }
+  level = header->node_level;
+  if ((level == 1) != (latch_mode == PGBUF_LATCH_WRITE))
+    {
+      /* The root is a leaf and needs a write latch (or stopped being one). The root is never deallocated. */
+      pgbuf_unfix_and_init (thread_p, page);
+      latch_mode = (level == 1) ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ;
+      goto retry_root;
+    }
+
+  while (level > 1)
+    {
+      if (key != NULL)
+	{
+	  error_code = btree_search_nonleaf_page (thread_p, btid_int, page, key, &child_slot, &child_vpid, NULL);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto error;
+	    }
+	}
+      else
+	{
+	  RECDES rec;
+	  NON_LEAF_REC nleaf;
+
+	  if (spage_get_record (thread_p, page, 1, &rec, PEEK) != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto error;
+	    }
+	  btree_read_fixed_portion_of_non_leaf_record (&rec, &nleaf);
+	  VPID_COPY (&child_vpid, &nleaf.pnt);
+	}
+
+      /* Children of a level 2 node are leaves and need the write latch. The parent stays fixed until the child is
+       * fixed, so the child cannot be deallocated in between. */
+      child_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, (level == 2) ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ,
+			      PGBUF_UNCONDITIONAL_LATCH);
+      if (child_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error;
+	}
+#if !defined (NDEBUG)
+      (void) pgbuf_check_page_ptype (thread_p, child_page, PAGE_BTREE);
+#endif /* !NDEBUG */
+      pgbuf_unfix_and_init (thread_p, page);
+      page = child_page;
+      child_page = NULL;
+      level--;
+    }
+  assert (btree_get_node_level (thread_p, page) == 1);
+
+  if (key == NULL)
+    {
+      *slot = 1;
+    }
+  else
+    {
+      error_code = btree_search_leaf_page (thread_p, btid_int, page, key, &search_key);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      switch (search_key.result)
+	{
+	case BTREE_KEY_FOUND:
+	  *slot = search_key.slotid + 1;
+	  break;
+	case BTREE_KEY_BETWEEN:
+	  /* Key was removed meanwhile; slotid is the position of the next greater key. */
+	  *slot = search_key.slotid;
+	  break;
+	case BTREE_KEY_BIGGER:
+	  *slot = (INT16) (btree_node_number_of_keys (thread_p, page) + 1);
+	  break;
+	case BTREE_KEY_SMALLER:
+	case BTREE_KEY_NOTFOUND:
+	default:
+	  *slot = 1;
+	  break;
+	}
+    }
+
+  *leaf_page = page;
+  return NO_ERROR;
+
+error:
+  assert_release (error_code != NO_ERROR);
+  if (child_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, child_page);
+    }
+  if (page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page);
+    }
+  return error_code;
+}
+
+/*
+ * xbtree_compact_overflow () - ALTER INDEX ... COMPACT: walk the leaf level of a non-unique index and compact every
+ *				key's overflow OID chain to the requested fill factor. Online: no table lock, no
+ *				sorting; only the leaf write latch of the key being compacted is held, and it is
+ *				released between keys that had work done so concurrent DML on the same leaf can
+ *				proceed. Unique indexes (legacy chains) are a no-op.
+ *
+ * return		: Error code.
+ * thread_p (in)	: Thread entry.
+ * btid (in)		: B-tree identifier.
+ * fill_factor (in)	: Target fill ratio in percent (BTREE_COMPACT_MIN_FILL_FACTOR..BTREE_COMPACT_MAX_FILL_FACTOR).
+ * keys_compacted (out) : Number of keys whose chain lost at least one page.
+ * pages_freed (out)	: Number of overflow data pages deallocated.
+ */
+int
+xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, INT64 * keys_compacted,
+			 INT64 * pages_freed)
+{
+  BTID_INT btid_int;
+  BTREE_ROOT_HEADER *root_header = NULL;
+  PAGE_PTR root_page = NULL;
+  PAGE_PTR leaf_page = NULL;
+  PAGE_PTR next_leaf = NULL;
+  VPID next_vpid, ovf_vpid;
+  RECDES rec;
+  LEAF_REC leaf_rec_info;
+  DB_VALUE key;
+  bool clear_key = false;
+  int offset;
+  INT16 slot;
+  int key_cnt;
+  int freed;
+  bool work_done;
+  bool dummy_continue_checking;
+  int error_code = NO_ERROR;
+
+  assert (btid != NULL && keys_compacted != NULL && pages_freed != NULL);
+
+  *keys_compacted = 0;
+  *pages_freed = 0;
+
+  if (fill_factor < BTREE_COMPACT_MIN_FILL_FACTOR || fill_factor > BTREE_COMPACT_MAX_FILL_FACTOR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, &btid_int);
+  if (root_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  pgbuf_unfix_and_init (thread_p, root_page);
+
+  if (BTREE_IS_UNIQUE (btid_int.unique_pk))
+    {
+      /* Unique indexes keep legacy (first-fit, always full) chains; nothing to compact. */
+      return NO_ERROR;
+    }
+
+  btree_init_temp_key_value (&clear_key, &key);
+
+  error_code = btree_compact_fix_leaf (thread_p, &btid_int, NULL, &leaf_page, &slot);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  while (leaf_page != NULL)
+    {
+      key_cnt = btree_node_number_of_keys (thread_p, leaf_page);
+      if (slot > key_cnt)
+	{
+	  /* Advance to the next leaf, latch-coupled left to right like the ascending range scan. */
+	  error_code = btree_get_next_page_vpid (thread_p, leaf_page, &next_vpid);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit;
+	    }
+	  if (VPID_ISNULL (&next_vpid))
+	    {
+	      pgbuf_unfix_and_init (thread_p, leaf_page);
+	      break;
+	    }
+	  next_leaf = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (next_leaf == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+#if !defined (NDEBUG)
+	  (void) pgbuf_check_page_ptype (thread_p, next_leaf, PAGE_BTREE);
+#endif /* !NDEBUG */
+	  pgbuf_unfix_and_init (thread_p, leaf_page);
+	  leaf_page = next_leaf;
+	  next_leaf = NULL;
+	  slot = 1;
+
+	  if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      error_code = ER_INTERRUPTED;
+	      goto exit;
+	    }
+	  continue;
+	}
+
+      if (spage_get_record (thread_p, leaf_page, slot, &rec, PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE)
+	  || !btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
+	{
+	  slot++;
+	  continue;
+	}
+
+      /* A key with an overflow chain. Copy the key: the leaf is released after compacting and the position is
+       * re-located by key. */
+      rec.type = REC_HOME;
+      error_code = btree_read_record (thread_p, &btid_int, leaf_page, &rec, &key, &leaf_rec_info, BTREE_LEAF_NODE,
+				      &clear_key, &offset, COPY_KEY_VALUE, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      VPID_COPY (&ovf_vpid, &leaf_rec_info.ovfl);
+      assert (!VPID_ISNULL (&ovf_vpid));
+
+      error_code = btree_ovf_compact_chain (thread_p, &btid_int, &ovf_vpid, fill_factor, &freed, &work_done);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
+      if (!work_done)
+	{
+	  /* The chain was only read: nothing was written under this leaf latch, so keep it and move on. */
+	  btree_clear_key_value (&clear_key, &key);
+	  slot++;
+	  continue;
+	}
+      *pages_freed += freed;
+      if (freed > 0)
+	{
+	  (*keys_compacted)++;
+	}
+
+      /* Let concurrent DML on this leaf in, then come back to the key after this one. */
+      pgbuf_unfix_and_init (thread_p, leaf_page);
+
+      if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error_code = ER_INTERRUPTED;
+	  goto exit;
+	}
+
+      error_code = btree_compact_fix_leaf (thread_p, &btid_int, &key, &leaf_page, &slot);
+      btree_clear_key_value (&clear_key, &key);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+
+exit:
+  btree_clear_key_value (&clear_key, &key);
+  if (next_leaf != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, next_leaf);
+    }
+  if (leaf_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, leaf_page);
     }
   return error_code;
 }
@@ -28710,6 +29690,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 				 * interrupted because too many objects were processed, it will be resumed after this
 				 * overflow page. */
   PERF_UTIME_TRACKER ovf_fix_time_track;
+  int resume_offset = 0;	/* Offset of the first unprocessed object in the first (resumed) overflow page. */
 
   /* Assert b-tree scan is valid. */
   assert (bts != NULL);
@@ -28820,20 +29801,37 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	   * overflow pages, does not affect us. The above statements are true for default buffer. In order to make it
 	   * true for small buffers, there are two limits used by scan: a soft limit and a hard limit. The hard limit
 	   * is used when key has too many objects. See comment from BTS_IS_HARD_CAPACITY_ENOUGH. */
-	  /* Resume from next page of last overflow page. */
-	  prev_overflow_page =
-	    pgbuf_fix (thread_p, &bts->O_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	  if (prev_overflow_page == NULL)
+	  if (!BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
 	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      return error_code;
+	      /* CBRD-27401: the chain is OID-ordered, so resume by OID. Point 3 above only holds for legacy chains:
+	       * a page of a directory chain that still has visible objects CAN go away while the scan holds no
+	       * latch, because ALTER INDEX ... COMPACT merges adjacent pages and frees one of them. Resuming from a
+	       * page would then fail to fix it, or silently skip the objects that moved into an already processed
+	       * page. */
+	      error_code = btree_ovf_scan_locate_resume (thread_p, bts, &overflow_vpid, &resume_offset);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
 	    }
-	  error_code = btree_get_next_overflow_vpid (thread_p, prev_overflow_page, &overflow_vpid);
-	  if (error_code != NO_ERROR)
+	  else
 	    {
-	      assert_release (false);
-	      pgbuf_unfix_and_init (thread_p, prev_overflow_page);
-	      return error_code;
+	      /* Resume from next page of last overflow page. */
+	      prev_overflow_page =
+		pgbuf_fix (thread_p, &bts->O_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      if (prev_overflow_page == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  return error_code;
+		}
+	      error_code = btree_get_next_overflow_vpid (thread_p, prev_overflow_page, &overflow_vpid);
+	      if (error_code != NO_ERROR)
+		{
+		  assert_release (false);
+		  pgbuf_unfix_and_init (thread_p, prev_overflow_page);
+		  return error_code;
+		}
 	    }
 	}
     }
@@ -28861,6 +29859,9 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  return NO_ERROR;
 	}
       /* Process overflow objects. */
+      /* CBRD-27401: the resume anchor covers the overflow chain only. Leaf record objects are not ordered against
+       * the chain, so a leaf object must never become the anchor. */
+      OID_SET_NULL (&bts->O_last_visible_oid);
       /* Start processing overflow with first one. */
       VPID_COPY (&overflow_vpid, &bts->leaf_rec_info.ovfl);
       /* Fall through. */
@@ -28932,10 +29933,21 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	      /* Index coverage uses a list file and can handle all objects for this key. */
 
 	      assert (bts->n_oids_read_last_iteration > 0);
-	      assert (!VPID_ISNULL (&last_visible_overflow));
+	      assert (!VPID_ISNULL (&last_visible_overflow) || !BTREE_IS_UNIQUE (bts->btid_int.unique_pk));
 
-	      /* Save page to resume. */
-	      VPID_COPY (&bts->O_vpid, &last_visible_overflow);
+	      /* Save page to resume. Directory (non-unique) chains resume by OID instead -- see
+	       * btree_ovf_scan_locate_resume () -- but the VPID is kept set while the key is partially processed
+	       * because BTREE_END_OF_SCAN () reads it. */
+	      VPID_COPY (&bts->O_vpid,
+			 VPID_ISNULL (&last_visible_overflow) ? &bts->leaf_rec_info.ovfl : &last_visible_overflow);
+	      /* CBRD-27401: resume strictly after the last object that this snapshot accepted. Anchoring on the last
+	       * object of the processed region would not be exact: one reusable OID can have several un-vacuumed
+	       * versions in the same chain, they are stored adjacently, and the interrupt boundary can fall inside
+	       * such a run -- resuming after the run's OID would then skip a version that is visible to this
+	       * snapshot. Since at most one version of an OID is visible and it is the anchor itself, resuming after
+	       * the anchor can neither skip nor repeat a visible object; the invisible objects re-examined in between
+	       * are simply filtered out again. */
+	      COPY_OID (&bts->O_last_oid, &bts->O_last_visible_oid);
 	      /* Mark key as partially processed to know to resume from an overflow page. */
 	      bts->is_key_partially_processed = true;
 	      /* End current iteration. */
@@ -28946,6 +29958,15 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	      return NO_ERROR;
 	    }
 	  /* We can handle all current objects. */
+	}
+
+      if (resume_offset > 0)
+	{
+	  /* Resumed page: the objects up to the anchor were processed in a previous iteration. */
+	  assert (resume_offset < ovf_record.length && resume_offset % BTREE_OBJECT_FIXED_SIZE (&bts->btid_int) == 0);
+	  ovf_record.data += resume_offset;
+	  ovf_record.length -= resume_offset;
+	  resume_offset = 0;
 	}
 
       /* Process this overflow OID's. */
@@ -29072,6 +30093,12 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
       return NO_ERROR;
     }
   /* No snapshot or snapshot was satisfied. */
+
+  /* CBRD-27401: remember the last object accepted by the snapshot. If this key's overflow chain is interrupted, it
+   * becomes the resume anchor (see btree_range_scan_select_visible_oids () and btree_ovf_scan_locate_resume ()).
+   * Objects filtered out below (class match, key limits) are consumed as well, but anchoring on the last visible
+   * object is what makes the anchor exact for reusable OIDs, so it must not be moved past them. */
+  COPY_OID (&bts->O_last_visible_oid, oid);
 
   if (BTREE_IS_UNIQUE (btid_int->unique_pk))
     {

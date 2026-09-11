@@ -289,7 +289,8 @@ struct btree_ovf_dir_header
  * kept sorted by sep_oid in a single record (slot 1) of directory pages; entry order
  * matches the chain (next_vpid) order of the data pages. A data page owns the OID
  * range [sep, next_sep); the first page also catches anything below its separator.
- * Separators are fixed at page creation; deletions never invalidate them. */
+ * Separators are fixed at page creation; deletions never invalidate them (ALTER INDEX ... COMPACT may raise one
+ * when it moves a page's lowest objects to the left neighbor, CBRD-27401). */
 typedef struct btree_ovf_dir_entry BTREE_OVF_DIR_ENTRY;
 struct btree_ovf_dir_entry
 {
