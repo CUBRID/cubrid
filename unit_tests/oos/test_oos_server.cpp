@@ -262,7 +262,7 @@ TEST (OosServerTest, OosOwnerDescriptorSupportsDiagnosticsAndProtectedIteration)
 
   VFID oos_vfid;
   VFID_SET_NULL (&oos_vfid);
-  ASSERT_TRUE (heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, true));
+  ASSERT_TRUE (heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, true, false));
   ASSERT_FALSE (VFID_ISNULL (&oos_vfid));
 
   FILE_DESCRIPTORS descriptor;
@@ -632,8 +632,10 @@ TEST (OosServerTest, ReplicaOosItemsAccumulateAndFixupConsumesInOrder)
 
   clear_oos_insert_publication_state_for_test ();
   OID mutable_class_oid = class_oid;
-  ASSERT_EQ (locator_oos_insert_force (thread_p, &mutable_class_oid, &oos_recdes1), NO_ERROR);
-  ASSERT_EQ (locator_oos_insert_force (thread_p, &mutable_class_oid, &oos_recdes2), NO_ERROR);
+  ASSERT_EQ (locator_oos_insert_force (thread_p, &mutable_class_oid, &oos_recdes1, LC_FLUSH_INSERT_OOS, NULL_ATTRID,
+				       0 /* oos_flags */), NO_ERROR);
+  ASSERT_EQ (locator_oos_insert_force (thread_p, &mutable_class_oid, &oos_recdes2, LC_FLUSH_INSERT_OOS, NULL_ATTRID,
+				       0 /* oos_flags */), NO_ERROR);
   ASSERT_EQ (thread_p->oos_oids.size (), 2U);
   const OID slave_oid1 = thread_p->oos_oids[0];
   const OID slave_oid2 = thread_p->oos_oids[1];
@@ -728,7 +730,8 @@ TEST (OosServerTest, ReplicaScalarPublicationAllocationFailureInvalidatesAccumul
   });
 
   OID mutable_class_oid = class_oid;
-  EXPECT_EQ (locator_oos_insert_force (thread_p, &mutable_class_oid, &recdes), ER_OUT_OF_VIRTUAL_MEMORY);
+  EXPECT_EQ (locator_oos_insert_force (thread_p, &mutable_class_oid, &recdes, LC_FLUSH_INSERT_OOS, NULL_ATTRID,
+				       0 /* oos_flags */), ER_OUT_OF_VIRTUAL_MEMORY);
   EXPECT_EQ (er_errid (), ER_OUT_OF_VIRTUAL_MEMORY);
   assert_oos_insert_publication_state_empty ();
   er_clear ();
@@ -1227,7 +1230,7 @@ TEST (OosServerTest, OosGetLengthWithinPage)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  int length = oos_get_length (thread_p, oid);
+  INT64 length = oos_get_length (thread_p, oid);
   ASSERT_EQ (length, rec_in.length);
 
   recdes_free_data_area (&rec_in);
@@ -1252,7 +1255,7 @@ TEST (OosServerTest, OosGetLengthAcrossPages)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  int length = oos_get_length (thread_p, oid);
+  INT64 length = oos_get_length (thread_p, oid);
   ASSERT_EQ (length, rec_in.length);
 
   recdes_free_data_area (&rec_in);
@@ -1280,7 +1283,7 @@ TEST (OosServerTest, OosGetLengthAroundMaxChunkSize)
       err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
       ASSERT_EQ (err, NO_ERROR);
 
-      int length = oos_get_length (thread_p, oid);
+      INT64 length = oos_get_length (thread_p, oid);
       ASSERT_EQ (length, rec_in.length);
 
       recdes_free_data_area (&rec_in);
@@ -1366,7 +1369,7 @@ TEST (OosServerTest, OosInlineFormatWithRealOosInsert)
   ASSERT_EQ (rc, NO_ERROR);
   ASSERT_EQ (read_length, (DB_BIGINT) rec_in.length);
 
-  int oos_length = oos_get_length (thread_p, oos_oid);
+  INT64 oos_length = oos_get_length (thread_p, oos_oid);
   ASSERT_EQ (read_length, (DB_BIGINT) oos_length);
 
   RECDES rec_out {};
@@ -1418,7 +1421,7 @@ TEST (OosServerTest, OosInlineLengthMatchesAcrossPages)
       ASSERT_EQ (rc, NO_ERROR);
       ASSERT_EQ (inline_length, (DB_BIGINT) rec_in.length) << "Failed for data_size=" << data_size;
 
-      int io_length = oos_get_length (thread_p, oos_oid);
+      INT64 io_length = oos_get_length (thread_p, oos_oid);
       ASSERT_EQ (inline_length, (DB_BIGINT) io_length) << "Failed for data_size=" << data_size;
 
       RECDES rec_out {};

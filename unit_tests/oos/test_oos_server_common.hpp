@@ -228,7 +228,7 @@ namespace test_oos_utils
   inline int oos_read_with_alloc (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
   {
     recdes = RECDES{};
-    int len = oos_get_length (thread_p, oid);
+    INT64 len = oos_get_length (thread_p, oid);
     if (len < 0)
       {
 	return er_errid ();
