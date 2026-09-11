@@ -700,6 +700,9 @@ jobs:
       tc_branch: ${{ steps.tc.outputs.tc_branch }}
       ctp_sha: ${{ steps.tc.outputs.ctp_sha }}
       ctp_branch: ${{ steps.tc.outputs.ctp_branch }}
+      rerun_want: ${{ steps.split.outputs.rerun_want }}
+      rerun_unrun: ${{ steps.split.outputs.rerun_unrun }}
+      rerun_short: ${{ steps.split.outputs.rerun_short }}
 
     steps:
       - name: Validate inputs
@@ -906,7 +909,10 @@ jobs:
             | { grep -P '/([^/]+)/cases/\1\.sh$' || :; } \
             | sed "s#^$TC_DIR/#cubrid-testcases-private-ex/#" \
             | sort > /tmp/all.list
-          # Re-run only failures. failed.list is <shard>\t<shell/...>; align the prefix.
+          # Re-run what the source run left unhandled: its failures, and the share of
+          # any shard that died whole. failed.list is <shard>\t<shell/...>; align the
+          # prefix. Published whether or not this is a re-run -- collect's guard reads them.
+          want=0; unrun=0; short=0
           if [ -n "$RERUN_FROM" ]; then
             src="$CI_ROOT/runs/$RERUN_FROM/failed.list"
             if [ ! -f "$src" ]; then
@@ -937,12 +943,45 @@ jobs:
               echo "  A re-run may only re-run the failures of the same commit. Use /run all."
               exit 1
             fi
-            cut -f2 "$src" | sed 's#^#cubrid-testcases-private-ex/#' | sort -u > /tmp/want.list
+            # failed.list is built from test-shell.xml, so a shard that died whole is
+            # absent from it: it published no XML. Re-running failed.list alone would
+            # leave that share unrun and still end green, because every guard measures
+            # a run against its own split. Carry the share over here.
+            srcdir="$CI_ROOT/runs/$RERUN_FROM"
+            : > /tmp/unrun.list
+            for f in "$srcdir"/shards/*.list; do
+              [ -f "$f" ] || continue
+              i=$(basename "$f" .list)
+              st="$srcdir/results/$i/test_status.data"
+              if [ ! -f "$st" ]; then
+                # The suite never ran there, so the whole share is unrun. The file
+                # already carries the repo prefix want.list uses.
+                cat "$f" >> /tmp/unrun.list
+                continue
+              fi
+              # It ran, but handled fewer than it was given. Nothing records which
+              # ones were left, so they can be counted and never named.
+              a=$(wc -l < "$f")
+              h=$(awk -F= '/total_executed_case_count/ {e=$2+0}
+                           /total_skip_case_count/     {k=$2+0}
+                           END {print e + k + 0}' "$st")
+              [ "$a" -gt "$h" ] && short=$((short + a - h))
+            done
+            unrun=$(wc -l < /tmp/unrun.list)
+
+            cut -f2 "$src" | sed 's#^#cubrid-testcases-private-ex/#' > /tmp/want.list
+            cat /tmp/unrun.list >> /tmp/want.list
+            sort -u -o /tmp/want.list /tmp/want.list
             want=$(wc -l < /tmp/want.list)
+            echo "from run $RERUN_FROM: $(wc -l < "$src") failed + $unrun unrun in shards that died whole"
+            if [ "$short" -gt 0 ]; then
+              echo "::warning::run $RERUN_FROM left $short more cases assigned but never handled."
+              echo "::warning::  Nothing names them, so this re-run cannot carry them and cannot pass."
+            fi
             # Keep only what is in the tree now; cases deleted since are dropped.
             grep -xF -f /tmp/want.list /tmp/all.list > /tmp/cases.list || : > /tmp/cases.list
             got=$(wc -l < /tmp/cases.list)
-            echo "re-running: $got of the $want failures from run $RERUN_FROM are still in the tree"
+            echo "re-running: $got of the $want cases from run $RERUN_FROM are still in the tree"
             if [ "$got" -ne "$want" ]; then
               echo "::warning::$((want - got)) are not in the tree now (deleted or renamed)"
               comm -23 /tmp/want.list <(sort /tmp/cases.list) | sed 's/^/  missing: /'
@@ -957,7 +996,8 @@ jobs:
           # Zero from a re-run and zero from a broken glob have different causes.
           if [ "$total" -eq 0 ]; then
             if [ -n "$RERUN_FROM" ]; then
-              echo "::error::nothing to run: none of the failures from run $RERUN_FROM can be run now"
+              echo "::error::nothing to run: none of the $want cases run $RERUN_FROM left unhandled can be run now"
+              echo "  That run had $unrun unrun and $(wc -l < "$src") failed. Use /run shell for a full run."
             else
               echo "::error::no cases at all: the glob matched nothing. Check the testcase tree"
             fi
@@ -1085,6 +1125,9 @@ jobs:
             echo "total=$total"
             echo "timed=$timed"
             echo "rundir=$rundir"
+            echo "rerun_want=$want"
+            echo "rerun_unrun=$unrun"
+            echo "rerun_short=$short"
           } >> "$GITHUB_OUTPUT"
           echo
           echo "published: $rundir"
@@ -1539,6 +1582,24 @@ jobs:
           tcread_n=$(find "$RUNDIR/results" -mindepth 2 -maxdepth 2 -name tc.read 2>/dev/null | wc -l)
           echo "shard: planned $planned / published $done_n / build provenance $read_n / tc provenance $tcread_n"
 
+          # Cases a shard that died whole never ran. They reach no test-shell.xml, so
+          # the failure list below cannot see them; without this count the summary
+          # would offer no way to get them run.
+          unrun_n=0
+          dead_n=0
+          : > /tmp/dead_shards.list
+          for f in "$RUNDIR"/shards/*.list; do
+            [ -f "$f" ] || continue
+            i=$(basename "$f" .list)
+            [ -f "$RUNDIR/results/$i/test_status.data" ] && continue
+            n=$(wc -l < "$f")
+            dead_n=$((dead_n + 1))
+            unrun_n=$((unrun_n + n))
+            printf 'shard %s: %s cases\n' "$i" "$n" >> /tmp/dead_shards.list
+          done
+          echo "shards that never ran a case: $dead_n / cases left unrun: $unrun_n"
+          [ "$dead_n" -eq 0 ] || cat /tmp/dead_shards.list
+
           : > /tmp/agg.tsv
           for d in "$RUNDIR"/results/*/; do
             i=$(basename "$d")
@@ -1562,7 +1623,7 @@ jobs:
           skip_sum=$(awk -F'\t' '{s+=$6} END {print s+0}' /tmp/agg.tsv)
           echo "run $exec_sum / passed $succ_sum / failed $fail_sum / skipped $skip_sum (of $TOTAL)"
 
-          for k in planned done_n read_n tcread_n exec_sum succ_sum fail_sum skip_sum; do
+          for k in planned done_n read_n tcread_n dead_n unrun_n exec_sum succ_sum fail_sum skip_sum; do
             echo "$k=${!k}" >> "$GITHUB_OUTPUT"
           done
 
@@ -1838,6 +1899,11 @@ jobs:
           CTP_SHA: ${{ needs.plan.outputs.ctp_sha }}
           CTP_BRANCH: ${{ needs.plan.outputs.ctp_branch }}
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}   # names the source run in the summary
+          UNRUN_N: ${{ steps.gather.outputs.unrun_n }}
+          DEAD_N: ${{ steps.gather.outputs.dead_n }}
+          RERUN_WANT: ${{ needs.plan.outputs.rerun_want }}
+          RERUN_UNRUN: ${{ needs.plan.outputs.rerun_unrun }}
+          RERUN_SHORT: ${{ needs.plan.outputs.rerun_short }}
           C_QUEUE: ${{ steps.clock.outputs.clock_queue }}
           C_BUILD: ${{ steps.clock.outputs.clock_build }}
           C_PLAN: ${{ steps.clock.outputs.clock_plan }}
@@ -1872,7 +1938,10 @@ jobs:
             echo
             # Name the source run at the top: results land under the new run id.
             if [ -n "$RERUN_FROM" ]; then
-              echo "> **Only the failures from run \`$RERUN_FROM\` were re-run. This is not a full run.**"
+              echo "> **Only what run \`$RERUN_FROM\` left unhandled was re-run. This is not a full run.**"
+              echo ">"
+              echo "> carried over: $RERUN_WANT cases — its failures, plus $RERUN_UNRUN that never ran because a shard died whole."
+              [ "${RERUN_SHORT:-0}" -eq 0 ] || echo "> **$RERUN_SHORT more were assigned there and never handled. Nothing names them, so this run cannot pass.**"
               echo ">"
               echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
               echo
@@ -1886,6 +1955,8 @@ jobs:
             echo "| run | $EXEC_SUM |"
             echo "| skipped | $SKIP_SUM |"
             echo "| handled | $covered / $TOTAL $v_cov |"
+            s_dead=shards; [ "${DEAD_N:-0}" -eq 1 ] && s_dead=shard
+            [ "${UNRUN_N:-0}" -eq 0 ] || echo "| **never run** | **$UNRUN_N** cases in $DEAD_N $s_dead that died whole |"
             echo "| passed | $SUCC_SUM |"
             echo "| **failed** | **$FAIL_SUM** |"
             echo "| cases split by measured timings | $TIMED |"
@@ -1943,12 +2014,24 @@ jobs:
               head -50 /tmp/failed.list | awk -F'\t' '{printf "| %s | `%s` |\n", $1, $2}'
               [ "$FAILED_N" -gt 50 ] && echo && echo "_... and $((FAILED_N - 50)) more. The full list is \`$RUNDIR/failed.list\`_"
               echo
+            else
+              echo "### No failed cases"
+              echo
+            fi
+            if [ "${UNRUN_N:-0}" -gt 0 ]; then
+              echo "### Never run ($UNRUN_N)"
+              echo
+              echo "$DEAD_N $s_dead died before running a case, so these never ran and are in no failure list."
+              echo "A re-run of this run carries them: they are not lost, but they are not green either."
+              echo
+              awk '{print "- `" $0 "`"}' /tmp/dead_shards.list
+              echo
+            fi
+            if [ "$FAILED_N" -gt 0 ] || [ "${UNRUN_N:-0}" -gt 0 ]; then
               # The CTP branch has to ride along, or the re-run silently takes develop.
               rerun_cmd="/run rerun $GITHUB_RUN_ID"
               [ "$CTP_BRANCH" = develop ] || rerun_cmd="$rerun_cmd testtools=$CTP_BRANCH"
-              echo "Re-run just these: \`$rerun_cmd\`"
-            else
-              echo "### No failed cases"
+              echo "Re-run the failures and everything that never ran: \`$rerun_cmd\`"
             fi
             echo
             echo "---"
@@ -2010,6 +2093,16 @@ jobs:
           esac
           if [ "$FAIL_SUM" -gt 0 ]; then
             echo "::error::$FAIL_SUM failed"
+            rc=1
+          fi
+          # A re-run replaces the source run's commit status, so it must not be able
+          # to report green over cases the source never handled. The share of a shard
+          # that died whole is carried over by plan and is covered by the checks
+          # above. What cannot be carried is a shard that ran and stopped early:
+          # nothing records which of its cases were left, so they can only be counted.
+          if [ -n "$RERUN_FROM" ] && [ "${RERUN_SHORT:-0}" -gt 0 ]; then
+            echo "::error::run $RERUN_FROM left $RERUN_SHORT cases assigned but never handled, and nothing names them"
+            echo "  This re-run could not carry them, so it cannot stand in for that run. Use /run shell."
             rc=1
           fi
           [ "$rc" -eq 0 ] && echo "completed with no failures."
