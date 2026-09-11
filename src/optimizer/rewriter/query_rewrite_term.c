@@ -261,6 +261,27 @@ qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	  /* NEED FUTURE OPTIMIZATION */
 	  (*nullable_cntp)++;
 	  break;
+	case PT_NOT:
+	  /* NOT EXISTS may be true for NULL operands. */
+	  if (node->info.expr.arg1 != NULL && node->info.expr.arg1->node_type == PT_EXPR
+	      && node->info.expr.arg1->info.expr.op == PT_EXISTS)
+	    {
+	      (*nullable_cntp)++;
+	    }
+	  break;
+	case PT_EQ_ALL:
+	case PT_NE_ALL:
+	case PT_GE_ALL:
+	case PT_GT_ALL:
+	case PT_LT_ALL:
+	case PT_LE_ALL:
+	case PT_IS_NOT_IN:
+	  /* Empty subqueries may make these predicates true for NULL operands. */
+	  if (node->info.expr.arg2 != NULL && PT_IS_QUERY (node->info.expr.arg2))
+	    {
+	      (*nullable_cntp)++;
+	    }
+	  break;
 	default:
 	  break;
 	}

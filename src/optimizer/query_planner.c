@@ -288,10 +288,9 @@ static QO_PLAN *qo_seq_scan_new (QO_INFO *, QO_NODE *);
 static QO_PLAN *qo_index_scan_new (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *, QO_SCANMETHOD, BITSET *, BITSET *);
 static int qo_has_is_not_null_term (QO_NODE * node);
 
-static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp);
+static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, int seg_idx);
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
-static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
-static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
+static int qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
@@ -1046,7 +1045,7 @@ qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg)
 
 /*
  * qo_validate_indexes_for_orderby () - wrapper function for
- *					qo_validate_index_for_orderby
+ *					qo_validate_index_for_sort
  *                                      used with qo_walk_plan_tree.
  * return: NO_ERROR or ER_FAILED if the wrapped function returns false
  * plan(in):
@@ -1057,7 +1056,7 @@ qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg)
 {
   if (qo_is_iscan_from_orderby (plan))
     {
-      if (!qo_validate_index_for_orderby (plan->info->env, plan->plan_un.scan.index))
+      if (!qo_validate_index_for_sort (plan->info->env, plan->plan_un.scan.index, SORT_ORDERBY))
 	{
 	  return ER_FAILED;
 	}
@@ -1177,7 +1176,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	      /* if the plan is index_groupby, we validate the plan */
 	      if (qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan))
 		{
-		  if (!qo_validate_index_for_groupby (plan->info->env, plan->plan_un.scan.index))
+		  if (!qo_validate_index_for_sort (plan->info->env, plan->plan_un.scan.index, SORT_GROUPBY))
 		    {
 		      /* drop the plan if it wasn't validated */
 		      qo_worst_cost (plan);
@@ -9373,7 +9372,7 @@ qo_search_planner (QO_PLANNER * planner)
 		   * better. DO NOT generate if there is no group/order by!
 		   */
 		  if (!n && !index_entry->groupby_skip && tree->info.query.q.select.group_by
-		      && qo_validate_index_for_groupby (info->env, ni_entry))
+		      && qo_validate_index_for_sort (info->env, ni_entry, SORT_GROUPBY))
 		    {
 		      n =
 			qo_check_plan_on_info (info,
@@ -9382,7 +9381,7 @@ qo_search_planner (QO_PLANNER * planner)
 		    }
 
 		  if (!n && !index_entry->orderby_skip && !tree->info.query.q.select.group_by
-		      && tree->info.query.order_by && qo_validate_index_for_orderby (info->env, ni_entry))
+		      && tree->info.query.order_by && qo_validate_index_for_sort (info->env, ni_entry, SORT_ORDERBY))
 		    {
 		      n =
 			qo_check_plan_on_info (info,
@@ -11691,10 +11690,13 @@ qo_is_iscan_from_orderby (QO_PLAN * plan)
 
 /*
  * qo_validate_index_term_notnull ()
+ *  env(in): pointer to the optimizer environment
+ *  index_entryp(in): pointer to QO_INDEX_ENTRY (index entry)
+ *  seg_idx(in): index (into env's segment array) of the index key segment to check
  *   return: true/false
  */
 static bool
-qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
+qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, int seg_idx)
 {
   bool term_notnull = false;	/* init */
   PT_NODE *node;
@@ -11711,9 +11713,9 @@ qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
 
   index_class = index_entryp->class_;
 
-  /* do a check on the first column - it should be present in the where clause check if exists a simple expression
-   * with PT_IS_NOT_NULL on the first key this should not contain OR operator and the PT_IS_NOT_NULL should contain the
-   * column directly as parameter (PT_NAME)
+  /* do a check on the given key segment - it should be present in the where clause check if exists a simple
+   * expression with PT_IS_NOT_NULL on that key this should not contain OR operator and the PT_IS_NOT_NULL should
+   * contain the column directly as parameter (PT_NAME)
    */
   for (t = 0; t < env->nterms && !term_notnull; t++)
     {
@@ -11739,10 +11741,10 @@ qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
       if (node->node_type == PT_EXPR && node->info.expr.op == PT_IS_NOT_NULL
 	  && node->info.expr.arg1->node_type == PT_NAME)
 	{
-	  iseg = index_entryp->seg_idxs[0];
+	  iseg = seg_idx;
 	  if (iseg != -1 && BITSET_MEMBER (QO_TERM_SEGS (termp), iseg))
 	    {
-	      /* check it's the same column as the first in the index */
+	      /* check it's the same column as the given key segment */
 	      node_name = pt_get_name (node->info.expr.arg1);
 	      segp = QO_ENV_SEG (env, iseg);
 	      assert (segp != NULL);
@@ -11923,84 +11925,86 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 }
 
 /*
- * qo_validate_index_for_orderby () - checks for isnull(key) or not null flag
+ * qo_validate_index_for_sort () - checks whether an index can be used to
+ *                                  skip sorting for ORDER BY or GROUP BY.
  *  env(in): pointer to the optimizer environment
  *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
- *  return: 1 if the index can be used, 0 elseware
+ *  sort_type(in): SORT_GROUPBY for GROUP BY, SORT_ORDERBY for ORDER BY
+ *  return: 1 if the index can be used, 0 otherwise
  */
 static int
-qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
+qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type)
 {
-  bool key_notnull = false;	/* init */
   QO_INDEX_ENTRY *index_entryp;
-  QO_CLASS_INFO_ENTRY *index_class;
-
-  int pos;
-  PT_NODE *node = NULL;
+  int i, ncols;
+  bool is_func_leading;
+  SM_ATTRIBUTE *attr;
+  QO_SEGMENT *segp;
 
   assert (ni_entryp != NULL);
   assert (ni_entryp->head != NULL);
   assert (ni_entryp->head->class_ != NULL);
+  assert (sort_type == SORT_GROUPBY || sort_type == SORT_ORDERBY);
 
   index_entryp = ni_entryp->head;
-  index_class = index_entryp->class_;
 
-  if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.order_by)
+  if (sort_type == SORT_GROUPBY)
     {
-      goto end;
-    }
-
-  key_notnull = qo_validate_index_term_notnull (env, index_entryp);
-  if (key_notnull)
-    {
-      goto final_;
-    }
-
-  pos = QO_ENV_PT_TREE (env)->info.query.order_by->info.sort_spec.pos_descr.pos_no;
-  node = QO_ENV_PT_TREE (env)->info.query.q.select.list;
-
-  while (pos > 1 && node)
-    {
-      node = node->next;
-      pos--;
-    }
-  if (!node)
-    {
-      goto end;
-    }
-
-  if (node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
-    {
-      node = node->info.expr.arg1;
-      if (!node)
+      if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.q.select.group_by)
 	{
-	  goto end;
+	  return 0;
+	}
+    }
+  else if (sort_type == SORT_ORDERBY)
+    {
+      if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.order_by)
+	{
+	  return 0;
 	}
     }
 
-  node = pt_get_end_path_node (node);
+  assert (index_entryp->constraints != NULL);
 
-  assert (key_notnull == false);
+  /* Any non-null key column prevents an all-null composite key.
+   * Keep prefix, filter, and function indexes limited to the first key column.
+   *
+   * qo_is_filter_index() requires force > 0, so check the filter predicate directly. */
+  ncols = (qo_is_prefix_index (index_entryp) || index_entryp->constraints->filter_predicate != NULL
+	   || index_entryp->constraints->func_index_info != NULL) ? 1 : index_entryp->col_num;
 
-  key_notnull = qo_validate_index_attr_notnull (env, index_entryp, node);
-  if (key_notnull)
+  is_func_leading = (index_entryp->constraints->func_index_info != NULL
+		     && index_entryp->constraints->func_index_info->col_id == 0);
+
+  for (i = 0; i < ncols; i++)
     {
-      goto final_;
+      /* Schema NOT NULL can prove an unreferenced key column without a QO_SEGMENT.
+       * Skip it for a function-index key, since attributes[] refers to the function argument. */
+      if (!(i == 0 && is_func_leading))
+	{
+	  attr = index_entryp->constraints->attributes[i];
+	  if (attr != NULL && (attr->flags & SM_ATTFLAG_NON_NULL))
+	    {
+	      return 1;
+	    }
+	}
+
+      if (i >= index_entryp->nsegs || index_entryp->seg_idxs[i] == -1)
+	{
+	  continue;
+	}
+
+      if (qo_validate_index_term_notnull (env, index_entryp, index_entryp->seg_idxs[i]))
+	{
+	  return 1;
+	}
+
+      segp = QO_ENV_SEG (env, index_entryp->seg_idxs[i]);
+      if (segp != NULL && qo_validate_index_attr_notnull (env, index_entryp, QO_SEG_PT_NODE (segp)))
+	{
+	  return 1;
+	}
     }
 
-  /* Now we have the information we need: if the key column can be null and if there is a PT_IS_NULL or PT_IS_NOT_NULL
-   * expression with this key column involved and also if we have other terms with the key. We must decide if there can
-   * be NULLs in the results and if so, drop this index. 1. If the key cannot have null values, we have a winner. 2.
-   * Otherwise, if we found a term isnull/isnotnull(key) we drop it (because we cannot evaluate if this yields true or
-   * false so we skip all, for safety) 3. If we have a term with other operator except isnull/isnotnull and does not
-   * have an OR following we have a winner again! (because we cannot have a null value).
-   */
-final_:
-  if (key_notnull)
-    {
-      return 1;
-    }
-end:
   return 0;
 }
 
@@ -12013,7 +12017,7 @@ end:
  *   continue_walk(in):
  *
  * Note: for env->bail_out values, check key_term_status in
- *	  qo_validate_index_for_groupby, qo_validate_index_for_orderby
+ *	  qo_validate_index_attr_notnull
  */
 static PT_NODE *
 qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -12545,66 +12549,6 @@ qo_is_iscan_from_groupby (QO_PLAN * plan)
     }
 
   return false;
-}
-
-/*
- * qo_validate_index_for_groupby () - checks for isnull(key) or not null flag
- *  env(in): pointer to the optimizer environment
- *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
- *  return: 1 if the index can be used, 0 elseware
- */
-static int
-qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
-{
-  bool key_notnull = false;	/* init */
-  QO_INDEX_ENTRY *index_entryp;
-  QO_CLASS_INFO_ENTRY *index_class;
-
-  PT_NODE *groupby_expr = NULL;
-
-  assert (ni_entryp != NULL);
-  assert (ni_entryp->head != NULL);
-  assert (ni_entryp->head->class_ != NULL);
-
-  index_entryp = ni_entryp->head;
-  index_class = index_entryp->class_;
-
-  if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.q.select.group_by)
-    {
-      goto end;
-    }
-
-  key_notnull = qo_validate_index_term_notnull (env, index_entryp);
-  if (key_notnull)
-    {
-      goto final;
-    }
-
-  /* get the name of the first column in the group by list */
-  groupby_expr = QO_ENV_PT_TREE (env)->info.query.q.select.group_by->info.sort_spec.expr;
-
-  assert (key_notnull == false);
-
-  key_notnull = qo_validate_index_attr_notnull (env, index_entryp, groupby_expr);
-  if (key_notnull)
-    {
-      goto final;
-    }
-
-  /* Now we have the information we need: if the key column can be null and if there is a PT_IS_NULL or PT_IS_NOT_NULL
-   * expression with this key column involved and also if we have other terms with the key. We must decide if there can
-   * be NULLs in the results and if so, drop this index. 1. If the key cannot have null values, we have a winner. 2.
-   * Otherwise, if we found a term isnull/isnotnull(key) we drop it (because we cannot evaluate if this yields true or
-   * false so we skip all, for safety) 3. If we have a term with other operator except isnull/isnotnull and does not
-   * have an OR following we have a winner again! (because we cannot have a null value).
-   */
-final:
-  if (key_notnull)
-    {
-      return 1;
-    }
-end:
-  return 0;
 }
 
 /*
