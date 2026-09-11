@@ -10,6 +10,11 @@
 #   push develop, feature/**           build only. develop also writes the ccache
 #   workflow_dispatch                  build; tests always run
 #
+# Any request that runs the suite takes an optional trailing testtools=<branch> --
+# `/run shell testtools=fix/x` or the dispatch input -- and then CTP comes from that
+# cubrid-testtools branch instead of the image's develop. CircleCI's comment_trigger.yml
+# does not know the key, so a comment carrying it never reaches CircleCI.
+#
 # Which copy of this file runs differs by trigger. issue_comment has no ref of its
 # own and always reads the DEFAULT BRANCH, so /run does nothing until this is merged.
 # workflow_dispatch runs the copy in the ref it is given, and appears in the UI only
@@ -70,12 +75,17 @@ on:
         default: ""
         type: string
       sabotage:
-        description: "Break the split on purpose to check the guards: none | empty-shard | lose-shard"
+        description: "Break the split on purpose to check the guards: none | empty-shard | lose-shard | kill-shard"
         required: false
         default: "none"
         type: string
       pr:
         description: "Engine PR number. Testcases come from tc/pr-<number> and results are posted there"
+        required: false
+        default: ""
+        type: string
+      testtools:
+        description: "cubrid-testtools branch to take CTP from; empty means develop"
         required: false
         default: ""
         type: string
@@ -156,6 +166,7 @@ jobs:
       force_build: ${{ steps.g.outputs.force_build }}
       rerun_from: ${{ steps.g.outputs.rerun_from }}
       sabotage: ${{ steps.g.outputs.sabotage }}
+      testtools: ${{ steps.g.outputs.testtools }} # CTP branch; empty means develop
     steps:
       - name: Resolve the trigger
         id: g
@@ -177,6 +188,7 @@ jobs:
           IN_FORCE: ${{ inputs.force_build }}
           IN_RERUN: ${{ inputs.rerun_from }}
           IN_SAB: ${{ inputs.sabotage }}
+          IN_TT: ${{ inputs.testtools }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
@@ -186,7 +198,7 @@ jobs:
 
           # Knobs no path but workflow_dispatch exposes. plan clamps parallelism when
           # rerun_from is set, so both rerun paths land on one shard.
-          par=50; limit=0; force=false; rerun=''; sab=none
+          par=50; limit=0; force=false; rerun=''; sab=none; tt=''
           # Builds only, PR namespace, ccache read-only. Each branch below narrows this.
           test_run=false; pr=''; ns='pr'; cache_write=false
 
@@ -212,23 +224,38 @@ jobs:
               # A dispatch supplies every value; pass them through.
               sha="$IN_SHA"; pr="$IN_PR"
               par="$IN_PAR"; limit="$IN_LIMIT"; force="$IN_FORCE"
-              rerun="$IN_RERUN"; sab="$IN_SAB"
+              rerun="$IN_RERUN"; sab="$IN_SAB"; tt="$IN_TT"
               test_run=true
               echo "dispatch: sha=${sha} pr=${pr:-(none)} parallelism=${par}"
               ;;
 
             issue_comment)
               pr="$ISSUE"
+              # A trailing testtools=<branch> is taken off first, so both grammars below
+              # read the request without it and neither regex had to change.
+              req="$BODY"
+              if [[ "$req" =~ ^(/run[[:space:]].*)[[:space:]]+testtools=([^[:space:]]+)[[:space:]]*$ ]]; then
+                req="${BASH_REMATCH[1]}"
+                tt="${BASH_REMATCH[2]}"
+                echo "comment: CTP from cubrid-testtools branch ${tt}"
+              fi
               # Checked before the shared grammar so that regex can stay byte-identical
               # to comment_trigger.yml. The run id comes from the comment collect posts.
-              if [[ "$BODY" =~ ^/run[[:space:]]+rerun[[:space:]]+([0-9]{1,20})[[:space:]]*$ ]]; then
+              if [[ "$req" =~ ^/run[[:space:]]+rerun[[:space:]]+([0-9]{1,20})[[:space:]]*$ ]]; then
                 rerun="${BASH_REMATCH[1]}"
                 test_run=true
                 echo "comment: re-run only the failures of run ${rerun}"
               # Regex must stay identical to comment_trigger.yml: one syntax to learn.
-              elif [[ "$BODY" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
+              elif [[ "$req" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
                 # Only shell lives here; sql and medium are CircleCI's.
-                if ! [[ "$BODY" =~ (^|[[:space:]])(all|shell)($|[[:space:]]) ]]; then
+                if ! [[ "$req" =~ (^|[[:space:]])(all|shell)($|[[:space:]]) ]]; then
+                  # Loud, not ignored: this comment reached the run concurrency group and
+                  # may have cancelled a suite, so silence would hide why it died.
+                  if [ -n "$tt" ]; then
+                    echo "::error::testtools= names a CTP branch, but this comment does not"
+                    echo "  ask for the shell suite: $BODY"
+                    exit 1
+                  fi
                   echo "[info] shell was not requested, ignoring: $BODY"
                   emit run false
                   exit 0
@@ -267,6 +294,15 @@ jobs:
           if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::sha must be 40 lowercase hex characters, got: ${sha}"; exit 1
           fi
+          # The branch reaches git as `clone --branch` and `ls-remote`, so refuse
+          # anything but the shape a branch has. A leading dash would be read as an
+          # option, and `..` reaches outside the ref it names.
+          if [ -n "$tt" ] \
+             && { [[ ! "$tt" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]] || [[ "$tt" == *..* ]]; }; then
+            echo "::error::testtools must be a branch name of letters, digits and . _ / -"
+            echo "  starting with a letter or a digit, at most 100 of them. Got: ${tt}"
+            exit 1
+          fi
 
           emit run true
           emit test "$test_run"
@@ -279,6 +315,7 @@ jobs:
           emit force_build "$force"
           emit rerun_from "$rerun"
           emit sabotage "$sab"
+          emit testtools "$tt"
           echo "resolved: event=$EV test=$test_run namespace=$ns ccache_write=$cache_write"
 
   # The check ticket 28 makes required. Posted from here and not from collect: that
@@ -661,6 +698,12 @@ jobs:
       build_run_id: ${{ steps.build.outputs.build_run_id }}
       tc_sha: ${{ steps.tc.outputs.tc_sha }}
       tc_branch: ${{ steps.tc.outputs.tc_branch }}
+      ctp_sha: ${{ steps.tc.outputs.ctp_sha }}
+      ctp_branch: ${{ steps.tc.outputs.ctp_branch }}
+      rerun_want: ${{ steps.split.outputs.rerun_want }}
+      rerun_unrun: ${{ steps.split.outputs.rerun_unrun }}
+      rerun_short: ${{ steps.split.outputs.rerun_short }}
+      rerun_gone: ${{ steps.split.outputs.rerun_gone }}
 
     steps:
       - name: Validate inputs
@@ -680,8 +723,8 @@ jobs:
             echo "::error::limit must be an integer"; exit 1
           fi
           case "$IN_SAB" in
-            none|empty-shard|lose-shard) ;;
-            *) echo "::error::sabotage must be none|empty-shard|lose-shard"; exit 1 ;;
+            none|empty-shard|lose-shard|kill-shard) ;;
+            *) echo "::error::sabotage must be none|empty-shard|lose-shard|kill-shard"; exit 1 ;;
           esac
           if [ -n "$IN_RERUN" ] && [[ ! "$IN_RERUN" =~ ^[0-9]{1,20}$ ]]; then
             echo "::error::rerun_from must be a run id (integer)"; exit 1
@@ -748,6 +791,7 @@ jobs:
         env:
           GHI_TOKEN: ${{ steps.app-token.outputs.token }}
           INPUT_PR: ${{ needs.gate.outputs.pr }}
+          INPUT_TT: ${{ needs.gate.outputs.testtools }}
         run: |
           set -eo pipefail
           # Overlay first: the node seed (/ro) is the lowerdir, so entrypoint sees .git.
@@ -774,20 +818,20 @@ jobs:
           # "no such ref" and non-zero otherwise, so retry like the baseline's
           # resolve_sha (config.yml 168-179) and only fall back on a real absence --
           # a transient failure silently testing develop's cases misattributes results.
-          tc_probe() {
+          probe_branch() {
             local i rc
             for i in 1 2 3 4 5; do
               rc=0
-              git ls-remote --exit-code --heads "$TC_REPO" "$1" >/dev/null 2>&1 || rc=$?
+              git ls-remote --exit-code --heads "$1" "$2" >/dev/null 2>&1 || rc=$?
               [ "$rc" -eq 0 ] && return 0
               [ "$rc" -eq 2 ] && return 2
-              echo "::warning::ls-remote '$1' failed (attempt $i, exit $rc); retrying"
+              echo "::warning::ls-remote '$2' failed (attempt $i, exit $rc); retrying"
               sleep $((i * 3))
             done
             return 1
           }
           probe_rc=0
-          tc_probe "$TC_BRANCH" || probe_rc=$?
+          probe_branch "$TC_REPO" "$TC_BRANCH" || probe_rc=$?
           case "$probe_rc" in
             0) ;;
             2)
@@ -800,8 +844,32 @@ jobs:
           esac
           echo "tc branch  : $TC_BRANCH"
 
+          # CTP is the other half of the same checkout. The image defaults to develop,
+          # so only a named branch has to be decided here -- and it gets no fallback:
+          # running develop's CTP instead would report failures against a tree the
+          # requester never asked for. Probed rather than left to the entrypoint, whose
+          # clone retries five times over 100s before it says the branch is missing.
+          CTP_BRANCH="${INPUT_TT:-develop}"
+          if [ -n "$INPUT_TT" ]; then
+            CTP_REPO=https://github.com/CUBRID/cubrid-testtools.git
+            probe_rc=0
+            probe_branch "$CTP_REPO" "$CTP_BRANCH" || probe_rc=$?
+            case "$probe_rc" in
+              0) ;;
+              2)
+                echo "::error::cubrid-testtools has no branch '$CTP_BRANCH'. Push it there"
+                echo "  first, or drop testtools= to run CTP from develop."
+                exit 1 ;;
+              *)
+                echo "::error::could not reach $CTP_REPO after 5 attempts"; exit 1 ;;
+            esac
+          fi
+          echo "ctp branch : $CTP_BRANCH"
+
           # Same command the CircleCI test_shell runs on every node.
           export BRANCH_TESTCASES="$TC_BRANCH"
+          # CTP_BRANCH_NAME follows this in the entrypoint, so the CTP logs name it too.
+          export BRANCH_TESTTOOLS="$CTP_BRANCH"
           rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
           /entrypoint.sh checkout shell
           rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
@@ -811,9 +879,15 @@ jobs:
           TC_SHA=$(git -C "$TC_DIR" rev-parse HEAD)
           echo "tc SHA    : $TC_SHA"
           echo "tc HEAD   : $(git -C "$TC_DIR" log -1 --format='%ci %s')"
+          # The same pin for CTP: the shards take the branch tip again, and a push
+          # during the suite would leave them running different CTP from each other.
+          CTP_SHA=$(git -C "$WORKDIR/cubrid-testtools" rev-parse HEAD)
+          echo "ctp SHA   : $CTP_SHA"
           {
             echo "tc_sha=$TC_SHA"
             echo "tc_branch=$TC_BRANCH"
+            echo "ctp_sha=$CTP_SHA"
+            echo "ctp_branch=$CTP_BRANCH"
           } >> "$GITHUB_OUTPUT"
 
       - name: Case list and LPT split
@@ -836,7 +910,8 @@ jobs:
             | { grep -P '/([^/]+)/cases/\1\.sh$' || :; } \
             | sed "s#^$TC_DIR/#cubrid-testcases-private-ex/#" \
             | sort > /tmp/all.list
-          # Re-run only failures. failed.list is <shard>\t<shell/...>; align the prefix.
+          # failed.list is <shard>\t<shell/...>; align the prefix.
+          want=0; unrun=0; short=0; gone=0
           if [ -n "$RERUN_FROM" ]; then
             src="$CI_ROOT/runs/$RERUN_FROM/failed.list"
             if [ ! -f "$src" ]; then
@@ -867,12 +942,58 @@ jobs:
               echo "  A re-run may only re-run the failures of the same commit. Use /run all."
               exit 1
             fi
-            cut -f2 "$src" | sed 's#^#cubrid-testcases-private-ex/#' | sort -u > /tmp/want.list
+            # A shard that died whole published no test-shell.xml, so failed.list
+            # cannot see its cases and a re-run of that list alone would end green.
+            srcdir="$CI_ROOT/runs/$RERUN_FROM"
+            : > /tmp/unrun.list
+            for f in "$srcdir"/shards/*.list; do
+              [ -f "$f" ] || continue
+              i=$(basename "$f" .list)
+              st="$srcdir/results/$i/test_status.data"
+              if [ ! -f "$st" ]; then
+                cat "$f" >> /tmp/unrun.list   # already carries want.list's repo prefix
+                continue
+              fi
+              # Handled fewer than it was given. Nothing records which were left, so
+              # they can be counted and never named.
+              a=$(wc -l < "$f")
+              h=$(awk -F= '/total_executed_case_count/ {e=$2+0}
+                           /total_skip_case_count/     {k=$2+0}
+                           END {print e + k + 0}' "$st")
+              [ "$a" -gt "$h" ] && short=$((short + a - h))
+            done
+            # A share file that is gone takes its case names with it; plan.tsv is the
+            # only remaining record that those cases existed.
+            if [ -f "$srcdir/plan.tsv" ]; then
+              while IFS=$'\t' read -r si scnt _; do
+                [ -n "$si" ] || continue
+                [ -f "$srcdir/shards/$si.list" ] && continue
+                short=$((short + scnt))
+              done < "$srcdir/plan.tsv"
+            fi
+            unrun=$(wc -l < /tmp/unrun.list)
+
+            cut -f2 "$src" | sed 's#^#cubrid-testcases-private-ex/#' > /tmp/want.list
+            cat /tmp/unrun.list >> /tmp/want.list
+            sort -u -o /tmp/want.list /tmp/want.list
             want=$(wc -l < /tmp/want.list)
+            echo "from run $RERUN_FROM: $(wc -l < "$src") failed + $unrun unrun in shards that died whole"
+            if [ "$short" -gt 0 ]; then
+              echo "::warning::run $RERUN_FROM left $short more cases assigned but never handled."
+              echo "::warning::  Nothing names them, so this re-run cannot carry them and cannot pass."
+            fi
             # Keep only what is in the tree now; cases deleted since are dropped.
             grep -xF -f /tmp/want.list /tmp/all.list > /tmp/cases.list || : > /tmp/cases.list
             got=$(wc -l < /tmp/cases.list)
-            echo "re-running: $got of the $want failures from run $RERUN_FROM are still in the tree"
+            # A failed case that is gone is ambiguous -- deleting it can be the fix.
+            # One that never ran is not: nothing was ever recorded about it.
+            sort -u /tmp/unrun.list > /tmp/unrun.sorted
+            gone=$(comm -23 /tmp/unrun.sorted /tmp/all.list | wc -l)
+            if [ "$gone" -gt 0 ]; then
+              echo "::warning::$gone of the $unrun unrun cases are no longer in the tree"
+              comm -23 /tmp/unrun.sorted /tmp/all.list | sed 's/^/  gone: /'
+            fi
+            echo "re-running: $got of the $want cases from run $RERUN_FROM are still in the tree"
             if [ "$got" -ne "$want" ]; then
               echo "::warning::$((want - got)) are not in the tree now (deleted or renamed)"
               comm -23 /tmp/want.list <(sort /tmp/cases.list) | sed 's/^/  missing: /'
@@ -887,7 +1008,8 @@ jobs:
           # Zero from a re-run and zero from a broken glob have different causes.
           if [ "$total" -eq 0 ]; then
             if [ -n "$RERUN_FROM" ]; then
-              echo "::error::nothing to run: none of the failures from run $RERUN_FROM can be run now"
+              echo "::error::nothing to run: none of the $want cases run $RERUN_FROM left unhandled can be run now"
+              echo "  That run had $unrun unrun and $(wc -l < "$src") failed. Use /run shell for a full run."
             else
               echo "::error::no cases at all: the glob matched nothing. Check the testcase tree"
             fi
@@ -1006,6 +1128,11 @@ jobs:
               echo "::warning::sabotage=lose-shard, deleting shard 00's share file. shard 00 must fail"
               rm -f "$rundir/shards/00.list"
               ;;
+            kill-shard)
+              # The other two take the share away, leaving a re-run nothing to carry.
+              echo "::warning::sabotage=kill-shard, shard 00 will die with its share intact. shard 00 must fail"
+              : > "$rundir/shards/00.kill"
+              ;;
           esac
 
           # --- matrix ---
@@ -1015,6 +1142,10 @@ jobs:
             echo "total=$total"
             echo "timed=$timed"
             echo "rundir=$rundir"
+            echo "rerun_want=$want"
+            echo "rerun_unrun=$unrun"
+            echo "rerun_short=$short"
+            echo "rerun_gone=$gone"
           } >> "$GITHUB_OUTPUT"
           echo
           echo "published: $rundir"
@@ -1097,6 +1228,13 @@ jobs:
         run: |
           set -eo pipefail
           printf 'start\t%s\n' "$(date -u +%s)" > "$STAMPS/shard-${IDX}.tsv"
+
+          # Dying here, before the share is read, is the shape a pod lost at the hook
+          # layer leaves.
+          if [ -f "$RUNDIR/shards/${IDX}.kill" ]; then
+            echo "::error::sabotage=kill-shard: shard ${IDX} is dying on purpose, with its share intact"
+            exit 1
+          fi
 
           # Without shareProcessNamespace, PID 1 never reaps the double-forked server,
           # so `cubrid server stop` waits forever and the job hangs to the timeout.
@@ -1208,11 +1346,13 @@ jobs:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: echo "::add-mask::$APP_TOKEN"
 
-      - name: Align testcases to the commit plan saw
+      - name: Align CTP and testcases to the commits plan saw
         env:
           GHI_TOKEN: ${{ steps.app-token.outputs.token }}
           TC_BRANCH: ${{ needs.plan.outputs.tc_branch }}
           WANT_TC_SHA: ${{ needs.plan.outputs.tc_sha }}
+          CTP_BRANCH: ${{ needs.plan.outputs.ctp_branch }}
+          WANT_CTP_SHA: ${{ needs.plan.outputs.ctp_sha }}
         run: |
           set -eo pipefail
           # CTP must be copied first: entrypoint needs .git to fetch instead of clone.
@@ -1220,8 +1360,25 @@ jobs:
             echo "::error::CTP is missing. The steps are in the wrong order"; exit 1; }
 
           export BRANCH_TESTCASES="$TC_BRANCH"
+          # Without this the checkout below moves the copied seed back to develop, and
+          # a suite asked to run another CTP branch would run develop's in every shard.
+          export BRANCH_TESTTOOLS="$CTP_BRANCH"
           rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
           /entrypoint.sh checkout shell
+
+          # Pin CTP the way the testcases are pinned below: the checkout took the branch
+          # tip, which moves under a suite whose CTP branch is still being pushed to.
+          # The seed carries this commit already, so the fetch is only for the case where
+          # the tip moved and the object arrived from somewhere else.
+          ctp="$WORKDIR/cubrid-testtools"
+          git -C "$ctp" cat-file -e "${WANT_CTP_SHA}^{commit}" 2>/dev/null \
+            || git -C "$ctp" fetch -q --depth 1 --no-tags origin "$WANT_CTP_SHA"
+          git -C "$ctp" reset -q --hard "$WANT_CTP_SHA"
+          got_ctp=$(git -C "$ctp" rev-parse HEAD)
+          echo "ctp branch : $CTP_BRANCH"
+          echo "ctp SHA   : $got_ctp"
+          [ "$got_ctp" = "$WANT_CTP_SHA" ] || {
+            echo "::error::could not align CTP to the SHA plan saw($WANT_CTP_SHA); at $got_ctp"; exit 1; }
 
           # Pin to the commit plan saw. checkout aligns to the tip; undo that here.
           cd "$TC_DIR"
@@ -1450,6 +1607,22 @@ jobs:
           tcread_n=$(find "$RUNDIR/results" -mindepth 2 -maxdepth 2 -name tc.read 2>/dev/null | wc -l)
           echo "shard: planned $planned / published $done_n / build provenance $read_n / tc provenance $tcread_n"
 
+          # These reach no test-shell.xml, so the failure list below cannot see them.
+          unrun_n=0
+          dead_n=0
+          : > /tmp/dead_shards.list
+          for f in "$RUNDIR"/shards/*.list; do
+            [ -f "$f" ] || continue
+            i=$(basename "$f" .list)
+            [ -f "$RUNDIR/results/$i/test_status.data" ] && continue
+            n=$(wc -l < "$f")
+            dead_n=$((dead_n + 1))
+            unrun_n=$((unrun_n + n))
+            printf 'shard %s: %s cases\n' "$i" "$n" >> /tmp/dead_shards.list
+          done
+          echo "shards that never ran a case: $dead_n / cases left unrun: $unrun_n"
+          [ "$dead_n" -eq 0 ] || cat /tmp/dead_shards.list
+
           : > /tmp/agg.tsv
           for d in "$RUNDIR"/results/*/; do
             i=$(basename "$d")
@@ -1473,7 +1646,7 @@ jobs:
           skip_sum=$(awk -F'\t' '{s+=$6} END {print s+0}' /tmp/agg.tsv)
           echo "run $exec_sum / passed $succ_sum / failed $fail_sum / skipped $skip_sum (of $TOTAL)"
 
-          for k in planned done_n read_n tcread_n exec_sum succ_sum fail_sum skip_sum; do
+          for k in planned done_n read_n tcread_n dead_n unrun_n exec_sum succ_sum fail_sum skip_sum; do
             echo "$k=${!k}" >> "$GITHUB_OUTPUT"
           done
 
@@ -1746,7 +1919,15 @@ jobs:
           TCREAD_N: ${{ steps.gather.outputs.tcread_n }}
           TC_SHA: ${{ needs.plan.outputs.tc_sha }}
           TC_BRANCH: ${{ needs.plan.outputs.tc_branch }}
+          CTP_SHA: ${{ needs.plan.outputs.ctp_sha }}
+          CTP_BRANCH: ${{ needs.plan.outputs.ctp_branch }}
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}   # names the source run in the summary
+          UNRUN_N: ${{ steps.gather.outputs.unrun_n }}
+          DEAD_N: ${{ steps.gather.outputs.dead_n }}
+          RERUN_WANT: ${{ needs.plan.outputs.rerun_want }}
+          RERUN_UNRUN: ${{ needs.plan.outputs.rerun_unrun }}
+          RERUN_SHORT: ${{ needs.plan.outputs.rerun_short }}
+          RERUN_GONE: ${{ needs.plan.outputs.rerun_gone }}
           C_QUEUE: ${{ steps.clock.outputs.clock_queue }}
           C_BUILD: ${{ steps.clock.outputs.clock_build }}
           C_PLAN: ${{ steps.clock.outputs.clock_plan }}
@@ -1781,7 +1962,11 @@ jobs:
             echo
             # Name the source run at the top: results land under the new run id.
             if [ -n "$RERUN_FROM" ]; then
-              echo "> **Only the failures from run \`$RERUN_FROM\` were re-run. This is not a full run.**"
+              echo "> **Only what run \`$RERUN_FROM\` left unhandled was re-run. This is not a full run.**"
+              echo ">"
+              echo "> carried over: $RERUN_WANT cases — its failures, plus $RERUN_UNRUN that never ran because a shard died whole."
+              [ "${RERUN_SHORT:-0}" -eq 0 ] || echo "> **$RERUN_SHORT more were assigned there and never handled. Nothing names them, so this run cannot pass.**"
+              [ "${RERUN_GONE:-0}" -eq 0 ] || echo "> **$RERUN_GONE of those that never ran are no longer in the tree, so this run cannot pass.**"
               echo ">"
               echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
               echo
@@ -1795,6 +1980,8 @@ jobs:
             echo "| run | $EXEC_SUM |"
             echo "| skipped | $SKIP_SUM |"
             echo "| handled | $covered / $TOTAL $v_cov |"
+            s_dead=shards; [ "${DEAD_N:-0}" -eq 1 ] && s_dead=shard
+            [ "${UNRUN_N:-0}" -eq 0 ] || echo "| **never run** | **$UNRUN_N** cases in $DEAD_N $s_dead that died whole |"
             echo "| passed | $SUCC_SUM |"
             echo "| **failed** | **$FAIL_SUM** |"
             echo "| cases split by measured timings | $TIMED |"
@@ -1821,6 +2008,15 @@ jobs:
             echo "| shards that recorded a tc provenance | $TCREAD_N / $PLANNED $v_tcread |"
             echo "| same commit across shards | $v_tcsame |"
             echo
+            echo "### CTP provenance"
+            echo
+            echo "| item | value |"
+            echo "|---|---|"
+            echo "| CTP branch | \`$CTP_BRANCH\` |"
+            echo "| CTP commit | \`$CTP_SHA\` |"
+            echo
+            echo "Every shard is reset to this commit, and one that cannot reach it fails."
+            echo
             echo "### Shards and wall clock"
             echo
             echo "| stage | time |"
@@ -1843,9 +2039,24 @@ jobs:
               head -50 /tmp/failed.list | awk -F'\t' '{printf "| %s | `%s` |\n", $1, $2}'
               [ "$FAILED_N" -gt 50 ] && echo && echo "_... and $((FAILED_N - 50)) more. The full list is \`$RUNDIR/failed.list\`_"
               echo
-              echo "Re-run just these: \`/run rerun $GITHUB_RUN_ID\`"
             else
               echo "### No failed cases"
+              echo
+            fi
+            if [ "${UNRUN_N:-0}" -gt 0 ]; then
+              echo "### Never run ($UNRUN_N)"
+              echo
+              echo "$DEAD_N $s_dead died before running a case, so these never ran and are in no failure list."
+              echo "A re-run of this run carries them: they are not lost, but they are not green either."
+              echo
+              awk '{print "- `" $0 "`"}' /tmp/dead_shards.list
+              echo
+            fi
+            if [ "$FAILED_N" -gt 0 ] || [ "${UNRUN_N:-0}" -gt 0 ]; then
+              # The CTP branch has to ride along, or the re-run silently takes develop.
+              rerun_cmd="/run rerun $GITHUB_RUN_ID"
+              [ "$CTP_BRANCH" = develop ] || rerun_cmd="$rerun_cmd testtools=$CTP_BRANCH"
+              echo "Re-run the failures and everything that never ran: \`$rerun_cmd\`"
             fi
             echo
             echo "---"
@@ -1907,6 +2118,20 @@ jobs:
           esac
           if [ "$FAIL_SUM" -gt 0 ]; then
             echo "::error::$FAIL_SUM failed"
+            rc=1
+          fi
+          # A re-run replaces the source run's commit status, so it must not go green
+          # over cases nothing can name. A dead shard's share is carried by plan; this
+          # is what is left.
+          if [ -n "$RERUN_FROM" ] && [ "${RERUN_SHORT:-0}" -gt 0 ]; then
+            echo "::error::run $RERUN_FROM left $RERUN_SHORT cases assigned but never handled, and nothing names them"
+            echo "  This re-run could not carry them, so it cannot stand in for that run. Use /run shell."
+            rc=1
+          fi
+          if [ -n "$RERUN_FROM" ] && [ "${RERUN_GONE:-0}" -gt 0 ]; then
+            echo "::error::$RERUN_GONE cases that never ran in run $RERUN_FROM are no longer in the tree"
+            echo "  A renamed case has to run under its new name, and nothing was ever recorded"
+            echo "  about these. Use /run shell."
             rc=1
           fi
           [ "$rc" -eq 0 ] && echo "completed with no failures."
