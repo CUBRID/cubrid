@@ -12190,7 +12190,9 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       goto error_exit;
     }
 
+  /* *INDENT-OFF* */
   error_code = prepared.prepare (thread_p, attr_info, NULL, false);
+  /* *INDENT-ON* */
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -12198,7 +12200,9 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 
   if (idx_info->has_single_col)
     {
+      /* *INDENT-OFF* */
       error_code = prepared.read_values (index_attr_info);
+      /* *INDENT-ON* */
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -12230,9 +12234,11 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       COPY_OID (&pruned_oid, &class_oid);
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
+      /* *INDENT-OFF* */
       key_dbvalue =
 	heap_attrvalue_get_key (thread_p, i, index_attr_info, prepared.record (), &btid, &dbvalue, aligned_buf, NULL,
 				NULL, NULL, false, &prepared);
+      /* *INDENT-ON* */
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -12415,7 +12421,9 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       goto error_exit;
     }
 
+  /* *INDENT-OFF* */
   error_code = prepared.prepare (thread_p, attr_info);
+  /* *INDENT-ON* */
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -12423,7 +12431,9 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 
   if (idx_info->has_single_col)
     {
+      /* *INDENT-OFF* */
       error_code = prepared.read_values (index_attr_info);
+      /* *INDENT-ON* */
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -12448,9 +12458,11 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       COPY_OID (&class_oid, &attr_info->class_oid);
       is_global_index = false;
 
+      /* *INDENT-OFF* */
       key_dbvalue =
 	heap_attrvalue_get_key (thread_p, i, index_attr_info, prepared.record (), &btid, &dbvalue, aligned_buf, NULL,
 				NULL, NULL, false, &prepared);
+      /* *INDENT-ON* */
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;
